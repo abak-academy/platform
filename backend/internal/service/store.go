@@ -397,21 +397,18 @@ func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float
 }
 
 func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
-	rates, err := s.logisticsClient().GetRates(ctx, req)
-	if err == nil && len(rates) > 0 {
-		return rates, nil
-	}
+	rates, clientErr := s.logisticsClient().GetRates(ctx, req)
 
-	cfg, cfgErr := s.GetSystemConfig(ctx)
-	if cfgErr == nil && cfg["shipping_fallback_flat_rate"] != "" {
-		flatRateStr := cfg["shipping_fallback_flat_rate"]
-		var flatRate int64
-		if _, scanErr := fmt.Sscanf(flatRateStr, "%d", &flatRate); scanErr == nil && flatRate > 0 {
-			return []CourierRate{{Courier: "Flat", Service: "Standard", Price: flatRate}}, nil
+	var flatRate int64
+	if cfg, cfgErr := s.GetSystemConfig(ctx); cfgErr == nil {
+		if raw := cfg["shipping_fallback_flat_rate"]; raw != "" {
+			if _, scanErr := fmt.Sscanf(raw, "%d", &flatRate); scanErr != nil {
+				flatRate = 0
+			}
 		}
 	}
 
-	return nil, err
+	return resolveShippingRates(rates, clientErr, flatRate)
 }
 
 func (s *Service) MintCart(ctx context.Context, studentID string) (model.Order, bool, error) {

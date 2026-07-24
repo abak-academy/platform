@@ -523,15 +523,14 @@ func TestValidatePromo_NotFound(t *testing.T) {
 	}
 }
 
+// The shim delegates straight to the injected client, so this only asserts the
+// wiring. The real fallback decision is covered by TestResolveShippingRates.
 func TestGetShippingRates(t *testing.T) {
 	ctx := context.Background()
 	svc := newShim(newFakeStoreRepo())
-	rates, err := svc.GetShippingRates(ctx, ShippingQuoteRequest{DestinationPostalCode: "12345", WeightGrams: 500})
-	if err != nil {
-		t.Fatalf("GetShippingRates: %v", err)
-	}
-	if len(rates) == 0 {
-		t.Error("want at least one rate")
+	_, err := svc.GetShippingRates(ctx, ShippingQuoteRequest{DestinationPostalCode: "12345", WeightGrams: 500})
+	if !errors.Is(err, ErrShippingUnavailable) {
+		t.Fatalf("with no carrier configured the shim should surface ErrShippingUnavailable, got %v", err)
 	}
 }
 
