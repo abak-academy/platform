@@ -196,6 +196,10 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidCourierSelection):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_courier_selection", Message: err.Error()}
+	case errors.Is(err, service.ErrDigitalQtyLimit):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_qty", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidQty):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_qty", Message: err.Error()}
 	default:
 		slog.Error("unhandled service error", "method", c.Request().Method, "uri", c.Request().RequestURI, "err", err)
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}

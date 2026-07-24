@@ -1022,9 +1022,11 @@ func TestShippingPreservedAcrossDigitalItemMutations(t *testing.T) {
 		`SELECT id FROM order_item WHERE order_id=$1 AND product_id=$2`, orderID, courseID,
 	).Scan(&courseItemID))
 
-	// Changing the digital item's qty must not touch shipping either.
+	// Changing the digital item's qty must not touch shipping either. Digital
+	// products are capped at qty 1 (see service.ValidateItemQty), so this
+	// exercises the update codepath at the only qty a digital item can hold.
 	qtyResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID+"/items/"+courseItemID,
-		map[string]any{"qty": 2}, token)
+		map[string]any{"qty": 1}, token)
 	require.Equal(t, http.StatusNoContent, qtyResp.StatusCode)
 	assertShipping(15000.0, "JNE", "after changing digital item qty")
 

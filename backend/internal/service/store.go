@@ -460,6 +460,9 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 	if isPhysicalType(product.Type) && product.Stock == 0 {
 		return ErrOutOfStock
 	}
+	if err := ValidateItemQty(product.Type, qty); err != nil {
+		return err
+	}
 
 	item := model.OrderItem{
 		ProductID:   pID,
@@ -510,9 +513,6 @@ func (s *Service) RemoveItem(ctx context.Context, studentID, orderID, itemID str
 }
 
 func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID string, qty int) error {
-	if qty < 1 {
-		return errors.New("qty must be at least 1")
-	}
 	oID, err := parseUUID(orderID)
 	if err != nil {
 		return err
@@ -539,8 +539,13 @@ func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID 
 
 	clearShipping := false
 	for _, item := range order.Items {
-		if item.ID == iID && isPhysicalType(item.ProductType) {
-			clearShipping = true
+		if item.ID == iID {
+			if err := ValidateItemQty(item.ProductType, qty); err != nil {
+				return err
+			}
+			if isPhysicalType(item.ProductType) {
+				clearShipping = true
+			}
 			break
 		}
 	}

@@ -1,0 +1,33 @@
+package service
+
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrDigitalQtyLimit is returned when a caller tries to put more than one unit
+// of a digital product in an order.
+var ErrDigitalQtyLimit = errors.New("digital products are limited to one per order")
+
+// ErrInvalidQty is returned for a non-positive quantity. There is no generic
+// validation sentinel in this package, so the rule owns its own.
+var ErrInvalidQty = errors.New("invalid quantity")
+
+// ValidateItemQty enforces the per-line quantity rule.
+//
+// Digital products are capped at one because fulfilment ignores qty entirely:
+// the outbox worker creates a single exam registration or course enrolment per
+// order item regardless of quantity, so qty 3 charged the buyer three times and
+// delivered one. Capping here is the fix; the worker is deliberately untouched.
+//
+// admin_school multi-seat purchases do not pass through this path — they go via
+// CreateBulkExamOrder, which fans out through order_participants.
+func ValidateItemQty(productType string, qty int) error {
+	if qty < 1 {
+		return fmt.Errorf("%w: qty must be at least 1", ErrInvalidQty)
+	}
+	if !isPhysicalType(productType) && qty > 1 {
+		return fmt.Errorf("%w: %s accepts qty 1, got %d", ErrDigitalQtyLimit, productType, qty)
+	}
+	return nil
+}

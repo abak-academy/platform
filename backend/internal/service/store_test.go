@@ -859,6 +859,9 @@ func (s *shimOrderService) AddItem(ctx context.Context, studentID, orderID, prod
 	if product.Stock == 0 {
 		return ErrOutOfStock
 	}
+	if err := ValidateItemQty(product.Type, qty); err != nil {
+		return err
+	}
 
 	item := model.OrderItem{
 		ID:          uuid.New(),
@@ -925,6 +928,9 @@ func (s *shimOrderService) UpdateItemQty(ctx context.Context, studentID, orderID
 	clearShipping := false
 	for _, item := range order.Items {
 		if item.ID == iID {
+			if err := ValidateItemQty(item.ProductType, qty); err != nil {
+				return err
+			}
 			if isPhysicalType(item.ProductType) {
 				clearShipping = true
 			}
