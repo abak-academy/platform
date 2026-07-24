@@ -48,6 +48,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrWeakPassword):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error(), Details: "password must be at least 8 characters"}
+	case errors.Is(err, service.ErrInvalidSpecs):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_specs", Message: err.Error()}
 	case errors.Is(err, service.ErrProductNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "product_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrCourseNotFound):

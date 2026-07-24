@@ -6,6 +6,7 @@ import (
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
 
@@ -74,21 +75,25 @@ func (h *Handler) AdminListProducts(c echo.Context) error {
 
 func (h *Handler) AdminCreateProduct(c echo.Context) error {
 	var req struct {
-		Type        string   `json:"type"`
-		Name        string   `json:"name"`
-		Description string   `json:"description"`
-		Price       int64    `json:"price"`
-		Stock       int      `json:"stock"`
-		WeightGrams int      `json:"weight_grams"`
-		ImageURL    string   `json:"image_url"`
-		CourseIDs   []string `json:"course_ids"`
-		ExamIDs     []string `json:"exam_ids"`
+		Type        string              `json:"type"`
+		Name        string              `json:"name"`
+		Description string              `json:"description"`
+		Price       int64               `json:"price"`
+		Stock       int                 `json:"stock"`
+		WeightGrams int                 `json:"weight_grams"`
+		ImageURL    string              `json:"image_url"`
+		Specs       []model.ProductSpec `json:"specs"`
+		CourseIDs   []string            `json:"course_ids"`
+		ExamIDs     []string            `json:"exam_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
 	if req.Type == "" || req.Name == "" {
 		return badRequest(c, "type and name are required")
+	}
+	if err := service.ValidateSpecs(req.Specs); err != nil {
+		return mapServiceError(c, err)
 	}
 
 	claims, _ := c.Get("claims").(*infra.Claims)
@@ -105,6 +110,7 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 		Stock:       req.Stock,
 		WeightGrams: req.WeightGrams,
 		ImageURL:    req.ImageURL,
+		Specs:       req.Specs,
 		Status:      "draft",
 	}
 
@@ -144,18 +150,24 @@ func (h *Handler) AdminGetProduct(c echo.Context) error {
 func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 	id := c.Param("id")
 	var req struct {
-		Name        string           `json:"name"`
-		Description string           `json:"description"`
-		Price       int64            `json:"price"`
-		Stock       int              `json:"stock"`
-		WeightGrams *int             `json:"weight_grams"`
-		ImageURL    *string          `json:"image_url"`
-		Status      Nullable[string] `json:"status"` // published ↔ hidden visibility flip only; absent preserves existing
-		CourseIDs   []string         `json:"course_ids"`
-		ExamIDs     []string         `json:"exam_ids"`
+		Name        string               `json:"name"`
+		Description string               `json:"description"`
+		Price       int64                `json:"price"`
+		Stock       int                  `json:"stock"`
+		WeightGrams *int                 `json:"weight_grams"`
+		ImageURL    *string              `json:"image_url"`
+		Specs       *[]model.ProductSpec `json:"specs"`  // pointer: absent preserves existing specs, present replaces them
+		Status      Nullable[string]     `json:"status"` // published ↔ hidden visibility flip only; absent preserves existing
+		CourseIDs   []string             `json:"course_ids"`
+		ExamIDs     []string             `json:"exam_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
+	}
+	if req.Specs != nil {
+		if err := service.ValidateSpecs(*req.Specs); err != nil {
+			return mapServiceError(c, err)
+		}
 	}
 
 	claims, _ := c.Get("claims").(*infra.Claims)
@@ -187,6 +199,15 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 	}
 	if req.ImageURL != nil {
 		p.ImageURL = *req.ImageURL
+	}
+	if req.Specs != nil {
+		p.Specs = *req.Specs
+	} else {
+		existing, err := h.svc.GetProduct(c.Request().Context(), id, role)
+		if err != nil {
+			return mapServiceError(c, err)
+		}
+		p.Specs = existing.Specs
 	}
 
 	var product model.Product
