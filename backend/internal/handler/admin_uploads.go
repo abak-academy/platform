@@ -26,7 +26,7 @@ func (h *Handler) AdminUploadImage(c echo.Context) error {
 		return badRequest(c, "content_type must be prefixed with image/")
 	}
 
-	resp, err := h.svc.GeneratePresignedUploadURL(c.Request().Context(), claims.Sub, filename, contentType)
+	resp, err := h.svc.GeneratePresignedUploadURL(c.Request().Context(), claims.Sub, "question", filename, contentType)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -52,7 +52,7 @@ func (h *Handler) AdminUploadAudio(c echo.Context) error {
 		return badRequest(c, "content_type must be prefixed with audio/")
 	}
 
-	resp, err := h.svc.GeneratePresignedUploadURL(c.Request().Context(), claims.Sub, filename, contentType)
+	resp, err := h.svc.GeneratePresignedUploadURL(c.Request().Context(), claims.Sub, "question", filename, contentType)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

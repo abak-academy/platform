@@ -6,10 +6,11 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// ServeFile is an unauthenticated read-proxy for avatars stored in the private
-// object bucket. The service enforces the avatars/ prefix, so certificates and
-// private PII in the same bucket are never reachable here. The stored photo_url
-// is <api-base>/files/<key>, which stays stable and browser-cacheable — unlike a
+// ServeFile is an unauthenticated read-proxy for avatars, product images and
+// question assets stored in the private object bucket. The service enforces
+// an allowlist of prefixes, so certificates and private PII in the same
+// bucket are never reachable here. The stored photo_url is
+// <api-base>/files/<key>, which stays stable and browser-cacheable — unlike a
 // presigned URL, which would expire.
 func (h *Handler) ServeFile(c echo.Context) error {
 	key := c.Param("*")
@@ -115,7 +116,16 @@ func (h *Handler) GeneratePresignUploadURL(c echo.Context) error {
 	if filename == "" {
 		return badRequest(c, "filename is required")
 	}
-	resp, err := h.svc.GeneratePresignedUploadURL(c.Request().Context(), claims.Sub, filename, contentType)
+	var prefix string
+	switch c.QueryParam("kind") {
+	case "", "avatar":
+		prefix = "avatars"
+	case "product":
+		prefix = "product"
+	default:
+		return badRequest(c, "kind must be avatar or product")
+	}
+	resp, err := h.svc.GeneratePresignedUploadURL(c.Request().Context(), claims.Sub, prefix, filename, contentType)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
