@@ -79,9 +79,10 @@ type StudentRegistrationResponse struct {
 }
 
 type StudentResponse struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Username string  `json:"username"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Nullable: some accounts genuinely have no username on file.
+	Username *string `json:"username"`
 	Email    *string `json:"email"`
 	Status   string  `json:"status"`
 	Grade    *int    `json:"grade"`
@@ -273,7 +274,7 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 type CrossSchoolStudentResponse struct {
 	ID         string  `json:"id"`
 	Name       string  `json:"name"`
-	Username   string  `json:"username"`
+	Username   *string `json:"username"`
 	Email      *string `json:"email"`
 	Status     string  `json:"status"`
 	Grade      *int    `json:"grade"`

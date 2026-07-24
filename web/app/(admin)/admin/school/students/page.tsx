@@ -494,7 +494,7 @@ export default function SchoolStudentsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-brand-700">
-                    @{s.username}
+                    {s.username ? `@${s.username}` : "—"}
                   </td>
                   <td className="px-4 py-3 text-xs text-ink-600">
                     {s.email || "—"}

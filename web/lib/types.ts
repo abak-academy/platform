@@ -46,7 +46,8 @@ export interface AdminSchoolUpdateInput {
 export interface AdminStudent {
   id: string;
   name: string;
-  username: string;
+  /** Nullable: some accounts have no username on file. */
+  username?: string | null;
   jenjang: string;
   email?: string;
   status: string;
@@ -83,6 +84,8 @@ export interface StudentRegistrationInput {
 }
 
 export interface StudentRegistrationResult extends AdminStudent {
+  /** Registration always generates one, unlike an arbitrary existing account. */
+  username: string;
   temp_password: string;
 }
 

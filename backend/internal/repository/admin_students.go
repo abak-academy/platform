@@ -11,9 +11,12 @@ import (
 // StudentRow is the student shape returned in admin school student list
 // responses (no password_hash, no student-only fields beyond grade).
 type StudentRow struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Username string  `json:"username"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Username is nullable in the schema and really is NULL for some accounts,
+	// so it must be scanned as a pointer — a plain string fails the scan and
+	// 500s the whole roster because of one row.
+	Username *string `json:"username"`
 	Email    *string `json:"email"`
 	Status   string  `json:"status"`
 	Grade    *int    `json:"grade"`
@@ -195,9 +198,10 @@ func (r *Repository) UpdateStudentStatus(ctx context.Context, id, schoolID, stat
 // CrossSchoolStudentRow extends StudentRow with school info for cross-school
 // search results. Used by SearchStudentsAcrossSchools.
 type CrossSchoolStudentRow struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Username   string    `json:"username"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Nullable for the same reason as StudentRow.Username — see there.
+	Username   *string   `json:"username"`
 	Email      *string   `json:"email"`
 	Status     string    `json:"status"`
 	Grade      *int      `json:"grade"`

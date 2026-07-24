@@ -457,6 +457,19 @@ func TestAdminListStudents_SuperAdmin_NoSchoolID_ListsEveryRegistrant(t *testing
 		t.Fatalf("seed student without school: %v", err)
 	}
 
+	// username is nullable and really is NULL for some accounts; scanning it
+	// into a plain string 500s the whole roster over one row.
+	// users_check requires email OR username, so this mirrors a real account:
+	// email present, username NULL.
+	var noUsernameID string
+	if err := env.pool.QueryRow(ctx,
+		`INSERT INTO users (username, email, name, role, status, school_id, password_hash)
+		 VALUES (NULL, $1, 'Tanpa Username', 'student', 'active', NULL, 'x') RETURNING id`,
+		"nouser_"+suffix+"@example.com",
+	).Scan(&noUsernameID); err != nil {
+		t.Fatalf("seed student without username: %v", err)
+	}
+
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students?limit=100", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -469,6 +482,7 @@ func TestAdminListStudents_SuperAdmin_NoSchoolID_ListsEveryRegistrant(t *testing
 	var resp struct {
 		Data []struct {
 			ID                 string  `json:"id"`
+			Username           *string `json:"username"`
 			SchoolName         *string `json:"school_name"`
 			UnlistedSchoolName *string `json:"unlisted_school_name"`
 		} `json:"data"`
@@ -494,6 +508,9 @@ func TestAdminListStudents_SuperAdmin_NoSchoolID_ListsEveryRegistrant(t *testing
 	}
 	if resp.Data[iNone].UnlistedSchoolName == nil || *resp.Data[iNone].UnlistedSchoolName != "Universitas Contoh" {
 		t.Errorf("self-entered school should be surfaced for follow-up, got %v", resp.Data[iNone].UnlistedSchoolName)
+	}
+	if _, ok := seen[noUsernameID]; !ok {
+		t.Error("a student with a NULL username must not be dropped, nor 500 the roster")
 	}
 }
 
