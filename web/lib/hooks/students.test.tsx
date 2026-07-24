@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useSchools, useUpdatePhoto, studentsKeys } from "./students";
+import { useSchools, useUpdatePhoto, usePresignUpload, studentsKeys } from "./students";
 import type { School, User } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
@@ -106,6 +106,48 @@ describe("useUpdatePhoto", () => {
 
     // Profile query should still be invalidated
     expect(spy).toHaveBeenCalledWith({ queryKey: studentsKeys.profile() });
+  });
+});
+
+describe("usePresignUpload", () => {
+  beforeEach(() => {
+    mockAuthFetch.mockReset();
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+  });
+
+  it("sends no kind param when kind is omitted (student profile call)", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ url: "https://upload.example", method: "PUT", key: "avatars/u/photo.png" });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => usePresignUpload(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ filename: "photo.png", content_type: "image/png" });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/uploads/presign?filename=photo.png&content_type=image%2Fpng",
+      { method: "POST" }
+    );
+  });
+
+  it("appends &kind=product when kind is provided", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ url: "https://upload.example", method: "PUT", key: "product/img.png" });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => usePresignUpload(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ filename: "img.png", content_type: "image/png", kind: "product" });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/uploads/presign?filename=img.png&content_type=image%2Fpng&kind=product",
+      { method: "POST" }
+    );
   });
 });
 
