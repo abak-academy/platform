@@ -19,6 +19,7 @@ import {
 } from "@/lib/hooks/regions";
 import { fileUrl } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
+import { JENJANG_OPTIONS } from "@/lib/jenjang";
 import { useAuthStore } from "@/stores/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -44,9 +45,6 @@ import { toast } from "sonner";
 
 const GRADES = ["7", "8", "9", "10", "11", "12"];
 
-// Fallback jenjang list used when the student has no real school resolved
-// (no school_id, or "unlisted" chosen). Mirrors architecture decision 29.
-const FALLBACK_JENJANG = ["SD", "SMP", "SMA", "SMK"];
 const UNLISTED_SCHOOL_VALUE = "_unlisted_";
 
 const PROFILE_INPUT_CLASS =
@@ -328,7 +326,7 @@ export default function ProfilePage() {
   }, [schools, displayedSchoolId, displayedIsUnlisted]);
   const jenjangOptions = ownSchool?.school_types?.length
     ? ownSchool.school_types
-    : FALLBACK_JENJANG;
+    : JENJANG_OPTIONS;
 
   const syncedVersion = useRef<string | null>(null);
   useEffect(() => {

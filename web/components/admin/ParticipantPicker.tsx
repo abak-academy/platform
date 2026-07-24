@@ -19,19 +19,7 @@ import { useAdminSchools } from "@/lib/hooks/admin-schools";
 import { useSearchStudentsAcrossSchools } from "@/lib/hooks/admin-exam-grants";
 import { cn } from "@/lib/utils";
 import type { AdminStudent } from "@/lib/types";
-
-// ── Jenjang/grade options ─────────────────────────────────────────────────
-
-const JENJANG_OPTIONS = [
-  "SD",
-  "SMP",
-  "SMA",
-  "MA",
-  "SMK",
-  "PKBM",
-  "LKP",
-  "Kursus",
-];
+import { JENJANG_OPTIONS } from "@/lib/jenjang";
 
 // ── Debounce helper ───────────────────────────────────────────────────────
 

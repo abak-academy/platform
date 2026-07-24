@@ -16,6 +16,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
+import { JENJANG_OPTIONS } from "@/lib/jenjang";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -69,11 +70,6 @@ const ALL_SCHOOLS_VALUE = "_all_";
 // Radix Select forbids an empty-string item value, so "no school" needs its own
 // sentinel too; it maps back to "" (registered without a school).
 const NO_SCHOOL_VALUE = "_none_";
-
-// Jenjang list used when no school is selected, so a registrant without a
-// school can still be given one. Mirrors the student profile page (architecture
-// decision 29).
-const FALLBACK_JENJANG = ["SD", "SMP", "SMA", "SMK"];
 
 const STATUS_TONE: Record<string, string> = {
   active: "bg-success-bg text-success border-success",
@@ -207,7 +203,7 @@ export default function SchoolStudentsPage() {
   const schoolJenjangTypes = isSuperAdmin ? superAdminSchoolTypes : adminOwnSchoolTypes;
   // With no school chosen there are no school_types to constrain jenjang, but
   // jenjang is still required — fall back rather than leaving the field unusable.
-  const jenjangOptions = schoolJenjangTypes.length ? schoolJenjangTypes : FALLBACK_JENJANG;
+  const jenjangOptions = schoolJenjangTypes.length ? schoolJenjangTypes : JENJANG_OPTIONS;
 
   const handleRegister = async () => {
     // School is deliberately not required: not every registrant is a school
