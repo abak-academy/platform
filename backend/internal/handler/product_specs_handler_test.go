@@ -47,6 +47,20 @@ func TestAdminProduct_SpecsRoundTrip(t *testing.T) {
 	if created.Specs[0].Key != "penerbit" || created.Specs[1].Label != "Jenis Cover" {
 		t.Fatalf("spec order or content not preserved: %+v", created.Specs)
 	}
+
+	persisted, err := repository.New(env.pool).GetProductByID(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("get persisted product: %v", err)
+	}
+	if len(persisted.Specs) != 2 {
+		t.Fatalf("want 2 specs persisted in DB, got %d (%+v)", len(persisted.Specs), persisted.Specs)
+	}
+	if persisted.Specs[0].Key != "penerbit" || persisted.Specs[0].Label != "Perusahaan Penerbit" || persisted.Specs[0].Value != "Yayasan Abak Cendekia" {
+		t.Fatalf("persisted spec[0] mismatch: %+v", persisted.Specs[0])
+	}
+	if persisted.Specs[1].Key != "jenis_cover" || persisted.Specs[1].Label != "Jenis Cover" || persisted.Specs[1].Value != "Hard Cover" {
+		t.Fatalf("persisted spec[1] mismatch: %+v", persisted.Specs[1])
+	}
 }
 
 func TestAdminProduct_OmittedSpecsPreserveExisting(t *testing.T) {
@@ -149,5 +163,13 @@ func TestAdminProduct_SpecsPersistForExamProduct(t *testing.T) {
 	}
 	if len(created.Specs) != 1 || created.Specs[0].Key != "format" || created.Specs[0].Value != "Online" {
 		t.Fatalf("want 1 spec {format:Online} persisted for exam product, got %+v", created.Specs)
+	}
+
+	persisted, err := repository.New(env.pool).GetProductByID(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("get persisted product: %v", err)
+	}
+	if len(persisted.Specs) != 1 || persisted.Specs[0].Key != "format" || persisted.Specs[0].Label != "Format" || persisted.Specs[0].Value != "Online" {
+		t.Fatalf("want 1 spec {format:Format:Online} persisted in DB for exam product, got %+v", persisted.Specs)
 	}
 }
