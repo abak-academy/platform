@@ -567,6 +567,57 @@ object_storage_secret_key: "sk"
 	}
 }
 
+// Guards the committed backend/config/env/prod/config.yaml directly (not a fixture
+// copy) so drift in the real file fails this test. secrets.yaml is gitignored and
+// absent on disk, so a temp one is placed alongside it for the duration of the test.
+func TestLoad_prodConfigValues(t *testing.T) {
+	secretsPath := filepath.Join("env", "prod", "secrets.yaml")
+	if _, err := os.Stat(secretsPath); err == nil {
+		t.Fatalf("%s already exists; refusing to overwrite", secretsPath)
+	}
+	writeYAML(t, filepath.Join("env", "prod"), "secrets.yaml", `
+database_url: "postgres://user:pass@pgbouncer:6432/db"
+jwt_secret: "jwt-secret"
+config_encryption_key: "enc-key"
+otp_secret: "otp-secret"
+object_storage_access_key: "ak"
+object_storage_secret_key: "sk"
+`)
+	t.Cleanup(func() {
+		if err := os.Remove(secretsPath); err != nil {
+			t.Errorf("cleanup secrets.yaml: %v", err)
+		}
+	})
+
+	cfg, err := Load("prod", "env")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	checks := []struct {
+		field string
+		got   string
+		want  string
+	}{
+		{"RedisAddr", cfg.RedisAddr, "redis:6379"},
+		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "abak-academy-media-prod"},
+		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "abak-academy-media-prod"},
+		{"ObjectStorageEndpoint", cfg.ObjectStorageEndpoint, "storage.googleapis.com"},
+		{"SMTPHost", cfg.SMTPHost, "smtp.gmail.com"},
+		{"SMTPFromName", cfg.SMTPFromName, "Abak Academy"},
+		{"MidtransEnv", cfg.MidtransEnv, "production"},
+	}
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s: got %q want %q", c.field, c.got, c.want)
+		}
+	}
+
+	if len(cfg.CORSOrigins) != 1 || cfg.CORSOrigins[0] != "https://hub.abakacademy.id" {
+		t.Errorf("CORSOrigins: got %v want [https://hub.abakacademy.id]", cfg.CORSOrigins)
+	}
+}
+
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {
