@@ -172,6 +172,16 @@ export function useShippingRates() {
   });
 }
 
+interface PatchCartShippingAddress {
+  penerima: string;
+  telepon: string;
+  alamat: string;
+  kode_pos: string;
+  provinsi_id: string;
+  kota_id: string;
+  kecamatan_id: string;
+}
+
 interface PatchCartInput {
   orderId: string;
   courier: string;
@@ -182,12 +192,13 @@ interface PatchCartInput {
   district_id: string;
   kode_pos: string | null;
   promo_code?: string;
+  shipping_address?: PatchCartShippingAddress;
 }
 
 export function usePatchCart() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ orderId, courier, service, shipping_cost, province_id, city_id, district_id, kode_pos, promo_code }: PatchCartInput) => {
+    mutationFn: ({ orderId, courier, service, shipping_cost, province_id, city_id, district_id, kode_pos, promo_code, shipping_address }: PatchCartInput) => {
       const body: Record<string, unknown> = {
         courier,
         service,
@@ -199,6 +210,9 @@ export function usePatchCart() {
       };
       if (promo_code !== undefined) {
         body.promo_code = promo_code;
+      }
+      if (shipping_address !== undefined) {
+        body.shipping_address = shipping_address;
       }
       return authFetch<void>(`/orders/${encodeURIComponent(orderId)}`, {
         method: "PATCH",

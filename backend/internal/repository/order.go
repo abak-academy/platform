@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -15,16 +16,16 @@ import (
 var ErrInsufficientStock = errors.New("insufficient stock")
 
 type OrderFilter struct {
-	StudentID    *uuid.UUID
-	Status       string
-	ProductType  string
-	ExcludeCart  bool
-	Cursor       string
-	Limit        int
+	StudentID   *uuid.UUID
+	Status      string
+	ProductType string
+	ExcludeCart bool
+	Cursor      string
+	Limit       int
 }
 
 type OrderPatch struct {
-	ShippingAddress []byte
+	ShippingAddress json.RawMessage
 	SelectedCourier string
 	SelectedService string
 	PromoCodeID     *uuid.UUID

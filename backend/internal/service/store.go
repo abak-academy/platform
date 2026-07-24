@@ -554,7 +554,7 @@ func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID 
 }
 
 type CartPatch struct {
-	ShippingAddress []byte
+	ShippingAddress json.RawMessage
 	Courier         string
 	Service         string
 	ShippingCost    float64

@@ -75,6 +75,15 @@ export default function CartPage() {
         city_id: shippingAddress.kota_id,
         district_id: shippingAddress.kecamatan_id,
         kode_pos: shippingAddress.kode_pos,
+        shipping_address: {
+          penerima: shippingAddress.penerima,
+          telepon: shippingAddress.telepon,
+          alamat: shippingAddress.alamat,
+          kode_pos: shippingAddress.kode_pos,
+          provinsi_id: shippingAddress.provinsi_id,
+          kota_id: shippingAddress.kota_id,
+          kecamatan_id: shippingAddress.kecamatan_id,
+        },
       });
     },
     [cart, shippingAddress, patchCart]
