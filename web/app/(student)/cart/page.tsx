@@ -12,6 +12,7 @@ import { CartLineItem } from "@/components/cart/CartLineItem";
 import { PromoInput } from "@/components/cart/PromoInput";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
 import { ShippingAddressForm, type ShippingAddressFormState } from "@/components/cart/ShippingAddressForm";
+import { ShippingAddressSummary, isAddressComplete } from "@/components/cart/ShippingAddressSummary";
 import { CourierRateList, courierRateKey } from "@/components/cart/CourierRateList";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -30,12 +31,16 @@ export default function CartPage() {
   const patchCart = usePatchCart();
 
   const [shippingAddress, setShippingAddress] = useState<ShippingAddressFormState>({
+    penerima: "",
+    telepon: "",
+    alamat: "",
     provinsi_id: "",
     kota_id: "",
     kecamatan_id: "",
     kode_pos: "",
   });
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
+  const [editingAddress, setEditingAddress] = useState(false);
 
   const items: OrderItem[] = cart?.items ?? [];
   const subtotal = cart?.subtotal ?? items.reduce((s, it) => s + it.jumlah, 0);
@@ -120,14 +125,23 @@ export default function CartPage() {
               />
             ))}
 
-            {hasPhysical && (
-              <ShippingAddressForm
-                profile={profile}
-                onAddressChange={handleAddressChange}
-                onCheckShipping={handleCheckShipping}
-                isCheckingShipping={shippingRates.isPending}
-              />
-            )}
+            {hasPhysical &&
+              (editingAddress || !isAddressComplete(shippingAddress as any) ? (
+                <ShippingAddressForm
+                  profile={profile}
+                  onAddressChange={handleAddressChange}
+                  onCheckShipping={() => {
+                    setEditingAddress(false);
+                    handleCheckShipping();
+                  }}
+                  isCheckingShipping={shippingRates.isPending}
+                />
+              ) : (
+                <ShippingAddressSummary
+                  address={shippingAddress as any}
+                  onEdit={() => setEditingAddress(true)}
+                />
+              ))}
 
             {hasPhysical && shippingRates.data && (
               <CourierRateList
