@@ -202,7 +202,7 @@ export interface Order {
   shipping_cost: number;
   total: number;
   promo_code_id?: string;
-  shipping_address?: string;
+  shipping_address?: Record<string, string> | null;
   selected_courier?: string;
   selected_service?: string;
   tracking_number?: string;

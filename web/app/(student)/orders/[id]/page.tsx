@@ -24,6 +24,7 @@ import { ApiError } from "@/lib/api";
 import type { Order, OrderItem, OrderStatus } from "@/lib/types";
 
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
+import { ShippingInfo } from "@/components/orders/ShippingInfo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -188,9 +189,6 @@ function PaymentInfo({ order, t }: { order: Order; t: (key: any) => string }) {
   }
   if (order.invoice_url) {
     rows.push({ labelKey: "order_invoice", value: order.invoice_url });
-  }
-  if (order.tracking_number) {
-    rows.push({ labelKey: "order_tracking", value: order.tracking_number });
   }
   if (rows.length === 0) return null;
   return (
@@ -361,6 +359,8 @@ export default function OrderDetailPage({
                 </dd>
               </div>
             </dl>
+
+            <ShippingInfo order={order} />
 
             <div className="my-4 h-px bg-line" />
 
