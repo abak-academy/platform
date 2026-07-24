@@ -66,6 +66,10 @@ import type {
 // own sentinel; it maps back to "" (no school_id param) for the query.
 const ALL_SCHOOLS_VALUE = "_all_";
 
+// Radix Select forbids an empty-string item value, so "no school" needs its own
+// sentinel too; it maps back to "" (registered without a school).
+const NO_SCHOOL_VALUE = "_none_";
+
 // Jenjang list used when no school is selected, so a registrant without a
 // school can still be given one. Mirrors the student profile page (architecture
 // decision 29).
@@ -753,20 +757,23 @@ export default function SchoolStudentsPage() {
                 delay={60}
               >
                 {isSuperAdmin && (
-                  <FormField label={t("school")} required>
+                  <FormField label={t("school")} hint={t("students_school_optional_hint")}>
                     <Select
-                      value={registerSchoolId}
+                      value={registerSchoolId || NO_SCHOOL_VALUE}
                       onValueChange={(v) => {
-                        setRegisterSchoolId(v);
+                        setRegisterSchoolId(v === NO_SCHOOL_VALUE ? "" : v);
                         // Jenjang options depend on the chosen school — a
                         // previously picked jenjang may no longer be valid.
                         setRegisterForm((f) => ({ ...f, jenjang: "" }));
                       }}
                     >
                       <SelectTrigger aria-label={t("school")}>
-                        <SelectValue placeholder={t("select_school")} />
+                        <SelectValue placeholder={t("students_school_none_option")} />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={NO_SCHOOL_VALUE}>
+                          {t("students_school_none_option")}
+                        </SelectItem>
                         {(schoolsData?.data ?? []).map((s) => (
                           <SelectItem key={s.id} value={s.id}>
                             {s.name}
@@ -786,7 +793,6 @@ export default function SchoolStudentsPage() {
                           jenjang: v,
                         }))
                       }
-                      disabled={isSuperAdmin && !registerSchoolId}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder={t("students_field_jenjang")} />
@@ -1162,10 +1168,12 @@ function RegisterSection({
 function FormField({
   label,
   required,
+  hint,
   children,
 }: {
   label: string;
   required?: boolean;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -1174,6 +1182,7 @@ function FormField({
         {label} {required && <span className="text-danger">*</span>}
       </Label>
       {children}
+      {hint && <p className="text-xs text-ink-500">{hint}</p>}
     </div>
   );
 }

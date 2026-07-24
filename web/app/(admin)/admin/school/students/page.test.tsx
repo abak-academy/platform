@@ -422,6 +422,46 @@ describe("SchoolStudentsPage", () => {
 
   // ── School picker inside the Register Student dialog (super_admin) ──
 
+  it("registers a super_admin's student with no school at all", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+    schoolsState = {
+      data: {
+        data: [{ id: "s1", name: "SMAN 1 Jakarta", school_types: ["SMA"] }],
+        next_cursor: undefined,
+      },
+      isLoading: false,
+      isError: false,
+    };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /daftarkan siswa/i }));
+    const dialog = screen.getByRole("dialog");
+
+    // Leave the school picker untouched: not every registrant has a school
+    // (mahasiswa and the general public sign up too). Jenjang must still be
+    // choosable, from the fallback list rather than a school's types.
+    const jenjangTrigger = within(dialog).getAllByRole("combobox")[2];
+    expect(jenjangTrigger).not.toBeDisabled();
+    fireEvent.click(jenjangTrigger);
+    fireEvent.click(await screen.findByRole("option", { name: "SMP" }));
+
+    fireEvent.input(screen.getByPlaceholderText("Nama Lengkap"), {
+      target: { value: "Peserta Umum" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /daftarkan siswa/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({ name: "Peserta Umum", jenjang: "SMP" }),
+          schoolId: "",
+        }),
+      );
+    });
+  });
+
   it("shows a school picker inside the register dialog for super_admin, independent of the page-level filter", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
     schoolsState = {
@@ -445,8 +485,9 @@ describe("SchoolStudentsPage", () => {
     const dialog = screen.getByRole("dialog");
     const jenjangTrigger = within(dialog).getAllByRole("combobox")[2];
 
-    // Jenjang is disabled until a school is picked inside the dialog.
-    expect(jenjangTrigger).toBeDisabled();
+    // Jenjang stays usable with no school picked — school is optional, and
+    // gating jenjang on it made registering a school-less person impossible.
+    expect(jenjangTrigger).not.toBeDisabled();
 
     const dialogSchoolPicker = within(dialog).getByRole("combobox", { name: /sekolah/i });
     fireEvent.click(dialogSchoolPicker);
