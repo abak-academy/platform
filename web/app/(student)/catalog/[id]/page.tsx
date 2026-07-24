@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { ProductSpecTable } from "@/components/catalog/ProductSpecTable";
 
 const TYPE_META: Record<
   ProductType,
@@ -143,6 +144,8 @@ export default function ProductDetailPage({
               </p>
             )}
           </div>
+
+          <ProductSpecTable specs={product.specs} />
         </div>
 
         <aside className="md:sticky md:top-6 md:self-start">
