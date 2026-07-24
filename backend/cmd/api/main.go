@@ -40,7 +40,7 @@ func main() {
 	}
 	ctx := context.Background()
 
-	if err := infra.RunMigrations(ctx, cfg.DatabaseURL); err != nil {
+	if err := infra.RunMigrations(ctx, cfg.MigrationDatabaseURL); err != nil {
 		logger.Error("run migrations", "err", err)
 		os.Exit(1)
 	}
