@@ -752,6 +752,7 @@ export default function ProfilePage() {
                   label={t("target_exam")}
                   value={targetExam}
                   onChange={editMode ? setTargetExam : undefined}
+                  hint={editMode ? t("target_exam_examples") : undefined}
                   isLoading={isLoading}
                 />
               </ProfileSection>

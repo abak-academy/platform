@@ -834,7 +834,7 @@ export default function SchoolStudentsPage() {
                         target_exam: e.target.value || undefined,
                       }))
                     }
-                    placeholder={t("students_field_target_exam")}
+                    placeholder={t("target_exam_examples")}
                   />
                 </FormField>
               </RegisterSection>
