@@ -161,6 +161,12 @@ export default function CartPage() {
                 isError={shippingRates.isError}
               />
             )}
+
+            {hasPhysical && shippingRates.isError && (
+              <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
+                {t("cart_shipping_unavailable" as any)}
+              </div>
+            )}
           </section>
 
           <aside className="lg:sticky lg:top-6">
@@ -186,7 +192,7 @@ export default function CartPage() {
                 <span className="font-serif text-2xl font-bold text-success">{formatRupiah(total)}</span>
               </div>
 
-              <SnapCheckout orderId={cart?.id} />
+              <SnapCheckout orderId={cart?.id} disabled={hasPhysical && shippingRates.isError} />
 
               <p className="mt-3 text-center text-xs text-ink-400">
                 {t("cart_secure_payment")}

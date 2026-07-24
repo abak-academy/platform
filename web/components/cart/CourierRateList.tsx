@@ -80,6 +80,11 @@ export function CourierRateList({
                   <div className="flex flex-1 flex-col gap-1">
                     <div className="font-semibold text-ink-900">
                       {rate.courier.toUpperCase()}
+                      {rate.is_estimate && (
+                        <span className="ml-2 rounded bg-warn-bg px-1.5 py-0.5 text-xs text-warn">
+                          {t("cart_rate_estimate_badge" as any)}
+                        </span>
+                      )}
                     </div>
                     <div className="text-sm text-ink-500">{rate.service}</div>
                     <div className="text-xs text-ink-400">
