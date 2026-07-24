@@ -105,7 +105,7 @@ func newSearchGrantDBEnv(t *testing.T) *searchGrantDBTestEnv {
 		ctx := context.Background()
 
 		pgContainer, err := tcpostgres.Run(ctx,
-			"postgres:16-alpine",
+			"postgres:17-alpine",
 			tcpostgres.WithDatabase("akademi_search_grant_test"),
 			tcpostgres.WithUsername("test"),
 			tcpostgres.WithPassword("test"),

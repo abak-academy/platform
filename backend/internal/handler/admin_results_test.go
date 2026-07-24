@@ -323,7 +323,7 @@ func newAdminResultsDBEnv(t *testing.T) *adminResultsDBTestEnv {
 		ctx := context.Background()
 
 		pgContainer, err := tcpostgres.Run(ctx,
-			"postgres:16-alpine",
+			"postgres:17-alpine",
 			tcpostgres.WithDatabase("akademi_admin_results_test"),
 			tcpostgres.WithUsername("test"),
 			tcpostgres.WithPassword("test"),

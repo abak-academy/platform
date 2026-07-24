@@ -23,7 +23,7 @@ func newMigration0025Pool(t *testing.T) *pgxpool.Pool {
 	ctx := context.Background()
 
 	pgContainer, err := tcpostgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:17-alpine",
 		tcpostgres.WithDatabase("akademi_test"),
 		tcpostgres.WithUsername("test"),
 		tcpostgres.WithPassword("test"),
