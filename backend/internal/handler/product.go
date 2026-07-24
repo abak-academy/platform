@@ -19,6 +19,7 @@ func (h *Handler) ListProducts(c echo.Context) error {
 	filter := repository.ProductFilter{
 		Type:   c.QueryParam("type"),
 		Status: c.QueryParam("status"),
+		Cursor: c.QueryParam("cursor"),
 	}
 
 	products, nextCursor, err := h.svc.ListProducts(c.Request().Context(), filter, role)
