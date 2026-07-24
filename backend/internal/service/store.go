@@ -460,6 +460,13 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 	if err := ValidateItemQty(product.Type, qty); err != nil {
 		return err
 	}
+	if !isPhysicalType(product.Type) {
+		for _, existing := range order.Items {
+			if existing.ProductID == pID {
+				return ErrDigitalQtyLimit
+			}
+		}
+	}
 
 	item := model.OrderItem{
 		ProductID:   pID,

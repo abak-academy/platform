@@ -35,13 +35,21 @@ const FIELD_CLASS =
 
 interface ShippingAddressFormProps {
   profile: User | undefined;
+  initialAddress?: Partial<ShippingAddressFormState>;
   onAddressChange: (state: ShippingAddressFormState) => void;
   onCheckShipping: () => void;
   isCheckingShipping: boolean;
 }
 
+function hasAddressValues(a?: Partial<ShippingAddressFormState>): boolean {
+  return Boolean(
+    a && (a.penerima || a.telepon || a.alamat || a.provinsi_id || a.kota_id || a.kecamatan_id || a.kode_pos),
+  );
+}
+
 export function ShippingAddressForm({
   profile,
+  initialAddress,
   onAddressChange,
   onCheckShipping,
   isCheckingShipping,
@@ -65,7 +73,15 @@ export function ShippingAddressForm({
   );
 
   useEffect(() => {
-    if (profile) {
+    if (hasAddressValues(initialAddress)) {
+      setPenerima(initialAddress?.penerima ?? "");
+      setTelepon(initialAddress?.telepon ?? "");
+      setAlamat(initialAddress?.alamat ?? "");
+      setProvinsiId(initialAddress?.provinsi_id ?? "");
+      setKotaId(initialAddress?.kota_id ?? "");
+      setKecamatanId(initialAddress?.kecamatan_id ?? "");
+      setKodePos(initialAddress?.kode_pos ?? "");
+    } else if (profile) {
       setPenerima(profile.name ?? "");
       setTelepon(profile.phone ?? "");
       setAlamat(profile.alamat_domisili ?? "");
@@ -74,7 +90,7 @@ export function ShippingAddressForm({
       setKecamatanId(profile.kecamatan_id ?? "");
       setKodePos(profile.kode_pos ?? "");
     }
-  }, [profile]);
+  }, [profile, initialAddress]);
 
   useEffect(() => {
     onAddressChange({

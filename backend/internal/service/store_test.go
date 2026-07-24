@@ -788,6 +788,67 @@ func TestAddItem_OrderNotCart(t *testing.T) {
 	}
 }
 
+func TestAddItem_DuplicateDigitalProductRejected(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+	svc := &shimOrderService{fake: fake}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	productID := "00000000-0000-0000-0000-000000000002"
+
+	fake.seedProduct(model.Product{
+		ID:    productID,
+		Type:  "exam",
+		Name:  "Exam 1",
+		Stock: 10,
+		Price: 10000,
+	})
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("first AddItem: %v", err)
+	}
+
+	err = svc.AddItem(ctx, studentID, order.ID.String(), productID, 1)
+	if !errors.Is(err, ErrDigitalQtyLimit) {
+		t.Errorf("want ErrDigitalQtyLimit on duplicate digital add, got %v", err)
+	}
+}
+
+func TestAddItem_DuplicateBookProductAllowed(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+	svc := &shimOrderService{fake: fake}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	productID := "00000000-0000-0000-0000-000000000002"
+
+	fake.seedProduct(model.Product{
+		ID:    productID,
+		Type:  "book",
+		Name:  "Book 1",
+		Stock: 10,
+		Price: 10000,
+	})
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("first AddItem: %v", err)
+	}
+
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Errorf("second AddItem for physical product should be allowed, got %v", err)
+	}
+}
+
 func TestPatchCart_NonCart(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeOrderRepo()
@@ -860,6 +921,13 @@ func (s *shimOrderService) AddItem(ctx context.Context, studentID, orderID, prod
 	}
 	if err := ValidateItemQty(product.Type, qty); err != nil {
 		return err
+	}
+	if !isPhysicalType(product.Type) {
+		for _, existing := range order.Items {
+			if existing.ProductID == pID {
+				return ErrDigitalQtyLimit
+			}
+		}
 	}
 
 	item := model.OrderItem{

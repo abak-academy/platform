@@ -138,6 +138,7 @@ export default function CartPage() {
               (editingAddress || !isAddressComplete(shippingAddress as any) ? (
                 <ShippingAddressForm
                   profile={profile}
+                  initialAddress={shippingAddress}
                   onAddressChange={handleAddressChange}
                   onCheckShipping={() => {
                     setEditingAddress(false);
@@ -149,6 +150,8 @@ export default function CartPage() {
                 <ShippingAddressSummary
                   address={shippingAddress as any}
                   onEdit={() => setEditingAddress(true)}
+                  onCheckShipping={handleCheckShipping}
+                  isCheckingShipping={shippingRates.isPending}
                 />
               ))}
 

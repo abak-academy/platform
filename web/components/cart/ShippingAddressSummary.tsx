@@ -16,6 +16,8 @@ export interface SavedAddress {
 export interface ShippingAddressSummaryProps {
   address: SavedAddress;
   onEdit: () => void;
+  onCheckShipping: () => void;
+  isCheckingShipping?: boolean;
 }
 
 export function isAddressComplete(a: SavedAddress): boolean {
@@ -24,7 +26,12 @@ export function isAddressComplete(a: SavedAddress): boolean {
   );
 }
 
-export function ShippingAddressSummary({ address, onEdit }: ShippingAddressSummaryProps) {
+export function ShippingAddressSummary({
+  address,
+  onEdit,
+  onCheckShipping,
+  isCheckingShipping,
+}: ShippingAddressSummaryProps) {
   const { t } = useTranslation();
   const complete = isAddressComplete(address);
 
@@ -49,6 +56,17 @@ export function ShippingAddressSummary({ address, onEdit }: ShippingAddressSumma
         </div>
       ) : (
         <p className="text-sm text-ink-500">{t("cart_address_incomplete_profile" as any)}</p>
+      )}
+
+      {complete && (
+        <Button
+          type="button"
+          onClick={onCheckShipping}
+          disabled={isCheckingShipping}
+          className="mt-4 w-full"
+        >
+          {t("cart_check_shipping_cost") || "Check Shipping Cost"}
+        </Button>
       )}
     </div>
   );
