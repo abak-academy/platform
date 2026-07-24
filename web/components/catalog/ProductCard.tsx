@@ -44,28 +44,31 @@ export function ProductCard({ product, className }: ProductCardProps) {
       )}
     >
       <div
-        className="relative flex h-32 items-center justify-center"
-        style={cover ? { backgroundImage: `url(${cover})`, backgroundSize: "cover", backgroundPosition: "center" } : { background: COVER_GRADIENT[product.type] }}
+        data-testid="product-cover"
+        className="relative flex aspect-[3/4] items-center justify-center bg-paper"
+        style={cover ? undefined : { background: COVER_GRADIENT[product.type] }}
       >
-        {!cover && (
+        {cover ? (
+          <img
+            src={cover}
+            alt={product.name}
+            loading="lazy"
+            className="size-full object-contain p-2"
+          />
+        ) : (
           <Icon className="size-10 text-white/90 drop-shadow-sm" strokeWidth={1.5} />
         )}
-        <div className="absolute left-3 top-3">
+        <div className="absolute left-2 top-2">
           <Badge variant="outline" className={cn("border-transparent", meta.bg, meta.tone)}>
             {meta.label}
           </Badge>
         </div>
       </div>
-      <div className="flex flex-1 flex-col gap-1 p-4">
-        <div className="line-clamp-2 text-[15px] font-semibold leading-snug text-ink-900">
+      <div className="flex flex-1 flex-col gap-1 p-3">
+        <div className="line-clamp-2 text-sm font-semibold leading-snug text-ink-900">
           {product.name}
         </div>
-        {product.description && (
-          <p className="line-clamp-2 text-xs leading-relaxed text-ink-500">
-            {product.description}
-          </p>
-        )}
-        <div className="mt-auto pt-3 font-serif text-lg font-bold text-success">
+        <div className="mt-auto pt-2 font-serif text-base font-bold text-success">
           {formatRupiah(product.price)}
         </div>
       </div>
