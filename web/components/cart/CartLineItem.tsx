@@ -6,6 +6,7 @@ import { formatRupiah } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n";
 
 const TYPE_META: Record<string, { label: string; tone: string; bg: string; Icon: typeof Book }> = {
   book: { label: "Buku", tone: "text-warn", bg: "bg-warn-bg", Icon: Book },
@@ -22,10 +23,12 @@ export interface CartLineItemProps {
 }
 
 export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQty }: CartLineItemProps) {
+  const { t } = useTranslation();
   const meta = TYPE_META[item.product_type] ?? TYPE_META.book;
   const { Icon } = meta;
   const lineTotal = item.jumlah ?? item.unit_price * item.qty;
   const busy = removing || updatingQty;
+  const isDigital = item.product_type === "exam" || item.product_type === "course";
 
   return (
     <div className="flex gap-4 rounded-lg border border-line bg-surface p-4 shadow-[var(--sh-sm)]">
@@ -58,28 +61,32 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
         </div>
 
         <div className="mt-1 flex items-center justify-between gap-2 text-sm">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onQtyChange(item.qty - 1)}
-              disabled={busy || item.qty <= 1}
-              className="flex size-7 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
-              aria-label="Kurangi jumlah"
-            >
-              <Minus className="size-3" />
-            </button>
-            <span className="w-6 text-center font-semibold text-ink-900">{item.qty}</span>
-            <button
-              type="button"
-              onClick={() => onQtyChange(item.qty + 1)}
-              disabled={busy || item.qty >= 10}
-              className="flex size-7 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
-              aria-label="Tambah jumlah"
-            >
-              <Plus className="size-3" />
-            </button>
-            <span className="text-xs text-ink-400">× {formatRupiah(item.unit_price)}</span>
-          </div>
+          {isDigital ? (
+            <span className="text-xs text-ink-500">{t("product_digital_single_qty" as any)}</span>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onQtyChange(item.qty - 1)}
+                disabled={busy || item.qty <= 1}
+                className="flex size-7 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
+                aria-label="Kurangi jumlah"
+              >
+                <Minus className="size-3" />
+              </button>
+              <span className="w-6 text-center font-semibold text-ink-900">{item.qty}</span>
+              <button
+                type="button"
+                onClick={() => onQtyChange(item.qty + 1)}
+                disabled={busy || item.qty >= 10}
+                className="flex size-7 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
+                aria-label="Tambah jumlah"
+              >
+                <Plus className="size-3" />
+              </button>
+              <span className="text-xs text-ink-400">× {formatRupiah(item.unit_price)}</span>
+            </div>
+          )}
           <span className="font-serif text-base font-bold text-ink-900">{formatRupiah(lineTotal)}</span>
         </div>
       </div>

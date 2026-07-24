@@ -73,6 +73,7 @@ export default function ProductDetailPage({
   const meta = TYPE_META[product.type];
   const { Icon } = meta;
   const cover = fileUrl(product.image_url);
+  const isDigital = product.type === "exam" || product.type === "course";
   const alreadyInCart = cart?.items?.some((i) => i.product_id === product.id) ?? false;
 
   const handleAdd = (thenRoute?: () => void) => {
@@ -159,7 +160,7 @@ export default function ProductDetailPage({
               </div>
             )}
             <div className="my-4 h-px bg-line" />
-            {!alreadyInCart && (
+            {!alreadyInCart && !isDigital && (
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-sm text-ink-600">{t("product_qty_label")}</span>
                 <div className="flex items-center gap-2">
@@ -182,6 +183,9 @@ export default function ProductDetailPage({
                   </button>
                 </div>
               </div>
+            )}
+            {isDigital && (
+              <p className="mb-3 text-xs text-ink-500">{t("product_digital_single_qty" as any)}</p>
             )}
             <div className="flex flex-col gap-3">
               <Button
