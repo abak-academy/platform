@@ -123,6 +123,12 @@ export interface LoginResponse {
   pending_token?: string;
 }
 
+export interface ProductSpec {
+  key: string;
+  label: string;
+  value: string;
+}
+
 export interface Product {
   id: string;
   type: ProductType;
@@ -133,6 +139,7 @@ export interface Product {
   status?: ProductStatus;
   weight_grams?: number;
   image_url?: string;
+  specs?: ProductSpec[];
   course_ids?: string[];
   exam_ids?: string[];
   created_at?: string;
@@ -147,6 +154,7 @@ export interface AdminCreateProductInput {
   stock?: number;
   weight_grams?: number;
   image_url?: string;
+  specs?: ProductSpec[];
   course_ids?: string[];
   exam_ids?: string[];
 }
@@ -159,6 +167,7 @@ export interface AdminUpdateProductInput {
   status?: ProductStatus;
   weight_grams?: number;
   image_url?: string;
+  specs?: ProductSpec[];
   course_ids?: string[];
   exam_ids?: string[];
 }
