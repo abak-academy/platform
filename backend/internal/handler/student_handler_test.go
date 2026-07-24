@@ -306,6 +306,28 @@ func TestGeneratePresignUploadURL_NoKind_KeyUnderAvatars(t *testing.T) {
 	}
 }
 
+func TestGeneratePresignUploadURL_KindAvatar_KeyUnderAvatars(t *testing.T) {
+	env := newStorageBackedTestEnv(t)
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	uploads := v1.Group("/uploads")
+	uploads.Use(handler.JWTMiddleware(env.svc, env.signer))
+	uploads.GET("/presign", h.GeneratePresignUploadURL)
+
+	token := loginForPresignTest(t, env, "kind-avatar-explicit")
+
+	rec := getWithToken(t, env.e, "/api/v1/uploads/presign?filename=test.jpg&kind=avatar", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	key, _ := resp["key"].(string)
+	if !strings.HasPrefix(key, "avatars/") {
+		t.Errorf("want key under avatars/, got %q", key)
+	}
+}
+
 func TestGeneratePresignUploadURL_KindProduct_KeyUnderProduct(t *testing.T) {
 	env := newStorageBackedTestEnv(t)
 	h := handler.New(env.svc)

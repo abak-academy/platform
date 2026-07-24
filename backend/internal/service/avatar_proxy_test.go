@@ -41,6 +41,7 @@ func TestOpenAvatar_RejectsNonAvatarKeys(t *testing.T) {
 
 	blocked := []string{
 		"certificates/00000000-0000-0000-0000-000000000000.pdf",
+		"cards/00000000-0000-0000-0000-000000000000.pdf",
 		"student-bulk/school-1/import.csv",
 		"avatars/../certificates/leak.pdf",
 		"random-key",
