@@ -62,6 +62,15 @@ import type {
   StudentCredentials,
 } from "@/lib/types";
 
+// Radix Select forbids an empty-string item value, so "every school" needs its
+// own sentinel; it maps back to "" (no school_id param) for the query.
+const ALL_SCHOOLS_VALUE = "_all_";
+
+// Jenjang list used when no school is selected, so a registrant without a
+// school can still be given one. Mirrors the student profile page (architecture
+// decision 29).
+const FALLBACK_JENJANG = ["SD", "SMP", "SMA", "SMK"];
+
 const STATUS_TONE: Record<string, string> = {
   active: "bg-success-bg text-success border-success",
   deactivated: "bg-danger-bg text-danger border-danger",
@@ -114,7 +123,6 @@ export default function SchoolStudentsPage() {
     cursor: activeCursor,
     limit: 20,
     ...(isSuperAdmin && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
-    enabled: !isSuperAdmin || Boolean(selectedSchoolId),
   });
 
   // Accumulate pages as they arrive
@@ -192,10 +200,15 @@ export default function SchoolStudentsPage() {
   const adminOwnSchoolTypes = adminOwnSchool?.school_types ?? [];
   const registerSchoolObj = schoolsData?.data?.find((s) => s.id === registerSchoolId);
   const superAdminSchoolTypes = registerSchoolObj?.school_types ?? [];
-  const jenjangOptions = isSuperAdmin ? superAdminSchoolTypes : adminOwnSchoolTypes;
+  const schoolJenjangTypes = isSuperAdmin ? superAdminSchoolTypes : adminOwnSchoolTypes;
+  // With no school chosen there are no school_types to constrain jenjang, but
+  // jenjang is still required — fall back rather than leaving the field unusable.
+  const jenjangOptions = schoolJenjangTypes.length ? schoolJenjangTypes : FALLBACK_JENJANG;
 
   const handleRegister = async () => {
-    if (!registerForm.name || !registerForm.jenjang || (isSuperAdmin && !registerSchoolId)) {
+    // School is deliberately not required: not every registrant is a school
+    // pupil, and an operator can confirm the school after registration.
+    if (!registerForm.name || !registerForm.jenjang) {
       toast.error(t("accounts_toast_required"));
       return;
     }
@@ -355,11 +368,15 @@ export default function SchoolStudentsPage() {
           {schoolsLoading ? (
             <div className="mt-1 h-9 w-[240px] animate-pulse rounded-md bg-surface-2" />
           ) : (
-            <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
+            <Select
+              value={selectedSchoolId || ALL_SCHOOLS_VALUE}
+              onValueChange={(v) => setSelectedSchoolId(v === ALL_SCHOOLS_VALUE ? "" : v)}
+            >
               <SelectTrigger className="mt-1 h-9 w-[240px] text-xs" aria-label={t("select_school")}>
-                <SelectValue placeholder={t("select_school")} />
+                <SelectValue placeholder={t("students_all_schools")} />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={ALL_SCHOOLS_VALUE}>{t("students_all_schools")}</SelectItem>
                 {(schoolsData?.data ?? []).map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.name}
@@ -446,6 +463,7 @@ export default function SchoolStudentsPage() {
                 <th className="px-4 py-3">{t("students_field_name")}</th>
                 <th className="px-4 py-3">{t("students_credential_username")}</th>
                 <th className="px-4 py-3">{t("email")}</th>
+                <th className="px-4 py-3">{t("students_field_school")}</th>
                 <th className="px-4 py-3">{t("th_status")}</th>
                 <th className="px-4 py-3">{t("students_field_grade")}</th>
                 <th className="px-4 py-3">{t("accounts_th_created")}</th>
@@ -456,7 +474,7 @@ export default function SchoolStudentsPage() {
               {accumulated.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-4 py-8 text-center text-sm text-ink-500"
                   >
                     {t("students_empty")}
@@ -480,6 +498,17 @@ export default function SchoolStudentsPage() {
                   </td>
                   <td className="px-4 py-3 text-xs text-ink-600">
                     {s.email || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    {s.school_name ? (
+                      <span className="text-ink-600">{s.school_name}</span>
+                    ) : s.unlisted_school_name ? (
+                      <span className="text-warn" title={t("students_school_unconfirmed")}>
+                        {s.unlisted_school_name}
+                      </span>
+                    ) : (
+                      <span className="text-ink-400">{t("students_school_none")}</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <Badge

@@ -12,7 +12,7 @@ import (
 // Supports optional grade and jenjang query filters.
 func (h *Handler) AdminListStudents(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
+	schoolID, err := h.resolveSchoolScopeOptional(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}
@@ -56,7 +56,7 @@ func (h *Handler) AdminListStudents(c echo.Context) error {
 // AdminRegisterStudent creates a new student under the caller's school.
 func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
+	schoolID, err := h.resolveSchoolScopeOptional(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}

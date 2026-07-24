@@ -55,6 +55,10 @@ export interface AdminStudent {
   kota_id?: string;
   kecamatan_id?: string;
   kode_pos?: string;
+  /** Linked school; absent when the registrant has no school on file. */
+  school_name?: string | null;
+  /** What a self-registering user typed when their school wasn't listed. */
+  unlisted_school_name?: string | null;
   created_at: string;
 }
 

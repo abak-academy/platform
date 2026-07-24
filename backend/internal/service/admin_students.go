@@ -79,13 +79,18 @@ type StudentRegistrationResponse struct {
 }
 
 type StudentResponse struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	Username  string  `json:"username"`
-	Email     *string `json:"email"`
-	Status    string  `json:"status"`
-	Grade     *int    `json:"grade"`
-	CreatedAt string  `json:"created_at"`
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Username string  `json:"username"`
+	Email    *string `json:"email"`
+	Status   string  `json:"status"`
+	Grade    *int    `json:"grade"`
+	// SchoolName is NULL for registrants with no school on file;
+	// UnlistedSchoolName carries what a self-registering user typed when their
+	// school wasn't listed. Both are surfaced so operations can follow up.
+	SchoolName         *string `json:"school_name"`
+	UnlistedSchoolName *string `json:"unlisted_school_name"`
+	CreatedAt          string  `json:"created_at"`
 }
 
 type StudentCredentialsResponse struct {
@@ -99,13 +104,15 @@ func toStudentResponse(row repository.StudentRow) StudentResponse {
 		grade = row.Grade
 	}
 	return StudentResponse{
-		ID:        row.ID,
-		Name:      row.Name,
-		Username:  row.Username,
-		Email:     row.Email,
-		Status:    row.Status,
-		Grade:     grade,
-		CreatedAt: row.CreatedAt.Format(time.RFC3339),
+		ID:                 row.ID,
+		Name:               row.Name,
+		Username:           row.Username,
+		Email:              row.Email,
+		Status:             row.Status,
+		Grade:              grade,
+		SchoolName:         row.SchoolName,
+		UnlistedSchoolName: row.UnlistedSchoolName,
+		CreatedAt:          row.CreatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -131,23 +138,29 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 		return nil, ErrMissingField
 	}
 
-	school, err := s.storeRepo.GetSchoolByID(ctx, schoolID)
-	if err != nil {
-		return nil, err
-	}
-	if school == nil {
-		return nil, ErrSchoolNotFound
-	}
-	if school.Status == "deactivated" {
-		return nil, ErrSchoolDeactivated
+	// School is optional: not every registrant is a school pupil — university
+	// students and members of the public sign up for IELTS and similar. When
+	// one is given it is still validated; when it is omitted an operator
+	// confirms the school after registration.
+	if schoolID != "" {
+		school, err := s.storeRepo.GetSchoolByID(ctx, schoolID)
+		if err != nil {
+			return nil, err
+		}
+		if school == nil {
+			return nil, ErrSchoolNotFound
+		}
+		if school.Status == "deactivated" {
+			return nil, ErrSchoolDeactivated
+		}
+
+		// Validate jenjang against school's SchoolTypes when types are configured.
+		if len(school.SchoolTypes) > 0 && !jenjangInSchoolTypes(jenjang, school.SchoolTypes) {
+			return nil, ErrInvalidJenjang
+		}
 	}
 
-	// Validate jenjang against school's SchoolTypes when types are configured.
-	if len(school.SchoolTypes) > 0 && !jenjangInSchoolTypes(jenjang, school.SchoolTypes) {
-		return nil, ErrInvalidJenjang
-	}
-
-	gender, err = normalizeGender(gender)
+	gender, err := normalizeGender(gender)
 	if err != nil {
 		return nil, err
 	}
@@ -210,13 +223,19 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 		return nil, err
 	}
 
+	// Leave school_id NULL rather than writing an empty string into a uuid column.
+	var schoolIDPtr *string
+	if schoolID != "" {
+		schoolIDPtr = &schoolID
+	}
+
 	user := &model.User{
 		Username:       &username,
 		Name:           name,
 		Email:          email,
 		PasswordHash:   string(hash),
 		Role:           RoleStudent,
-		SchoolID:       &schoolID,
+		SchoolID:       schoolIDPtr,
 		Status:         "active",
 		OTPEnabled:     false,
 		Jenjang:        &jenjang,
@@ -310,6 +329,10 @@ func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilte
 		Q:       q,
 		Grade:   grade,
 		Jenjang: jenjang,
+		// An empty schoolID reaches here only from the roster endpoint, where
+		// super_admin omitted school_id — list every registrant, including
+		// those with no school on file.
+		AllSchools: schoolID == "",
 	})
 	if err != nil {
 		return nil, "", err
