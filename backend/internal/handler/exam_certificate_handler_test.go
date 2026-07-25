@@ -72,7 +72,7 @@ func newTestEnvWithStore(t *testing.T) *testEnvWithStore {
 	ctx := context.Background()
 
 	pgContainer, err := tcpostgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:17-alpine",
 		tcpostgres.WithDatabase("akademi_handler_test"),
 		tcpostgres.WithUsername("test"),
 		tcpostgres.WithPassword("test"),

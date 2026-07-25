@@ -11,13 +11,14 @@ import (
 )
 
 type Config struct {
-	Env                string
-	HTTPPort           string
-	DatabaseURL        string
-	RedisAddr          string
-	RedisPassword      string
-	WorkerPollInterval time.Duration
-	CORSOrigins        []string
+	Env                  string
+	HTTPPort             string
+	DatabaseURL          string
+	MigrationDatabaseURL string
+	RedisAddr            string
+	RedisPassword        string
+	WorkerPollInterval   time.Duration
+	CORSOrigins          []string
 
 	JWTSecret           string
 	AccessTokenTTL      time.Duration
@@ -52,43 +53,44 @@ type Config struct {
 }
 
 type fileConfig struct {
-	HTTPPort              string   `yaml:"http_port"`
-	RedisAddr             string   `yaml:"redis_addr"`
-	WorkerPollInterval    string   `yaml:"worker_poll_interval"`
-	CORSOrigins           []string `yaml:"cors_origins"`
-	AccessTokenTTL        string   `yaml:"access_token_ttl"`
-	RefreshTokenTTL       string   `yaml:"refresh_token_ttl"`
-	OTPTTL                string   `yaml:"otp_ttl"`
-	GoogleClientID        string   `yaml:"google_client_id"`
-	FazpassBaseURL        string   `yaml:"fazpass_base_url"`
-	MidtransEnv           string   `yaml:"midtrans_env"`
-	SMTPHost              string   `yaml:"smtp_host"`
-	SMTPPort              string   `yaml:"smtp_port"`
-	SMTPFrom              string   `yaml:"smtp_from"`
-	SMTPFromName          string   `yaml:"smtp_from_name"`
-	ObjectStorageEndpoint         string   `yaml:"object_storage_endpoint"`
-	ObjectStoragePublicEndpoint   string   `yaml:"object_storage_public_endpoint"`
-	ObjectStorageUseSSL           bool     `yaml:"object_storage_use_ssl"`
-	ObjectStorageRegion           string   `yaml:"object_storage_region"`
-	ObjectStorageBucketName       string   `yaml:"object_storage_bucket_name"`
-	ObjectStoragePrivateBucketName string  `yaml:"object_storage_private_bucket_name"`
+	HTTPPort                       string   `yaml:"http_port"`
+	RedisAddr                      string   `yaml:"redis_addr"`
+	WorkerPollInterval             string   `yaml:"worker_poll_interval"`
+	CORSOrigins                    []string `yaml:"cors_origins"`
+	AccessTokenTTL                 string   `yaml:"access_token_ttl"`
+	RefreshTokenTTL                string   `yaml:"refresh_token_ttl"`
+	OTPTTL                         string   `yaml:"otp_ttl"`
+	GoogleClientID                 string   `yaml:"google_client_id"`
+	FazpassBaseURL                 string   `yaml:"fazpass_base_url"`
+	MidtransEnv                    string   `yaml:"midtrans_env"`
+	SMTPHost                       string   `yaml:"smtp_host"`
+	SMTPPort                       string   `yaml:"smtp_port"`
+	SMTPFrom                       string   `yaml:"smtp_from"`
+	SMTPFromName                   string   `yaml:"smtp_from_name"`
+	ObjectStorageEndpoint          string   `yaml:"object_storage_endpoint"`
+	ObjectStoragePublicEndpoint    string   `yaml:"object_storage_public_endpoint"`
+	ObjectStorageUseSSL            bool     `yaml:"object_storage_use_ssl"`
+	ObjectStorageRegion            string   `yaml:"object_storage_region"`
+	ObjectStorageBucketName        string   `yaml:"object_storage_bucket_name"`
+	ObjectStoragePrivateBucketName string   `yaml:"object_storage_private_bucket_name"`
 }
 
 type fileSecrets struct {
-	DatabaseURL         string `yaml:"database_url"`
-	JWTSecret           string `yaml:"jwt_secret"`
-	ConfigEncryptionKey string `yaml:"config_encryption_key"`
-	OTPSecret           string `yaml:"otp_secret"`
-	ObjectStorageAccessKey      string `yaml:"object_storage_access_key"`
-	ObjectStorageSecretKey      string `yaml:"object_storage_secret_key"`
-	RedisPassword       string `yaml:"redis_password"`
-	FazpassMerchantKey  string `yaml:"fazpass_merchant_key"`
-	FazpassAPIKey       string `yaml:"fazpass_api_key"`
-	MidtransServerKey   string `yaml:"midtrans_server_key"`
-	MidtransClientKey   string `yaml:"midtrans_client_key"`
-	BiteshipAPIKey      string `yaml:"biteship_api_key"`
-	SMTPUsername        string `yaml:"smtp_username"`
-	SMTPPassword        string `yaml:"smtp_password"`
+	DatabaseURL            string `yaml:"database_url"`
+	MigrationDatabaseURL   string `yaml:"migration_database_url"`
+	JWTSecret              string `yaml:"jwt_secret"`
+	ConfigEncryptionKey    string `yaml:"config_encryption_key"`
+	OTPSecret              string `yaml:"otp_secret"`
+	ObjectStorageAccessKey string `yaml:"object_storage_access_key"`
+	ObjectStorageSecretKey string `yaml:"object_storage_secret_key"`
+	RedisPassword          string `yaml:"redis_password"`
+	FazpassMerchantKey     string `yaml:"fazpass_merchant_key"`
+	FazpassAPIKey          string `yaml:"fazpass_api_key"`
+	MidtransServerKey      string `yaml:"midtrans_server_key"`
+	MidtransClientKey      string `yaml:"midtrans_client_key"`
+	BiteshipAPIKey         string `yaml:"biteship_api_key"`
+	SMTPUsername           string `yaml:"smtp_username"`
+	SMTPPassword           string `yaml:"smtp_password"`
 }
 
 var requiredSecrets = []struct {
@@ -186,8 +188,13 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		return Config{}, fmt.Errorf("otp_ttl: %w", err)
 	}
 
+	migrationDatabaseURL := s.MigrationDatabaseURL
+	if migrationDatabaseURL == "" {
+		migrationDatabaseURL = s.DatabaseURL
+	}
+
 	return Config{
-		Env:    env,
+		Env:                env,
 		HTTPPort:           fc.HTTPPort,
 		RedisAddr:          fc.RedisAddr,
 		WorkerPollInterval: workerPoll,
@@ -211,19 +218,20 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		ObjectStorageBucketName:        fc.ObjectStorageBucketName,
 		ObjectStoragePrivateBucketName: fc.ObjectStoragePrivateBucketName,
 
-		DatabaseURL:         s.DatabaseURL,
-		JWTSecret:           s.JWTSecret,
-		ConfigEncryptionKey: s.ConfigEncryptionKey,
-		OTPSecret:           s.OTPSecret,
-		ObjectStorageAccessKey:      s.ObjectStorageAccessKey,
-		ObjectStorageSecretKey:      s.ObjectStorageSecretKey,
-		RedisPassword:       s.RedisPassword,
-		FazpassMerchantKey:  s.FazpassMerchantKey,
-		FazpassAPIKey:       s.FazpassAPIKey,
-		MidtransServerKey:   s.MidtransServerKey,
-		MidtransClientKey:   s.MidtransClientKey,
-		BiteshipAPIKey:      s.BiteshipAPIKey,
-		SMTPUsername:        s.SMTPUsername,
-		SMTPPassword:        s.SMTPPassword,
+		DatabaseURL:            s.DatabaseURL,
+		MigrationDatabaseURL:   migrationDatabaseURL,
+		JWTSecret:              s.JWTSecret,
+		ConfigEncryptionKey:    s.ConfigEncryptionKey,
+		OTPSecret:              s.OTPSecret,
+		ObjectStorageAccessKey: s.ObjectStorageAccessKey,
+		ObjectStorageSecretKey: s.ObjectStorageSecretKey,
+		RedisPassword:          s.RedisPassword,
+		FazpassMerchantKey:     s.FazpassMerchantKey,
+		FazpassAPIKey:          s.FazpassAPIKey,
+		MidtransServerKey:      s.MidtransServerKey,
+		MidtransClientKey:      s.MidtransClientKey,
+		BiteshipAPIKey:         s.BiteshipAPIKey,
+		SMTPUsername:           s.SMTPUsername,
+		SMTPPassword:           s.SMTPPassword,
 	}, nil
 }

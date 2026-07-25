@@ -2,7 +2,10 @@ name: akademi-bimbel
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # Bumped 16 -> 17. An existing pgdata volume initialised by PG16 will make this
+    # refuse to start ("database files are incompatible with server") — dump and
+    # restore first: docs/runbooks/postgres-16-to-17.md
+    image: postgres:17-alpine
     environment:
       POSTGRES_USER: akademi
       POSTGRES_PASSWORD: akademi

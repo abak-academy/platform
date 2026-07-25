@@ -102,7 +102,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
     if (!file) return;
     setImageUploading(true);
     try {
-      const presigned = await presign.mutateAsync({ filename: file.name, content_type: file.type });
+      const presigned = await presign.mutateAsync({ filename: file.name, content_type: file.type, kind: "product" });
       const res = await fetch(presigned.url, {
         method: "PUT",
         body: file,

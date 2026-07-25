@@ -1,17 +1,46 @@
 package handler_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"akademi-bimbel/config"
+	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/service"
+
 	"github.com/labstack/echo/v4"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 // setAdminExamClaims sets admin_exam claims on the echo context.
 func setAdminExamClaims(c echo.Context, sub string) {
 	c.Set("claims", &infra.Claims{Sub: sub, Role: "admin_exam"})
+}
+
+// newAdminUploadsEnvWithStorage mirrors newAdminSystemEnv but wires a real
+// minio client (Region set explicitly, so PUT presigning never dials out —
+// see avatar_proxy_test.go for the same trick) plus a non-nil cfg, so the
+// presign tests here can assert on the actual returned key's prefix instead
+// of only checking that validation didn't 400.
+func newAdminUploadsEnvWithStorage(t *testing.T) *adminSystemTestEnv {
+	t.Helper()
+	env := newAdminSystemEnv(t)
+	storage, err := minio.New("localhost:9000", &minio.Options{
+		Creds:  credentials.NewStaticV4("ak", "sk", ""),
+		Secure: false,
+		Region: "us-east-1",
+	})
+	if err != nil {
+		t.Fatalf("minio.New: %v", err)
+	}
+	svc := service.NewWithStore(newFakeRepo(), nil, nil, nil, nil, nil, nil, nil, storage, &config.Config{ObjectStorageBucketName: "bucket"})
+	env.h = handler.New(svc)
+	return env
 }
 
 // TestAdminUploadImage_ValidImageContentType_PassesValidation verifies that a valid
@@ -150,5 +179,53 @@ func TestAdminUploadAudio_NoAuth_Returns403(t *testing.T) {
 	}
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("want 403 for no auth, got %d", rec.Code)
+	}
+}
+
+// TestAdminUploadImage_KeyUnderQuestionPrefix verifies the signed key routes
+// to question/, not avatars/ — question images share the same admin upload
+// pipeline as listening audio, both of which are content the student read-
+// proxy must serve from a non-avatars prefix.
+func TestAdminUploadImage_KeyUnderQuestionPrefix(t *testing.T) {
+	env := newAdminUploadsEnvWithStorage(t)
+	req := httptest.NewRequest(http.MethodPost, "/admin/uploads/image?filename=test.png&content_type=image/png", nil)
+	rec := httptest.NewRecorder()
+	c := env.e.NewContext(req, rec)
+	setAdminExamClaims(c, "exam-admin-1")
+
+	if err := env.h.AdminUploadImage(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	key, _ := resp["key"].(string)
+	if !strings.HasPrefix(key, "question/") {
+		t.Errorf("want key under question/, got %q", key)
+	}
+}
+
+// TestAdminUploadAudio_KeyUnderQuestionPrefix verifies listening audio also
+// routes to question/ (see TestAdminUploadImage_KeyUnderQuestionPrefix).
+func TestAdminUploadAudio_KeyUnderQuestionPrefix(t *testing.T) {
+	env := newAdminUploadsEnvWithStorage(t)
+	req := httptest.NewRequest(http.MethodPost, "/admin/uploads/audio?filename=test.mp3&content_type=audio/mpeg", nil)
+	rec := httptest.NewRecorder()
+	c := env.e.NewContext(req, rec)
+	setAdminExamClaims(c, "exam-admin-1")
+
+	if err := env.h.AdminUploadAudio(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	key, _ := resp["key"].(string)
+	if !strings.HasPrefix(key, "question/") {
+		t.Errorf("want key under question/, got %q", key)
 	}
 }

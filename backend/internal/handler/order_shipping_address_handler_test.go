@@ -47,7 +47,7 @@ func newOrderCartDBEnv(t *testing.T) *orderCartDBTestEnv {
 		ctx := context.Background()
 
 		pgContainer, err := tcpostgres.Run(ctx,
-			"postgres:16-alpine",
+			"postgres:17-alpine",
 			tcpostgres.WithDatabase("akademi_cart_test"),
 			tcpostgres.WithUsername("test"),
 			tcpostgres.WithPassword("test"),

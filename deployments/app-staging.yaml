@@ -21,7 +21,11 @@ name: abak-staging
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # Bumped 16 -> 17. The staging box's existing pgdata volume was initialised by
+    # PG16, so this will refuse to start ("database files are incompatible with
+    # server") until it is dumped and restored — docs/runbooks/postgres-16-to-17.md.
+    # api depends_on postgres healthy, so skipping that takes the whole box down.
+    image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?set in deployments/.env}

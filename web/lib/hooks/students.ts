@@ -55,6 +55,7 @@ export function useSchools() {
 export interface PresignUploadInput {
   filename: string;
   content_type: string;
+  kind?: string;
 }
 
 export interface PresignUploadResponse {
@@ -66,9 +67,9 @@ export interface PresignUploadResponse {
 
 export function usePresignUpload() {
   return useMutation({
-    mutationFn: ({ filename, content_type }: PresignUploadInput) =>
+    mutationFn: ({ filename, content_type, kind }: PresignUploadInput) =>
       authFetch<PresignUploadResponse>(
-        `/uploads/presign?filename=${encodeURIComponent(filename)}&content_type=${encodeURIComponent(content_type)}`,
+        `/uploads/presign?filename=${encodeURIComponent(filename)}&content_type=${encodeURIComponent(content_type)}${kind ? `&kind=${encodeURIComponent(kind)}` : ""}`,
         { method: "POST" }
       ),
   });

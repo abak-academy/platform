@@ -460,6 +460,9 @@ describe("ProductModal", () => {
     fireEvent.change(screen.getByLabelText(/gambar/i), { target: { files: [file] } });
 
     await waitFor(() => expect(mockPresign).toHaveBeenCalled());
+    expect(mockPresign).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "product" })
+    );
     const preview = (await screen.findByAltText(/pratinjau/i)) as HTMLImageElement;
     expect(preview.src).toContain("avatars/u/img.png");
 
