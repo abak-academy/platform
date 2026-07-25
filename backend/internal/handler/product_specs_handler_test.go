@@ -130,10 +130,9 @@ func TestAdminProduct_SpecsPersistForExamProduct(t *testing.T) {
 	token := mintProductToken(t, env, "00000000-0000-0000-0000-0000000000a4", "super_admin")
 
 	exam := &model.Exam{
-		Title:               "Try Out Fisika Specs",
-		ResultConfig:        "hidden",
-		CertificateTemplate: "classic",
-		Status:              "draft",
+		Title:        "Try Out Fisika Specs",
+		ResultConfig: "hidden",
+		Status:       "draft",
 	}
 	if err := repository.New(env.pool).CreateExam(context.Background(), exam); err != nil {
 		t.Fatalf("create exam fixture: %v", err)
