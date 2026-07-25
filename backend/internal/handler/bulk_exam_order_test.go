@@ -42,7 +42,7 @@ func newBulkExamRBACEnv(t *testing.T) *bulkExamRBACEnv {
 		ctx := context.Background()
 
 		pgContainer, err := tcpostgres.Run(ctx,
-			"postgres:16-alpine",
+			"postgres:17-alpine",
 			tcpostgres.WithDatabase("akademi_bulk_rbac_test"),
 			tcpostgres.WithUsername("test"),
 			tcpostgres.WithPassword("test"),

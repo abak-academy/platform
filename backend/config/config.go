@@ -11,13 +11,14 @@ import (
 )
 
 type Config struct {
-	Env                string
-	HTTPPort           string
-	DatabaseURL        string
-	RedisAddr          string
-	RedisPassword      string
-	WorkerPollInterval time.Duration
-	CORSOrigins        []string
+	Env                  string
+	HTTPPort             string
+	DatabaseURL          string
+	MigrationDatabaseURL string
+	RedisAddr            string
+	RedisPassword        string
+	WorkerPollInterval   time.Duration
+	CORSOrigins          []string
 
 	JWTSecret           string
 	AccessTokenTTL      time.Duration
@@ -79,6 +80,7 @@ type fileConfig struct {
 
 type fileSecrets struct {
 	DatabaseURL            string `yaml:"database_url"`
+	MigrationDatabaseURL   string `yaml:"migration_database_url"`
 	JWTSecret              string `yaml:"jwt_secret"`
 	ConfigEncryptionKey    string `yaml:"config_encryption_key"`
 	OTPSecret              string `yaml:"otp_secret"`
@@ -189,6 +191,11 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		return Config{}, fmt.Errorf("otp_ttl: %w", err)
 	}
 
+	migrationDatabaseURL := s.MigrationDatabaseURL
+	if migrationDatabaseURL == "" {
+		migrationDatabaseURL = s.DatabaseURL
+	}
+
 	return Config{
 		Env:                env,
 		HTTPPort:           fc.HTTPPort,
@@ -217,6 +224,7 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		GotenbergURL: fc.GotenbergURL,
 
 		DatabaseURL:            s.DatabaseURL,
+		MigrationDatabaseURL:   migrationDatabaseURL,
 		JWTSecret:              s.JWTSecret,
 		ConfigEncryptionKey:    s.ConfigEncryptionKey,
 		OTPSecret:              s.OTPSecret,

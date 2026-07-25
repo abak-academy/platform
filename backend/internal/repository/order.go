@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -15,16 +16,16 @@ import (
 var ErrInsufficientStock = errors.New("insufficient stock")
 
 type OrderFilter struct {
-	StudentID    *uuid.UUID
-	Status       string
-	ProductType  string
-	ExcludeCart  bool
-	Cursor       string
-	Limit        int
+	StudentID   *uuid.UUID
+	Status      string
+	ProductType string
+	ExcludeCart bool
+	Cursor      string
+	Limit       int
 }
 
 type OrderPatch struct {
-	ShippingAddress []byte
+	ShippingAddress json.RawMessage
 	SelectedCourier string
 	SelectedService string
 	PromoCodeID     *uuid.UUID
@@ -380,7 +381,7 @@ func (r *Repository) recalcOrderTotals(ctx context.Context, orderID uuid.UUID) e
 func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch OrderPatch) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders
-		 SET shipping_address = $1, selected_courier = $2, selected_service = $3, promo_code_id = $4,
+		 SET shipping_address = COALESCE($1, shipping_address), selected_courier = $2, selected_service = $3, promo_code_id = $4,
 		     discount = $5, shipping_cost = $6, total = $7,
 		     province_id = COALESCE($8, province_id), city_id = COALESCE($9, city_id), district_id = COALESCE($10, district_id), kode_pos = COALESCE($11, kode_pos),
 		     updated_at = now()

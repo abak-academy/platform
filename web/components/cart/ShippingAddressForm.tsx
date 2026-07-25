@@ -21,6 +21,9 @@ import {
 import type { User } from "@/lib/types";
 
 export interface ShippingAddressFormState {
+  penerima: string;
+  telepon: string;
+  alamat: string;
   provinsi_id: string;
   kota_id: string;
   kecamatan_id: string;
@@ -32,19 +35,30 @@ const FIELD_CLASS =
 
 interface ShippingAddressFormProps {
   profile: User | undefined;
+  initialAddress?: Partial<ShippingAddressFormState>;
   onAddressChange: (state: ShippingAddressFormState) => void;
   onCheckShipping: () => void;
   isCheckingShipping: boolean;
 }
 
+function hasAddressValues(a?: Partial<ShippingAddressFormState>): boolean {
+  return Boolean(
+    a && (a.penerima || a.telepon || a.alamat || a.provinsi_id || a.kota_id || a.kecamatan_id || a.kode_pos),
+  );
+}
+
 export function ShippingAddressForm({
   profile,
+  initialAddress,
   onAddressChange,
   onCheckShipping,
   isCheckingShipping,
 }: ShippingAddressFormProps) {
   const { t } = useTranslation();
 
+  const [penerima, setPenerima] = useState("");
+  const [telepon, setTelepon] = useState("");
+  const [alamat, setAlamat] = useState("");
   const [provinsiId, setProvinsiId] = useState("");
   const [kotaId, setKotaId] = useState("");
   const [kecamatanId, setKecamatanId] = useState("");
@@ -59,22 +73,36 @@ export function ShippingAddressForm({
   );
 
   useEffect(() => {
-    if (profile) {
+    if (hasAddressValues(initialAddress)) {
+      setPenerima(initialAddress?.penerima ?? "");
+      setTelepon(initialAddress?.telepon ?? "");
+      setAlamat(initialAddress?.alamat ?? "");
+      setProvinsiId(initialAddress?.provinsi_id ?? "");
+      setKotaId(initialAddress?.kota_id ?? "");
+      setKecamatanId(initialAddress?.kecamatan_id ?? "");
+      setKodePos(initialAddress?.kode_pos ?? "");
+    } else if (profile) {
+      setPenerima(profile.name ?? "");
+      setTelepon(profile.phone ?? "");
+      setAlamat(profile.alamat_domisili ?? "");
       setProvinsiId(profile.provinsi_id ?? "");
       setKotaId(profile.kota_id ?? "");
       setKecamatanId(profile.kecamatan_id ?? "");
       setKodePos(profile.kode_pos ?? "");
     }
-  }, [profile]);
+  }, [profile, initialAddress]);
 
   useEffect(() => {
     onAddressChange({
+      penerima,
+      telepon,
+      alamat,
       provinsi_id: provinsiId,
       kota_id: kotaId,
       kecamatan_id: kecamatanId,
       kode_pos: kodePos,
     });
-  }, [provinsiId, kotaId, kecamatanId, kodePos, onAddressChange]);
+  }, [penerima, telepon, alamat, provinsiId, kotaId, kecamatanId, kodePos, onAddressChange]);
 
   const handleProvinceChange = (value: string) => {
     setProvinsiId(value === "_empty_" ? "" : value);
@@ -96,6 +124,28 @@ export function ShippingAddressForm({
       <h3 className="font-semibold text-ink-900">{t("cart_shipping_title") || "Shipping Address"}</h3>
 
       <div className="grid gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="penerima" className="text-xs font-semibold text-ink-600">
+            {t("cart_address_recipient" as any)}
+          </Label>
+          <input id="penerima" className={FIELD_CLASS} value={penerima}
+            onChange={(e) => setPenerima(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="telepon" className="text-xs font-semibold text-ink-600">
+            {t("cart_address_phone" as any)}
+          </Label>
+          <input id="telepon" className={FIELD_CLASS} value={telepon}
+            onChange={(e) => setTelepon(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="alamat" className="text-xs font-semibold text-ink-600">
+            {t("cart_address_street" as any)}
+          </Label>
+          <input id="alamat" className={FIELD_CLASS} value={alamat}
+            onChange={(e) => setAlamat(e.target.value)} />
+        </div>
+
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="provinsi" className="text-xs font-semibold text-ink-600">
             {t("students_field_provinsi") || "Province"}
@@ -193,7 +243,7 @@ export function ShippingAddressForm({
 
       <Button
         onClick={onCheckShipping}
-        disabled={!provinsiId || !kotaId || !kecamatanId || !kodePos || isCheckingShipping}
+        disabled={!penerima || !telepon || !alamat || !provinsiId || !kotaId || !kecamatanId || !kodePos || isCheckingShipping}
         className="w-full"
       >
         {isCheckingShipping ? (
@@ -201,7 +251,7 @@ export function ShippingAddressForm({
         ) : null}
         {t("cart_check_shipping_cost") || "Check Shipping Cost"}
       </Button>
-      {(!provinsiId || !kotaId || !kecamatanId) && (
+      {(!penerima || !telepon || !alamat || !provinsiId || !kotaId || !kecamatanId) && (
         <p className="text-xs text-ink-500">
           {t("cart_shipping_address_incomplete") || "Select province, city, and district to check shipping cost."}
         </p>

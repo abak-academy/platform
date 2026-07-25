@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"akademi-bimbel/internal/service"
@@ -47,6 +48,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrWeakPassword):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error(), Details: "password must be at least 8 characters"}
+	case errors.Is(err, service.ErrInvalidSpecs):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_specs", Message: err.Error()}
 	case errors.Is(err, service.ErrProductNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "product_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrCourseNotFound):
@@ -195,7 +198,14 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_courier_selection", Message: err.Error()}
 	case errors.Is(err, service.ErrBiodataIncomplete):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "biodata_incomplete", Message: err.Error()}
+	case errors.Is(err, service.ErrShippingUnavailable):
+		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_unavailable", Message: "shipping is not available right now"}
+	case errors.Is(err, service.ErrDigitalQtyLimit):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_qty", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidQty):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_qty", Message: err.Error()}
 	default:
+		slog.Error("unhandled service error", "method", c.Request().Method, "uri", c.Request().RequestURI, "err", err)
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
 	}
 	return c.JSON(status, apiErr)

@@ -432,21 +432,18 @@ func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float
 }
 
 func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
-	rates, err := s.logisticsClient().GetRates(ctx, req)
-	if err == nil && len(rates) > 0 {
-		return rates, nil
-	}
+	rates, clientErr := s.logisticsClient().GetRates(ctx, req)
 
-	cfg, cfgErr := s.GetSystemConfig(ctx)
-	if cfgErr == nil && cfg["shipping_fallback_flat_rate"] != "" {
-		flatRateStr := cfg["shipping_fallback_flat_rate"]
-		var flatRate int64
-		if _, scanErr := fmt.Sscanf(flatRateStr, "%d", &flatRate); scanErr == nil && flatRate > 0 {
-			return []CourierRate{{Courier: "Flat", Service: "Standard", Price: flatRate}}, nil
+	var flatRate int64
+	if cfg, cfgErr := s.GetSystemConfig(ctx); cfgErr == nil {
+		if raw := cfg["shipping_fallback_flat_rate"]; raw != "" {
+			if _, scanErr := fmt.Sscanf(raw, "%d", &flatRate); scanErr != nil {
+				flatRate = 0
+			}
 		}
 	}
 
-	return nil, err
+	return resolveShippingRates(rates, clientErr, flatRate)
 }
 
 func (s *Service) MintCart(ctx context.Context, studentID string) (model.Order, bool, error) {
@@ -494,6 +491,16 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 	}
 	if isPhysicalType(product.Type) && product.Stock == 0 {
 		return ErrOutOfStock
+	}
+	if err := ValidateItemQty(product.Type, qty); err != nil {
+		return err
+	}
+	if !isPhysicalType(product.Type) {
+		for _, existing := range order.Items {
+			if existing.ProductID == pID {
+				return ErrDigitalQtyLimit
+			}
+		}
 	}
 
 	item := model.OrderItem{
@@ -545,9 +552,6 @@ func (s *Service) RemoveItem(ctx context.Context, studentID, orderID, itemID str
 }
 
 func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID string, qty int) error {
-	if qty < 1 {
-		return errors.New("qty must be at least 1")
-	}
 	oID, err := parseUUID(orderID)
 	if err != nil {
 		return err
@@ -574,8 +578,13 @@ func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID 
 
 	clearShipping := false
 	for _, item := range order.Items {
-		if item.ID == iID && isPhysicalType(item.ProductType) {
-			clearShipping = true
+		if item.ID == iID {
+			if err := ValidateItemQty(item.ProductType, qty); err != nil {
+				return err
+			}
+			if isPhysicalType(item.ProductType) {
+				clearShipping = true
+			}
 			break
 		}
 	}
@@ -584,7 +593,7 @@ func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID 
 }
 
 type CartPatch struct {
-	ShippingAddress []byte
+	ShippingAddress json.RawMessage
 	Courier         string
 	Service         string
 	ShippingCost    float64
@@ -789,7 +798,7 @@ func buildPaymentRequest(orderID string, order model.Order, customer CustomerInf
 		}
 		req.Items = append(req.Items, ItemDetail{
 			ID:       item.ProductID.String(),
-			Name:     item.Name,
+			Name:     truncateItemName(item.Name),
 			Price:    int64(item.UnitPrice),
 			Qty:      int32(item.Qty),
 			Category: cat,
@@ -806,7 +815,29 @@ func buildPaymentRequest(orderID string, order model.Order, customer CustomerInf
 		})
 	}
 
+	// Midtrans requires gross_amount == sum(item_details). Discount isn't a line
+	// item, so represent it as a negative-priced entry to keep the sum balanced.
+	if order.Discount > 0 {
+		req.Items = append(req.Items, ItemDetail{
+			ID:       "discount",
+			Name:     "Diskon",
+			Price:    -int64(order.Discount),
+			Qty:      1,
+			Category: "Discount",
+		})
+	}
+
 	return req
+}
+
+// truncateItemName caps a name at Midtrans's 50-character item_details.name limit.
+func truncateItemName(name string) string {
+	const midtransItemNameMax = 50
+	r := []rune(name)
+	if len(r) <= midtransItemNameMax {
+		return name
+	}
+	return string(r[:midtransItemNameMax])
 }
 
 type OrderPaidPayload struct {

@@ -60,3 +60,22 @@ func (h *Handler) resolveSchoolScope(c echo.Context, claims *infra.Claims) (stri
 
 	return *claims.SchoolID, nil
 }
+
+// resolveSchoolScopeOptional is resolveSchoolScope with the school made
+// optional for super_admin: omitting school_id returns "" instead of a 400,
+// meaning "not scoped to any school".
+//
+// Only endpoints that genuinely work without a school may use this — the
+// student roster (registrants are not all school pupils; university students
+// and the general public sign up too) and student registration (an operator
+// can confirm the school after the fact). Every other caller keeps
+// resolveSchoolScope, where a missing school is a client error.
+//
+// admin_school is unaffected: its scope still rides on the JWT and cannot be
+// widened.
+func (h *Handler) resolveSchoolScopeOptional(c echo.Context, claims *infra.Claims) (string, error) {
+	if claims.Role == "super_admin" && c.QueryParam("school_id") == "" {
+		return "", nil
+	}
+	return h.resolveSchoolScope(c, claims)
+}

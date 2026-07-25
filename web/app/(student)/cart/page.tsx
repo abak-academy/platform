@@ -12,6 +12,7 @@ import { CartLineItem } from "@/components/cart/CartLineItem";
 import { PromoInput } from "@/components/cart/PromoInput";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
 import { ShippingAddressForm, type ShippingAddressFormState } from "@/components/cart/ShippingAddressForm";
+import { ShippingAddressSummary, isAddressComplete } from "@/components/cart/ShippingAddressSummary";
 import { CourierRateList, courierRateKey } from "@/components/cart/CourierRateList";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -30,12 +31,16 @@ export default function CartPage() {
   const patchCart = usePatchCart();
 
   const [shippingAddress, setShippingAddress] = useState<ShippingAddressFormState>({
+    penerima: "",
+    telepon: "",
+    alamat: "",
     provinsi_id: "",
     kota_id: "",
     kecamatan_id: "",
     kode_pos: "",
   });
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
+  const [editingAddress, setEditingAddress] = useState(false);
 
   const items: OrderItem[] = cart?.items ?? [];
   const subtotal = cart?.subtotal ?? items.reduce((s, it) => s + it.jumlah, 0);
@@ -70,6 +75,15 @@ export default function CartPage() {
         city_id: shippingAddress.kota_id,
         district_id: shippingAddress.kecamatan_id,
         kode_pos: shippingAddress.kode_pos,
+        shipping_address: {
+          penerima: shippingAddress.penerima,
+          telepon: shippingAddress.telepon,
+          alamat: shippingAddress.alamat,
+          kode_pos: shippingAddress.kode_pos,
+          provinsi_id: shippingAddress.provinsi_id,
+          kota_id: shippingAddress.kota_id,
+          kecamatan_id: shippingAddress.kecamatan_id,
+        },
       });
     },
     [cart, shippingAddress, patchCart]
@@ -120,14 +134,26 @@ export default function CartPage() {
               />
             ))}
 
-            {hasPhysical && (
-              <ShippingAddressForm
-                profile={profile}
-                onAddressChange={handleAddressChange}
-                onCheckShipping={handleCheckShipping}
-                isCheckingShipping={shippingRates.isPending}
-              />
-            )}
+            {hasPhysical &&
+              (editingAddress || !isAddressComplete(shippingAddress as any) ? (
+                <ShippingAddressForm
+                  profile={profile}
+                  initialAddress={shippingAddress}
+                  onAddressChange={handleAddressChange}
+                  onCheckShipping={() => {
+                    setEditingAddress(false);
+                    handleCheckShipping();
+                  }}
+                  isCheckingShipping={shippingRates.isPending}
+                />
+              ) : (
+                <ShippingAddressSummary
+                  address={shippingAddress as any}
+                  onEdit={() => setEditingAddress(true)}
+                  onCheckShipping={handleCheckShipping}
+                  isCheckingShipping={shippingRates.isPending}
+                />
+              ))}
 
             {hasPhysical && shippingRates.data && (
               <CourierRateList
@@ -137,6 +163,12 @@ export default function CartPage() {
                 isLoading={false}
                 isError={shippingRates.isError}
               />
+            )}
+
+            {hasPhysical && shippingRates.isError && (
+              <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
+                {t("cart_shipping_unavailable" as any)}
+              </div>
             )}
           </section>
 
@@ -163,7 +195,7 @@ export default function CartPage() {
                 <span className="font-serif text-2xl font-bold text-success">{formatRupiah(total)}</span>
               </div>
 
-              <SnapCheckout orderId={cart?.id} />
+              <SnapCheckout orderId={cart?.id} disabled={hasPhysical && shippingRates.isError} />
 
               <p className="mt-3 text-center text-xs text-ink-400">
                 {t("cart_secure_payment")}

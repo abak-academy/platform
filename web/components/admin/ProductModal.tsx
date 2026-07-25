@@ -16,7 +16,8 @@ import { useAdminCourses } from "@/lib/hooks/admin-courses";
 import { useExams } from "@/lib/hooks/admin-exams";
 import { usePresignUpload } from "@/lib/hooks/students";
 import { fileUrl } from "@/lib/api";
-import type { Product, ProductType, ProductStatus, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
+import { ProductSpecsEditor } from "@/components/admin/ProductSpecsEditor";
+import type { Product, ProductType, ProductStatus, ProductSpec, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 
 interface ProductModalProps {
   open: boolean;
@@ -73,6 +74,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const [examIds, setExamIds] = useState<string[]>([]);
   const [availableFrom, setAvailableFrom] = useState("");
   const [availableUntil, setAvailableUntil] = useState("");
+  const [specs, setSpecs] = useState<ProductSpec[]>([]);
   const { data: courses } = useAdminCourses();
   const { data: examsResp } = useExams();
   const presign = usePresignUpload();
@@ -94,6 +96,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setExamIds(product.exam_ids ?? []);
         setAvailableFrom(toLocalInput(product.available_from));
         setAvailableUntil(toLocalInput(product.available_until));
+        setSpecs(product.specs ?? []);
       } else {
         setName("");
         setType("");
@@ -107,6 +110,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setExamIds([]);
         setAvailableFrom("");
         setAvailableUntil("");
+        setSpecs([]);
       }
     }
   }, [open, product]);
@@ -118,7 +122,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
     if (!file) return;
     setImageUploading(true);
     try {
-      const presigned = await presign.mutateAsync({ filename: file.name, content_type: file.type });
+      const presigned = await presign.mutateAsync({ filename: file.name, content_type: file.type, kind: "product" });
       const res = await fetch(presigned.url, {
         method: "PUT",
         body: file,
@@ -164,6 +168,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         ...(showStock ? { stock: Number(stock) } : {}),
         ...(showStock && weight !== "" ? { weight_grams: Number(weight) } : {}),
         ...(showStock && imageUrl !== "" ? { image_url: imageUrl } : {}),
+        specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
         ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
         ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
       };
@@ -180,6 +185,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       ...(showStock ? { stock: Number(stock) } : {}),
       ...(showStock && weight !== "" ? { weight_grams: Number(weight) } : {}),
       ...(showStock && imageUrl !== "" ? { image_url: imageUrl } : {}),
+      specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
       ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
       ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
     };
@@ -373,6 +379,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                 </div>
               </div>
             )}
+
+            <ProductSpecsEditor type={type as ProductType} value={specs} onChange={setSpecs} />
 
             <div className="grid gap-2">
               <Label htmlFor="product-description">Deskripsi</Label>

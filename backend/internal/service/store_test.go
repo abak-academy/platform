@@ -523,15 +523,14 @@ func TestValidatePromo_NotFound(t *testing.T) {
 	}
 }
 
+// The shim delegates straight to the injected client, so this only asserts the
+// wiring. The real fallback decision is covered by TestResolveShippingRates.
 func TestGetShippingRates(t *testing.T) {
 	ctx := context.Background()
 	svc := newShim(newFakeStoreRepo())
-	rates, err := svc.GetShippingRates(ctx, ShippingQuoteRequest{DestinationPostalCode: "12345", WeightGrams: 500})
-	if err != nil {
-		t.Fatalf("GetShippingRates: %v", err)
-	}
-	if len(rates) == 0 {
-		t.Error("want at least one rate")
+	_, err := svc.GetShippingRates(ctx, ShippingQuoteRequest{DestinationPostalCode: "12345", WeightGrams: 500})
+	if !errors.Is(err, ErrShippingUnavailable) {
+		t.Fatalf("with no carrier configured the shim should surface ErrShippingUnavailable, got %v", err)
 	}
 }
 
@@ -789,6 +788,67 @@ func TestAddItem_OrderNotCart(t *testing.T) {
 	}
 }
 
+func TestAddItem_DuplicateDigitalProductRejected(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+	svc := &shimOrderService{fake: fake}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	productID := "00000000-0000-0000-0000-000000000002"
+
+	fake.seedProduct(model.Product{
+		ID:    productID,
+		Type:  "exam",
+		Name:  "Exam 1",
+		Stock: 10,
+		Price: 10000,
+	})
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("first AddItem: %v", err)
+	}
+
+	err = svc.AddItem(ctx, studentID, order.ID.String(), productID, 1)
+	if !errors.Is(err, ErrDigitalQtyLimit) {
+		t.Errorf("want ErrDigitalQtyLimit on duplicate digital add, got %v", err)
+	}
+}
+
+func TestAddItem_DuplicateBookProductAllowed(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+	svc := &shimOrderService{fake: fake}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	productID := "00000000-0000-0000-0000-000000000002"
+
+	fake.seedProduct(model.Product{
+		ID:    productID,
+		Type:  "book",
+		Name:  "Book 1",
+		Stock: 10,
+		Price: 10000,
+	})
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("first AddItem: %v", err)
+	}
+
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Errorf("second AddItem for physical product should be allowed, got %v", err)
+	}
+}
+
 func TestPatchCart_NonCart(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeOrderRepo()
@@ -859,6 +919,16 @@ func (s *shimOrderService) AddItem(ctx context.Context, studentID, orderID, prod
 	if product.Stock == 0 {
 		return ErrOutOfStock
 	}
+	if err := ValidateItemQty(product.Type, qty); err != nil {
+		return err
+	}
+	if !isPhysicalType(product.Type) {
+		for _, existing := range order.Items {
+			if existing.ProductID == pID {
+				return ErrDigitalQtyLimit
+			}
+		}
+	}
 
 	item := model.OrderItem{
 		ID:          uuid.New(),
@@ -925,6 +995,9 @@ func (s *shimOrderService) UpdateItemQty(ctx context.Context, studentID, orderID
 	clearShipping := false
 	for _, item := range order.Items {
 		if item.ID == iID {
+			if err := ValidateItemQty(item.ProductType, qty); err != nil {
+				return err
+			}
 			if isPhysicalType(item.ProductType) {
 				clearShipping = true
 			}
@@ -1608,6 +1681,63 @@ func TestBuildPaymentRequest_NoShippingLineItemWhenZero(t *testing.T) {
 		if item.ID == "shipping" {
 			t.Error("shipping line item should not be present when shipping_cost = 0")
 		}
+	}
+}
+
+// Midtrans rejects the transaction when gross_amount != sum(item_details).
+// A discount must be reflected as a negative line item so the sum stays balanced.
+func TestBuildPaymentRequest_SumEqualsAmount_WithDiscount(t *testing.T) {
+	order := model.Order{
+		ID:           uuid.New(),
+		Subtotal:     100,
+		Discount:     10,
+		ShippingCost: 50,
+		Total:        140,
+	}
+	order.Items = append(order.Items, model.OrderItem{
+		ProductID:   uuid.New(),
+		ProductType: "book",
+		Name:        "Book 1",
+		UnitPrice:   100,
+		Qty:         1,
+	})
+
+	req := buildPaymentRequest(order.ID.String(), order, CustomerInfo{Name: "John Doe"})
+
+	var sum int64
+	discountFound := false
+	for _, item := range req.Items {
+		sum += item.Price * int64(item.Qty)
+		if item.ID == "discount" {
+			discountFound = true
+			if item.Price != -10 {
+				t.Errorf("want discount price=-10, got %d", item.Price)
+			}
+		}
+	}
+	if !discountFound {
+		t.Error("discount line item not found when discount > 0")
+	}
+	if sum != req.Amount {
+		t.Errorf("sum(item_details)=%d != gross_amount=%d", sum, req.Amount)
+	}
+}
+
+func TestBuildPaymentRequest_TruncatesLongItemName(t *testing.T) {
+	longName := "Course Matematika Dasar (Siap Masuk Sekolah Unggulan)" // 53 chars
+	order := model.Order{ID: uuid.New(), Subtotal: 100, Total: 100}
+	order.Items = append(order.Items, model.OrderItem{
+		ProductID:   uuid.New(),
+		ProductType: "course",
+		Name:        longName,
+		UnitPrice:   100,
+		Qty:         1,
+	})
+
+	req := buildPaymentRequest(order.ID.String(), order, CustomerInfo{Name: "Jane"})
+
+	if got := len([]rune(req.Items[0].Name)); got > 50 {
+		t.Errorf("item name length=%d exceeds Midtrans limit of 50", got)
 	}
 }
 

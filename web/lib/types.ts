@@ -46,7 +46,8 @@ export interface AdminSchoolUpdateInput {
 export interface AdminStudent {
   id: string;
   name: string;
-  username: string;
+  /** Nullable: some accounts have no username on file. */
+  username?: string | null;
   jenjang: string;
   email?: string;
   status: string;
@@ -55,6 +56,10 @@ export interface AdminStudent {
   kota_id?: string;
   kecamatan_id?: string;
   kode_pos?: string;
+  /** Linked school; absent when the registrant has no school on file. */
+  school_name?: string | null;
+  /** What a self-registering user typed when their school wasn't listed. */
+  unlisted_school_name?: string | null;
   created_at: string;
 }
 
@@ -79,6 +84,8 @@ export interface StudentRegistrationInput {
 }
 
 export interface StudentRegistrationResult extends AdminStudent {
+  /** Registration always generates one, unlike an arbitrary existing account. */
+  username: string;
   temp_password: string;
 }
 
@@ -123,6 +130,12 @@ export interface LoginResponse {
   pending_token?: string;
 }
 
+export interface ProductSpec {
+  key: string;
+  label: string;
+  value: string;
+}
+
 export interface Product {
   id: string;
   type: ProductType;
@@ -133,6 +146,7 @@ export interface Product {
   status?: ProductStatus;
   weight_grams?: number;
   image_url?: string;
+  specs?: ProductSpec[];
   available_from?: string | null;
   available_until?: string | null;
   course_ids?: string[];
@@ -149,6 +163,7 @@ export interface AdminCreateProductInput {
   stock?: number;
   weight_grams?: number;
   image_url?: string;
+  specs?: ProductSpec[];
   available_from?: string | null;
   available_until?: string | null;
   course_ids?: string[];
@@ -163,6 +178,7 @@ export interface AdminUpdateProductInput {
   status?: ProductStatus;
   weight_grams?: number;
   image_url?: string;
+  specs?: ProductSpec[];
   available_from?: string | null;
   available_until?: string | null;
   course_ids?: string[];
@@ -188,6 +204,7 @@ export interface CourierRate {
   service: string;
   estimated_days: number;
   price: number;
+  is_estimate?: boolean;
 }
 
 export interface Order {
@@ -199,7 +216,7 @@ export interface Order {
   shipping_cost: number;
   total: number;
   promo_code_id?: string;
-  shipping_address?: string;
+  shipping_address?: Record<string, string> | null;
   selected_courier?: string;
   selected_service?: string;
   tracking_number?: string;

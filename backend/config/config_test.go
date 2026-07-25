@@ -399,6 +399,227 @@ object_storage_secret_key: "sk"
 	}
 }
 
+func TestLoad_migrationDatabaseURLPresent(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "dev")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
+`)
+	writeYAML(t, envDir, "secrets.yaml", `
+database_url: "postgres://pooled@pgbouncer:6432/db"
+migration_database_url: "postgres://direct@postgres:5432/db"
+jwt_secret: "jwt"
+config_encryption_key: "enc"
+otp_secret: "otp"
+object_storage_access_key: "ak"
+object_storage_secret_key: "sk"
+`)
+
+	cfg, err := Load("dev", dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MigrationDatabaseURL != "postgres://direct@postgres:5432/db" {
+		t.Errorf("MigrationDatabaseURL: got %q want direct DSN", cfg.MigrationDatabaseURL)
+	}
+}
+
+func TestLoad_migrationDatabaseURLAbsentFallsBackToDatabaseURL(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "dev")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
+`)
+	writeYAML(t, envDir, "secrets.yaml", `
+database_url: "postgres://pooled@pgbouncer:6432/db"
+jwt_secret: "jwt"
+config_encryption_key: "enc"
+otp_secret: "otp"
+object_storage_access_key: "ak"
+object_storage_secret_key: "sk"
+`)
+
+	cfg, err := Load("dev", dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MigrationDatabaseURL != cfg.DatabaseURL {
+		t.Errorf("MigrationDatabaseURL: got %q want fallback to DatabaseURL %q", cfg.MigrationDatabaseURL, cfg.DatabaseURL)
+	}
+}
+
+func TestLoad_migrationDatabaseURLEmptyFallsBackToDatabaseURL(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "dev")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
+`)
+	writeYAML(t, envDir, "secrets.yaml", `
+database_url: "postgres://pooled@pgbouncer:6432/db"
+migration_database_url: ""
+jwt_secret: "jwt"
+config_encryption_key: "enc"
+otp_secret: "otp"
+object_storage_access_key: "ak"
+object_storage_secret_key: "sk"
+`)
+
+	cfg, err := Load("dev", dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MigrationDatabaseURL != cfg.DatabaseURL {
+		t.Errorf("MigrationDatabaseURL: got %q want fallback to DatabaseURL %q", cfg.MigrationDatabaseURL, cfg.DatabaseURL)
+	}
+}
+
+func TestLoad_stagingSecretsFileWithoutMigrationDatabaseURLStillLoads(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "staging")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
+`)
+	writeYAML(t, envDir, "secrets.yaml", `
+database_url: "postgres://akademi:realpass@postgres:5432/akademi?sslmode=disable"
+jwt_secret: "jwt-secret"
+config_encryption_key: "enc-key"
+otp_secret: "otp-secret"
+object_storage_access_key: "ak"
+object_storage_secret_key: "sk"
+`)
+
+	cfg, err := Load("staging", dir)
+	if err != nil {
+		t.Fatalf("Load: expected staging secrets file without migration_database_url to still load, got err: %v", err)
+	}
+	if cfg.MigrationDatabaseURL != cfg.DatabaseURL {
+		t.Errorf("MigrationDatabaseURL: got %q want fallback to DatabaseURL %q", cfg.MigrationDatabaseURL, cfg.DatabaseURL)
+	}
+}
+
+// Guards the committed backend/config/env/prod/config.yaml directly (not a fixture
+// copy) so drift in the real file fails this test. secrets.yaml is gitignored and
+// absent on disk, so a temp one is placed alongside it for the duration of the test.
+func TestLoad_prodConfigValues(t *testing.T) {
+	secretsPath := filepath.Join("env", "prod", "secrets.yaml")
+	if _, err := os.Stat(secretsPath); err == nil {
+		t.Fatalf("%s already exists; refusing to overwrite", secretsPath)
+	}
+	writeYAML(t, filepath.Join("env", "prod"), "secrets.yaml", `
+database_url: "postgres://user:pass@pgbouncer:6432/db"
+jwt_secret: "jwt-secret"
+config_encryption_key: "enc-key"
+otp_secret: "otp-secret"
+object_storage_access_key: "ak"
+object_storage_secret_key: "sk"
+`)
+	t.Cleanup(func() {
+		if err := os.Remove(secretsPath); err != nil {
+			t.Errorf("cleanup secrets.yaml: %v", err)
+		}
+	})
+
+	cfg, err := Load("prod", "env")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	checks := []struct {
+		field string
+		got   string
+		want  string
+	}{
+		{"RedisAddr", cfg.RedisAddr, "redis:6379"},
+		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "abak-academy-media-prod"},
+		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "abak-academy-media-prod"},
+		{"ObjectStorageEndpoint", cfg.ObjectStorageEndpoint, "storage.googleapis.com"},
+		{"SMTPHost", cfg.SMTPHost, "smtp.gmail.com"},
+		{"SMTPFromName", cfg.SMTPFromName, "Abak Academy"},
+		{"MidtransEnv", cfg.MidtransEnv, "production"},
+	}
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s: got %q want %q", c.field, c.got, c.want)
+		}
+	}
+
+	if len(cfg.CORSOrigins) != 1 || cfg.CORSOrigins[0] != "https://hub.abakacademy.id" {
+		t.Errorf("CORSOrigins: got %v want [https://hub.abakacademy.id]", cfg.CORSOrigins)
+	}
+}
+
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {

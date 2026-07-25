@@ -1,0 +1,125 @@
+# Production runtime manifest — single combined VM (vm-app).
+#
+# Not a build tool: images are pulled from Artifact Registry by commit SHA,
+# never built here.
+#
+# BEFORE FIRST `up`:
+#   - Remove the temporary `nginx-smoke` container (used to prove nginx/TLS
+#     during setup) — it is not part of this manifest and will conflict with
+#     the `nginx` service's port bindings.
+#   - deployments/secrets/prod-secrets.yaml must already be hand-placed on the
+#     box (gitignored, copy from prod-secrets.example.yaml and fill every value).
+#   - The Cloudflare Origin Certificate must already be on the box, at the host
+#     directory mounted below as /etc/nginx/certs, saved as origin.pem
+#     (certificate) and origin.key (private key) — the box currently has
+#     hub.crt/hub.key from provisioning; rename/copy them to those two names.
+#
+# Deploy:
+#   IMAGE_TAG=<commit-sha> docker compose -f deployments/app-production-app.yaml up -d
+# (IMAGE_TAG comes from a hand-placed deployments/.env — see .env.example.)
+#
+# Rollback: IMAGE_TAG=<older-commit-sha> docker compose -f deployments/app-production-app.yaml up -d
+#
+# Postgres and PgBouncer are native on vm-db (10.20.0.10), not containers here —
+# there is no postgres service or pgdata volume in this manifest. Object storage
+# is GCS. Only nginx publishes ports; everything else is reachable on the
+# internal network only.
+
+name: abak-prod
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Provisioned for PR #44 (certificate/card rendering). Idles until that
+  # lands and api's config gains a GotenbergURL field.
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    mem_limit: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    image: asia-southeast2-docker.pkg.dev/abak-academy-platform/app/api:${IMAGE_TAG:?set IMAGE_TAG to the deployed commit SHA}
+    restart: unless-stopped
+    environment:
+      APP_ENV: prod
+    volumes:
+      - ./secrets/prod-secrets.yaml:/app/config/env/prod/secrets.yaml:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    image: asia-southeast2-docker.pkg.dev/abak-academy-platform/app/worker:${IMAGE_TAG:?set IMAGE_TAG to the deployed commit SHA}
+    restart: unless-stopped
+    environment:
+      APP_ENV: prod
+    volumes:
+      - ./secrets/prod-secrets.yaml:/app/config/env/prod/secrets.yaml:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 768m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    image: asia-southeast2-docker.pkg.dev/abak-academy-platform/app/web:prod-${IMAGE_TAG:?set IMAGE_TAG to the deployed commit SHA}
+    restart: unless-stopped
+    depends_on:
+      - api
+    mem_limit: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    volumes:
+      - ./nginx/nginx-production.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+      - web
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

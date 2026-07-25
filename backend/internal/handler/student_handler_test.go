@@ -6,12 +6,19 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"akademi-bimbel/config"
 	"akademi-bimbel/internal/handler"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/service"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/labstack/echo/v4"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestStudentDashboard_Unauthorized(t *testing.T) {
@@ -254,6 +261,187 @@ func TestGeneratePresignUploadURL_MissingFilename(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for missing filename, got %d body=%s", rec.Code, rec.Body.String())
 	}
+}
+
+func TestGeneratePresignUploadURL_BogusKind_400(t *testing.T) {
+	env := newTestEnv(t)
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	uploads := v1.Group("/uploads")
+	uploads.Use(handler.JWTMiddleware(env.svc, env.signer))
+	uploads.GET("/presign", h.GeneratePresignUploadURL)
+
+	token := loginForPresignTest(t, env, "kind-bogus")
+
+	rec := getWithToken(t, env.e, "/api/v1/uploads/presign?filename=test.jpg&kind=bogus", token)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for bogus kind, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if _, hasKey := resp["key"]; hasKey {
+		t.Errorf("want no key in response for rejected kind, got %v", resp)
+	}
+}
+
+func TestGeneratePresignUploadURL_NoKind_KeyUnderAvatars(t *testing.T) {
+	env := newStorageBackedTestEnv(t)
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	uploads := v1.Group("/uploads")
+	uploads.Use(handler.JWTMiddleware(env.svc, env.signer))
+	uploads.GET("/presign", h.GeneratePresignUploadURL)
+
+	token := loginForPresignTest(t, env, "kind-default")
+
+	rec := getWithToken(t, env.e, "/api/v1/uploads/presign?filename=test.jpg", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	key, _ := resp["key"].(string)
+	if !strings.HasPrefix(key, "avatars/") {
+		t.Errorf("want key under avatars/, got %q", key)
+	}
+}
+
+func TestGeneratePresignUploadURL_KindAvatar_KeyUnderAvatars(t *testing.T) {
+	env := newStorageBackedTestEnv(t)
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	uploads := v1.Group("/uploads")
+	uploads.Use(handler.JWTMiddleware(env.svc, env.signer))
+	uploads.GET("/presign", h.GeneratePresignUploadURL)
+
+	token := loginForPresignTest(t, env, "kind-avatar-explicit")
+
+	rec := getWithToken(t, env.e, "/api/v1/uploads/presign?filename=test.jpg&kind=avatar", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	key, _ := resp["key"].(string)
+	if !strings.HasPrefix(key, "avatars/") {
+		t.Errorf("want key under avatars/, got %q", key)
+	}
+}
+
+func TestGeneratePresignUploadURL_KindProduct_StudentForbidden(t *testing.T) {
+	env := newStorageBackedTestEnv(t)
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	uploads := v1.Group("/uploads")
+	uploads.Use(handler.JWTMiddleware(env.svc, env.signer))
+	uploads.GET("/presign", h.GeneratePresignUploadURL)
+
+	token := loginForPresignTest(t, env, "kind-product-student")
+
+	rec := getWithToken(t, env.e, "/api/v1/uploads/presign?filename=x.html&kind=product", token)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403 for student minting product upload, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if _, ok := resp["key"]; ok {
+		t.Errorf("want no key for forbidden product upload, got %v", resp)
+	}
+}
+
+func TestGeneratePresignUploadURL_KindProduct_AdminAllowed(t *testing.T) {
+	env := newStorageBackedTestEnv(t)
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	uploads := v1.Group("/uploads")
+	uploads.Use(handler.JWTMiddleware(env.svc, env.signer))
+	uploads.GET("/presign", h.GeneratePresignUploadURL)
+
+	token := loginForPresignTest(t, env, "kind-product-admin", service.RoleAdminStore)
+
+	rec := getWithToken(t, env.e, "/api/v1/uploads/presign?filename=test.jpg&kind=product", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for admin_store, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	key, _ := resp["key"].(string)
+	if !strings.HasPrefix(key, "product/") {
+		t.Errorf("want key under product/, got %q", key)
+	}
+}
+
+// loginForPresignTest seeds a user (student by default; pass a role to override)
+// and logs in, returning an access token.
+func loginForPresignTest(t *testing.T, env *testEnv, idSuffix string, role ...string) string {
+	t.Helper()
+	userRole := service.RoleStudent
+	if len(role) > 0 {
+		userRole = role[0]
+	}
+	email := idSuffix + "@example.com"
+	env.repo.seed(&model.User{
+		ID:           "u-" + idSuffix,
+		Email:        strptr(email),
+		PasswordHash: mustHash("password123"),
+		Name:         "Presign User",
+		Role:         userRole,
+		Status:       "active",
+	})
+	loginRec := postJSON(t, env.e, "/api/v1/auth/login", map[string]string{
+		"identifier": email,
+		"password":   "password123",
+	})
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login: want 200, got %d", loginRec.Code)
+	}
+	var loginResp map[string]any
+	json.NewDecoder(loginRec.Body).Decode(&loginResp)
+	token, _ := loginResp["access_token"].(string)
+	return token
+}
+
+// newStorageBackedTestEnv mirrors newTestEnv but wires a real minio client
+// (Region set explicitly, so PUT presigning never dials out — see
+// avatar_proxy_test.go for the same trick) so presign tests can assert on the
+// actual returned key's prefix instead of only checking the status code.
+func newStorageBackedTestEnv(t *testing.T) *testEnv {
+	t.Helper()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	cfg := &config.Config{
+		JWTSecret:               "handler-test-secret",
+		AccessTokenTTL:          15 * time.Minute,
+		RefreshTokenTTL:         168 * time.Hour,
+		OTPTTL:                  5 * time.Minute,
+		GoogleClientID:          "handler-google-client",
+		ObjectStorageBucketName: "bucket",
+	}
+	signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
+	repo := newFakeRepo()
+	storage, err := minio.New("localhost:9000", &minio.Options{
+		Creds:  credentials.NewStaticV4("ak", "sk", ""),
+		Secure: false,
+		Region: "us-east-1",
+	})
+	if err != nil {
+		t.Fatalf("minio.New: %v", err)
+	}
+	svc := service.NewWithStore(repo, nil, rdb, signer, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, storage, cfg)
+
+	h := handler.New(svc)
+	e := echo.New()
+	e.HideBanner = true
+	v1 := e.Group("/api/v1")
+	auth := v1.Group("/auth")
+	auth.POST("/login", h.Login, handler.LoginRateLimiter())
+
+	return &testEnv{e: e, mr: mr, svc: svc, signer: signer, repo: repo}
 }
 
 // doPatchJSON sends a PATCH request with JSON body.

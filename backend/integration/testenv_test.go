@@ -38,7 +38,7 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	// --- Postgres ---
 	pgContainer, err := tcpostgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:17-alpine",
 		tcpostgres.WithDatabase("akademi_test"),
 		tcpostgres.WithUsername("test"),
 		tcpostgres.WithPassword("test"),
@@ -91,7 +91,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		&service.NoopOTPProvider{},
 		&service.NoopEmailProvider{},
 		&service.NoopPaymentClient{},
-		&service.NoopLogisticsClient{},
+		stubLogisticsClient{},
 		nil,
 		cfg,
 	)
@@ -242,4 +242,18 @@ func seedPromo(t *testing.T, env *testEnv, code string, discountPercent float64)
 	).Scan(&id)
 	require.NoError(t, err)
 	return id
+}
+
+// stubLogisticsClient stands in for a carrier API across the integration suite.
+// NoopLogisticsClient used to serve this role by returning hardcoded quotes, but
+// that made it impossible to tell a configured carrier from an unconfigured one
+// in production — it now reports shipping unavailable instead. The fixed quotes
+// live here, where they are unambiguously test data.
+type stubLogisticsClient struct{}
+
+func (stubLogisticsClient) GetRates(context.Context, service.ShippingQuoteRequest) ([]service.CourierRate, error) {
+	return []service.CourierRate{
+		{Courier: "JNE", Service: "REG", EstimatedDays: 3, Price: 15000},
+		{Courier: "TIKI", Service: "ONS", EstimatedDays: 1, Price: 25000},
+	}, nil
 }

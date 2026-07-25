@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"akademi-bimbel/internal/infra"
@@ -138,15 +139,15 @@ func (h *Handler) PatchCart(c echo.Context) error {
 	orderID := c.Param("id")
 
 	var req struct {
-		ShippingAddress []byte  `json:"shipping_address"`
-		Courier         string  `json:"courier"`
-		Service         string  `json:"service"`
-		ShippingCost    float64 `json:"shipping_cost"`
-		ProvinceID      *string `json:"province_id"`
-		CityID          *string `json:"city_id"`
-		DistrictID      *string `json:"district_id"`
-		KodePos         *string `json:"kode_pos"`
-		PromoCode       *string `json:"promo_code"`
+		ShippingAddress json.RawMessage `json:"shipping_address"`
+		Courier         string          `json:"courier"`
+		Service         string          `json:"service"`
+		ShippingCost    float64         `json:"shipping_cost"`
+		ProvinceID      *string         `json:"province_id"`
+		CityID          *string         `json:"city_id"`
+		DistrictID      *string         `json:"district_id"`
+		KodePos         *string         `json:"kode_pos"`
+		PromoCode       *string         `json:"promo_code"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -269,8 +270,8 @@ func (h *Handler) ValidatePromo(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"code":           validation.Code,
-		"discount":       validation.Discount,
-		"final_total":    validation.Total,
+		"code":        validation.Code,
+		"discount":    validation.Discount,
+		"final_total": validation.Total,
 	})
 }

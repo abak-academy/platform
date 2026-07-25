@@ -125,7 +125,14 @@ func TestNew(t *testing.T) {
 // tripped the race detector because ReloadLogisticsClient wrote s.logistics
 // while GetShippingRates read it from another goroutine.
 func TestReloadLogisticsClient_ConcurrentWithGetShippingRates(t *testing.T) {
-	svc := &Service{}
+	_, repo := newRealDBService(t)
+	// The noop client now errors (see shipping_rates.go), so GetShippingRates
+	// always falls through to the configured flat rate — needs a real repo.
+	if err := repo.UpsertSystemConfig(context.Background(), "shipping_fallback_flat_rate", "12000", false); err != nil {
+		t.Fatalf("seed shipping_fallback_flat_rate: %v", err)
+	}
+
+	svc := &Service{storeRepo: repo}
 	var initial LogisticsClient = &NoopLogisticsClient{}
 	svc.logistics.Store(&initial)
 	svc.SetReloadLogisticsFn(func(ctx context.Context) LogisticsClient {

@@ -4,23 +4,13 @@ import Link from "next/link";
 import { useState } from "react";
 import { Bell, ShoppingBag } from "lucide-react";
 import { useProducts } from "@/lib/hooks/products";
-import type { ProductType } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CategoryRail, type CatalogCategory } from "@/components/catalog/CategoryRail";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/catalog/ProductCard";
 
-type TabValue = "all" | ProductType;
-
-const TABS: { value: TabValue; labelKey: string }[] = [
-  { value: "all", labelKey: "catalog_tab_all" },
-  { value: "book", labelKey: "catalog_tab_book" },
-  { value: "course", labelKey: "catalog_tab_course" },
-  { value: "exam", labelKey: "catalog_tab_competition" },
-];
-
-function CatalogGrid({ products, tab }: { products: ReturnType<typeof useProducts>["data"]; tab: TabValue }) {
+function CatalogGrid({ products, tab }: { products: ReturnType<typeof useProducts>["data"]; tab: CatalogCategory }) {
   const { t } = useTranslation();
   if (!products || products.length === 0) {
     if (tab !== "all") {
@@ -50,7 +40,7 @@ function CatalogGrid({ products, tab }: { products: ReturnType<typeof useProduct
     );
   }
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {products.map((p) => (
         <ProductCard key={p.id} product={p} />
       ))}
@@ -60,14 +50,13 @@ function CatalogGrid({ products, tab }: { products: ReturnType<typeof useProduct
 
 function CatalogSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="flex flex-col overflow-hidden rounded-lg border border-line bg-surface">
-          <Skeleton className="h-32 rounded-none" />
-          <div className="flex flex-col gap-2 p-4">
+          <Skeleton className="aspect-[3/4] rounded-none" />
+          <div className="flex flex-col gap-2 p-3">
             <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-3 w-full" />
-            <Skeleton className="mt-2 h-5 w-1/3" />
+            <Skeleton className="mt-1 h-5 w-1/3" />
           </div>
         </div>
       ))}
@@ -77,45 +66,35 @@ function CatalogSkeleton() {
 
 export default function CatalogPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<TabValue>("all");
-  const type = tab === "all" ? undefined : tab;
+  const [category, setCategory] = useState<CatalogCategory>("all");
+  const type = category === "all" ? undefined : category;
   const { data, isLoading, isError, error, refetch } = useProducts(type);
 
   return (
     <>
       <header className="mb-6">
         <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">{t("nav_store")}</h1>
-        <p className="mt-1 text-sm text-ink-500">
-          {t("catalog_subtitle")}
-        </p>
+        <p className="mt-1 text-sm text-ink-500">{t("catalog_subtitle")}</p>
       </header>
 
-      <Tabs
-        value={tab}
-        onValueChange={(v) => setTab(v as TabValue)}
-        className="mb-6"
-      >
-        <TabsList variant="line">
-          {TABS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value}>
-              {t(tab.labelKey as any)}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+        <CategoryRail value={category} onChange={setCategory} />
 
-      {isError ? (
-        <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
-          <p>{t("catalog_load_failed")} {(error as Error)?.message}</p>
-          <button onClick={() => refetch()} className="mt-2 underline">
-            {t("retry")}
-          </button>
+        <div className="min-w-0 flex-1">
+          {isError ? (
+            <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
+              <p>{t("catalog_load_failed")} {(error as Error)?.message}</p>
+              <button onClick={() => refetch()} className="mt-2 underline">
+                {t("retry")}
+              </button>
+            </div>
+          ) : isLoading ? (
+            <CatalogSkeleton />
+          ) : (
+            <CatalogGrid products={data} tab={category} />
+          )}
         </div>
-      ) : isLoading ? (
-        <CatalogSkeleton />
-      ) : (
-        <CatalogGrid products={data} tab={tab} />
-      )}
+      </div>
     </>
   );
 }

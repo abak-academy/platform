@@ -11,13 +11,22 @@ import (
 // StudentRow is the student shape returned in admin school student list
 // responses (no password_hash, no student-only fields beyond grade).
 type StudentRow struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Username  string    `json:"username"`
-	Email     *string   `json:"email"`
-	Status    string    `json:"status"`
-	Grade     *int      `json:"grade"`
-	CreatedAt time.Time `json:"created_at"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Username is nullable in the schema and really is NULL for some accounts,
+	// so it must be scanned as a pointer — a plain string fails the scan and
+	// 500s the whole roster because of one row.
+	Username *string `json:"username"`
+	Email    *string `json:"email"`
+	Status   string  `json:"status"`
+	Grade    *int    `json:"grade"`
+	// SchoolName is the linked school's name, NULL for registrants who have no
+	// school on file. UnlistedSchoolName carries what a self-registering user
+	// typed when their school wasn't in the list. Operations staff use both to
+	// see whose school still needs confirming.
+	SchoolName         *string   `json:"school_name"`
+	UnlistedSchoolName *string   `json:"unlisted_school_name"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // StudentFilter carries optional filters for ListStudentsBySchool and
@@ -30,6 +39,11 @@ type StudentFilter struct {
 	Grade   *int    // optional grade filter
 	Jenjang string  // optional jenjang filter
 	SchoolID *string // optional school_id filter (cross-school search only)
+	// AllSchools drops the school scope entirely, returning every student
+	// including those with no school on file. It is deliberately an explicit
+	// opt-in rather than "empty schoolID means all": the exam-participant and
+	// bulk-credential callers share this query and must stay school-scoped.
+	AllSchools bool
 }
 
 // ListStudentsBySchool returns non-deleted students scoped to a school,
@@ -44,38 +58,46 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 		filter.Limit = 100
 	}
 
-	query := `SELECT id, name, username, email, status, grade, created_at
-			FROM users WHERE school_id = $1 AND role = 'student' AND status != 'deleted'`
-	args := []any{schoolID}
-	argNum := 2
+	query := `SELECT u.id, u.name, u.username, u.email, u.status, u.grade,
+			s.name AS school_name, u.unlisted_school_name, u.created_at
+			FROM users u
+			LEFT JOIN school s ON s.id = u.school_id
+			WHERE u.role = 'student' AND u.status != 'deleted'`
+	args := []any{}
+	argNum := 1
 
+	if !filter.AllSchools {
+		query += fmt.Sprintf(` AND u.school_id = $%d`, argNum)
+		args = append(args, schoolID)
+		argNum++
+	}
 	if filter.Status != "" {
-		query += fmt.Sprintf(` AND status = $%d`, argNum)
+		query += fmt.Sprintf(` AND u.status = $%d`, argNum)
 		args = append(args, filter.Status)
 		argNum++
 	}
 	if filter.Q != "" {
-		query += fmt.Sprintf(` AND name ILIKE $%d`, argNum)
+		query += fmt.Sprintf(` AND u.name ILIKE $%d`, argNum)
 		args = append(args, "%"+filter.Q+"%")
 		argNum++
 	}
 	if filter.Grade != nil {
-		query += fmt.Sprintf(` AND grade = $%d`, argNum)
+		query += fmt.Sprintf(` AND u.grade = $%d`, argNum)
 		args = append(args, *filter.Grade)
 		argNum++
 	}
 	if filter.Jenjang != "" {
-		query += fmt.Sprintf(` AND jenjang = $%d`, argNum)
+		query += fmt.Sprintf(` AND u.jenjang = $%d`, argNum)
 		args = append(args, filter.Jenjang)
 		argNum++
 	}
 	if filter.Cursor != "" {
-		query += fmt.Sprintf(` AND id < $%d::uuid`, argNum)
+		query += fmt.Sprintf(` AND u.id < $%d::uuid`, argNum)
 		args = append(args, filter.Cursor)
 		argNum++
 	}
 
-	query += fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d`, argNum)
+	query += fmt.Sprintf(` ORDER BY u.created_at DESC LIMIT $%d`, argNum)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -89,7 +111,8 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 
 	for rows.Next() {
 		var s StudentRow
-		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.Email, &s.Status, &s.Grade, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.Email, &s.Status, &s.Grade,
+			&s.SchoolName, &s.UnlistedSchoolName, &s.CreatedAt); err != nil {
 			return nil, "", err
 		}
 		if len(students) < filter.Limit {
@@ -175,9 +198,10 @@ func (r *Repository) UpdateStudentStatus(ctx context.Context, id, schoolID, stat
 // CrossSchoolStudentRow extends StudentRow with school info for cross-school
 // search results. Used by SearchStudentsAcrossSchools.
 type CrossSchoolStudentRow struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Username   string    `json:"username"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Nullable for the same reason as StudentRow.Username — see there.
+	Username   *string   `json:"username"`
 	Email      *string   `json:"email"`
 	Status     string    `json:"status"`
 	Grade      *int      `json:"grade"`

@@ -1,0 +1,65 @@
+"use client";
+
+import type { Order } from "@/lib/types";
+import { useTranslation } from "@/lib/i18n";
+import { formatRupiah } from "@/lib/format";
+
+const PHYSICAL_TYPES = new Set(["book", "merchandise", "medal"]);
+
+export interface ShippingInfoProps {
+  order: Order;
+}
+
+export function ShippingInfo({ order }: ShippingInfoProps) {
+  const { t } = useTranslation();
+
+  const hasPhysical = (order.items ?? []).some((i) => PHYSICAL_TYPES.has(i.product_type));
+  if (!hasPhysical) return null;
+
+  const addr = order.shipping_address ?? {};
+  const addressLine = [addr.penerima, addr.telepon, addr.alamat, addr.kode_pos]
+    .filter(Boolean)
+    .join(" · ");
+
+  const courier = [order.selected_courier, order.selected_service].filter(Boolean).join(" — ");
+  const isEstimate = order.selected_courier === "Flat";
+
+  return (
+    <section className="rounded-lg border border-line bg-surface p-5">
+      <h2 className="mb-4 font-serif text-lg font-semibold text-ink-900">
+        {t("order_shipping_heading" as any)}
+      </h2>
+      <dl className="flex flex-col gap-2 text-sm">
+        {addressLine && (
+          <div className="flex items-start justify-between gap-3">
+            <dt className="text-ink-500">{t("order_shipping_address" as any)}</dt>
+            <dd className="text-right text-ink-900">{addressLine}</dd>
+          </div>
+        )}
+        {courier && (
+          <div className="flex items-start justify-between gap-3">
+            <dt className="text-ink-500">{t("order_shipping_courier" as any)}</dt>
+            <dd className="text-right text-ink-900">
+              {courier}
+              {isEstimate && (
+                <span className="ml-2 rounded bg-warn-bg px-1.5 py-0.5 text-xs text-warn">
+                  {t("order_shipping_estimate_note" as any)}
+                </span>
+              )}
+            </dd>
+          </div>
+        )}
+        <div className="flex items-start justify-between gap-3">
+          <dt className="text-ink-500">{t("order_shipping")}</dt>
+          <dd className="text-right text-ink-900">{formatRupiah(order.shipping_cost ?? 0)}</dd>
+        </div>
+        {order.tracking_number && (
+          <div className="flex items-start justify-between gap-3">
+            <dt className="text-ink-500">{t("order_tracking")}</dt>
+            <dd className="text-right text-ink-900">{order.tracking_number}</dd>
+          </div>
+        )}
+      </dl>
+    </section>
+  );
+}

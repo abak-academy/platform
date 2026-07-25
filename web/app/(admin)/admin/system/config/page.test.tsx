@@ -45,6 +45,15 @@ const translationMap: Record<string, string> = {
   config_toast_general_saved: "Pengaturan umum disimpan",
   config_toast_notif_saved: "Pengaturan notifikasi disimpan",
   config_toast_payment_saved: "Pengaturan pembayaran disimpan",
+  config_tab_integrations: "Integrasi",
+  config_group_identity: "Identitas",
+  config_group_contact: "Kontak",
+  config_group_address: "Alamat",
+  config_group_payment: "Pembayaran",
+  config_group_shipping: "Pengiriman",
+  config_address_shipping_hint:
+    "Alamat ini juga dipakai sebagai lokasi asal pengiriman untuk pesanan toko.",
+  config_toast_integrations_saved: "Integrasi disimpan",
   sys_loading: "Memuat…",
   sys_loading_data: "Memuat data…",
   sys_error_title: "Terjadi kesalahan",
@@ -171,7 +180,7 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
   });
 
-  it("renders shipping origin section in General tab", async () => {
+  it("shows the address block with its shipping-origin hint in General tab", async () => {
     renderPage();
 
     await waitFor(() => {
@@ -209,7 +218,7 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
     expect(payload).toHaveProperty("app_kode_pos");
   });
 
-  it("renders shipping settings section in Payment tab", async () => {
+  it("renders shipping settings section in Integrations tab", async () => {
     renderPage();
 
     // First, wait for the page to load

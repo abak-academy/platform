@@ -16,6 +16,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
+import { JENJANG_OPTIONS } from "@/lib/jenjang";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,14 @@ import type {
   StudentRegistrationResult,
   StudentCredentials,
 } from "@/lib/types";
+
+// Radix Select forbids an empty-string item value, so "every school" needs its
+// own sentinel; it maps back to "" (no school_id param) for the query.
+const ALL_SCHOOLS_VALUE = "_all_";
+
+// Radix Select forbids an empty-string item value, so "no school" needs its own
+// sentinel too; it maps back to "" (registered without a school).
+const NO_SCHOOL_VALUE = "_none_";
 
 const STATUS_TONE: Record<string, string> = {
   active: "bg-success-bg text-success border-success",
@@ -114,7 +123,6 @@ export default function SchoolStudentsPage() {
     cursor: activeCursor,
     limit: 20,
     ...(isSuperAdmin && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
-    enabled: !isSuperAdmin || Boolean(selectedSchoolId),
   });
 
   // Accumulate pages as they arrive
@@ -192,10 +200,15 @@ export default function SchoolStudentsPage() {
   const adminOwnSchoolTypes = adminOwnSchool?.school_types ?? [];
   const registerSchoolObj = schoolsData?.data?.find((s) => s.id === registerSchoolId);
   const superAdminSchoolTypes = registerSchoolObj?.school_types ?? [];
-  const jenjangOptions = isSuperAdmin ? superAdminSchoolTypes : adminOwnSchoolTypes;
+  const schoolJenjangTypes = isSuperAdmin ? superAdminSchoolTypes : adminOwnSchoolTypes;
+  // With no school chosen there are no school_types to constrain jenjang, but
+  // jenjang is still required — fall back rather than leaving the field unusable.
+  const jenjangOptions = schoolJenjangTypes.length ? schoolJenjangTypes : JENJANG_OPTIONS;
 
   const handleRegister = async () => {
-    if (!registerForm.name || !registerForm.jenjang || (isSuperAdmin && !registerSchoolId)) {
+    // School is deliberately not required: not every registrant is a school
+    // pupil, and an operator can confirm the school after registration.
+    if (!registerForm.name || !registerForm.jenjang) {
       toast.error(t("accounts_toast_required"));
       return;
     }
@@ -355,11 +368,15 @@ export default function SchoolStudentsPage() {
           {schoolsLoading ? (
             <div className="mt-1 h-9 w-[240px] animate-pulse rounded-md bg-surface-2" />
           ) : (
-            <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
+            <Select
+              value={selectedSchoolId || ALL_SCHOOLS_VALUE}
+              onValueChange={(v) => setSelectedSchoolId(v === ALL_SCHOOLS_VALUE ? "" : v)}
+            >
               <SelectTrigger className="mt-1 h-9 w-[240px] text-xs" aria-label={t("select_school")}>
-                <SelectValue placeholder={t("select_school")} />
+                <SelectValue placeholder={t("students_all_schools")} />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={ALL_SCHOOLS_VALUE}>{t("students_all_schools")}</SelectItem>
                 {(schoolsData?.data ?? []).map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.name}
@@ -446,6 +463,7 @@ export default function SchoolStudentsPage() {
                 <th className="px-4 py-3">{t("students_field_name")}</th>
                 <th className="px-4 py-3">{t("students_credential_username")}</th>
                 <th className="px-4 py-3">{t("email")}</th>
+                <th className="px-4 py-3">{t("students_field_school")}</th>
                 <th className="px-4 py-3">{t("th_status")}</th>
                 <th className="px-4 py-3">{t("students_field_grade")}</th>
                 <th className="px-4 py-3">{t("accounts_th_created")}</th>
@@ -456,7 +474,7 @@ export default function SchoolStudentsPage() {
               {accumulated.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-4 py-8 text-center text-sm text-ink-500"
                   >
                     {t("students_empty")}
@@ -476,10 +494,21 @@ export default function SchoolStudentsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-brand-700">
-                    @{s.username}
+                    {s.username ? `@${s.username}` : "—"}
                   </td>
                   <td className="px-4 py-3 text-xs text-ink-600">
                     {s.email || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    {s.school_name ? (
+                      <span className="text-ink-600">{s.school_name}</span>
+                    ) : s.unlisted_school_name ? (
+                      <span className="text-warn" title={t("students_school_unconfirmed")}>
+                        {s.unlisted_school_name}
+                      </span>
+                    ) : (
+                      <span className="text-ink-400">{t("students_school_none")}</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <Badge
@@ -724,20 +753,23 @@ export default function SchoolStudentsPage() {
                 delay={60}
               >
                 {isSuperAdmin && (
-                  <FormField label={t("school")} required>
+                  <FormField label={t("school")} hint={t("students_school_optional_hint")}>
                     <Select
-                      value={registerSchoolId}
+                      value={registerSchoolId || NO_SCHOOL_VALUE}
                       onValueChange={(v) => {
-                        setRegisterSchoolId(v);
+                        setRegisterSchoolId(v === NO_SCHOOL_VALUE ? "" : v);
                         // Jenjang options depend on the chosen school — a
                         // previously picked jenjang may no longer be valid.
                         setRegisterForm((f) => ({ ...f, jenjang: "" }));
                       }}
                     >
                       <SelectTrigger aria-label={t("school")}>
-                        <SelectValue placeholder={t("select_school")} />
+                        <SelectValue placeholder={t("students_school_none_option")} />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={NO_SCHOOL_VALUE}>
+                          {t("students_school_none_option")}
+                        </SelectItem>
                         {(schoolsData?.data ?? []).map((s) => (
                           <SelectItem key={s.id} value={s.id}>
                             {s.name}
@@ -757,7 +789,6 @@ export default function SchoolStudentsPage() {
                           jenjang: v,
                         }))
                       }
-                      disabled={isSuperAdmin && !registerSchoolId}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder={t("students_field_jenjang")} />
@@ -799,7 +830,7 @@ export default function SchoolStudentsPage() {
                         target_exam: e.target.value || undefined,
                       }))
                     }
-                    placeholder={t("students_field_target_exam")}
+                    placeholder={t("target_exam_examples")}
                   />
                 </FormField>
               </RegisterSection>
@@ -1133,10 +1164,12 @@ function RegisterSection({
 function FormField({
   label,
   required,
+  hint,
   children,
 }: {
   label: string;
   required?: boolean;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -1145,6 +1178,7 @@ function FormField({
         {label} {required && <span className="text-danger">*</span>}
       </Label>
       {children}
+      {hint && <p className="text-xs text-ink-500">{hint}</p>}
     </div>
   );
 }

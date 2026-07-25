@@ -73,3 +73,39 @@ jobs:
           NEXT_PUBLIC_MIDTRANS_CLIENT_KEY: ${{ secrets.MIDTRANS_CLIENT_KEY }}
           NEXT_PUBLIC_GOOGLE_CLIENT_ID: 823500183775-miq3ligvku7uota4tkodatkie4gnp4u4.apps.googleusercontent.com
         run: ./deploy/pipeline/build-image.sh
+
+  # Requires GitHub-side setup: vars.GCP_WORKLOAD_IDENTITY_PROVIDER, vars.GCP_DEPLOY_SERVICE_ACCOUNT.
+  # vars.PROD_GOOGLE_CLIENT_ID and secrets.MIDTRANS_CLIENT_KEY_PROD are go-live slots, still empty.
+  images-prod:
+    if: github.ref == 'refs/heads/main'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write          # WIF: no service-account key exists anywhere
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: backend/go.sum
+      - name: build artifact
+        run: ./deploy/pipeline/build-artifact.sh
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: configure docker for artifact registry
+        run: gcloud auth configure-docker asia-southeast2-docker.pkg.dev --quiet
+      - name: build and push docker image
+        env:
+          REGISTRY: asia-southeast2-docker.pkg.dev/abak-academy-platform/app
+          TAG: ${{ github.sha }}
+          PUSH: '1'
+          TARGET_ENV: prod
+          NEXT_PUBLIC_API_BASE_URL: https://hub.abakacademy.id/api/v1
+          NEXT_PUBLIC_MIDTRANS_SNAP_URL: https://app.midtrans.com/snap/snap.js
+          NEXT_PUBLIC_MIDTRANS_CLIENT_KEY: ${{ secrets.MIDTRANS_CLIENT_KEY_PROD }}
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.PROD_GOOGLE_CLIENT_ID }}
+        run: ./deploy/pipeline/build-image.sh

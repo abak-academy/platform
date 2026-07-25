@@ -327,15 +327,17 @@ func (s *Service) presignReadURL(ctx context.Context, bucket, key string, ttl ti
 	return u.String(), nil
 }
 
-// OpenAvatar streams a stored avatar for the read-proxy endpoint. Only the
-// avatars/ prefix is served: certificates and private PII live in the same
-// bucket but are reached exclusively through presigned URLs, so they can never
-// be fetched through this unauthenticated proxy.
+// OpenAvatar streams a stored upload for the read-proxy endpoint. Only the
+// avatars/, product/ and question/ prefixes are served: certificates and
+// private PII (including student-bulk imports) live in the same bucket but
+// are reached exclusively through presigned URLs, so they can never be
+// fetched through this unauthenticated proxy.
 func (s *Service) OpenAvatar(ctx context.Context, key string) (io.ReadCloser, string, error) {
 	if s.storage == nil {
 		return nil, "", errors.New("storage not configured")
 	}
-	if !strings.HasPrefix(key, "avatars/") || strings.Contains(key, "..") {
+	prefix, _, ok := strings.Cut(key, "/")
+	if !ok || !uploadPrefixAllowlist[prefix] || strings.Contains(key, "..") {
 		return nil, "", ErrUploadNotFound
 	}
 	obj, err := s.storage.GetObject(ctx, s.cfg.ObjectStorageBucketName, key, minio.GetObjectOptions{})
@@ -351,19 +353,31 @@ func (s *Service) OpenAvatar(ctx context.Context, key string) (io.ReadCloser, st
 	return obj, info.ContentType, nil
 }
 
-func (s *Service) GeneratePresignedUploadURL(ctx context.Context, userID, filename, contentType string) (*PresignedUploadURL, error) {
+// uploadPrefixAllowlist gates GeneratePresignedUploadURL's caller-supplied
+// prefix and OpenAvatar's read-proxy in tandem — widen one without the other
+// and either signing or reading a newly-uploaded object breaks.
+var uploadPrefixAllowlist = map[string]bool{
+	"avatars":  true,
+	"product":  true,
+	"question": true,
+}
+
+func (s *Service) GeneratePresignedUploadURL(ctx context.Context, userID, prefix, filename, contentType string) (*PresignedUploadURL, error) {
 	if s.storage == nil {
 		return nil, errors.New("storage not configured")
 	}
 	if userID == "" || filename == "" {
 		return nil, errors.New("user_id and filename are required")
 	}
+	if !uploadPrefixAllowlist[prefix] {
+		return nil, fmt.Errorf("invalid upload prefix: %q", prefix)
+	}
 
 	// The public-read bucket is created and its access policy set at
 	// provisioning time, not here — GCS has no bucket-policy operation, so
 	// doing it per-request would hard-fail on managed storage. App code only signs.
 	bucket := s.cfg.ObjectStorageBucketName
-	key := fmt.Sprintf("avatars/%s/%s-%s", userID, uuid.New().String(), filename)
+	key := fmt.Sprintf("%s/%s/%s-%s", prefix, userID, uuid.New().String(), filename)
 	presigned, err := s.presignStorage().PresignedPutObject(ctx, bucket, key, 15*time.Minute)
 	if err != nil {
 		return nil, err
