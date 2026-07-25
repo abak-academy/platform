@@ -4,7 +4,30 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+
+	"akademi-bimbel/internal/service"
 )
+
+// safeInlineImageTypes are the only content types this proxy serves with their
+// stored MIME type. The uploader controls the stored type, so anything else —
+// text/html, image/svg+xml, application/* — is served as an opaque download
+// instead, preventing a same-origin stored-XSS via an uploaded asset.
+var safeInlineImageTypes = map[string]bool{
+	"image/png":  true,
+	"image/jpeg": true,
+	"image/webp": true,
+	"image/gif":  true,
+}
+
+// safeServeContentType decides how a stored asset is served: a known raster
+// image keeps its type and renders inline; anything else is forced to an opaque
+// download so an uploaded text/html or image/svg+xml cannot execute on our origin.
+func safeServeContentType(stored string) (served string, download bool) {
+	if safeInlineImageTypes[stored] {
+		return stored, false
+	}
+	return "application/octet-stream", true
+}
 
 // ServeFile is an unauthenticated read-proxy for avatars, product images and
 // question assets stored in the private object bucket. The service enforces
@@ -19,11 +42,17 @@ func (h *Handler) ServeFile(c echo.Context) error {
 		return c.NoContent(http.StatusNotFound)
 	}
 	defer obj.Close()
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	// Never let an uploaded asset's stored MIME type drive inline rendering:
+	// non-image types become an opaque download, and nosniff stops the browser
+	// second-guessing that. This closes the same-origin XSS regardless of who
+	// uploaded or under which prefix.
+	served, download := safeServeContentType(contentType)
+	c.Response().Header().Set("X-Content-Type-Options", "nosniff")
+	if download {
+		c.Response().Header().Set("Content-Disposition", "attachment")
 	}
 	c.Response().Header().Set("Cache-Control", "public, max-age=3600")
-	return c.Stream(http.StatusOK, contentType, obj)
+	return c.Stream(http.StatusOK, served, obj)
 }
 
 func (h *Handler) StudentDashboard(c echo.Context) error {
@@ -121,6 +150,12 @@ func (h *Handler) GeneratePresignUploadURL(c echo.Context) error {
 	case "", "avatar":
 		prefix = "avatars"
 	case "product":
+		// Anyone may upload their own avatar, but product images belong to
+		// store management — gate them behind the same capability the admin
+		// upload endpoints use, so a student can't seed the product namespace.
+		if !service.HasCapability(claims.Role, "uploads:write") {
+			return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "insufficient permissions"})
+		}
 		prefix = "product"
 	default:
 		return badRequest(c, "kind must be avatar or product")

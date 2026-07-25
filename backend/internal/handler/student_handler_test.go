@@ -328,7 +328,7 @@ func TestGeneratePresignUploadURL_KindAvatar_KeyUnderAvatars(t *testing.T) {
 	}
 }
 
-func TestGeneratePresignUploadURL_KindProduct_KeyUnderProduct(t *testing.T) {
+func TestGeneratePresignUploadURL_KindProduct_StudentForbidden(t *testing.T) {
 	env := newStorageBackedTestEnv(t)
 	h := handler.New(env.svc)
 	v1 := env.e.Group("/api/v1")
@@ -336,11 +336,32 @@ func TestGeneratePresignUploadURL_KindProduct_KeyUnderProduct(t *testing.T) {
 	uploads.Use(handler.JWTMiddleware(env.svc, env.signer))
 	uploads.GET("/presign", h.GeneratePresignUploadURL)
 
-	token := loginForPresignTest(t, env, "kind-product")
+	token := loginForPresignTest(t, env, "kind-product-student")
+
+	rec := getWithToken(t, env.e, "/api/v1/uploads/presign?filename=x.html&kind=product", token)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403 for student minting product upload, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if _, ok := resp["key"]; ok {
+		t.Errorf("want no key for forbidden product upload, got %v", resp)
+	}
+}
+
+func TestGeneratePresignUploadURL_KindProduct_AdminAllowed(t *testing.T) {
+	env := newStorageBackedTestEnv(t)
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	uploads := v1.Group("/uploads")
+	uploads.Use(handler.JWTMiddleware(env.svc, env.signer))
+	uploads.GET("/presign", h.GeneratePresignUploadURL)
+
+	token := loginForPresignTest(t, env, "kind-product-admin", service.RoleAdminStore)
 
 	rec := getWithToken(t, env.e, "/api/v1/uploads/presign?filename=test.jpg&kind=product", token)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("want 200 for admin_store, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	var resp map[string]any
 	json.NewDecoder(rec.Body).Decode(&resp)
@@ -350,16 +371,21 @@ func TestGeneratePresignUploadURL_KindProduct_KeyUnderProduct(t *testing.T) {
 	}
 }
 
-// loginForPresignTest seeds a student user and logs in, returning an access token.
-func loginForPresignTest(t *testing.T, env *testEnv, idSuffix string) string {
+// loginForPresignTest seeds a user (student by default; pass a role to override)
+// and logs in, returning an access token.
+func loginForPresignTest(t *testing.T, env *testEnv, idSuffix string, role ...string) string {
 	t.Helper()
+	userRole := service.RoleStudent
+	if len(role) > 0 {
+		userRole = role[0]
+	}
 	email := idSuffix + "@example.com"
 	env.repo.seed(&model.User{
 		ID:           "u-" + idSuffix,
 		Email:        strptr(email),
 		PasswordHash: mustHash("password123"),
 		Name:         "Presign User",
-		Role:         service.RoleStudent,
+		Role:         userRole,
 		Status:       "active",
 	})
 	loginRec := postJSON(t, env.e, "/api/v1/auth/login", map[string]string{

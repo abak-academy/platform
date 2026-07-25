@@ -48,14 +48,22 @@ ls -lh pg16-backup.dump && docker run --rm -i postgres:16-alpine pg_restore --li
 If `pg_restore --list` cannot read it, stop — the dump is unusable and destroying the volume now
 would lose the data.
 
-**2 — Destroy the old volume.**
+**2 — Remove ONLY the PostgreSQL volume.**
+
+Do **not** use `down -v` — the local dev compose also has a `miniodata` volume holding uploaded
+objects, and `-v` would delete those too even though this runbook only backed up Postgres. Stop the
+stack, then remove just the PG volume:
 
 ```bash
-docker compose -f deploy/docker-compose.yml down -v
+docker compose -f deploy/docker-compose.yml down
+docker volume rm akademi-bimbel_pgdata
 ```
 
-`-v` is the point of this step: without it the PG16 volume survives and the new container fails
-exactly as before.
+Removing the PG16 volume is the point of this step: without it the PG16 data survives and the new
+container fails exactly as before. `docker volume rm` refuses while a container still uses the
+volume, so the `down` must complete first. (The staging compose has no `miniodata` volume — object
+storage there is GCS — so on the staging box `down -v` would be equivalent, but prefer the explicit
+form everywhere.)
 
 **3 — Start a fresh PG17 and let it initialise.**
 
