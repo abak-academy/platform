@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Save, Settings, Bell, Shield, CreditCard, Mail } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Save, Settings, Bell, Plug, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,15 @@ function Toggle({ checked, onChange, label, description }: ToggleProps) {
   );
 }
 
+// A quiet small-caps label that turns a flat field list into readable groups.
+function Eyebrow({ children }: { children: ReactNode }) {
+  return (
+    <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+      {children}
+    </div>
+  );
+}
+
 const INITIAL_APP = {
   app_name: "",
   app_address: "",
@@ -78,7 +87,6 @@ const INITIAL_APP = {
 
 const INITIAL_NOTIF = {
   notify_on_purchase_admin_store: "false",
-  notify_on_purchase_admin_exam: "false",
 };
 
 const INITIAL_PAYMENT = {
@@ -93,11 +101,6 @@ export default function SystemConfigPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useState("general");
   const configLoaded = useRef(false);
-
-  const [features, setFeatures] = useState({
-    selfReg: true,
-    otpMandatory: false,
-  });
 
   const [appFields, setAppFields] = useState(INITIAL_APP);
   const [notifFields, setNotifFields] = useState(INITIAL_NOTIF);
@@ -127,8 +130,6 @@ export default function SystemConfigPage() {
       setNotifFields({
         notify_on_purchase_admin_store:
           config.notify_on_purchase_admin_store ?? "false",
-        notify_on_purchase_admin_exam:
-          config.notify_on_purchase_admin_exam ?? "false",
       });
       setPaymentFields({
         midtrans_server_key: config.midtrans_server_key ?? "",
@@ -163,7 +164,7 @@ export default function SystemConfigPage() {
   const handleSavePayment = async () => {
     try {
       await updateConfig.mutateAsync(paymentFields);
-      toast.success(t("config_toast_payment_saved"));
+      toast.success(t("config_toast_integrations_saved"));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("sys_save_failed");
       toast.error(msg);
@@ -214,172 +215,190 @@ export default function SystemConfigPage() {
             <Settings className="mr-1 size-4" />
             {t("config_tab_general")}
           </TabsTrigger>
-          <TabsTrigger value="features" className="text-xs">
-            <Shield className="mr-1 size-4" />
-            {t("config_tab_features")}
-          </TabsTrigger>
           <TabsTrigger value="notifications" className="text-xs">
             <Bell className="mr-1 size-4" />
             {t("config_tab_notifications")}
           </TabsTrigger>
-          <TabsTrigger value="payment" className="text-xs">
-            <CreditCard className="mr-1 size-4" />
-            {t("config_tab_payment")}
+          <TabsTrigger value="integrations" className="text-xs">
+            <Plug className="mr-1 size-4" />
+            {t("config_tab_integrations")}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
           <div className="md-card-outlined">
-            <div className="space-y-4">
+            <div className="space-y-8">
               <div>
-                <Label>{t("config_general_app_name")}</Label>
-                <Input
-                  value={appFields.app_name}
-                  onChange={(e) =>
-                    setAppFields((f) => ({ ...f, app_name: e.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <Label>{t("config_general_address")}</Label>
-                <Input
-                  value={appFields.app_address}
-                  onChange={(e) =>
-                    setAppFields((f) => ({ ...f, app_address: e.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <Label>{t("config_general_logo_url")}</Label>
-                <Input
-                  value={appFields.app_logo_url}
-                  onChange={(e) =>
-                    setAppFields((f) => ({ ...f, app_logo_url: e.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <Label>{t("config_general_contact_email")}</Label>
-                <div className="flex items-center gap-2">
-                  <Mail className="size-4 text-ink-400" />
-                  <Input
-                    type="email"
-                    value={appFields.app_contact_email}
-                    onChange={(e) =>
-                      setAppFields((f) => ({
-                        ...f,
-                        app_contact_email: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-              <div>
-                <Label>{t("config_general_contact_phone")}</Label>
-                <Input
-                  value={appFields.app_contact_phone}
-                  onChange={(e) =>
-                    setAppFields((f) => ({
-                      ...f,
-                      app_contact_phone: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="border-t pt-4">
-                <h3 className="text-sm font-semibold mb-4">
-                  {t("config_shipping_origin")}
-                </h3>
-                <div className="grid gap-4">
+                <Eyebrow>{t("config_group_identity")}</Eyebrow>
+                <div className="space-y-4">
                   <div>
-                    <Label>{t("students_field_provinsi")}</Label>
-                    <Select
-                      value={appFields.app_province_id}
-                      onValueChange={(v) =>
-                        setAppFields((f) => ({
-                          ...f,
-                          app_province_id: v,
-                          app_city_id: "",
-                          app_district_id: "",
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(provinces ?? []).map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>{t("students_field_kota")}</Label>
-                    <Select
-                      value={appFields.app_city_id}
-                      onValueChange={(v) =>
-                        setAppFields((f) => ({
-                          ...f,
-                          app_city_id: v,
-                          app_district_id: "",
-                        }))
-                      }
-                      disabled={!appFields.app_province_id}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(cities ?? []).map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>{t("students_field_kecamatan")}</Label>
-                    <Select
-                      value={appFields.app_district_id}
-                      onValueChange={(v) =>
-                        setAppFields((f) => ({
-                          ...f,
-                          app_district_id: v,
-                        }))
-                      }
-                      disabled={!appFields.app_city_id}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(districts ?? []).map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {d.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>{t("students_field_kode_pos")}</Label>
+                    <Label>{t("config_general_app_name")}</Label>
                     <Input
-                      value={appFields.app_kode_pos}
+                      value={appFields.app_name}
+                      onChange={(e) =>
+                        setAppFields((f) => ({ ...f, app_name: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>{t("config_general_logo_url")}</Label>
+                    <Input
+                      value={appFields.app_logo_url}
                       onChange={(e) =>
                         setAppFields((f) => ({
                           ...f,
-                          app_kode_pos: e.target.value,
+                          app_logo_url: e.target.value,
                         }))
                       }
-                      placeholder={t("config_general_kode_pos_placeholder")}
                     />
                   </div>
                 </div>
               </div>
+
+              <div>
+                <Eyebrow>{t("config_group_contact")}</Eyebrow>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label>{t("config_general_contact_email")}</Label>
+                    <div className="flex items-center gap-2">
+                      <Mail className="size-4 shrink-0 text-ink-400" />
+                      <Input
+                        type="email"
+                        value={appFields.app_contact_email}
+                        onChange={(e) =>
+                          setAppFields((f) => ({
+                            ...f,
+                            app_contact_email: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>{t("config_general_contact_phone")}</Label>
+                    <Input
+                      value={appFields.app_contact_phone}
+                      onChange={(e) =>
+                        setAppFields((f) => ({
+                          ...f,
+                          app_contact_phone: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Eyebrow>{t("config_group_address")}</Eyebrow>
+                <div className="space-y-4">
+                  <div>
+                    <Label>{t("config_general_address")}</Label>
+                    <Input
+                      value={appFields.app_address}
+                      onChange={(e) =>
+                        setAppFields((f) => ({
+                          ...f,
+                          app_address: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <Label>{t("students_field_provinsi")}</Label>
+                      <Select
+                        value={appFields.app_province_id}
+                        onValueChange={(v) =>
+                          setAppFields((f) => ({
+                            ...f,
+                            app_province_id: v,
+                            app_city_id: "",
+                            app_district_id: "",
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(provinces ?? []).map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>{t("students_field_kota")}</Label>
+                      <Select
+                        value={appFields.app_city_id}
+                        onValueChange={(v) =>
+                          setAppFields((f) => ({
+                            ...f,
+                            app_city_id: v,
+                            app_district_id: "",
+                          }))
+                        }
+                        disabled={!appFields.app_province_id}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(cities ?? []).map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>{t("students_field_kecamatan")}</Label>
+                      <Select
+                        value={appFields.app_district_id}
+                        onValueChange={(v) =>
+                          setAppFields((f) => ({
+                            ...f,
+                            app_district_id: v,
+                          }))
+                        }
+                        disabled={!appFields.app_city_id}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(districts ?? []).map((d) => (
+                            <SelectItem key={d.id} value={d.id}>
+                              {d.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>{t("students_field_kode_pos")}</Label>
+                      <Input
+                        value={appFields.app_kode_pos}
+                        onChange={(e) =>
+                          setAppFields((f) => ({
+                            ...f,
+                            app_kode_pos: e.target.value,
+                          }))
+                        }
+                        placeholder={t("config_general_kode_pos_placeholder")}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-ink-500">
+                    {t("config_address_shipping_hint")}
+                  </p>
+                </div>
+              </div>
+
               <div className="flex justify-end">
                 <Button
                   onClick={handleSaveGeneral}
@@ -390,23 +409,6 @@ export default function SystemConfigPage() {
                 </Button>
               </div>
             </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="features">
-          <div className="md-card-outlined">
-            <Toggle
-              checked={features.selfReg}
-              onChange={(v) => setFeatures((f) => ({ ...f, selfReg: v }))}
-              label={t("config_feature_selfreg_label")}
-              description={t("config_feature_selfreg_desc")}
-            />
-            <Toggle
-              checked={features.otpMandatory}
-              onChange={(v) => setFeatures((f) => ({ ...f, otpMandatory: v }))}
-              label={t("config_feature_otp_label")}
-              description={t("config_feature_otp_desc")}
-            />
           </div>
         </TabsContent>
 
@@ -423,17 +425,6 @@ export default function SystemConfigPage() {
               label={t("config_notif_store_label")}
               description={t("config_notif_store_desc")}
             />
-            <Toggle
-              checked={notifFields.notify_on_purchase_admin_exam === "true"}
-              onChange={(v) =>
-                setNotifFields((f) => ({
-                  ...f,
-                  notify_on_purchase_admin_exam: v ? "true" : "false",
-                }))
-              }
-              label={t("config_notif_exam_label")}
-              description={t("config_notif_exam_desc")}
-            />
             <div className="flex justify-end pt-4">
               <Button
                 onClick={handleSaveNotif}
@@ -446,79 +437,83 @@ export default function SystemConfigPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="payment">
+        <TabsContent value="integrations">
           <div className="md-card-outlined">
-            <div className="space-y-4">
+            <div className="space-y-8">
               <div>
-                <Label>{t("config_payment_server_key")}</Label>
-                <Input
-                  type="password"
-                  value={paymentFields.midtrans_server_key}
-                  onChange={(e) =>
-                    setPaymentFields((f) => ({
-                      ...f,
-                      midtrans_server_key: e.target.value,
-                    }))
-                  }
-                  placeholder={
-                    paymentFields.midtrans_server_key === "***"
-                      ? "***"
-                      : t("config_payment_placeholder_server")
-                  }
-                />
-                {paymentFields.midtrans_server_key === "***" && (
-                  <div className="mt-1 text-xs text-ink-500">
-                    {t("config_payment_mask_hint")}
+                <Eyebrow>{t("config_group_payment")}</Eyebrow>
+                <div className="space-y-4">
+                  <div>
+                    <Label>{t("config_payment_server_key")}</Label>
+                    <Input
+                      type="password"
+                      value={paymentFields.midtrans_server_key}
+                      onChange={(e) =>
+                        setPaymentFields((f) => ({
+                          ...f,
+                          midtrans_server_key: e.target.value,
+                        }))
+                      }
+                      placeholder={
+                        paymentFields.midtrans_server_key === "***"
+                          ? "***"
+                          : t("config_payment_placeholder_server")
+                      }
+                    />
+                    {paymentFields.midtrans_server_key === "***" && (
+                      <div className="mt-1 text-xs text-ink-500">
+                        {t("config_payment_mask_hint")}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <div>
-                <Label>{t("config_payment_client_key")}</Label>
-                <Input
-                  type="password"
-                  value={paymentFields.midtrans_client_key}
-                  onChange={(e) =>
-                    setPaymentFields((f) => ({
-                      ...f,
-                      midtrans_client_key: e.target.value,
-                    }))
-                  }
-                  placeholder={
-                    paymentFields.midtrans_client_key === "***"
-                      ? "***"
-                      : t("config_payment_placeholder_client")
-                  }
-                />
-                {paymentFields.midtrans_client_key === "***" && (
-                  <div className="mt-1 text-xs text-ink-500">
-                    {t("config_payment_mask_hint")}
+                  <div>
+                    <Label>{t("config_payment_client_key")}</Label>
+                    <Input
+                      type="password"
+                      value={paymentFields.midtrans_client_key}
+                      onChange={(e) =>
+                        setPaymentFields((f) => ({
+                          ...f,
+                          midtrans_client_key: e.target.value,
+                        }))
+                      }
+                      placeholder={
+                        paymentFields.midtrans_client_key === "***"
+                          ? "***"
+                          : t("config_payment_placeholder_client")
+                      }
+                    />
+                    {paymentFields.midtrans_client_key === "***" && (
+                      <div className="mt-1 text-xs text-ink-500">
+                        {t("config_payment_mask_hint")}
+                      </div>
+                    )}
                   </div>
-                )}
+                  <div>
+                    <Label>{t("config_payment_env")}</Label>
+                    <Select
+                      value={paymentFields.midtrans_env}
+                      onValueChange={(v) =>
+                        setPaymentFields((f) => ({
+                          ...f,
+                          midtrans_env: v,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sandbox">Sandbox</SelectItem>
+                        <SelectItem value="production">Production</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
+
               <div>
-                <Label>{t("config_payment_env")}</Label>
-                <Select
-                  value={paymentFields.midtrans_env}
-                  onValueChange={(v) =>
-                    setPaymentFields((f) => ({
-                      ...f,
-                      midtrans_env: v,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sandbox">Sandbox</SelectItem>
-                    <SelectItem value="production">Production</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="border-t pt-4">
-                <h3 className="text-sm font-semibold mb-4">
-                  {t("config_shipping_settings")}
-                </h3>
+                <Eyebrow>{t("config_group_shipping")}</Eyebrow>
                 <div className="space-y-4">
                   <div>
                     <Label>{t("config_shipping_fallback_rate")}</Label>
@@ -559,6 +554,7 @@ export default function SystemConfigPage() {
                   </div>
                 </div>
               </div>
+
               <div className="flex justify-end">
                 <Button
                   onClick={handleSavePayment}
