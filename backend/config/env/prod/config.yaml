@@ -6,17 +6,17 @@ cors_origins:
 access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
-google_client_id: "" # prod OAuth client not created yet, set at go-live
+google_client_id: "281709074160-c3cuj0rt05gso0qs09vvgmpmr29oui1o.apps.googleusercontent.com"
 fazpass_base_url: "https://api.fazpass.com"
 midtrans_env: "production"
-smtp_host: "smtp.gmail.com"
+smtp_host: "smtp.hostinger.com"
 smtp_port: "587"
-smtp_from: "" # set at go-live once the sending account exists
+smtp_from: "noreply@abakacademy.id"
 smtp_from_name: "Abak Academy"
 object_storage_endpoint: "storage.googleapis.com"
 object_storage_public_endpoint: ""
 object_storage_use_ssl: true
 object_storage_region: "asia-southeast2"
-object_storage_bucket_name: "abak-academy-media-prod"
-object_storage_private_bucket_name: "abak-academy-media-prod"
+object_storage_bucket_name: "abak-academy-media"
+object_storage_private_bucket_name: "abak-academy-media"
 gotenberg_url: "http://gotenberg:3000"
