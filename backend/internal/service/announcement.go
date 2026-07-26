@@ -2,26 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"time"
 
 	"akademi-bimbel/internal/model"
-)
-
-var (
-	// ErrAnnouncementImmutable is returned when attempting to edit/delete/send
-	// an announcement that has already been sent. Maps to 409 conflict.
-	ErrAnnouncementImmutable = errors.New("announcement is immutable: already sent")
-
-	// ErrAnnouncementNotFound is returned when the announcement does not exist.
-	// Maps to 404 not found.
-	ErrAnnouncementNotFound = errors.New("announcement not found")
-
-	// ErrInvalidAnnouncementField is returned when a field value is invalid
-	// (e.g. unknown type, recipients, or status). Maps to 400 invalid_request.
-	ErrInvalidAnnouncementField = errors.New("invalid announcement field")
 )
 
 // AnnounceRepo defines the repository methods the announcement service needs.

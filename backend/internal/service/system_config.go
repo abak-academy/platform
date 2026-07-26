@@ -7,21 +7,10 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 
 	"akademi-bimbel/internal/repository"
-)
-
-var (
-	// ErrConfigEncryption is returned when AES-256-GCM encryption or decryption
-	// fails (invalid key, tampered ciphertext, etc.). Maps to 500 internal_error.
-	ErrConfigEncryption = errors.New("config encryption failed")
-
-	// ErrUnknownConfigKey is returned when a provided config key is not in the
-	// fixed catalog. Maps to 400 invalid_request.
-	ErrUnknownConfigKey = errors.New("unknown config key")
 )
 
 // configKeyDef describes a single key in the system_config fixed catalog.
@@ -35,23 +24,23 @@ type configKeyDef struct {
 // configKeyCatalog is the fixed set of keys managed via /admin/system/config.
 // Adding or removing keys is a code change (not data-driven).
 var configKeyCatalog = map[string]configKeyDef{
-	"app_name":                     {group: "app", valueType: "string"},
-	"app_address":                  {group: "app", valueType: "string"},
-	"app_logo_url":                 {group: "app", valueType: "string"},
-	"app_contact_email":            {group: "app", valueType: "string"},
-	"app_contact_phone":            {group: "app", valueType: "string"},
-	"app_province_id":              {group: "app", valueType: "string"},
-	"app_city_id":                  {group: "app", valueType: "string"},
-	"app_district_id":              {group: "app", valueType: "string"},
-	"app_kode_pos":                 {group: "app", valueType: "string"},
-	"exam_platform":                {group: "app", valueType: "string"},
+	"app_name":                       {group: "app", valueType: "string"},
+	"app_address":                    {group: "app", valueType: "string"},
+	"app_logo_url":                   {group: "app", valueType: "string"},
+	"app_contact_email":              {group: "app", valueType: "string"},
+	"app_contact_phone":              {group: "app", valueType: "string"},
+	"app_province_id":                {group: "app", valueType: "string"},
+	"app_city_id":                    {group: "app", valueType: "string"},
+	"app_district_id":                {group: "app", valueType: "string"},
+	"app_kode_pos":                   {group: "app", valueType: "string"},
+	"exam_platform":                  {group: "app", valueType: "string"},
 	"notify_on_purchase_admin_store": {group: "notification", valueType: "bool"},
 	"notify_on_purchase_admin_exam":  {group: "notification", valueType: "bool"},
-	"midtrans_server_key":          {group: "payment", valueType: "string", secret: true},
-	"midtrans_client_key":          {group: "payment", valueType: "string", secret: true},
-	"midtrans_env":                 {group: "payment", valueType: "enum", enumValues: []string{"sandbox", "production"}},
-	"shipping_fallback_flat_rate":  {group: "shipping", valueType: "string"},
-	"biteship_api_key":             {group: "shipping", valueType: "string", secret: true},
+	"midtrans_server_key":            {group: "payment", valueType: "string", secret: true},
+	"midtrans_client_key":            {group: "payment", valueType: "string", secret: true},
+	"midtrans_env":                   {group: "payment", valueType: "enum", enumValues: []string{"sandbox", "production"}},
+	"shipping_fallback_flat_rate":    {group: "shipping", valueType: "string"},
+	"biteship_api_key":               {group: "shipping", valueType: "string", secret: true},
 }
 
 // encryptConfigValue encrypts plaintext with AES-256-GCM.

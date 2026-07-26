@@ -1,14 +1,10 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 
 	"akademi-bimbel/internal/model"
 )
-
-// ErrInvalidSpecs is returned when a product specification array is malformed.
-var ErrInvalidSpecs = errors.New("invalid product specs")
 
 const (
 	maxSpecRows     = 30

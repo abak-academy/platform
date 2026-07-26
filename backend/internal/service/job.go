@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -13,11 +12,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
-)
-
-var (
-	ErrUploadNotFound = errors.New("upload not found")
-	ErrJobNotFound    = errors.New("job not found")
 )
 
 type PrivateUploadURL struct {

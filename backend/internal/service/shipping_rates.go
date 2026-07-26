@@ -1,11 +1,5 @@
 package service
 
-import "errors"
-
-// ErrShippingUnavailable means no carrier quote could be obtained and no
-// flat-rate fallback is configured.
-var ErrShippingUnavailable = errors.New("shipping is unavailable")
-
 // resolveShippingRates decides what the storefront may show for a shipping
 // quote. Carrier quotes win. Otherwise the configured flat rate stands in,
 // explicitly flagged as an estimate. If neither exists the caller gets an

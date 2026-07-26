@@ -31,23 +31,6 @@ type UserRepository interface {
 	TombstoneUser(ctx context.Context, userID string) error
 }
 
-var (
-	ErrEmailTaken          = errors.New("email already registered")
-	ErrInvalidCredentials  = errors.New("invalid credentials")
-	ErrOTPRateLimit        = errors.New("otp requested too recently")
-	ErrOTPExpired          = errors.New("otp expired")
-	ErrInvalidOTP          = errors.New("invalid otp")
-	ErrInvalidPendingToken = errors.New("invalid pending token")
-	ErrInvalidRefreshToken = errors.New("invalid refresh token")
-	ErrUserNotFound        = errors.New("user not found")
-	ErrInvalidResetToken   = errors.New("invalid reset token")
-	ErrAccountDeactivated  = errors.New("account deactivated")
-	ErrWeakPassword        = errors.New("password too weak")
-	ErrInvalidToken        = errors.New("invalid token")
-	ErrInvalidUUID         = errors.New("invalid uuid")
-	ErrVerificationPending = errors.New("email verification pending")
-)
-
 const minPasswordLen = 8
 
 func (s *Service) Register(ctx context.Context, email, password, name string) (pendingToken string, err error) {

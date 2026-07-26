@@ -13,9 +13,6 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-// ErrTopicNotFound is returned when a topic lookup fails.
-var ErrTopicNotFound = errors.New("topic not found")
-
 func validateTopic(t model.ExamTopic) error {
 	if strings.TrimSpace(t.Name) == "" {
 		return fmt.Errorf("%w: topic name required", ErrValidation)

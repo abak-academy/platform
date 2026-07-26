@@ -15,25 +15,6 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-var (
-	ErrForbidden               = errors.New("forbidden")
-	ErrProductNotFound         = errors.New("product not found")
-	ErrCourseNotFound          = errors.New("course not found")
-	ErrInvalidPromo            = errors.New("invalid or expired promo code")
-	ErrPromoMinOrder           = errors.New("order subtotal below promo minimum")
-	ErrOutOfStock              = errors.New("product out of stock")
-	ErrInsufficientStock       = errors.New("insufficient stock")
-	ErrOrderNotEditable        = errors.New("order not editable")
-	ErrOrderNotFound           = errors.New("order not found")
-	ErrMustShipBeforeComplete  = errors.New("order has physical items — must be shipped before completing")
-	ErrInvalidSignature        = errors.New("invalid signature")
-	ErrCourseLinkRequired      = errors.New("course product requires at least one linked course")
-	ErrExamLinkRequired        = errors.New("exam product requires at least one linked exam")
-	ErrShippingRequired        = errors.New("order requires a shipping selection before checkout")
-	ErrInvalidCourierSelection = errors.New("selected courier is not available for this destination")
-	ErrBiodataIncomplete       = errors.New("lengkapi biodata (sekolah, kelas, tanggal lahir) sebelum mendaftar ujian")
-)
-
 // biodataComplete reports whether a student has the biodata required to register
 // for an exam: a school (listed or unlisted), a class/grade, and a date of birth.
 func biodataComplete(u *model.User) bool {

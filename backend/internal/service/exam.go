@@ -21,14 +21,6 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-var (
-	ErrTestNotFound         = errors.New("test not found")
-	ErrQuestionNotFound     = errors.New("question not found")
-	ErrExamNotFound         = errors.New("exam not found")
-	ErrRegistrationNotFound = errors.New("registration not found")
-	ErrValidation           = errors.New("validation failed")
-)
-
 var validQuestionFormats = map[string]bool{
 	"mcq":          true,
 	"multi_answer": true,

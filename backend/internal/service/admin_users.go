@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,17 +10,6 @@ import (
 	"akademi-bimbel/internal/repository"
 
 	"golang.org/x/crypto/bcrypt"
-)
-
-var (
-	ErrCannotDeactivateSelf = errors.New("cannot deactivate your own account")
-	ErrInvalidAdminRole     = errors.New("role must be an admin role")
-	ErrInvalidRoleFilter    = errors.New("invalid role filter")
-	ErrInvalidStatusFilter  = errors.New("invalid status filter")
-	ErrAccountNoEmail       = errors.New("account has no email for reset")
-	ErrMissingField         = errors.New("missing required field")
-	ErrSchoolRequired       = errors.New("school_id is required for admin_school role")
-	ErrSchoolNotAllowed     = errors.New("school_id must be empty for this role")
 )
 
 // adminRoles is the set of valid admin roles assignable via system endpoints.

@@ -357,8 +357,6 @@ func (s *Service) GetCourseWithProgress(ctx context.Context, studentID, courseID
 
 // --- Student-facing course methods ---
 
-var ErrNoCourseAccess = errors.New("no active course access")
-
 func (s *Service) MarkLessonComplete(ctx context.Context, studentID, courseID, lessonID string) error {
 	sID, err := parseUUID(studentID)
 	if err != nil {
