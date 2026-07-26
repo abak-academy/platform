@@ -107,7 +107,7 @@ export interface User {
   otp_enabled?: boolean;
   phone?: string;
   nis?: string;
-  grade?: string;
+  grade?: number;
   target_exam?: string;
   alamat_domisili?: string;
   dob?: string;
@@ -147,6 +147,8 @@ export interface Product {
   weight_grams?: number;
   image_url?: string;
   specs?: ProductSpec[];
+  available_from?: string | null;
+  available_until?: string | null;
   course_ids?: string[];
   exam_ids?: string[];
   created_at?: string;
@@ -162,6 +164,8 @@ export interface AdminCreateProductInput {
   weight_grams?: number;
   image_url?: string;
   specs?: ProductSpec[];
+  available_from?: string | null;
+  available_until?: string | null;
   course_ids?: string[];
   exam_ids?: string[];
 }
@@ -175,6 +179,8 @@ export interface AdminUpdateProductInput {
   weight_grams?: number;
   image_url?: string;
   specs?: ProductSpec[];
+  available_from?: string | null;
+  available_until?: string | null;
   course_ids?: string[];
   exam_ids?: string[];
 }
@@ -220,7 +226,6 @@ export interface Order {
   payment_expires_at?: string;
   paid_at?: string;
   invoice_url?: string;
-  estimated_delivery_days?: string;
   checked_out_at?: string;
   completed_at?: string;
   cancelled_at?: string;
@@ -368,6 +373,8 @@ export interface CheckoutResult {
   gateway_ref?: string;
   payment_url?: string;
   payment_expires_at?: string;
+  // free is true when a zero-total order was settled without the payment gateway.
+  free?: boolean;
 }
 
 export interface DashboardCourseSummary {
@@ -633,6 +640,9 @@ export interface Exam {
   result_config?: string;
   result_release_at?: string | null;
   certificate_template?: string;
+  certificate_background_key?: string | null;
+  certificate_layout?: CertificateLayout | null;
+  certificate_design_updated_at?: string | null;
   status?: string;
   mode?: string;
   created_at?: string;
@@ -673,7 +683,6 @@ export interface CreateExamPayload {
   requires_checkin?: boolean;
   allow_leaderboard?: boolean;
   randomize?: boolean;
-  certificate_template?: string;
   mode?: string;
   result_config?: ExamResultConfig;
   result_release_at?: string | null;
@@ -692,13 +701,51 @@ export interface UpdateExamPayload {
   requires_checkin?: boolean;
   allow_leaderboard?: boolean;
   randomize?: boolean;
-  certificate_template?: string;
   mode?: string;
   result_config?: ExamResultConfig;
   result_release_at?: string | null;
   check_in_window_minutes?: number | null;
   grace_window_minutes?: number | null;
   max_attempts?: number | null;
+}
+
+// ── Certificate design (admin editor, FR-17/18/25) ───────────────────────
+// Mirrors service.Layout / service.LayoutField / service.CertificateDesignResponse
+// in the backend (internal/service/certificate_layout.go, internal/service/exam.go).
+
+export interface CertificateLayoutField {
+  id: string;
+  x_mm: number;
+  y_mm: number;
+  w_mm: number;
+  align: string;
+  font?: string;
+  weight?: string;
+  size_pt?: number;
+  color?: string;
+  visible: boolean;
+  h_mm?: number;
+}
+
+export interface CertificateLayout {
+  page: { width_mm: number; height_mm: number };
+  background: { kind: string; ref: string };
+  fields: CertificateLayoutField[];
+  signature_key?: string | null;
+}
+
+export interface CertificateDesign {
+  template: string;
+  background_key: string | null;
+  background_url: string | null;
+  signature_url: string | null;
+  layout: CertificateLayout;
+}
+
+export interface CertificateDesignInput {
+  template: string;
+  background_key: string | null;
+  layout: CertificateLayout;
 }
 
 // ── Session engine types (FR26) ──────────────────────────────────────────
@@ -856,7 +903,7 @@ export interface RegistrationListItem {
   student_id: string;
   exam_id: string;
   token: string;
-  card_pdf_url: string | null;
+  card_key: string | null;
   checked_in_at: string | null;
   attempts_used: number;
   status: string;
@@ -875,11 +922,15 @@ export interface RegistrationDetail {
   student_id: string;
   exam_id: string;
   token: string;
-  card_pdf_url: string | null;
+  card_key: string | null;
   checked_in_at: string | null;
   attempts_used: number;
   status: string;
   created_at: string;
+  participant_number: number | null;
+  participant_no: string;
+  subject: string;
+  platform: string;
   exam: {
     id: string;
     title: string;
@@ -959,6 +1010,20 @@ export interface ExamLeaderboardEntry {
   student_id: string;
   student_name: string;
   score: number;
+}
+
+// ExamRosterEntry is one row of the admin participant roster (FR-32,
+// GET /admin/exams/:id/registrations). participant_number/participant_no are
+// empty/absent for registrations predating the FR-24 backfill.
+export interface ExamRosterEntry {
+  registration_id: string;
+  student_id: string;
+  student_name: string;
+  student_username?: string | null;
+  participant_number?: number | null;
+  participant_no: string;
+  status: string;
+  checked_in_at?: string | null;
 }
 
 export interface ScoreBucket {

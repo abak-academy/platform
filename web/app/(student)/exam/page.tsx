@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { downloadCard, useCheckIn, useRegistrations, useStartSession } from "@/lib/hooks/exam";
+import { useCheckIn, useRegistrations, useStartSession } from "@/lib/hooks/exam";
 import { useTranslation } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -168,7 +168,6 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
   const router = useRouter();
   const [token, setToken] = useState("");
   const [now, setNow] = useState(() => Date.now());
-  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
@@ -205,15 +204,8 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
     }
   };
 
-  const handleDownload = async () => {
-    setDownloading(true);
-    try {
-      await downloadCard(reg.id);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("competition_error"));
-    } finally {
-      setDownloading(false);
-    }
+  const handleDownload = () => {
+    router.push(`/exam/${reg.id}/card`);
   };
 
   return (
@@ -282,7 +274,6 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
               variant="outline"
               className="shrink-0 rounded-full"
               onClick={handleDownload}
-              disabled={downloading}
             >
               <Download className="mr-1 size-3.5" />
               {t("download_card")}

@@ -19,3 +19,5 @@ object_storage_use_ssl: true
 object_storage_region: "asia-southeast2"
 object_storage_bucket_name: "abak_std"
 object_storage_private_bucket_name: "abak_std"
+
+gotenberg_url: "http://gotenberg:3000"

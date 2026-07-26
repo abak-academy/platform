@@ -16,6 +16,21 @@ jobs:
       - name: pipeline
         run: ./deploy/pipeline/backend.sh
 
+  render-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: backend/go.sum
+      # pdftoppm rasterizes the rendered PDF for the gate's pixel assertions;
+      # without it renderToPNG skips and the gate silently stops checking layout.
+      - name: install poppler-utils
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - name: certificate render gate
+        run: ./deploy/pipeline/backend-render-gate.sh
+
   frontend:
     runs-on: ubuntu-latest
     steps:
@@ -30,7 +45,7 @@ jobs:
 
   images:
     if: github.ref == 'refs/heads/main'
-    needs: [backend, frontend]
+    needs: [backend, render-gate, frontend]
     runs-on: ubuntu-latest
     permissions:
       contents: read

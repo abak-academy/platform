@@ -44,6 +44,7 @@ var configKeyCatalog = map[string]configKeyDef{
 	"app_city_id":                  {group: "app", valueType: "string"},
 	"app_district_id":              {group: "app", valueType: "string"},
 	"app_kode_pos":                 {group: "app", valueType: "string"},
+	"exam_platform":                {group: "app", valueType: "string"},
 	"notify_on_purchase_admin_store": {group: "notification", valueType: "bool"},
 	"notify_on_purchase_admin_exam":  {group: "notification", valueType: "bool"},
 	"midtrans_server_key":          {group: "payment", valueType: "string", secret: true},

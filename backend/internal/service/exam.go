@@ -1,15 +1,21 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/microcosm-cc/bluemonday"
+	"github.com/minio/minio-go/v7"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -637,9 +643,20 @@ func validateExam(e model.Exam) error {
 	if e.ResultConfig != "" && !validResultConfigs[e.ResultConfig] {
 		return fmt.Errorf("%w: result_config must be hidden, score_only, or score_pembahasan", ErrValidation)
 	}
-	if e.CertificateTemplate != "" {
-		if err := validateCertificateTemplate(e.CertificateTemplate); err != nil {
-			return err
+	if e.CertificateDesign != nil {
+		design, err := parseCertificateDesign(e.CertificateDesign)
+		if err != nil {
+			return fmt.Errorf("%w: invalid certificate design json", ErrValidation)
+		}
+		if design.Template != "" {
+			if err := validateCertificateTemplate(design.Template); err != nil {
+				return err
+			}
+		}
+		if len(design.Fields) > 0 {
+			if err := ValidateLayout(design.Layout); err != nil {
+				return err
+			}
 		}
 	}
 	if e.CheckInWindowMinutes != nil && *e.CheckInWindowMinutes < 0 {
@@ -662,6 +679,22 @@ func validateExam(e model.Exam) error {
 	return nil
 }
 
+// formatExamNumber renders an exam's human-friendly serial zero-padded to a
+// minimum of 4 digits (FR-23). "%04d" pads but never truncates, so numbers
+// past 9999 simply grow wider instead of being capped.
+func formatExamNumber(n int) string {
+	return fmt.Sprintf("%04d", n)
+}
+
+// formatParticipantNo composes the FR-24 display string
+// "YYMMDD-<exam_number(pad4)>-<participant_number(pad6)>" from a date prefix
+// (already converted to the desired timezone by the caller), exam number, and
+// participant number. Shared by GetExamRegistration and AdminGetExamRoster —
+// keep byte-identical to preserve existing display output.
+func formatParticipantNo(prefix time.Time, examNumber, participantNumber int) string {
+	return fmt.Sprintf("%s-%s-%06d", prefix.Format("060102"), formatExamNumber(examNumber), participantNumber)
+}
+
 // CreateExam creates a standalone exam — no product is created here. Selling the
 // exam is a separate step: attach it to a Product via the generic Product flow
 // (POST/PATCH /admin/products with exam_ids), mirroring how course-type products
@@ -669,9 +702,6 @@ func validateExam(e model.Exam) error {
 func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, error) {
 	if m.ResultConfig == "" {
 		m.ResultConfig = "hidden"
-	}
-	if m.CertificateTemplate == "" {
-		m.CertificateTemplate = "classic"
 	}
 	if m.Status == "" {
 		m.Status = "draft"
@@ -701,6 +731,16 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 	}
 	m.ID = id
 	m.CreatedAt = existing.CreatedAt
+	// C3/FR-14: template, background key, and layout now share one JSON blob
+	// (Task 8/FR-26), so a single raw-bytes compare on that blob is the whole
+	// staleness check — bump only when it actually changed, so an unrelated
+	// field edit doesn't falsely mark the design stale.
+	if !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign) {
+		now := time.Now()
+		m.CertificateDesignUpdatedAt = &now
+	} else {
+		m.CertificateDesignUpdatedAt = existing.CertificateDesignUpdatedAt
+	}
 	if err := s.storeRepo.UpdateExam(ctx, id, &m); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return model.Exam{}, ErrExamNotFound
@@ -708,6 +748,134 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 		return model.Exam{}, err
 	}
 	return m, nil
+}
+
+func rawMessagePtrEqual(a, b *json.RawMessage) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return string(*a) == string(*b)
+}
+
+// CertificateDesignResponse is the admin editor's read model for GET
+// certificate-design: the current template, a freshly presigned background URL
+// for display (FR-18 — the URL is signed per read, never persisted), and the
+// resolved layout — the built-in default when the admin has not saved one yet
+// (FR-29). BackgroundKey is also returned because the PUT replaces the design
+// wholesale: without it an editor that never touches the background has nothing
+// to send back and would erase the persisted upload.
+type CertificateDesignResponse struct {
+	Template      string  `json:"template"`
+	BackgroundKey *string `json:"background_key"`
+	BackgroundURL *string `json:"background_url"`
+	SignatureURL  *string `json:"signature_url"`
+	Layout        Layout  `json:"layout"`
+}
+
+// GetCertificateDesign returns the certificate design the admin editor renders:
+// template, a presigned URL for any custom background, and the resolved layout.
+func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*CertificateDesignResponse, error) {
+	exam, err := s.storeRepo.GetExamByID(ctx, examID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrExamNotFound
+		}
+		return nil, err
+	}
+
+	layout, err := resolveCertificateLayout(exam)
+	if err != nil {
+		return nil, err
+	}
+
+	bgKey := certificateBackgroundKey(exam)
+	var bgURL *string
+	if bgKey != nil {
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *bgKey, time.Hour)
+		if err != nil {
+			return nil, fmt.Errorf("presign certificate background: %w", err)
+		}
+		bgURL = &signed
+	}
+
+	var sigURL *string
+	if layout.SignatureKey != nil && *layout.SignatureKey != "" {
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *layout.SignatureKey, time.Hour)
+		if err != nil {
+			return nil, fmt.Errorf("presign certificate signature: %w", err)
+		}
+		sigURL = &signed
+	}
+
+	return &CertificateDesignResponse{
+		Template:      certificateTemplate(exam),
+		BackgroundKey: bgKey,
+		BackgroundURL: bgURL,
+		SignatureURL:  sigURL,
+		Layout:        layout,
+	}, nil
+}
+
+// GetCertificatePreviewWithLayout previews a certificate like GetCertificatePreview,
+// but lets the editor supply an unsaved layout so an admin can see a change before
+// saving it (still through the Task 5 render engine, FR-4). A nil override delegates
+// to GetCertificatePreview unchanged.
+func (s *Service) GetCertificatePreviewWithLayout(ctx context.Context, examID uuid.UUID, templateOverride string, layoutOverride *Layout) ([]byte, error) {
+	if layoutOverride == nil {
+		return s.GetCertificatePreview(ctx, examID, templateOverride)
+	}
+	if err := ValidateLayout(*layoutOverride); err != nil {
+		return nil, err
+	}
+
+	exam, err := s.storeRepo.GetExamByID(ctx, examID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrExamNotFound
+		}
+		return nil, err
+	}
+
+	storedTmpl := certificateTemplate(exam)
+	tmpl := templateOverride
+	if tmpl == "" {
+		tmpl = storedTmpl
+	}
+	if err := validateCertificateTemplate(tmpl); err != nil {
+		return nil, err
+	}
+
+	previewDesign := certificateDesign{Template: tmpl}
+	if templateOverride == "" || templateOverride == storedTmpl {
+		previewDesign.BackgroundKey = certificateBackgroundKey(exam)
+	}
+	raw, err := marshalCertificateDesign(previewDesign)
+	if err != nil {
+		return nil, err
+	}
+	previewExam := *exam
+	previewExam.CertificateDesign = raw
+
+	bg, err := s.resolveCertificateBackground(ctx, &previewExam)
+	if err != nil {
+		return nil, fmt.Errorf("resolve certificate background: %w", err)
+	}
+
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		return nil, err
+	}
+	vals := certificateFieldValues(exam.Title, previewStudentName, time.Now().In(loc).Format("2 January 2006"), previewCertificateNumber)
+
+	images, err := s.resolveCertificateSignatureImages(ctx, *layoutOverride)
+	if err != nil {
+		return nil, err
+	}
+	html, err := buildCertificateHTML(*layoutOverride, vals, bg, images)
+	if err != nil {
+		return nil, fmt.Errorf("build certificate html: %w", err)
+	}
+	return s.renderer.RenderHTML(ctx, html)
 }
 
 func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testIDs []uuid.UUID) error {
@@ -808,32 +976,239 @@ func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID stri
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrRegistrationNotFound
 	}
+	if err == nil && detail != nil {
+		if detail.ParticipantNumber != nil {
+			// Prefix by the exam's scheduled date (WIB), falling back to the
+			// registration date when the exam is not yet scheduled.
+			prefix := detail.CreatedAt
+			if detail.Exam.ScheduledAt != nil {
+				prefix = *detail.Exam.ScheduledAt
+			}
+			if wib, e := time.LoadLocation("Asia/Jakarta"); e == nil {
+				prefix = prefix.In(wib)
+			}
+			examNo := 0
+			if detail.Exam.ExamNumber != nil {
+				examNo = *detail.Exam.ExamNumber
+			}
+			detail.ParticipantNo = formatParticipantNo(prefix, examNo, *detail.ParticipantNumber)
+		}
+		// Platform/Ruang is a single system-config value (one platform for all exams).
+		detail.Platform = examPlatformDefault
+		if cfg, cErr := s.GetSystemConfig(ctx); cErr == nil {
+			if v := cfg["exam_platform"]; v != "" {
+				detail.Platform = v
+			}
+		}
+	}
 	return detail, err
 }
 
-func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) ([]byte, string, error) {
+// examPlatformDefault is used when the exam_platform system-config key is unset.
+const examPlatformDefault = "exam.abakacademy.id"
+
+// AdminGetExamRoster returns the read-only admin participant roster for an
+// exam (FR-32): every registration joined with student name/username, with
+// each row's FR-24 display participant number composed here (nil-safe — rows
+// without a stored participant_number keep ParticipantNo empty rather than
+// crashing or showing a bogus number). schoolFilter, when non-nil, restricts
+// the roster to that school's students (admin_school tenant isolation).
+func (s *Service) AdminGetExamRoster(ctx context.Context, examID uuid.UUID, schoolFilter *string) ([]model.ExamRosterEntry, error) {
+	rows, err := s.storeRepo.GetExamRoster(ctx, examID, schoolFilter)
+	if err != nil {
+		return nil, err
+	}
+	wib, _ := time.LoadLocation("Asia/Jakarta")
+	for i := range rows {
+		if rows[i].ParticipantNumber == nil {
+			continue
+		}
+		prefix := rows[i].RegisteredAt
+		if rows[i].ExamScheduledAt != nil {
+			prefix = *rows[i].ExamScheduledAt
+		}
+		if wib != nil {
+			prefix = prefix.In(wib)
+		}
+		examNo := 0
+		if rows[i].ExamNumber != nil {
+			examNo = *rows[i].ExamNumber
+		}
+		rows[i].ParticipantNo = formatParticipantNo(prefix, examNo, *rows[i].ParticipantNumber)
+	}
+	return rows, nil
+}
+
+// GetExamCard returns a freshly presigned URL for the exam card PDF, generating
+// it once via Gotenberg and caching the object key thereafter (FR-30):
+// buildCardHTML → RenderHTML → object-store put → card_key persisted → fresh
+// presigned GET. A registration with a CardKey already set is presigned
+// straight away, so a repeated download never re-renders — and the API is never
+// the data-transfer path for the PDF bytes themselves.
+func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (string, string, error) {
 	detail, err := s.GetExamRegistration(ctx, regID, studentID)
 	if err != nil {
-		return nil, "", err
+		return "", "", err
 	}
+	filename := "kartu-peserta-" + detail.Token + ".pdf"
+
+	if detail.CardKey != nil && *detail.CardKey != "" {
+		signed, err := s.presignCardURL(ctx, *detail.CardKey, filename)
+		if err != nil {
+			return "", "", err
+		}
+		return signed, filename, nil
+	}
+
 	studentName := ""
+	photoURL := ""
 	user, err := s.Me(ctx, studentID)
 	if err == nil && user != nil {
 		studentName = user.Name
+		if user.PhotoURL != nil {
+			photoURL = *user.PhotoURL
+		}
 	}
 	tenantName := ""
+	logoURL := ""
 	cfg, err := s.GetSystemConfig(ctx)
 	if err == nil && cfg != nil {
 		if v, ok := cfg["app_name"]; ok && v != "" {
 			tenantName = v
 		}
+		if v, ok := cfg["app_logo_url"]; ok && v != "" {
+			logoURL = v
+		}
 	}
 	if tenantName == "" {
 		tenantName = "Akademi Bimbel"
 	}
-	pdf, err := generateExamCardPDF(detail, studentName, tenantName)
+	// The two images have different trust levels and so different loaders: the
+	// student-controlled photo is read from our own storage BY KEY and never
+	// causes an outbound request (the host in a stored proxy URL is ignored),
+	// while the super_admin-configured logo may legitimately be an external
+	// https URL and is fetched under the restrictions in card_logo.go. Failure
+	// is non-fatal (nil bytes) so a missing asset never blocks generation (FR-21).
+	logoImg := s.loadCardLogoImage(ctx, logoURL)
+	photoImg := s.loadCardAvatarImage(ctx, photoURL)
+
+	html, err := buildCardHTML(detail, studentName, tenantName, logoImg, photoImg)
 	if err != nil {
-		return nil, "", err
+		return "", "", err
 	}
-	return pdf, "kartu-peserta-" + detail.Token + ".pdf", nil
+	pdf, err := s.renderer.RenderHTML(ctx, html)
+	if err != nil {
+		return "", "", fmt.Errorf("generate card pdf: %w", err)
+	}
+	regUUID, err := uuid.Parse(regID)
+	if err != nil {
+		return "", "", fmt.Errorf("%w: invalid registration id", ErrValidation)
+	}
+	key, err := s.uploadCardPDF(ctx, regUUID, pdf)
+	if err != nil {
+		return "", "", fmt.Errorf("upload card pdf: %w", err)
+	}
+	if err := s.storeRepo.UpdateRegistrationCard(ctx, regUUID, key); err != nil {
+		return "", "", fmt.Errorf("persist card key: %w", err)
+	}
+
+	signed, err := s.presignCardURL(ctx, key, filename)
+	if err != nil {
+		return "", "", err
+	}
+	return signed, filename, nil
+}
+
+// cardURLTTL bounds how long a signed card-download link stays valid. Short,
+// because the link is handed straight to the browser on each request.
+const cardURLTTL = 15 * time.Minute
+
+// presignCardURL signs a time-limited GET for a stored card PDF. The bucket is
+// private, so every read signs afresh rather than persisting a URL. The
+// response-content-disposition parameter makes the object download under the
+// card's own filename even though the client is fetching an opaque object key.
+func (s *Service) presignCardURL(ctx context.Context, key, filename string) (string, error) {
+	if s.storage == nil {
+		return "", errors.New("storage not configured")
+	}
+	params := url.Values{}
+	params.Set("response-content-disposition", `attachment; filename="`+filename+`"`)
+	u, err := s.presignStorage().PresignedGetObject(ctx, s.cfg.ObjectStorageBucketName, key, cardURLTTL, params)
+	if err != nil {
+		return "", fmt.Errorf("presign card url: %w", err)
+	}
+	return u.String(), nil
+}
+
+// uploadCardPDF uploads the rendered card PDF at cards/<regID>.pdf and returns
+// its object key. The bucket is private (mirrors uploadCertificatePDF).
+func (s *Service) uploadCardPDF(ctx context.Context, regID uuid.UUID, pdf []byte) (string, error) {
+	if s.storage == nil {
+		return "", errors.New("storage not configured")
+	}
+	bucket := s.cfg.ObjectStorageBucketName
+	key := fmt.Sprintf("cards/%s.pdf", regID.String())
+	if _, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(pdf), int64(len(pdf)), minio.PutObjectOptions{
+		ContentType: "application/pdf",
+	}); err != nil {
+		return "", err
+	}
+	return key, nil
+}
+
+// downloadCardPDF fetches a previously-generated card PDF from the private
+// bucket by its object key (mirrors downloadCertificateBackground).
+func (s *Service) downloadCardPDF(ctx context.Context, key string) ([]byte, error) {
+	if s.storage == nil {
+		return nil, errors.New("storage not configured")
+	}
+	obj, err := s.storage.GetObject(ctx, s.cfg.ObjectStorageBucketName, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Close()
+	if _, err := obj.Stat(); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(obj)
+}
+
+// avatarKeyFromStored extracts the object key from a stored avatar reference —
+// either an "<api-base>/files/<key>" proxy URL or a bare key — and returns ""
+// for anything that isn't an avatars/ object. Only the key is used; the host
+// in a stored URL is ignored, so a student-supplied photo_url cannot cause an
+// outbound (SSRF) request during card generation.
+func avatarKeyFromStored(stored string) string {
+	if stored == "" {
+		return ""
+	}
+	key := stored
+	if i := strings.Index(stored, "/files/"); i >= 0 {
+		key = stored[i+len("/files/"):]
+	}
+	key = strings.TrimPrefix(key, "/")
+	if !strings.HasPrefix(key, "avatars/") || strings.Contains(key, "..") {
+		return ""
+	}
+	return key
+}
+
+// loadCardAvatarImage best-effort reads an avatar image from object storage by
+// key. Any failure returns nil rather than an error — a missing/unreadable
+// asset must never fail card generation (FR-21).
+func (s *Service) loadCardAvatarImage(ctx context.Context, stored string) []byte {
+	key := avatarKeyFromStored(stored)
+	if key == "" {
+		return nil
+	}
+	obj, _, err := s.OpenAvatar(ctx, key)
+	if err != nil {
+		return nil
+	}
+	defer obj.Close()
+	data, err := io.ReadAll(io.LimitReader(obj, 5<<20))
+	if err != nil {
+		return nil
+	}
+	return data
 }

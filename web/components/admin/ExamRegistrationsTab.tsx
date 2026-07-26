@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle, Loader2 } from "lucide-react";
+import { ArrowUpDown, CheckCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { ParticipantPicker } from "@/components/admin/ParticipantPicker";
@@ -14,11 +14,148 @@ import {
   useCreateBulkExamOrder,
 } from "@/lib/hooks/admin-bulk-exam-orders";
 import { useGrantExamAccess } from "@/lib/hooks/admin-exam-grants";
+import { useExamRoster } from "@/lib/hooks/admin-exams";
 import { useAuthStore } from "@/stores/auth";
+import type { ExamRosterEntry } from "@/lib/types";
 
 interface ExamRegistrationsTabProps {
   examId: string;
   examName: string;
+}
+
+// csvField quotes a CSV field only when it needs it (contains a comma, quote,
+// or newline), doubling embedded quotes per RFC 4180 — student names can
+// contain commas.
+//
+// A field whose first character is one a spreadsheet reads as the start of a
+// formula is additionally prefixed with a single quote and force-quoted:
+// student names are attacker-supplied at registration, so without this a name
+// like `=HYPERLINK(...)` executes when an admin opens the export in Excel or
+// Sheets.
+const FORMULA_LEAD = /^[=+\-@\t\r]/;
+
+function csvField(value: string): string {
+  const neutralized = FORMULA_LEAD.test(value) ? `'${value}` : value;
+  if (neutralized !== value || /[",\n]/.test(neutralized)) {
+    return `"${neutralized.replace(/"/g, '""')}"`;
+  }
+  return neutralized;
+}
+
+function downloadRosterCSV(rows: ExamRosterEntry[]): void {
+  const header = ["No. Peserta", "Nama", "Username", "Status", "Checked In"];
+  const lines = rows.map((r) =>
+    [
+      r.participant_no || "",
+      r.student_name,
+      r.student_username ?? "",
+      r.status,
+      r.checked_in_at ? "yes" : "no",
+    ]
+      .map(csvField)
+      .join(","),
+  );
+  const csv = [header.join(","), ...lines].join("\n") + "\n";
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "roster.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ExamRosterSection is the FR-32 read-only participant roster: a sortable
+// "No. Peserta" table (rows without a stored participant_number sort last and
+// render "—" rather than a bogus number) plus a client-side CSV export.
+function ExamRosterSection({ examId }: { examId: string }) {
+  const { t } = useTranslation();
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const { data, isLoading, isError } = useExamRoster(examId);
+
+  const rows = useMemo(() => {
+    const list = data?.data ?? [];
+    const sorted = [...list].sort((a, b) => {
+      const an = a.participant_number ?? Number.MAX_SAFE_INTEGER;
+      const bn = b.participant_number ?? Number.MAX_SAFE_INTEGER;
+      return an - bn;
+    });
+    return sortDir === "asc" ? sorted : sorted.reverse();
+  }, [data, sortDir]);
+
+  return (
+    <section className="md-card-outlined space-y-3 p-5">
+      <div className="flex items-center justify-between">
+        <h3 className="font-serif text-base font-semibold text-ink-900">
+          {t("exam_roster_title")}
+        </h3>
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-full"
+          disabled={rows.length === 0}
+          onClick={() => downloadRosterCSV(rows)}
+        >
+          {t("exam_roster_export_csv")}
+        </Button>
+      </div>
+
+      {isError && <p className="text-sm text-danger">{t("exam_roster_load_failed")}</p>}
+
+      {!isError && isLoading && (
+        <p className="text-sm text-ink-500">…</p>
+      )}
+
+      {!isError && !isLoading && rows.length === 0 && (
+        <p className="text-sm text-ink-500">{t("exam_roster_empty")}</p>
+      )}
+
+      {!isError && !isLoading && rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-line text-ink-500">
+                <th className="py-2 pr-3 font-medium">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1"
+                    onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                  >
+                    {t("exam_roster_th_participant_no")}
+                    <ArrowUpDown className="size-3.5" />
+                  </button>
+                </th>
+                <th className="py-2 pr-3 font-medium">{t("exam_roster_th_name")}</th>
+                <th className="py-2 pr-3 font-medium">{t("exam_roster_th_username")}</th>
+                <th className="py-2 pr-3 font-medium">{t("exam_roster_th_status")}</th>
+                <th className="py-2 font-medium">{t("exam_roster_th_checked_in")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.registration_id} className="border-b border-line/50">
+                  <td
+                    data-testid="roster-participant-no"
+                    className="py-2 pr-3 font-medium text-ink-900"
+                  >
+                    {r.participant_no || "—"}
+                  </td>
+                  <td className="py-2 pr-3 text-ink-900">{r.student_name}</td>
+                  <td className="py-2 pr-3 text-ink-500">
+                    {r.student_username ? `@${r.student_username}` : "—"}
+                  </td>
+                  <td className="py-2 pr-3">{r.status}</td>
+                  <td className="py-2">{r.checked_in_at ? "✓" : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
 }
 
 // admin_school orders (Midtrans-paid); super_admin grants directly (no order,
@@ -167,6 +304,8 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
   return (
     <div className="space-y-6">
+      <ExamRosterSection examId={examId} />
+
       <section>
         <h3 className="font-serif text-base font-semibold text-ink-900">
           {t("bulk_exam_order_pick_participants")}

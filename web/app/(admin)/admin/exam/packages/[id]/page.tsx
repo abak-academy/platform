@@ -13,6 +13,7 @@ import {
   Trophy,
   Users,
 } from "lucide-react";
+import { CertificateDesignTab } from "@/components/admin/CertificateDesignTab";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
@@ -45,6 +46,7 @@ const SCHOOL_SCOPED_TABS: Tab[] = ["overview", "registrations"];
 type Tab =
   | "overview"
   | "tests"
+  | "certificate"
   | "registrations"
   | "results"
   | "grading"
@@ -53,6 +55,7 @@ type Tab =
 const TAB_ORDER: Tab[] = [
   "overview",
   "tests",
+  "certificate",
   "registrations",
   "results",
   "grading",
@@ -585,6 +588,10 @@ export default function ExamPackageDetailPage() {
                 )}
               </div>
             </div>
+          )}
+
+          {tab === "certificate" && (
+            <CertificateDesignTab examId={id} exam={data} onSaved={refetch} />
           )}
 
           {tab === "registrations" && (

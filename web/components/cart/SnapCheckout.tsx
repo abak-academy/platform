@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCheckout, ordersKeys } from "@/lib/hooks/orders";
+import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
 export interface SnapCheckoutProps {
@@ -22,7 +23,13 @@ export function SnapCheckout({ orderId, basePath = "/orders", disabled }: SnapCh
     if (!orderId) return;
     checkout.mutate(orderId, {
       onSuccess: (data) => {
-        if (data.payment_url) {
+        if (data.free) {
+          qc.invalidateQueries({ queryKey: ordersKeys.all });
+          toast.success("Pesanan gratis berhasil diproses.");
+          if (basePath === "/orders") {
+            router.push(`/orders/${orderId}`);
+          }
+        } else if (data.payment_url) {
           window.open(data.payment_url, "_blank");
           toast.info("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
         } else if (data.snap_token) {
@@ -33,6 +40,11 @@ export function SnapCheckout({ orderId, basePath = "/orders", disabled }: SnapCh
         }
       },
       onError: (err) => {
+        if (err instanceof ApiError && err.code === "biodata_incomplete") {
+          toast.error(err.message);
+          router.push("/profile");
+          return;
+        }
         toast.error(err instanceof Error ? err.message : "Gagal memulai checkout.");
       },
     });

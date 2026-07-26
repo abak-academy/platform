@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/model"
@@ -75,16 +76,18 @@ func (h *Handler) AdminListProducts(c echo.Context) error {
 
 func (h *Handler) AdminCreateProduct(c echo.Context) error {
 	var req struct {
-		Type        string              `json:"type"`
-		Name        string              `json:"name"`
-		Description string              `json:"description"`
-		Price       int64               `json:"price"`
-		Stock       int                 `json:"stock"`
-		WeightGrams int                 `json:"weight_grams"`
-		ImageURL    string              `json:"image_url"`
-		Specs       []model.ProductSpec `json:"specs"`
-		CourseIDs   []string            `json:"course_ids"`
-		ExamIDs     []string            `json:"exam_ids"`
+		Type           string              `json:"type"`
+		Name           string              `json:"name"`
+		Description    string              `json:"description"`
+		Price          int64               `json:"price"`
+		Stock          int                 `json:"stock"`
+		WeightGrams    int                 `json:"weight_grams"`
+		ImageURL       string              `json:"image_url"`
+		Specs          []model.ProductSpec `json:"specs"`
+		AvailableFrom  *time.Time          `json:"available_from"`
+		AvailableUntil *time.Time          `json:"available_until"`
+		CourseIDs      []string            `json:"course_ids"`
+		ExamIDs        []string            `json:"exam_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -103,15 +106,17 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 	}
 
 	p := model.Product{
-		Type:        req.Type,
-		Name:        req.Name,
-		Description: req.Description,
-		Price:       req.Price,
-		Stock:       req.Stock,
-		WeightGrams: req.WeightGrams,
-		ImageURL:    req.ImageURL,
-		Specs:       req.Specs,
-		Status:      "draft",
+		Type:           req.Type,
+		Name:           req.Name,
+		Description:    req.Description,
+		Price:          req.Price,
+		Stock:          req.Stock,
+		WeightGrams:    req.WeightGrams,
+		ImageURL:       req.ImageURL,
+		Specs:          req.Specs,
+		AvailableFrom:  req.AvailableFrom,
+		AvailableUntil: req.AvailableUntil,
+		Status:         "draft",
 	}
 
 	var product model.Product
@@ -150,16 +155,18 @@ func (h *Handler) AdminGetProduct(c echo.Context) error {
 func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 	id := c.Param("id")
 	var req struct {
-		Name        string               `json:"name"`
-		Description string               `json:"description"`
-		Price       int64                `json:"price"`
-		Stock       int                  `json:"stock"`
-		WeightGrams *int                 `json:"weight_grams"`
-		ImageURL    *string              `json:"image_url"`
-		Specs       *[]model.ProductSpec `json:"specs"`  // pointer: absent preserves existing specs, present replaces them
-		Status      Nullable[string]     `json:"status"` // published ↔ hidden visibility flip only; absent preserves existing
-		CourseIDs   []string             `json:"course_ids"`
-		ExamIDs     []string             `json:"exam_ids"`
+		Name           string               `json:"name"`
+		Description    string               `json:"description"`
+		Price          int64                `json:"price"`
+		Stock          int                  `json:"stock"`
+		WeightGrams    *int                 `json:"weight_grams"`
+		ImageURL       *string              `json:"image_url"`
+		Specs          *[]model.ProductSpec `json:"specs"`  // pointer: absent preserves existing specs, present replaces them
+		Status         Nullable[string]     `json:"status"` // published ↔ hidden visibility flip only; absent preserves existing
+		AvailableFrom  Nullable[time.Time]  `json:"available_from"` // absent preserves; null clears; value sets
+		AvailableUntil Nullable[time.Time]  `json:"available_until"`
+		CourseIDs      []string             `json:"course_ids"`
+		ExamIDs        []string             `json:"exam_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -186,13 +193,15 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 	}
 
 	p := model.Product{
-		Name:           req.Name,
-		Description:    req.Description,
-		Price:          req.Price,
-		Stock:          req.Stock,
-		Status:         status,
-		WeightGramsSet: req.WeightGrams != nil,
-		ImageURLSet:    req.ImageURL != nil,
+		Name:              req.Name,
+		Description:       req.Description,
+		Price:             req.Price,
+		Stock:             req.Stock,
+		Status:            status,
+		WeightGramsSet:    req.WeightGrams != nil,
+		ImageURLSet:       req.ImageURL != nil,
+		AvailableFromSet:  req.AvailableFrom.Set,
+		AvailableUntilSet: req.AvailableUntil.Set,
 	}
 	if req.WeightGrams != nil {
 		p.WeightGrams = *req.WeightGrams
@@ -208,6 +217,15 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 			return mapServiceError(c, err)
 		}
 		p.Specs = existing.Specs
+	}
+	// Set → overlay (value or explicit clear); absent → preserved in the service.
+	if req.AvailableFrom.Set && req.AvailableFrom.Valid {
+		v := req.AvailableFrom.Value
+		p.AvailableFrom = &v
+	}
+	if req.AvailableUntil.Set && req.AvailableUntil.Valid {
+		v := req.AvailableUntil.Value
+		p.AvailableUntil = &v
 	}
 
 	var product model.Product

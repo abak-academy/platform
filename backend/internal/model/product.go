@@ -26,6 +26,14 @@ type Product struct {
 	ImageURLSet    bool          `json:"-"`
 	CourseIDs      []string      `json:"course_ids"`
 	ExamIDs        []string      `json:"exam_ids"`
-	CreatedAt      time.Time     `json:"created_at"`
-	UpdatedAt      time.Time     `json:"updated_at"`
+	// AvailableFrom/AvailableUntil bound the marketplace listing window. NULL on
+	// either side means unbounded on that side. The *Set flags mark whether an
+	// update request touched the field, so an omitted field preserves the
+	// existing value instead of clobbering it to NULL.
+	AvailableFrom     *time.Time `json:"available_from"`
+	AvailableUntil    *time.Time `json:"available_until"`
+	AvailableFromSet  bool       `json:"-"`
+	AvailableUntilSet bool       `json:"-"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }

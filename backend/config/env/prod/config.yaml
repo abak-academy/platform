@@ -19,4 +19,4 @@ object_storage_use_ssl: true
 object_storage_region: "asia-southeast2"
 object_storage_bucket_name: "abak-academy-media-prod"
 object_storage_private_bucket_name: "abak-academy-media-prod"
-gotenberg_url: "http://gotenberg:3000" # inert until config struct gains the field (PR #44)
+gotenberg_url: "http://gotenberg:3000"

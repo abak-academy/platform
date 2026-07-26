@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -297,8 +298,8 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 22 {
-		t.Fatalf("scanExam passed %d destinations, want 22", got)
+	if got := len(rec.dests); got != 24 {
+		t.Fatalf("scanExam passed %d destinations, want 24", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -328,8 +329,17 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 	if _, ok := rec.dests[19].(*time.Time); !ok {
 		t.Errorf("dest[19] = %T, want *time.Time (created_at)", rec.dests[19])
 	}
-	if _, ok := rec.dests[21].(*string); !ok {
-		t.Errorf("dest[21] = %T, want *string (mode)", rec.dests[21])
+	if _, ok := rec.dests[20].(*string); !ok {
+		t.Errorf("dest[20] = %T, want *string (mode)", rec.dests[20])
+	}
+	if _, ok := rec.dests[21].(**json.RawMessage); !ok {
+		t.Errorf("dest[21] = %T, want **json.RawMessage (certificate_design, nullable pointer field)", rec.dests[21])
+	}
+	if _, ok := rec.dests[22].(**time.Time); !ok {
+		t.Errorf("dest[22] = %T, want **time.Time (certificate_design_updated_at, nullable pointer field)", rec.dests[22])
+	}
+	if _, ok := rec.dests[23].(**int); !ok {
+		t.Errorf("dest[23] = %T, want **int (exam_number, nullable pointer field)", rec.dests[23])
 	}
 }
 
@@ -395,8 +405,8 @@ func TestScanExamSession_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExamSession returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 15 {
-		t.Fatalf("scanExamSession passed %d destinations, want 15 (id, registration_id, student_id, exam_id, attempt_number, started_at, submitted_at, extended_until, admin_submitted, score, certificate_url, certificate_generated_at, last_saved_at, status, created_at)", got)
+	if got := len(rec.dests); got != 16 {
+		t.Fatalf("scanExamSession passed %d destinations, want 16 (id, registration_id, student_id, exam_id, attempt_number, started_at, submitted_at, extended_until, admin_submitted, score, certificate_key, certificate_generated_at, certificate_number, last_saved_at, status, created_at)", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -430,19 +440,22 @@ func TestScanExamSession_passes_expected_destinations(t *testing.T) {
 		t.Errorf("dest[9] = %T, want **float64 (score, nullable)", rec.dests[9])
 	}
 	if _, ok := rec.dests[10].(**string); !ok {
-		t.Errorf("dest[10] = %T, want **string (certificate_url, nullable)", rec.dests[10])
+		t.Errorf("dest[10] = %T, want **string (certificate_key, nullable)", rec.dests[10])
 	}
 	if _, ok := rec.dests[11].(**time.Time); !ok {
 		t.Errorf("dest[11] = %T, want **time.Time (certificate_generated_at, nullable)", rec.dests[11])
 	}
-	if _, ok := rec.dests[12].(**time.Time); !ok {
-		t.Errorf("dest[12] = %T, want **time.Time (last_saved_at, nullable)", rec.dests[12])
+	if _, ok := rec.dests[12].(**string); !ok {
+		t.Errorf("dest[12] = %T, want **string (certificate_number, nullable)", rec.dests[12])
 	}
-	if _, ok := rec.dests[13].(*string); !ok {
-		t.Errorf("dest[13] = %T, want *string (status)", rec.dests[13])
+	if _, ok := rec.dests[13].(**time.Time); !ok {
+		t.Errorf("dest[13] = %T, want **time.Time (last_saved_at, nullable)", rec.dests[13])
 	}
-	if _, ok := rec.dests[14].(*time.Time); !ok {
-		t.Errorf("dest[14] = %T, want *time.Time (created_at)", rec.dests[14])
+	if _, ok := rec.dests[14].(*string); !ok {
+		t.Errorf("dest[14] = %T, want *string (status)", rec.dests[14])
+	}
+	if _, ok := rec.dests[15].(*time.Time); !ok {
+		t.Errorf("dest[15] = %T, want *time.Time (created_at)", rec.dests[15])
 	}
 }
 

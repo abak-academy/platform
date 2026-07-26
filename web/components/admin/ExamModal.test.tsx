@@ -9,7 +9,6 @@ const mockUpdateExam = vi.fn();
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useCreateExam: () => ({ mutateAsync: mockCreateExam, isPending: false }),
   useUpdateExam: () => ({ mutateAsync: mockUpdateExam, isPending: false }),
-  fetchCertificatePreview: vi.fn(),
 }));
 
 const sampleExam: ExamListItem = {
@@ -31,42 +30,40 @@ describe("ExamModal", () => {
     mockUpdateExam.mockReset();
   });
 
-  it("pre-fills certificate template from exam data on edit", async () => {
-    render(
-      <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
-    );
-
-    await waitFor(() => {
-      const classic = screen.getByRole("radio", { name: "Klasik" });
-      const modern = screen.getByRole("radio", { name: "Modern" });
-      const elegant = screen.getByRole("radio", { name: "Elegan" });
-      expect(classic).not.toBeChecked();
-      expect(modern).toBeChecked();
-      expect(elegant).not.toBeChecked();
-    });
-  });
-
-  it("submitted payload includes certificate_template", async () => {
+  it("FR-25c: saving from the modal never touches certificate design fields", async () => {
     mockUpdateExam.mockResolvedValue({ id: "exam-1", title: "UTS Matematika" });
 
+    const customExam: ExamListItem = {
+      ...sampleExam,
+      certificate_template: "custom",
+      certificate_background_key: "certificates/exam-1/bg.png",
+      certificate_layout: {
+        page: { width_mm: 297, height_mm: 210 },
+        background: { kind: "custom", ref: "certificates/exam-1/bg.png" },
+        fields: [],
+      },
+      certificate_design_updated_at: "2026-07-01T00:00:00Z",
+    };
+
     render(
-      <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
+      <ExamModal open={true} onClose={vi.fn()} exam={customExam} onSaved={vi.fn()} />,
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Modern" })).toBeChecked();
+      expect(screen.getByLabelText(/judul/i)).toHaveValue("UTS Matematika");
     });
-
-    const titleInput = screen.getByLabelText(/judul/i);
-    fireEvent.input(titleInput, { target: { value: "UTS Matematika Updated" } });
 
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
-      expect(mockUpdateExam).toHaveBeenCalledWith(
-        expect.objectContaining({ certificate_template: "modern", title: "UTS Matematika Updated" }),
-      );
+      expect(mockUpdateExam).toHaveBeenCalled();
     });
+
+    const payload = mockUpdateExam.mock.calls[0][0];
+    expect(payload).not.toHaveProperty("certificate_template");
+    expect(payload).not.toHaveProperty("certificate_background_key");
+    expect(payload).not.toHaveProperty("certificate_layout");
+    expect(payload).not.toHaveProperty("certificate_design_updated_at");
   });
 
   it("renders a mode selector with standard, utbk, ielts options on create", () => {
@@ -186,28 +183,6 @@ describe("ExamModal", () => {
       expect(screen.getByLabelText("IELTS")).toBeChecked();
       expect(screen.getByLabelText("Standar")).not.toBeChecked();
     });
-  });
-
-  it("preview button disabled on create, enabled on edit", async () => {
-    // Create mode (no exam)
-    const { unmount } = render(
-      <ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />,
-    );
-
-    expect(screen.getByRole("button", { name: "Pratinjau Sertifikat" })).toBeDisabled();
-    unmount();
-
-    // Edit mode (with exam)
-    render(
-      <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
-    );
-
-    // Wait for effect to populate fields
-    await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Modern" })).toBeChecked();
-    });
-
-    expect(screen.getByRole("button", { name: "Pratinjau Sertifikat" })).toBeEnabled();
   });
 
   it("pre-fills extended package fields from exam data on edit", async () => {

@@ -48,7 +48,6 @@ var _ = Order{
 	PaymentExpiresAt:      nil,
 	PaidAt:                nil,
 	InvoiceURL:            "",
-	EstimatedDeliveryDays: "",
 	CheckedOutAt:          nil,
 	CompletedAt:           nil,
 	CancelledAt:           nil,

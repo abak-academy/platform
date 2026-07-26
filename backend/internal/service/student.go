@@ -395,6 +395,12 @@ func (s *Service) UpdatePhoto(ctx context.Context, userID, photoURL string) (*mo
 	if photoURL == "" {
 		return nil, errors.New("photo_url is required")
 	}
+	// Only accept references that resolve to an uploaded avatar object (the FE
+	// sends the /files/<key> proxy URL). Rejecting arbitrary URLs at the source
+	// blocks a student from persisting an SSRF probe as their photo_url.
+	if avatarKeyFromStored(photoURL) == "" {
+		return nil, fmt.Errorf("%w: photo_url must reference an uploaded avatar", ErrValidation)
+	}
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, err

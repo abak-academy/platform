@@ -50,6 +50,8 @@ type Config struct {
 	ObjectStorageRegion            string
 	ObjectStorageBucketName        string
 	ObjectStoragePrivateBucketName string
+
+	GotenbergURL string
 }
 
 type fileConfig struct {
@@ -73,6 +75,7 @@ type fileConfig struct {
 	ObjectStorageRegion            string   `yaml:"object_storage_region"`
 	ObjectStorageBucketName        string   `yaml:"object_storage_bucket_name"`
 	ObjectStoragePrivateBucketName string   `yaml:"object_storage_private_bucket_name"`
+	GotenbergURL                   string   `yaml:"gotenberg_url"`
 }
 
 type fileSecrets struct {
@@ -217,6 +220,8 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		ObjectStorageRegion:            fc.ObjectStorageRegion,
 		ObjectStorageBucketName:        fc.ObjectStorageBucketName,
 		ObjectStoragePrivateBucketName: fc.ObjectStoragePrivateBucketName,
+
+		GotenbergURL: fc.GotenbergURL,
 
 		DatabaseURL:            s.DatabaseURL,
 		MigrationDatabaseURL:   migrationDatabaseURL,

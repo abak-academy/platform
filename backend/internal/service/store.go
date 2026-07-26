@@ -31,7 +31,19 @@ var (
 	ErrExamLinkRequired        = errors.New("exam product requires at least one linked exam")
 	ErrShippingRequired        = errors.New("order requires a shipping selection before checkout")
 	ErrInvalidCourierSelection = errors.New("selected courier is not available for this destination")
+	ErrBiodataIncomplete       = errors.New("lengkapi biodata (sekolah, kelas, tanggal lahir) sebelum mendaftar ujian")
 )
+
+// biodataComplete reports whether a student has the biodata required to register
+// for an exam: a school (listed or unlisted), a class/grade, and a date of birth.
+func biodataComplete(u *model.User) bool {
+	if u == nil {
+		return false
+	}
+	hasSchool := (u.SchoolID != nil && *u.SchoolID != "") ||
+		(u.UnlistedSchoolName != nil && *u.UnlistedSchoolName != "")
+	return hasSchool && u.Grade != nil && u.DOB != nil
+}
 
 type PromoValidation struct {
 	PromoID  uuid.UUID
@@ -63,6 +75,11 @@ func (s *Service) GetProduct(ctx context.Context, id string, role string) (model
 	}
 	if role == RoleStudent || role == "" {
 		if p.Status != "published" {
+			return model.Product{}, ErrProductNotFound
+		}
+		now := time.Now()
+		if (p.AvailableFrom != nil && now.Before(*p.AvailableFrom)) ||
+			(p.AvailableUntil != nil && now.After(*p.AvailableUntil)) {
 			return model.Product{}, ErrProductNotFound
 		}
 	}
@@ -189,6 +206,12 @@ func (s *Service) UpdateProductWithExams(ctx context.Context, id string, p model
 	if !p.ImageURLSet && p.ImageURL == "" {
 		p.ImageURL = existing.ImageURL
 	}
+	if !p.AvailableFromSet {
+		p.AvailableFrom = existing.AvailableFrom
+	}
+	if !p.AvailableUntilSet {
+		p.AvailableUntil = existing.AvailableUntil
+	}
 
 	var ids []uuid.UUID
 	for _, eid := range examIDs {
@@ -244,6 +267,12 @@ func (s *Service) UpdateProductWithCourses(ctx context.Context, id string, p mod
 	if !p.ImageURLSet && p.ImageURL == "" {
 		p.ImageURL = existing.ImageURL
 	}
+	if !p.AvailableFromSet {
+		p.AvailableFrom = existing.AvailableFrom
+	}
+	if !p.AvailableUntilSet {
+		p.AvailableUntil = existing.AvailableUntil
+	}
 
 	var ids []uuid.UUID
 	for _, cid := range courseIDs {
@@ -298,6 +327,12 @@ func (s *Service) UpdateProduct(ctx context.Context, id string, p model.Product,
 	}
 	if !p.ImageURLSet && p.ImageURL == "" {
 		p.ImageURL = existing.ImageURL
+	}
+	if !p.AvailableFromSet {
+		p.AvailableFrom = existing.AvailableFrom
+	}
+	if !p.AvailableUntilSet {
+		p.AvailableUntil = existing.AvailableUntil
 	}
 	if err := s.storeRepo.UpdateProduct(ctx, id, &p); err != nil {
 		return model.Product{}, err
@@ -709,11 +744,19 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 	return s.storeRepo.PatchCart(ctx, oID, repoPatch)
 }
 
+// freeCheckoutSentinel is cached under the checkout idempotency key when a
+// zero-total order settles without the gateway, so a retried checkout replays
+// the free result instead of a (non-existent) gateway ref.
+const freeCheckoutSentinel = "free"
+
 type CheckoutResult struct {
 	GatewayRef       string
 	SnapToken        string
 	PaymentURL       string
 	PaymentExpiresAt time.Time
+	// Free is true when a zero-total order was settled directly without the
+	// payment gateway — the client should skip the payment page.
+	Free bool
 }
 
 func fetchCustomerInfo(ctx context.Context, s *Service, userID string) CustomerInfo {
@@ -830,6 +873,9 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	cacheKey := "idempotency:checkout:" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
+		if cached == freeCheckoutSentinel {
+			return CheckoutResult{Free: true}, nil
+		}
 		return CheckoutResult{GatewayRef: cached}, nil
 	}
 
@@ -853,6 +899,32 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		}
 	}
 
+	// Biodata gate: a student registering for an exam for themselves must have
+	// complete biodata (school, class, dob). Bulk/admin orders (order_participant
+	// rows present) are exempt — those students' biodata is admin-managed.
+	hasExam := false
+	for _, item := range order.Items {
+		if item.ProductType == "exam" {
+			hasExam = true
+			break
+		}
+	}
+	if hasExam {
+		participants, err := s.storeRepo.GetOrderParticipants(ctx, oID)
+		if err != nil {
+			return CheckoutResult{}, err
+		}
+		if len(participants) == 0 { // self-purchase
+			u, err := s.repo.GetUserByID(ctx, order.StudentID.String())
+			if err != nil {
+				return CheckoutResult{}, err
+			}
+			if !biodataComplete(u) {
+				return CheckoutResult{}, ErrBiodataIncomplete
+			}
+		}
+	}
+
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return CheckoutResult{}, err
@@ -864,6 +936,48 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 			return CheckoutResult{}, ErrInsufficientStock
 		}
 		return CheckoutResult{}, err
+	}
+
+	// Free / zero-total order: skip the payment gateway entirely. Mark it paid
+	// and emit OrderPaid in the SAME tx so fulfilment (exam registrations,
+	// course access, digital auto-complete) runs exactly as a real settlement.
+	if order.Total == 0 {
+		if err := s.storeRepo.SetOrderStatus(ctx, tx, oID, "paid", ""); err != nil {
+			return CheckoutResult{}, err
+		}
+		payload := OrderPaidPayload{OrderID: oID.String()}
+		for _, item := range order.Items {
+			payload.Items = append(payload.Items, OrderPaidPayloadItem{
+				ProductID:   item.ProductID.String(),
+				ProductType: item.ProductType,
+				Qty:         item.Qty,
+			})
+		}
+		if err := s.storeRepo.InsertOutboxEvent(ctx, tx, oID, "OrderPaid", payload); err != nil {
+			return CheckoutResult{}, err
+		}
+		// Promo usage settles inside the same transaction as the order it belongs
+		// to. Counting it afterwards can silently lose the increment, and an
+		// under-counted promo lets max_uses admit redemptions beyond its limit;
+		// there is no gateway round-trip here, so nothing forces it outside.
+		if order.PromoCodeID != nil {
+			if err := s.storeRepo.IncrementPromoUsesTx(ctx, tx, *order.PromoCodeID); err != nil {
+				return CheckoutResult{}, err
+			}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return CheckoutResult{}, err
+		}
+		// Past this point the order is paid and fulfilment is already queued, so
+		// the idempotency cache may not fail the call: returning an error here
+		// would tell the student the checkout failed, and their retry would hit a
+		// non-cart order (ErrOrderNotEditable) forever. A missing sentinel only
+		// costs a retry its replay.
+		if err := s.rdb.Set(ctx, cacheKey, freeCheckoutSentinel, 24*time.Hour).Err(); err != nil {
+			slog.Error("free checkout: cache idempotency sentinel failed after commit",
+				"order_id", oID, "error", err)
+		}
+		return CheckoutResult{Free: true}, nil
 	}
 
 	if err := tx.Commit(ctx); err != nil {

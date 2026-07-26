@@ -90,11 +90,11 @@ func (s *Service) GrantExamAccess(ctx context.Context, actorID, examID string, s
 			`INSERT INTO exam_registration (student_id, exam_id, token, status)
 			 VALUES ($1, $2, $3, $4)
 			 ON CONFLICT (student_id, exam_id) DO NOTHING
-			 RETURNING id, student_id, exam_id, token, card_pdf_url, checked_in_at, attempts_used, status, created_at`,
+			 RETURNING id, student_id, exam_id, token, card_key, checked_in_at, attempts_used, status, created_at`,
 			sid, examUUID, reg.Token, "registered",
 		).Scan(
 			&inserted.ID, &inserted.StudentID, &inserted.ExamID, &inserted.Token,
-			&inserted.CardPDFURL, &inserted.CheckedInAt, &inserted.AttemptsUsed,
+			&inserted.CardKey, &inserted.CheckedInAt, &inserted.AttemptsUsed,
 			&inserted.Status, &inserted.CreatedAt,
 		)
 		if err != nil {

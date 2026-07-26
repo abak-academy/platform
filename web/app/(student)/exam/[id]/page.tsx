@@ -7,7 +7,6 @@ import { AlertCircle, ArrowLeft, Download, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  downloadCard,
   useCheckIn,
   useRegistration,
   useStartSession,
@@ -40,7 +39,6 @@ export default function ExamDetailPage() {
   const { data: reg, isLoading, isError, error, refetch } = useRegistration(id);
 
   const [showToken, setShowToken] = useState(false);
-  const [downloading, setDownloading] = useState(false);
 
   // ── Check-in state (FR27) ───────────────────────────────────────────────
   const [token, setToken] = useState("");
@@ -83,18 +81,10 @@ export default function ExamDetailPage() {
     }
   };
 
-  // ── Download handler ────────────────────────────────────────────────────
-  const handleDownload = async () => {
+  // ── Card handler — open the printable card page ──────────────────────────
+  const handleDownload = () => {
     if (!id) return;
-    setDownloading(true);
-    try {
-      await downloadCard(id);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : t("competition_error");
-      toast.error(message);
-    } finally {
-      setDownloading(false);
-    }
+    router.push(`/exam/${id}/card`);
   };
 
   // ── Window / gate computation ────────────────────────────────────────────
@@ -254,12 +244,7 @@ export default function ExamDetailPage() {
           </div>
         </dl>
         <div>
-          <Button
-            type="button"
-            size="sm"
-            onClick={handleDownload}
-            disabled={downloading}
-          >
+          <Button type="button" size="sm" onClick={handleDownload}>
             <Download className="size-4" />
             {t("competition_detail_download_card")}
           </Button>

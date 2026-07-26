@@ -4,9 +4,11 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import ExamDetailPage from "./page";
 import type { RegistrationDetail } from "@/lib/types";
 
+const { mockPush } = vi.hoisted(() => ({ mockPush: vi.fn() }));
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "reg-1" }),
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: mockPush }),
 }));
 
 let uiStore = { lang: "id" as "id" | "en" };
@@ -20,7 +22,6 @@ const { toastSuccess, toastError } = vi.hoisted(() => ({
   toastError: vi.fn(),
 }));
 
-const downloadCardMock = vi.fn();
 const checkInMutate = vi.fn();
 const startSessionMutate = vi.fn();
 
@@ -34,7 +35,6 @@ let registrationState = {
 
 vi.mock("@/lib/hooks/exam", () => ({
   useRegistration: () => registrationState,
-  downloadCard: (...args: unknown[]) => downloadCardMock(...args),
   useCheckIn: () => ({ mutate: checkInMutate, isPending: false }),
   useStartSession: () => ({ mutateAsync: startSessionMutate, isPending: false }),
 }));
@@ -48,11 +48,15 @@ const sampleWithCheckin: RegistrationDetail = {
   student_id: "s-1",
   exam_id: "e-1",
   token: "AB12CD34",
-  card_pdf_url: null,
+  card_key: null,
   checked_in_at: null,
   attempts_used: 0,
   status: "registered",
   created_at: "2026-06-01T00:00:00Z",
+  participant_number: 1,
+  participant_no: "260715-000001",
+  subject: "TPS — Penalaran Umum",
+  platform: "exam.abakacademy.id",
   exam: {
     id: "e-1",
     title: "Try Out UTBK Nasional",
@@ -74,7 +78,7 @@ const sampleNoCheckin: RegistrationDetail = {
 describe("ExamDetailPage", () => {
   beforeEach(() => {
     uiStore = { lang: "id" };
-    downloadCardMock.mockReset();
+    mockPush.mockReset();
     checkInMutate.mockReset();
     startSessionMutate.mockReset();
     toastSuccess.mockReset();
@@ -122,8 +126,7 @@ describe("ExamDetailPage", () => {
     expect(screen.getByText("••••••••")).toBeInTheDocument();
   });
 
-  it("download button calls downloadCard with the registration id (FR12)", async () => {
-    downloadCardMock.mockResolvedValue(undefined);
+  it("card button opens the printable card page for the registration (FR12)", async () => {
     render(<ExamDetailPage />);
 
     await waitFor(() => {
@@ -135,7 +138,7 @@ describe("ExamDetailPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /unduh kartu peserta/i }));
 
     await waitFor(() => {
-      expect(downloadCardMock).toHaveBeenCalledWith("reg-1");
+      expect(mockPush).toHaveBeenCalledWith("/exam/reg-1/card");
     });
   });
 

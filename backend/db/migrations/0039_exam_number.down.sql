@@ -1,0 +1,5 @@
+DROP INDEX IF EXISTS uq_exam_exam_number;
+ALTER TABLE exam ALTER COLUMN exam_number DROP DEFAULT;
+ALTER TABLE exam ALTER COLUMN exam_number DROP NOT NULL;
+ALTER TABLE exam DROP COLUMN IF EXISTS exam_number;
+DROP SEQUENCE IF EXISTS exam_number_seq;

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -102,11 +103,24 @@ type Exam struct {
 	ResultReleaseAt      *time.Time `json:"result_release_at"`
 	Status               string     `json:"status"`
 	CreatedAt            time.Time  `json:"created_at"`
-	CertificateTemplate  string     `json:"certificate_template"`
 	// Mode discriminates standard vs sectioned (utbk|ielts) exams. NOT NULL DEFAULT
 	// 'standard' in the DB; omitempty no-ops since 'standard' is non-empty — admin
 	// payloads gain the key, student-facing payloads are assembled in the service.
 	Mode string `json:"mode,omitempty"`
+	// CertificateDesign is the single persisted JSON blob for the certificate editor:
+	// template, background (kind/ref plus the private-bucket object key for a custom
+	// upload — never a raw or presigned URL), signature_key, and fields (FR-26/FR-27).
+	// Nil until an admin has saved a design; consolidates what were previously three
+	// separate columns (certificate_template, certificate_background_key,
+	// certificate_layout — folded by migration 0042).
+	CertificateDesign *json.RawMessage `json:"certificate_design"`
+	// CertificateDesignUpdatedAt is bumped whenever template, background key, or layout
+	// changes (C3/FR-14) — the single staleness timestamp compared against a session's
+	// certificate_generated_at.
+	CertificateDesignUpdatedAt *time.Time `json:"certificate_design_updated_at"`
+	// ExamNumber is a global human-friendly serial (FR-23) assigned from exam_number_seq,
+	// distinct from the exam UUID. Non-nil after create; nil only pre-migration/pre-backfill.
+	ExamNumber *int `json:"exam_number"`
 }
 
 // ExamTest is the M:N join between Exam and Test with sort order.
@@ -123,11 +137,14 @@ type ExamRegistration struct {
 	StudentID    uuid.UUID  `json:"student_id"`
 	ExamID       uuid.UUID  `json:"exam_id"`
 	Token        string     `json:"token"`
-	CardPDFURL   *string    `json:"card_pdf_url"`
+	CardKey      *string    `json:"card_key"`
 	CheckedInAt  *time.Time `json:"checked_in_at"`
 	AttemptsUsed int        `json:"attempts_used"`
 	Status       string     `json:"status"`
 	CreatedAt    time.Time  `json:"created_at"`
+	// ParticipantNumber is a per-exam sequence assigned at registration (nil for
+	// rows predating the column until backfilled). Displayed as ParticipantNo.
+	ParticipantNumber *int `json:"participant_number"`
 }
 
 // ExamSession is one in-flight attempt by a student; multiple sessions per registration
@@ -143,11 +160,14 @@ type ExamSession struct {
 	ExtendedUntil          *time.Time `json:"extended_until"`
 	AdminSubmitted         bool       `json:"admin_submitted"`
 	Score                  *float64   `json:"score"`
-	CertificateURL         *string    `json:"certificate_url"`
+	CertificateKey         *string    `json:"certificate_key"`
 	CertificateGeneratedAt *time.Time `json:"certificate_generated_at"`
-	LastSavedAt            *time.Time `json:"last_saved_at"`
-	Status                 string     `json:"status"`
-	CreatedAt              time.Time  `json:"created_at"`
+	// CertificateNumber is allocated once (ABK/YYYY/NNNNNN) on first certificate
+	// generation and reused thereafter; nil until allocated (FR-9/FR-10).
+	CertificateNumber *string    `json:"certificate_number"`
+	LastSavedAt       *time.Time `json:"last_saved_at"`
+	Status            string     `json:"status"`
+	CreatedAt         time.Time  `json:"created_at"`
 }
 
 // ExamSessionAnswer is one answer record per (session, question) — composite PK.
@@ -254,7 +274,16 @@ type RegistrationListItem struct {
 // an ExamRegistration joined with the nested exam config needed by the student detail page.
 type RegistrationDetail struct {
 	ExamRegistration `json:",inline"`
-	Exam             struct {
+	// ParticipantNo is the display form of ParticipantNumber, "YYMMDD-<exam_number(pad4)>-NNNNNN"
+	// where YYMMDD is the exam's scheduled start date (falls back to the
+	// registration date if the exam is not yet scheduled). Empty if unassigned.
+	ParticipantNo string `json:"participant_no"`
+	// Subject is the aggregated subject(s) of the exam's attached test(s)
+	// (Paket/Mapel on the card). Platform is the single, system-config-sourced
+	// exam platform (Platform/Ruang on the card).
+	Subject  string `json:"subject"`
+	Platform string `json:"platform"`
+	Exam     struct {
 		ID                   uuid.UUID  `json:"id"`
 		Title                string     `json:"title"`
 		ScheduledAt          *time.Time `json:"scheduled_at"`
@@ -264,7 +293,30 @@ type RegistrationDetail struct {
 		TimerMode            string     `json:"timer_mode"`
 		DurationMinutes      *int       `json:"duration_minutes"`
 		ResultConfig         string     `json:"result_config"`
+		// ExamNumber is joined in for the participant-number display format (FR-24, Task 5).
+		ExamNumber *int `json:"exam_number"`
 	} `json:"exam"`
+}
+
+// ExamRosterEntry is one row of the admin participant roster for an exam
+// (GET /admin/exams/:id/registrations, FR-32): a registration joined with the
+// student's name/username. ParticipantNumber may be nil for rows predating
+// FR-24 (participant_number backfill) — ParticipantNo stays "" in that case;
+// the service composes it (formatParticipantNo) from the raw ExamScheduledAt/
+// ExamNumber/RegisteredAt ingredients, which are join inputs only and not
+// surfaced on the wire (json:"-").
+type ExamRosterEntry struct {
+	RegistrationID    uuid.UUID  `json:"registration_id"`
+	StudentID         uuid.UUID  `json:"student_id"`
+	StudentName       string     `json:"student_name"`
+	StudentUsername   *string    `json:"student_username"`
+	ParticipantNumber *int       `json:"participant_number"`
+	ParticipantNo     string     `json:"participant_no"`
+	Status            string     `json:"status"`
+	CheckedInAt       *time.Time `json:"checked_in_at"`
+	RegisteredAt      time.Time  `json:"-"`
+	ExamScheduledAt   *time.Time `json:"-"`
+	ExamNumber        *int       `json:"-"`
 }
 
 // SessionResult is the read shape for GET /api/v1/exam/sessions/:id/result. State is the

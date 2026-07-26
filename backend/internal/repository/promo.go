@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"akademi-bimbel/internal/model"
 )
@@ -83,6 +84,18 @@ func (r *Repository) ListPromoCodes(ctx context.Context) ([]model.PromoCode, err
 
 func (r *Repository) IncrementPromoUses(ctx context.Context, id uuid.UUID) error {
 	_, err := r.pool.Exec(ctx,
+		`UPDATE promo_code SET used_count = used_count + 1 WHERE id = $1`,
+		id,
+	)
+	return err
+}
+
+// IncrementPromoUsesTx is IncrementPromoUses inside a caller's transaction, so
+// the usage count commits atomically with the order it belongs to. Free
+// checkout needs this: it has no gateway round-trip to wait on, so there is no
+// reason to settle the promo count outside the transaction and risk losing it.
+func (r *Repository) IncrementPromoUsesTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
+	_, err := tx.Exec(ctx,
 		`UPDATE promo_code SET used_count = used_count + 1 WHERE id = $1`,
 		id,
 	)

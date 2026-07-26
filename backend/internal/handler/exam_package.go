@@ -9,6 +9,7 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/service"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -62,6 +63,36 @@ func (h *Handler) AdminGetExam(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, detail)
+}
+
+// AdminListExamRegistrations returns the read-only admin participant roster
+// for an exam (FR-32): registrations joined with student name/username and
+// each row's FR-24 display participant number.
+func (h *Handler) AdminListExamRegistrations(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	// admin_school sees only its own school's participants; super_admin and
+	// admin_exam (global exam managers) see the full roster. Without this the
+	// endpoint leaks other schools' student PII (name/username/id) for any
+	// known exam id.
+	var schoolFilter *string
+	if claims.Role == "admin_school" {
+		if claims.SchoolID == nil {
+			return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+		}
+		schoolFilter = claims.SchoolID
+	}
+	rows, err := h.svc.AdminGetExamRoster(c.Request().Context(), id, schoolFilter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
 }
 
 // examPatchRequest is the PATCH body for AdminUpdateExam. Nullable[T] fields
@@ -138,7 +169,11 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	applyNullable(req.GraceWindowMinutes, &overlay.GraceWindowMinutes)
 	applyNullable(req.MaxAttempts, &overlay.MaxAttempts)
 	if req.CertificateTemplate != "" {
-		overlay.CertificateTemplate = req.CertificateTemplate
+		raw, err := service.SetCertificateTemplate(overlay.CertificateDesign, req.CertificateTemplate)
+		if err != nil {
+			return badRequest(c, "invalid certificate design")
+		}
+		overlay.CertificateDesign = raw
 	}
 	if req.IsFree != nil {
 		overlay.IsFree = *req.IsFree

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -207,10 +208,19 @@ func TestExamStruct(t *testing.T) {
 	jsonTag(t, v, "ResultReleaseAt", "result_release_at")
 	jsonTag(t, v, "Status", "status")
 	jsonTag(t, v, "CreatedAt", "created_at")
-	jsonTag(t, v, "CertificateTemplate", "certificate_template")
+	jsonTag(t, v, "CertificateDesign", "certificate_design")
+	jsonTag(t, v, "CertificateDesignUpdatedAt", "certificate_design_updated_at")
+
+	fieldKind(t, v, "CertificateDesign", reflect.Ptr)
+	if mustField(t, v, "CertificateDesign").Type != reflect.TypeOf((*json.RawMessage)(nil)) {
+		t.Errorf("Exam.CertificateDesign should be *json.RawMessage, got %s", mustField(t, v, "CertificateDesign").Type)
+	}
+	fieldKind(t, v, "CertificateDesignUpdatedAt", reflect.Ptr)
+	if mustField(t, v, "CertificateDesignUpdatedAt").Type != reflect.TypeOf((*time.Time)(nil)) {
+		t.Errorf("Exam.CertificateDesignUpdatedAt should be *time.Time, got %s", mustField(t, v, "CertificateDesignUpdatedAt").Type)
+	}
 
 	fieldType(t, v, "ID", reflect.TypeOf(uuid.UUID{}))
-	fieldKind(t, v, "CertificateTemplate", reflect.String)
 	fieldKind(t, v, "IsFree", reflect.Bool)
 	fieldKind(t, v, "Title", reflect.String)
 	fieldKind(t, v, "TimerMode", reflect.String)
@@ -270,7 +280,7 @@ func TestExamRegistrationStruct(t *testing.T) {
 	jsonTag(t, v, "StudentID", "student_id")
 	jsonTag(t, v, "ExamID", "exam_id")
 	jsonTag(t, v, "Token", "token")
-	jsonTag(t, v, "CardPDFURL", "card_pdf_url")
+	jsonTag(t, v, "CardKey", "card_key")
 	jsonTag(t, v, "CheckedInAt", "checked_in_at")
 	jsonTag(t, v, "AttemptsUsed", "attempts_used")
 	jsonTag(t, v, "Status", "status")
@@ -283,9 +293,9 @@ func TestExamRegistrationStruct(t *testing.T) {
 	fieldKind(t, v, "AttemptsUsed", reflect.Int)
 	fieldKind(t, v, "Status", reflect.String)
 
-	fieldKind(t, v, "CardPDFURL", reflect.Ptr)
-	if mustField(t, v, "CardPDFURL").Type.Elem().Kind() != reflect.String {
-		t.Errorf("ExamRegistration.CardPDFURL pointer base type should be string")
+	fieldKind(t, v, "CardKey", reflect.Ptr)
+	if mustField(t, v, "CardKey").Type.Elem().Kind() != reflect.String {
+		t.Errorf("ExamRegistration.CardKey pointer base type should be string")
 	}
 	fieldKind(t, v, "CheckedInAt", reflect.Ptr)
 	if mustField(t, v, "CheckedInAt").Type != reflect.TypeOf((*time.Time)(nil)) {
@@ -310,8 +320,9 @@ func TestExamSessionStruct(t *testing.T) {
 	jsonTag(t, v, "ExtendedUntil", "extended_until")
 	jsonTag(t, v, "AdminSubmitted", "admin_submitted")
 	jsonTag(t, v, "Score", "score")
-	jsonTag(t, v, "CertificateURL", "certificate_url")
+	jsonTag(t, v, "CertificateKey", "certificate_key")
 	jsonTag(t, v, "CertificateGeneratedAt", "certificate_generated_at")
+	jsonTag(t, v, "CertificateNumber", "certificate_number")
 	jsonTag(t, v, "LastSavedAt", "last_saved_at")
 	jsonTag(t, v, "Status", "status")
 	jsonTag(t, v, "CreatedAt", "created_at")
@@ -340,9 +351,53 @@ func TestExamSessionStruct(t *testing.T) {
 	if mustField(t, v, "Score").Type.Elem().Kind() != reflect.Float64 {
 		t.Errorf("ExamSession.Score pointer base type should be float64")
 	}
-	fieldKind(t, v, "CertificateURL", reflect.Ptr)
-	if mustField(t, v, "CertificateURL").Type.Elem().Kind() != reflect.String {
-		t.Errorf("ExamSession.CertificateURL pointer base type should be string")
+	fieldKind(t, v, "CertificateKey", reflect.Ptr)
+	if mustField(t, v, "CertificateKey").Type.Elem().Kind() != reflect.String {
+		t.Errorf("ExamSession.CertificateKey pointer base type should be string")
+	}
+	fieldKind(t, v, "CertificateNumber", reflect.Ptr)
+	if mustField(t, v, "CertificateNumber").Type.Elem().Kind() != reflect.String {
+		t.Errorf("ExamSession.CertificateNumber pointer base type should be string")
+	}
+}
+
+// TestExamCertificateDesignJSONRoundTrip proves CertificateDesign serializes as raw
+// JSON (not base64, as a plain []byte would) and round-trips through marshal/unmarshal,
+// per memory go-json-tags-verification-blindspot: assert on marshalled bytes, not by
+// eyeballing the struct.
+func TestExamCertificateDesignJSONRoundTrip(t *testing.T) {
+	raw := json.RawMessage(`{"template":"classic","fields":[{"id":"student_name","x_mm":10,"y_mm":20}]}`)
+	e := Exam{CertificateDesign: &raw}
+
+	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		t.Fatalf("Unmarshal envelope: %v", err)
+	}
+	design, ok := decoded["certificate_design"].(map[string]any)
+	if !ok {
+		t.Fatalf("certificate_design is not a nested JSON object (want raw pass-through, got %T: %v)", decoded["certificate_design"], decoded["certificate_design"])
+	}
+	if design["template"] != "classic" {
+		t.Errorf("certificate_design missing template key: %v", design)
+	}
+
+	// nil design marshals as JSON null, never omitted or base64.
+	var e2 Exam
+	b2, err := json.Marshal(e2)
+	if err != nil {
+		t.Fatalf("Marshal nil design: %v", err)
+	}
+	var decoded2 map[string]any
+	if err := json.Unmarshal(b2, &decoded2); err != nil {
+		t.Fatalf("Unmarshal nil-design envelope: %v", err)
+	}
+	if v, ok := decoded2["certificate_design"]; !ok || v != nil {
+		t.Errorf("nil CertificateDesign should marshal to JSON null, got %v (present=%v)", v, ok)
 	}
 }
 

@@ -428,10 +428,11 @@ func (f *fakeSessionRepo) ExtendActiveSection(_ context.Context, sessionID uuid.
 // ---------- shimSessionService ----------
 
 type shimSessionService struct {
-	repo          *fakeSessionRepo
-	rdb           *redis.Client
-	mr            *miniredis.Miniredis
-	uploadCertErr error
+	repo            *fakeSessionRepo
+	rdb             *redis.Client
+	mr              *miniredis.Miniredis
+	uploadCertErr   error
+	uploadCertCalls int
 }
 
 func newShimSessionService(t *testing.T) (*shimSessionService, *miniredis.Miniredis) {

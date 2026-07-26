@@ -2,14 +2,15 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"akademi-bimbel/internal/model"
@@ -377,7 +378,7 @@ func TestAnalytics_GetFullyGradedScores(t *testing.T) {
 // Certificate — UpdateSessionCertificate
 // ---------------------------------------------------------------------------
 
-// TestCertificate_UpdateSessionCertificate verifies that both certificate_url and
+// TestCertificate_UpdateSessionCertificate verifies that both certificate_key and
 // certificate_generated_at are persisted and that a second call overwrites both.
 func TestCertificate_UpdateSessionCertificate(t *testing.T) {
 	pool := newGradingTestPool(t)
@@ -390,10 +391,10 @@ func TestCertificate_UpdateSessionCertificate(t *testing.T) {
 	now := time.Now()
 	sessionID := insertGradingSession(t, pool, student, examID, "submitted", &now, f64PtrG(85))
 
-	t.Run("persists certificate_url and certificate_generated_at", func(t *testing.T) {
-		url := "https://minio/certificates/abc123.pdf"
+	t.Run("persists certificate_key and certificate_generated_at", func(t *testing.T) {
+		key := "certificates/abc123.pdf"
 		genAt := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
-		if err := repo.UpdateSessionCertificate(ctx, sessionID, url, genAt); err != nil {
+		if err := repo.UpdateSessionCertificate(ctx, sessionID, key, genAt); err != nil {
 			t.Fatalf("UpdateSessionCertificate: %v", err)
 		}
 
@@ -401,8 +402,8 @@ func TestCertificate_UpdateSessionCertificate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetExamSessionByID: %v", err)
 		}
-		if sess.CertificateURL == nil || *sess.CertificateURL != url {
-			t.Errorf("CertificateURL = %v, want %q", sess.CertificateURL, url)
+		if sess.CertificateKey == nil || *sess.CertificateKey != key {
+			t.Errorf("CertificateKey = %v, want %q", sess.CertificateKey, key)
 		}
 		if sess.CertificateGeneratedAt == nil || !sess.CertificateGeneratedAt.Equal(genAt) {
 			t.Errorf("CertificateGeneratedAt = %v, want %v", sess.CertificateGeneratedAt, genAt)
@@ -410,9 +411,9 @@ func TestCertificate_UpdateSessionCertificate(t *testing.T) {
 	})
 
 	t.Run("second call overwrites both fields", func(t *testing.T) {
-		url2 := "https://minio/certificates/def456.pdf"
+		key2 := "certificates/def456.pdf"
 		genAt2 := time.Date(2026, 7, 2, 14, 30, 0, 0, time.UTC)
-		if err := repo.UpdateSessionCertificate(ctx, sessionID, url2, genAt2); err != nil {
+		if err := repo.UpdateSessionCertificate(ctx, sessionID, key2, genAt2); err != nil {
 			t.Fatalf("UpdateSessionCertificate (2nd): %v", err)
 		}
 
@@ -420,8 +421,8 @@ func TestCertificate_UpdateSessionCertificate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetExamSessionByID: %v", err)
 		}
-		if sess.CertificateURL == nil || *sess.CertificateURL != url2 {
-			t.Errorf("CertificateURL = %v, want %q", sess.CertificateURL, url2)
+		if sess.CertificateKey == nil || *sess.CertificateKey != key2 {
+			t.Errorf("CertificateKey = %v, want %q", sess.CertificateKey, key2)
 		}
 		if sess.CertificateGeneratedAt == nil || !sess.CertificateGeneratedAt.Equal(genAt2) {
 			t.Errorf("CertificateGeneratedAt = %v, want %v", sess.CertificateGeneratedAt, genAt2)
@@ -430,11 +431,12 @@ func TestCertificate_UpdateSessionCertificate(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Certificate — Exam CRUD round-trip for certificate_template
+// Certificate — Exam CRUD round-trip for certificate_design's template key
 // ---------------------------------------------------------------------------
 
 // TestCertificateTemplateRoundTrip verifies that creating and updating an exam with
-// each of the 3 valid template keys persists and reads back correctly.
+// each of the 3 valid template keys persists (inside certificate_design, FR-26) and
+// reads back correctly.
 func TestCertificateTemplateRoundTrip(t *testing.T) {
 	pool := newGradingTestPool(t)
 	repo := New(pool)
@@ -446,8 +448,8 @@ func TestCertificateTemplateRoundTrip(t *testing.T) {
 		t.Run("create with "+template, func(t *testing.T) {
 			var examID uuid.UUID
 			err := pool.QueryRow(ctx,
-				`INSERT INTO exam (title, certificate_template) VALUES ($1, $2) RETURNING id`,
-				"Create-"+template, template,
+				`INSERT INTO exam (title, certificate_design) VALUES ($1, $2) RETURNING id`,
+				"Create-"+template, fmt.Sprintf(`{"template":%q}`, template),
 			).Scan(&examID)
 			if err != nil {
 				t.Fatalf("insert exam with template %q: %v", template, err)
@@ -463,15 +465,22 @@ func TestCertificateTemplateRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GetExamByID: %v", err)
 			}
-			if exam.CertificateTemplate != template {
-				t.Errorf("CertificateTemplate = %q, want %q", exam.CertificateTemplate, template)
+			if exam.CertificateDesign == nil {
+				t.Fatal("CertificateDesign is nil, want the seeded blob")
+			}
+			var decoded map[string]any
+			if err := json.Unmarshal(*exam.CertificateDesign, &decoded); err != nil {
+				t.Fatalf("unmarshal certificate_design: %v", err)
+			}
+			if decoded["template"] != template {
+				t.Errorf("certificate_design template = %v, want %q", decoded["template"], template)
 			}
 		})
 
 		t.Run("update to "+template, func(t *testing.T) {
 			var examID uuid.UUID
 			err := pool.QueryRow(ctx,
-				`INSERT INTO exam (title, certificate_template) VALUES ($1, 'classic') RETURNING id`,
+				`INSERT INTO exam (title, certificate_design) VALUES ($1, '{"template":"classic"}') RETURNING id`,
 				"UpdateTo-"+template,
 			).Scan(&examID)
 			if err != nil {
@@ -489,7 +498,8 @@ func TestCertificateTemplateRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GetExamByID: %v", err)
 			}
-			exam.CertificateTemplate = template
+			raw := json.RawMessage(fmt.Sprintf(`{"template":%q}`, template))
+			exam.CertificateDesign = &raw
 			if err := repo.UpdateExam(ctx, examID, exam); err != nil {
 				t.Fatalf("UpdateExam: %v", err)
 			}
@@ -498,64 +508,49 @@ func TestCertificateTemplateRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GetExamByID after update: %v", err)
 			}
-			if updated.CertificateTemplate != template {
-				t.Errorf("CertificateTemplate = %q, want %q", updated.CertificateTemplate, template)
+			var decoded map[string]any
+			if err := json.Unmarshal(*updated.CertificateDesign, &decoded); err != nil {
+				t.Fatalf("unmarshal certificate_design: %v", err)
+			}
+			if decoded["template"] != template {
+				t.Errorf("certificate_design template = %v, want %q", decoded["template"], template)
 			}
 		})
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Certificate — DB CHECK constraint on certificate_template
+// Certificate — template validity (DB CHECK constraint removed, Task 8/FR-26)
 // ---------------------------------------------------------------------------
 
-// TestCertificateTemplateCHECKConstraint confirms the DB-level CHECK constraint
-// chk_certificate_template fires for invalid keys on both INSERT and UPDATE.
-func TestCertificateTemplateCHECKConstraint(t *testing.T) {
+// TestCertificateTemplateCHECKConstraint_Removed proves the chk_certificate_template
+// DB constraint no longer exists after migration 0042 (certificate_design is a plain
+// JSONB blob with no CHECK on its "template" key) — template validity is now enforced
+// exclusively at the Go layer by service.validateCertificateTemplate (see
+// certificate_test.go's TestValidateCertificateTemplate_* for that coverage).
+func TestCertificateTemplateCHECKConstraint_Removed(t *testing.T) {
 	pool := newGradingTestPool(t)
 	ctx := context.Background()
 
-	// INSERT with an invalid template must be rejected.
-	_, err := pool.Exec(ctx,
-		`INSERT INTO exam (title, certificate_template) VALUES ($1, $2)`,
-		"Bad Exam", "invalid_template",
-	)
-	if err == nil {
-		t.Fatal("expected CHECK constraint error on INSERT, got nil")
-	}
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) {
-		t.Fatalf("expected pgconn.PgError, got %T: %v", err, err)
-	}
-	if pgErr.Code != "23514" {
-		t.Errorf("want PG error code 23514 (check_violation), got %s: %v", pgErr.Code, err)
-	}
-	if !strings.Contains(pgErr.Message, "chk_certificate_template") {
-		t.Errorf("error message should mention constraint 'chk_certificate_template', got: %v", err)
-	}
-
-	// UPDATE with an invalid template must also be rejected.
+	// An "invalid" template string is accepted at the DB level — nothing but Go
+	// validation stands between the editor and this column now.
 	var examID uuid.UUID
-	err = pool.QueryRow(ctx,
-		`INSERT INTO exam (title, certificate_template) VALUES ($1, $2) RETURNING id`,
-		"Good Exam", "classic",
+	err := pool.QueryRow(ctx,
+		`INSERT INTO exam (title, certificate_design) VALUES ($1, $2) RETURNING id`,
+		"Any Template Exam", `{"template":"invalid_template"}`,
 	).Scan(&examID)
 	if err != nil {
-		t.Fatalf("insert valid exam: %v", err)
+		t.Fatalf("insert with an arbitrary template string should succeed at the DB level, got: %v", err)
 	}
 
-	_, err = pool.Exec(ctx,
-		`UPDATE exam SET certificate_template = $1 WHERE id = $2`,
-		"bogus", examID,
-	)
-	if err == nil {
-		t.Fatal("expected CHECK constraint error on UPDATE, got nil")
+	var exists bool
+	if err := pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conname = 'chk_certificate_template')`,
+	).Scan(&exists); err != nil {
+		t.Fatalf("query pg_constraint: %v", err)
 	}
-	if !errors.As(err, &pgErr) {
-		t.Fatalf("expected pgconn.PgError on UPDATE, got %T: %v", err, err)
-	}
-	if pgErr.Code != "23514" {
-		t.Errorf("want PG error code 23514 on UPDATE, got %s: %v", pgErr.Code, err)
+	if exists {
+		t.Error("chk_certificate_template should have been dropped by migration 0042")
 	}
 }
 

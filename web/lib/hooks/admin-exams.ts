@@ -13,6 +13,10 @@ import type {
   GradingEssayItem,
   ExamLeaderboardEntry,
   ExamAnalytics,
+  CertificateDesign,
+  CertificateDesignInput,
+  CertificateLayout,
+  ExamRosterEntry,
 } from "@/lib/types";
 
 export const adminExamsKeys = {
@@ -29,6 +33,10 @@ export const adminExamsKeys = {
   leaderboardLists: () => [...adminExamsKeys.all, "leaderboard"] as const,
   leaderboard: (examId: string, filter?: AdminExamsFilters) =>
     [...adminExamsKeys.leaderboardLists(), examId, filter ?? {}] as const,
+  certificateDesign: (examId: string) =>
+    [...adminExamsKeys.detail(examId), "certificate-design"] as const,
+  rosters: () => [...adminExamsKeys.all, "roster"] as const,
+  roster: (examId: string) => [...adminExamsKeys.rosters(), examId] as const,
 };
 
 export interface GradeEssayInput {
@@ -94,6 +102,35 @@ export function useUpdateExam(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminExamsKeys.lists() });
       qc.invalidateQueries({ queryKey: adminExamsKeys.detail(id) });
+    },
+  });
+}
+
+export function useCertificateDesign(examId: string | undefined) {
+  return useQuery({
+    queryKey: adminExamsKeys.certificateDesign(examId ?? ""),
+    queryFn: () =>
+      authFetch<CertificateDesign>(
+        `/admin/exams/${encodeURIComponent(examId!)}/certificate-design`,
+      ),
+    enabled: Boolean(examId),
+  });
+}
+
+export function useUpdateCertificateDesign(examId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CertificateDesignInput) =>
+      authFetch<CertificateDesign>(
+        `/admin/exams/${encodeURIComponent(examId)}/certificate-design`,
+        {
+          method: "PUT",
+          body: JSON.stringify(input),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminExamsKeys.certificateDesign(examId) });
+      qc.invalidateQueries({ queryKey: adminExamsKeys.detail(examId) });
     },
   });
 }
@@ -173,6 +210,17 @@ export function useExamLeaderboard(
   });
 }
 
+export function useExamRoster(examId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: adminExamsKeys.roster(examId ?? ""),
+    queryFn: () =>
+      authFetch<{ data: ExamRosterEntry[] }>(
+        `/admin/exams/${encodeURIComponent(examId!)}/registrations`,
+      ),
+    enabled: Boolean(examId) && enabled,
+  });
+}
+
 export function useExamAnalytics(examId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: [...adminExamsKeys.all, "analytics", examId ?? ""] as const,
@@ -184,16 +232,26 @@ export function useExamAnalytics(examId: string | undefined, enabled = true) {
   });
 }
 
+// fetchCertificatePreview renders a preview PDF. It is a POST (not GET) so an
+// unsaved `layout` — the box positions the admin is currently dragging, before
+// Save — can travel as a JSON body a browser can actually send (FR-26);
+// omitting layout previews the exam's saved (or default) design instead.
 export async function fetchCertificatePreview(
   examId: string,
   template?: string,
+  layout?: CertificateLayout,
 ): Promise<Blob> {
   const token = useAuthStore.getState().token;
   const params = template ? `?template=${encodeURIComponent(template)}` : "";
   const res = await fetch(
     `${API_BASE}/admin/exams/${encodeURIComponent(examId)}/certificate-preview${params}`,
     {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(layout ? { layout } : {}),
     },
   );
   if (!res.ok) {

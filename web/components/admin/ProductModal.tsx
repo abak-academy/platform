@@ -45,6 +45,20 @@ const STATUS_LABELS: Record<ProductStatus, string> = {
   archived: "Diarsipkan",
 };
 
+// datetime-local <-> ISO conversions for the availability window.
+function toLocalInput(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fromLocalInput(v: string): string | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export function ProductModal({ open, onOpenChange, product, onSubmit, isPending }: ProductModalProps) {
   const isEdit = Boolean(product);
   const [name, setName] = useState("");
@@ -58,6 +72,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const [description, setDescription] = useState("");
   const [courseIds, setCourseIds] = useState<string[]>([]);
   const [examIds, setExamIds] = useState<string[]>([]);
+  const [availableFrom, setAvailableFrom] = useState("");
+  const [availableUntil, setAvailableUntil] = useState("");
   const [specs, setSpecs] = useState<ProductSpec[]>([]);
   const { data: courses } = useAdminCourses();
   const { data: examsResp } = useExams();
@@ -78,6 +94,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setDescription(product.description ?? "");
         setCourseIds(product.course_ids ?? []);
         setExamIds(product.exam_ids ?? []);
+        setAvailableFrom(toLocalInput(product.available_from));
+        setAvailableUntil(toLocalInput(product.available_until));
         setSpecs(product.specs ?? []);
       } else {
         setName("");
@@ -90,6 +108,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setDescription("");
         setCourseIds([]);
         setExamIds([]);
+        setAvailableFrom("");
+        setAvailableUntil("");
         setSpecs([]);
       }
     }
@@ -141,6 +161,10 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       const input: AdminUpdateProductInput = {
         ...base,
         status,
+        // Always send the window on update so clearing a field persists (the
+        // backend preserves only when the key is absent).
+        available_from: fromLocalInput(availableFrom),
+        available_until: fromLocalInput(availableUntil),
         ...(showStock ? { stock: Number(stock) } : {}),
         ...(showStock && weight !== "" ? { weight_grams: Number(weight) } : {}),
         ...(showStock && imageUrl !== "" ? { image_url: imageUrl } : {}),
@@ -156,6 +180,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
     const input: AdminCreateProductInput = {
       ...base,
       type,
+      ...(availableFrom ? { available_from: fromLocalInput(availableFrom) } : {}),
+      ...(availableUntil ? { available_until: fromLocalInput(availableUntil) } : {}),
       ...(showStock ? { stock: Number(stock) } : {}),
       ...(showStock && weight !== "" ? { weight_grams: Number(weight) } : {}),
       ...(showStock && imageUrl !== "" ? { image_url: imageUrl } : {}),
@@ -367,6 +393,39 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                 rows={3}
                 className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
               />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Ketersediaan di marketplace (opsional)</Label>
+              <p className="text-xs text-muted-foreground">
+                Kosongkan untuk selalu tersedia. Produk hanya tampil dan bisa dibeli dalam rentang ini.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="product-available-from" className="text-xs font-normal text-muted-foreground">
+                    Tersedia dari
+                  </Label>
+                  <Input
+                    id="product-available-from"
+                    type="datetime-local"
+                    value={availableFrom}
+                    onChange={(e) => setAvailableFrom(e.target.value)}
+                    disabled={isPending}
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="product-available-until" className="text-xs font-normal text-muted-foreground">
+                    Tersedia sampai
+                  </Label>
+                  <Input
+                    id="product-available-until"
+                    type="datetime-local"
+                    value={availableUntil}
+                    onChange={(e) => setAvailableUntil(e.target.value)}
+                    disabled={isPending}
+                  />
+                </div>
+              </div>
             </div>
           </div>
 

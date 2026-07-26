@@ -1,0 +1,65 @@
+/* Brand fonts for the certificate design WYSIWYG editor (FR-3/FR-9): mirrors
+   the backend's fontFiles map (internal/service/pdffonts.go) one-for-one so
+   the browser preview matches the Gotenberg-rendered PDF. Families with only
+   one committed weight (cinzel, playfair_display, cormorant_garamond,
+   great_vibes) declare a single normal-weight face and rely on the same
+   browser font-synthesis Chromium applies server-side for a "bold" request,
+   matching backend certificateFontFaces() (only source_serif_4/public_sans
+   bundle a distinct bold file). */
+
+@font-face {
+  font-family: "source_serif_4";
+  src: url("/fonts/source_serif_4/SourceSerif4-SemiBold.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "source_serif_4";
+  src: url("/fonts/source_serif_4/SourceSerif4-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "public_sans";
+  src: url("/fonts/public_sans/PublicSans-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "public_sans";
+  src: url("/fonts/public_sans/PublicSans-SemiBold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "cinzel";
+  src: url("/fonts/cinzel/Cinzel-Bold.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "playfair_display";
+  src: url("/fonts/playfair_display/PlayfairDisplay-Bold.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "cormorant_garamond";
+  src: url("/fonts/cormorant_garamond/CormorantGaramond-SemiBold.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "great_vibes";
+  src: url("/fonts/great_vibes/GreatVibes-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}

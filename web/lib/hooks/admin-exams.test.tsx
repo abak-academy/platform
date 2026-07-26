@@ -5,10 +5,11 @@ import {
   useGradingSessions,
   useSessionEssays,
   useGradeEssay,
+  useExamRoster,
   adminExamsKeys,
 } from "./admin-exams";
 import { examKeys } from "./exam";
-import type { GradingSessionItem, GradingEssayItem } from "@/lib/types";
+import type { GradingSessionItem, GradingEssayItem, ExamRosterEntry } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 
@@ -102,6 +103,30 @@ describe("admin-exams grading hooks", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: adminExamsKeys.sessionEssays("s1") });
     expect(spy).toHaveBeenCalledWith({ queryKey: adminExamsKeys.gradingLists() });
     expect(spy).toHaveBeenCalledWith({ queryKey: examKeys.result("s1") });
+  });
+
+  it("useExamRoster fetches GET /admin/exams/:id/registrations", async () => {
+    const rows: ExamRosterEntry[] = [
+      {
+        registration_id: "r1",
+        student_id: "s1",
+        student_name: "Andi Saputra",
+        student_username: "andi123",
+        participant_number: 1,
+        participant_no: "250620-0042-000001",
+        status: "registered",
+        checked_in_at: null,
+      },
+    ];
+    mockAuthFetch.mockResolvedValueOnce({ data: rows });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useExamRoster("e1"), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams/e1/registrations");
+    expect(result.current.data?.data).toEqual(rows);
   });
 });
 

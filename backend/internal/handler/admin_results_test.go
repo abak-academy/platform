@@ -435,8 +435,8 @@ func seedExamWithMCQ(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 
 	var examID uuid.UUID
 	err := pool.QueryRow(ctx,
-		`INSERT INTO exam (title, allow_leaderboard, result_config, certificate_template, timer_mode, duration_minutes)
-		VALUES ($1, true, 'score_only', 'classic', 'overall', 60) RETURNING id`,
+		`INSERT INTO exam (title, allow_leaderboard, result_config, certificate_design, timer_mode, duration_minutes)
+		VALUES ($1, true, 'score_only', '{"template":"classic"}', 'overall', 60) RETURNING id`,
 		"AR Exam "+uuid.NewString()[:8],
 	).Scan(&examID)
 	if err != nil {

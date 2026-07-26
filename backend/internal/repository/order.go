@@ -41,7 +41,7 @@ type OrderPatch struct {
 const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost, total,
 	promo_code_id, shipping_address, selected_courier, selected_service, tracking_number, shipped_at,
 	gateway_ref, payment_method, payment_expires_at, paid_at, invoice_url,
-	estimated_delivery_days, checked_out_at, completed_at, cancelled_at, cancellation_reason,
+	checked_out_at, completed_at, cancelled_at, cancellation_reason,
 	created_at, updated_at`
 
 func scanOrder(row interface {
@@ -49,13 +49,13 @@ func scanOrder(row interface {
 }, order *model.Order) error {
 	// Nullable TEXT columns must be scanned into *string so pgx v5 can set nil for SQL NULL.
 	var selectedCourier, selectedService, trackingNumber, gatewayRef, paymentMethod, invoiceURL,
-		estimatedDeliveryDays, cancellationReason *string
+		cancellationReason *string
 	err := row.Scan(
 		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
 		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
 		&selectedCourier, &selectedService, &trackingNumber, &order.ShippedAt,
 		&gatewayRef, &paymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &invoiceURL,
-		&estimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &cancellationReason,
+		&order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &cancellationReason,
 		&order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
@@ -78,9 +78,6 @@ func scanOrder(row interface {
 	}
 	if invoiceURL != nil {
 		order.InvoiceURL = *invoiceURL
-	}
-	if estimatedDeliveryDays != nil {
-		order.EstimatedDeliveryDays = *estimatedDeliveryDays
 	}
 	if cancellationReason != nil {
 		order.CancellationReason = *cancellationReason

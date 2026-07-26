@@ -23,7 +23,7 @@ vi.mock("sonner", () => ({
 }));
 
 // Default: unauthenticated/no-role, matching the real store's default state —
-// existing tests below rely on this to see all six tabs (unscoped behavior).
+// existing tests below rely on this to see all seven tabs (unscoped behavior).
 let mockRole: string | undefined = undefined;
 
 vi.mock("@/stores/auth", () => ({
@@ -36,6 +36,12 @@ vi.mock("@/components/admin/ExamRegistrationsTab", () => ({
     <div data-testid="exam-registrations-tab">
       {examId}:{examName}
     </div>
+  ),
+}));
+
+vi.mock("@/components/admin/CertificateDesignTab", () => ({
+  CertificateDesignTab: ({ examId }: { examId: string }) => (
+    <div data-testid="certificate-design-tab">{examId}</div>
   ),
 }));
 
@@ -699,12 +705,13 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(screen.getByRole("button", { name: /^ringkasan$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^pendaftaran$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^tes$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^sertifikat$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^penilaian$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Leaderboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
   });
 
-  it("super_admin still sees all six tabs and the Edit button", async () => {
+  it("super_admin still sees all seven tabs and the Edit button", async () => {
     mockRole = "super_admin";
     render(<ExamPackageDetailPage />);
 
@@ -713,8 +720,22 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     });
 
     expect(screen.getByRole("button", { name: /^tes$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^sertifikat$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Leaderboard" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+  });
+
+  it("renders the CertificateDesignTab on the Sertifikat tab", async () => {
+    mockRole = "super_admin";
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^sertifikat$/i }));
+
+    expect(screen.getByTestId("certificate-design-tab")).toHaveTextContent("exam-1");
   });
 
   it("admin_school never fires the tests/analytics/leaderboard/grading queries (PR review P2)", async () => {

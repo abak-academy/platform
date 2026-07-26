@@ -26,3 +26,7 @@ object_storage_use_ssl: false
 object_storage_region: "us-east-1"
 object_storage_bucket_name: "akademi-bimbel"
 object_storage_private_bucket_name: "akademi-bimbel-private"
+
+# Gotenberg (HTML->PDF renderer) sidecar URL. Deploy-topology, not a secret;
+# points at the compose service.
+gotenberg_url: "http://gotenberg:3000"

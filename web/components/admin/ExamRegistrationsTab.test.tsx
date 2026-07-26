@@ -63,6 +63,18 @@ vi.mock("@/lib/hooks/admin-bulk-exam-orders", () => ({
   }),
 }));
 
+let rosterData: { data: unknown[] } | undefined = { data: [] };
+let rosterIsLoading = false;
+let rosterIsError = false;
+
+vi.mock("@/lib/hooks/admin-exams", () => ({
+  useExamRoster: () => ({
+    data: rosterData,
+    isLoading: rosterIsLoading,
+    isError: rosterIsError,
+  }),
+}));
+
 vi.mock("@/lib/hooks/admin-exam-grants", () => ({
   useGrantExamAccess: () => ({
     isPending: false,
@@ -129,6 +141,9 @@ describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam
     previewMockResult = null;
     createShouldError = false;
     createErrorMessage = "";
+    rosterData = { data: [] };
+    rosterIsLoading = false;
+    rosterIsError = false;
     vi.mocked(toast.success).mockClear();
     vi.mocked(toast.error).mockClear();
   });
@@ -219,6 +234,9 @@ describe("ExamRegistrationsTab — super_admin grant flow (cross-school, no orde
     grantShouldError = false;
     grantErrorMessage = "";
     grantMockResult = null;
+    rosterData = { data: [] };
+    rosterIsLoading = false;
+    rosterIsError = false;
     vi.mocked(toast.success).mockClear();
     vi.mocked(toast.error).mockClear();
   });
@@ -281,5 +299,159 @@ describe("ExamRegistrationsTab — super_admin grant flow (cross-school, no orde
       );
     });
     expect(screen.queryByText("Andi Saputra")).not.toBeInTheDocument();
+  });
+});
+
+describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
+  const originalCreateElement = document.createElement.bind(document);
+  let lastDownloadedFilename: string | null = null;
+  let lastCapturedBlob: Blob | null = null;
+
+  beforeEach(() => {
+    authUser = { role: "admin_school", school_id: "school-1" };
+    rosterData = { data: [] };
+    rosterIsLoading = false;
+    rosterIsError = false;
+    lastDownloadedFilename = null;
+    lastCapturedBlob = null;
+
+    document.createElement = ((tag: string) => {
+      const el = originalCreateElement(tag);
+      if (tag === "a") {
+        (el as HTMLAnchorElement).click = vi.fn(function (this: HTMLAnchorElement) {
+          lastDownloadedFilename = this.download;
+        });
+      }
+      return el;
+    }) as typeof document.createElement;
+
+    if (!(URL.createObjectURL as any).__mocked) {
+      URL.createObjectURL = vi.fn().mockImplementation((blob: Blob) => {
+        lastCapturedBlob = blob;
+        return "blob:mock" as unknown as string;
+      }) as typeof URL.createObjectURL;
+      (URL.createObjectURL as any).__mocked = true;
+    }
+  });
+
+  const rows = [
+    {
+      registration_id: "reg-2",
+      student_id: "s2",
+      student_name: "Budi Santoso",
+      student_username: "budi456",
+      participant_number: 2,
+      participant_no: "250620-0042-000002",
+      status: "registered",
+      checked_in_at: null,
+    },
+    {
+      registration_id: "reg-1",
+      student_id: "s1",
+      student_name: "Andi Saputra",
+      student_username: "andi123",
+      participant_number: 1,
+      participant_no: "250620-0042-000001",
+      status: "registered",
+      checked_in_at: "2026-06-20T01:00:00Z",
+    },
+    {
+      registration_id: "reg-3",
+      student_id: "s3",
+      student_name: "Citra Dewi",
+      student_username: null,
+      participant_number: null,
+      participant_no: "",
+      status: "registered",
+      checked_in_at: null,
+    },
+  ];
+
+  it("shows the load-failed message when the roster fails to fetch", () => {
+    rosterIsError = true;
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.getByText("exam_roster_load_failed")).toBeInTheDocument();
+  });
+
+  it("shows the empty state when there are no registrations", () => {
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.getByText("exam_roster_empty")).toBeInTheDocument();
+  });
+
+  it("renders rows sorted by participant number ascending by default, with a nil-safe dash for unassigned numbers", () => {
+    rosterData = { data: rows };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const cells = screen.getAllByTestId("roster-participant-no");
+    expect(cells.map((c) => c.textContent)).toEqual([
+      "250620-0042-000001",
+      "250620-0042-000002",
+      "—",
+    ]);
+  });
+
+  it("reverses sort order when the No. Peserta header is clicked", () => {
+    rosterData = { data: rows };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    fireEvent.click(screen.getByText("exam_roster_th_participant_no"));
+
+    const cells = screen.getAllByTestId("roster-participant-no");
+    expect(cells.map((c) => c.textContent)).toEqual([
+      "—",
+      "250620-0042-000002",
+      "250620-0042-000001",
+    ]);
+  });
+
+  it("exports a CSV blob of the roster rows when Export CSV is clicked", async () => {
+    rosterData = { data: rows };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    fireEvent.click(screen.getByText("exam_roster_export_csv"));
+
+    expect(lastDownloadedFilename).toBe("roster.csv");
+    expect(lastCapturedBlob).not.toBeNull();
+    const text = await lastCapturedBlob!.text();
+    expect(text).toContain("No. Peserta,Nama,Username,Status,Checked In");
+    expect(text).toContain("250620-0042-000001,Andi Saputra,andi123,registered,yes");
+    expect(text).toContain(",Citra Dewi,,registered,no");
+  });
+
+  // Student names are attacker-supplied at registration, so a leading =/+/-/@
+  // must not reach the spreadsheet as a live formula.
+  it("neutralizes formula-leading fields in the exported CSV", async () => {
+    rosterData = {
+      data: [
+        {
+          ...rows[0],
+          registration_id: "reg-evil",
+          student_id: "s-evil",
+          student_name: '=HYPERLINK("http://evil.test","claim prize")',
+          student_username: "+cmd|' /C calc'!A0",
+        },
+      ],
+    };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    fireEvent.click(screen.getByText("exam_roster_export_csv"));
+
+    const text = await lastCapturedBlob!.text();
+    expect(text).toContain(`"'=HYPERLINK(""http://evil.test"",""claim prize"")"`);
+    expect(text).toContain(`"'+cmd|' /C calc'!A0"`);
+    expect(text).not.toContain(",=HYPERLINK");
+    expect(text).not.toContain(",+cmd");
   });
 });

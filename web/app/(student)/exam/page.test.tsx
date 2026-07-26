@@ -4,8 +4,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import ExamPage from "./page";
 import type { RegistrationListItem } from "@/lib/types";
 
+const { pushMock } = vi.hoisted(() => ({ pushMock: vi.fn() }));
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushMock }),
 }));
 
 let uiStore = { lang: "id" as "id" | "en" };
@@ -23,7 +25,6 @@ vi.mock("sonner", () => ({
   toast: { success: toastSuccess, error: toastError },
 }));
 
-const downloadCardMock = vi.fn();
 const checkInMutate = vi.fn();
 const startSessionMutate = vi.fn();
 
@@ -37,7 +38,6 @@ let registrationsState = {
 
 vi.mock("@/lib/hooks/exam", () => ({
   useRegistrations: () => registrationsState,
-  downloadCard: (...args: unknown[]) => downloadCardMock(...args),
   useCheckIn: () => ({ mutate: checkInMutate, isPending: false }),
   useStartSession: () => ({ mutateAsync: startSessionMutate, isPending: false }),
 }));
@@ -47,7 +47,7 @@ const freeUpcoming: RegistrationListItem = {
   student_id: "s-1",
   exam_id: "e-1",
   token: "ABC12345",
-  card_pdf_url: null,
+  card_key: null,
   checked_in_at: null,
   attempts_used: 0,
   status: "registered",
@@ -66,7 +66,7 @@ const paidNoSchedule: RegistrationListItem = {
   student_id: "s-1",
   exam_id: "e-2",
   token: "XYZ98765",
-  card_pdf_url: null,
+  card_key: null,
   checked_in_at: null,
   attempts_used: 0,
   status: "registered",
@@ -85,6 +85,7 @@ const sample: RegistrationListItem[] = [freeUpcoming, paidNoSchedule];
 describe("ExamPage", () => {
   beforeEach(() => {
     uiStore = { lang: "id" };
+    pushMock.mockClear();
     registrationsState = {
       data: sample,
       isLoading: false,
@@ -194,6 +195,31 @@ describe("ExamPage", () => {
       expect(screen.getByText("Tryout Sudah Tutup")).toBeInTheDocument();
     });
     expect(screen.getAllByText("Kadaluarsa").length).toBeGreaterThan(0);
+  });
+
+  it("navigates to the printable card page when download card is clicked", async () => {
+    const lockedReg: RegistrationListItem = {
+      ...paidNoSchedule,
+      id: "reg-5",
+      exam_title: "Tryout Terkunci",
+      requires_checkin: true,
+      scheduled_at: new Date(Date.now() + 60 * 60_000).toISOString(), // 1h from now
+      check_in_window_minutes: 15,
+    };
+    registrationsState = {
+      data: [lockedReg],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tryout Terkunci")).toBeInTheDocument();
+    });
+    screen.getByRole("button", { name: /Unduh kartu/i }).click();
+    expect(pushMock).toHaveBeenCalledWith("/exam/reg-5/card");
   });
 
   it("shows an error state with a retry action", async () => {

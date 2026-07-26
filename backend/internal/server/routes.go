@@ -259,7 +259,9 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExams.GET("/:id/grading", h.AdminListGradingSessions)
 	adminExams.GET("/:id/leaderboard", h.AdminGetExamLeaderboard)
 	adminExams.GET("/:id/analytics", h.AdminGetExamAnalytics)
-	adminExams.GET("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
+	adminExams.POST("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
+	adminExams.GET("/:id/certificate-design", h.AdminGetExamCertificateDesign)
+	adminExams.PUT("/:id/certificate-design", h.AdminUpdateExamCertificateDesign)
 
 	// Admin exam routes — read-only group (sibling, same path prefix). admin_school
 	// needs list/detail to use the Registrations tab on the exam detail page, but
@@ -268,6 +270,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamsRead.Use(handler.RBACMiddleware("products(exam):read"))
 	adminExamsRead.GET("", h.AdminListExams)
 	adminExamsRead.GET("/:id", h.AdminGetExam)
+	adminExamsRead.GET("/:id/registrations", h.AdminListExamRegistrations)
 
 	// Admin upload routes (image + audio presigning)
 	adminUploads := admin.Group("/uploads")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/lib/i18n";
 import { toast } from "sonner";
-import { fetchCertificatePreview, useCreateExam, useUpdateExam } from "@/lib/hooks/admin-exams";
+import { useCreateExam, useUpdateExam } from "@/lib/hooks/admin-exams";
 import type { ExamListItem, CreateExamPayload, UpdateExamPayload, ExamResultConfig } from "@/lib/types";
 
 interface ExamModalProps {
@@ -24,7 +24,6 @@ interface ExamModalProps {
 }
 
 type TimerMode = "overall" | "per_test";
-type CertificateTemplate = "classic" | "modern" | "elegant";
 
 function scheduledAtInputValue(iso?: string | null): string {
   if (!iso) return "";
@@ -79,14 +78,12 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const [requiresCheckin, setRequiresCheckin] = useState(false);
   const [allowLeaderboard, setAllowLeaderboard] = useState(false);
   const [randomize, setRandomize] = useState(false);
-  const [certificateTemplate, setCertificateTemplate] = useState<CertificateTemplate>("classic");
   const [mode, setMode] = useState("standard");
   const [resultConfig, setResultConfig] = useState<ExamResultConfig>("hidden");
   const [resultReleaseAt, setResultReleaseAt] = useState("");
   const [checkInWindow, setCheckInWindow] = useState("");
   const [graceWindow, setGraceWindow] = useState("");
   const [maxAttempts, setMaxAttempts] = useState("");
-  const previewUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -100,7 +97,6 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setRequiresCheckin(Boolean(exam.requires_checkin));
       setAllowLeaderboard(Boolean(exam.allow_leaderboard));
       setRandomize(Boolean(exam.randomize));
-      setCertificateTemplate((exam.certificate_template as CertificateTemplate) ?? "classic");
       setMode(exam.mode ?? "standard");
       setResultConfig((exam.result_config as ExamResultConfig) ?? "hidden");
       setResultReleaseAt(scheduledAtInputValue(exam.result_release_at));
@@ -117,7 +113,6 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setRequiresCheckin(false);
       setAllowLeaderboard(false);
       setRandomize(false);
-      setCertificateTemplate("classic");
       setMode("standard");
       setResultConfig("hidden");
       setResultReleaseAt("");
@@ -158,7 +153,6 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       requires_checkin: requiresCheckin,
       allow_leaderboard: allowLeaderboard,
       randomize,
-      certificate_template: certificateTemplate,
       mode,
       result_config: resultConfig,
       result_release_at: scheduledAtIso(resultReleaseAt),
@@ -186,25 +180,6 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
         onSaved?.(result as ExamListItem);
       }
       onClose();
-    } catch {
-      toast.error(t("error_generic"));
-    }
-  }
-
-  async function handlePreview() {
-    if (!exam || isPending) return;
-    try {
-      const blob = await fetchCertificatePreview(exam.id, certificateTemplate);
-      const url = URL.createObjectURL(blob);
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-      previewUrlRef.current = url;
-      window.open(url, "_blank");
-      setTimeout(() => {
-        if (previewUrlRef.current === url) {
-          URL.revokeObjectURL(url);
-          previewUrlRef.current = null;
-        }
-      }, 30000);
     } catch {
       toast.error(t("error_generic"));
     }
@@ -376,48 +351,6 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                     <span>{label}</span>
                   </label>
                 ))}
-              </div>
-            </div>
-
-            <div className="grid gap-3">
-              <SectionHeading>{t("certificate")}</SectionHeading>
-              <div className="grid gap-2">
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["classic", t("certificate_template_classic")],
-                      ["modern", t("certificate_template_modern")],
-                      ["elegant", t("certificate_template_elegant")],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <label
-                      key={value}
-                      className={`${RADIO_CARD_BASE} ${
-                        certificateTemplate === value ? RADIO_CARD_ON : RADIO_CARD_OFF
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="certificate_template"
-                        value={value}
-                        checked={certificateTemplate === value}
-                        onChange={() => setCertificateTemplate(value)}
-                        disabled={isPending}
-                      />
-                      <span>{label}</span>
-                    </label>
-                  ))}
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-fit rounded-full"
-                  onClick={handlePreview}
-                  disabled={!isEdit || isPending}
-                >
-                  {t("admin_exam_certificate_preview")}
-                </Button>
               </div>
             </div>
 
