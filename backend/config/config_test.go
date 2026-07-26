@@ -602,10 +602,10 @@ object_storage_secret_key: "sk"
 		want  string
 	}{
 		{"RedisAddr", cfg.RedisAddr, "redis:6379"},
-		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "abak-academy-media-prod"},
-		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "abak-academy-media-prod"},
+		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "abak-academy-media"},
+		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "abak-academy-media"},
 		{"ObjectStorageEndpoint", cfg.ObjectStorageEndpoint, "storage.googleapis.com"},
-		{"SMTPHost", cfg.SMTPHost, "smtp.gmail.com"},
+		{"SMTPHost", cfg.SMTPHost, "smtp.hostinger.com"},
 		{"SMTPFromName", cfg.SMTPFromName, "Abak Academy"},
 		{"MidtransEnv", cfg.MidtransEnv, "production"},
 	}
