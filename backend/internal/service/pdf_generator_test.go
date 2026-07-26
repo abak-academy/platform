@@ -57,7 +57,7 @@ func TestGotenbergRenderer_RenderHTML_PostsMultipartForm(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	r := newGotenbergRenderer(srv.URL, srv.Client())
+	r := newGotenbergPDFGenerator(srv.URL, srv.Client())
 	htmlInput := []byte("<html><body>hello</body></html>")
 
 	pdfBytes, err := r.RenderHTML(context.Background(), htmlInput)
@@ -104,7 +104,7 @@ func TestGotenbergRenderer_RenderHTML_NonOKStatusReturnsWrappedError(t *testing.
 	}))
 	defer srv.Close()
 
-	r := newGotenbergRenderer(srv.URL, srv.Client())
+	r := newGotenbergPDFGenerator(srv.URL, srv.Client())
 
 	_, err := r.RenderHTML(context.Background(), []byte("<html></html>"))
 	if err == nil {
@@ -134,7 +134,7 @@ func TestGotenbergRenderer_RenderHTML_StalledUpstreamTimesOut(t *testing.T) {
 		srv.Close()
 	}()
 
-	r := newGotenbergRenderer(srv.URL, srv.Client())
+	r := newGotenbergPDFGenerator(srv.URL, srv.Client())
 	r.timeout = 50 * time.Millisecond
 
 	done := make(chan error, 1)
@@ -159,12 +159,12 @@ func TestGotenbergRenderer_RenderHTML_StalledUpstreamTimesOut(t *testing.T) {
 // The default timeout must be non-zero, otherwise the bound above is inert in
 // production even though the plumbing exists.
 func TestNewGotenbergRenderer_AppliesDefaultTimeout(t *testing.T) {
-	r := newGotenbergRenderer("http://gotenberg:3000", nil)
+	r := newGotenbergPDFGenerator("http://gotenberg:3000", nil)
 	if r.timeout <= 0 {
 		t.Fatalf("timeout = %v, want a positive default", r.timeout)
 	}
 }
 
 func TestGotenbergRenderer_ImplementsCertificateRenderer(t *testing.T) {
-	var _ certificateRenderer = (*gotenbergRenderer)(nil)
+	var _ pdfGenerator = (*gotenbergPDFGenerator)(nil)
 }

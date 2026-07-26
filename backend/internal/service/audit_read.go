@@ -3,14 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"akademi-bimbel/internal/repository"
 )
-
-var ErrInvalidDateFormat = errors.New("invalid date format")
 
 // AuditLogEntry is the response shape for a single audit log entry.
 type AuditLogEntry struct {

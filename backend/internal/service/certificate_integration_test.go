@@ -81,7 +81,7 @@ func TestCertificateRender_RealGotenberg(t *testing.T) {
 		t.Fatalf("buildCertificateHTML: %v", err)
 	}
 
-	renderer := newGotenbergRenderer(url, &http.Client{Timeout: 30 * time.Second})
+	renderer := newGotenbergPDFGenerator(url, &http.Client{Timeout: 30 * time.Second})
 	pdf, err := renderer.RenderHTML(context.Background(), html)
 	if err != nil {
 		t.Fatalf("RenderHTML against %s: %v", url, err)
@@ -181,7 +181,7 @@ func TestCertificateRender_DraggedFieldLandsWhereDragged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildCertificateHTML: %v", err)
 	}
-	pdf, err := newGotenbergRenderer(url, &http.Client{Timeout: 30 * time.Second}).
+	pdf, err := newGotenbergPDFGenerator(url, &http.Client{Timeout: 30 * time.Second}).
 		RenderHTML(context.Background(), html)
 	if err != nil {
 		t.Fatalf("RenderHTML: %v", err)

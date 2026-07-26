@@ -3,14 +3,9 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"math/big"
 	"strings"
 )
-
-// ErrUsernameGenerationExhausted is returned when 10 attempts to generate a
-// unique username all collide with existing usernames.
-var ErrUsernameGenerationExhausted = errors.New("username generation exhausted after 10 attempts")
 
 // GenerateUsername creates a base username from a full name: lowercase, strip
 // all whitespace, take the first 4 runes (fewer if the stripped name is shorter).

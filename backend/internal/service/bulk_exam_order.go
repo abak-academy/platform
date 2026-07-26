@@ -10,15 +10,6 @@ import (
 	"github.com/google/uuid"
 )
 
-var (
-	// ErrZeroNetNewParticipants is returned when all selected participants
-	// are already registered for the exam (FR-BULK-05).
-	ErrZeroNetNewParticipants = errors.New("all selected participants are already registered for this exam")
-	// ErrExamNotOrderable is returned when the exam's product is not published
-	// or not found (FR-BULK-08).
-	ErrExamNotOrderable = errors.New("exam is not orderable")
-)
-
 // BulkOrderPreview is the response for PreviewBulkExamOrder.
 type BulkOrderPreview struct {
 	NetNewCount int                  `json:"net_new_count"`

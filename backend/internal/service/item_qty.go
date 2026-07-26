@@ -1,17 +1,8 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 )
-
-// ErrDigitalQtyLimit is returned when a caller tries to put more than one unit
-// of a digital product in an order.
-var ErrDigitalQtyLimit = errors.New("digital products are limited to one per order")
-
-// ErrInvalidQty is returned for a non-positive quantity. There is no generic
-// validation sentinel in this package, so the rule owns its own.
-var ErrInvalidQty = errors.New("invalid quantity")
 
 // ValidateItemQty enforces the per-line quantity rule.
 //

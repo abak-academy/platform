@@ -44,8 +44,8 @@ type DashboardStudySummary struct {
 type DashboardLeaderboardEntry struct{}
 
 type DashboardRanking struct {
-	Position    *int                      `json:"position"`
-	Points      *float64                  `json:"points"`
+	Position    *int                        `json:"position"`
+	Points      *float64                    `json:"points"`
 	Leaderboard []DashboardLeaderboardEntry `json:"leaderboard"`
 }
 
@@ -334,7 +334,7 @@ func (s *Service) presignReadURL(ctx context.Context, bucket, key string, ttl ti
 // fetched through this unauthenticated proxy.
 func (s *Service) OpenAvatar(ctx context.Context, key string) (io.ReadCloser, string, error) {
 	if s.storage == nil {
-		return nil, "", errors.New("storage not configured")
+		return nil, "", ErrStorageNotConfigured
 	}
 	prefix, _, ok := strings.Cut(key, "/")
 	if !ok || !uploadPrefixAllowlist[prefix] || strings.Contains(key, "..") {
@@ -364,7 +364,7 @@ var uploadPrefixAllowlist = map[string]bool{
 
 func (s *Service) GeneratePresignedUploadURL(ctx context.Context, userID, prefix, filename, contentType string) (*PresignedUploadURL, error) {
 	if s.storage == nil {
-		return nil, errors.New("storage not configured")
+		return nil, ErrStorageNotConfigured
 	}
 	if userID == "" || filename == "" {
 		return nil, errors.New("user_id and filename are required")

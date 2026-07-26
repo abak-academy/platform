@@ -12,10 +12,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// ErrInvalidGrantStudent is returned when a student_id in the grant request
-// does not exist or is not a student (FR-GRANT-06).
-var ErrInvalidGrantStudent = errors.New("one or more student IDs are invalid or not students")
-
 type GrantedStudent struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`

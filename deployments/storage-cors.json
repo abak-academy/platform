@@ -2,10 +2,10 @@
   {
     "origin": [
       "https://stg.abakacademy.id",
-      "https://abakacademy.id",
+      "https://hub.abakacademy.id",
       "http://localhost:3000"
     ],
-    "method": ["GET", "HEAD"],
+    "method": ["GET", "HEAD", "PUT"],
     "responseHeader": ["Content-Type", "Content-Disposition"],
     "maxAgeSeconds": 3600
   }

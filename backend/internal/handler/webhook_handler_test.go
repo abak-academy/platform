@@ -14,13 +14,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// mockPaymentClient returns false for VerifySignature (for testing invalid signatures)
-type mockPaymentClient struct{}
-
-func (m *mockPaymentClient) VerifySignature(payload []byte, signature string) bool {
-	return false
-}
-
 func TestPaymentWebhook_MissingTransactionID_ReturnsBadRequest(t *testing.T) {
 	// Setup
 	mr, err := miniredis.Run()

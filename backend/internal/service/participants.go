@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"akademi-bimbel/internal/repository"
@@ -17,17 +16,6 @@ type ParticipantSelector struct {
 	Grade      *int
 	All        bool
 }
-
-var (
-	// ErrCrossSchoolStudent is returned when a student_id in the selector
-	// does not belong to the specified school (FR-BULK-03).
-	ErrCrossSchoolStudent = errors.New("student does not belong to this school")
-	// ErrEmptySelector is returned when no selection criteria are provided.
-	ErrEmptySelector = errors.New("empty participant selector")
-	// ErrDuplicateParticipant is returned when the same student_id appears more
-	// than once in a participant selector (FR-BULK-03).
-	ErrDuplicateParticipant = errors.New("duplicate student_id in participant selector")
-)
 
 // ResolveSchoolParticipantSet resolves a ParticipantSelector against a single school.
 // Individual StudentIDs are validated to belong to schoolID (cross-school ids fail).

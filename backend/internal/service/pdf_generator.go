@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-// certificateRenderer turns self-contained HTML into rendered PDF bytes.
+// pdfGenerator turns self-contained HTML into rendered PDF bytes.
 // Gotenberg is the only implementation today; the interface exists so
 // certificate/card generation can be unit-tested without a real Gotenberg.
-type certificateRenderer interface {
+type pdfGenerator interface {
 	RenderHTML(ctx context.Context, html []byte) ([]byte, error)
 }
 
@@ -22,9 +22,9 @@ type certificateRenderer interface {
 // Gotenberg would hang every certificate and card render indefinitely.
 const defaultGotenbergTimeout = 30 * time.Second
 
-// gotenbergRenderer calls a Gotenberg sidecar's Chromium HTML-to-PDF route
+// gotenbergPDFGenerator calls a Gotenberg sidecar's Chromium HTML-to-PDF route
 // directly via net/http + mime/multipart (FR-10: no third-party client lib).
-type gotenbergRenderer struct {
+type gotenbergPDFGenerator struct {
 	url        string
 	httpClient *http.Client
 	// timeout bounds one RenderHTML call, applied as a context deadline so it
@@ -32,14 +32,14 @@ type gotenbergRenderer struct {
 	timeout time.Duration
 }
 
-func newGotenbergRenderer(url string, httpClient *http.Client) *gotenbergRenderer {
+func newGotenbergPDFGenerator(url string, httpClient *http.Client) *gotenbergPDFGenerator {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &gotenbergRenderer{url: url, httpClient: httpClient, timeout: defaultGotenbergTimeout}
+	return &gotenbergPDFGenerator{url: url, httpClient: httpClient, timeout: defaultGotenbergTimeout}
 }
 
-func (r *gotenbergRenderer) RenderHTML(ctx context.Context, html []byte) ([]byte, error) {
+func (r *gotenbergPDFGenerator) RenderHTML(ctx context.Context, html []byte) ([]byte, error) {
 	if r.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, r.timeout)

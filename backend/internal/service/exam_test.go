@@ -1711,7 +1711,7 @@ func (f *fakeRegRepo) UpdateRegistrationCard(_ context.Context, regID uuid.UUID,
 	return repository.ErrNotFound
 }
 
-// fakeCardRenderer stands in for the Gotenberg-backed certificateRenderer so
+// fakeCardRenderer stands in for the Gotenberg-backed pdfGenerator so
 // GetExamCard's lazy generate-once/reuse logic can be tested without a live
 // Gotenberg — tracks call count so a cache-hit can assert it never re-renders.
 type fakeCardRenderer struct {

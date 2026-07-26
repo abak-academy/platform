@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -13,17 +12,6 @@ import (
 	"akademi-bimbel/internal/repository"
 
 	"golang.org/x/crypto/bcrypt"
-)
-
-var (
-	ErrSchoolDeactivated  = errors.New("school is deactivated")
-	ErrStudentNotFound    = errors.New("student not found")
-	ErrInvalidJenjang     = errors.New("invalid jenjang for school")
-	ErrIncompleteAddress  = errors.New("incomplete address: all or none of provinsi/kota/kecamatan required")
-	ErrInvalidProvinsi    = errors.New("invalid provinsi")
-	ErrInvalidKota        = errors.New("invalid kota")
-	ErrInvalidKecamatan   = errors.New("invalid kecamatan")
-	ErrInvalidGender      = errors.New("invalid gender: expected male or female")
 )
 
 // normalizeGender maps the API's male/female wire values to the DB's

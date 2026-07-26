@@ -28,25 +28,6 @@ func newTestDeps(t *testing.T) (*infra.JWTSigner, *service.Service, *miniredis.M
 	return signer, svc, mr
 }
 
-func echoWithMiddlewares(mws ...echo.MiddlewareFunc) (*echo.Echo, *httptest.ResponseRecorder) {
-	e := echo.New()
-	e.HideBanner = true
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	handler := func(c echo.Context) error {
-		return c.String(http.StatusOK, "ok")
-	}
-	h := handler
-	for i := len(mws) - 1; i >= 0; i-- {
-		h = func(next echo.HandlerFunc, mw echo.MiddlewareFunc) echo.HandlerFunc {
-			return mw(next)
-		}(h, mws[i])
-	}
-	c := e.NewContext(req, rec)
-	_ = h(c)
-	return e, rec
-}
-
 func TestJWTMiddleware_MissingHeader(t *testing.T) {
 	signer, svc, _ := newTestDeps(t)
 

@@ -48,6 +48,21 @@ services:
       timeout: 3s
       retries: 5
 
+  # Certificate and exam-card rendering (PR #44). Absent from this file until
+  # 2026-07-26 while config/env/staging/config.yaml already pointed at
+  # http://gotenberg:3000, so any render that missed the card_key/certificate_key
+  # cache failed on an unresolvable host after a 30s timeout. Cached documents
+  # kept working, which is why nothing looked wrong. api deliberately does NOT
+  # depend_on this — a Gotenberg outage should degrade rendering, not the API.
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   api:
     image: ghcr.io/panca1093/bimbel-abak-academy/api:${IMAGE_TAG:?set IMAGE_TAG to the deployed commit SHA}
     restart: unless-stopped

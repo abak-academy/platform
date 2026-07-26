@@ -2,17 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
-)
-
-var (
-	ErrSchoolNotFound = errors.New("school not found")
-	ErrSchoolCodeTaken = errors.New("school code already taken")
 )
 
 // SchoolResponse is the school shape returned in admin responses.

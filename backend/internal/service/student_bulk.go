@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
-	"errors"
 	"io"
 	"strconv"
 	"strings"
@@ -12,16 +11,6 @@ import (
 )
 
 const maxBulkRows = 1000
-
-var (
-	ErrInvalidCSV          = errors.New("invalid csv")
-	ErrMissingCSVHeader    = errors.New("csv missing required name/jenjang/school header")
-	ErrRowLimitExceeded    = errors.New("row limit exceeded")
-	ErrSchoolNotFoundByName = errors.New("school not found by name")
-	ErrCrossSchoolBound    = errors.New("school mismatch: row school differs from bound school")
-	ErrInvalidDOBFormat    = errors.New("invalid dob format, expected YYYY-MM-DD")
-	ErrInvalidGradeFormat  = errors.New("invalid grade, expected an integer")
-)
 
 type StudentBulkRow struct {
 	Name           string
@@ -96,7 +85,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 			kecamatanIdx = i
 		case "kode_pos":
 			kodePosIdx = i
-		// "nis" is intentionally ignored
+			// "nis" is intentionally ignored
 		}
 	}
 	if nameIdx == -1 || jenjangIdx == -1 || schoolIdx == -1 {
