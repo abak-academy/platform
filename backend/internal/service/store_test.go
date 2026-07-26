@@ -194,22 +194,6 @@ func (f *fakeStoreRepo) CreateProductWithCourses(_ context.Context, p *model.Pro
 // Simplest approach: define a small interface used inside store.go methods,
 // and use a testable Service constructor.
 
-// storeService wraps the fakeStoreRepo behind the same method signatures
-// that Service.store* methods use, via a thin shim Service.
-type storeService struct {
-	svc  *Service
-	fake *fakeStoreRepo
-}
-
-func newStoreService(fake *fakeStoreRepo) *storeService {
-	svc := &Service{
-		storeRepo: nil, // we'll override via storeRepoShim
-	}
-	var logistics LogisticsClient = &NoopLogisticsClient{}
-	svc.logistics.Store(&logistics)
-	return &storeService{svc: svc, fake: fake}
-}
-
 // Because storeRepo is *repository.Repository (concrete type), we cannot directly
 // inject fakeStoreRepo. Instead, we test store logic by calling the methods
 // indirectly: we define a thin shim Service that directly calls fakeStoreRepo.
@@ -655,7 +639,6 @@ func TestCheckout_DigitalItemWithoutShipping_Succeeds(t *testing.T) {
 type fakeOrderRepo struct {
 	products map[string]*model.Product
 	orders   map[string]*model.Order
-	seq      int
 }
 
 func newFakeOrderRepo() *fakeOrderRepo {
@@ -740,7 +723,7 @@ func TestAddItem_OutOfStock(t *testing.T) {
 	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
-		Name: "Book 1",
+		Name:  "Book 1",
 		Stock: 0,
 		Price: 10000,
 	})
@@ -771,7 +754,7 @@ func TestAddItem_OrderNotCart(t *testing.T) {
 	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
-		Name: "Book 1",
+		Name:  "Book 1",
 		Stock: 10,
 		Price: 10000,
 	})
@@ -1062,7 +1045,7 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
-		Name: "Book 1",
+		Name:  "Book 1",
 		Stock: 100,
 		Price: 10000,
 	})
@@ -1553,8 +1536,8 @@ func TestUpdateProductWithCourses_Atomicity_RollbackOnCourseError(t *testing.T) 
 	course, _ := base.CreateCourse(ctx, model.Course{Title: "C1", Level: "b", Subject: "s", InstructorName: "I"})
 	originalTitle := "Original Title"
 	base.seedProduct(model.Product{
-		ID:    "prod-1",
-		Type:  "course",
+		ID:   "prod-1",
+		Type: "course",
 		Name: originalTitle,
 	})
 	base.productCourses["prod-1"] = []uuid.UUID{course.ID}
@@ -1566,7 +1549,7 @@ func TestUpdateProductWithCourses_Atomicity_RollbackOnCourseError(t *testing.T) 
 	svc := &shimUpdateProductWithCoursesAtomic{repo: repo}
 
 	_, err := svc.UpdateProductWithCourses(ctx, "prod-1", model.Product{
-		Type:  "course",
+		Type: "course",
 		Name: "New Title — should not persist",
 	}, []string{course.ID.String()}, RoleAdminStore)
 	if err == nil {

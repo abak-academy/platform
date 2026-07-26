@@ -41,7 +41,7 @@ services:
       # from the API. Without CORS the fetch that follows the redirect is
       # blocked. Staging/prod need the equivalent on the GCS bucket, applied
       # out of band like the bucket creation itself:
-      #   gcloud storage buckets update gs://<bucket> --cors-file=deploy/storage-cors.json
+      #   gcloud storage buckets update gs://<bucket> --cors-file=deployments/storage-cors.json
       MINIO_API_CORS_ALLOW_ORIGIN: "*"
     ports:
       - "9000:9000"

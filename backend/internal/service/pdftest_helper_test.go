@@ -109,11 +109,6 @@ func avgColorAt(img image.Image, pageWidthMm, pageHeightMm, xMm, yMm float64) (r
 	return sr / n, sg / n, sb / n
 }
 
-func colorDistance(r1, g1, b1, r2, g2, b2 float64) float64 {
-	dr, dg, db := r1-r2, g1-g2, b1-b2
-	return dr*dr + dg*dg + db*db
-}
-
 // regionMinBrightness scans a grid over [xMinMm,xMaxMm]x[yMinMm,yMaxMm] and
 // returns the darkest pixel found, as an R+G+B sum (0=black, 765=white). It
 // detects glyph ink against a much brighter background without needing to

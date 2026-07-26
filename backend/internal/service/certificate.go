@@ -110,7 +110,7 @@ func (s *Service) resolveCertificateSignatureImages(ctx context.Context, layout 
 
 func (s *Service) downloadCertificateBackground(ctx context.Context, key string) ([]byte, error) {
 	if s.storage == nil {
-		return nil, errors.New("storage not configured")
+		return nil, ErrStorageNotConfigured
 	}
 	obj, err := s.storage.GetObject(ctx, s.cfg.ObjectStorageBucketName, key, minio.GetObjectOptions{})
 	if err != nil {
@@ -146,7 +146,7 @@ func (s *Service) resolveCertificateBackground(ctx context.Context, exam *model.
 // serve it — see resolveCertificateURL.
 func (s *Service) uploadCertificatePDF(ctx context.Context, sessionID uuid.UUID, pdf []byte) (string, error) {
 	if s.storage == nil {
-		return "", errors.New("storage not configured")
+		return "", ErrStorageNotConfigured
 	}
 
 	bucket := s.cfg.ObjectStorageBucketName

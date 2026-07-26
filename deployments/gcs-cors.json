@@ -1,8 +1,0 @@
-[
-  {
-    "origin": ["https://stg.abakacademy.id"],
-    "method": ["PUT", "GET"],
-    "responseHeader": ["Content-Type"],
-    "maxAgeSeconds": 3600
-  }
-]

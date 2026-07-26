@@ -31,7 +31,7 @@ type PrivateUploadURL struct {
 // avatar bucket in GeneratePresignedUploadURL.
 func (s *Service) GeneratePresignedPrivateUploadURL(ctx context.Context, schoolID, filename, contentType string) (*PrivateUploadURL, error) {
 	if s.storage == nil {
-		return nil, errors.New("storage not configured")
+		return nil, ErrStorageNotConfigured
 	}
 
 	// The private bucket is created at provisioning time, not per-request.
@@ -142,7 +142,7 @@ func (s *Service) GetJobStatus(ctx context.Context, jobID, requesterID string) (
 
 	if job.ResultURL != nil {
 		if s.storage == nil {
-			return nil, errors.New("storage not configured")
+			return nil, ErrStorageNotConfigured
 		}
 		presignedURL, err := s.presignedPrivateGetURL(ctx, *job.ResultURL, 15*time.Minute)
 		if err != nil {

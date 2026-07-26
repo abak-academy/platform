@@ -11,33 +11,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"akademi-bimbel/internal/model"
 )
-
-// insertMCQQuestion inserts a non-essay question for leaderboard/analytics tests
-// where the fullyGradedFilter should always pass (no essay to check).
-func insertMCQQuestion(t *testing.T, pool *pgxpool.Pool, testID uuid.UUID, body string, pointCorrect, sortOrder int) uuid.UUID {
-	t.Helper()
-	ctx := context.Background()
-	var id uuid.UUID
-	err := pool.QueryRow(ctx,
-		`INSERT INTO question (format, body, point_correct, point_wrong)
-		VALUES ('mcq', $1, $2, 0) RETURNING id`,
-		body, pointCorrect,
-	).Scan(&id)
-	if err != nil {
-		t.Fatalf("insert mcq question: %v", err)
-	}
-	if _, err := pool.Exec(ctx,
-		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)`,
-		testID, id, sortOrder,
-	); err != nil {
-		t.Fatalf("insert test_question: %v", err)
-	}
-	return id
-}
 
 // ---------------------------------------------------------------------------
 // Leaderboard

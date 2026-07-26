@@ -96,10 +96,6 @@ func (f *fakeCourseRepo) GetCoursesByProductID(_ context.Context, productID uuid
 	return out, nil
 }
 
-func (f *fakeCourseRepo) seedProductCourseLink(productID string, courseIDs []uuid.UUID) {
-	f.pcLinks[productID] = courseIDs
-}
-
 // --- Course session fakes ---
 
 func (f *fakeCourseRepo) GetActiveSession(_ context.Context, studentID, courseID uuid.UUID) (model.CourseSession, error) {

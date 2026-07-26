@@ -1129,7 +1129,7 @@ const cardURLTTL = 15 * time.Minute
 // card's own filename even though the client is fetching an opaque object key.
 func (s *Service) presignCardURL(ctx context.Context, key, filename string) (string, error) {
 	if s.storage == nil {
-		return "", errors.New("storage not configured")
+		return "", ErrStorageNotConfigured
 	}
 	params := url.Values{}
 	params.Set("response-content-disposition", `attachment; filename="`+filename+`"`)
@@ -1144,7 +1144,7 @@ func (s *Service) presignCardURL(ctx context.Context, key, filename string) (str
 // its object key. The bucket is private (mirrors uploadCertificatePDF).
 func (s *Service) uploadCardPDF(ctx context.Context, regID uuid.UUID, pdf []byte) (string, error) {
 	if s.storage == nil {
-		return "", errors.New("storage not configured")
+		return "", ErrStorageNotConfigured
 	}
 	bucket := s.cfg.ObjectStorageBucketName
 	key := fmt.Sprintf("cards/%s.pdf", regID.String())
@@ -1154,23 +1154,6 @@ func (s *Service) uploadCardPDF(ctx context.Context, regID uuid.UUID, pdf []byte
 		return "", err
 	}
 	return key, nil
-}
-
-// downloadCardPDF fetches a previously-generated card PDF from the private
-// bucket by its object key (mirrors downloadCertificateBackground).
-func (s *Service) downloadCardPDF(ctx context.Context, key string) ([]byte, error) {
-	if s.storage == nil {
-		return nil, errors.New("storage not configured")
-	}
-	obj, err := s.storage.GetObject(ctx, s.cfg.ObjectStorageBucketName, key, minio.GetObjectOptions{})
-	if err != nil {
-		return nil, err
-	}
-	defer obj.Close()
-	if _, err := obj.Stat(); err != nil {
-		return nil, err
-	}
-	return io.ReadAll(obj)
 }
 
 // avatarKeyFromStored extracts the object key from a stored avatar reference —

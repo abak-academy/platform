@@ -30,7 +30,7 @@ type Service struct {
 	presignOnce   sync.Once
 	presignClient *minio.Client
 	cfg           *config.Config
-	renderer      certificateRenderer
+	renderer      pdfGenerator
 
 	// reloadPaymentFn is called by ReloadPaymentClient to rebuild the
 	// payment client from current config (DB or env). Injected by main.
@@ -93,7 +93,7 @@ func NewWithStore(
 		storage:       storage,
 		announceRepo:  storeRepo,
 		cfg:           cfg,
-		renderer:      newGotenbergRenderer(gotenbergURL, http.DefaultClient),
+		renderer:      newGotenbergPDFGenerator(gotenbergURL, http.DefaultClient),
 	}
 	s.logistics.Store(&logistics)
 	return s

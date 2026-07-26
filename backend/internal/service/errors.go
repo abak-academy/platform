@@ -3,6 +3,11 @@ package service
 import "errors"
 
 var (
+	// ErrStorageNotConfigured replaces eight separate inline allocations of the
+	// same message across certificate/exam/job/student, so callers can match it
+	// with errors.Is instead of comparing strings.
+	ErrStorageNotConfigured = errors.New("storage not configured")
+
 	ErrAlreadyAttempted     = errors.New("already attempted")
 	ErrExamNotStarted       = errors.New("exam not started")
 	ErrDeviceMismatch       = errors.New("device mismatch")
