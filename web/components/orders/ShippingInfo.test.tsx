@@ -36,8 +36,22 @@ describe("ShippingInfo", () => {
   });
 
   it("flags a flat-rate estimate as not being a carrier quote", () => {
-    const flat = { ...physicalOrder, selected_courier: "Flat", selected_service: "Standard" };
+    const flat = { ...physicalOrder, selected_courier: "Ongkir Flat", selected_service: "Standar" };
     render(<ShippingInfo order={flat} />);
     expect(screen.getByText("Estimasi — bukan tarif kurir")).toBeTruthy();
+  });
+
+  // Orders placed before the fallback was renamed still say "Flat". They must
+  // keep the badge, or history silently reads as though those were real quotes.
+  it("still flags orders stored under the pre-rename fallback label", () => {
+    const legacy = { ...physicalOrder, selected_courier: "Flat", selected_service: "Standard" };
+    render(<ShippingInfo order={legacy} />);
+    expect(screen.getByText("Estimasi — bukan tarif kurir")).toBeTruthy();
+  });
+
+  it("does not flag a real carrier quote as an estimate", () => {
+    const real = { ...physicalOrder, selected_courier: "JNE", selected_service: "REG" };
+    render(<ShippingInfo order={real} />);
+    expect(screen.queryByText("Estimasi — bukan tarif kurir")).toBeNull();
   });
 });

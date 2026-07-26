@@ -33,6 +33,17 @@ func TestResolveShippingRates(t *testing.T) {
 		if !got[0].IsEstimate {
 			t.Error("the flat-rate fallback must be flagged as an estimate")
 		}
+		// Compared against literals on purpose. The order page has no is_estimate
+		// column to read, so it decides whether to show the estimate badge by
+		// matching the stored courier name against a copy of these strings in
+		// web/components/orders/ShippingInfo.tsx (ESTIMATE_COURIERS). Asserting
+		// against the constants instead would move with any rename and never
+		// fail, leaving the frontend to break in silence.
+		if got[0].Courier != "Ongkir Flat" || got[0].Service != "Standar" {
+			t.Errorf("fallback labels changed to %q/%q — update ESTIMATE_COURIERS in "+
+				"web/components/orders/ShippingInfo.tsx and this assertion together",
+				got[0].Courier, got[0].Service)
+		}
 	})
 
 	t.Run("empty quote list falls back too", func(t *testing.T) {
