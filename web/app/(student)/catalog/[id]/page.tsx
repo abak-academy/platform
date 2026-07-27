@@ -74,6 +74,7 @@ export default function ProductDetailPage({
   const { Icon } = meta;
   const cover = fileUrl(product.image_url);
   const isDigital = product.type === "exam" || product.type === "course";
+  const isPhysical = product.type === "book" || product.type === "merchandise" || product.type === "medal";
   const alreadyInCart = cart?.items?.some((i) => i.product_id === product.id) ?? false;
 
   const handleAdd = (thenRoute?: () => void) => {
@@ -104,7 +105,7 @@ export default function ProductDetailPage({
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-10">
+    <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
       <Button asChild variant="ghost" size="sm" className="mb-4">
         <Link href="/catalog">
           <ArrowLeft className="size-4" />
@@ -112,60 +113,76 @@ export default function ProductDetailPage({
         </Link>
       </Button>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_340px] md:gap-8">
-        <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_300px] md:gap-8 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)_300px]">
+        {/* Covers are portrait and merchandise shots are square, so the frame
+            contains rather than crops — the old cover band sliced the top and
+            bottom off every book. */}
+        <div className="md:col-span-2 lg:col-span-1 lg:sticky lg:top-6 lg:self-start">
           <div
-            className="flex h-64 items-center justify-center overflow-hidden rounded-lg border border-line md:h-72"
-            style={
-              cover
-                ? { backgroundImage: `url(${cover})`, backgroundSize: "cover", backgroundPosition: "center" }
-                : { background: COVER_GRADIENT[product.type], border: 0 }
-            }
+            className="mx-auto flex aspect-square w-full max-w-sm items-center justify-center overflow-hidden rounded-lg border border-line lg:max-w-none"
+            style={cover ? undefined : { background: COVER_GRADIENT[product.type], border: 0 }}
           >
-            {!cover && (
+            {cover ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={cover} alt={product.name} className="h-full w-full object-contain" />
+            ) : (
               <Icon className="size-16 text-white/90 drop-shadow-sm" strokeWidth={1.5} />
             )}
           </div>
+        </div>
 
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3">
-              <Badge variant="outline" className={cn("border-transparent", meta.bg, meta.tone)}>
-                {t(meta.labelKey as any)}
-              </Badge>
-              <h1 className="font-serif text-2xl font-bold text-ink-900 md:text-3xl">
-                {product.name}
-              </h1>
-            </div>
-            <p className="max-w-2xl text-sm leading-relaxed text-ink-600 md:text-[15px]">
-              {product.description ?? t("product_no_description")}
+        <div className="flex min-w-0 flex-col gap-5">
+          <div className="flex flex-col gap-2">
+            <Badge
+              variant="outline"
+              className={cn("w-fit border-transparent", meta.bg, meta.tone)}
+            >
+              {t(meta.labelKey as any)}
+            </Badge>
+            <h1 className="font-serif text-2xl font-bold leading-tight text-ink-900 md:text-3xl">
+              {product.name}
+            </h1>
+            <p className="font-serif text-3xl font-bold text-success">
+              {formatRupiah(product.price)}
             </p>
-            {(product.type === "book" || product.type === "merchandise" || product.type === "medal") && (
+            {isPhysical && (
               <p className="text-xs text-ink-500">
                 {t("product_stock_label")}: {product.stock ?? 0} · {t("product_shipped_to_address")}
               </p>
             )}
           </div>
 
+          {/* Specifications sit above the description on purpose. They answer
+              what a buyer checks first — pages, edition, ISBN — and used to be
+              stranded below a description that can run several hundred words. */}
           <ProductSpecTable specs={product.specs} />
+
+          <ProductDescription text={product.description} />
         </div>
 
-        <aside className="md:sticky md:top-6 md:self-start">
+        <aside
+          aria-labelledby="product-purchase-heading"
+          className="md:sticky md:top-6 md:self-start"
+        >
           <div className="rounded-lg border border-line bg-surface p-5 shadow-[var(--sh-sm)]">
-            <div className="font-serif text-3xl font-bold text-success">
-              {formatRupiah(product.price)}
-            </div>
-            {(product.type === "book" || product.type === "merchandise" || product.type === "medal") && (
-              <div className="mt-1 text-xs text-ink-500">
-                {t("product_stock_label")}: {product.stock ?? 0}
-              </div>
-            )}
+            <h2 id="product-purchase-heading" className="text-sm font-semibold text-ink-900">
+              {t("product_purchase_heading")}
+            </h2>
             <div className="my-4 h-px bg-line" />
             {!alreadyInCart && !isDigital && (
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm text-ink-600">{t("product_qty_label")}</span>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <span className="text-sm text-ink-600">
+                  {t("product_qty_label")}
+                  {isPhysical && (
+                    <span className="ml-2 text-xs text-ink-500">
+                      {t("product_stock_label")}: {product.stock ?? 0}
+                    </span>
+                  )}
+                </span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    aria-label={t("product_qty_label")}
                     onClick={() => setQty((q) => Math.max(1, q - 1))}
                     disabled={qty <= 1}
                     className="flex size-8 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
@@ -175,6 +192,7 @@ export default function ProductDetailPage({
                   <span className="w-6 text-center text-sm font-semibold text-ink-900">{qty}</span>
                   <button
                     type="button"
+                    aria-label={t("product_qty_label")}
                     onClick={() => setQty((q) => Math.min(10, q + 1))}
                     disabled={qty >= 10}
                     className="flex size-8 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
@@ -185,8 +203,16 @@ export default function ProductDetailPage({
               </div>
             )}
             {isDigital && (
-              <p className="mb-3 text-xs text-ink-500">{t("product_digital_single_qty" as any)}</p>
+              <p className="mb-4 text-xs text-ink-500">{t("product_digital_single_qty")}</p>
             )}
+            {/* The stepper goes to 10, so what the buyer owes stopped being
+                obvious the moment it left 1. */}
+            <div className="mb-4 flex items-baseline justify-between">
+              <span className="text-sm text-ink-600">{t("product_subtotal")}</span>
+              <span className="text-lg font-bold tabular-nums text-ink-900">
+                {formatRupiah(product.price * (isDigital ? 1 : qty))}
+              </span>
+            </div>
             <div className="flex flex-col gap-3">
               <Button
                 size="lg"
@@ -214,18 +240,75 @@ export default function ProductDetailPage({
   );
 }
 
+// Descriptions are typed into a plain textarea, so the paragraph breaks the
+// admin makes are bare newlines that HTML collapses — whitespace-pre-line keeps
+// them. Long copy is clamped because it otherwise pushes everything else on the
+// page below the fold.
+const LONG_DESCRIPTION_CHARS = 400;
+
+function ProductDescription({ text }: { text?: string | null }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  // A run of blank lines is almost always stray keystrokes in the textarea, and
+  // pre-line renders every one of them as a hole in the copy.
+  const body = text?.trim().replace(/\n{3,}/g, "\n\n");
+
+  if (!body) {
+    return <p className="text-sm text-ink-500">{t("product_no_description")}</p>;
+  }
+
+  const clampable = body.length > LONG_DESCRIPTION_CHARS;
+
+  return (
+    <section aria-labelledby="product-description-heading" className="flex flex-col gap-3">
+      <h2
+        id="product-description-heading"
+        className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500"
+      >
+        {t("product_description_heading")}
+      </h2>
+      <div className="relative">
+        <p
+          className={cn(
+            "whitespace-pre-line text-sm leading-relaxed text-ink-600 md:text-[15px]",
+            clampable && !expanded && "line-clamp-6",
+          )}
+        >
+          {body}
+        </p>
+        {clampable && !expanded && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-paper to-transparent"
+          />
+        )}
+      </div>
+      {clampable && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="self-start text-sm font-semibold text-brand-600 hover:underline"
+        >
+          {expanded ? t("product_show_less") : t("product_show_more")}
+        </button>
+      )}
+    </section>
+  );
+}
+
 function DetailSkeleton() {
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-10">
+    <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
       <Skeleton className="mb-4 h-8 w-24" />
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_340px] md:gap-8">
-        <div className="flex flex-col gap-6">
-          <Skeleton className="h-72 w-full rounded-lg" />
-          <div className="flex flex-col gap-3">
-            <Skeleton className="h-6 w-2/3" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-5/6" />
-          </div>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_300px] md:gap-8 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)_300px]">
+        <div className="md:col-span-2 lg:col-span-1">
+          <Skeleton className="mx-auto aspect-square w-full max-w-sm rounded-lg lg:max-w-none" />
+        </div>
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-6 w-2/3" />
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
         </div>
         <Skeleton className="h-56 w-full rounded-lg" />
       </div>

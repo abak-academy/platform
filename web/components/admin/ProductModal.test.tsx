@@ -516,7 +516,10 @@ describe("ProductModal", () => {
     });
   });
 
-  it("renders at the wider dialog width", () => {
+  // A book carries eight specification rows. Without a bounded, scrolling body
+  // the dialog grew past the viewport and took the title and the Save button
+  // off screen with it — the form could be filled in but not submitted.
+  it("keeps the header and footer reachable when the form is long", () => {
     render(
       <ProductModal
         open={true}
@@ -526,6 +529,25 @@ describe("ProductModal", () => {
       />
     );
 
-    expect(screen.getByRole("dialog").className).toContain("max-w-2xl");
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.className).toContain("max-h-[90vh]");
+    expect(dialog.className).toContain("overflow-hidden");
+    expect(dialog.querySelector(".overflow-y-auto")).not.toBeNull();
+    expect(screen.getByRole("button", { name: /^simpan$/i })).toBeInTheDocument();
+  });
+
+  it("groups the fields under section headings", () => {
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: /^produk$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^deskripsi$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /ketersediaan di marketplace/i })).toBeInTheDocument();
   });
 });
