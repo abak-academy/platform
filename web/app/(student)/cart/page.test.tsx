@@ -335,7 +335,10 @@ describe("CartPage with Shipping", () => {
     renderWithQueryClient(<CartPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/jne/i)).toBeInTheDocument();
+      // Query by role, not free text: the rate row also renders a decorative
+      // carrier monogram carrying the same letters (aria-hidden, so assistive
+      // tech still hears the courier once), which makes getByText ambiguous.
+      expect(screen.getByRole("radio", { name: /jne/i })).toBeInTheDocument();
     });
 
     const jneOption = screen.getByRole("radio", { name: /jne/i });
@@ -438,8 +441,14 @@ describe("CartPage with Shipping", () => {
     const options = await screen.findAllByRole("radio", { name: /jne/i });
     expect(options).toHaveLength(2);
 
-    // Click the second option (YES, 30000) — must not persist the first (REG, 15000).
-    await user.click(options[1]);
+    // Address the rows by service rather than position: rates are grouped by
+    // delivery speed and sorted by price inside each group, so DOM order no
+    // longer follows the order they arrived in.
+    const yes = screen.getByRole("radio", { name: /YES/i });
+    const reg = screen.getByRole("radio", { name: /REG/i });
+
+    // Selecting YES (30000) must not persist REG (15000).
+    await user.click(yes);
 
     await waitFor(() => {
       expect(patchCartMutate).toHaveBeenCalledWith(
@@ -456,8 +465,8 @@ describe("CartPage with Shipping", () => {
 
     // Only the clicked option should be marked selected, not both same-carrier rows.
     await waitFor(() => {
-      expect(options[1]).toHaveAttribute("aria-checked", "true");
+      expect(yes).toHaveAttribute("aria-checked", "true");
     });
-    expect(options[0]).toHaveAttribute("aria-checked", "false");
+    expect(reg).toHaveAttribute("aria-checked", "false");
   });
 });
