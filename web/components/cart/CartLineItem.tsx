@@ -20,9 +20,12 @@ export interface CartLineItemProps {
   onQtyChange: (qty: number) => void;
   removing?: boolean;
   updatingQty?: boolean;
+  /** Drops the item's own card chrome so it can sit inside a shared container —
+   *  the cart groups items and the courier picker into one block. */
+  flat?: boolean;
 }
 
-export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQty }: CartLineItemProps) {
+export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQty, flat }: CartLineItemProps) {
   const { t } = useTranslation();
   const meta = TYPE_META[item.product_type] ?? TYPE_META.book;
   const { Icon } = meta;
@@ -31,7 +34,13 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
   const isDigital = item.product_type === "exam" || item.product_type === "course";
 
   return (
-    <div className="flex gap-4 rounded-lg border border-line bg-surface p-4 shadow-[var(--sh-sm)]">
+    <div
+      className={
+        flat
+          ? "flex gap-4 px-4 py-4"
+          : "flex gap-4 rounded-lg border border-line bg-surface p-4 shadow-[var(--sh-sm)]"
+      }
+    >
       <div
         className="flex size-16 shrink-0 items-center justify-center rounded-md bg-paper"
         aria-hidden

@@ -335,11 +335,15 @@ describe("CartPage with Shipping", () => {
     renderWithQueryClient(<CartPage />);
 
     await waitFor(() => {
-      // Query by role, not free text: the rate row also renders a decorative
-      // carrier monogram carrying the same letters (aria-hidden, so assistive
-      // tech still hears the courier once), which makes getByText ambiguous.
-      expect(screen.getByRole("radio", { name: /jne/i })).toBeInTheDocument();
+      // The picker starts collapsed with a prompt — shipping is a real charge and
+      // nothing is chosen on the buyer's behalf — so open it before the options
+      // exist. Query by role rather than free text: each row renders a
+      // decorative carrier monogram with the same letters (aria-hidden, so
+      // assistive tech still hears the courier once).
+      expect(screen.getByRole("button", { expanded: false })).toBeInTheDocument();
     });
+
+    await user.click(screen.getByRole("button", { expanded: false }));
 
     const jneOption = screen.getByRole("radio", { name: /jne/i });
     await user.click(jneOption);
@@ -437,6 +441,8 @@ describe("CartPage with Shipping", () => {
     });
 
     renderWithQueryClient(<CartPage />);
+
+    await user.click(await screen.findByRole("button", { expanded: false }));
 
     const options = await screen.findAllByRole("radio", { name: /jne/i });
     expect(options).toHaveLength(2);

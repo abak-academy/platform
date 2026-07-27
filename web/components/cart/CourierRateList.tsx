@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
@@ -12,6 +12,9 @@ export function courierRateKey(rate: { courier: string; service: string }): stri
   return `${rate.courier}::${rate.service}`;
 }
 
+type SpeedTier = "same_day" | "next_day" | "regular";
+const TIER_ORDER: SpeedTier[] = ["same_day", "next_day", "regular"];
+
 // Carriers announce same-day delivery in the service name rather than as a day
 // count, so estimated_days is 0 for both "arrives today" and "we could not read
 // the carrier's duration". This tells those two apart.
@@ -21,25 +24,28 @@ function isSameDay(rate: CourierRate): boolean {
   return rate.estimated_days === 0 && SAME_DAY.test(rate.service ?? "");
 }
 
-// Sorted by how soon it arrives, then by price. Same-day sorts first; rates with
-// no readable duration sort last, since we cannot promise anything about them.
-function arrivalRank(rate: CourierRate): number {
-  if (isSameDay(rate)) return 0;
-  if (rate.estimated_days > 0) return rate.estimated_days;
-  return Number.MAX_SAFE_INTEGER;
+function speedTier(rate: CourierRate): SpeedTier {
+  if (isSameDay(rate)) return "same_day";
+  if (rate.estimated_days === 1) return "next_day";
+  return "regular";
 }
 
-// The weekday is dropped when the copy already says "besok"/"tomorrow" — saying
-// both gives "besok, Sel, 28 Jul", which reads as two separate answers to the
-// same question.
-function formatArrivalDate(days: number, lang: string, withWeekday: boolean): string {
+function formatArrivalDate(days: number, lang: string): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return new Intl.DateTimeFormat(lang === "id" ? "id-ID" : "en-GB", {
-    ...(withWeekday ? { weekday: "short" as const } : {}),
+    weekday: "short",
     day: "numeric",
     month: "short",
   }).format(d);
+}
+
+interface CourierRateListProps {
+  rates: CourierRate[] | undefined;
+  selectedKey: string | null;
+  onSelect: (rate: CourierRate) => void;
+  isLoading: boolean;
+  isError: boolean;
 }
 
 export function CourierRateList({
@@ -52,35 +58,18 @@ export function CourierRateList({
   const { t, lang } = useTranslation();
   const [open, setOpen] = useState(false);
 
-  // A date reads as a firmer commitment than "2 days" does, so it stays hedged:
-  // the carrier's figure is an estimate and the wording says so. Returns null
-  // when there is nothing honest to show.
-  function arrivalLabel(rate: CourierRate): string | null {
-    const prefix = t("cart_eta_prefix" as any) || "Estimated arrival";
-    if (isSameDay(rate)) return `${prefix} ${t("cart_eta_today" as any) || "today"}`;
-    if (rate.estimated_days > 0) {
-      const tomorrow = rate.estimated_days === 1;
-      const date = formatArrivalDate(rate.estimated_days, lang, !tomorrow);
-      if (tomorrow) {
-        return `${prefix} ${t("cart_eta_tomorrow" as any) || "tomorrow"}, ${date}`;
-      }
-      return `${prefix} ${date}`;
-    }
-    return null;
-  }
-
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-5">
-        <div className="h-5 w-32 animate-pulse rounded bg-line" />
-        <div className="h-14 animate-pulse rounded-lg bg-line" />
+      <div className="flex flex-col gap-2">
+        <div className="h-3 w-28 animate-pulse rounded bg-line" />
+        <div className="h-12 animate-pulse rounded-lg bg-line" />
       </div>
     );
   }
 
   if (isError || !rates || rates.length === 0) {
     return (
-      <div className="rounded-lg border border-line bg-surface p-5 text-center">
+      <div className="rounded-lg border border-line px-3 py-4 text-center">
         <p className="text-sm text-ink-500">
           {t("cart_shipping_error") || "Unable to calculate shipping cost"}
         </p>
@@ -89,14 +78,30 @@ export function CourierRateList({
   }
 
   const selected = rates.find((r) => courierRateKey(r) === selectedKey) ?? null;
-  const sorted = [...rates].sort(
-    (a, b) => arrivalRank(a) - arrivalRank(b) || a.price - b.price,
-  );
 
-  // Collapsed once something is chosen: the list has served its purpose and the
-  // buyer's next step is payment, not more comparison. Nothing chosen yet means
-  // there is a decision outstanding, so the options stay open.
-  const expanded = !selected || open;
+  // Sorted by arrival first, then price. "Takes a few days" spans anything from
+  // two days to a week, so ordering it purely by price puts a later delivery
+  // above an earlier one over a thousand rupiah — which reads as a mistake.
+  const grouped = TIER_ORDER.map((tier) => ({
+    tier,
+    rates: rates
+      .filter((r) => speedTier(r) === tier)
+      .sort((a, b) => a.estimated_days - b.estimated_days || a.price - b.price),
+  })).filter((g) => g.rates.length > 0);
+
+  const tierLabel: Record<SpeedTier, string> = {
+    same_day: t("cart_speed_same_day" as any) || "Arrives today",
+    next_day: t("cart_speed_next_day" as any) || "Arrives tomorrow",
+    regular: t("cart_speed_regular" as any) || "Takes a few days",
+  };
+
+  // The group heading already states when it arrives, so a row only adds the
+  // exact date where that is extra information. Under "Arrives today" it would
+  // be repeating itself, and under "Arrives tomorrow" the weekday is implied.
+  function rowDate(rate: CourierRate): string | null {
+    if (isSameDay(rate) || rate.estimated_days < 1) return null;
+    return formatArrivalDate(rate.estimated_days, lang);
+  }
 
   function choose(rate: CourierRate) {
     onSelect(rate);
@@ -104,75 +109,101 @@ export function CourierRateList({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-5">
-      <h3 className="font-semibold text-ink-900">
+    <div className="flex flex-col gap-2">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-500">
         {t("cart_shipping_options") || "Shipping Options"}
-      </h3>
+      </p>
 
-      {!expanded && selected ? (
+      <div className="overflow-hidden rounded-lg border border-line">
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          className="flex w-full items-center gap-3 rounded-lg border border-line px-3 py-2.5 text-left transition-colors hover:border-brand-200 hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex w-full items-center gap-3 bg-surface px-3 py-2.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500"
         >
-          <CarrierTile courier={selected.courier} selected={false} />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-sm font-semibold text-ink-900">
-              {selected.courier} · {selected.service}
+          {selected ? (
+            <>
+              <CarrierTile courier={selected.courier} selected={false} />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-sm font-semibold text-ink-900">
+                  {selected.courier} · {selected.service}
+                </span>
+                <span className="truncate text-xs text-ink-500">
+                  {tierLabel[speedTier(selected)]}
+                  {rowDate(selected) ? ` · ${rowDate(selected)}` : ""}
+                </span>
+              </span>
+              <span className="shrink-0 text-sm font-semibold tabular-nums text-ink-900">
+                {formatRupiah(selected.price)}
+              </span>
+            </>
+          ) : (
+            <span className="flex-1 text-sm text-ink-500">
+              {t("cart_shipping_placeholder" as any) || "Choose a shipping service"}
             </span>
-            <span className="truncate text-xs text-ink-500">
-              {arrivalLabel(selected) ?? formatRupiah(selected.price)}
-            </span>
-          </span>
-          <span className="shrink-0 text-sm font-semibold tabular-nums text-ink-900">
-            {formatRupiah(selected.price)}
-          </span>
-          <ChevronDown className="size-4 shrink-0 text-ink-400" aria-hidden="true" />
-          <span className="sr-only">{t("cart_shipping_change" as any) || "Change"}</span>
+          )}
+          <ChevronDown
+            className={`size-4 shrink-0 text-ink-400 transition-transform ${open ? "rotate-180" : ""}`}
+            aria-hidden="true"
+          />
         </button>
-      ) : (
-        <div
-          role="radiogroup"
-          aria-label={t("cart_shipping_options") || "Shipping Options"}
-          className="flex flex-col gap-1.5"
-        >
-          {sorted.map((rate) => {
-            const key = courierRateKey(rate);
-            const isSelected = selectedKey === key;
-            const eta = arrivalLabel(rate);
-            return (
-              <button
-                key={key}
-                type="button"
-                role="radio"
-                aria-checked={isSelected}
-                onClick={() => choose(rate)}
-                className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 ${
-                  isSelected
-                    ? "border-brand-400 bg-brand-50"
-                    : "border-line bg-surface hover:border-brand-200 hover:bg-surface-2"
-                }`}
-              >
-                <CarrierTile courier={rate.courier} selected={isSelected} />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-sm font-semibold text-ink-900">
-                    {rate.courier} · {rate.service}
-                    {rate.is_estimate && (
-                      <span className="ml-2 rounded bg-warn-bg px-1.5 py-0.5 text-[10px] font-medium text-warn">
-                        {t("cart_rate_estimate_badge" as any)}
+
+        {open && (
+          <div
+            role="radiogroup"
+            aria-label={t("cart_shipping_options") || "Shipping Options"}
+            className="border-t border-line"
+          >
+            {grouped.map((group) => (
+              <Fragment key={group.tier}>
+                {/* A filled band, not a hairline: the previous eyebrow-and-rule
+                    treatment read as a divider and the eye skipped it. */}
+                <p className="flex items-center justify-between border-b border-line bg-surface-2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-600">
+                  {tierLabel[group.tier]}
+                  <span className="tabular-nums font-normal text-ink-400">{group.rates.length}</span>
+                </p>
+                {group.rates.map((rate) => {
+                  const key = courierRateKey(rate);
+                  const isSelected = selectedKey === key;
+                  const date = rowDate(rate);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      onClick={() => choose(rate)}
+                      className={`flex w-full items-center gap-3 border-b border-line px-3 py-2.5 text-left transition-colors last:border-b-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500 ${
+                        isSelected ? "bg-brand-50" : "bg-surface hover:bg-surface-2"
+                      }`}
+                    >
+                      <CarrierTile courier={rate.courier} selected={isSelected} />
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-sm font-semibold text-ink-900">
+                          {rate.courier} · {rate.service}
+                          {rate.is_estimate && (
+                            <span className="ml-2 rounded bg-warn-bg px-1.5 py-0.5 text-[10px] font-medium text-warn">
+                              {t("cart_rate_estimate_badge" as any)}
+                            </span>
+                          )}
+                        </span>
+                        {date && (
+                          <span className="truncate text-xs text-ink-500">
+                            {t("cart_eta_prefix" as any) || "Estimated arrival"} {date}
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                  {eta && <span className="truncate text-xs text-ink-500">{eta}</span>}
-                </span>
-                <span className="shrink-0 text-sm font-semibold tabular-nums text-ink-900">
-                  {formatRupiah(rate.price)}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-ink-900">
+                        {formatRupiah(rate.price)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -202,12 +233,4 @@ function CarrierTile({ courier, selected }: { courier: string; selected: boolean
       {label}
     </span>
   );
-}
-
-interface CourierRateListProps {
-  rates: CourierRate[] | undefined;
-  selectedKey: string | null;
-  onSelect: (rate: CourierRate) => void;
-  isLoading: boolean;
-  isError: boolean;
 }

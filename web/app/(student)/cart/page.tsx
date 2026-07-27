@@ -117,22 +117,40 @@ export default function CartPage() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:items-start">
           <section className="flex flex-col gap-3">
-            {items.map((it) => (
-              <CartLineItem
-                key={it.id}
-                item={it}
-                onRemove={() => {
-                  if (!cart) return;
-                  removeItem.mutate({ orderId: cart.id, itemId: it.id });
-                }}
-                onQtyChange={(qty) => {
-                  if (!cart) return;
-                  updateQty.mutate({ orderId: cart.id, itemId: it.id, qty });
-                }}
-                removing={removeItem.isPending}
-                updatingQty={updateQty.isPending}
-              />
-            ))}
+            {/* Items and the courier picker share one card: the shipping choice
+                belongs to these goods, not to the page. */}
+            <div className="overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--sh-sm)]">
+              {items.map((it, idx) => (
+                <div key={it.id} className={idx > 0 ? "border-t border-line" : ""}>
+                  <CartLineItem
+                    item={it}
+                    flat
+                    onRemove={() => {
+                      if (!cart) return;
+                      removeItem.mutate({ orderId: cart.id, itemId: it.id });
+                    }}
+                    onQtyChange={(qty) => {
+                      if (!cart) return;
+                      updateQty.mutate({ orderId: cart.id, itemId: it.id, qty });
+                    }}
+                    removing={removeItem.isPending}
+                    updatingQty={updateQty.isPending}
+                  />
+                </div>
+              ))}
+
+              {hasPhysical && shippingRates.data && (
+                <div className="border-t border-line px-4 py-4">
+                  <CourierRateList
+                    rates={shippingRates.data}
+                    selectedKey={selectedRateKey}
+                    onSelect={handleSelectCourier}
+                    isLoading={false}
+                    isError={shippingRates.isError}
+                  />
+                </div>
+              )}
+            </div>
 
             {hasPhysical &&
               (editingAddress || !isAddressComplete(shippingAddress as any) ? (
@@ -154,16 +172,6 @@ export default function CartPage() {
                   isCheckingShipping={shippingRates.isPending}
                 />
               ))}
-
-            {hasPhysical && shippingRates.data && (
-              <CourierRateList
-                rates={shippingRates.data}
-                selectedKey={selectedRateKey}
-                onSelect={handleSelectCourier}
-                isLoading={false}
-                isError={shippingRates.isError}
-              />
-            )}
 
             {hasPhysical && shippingRates.isError && (
               <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">

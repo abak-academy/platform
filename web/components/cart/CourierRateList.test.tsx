@@ -4,9 +4,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { CourierRateList } from "./CourierRateList";
 
 // Arrival dates are computed from "now", so the clock is pinned. Monday
-// 2026-07-27 keeps the whole fixture inside one week and away from a month
-// boundary, which would otherwise make the expected strings depend on the day
-// the suite happens to run.
+// 2026-07-27 keeps the fixture inside one week and away from a month boundary,
+// which would otherwise make the expected strings depend on the day the suite
+// happens to run. shouldAdvanceTime keeps userEvent's async machinery working.
 beforeAll(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date("2026-07-27T09:00:00+07:00"));
@@ -14,10 +14,11 @@ beforeAll(() => {
 afterAll(() => vi.useRealTimers());
 
 const RATES = [
-  { courier: "SiCepat", service: "Besok Sampai Tujuan", price: 14000, estimated_days: 1 },
   { courier: "Tiki", service: "Same Day Service", price: 30000, estimated_days: 0 },
+  { courier: "SiCepat", service: "Besok Sampai Tujuan", price: 14000, estimated_days: 1 },
+  { courier: "JNE", service: "Yakin Esok Sampai (YES)", price: 18000, estimated_days: 1 },
+  { courier: "Tiki", service: "Reguler", price: 9000, estimated_days: 4 },
   { courier: "JNE", service: "Reguler", price: 10000, estimated_days: 2 },
-  { courier: "JNE", service: "JNE Trucking", price: 40000, estimated_days: 6 },
 ] as any;
 
 const FALLBACK = [
@@ -37,82 +38,87 @@ function renderList(props: Partial<Parameters<typeof CourierRateList>[0]> = {}) 
   );
 }
 
+async function openList() {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { expanded: false }));
+  return user;
+}
+
 describe("CourierRateList", () => {
-  it("labels an estimate so it cannot be mistaken for a carrier quote", () => {
-    renderList({ rates: FALLBACK });
-    expect(screen.getByText("Estimasi — bukan tarif kurir")).toBeTruthy();
-  });
-
-  it("does not label a real carrier quote", () => {
+  // Nothing is chosen on the buyer's behalf: shipping is a real charge, so it
+  // stays a deliberate act. The control starts empty and says what it wants.
+  it("starts closed with a prompt and nothing selected", () => {
     renderList();
-    expect(screen.queryByText("Estimasi — bukan tarif kurir")).toBeNull();
+    expect(screen.getByText("Pilih jasa pengiriman")).toBeTruthy();
+    expect(screen.queryAllByRole("radio")).toHaveLength(0);
   });
 
-  // A date is what the buyer actually plans around. "2 days" makes them do the
-  // arithmetic, and the previous "0 days" made a promise nobody had given.
-  it("states an arrival date rather than a day count", () => {
+  it("opens the full list of options", async () => {
     renderList();
-    expect(screen.getByText("Estimasi tiba Rab, 29 Jul")).toBeTruthy();
-    expect(screen.queryByText(/\d+ (hari|days)/)).toBeNull();
+    await openList();
+    expect(screen.getAllByRole("radio")).toHaveLength(5);
   });
 
-  it("says tomorrow without repeating the weekday", () => {
+  it("separates the options by how soon they arrive", async () => {
     renderList();
-    // "besok, Sel, 28 Jul" would answer the same question twice.
-    expect(screen.getByText("Estimasi tiba besok, 28 Jul")).toBeTruthy();
+    await openList();
+    expect(screen.getByText("Sampai hari ini")).toBeTruthy();
+    expect(screen.getByText("Sampai besok")).toBeTruthy();
+    expect(screen.getByText("Beberapa hari")).toBeTruthy();
   });
 
-  it("says today for a same-day service, which carries no day count", () => {
+  // Within a band the spread can be several days, so ordering purely by price
+  // would put a later delivery above an earlier one over a few thousand rupiah.
+  it("orders each band by arrival first, then price", async () => {
     renderList();
-    expect(screen.getByText("Estimasi tiba hari ini")).toBeTruthy();
-  });
-
-  // estimated_days is 0 both for same-day and for a duration the backend could
-  // not read. Only the first deserves a date.
-  it("shows no arrival estimate when the duration could not be read", () => {
-    renderList({ rates: FALLBACK });
-    expect(screen.queryByText(/Estimasi tiba/)).toBeNull();
-  });
-
-  it("orders options by how soon they arrive, then by price", () => {
-    renderList();
+    await openList();
     const services = screen
       .getAllByRole("radio")
-      .map((el) => within(el).getByText(/·/).textContent);
-    expect(services?.[0]).toContain("Same Day Service");
-    expect(services?.[1]).toContain("Besok Sampai Tujuan");
-    expect(services?.[2]).toContain("Reguler");
-    expect(services?.[3]).toContain("JNE Trucking");
+      .map((el) => within(el).getByText(/·/).textContent ?? "");
+    expect(services[0]).toContain("Same Day Service");
+    expect(services[1]).toContain("Besok Sampai Tujuan"); // 1 day, 14.000
+    expect(services[2]).toContain("Yakin Esok Sampai"); // 1 day, 18.000
+    expect(services[3]).toContain("JNE · Reguler"); // 2 days
+    expect(services[4]).toContain("Tiki · Reguler"); // 4 days — cheaper, but later
   });
 
-  it("keeps the list open while nothing is chosen", () => {
-    renderList({ selectedKey: null });
-    expect(screen.getAllByRole("radio")).toHaveLength(4);
+  // The band heading already says when it arrives, so repeating it on the row
+  // would answer the same question twice.
+  it("omits the date under the same-day heading and shows it elsewhere", async () => {
+    renderList();
+    await openList();
+    const sameDay = screen.getByRole("radio", { name: /Same Day Service/ });
+    expect(within(sameDay).queryByText(/Estimasi tiba/)).toBeNull();
+    expect(screen.getByText("Estimasi tiba Rab, 29 Jul")).toBeTruthy();
   });
 
-  // Once a rate is chosen the comparison is over and the next step is payment,
-  // so the list gets out of the way.
-  it("collapses to the chosen option", () => {
+  it("collapses to the chosen option once something is picked", () => {
     renderList({ selectedKey: "JNE::Reguler" });
     expect(screen.queryAllByRole("radio")).toHaveLength(0);
     expect(screen.getByText(/JNE · Reguler/)).toBeTruthy();
-    expect(screen.getByText("Estimasi tiba Rab, 29 Jul")).toBeTruthy();
+    expect(screen.getByText(/Beberapa hari · Rab, 29 Jul/)).toBeTruthy();
   });
 
-  it("reopens the full list when the chosen option is clicked", async () => {
-    const user = userEvent.setup();
-    renderList({ selectedKey: "JNE::Reguler" });
+  it("labels an estimate so it cannot be mistaken for a carrier quote", async () => {
+    renderList({ rates: FALLBACK });
+    await openList();
+    expect(screen.getByText("Estimasi — bukan tarif kurir")).toBeTruthy();
+  });
 
-    await user.click(screen.getByRole("button", { name: /JNE · Reguler/ }));
-    expect(screen.getAllByRole("radio")).toHaveLength(4);
+  // estimated_days is 0 both for same-day and for a duration the backend could
+  // not read, and only the first deserves a date.
+  it("shows no arrival date when the duration could not be read", async () => {
+    renderList({ rates: FALLBACK });
+    await openList();
+    expect(screen.queryByText(/Estimasi tiba/)).toBeNull();
   });
 
   // The rows were previously divs with tabIndex and a click handler, so they
   // took focus but could not be activated.
   it("selects a rate from the keyboard", async () => {
     const onSelect = vi.fn();
-    const user = userEvent.setup();
     renderList({ onSelect });
+    const user = await openList();
 
     await user.tab();
     await user.keyboard("{Enter}");
@@ -121,10 +127,14 @@ describe("CourierRateList", () => {
     expect(onSelect.mock.calls[0][0].service).toBe("Same Day Service");
   });
 
-  it("marks the chosen rate for assistive technology while the list is open", () => {
+  it("marks the chosen rate for assistive technology", async () => {
     renderList({ selectedKey: "JNE::Reguler" });
-    // Reopen by rendering with the list forced open is not possible from props,
-    // so assert via the collapsed summary instead — see the reopen test above.
-    expect(screen.getByRole("button", { name: /JNE · Reguler/ })).toBeTruthy();
+    await openList();
+
+    const checked = screen
+      .getAllByRole("radio")
+      .filter((el) => el.getAttribute("aria-checked") === "true");
+    expect(checked).toHaveLength(1);
+    expect(within(checked[0]).getByText(/JNE · Reguler/)).toBeTruthy();
   });
 });
