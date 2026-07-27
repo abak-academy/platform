@@ -16,8 +16,6 @@ export interface SavedAddress {
 export interface ShippingAddressSummaryProps {
   address: SavedAddress;
   onEdit: () => void;
-  onCheckShipping: () => void;
-  isCheckingShipping?: boolean;
 }
 
 export function isAddressComplete(a: SavedAddress): boolean {
@@ -26,48 +24,34 @@ export function isAddressComplete(a: SavedAddress): boolean {
   );
 }
 
-export function ShippingAddressSummary({
-  address,
-  onEdit,
-  onCheckShipping,
-  isCheckingShipping,
-}: ShippingAddressSummaryProps) {
+// The address states where the goods are going, so it reads before them. The
+// shipping choice that depends on it lives with the goods themselves, which
+// leaves this card with one job and one control.
+export function ShippingAddressSummary({ address, onEdit }: ShippingAddressSummaryProps) {
   const { t } = useTranslation();
   const complete = isAddressComplete(address);
 
   return (
-    <div className="rounded-lg border border-line bg-surface p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-serif text-base font-semibold text-ink-900">
+    <div className="flex items-start justify-between gap-4 rounded-lg border border-line bg-surface px-4 py-3.5 shadow-[var(--sh-sm)]">
+      <div className="flex min-w-0 flex-col gap-1">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500">
           {t("cart_address_heading" as any)}
         </h2>
-        <Button type="button" variant="ghost" size="sm" onClick={onEdit}>
-          {t("cart_address_change" as any)}
-        </Button>
-      </div>
-
-      {complete ? (
-        <div className="flex flex-col gap-0.5 text-sm">
-          <span className="font-medium text-ink-900">{address.penerima}</span>
-          <span className="text-ink-600">{address.telepon}</span>
-          <span className="text-ink-600">
+        {complete ? (
+          <p className="text-sm text-ink-600">
+            <span className="font-semibold text-ink-900">{address.penerima}</span>
+            <span className="mx-1.5 text-ink-400">·</span>
+            {address.telepon}
+            <span className="mx-1.5 text-ink-400">·</span>
             {address.alamat} · {address.kode_pos}
-          </span>
-        </div>
-      ) : (
-        <p className="text-sm text-ink-500">{t("cart_address_incomplete_profile" as any)}</p>
-      )}
-
-      {complete && (
-        <Button
-          type="button"
-          onClick={onCheckShipping}
-          disabled={isCheckingShipping}
-          className="mt-4 w-full"
-        >
-          {t("cart_check_shipping_cost") || "Check Shipping Cost"}
-        </Button>
-      )}
+          </p>
+        ) : (
+          <p className="text-sm text-ink-500">{t("cart_address_incomplete_profile" as any)}</p>
+        )}
+      </div>
+      <Button type="button" variant="ghost" size="sm" onClick={onEdit} className="shrink-0">
+        {t("cart_address_change" as any)}
+      </Button>
     </div>
   );
 }

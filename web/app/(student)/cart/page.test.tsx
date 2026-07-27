@@ -42,6 +42,7 @@ vi.mock("@/lib/i18n", () => ({
     t: (key: string) => {
       const dict: Record<string, string> = {
         cart_continue: "Continue shopping",
+        cart_courier_note_label: "Note for the courier",
         cart_title: "Cart",
         cart_item_count: "{n} items",
         cart_order_summary: "Order Summary",
@@ -359,6 +360,62 @@ describe("CartPage with Shipping", () => {
           city_id: "city1",
           district_id: "dist1",
           kode_pos: "40123",
+        })
+      );
+    });
+  });
+
+  // The note has no column of its own — it rides inside the shipping_address
+  // JSONB. If it is not attached to the same PATCH that stores the courier, the
+  // buyer types "titip di satpam" and nothing ever reaches the warehouse.
+  it("sends the courier note with the chosen rate", async () => {
+    const user = userEvent.setup();
+    const patchCartMutate = vi.fn();
+
+    mockUseCart.mockReturnValue({
+      data: {
+        id: "o1",
+        student_id: "s1",
+        status: "cart",
+        subtotal: 100000,
+        discount: 0,
+        shipping_cost: 0,
+        total: 100000,
+        items: [physicalItem],
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    mockUseShippingRates.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      data: mockRates,
+      isError: false,
+    });
+
+    mockUsePatchCart.mockReturnValue({
+      mutate: patchCartMutate,
+      isPending: false,
+      isError: false,
+    });
+
+    renderWithQueryClient(<CartPage />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/note for the courier/i)).toBeInTheDocument();
+    });
+    await user.type(screen.getByLabelText(/note for the courier/i), "Titip di satpam");
+
+    await user.click(screen.getByRole("button", { expanded: false }));
+    await user.click(screen.getByRole("radio", { name: /jne/i }));
+
+    await waitFor(() => {
+      expect(patchCartMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          courier: "jne",
+          shipping_address: expect.objectContaining({ catatan: "Titip di satpam" }),
         })
       );
     });
