@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"akademi-bimbel/internal/repository"
@@ -118,16 +120,44 @@ func (c *BiteshipClient) buildBiteshipRequest(originPostalCode string, req servi
 	}
 }
 
+// durationDigits pulls every run of digits out of a duration string.
+var durationDigits = regexp.MustCompile(`\d+`)
+
+// parseDurationDays reads a day count out of Biteship's duration field, which is
+// prose rather than a number — "1 - 2 days", "2 hari", "Same day". strconv.Atoi
+// fails on all of those, which is why every rate previously reported 0.
+//
+// Ranges resolve to their UPPER bound: "1 - 2 days" is 2. Quoting the lower one
+// would show the buyer a delivery date the carrier never promised.
+//
+// Returns 0 when the string holds no digits at all ("Same day"), which the
+// storefront renders as no estimate rather than as zero days.
+func parseDurationDays(duration string) int {
+	max := 0
+	for _, match := range durationDigits.FindAllString(duration, -1) {
+		n, err := strconv.Atoi(match)
+		if err != nil {
+			continue
+		}
+		if n > max {
+			max = n
+		}
+	}
+	return max
+}
+
 // parsePricing converts Biteship pricing array to service.CourierRate slice.
 func (c *BiteshipClient) parsePricing(pricing []biteshipPricingItem) []service.CourierRate {
 	var rates []service.CourierRate
 	for _, item := range pricing {
-		estimatedDays := 0
-		if item.Duration != "" {
-			// Try to parse duration as integer
-			if days, err := strconv.Atoi(item.Duration); err == nil {
-				estimatedDays = days
-			}
+		estimatedDays := parseDurationDays(item.Duration)
+		if estimatedDays == 0 && item.Duration != "" {
+			// Not necessarily wrong — "Same day" legitimately has no day count —
+			// but it is the only signal that a format we cannot read has appeared.
+			slog.Info("biteship duration carried no day count",
+				"duration", item.Duration,
+				"courier", item.CourierName,
+				"service", item.CourierServiceName)
 		}
 
 		rate := service.CourierRate{
