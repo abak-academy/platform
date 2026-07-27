@@ -58,6 +58,15 @@ const sampleOrders: Order[] = [
     shipping_cost: 0,
     total: 200000,
     tracking_number: "JNE-999",
+    selected_courier: "JNE",
+    selected_service: "Reguler",
+    shipping_address: {
+      penerima: "Sabian Isaac",
+      telepon: "082113092527",
+      alamat: "Jl. Melati 9",
+      kode_pos: "17151",
+      catatan: "Titip di pos satpam",
+    },
     items: [{ id: "i2", order_id: "o2", product_id: "p2", product_type: "book", name: "Buku Shipped", unit_price: 200000, qty: 1, jumlah: 200000 }],
   },
   {
@@ -136,22 +145,65 @@ describe("OrdersPage", () => {
     });
   });
 
-  it("ships an order when tracking number is provided", async () => {
+  // The tracking number used to be collected with window.prompt, which cannot be
+  // styled, validated or cancelled cleanly, and blocks the whole tab.
+  it("ships an order with the tracking number typed into the modal", async () => {
     mockMutateAsync.mockResolvedValueOnce({ message: "order shipped" });
-    vi.stubGlobal("prompt", () => "JNE-123");
 
     render(<OrdersPage />);
 
     await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
 
     const row = screen.getByText(/Buku Shipped/).closest("tr");
-    const shipButton = within(row!).getByRole("button", { name: /kirim/i });
-    fireEvent.click(shipButton);
+    fireEvent.click(within(row!).getByRole("button", { name: /^kirim$/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/no\. resi/i), {
+      target: { value: "JNE-123" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^kirim$/i }));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({ id: "o2", trackingNumber: "JNE-123" });
       expect(toast.success).toHaveBeenCalledWith("Pesanan dikirim.");
     });
+  });
+
+  it("will not submit an empty tracking number", async () => {
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Buku Shipped/).closest("tr");
+    fireEvent.click(within(row!).getByRole("button", { name: /^kirim$/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: /^kirim$/i })).toBeDisabled();
+  });
+
+  // The row was inert: an admin could see that an order existed but not who it
+  // was going to, what was in it, or which courier had it.
+  it("opens the order detail when a row is clicked", async () => {
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText(/Buku Shipped/).closest("tr")!);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Jl. Melati 9")).toBeInTheDocument();
+    expect(within(dialog).getByText("Titip di pos satpam")).toBeInTheDocument();
+    expect(within(dialog).getByText("JNE-999")).toBeInTheDocument();
+    expect(within(dialog).getByText(/JNE — Reguler/)).toBeInTheDocument();
+  });
+
+  // Every action button sits inside the clickable row.
+  it("does not open the detail when a row action is clicked", async () => {
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Buku A/).closest("tr");
+    fireEvent.click(within(row!).getByRole("button", { name: /konfirmasi/i }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("requires a merchandise order to ship before it can complete", async () => {

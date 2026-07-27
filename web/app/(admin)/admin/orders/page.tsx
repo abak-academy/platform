@@ -17,6 +17,8 @@ import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OrderDetailModal } from "@/components/admin/OrderDetailModal";
+import { ShipOrderModal } from "@/components/admin/ShipOrderModal";
 import { formatRupiah } from "@/lib/format";
 import type { Order, OrderStatus, AdminOrderFilterStatus } from "@/lib/types";
 
@@ -69,6 +71,8 @@ export default function OrdersPage() {
   const complete = useCompleteOrder();
   const refund = useRefundOrder();
   const reconcile = useReconcileOrder();
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  const [shippingOrder, setShippingOrder] = useState<Order | null>(null);
 
   const filtered = useMemo(() => {
     if (!orders) return [];
@@ -109,11 +113,10 @@ export default function OrdersPage() {
     }
   }
 
-  async function handleShip(id: string) {
-    const trackingNumber = window.prompt(t("orders_ship_prompt"));
-    if (!trackingNumber) return;
+  async function handleShip(id: string, trackingNumber: string) {
     try {
       await ship.mutateAsync({ id, trackingNumber });
+      setShippingOrder(null);
       toast.success(t("orders_shipped"));
     } catch (e) {
       toast.error(errorMessage(e));
@@ -201,7 +204,17 @@ export default function OrdersPage() {
               {filtered.map((order) => (
                 <tr
                   key={order.id}
-                  className="border-t transition-colors hover:bg-muted/40"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${t("orders_detail_open")} ${orderNumber(order)}`}
+                  onClick={() => setDetailOrder(order)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setDetailOrder(order);
+                    }
+                  }}
+                  className="cursor-pointer border-t transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
                 >
                   <td className="px-4 py-3 font-mono font-medium">{orderNumber(order)}</td>
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{buyerLabel(order)}</td>
@@ -214,7 +227,10 @@ export default function OrdersPage() {
                     {hasPhysicalItem(order) ? shippingBadge(order) : <span className="text-xs text-muted-foreground">—</span>}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                    <div
+                      className="flex items-center justify-end gap-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {actionAllowed(order.status, "confirm") && (
                         <Button
                           size="sm"
@@ -229,7 +245,7 @@ export default function OrdersPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleShip(order.id)}
+                          onClick={() => setShippingOrder(order)}
                           disabled={ship.isPending}
                         >
                           {t("action_ship")}
@@ -279,6 +295,18 @@ export default function OrdersPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      <OrderDetailModal order={detailOrder} onOpenChange={() => setDetailOrder(null)} />
+
+      {shippingOrder && (
+        <ShipOrderModal
+          open
+          onOpenChange={() => setShippingOrder(null)}
+          orderNumber={orderNumber(shippingOrder)}
+          onSubmit={(trackingNumber) => handleShip(shippingOrder.id, trackingNumber)}
+          isPending={ship.isPending}
+        />
       )}
     </div>
   );
