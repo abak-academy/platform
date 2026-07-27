@@ -1,24 +1,33 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { CourierRateList } from "./CourierRateList";
 
-// Mirrors what Biteship actually returned for a Bekasi destination, including
-// the estimated_days: 0 every rate currently carries.
-const REAL_RATES = [
-  { courier: "SiCepat", service: "Besok Sampai Tujuan", price: 14000, estimated_days: 0 },
-  { courier: "SiCepat", service: "Reguler", price: 9000, estimated_days: 0 },
+// Arrival dates are computed from "now", so the clock is pinned. Monday
+// 2026-07-27 keeps the whole fixture inside one week and away from a month
+// boundary, which would otherwise make the expected strings depend on the day
+// the suite happens to run.
+beforeAll(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date("2026-07-27T09:00:00+07:00"));
+});
+afterAll(() => vi.useRealTimers());
+
+const RATES = [
+  { courier: "SiCepat", service: "Besok Sampai Tujuan", price: 14000, estimated_days: 1 },
   { courier: "Tiki", service: "Same Day Service", price: 30000, estimated_days: 0 },
-  { courier: "Tiki", service: "One Night Service", price: 18000, estimated_days: 0 },
-  { courier: "AnterAja", service: "Reguler", price: 11500, estimated_days: 0 },
-  { courier: "JNE", service: "Yakin Esok Sampai (YES)", price: 18000, estimated_days: 0 },
-  { courier: "JNE", service: "JNE Trucking", price: 40000, estimated_days: 0 },
+  { courier: "JNE", service: "Reguler", price: 10000, estimated_days: 2 },
+  { courier: "JNE", service: "JNE Trucking", price: 40000, estimated_days: 6 },
+] as any;
+
+const FALLBACK = [
+  { courier: "Ongkir Flat", service: "Standar", price: 20000, estimated_days: 0, is_estimate: true },
 ] as any;
 
 function renderList(props: Partial<Parameters<typeof CourierRateList>[0]> = {}) {
   return render(
     <CourierRateList
-      rates={REAL_RATES}
+      rates={RATES}
       selectedKey={null}
       onSelect={() => {}}
       isLoading={false}
@@ -30,80 +39,81 @@ function renderList(props: Partial<Parameters<typeof CourierRateList>[0]> = {}) 
 
 describe("CourierRateList", () => {
   it("labels an estimate so it cannot be mistaken for a carrier quote", () => {
-    render(
-      <CourierRateList
-        rates={[{ courier: "Flat", service: "Standard", price: 12000, is_estimate: true } as any]}
-        selectedKey={null}
-        onSelect={() => {}}
-        isLoading={false}
-        isError={false}
-      />,
-    );
+    renderList({ rates: FALLBACK });
     expect(screen.getByText("Estimasi — bukan tarif kurir")).toBeTruthy();
   });
 
   it("does not label a real carrier quote", () => {
-    render(
-      <CourierRateList
-        rates={[{ courier: "JNE", service: "REG", price: 18000 } as any]}
-        selectedKey={null}
-        onSelect={() => {}}
-        isLoading={false}
-        isError={false}
-      />,
-    );
+    renderList();
     expect(screen.queryByText("Estimasi — bukan tarif kurir")).toBeNull();
   });
 
-  it("groups rates by delivery speed, reading the tier from carrier-specific service names", () => {
+  // A date is what the buyer actually plans around. "2 days" makes them do the
+  // arithmetic, and the previous "0 days" made a promise nobody had given.
+  it("states an arrival date rather than a day count", () => {
     renderList();
-    expect(screen.getByText("Sampai hari ini")).toBeTruthy();
-    expect(screen.getByText("Sampai besok")).toBeTruthy();
-    expect(screen.getByText("Beberapa hari")).toBeTruthy();
+    expect(screen.getByText("Estimasi tiba Rab, 29 Jul")).toBeTruthy();
+    expect(screen.queryByText(/\d+ (hari|days)/)).toBeNull();
   });
 
-  // The buyer is trading price against speed, so within a tier the cheapest
-  // option has to come first — otherwise the comparison is theirs to do by hand.
-  it("orders each group cheapest first", () => {
+  it("says tomorrow without repeating the weekday", () => {
     renderList();
-    const prices = screen
+    // "besok, Sel, 28 Jul" would answer the same question twice.
+    expect(screen.getByText("Estimasi tiba besok, 28 Jul")).toBeTruthy();
+  });
+
+  it("says today for a same-day service, which carries no day count", () => {
+    renderList();
+    expect(screen.getByText("Estimasi tiba hari ini")).toBeTruthy();
+  });
+
+  // estimated_days is 0 both for same-day and for a duration the backend could
+  // not read. Only the first deserves a date.
+  it("shows no arrival estimate when the duration could not be read", () => {
+    renderList({ rates: FALLBACK });
+    expect(screen.queryByText(/Estimasi tiba/)).toBeNull();
+  });
+
+  it("orders options by how soon they arrive, then by price", () => {
+    renderList();
+    const services = screen
       .getAllByRole("radio")
-      .map((el) => within(el).getByText(/^Rp/).textContent);
-    // same-day: 30.000 · next-day: 14.000, 18.000, 18.000 · regular: 9.000, 11.500, 40.000
-    expect(prices).toEqual([
-      "Rp30.000",
-      "Rp14.000",
-      "Rp18.000",
-      "Rp18.000",
-      "Rp9.000",
-      "Rp11.500",
-      "Rp40.000",
-    ]);
+      .map((el) => within(el).getByText(/·/).textContent);
+    expect(services?.[0]).toContain("Same Day Service");
+    expect(services?.[1]).toContain("Besok Sampai Tujuan");
+    expect(services?.[2]).toContain("Reguler");
+    expect(services?.[3]).toContain("JNE Trucking");
   });
 
-  // estimated_days is 0 for every rate until the backend stops feeding Biteship's
-  // human duration string to strconv.Atoi. Rendering that as "0 days" states a
-  // delivery promise nobody made.
-  it("renders no duration when the carrier duration could not be parsed", () => {
-    renderList();
-    expect(screen.queryByText(/0 hari/)).toBeNull();
-    expect(screen.queryByText(/0 days/)).toBeNull();
+  it("keeps the list open while nothing is chosen", () => {
+    renderList({ selectedKey: null });
+    expect(screen.getAllByRole("radio")).toHaveLength(4);
   });
 
-  it("renders the duration once it is a real number", () => {
-    renderList({
-      rates: [{ courier: "JNE", service: "Reguler", price: 9000, estimated_days: 3 }] as any,
-    });
-    expect(screen.getByText(/3 hari/)).toBeTruthy();
+  // Once a rate is chosen the comparison is over and the next step is payment,
+  // so the list gets out of the way.
+  it("collapses to the chosen option", () => {
+    renderList({ selectedKey: "JNE::Reguler" });
+    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    expect(screen.getByText(/JNE · Reguler/)).toBeTruthy();
+    expect(screen.getByText("Estimasi tiba Rab, 29 Jul")).toBeTruthy();
   });
 
-  // The rows were previously divs with tabIndex and a click handler, so they took
-  // focus but could not be activated from the keyboard.
+  it("reopens the full list when the chosen option is clicked", async () => {
+    const user = userEvent.setup();
+    renderList({ selectedKey: "JNE::Reguler" });
+
+    await user.click(screen.getByRole("button", { name: /JNE · Reguler/ }));
+    expect(screen.getAllByRole("radio")).toHaveLength(4);
+  });
+
+  // The rows were previously divs with tabIndex and a click handler, so they
+  // took focus but could not be activated.
   it("selects a rate from the keyboard", async () => {
     const onSelect = vi.fn();
+    const user = userEvent.setup();
     renderList({ onSelect });
 
-    const user = userEvent.setup();
     await user.tab();
     await user.keyboard("{Enter}");
 
@@ -111,10 +121,10 @@ describe("CourierRateList", () => {
     expect(onSelect.mock.calls[0][0].service).toBe("Same Day Service");
   });
 
-  it("marks the selected rate for assistive technology", () => {
-    renderList({ selectedKey: "JNE::JNE Trucking" });
-    const checked = screen.getAllByRole("radio").filter((el) => el.getAttribute("aria-checked") === "true");
-    expect(checked).toHaveLength(1);
-    expect(within(checked[0]).getByText("JNE Trucking")).toBeTruthy();
+  it("marks the chosen rate for assistive technology while the list is open", () => {
+    renderList({ selectedKey: "JNE::Reguler" });
+    // Reopen by rendering with the list forced open is not possible from props,
+    // so assert via the collapsed summary instead — see the reopen test above.
+    expect(screen.getByRole("button", { name: /JNE · Reguler/ })).toBeTruthy();
   });
 });

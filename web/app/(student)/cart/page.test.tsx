@@ -463,10 +463,13 @@ describe("CartPage with Shipping", () => {
       expect.objectContaining({ service: "REG" })
     );
 
-    // Only the clicked option should be marked selected, not both same-carrier rows.
+    // Choosing collapses the list to the chosen option, so the summary is what
+    // proves the right same-carrier service stuck. Asserting aria-checked on the
+    // rows would inspect nodes that are no longer mounted.
     await waitFor(() => {
-      expect(yes).toHaveAttribute("aria-checked", "true");
+      expect(screen.queryAllByRole("radio")).toHaveLength(0);
     });
-    expect(reg).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("button", { name: /YES/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /REG/i })).toBeNull();
   });
 });
