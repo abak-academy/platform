@@ -1422,9 +1422,16 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		return nil
 	}
 
+	// An order_id that is not a UUID cannot name one of our orders, so this is
+	// the same outcome as a UUID we have no row for — report it as not-found
+	// rather than letting the parse error surface as a 500. Midtrans's own
+	// "test notification" button sends `payment_notif_test_<merchant>_<uuid>`,
+	// which lands here; answering 404 keeps that button honestly red instead of
+	// teaching us to ignore a genuine notification for an order we lost.
 	orderID, err := parseUUID(notif.OrderID)
 	if err != nil {
-		return err
+		slog.Info("midtrans webhook: order_id is not a UUID", "order_id", notif.OrderID)
+		return ErrOrderNotFound
 	}
 
 	order, err := s.storeRepo.GetOrderByID(ctx, orderID)

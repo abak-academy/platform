@@ -6,6 +6,13 @@ import { formatRupiah } from "@/lib/format";
 
 const PHYSICAL_TYPES = new Set(["book", "merchandise", "medal"]);
 
+// Mirrors FallbackCourier in backend/internal/service/shipping_rates.go. The
+// order row does not carry an is_estimate flag, so the badge has to be inferred
+// from the stored courier name. "Flat" is the pre-rename label and is kept so
+// orders placed under it keep their badge. Both entries disappear once the flag
+// is persisted — see docs/backlog/shipping-estimate-flag.md.
+const ESTIMATE_COURIERS = new Set(["Ongkir Flat", "Flat"]);
+
 export interface ShippingInfoProps {
   order: Order;
 }
@@ -22,7 +29,7 @@ export function ShippingInfo({ order }: ShippingInfoProps) {
     .join(" · ");
 
   const courier = [order.selected_courier, order.selected_service].filter(Boolean).join(" — ");
-  const isEstimate = order.selected_courier === "Flat";
+  const isEstimate = ESTIMATE_COURIERS.has(order.selected_courier ?? "");
 
   return (
     <section className="rounded-lg border border-line bg-surface p-5">
