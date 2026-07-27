@@ -87,6 +87,9 @@ export default function CartPage() {
           provinsi_id: shippingAddress.provinsi_id,
           kota_id: shippingAddress.kota_id,
           kecamatan_id: shippingAddress.kecamatan_id,
+          provinsi: shippingAddress.provinsi,
+          kota: shippingAddress.kota,
+          kecamatan: shippingAddress.kecamatan,
           catatan: note.trim() || undefined,
         },
       });

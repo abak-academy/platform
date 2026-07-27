@@ -421,6 +421,63 @@ describe("CartPage with Shipping", () => {
     });
   });
 
+  // The order used to store only region IDs, so the admin order detail showed a
+  // street and a postcode with no city, province or district anywhere.
+  it("snapshots the region names onto the order, not just their ids", async () => {
+    const user = userEvent.setup();
+    const patchCartMutate = vi.fn();
+
+    mockUseCart.mockReturnValue({
+      data: {
+        id: "o1",
+        student_id: "s1",
+        status: "cart",
+        subtotal: 100000,
+        discount: 0,
+        shipping_cost: 0,
+        total: 100000,
+        items: [physicalItem],
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    mockUseShippingRates.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      data: mockRates,
+      isError: false,
+    });
+
+    mockUsePatchCart.mockReturnValue({
+      mutate: patchCartMutate,
+      isPending: false,
+      isError: false,
+    });
+
+    renderWithQueryClient(<CartPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { expanded: false })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { expanded: false }));
+    await user.click(screen.getByRole("radio", { name: /jne/i }));
+
+    await waitFor(() => {
+      expect(patchCartMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shipping_address: expect.objectContaining({
+            provinsi_id: "prov1",
+            provinsi: "Jawa Barat",
+            kota: "Bandung",
+            kecamatan: "Cibadak",
+          }),
+        })
+      );
+    });
+  });
+
   it("disables Check shipping cost until province/city/district are all selected", async () => {
     // Profile only has a postal code — province/city/district are unset, as
     // happens for a student who never completed their address profile.

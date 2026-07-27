@@ -180,6 +180,11 @@ interface PatchCartShippingAddress {
   provinsi_id: string;
   kota_id: string;
   kecamatan_id: string;
+  // Region names snapshotted at checkout so admin can read one address without
+  // three ID lookups, and a later rename cannot rewrite a historical order.
+  provinsi?: string;
+  kota?: string;
+  kecamatan?: string;
   // Free text from the buyer ("titip di satpam"). shipping_address is a JSONB
   // passthrough the backend stores verbatim, so this needs no column of its own.
   catatan?: string;

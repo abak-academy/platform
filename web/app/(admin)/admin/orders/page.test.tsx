@@ -64,6 +64,9 @@ const sampleOrders: Order[] = [
       penerima: "Sabian Isaac",
       telepon: "082113092527",
       alamat: "Jl. Melati 9",
+      kecamatan: "Bantargebang",
+      kota: "Kota Bekasi",
+      provinsi: "Jawa Barat",
       kode_pos: "17151",
       catatan: "Titip di pos satpam",
     },
@@ -193,6 +196,50 @@ describe("OrdersPage", () => {
     expect(within(dialog).getByText("Titip di pos satpam")).toBeInTheDocument();
     expect(within(dialog).getByText("JNE-999")).toBeInTheDocument();
     expect(within(dialog).getByText(/JNE — Reguler/)).toBeInTheDocument();
+  });
+
+  // A street and a postcode alone do not say where a parcel is going.
+  it("shows the district, city and province, narrowest first", async () => {
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText(/Buku Shipped/).closest("tr")!);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("Bantargebang, Kota Bekasi, Jawa Barat"),
+    ).toBeInTheDocument();
+  });
+
+  // Orders placed before checkout stored the names only ever held the IDs, and
+  // an ID is not an address — the line is dropped rather than shown raw.
+  it("omits the region line on an order that predates the snapshot", async () => {
+    ordersState = {
+      ...ordersState,
+      data: [
+        {
+          ...sampleOrders[1],
+          shipping_address: {
+            penerima: "Sabian Isaac",
+            alamat: "Jl. Melati 9",
+            provinsi_id: "32",
+            kota_id: "3275",
+            kecamatan_id: "327501",
+            kode_pos: "17151",
+          },
+        },
+      ],
+    };
+
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText(/Buku Shipped/).closest("tr")!);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Jl. Melati 9")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/3275/)).toBeNull();
+    expect(within(dialog).queryByText("327501")).toBeNull();
   });
 
   // Every action button sits inside the clickable row.

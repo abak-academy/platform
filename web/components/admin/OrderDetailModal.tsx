@@ -41,6 +41,8 @@ export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps)
   const items = order.items ?? [];
   const addr = order.shipping_address ?? {};
   const hasPhysical = items.some((i) => PHYSICAL_TYPES.has(i.product_type));
+  // Narrowest first, the way an Indonesian address is written.
+  const region = [addr.kecamatan, addr.kota, addr.provinsi].filter(Boolean).join(", ");
   const courier = [order.selected_courier, order.selected_service].filter(Boolean).join(" — ");
   const isEstimate = ESTIMATE_COURIERS.has(order.selected_courier ?? "");
   const placed = formatDateTime(order.checked_out_at ?? order.created_at, lang);
@@ -103,6 +105,9 @@ export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps)
                       {addr.penerima && <span className="font-medium">{addr.penerima}</span>}
                       {addr.telepon && <span className="text-muted-foreground">{addr.telepon}</span>}
                       {addr.alamat && <span>{addr.alamat}</span>}
+                      {/* Empty on orders placed before checkout began storing the
+                          region names — those rows only ever held the IDs. */}
+                      {region && <span>{region}</span>}
                       {addr.kode_pos && <span className="text-muted-foreground">{addr.kode_pos}</span>}
                     </span>
                   ) : (

@@ -28,6 +28,12 @@ export interface ShippingAddressFormState {
   kota_id: string;
   kecamatan_id: string;
   kode_pos: string;
+  // Region names resolved at checkout. The order stores a snapshot rather than
+  // the IDs alone: admin would otherwise need three lookups to read one address,
+  // and a region renamed later would silently rewrite a historical order.
+  provinsi?: string;
+  kota?: string;
+  kecamatan?: string;
 }
 
 const FIELD_CLASS =
@@ -92,6 +98,10 @@ export function ShippingAddressForm({
     }
   }, [profile, initialAddress]);
 
+  const provinsiName = provinces?.find((p) => p.id === provinsiId)?.name;
+  const kotaName = cities?.find((c) => c.id === kotaId)?.name;
+  const kecamatanName = districts?.find((d) => d.id === kecamatanId)?.name;
+
   useEffect(() => {
     onAddressChange({
       penerima,
@@ -101,8 +111,23 @@ export function ShippingAddressForm({
       kota_id: kotaId,
       kecamatan_id: kecamatanId,
       kode_pos: kodePos,
+      provinsi: provinsiName,
+      kota: kotaName,
+      kecamatan: kecamatanName,
     });
-  }, [penerima, telepon, alamat, provinsiId, kotaId, kecamatanId, kodePos, onAddressChange]);
+  }, [
+    penerima,
+    telepon,
+    alamat,
+    provinsiId,
+    kotaId,
+    kecamatanId,
+    kodePos,
+    provinsiName,
+    kotaName,
+    kecamatanName,
+    onAddressChange,
+  ]);
 
   const handleProvinceChange = (value: string) => {
     setProvinsiId(value === "_empty_" ? "" : value);
