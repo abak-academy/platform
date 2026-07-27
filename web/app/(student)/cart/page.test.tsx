@@ -42,6 +42,7 @@ vi.mock("@/lib/i18n", () => ({
     t: (key: string) => {
       const dict: Record<string, string> = {
         cart_continue: "Continue shopping",
+        cart_courier_note_label: "Note for the courier",
         cart_title: "Cart",
         cart_item_count: "{n} items",
         cart_order_summary: "Order Summary",
@@ -335,8 +336,15 @@ describe("CartPage with Shipping", () => {
     renderWithQueryClient(<CartPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/jne/i)).toBeInTheDocument();
+      // The picker starts collapsed with a prompt — shipping is a real charge and
+      // nothing is chosen on the buyer's behalf — so open it before the options
+      // exist. Query by role rather than free text: each row renders a
+      // decorative carrier monogram with the same letters (aria-hidden, so
+      // assistive tech still hears the courier once).
+      expect(screen.getByRole("button", { expanded: false })).toBeInTheDocument();
     });
+
+    await user.click(screen.getByRole("button", { expanded: false }));
 
     const jneOption = screen.getByRole("radio", { name: /jne/i });
     await user.click(jneOption);
@@ -352,6 +360,62 @@ describe("CartPage with Shipping", () => {
           city_id: "city1",
           district_id: "dist1",
           kode_pos: "40123",
+        })
+      );
+    });
+  });
+
+  // The note has no column of its own — it rides inside the shipping_address
+  // JSONB. If it is not attached to the same PATCH that stores the courier, the
+  // buyer types "titip di satpam" and nothing ever reaches the warehouse.
+  it("sends the courier note with the chosen rate", async () => {
+    const user = userEvent.setup();
+    const patchCartMutate = vi.fn();
+
+    mockUseCart.mockReturnValue({
+      data: {
+        id: "o1",
+        student_id: "s1",
+        status: "cart",
+        subtotal: 100000,
+        discount: 0,
+        shipping_cost: 0,
+        total: 100000,
+        items: [physicalItem],
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    mockUseShippingRates.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      data: mockRates,
+      isError: false,
+    });
+
+    mockUsePatchCart.mockReturnValue({
+      mutate: patchCartMutate,
+      isPending: false,
+      isError: false,
+    });
+
+    renderWithQueryClient(<CartPage />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/note for the courier/i)).toBeInTheDocument();
+    });
+    await user.type(screen.getByLabelText(/note for the courier/i), "Titip di satpam");
+
+    await user.click(screen.getByRole("button", { expanded: false }));
+    await user.click(screen.getByRole("radio", { name: /jne/i }));
+
+    await waitFor(() => {
+      expect(patchCartMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          courier: "jne",
+          shipping_address: expect.objectContaining({ catatan: "Titip di satpam" }),
         })
       );
     });
@@ -435,11 +499,19 @@ describe("CartPage with Shipping", () => {
 
     renderWithQueryClient(<CartPage />);
 
+    await user.click(await screen.findByRole("button", { expanded: false }));
+
     const options = await screen.findAllByRole("radio", { name: /jne/i });
     expect(options).toHaveLength(2);
 
-    // Click the second option (YES, 30000) — must not persist the first (REG, 15000).
-    await user.click(options[1]);
+    // Address the rows by service rather than position: rates are grouped by
+    // delivery speed and sorted by price inside each group, so DOM order no
+    // longer follows the order they arrived in.
+    const yes = screen.getByRole("radio", { name: /YES/i });
+    const reg = screen.getByRole("radio", { name: /REG/i });
+
+    // Selecting YES (30000) must not persist REG (15000).
+    await user.click(yes);
 
     await waitFor(() => {
       expect(patchCartMutate).toHaveBeenCalledWith(
@@ -454,10 +526,13 @@ describe("CartPage with Shipping", () => {
       expect.objectContaining({ service: "REG" })
     );
 
-    // Only the clicked option should be marked selected, not both same-carrier rows.
+    // Choosing collapses the list to the chosen option, so the summary is what
+    // proves the right same-carrier service stuck. Asserting aria-checked on the
+    // rows would inspect nodes that are no longer mounted.
     await waitFor(() => {
-      expect(options[1]).toHaveAttribute("aria-checked", "true");
+      expect(screen.queryAllByRole("radio")).toHaveLength(0);
     });
-    expect(options[0]).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("button", { name: /YES/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /REG/i })).toBeNull();
   });
 });

@@ -41,6 +41,7 @@ export default function CartPage() {
   });
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
   const [editingAddress, setEditingAddress] = useState(false);
+  const [courierNote, setCourierNote] = useState("");
 
   const items: OrderItem[] = cart?.items ?? [];
   const subtotal = cart?.subtotal ?? items.reduce((s, it) => s + it.jumlah, 0);
@@ -48,6 +49,7 @@ export default function CartPage() {
   const total = cart?.total ?? Math.max(0, subtotal - discount + (cart?.shipping_cost ?? 0));
 
   const hasPhysical = hasPhysicalItems(items);
+  const addressReady = isAddressComplete(shippingAddress as any);
   const totalPhysicalWeight = calculateTotalPhysicalWeight(items);
 
   const handleAddressChange = useCallback((state: ShippingAddressFormState) => {
@@ -62,10 +64,12 @@ export default function CartPage() {
     });
   }, [shippingAddress, totalPhysicalWeight, shippingRates]);
 
-  const handleSelectCourier = useCallback(
-    (rate: { courier: string; service: string; price: number }) => {
+  // The rate and the note are stored by the same PATCH, so both have to be sent
+  // whichever one the buyer changed — sending only the note would clear the
+  // courier the backend already has.
+  const persistShipping = useCallback(
+    (rate: { courier: string; service: string; price: number }, note: string) => {
       if (!cart) return;
-      setSelectedRateKey(courierRateKey(rate));
       patchCart.mutate({
         orderId: cart.id,
         courier: rate.courier,
@@ -83,11 +87,28 @@ export default function CartPage() {
           provinsi_id: shippingAddress.provinsi_id,
           kota_id: shippingAddress.kota_id,
           kecamatan_id: shippingAddress.kecamatan_id,
+          catatan: note.trim() || undefined,
         },
       });
     },
     [cart, shippingAddress, patchCart]
   );
+
+  const handleSelectCourier = useCallback(
+    (rate: { courier: string; service: string; price: number }) => {
+      setSelectedRateKey(courierRateKey(rate));
+      persistShipping(rate, courierNote);
+    },
+    [persistShipping, courierNote]
+  );
+
+  const selectedRate = shippingRates.data?.find((r) => courierRateKey(r) === selectedRateKey);
+
+  // Before a courier is picked there is nothing to attach the note to; it rides
+  // along with the first selection instead.
+  const handleNoteBlur = useCallback(() => {
+    if (selectedRate) persistShipping(selectedRate, courierNote);
+  }, [selectedRate, courierNote, persistShipping]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
@@ -117,25 +138,8 @@ export default function CartPage() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:items-start">
           <section className="flex flex-col gap-3">
-            {items.map((it) => (
-              <CartLineItem
-                key={it.id}
-                item={it}
-                onRemove={() => {
-                  if (!cart) return;
-                  removeItem.mutate({ orderId: cart.id, itemId: it.id });
-                }}
-                onQtyChange={(qty) => {
-                  if (!cart) return;
-                  updateQty.mutate({ orderId: cart.id, itemId: it.id, qty });
-                }}
-                removing={removeItem.isPending}
-                updatingQty={updateQty.isPending}
-              />
-            ))}
-
             {hasPhysical &&
-              (editingAddress || !isAddressComplete(shippingAddress as any) ? (
+              (editingAddress || !addressReady ? (
                 <ShippingAddressForm
                   profile={profile}
                   initialAddress={shippingAddress}
@@ -150,20 +154,83 @@ export default function CartPage() {
                 <ShippingAddressSummary
                   address={shippingAddress as any}
                   onEdit={() => setEditingAddress(true)}
-                  onCheckShipping={handleCheckShipping}
-                  isCheckingShipping={shippingRates.isPending}
                 />
               ))}
 
-            {hasPhysical && shippingRates.data && (
-              <CourierRateList
-                rates={shippingRates.data}
-                selectedKey={selectedRateKey}
-                onSelect={handleSelectCourier}
-                isLoading={false}
-                isError={shippingRates.isError}
-              />
-            )}
+            {/* Items, the note and the courier picker share one card: the
+                shipping choice belongs to these goods, not to the page. */}
+            <div className="overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--sh-sm)]">
+              {items.map((it, idx) => (
+                <div key={it.id} className={idx > 0 ? "border-t border-line" : ""}>
+                  <CartLineItem
+                    item={it}
+                    flat
+                    onRemove={() => {
+                      if (!cart) return;
+                      removeItem.mutate({ orderId: cart.id, itemId: it.id });
+                    }}
+                    onQtyChange={(qty) => {
+                      if (!cart) return;
+                      updateQty.mutate({ orderId: cart.id, itemId: it.id, qty });
+                    }}
+                    removing={removeItem.isPending}
+                    updatingQty={updateQty.isPending}
+                  />
+                </div>
+              ))}
+
+              {hasPhysical && (addressReady || shippingRates.data) && (
+                /* Note beside the shipping choice, both under the goods they
+                   apply to. The note is for the courier, so it belongs here and
+                   not in the address card. */
+                <div className="grid gap-4 border-t border-line px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                  <div className="flex flex-col gap-2">
+                    <label
+                      htmlFor="cart-courier-note"
+                      className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500"
+                    >
+                      {t("cart_courier_note_label")}
+                    </label>
+                    <textarea
+                      id="cart-courier-note"
+                      value={courierNote}
+                      onChange={(e) => setCourierNote(e.target.value)}
+                      onBlur={handleNoteBlur}
+                      rows={3}
+                      maxLength={200}
+                      placeholder={t("cart_courier_note_placeholder")}
+                      className="w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus-visible:border-brand-500 focus-visible:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    {shippingRates.data ? (
+                      <CourierRateList
+                        rates={shippingRates.data}
+                        selectedKey={selectedRateKey}
+                        onSelect={handleSelectCourier}
+                        isLoading={false}
+                        isError={shippingRates.isError}
+                      />
+                    ) : (
+                      <>
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500">
+                          {t("cart_shipping_options")}
+                        </span>
+                        <Button
+                          type="button"
+                          onClick={handleCheckShipping}
+                          disabled={shippingRates.isPending}
+                          className="w-full"
+                        >
+                          {t("cart_check_shipping_cost")}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {hasPhysical && shippingRates.isError && (
               <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">

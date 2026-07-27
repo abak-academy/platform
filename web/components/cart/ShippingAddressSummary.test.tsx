@@ -14,7 +14,7 @@ const address = {
 
 describe("ShippingAddressSummary", () => {
   it("shows the saved recipient, phone and street instead of a form", () => {
-    render(<ShippingAddressSummary address={address} onEdit={() => {}} onCheckShipping={() => {}} />);
+    render(<ShippingAddressSummary address={address} onEdit={() => {}} />);
     expect(screen.getByText("Saifullah Panca")).toBeTruthy();
     expect(screen.getByText(/08123456789/)).toBeTruthy();
     expect(screen.getByText(/Jl. Merdeka No. 1/)).toBeTruthy();
@@ -23,7 +23,7 @@ describe("ShippingAddressSummary", () => {
 
   it("asks the parent to open the form when Ubah is pressed", () => {
     const onEdit = vi.fn();
-    render(<ShippingAddressSummary address={address} onEdit={onEdit} onCheckShipping={() => {}} />);
+    render(<ShippingAddressSummary address={address} onEdit={onEdit} />);
     fireEvent.click(screen.getByRole("button", { name: "Ubah" }));
     expect(onEdit).toHaveBeenCalledTimes(1);
   });
@@ -33,31 +33,17 @@ describe("ShippingAddressSummary", () => {
       <ShippingAddressSummary
         address={{ ...address, alamat: "" }}
         onEdit={() => {}}
-        onCheckShipping={() => {}}
       />,
     );
     expect(screen.getByText("Lengkapi alamat pengiriman untuk melanjutkan.")).toBeTruthy();
   });
 
-  it("offers a Cek Ongkir action so a complete saved address can still request a quote", () => {
-    const onCheckShipping = vi.fn();
-    render(
-      <ShippingAddressSummary address={address} onEdit={() => {}} onCheckShipping={onCheckShipping} />,
-    );
-    const button = screen.getByRole("button", { name: "Cek Ongkir" });
-    fireEvent.click(button);
-    expect(onCheckShipping).toHaveBeenCalledTimes(1);
-  });
-
-  it("disables the Cek Ongkir button while a check is in flight", () => {
-    render(
-      <ShippingAddressSummary
-        address={address}
-        onEdit={() => {}}
-        onCheckShipping={() => {}}
-        isCheckingShipping
-      />,
-    );
-    expect(screen.getByRole("button", { name: "Cek Ongkir" })).toBeDisabled();
+  // Cek Ongkir moved next to the goods it prices. Leaving a copy here would
+  // give the buyer two buttons for one action, in two places.
+  it("carries no control other than Ubah", () => {
+    render(<ShippingAddressSummary address={address} onEdit={() => {}} />);
+    const buttons = screen.getAllByRole("button");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveTextContent("Ubah");
   });
 });

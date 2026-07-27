@@ -27,6 +27,9 @@ interface ProductModalProps {
   isPending: boolean;
 }
 
+const SELECT_CLASS =
+  "h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50";
+
 const PRODUCT_TYPES: ProductType[] = ["book", "course", "exam", "merchandise", "medal"];
 const PRODUCT_STATUSES: ProductStatus[] = ["draft", "published", "hidden", "archived"];
 
@@ -194,135 +197,140 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
+      {/* A book carries eight specification rows, which pushed the dialog past
+          the viewport and took the title and the Save button off screen with
+          it. The body scrolls; the header and footer stay put. */}
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <DialogHeader className="shrink-0 border-b px-6 py-5">
             <DialogTitle>{isEdit ? "Edit produk" : "Buat produk"}</DialogTitle>
             <DialogDescription>
               {isEdit ? "Perbarui metadata produk." : "Tambahkan produk baru ke katalog."}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="product-name">Nama</Label>
-              <Input
-                id="product-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Nama produk"
-                disabled={isPending}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+          <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-6 py-5">
+            <Section title="Produk">
               <div className="grid gap-2">
-                <Label htmlFor="product-type">Jenis</Label>
-                <select
-                  id="product-type"
-                  value={type}
-                  onChange={(e) => setType(e.target.value as ProductType)}
-                  disabled={isEdit || isPending}
-                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
-                >
-                  <option value="" disabled>Pilih jenis</option>
-                  {PRODUCT_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {TYPE_LABELS[t]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="product-price">Harga (IDR)</Label>
+                <Label htmlFor="product-name">Nama</Label>
                 <Input
-                  id="product-price"
-                  type="number"
-                  min={0}
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="0"
+                  id="product-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Nama produk"
                   disabled={isPending}
                 />
               </div>
-            </div>
 
-            {isEdit && (
-              <div className="grid gap-2">
-                <Label htmlFor="product-status">Status</Label>
-                <select
-                  id="product-status"
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as ProductStatus)}
-                  disabled={isPending}
-                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
-                >
-                  {PRODUCT_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {showStock && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="grid gap-2">
-                  <Label htmlFor="product-stock">Stok</Label>
-                  <Input
-                    id="product-stock"
-                    type="number"
-                    min={0}
-                    value={stock}
-                    onChange={(e) => setStock(e.target.value)}
-                    placeholder="0"
-                    disabled={isPending}
-                  />
+                  <Label htmlFor="product-type">Jenis</Label>
+                  <select
+                    id="product-type"
+                    value={type}
+                    onChange={(e) => setType(e.target.value as ProductType)}
+                    disabled={isEdit || isPending}
+                    className={SELECT_CLASS}
+                  >
+                    <option value="" disabled>Pilih jenis</option>
+                    {PRODUCT_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {TYPE_LABELS[t]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
                 <div className="grid gap-2">
-                  <Label htmlFor="product-weight">Berat (gram)</Label>
+                  <Label htmlFor="product-price">Harga (IDR)</Label>
                   <Input
-                    id="product-weight"
+                    id="product-price"
                     type="number"
                     min={0}
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
                     placeholder="0"
                     disabled={isPending}
                   />
                 </div>
               </div>
-            )}
+
+              {isEdit && (
+                <div className="grid gap-2 sm:max-w-[calc(50%-0.5rem)]">
+                  <Label htmlFor="product-status">Status</Label>
+                  <select
+                    id="product-status"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as ProductStatus)}
+                    disabled={isPending}
+                    className={SELECT_CLASS}
+                  >
+                    {PRODUCT_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {STATUS_LABELS[s]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </Section>
 
             {showStock && (
-              <div className="grid gap-2">
-                <Label htmlFor="product-image">Gambar produk</Label>
-                <div className="flex items-center gap-3">
-                  {imageUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={fileUrl(imageUrl)}
-                      alt="Pratinjau gambar"
-                      className="h-16 w-16 rounded-md border border-input object-cover"
+              <Section title="Inventaris & pengiriman">
+                <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="product-stock">Stok</Label>
+                    <Input
+                      id="product-stock"
+                      type="number"
+                      min={0}
+                      value={stock}
+                      onChange={(e) => setStock(e.target.value)}
+                      placeholder="0"
+                      disabled={isPending}
                     />
-                  )}
-                  <Input
-                    id="product-image"
-                    type="file"
-                    accept="image/*"
-                    ref={imageInputRef}
-                    onChange={handleImageSelect}
-                    disabled={isPending || imageUploading}
-                  />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="product-weight">Berat (gram)</Label>
+                    <Input
+                      id="product-weight"
+                      type="number"
+                      min={0}
+                      value={weight}
+                      onChange={(e) => setWeight(e.target.value)}
+                      placeholder="0"
+                      disabled={isPending}
+                    />
+                    <p className="text-xs text-muted-foreground">Dipakai untuk menghitung ongkir.</p>
+                  </div>
                 </div>
-              </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="product-image">Gambar produk</Label>
+                  <div className="flex items-center gap-3">
+                    {imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={fileUrl(imageUrl)}
+                        alt="Pratinjau gambar"
+                        className="h-16 w-16 shrink-0 rounded-md border border-input object-cover"
+                      />
+                    )}
+                    <Input
+                      id="product-image"
+                      type="file"
+                      accept="image/*"
+                      ref={imageInputRef}
+                      onChange={handleImageSelect}
+                      disabled={isPending || imageUploading}
+                    />
+                  </div>
+                </div>
+              </Section>
             )}
 
             {showCourses && (
-              <div className="grid gap-2">
-                <Label>Kursus terkait</Label>
+              <Section title="Kursus terkait">
                 <div className="max-h-40 overflow-y-auto rounded-md border border-input p-2">
                   {(courses ?? []).length === 0 ? (
                     <p className="px-1 py-2 text-sm text-muted-foreground">Belum ada kursus.</p>
@@ -347,12 +355,11 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                     })
                   )}
                 </div>
-              </div>
+              </Section>
             )}
 
             {showExams && (
-              <div className="grid gap-2">
-                <Label>Ujian terkait</Label>
+              <Section title="Ujian terkait">
                 <div className="max-h-40 overflow-y-auto rounded-md border border-input p-2">
                   {exams.length === 0 ? (
                     <p className="px-1 py-2 text-sm text-muted-foreground">Belum ada ujian.</p>
@@ -377,30 +384,32 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                     })
                   )}
                 </div>
-              </div>
+              </Section>
             )}
 
             <ProductSpecsEditor type={type as ProductType} value={specs} onChange={setSpecs} />
 
-            <div className="grid gap-2">
-              <Label htmlFor="product-description">Deskripsi</Label>
+            <Section title="Deskripsi">
               <textarea
                 id="product-description"
+                aria-label="Deskripsi"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Deskripsi singkat"
                 disabled={isPending}
-                rows={3}
+                rows={6}
                 className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
               />
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Ketersediaan di marketplace (opsional)</Label>
               <p className="text-xs text-muted-foreground">
+                Baris kosong memisahkan paragraf, dan halaman produk menampilkannya persis seperti yang diketik di sini.
+              </p>
+            </Section>
+
+            <Section title="Ketersediaan di marketplace (opsional)">
+              <p className="-mt-1 text-xs text-muted-foreground">
                 Kosongkan untuk selalu tersedia. Produk hanya tampil dan bisa dibeli dalam rentang ini.
               </p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="product-available-from" className="text-xs font-normal text-muted-foreground">
                     Tersedia dari
@@ -426,10 +435,10 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                   />
                 </div>
               </div>
-            </div>
+            </Section>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t px-6 py-4">
             <Button
               type="button"
               variant="outline"
@@ -445,5 +454,18 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Each group gets a heading on a hairline so the form reads as a handful of
+// topics rather than one run of fourteen fields.
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="border-b pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        {title}
+      </h3>
+      {children}
+    </section>
   );
 }

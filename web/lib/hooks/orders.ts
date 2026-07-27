@@ -180,6 +180,9 @@ interface PatchCartShippingAddress {
   provinsi_id: string;
   kota_id: string;
   kecamatan_id: string;
+  // Free text from the buyer ("titip di satpam"). shipping_address is a JSONB
+  // passthrough the backend stores verbatim, so this needs no column of its own.
+  catatan?: string;
 }
 
 interface PatchCartInput {
