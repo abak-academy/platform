@@ -20,6 +20,8 @@ const FONTS = [
   ["playfair_display", "Playfair Display"],
   ["cormorant_garamond", "Cormorant Garamond"],
   ["great_vibes", "Great Vibes"],
+  ["poppins", "Poppins"],
+  ["libre_baskerville", "Libre Baskerville"],
 ];
 
 const TOKEN_LABELS = {

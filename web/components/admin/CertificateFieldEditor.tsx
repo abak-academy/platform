@@ -5,7 +5,6 @@ import { Minus, Plus, Scan } from "lucide-react";
 import { normalizeCertificateLayout, previewContent, PREVIEW_VALUES } from "@/lib/certificate-studio";
 import { useTranslation } from "@/lib/i18n";
 import type { CertificateLayout, CertificateLayoutField } from "@/lib/types";
-import "./CertificateFonts.module.css";
 
 interface CertificateFieldEditorProps {
   layout: CertificateLayout;
@@ -26,12 +25,14 @@ interface Interaction {
 }
 
 const fonts: Record<string, string> = {
-  source_serif_4: "source_serif_4",
-  public_sans: "public_sans",
-  cinzel: "cinzel",
-  playfair_display: "playfair_display",
-  cormorant_garamond: "cormorant_garamond",
-  great_vibes: "great_vibes",
+  source_serif_4: "var(--font-certificate-source-serif)",
+  public_sans: "var(--font-certificate-public-sans)",
+  cinzel: "var(--font-certificate-cinzel)",
+  playfair_display: "var(--font-certificate-playfair-display)",
+  cormorant_garamond: "var(--font-certificate-cormorant-garamond)",
+  great_vibes: "var(--font-certificate-great-vibes)",
+  poppins: "var(--font-certificate-poppins)",
+  libre_baskerville: "var(--font-certificate-libre-baskerville)",
 };
 
 function safeColor(color?: string) {
@@ -165,7 +166,7 @@ export function CertificateFieldEditor({
             };
             const textStyle: CSSProperties = {
               color: safeColor(field.color),
-              fontFamily: fonts[field.font || ""] || "source_serif_4",
+              fontFamily: fonts[field.font || ""] || "var(--font-certificate-source-serif)",
               fontWeight: field.weight === "bold" ? 700 : 400,
               fontStyle: field.italic ? "italic" : "normal",
               textAlign: field.align === "left" || field.align === "right" ? field.align : "center",

@@ -201,7 +201,7 @@ func TestBuildCertificateHTML_JPEGBackgroundKeepsItsOwnMime(t *testing.T) {
 	}
 }
 
-func TestBuildCertificateHTML_ExactlySixFontFaceFamilies(t *testing.T) {
+func TestBuildCertificateHTML_ExactlyEightFontFaceFamilies(t *testing.T) {
 	layout := testCertificateLayout()
 	vals := certificateFieldValues("Ujian", "Nama", "1 Januari 2026", "ABK/2026/0001/000001")
 
@@ -221,13 +221,14 @@ func TestBuildCertificateHTML_ExactlySixFontFaceFamilies(t *testing.T) {
 	for _, m := range matches {
 		families[m[1]] = true
 	}
-	if len(families) != 6 {
-		t.Errorf("expected exactly 6 distinct @font-face families, got %d: %v", len(families), families)
+	if len(families) != 8 {
+		t.Errorf("expected exactly 8 distinct @font-face families, got %d: %v", len(families), families)
 	}
 
 	wantFamilies := []string{
 		FontSourceSerif4, FontPublicSans, FontCinzel,
 		FontPlayfairDisplay, FontCormorantGaramond, FontGreatVibes,
+		FontPoppins, FontLibreBaskerville,
 	}
 	for _, f := range wantFamilies {
 		if !families[f] {

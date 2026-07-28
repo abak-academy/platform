@@ -197,7 +197,7 @@ describe("CertificateFieldEditor", () => {
     const value = screen.getByTestId("certificate-field-value-student_name");
     expect(value.textContent).toBe("Nama Peserta Contoh");
     expect(box.textContent).not.toContain("Nama Siswa");
-    expect(value.style.fontFamily).toBe("source_serif_4");
+    expect(value.style.fontFamily).toBe("var(--font-certificate-source-serif)");
     expect(value.style.fontWeight).toBe("700");
     expect(value.style.fontSize).toBe("36.6912px");
     expect(value.style.color).toBe("rgb(31, 42, 68)");
@@ -216,7 +216,7 @@ describe("CertificateFieldEditor", () => {
     render(<CertificateFieldEditor layout={layout} onChange={onChange} />);
 
     const value = screen.getByTestId("certificate-field-value-exam_title");
-    expect(value.style.fontFamily).toBe("source_serif_4");
+    expect(value.style.fontFamily).toBe("var(--font-certificate-source-serif)");
   });
 
   it("falls back to black when a field's color is malformed (FR-9)", () => {

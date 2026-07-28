@@ -179,7 +179,7 @@ export function CertificateDesignTab({ examId, exam, onSaved }: Props) {
     <div className="overflow-hidden rounded-2xl border border-[#D9DDEA] bg-[#F7F8FC] shadow-sm">
       <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-[#D9DDEA] bg-white/95 px-5 py-4 backdrop-blur">
         <div>
-          <p className="font-[playfair_display] text-xl font-semibold text-[#17213B]">{t("certificate_studio_title")}</p>
+          <p className="font-[var(--font-certificate-playfair-display)] text-xl font-semibold text-[#17213B]">{t("certificate_studio_title")}</p>
           <p className="text-xs text-[#767DA2]">{dirty ? t("certificate_studio_unsaved") : t("certificate_studio_saved_state")}</p>
         </div>
         <Button type="button" className="rounded-full bg-[#4355E7] px-5" disabled={!dirty || uploading || updateDesign.isPending} onClick={save}><Save className="mr-2 size-4" />{updateDesign.isPending ? t("saving") : t("save_changes")}</Button>

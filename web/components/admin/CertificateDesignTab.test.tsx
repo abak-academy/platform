@@ -70,6 +70,27 @@ describe("CertificateDesignTab", () => {
     expect(field).toMatchObject({ content: "Awarded to {{student_name}}", weight: "bold" });
   });
 
+  it("offers every bundled font and applies each distinct family to the live preview", () => {
+    render(<CertificateDesignTab examId="exam-1" exam={exam} />);
+    const font = screen.getByLabelText("Font");
+    const preview = screen.getByTestId("certificate-field-value-student_name");
+    const choices = [
+      ["public_sans", "var(--font-certificate-public-sans)"],
+      ["source_serif_4", "var(--font-certificate-source-serif)"],
+      ["cinzel", "var(--font-certificate-cinzel)"],
+      ["playfair_display", "var(--font-certificate-playfair-display)"],
+      ["cormorant_garamond", "var(--font-certificate-cormorant-garamond)"],
+      ["great_vibes", "var(--font-certificate-great-vibes)"],
+      ["poppins", "var(--font-certificate-poppins)"],
+      ["libre_baskerville", "var(--font-certificate-libre-baskerville)"],
+    ];
+
+    for (const [value, family] of choices) {
+      fireEvent.change(font, { target: { value } });
+      expect(preview.style.fontFamily).toBe(family);
+    }
+  });
+
   it("selecting a preset replaces its layout and background", async () => {
     render(<CertificateDesignTab examId="exam-1" exam={exam} />);
     fireEvent.click(screen.getByRole("button", { name: /modern/i }));

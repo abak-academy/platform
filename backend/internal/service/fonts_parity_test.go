@@ -10,8 +10,7 @@ import (
 	"testing"
 )
 
-// webFontDir is the browser-side copy the admin certificate design editor loads
-// via web/components/admin/CertificateFonts.module.css.
+// webFontDir is the browser-side copy loaded by the exam package layout.
 const webFontDir = "../../../web/public/fonts"
 
 // TestFontParity_BackendMatchesWeb guards a duplication that cannot be removed
