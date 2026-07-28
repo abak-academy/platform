@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // certificateHTMLTemplate emits a single self-contained HTML document (FR-2,
@@ -86,6 +87,7 @@ func imageMimeOrFallback(data []byte) string {
 // buildCertificateHTML renders layout+vals+bg+images into self-contained
 // certificate HTML (FR-2..FR-5, FR-9): no DB/network access, no PDF library.
 func buildCertificateHTML(layout Layout, vals map[FieldID]string, bg []byte, images map[FieldID][]byte) ([]byte, error) {
+	layout = normalizeCertificateLayout(layout)
 	faces, err := certificateFontFaces()
 	if err != nil {
 		return nil, fmt.Errorf("build certificate font faces: %w", err)
@@ -96,7 +98,7 @@ func buildCertificateHTML(layout Layout, vals map[FieldID]string, bg []byte, ima
 		if !f.Visible {
 			continue
 		}
-		if imageFieldIDs[f.ID] {
+		if f.Kind == "image" {
 			img := images[f.ID]
 			if len(img) == 0 {
 				continue
@@ -109,7 +111,7 @@ func buildCertificateHTML(layout Layout, vals map[FieldID]string, bg []byte, ima
 			})
 			continue
 		}
-		text := vals[f.ID]
+		text := interpolateCertificateContent(f.Content, vals)
 		if text == "" {
 			continue
 		}
@@ -132,6 +134,13 @@ func buildCertificateHTML(layout Layout, vals map[FieldID]string, bg []byte, ima
 		return nil, fmt.Errorf("execute certificate html template: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+func interpolateCertificateContent(content string, vals map[FieldID]string) string {
+	for _, token := range certificateTokens(content) {
+		content = strings.ReplaceAll(content, "{{"+token+"}}", vals[token])
+	}
+	return content
 }
 
 // certificateFontFaces reads every bundled OFL family from fontFS (FR-3),
@@ -200,9 +209,13 @@ func textFieldStyle(f LayoutField) template.CSS {
 	if f.Weight == "bold" {
 		weight = "bold"
 	}
+	fontStyle := "normal"
+	if f.Italic {
+		fontStyle = "italic"
+	}
 	return template.CSS(fmt.Sprintf(
-		"position:absolute;left:%smm;top:%smm;width:%smm;text-align:%s;color:%s;font-size:%spt;font-family:%s;font-weight:%s;",
-		formatMm(f.XMm), formatMm(f.YMm), formatMm(f.WMm), cssAlign(f.Align), safeCSSColor(f.Color), formatMm(f.SizePt), ResolveFontFamily(f.Font), weight,
+		"position:absolute;left:%smm;top:%smm;width:%smm;text-align:%s;color:%s;font-size:%spt;font-family:%s;font-weight:%s;font-style:%s;",
+		formatMm(f.XMm), formatMm(f.YMm), formatMm(f.WMm), cssAlign(f.Align), safeCSSColor(f.Color), formatMm(f.SizePt), ResolveFontFamily(f.Font), weight, fontStyle,
 	))
 }
 

@@ -715,16 +715,21 @@ export interface UpdateExamPayload {
 
 export interface CertificateLayoutField {
   id: string;
+  kind?: "text" | "image";
+  name?: string;
+  content?: string;
   x_mm: number;
   y_mm: number;
   w_mm: number;
   align: string;
   font?: string;
   weight?: string;
+  italic?: boolean;
   size_pt?: number;
   color?: string;
   visible: boolean;
   h_mm?: number;
+  asset_key?: string | null;
 }
 
 export interface CertificateLayout {
@@ -739,6 +744,14 @@ export interface CertificateDesign {
   background_key: string | null;
   background_url: string | null;
   signature_url: string | null;
+  layout: CertificateLayout;
+  presets?: CertificatePreset[];
+  asset_urls?: Record<string, string>;
+}
+
+export interface CertificatePreset {
+  template: string;
+  background_url: string;
   layout: CertificateLayout;
 }
 

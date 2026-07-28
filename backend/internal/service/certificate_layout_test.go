@@ -3,8 +3,80 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
+
+func TestNormalizeCertificateLayout_LegacyStudentNameGetsTokenContent(t *testing.T) {
+	layout := Layout{Page: Page{WidthMm: 297, HeightMm: 210}, Fields: []LayoutField{{
+		ID: "student_name", XMm: 48.5, YMm: 100, WMm: 200,
+		Align: "center", Font: "source_serif_4", SizePt: 26, Visible: true,
+	}}}
+	got := normalizeCertificateLayout(layout)
+	if got.Fields[0].Kind != "text" || got.Fields[0].Content != "{{student_name}}" {
+		t.Fatalf("normalized field = %+v", got.Fields[0])
+	}
+}
+
+func TestValidateLayout_RejectsUnknownToken(t *testing.T) {
+	layout := normalizeCertificateLayout(defaultLayout("classic"))
+	layout.Fields[0].Content = "{{secret_score}}"
+	err := ValidateLayout(layout)
+	if err == nil || !strings.Contains(err.Error(), "Unknown certificate token: {{secret_score}}") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestValidateLayout_RejectsUnknownTokenWithUppercaseOrDigits(t *testing.T) {
+	for _, token := range []string{"{{Secret}}", "{{secret2}}"} {
+		layout := normalizeCertificateLayout(defaultLayout("classic"))
+		layout.Fields[0].Content = token
+		if err := ValidateLayout(layout); err == nil || !strings.Contains(err.Error(), "Unknown certificate token") {
+			t.Fatalf("token %q err = %v", token, err)
+		}
+	}
+}
+
+func TestValidateCertificateDesignAssetKeys_ScopesNewKeysToExam(t *testing.T) {
+	examID := "550e8400-e29b-41d4-a716-446655440000"
+	valid := "certificates/" + examID + "/logo.png"
+	invalid := "student-bulk/another-school/students.csv"
+	layout := normalizeCertificateLayout(defaultLayout("classic"))
+	layout.Fields = append(layout.Fields, LayoutField{
+		ID: "image_550e8400-e29b-41d4-a716-446655440001", Kind: "image", AssetKey: &valid,
+		XMm: 10, YMm: 10, WMm: 20, HMm: 20, Visible: true,
+	})
+	if err := ValidateCertificateDesignAssetKeys(examID, &valid, layout, nil); err != nil {
+		t.Fatal(err)
+	}
+	layout.Fields[len(layout.Fields)-1].AssetKey = &invalid
+	if err := ValidateCertificateDesignAssetKeys(examID, &valid, layout, nil); err == nil {
+		t.Fatal("expected cross-namespace key to be rejected")
+	}
+}
+
+func TestValidateCertificateDesignAssetKeys_AllowsExistingLegacyKey(t *testing.T) {
+	examID := "550e8400-e29b-41d4-a716-446655440000"
+	legacy := "avatars/admin/legacy-signature.png"
+	raw := json.RawMessage(`{"page":{"width_mm":297,"height_mm":210},"background":{"kind":"builtin","ref":"classic"},"fields":[{"id":"signature","kind":"image","asset_key":"avatars/admin/legacy-signature.png","x_mm":10,"y_mm":10,"w_mm":20,"h_mm":20,"align":"center","visible":true}]}`)
+	layout := Layout{Page: Page{WidthMm: 297, HeightMm: 210}, Fields: []LayoutField{{
+		ID: "signature", Kind: "image", AssetKey: &legacy, XMm: 10, YMm: 10, WMm: 20, HMm: 20, Visible: true,
+	}}}
+	if err := ValidateCertificateDesignAssetKeys(examID, nil, layout, &raw); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateLayout_AllowsGeneratedImageID(t *testing.T) {
+	key := "certificates/assets/logo.png"
+	layout := Layout{Page: Page{WidthMm: 297, HeightMm: 210}, Fields: []LayoutField{{
+		ID: "image_550e8400-e29b-41d4-a716-446655440000", Kind: "image",
+		AssetKey: &key, XMm: 10, YMm: 10, WMm: 30, HMm: 30, Visible: true,
+	}}}
+	if err := ValidateLayout(layout); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestValidateLayout_UnknownFieldIDRejected(t *testing.T) {
 	l := Layout{

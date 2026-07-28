@@ -263,3 +263,17 @@ func TestBuildCertificateHTML_EscapesFieldValues(t *testing.T) {
 		t.Errorf("expected escaped script tag in output, got:\n%s", html)
 	}
 }
+
+func TestBuildCertificateHTML_InterpolatesEditableContentAndItalic(t *testing.T) {
+	layout := normalizeCertificateLayout(defaultLayout("classic"))
+	layout.Fields[0].Content = "Awarded to {{student_name}}"
+	layout.Fields[0].Italic = true
+	out, err := buildCertificateHTML(layout, map[FieldID]string{"student_name": "Budi"}, []byte("bg"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(out)
+	if !strings.Contains(html, "Awarded to Budi") || !strings.Contains(html, "font-style:italic") {
+		t.Fatalf("editable content/style missing: %s", html)
+	}
+}

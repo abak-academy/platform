@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -757,11 +758,19 @@ func rawMessagePtrEqual(a, b *json.RawMessage) bool {
 // wholesale: without it an editor that never touches the background has nothing
 // to send back and would erase the persisted upload.
 type CertificateDesignResponse struct {
-	Template      string  `json:"template"`
-	BackgroundKey *string `json:"background_key"`
-	BackgroundURL *string `json:"background_url"`
-	SignatureURL  *string `json:"signature_url"`
-	Layout        Layout  `json:"layout"`
+	Template      string                      `json:"template"`
+	BackgroundKey *string                     `json:"background_key"`
+	BackgroundURL *string                     `json:"background_url"`
+	SignatureURL  *string                     `json:"signature_url"`
+	Layout        Layout                      `json:"layout"`
+	Presets       []CertificatePresetResponse `json:"presets"`
+	AssetURLs     map[string]string           `json:"asset_urls"`
+}
+
+type CertificatePresetResponse struct {
+	Template      string `json:"template"`
+	BackgroundURL string `json:"background_url"`
+	Layout        Layout `json:"layout"`
 }
 
 // GetCertificateDesign returns the certificate design the admin editor renders:
@@ -779,6 +788,7 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 	if err != nil {
 		return nil, err
 	}
+	normalizedLayout := normalizeCertificateLayout(layout)
 
 	bgKey := certificateBackgroundKey(exam)
 	var bgURL *string
@@ -791,12 +801,28 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 	}
 
 	var sigURL *string
-	if layout.SignatureKey != nil && *layout.SignatureKey != "" {
-		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *layout.SignatureKey, time.Hour)
-		if err != nil {
-			return nil, fmt.Errorf("presign certificate signature: %w", err)
+	assetURLs := make(map[string]string)
+	for _, field := range normalizedLayout.Fields {
+		if field.Kind != "image" || field.AssetKey == nil || *field.AssetKey == "" {
+			continue
 		}
-		sigURL = &signed
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *field.AssetKey, time.Hour)
+		if err != nil {
+			return nil, fmt.Errorf("presign certificate image %s: %w", field.ID, err)
+		}
+		assetURLs[field.ID] = signed
+		if field.ID == "signature" {
+			sigURL = &signed
+		}
+	}
+
+	presets := make([]CertificatePresetResponse, 0, 3)
+	for _, template := range []string{"classic", "modern", "elegant"} {
+		presets = append(presets, CertificatePresetResponse{
+			Template:      template,
+			BackgroundURL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(builtinCertificateBackground(template)),
+			Layout:        normalizeCertificateLayout(defaultLayout(template)),
+		})
 	}
 
 	return &CertificateDesignResponse{
@@ -804,7 +830,9 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 		BackgroundKey: bgKey,
 		BackgroundURL: bgURL,
 		SignatureURL:  sigURL,
-		Layout:        layout,
+		Layout:        normalizedLayout,
+		Presets:       presets,
+		AssetURLs:     assetURLs,
 	}, nil
 }
 
@@ -859,7 +887,7 @@ func (s *Service) GetCertificatePreviewWithLayout(ctx context.Context, examID uu
 	}
 	vals := certificateFieldValues(exam.Title, previewStudentName, time.Now().In(loc).Format("2 January 2006"), previewCertificateNumber)
 
-	images, err := s.resolveCertificateSignatureImages(ctx, *layoutOverride)
+	images, err := s.resolveCertificateImages(ctx, *layoutOverride)
 	if err != nil {
 		return nil, err
 	}

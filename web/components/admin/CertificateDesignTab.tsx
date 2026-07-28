@@ -1,385 +1,229 @@
 "use client";
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { CalendarDays, ChevronDown, ChevronUp, Eye, EyeOff, FileSignature, ImagePlus, Save, Trophy, Type, Upload, UserRound } from "lucide-react";
 import { toast } from "sonner";
-import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CertificateFieldEditor } from "./CertificateFieldEditor";
+import { CertificateInspector } from "./CertificateInspector";
+import { createImageLayer, createTextLayer, moveLayer, normalizeCertificateLayout } from "@/lib/certificate-studio";
+import { useCertificateDesign, usePresignCertificateAsset, useUpdateCertificateDesign } from "@/lib/hooks/admin-exams";
 import { useTranslation } from "@/lib/i18n";
-import { usePresignUpload } from "@/lib/hooks/students";
-import {
-  fetchCertificatePreview,
-  useCertificateDesign,
-  useUpdateCertificateDesign,
-} from "@/lib/hooks/admin-exams";
-import { CertificateFieldEditor } from "@/components/admin/CertificateFieldEditor";
 import type { CertificateLayout, CertificateLayoutField, ExamDetail } from "@/lib/types";
 
-const TEMPLATE_OPTIONS = ["classic", "modern", "elegant", "custom"] as const;
-type CertificateTemplateOption = (typeof TEMPLATE_OPTIONS)[number];
-
-const TEMPLATE_CARD_BASE =
-  "flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors";
-const TEMPLATE_CARD_ON = "border-brand-400 bg-brand-50 text-brand-800";
-const TEMPLATE_CARD_OFF = "border-line text-ink-700 hover:border-ink-300";
-
-interface CertificateDesignTabProps {
+interface Props {
   examId: string;
   exam: ExamDetail;
   onSaved?: () => void;
 }
 
-export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesignTabProps) {
+const DATA_ELEMENTS = [
+  ["student_name", "certificate_field_student_name", "student_name", UserRound],
+  ["exam_title", "certificate_field_exam_title", "exam_title", Type],
+  ["date", "certificate_studio_completion_date", "completion_date", CalendarDays],
+  ["certificate_number", "certificate_field_certificate_number", "certificate_number", FileSignature],
+  ["score", "score", "score", Trophy],
+  ["max_score", "certificate_studio_max_score", "max_score", Trophy],
+  ["score_percent", "certificate_studio_score_percent", "score_percent", Trophy],
+  ["rank", "certificate_studio_rank", "rank", Trophy],
+  ["percentile", "certificate_studio_percentile", "percentile", Trophy],
+  ["duration", "certificate_studio_duration", "duration", CalendarDays],
+  ["total_questions", "certificate_studio_total_questions", "total_questions", Type],
+] as const;
+
+export function CertificateDesignTab({ examId, exam, onSaved }: Props) {
   const { t } = useTranslation();
   const { data, isLoading, isError } = useCertificateDesign(examId);
   const updateDesign = useUpdateCertificateDesign(examId);
-  const presign = usePresignUpload();
-
-  const [initialized, setInitialized] = useState(false);
-  const [template, setTemplate] = useState<CertificateTemplateOption>("classic");
+  const presign = usePresignCertificateAsset(examId);
+  const [template, setTemplate] = useState("classic");
   const [backgroundKey, setBackgroundKey] = useState<string | null>(null);
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
   const [layout, setLayout] = useState<CertificateLayout | null>(null);
+  const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
-  const [signatureUploading, setSignatureUploading] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const signatureInputRef = useRef<HTMLInputElement | null>(null);
-  const previewUrlRef = useRef<string | null>(null);
-  const backgroundObjectUrlRef = useRef<string | null>(null);
-  const signatureObjectUrlRef = useRef<string | null>(null);
+  const [imageMode, setImageMode] = useState<"add" | "replace" | "signature">("add");
+  const backgroundInput = useRef<HTMLInputElement>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!data || initialized) return;
-    setTemplate((data.template as CertificateTemplateOption) ?? "classic");
-    setBackgroundUrl(data.background_url ?? null);
-    setBackgroundKey(data.background_key ?? null);
-    setSignatureUrl(data.signature_url ?? null);
-    setLayout(data.layout);
-    setInitialized(true);
-  }, [data, initialized]);
+    if (!data) return;
+    const normalized = normalizeCertificateLayout(data.layout);
+    setTemplate(data.template || "classic");
+    setBackgroundKey(data.background_key);
+    setBackgroundUrl(data.background_url ?? data.presets?.find((preset) => preset.template === data.template)?.background_url ?? data.presets?.[0]?.background_url ?? null);
+    setLayout(normalized);
+    setAssetUrls(data.asset_urls || (data.signature_url ? { signature: data.signature_url } : {}));
+    setSelectedId(normalized.fields.find((field) => field.visible)?.id || null);
+    setDirty(false);
+  }, [data]);
 
-  const signatureField = layout?.fields.find((f) => f.id === "signature") ?? null;
-  const signatureVisible = signatureField?.visible ?? false;
+  if (isLoading) return <div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-[620px]" /></div>;
+  if (isError || !layout) return <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-5 text-destructive">{t("certificate_studio_load_failed")}</div>;
+  const workingLayout = layout;
 
-  function setSignatureVisible(visible: boolean) {
-    setLayout((prev) => {
-      if (!prev) return prev;
-      const hasField = prev.fields.some((f) => f.id === "signature");
-      const fields = hasField
-        ? prev.fields.map((f) => (f.id === "signature" ? { ...f, visible } : f))
-        : [
-            ...prev.fields,
-            { id: "signature", x_mm: 205, y_mm: 150, w_mm: 62, h_mm: 22, align: "center", visible },
-          ];
-      return { ...prev, fields };
-    });
+  const selected = workingLayout.fields.find((field) => field.id === selectedId) || null;
+
+  function setFields(fields: CertificateLayoutField[]) {
+    setLayout((current) => current ? { ...current, fields } : current);
+    setDirty(true);
   }
 
-  async function handleSignatureSelected(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSignatureUploading(true);
-    try {
-      const presigned = await presign.mutateAsync({ filename: file.name, content_type: file.type });
-      const uploadRes = await fetch(presigned.url, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type },
-      });
-      if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.status}`);
-      if (signatureObjectUrlRef.current) URL.revokeObjectURL(signatureObjectUrlRef.current);
-      const localUrl = URL.createObjectURL(file);
-      signatureObjectUrlRef.current = localUrl;
-      setSignatureUrl(localUrl);
-      setLayout((prev) => (prev ? { ...prev, signature_key: presigned.key } : prev));
-      setSignatureVisible(true);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("error_generic"));
-    } finally {
-      setSignatureUploading(false);
-      if (signatureInputRef.current) signatureInputRef.current.value = "";
-    }
+  function patchSelected(patch: Partial<CertificateLayoutField>) {
+    if (!selectedId) return;
+    setFields(workingLayout.fields.map((field) => field.id === selectedId ? { ...field, ...patch } : field));
   }
 
-  function handleFieldsChange(fields: CertificateLayoutField[]) {
-    setLayout((prev) => (prev ? { ...prev, fields } : prev));
+  function addText() {
+    const field = createTextLayer(t("certificate_studio_custom_text"), t("certificate_studio_custom_text"), undefined, workingLayout.fields);
+    setFields([...workingLayout.fields, field]);
+    setSelectedId(field.id);
   }
 
-  async function loadPreview(tmpl: string, layoutOverride?: CertificateLayout) {
-    setPreviewLoading(true);
-    try {
-      const blob = await fetchCertificatePreview(examId, tmpl, layoutOverride);
-      const url = URL.createObjectURL(blob);
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-      previewUrlRef.current = url;
-      setPreviewUrl(url);
-    } catch {
-      toast.error(t("error_generic"));
-    } finally {
-      setPreviewLoading(false);
-    }
+  function addData(id: string, label: string, token: string) {
+    if (workingLayout.fields.some((field) => field.id === id)) return;
+    const field = createTextLayer(`{{${token}}}`, label, id, workingLayout.fields);
+    setFields([...workingLayout.fields, field]);
+    setSelectedId(field.id);
   }
 
-  // FR-17: the PDF preview is only rendered on explicit "Generate PDF" click,
-  // not on every layout edit — the WYSIWYG editor above already gives live
-  // feedback client-side with no round-trip.
-  function handleGeneratePdf() {
-    loadPreview(template, layout ?? undefined);
+  async function upload(file: File) {
+    const signed = await presign.mutateAsync({ filename: file.name, content_type: file.type });
+    const response = await fetch(signed.url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+    if (!response.ok) throw new Error(`Upload failed: ${response.status}`);
+    return { key: signed.key, url: URL.createObjectURL(file) };
   }
 
-  useEffect(() => {
-    return () => {
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-      if (backgroundObjectUrlRef.current) URL.revokeObjectURL(backgroundObjectUrlRef.current);
-      if (signatureObjectUrlRef.current) URL.revokeObjectURL(signatureObjectUrlRef.current);
-    };
-  }, []);
-
-  async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
+  async function backgroundChanged(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      const presigned = await presign.mutateAsync({
-        filename: file.name,
-        content_type: file.type,
-      });
-      const uploadRes = await fetch(presigned.url, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type },
-      });
-      if (!uploadRes.ok) {
-        throw new Error(`Upload failed: ${uploadRes.status}`);
-      }
-      if (backgroundObjectUrlRef.current) URL.revokeObjectURL(backgroundObjectUrlRef.current);
-      const localUrl = URL.createObjectURL(file);
-      backgroundObjectUrlRef.current = localUrl;
-      setBackgroundKey(presigned.key);
-      setBackgroundUrl(localUrl);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("error_generic"));
+      const uploaded = await upload(file);
+      setBackgroundKey(uploaded.key);
+      setBackgroundUrl(uploaded.url);
+      setTemplate("custom");
+      setDirty(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("certificate_studio_upload_failed"));
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      e.target.value = "";
     }
   }
 
-  async function handleSave() {
-    if (!data || !layout) return;
+  async function imageChanged(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
     try {
-      await updateDesign.mutateAsync({
-        template,
-        background_key: backgroundKey,
-        layout,
-      });
-      toast.success(t("changes_saved"));
+      const uploaded = await upload(file);
+      if (imageMode === "replace" && selected?.kind === "image") {
+        patchSelected({ asset_key: uploaded.key, name: file.name });
+        setAssetUrls((urls) => ({ ...urls, [selected.id]: uploaded.url }));
+      } else {
+        const field = createImageLayer(uploaded.key, imageMode === "signature" ? t("certificate_studio_signature") : file.name, workingLayout.fields, imageMode === "signature" ? "signature" : undefined);
+        setFields([...workingLayout.fields, field]);
+        setAssetUrls((urls) => ({ ...urls, [field.id]: uploaded.url }));
+        setSelectedId(field.id);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("certificate_studio_upload_failed"));
+    } finally {
+      setUploading(false);
+      setImageMode("add");
+      e.target.value = "";
+    }
+  }
+
+  function choosePreset(value: string) {
+    const preset = data?.presets?.find((item) => item.template === value);
+    if (!preset || value === template) return;
+    if (dirty && !window.confirm(t("certificate_studio_replace_preset_confirm"))) return;
+    const next = normalizeCertificateLayout(preset.layout);
+    setTemplate(value);
+    setBackgroundKey(null);
+    setBackgroundUrl(preset.background_url);
+    setLayout(next);
+    setAssetUrls({});
+    setSelectedId(next.fields.find((field) => field.visible)?.id || null);
+    setDirty(true);
+  }
+
+  async function save() {
+    try {
+      await updateDesign.mutateAsync({ template, background_key: backgroundKey, layout: workingLayout });
+      setDirty(false);
+      toast.success(t("certificate_studio_saved"));
       onSaved?.();
     } catch {
-      toast.error(t("error_generic"));
+      toast.error(t("certificate_studio_save_failed"));
     }
   }
 
-  const saveDisabled = !initialized || updateDesign.isPending || uploading;
+  function removeSelected() {
+    if (!selectedId) return;
+    setFields(workingLayout.fields.filter((field) => field.id !== selectedId));
+    setAssetUrls((urls) => {
+      const next = { ...urls };
+      delete next[selectedId];
+      return next;
+    });
+    setSelectedId(null);
+  }
 
   return (
-    <div className="md-card-outlined space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-title-large font-semibold">
-          {t("admin_exam_detail_tab_certificate")}
-        </h2>
-        <Button
-          type="button"
-          className="rounded-full"
-          onClick={handleSave}
-          disabled={saveDisabled}
-        >
-          {updateDesign.isPending ? t("saving") : t("save")}
-        </Button>
+    <div className="overflow-hidden rounded-2xl border border-[#D9DDEA] bg-[#F7F8FC] shadow-sm">
+      <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-[#D9DDEA] bg-white/95 px-5 py-4 backdrop-blur">
+        <div>
+          <p className="font-[playfair_display] text-xl font-semibold text-[#17213B]">{t("certificate_studio_title")}</p>
+          <p className="text-xs text-[#767DA2]">{dirty ? t("certificate_studio_unsaved") : t("certificate_studio_saved_state")}</p>
+        </div>
+        <Button type="button" className="rounded-full bg-[#4355E7] px-5" disabled={!dirty || uploading || updateDesign.isPending} onClick={save}><Save className="mr-2 size-4" />{updateDesign.isPending ? t("saving") : t("save_changes")}</Button>
       </div>
 
-      {isLoading && (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-full" />
-          ))}
-        </div>
-      )}
-
-      {isError && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
-          {t("error_generic")}
-        </div>
-      )}
-
-      {initialized && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="space-y-4">
-            <div className="grid gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
-                {t("certificate_design_template_label")}
-              </span>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {TEMPLATE_OPTIONS.map((value) => (
-                  <label
-                    key={value}
-                    className={`${TEMPLATE_CARD_BASE} ${
-                      template === value ? TEMPLATE_CARD_ON : TEMPLATE_CARD_OFF
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="certificate_design_template"
-                      value={value}
-                      checked={template === value}
-                      onChange={() => setTemplate(value)}
-                      disabled={updateDesign.isPending}
-                    />
-                    <span>{t(`certificate_template_${value}` as const)}</span>
-                  </label>
-                ))}
-              </div>
+      <div className="grid min-h-[680px] xl:h-[calc(100vh-180px)] xl:max-h-[860px] xl:grid-cols-[250px_minmax(0,1fr)_290px]">
+        <aside className="space-y-7 border-b border-[#D9DDEA] bg-white p-4 xl:overflow-y-auto xl:border-b-0 xl:border-r">
+          <section>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#767DA2]">{t("certificate_studio_templates")}</p>
+            <div className="grid grid-cols-3 gap-2 xl:grid-cols-1">
+              {(data?.presets || []).map((preset) => <button key={preset.template} type="button" onClick={() => choosePreset(preset.template)} className={`overflow-hidden rounded-xl border text-left transition ${template === preset.template ? "border-[#4355E7] ring-2 ring-[#4355E7]/15" : "border-[#D9DDEA] hover:border-[#9DA3C2]"}`}><img src={preset.background_url} alt="" className="aspect-[297/90] w-full object-cover" /><span className="block px-3 py-2 text-xs font-medium capitalize text-[#353A60]">{preset.template}</span></button>)}
             </div>
+            <button type="button" className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#9DA3C2] px-3 py-2.5 text-xs font-medium text-[#565C84] hover:border-[#4355E7] hover:text-[#4355E7]" onClick={() => backgroundInput.current?.click()}><Upload className="size-4" />{t("certificate_studio_upload_background")}</button>
+          </section>
 
-            <div className="grid gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
-                {t("certificate_design_background_label")}
-              </span>
-              {backgroundUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={backgroundUrl}
-                  alt={t("certificate_design_background_label")}
-                  className="h-40 w-full rounded-md border border-line object-cover"
-                />
-              ) : (
-                <div className="flex h-40 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
-                  {t("certificate_design_no_background")}
-                </div>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-fit rounded-full"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading || updateDesign.isPending}
-              >
-                <Upload className="mr-1 size-4" />
-                {uploading ? t("saving") : t("certificate_design_upload_button")}
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/gif"
-                hidden
-                data-testid="certificate-background-upload-input"
-                onChange={handleFileSelected}
-              />
+          <section>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#767DA2]">{t("certificate_studio_add_element")}</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={addText} className="rounded-xl border border-[#D9DDEA] p-3 text-left text-xs text-[#353A60] hover:border-[#4355E7]"><Type className="mb-2 size-4 text-[#4355E7]" />{t("certificate_studio_text")}</button>
+              <button type="button" onClick={() => { setImageMode("add"); imageInput.current?.click(); }} className="rounded-xl border border-[#D9DDEA] p-3 text-left text-xs text-[#353A60] hover:border-[#4355E7]"><ImagePlus className="mb-2 size-4 text-[#C99A3D]" />{t("certificate_studio_image")}</button>
+              <button type="button" disabled={workingLayout.fields.some((field) => field.id === "signature")} onClick={() => { setImageMode("signature"); imageInput.current?.click(); }} className="rounded-xl border border-[#D9DDEA] p-3 text-left text-xs text-[#353A60] hover:border-[#4355E7] disabled:cursor-not-allowed disabled:opacity-35"><FileSignature className="mb-2 size-4 text-[#C99A3D]" />{t("certificate_studio_signature")}</button>
+              {DATA_ELEMENTS.map(([id, label, token, Icon]) => <button key={id} type="button" disabled={workingLayout.fields.some((field) => field.id === id)} onClick={() => addData(id, t(label), token)} className="rounded-xl border border-[#D9DDEA] p-3 text-left text-xs text-[#353A60] hover:border-[#4355E7] disabled:cursor-not-allowed disabled:opacity-35"><Icon className="mb-2 size-4 text-[#4355E7]" />{t(label)}</button>)}
             </div>
+          </section>
 
-            <div className="grid gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
-                {t("certificate_design_signature_label")}
-              </span>
-              {signatureUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={signatureUrl}
-                  alt={t("certificate_design_signature_label")}
-                  className="h-24 w-full rounded-md border border-line bg-white object-contain p-2"
-                />
-              ) : (
-                <div className="flex h-24 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
-                  {t("certificate_design_no_signature")}
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-fit rounded-full"
-                  onClick={() => signatureInputRef.current?.click()}
-                  disabled={signatureUploading || updateDesign.isPending}
-                >
-                  <Upload className="mr-1 size-4" />
-                  {signatureUploading ? t("saving") : t("certificate_design_upload_signature_button")}
-                </Button>
-                <label className="flex items-center gap-2 text-sm text-ink-600">
-                  <input
-                    type="checkbox"
-                    data-testid="certificate-signature-visible-toggle"
-                    checked={signatureVisible}
-                    onChange={(e) => setSignatureVisible(e.target.checked)}
-                  />
-                  {t("certificate_design_show_signature")}
-                </label>
-              </div>
-              <input
-                ref={signatureInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/gif"
-                hidden
-                data-testid="certificate-signature-upload-input"
-                onChange={handleSignatureSelected}
-              />
+          <section>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#767DA2]">{t("certificate_studio_layers")}</p>
+            <div className="space-y-1">
+              {[...workingLayout.fields].reverse().map((field) => <div key={field.id} className={`flex items-center gap-1 rounded-lg px-2 py-1.5 ${selectedId === field.id ? "bg-[#EEF0FF]" : "hover:bg-[#F7F8FC]"}`}><button type="button" className="min-w-0 flex-1 truncate text-left text-xs capitalize text-[#353A60]" onClick={() => setSelectedId(field.id)}>{field.name || field.id.replaceAll("_", " ")}</button><button type="button" aria-label={`${t("certificate_studio_toggle")} ${field.name}`} className="p-1" onClick={() => setFields(workingLayout.fields.map((item) => item.id === field.id ? { ...item, visible: !item.visible } : item))}>{field.visible ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}</button><button type="button" aria-label={`${t("certificate_studio_move_forward")} ${field.name}`} className="p-1" onClick={() => setFields(moveLayer(workingLayout.fields, field.id, "forward"))}><ChevronUp className="size-3.5" /></button><button type="button" aria-label={`${t("certificate_studio_move_backward")} ${field.name}`} className="p-1" onClick={() => setFields(moveLayer(workingLayout.fields, field.id, "backward"))}><ChevronDown className="size-3.5" /></button></div>)}
             </div>
-          </div>
+          </section>
+        </aside>
 
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
-                {t("certificate_design_preview_label")}
-              </span>
-              {layout && (
-                <CertificateFieldEditor
-                  layout={layout}
-                  onChange={handleFieldsChange}
-                  backgroundUrl={backgroundUrl}
-                  examTitle={exam.title}
-                />
-              )}
-            </div>
+        <main className="min-w-0 bg-[#17213B] p-4 sm:p-6 xl:overflow-y-auto">
+          <CertificateFieldEditor layout={workingLayout} onChange={setFields} backgroundUrl={backgroundUrl} examTitle={exam.title} selectedId={selectedId} onSelect={setSelectedId} assetUrls={assetUrls} />
+        </main>
 
-            <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
-                  {t("certificate_design_pdf_fidelity_label")}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-full"
-                  data-testid="certificate-generate-pdf-button"
-                  onClick={handleGeneratePdf}
-                  disabled={previewLoading || !layout}
-                >
-                  {previewLoading ? t("certificate_design_generating_pdf") : t("certificate_design_generate_pdf_button")}
-                </Button>
-              </div>
-              {previewLoading && !previewUrl ? (
-                <Skeleton className="h-64 w-full" />
-              ) : previewUrl ? (
-                <iframe
-                  title={t("certificate_design_pdf_fidelity_label")}
-                  src={previewUrl}
-                  className="h-64 w-full rounded-md border border-line"
-                />
-              ) : (
-                <div className="flex h-64 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
-                  —
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+        <aside className="border-t border-[#D9DDEA] bg-white p-5 xl:overflow-y-auto xl:border-l xl:border-t-0">
+          <CertificateInspector field={selected} onChange={patchSelected} onDelete={removeSelected} onReplaceImage={() => { setImageMode("replace"); imageInput.current?.click(); }} />
+        </aside>
+      </div>
+
+      <input ref={backgroundInput} hidden type="file" accept="image/png,image/jpeg" onChange={backgroundChanged} data-testid="certificate-background-upload-input" />
+      <input ref={imageInput} hidden type="file" accept="image/png,image/jpeg" onChange={imageChanged} data-testid="certificate-image-upload-input" />
     </div>
   );
 }

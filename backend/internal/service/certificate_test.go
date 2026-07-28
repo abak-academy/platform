@@ -256,12 +256,70 @@ func TestLatestGradedAt_ReturnsMax(t *testing.T) {
 	t2 := time.Date(2026, 6, 2, 10, 0, 0, 0, time.UTC)
 	answers := []model.ExamSessionAnswer{
 		{GradedAt: &t1},
-		{GradedAt: nil},  // ungraded
-		{GradedAt: &t2},  // latest
+		{GradedAt: nil}, // ungraded
+		{GradedAt: &t2}, // latest
 	}
 	got := latestGradedAt(answers)
 	if got == nil || !got.Equal(t2) {
 		t.Errorf("want %v, got %v", t2, got)
+	}
+}
+
+func TestCertificateSessionValues_DerivesDynamicTokens(t *testing.T) {
+	started := time.Date(2026, 7, 28, 10, 0, 0, 0, time.UTC)
+	submitted := started.Add(89*time.Minute + time.Second)
+	score := 86.0
+	sess := &model.ExamSession{StartedAt: started, SubmittedAt: &submitted, Score: &score}
+	questions := []model.QuestionWithOptions{
+		{Question: model.Question{PointCorrect: 40}},
+		{Question: model.Question{PointCorrect: 60}},
+	}
+
+	got := certificateSessionValues(sess, questions, 2, 20)
+
+	want := map[FieldID]string{
+		"score": "86", "max_score": "100", "score_percent": "86%",
+		"rank": "3", "percentile": "Top 15%", "duration": "90 minutes",
+		"total_questions": "2 questions",
+	}
+	for field, value := range want {
+		if got[field] != value {
+			t.Errorf("%s = %q, want %q", field, got[field], value)
+		}
+	}
+}
+
+func TestLayoutUsesToken_FindsSensitiveTokenInMixedCopy(t *testing.T) {
+	layout := Layout{Page: Page{WidthMm: 297, HeightMm: 210}, Fields: []LayoutField{{
+		ID: "score", Kind: "text", Content: "Final score: {{score}}", XMm: 10, YMm: 10, WMm: 100, Visible: true,
+	}}}
+	if !layoutUsesToken(layout, "score", "rank") {
+		t.Fatal("expected score token to be detected")
+	}
+	if layoutUsesToken(layout, "rank", "percentile") {
+		t.Fatal("did not expect absent rank tokens to be detected")
+	}
+}
+
+func TestCertificateLayoutAllowed_EnforcesResultGateOnlyForSensitiveTokens(t *testing.T) {
+	release := time.Now().Add(time.Hour)
+	sess := &model.ExamSession{Status: "submitted"}
+	staticLayout := Layout{Fields: []LayoutField{{ID: "title", Kind: "text", Content: "Completed"}}}
+	scoreLayout := Layout{Fields: []LayoutField{{ID: "score", Kind: "text", Content: "{{score}}"}}}
+
+	if !certificateLayoutAllowed(model.Exam{ResultConfig: "hidden"}, sess, staticLayout, nil, nil) {
+		t.Fatal("completion-only certificate should remain available")
+	}
+	for _, exam := range []model.Exam{
+		{ResultConfig: "hidden"},
+		{ResultConfig: "score", ResultReleaseAt: &release},
+	} {
+		if certificateLayoutAllowed(exam, sess, scoreLayout, nil, nil) {
+			t.Fatalf("sensitive certificate should be gated for %+v", exam)
+		}
+	}
+	if !certificateLayoutAllowed(model.Exam{ResultConfig: "score"}, sess, scoreLayout, nil, nil) {
+		t.Fatal("sensitive certificate should be available after the result gate")
 	}
 }
 

@@ -10,6 +10,8 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"akademi-bimbel/internal/model"
 )
@@ -35,6 +37,13 @@ var validLayoutFieldIDs = map[string]bool{
 	"completion_text":    true,
 	"date":               true,
 	"certificate_number": true,
+	"score":              true,
+	"max_score":          true,
+	"score_percent":      true,
+	"rank":               true,
+	"percentile":         true,
+	"duration":           true,
+	"total_questions":    true,
 	"logo":               true,
 	"signature":          true,
 }
@@ -42,6 +51,15 @@ var validLayoutFieldIDs = map[string]bool{
 // imageFieldIDs are the fields drawn from an uploaded image rather than text;
 // they carry an explicit HMm box height instead of a font-derived line height.
 var imageFieldIDs = map[string]bool{"logo": true, "signature": true}
+
+var generatedLayerID = regexp.MustCompile(`^(text|image)_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var certificateTokenPattern = regexp.MustCompile(`\{\{([^{}]+)\}\}`)
+var validCertificateTokens = map[string]bool{
+	"student_name": true, "exam_title": true, "completion_date": true,
+	"certificate_number": true, "score": true, "max_score": true,
+	"score_percent": true, "rank": true, "percentile": true,
+	"duration": true, "total_questions": true,
+}
 
 // Page is the layout's page size in millimetres.
 type Page struct {
@@ -64,17 +82,22 @@ type Background struct {
 // rejection would defeat that fallback. The logo field carries HMm instead of the
 // text properties (Font/Weight/SizePt) — those are left zero-valued for it.
 type LayoutField struct {
-	ID      string  `json:"id"`
-	XMm     float64 `json:"x_mm"`
-	YMm     float64 `json:"y_mm"`
-	WMm     float64 `json:"w_mm"`
-	Align   string  `json:"align"`
-	Font    string  `json:"font,omitempty"`
-	Weight  string  `json:"weight,omitempty"`
-	SizePt  float64 `json:"size_pt,omitempty"`
-	Color   string  `json:"color,omitempty"`
-	Visible bool    `json:"visible"`
-	HMm     float64 `json:"h_mm,omitempty"`
+	ID       string  `json:"id"`
+	Kind     string  `json:"kind,omitempty"`
+	Name     string  `json:"name,omitempty"`
+	Content  string  `json:"content,omitempty"`
+	XMm      float64 `json:"x_mm"`
+	YMm      float64 `json:"y_mm"`
+	WMm      float64 `json:"w_mm"`
+	Align    string  `json:"align"`
+	Font     string  `json:"font,omitempty"`
+	Weight   string  `json:"weight,omitempty"`
+	Italic   bool    `json:"italic,omitempty"`
+	SizePt   float64 `json:"size_pt,omitempty"`
+	Color    string  `json:"color,omitempty"`
+	Visible  bool    `json:"visible"`
+	HMm      float64 `json:"h_mm,omitempty"`
+	AssetKey *string `json:"asset_key,omitempty"`
 }
 
 // Layout is the JSON contract shared by the certificate renderer and the admin
@@ -188,17 +211,122 @@ func nominalLineHeightMm(sizePt float64) float64 {
 	return sizePt * 0.3528 * 1.15
 }
 
+func defaultCertificateContent(fieldID string) string {
+	switch fieldID {
+	case "title":
+		return "CERTIFICATE OF COMPLETION"
+	case "subtitle":
+		return "This certificate is proudly awarded to"
+	case "student_name":
+		return "{{student_name}}"
+	case "completion_text":
+		return "for successfully completing"
+	case "exam_title":
+		return "{{exam_title}}"
+	case "date":
+		return "{{completion_date}}"
+	case "certificate_number":
+		return "{{certificate_number}}"
+	default:
+		return ""
+	}
+}
+
+func normalizeCertificateLayout(layout Layout) Layout {
+	out := layout
+	out.Fields = append([]LayoutField(nil), layout.Fields...)
+	for i := range out.Fields {
+		f := &out.Fields[i]
+		if f.Kind == "" {
+			if imageFieldIDs[f.ID] || strings.HasPrefix(f.ID, "image_") {
+				f.Kind = "image"
+			} else {
+				f.Kind = "text"
+			}
+		}
+		if f.Name == "" {
+			f.Name = strings.ReplaceAll(strings.TrimPrefix(strings.TrimPrefix(f.ID, "text_"), "image_"), "_", " ")
+		}
+		if f.Kind == "text" {
+			if f.Content == "" {
+				f.Content = defaultCertificateContent(f.ID)
+			}
+			if f.Font == "" {
+				f.Font = "public_sans"
+			}
+			if f.SizePt <= 0 {
+				f.SizePt = 12
+			}
+			if f.Color == "" {
+				f.Color = "#000000"
+			}
+		}
+		if f.Align == "" {
+			f.Align = "center"
+		}
+		if f.ID == "signature" && f.AssetKey == nil && layout.SignatureKey != nil {
+			f.AssetKey = layout.SignatureKey
+		}
+	}
+	return out
+}
+
+func certificateTokens(content string) []string {
+	matches := certificateTokenPattern.FindAllStringSubmatch(content, -1)
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		out = append(out, match[1])
+	}
+	return out
+}
+
+func ValidateCertificateDesignAssetKeys(examID string, backgroundKey *string, layout Layout, existingDesign *json.RawMessage) error {
+	prefix := "certificates/" + examID + "/"
+	legacyKeys := make(map[string]bool)
+	if existing, err := parseCertificateDesign(existingDesign); err == nil {
+		if existing.BackgroundKey != nil {
+			legacyKeys[*existing.BackgroundKey] = true
+		}
+		for _, field := range normalizeCertificateLayout(existing.Layout).Fields {
+			if field.AssetKey != nil {
+				legacyKeys[*field.AssetKey] = true
+			}
+		}
+	}
+	validate := func(key *string) error {
+		if key == nil || *key == "" || strings.HasPrefix(*key, prefix) || legacyKeys[*key] {
+			return nil
+		}
+		return fmt.Errorf("%w: certificate asset key is outside this exam", ErrValidation)
+	}
+	if err := validate(backgroundKey); err != nil {
+		return err
+	}
+	for _, field := range normalizeCertificateLayout(layout).Fields {
+		if field.Kind == "image" {
+			if err := validate(field.AssetKey); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // ValidateLayout rejects a degenerate page size, an unknown field id, a
 // duplicate field id, and any field box that falls outside the page. It does
 // not validate Font (see LayoutField).
 func ValidateLayout(l Layout) error {
+	l = normalizeCertificateLayout(l)
 	if l.Page.WidthMm <= 0 || l.Page.HeightMm <= 0 {
 		return fmt.Errorf("%w: page dimensions must be positive", ErrValidation)
+	}
+	if l.Page.WidthMm != 297 || l.Page.HeightMm != 210 {
+		return fmt.Errorf("%w: certificate page must be 297x210mm", ErrValidation)
 	}
 
 	seen := make(map[string]bool, len(l.Fields))
 	for _, f := range l.Fields {
-		if !validLayoutFieldIDs[f.ID] {
+		if !validLayoutFieldIDs[f.ID] && !generatedLayerID.MatchString(f.ID) {
 			return fmt.Errorf("%w: unknown field id: %s", ErrValidation, f.ID)
 		}
 		if seen[f.ID] {
@@ -206,9 +334,24 @@ func ValidateLayout(l Layout) error {
 		}
 		seen[f.ID] = true
 
+		if f.Kind != "text" && f.Kind != "image" {
+			return fmt.Errorf("%w: unknown layer kind: %s", ErrValidation, f.Kind)
+		}
+		if f.WMm <= 0 {
+			return fmt.Errorf("%w: field %s width must be positive", ErrValidation, f.ID)
+		}
 		boxHeightMm := f.HMm
-		if !imageFieldIDs[f.ID] {
+		if f.Kind == "text" {
+			for _, token := range certificateTokens(f.Content) {
+				if !validCertificateTokens[token] {
+					return fmt.Errorf("%w: Unknown certificate token: {{%s}}", ErrValidation, token)
+				}
+			}
 			boxHeightMm = nominalLineHeightMm(f.SizePt)
+		} else if f.HMm <= 0 {
+			return fmt.Errorf("%w: field %s height must be positive", ErrValidation, f.ID)
+		} else if strings.HasPrefix(f.ID, "image_") && (f.AssetKey == nil || *f.AssetKey == "") {
+			return fmt.Errorf("%w: field %s asset key is required", ErrValidation, f.ID)
 		}
 		if f.XMm < 0 || f.YMm < 0 || f.XMm+f.WMm > l.Page.WidthMm || f.YMm+boxHeightMm > l.Page.HeightMm {
 			return fmt.Errorf("%w: field %s box is outside the page", ErrValidation, f.ID)
