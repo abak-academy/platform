@@ -29,6 +29,7 @@ vi.mock("@/lib/hooks/orders", () => ({
 
 vi.mock("@/lib/hooks/students", () => ({
   useProfile: vi.fn(),
+  useUpdateProfile: vi.fn(),
 }));
 
 vi.mock("@/lib/hooks/regions", () => ({
@@ -58,6 +59,9 @@ vi.mock("@/lib/i18n", () => ({
         retry: "Retry",
         cart_shipping_title: "Shipping Address",
         cart_check_shipping_cost: "Check shipping cost",
+        cart_address_save: "Save address",
+        cart_address_set_primary: "Make this my primary address",
+        cart_address_primary_badge: "Primary",
         cart_shipping_form_error: "Please fill in all required fields",
         order_shipping: "Shipping Cost",
         select_province: "Select Province",
@@ -92,7 +96,7 @@ vi.mock("sonner", () => ({
 }));
 
 import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart } from "@/lib/hooks/orders";
-import { useProfile } from "@/lib/hooks/students";
+import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
 import { useProvinces, useCitiesByProvince, useDistrictsByCity } from "@/lib/hooks/regions";
 
 const mockUseCart = useCart as ReturnType<typeof vi.fn>;
@@ -102,6 +106,7 @@ const mockUseValidatePromo = useValidatePromo as ReturnType<typeof vi.fn>;
 const mockUseShippingRates = useShippingRates as ReturnType<typeof vi.fn>;
 const mockUsePatchCart = usePatchCart as ReturnType<typeof vi.fn>;
 const mockUseProfile = useProfile as ReturnType<typeof vi.fn>;
+const mockUseUpdateProfile = useUpdateProfile as ReturnType<typeof vi.fn>;
 const mockUseProvinces = useProvinces as ReturnType<typeof vi.fn>;
 const mockUseCitiesByProvince = useCitiesByProvince as ReturnType<typeof vi.fn>;
 const mockUseDistrictsByCity = useDistrictsByCity as ReturnType<typeof vi.fn>;
@@ -192,6 +197,12 @@ describe("CartPage with Shipping", () => {
     });
 
     mockUsePatchCart.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+    });
+
+    mockUseUpdateProfile.mockReturnValue({
       mutate: vi.fn(),
       isPending: false,
       isError: false,
@@ -478,7 +489,7 @@ describe("CartPage with Shipping", () => {
     });
   });
 
-  it("disables Check shipping cost until province/city/district are all selected", async () => {
+  it("disables Save address until province/city/district are all selected", async () => {
     // Profile only has a postal code — province/city/district are unset, as
     // happens for a student who never completed their address profile.
     mockUseProfile.mockReturnValue({
@@ -512,8 +523,8 @@ describe("CartPage with Shipping", () => {
 
     renderWithQueryClient(<CartPage />);
 
-    const checkButton = await screen.findByRole("button", { name: /check shipping cost/i });
-    expect(checkButton).toBeDisabled();
+    const saveButton = await screen.findByRole("button", { name: /save address/i });
+    expect(saveButton).toBeDisabled();
   });
 
   it("selecting the second same-carrier service persists that rate, not the first", async () => {
@@ -591,5 +602,203 @@ describe("CartPage with Shipping", () => {
     });
     expect(screen.getByRole("button", { name: /YES/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /REG/i })).toBeNull();
+  });
+  // The buyer's profile carries no postal code, so they type that last field by
+  // hand — the sequence that produced the white screen on staging.
+  function mockProfileWithoutPostalCode() {
+    mockUseProfile.mockReturnValue({
+      data: {
+        id: "user1",
+        name: "Sample Dimas",
+        phone: "08982237427",
+        alamat_domisili: "BSD City, Jl. Biak No.6",
+        provinsi_id: "prov1",
+        kota_id: "city1",
+        kecamatan_id: "dist1",
+        kode_pos: "",
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    mockUseCart.mockReturnValue({
+      data: {
+        id: "o1",
+        student_id: "s1",
+        status: "cart",
+        subtotal: 100000,
+        discount: 0,
+        shipping_cost: 8000,
+        total: 108000,
+        items: [physicalItem],
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+  }
+
+  it("keeps the address form open while the last field is being typed", async () => {
+    const user = userEvent.setup();
+    mockProfileWithoutPostalCode();
+
+    renderWithQueryClient(<CartPage />);
+
+    const kodePos = await screen.findByLabelText("Postal Code");
+    await user.type(kodePos, "1");
+
+    // Every field is now non-empty. The form must not collapse under the buyer
+    // mid-edit — only the explicit action closes it.
+    expect(screen.getByText("Shipping Address")).toBeInTheDocument();
+    expect(kodePos).toHaveValue("1");
+  });
+
+  it("reopens the address form from the summary without crashing", async () => {
+    const user = userEvent.setup();
+    mockProfileWithoutPostalCode();
+
+    renderWithQueryClient(<CartPage />);
+
+    await user.type(await screen.findByLabelText("Postal Code"), "15310");
+    // The same action sits in the form and in the courier block; either finishes
+    // the address.
+    await user.click(screen.getByRole("button", { name: "Save address" }));
+
+    const edit = await screen.findByRole("button", { name: "cart_address_change" });
+    await user.click(edit);
+
+    // Remounting the form over the address it had itself emitted used to close a
+    // parent/child effect loop and throw "Maximum update depth exceeded".
+    expect(await screen.findByText("Shipping Address")).toBeInTheDocument();
+    expect(screen.getByLabelText("Postal Code")).toHaveValue("15310");
+  });
+
+  it("saves the address onto the order when the buyer saves, before any courier is picked", async () => {
+    const user = userEvent.setup();
+    const patchCartMutate = vi.fn();
+    mockProfileWithoutPostalCode();
+    mockUsePatchCart.mockReturnValue({ mutate: patchCartMutate, isPending: false, isError: false });
+
+    renderWithQueryClient(<CartPage />);
+
+    await user.type(await screen.findByLabelText("Postal Code"), "15310");
+    await user.click(screen.getByRole("button", { name: "Save address" }));
+
+    // Without this the address only reached the order as a passenger on the
+    // courier choice, so abandoning the cart first threw it away.
+    await waitFor(() => {
+      expect(patchCartMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shipping_address: expect.objectContaining({ kode_pos: "15310", penerima: "Sample Dimas" }),
+        })
+      );
+    });
+    expect(patchCartMutate.mock.calls[0][0].courier).toBeUndefined();
+  });
+
+  it("writes the address to the profile only when the buyer asks for it", async () => {
+    const user = userEvent.setup();
+    const updateProfileMutate = vi.fn();
+    mockProfileWithoutPostalCode();
+    mockUseUpdateProfile.mockReturnValue({ mutate: updateProfileMutate, isPending: false, isError: false });
+
+    renderWithQueryClient(<CartPage />);
+    await user.type(await screen.findByLabelText("Postal Code"), "15310");
+
+    // The profile has no postal code, so the box defaults on.
+    const primary = screen.getByRole("checkbox", { name: /primary address/i });
+    expect(primary).toBeChecked();
+
+    await user.click(primary);
+    await user.click(screen.getByRole("button", { name: "Save address" }));
+    expect(updateProfileMutate).not.toHaveBeenCalled();
+
+    // Reopening offers again — the profile still has no address to lose, so the
+    // box comes back ticked rather than remembering a decision about a profile
+    // state that has not changed.
+    await user.click(screen.getByRole("button", { name: "cart_address_change" }));
+    expect(screen.getByRole("checkbox", { name: /primary address/i })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Save address" }));
+
+    await waitFor(() => {
+      expect(updateProfileMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ kode_pos: "15310", address: "BSD City, Jl. Biak No.6" })
+      );
+    });
+  });
+
+  it("leaves the primary box unticked when the profile already holds an address", async () => {
+    mockUseCart.mockReturnValue({
+      data: {
+        id: "o1", student_id: "s1", status: "cart", subtotal: 100000,
+        discount: 0, shipping_cost: 0, total: 100000, items: [physicalItem],
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    // A full profile address is one the buyer set deliberately; a single order
+    // shipped elsewhere must not silently replace it.
+    mockUseProfile.mockReturnValue({
+      data: {
+        id: "user1", name: "Sample Dimas", phone: "08982237427",
+        alamat_domisili: "BSD City, Jl. Biak No.6",
+        provinsi_id: "prov1", kota_id: "city1", kecamatan_id: "dist1", kode_pos: "40123",
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithQueryClient(<CartPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("checkbox", { name: /primary address/i })).not.toBeChecked();
+    });
+  });
+
+  it("marks the summary as the primary address only when it matches the profile", async () => {
+    const user = userEvent.setup();
+    mockProfileWithoutPostalCode();
+
+    renderWithQueryClient(<CartPage />);
+
+    // The profile carries no postal code, so "15310" makes this address differ
+    // from the saved one.
+    await user.type(await screen.findByLabelText("Postal Code"), "15310");
+    await user.click(screen.getByRole("button", { name: "Save address" }));
+
+    expect(await screen.findByRole("button", { name: "cart_address_change" })).toBeInTheDocument();
+    expect(screen.queryByText("Primary")).toBeNull();
+  });
+
+  it("marks the summary as primary when the address is the profile's own", async () => {
+    const user = userEvent.setup();
+
+    mockUseCart.mockReturnValue({
+      data: {
+        id: "o1", student_id: "s1", status: "cart", subtotal: 100000,
+        discount: 0, shipping_cost: 0, total: 100000, items: [physicalItem],
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    mockUseProfile.mockReturnValue({
+      data: {
+        id: "user1", name: "Sample Dimas", phone: "08982237427",
+        alamat_domisili: "BSD City, Jl. Biak No.6",
+        provinsi_id: "prov1", kota_id: "city1", kecamatan_id: "dist1", kode_pos: "40123",
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithQueryClient(<CartPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Save address" }));
+
+    expect(await screen.findByText("Primary")).toBeInTheDocument();
   });
 });

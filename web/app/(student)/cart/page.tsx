@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShoppingCart, X } from "lucide-react";
 import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart } from "@/lib/hooks/orders";
-import { useProfile } from "@/lib/hooks/students";
+import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import type { OrderItem } from "@/lib/types";
@@ -29,6 +29,7 @@ export default function CartPage() {
   const validatePromo = useValidatePromo();
   const shippingRates = useShippingRates();
   const patchCart = usePatchCart();
+  const updateProfile = useUpdateProfile();
 
   const [shippingAddress, setShippingAddress] = useState<ShippingAddressFormState>({
     penerima: "",
@@ -40,7 +41,11 @@ export default function CartPage() {
     kode_pos: "",
   });
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
-  const [editingAddress, setEditingAddress] = useState(false);
+  // The form closes when the buyer closes it, never because it looks full.
+  // Deriving this from "every field is non-empty" swapped the form out on the
+  // first character of the last field — which is how a one-character postcode
+  // got saved.
+  const [addressFormOpen, setAddressFormOpen] = useState(true);
   const [courierNote, setCourierNote] = useState("");
 
   const items: OrderItem[] = cart?.items ?? [];
@@ -63,6 +68,62 @@ export default function CartPage() {
       weight_grams: totalPhysicalWeight,
     });
   }, [shippingAddress, totalPhysicalWeight, shippingRates]);
+
+  // Saving is what closes the form. The address goes onto the order here rather
+  // than riding along with the courier choice, so abandoning the cart before
+  // picking one no longer throws the address away.
+  const handleSaveAddress = useCallback(
+    (saveAsPrimary: boolean) => {
+      if (!cart) return;
+
+      patchCart.mutate({
+        orderId: cart.id,
+        province_id: shippingAddress.provinsi_id,
+        city_id: shippingAddress.kota_id,
+        district_id: shippingAddress.kecamatan_id,
+        kode_pos: shippingAddress.kode_pos,
+        shipping_address: {
+          penerima: shippingAddress.penerima,
+          telepon: shippingAddress.telepon,
+          alamat: shippingAddress.alamat,
+          kode_pos: shippingAddress.kode_pos,
+          provinsi_id: shippingAddress.provinsi_id,
+          kota_id: shippingAddress.kota_id,
+          kecamatan_id: shippingAddress.kecamatan_id,
+          provinsi: shippingAddress.provinsi,
+          kota: shippingAddress.kota,
+          kecamatan: shippingAddress.kecamatan,
+        },
+      });
+
+      // Only on request: a buyer shipping one order to someone else must not
+      // lose their own address to it.
+      if (saveAsPrimary) {
+        updateProfile.mutate({
+          address: shippingAddress.alamat,
+          provinsi_id: shippingAddress.provinsi_id,
+          kota_id: shippingAddress.kota_id,
+          kecamatan_id: shippingAddress.kecamatan_id,
+          kode_pos: shippingAddress.kode_pos,
+        });
+      }
+
+      setAddressFormOpen(false);
+      handleCheckShipping();
+    },
+    [cart, shippingAddress, patchCart, updateProfile, handleCheckShipping]
+  );
+
+  // "Primary" is the profile's own address, compared field by field — no column
+  // and no migration. It marks which address an order is going to once a buyer
+  // can have more than one.
+  const isPrimaryAddress =
+    Boolean(profile?.alamat_domisili) &&
+    profile?.alamat_domisili === shippingAddress.alamat &&
+    profile?.provinsi_id === shippingAddress.provinsi_id &&
+    profile?.kota_id === shippingAddress.kota_id &&
+    profile?.kecamatan_id === shippingAddress.kecamatan_id &&
+    profile?.kode_pos === shippingAddress.kode_pos;
 
   // The rate and the note are stored by the same PATCH, so both have to be sent
   // whichever one the buyer changed — sending only the note would clear the
@@ -142,21 +203,19 @@ export default function CartPage() {
         <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:items-start">
           <section className="flex flex-col gap-3">
             {hasPhysical &&
-              (editingAddress || !addressReady ? (
+              (addressFormOpen ? (
                 <ShippingAddressForm
                   profile={profile}
                   initialAddress={shippingAddress}
                   onAddressChange={handleAddressChange}
-                  onCheckShipping={() => {
-                    setEditingAddress(false);
-                    handleCheckShipping();
-                  }}
-                  isCheckingShipping={shippingRates.isPending}
+                  onSave={handleSaveAddress}
+                  isSaving={shippingRates.isPending || patchCart.isPending}
                 />
               ) : (
                 <ShippingAddressSummary
                   address={shippingAddress as any}
-                  onEdit={() => setEditingAddress(true)}
+                  isPrimary={isPrimaryAddress}
+                  onEdit={() => setAddressFormOpen(true)}
                 />
               ))}
 

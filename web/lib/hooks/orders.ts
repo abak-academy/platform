@@ -192,9 +192,11 @@ interface PatchCartShippingAddress {
 
 interface PatchCartInput {
   orderId: string;
-  courier: string;
-  service: string;
-  shipping_cost: number;
+  // Absent when only the address is being saved — the buyer has not chosen a
+  // courier yet. The backend keeps whatever the order already holds.
+  courier?: string;
+  service?: string;
+  shipping_cost?: number;
   province_id: string;
   city_id: string;
   district_id: string;

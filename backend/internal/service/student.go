@@ -201,6 +201,12 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 		}
 	}
 
+	if kodePos != nil {
+		if err := ValidateKodePos(*kodePos); err != nil {
+			return nil, err
+		}
+	}
+
 	var normalizedEmail *string
 	if email != nil {
 		e := normalizeEmail(*email)
