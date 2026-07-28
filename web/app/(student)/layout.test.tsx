@@ -120,4 +120,21 @@ describe("StudentLayout", () => {
     await waitFor(() => expect(queryByTestId("shell")).not.toBeInTheDocument());
     expect(replace).not.toHaveBeenCalledWith("/complete-profile");
   });
+
+  it("keeps a password student's page mounted while the profile refetches", async () => {
+    authStore = { token: "t", user: { role: "student" } };
+    profileState = {
+      data: { auth_provider: "password", name: "Sample" },
+      isLoading: false,
+      isFetching: true,
+      isError: false,
+    };
+
+    const { queryByTestId } = render(<StudentLayout>protected</StudentLayout>);
+
+    // Nothing gates a password student on completeness, so a background refetch
+    // has no reason to unmount them — and unmounting cost them whatever they had
+    // typed on the page.
+    await waitFor(() => expect(queryByTestId("shell")).toBeInTheDocument());
+  });
 });

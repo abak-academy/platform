@@ -103,6 +103,26 @@ empty rate list rather than an error, so the flat rate standing alone was the on
 region was never priced. `CourierRateList` now says so above the picker when every returned rate is
 an estimate.
 
+### B-0c — Saving the address, and marking which one is primary *(done)*
+
+The button said "Cek Ongkir" because that is all it did — the address only reached the order as a
+passenger on the courier choice, so abandoning the cart first threw it away. It now saves: the
+address is PATCHed onto the order on press, and onto the profile too when
+**"Jadikan alamat utama saya"** is ticked. That box defaults on only when the profile has no address
+yet, so shipping one order to someone else cannot silently replace the buyer's own.
+
+The summary carries an **"Alamat Utama"** badge when the order's address matches the profile's,
+compared field by field — no column, no migration, and the mark that tells addresses apart once a
+buyer can have several. The button is auto-width and right-aligned, with the "incomplete" hint beside
+it rather than under a full-bleed bar.
+
+**Found on the way, and fixed here:** `app/(student)/layout.tsx` gated the whole student shell on
+`isFetching`, so *any* background profile refetch unmounted every student page and lost its local
+state. Saving an address made it visible — the buyer was thrown back to a blank form. The gate exists
+for a real reason (a Google student's shell depends on completeness read from DB truth, and there is a
+test for it), so it is now scoped to Google students instead of everyone. Google students still see
+"Memuat…" during a refetch; that trade-off stands.
+
 ### B-1 — Promo discount never reaches the order
 
 The backend is now correct: `PatchCart` resolves the code and writes the discount

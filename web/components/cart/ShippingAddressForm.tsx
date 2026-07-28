@@ -43,8 +43,17 @@ interface ShippingAddressFormProps {
   profile: User | undefined;
   initialAddress?: Partial<ShippingAddressFormState>;
   onAddressChange: (state: ShippingAddressFormState) => void;
-  onCheckShipping: () => void;
-  isCheckingShipping: boolean;
+  onSave: (saveAsPrimary: boolean) => void;
+  isSaving: boolean;
+}
+
+// A profile that already carries a full address is one the buyer set on purpose,
+// so shipping a single order elsewhere must not overwrite it. A profile with no
+// address has nothing to lose and everything to gain from remembering this one.
+function profileHasAddress(p: User | undefined): boolean {
+  return Boolean(
+    p && p.alamat_domisili && p.provinsi_id && p.kota_id && p.kecamatan_id && p.kode_pos,
+  );
 }
 
 function hasAddressValues(a?: Partial<ShippingAddressFormState>): boolean {
@@ -57,8 +66,8 @@ export function ShippingAddressForm({
   profile,
   initialAddress,
   onAddressChange,
-  onCheckShipping,
-  isCheckingShipping,
+  onSave,
+  isSaving,
 }: ShippingAddressFormProps) {
   const { t } = useTranslation();
 
@@ -69,6 +78,7 @@ export function ShippingAddressForm({
   const [kotaId, setKotaId] = useState("");
   const [kecamatanId, setKecamatanId] = useState("");
   const [kodePos, setKodePos] = useState("");
+  const [saveAsPrimary, setSaveAsPrimary] = useState(false);
 
   const { data: provinces, isLoading: provincesLoading } = useProvinces();
   const { data: cities, isLoading: citiesLoading } = useCitiesByProvince(
@@ -77,6 +87,17 @@ export function ShippingAddressForm({
   const { data: districts, isLoading: districtsLoading } = useDistrictsByCity(
     kotaId || null
   );
+
+  // Defaulted once, when the profile first arrives — it is loading on the first
+  // render, and reading it then would tick the box for everyone. Off until then:
+  // the unsafe direction is overwriting an address, never failing to save one.
+  const primaryDefaulted = useRef(false);
+
+  useEffect(() => {
+    if (primaryDefaulted.current || !profile) return;
+    primaryDefaulted.current = true;
+    setSaveAsPrimary(!profileHasAddress(profile));
+  }, [profile]);
 
   // Hydrate from props once. The parent stores what this form emits and feeds it
   // straight back as initialAddress, so re-running on every change makes the two
@@ -138,6 +159,8 @@ export function ShippingAddressForm({
     kecamatanName,
     onAddressChange,
   ]);
+
+  const incomplete = !penerima || !telepon || !alamat || !provinsiId || !kotaId || !kecamatanId;
 
   const handleProvinceChange = (value: string) => {
     setProvinsiId(value === "_empty_" ? "" : value);
@@ -276,21 +299,32 @@ export function ShippingAddressForm({
         </div>
       </div>
 
-      <Button
-        onClick={onCheckShipping}
-        disabled={!penerima || !telepon || !alamat || !provinsiId || !kotaId || !kecamatanId || !kodePos || isCheckingShipping}
-        className="w-full"
-      >
-        {isCheckingShipping ? (
-          <Loader2 className="mr-2 size-4 animate-spin" />
-        ) : null}
-        {t("cart_check_shipping_cost") || "Check Shipping Cost"}
-      </Button>
-      {(!penerima || !telepon || !alamat || !provinsiId || !kotaId || !kecamatanId) && (
-        <p className="text-xs text-ink-500">
-          {t("cart_shipping_address_incomplete") || "Select province, city, and district to check shipping cost."}
-        </p>
-      )}
+      <label className="flex items-center gap-2 text-sm text-ink-600">
+        <input
+          type="checkbox"
+          checked={saveAsPrimary}
+          onChange={(e) => setSaveAsPrimary(e.target.checked)}
+          disabled={isSaving}
+        />
+        <span>{t("cart_address_set_primary" as any)}</span>
+      </label>
+
+      {/* The hint sits beside the button rather than under a full-bleed bar: it
+          explains why the button is dead, so it belongs next to it. */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {incomplete && (
+          <p className="mr-auto text-xs text-ink-500">
+            {t("cart_shipping_address_incomplete") || "Select province, city, and district to check shipping cost."}
+          </p>
+        )}
+        <Button
+          onClick={() => onSave(saveAsPrimary)}
+          disabled={incomplete || !kodePos || isSaving}
+        >
+          {isSaving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+          {t("cart_address_save" as any)}
+        </Button>
+      </div>
     </div>
   );
 }

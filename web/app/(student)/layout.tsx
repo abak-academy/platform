@@ -34,7 +34,13 @@ export default function StudentLayout({
     isFetching: profileFetching,
     isError: profileError,
   } = useProfile();
-  const profilePending = profileLoading || profileFetching || profileError;
+  // Only a Google student's shell depends on completeness read from DB truth, so
+  // only theirs must distrust a cached profile mid-refetch. Applying that to
+  // everyone tore the shell down — and with it every page's local state — on any
+  // background refetch: saving an address from the cart threw the buyer back to
+  // a blank form.
+  const profilePending =
+    profileLoading || profileError || (profileFetching && profile?.auth_provider === "google");
 
   useEffect(() => {
     setHydrated(true);
