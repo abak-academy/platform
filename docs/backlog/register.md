@@ -26,8 +26,8 @@ Production is live (`hub.abakacademy.id`) but running `4d69591`, four commits be
 
 ### B-0 — White screen when reopening the address in the cart *(root cause found, fix applied)*
 
-Video: [`assets/cart-address-edit-whitescreen.mp4`](assets/cart-address-edit-whitescreen.mp4)
-(recorded 2026-07-28 20:12 WIB on `stg.abakacademy.id/cart`, Edge/Windows).
+Reported 2026-07-28 20:12 WIB on `stg.abakacademy.id/cart`, Edge/Windows, with a screen recording.
+The recording is not kept in the repo — the steps below are what it showed, read off frame by frame.
 
 **Repro, confirmed by the reporter and reproduced in a test:**
 
