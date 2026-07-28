@@ -33,6 +33,8 @@ const fonts: Record<string, string> = {
   great_vibes: "var(--font-certificate-great-vibes)",
   poppins: "var(--font-certificate-poppins)",
   libre_baskerville: "var(--font-certificate-libre-baskerville)",
+  allura: "var(--font-certificate-allura)",
+  parisienne: "var(--font-certificate-parisienne)",
 };
 
 function safeColor(color?: string) {

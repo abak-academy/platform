@@ -146,7 +146,7 @@ func interpolateCertificateContent(content string, vals map[FieldID]string) stri
 // certificateFontFaces reads every bundled OFL family from fontFS (FR-3),
 // reusing pdffonts.go's fontFiles map. It emits one normal-weight face per
 // family, plus a bold face only when a genuinely distinct bold TTF is
-// bundled (source_serif_4, public_sans, poppins) — the other five reuse their single
+// bundled (source_serif_4, public_sans, poppins) — the other seven reuse their single
 // file for both style keys, so a second face would be redundant.
 func certificateFontFaces() ([]certificateFontFace, error) {
 	families := make([]string, 0, len(fontFiles))

@@ -41,10 +41,18 @@ const libreBaskerville = localFont({
   src: "../../../../../../public/fonts/libre_baskerville/LibreBaskerville-Variable.ttf",
   variable: "--font-certificate-libre-baskerville",
 });
+const allura = localFont({
+  src: "../../../../../../public/fonts/allura/Allura-Regular.ttf",
+  variable: "--font-certificate-allura",
+});
+const parisienne = localFont({
+  src: "../../../../../../public/fonts/parisienne/Parisienne-Regular.ttf",
+  variable: "--font-certificate-parisienne",
+});
 
 export default function ExamPackageLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`${publicSans.variable} ${sourceSerif.variable} ${cinzel.variable} ${playfairDisplay.variable} ${cormorantGaramond.variable} ${greatVibes.variable} ${poppins.variable} ${libreBaskerville.variable}`}>
+    <div className={`${publicSans.variable} ${sourceSerif.variable} ${cinzel.variable} ${playfairDisplay.variable} ${cormorantGaramond.variable} ${greatVibes.variable} ${poppins.variable} ${libreBaskerville.variable} ${allura.variable} ${parisienne.variable}`}>
       {children}
     </div>
   );

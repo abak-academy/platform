@@ -14,6 +14,8 @@ var allFontFamilies = []string{
 	FontGreatVibes,
 	FontPoppins,
 	FontLibreBaskerville,
+	FontAllura,
+	FontParisienne,
 }
 
 func TestResolveFontFamily_KnownFamiliesResolveToThemselves(t *testing.T) {

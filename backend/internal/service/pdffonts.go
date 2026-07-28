@@ -16,6 +16,8 @@ const (
 	FontGreatVibes        = "great_vibes"
 	FontPoppins           = "poppins"
 	FontLibreBaskerville  = "libre_baskerville"
+	FontAllura            = "allura"
+	FontParisienne        = "parisienne"
 
 	defaultFontFamily = FontSourceSerif4
 )
@@ -55,6 +57,14 @@ var fontFiles = map[string]map[string]string{
 	FontLibreBaskerville: {
 		"":  "fonts/libre_baskerville/LibreBaskerville-Variable.ttf",
 		"B": "fonts/libre_baskerville/LibreBaskerville-Variable.ttf",
+	},
+	FontAllura: {
+		"":  "fonts/allura/Allura-Regular.ttf",
+		"B": "fonts/allura/Allura-Regular.ttf",
+	},
+	FontParisienne: {
+		"":  "fonts/parisienne/Parisienne-Regular.ttf",
+		"B": "fonts/parisienne/Parisienne-Regular.ttf",
 	},
 }
 

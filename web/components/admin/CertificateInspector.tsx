@@ -22,6 +22,8 @@ const FONTS = [
   ["great_vibes", "Great Vibes"],
   ["poppins", "Poppins"],
   ["libre_baskerville", "Libre Baskerville"],
+  ["allura", "Allura"],
+  ["parisienne", "Parisienne"],
 ];
 
 const TOKEN_LABELS = {
