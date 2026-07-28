@@ -40,7 +40,11 @@ export default function CartPage() {
     kode_pos: "",
   });
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
-  const [editingAddress, setEditingAddress] = useState(false);
+  // The form closes when the buyer closes it, never because it looks full.
+  // Deriving this from "every field is non-empty" swapped the form out on the
+  // first character of the last field — which is how a one-character postcode
+  // got saved.
+  const [addressFormOpen, setAddressFormOpen] = useState(true);
   const [courierNote, setCourierNote] = useState("");
 
   const items: OrderItem[] = cart?.items ?? [];
@@ -63,6 +67,14 @@ export default function CartPage() {
       weight_grams: totalPhysicalWeight,
     });
   }, [shippingAddress, totalPhysicalWeight, shippingRates]);
+
+  // Asking for a quote is what closes the address form: it is the point where
+  // the buyer says the address is finished. Both entry points do the whole
+  // action, so neither can leave the form open over a quoted address.
+  const handleAddressDone = useCallback(() => {
+    setAddressFormOpen(false);
+    handleCheckShipping();
+  }, [handleCheckShipping]);
 
   // The rate and the note are stored by the same PATCH, so both have to be sent
   // whichever one the buyer changed — sending only the note would clear the
@@ -142,21 +154,18 @@ export default function CartPage() {
         <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:items-start">
           <section className="flex flex-col gap-3">
             {hasPhysical &&
-              (editingAddress || !addressReady ? (
+              (addressFormOpen ? (
                 <ShippingAddressForm
                   profile={profile}
                   initialAddress={shippingAddress}
                   onAddressChange={handleAddressChange}
-                  onCheckShipping={() => {
-                    setEditingAddress(false);
-                    handleCheckShipping();
-                  }}
+                  onCheckShipping={handleAddressDone}
                   isCheckingShipping={shippingRates.isPending}
                 />
               ) : (
                 <ShippingAddressSummary
                   address={shippingAddress as any}
-                  onEdit={() => setEditingAddress(true)}
+                  onEdit={() => setAddressFormOpen(true)}
                 />
               ))}
 
@@ -222,7 +231,7 @@ export default function CartPage() {
                         </span>
                         <Button
                           type="button"
-                          onClick={handleCheckShipping}
+                          onClick={handleAddressDone}
                           disabled={shippingRates.isPending}
                           className="w-full"
                         >

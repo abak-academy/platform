@@ -44,6 +44,7 @@ var (
 	ErrInvalidProvinsi   = errors.New("invalid provinsi")
 	ErrInvalidKota       = errors.New("invalid kota")
 	ErrInvalidKecamatan  = errors.New("invalid kecamatan")
+	ErrInvalidKodePos    = errors.New("invalid kode pos: digits only")
 	ErrInvalidGender     = errors.New("invalid gender: expected male or female")
 )
 

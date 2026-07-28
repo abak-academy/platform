@@ -134,6 +134,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_kota", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidKecamatan):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_kecamatan", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidKodePos):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_kode_pos", Message: err.Error()}
 	case errors.Is(err, service.ErrUsernameGenerationExhausted):
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "username_generation_exhausted", Message: err.Error()}
 	case errors.Is(err, service.ErrUploadNotFound):

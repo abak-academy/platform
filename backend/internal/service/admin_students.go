@@ -127,6 +127,12 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 		return nil, ErrMissingField
 	}
 
+	if kodePos != nil {
+		if err := ValidateKodePos(*kodePos); err != nil {
+			return nil, err
+		}
+	}
+
 	// School is optional: not every registrant is a school pupil — university
 	// students and members of the public sign up for IELTS and similar. When
 	// one is given it is still validated; when it is omitted an operator

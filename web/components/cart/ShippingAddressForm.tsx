@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
   useCitiesByProvince,
@@ -78,8 +78,17 @@ export function ShippingAddressForm({
     kotaId || null
   );
 
+  // Hydrate from props once. The parent stores what this form emits and feeds it
+  // straight back as initialAddress, so re-running on every change makes the two
+  // effects write each other's one-render-stale value back and forth forever
+  // (React then throws "Maximum update depth exceeded" and blanks the page). The
+  // fields are this component's own state after the first fill.
+  const hydrated = useRef(false);
+
   useEffect(() => {
+    if (hydrated.current) return;
     if (hasAddressValues(initialAddress)) {
+      hydrated.current = true;
       setPenerima(initialAddress?.penerima ?? "");
       setTelepon(initialAddress?.telepon ?? "");
       setAlamat(initialAddress?.alamat ?? "");
@@ -88,6 +97,7 @@ export function ShippingAddressForm({
       setKecamatanId(initialAddress?.kecamatan_id ?? "");
       setKodePos(initialAddress?.kode_pos ?? "");
     } else if (profile) {
+      hydrated.current = true;
       setPenerima(profile.name ?? "");
       setTelepon(profile.phone ?? "");
       setAlamat(profile.alamat_domisili ?? "");

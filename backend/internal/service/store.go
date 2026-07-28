@@ -413,6 +413,10 @@ func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float
 }
 
 func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
+	if err := ValidateKodePos(req.DestinationPostalCode); err != nil {
+		return nil, err
+	}
+
 	rates, clientErr := s.logisticsClient().GetRates(ctx, req)
 
 	var flatRate int64
@@ -652,6 +656,12 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 	patch.CityID = nilIfEmpty(patch.CityID)
 	patch.DistrictID = nilIfEmpty(patch.DistrictID)
 	patch.KodePos = nilIfEmpty(patch.KodePos)
+
+	if patch.KodePos != nil {
+		if err := ValidateKodePos(*patch.KodePos); err != nil {
+			return err
+		}
+	}
 
 	// shipping_cost is never trusted from the client: it is either recomputed
 	// server-side from a live courier quote (below) or carried over unchanged

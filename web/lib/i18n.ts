@@ -313,6 +313,8 @@ export const DICT = {
     cart_shipping_options: "Pilihan Pengiriman",
     cart_shipping_error: "Gagal menghitung ongkos kirim",
     cart_rate_estimate_badge: "Estimasi — bukan tarif kurir",
+    cart_shipping_flat_fallback:
+      "Kami tidak menemukan tarif kurir untuk wilayah tujuan ini, jadi ongkir memakai tarif flat. Biaya sebenarnya bisa berbeda dan akan kami konfirmasi.",
     cart_eta_prefix: "Estimasi tiba",
     cart_shipping_placeholder: "Pilih jasa pengiriman",
     cart_speed_same_day: "Sampai hari ini",
@@ -1417,6 +1419,8 @@ export const DICT = {
     cart_shipping_options: "Shipping Options",
     cart_shipping_error: "Failed to calculate shipping cost",
     cart_rate_estimate_badge: "Estimate — not a carrier quote",
+    cart_shipping_flat_fallback:
+      "We could not find a carrier rate for this destination, so shipping falls back to a flat rate. The real cost may differ and we will confirm it with you.",
     cart_eta_prefix: "Estimated arrival",
     cart_shipping_placeholder: "Choose a shipping service",
     cart_speed_same_day: "Arrives today",

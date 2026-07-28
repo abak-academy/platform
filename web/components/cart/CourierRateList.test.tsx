@@ -137,4 +137,32 @@ describe("CourierRateList", () => {
     expect(checked).toHaveLength(1);
     expect(within(checked[0]).getByText(/JNE · Reguler/)).toBeTruthy();
   });
+
+  it("says the region was never priced when only the flat rate came back", () => {
+    render(
+      <CourierRateList
+        rates={[{ courier: "Ongkir Flat", service: "Standar", price: 20000, estimated_days: 0, is_estimate: true }]}
+        selectedKey={null}
+        onSelect={vi.fn()}
+        isLoading={false}
+        isError={false}
+      />
+    );
+
+    expect(screen.getByText(/tidak menemukan tarif kurir/i)).toBeInTheDocument();
+  });
+
+  it("stays quiet when the carrier actually quoted", () => {
+    render(
+      <CourierRateList
+        rates={[{ courier: "JNE", service: "REG", price: 18000, estimated_days: 2, is_estimate: false }]}
+        selectedKey={null}
+        onSelect={vi.fn()}
+        isLoading={false}
+        isError={false}
+      />
+    );
+
+    expect(screen.queryByText(/tidak menemukan tarif kurir/i)).toBeNull();
+  });
 });

@@ -592,4 +592,73 @@ describe("CartPage with Shipping", () => {
     expect(screen.getByRole("button", { name: /YES/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /REG/i })).toBeNull();
   });
+  // The buyer's profile carries no postal code, so they type that last field by
+  // hand — the sequence that produced the white screen on staging.
+  function mockProfileWithoutPostalCode() {
+    mockUseProfile.mockReturnValue({
+      data: {
+        id: "user1",
+        name: "Sample Dimas",
+        phone: "08982237427",
+        alamat_domisili: "BSD City, Jl. Biak No.6",
+        provinsi_id: "prov1",
+        kota_id: "city1",
+        kecamatan_id: "dist1",
+        kode_pos: "",
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    mockUseCart.mockReturnValue({
+      data: {
+        id: "o1",
+        student_id: "s1",
+        status: "cart",
+        subtotal: 100000,
+        discount: 0,
+        shipping_cost: 8000,
+        total: 108000,
+        items: [physicalItem],
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+  }
+
+  it("keeps the address form open while the last field is being typed", async () => {
+    const user = userEvent.setup();
+    mockProfileWithoutPostalCode();
+
+    renderWithQueryClient(<CartPage />);
+
+    const kodePos = await screen.findByLabelText("Postal Code");
+    await user.type(kodePos, "1");
+
+    // Every field is now non-empty. The form must not collapse under the buyer
+    // mid-edit — only the explicit action closes it.
+    expect(screen.getByText("Shipping Address")).toBeInTheDocument();
+    expect(kodePos).toHaveValue("1");
+  });
+
+  it("reopens the address form from the summary without crashing", async () => {
+    const user = userEvent.setup();
+    mockProfileWithoutPostalCode();
+
+    renderWithQueryClient(<CartPage />);
+
+    await user.type(await screen.findByLabelText("Postal Code"), "15310");
+    // The same action sits in the form and in the courier block; either finishes
+    // the address.
+    await user.click(screen.getAllByRole("button", { name: "Check shipping cost" })[0]);
+
+    const edit = await screen.findByRole("button", { name: "cart_address_change" });
+    await user.click(edit);
+
+    // Remounting the form over the address it had itself emitted used to close a
+    // parent/child effect loop and throw "Maximum update depth exceeded".
+    expect(await screen.findByText("Shipping Address")).toBeInTheDocument();
+    expect(screen.getByLabelText("Postal Code")).toHaveValue("15310");
+  });
 });
