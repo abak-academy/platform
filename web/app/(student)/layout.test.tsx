@@ -124,7 +124,7 @@ describe("StudentLayout", () => {
   it("keeps a password student's page mounted while the profile refetches", async () => {
     authStore = { token: "t", user: { role: "student" } };
     profileState = {
-      data: { auth_provider: "password", name: "Sample" },
+      data: { auth_provider: "password" },
       isLoading: false,
       isFetching: true,
       isError: false,
