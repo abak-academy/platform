@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
+	"net/url"
 	"path"
 	"strconv"
 	"time"
@@ -172,7 +174,7 @@ func (s *Service) uploadCertificatePDF(ctx context.Context, sessionID uuid.UUID,
 	return key, nil
 }
 
-func (s *Service) GeneratePresignedCertificateAssetUploadURL(ctx context.Context, examID uuid.UUID, filename string) (*PresignedUploadURL, error) {
+func (s *Service) GeneratePresignedCertificateAssetUploadURL(ctx context.Context, examID uuid.UUID, filename, contentType string) (*PresignedUploadURL, error) {
 	if s.storage == nil {
 		return nil, ErrStorageNotConfigured
 	}
@@ -187,7 +189,15 @@ func (s *Service) GeneratePresignedCertificateAssetUploadURL(ctx context.Context
 		return nil, fmt.Errorf("%w: invalid filename", ErrValidation)
 	}
 	key := fmt.Sprintf("certificates/%s/%s-%s", examID, uuid.New(), filename)
-	presigned, err := s.presignStorage().PresignedPutObject(ctx, s.cfg.ObjectStorageBucketName, key, 15*time.Minute)
+	presigned, err := s.presignStorage().PresignHeader(
+		ctx,
+		http.MethodPut,
+		s.cfg.ObjectStorageBucketName,
+		key,
+		15*time.Minute,
+		url.Values{},
+		http.Header{"Content-Type": []string{contentType}},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -325,31 +335,33 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 	if sess.Status != "submitted" {
 		return nil, nil
 	}
-	layout, err := resolveCertificateLayout(exam)
-	if err != nil {
-		return nil, err
-	}
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		return nil, err
-	}
-	dateStr := sess.SubmittedAt.In(loc).Format("2 January 2006")
-	vals := certificateFieldValues(exam.Title, studentName, dateStr, "")
-	allowed, err := s.addCertificateSessionValues(ctx, vals, exam, sess, layout, answers)
-	if err != nil {
-		return nil, err
-	}
-	if !allowed {
-		return nil, nil
-	}
-
 	gradedAt := latestGradedAt(answers)
 	designStale := exam.CertificateDesignUpdatedAt != nil && sess.CertificateGeneratedAt != nil &&
 		exam.CertificateDesignUpdatedAt.After(*sess.CertificateGeneratedAt)
+	needsRegeneration := sess.CertificateKey == nil || sess.CertificateGeneratedAt == nil ||
+		(gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) || designStale
 
-	// Regenerate when certificate is missing, grading is newer, or the design changed.
-	if sess.CertificateKey == nil || sess.CertificateGeneratedAt == nil ||
-		(gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) || designStale {
+	if needsRegeneration {
+		if sess.SubmittedAt == nil {
+			return nil, nil
+		}
+		layout, err := resolveCertificateLayout(exam)
+		if err != nil {
+			return nil, err
+		}
+		loc, err := time.LoadLocation("Asia/Jakarta")
+		if err != nil {
+			return nil, err
+		}
+		dateStr := sess.SubmittedAt.In(loc).Format("2 January 2006")
+		vals := certificateFieldValues(exam.Title, studentName, dateStr, "")
+		allowed, err := s.addCertificateSessionValues(ctx, vals, exam, sess, layout, answers)
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			return nil, nil
+		}
 
 		number, err := s.storeRepo.AllocateCertificateNumber(ctx, sess.ID)
 		if err != nil {

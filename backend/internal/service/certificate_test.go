@@ -452,6 +452,42 @@ func TestResolveCertificateURL_NotSubmitted(t *testing.T) {
 	}
 }
 
+func TestServiceResolveCertificateURL_SubmittedWithoutTimestampReturnsNil(t *testing.T) {
+	svc := newOfflineStorageService(t)
+	sess := &model.ExamSession{ID: uuid.New(), Status: "submitted"}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("classic"), Title: "Test"}
+
+	url, err := svc.resolveCertificateURL(context.Background(), exam, sess, nil, "Budi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if url != nil {
+		t.Fatalf("expected no certificate without submitted_at, got %q", *url)
+	}
+}
+
+func TestServiceResolveCertificateURL_FreshCacheSkipsLayoutResolution(t *testing.T) {
+	svc := newOfflineStorageService(t)
+	generatedAt := time.Date(2026, 7, 29, 10, 0, 0, 0, time.UTC)
+	key := "certificates/session.pdf"
+	sess := &model.ExamSession{
+		ID:                     uuid.New(),
+		Status:                 "submitted",
+		CertificateKey:         &key,
+		CertificateGeneratedAt: &generatedAt,
+	}
+	malformed := json.RawMessage(`{`)
+	exam := &model.Exam{CertificateDesign: &malformed, Title: "Test"}
+
+	url, err := svc.resolveCertificateURL(context.Background(), exam, sess, nil, "Budi")
+	if err != nil {
+		t.Fatalf("fresh cached certificate should not parse the layout: %v", err)
+	}
+	if url == nil || !strings.Contains(*url, "X-Amz-Signature") {
+		t.Fatalf("expected a presigned cached certificate URL, got %v", url)
+	}
+}
+
 func TestResolveCertificateURL_FirstTimeGeneration(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)

@@ -911,7 +911,7 @@ func (h *Handler) AdminPresignExamCertificateAsset(c echo.Context) error {
 	default:
 		return badRequest(c, "content_type must be a raster image")
 	}
-	resp, err := h.svc.GeneratePresignedCertificateAssetUploadURL(c.Request().Context(), id, filename)
+	resp, err := h.svc.GeneratePresignedCertificateAssetUploadURL(c.Request().Context(), id, filename, contentType)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

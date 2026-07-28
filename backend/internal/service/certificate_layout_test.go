@@ -18,6 +18,17 @@ func TestNormalizeCertificateLayout_LegacyStudentNameGetsTokenContent(t *testing
 	}
 }
 
+func TestNormalizeCertificateLayout_LegacyTextUsesEditorDefaultColor(t *testing.T) {
+	layout := Layout{Page: Page{WidthMm: 297, HeightMm: 210}, Fields: []LayoutField{{
+		ID: "student_name", XMm: 48.5, YMm: 100, WMm: 200, Visible: true,
+	}}}
+
+	got := normalizeCertificateLayout(layout)
+	if got.Fields[0].Color != "#17213B" {
+		t.Fatalf("legacy text color = %q, want editor default #17213B", got.Fields[0].Color)
+	}
+}
+
 func TestValidateLayout_RejectsUnknownToken(t *testing.T) {
 	layout := normalizeCertificateLayout(defaultLayout("classic"))
 	layout.Fields[0].Content = "{{secret_score}}"

@@ -636,21 +636,8 @@ func validateExam(e model.Exam) error {
 	if e.ResultConfig != "" && !validResultConfigs[e.ResultConfig] {
 		return fmt.Errorf("%w: result_config must be hidden, score_only, or score_pembahasan", ErrValidation)
 	}
-	if e.CertificateDesign != nil {
-		design, err := parseCertificateDesign(e.CertificateDesign)
-		if err != nil {
-			return fmt.Errorf("%w: invalid certificate design json", ErrValidation)
-		}
-		if design.Template != "" {
-			if err := validateCertificateTemplate(design.Template); err != nil {
-				return err
-			}
-		}
-		if len(design.Fields) > 0 {
-			if err := ValidateLayout(design.Layout); err != nil {
-				return err
-			}
-		}
+	if err := validateCertificateDesign(e.CertificateDesign); err != nil {
+		return err
 	}
 	if e.CheckInWindowMinutes != nil && *e.CheckInWindowMinutes < 0 {
 		return fmt.Errorf("%w: check_in_window_minutes cannot be negative", ErrValidation)
@@ -668,6 +655,25 @@ func validateExam(e model.Exam) error {
 		if !e.ScheduledEndAt.After(*e.ScheduledAt) {
 			return fmt.Errorf("%w: scheduled_end_at must be after scheduled_at", ErrValidation)
 		}
+	}
+	return nil
+}
+
+func validateCertificateDesign(raw *json.RawMessage) error {
+	if raw == nil {
+		return nil
+	}
+	design, err := parseCertificateDesign(raw)
+	if err != nil {
+		return fmt.Errorf("%w: invalid certificate design json", ErrValidation)
+	}
+	if design.Template != "" {
+		if err := validateCertificateTemplate(design.Template); err != nil {
+			return err
+		}
+	}
+	if len(design.Fields) > 0 {
+		return ValidateLayout(design.Layout)
 	}
 	return nil
 }
@@ -712,7 +718,9 @@ func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, err
 }
 
 func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (model.Exam, error) {
-	if err := validateExam(m); err != nil {
+	commonFields := m
+	commonFields.CertificateDesign = nil
+	if err := validateExam(commonFields); err != nil {
 		return model.Exam{}, err
 	}
 	existing, err := s.storeRepo.GetExamByID(ctx, id)
@@ -721,6 +729,11 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 			return model.Exam{}, ErrExamNotFound
 		}
 		return model.Exam{}, err
+	}
+	if !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign) {
+		if err := validateCertificateDesign(m.CertificateDesign); err != nil {
+			return model.Exam{}, err
+		}
 	}
 	m.ID = id
 	m.CreatedAt = existing.CreatedAt

@@ -258,7 +258,7 @@ func normalizeCertificateLayout(layout Layout) Layout {
 				f.SizePt = 12
 			}
 			if f.Color == "" {
-				f.Color = "#000000"
+				f.Color = "#17213B"
 			}
 		}
 		if f.Align == "" {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -875,6 +876,13 @@ func TestAdminPresignExamCertificateAsset_ReturnsExamScopedKey(t *testing.T) {
 	}
 	if !strings.Contains(resp.URL, "X-Amz-Signature") {
 		t.Fatalf("expected a presigned URL, got %q", resp.URL)
+	}
+	signedURL, err := url.Parse(resp.URL)
+	if err != nil {
+		t.Fatalf("parse presigned URL: %v", err)
+	}
+	if got := signedURL.Query().Get("X-Amz-SignedHeaders"); !strings.Contains(got, "content-type") {
+		t.Fatalf("signed headers = %q, want content-type to be enforced", got)
 	}
 }
 

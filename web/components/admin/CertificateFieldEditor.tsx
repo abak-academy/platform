@@ -116,9 +116,11 @@ export function CertificateFieldEditor({
         y_mm: Math.max(0, Math.min(normalizedLayout.page.height_mm - height, f.y_mm + dy)),
       });
     } else {
+      const availableWidth = Math.max(0, normalizedLayout.page.width_mm - f.x_mm);
+      const availableHeight = Math.max(0, normalizedLayout.page.height_mm - f.y_mm);
       update(f.id, {
-        w_mm: Math.max(8, Math.min(normalizedLayout.page.width_mm - f.x_mm, f.w_mm + dx)),
-        h_mm: Math.max(8, Math.min(normalizedLayout.page.height_mm - f.y_mm, (f.h_mm || 30) + dy)),
+        w_mm: Math.max(Math.min(8, availableWidth), Math.min(availableWidth, f.w_mm + dx)),
+        h_mm: Math.max(Math.min(8, availableHeight), Math.min(availableHeight, (f.h_mm || 30) + dy)),
       });
     }
   }

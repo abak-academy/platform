@@ -274,4 +274,23 @@ describe("CertificateFieldEditor", () => {
     const moved = onChange.mock.calls[0][0].find((field: { id: string }) => field.id === "logo");
     expect(moved.y_mm).toBe(190);
   });
+
+  it("keeps a resized image inside the page when less than the minimum size remains", () => {
+    const onChange = vi.fn();
+    const layout: CertificateLayout = {
+      page: { width_mm: 297, height_mm: 210 },
+      background: { kind: "builtin", ref: "classic" },
+      fields: [{ id: "logo", kind: "image", name: "Logo", x_mm: 294, y_mm: 208, w_mm: 2, h_mm: 1, align: "center", visible: true }],
+    };
+    render(<CertificateFieldEditor layout={layout} onChange={onChange} selectedId="logo" />);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Resize Logo" }), { pointerId: 1, clientX: 1184, clientY: 836 });
+    fireEvent.pointerMove(screen.getByTestId("certificate-field-editor-canvas"), { pointerId: 1, clientX: 1300, clientY: 900 });
+
+    const resized = onChange.mock.calls.at(-1)?.[0].find((field: { id: string }) => field.id === "logo");
+    expect(resized.w_mm).toBe(3);
+    expect(resized.h_mm).toBe(2);
+    expect(resized.x_mm + resized.w_mm).toBeLessThanOrEqual(297);
+    expect(resized.y_mm + resized.h_mm).toBeLessThanOrEqual(210);
+  });
 });
