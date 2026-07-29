@@ -1,0 +1,125 @@
+# E2 — Exam authoring
+
+| | |
+|---|---|
+| **Issue** | [#61](https://github.com/abak-academy/platform/issues/61) |
+| **Objective** | An admin can write, find, correct and score questions the way the client actually works — including question types and answer shapes the engine cannot express today. |
+| **Source IDs** | FB-1, FB-3, FB-4, FB-5, FB-6, FB-7, FB-9, FB-10, FB-10a |
+| **Client items** | 9 |
+| **Depends on** | E1 (D-1 — regrade tests), E3 (results tab, for FB-10a) |
+| **Verified against** | `main` @ `211b7b1`, 2026-07-29 |
+
+Two halves that share one migration: **list ergonomics** (find, delete, import, protect) and the
+**answer model** (decimal points, multiple accepted answers, true/false). They were separate sessions
+until it became clear both add columns to `question` — doing them apart means two migrations over the
+same table.
+
+---
+
+## Part A — List ergonomics
+
+### FB-5 + FB-7 — ordering and a readable id *(one change)*
+
+The `question` table has **no `created_at`**
+([`0014_exam.up.sql:16-27`](../../backend/db/migrations/0014_exam.up.sql)) and the list orders by
+`q.id` ([`exam.go:574`](../../backend/internal/repository/exam.go)) — a UUID, so the order is
+effectively arbitrary. The UI shows `question.id.slice(0, 8)`.
+
+The client asked for two things that turn out to be one: newest-first (FB-5) and a short numeric id in
+the list (FB-7). A single monotonic `question_number` satisfies both — sort on it descending, display
+it. The precedent is already in the tree: `exam_number` and `participant_number`, migrations 0037 and
+0039.
+
+### FB-3 — remove a question from the bank list
+
+The backend already supports it — [`exam.go:439-465`](../../backend/internal/repository/exam.go)
+deletes options, then blanks, then the question. Only the list UI lacks the action.
+
+Needs a confirm step and a guard: refuse, with a clear reason, when the question belongs to a test
+attached to a published exam.
+
+### FB-4 — download a template before bulk upload
+
+The importer exists ([`exam_import.go`](../../backend/internal/service/exam_import.go)) with required
+headers `format, body, subject, topic, point_correct, point_wrong` and optional
+`difficulty, correct_answer, option_*`. Nothing hands the admin a template.
+
+**Generate it from the same header list the parser uses**, so the two cannot drift. The pattern to
+copy is [`BulkImportModal.tsx:26-42`](../../web/components/admin/BulkImportModal.tsx) — header
+constant, example row, client-side download, no network call.
+
+### FB-9 — edit a question already used in an exam, but never change its type
+
+Guard `format` changes when the question is attached to a live exam. Everything else stays editable.
+
+---
+
+## Part B — Answer model
+
+### FB-1 — points can be decimal
+
+Today [`0015_exam_scoring.up.sql`](../../backend/db/migrations/0015_exam_scoring.up.sql):
+
+```sql
+point_correct INT NOT NULL DEFAULT 1 CHECK (point_correct >= 1)
+point_wrong   INT NOT NULL DEFAULT 0 CHECK (point_wrong >= 0)
+```
+
+Widen to `NUMERIC`. **Note the `>= 1` check also forbids a zero-point question** — confirm with the
+client whether that is intended before carrying it over. It is a separate decision from decimals and
+is easy to change in the same migration.
+
+### FB-10 — more than one correct answer accepted
+
+`question.correct_answer` is a single `TEXT`, and `question_blank` stores one `correct_answer` per
+blank ([`0028_multi_blank_question_audio.up.sql`](../../backend/db/migrations/0028_multi_blank_question_audio.up.sql)).
+The client's example — `1+1` accepting both `2` and `dua` — cannot be expressed.
+
+Needs an accepted-answers set per question *and* per blank, plus **matching rules the client agrees
+to**. Trimming and case are obvious. Accents, punctuation and number-word equivalence are not — decide
+explicitly and write the rule into this doc before implementing, because it is the kind of thing that
+silently diverges between the grader and the admin's expectation.
+
+Applies to `short`, `fill_blank` and `multi_blank`.
+
+### FB-6 — true/false with several statements per question
+
+A seventh format. Each statement is independently true or false and independently scored, which makes
+it structurally closer to `multi_blank` than to `mcq` — a child table of statements, not options.
+
+Current formats: `mcq, multi_answer, short, fill_blank, essay, multi_blank`. Note `multi_blank`
+shipped without ever reaching the PRD — see the drift list in the index.
+
+### FB-10a — edit the correct answer and recalculate before publishing
+
+A regrade command over an exam's submitted sessions, reachable from the results tab **E3** builds, and
+gated so it cannot run after results are released.
+
+**This is the item that most needs E1's storage seam.** It changes scores; its tests must run against
+shipping code, not a shim copy.
+
+---
+
+## Acceptance
+
+- A 2.5-point question scores 2.5 end to end and displays correctly on the result page.
+- A short-answer question accepts every configured answer and rejects the rest, with the agreed
+  matching rule tested at its boundary.
+- A true/false question with 4 statements scores partially and renders as one question to the student.
+- The bank lists newest-first with a short numeric id, stable across reloads.
+- Deleting an unused question works; deleting one inside a published exam is refused with a reason.
+- The downloaded template imports without edits.
+- Editing a used question succeeds; changing its type is refused.
+- Changing a correct answer and regrading updates score and rank for every affected session, is
+  refused once results are released, and writes an audit row.
+
+## Out of scope
+
+- Question randomisation (`Exam.randomize` is stored but shuffling was deferred 2026-07-07).
+- Reusing a question across tests — `question.test_id` is `NOT NULL` by design (FR-EXAM-03).
+
+## Open questions for the client
+
+1. Should decimal points also unlock a **zero-point** question? The current `>= 1` check forbids it.
+2. FB-10 matching: are accents, punctuation and number-word equivalence (`2` / `dua` / `two`) in or
+   out?

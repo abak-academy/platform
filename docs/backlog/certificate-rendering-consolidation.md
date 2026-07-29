@@ -7,7 +7,10 @@
 The certificate visual is implemented **twice**:
 
 1. **In the browser** — the admin drag-and-drop design editor renders it live, loading
-   `web/public/fonts` through `web/components/admin/CertificateFonts.module.css`.
+   `web/public/fonts`. *(Updated 2026-07-29: the studio rebuild in `211b7b1` deleted
+   `CertificateFonts.module.css`; the `@font-face` declarations moved into the exam-package layout at
+   `web/app/(admin)/admin/exam/packages/[id]/layout.tsx`. The duplication itself is unchanged — the
+   font files still exist twice.)*
 2. **In Go** — `internal/service/certificate_html.go` builds self-contained HTML, embedding the
    same font files (`//go:embed fonts`, base64 into `@font-face`) for Gotenberg to turn into PDF.
 
