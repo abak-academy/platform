@@ -197,9 +197,9 @@ describe("CertificateFieldEditor", () => {
     const value = screen.getByTestId("certificate-field-value-student_name");
     expect(value.textContent).toBe("Nama Peserta Contoh");
     expect(box.textContent).not.toContain("Nama Siswa");
-    expect(value.style.fontFamily).toBe("source_serif_4");
+    expect(value.style.fontFamily).toBe("var(--font-certificate-source-serif)");
     expect(value.style.fontWeight).toBe("700");
-    expect(value.style.fontSize).toBe("26pt");
+    expect(value.style.fontSize).toBe("36.6912px");
     expect(value.style.color).toBe("rgb(31, 42, 68)");
     expect(value.style.textAlign).toBe("center");
   });
@@ -216,7 +216,7 @@ describe("CertificateFieldEditor", () => {
     render(<CertificateFieldEditor layout={layout} onChange={onChange} />);
 
     const value = screen.getByTestId("certificate-field-value-exam_title");
-    expect(value.style.fontFamily).toBe("source_serif_4");
+    expect(value.style.fontFamily).toBe("var(--font-certificate-source-serif)");
   });
 
   it("falls back to black when a field's color is malformed (FR-9)", () => {
@@ -249,22 +249,48 @@ describe("CertificateFieldEditor", () => {
     expect(screen.getByTestId("certificate-field-box-logo").textContent).toBe("Logo");
   });
 
-  it("lets the position be set via the numeric mm inputs as a non-drag alternative", () => {
+  it("lets a selected layer be nudged with the keyboard without exposing numeric coordinates", () => {
     const onChange = vi.fn();
     render(<CertificateFieldEditor layout={baseLayout} onChange={onChange} />);
 
-    const xInput = screen.getByLabelText(/x.*student_name|student.*x/i, { exact: false }) as HTMLInputElement | null;
-    // Fall back to a broader query if the exact accessible name doesn't match;
-    // the important behavioral contract is that *some* non-drag input exists
-    // and commits a clamped value.
-    const input =
-      xInput ?? (screen.getAllByRole("spinbutton")[0] as HTMLInputElement);
+    const box = screen.getByTestId("certificate-field-box-student_name");
+    fireEvent.keyDown(box, { key: "ArrowRight", shiftKey: true });
 
-    fireEvent.change(input, { target: { value: "500" } });
-
-    expect(onChange).toHaveBeenCalled();
-    const fields = onChange.mock.calls[onChange.mock.calls.length - 1][0];
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    const fields = onChange.mock.calls[0][0];
     const dragged = fields.find((f: { id: string }) => f.id === "student_name");
-    expect(dragged.x_mm).toBeLessThanOrEqual(97);
+    expect(dragged.x_mm).toBe(53.5);
+  });
+
+  it("keeps keyboard movement inside the bottom edge for image layers", () => {
+    const onChange = vi.fn();
+    const layout: CertificateLayout = {
+      page: { width_mm: 297, height_mm: 210 },
+      background: { kind: "builtin", ref: "classic" },
+      fields: [{ id: "logo", kind: "image", x_mm: 10, y_mm: 189, w_mm: 20, h_mm: 20, align: "center", visible: true }],
+    };
+    render(<CertificateFieldEditor layout={layout} onChange={onChange} />);
+    fireEvent.keyDown(screen.getByTestId("certificate-field-box-logo"), { key: "ArrowDown", shiftKey: true });
+    const moved = onChange.mock.calls[0][0].find((field: { id: string }) => field.id === "logo");
+    expect(moved.y_mm).toBe(190);
+  });
+
+  it("keeps a resized image inside the page when less than the minimum size remains", () => {
+    const onChange = vi.fn();
+    const layout: CertificateLayout = {
+      page: { width_mm: 297, height_mm: 210 },
+      background: { kind: "builtin", ref: "classic" },
+      fields: [{ id: "logo", kind: "image", name: "Logo", x_mm: 294, y_mm: 208, w_mm: 2, h_mm: 1, align: "center", visible: true }],
+    };
+    render(<CertificateFieldEditor layout={layout} onChange={onChange} selectedId="logo" />);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Resize Logo" }), { pointerId: 1, clientX: 1184, clientY: 836 });
+    fireEvent.pointerMove(screen.getByTestId("certificate-field-editor-canvas"), { pointerId: 1, clientX: 1300, clientY: 900 });
+
+    const resized = onChange.mock.calls.at(-1)?.[0].find((field: { id: string }) => field.id === "logo");
+    expect(resized.w_mm).toBe(3);
+    expect(resized.h_mm).toBe(2);
+    expect(resized.x_mm + resized.w_mm).toBeLessThanOrEqual(297);
+    expect(resized.y_mm + resized.h_mm).toBeLessThanOrEqual(210);
   });
 });

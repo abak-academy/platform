@@ -262,6 +262,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExams.POST("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
 	adminExams.GET("/:id/certificate-design", h.AdminGetExamCertificateDesign)
 	adminExams.PUT("/:id/certificate-design", h.AdminUpdateExamCertificateDesign)
+	adminExams.POST("/:id/certificate-assets/presign", h.AdminPresignExamCertificateAsset)
 
 	// Admin exam routes — read-only group (sibling, same path prefix). admin_school
 	// needs list/detail to use the Registrations tab on the exam detail page, but

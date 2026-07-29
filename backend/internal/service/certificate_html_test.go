@@ -201,7 +201,7 @@ func TestBuildCertificateHTML_JPEGBackgroundKeepsItsOwnMime(t *testing.T) {
 	}
 }
 
-func TestBuildCertificateHTML_ExactlySixFontFaceFamilies(t *testing.T) {
+func TestBuildCertificateHTML_ExactlyTenFontFaceFamilies(t *testing.T) {
 	layout := testCertificateLayout()
 	vals := certificateFieldValues("Ujian", "Nama", "1 Januari 2026", "ABK/2026/0001/000001")
 
@@ -221,13 +221,15 @@ func TestBuildCertificateHTML_ExactlySixFontFaceFamilies(t *testing.T) {
 	for _, m := range matches {
 		families[m[1]] = true
 	}
-	if len(families) != 6 {
-		t.Errorf("expected exactly 6 distinct @font-face families, got %d: %v", len(families), families)
+	if len(families) != 10 {
+		t.Errorf("expected exactly 10 distinct @font-face families, got %d: %v", len(families), families)
 	}
 
 	wantFamilies := []string{
 		FontSourceSerif4, FontPublicSans, FontCinzel,
 		FontPlayfairDisplay, FontCormorantGaramond, FontGreatVibes,
+		FontPoppins, FontLibreBaskerville,
+		FontAllura, FontParisienne,
 	}
 	for _, f := range wantFamilies {
 		if !families[f] {
@@ -261,5 +263,19 @@ func TestBuildCertificateHTML_EscapesFieldValues(t *testing.T) {
 	}
 	if !strings.Contains(html, "&lt;script&gt;") {
 		t.Errorf("expected escaped script tag in output, got:\n%s", html)
+	}
+}
+
+func TestBuildCertificateHTML_InterpolatesEditableContentAndItalic(t *testing.T) {
+	layout := normalizeCertificateLayout(defaultLayout("classic"))
+	layout.Fields[0].Content = "Awarded to {{student_name}}"
+	layout.Fields[0].Italic = true
+	out, err := buildCertificateHTML(layout, map[FieldID]string{"student_name": "Budi"}, []byte("bg"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(out)
+	if !strings.Contains(html, "Awarded to Budi") || !strings.Contains(html, "font-style:italic") {
+		t.Fatalf("editable content/style missing: %s", html)
 	}
 }

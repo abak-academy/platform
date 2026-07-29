@@ -7,6 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"net/http"
+	"net/url"
+	"path"
+	"strconv"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -60,13 +65,17 @@ func builtinCertificateBackground(ref string) []byte {
 // generation and preview.
 func certificateFieldValues(examTitle, studentName, dateStr, certNumber string) map[FieldID]string {
 	return map[FieldID]string{
-		"title":              "CERTIFICATE OF COMPLETION",
-		"subtitle":           "This certificate is proudly awarded to",
 		"student_name":       studentName,
-		"completion_text":    "for successfully completing",
 		"exam_title":         examTitle,
-		"date":               dateStr,
+		"completion_date":    dateStr,
 		"certificate_number": certNumber,
+		"score":              "86",
+		"max_score":          "100",
+		"score_percent":      "86%",
+		"rank":               "3",
+		"percentile":         "Top 15%",
+		"duration":           "90 minutes",
+		"total_questions":    "50 questions",
 	}
 }
 
@@ -97,15 +106,20 @@ func resolveCertificateLayout(exam *model.Exam) (Layout, error) {
 // resolveCertificateSignatureImages downloads the layout's uploaded signature
 // image (if any) into the images map buildCertificateHTML consumes. Returns
 // nil when no signature key is set.
-func (s *Service) resolveCertificateSignatureImages(ctx context.Context, layout Layout) (map[FieldID][]byte, error) {
-	if layout.SignatureKey == nil || *layout.SignatureKey == "" {
-		return nil, nil
+func (s *Service) resolveCertificateImages(ctx context.Context, layout Layout) (map[FieldID][]byte, error) {
+	layout = normalizeCertificateLayout(layout)
+	images := make(map[FieldID][]byte)
+	for _, field := range layout.Fields {
+		if field.Kind != "image" || field.AssetKey == nil || *field.AssetKey == "" {
+			continue
+		}
+		img, err := s.downloadCertificateBackground(ctx, *field.AssetKey)
+		if err != nil {
+			return nil, fmt.Errorf("download certificate image %s: %w", field.ID, err)
+		}
+		images[field.ID] = img
 	}
-	img, err := s.downloadCertificateBackground(ctx, *layout.SignatureKey)
-	if err != nil {
-		return nil, fmt.Errorf("download certificate signature: %w", err)
-	}
-	return map[FieldID][]byte{"signature": img}, nil
+	return images, nil
 }
 
 func (s *Service) downloadCertificateBackground(ctx context.Context, key string) ([]byte, error) {
@@ -160,6 +174,36 @@ func (s *Service) uploadCertificatePDF(ctx context.Context, sessionID uuid.UUID,
 	return key, nil
 }
 
+func (s *Service) GeneratePresignedCertificateAssetUploadURL(ctx context.Context, examID uuid.UUID, filename, contentType string) (*PresignedUploadURL, error) {
+	if s.storage == nil {
+		return nil, ErrStorageNotConfigured
+	}
+	if _, err := s.storeRepo.GetExamByID(ctx, examID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrExamNotFound
+		}
+		return nil, err
+	}
+	filename = path.Base(filename)
+	if filename == "." || filename == "/" {
+		return nil, fmt.Errorf("%w: invalid filename", ErrValidation)
+	}
+	key := fmt.Sprintf("certificates/%s/%s-%s", examID, uuid.New(), filename)
+	presigned, err := s.presignStorage().PresignHeader(
+		ctx,
+		http.MethodPut,
+		s.cfg.ObjectStorageBucketName,
+		key,
+		15*time.Minute,
+		url.Values{},
+		http.Header{"Content-Type": []string{contentType}},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &PresignedUploadURL{URL: presigned.String(), Method: "PUT", Fields: map[string]string{}, Key: key}, nil
+}
+
 // latestGradedAt returns the latest non-nil GradedAt across all answers, or nil.
 func latestGradedAt(answers []model.ExamSessionAnswer) *time.Time {
 	var latest *time.Time
@@ -171,6 +215,112 @@ func latestGradedAt(answers []model.ExamSessionAnswer) *time.Time {
 		}
 	}
 	return latest
+}
+
+func layoutUsesToken(layout Layout, wanted ...string) bool {
+	set := make(map[string]bool, len(wanted))
+	for _, token := range wanted {
+		set[token] = true
+	}
+	for _, field := range normalizeCertificateLayout(layout).Fields {
+		for _, token := range certificateTokens(field.Content) {
+			if set[token] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func flattenCertificateQuestions(tests []model.TestDetail) []model.QuestionWithOptions {
+	var questions []model.QuestionWithOptions
+	for _, test := range tests {
+		questions = append(questions, test.Questions...)
+	}
+	return questions
+}
+
+func formatCertificateNumber(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
+}
+
+func certificateSessionValues(sess *model.ExamSession, questions []model.QuestionWithOptions, higher, total int) map[FieldID]string {
+	score := 0.0
+	if sess.Score != nil {
+		score = *sess.Score
+	}
+	maxScore := 0
+	for _, question := range questions {
+		maxScore += question.Question.PointCorrect
+	}
+	values := map[FieldID]string{
+		"score":           formatCertificateNumber(score),
+		"max_score":       strconv.Itoa(maxScore),
+		"score_percent":   "0%",
+		"total_questions": strconv.Itoa(len(questions)) + " questions",
+	}
+	if maxScore > 0 {
+		values["score_percent"] = strconv.Itoa(int(math.Round(score/float64(maxScore)*100))) + "%"
+	}
+	if sess.SubmittedAt != nil {
+		minutes := int(math.Ceil(sess.SubmittedAt.Sub(sess.StartedAt).Minutes()))
+		values["duration"] = strconv.Itoa(max(minutes, 0)) + " minutes"
+	}
+	if higher >= 0 && total >= 0 {
+		rank := higher + 1
+		values["rank"] = strconv.Itoa(rank)
+		percentile := 100
+		if total > 0 {
+			percentile = int(math.Ceil(float64(rank) / float64(total) * 100))
+		}
+		values["percentile"] = "Top " + strconv.Itoa(percentile) + "%"
+	}
+	return values
+}
+
+func certificateLayoutAllowed(exam model.Exam, sess *model.ExamSession, layout Layout, questions []model.QuestionWithOptions, answers []model.ExamSessionAnswer) bool {
+	if !layoutUsesToken(layout, "score", "max_score", "score_percent", "rank", "percentile") {
+		return true
+	}
+	_, gated := resultGate(exam, sess.Status == "submitted", isFullyGraded(questions, answers))
+	return !gated
+}
+
+func (s *Service) addCertificateSessionValues(ctx context.Context, vals map[FieldID]string, exam *model.Exam, sess *model.ExamSession, layout Layout, answers []model.ExamSessionAnswer) (bool, error) {
+	needsQuestions := layoutUsesToken(layout, "max_score", "score_percent", "total_questions", "rank", "percentile")
+	sensitive := layoutUsesToken(layout, "score", "max_score", "score_percent", "rank", "percentile")
+	var tests []model.TestDetail
+	var questions []model.QuestionWithOptions
+	var err error
+	if needsQuestions || sensitive {
+		tests, err = s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+		if err != nil {
+			return false, err
+		}
+		questions = flattenCertificateQuestions(tests)
+	}
+	if sensitive && !certificateLayoutAllowed(*exam, sess, layout, questions, answers) {
+		return false, nil
+	}
+	higher, total := -1, -1
+	if layoutUsesToken(layout, "rank", "percentile") {
+		score := 0.0
+		if sess.Score != nil {
+			score = *sess.Score
+		}
+		higher, err = s.storeRepo.CountHigherScores(ctx, sess.ExamID, score)
+		if err != nil {
+			return false, err
+		}
+		total, err = s.storeRepo.CountFullyGradedSessions(ctx, sess.ExamID)
+		if err != nil {
+			return false, err
+		}
+	}
+	for field, value := range certificateSessionValues(sess, questions, higher, total) {
+		vals[field] = value
+	}
+	return true, nil
 }
 
 // resolveCertificateURL determines a presigned certificate URL for a session,
@@ -185,38 +335,48 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 	if sess.Status != "submitted" {
 		return nil, nil
 	}
-
 	gradedAt := latestGradedAt(answers)
 	designStale := exam.CertificateDesignUpdatedAt != nil && sess.CertificateGeneratedAt != nil &&
 		exam.CertificateDesignUpdatedAt.After(*sess.CertificateGeneratedAt)
+	needsRegeneration := sess.CertificateKey == nil || sess.CertificateGeneratedAt == nil ||
+		(gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) || designStale
 
-	// Regenerate when certificate is missing, grading is newer, or the design changed.
-	if sess.CertificateKey == nil || sess.CertificateGeneratedAt == nil ||
-		(gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) || designStale {
-
-		number, err := s.storeRepo.AllocateCertificateNumber(ctx, sess.ID)
-		if err != nil {
-			return nil, fmt.Errorf("allocate certificate number: %w", err)
+	if needsRegeneration {
+		if sess.SubmittedAt == nil {
+			return nil, nil
 		}
 		layout, err := resolveCertificateLayout(exam)
 		if err != nil {
 			return nil, err
 		}
-		bg, err := s.resolveCertificateBackground(ctx, exam)
-		if err != nil {
-			return nil, fmt.Errorf("resolve certificate background: %w", err)
-		}
-		images, err := s.resolveCertificateSignatureImages(ctx, layout)
-		if err != nil {
-			return nil, err
-		}
-
 		loc, err := time.LoadLocation("Asia/Jakarta")
 		if err != nil {
 			return nil, err
 		}
 		dateStr := sess.SubmittedAt.In(loc).Format("2 January 2006")
-		vals := certificateFieldValues(exam.Title, studentName, dateStr, number)
+		vals := certificateFieldValues(exam.Title, studentName, dateStr, "")
+		allowed, err := s.addCertificateSessionValues(ctx, vals, exam, sess, layout, answers)
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			return nil, nil
+		}
+
+		number, err := s.storeRepo.AllocateCertificateNumber(ctx, sess.ID)
+		if err != nil {
+			return nil, fmt.Errorf("allocate certificate number: %w", err)
+		}
+		bg, err := s.resolveCertificateBackground(ctx, exam)
+		if err != nil {
+			return nil, fmt.Errorf("resolve certificate background: %w", err)
+		}
+		images, err := s.resolveCertificateImages(ctx, layout)
+		if err != nil {
+			return nil, err
+		}
+
+		vals["certificate_number"] = number
 
 		html, err := buildCertificateHTML(layout, vals, bg, images)
 		if err != nil {
@@ -308,7 +468,7 @@ func (s *Service) GetCertificatePreview(ctx context.Context, examID uuid.UUID, t
 	}
 	vals := certificateFieldValues(exam.Title, previewStudentName, time.Now().In(loc).Format("2 January 2006"), previewCertificateNumber)
 
-	images, err := s.resolveCertificateSignatureImages(ctx, layout)
+	images, err := s.resolveCertificateImages(ctx, layout)
 	if err != nil {
 		return nil, err
 	}

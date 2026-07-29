@@ -896,6 +896,28 @@ func (h *Handler) AdminGetExamCertificateDesign(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+func (h *Handler) AdminPresignExamCertificateAsset(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	filename := c.QueryParam("filename")
+	contentType := c.QueryParam("content_type")
+	if filename == "" {
+		return badRequest(c, "filename is required")
+	}
+	switch contentType {
+	case "image/png", "image/jpeg", "image/webp", "image/gif":
+	default:
+		return badRequest(c, "content_type must be a raster image")
+	}
+	resp, err := h.svc.GeneratePresignedCertificateAssetUploadURL(c.Request().Context(), id, filename, contentType)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
 // AdminUpdateExamCertificateDesign persists the certificate design triplet the
 // editor saves: template, background object key (never a URL, FR-18), and layout
 // (validated server-side against Task 3's rules — the editor is not the security
@@ -922,6 +944,9 @@ func (h *Handler) AdminUpdateExamCertificateDesign(c echo.Context) error {
 	// validateExam gate, which skips layout validation for a template-only
 	// design blob (e.g. AdminUpdateExam's plain certificate_template PATCH).
 	if err := service.ValidateLayout(req.Layout); err != nil {
+		return mapServiceError(c, err)
+	}
+	if err := service.ValidateCertificateDesignAssetKeys(id.String(), req.BackgroundKey, req.Layout, existing.CertificateDesign); err != nil {
 		return mapServiceError(c, err)
 	}
 

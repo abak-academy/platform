@@ -135,6 +135,16 @@ export function useUpdateCertificateDesign(examId: string) {
   });
 }
 
+export function usePresignCertificateAsset(examId: string) {
+  return useMutation({
+    mutationFn: ({ filename, content_type }: { filename: string; content_type: string }) =>
+      authFetch<{ url: string; method: "PUT"; key: string }>(
+        `/admin/exams/${encodeURIComponent(examId)}/certificate-assets/presign?filename=${encodeURIComponent(filename)}&content_type=${encodeURIComponent(content_type)}`,
+        { method: "POST" },
+      ),
+  });
+}
+
 export function useReplaceExamTests(id: string) {
   const qc = useQueryClient();
   return useMutation({

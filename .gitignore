@@ -27,4 +27,8 @@ deployments/secrets/*
 # Claude Code
 .claude/worktrees/
 .claude/zone-v2/
+docs/superpowers
 backend/repo_cov.out
+
+# Local agent worktrees
+.worktrees/

@@ -14,6 +14,10 @@ const (
 	FontPlayfairDisplay   = "playfair_display"
 	FontCormorantGaramond = "cormorant_garamond"
 	FontGreatVibes        = "great_vibes"
+	FontPoppins           = "poppins"
+	FontLibreBaskerville  = "libre_baskerville"
+	FontAllura            = "allura"
+	FontParisienne        = "parisienne"
 
 	defaultFontFamily = FontSourceSerif4
 )
@@ -45,6 +49,22 @@ var fontFiles = map[string]map[string]string{
 	FontGreatVibes: {
 		"":  "fonts/great_vibes/GreatVibes-Regular.ttf",
 		"B": "fonts/great_vibes/GreatVibes-Regular.ttf",
+	},
+	FontPoppins: {
+		"":  "fonts/poppins/Poppins-Regular.ttf",
+		"B": "fonts/poppins/Poppins-SemiBold.ttf",
+	},
+	FontLibreBaskerville: {
+		"":  "fonts/libre_baskerville/LibreBaskerville-Variable.ttf",
+		"B": "fonts/libre_baskerville/LibreBaskerville-Variable.ttf",
+	},
+	FontAllura: {
+		"":  "fonts/allura/Allura-Regular.ttf",
+		"B": "fonts/allura/Allura-Regular.ttf",
+	},
+	FontParisienne: {
+		"":  "fonts/parisienne/Parisienne-Regular.ttf",
+		"B": "fonts/parisienne/Parisienne-Regular.ttf",
 	},
 }
 

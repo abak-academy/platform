@@ -2256,6 +2256,30 @@ func TestValidateExam_accepts_valid_certificate_layout(t *testing.T) {
 	}
 }
 
+func TestUpdateExam_Integration_AllowsUnrelatedEditWithLegacyCertificateLayout(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Legacy Layout " + uniqueSuffix()})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+	legacyDesign := `{"template":"classic","page":{"width_mm":280,"height_mm":200},"background":{"kind":"builtin","ref":"classic"},"fields":[{"id":"title","x_mm":10,"y_mm":10,"w_mm":50,"align":"center","visible":true}]}`
+	if _, err := repo.Pool().Exec(ctx, `UPDATE exam SET certificate_design = $1::jsonb WHERE id = $2`, legacyDesign, exam.ID); err != nil {
+		t.Fatalf("seed legacy certificate design: %v", err)
+	}
+
+	fetched, err := svc.GetExam(ctx, exam.ID)
+	if err != nil {
+		t.Fatalf("GetExam: %v", err)
+	}
+	update := fetched.Exam
+	update.Title = "Updated without touching certificate"
+	if _, err := svc.UpdateExam(ctx, exam.ID, update); err != nil {
+		t.Fatalf("unrelated update should not revalidate stored certificate design: %v", err)
+	}
+}
+
 func TestGetCertificateDesign_Integration_UntouchedExam_ReturnsBuiltinDefaultLayout(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()

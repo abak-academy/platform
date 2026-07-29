@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +46,7 @@ func registerAdminExamRoutes(t *testing.T, env *testEnv, h *handler.Handler) {
 	adminExams.GET("/:id/leaderboard", h.AdminGetExamLeaderboard)
 	adminExams.GET("/:id/analytics", h.AdminGetExamAnalytics)
 	adminExams.POST("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
+	adminExams.POST("/:id/certificate-assets/presign", h.AdminPresignExamCertificateAsset)
 	adminExams.GET("/:id/certificate-design", h.AdminGetExamCertificateDesign)
 	adminExams.PUT("/:id/certificate-design", h.AdminUpdateExamCertificateDesign)
 	adminExams.PATCH("/:id", h.AdminUpdateExam)
@@ -851,6 +853,57 @@ func TestAdminGetExamCertificateDesign_UnknownExam_Returns404(t *testing.T) {
 	}
 }
 
+func TestAdminPresignExamCertificateAsset_ReturnsExamScopedKey(t *testing.T) {
+	env := newTestEnvWithStoreAndStorage(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Asset")
+	examID := seedExam(t, env.pool, "Design Asset Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := postRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-assets/presign?filename=logo.png&content_type=image/png", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Key string `json:"key"`
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !strings.HasPrefix(resp.Key, "certificates/"+examID.String()+"/") {
+		t.Fatalf("key %q is not scoped to exam %s", resp.Key, examID)
+	}
+	if !strings.Contains(resp.URL, "X-Amz-Signature") {
+		t.Fatalf("expected a presigned URL, got %q", resp.URL)
+	}
+	signedURL, err := url.Parse(resp.URL)
+	if err != nil {
+		t.Fatalf("parse presigned URL: %v", err)
+	}
+	if got := signedURL.Query().Get("X-Amz-SignedHeaders"); !strings.Contains(got, "content-type") {
+		t.Fatalf("signed headers = %q, want content-type to be enforced", got)
+	}
+}
+
+func TestAdminPresignExamCertificateAsset_RejectsSVG(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:     "admin-cert-svg",
+		Email:  strptr("admin-cert-svg@test.com"),
+		Role:   service.RoleAdminExam,
+		Status: "active",
+	})
+	h := handler.New(env.svc)
+	registerAdminExamRoutes(t, env, h)
+
+	token := mintToken(t, env, "admin-cert-svg", service.RoleAdminExam)
+	rec := postRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-assets/presign?filename=logo.svg&content_type=image/svg%2Bxml", token)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 // TestAdminGetExamCertificateDesign_CustomBackground_ReturnsPresignedURLNotRawKey
 // proves FR-18: the DB stores only the object key, and reads always sign a fresh
 // time-limited GET rather than ever returning the key or a raw URL.
@@ -910,7 +963,7 @@ func TestAdminUpdateExamCertificateDesign_ValidPUT_PersistsAndBumpsTimestamp(t *
 	}
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
+	key := "certificates/" + examID.String() + "/" + uuid.NewString() + "-bg.png"
 	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
 		map[string]any{"template": "custom", "background_key": key, "layout": validCertLayoutBody()},
 	)
@@ -944,6 +997,24 @@ func TestAdminUpdateExamCertificateDesign_ValidPUT_PersistsAndBumpsTimestamp(t *
 	}
 	if after == nil {
 		t.Fatal("expected certificate_design_updated_at to be bumped, got NULL")
+	}
+}
+
+func TestAdminUpdateExamCertificateDesign_CrossExamAssetRejected(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Cross Asset")
+	examID := seedExam(t, env.pool, "Design Cross Asset Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{
+			"template":       "custom",
+			"background_key": "certificates/00000000-0000-0000-0000-0000000000aa/background.png",
+			"layout":         validCertLayoutBody(),
+		},
+	)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

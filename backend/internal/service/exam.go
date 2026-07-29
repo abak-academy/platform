@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -635,21 +636,8 @@ func validateExam(e model.Exam) error {
 	if e.ResultConfig != "" && !validResultConfigs[e.ResultConfig] {
 		return fmt.Errorf("%w: result_config must be hidden, score_only, or score_pembahasan", ErrValidation)
 	}
-	if e.CertificateDesign != nil {
-		design, err := parseCertificateDesign(e.CertificateDesign)
-		if err != nil {
-			return fmt.Errorf("%w: invalid certificate design json", ErrValidation)
-		}
-		if design.Template != "" {
-			if err := validateCertificateTemplate(design.Template); err != nil {
-				return err
-			}
-		}
-		if len(design.Fields) > 0 {
-			if err := ValidateLayout(design.Layout); err != nil {
-				return err
-			}
-		}
+	if err := validateCertificateDesign(e.CertificateDesign); err != nil {
+		return err
 	}
 	if e.CheckInWindowMinutes != nil && *e.CheckInWindowMinutes < 0 {
 		return fmt.Errorf("%w: check_in_window_minutes cannot be negative", ErrValidation)
@@ -667,6 +655,25 @@ func validateExam(e model.Exam) error {
 		if !e.ScheduledEndAt.After(*e.ScheduledAt) {
 			return fmt.Errorf("%w: scheduled_end_at must be after scheduled_at", ErrValidation)
 		}
+	}
+	return nil
+}
+
+func validateCertificateDesign(raw *json.RawMessage) error {
+	if raw == nil {
+		return nil
+	}
+	design, err := parseCertificateDesign(raw)
+	if err != nil {
+		return fmt.Errorf("%w: invalid certificate design json", ErrValidation)
+	}
+	if design.Template != "" {
+		if err := validateCertificateTemplate(design.Template); err != nil {
+			return err
+		}
+	}
+	if len(design.Fields) > 0 {
+		return ValidateLayout(design.Layout)
 	}
 	return nil
 }
@@ -711,7 +718,9 @@ func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, err
 }
 
 func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (model.Exam, error) {
-	if err := validateExam(m); err != nil {
+	commonFields := m
+	commonFields.CertificateDesign = nil
+	if err := validateExam(commonFields); err != nil {
 		return model.Exam{}, err
 	}
 	existing, err := s.storeRepo.GetExamByID(ctx, id)
@@ -720,6 +729,11 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 			return model.Exam{}, ErrExamNotFound
 		}
 		return model.Exam{}, err
+	}
+	if !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign) {
+		if err := validateCertificateDesign(m.CertificateDesign); err != nil {
+			return model.Exam{}, err
+		}
 	}
 	m.ID = id
 	m.CreatedAt = existing.CreatedAt
@@ -757,11 +771,19 @@ func rawMessagePtrEqual(a, b *json.RawMessage) bool {
 // wholesale: without it an editor that never touches the background has nothing
 // to send back and would erase the persisted upload.
 type CertificateDesignResponse struct {
-	Template      string  `json:"template"`
-	BackgroundKey *string `json:"background_key"`
-	BackgroundURL *string `json:"background_url"`
-	SignatureURL  *string `json:"signature_url"`
-	Layout        Layout  `json:"layout"`
+	Template      string                      `json:"template"`
+	BackgroundKey *string                     `json:"background_key"`
+	BackgroundURL *string                     `json:"background_url"`
+	SignatureURL  *string                     `json:"signature_url"`
+	Layout        Layout                      `json:"layout"`
+	Presets       []CertificatePresetResponse `json:"presets"`
+	AssetURLs     map[string]string           `json:"asset_urls"`
+}
+
+type CertificatePresetResponse struct {
+	Template      string `json:"template"`
+	BackgroundURL string `json:"background_url"`
+	Layout        Layout `json:"layout"`
 }
 
 // GetCertificateDesign returns the certificate design the admin editor renders:
@@ -779,6 +801,7 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 	if err != nil {
 		return nil, err
 	}
+	normalizedLayout := normalizeCertificateLayout(layout)
 
 	bgKey := certificateBackgroundKey(exam)
 	var bgURL *string
@@ -791,12 +814,28 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 	}
 
 	var sigURL *string
-	if layout.SignatureKey != nil && *layout.SignatureKey != "" {
-		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *layout.SignatureKey, time.Hour)
-		if err != nil {
-			return nil, fmt.Errorf("presign certificate signature: %w", err)
+	assetURLs := make(map[string]string)
+	for _, field := range normalizedLayout.Fields {
+		if field.Kind != "image" || field.AssetKey == nil || *field.AssetKey == "" {
+			continue
 		}
-		sigURL = &signed
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *field.AssetKey, time.Hour)
+		if err != nil {
+			return nil, fmt.Errorf("presign certificate image %s: %w", field.ID, err)
+		}
+		assetURLs[field.ID] = signed
+		if field.ID == "signature" {
+			sigURL = &signed
+		}
+	}
+
+	presets := make([]CertificatePresetResponse, 0, 3)
+	for _, template := range []string{"classic", "modern", "elegant"} {
+		presets = append(presets, CertificatePresetResponse{
+			Template:      template,
+			BackgroundURL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(builtinCertificateBackground(template)),
+			Layout:        normalizeCertificateLayout(defaultLayout(template)),
+		})
 	}
 
 	return &CertificateDesignResponse{
@@ -804,7 +843,9 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 		BackgroundKey: bgKey,
 		BackgroundURL: bgURL,
 		SignatureURL:  sigURL,
-		Layout:        layout,
+		Layout:        normalizedLayout,
+		Presets:       presets,
+		AssetURLs:     assetURLs,
 	}, nil
 }
 
@@ -859,7 +900,7 @@ func (s *Service) GetCertificatePreviewWithLayout(ctx context.Context, examID uu
 	}
 	vals := certificateFieldValues(exam.Title, previewStudentName, time.Now().In(loc).Format("2 January 2006"), previewCertificateNumber)
 
-	images, err := s.resolveCertificateSignatureImages(ctx, *layoutOverride)
+	images, err := s.resolveCertificateImages(ctx, *layoutOverride)
 	if err != nil {
 		return nil, err
 	}
