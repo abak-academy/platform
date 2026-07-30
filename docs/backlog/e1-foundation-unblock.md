@@ -6,7 +6,7 @@
 | **Objective** | Remove the three things that block other epics. Nothing here is client-visible. |
 | **Source IDs** | B-8, D-1 + one verification-debt item |
 | **Client items** | none — this is enabling work |
-| **Blocks** | E3, E4 (B-8) · E6 (Gotenberg) · E2 (quality gate) — **not** E5 or E7 |
+| **Blocks** | ~~E3, E4 (B-8)~~ ✅ · ~~E6 (Gotenberg)~~ ✅ — both unblocked by [PR #63](https://github.com/abak-academy/platform/pull/63) · E2 — **quality gate only, and now avoidable** (see §2) · never E5 or E7 |
 | **Depends on** | — |
 | **Verified against** | `main` @ `211b7b1`, 2026-07-29 |
 
@@ -47,6 +47,22 @@ vulnerability included.
 ---
 
 ## 2. D-1 — Storage seam, then delete the shims
+
+> **Split 2026-07-30.** B-8 and the Gotenberg proof shipped in
+> [PR #63](https://github.com/abak-academy/platform/pull/63), so **E3, E4 and E6 are unblocked**. D-1 is
+> all that remains of this epic, and it no longer travels as one piece:
+>
+> - **The certificate slice moved to [`certificate-rendering-consolidation.md`](certificate-rendering-consolidation.md)**,
+>   which the client chose as the next work. Injecting `pdfGenerator` at `NewService` is what unblocks the
+>   `internal/adapter/` move, and that rewrite touches these files anyway.
+> - **Everything else stays here** — `course_test.go`, `store_test.go`, `auth_test.go`,
+>   `announcement_test.go`, `exam_session_test.go` and the `storeRepo` seam.
+>
+> **And the E2 framing below is now optional, not required.** E3 already set the precedent — *"tests go in
+> at the handler level, not the service layer … this epic should not wait for it."* Regrade can take the
+> same route: handler or integration tests run against the real repository and a real Postgres
+> (`integration` is green at 294s via testcontainers), so **E2 does not have to wait for this seam**. That
+> makes D-1 a deliberate debt-paydown, not a blocker. Weigh it as a priority call.
 
 `internal/service/ports_storage.go` defines a `StorageClient` port that nothing uses. `Service.storage`
 is still a concrete `*minio.Client` ([`service.go:28`](../../backend/internal/service/service.go)), and
