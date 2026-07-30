@@ -22,17 +22,19 @@ to know.** Anything else from H1 deliberately does not appear here.
 |---|---|---|
 | 1 | **NF-1** Biteship Level 3 — [E6](e6-shipping-logistics.md) | The PRD lists *"Auto-waybill generation and real-time tracking (logistics Level 2/3)"* under **Explicitly Out of Scope (MVP)**, with only rate calculation (Level 1) in scope. Level 3 reverses that line. **Signed off verbally by the client 2026-07-29** — E6 records the sign-off before its first commit. |
 | 2 | **NF-5** load test at 5000 — [E7](e7-scale-event-readiness.md) | The PRD success metric and Phase 4 both say **10,000 CCU**. Treating 5000-on-current-spec as phase 1 is a phasing decision recorded nowhere. |
-| 10 | **FB-26** multi-attempt exams — [H1 §8](h1-live-bugs-2026-07-30.md#8-fb-26--multi-attempt-exams-approved-2026-07-30) | Reverses **FR-COMP-02 (Must)**, which deferred multi-attempt on 2026-07-07 (*"`max_attempts` is stored but not consulted"*), plus two TRD column comments. **✅ Signed off by the client 2026-07-30.** |
+| 10 | **FB-26** multi-attempt exams — [H1 §8](h1-live-bugs-2026-07-30.md#8-fb-26--multi-attempt-exams-approved-2026-07-30) | Reverses **FR-COMP-02 (Must)**, which deferred multi-attempt on 2026-07-07 (*"`max_attempts` is stored but not consulted"*), plus two TRD column comments. **✅ Signed off by the client 2026-07-30. ✅ Written 2026-07-30** — FR-COMP-02, the two TRD comments and the two schema.dbml notes all state the `max_attempts IS NULL or 0 = single-attempt` rule. |
 | 11 | **FB-32** audio scope — [H1 §9](h1-live-bugs-2026-07-30.md#9-fb-32--audio-is-per-question-and-per-section-answered-2026-07-30) | The PRD contradicted itself: prose promised audio *"per question"*, **FR-COMP-19a** and **FR-EXAM-05** specified section-level only, **FR-EXAM-01** listed images only. **✅ Resolved by the client 2026-07-30 — both scopes are supported.** FR-EXAM-01 must gain audio; FR-COMP-19a stands. |
 
 ### Still owed
 
-**Three PRD amendments, all signed off, none written:**
+**Three PRD amendments, all signed off; one written:**
 
-1. **NF-1** (Biteship Level 3) — signed off 2026-07-29.
-2. **FB-26** (multi-attempt exams) — signed off 2026-07-30. FR-COMP-02, plus the TRD's comments on
-   `max_attempts` and `attempts_used`, become wrong the moment the code lands.
-3. **FB-32** (audio at both scopes) — resolved 2026-07-30. FR-EXAM-01 must gain audio alongside image.
+1. **NF-1** (Biteship Level 3) — signed off 2026-07-29. Still owed.
+2. **FB-32** (audio at both scopes) — resolved 2026-07-30. FR-EXAM-01 must gain audio alongside image.
+   Still owed.
+3. **FB-26** (multi-attempt exams) — signed off 2026-07-30, **written 2026-07-30**. FR-COMP-02, the
+   TRD's comments on `max_attempts` and `attempts_used`, and the matching `schema.dbml` notes now state
+   the `max_attempts IS NULL or 0 = single-attempt` rule.
 
 **`requirements/` is outside any git repository** — `git rev-parse --show-toplevel` fails there — so none
 of these can ride an implementation PR. This ledger is the repo-side record and is what changes with the
