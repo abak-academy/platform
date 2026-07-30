@@ -2,7 +2,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { QuestionEditor } from "./QuestionEditor";
+import { ApiError } from "@/lib/api";
 import type { QuestionWithOptions, QuestionFormat, Question, QuestionOption, ExamTopic } from "@/lib/types";
+
+vi.mock("sonner", () => {
+  const success = vi.fn();
+  const error = vi.fn();
+  const info = vi.fn();
+  return {
+    toast: Object.assign((...args: unknown[]) => info(...args), {
+      success,
+      error,
+      info,
+    }),
+  };
+});
+
+import { toast } from "sonner";
 
 const mockTestSaveAsync = vi.fn();
 let testSaveState = { mutateAsync: mockTestSaveAsync, isPending: false };
@@ -100,6 +116,9 @@ function fillRequiredFields() {
 
 describe("QuestionEditor", () => {
   beforeEach(() => {
+    (toast.success as ReturnType<typeof vi.fn>).mockReset();
+    (toast.error as ReturnType<typeof vi.fn>).mockReset();
+
     mockTestSaveAsync.mockReset();
     mockTestSaveAsync.mockResolvedValue({ question: makeQuestion(), options: [] });
     testSaveState = { mutateAsync: mockTestSaveAsync, isPending: false };
@@ -161,11 +180,11 @@ describe("QuestionEditor", () => {
       )
     ).not.toThrow();
 
-    expect(screen.getByLabelText(/jawaban benar/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/jawaban yang diterima/i)).toBeInTheDocument();
     expect(screen.queryAllByRole("radio").length).toBe(0);
   });
 
-  it("switching format to essay hides option editor and correct_answer input", () => {
+  it("switching format to essay hides option editor and accepted-answer input", () => {
     renderWithClient(
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
@@ -176,10 +195,10 @@ describe("QuestionEditor", () => {
     fireEvent.change(formatSelect, { target: { value: "essay" } });
 
     expect(screen.queryAllByRole("radio").length).toBe(0);
-    expect(screen.queryByLabelText(/jawaban benar/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/jawaban yang diterima/i)).not.toBeInTheDocument();
   });
 
-  it("switching format to short shows correct_answer input and hides option editor", () => {
+  it("switching format to short shows accepted-answer input and hides option editor", () => {
     renderWithClient(
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
@@ -187,11 +206,11 @@ describe("QuestionEditor", () => {
     const formatSelect = screen.getByLabelText(/format/i);
     fireEvent.change(formatSelect, { target: { value: "short" } });
 
-    expect(screen.getByLabelText(/jawaban benar/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/jawaban yang diterima/i)).toBeInTheDocument();
     expect(screen.queryAllByRole("radio").length).toBe(0);
   });
 
-  it("switching format to fill_blank shows correct_answer input and hides option editor", () => {
+  it("switching format to fill_blank shows accepted-answer input and hides option editor", () => {
     renderWithClient(
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
@@ -199,7 +218,7 @@ describe("QuestionEditor", () => {
     const formatSelect = screen.getByLabelText(/format/i);
     fireEvent.change(formatSelect, { target: { value: "fill_blank" } });
 
-    expect(screen.getByLabelText(/jawaban benar/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/jawaban yang diterima/i)).toBeInTheDocument();
     expect(screen.queryAllByRole("radio").length).toBe(0);
   });
 
@@ -316,7 +335,7 @@ describe("QuestionEditor", () => {
     });
   });
 
-  it("short validation: empty correct_answer blocks submit", async () => {
+  it("short validation: empty accepted answer blocks submit", async () => {
     renderWithClient(
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
@@ -328,7 +347,7 @@ describe("QuestionEditor", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/jawaban benar wajib diisi/i)
+        screen.getByText(/minimal satu jawaban yang diterima wajib diisi/i)
       ).toBeInTheDocument();
     });
     expect(mockTestSaveAsync).not.toHaveBeenCalled();
@@ -413,6 +432,41 @@ describe("QuestionEditor", () => {
 
     expect(screen.getByLabelText(/poin benar/i)).toHaveValue(7);
     expect(screen.getByLabelText(/poin salah/i)).toHaveValue(3);
+  });
+
+  it("fractional point_correct (2.5) round-trips into the save payload — not 2, not 1 (FR-16)", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fillRequiredFields();
+    fireEvent.input(screen.getByLabelText(/poin benar/i), { target: { value: "2.5" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({ point_correct: 2.5 }),
+        })
+      );
+    });
+  });
+
+  it("point_correct of 0 is blocked client-side with the > 0 validation message (FR-17)", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fillRequiredFields();
+    fireEvent.input(screen.getByLabelText(/poin benar/i), { target: { value: "0" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/lebih besar dari 0/i)).toBeInTheDocument();
+    });
+    expect(mockTestSaveAsync).not.toHaveBeenCalled();
   });
 
   // ── Topic select (FR-34..FR-36) ─────────────────────────────────────────
@@ -548,8 +602,8 @@ describe("QuestionEditor", () => {
     setBodyValue("Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.");
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 
-    // Fill in the blank correct answers
-    const blankInputs = screen.getAllByLabelText(/jawaban benar/i);
+    // Fill in the blank accepted answers
+    const blankInputs = screen.getAllByLabelText(/jawaban yang diterima/i);
     fireEvent.change(blankInputs[0], { target: { value: "Jakarta" } });
     fireEvent.change(blankInputs[1], { target: { value: "1945" } });
 
@@ -563,8 +617,8 @@ describe("QuestionEditor", () => {
             body: "Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.",
             topic_id: "topic-1",
             blanks: expect.arrayContaining([
-              expect.objectContaining({ index: 1, correct_answer: "Jakarta" }),
-              expect.objectContaining({ index: 2, correct_answer: "1945" }),
+              expect.objectContaining({ index: 1, correct_answer: "Jakarta", accepted_answers: ["Jakarta"] }),
+              expect.objectContaining({ index: 2, correct_answer: "1945", accepted_answers: ["1945"] }),
             ]),
           }),
         })
@@ -602,17 +656,17 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    expect(screen.queryAllByLabelText(/jawaban benar/i).length).toBe(0);
+    expect(screen.queryAllByLabelText(/jawaban yang diterima/i).length).toBe(0);
 
     fireEvent.click(screen.getByRole("button", { name: /tambah opsi/i }));
 
     expect(screen.getByLabelText(/badan soal/i).textContent).toContain("{{1}}");
-    expect(screen.getAllByLabelText(/jawaban benar/i).length).toBe(1);
+    expect(screen.getAllByLabelText(/jawaban yang diterima/i).length).toBe(1);
 
     fireEvent.click(screen.getByRole("button", { name: /tambah opsi/i }));
 
     expect(screen.getByLabelText(/badan soal/i).textContent).toContain("{{2}}");
-    expect(screen.getAllByLabelText(/jawaban benar/i).length).toBe(2);
+    expect(screen.getAllByLabelText(/jawaban yang diterima/i).length).toBe(2);
 
     execSpy.mockRestore();
   });
@@ -639,7 +693,7 @@ describe("QuestionEditor", () => {
     expect(bodyText).toContain("{{1}}");
     expect(bodyText).toContain("{{2}}");
     expect(bodyText).not.toContain("{{3}}");
-    expect(screen.getAllByLabelText(/jawaban benar/i).length).toBe(2);
+    expect(screen.getAllByLabelText(/jawaban yang diterima/i).length).toBe(2);
 
     execSpy.mockRestore();
   });
@@ -654,7 +708,7 @@ describe("QuestionEditor", () => {
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
     // Fill both default blank rows so the (pre-existing) empty-answer check
     // cannot be the thing rejecting this submission — only the token gap can.
-    const blankInputs = screen.getAllByLabelText(/jawaban benar/i);
+    const blankInputs = screen.getAllByLabelText(/jawaban yang diterima/i);
     fireEvent.change(blankInputs[0], { target: { value: "A" } });
     fireEvent.change(blankInputs[1], { target: { value: "B" } });
 
@@ -675,7 +729,7 @@ describe("QuestionEditor", () => {
     // Default multi_blank seeds 2 blank rows; the body carries only one token.
     setBodyValue("Soal {{1}}");
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
-    const blankInputs = screen.getAllByLabelText(/jawaban benar/i);
+    const blankInputs = screen.getAllByLabelText(/jawaban yang diterima/i);
     fireEvent.change(blankInputs[0], { target: { value: "A" } });
     fireEvent.change(blankInputs[1], { target: { value: "B" } });
 
@@ -854,6 +908,133 @@ describe("QuestionEditor", () => {
             audio_url: "https://example.com/existing-audio.mp3",
           }),
         })
+      );
+    });
+  });
+
+  // ── Accepted-answer sets (Task 10, FR-22, FR-24, FR-26) ─────────────────
+
+  it("short question: adding two accepted answers saves accepted_answers: [\"2\",\"dua\"]", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "short" } });
+    fillRequiredFields();
+
+    const firstAnswer = screen.getByLabelText(/jawaban yang diterima/i);
+    fireEvent.change(firstAnswer, { target: { value: "2" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /tambah jawaban/i }));
+    const answers = screen.getAllByLabelText(/jawaban yang diterima/i);
+    expect(answers.length).toBe(2);
+    fireEvent.change(answers[1], { target: { value: "dua" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            accepted_answers: ["2", "dua"],
+          }),
+        })
+      );
+    });
+  });
+
+  it("short question: removing accepted-answer rows down to zero is prevented — the last row's remove control is disabled", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "short" } });
+
+    expect(screen.getAllByLabelText(/jawaban yang diterima/i).length).toBe(1);
+    const removeButton = screen.getByRole("button", { name: /hapus jawaban/i });
+    expect(removeButton).toBeDisabled();
+
+    fireEvent.click(removeButton);
+    expect(screen.getAllByLabelText(/jawaban yang diterima/i).length).toBe(1);
+  });
+
+  it("multi_blank: adding a second accepted answer to blank 2 lands under blanks[1].accepted_answers (FR-24)", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "multi_blank" } });
+    setBodyValue("Soal {{1}} dan {{2}}");
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
+
+    const answerInputs = screen.getAllByLabelText(/jawaban yang diterima/i);
+    fireEvent.change(answerInputs[0], { target: { value: "4" } });
+    fireEvent.change(answerInputs[1], { target: { value: "empat" } });
+
+    const addAnswerButtons = screen.getAllByRole("button", { name: /tambah jawaban/i });
+    fireEvent.click(addAnswerButtons[1]);
+    const updatedInputs = screen.getAllByLabelText(/jawaban yang diterima/i);
+    // blank 1 still has 1 input, blank 2 now has 2
+    expect(updatedInputs.length).toBe(3);
+    fireEvent.change(updatedInputs[2], { target: { value: "four" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            blanks: [
+              expect.objectContaining({ index: 1, accepted_answers: ["4"] }),
+              expect.objectContaining({ index: 2, accepted_answers: ["empat", "four"] }),
+            ],
+          }),
+        })
+      );
+    });
+  });
+
+  // ── Format lock (Task 10, FR-14, FR-15) ─────────────────────────────────
+
+  it("format select is disabled and shows the locked reason when in_live_exam is true", () => {
+    const qwo = makeQuestionWithOptions({ in_live_exam: true });
+    renderWithClient(
+      <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    expect(screen.getByLabelText(/format/i)).toBeDisabled();
+    expect(
+      screen.getByText(/format tidak dapat diubah karena soal ini digunakan dalam ujian aktif/i)
+    ).toBeInTheDocument();
+  });
+
+  it("format select is enabled and shows no locked reason when in_live_exam is false", () => {
+    const qwo = makeQuestionWithOptions({ in_live_exam: false });
+    renderWithClient(
+      <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    expect(screen.getByLabelText(/format/i)).not.toBeDisabled();
+    expect(
+      screen.queryByText(/format tidak dapat diubah karena soal ini digunakan dalam ujian aktif/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it("a 409 question_format_locked from the server surfaces the locked reason, not a generic error toast", async () => {
+    mockTestSaveAsync.mockRejectedValueOnce(
+      new ApiError("question_format_locked", "format is locked", 409)
+    );
+
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "Format soal tidak dapat diubah karena soal ini digunakan pada ujian yang aktif."
       );
     });
   });
