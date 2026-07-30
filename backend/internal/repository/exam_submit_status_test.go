@@ -196,3 +196,52 @@ func TestGetExamRegistrationsByStudent_carriesSessionIDNoScore(t *testing.T) {
 		t.Errorf("marshalled RegistrationListItem contains %q, want no score field: %s", "score", b)
 	}
 }
+
+// TestGetExamRegistrationsByStudent_carriesMaxAttempts covers FR20/FR21 (spec.md):
+// the frontend's retake-offer predicate needs the exam's max_attempts alongside
+// attempts_used, so the list join must surface it — nil when unset (FR18's
+// single-attempt default), the configured value otherwise.
+func TestGetExamRegistrationsByStudent_carriesMaxAttempts(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	student := insertGradingUser(t, pool, "student", "Student MaxAttempts")
+	testID := insertGradingTest(t, pool)
+
+	examWithLimit := insertGradingExam(t, pool, testID)
+	if _, err := pool.Exec(ctx, `UPDATE exam SET max_attempts = 3 WHERE id = $1`, examWithLimit); err != nil {
+		t.Fatalf("seed max_attempts: %v", err)
+	}
+	insertGradingSession(t, pool, student, examWithLimit, "submitted", nil, nil)
+
+	examNoLimit := insertGradingExam(t, pool, testID)
+	insertGradingSession(t, pool, student, examNoLimit, "submitted", nil, nil)
+
+	items, err := repo.GetExamRegistrationsByStudent(ctx, student)
+	if err != nil {
+		t.Fatalf("GetExamRegistrationsByStudent: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items = %d, want 2", len(items))
+	}
+
+	var gotLimit, gotNoLimit bool
+	for _, item := range items {
+		switch item.ExamID {
+		case examWithLimit:
+			gotLimit = true
+			if item.MaxAttempts == nil || *item.MaxAttempts != 3 {
+				t.Errorf("examWithLimit MaxAttempts = %v, want 3", item.MaxAttempts)
+			}
+		case examNoLimit:
+			gotNoLimit = true
+			if item.MaxAttempts != nil {
+				t.Errorf("examNoLimit MaxAttempts = %v, want nil", item.MaxAttempts)
+			}
+		}
+	}
+	if !gotLimit || !gotNoLimit {
+		t.Fatalf("did not observe both exams in results: gotLimit=%v gotNoLimit=%v", gotLimit, gotNoLimit)
+	}
+}

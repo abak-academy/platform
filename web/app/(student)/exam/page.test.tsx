@@ -60,6 +60,7 @@ const freeUpcoming: RegistrationListItem = {
   check_in_window_minutes: null,
   duration_minutes: 90,
   session_id: null,
+  max_attempts: null,
 };
 
 const paidNoSchedule: RegistrationListItem = {
@@ -80,6 +81,7 @@ const paidNoSchedule: RegistrationListItem = {
   check_in_window_minutes: 15,
   duration_minutes: 60,
   session_id: null,
+  max_attempts: null,
 };
 
 const sample: RegistrationListItem[] = [freeUpcoming, paidNoSchedule];
@@ -270,6 +272,97 @@ describe("ExamPage", () => {
     });
     expect(screen.queryByRole("link", { name: /Lihat hasil/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/exam\/sessions\/null/)).not.toBeInTheDocument();
+  });
+
+  it("offers a retake alongside the result link when attempts remain (FR20)", async () => {
+    const submittedWithAttemptsLeft: RegistrationListItem = {
+      ...paidNoSchedule,
+      id: "reg-8",
+      exam_title: "Tryout Bisa Diulang",
+      status: "submitted",
+      session_id: "sess-8",
+      attempts_used: 1,
+      max_attempts: 3,
+    };
+    registrationsState = {
+      data: [submittedWithAttemptsLeft],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tryout Bisa Diulang")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("link", { name: /Lihat hasil/i })).toHaveAttribute(
+      "href",
+      "/exam/sessions/sess-8/result",
+    );
+    const retakeButton = screen.getByRole("button", { name: /Ulangi ujian/i });
+    retakeButton.click();
+    expect(startSessionMutate).toHaveBeenCalledWith("reg-8");
+  });
+
+  it("offers only the result link when attempts are exhausted (FR21)", async () => {
+    const submittedExhausted: RegistrationListItem = {
+      ...paidNoSchedule,
+      id: "reg-9",
+      exam_title: "Tryout Sudah Habis",
+      status: "submitted",
+      session_id: "sess-9",
+      attempts_used: 3,
+      max_attempts: 3,
+    };
+    registrationsState = {
+      data: [submittedExhausted],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tryout Sudah Habis")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("link", { name: /Lihat hasil/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Ulangi ujian/i })).not.toBeInTheDocument();
+  });
+
+  it("treats max_attempts null/0 as single-attempt: no retake after the one attempt (FR18/FR21)", async () => {
+    const submittedSingleAttempt: RegistrationListItem = {
+      ...paidNoSchedule,
+      id: "reg-10",
+      exam_title: "Tryout Sekali Percobaan",
+      status: "submitted",
+      session_id: "sess-10",
+      attempts_used: 1,
+      max_attempts: null,
+    };
+    const submittedSingleAttemptZero: RegistrationListItem = {
+      ...submittedSingleAttempt,
+      id: "reg-11",
+      exam_title: "Tryout Sekali Percobaan Zero",
+      session_id: "sess-11",
+      max_attempts: 0,
+    };
+    registrationsState = {
+      data: [submittedSingleAttempt, submittedSingleAttemptZero],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tryout Sekali Percobaan")).toBeInTheDocument();
+      expect(screen.getByText("Tryout Sekali Percobaan Zero")).toBeInTheDocument();
+    });
+    expect(screen.getAllByRole("link", { name: /Lihat hasil/i })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Ulangi ujian/i })).not.toBeInTheDocument();
   });
 
   it("shows an error state with a retry action", async () => {

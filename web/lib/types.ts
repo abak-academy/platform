@@ -929,6 +929,7 @@ export interface RegistrationListItem {
   check_in_window_minutes: number | null;
   duration_minutes: number | null;
   session_id: string | null;
+  max_attempts: number | null;
 }
 
 export interface RegistrationDetail {

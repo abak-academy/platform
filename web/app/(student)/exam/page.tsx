@@ -58,7 +58,7 @@ type CardState =
   | { kind: "checkin" }
   | { kind: "in_progress" }
   | { kind: "expired" }
-  | { kind: "submitted"; sessionId: string };
+  | { kind: "submitted"; sessionId: string; hasAttemptsLeft: boolean };
 
 // Mirrors design-app-abak's PkgCard state machine (stateMeta: free/locked/
 // checkin/checkedin/inprogress/expired/submitted), driven by real fields
@@ -67,7 +67,16 @@ function computeCardState(reg: RegistrationListItem, now: number): CardState {
   if (reg.status === "submitted") {
     // session_id is nullable (list join picks the latest attempt) — without
     // it there's nowhere valid to link, so fall back to in_progress's detail link.
-    if (reg.session_id) return { kind: "submitted", sessionId: reg.session_id };
+    if (reg.session_id) {
+      // Mirrors CreateExamSessionTx's ceiling exactly (backend/internal/repository/exam.go):
+      // NULL or 0 max_attempts means single-attempt (FR18).
+      const ceiling = reg.max_attempts && reg.max_attempts > 0 ? reg.max_attempts : 1;
+      return {
+        kind: "submitted",
+        sessionId: reg.session_id,
+        hasAttemptsLeft: reg.attempts_used < ceiling,
+      };
+    }
     return { kind: "in_progress" };
   }
   if (reg.status === "in_progress") return { kind: "in_progress" };
@@ -317,9 +326,22 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
         )}
 
         {state.kind === "submitted" && (
-          <Button asChild size="sm" className="w-full rounded-full">
-            <Link href={`/exam/sessions/${state.sessionId}/result`}>{t("view_exam_result")}</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            {state.hasAttemptsLeft && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0 rounded-full"
+                onClick={handleStart}
+                disabled={startSessionMutation.isPending}
+              >
+                {startSessionMutation.isPending ? t("sys_loading") : t("retake_exam")}
+              </Button>
+            )}
+            <Button asChild size="sm" className="flex-1 rounded-full">
+              <Link href={`/exam/sessions/${state.sessionId}/result`}>{t("view_exam_result")}</Link>
+            </Button>
+          </div>
         )}
 
         {state.kind === "expired" && (

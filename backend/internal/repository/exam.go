@@ -1152,7 +1152,7 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
 			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at,
 			e.title, e.scheduled_at, e.scheduled_end_at, e.is_free, e.requires_checkin,
-			e.check_in_window_minutes, e.duration_minutes, s.id
+			e.check_in_window_minutes, e.duration_minutes, e.max_attempts, s.id
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
 		LEFT JOIN LATERAL (
@@ -1179,7 +1179,7 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 			&item.ID, &item.StudentID, &item.ExamID, &item.Token, &cardKey,
 			&checkedInAt, &item.AttemptsUsed, &item.Status, &item.CreatedAt,
 			&item.ExamTitle, &item.ScheduledAt, &item.ScheduledEndAt, &item.IsFree, &item.RequiresCheckin,
-			&item.CheckInWindowMinutes, &item.DurationMinutes, &item.SessionID,
+			&item.CheckInWindowMinutes, &item.DurationMinutes, &item.MaxAttempts, &item.SessionID,
 		); err != nil {
 			return nil, err
 		}
