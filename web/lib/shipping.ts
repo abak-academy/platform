@@ -4,6 +4,10 @@ export function isPhysicalType(productType: ProductType): boolean {
   return ["book", "merchandise", "medal"].includes(productType);
 }
 
+export function isDigitalType(productType: ProductType): boolean {
+  return !isPhysicalType(productType);
+}
+
 export function hasPhysicalItems(items: OrderItem[]): boolean {
   return items.some((item) => isPhysicalType(item.product_type as ProductType));
 }

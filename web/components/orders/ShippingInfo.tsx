@@ -3,8 +3,7 @@
 import type { Order } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
-
-const PHYSICAL_TYPES = new Set(["book", "merchandise", "medal"]);
+import { hasPhysicalItems } from "@/lib/shipping";
 
 // Mirrors FallbackCourier in backend/internal/service/shipping_rates.go. The
 // order row does not carry an is_estimate flag, so the badge has to be inferred
@@ -20,7 +19,7 @@ export interface ShippingInfoProps {
 export function ShippingInfo({ order }: ShippingInfoProps) {
   const { t } = useTranslation();
 
-  const hasPhysical = (order.items ?? []).some((i) => PHYSICAL_TYPES.has(i.product_type));
+  const hasPhysical = hasPhysicalItems(order.items ?? []);
   if (!hasPhysical) return null;
 
   const addr = order.shipping_address ?? {};

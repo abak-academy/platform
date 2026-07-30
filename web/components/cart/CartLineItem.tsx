@@ -1,12 +1,13 @@
 "use client";
 
 import { Book, Minus, Plus, PlayCircle, Trash2, Trophy } from "lucide-react";
-import type { OrderItem } from "@/lib/types";
+import type { OrderItem, ProductType } from "@/lib/types";
 import { formatRupiah } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
+import { isDigitalType } from "@/lib/shipping";
 
 const TYPE_META: Record<string, { label: string; tone: string; bg: string; Icon: typeof Book }> = {
   book: { label: "Buku", tone: "text-warn", bg: "bg-warn-bg", Icon: Book },
@@ -31,7 +32,7 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
   const { Icon } = meta;
   const lineTotal = item.jumlah ?? item.unit_price * item.qty;
   const busy = removing || updatingQty;
-  const isDigital = item.product_type === "exam" || item.product_type === "course";
+  const isDigital = isDigitalType(item.product_type as ProductType);
 
   return (
     <div

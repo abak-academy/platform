@@ -11,8 +11,7 @@ import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { Order } from "@/lib/types";
-
-const PHYSICAL_TYPES = new Set(["book", "merchandise", "medal"]);
+import { hasPhysicalItems } from "@/lib/shipping";
 
 // Mirrors FallbackCourier in backend/internal/service/shipping_rates.go, same as
 // the storefront's ShippingInfo. The order row carries no is_estimate flag, so a
@@ -40,7 +39,7 @@ export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps)
 
   const items = order.items ?? [];
   const addr = order.shipping_address ?? {};
-  const hasPhysical = items.some((i) => PHYSICAL_TYPES.has(i.product_type));
+  const hasPhysical = hasPhysicalItems(items);
   // Narrowest first, the way an Indonesian address is written.
   const region = [addr.kecamatan, addr.kota, addr.provinsi].filter(Boolean).join(", ");
   const courier = [order.selected_courier, order.selected_service].filter(Boolean).join(" — ");
