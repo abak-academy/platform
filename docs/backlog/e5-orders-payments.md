@@ -5,6 +5,7 @@
 | **Issue** | [#57](https://github.com/abak-academy/platform/issues/57) |
 | **Objective** | An admin can tell who bought what and prove how it was paid; and the money the buyer is shown is the money the buyer is charged. |
 | **Source IDs** | FB-15, FB-19, FB-19a, FB-19b, FB-19c, NF-2 + B-1…B-7, D-3 (`payment_method`) |
+| **Unscheduled, same surface** | FB-29 — the "Cara pembayaran" button has no handler and the page does not exist; needs client copy or deletion. [H1](h1-live-bugs-2026-07-30.md) |
 | **Client items** | 6 |
 | **Depends on** | — |
 | **Verified against** | `main` @ `211b7b1`, 2026-07-29 |
@@ -127,6 +128,55 @@ saying out loud, because until F-5 lands every "still broken" report carries the
 
 ---
 
+## 6. Deferred, same surface — F-3, F-4
+
+Carried from the old register. **Not scheduled**, and neither is a client ask — but both live on
+pages this epic already opens, so they belong here rather than in a list of their own.
+
+**F-3 — multi-address book.** A student has exactly one address, stored on the user row
+(`address TEXT`, [`0002_identity.up.sql:6`](../../backend/db/migrations/0002_identity.up.sql), with
+the hierarchy reference fields added in `0030_user_biodata_changes`). Orders snapshot it into
+`orders.shipping_address` JSONB at checkout
+([`0004_commerce.up.sql:41`](../../backend/db/migrations/0004_commerce.up.sql)), so historical orders
+are already safe from an address book being introduced later — the snapshot is the record. What is
+missing is *choosing between saved addresses* at checkout.
+
+**F-4 — catalog facets and real pagination.** The storefront does not paginate; it drains the cursor
+into one array, up to a hard ceiling
+([`web/lib/hooks/products.ts:13,22`](../../web/lib/hooks/products.ts)):
+
+```ts
+const MAX_PRODUCT_PAGES = 10;
+…
+for (let page = 0; page < MAX_PRODUCT_PAGES; page++) {
+```
+
+Past ten pages products **silently disappear from the catalog** with no error and no "load more".
+That is a stopgap with a real failure mode, not just a missing feature.
+
+Facets are the larger half: they need spec-value normalisation first, because the values are
+free text today and faceting on unnormalised strings produces one bucket per typo.
+
+> Do B-2 and B-6 first regardless — they are in §5, they are small, and all three touch the same
+> query builder. F-4 without them just moves the cap.
+
+---
+
+## 7. Verification debt
+
+Shipped without ever being looked at in a running browser. The `/cart` physical row is this epic's
+own work; the other three are older store-catalog surfaces that landed with zero visual verification
+and have no better owner.
+
+| Surface | What to confirm |
+|---|---|
+| `/cart` physical | Saved address renders with **Ubah** + **Cek Ongkir**; per-order overrides survive edit and reopen; estimate badge on the flat-rate quote |
+| `/catalog` | Sticky category rail holds while the grid scrolls; Merchandise and Medali tabs list products |
+| `/catalog/[id]` | "Spesifikasi Produk" table renders; blank-value rows absent |
+| `/cart` digital | No qty stepper; "Produk digital dibeli 1× per akun." shown |
+
+---
+
 ## Acceptance
 
 - Applying a promo produces an order whose `total` **and** `promo_code_id` both reflect it — after a
@@ -148,4 +198,4 @@ saying out loud, because until F-5 lands every "still broken" report carries the
 - Couriers, rates, waybills, labels, tracking → [E6](e6-shipping-logistics.md).
 - Refund semantics per product type — undefined since the API review (open item #5) and still
   undefined. Not opened here.
-- **F-3** multi-address book, **F-4** catalog facets. Unscheduled.
+- **F-3** and **F-4** are recorded in §6 but are **not** part of this epic's acceptance.

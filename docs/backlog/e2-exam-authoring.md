@@ -5,8 +5,10 @@
 | **Issue** | [#61](https://github.com/abak-academy/platform/issues/61) |
 | **Objective** | An admin can write, find, correct and score questions the way the client actually works — including question types and answer shapes the engine cannot express today. |
 | **Source IDs** | FB-1, FB-3, FB-4, FB-5, FB-6, FB-7, FB-9, FB-10, FB-10a |
+| **Unscheduled, same surface** | FB-21, FB-22, FB-23, **FB-24 (P0)**, FB-25 — [H1](h1-live-bugs-2026-07-30.md). **FB-3 was re-reported on 2026-07-30 as FB-30.** |
 | **Client items** | 9 |
-| **Depends on** | E1 (D-1 — regrade tests), E3 (results tab, for FB-10a) |
+| **Depends on** | E3 (results tab, for FB-10a) — hard · E1 (D-1) — **soft**: regrade compiles without the storage seam, you just lose any reason to trust its tests |
+| **Blocks** | E7 — **soft**: the bundle serialises questions, so serialising twice is waste, not breakage |
 | **Verified against** | `main` @ `211b7b1`, 2026-07-29 |
 
 Two halves that share one migration: **list ergonomics** (find, delete, import, protect) and the
@@ -102,7 +104,7 @@ A seventh format. Each statement is independently true or false and independentl
 it structurally closer to `multi_blank` than to `mcq` — a child table of statements, not options.
 
 Current formats: `mcq, multi_answer, short, fill_blank, essay, multi_blank`. Note `multi_blank`
-shipped without ever reaching the PRD — see the drift list in the index.
+shipped without ever reaching the PRD — see [PRD/TRD drift](prd-trd-drift.md) §2.
 
 ### FB-10a — edit the correct answer and recalculate before publishing
 

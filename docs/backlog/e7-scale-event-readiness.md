@@ -6,7 +6,8 @@
 | **Objective** | A 5000-participant exam event runs on the current VM spec without the API serving every question payload itself — and we know where it breaks before the day. |
 | **Source IDs** | NF-4, NF-5, **F-6** + D-3 (bundle columns) |
 | **Client items** | 2 |
-| **Depends on** | E2 (the bundle serialises questions) |
+| **Depends on** | E2 — **soft**: the bundle serialises questions, so doing this first means serialising twice. Not a compile block; E7 can start today |
+| **Spec conflict** | NF-5 contradicts the PRD's 10,000 CCU metric — see [`prd-trd-drift.md`](prd-trd-drift.md) |
 | **Verified against** | `main` @ `211b7b1`, 2026-07-29 |
 
 ---

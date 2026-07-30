@@ -12,7 +12,8 @@
 > ⚠️ **This epic contains a PRD scope reversal.** The PRD lists *"Auto-waybill generation and
 > real-time tracking (logistics Level 2/3)"* under **Explicitly Out of Scope (MVP)**, with only rate
 > calculation (Level 1) in scope. Level 3 reverses that line. The client approved it verbally on
-> 2026-07-29; **record the sign-off before the first commit.**
+> 2026-07-29; **record the sign-off before the first commit.** The PRD amendment itself is still
+> owed — tracked in [`prd-trd-drift.md`](prd-trd-drift.md).
 
 ---
 
@@ -145,6 +146,15 @@ Four definitions exist, and they are not even the same shape:
 
 A new physical product type would be treated as **digital in the cart** and physical everywhere else.
 Collapse to one definition while shipping code is open anyway.
+
+---
+
+## 7. Verification debt
+
+`/orders/[id]` for a physical order has never been looked at in a running browser: confirm the
+**"Pengiriman"** block shows address, courier, service, ongkir and resi. It is listed here because
+this epic changes every one of those five values — check it before the changes, so a regression is
+distinguishable from a defect that was always there.
 
 ---
 
