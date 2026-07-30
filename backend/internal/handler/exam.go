@@ -431,6 +431,19 @@ func (h *Handler) AdminImportQuestions(c echo.Context) error {
 	})
 }
 
+// AdminGetQuestionImportTemplate returns a CSV template for question import,
+// generated from the parser's own required/optional headers so it cannot drift
+// (FR-10/FR-11/FR-12).
+func (h *Handler) AdminGetQuestionImportTemplate(c echo.Context) error {
+	data, err := h.svc.BuildQuestionImportTemplate(c.Request().Context())
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="question_import_template.csv"`)
+	return c.Blob(http.StatusOK, "text/csv", data)
+}
+
 // AdminCreateBankQuestion creates a question in the bank with no test attachment (FR-9).
 func (h *Handler) AdminCreateBankQuestion(c echo.Context) error {
 	var req questionRequest

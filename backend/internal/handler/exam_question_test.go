@@ -376,6 +376,32 @@ func TestAdminListBankQuestions_honoursIntegerCursor(t *testing.T) {
 	}
 }
 
+// FR-10/FR-11: the download endpoint must return the CSV template as a named
+// attachment.
+func TestAdminGetQuestionImportTemplate_returnsCSVAttachment(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/questions/import-template", nil)
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	c := e.NewContext(req, rec)
+
+	if err := h.AdminGetQuestionImportTemplate(c); err != nil {
+		t.Fatalf("AdminGetQuestionImportTemplate returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/csv" {
+		t.Errorf("Content-Type: want text/csv, got %q", ct)
+	}
+	cd := rec.Header().Get("Content-Disposition")
+	if cd != `attachment; filename="question_import_template.csv"` {
+		t.Errorf("Content-Disposition: want attachment; filename=\"question_import_template.csv\", got %q", cd)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Task 6 (FB-3 + FB-9): delete guard and format lock, exercised end to end
 // through the handler so the 409 codes the frontend reads are actually
