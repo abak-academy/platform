@@ -46,8 +46,20 @@ Fix both halves, then — and only then — build the new part.
 covers *applying* a code. Today only `POST /promo-codes/validate` exists
 ([`routes.go:84-85`](../../backend/internal/server/routes.go)), so this needs a new public endpoint.
 
-> **Decide before building:** should *every* active promo be listed? Staff and partner codes would be
-> exposed. Most likely this needs an `is_public` flag on `promo_code`.
+**Visibility is opt-in — decided 2026-07-30.** Listing every active code would expose staff and
+partner codes, so the endpoint returns only codes explicitly published:
+
+```sql
+ALTER TABLE promo_code ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT false;
+```
+
+Default `false` means nothing leaks the moment the endpoint ships, including every code that already
+exists. The client opens codes one at a time, and the choice is reversible per code. The admin promo
+form needs a toggle for it.
+
+Note this is the **only** field controlling public listing — an expired or exhausted `is_public` code
+must still be filtered out by the same rules `ValidatePromo` already applies, or the checkout page
+will advertise codes that fail on use.
 
 ---
 
@@ -120,7 +132,8 @@ saying out loud, because until F-5 lands every "still broken" report carries the
 - Applying a promo produces an order whose `total` **and** `promo_code_id` both reflect it — after a
   subsequent shipping patch, not just immediately.
 - `max_uses` is enforced: the (N+1)th use is refused.
-- The active-promo list shows only codes the client agreed are public.
+- The active-promo list shows only `is_public = true` codes, and an expired or exhausted public code
+  does not appear.
 - Order list and detail show the buyer's name.
 - A manually confirmed order carries a visible "confirmed manually" mark, the proof image opens, and
   an audit row references it.

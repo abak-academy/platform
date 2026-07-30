@@ -240,20 +240,17 @@ Shipped without ever being looked at in a running browser.
 
 ## 8. Questions for the client
 
-The list started at six. Four are closed and one was withdrawn as scope nobody asked for; **one real
-question remains**, and it needs a nod rather than a discussion.
+The list started at six. **All six are now closed** — five answered, one withdrawn as scope nobody
+asked for. Nothing here blocks any epic.
 
-### Still open
-
-1. **Active promo codes at checkout** — should *every* active code be listed publicly? Staff and
-   partner codes would be exposed.
-   **Proposed:** add `is_public BOOLEAN NOT NULL DEFAULT false` to `promo_code` and list only flagged
-   codes. Closed by default, so nothing leaks; the client opens codes one at a time. Reversible.
+One thing is still *owed*, though it is not a question: the **PRD amendment** for the NF-1 scope
+reversal. The client has signed off; the document has not caught up.
 
 ### Closed
 
 | # | Question | Outcome |
 |---|---|---|
+| 1 | **Active promo codes at checkout** — list every active code? | **Opt-in, agreed 2026-07-30.** `promo_code.is_public BOOLEAN NOT NULL DEFAULT false`; only published codes are listed. Default-closed means nothing leaks when the endpoint ships, including existing codes, and the client opens them one at a time. See [E5](e5-orders-payments.md). |
 | 2 | **NF-1 scope change** vs the PRD's out-of-scope list | **Signed off by the client 2026-07-29.** E6 records it before the first commit; the PRD amendment is still owed. |
 | 3 | **Email volume / SES** | Not a cost decision — SES is ~$0.10 per 1,000 emails, so a 5,000-person event is about **$0.50**. The only thing that cannot be compressed is the AWS sandbox review, so this became scheduled work rather than a question. Runbook: [`ses-email-migration.md`](ses-email-migration.md). |
 | 4 | **`/admin/school/classes` stub** | **Not a commitment.** Created 2026-06-19 in `d371213` *"Coming-soon scaffolding for not-ready admin modules"*, orphaned on 2026-07-05 when `ee9bc6f` reverted the `feat/school-slice-a` merge (PR #18). A later commit titled *"remove last ComingSoon stub"* missed it — most likely because it has no nav entry and is unreachable in the UI. Removing it is one file plus six dead i18n lines. |
