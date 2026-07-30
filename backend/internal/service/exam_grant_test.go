@@ -121,6 +121,35 @@ func TestGrantExamAccess_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("granted registrations get a participant_number (FB-28)", func(t *testing.T) {
+		// AllocateCertificateNumber (exam.go:1849-1860) scans reg.participant_number
+		// into a non-nullable int; a grant-path registration left it NULL, so
+		// resolveCertificateURL failed for every student who reached an exam via
+		// grant rather than checkout — reproduced live, see task_11_finding.md.
+		rows, err := repo.Pool().Query(ctx,
+			`SELECT participant_number FROM exam_registration WHERE exam_id = $1 AND student_id = ANY($2)`,
+			examID, studentIDs,
+		)
+		if err != nil {
+			t.Fatalf("query participant_number: %v", err)
+		}
+		defer rows.Close()
+		count := 0
+		for rows.Next() {
+			var pn *int
+			if err := rows.Scan(&pn); err != nil {
+				t.Fatalf("scan: %v", err)
+			}
+			if pn == nil {
+				t.Error("participant_number is NULL for a grant-path registration")
+			}
+			count++
+		}
+		if count != 3 {
+			t.Fatalf("want 3 registrations, got %d", count)
+		}
+	})
+
 	t.Run("non-existent student fails whole request", func(t *testing.T) {
 		bogus := uuid.New()
 		_, err := svc.GrantExamAccess(ctx, actorStr, examID.String(), []uuid.UUID{studentIDs[0], bogus})
