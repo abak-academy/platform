@@ -27,11 +27,14 @@ to know.** Anything else from H1 deliberately does not appear here.
 
 ### Still owed
 
-**Three PRD amendments, all signed off; one written:**
+**Three PRD amendments, all signed off; two written. Only NF-1 remains owed.**
 
-1. **NF-1** (Biteship Level 3) — signed off 2026-07-29. Still owed.
-2. **FB-32** (audio at both scopes) — resolved 2026-07-30. FR-EXAM-01 must gain audio alongside image.
-   Still owed.
+1. **NF-1** (Biteship Level 3) — signed off 2026-07-29. **Still owed.**
+2. **FB-32** (audio at both scopes) — resolved 2026-07-30, **written 2026-07-30**. FR-EXAM-01 now lists
+   audio alongside image as a per-question attachment, and records that the
+   `section_type = 'listening'` render narrowing was removed at both question and section scope. The
+   zone spec's C3/FR44/FR45 were amended in the same pass — they had described the opposite of what
+   shipped, which is how this was caught.
 3. **FB-26** (multi-attempt exams) — signed off 2026-07-30, **written 2026-07-30**. FR-COMP-02, the
    TRD's comments on `max_attempts` and `attempts_used`, and the matching `schema.dbml` notes now state
    the `max_attempts IS NULL or 0 = single-attempt` rule.

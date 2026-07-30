@@ -8,9 +8,13 @@
 -- orders.province_id/city_id/district_id (0033_shipping_ongkir.up.sql) FK into the existing
 -- seed rows and must keep resolving to exactly what they resolved to before this migration.
 --
--- Eleven official 2022+ codes collide with a *different* place already occupying that id in
--- the seed (1 province + city codes 9401/9402/9403/9404/9408 under it, plus six more city codes
--- under the still-untouched province 91 block that are out of this migration's insert scope).
+-- Twelve official 2022+ codes collide with a *different* place already occupying that id in
+-- the seed: 6 of them are in this migration's insert scope (province 94 + city codes
+-- 9401/9402/9403/9404/9408 under it) and take LOC- surrogates here; the other 6 sit under the
+-- still-untouched province 91 block and are out of scope, so no id is minted for them.
+-- (An earlier revision of this comment said "eleven", inherited from a self-inconsistent count
+-- in task_15_finding.md whose prose said 11 while its table listed 12. The data below and the
+-- collision-name test were always correct; only the count in this header was wrong.)
 -- Per FR36a, colliding entries take a surrogate id of the form LOC-<official_code> instead of
 -- their true Kemendagri code. LOC- ids are local to this database only -- they are NOT official
 -- Kemendagri wilayah codes and must never be presented as such. Non-colliding entries use their
