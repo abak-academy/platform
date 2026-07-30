@@ -609,9 +609,9 @@ describe("CartPage with Shipping", () => {
     mockUseProfile.mockReturnValue({
       data: {
         id: "user1",
-        name: "Sample Dimas",
-        phone: "08982237427",
-        alamat_domisili: "BSD City, Jl. Biak No.6",
+        name: "Budi Test",
+        phone: "081200000000",
+        alamat_domisili: "Jl. Contoh No. 1",
         provinsi_id: "prov1",
         kota_id: "city1",
         kecamatan_id: "dist1",
@@ -689,7 +689,7 @@ describe("CartPage with Shipping", () => {
     await waitFor(() => {
       expect(patchCartMutate).toHaveBeenCalledWith(
         expect.objectContaining({
-          shipping_address: expect.objectContaining({ kode_pos: "15310", penerima: "Sample Dimas" }),
+          shipping_address: expect.objectContaining({ kode_pos: "15310", penerima: "Budi Test" }),
         })
       );
     });
@@ -722,7 +722,7 @@ describe("CartPage with Shipping", () => {
 
     await waitFor(() => {
       expect(updateProfileMutate).toHaveBeenCalledWith(
-        expect.objectContaining({ kode_pos: "15310", address: "BSD City, Jl. Biak No.6" })
+        expect.objectContaining({ kode_pos: "15310", address: "Jl. Contoh No. 1" })
       );
     });
   });
@@ -742,8 +742,8 @@ describe("CartPage with Shipping", () => {
     // shipped elsewhere must not silently replace it.
     mockUseProfile.mockReturnValue({
       data: {
-        id: "user1", name: "Sample Dimas", phone: "08982237427",
-        alamat_domisili: "BSD City, Jl. Biak No.6",
+        id: "user1", name: "Budi Test", phone: "081200000000",
+        alamat_domisili: "Jl. Contoh No. 1",
         provinsi_id: "prov1", kota_id: "city1", kecamatan_id: "dist1", kode_pos: "40123",
       },
       isLoading: false,
@@ -787,8 +787,8 @@ describe("CartPage with Shipping", () => {
 
     mockUseProfile.mockReturnValue({
       data: {
-        id: "user1", name: "Sample Dimas", phone: "08982237427",
-        alamat_domisili: "BSD City, Jl. Biak No.6",
+        id: "user1", name: "Budi Test", phone: "081200000000",
+        alamat_domisili: "Jl. Contoh No. 1",
         provinsi_id: "prov1", kota_id: "city1", kecamatan_id: "dist1", kode_pos: "40123",
       },
       isLoading: false,
