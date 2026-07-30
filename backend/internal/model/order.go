@@ -19,6 +19,7 @@ type Order struct {
 	ShippingAddress    json.RawMessage `json:"shipping_address"`
 	SelectedCourier    string          `json:"selected_courier"`
 	SelectedService    string          `json:"selected_service"`
+	IsEstimate         bool            `json:"is_estimate"`
 	TrackingNumber     string          `json:"tracking_number"`
 	ShippedAt          *time.Time      `json:"shipped_at"`
 	GatewayRef         string          `json:"gateway_ref"`

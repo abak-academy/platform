@@ -28,6 +28,7 @@ type OrderPatch struct {
 	ShippingAddress json.RawMessage
 	SelectedCourier string
 	SelectedService string
+	IsEstimate      bool
 	PromoCodeID     *uuid.UUID
 	Discount        float64
 	ShippingCost    float64
@@ -42,7 +43,7 @@ const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost,
 	promo_code_id, shipping_address, selected_courier, selected_service, tracking_number, shipped_at,
 	gateway_ref, payment_method, payment_expires_at, paid_at, invoice_url,
 	checked_out_at, completed_at, cancelled_at, cancellation_reason,
-	created_at, updated_at`
+	created_at, updated_at, is_estimate`
 
 func scanOrder(row interface {
 	Scan(dest ...any) error
@@ -56,7 +57,7 @@ func scanOrder(row interface {
 		&selectedCourier, &selectedService, &trackingNumber, &order.ShippedAt,
 		&gatewayRef, &paymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &invoiceURL,
 		&order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &cancellationReason,
-		&order.CreatedAt, &order.UpdatedAt,
+		&order.CreatedAt, &order.UpdatedAt, &order.IsEstimate,
 	)
 	if err != nil {
 		return err
@@ -384,11 +385,13 @@ func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch Ord
 		 SET shipping_address = COALESCE($1, shipping_address), selected_courier = $2, selected_service = $3, promo_code_id = $4,
 		     discount = $5, shipping_cost = $6, total = $7,
 		     province_id = COALESCE($8, province_id), city_id = COALESCE($9, city_id), district_id = COALESCE($10, district_id), kode_pos = COALESCE($11, kode_pos),
+		     is_estimate = $12,
 		     updated_at = now()
-		 WHERE id = $12`,
+		 WHERE id = $13`,
 		patch.ShippingAddress, patch.SelectedCourier, patch.SelectedService, patch.PromoCodeID,
 		patch.Discount, patch.ShippingCost, patch.Total,
 		patch.ProvinceID, patch.CityID, patch.DistrictID, patch.KodePos,
+		patch.IsEstimate,
 		orderID,
 	)
 	return err

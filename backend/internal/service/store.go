@@ -674,6 +674,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		ShippingAddress: patch.ShippingAddress,
 		SelectedCourier: order.SelectedCourier,
 		SelectedService: order.SelectedService,
+		IsEstimate:      order.IsEstimate,
 		Discount:        order.Discount,
 		ShippingCost:    order.ShippingCost,
 		Total:           order.Total,
@@ -715,6 +716,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 			for _, rate := range rates {
 				if strings.EqualFold(rate.Courier, patch.Courier) && strings.EqualFold(rate.Service, patch.Service) {
 					repoPatch.ShippingCost = float64(rate.Price)
+					repoPatch.IsEstimate = rate.IsEstimate
 					matched = true
 					break
 				}
