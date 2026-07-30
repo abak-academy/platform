@@ -27,6 +27,7 @@ const FORMAT_LABELS: Record<QuestionFormat, string> = {
   fill_blank: "fmt_fill_blank",
   essay: "fmt_essay",
   multi_blank: "fmt_multi_blank",
+  true_false: "fmt_true_false",
 };
 
 const DIFFICULTY_LABEL: Record<string, string> = {

@@ -474,7 +474,7 @@ export interface AuditLogEntry {
 
 export type SystemConfig = Record<string, string>;
 
-export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "essay" | "multi_blank";
+export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "essay" | "multi_blank" | "true_false";
 
 export type SectionType = "listening" | "reading" | "writing";
 
@@ -505,6 +505,13 @@ export interface Question {
   point_wrong: number;
   topic_id?: string | null;
   topic?: string | null;
+  /** Server-assigned, monotonic, read-only. */
+  question_number?: number;
+  /** question-level set; `short` / `fill_blank` only. */
+  accepted_answers?: string[];
+  /** `true_false` only; admin payloads only. */
+  statements?: { index: number; body: string; is_true: boolean }[];
+  in_live_exam?: boolean;
 }
 
 export interface ExamTopic {
@@ -519,7 +526,7 @@ export interface BankQuestionListItem {
   question: Question;
   options: QuestionOption[];
   attached_count: number;
-  blanks?: { index: number; correct_answer: string }[];
+  blanks?: { index: number; correct_answer: string; accepted_answers?: string[] }[];
 }
 
 export interface BankQuestionListResponse {
@@ -539,7 +546,7 @@ export interface QuestionOption {
 export interface QuestionWithOptions {
   question: Question;
   options: QuestionOption[];
-  blanks?: { index: number; correct_answer: string }[];
+  blanks?: { index: number; correct_answer: string; accepted_answers?: string[] }[];
 }
 
 export interface TestDetail {
@@ -584,10 +591,12 @@ export interface AdminQuestionInput {
   audio_url?: string;
   correct_answer?: string;
   options?: AdminQuestionOptionInput[];
-  blanks?: { index: number; correct_answer: string }[];
+  blanks?: { index: number; correct_answer: string; accepted_answers?: string[] }[];
   point_correct?: number;
   point_wrong?: number;
   topic_id?: string;
+  accepted_answers?: string[];
+  statements?: { index: number; body: string; is_true: boolean }[];
 }
 
 export interface AdminQuestionImportResultRow {

@@ -29,6 +29,7 @@ const ALL_FORMATS: Array<QuestionFormat | "all"> = [
   "fill_blank",
   "essay",
   "multi_blank",
+  "true_false",
 ];
 
 const FORMAT_LABELS: Record<QuestionFormat | "all", string> = {
@@ -39,6 +40,7 @@ const FORMAT_LABELS: Record<QuestionFormat | "all", string> = {
   fill_blank: "fmt_fill_blank",
   essay: "fmt_essay",
   multi_blank: "fmt_multi_blank",
+  true_false: "fmt_true_false",
 };
 
 const DIFFICULTY_LABELS: Record<string, "diff_easy" | "diff_medium" | "diff_hard"> = {

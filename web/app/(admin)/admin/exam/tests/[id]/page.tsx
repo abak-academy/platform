@@ -43,6 +43,7 @@ const FORMAT_BADGE: Record<
   | "tests_format_fill_blank"
   | "tests_format_essay"
   | "tests_format_multi_blank"
+  | "tests_format_true_false"
 > = {
   mcq: "tests_format_mcq",
   multi_answer: "tests_format_multi_answer",
@@ -50,6 +51,7 @@ const FORMAT_BADGE: Record<
   fill_blank: "tests_format_fill_blank",
   essay: "tests_format_essay",
   multi_blank: "tests_format_multi_blank",
+  true_false: "tests_format_true_false",
 };
 
 const DIFFICULTY_LABELS: Record<string, "diff_easy" | "diff_medium" | "diff_hard"> = {
