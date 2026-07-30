@@ -338,7 +338,7 @@ func BuildStudentBulkResultCSV(results []StudentBulkResultRow) []byte {
 	w := csv.NewWriter(&buf)
 	_ = w.Write([]string{"name", "school", "email", "status", "username", "temp_password", "error"})
 	for _, r := range results {
-		_ = w.Write([]string{r.Name, r.School, r.Email, r.Status, r.Username, r.TempPassword, r.Error})
+		_ = w.Write(csvSafeRow(r.Name, r.School, r.Email, r.Status, r.Username, r.TempPassword, r.Error))
 	}
 	w.Flush()
 	return buf.Bytes()

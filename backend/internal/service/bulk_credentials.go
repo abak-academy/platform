@@ -96,7 +96,7 @@ func BuildCredentialsResultCSV(rows []StudentBulkResultRow) []byte {
 	w := csv.NewWriter(&buf)
 	_ = w.Write([]string{"name", "username", "temp_password", "error"})
 	for _, r := range rows {
-		_ = w.Write([]string{r.Name, r.Username, r.TempPassword, r.Error})
+		_ = w.Write(csvSafeRow(r.Name, r.Username, r.TempPassword, r.Error))
 	}
 	w.Flush()
 	return buf.Bytes()
