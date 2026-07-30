@@ -120,6 +120,70 @@ func gradeMultiBlank(answer *string, blanks []model.QuestionBlank, pointCorrect,
 	return score, isCorrect
 }
 
+// gradeTrueFalse grades a true_false question by unmarshaling the answer string
+// (JSON array of "true"/"false"/"" in statement index order) and comparing each
+// statement's answered boolean against its is_true answer key — mirrors
+// gradeMultiBlank exactly (FR-33/34).
+// Per-statement scoring: empty -> 0, matches is_true -> +point_correct, mismatch
+// -> -point_wrong. The question's score is the sum of per-statement scores (not
+// independently clamped). On JSON unmarshal failure, returns 0 (all statements
+// treated as empty). IsCorrect is true only if at least one statement was
+// answered and none was wrong.
+func gradeTrueFalse(answer *string, statements []model.QuestionStatement, pointCorrect, pointWrong float64) (float64, bool) {
+	if answer == nil || *answer == "" {
+		return 0, false
+	}
+
+	var answers []string
+	if err := json.Unmarshal([]byte(*answer), &answers); err != nil {
+		return 0, false
+	}
+
+	var score float64
+	var hasAnswer bool
+	var anyWrong bool
+	for _, st := range statements {
+		// Statement indices are 1-based; array positions are 0-based.
+		idx := st.Index - 1
+		var raw string
+		if idx >= 0 && idx < len(answers) {
+			raw = strings.TrimSpace(answers[idx])
+		}
+
+		if raw == "" {
+			continue
+		}
+
+		hasAnswer = true
+		answeredTrue := strings.EqualFold(raw, "true")
+		if answeredTrue == st.IsTrue {
+			score += pointCorrect
+		} else {
+			score -= pointWrong
+			anyWrong = true
+		}
+	}
+
+	isCorrect := hasAnswer && !anyWrong
+	return score, isCorrect
+}
+
+// questionMaxPoints returns the maximum points a question can contribute: blank
+// count x point_correct for multi_blank, statement count x point_correct for
+// true_false, and point_correct otherwise (FR-35). Shared by topicBreakdown,
+// certificate.go's maxScore loop and exam_leaderboard.go's maxPossible loop so
+// the two multi-part formats cannot diverge.
+func questionMaxPoints(q model.QuestionWithOptions) float64 {
+	switch q.Question.Format {
+	case "multi_blank":
+		return float64(len(q.Blanks)) * q.Question.PointCorrect
+	case "true_false":
+		return float64(len(q.Statements)) * q.Question.PointCorrect
+	default:
+		return q.Question.PointCorrect
+	}
+}
+
 // gradeObjective grades all objective questions per the points model (FR-S5-06..10).
 // Essay questions are returned with is_correct=nil, score=nil, graded_at=nil (not
 // auto-graded — awaits manual grading).
@@ -147,6 +211,21 @@ func gradeObjective(questions []model.QuestionWithOptions, answers map[uuid.UUID
 
 		if q.Question.Format == "multi_blank" {
 			score, anyCorrect := gradeMultiBlank(ans, q.Blanks, q.Question.PointCorrect, q.Question.PointWrong)
+			sum += score
+
+			gradedAt := now
+			graded = append(graded, model.ExamSessionAnswer{
+				QuestionID: q.Question.ID,
+				Answer:     ans,
+				IsCorrect:  &anyCorrect,
+				Score:      &score,
+				GradedAt:   &gradedAt,
+			})
+			continue
+		}
+
+		if q.Question.Format == "true_false" {
+			score, anyCorrect := gradeTrueFalse(ans, q.Statements, q.Question.PointCorrect, q.Question.PointWrong)
 			sum += score
 
 			gradedAt := now
@@ -229,7 +308,7 @@ func topicBreakdown(tests []model.TestDetail, answers []model.ExamSessionAnswer)
 		var earned float64
 		var max float64
 		for _, q := range td.Questions {
-			max += q.Question.PointCorrect
+			max += questionMaxPoints(q)
 			earned += scoreByQuestion[q.Question.ID]
 		}
 		rows = append(rows, model.ResultTopicRow{

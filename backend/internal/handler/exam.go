@@ -178,7 +178,7 @@ func (h *Handler) AdminCreateQuestion(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	out, err := h.svc.CreateQuestionForTest(c.Request().Context(), testID, q, req.toOptions(), req.toBlanks())
+	out, err := h.svc.CreateQuestionForTest(c.Request().Context(), testID, q, req.toOptions(), req.toBlanks(), req.toStatements())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -287,7 +287,7 @@ func (h *Handler) AdminUpdateQuestion(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	q.ID = qID
-	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks())
+	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks(), req.toStatements())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -442,7 +442,7 @@ func (h *Handler) AdminCreateBankQuestion(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	out, err := h.svc.CreateBankQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks())
+	out, err := h.svc.CreateBankQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks(), req.toStatements())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -451,19 +451,20 @@ func (h *Handler) AdminCreateBankQuestion(c echo.Context) error {
 
 // questionRequest is the shared body for AdminCreateQuestion / AdminUpdateQuestion.
 type questionRequest struct {
-	Format          string          `json:"format"`
-	Body            string          `json:"body"`
-	Difficulty      *string         `json:"difficulty,omitempty"`
-	Explanation     *string         `json:"explanation,omitempty"`
-	ImageURL        *string         `json:"image_url,omitempty"`
-	AudioURL        *string         `json:"audio_url,omitempty"`
-	CorrectAnswer   *string         `json:"correct_answer,omitempty"`
-	AcceptedAnswers []string        `json:"accepted_answers,omitempty"`
-	TopicID         *string         `json:"topic_id,omitempty"`
-	Options         []optionRequest `json:"options,omitempty"`
-	Blanks          []blankRequest  `json:"blanks,omitempty"`
-	PointCorrect    *float64        `json:"point_correct,omitempty"`
-	PointWrong      *float64        `json:"point_wrong,omitempty"`
+	Format          string             `json:"format"`
+	Body            string             `json:"body"`
+	Difficulty      *string            `json:"difficulty,omitempty"`
+	Explanation     *string            `json:"explanation,omitempty"`
+	ImageURL        *string            `json:"image_url,omitempty"`
+	AudioURL        *string            `json:"audio_url,omitempty"`
+	CorrectAnswer   *string            `json:"correct_answer,omitempty"`
+	AcceptedAnswers []string           `json:"accepted_answers,omitempty"`
+	TopicID         *string            `json:"topic_id,omitempty"`
+	Options         []optionRequest    `json:"options,omitempty"`
+	Blanks          []blankRequest     `json:"blanks,omitempty"`
+	Statements      []statementRequest `json:"statements,omitempty"`
+	PointCorrect    *float64           `json:"point_correct,omitempty"`
+	PointWrong      *float64           `json:"point_wrong,omitempty"`
 }
 
 type optionRequest struct {
@@ -478,6 +479,12 @@ type blankRequest struct {
 	Index           int      `json:"index"`
 	CorrectAnswer   string   `json:"correct_answer"`
 	AcceptedAnswers []string `json:"accepted_answers,omitempty"`
+}
+
+type statementRequest struct {
+	Index  int    `json:"index"`
+	Body   string `json:"body"`
+	IsTrue bool   `json:"is_true"`
 }
 
 func (r questionRequest) toQuestion() (model.Question, error) {
@@ -544,6 +551,18 @@ func (r questionRequest) toBlanks() []model.QuestionBlank {
 			Index:           b.Index,
 			CorrectAnswer:   b.CorrectAnswer,
 			AcceptedAnswers: acceptedAnswers,
+		})
+	}
+	return out
+}
+
+func (r questionRequest) toStatements() []model.QuestionStatement {
+	out := make([]model.QuestionStatement, 0, len(r.Statements))
+	for _, st := range r.Statements {
+		out = append(out, model.QuestionStatement{
+			Index:  st.Index,
+			Body:   st.Body,
+			IsTrue: st.IsTrue,
 		})
 	}
 	return out

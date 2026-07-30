@@ -114,7 +114,7 @@ func (s *Service) GetExamAnalytics(ctx context.Context, examID uuid.UUID) (model
 	maxPossible := 0.0
 	for _, td := range tests {
 		for _, q := range td.Questions {
-			maxPossible += q.Question.PointCorrect
+			maxPossible += questionMaxPoints(q)
 		}
 	}
 

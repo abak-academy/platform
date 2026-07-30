@@ -251,7 +251,7 @@ func certificateSessionValues(sess *model.ExamSession, questions []model.Questio
 	}
 	maxScore := 0.0
 	for _, question := range questions {
-		maxScore += question.Question.PointCorrect
+		maxScore += questionMaxPoints(question)
 	}
 	values := map[FieldID]string{
 		"score":           formatCertificateNumber(score),

@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,6 +127,64 @@ func TestGroupQuestionsByTest_populates_AudioURL_and_Blanks(t *testing.T) {
 	}
 	if len(q2.Blanks) != 0 {
 		t.Errorf("question[1].blanks: want empty, got %v", q2.Blanks)
+	}
+}
+
+// FR-31/NFR-5: a true_false question's student session payload carries its
+// statement bodies in index order but must never leak is_true (the answer key)
+// anywhere in the serialised JSON.
+func TestGroupQuestionsByTest_trueFalse_populatesStatementsWithoutIsTrue_NFR5(t *testing.T) {
+	testID := uuid.New()
+	qID := uuid.New()
+	bodies := []string{"statement one", "statement two", "statement three", "statement four"}
+	tests := []model.TestDetail{
+		{
+			Test: model.Test{ID: testID, Title: "T1"},
+			Questions: []model.QuestionWithOptions{
+				{
+					Question: model.Question{ID: qID, Format: "true_false", Body: "stem"},
+					Statements: []model.QuestionStatement{
+						{QuestionID: qID, Index: 1, Body: bodies[0], IsTrue: true},
+						{QuestionID: qID, Index: 2, Body: bodies[1], IsTrue: false},
+						{QuestionID: qID, Index: 3, Body: bodies[2], IsTrue: true},
+						{QuestionID: qID, Index: 4, Body: bodies[3], IsTrue: false},
+					},
+					SortOrder: 1,
+				},
+			},
+		},
+	}
+
+	grouped := groupQuestionsByTest(tests)
+
+	if len(grouped) != 1 || len(grouped[0].Questions) != 1 {
+		t.Fatalf("want 1 test with 1 question, got %d tests", len(grouped))
+	}
+	q := grouped[0].Questions[0]
+	if len(q.Statements) != 4 {
+		t.Fatalf("want 4 statements, got %d", len(q.Statements))
+	}
+	for i, want := range bodies {
+		if q.Statements[i].Index != i+1 {
+			t.Errorf("statement[%d].index: want %d, got %d", i, i+1, q.Statements[i].Index)
+		}
+		if q.Statements[i].Body != want {
+			t.Errorf("statement[%d].body: want %q, got %q", i, want, q.Statements[i].Body)
+		}
+	}
+
+	raw, err := json.Marshal(grouped)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	payload := string(raw)
+	if strings.Contains(payload, "is_true") {
+		t.Errorf("serialised session payload must never contain is_true, got %s", payload)
+	}
+	for _, want := range bodies {
+		if !strings.Contains(payload, want) {
+			t.Errorf("serialised session payload missing statement body %q", want)
+		}
 	}
 }
 

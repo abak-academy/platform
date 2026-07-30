@@ -331,10 +331,16 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 		return nil, err
 	}
 
+	statements, err := r.queryStatementsForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	for i := range questions {
 		qid := questions[i].Question.ID
 		questions[i].Options = opts[qid]
 		questions[i].Blanks = blanks[qid]
+		questions[i].Statements = statements[qid]
 		questions[i].Question.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][0], derefString(questions[i].Question.CorrectAnswer))
 		for bi := range questions[i].Blanks {
 			b := &questions[i].Blanks[bi]
@@ -402,6 +408,38 @@ func (r *Repository) queryBlanksForQuestions(ctx context.Context, questionIDs []
 			return nil, err
 		}
 		out[b.QuestionID] = append(out[b.QuestionID], b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *Repository) queryStatementsForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID][]model.QuestionStatement, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT question_id, statement_index, body, is_true
+		FROM question_statement
+		WHERE question_id = ANY($1)
+		ORDER BY question_id, statement_index`,
+		questionIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Seed every requested id with a non-nil empty slice so non-true_false formats
+	// surface as [] not nil, consistent with options/blanks.
+	out := make(map[uuid.UUID][]model.QuestionStatement, len(questionIDs))
+	for _, id := range questionIDs {
+		out[id] = []model.QuestionStatement{}
+	}
+	for rows.Next() {
+		st := model.QuestionStatement{}
+		if err := rows.Scan(&st.QuestionID, &st.Index, &st.Body, &st.IsTrue); err != nil {
+			return nil, err
+		}
+		out[st.QuestionID] = append(out[st.QuestionID], st)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -521,7 +559,7 @@ func replaceAcceptedAnswersTx(ctx context.Context, tx pgx.Tx, questionID uuid.UU
 	return nil
 }
 
-func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) error {
+func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) error {
 	stampScalarCorrectAnswers(q, blanks)
 
 	err := tx.QueryRow(ctx,
@@ -542,6 +580,10 @@ func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 		return err
 	}
 
+	if err := insertQuestionStatements(ctx, tx, q.ID, statements); err != nil {
+		return err
+	}
+
 	if err := replaceAcceptedAnswersTx(ctx, tx, q.ID, q.AcceptedAnswers, blanks); err != nil {
 		return err
 	}
@@ -549,7 +591,7 @@ func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 	return nil
 }
 
-func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) error {
+func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) error {
 	stampScalarCorrectAnswers(q, blanks)
 
 	var updatedID uuid.UUID
@@ -585,6 +627,17 @@ func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 	}
 
 	if err := insertQuestionBlanks(ctx, tx, q.ID, blanks); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM question_statement WHERE question_id = $1`,
+		q.ID,
+	); err != nil {
+		return err
+	}
+
+	if err := insertQuestionStatements(ctx, tx, q.ID, statements); err != nil {
 		return err
 	}
 
@@ -785,10 +838,16 @@ WHERE 1=1`
 		return nil, "", err
 	}
 
+	statements, err := r.queryStatementsForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, "", err
+	}
+
 	for i := range items {
 		qid := items[i].Question.ID
 		items[i].Options = opts[qid]
 		items[i].Blanks = blanks[qid]
+		items[i].Statements = statements[qid]
 		items[i].Question.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][0], derefString(items[i].Question.CorrectAnswer))
 		for bi := range items[i].Blanks {
 			b := &items[i].Blanks[bi]
@@ -964,6 +1023,20 @@ func insertQuestionBlanks(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, 
 			`INSERT INTO question_blank (question_id, blank_index, correct_answer)
 			VALUES ($1, $2, $3)`,
 			questionID, b.Index, b.CorrectAnswer,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func insertQuestionStatements(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, statements []model.QuestionStatement) error {
+	for _, st := range statements {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO question_statement (question_id, statement_index, body, is_true)
+			VALUES ($1, $2, $3, $4)`,
+			questionID, st.Index, st.Body, st.IsTrue,
 		)
 		if err != nil {
 			return err

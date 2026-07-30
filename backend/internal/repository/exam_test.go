@@ -22,8 +22,8 @@ var _ interface {
 	UpdateTest(context.Context, uuid.UUID, *model.Test) error
 	DeleteTest(context.Context, uuid.UUID) error
 	ListQuestions(context.Context, uuid.UUID) ([]model.QuestionWithOptions, error)
-	CreateQuestionTx(context.Context, pgx.Tx, *model.Question, []model.QuestionOption, []model.QuestionBlank) error
-	UpdateQuestionTx(context.Context, pgx.Tx, *model.Question, []model.QuestionOption, []model.QuestionBlank) error
+	CreateQuestionTx(context.Context, pgx.Tx, *model.Question, []model.QuestionOption, []model.QuestionBlank, []model.QuestionStatement) error
+	UpdateQuestionTx(context.Context, pgx.Tx, *model.Question, []model.QuestionOption, []model.QuestionBlank, []model.QuestionStatement) error
 	DeleteQuestion(context.Context, uuid.UUID) error
 	CountQuestionsByIDs(context.Context, []uuid.UUID) (int, error)
 	ListAttachedQuestionIDs(context.Context, uuid.UUID) ([]uuid.UUID, error)

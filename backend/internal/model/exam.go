@@ -84,6 +84,16 @@ type QuestionBlank struct {
 	AcceptedAnswers []string `json:"accepted_answers"`
 }
 
+// QuestionStatement has a composite PK (QuestionID, Index); no surrogate ID.
+// Used for true_false questions to store ordered statements. IsTrue is the
+// answer key — it must never appear in a student-facing payload (NFR-5).
+type QuestionStatement struct {
+	QuestionID uuid.UUID `json:"question_id"`
+	Index      int       `json:"index"`
+	Body       string    `json:"body"`
+	IsTrue     bool      `json:"is_true"`
+}
+
 // Exam is a scheduled test offering. It bundles one or more Tests via ExamTest and may
 // be sold via product — M:N through product_exam (mirrors Course/product_course), so a
 // Product can attach more than one Exam and an Exam has no direct product reference.
@@ -214,10 +224,11 @@ type TestDetail struct {
 // Options are empty for non-option formats (short / fill_blank / essay).
 // Blanks are empty for non-multi_blank formats, never nil (consistent with options).
 type QuestionWithOptions struct {
-	Question  Question         `json:"question"`
-	Options   []QuestionOption `json:"options"`
-	Blanks    []QuestionBlank  `json:"blanks"`
-	SortOrder int              `json:"sort_order"`
+	Question   Question            `json:"question"`
+	Options    []QuestionOption    `json:"options"`
+	Blanks     []QuestionBlank     `json:"blanks"`
+	Statements []QuestionStatement `json:"statements"`
+	SortOrder  int                 `json:"sort_order"`
 }
 
 // BankQuestionListItem is one row of GET /admin/questions — a bank question with
@@ -225,10 +236,11 @@ type QuestionWithOptions struct {
 // to (Used-in). Nested (not embedded) to match the {question, options, blanks, ...} shape
 // the admin bank page and QuestionWithOptions both expect.
 type BankQuestionListItem struct {
-	Question      Question         `json:"question"`
-	Options       []QuestionOption `json:"options"`
-	Blanks        []QuestionBlank  `json:"blanks"`
-	AttachedCount int              `json:"attached_count"`
+	Question      Question            `json:"question"`
+	Options       []QuestionOption    `json:"options"`
+	Blanks        []QuestionBlank     `json:"blanks"`
+	Statements    []QuestionStatement `json:"statements"`
+	AttachedCount int                 `json:"attached_count"`
 }
 
 // ExamListItem is the read shape returned by GET /admin/exams. Cursor pagination

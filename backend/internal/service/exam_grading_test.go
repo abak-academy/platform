@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -686,4 +687,130 @@ func TestGradingObjective_multiBlankMixed_withOtherFormats(t *testing.T) {
 	assert.Equal(t, 2.0, *graded[1].Score)
 	assert.True(t, *graded[2].IsCorrect)  // short correct
 	assert.Equal(t, 2.0, *graded[2].Score)
+}
+
+// ---- gradeTrueFalse (FR-33/34) ----
+
+func tfQuestion(id uuid.UUID, pointCorrect, pointWrong float64, truths []bool) model.QuestionWithOptions {
+	statements := make([]model.QuestionStatement, len(truths))
+	for i, isTrue := range truths {
+		statements[i] = model.QuestionStatement{QuestionID: id, Index: i + 1, Body: fmt.Sprintf("statement %d", i+1), IsTrue: isTrue}
+	}
+	return model.QuestionWithOptions{
+		Question:   model.Question{ID: id, Format: "true_false", Body: "Stem", PointCorrect: pointCorrect, PointWrong: pointWrong},
+		Statements: statements,
+	}
+}
+
+// FR-33: partial per-statement scoring reproduces spec.md's worked example
+// (point_correct=1, point_wrong=0.5 -> "1+1+1-0.5=2.5") for 3 correct statements
+// and 1 wrong statement. Because point_correct=1 is a whole number, a .5
+// fractional score is only reachable with at least one wrong (-0.5)
+// contribution — which under FR-34 always makes is_correct false.
+func TestGradingTrueFalse_partialScoring_threeCorrectOneWrong_FR33(t *testing.T) {
+	q := tfQuestion(uuid.New(), 1, 0.5, []bool{true, false, true, false})
+	answer := `["true","false","true","true"]` // statement 4: truth false, answered true -> wrong
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 2.5, score)
+	assert.Len(t, graded, 1)
+	assert.Equal(t, 2.5, *graded[0].Score)
+	assert.False(t, *graded[0].IsCorrect, "is_correct must be false when any statement is wrong")
+}
+
+// FR-33/34: statements 1 and 3 answered true, 2 answered false, 4 left blank
+// (spec.md FR-32's encoding). All three non-empty statements match their
+// is_true answer key, so the question scores 3 (3 x point_correct, the blank
+// contributes 0) and is_correct is true (answered something, nothing wrong).
+func TestGradingTrueFalse_allAnsweredCorrectAndOneEmpty_isCorrectTrue_FR34(t *testing.T) {
+	q := tfQuestion(uuid.New(), 1, 0.5, []bool{true, false, true, false})
+	answer := `["true","false","true",""]`
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 3.0, score)
+	assert.Len(t, graded, 1)
+	assert.Equal(t, 3.0, *graded[0].Score)
+	assert.True(t, *graded[0].IsCorrect)
+}
+
+func TestGradingTrueFalse_allEmpty_scoresZero_isCorrectFalse(t *testing.T) {
+	q := tfQuestion(uuid.New(), 1, 0.5, []bool{true, false})
+	answer := `["",""]`
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 0.0, score)
+	assert.False(t, *graded[0].IsCorrect)
+	assert.Equal(t, 0.0, *graded[0].Score)
+}
+
+func TestGradingTrueFalse_malformedJSON_treatsAllEmpty(t *testing.T) {
+	q := tfQuestion(uuid.New(), 1, 0.5, []bool{true, false})
+	answer := `not-json`
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 0.0, score)
+	assert.False(t, *graded[0].IsCorrect)
+	assert.Equal(t, 0.0, *graded[0].Score)
+}
+
+func TestGradingTrueFalse_allWrong_unclamped(t *testing.T) {
+	q := tfQuestion(uuid.New(), 1, 0.5, []bool{true, false})
+	answer := `["false","true"]` // both wrong
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 0.0, score, "session total is clamped to 0")
+	assert.False(t, *graded[0].IsCorrect)
+	assert.Equal(t, -1.0, *graded[0].Score, "per-question score is -1 (unclamped)")
+}
+
+// ---- questionMaxPoints (FR-35) ----
+
+func TestQuestionMaxPoints_trueFalse_statementCountTimesPointCorrect(t *testing.T) {
+	q := tfQuestion(uuid.New(), 1, 0.5, []bool{true, false, true, false})
+	assert.Equal(t, 4.0, questionMaxPoints(q))
+}
+
+func TestQuestionMaxPoints_multiBlank_blankCountTimesPointCorrect(t *testing.T) {
+	q := multiBlankQuestion(uuid.New(), 1, 0.5, []string{"a", "b", "c"})
+	assert.Equal(t, 3.0, questionMaxPoints(q))
+}
+
+func TestQuestionMaxPoints_otherFormats_isPointCorrect(t *testing.T) {
+	q := model.QuestionWithOptions{Question: model.Question{Format: "mcq", PointCorrect: 2}}
+	assert.Equal(t, 2.0, questionMaxPoints(q))
+}
+
+// FR-35: a true_false question's contribution to the result breakdown max is its
+// statement count x point_correct, not a flat point_correct — proven through the
+// same topicBreakdown function used by GetSessionResult, alongside a multi_blank
+// question so the two multi-part formats are shown not to diverge.
+func TestTopicBreakdown_trueFalseAndMultiBlank_maxUsesSharedHelper_FR35(t *testing.T) {
+	testID := uuid.New()
+	tfQ := tfQuestion(uuid.New(), 1, 0.5, []bool{true, false, true, false})
+	mbQ := multiBlankQuestion(uuid.New(), 1, 0.5, []string{"a", "b", "c"})
+	tests := []model.TestDetail{
+		{
+			Test: model.Test{ID: testID, Title: "Mixed", Subject: "Math", Topic: "Mixed"},
+			Questions: []model.QuestionWithOptions{
+				{Question: tfQ.Question, Statements: tfQ.Statements, SortOrder: 1},
+				{Question: mbQ.Question, Blanks: mbQ.Blanks, SortOrder: 2},
+			},
+		},
+	}
+	answers := []model.ExamSessionAnswer{}
+
+	rows := topicBreakdown(tests, answers)
+
+	assert.Len(t, rows, 1)
+	assert.Equal(t, 7.0, rows[0].Max, "true_false (4 statements) + multi_blank (3 blanks) at point_correct=1 each")
 }
