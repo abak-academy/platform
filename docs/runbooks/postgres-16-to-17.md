@@ -29,13 +29,13 @@ is the whole environment down, with the real cause buried in the postgres contai
 ## Steps
 
 Run from the directory containing the compose file. Substitute the right file and credentials:
-local dev uses `deploy/docker-compose.yml` with user/db `akademi`; staging uses
-`deployments/app-staging.yaml` with the `POSTGRES_*` values from its hand-placed `.env`.
+local dev uses `deploy/compose/local.yml` with user/db `akademi`; staging uses
+`deploy/compose/staging.yml` with the `POSTGRES_*` values from its hand-placed `.env`.
 
 **1 — Dump, while the 16 container is still running.**
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec -T postgres \
+docker compose -f deploy/compose/local.yml exec -T postgres \
   pg_dump -U akademi -Fc akademi > pg16-backup.dump
 ```
 
@@ -55,7 +55,7 @@ objects, and `-v` would delete those too even though this runbook only backed up
 stack, then remove just the PG volume:
 
 ```bash
-docker compose -f deploy/docker-compose.yml down
+docker compose -f deploy/compose/local.yml down
 docker volume rm akademi-bimbel_pgdata
 ```
 
@@ -68,7 +68,7 @@ form everywhere.)
 **3 — Start a fresh PG17 and let it initialise.**
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d postgres
+docker compose -f deploy/compose/local.yml up -d postgres
 ```
 
 Wait for it to report healthy before restoring.
@@ -76,18 +76,18 @@ Wait for it to report healthy before restoring.
 **4 — Restore.**
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec -T postgres \
+docker compose -f deploy/compose/local.yml exec -T postgres \
   pg_restore -U akademi -d akademi --no-owner < pg16-backup.dump
 ```
 
 **5 — Bring the rest up and verify.**
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/compose/local.yml up -d
 ```
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec -T postgres \
+docker compose -f deploy/compose/local.yml exec -T postgres \
   psql -U akademi -d akademi -c "select version();" -c "select count(*) from users;"
 ```
 

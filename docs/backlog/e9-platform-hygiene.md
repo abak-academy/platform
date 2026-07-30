@@ -58,7 +58,7 @@ One-commit fix: `push: branches: [main]` plus a `concurrency` group with `cancel
 - **The repo is still public** (`abak-academy/platform`). Going private breaks the staging VM's
   `docker login ghcr.io` and starts metering Actions — so item 2 above should land first.
   Runbook: [`../runbooks/repo-migration-to-client-org.md`](../runbooks/repo-migration-to-client-org.md).
-- **`app-staging.yaml` in the repo is deliberately stale** — the VM's copy is hand-edited and never
+- **`deploy/compose/staging.yml` in the repo is deliberately stale** — the VM's copy is hand-edited and never
   pulled, and the repo copy's GHCR paths still point at the old org. Either reconcile it or mark it
   clearly, because it currently reads as configuration and is not.
 - **The empty `default` VPC network should be deleted** so nobody launches a VM into it by accident.

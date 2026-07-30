@@ -40,25 +40,31 @@ app/
 │   ├── app/(exam-session)/ chrome-free exam runner
 │   ├── app/(admin)/        admin shell + all domain pages
 │   └── public/fonts/       certificate typefaces for the design editor (mirrors the backend's embedded copy)
-├── deploy/             BUILD + LOCAL DEV — docker-compose.yml, Dockerfiles, CI pipeline scripts
-├── deployments/        RUNTIME MANIFESTS — per-environment compose files, nginx configs, secret templates
+├── deploy/             everything build- and run-related
+│   ├── compose/            local.yml, staging.yml, production.yml
+│   ├── images/             Dockerfile.api, Dockerfile.worker
+│   ├── nginx/              staging.conf, production.conf
+│   ├── pipeline/           *.sh, invoked directly by .github/workflows/pipeline.yml
+│   ├── secrets/            *.example.yaml templates (real secrets are gitignored)
+│   └── storage-cors.json   GCS bucket CORS
 ├── docs/               runbooks/ and backlog/
 └── Makefile
 ```
 
 Layering: `handler → service → repository / adapter`.
 
-### `deploy/` vs `deployments/`
+### `deploy/`
 
-Two directories, two audiences — the names are unfortunately similar:
+One directory, split by *kind of thing* rather than by audience. It replaced a `deploy/` +
+`deployments/` + `builds/` trio whose names gave no hint which was which.
 
-- **`deploy/`** is what *builds* the app and what you run *locally*: `docker-compose.yml` for the full
-  local stack, the Dockerfiles, and `pipeline/*.sh`, which CI invokes directly from
-  `.github/workflows/pipeline.yml`.
-- **`deployments/`** is what *runs* the app on a server: `app-staging.yaml`, `app-production-app.yaml`,
-  the per-environment nginx configs, `secrets/*.example.yaml`, and `storage-cors.json`. These files are
-  **hand-placed on the VMs** — there is no git clone on the staging or production boxes — so editing
-  them here does not update a running environment.
+Only `compose/local.yml` runs on your machine — `make up` wraps it. The other two compose files and
+the nginx configs are **hand-placed on the VMs**; there is no git clone on the staging or production
+boxes, so editing them here does not update a running environment.
+
+> **Compose paths are relative to the compose file.** `compose/staging.yml` mounts
+> `../nginx/staging.conf` and `../secrets/staging-secrets.yaml`, so a box needs `compose/`, `nginx/`
+> and `secrets/` as siblings — copying a single yaml somewhere flat will not start.
 
 ## Stack
 

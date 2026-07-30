@@ -41,7 +41,7 @@ services:
       # from the API. Without CORS the fetch that follows the redirect is
       # blocked. Staging/prod need the equivalent on the GCS bucket, applied
       # out of band like the bucket creation itself:
-      #   gcloud storage buckets update gs://<bucket> --cors-file=deployments/storage-cors.json
+      #   gcloud storage buckets update gs://<bucket> --cors-file=deploy/storage-cors.json
       MINIO_API_CORS_ALLOW_ORIGIN: "*"
     ports:
       - "9000:9000"
@@ -80,13 +80,13 @@ services:
 
   api:
     build:
-      context: ../backend
+      context: ../../backend
       dockerfile: Dockerfile
       target: api
     environment:
       APP_ENV: ${APP_ENV:-dev}
     volumes:
-      - ../backend/config/env:/app/config/env:ro
+      - ../../backend/config/env:/app/config/env:ro
     ports:
       - "8080:8080"
     depends_on:
@@ -101,13 +101,13 @@ services:
 
   worker:
     build:
-      context: ../backend
+      context: ../../backend
       dockerfile: Dockerfile
       target: worker
     environment:
       APP_ENV: ${APP_ENV:-dev}
     volumes:
-      - ../backend/config/env:/app/config/env:ro
+      - ../../backend/config/env:/app/config/env:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -116,7 +116,7 @@ services:
 
   web:
     build:
-      context: ../web
+      context: ../../web
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: http://localhost:8080/api/v1

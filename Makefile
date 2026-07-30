@@ -2,7 +2,7 @@
 # Override with `make GOROOT=... <target>` on other machines.
 GOROOT ?= /opt/homebrew/Cellar/go/1.26.3/libexec
 GO := $(GOROOT)/bin/go
-COMPOSE := docker compose -f deploy/docker-compose.yml
+COMPOSE := docker compose -f deploy/compose/local.yml
 DATABASE_URL ?= postgres://akademi:akademi@localhost:5432/akademi?sslmode=disable
 
 .PHONY: help up down logs api worker web migrate-up migrate-down tidy build

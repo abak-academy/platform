@@ -18,8 +18,8 @@ backend/config/env/prod/secrets.yaml
 backend/config/env/dev/
 web/.env.local
 # Deploy-time secrets, hand-placed on the box (keep *.example)
-deployments/secrets/*
-!deployments/secrets/*.example.yaml
+deploy/secrets/*
+!deploy/secrets/*.example.yaml
 
 # OS
 .DS_Store

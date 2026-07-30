@@ -25,7 +25,9 @@ its name is blocked.
       tier. The pipeline runs ~13 minutes per push to `main`; multiply by the number of people you are
       about to invite.
 - [ ] Take note of the currently deployed staging tag so you can roll back:
-      `grep IMAGE_TAG deployments/.env` on the staging VM.
+      `grep IMAGE_TAG .env` from the deploy directory on the staging VM (`abak-app`). **The box does
+      not mirror the repo layout** — the repo keeps these under `deploy/`, the VM has them
+      hand-placed under `abak-app/`. Paths below say which one they mean.
 - [x] Org name: **`abak-academy`**. The client's GitHub account (abak email) already exists.
 - [x] Repository renamed to **`platform`** as part of the transfer, so the final path is
       `abak-academy/platform` and images are `ghcr.io/abak-academy/platform/{api,worker,web}`. Done now
@@ -68,15 +70,17 @@ the tag is a commit SHA, so a rebuild of the same commit is reproducible.
 The workflow needs **no edit**: it derives the registry from `ghcr.io/${{ github.repository }}`
 (`pipeline.yml:53`), so it follows the repo automatically. Only two things are hard-coded.
 
-- [ ] Update the three image lines in `deployments/app-staging.yaml` (lines 52, 65, 78) from
-      `ghcr.io/panca1093/bimbel-abak-academy/...` to the new org path. On the staging VM this file is
-      hand-placed — **there is no git clone on that box** — so edit it in place:
+- [ ] Update the three image lines in the staging compose file (lines 52, 65, 78) from
+      `ghcr.io/panca1093/bimbel-abak-academy/...` to the new org path. Two separate copies, and both
+      need it — **there is no git clone on the box**, so neither edit propagates to the other.
 
 ```bash
-sed -i 's|ghcr.io/panca1093/bimbel-abak-academy|ghcr.io/abak-academy/platform|g' deployments/app-staging.yaml
-```
+# on the staging VM — hand-placed, filename is whatever was copied there
+sed -i 's|ghcr.io/panca1093/bimbel-abak-academy|ghcr.io/abak-academy/platform|g' abak-app/app-staging.yaml
 
-- [ ] Do the same in the repo copy and commit it, or the next hand-copy re-introduces the old path.
+# in the repo — commit this, or the next hand-copy re-introduces the old path
+sed -i 's|ghcr.io/panca1093/bimbel-abak-academy|ghcr.io/abak-academy/platform|g' deploy/compose/staging.yml
+```
 - [ ] Optional, cosmetic: `deploy/pipeline/build-image.sh:5` mentions the old path in an error-message
       example. No behaviour depends on it.
 

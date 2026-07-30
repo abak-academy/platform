@@ -11,7 +11,7 @@
 //	go test -tags gotenberg_integration -run TestCertificateRender_RealGotenberg ./internal/service/
 //
 // Set GOTENBERG_URL to point at an already-running instance instead — e.g.
-// GOTENBERG_URL=http://localhost:3001 for the deploy/docker-compose.yml sidecar.
+// GOTENBERG_URL=http://localhost:3001 for the deploy/compose/local.yml sidecar.
 //
 // Set CERT_SAMPLE_OUT=/path/to/sample.pdf to also dump the rendered PDF for the
 // visual acceptance check (page count, orientation, fonts, background, field

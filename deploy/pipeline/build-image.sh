@@ -14,8 +14,8 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID="${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}"
 # build-artifact.sh emits GOARCH=amd64, so the images must be amd64 or the binary will not execute.
 PLATFORM=linux/amd64
 
-docker build --platform "$PLATFORM" -f builds/Dockerfile.api    -t "${REGISTRY}/api:${TAG}"    backend
-docker build --platform "$PLATFORM" -f builds/Dockerfile.worker -t "${REGISTRY}/worker:${TAG}" backend
+docker build --platform "$PLATFORM" -f deploy/images/Dockerfile.api    -t "${REGISTRY}/api:${TAG}"    backend
+docker build --platform "$PLATFORM" -f deploy/images/Dockerfile.worker -t "${REGISTRY}/worker:${TAG}" backend
 
 # web is not promotable between environments: NEXT_PUBLIC_* is inlined into the client bundle here.
 docker build --platform "$PLATFORM" -f web/Dockerfile \

@@ -2,17 +2,17 @@
 #
 # Not a build tool: images are pulled from GHCR by commit SHA, never built here.
 # Deploy with:
-#   IMAGE_TAG=<commit-sha> docker compose -f deployments/app-staging.yaml up -d
-# (IMAGE_TAG and the postgres creds come from a hand-placed deployments/.env —
+#   IMAGE_TAG=<commit-sha> docker compose -f deploy/compose/staging.yml up -d
+# (IMAGE_TAG and the postgres creds come from a hand-placed deploy/.env —
 #  see .env.example.)
 #
 # Prerequisites on the box, out of band (not in this file):
-#   - deployments/secrets/staging-secrets.yaml  hand-placed, gitignored (JWT, DB
+#   - deploy/secrets/staging-secrets.yaml  hand-placed, gitignored (JWT, DB
 #     url, object-storage HMAC keys, Midtrans keys). Mounted into api + worker.
 #   - GCS buckets akademi-bimbel-staging (public-read via IAM) and
 #     akademi-bimbel-private-staging created with `gcloud storage buckets create`.
 #   - A Let's Encrypt cert for stg.abakacademy.id under /etc/letsencrypt (see
-#     deployments/nginx/nginx.conf for the issuance runbook).
+#     deploy/nginx/staging.conf for the issuance runbook).
 #
 # Object storage is GCS, so there is no minio service here. Only nginx publishes
 # ports; postgres/redis/api/web are reachable only on the internal network.
@@ -28,9 +28,9 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?set in deployments/.env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in deployments/.env}
-      POSTGRES_DB: ${POSTGRES_DB:?set in deployments/.env}
+      POSTGRES_USER: ${POSTGRES_USER:?set in deploy/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:?set in deploy/.env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -69,7 +69,7 @@ services:
     environment:
       APP_ENV: staging
     volumes:
-      - ./secrets/staging-secrets.yaml:/app/config/env/staging/secrets.yaml:ro
+      - ../secrets/staging-secrets.yaml:/app/config/env/staging/secrets.yaml:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,7 +82,7 @@ services:
     environment:
       APP_ENV: staging
     volumes:
-      - ./secrets/staging-secrets.yaml:/app/config/env/staging/secrets.yaml:ro
+      - ../secrets/staging-secrets.yaml:/app/config/env/staging/secrets.yaml:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,7 +102,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../nginx/staging.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - certbot-webroot:/var/www/certbot
     depends_on:
