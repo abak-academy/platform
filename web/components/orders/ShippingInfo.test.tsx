@@ -48,4 +48,41 @@ describe("ShippingInfo", () => {
     render(<ShippingInfo order={real} />);
     expect(screen.queryByText("Estimasi — bukan tarif kurir")).toBeNull();
   });
+
+  it("shows shipment_status alongside the resi", () => {
+    const withStatus = { ...physicalOrder, shipment_status: "delivered" };
+    render(<ShippingInfo order={withStatus} />);
+    expect(screen.getByText("delivered")).toBeTruthy();
+  });
+
+  // A buyer has no use for "we typed this in by hand"; only an admin does.
+  it("never shows waybill_source — that is admin-only, in OrderDetailModal", () => {
+    const withWaybillSource = { ...physicalOrder, waybill_source: "manual" };
+    render(<ShippingInfo order={withWaybillSource} />);
+    expect(screen.queryByText(/Input manual/)).toBeNull();
+    expect(screen.queryByText(/Booking otomatis/)).toBeNull();
+  });
+
+  it("renders the shipment timeline when events are present", () => {
+    const withEvents = {
+      ...physicalOrder,
+      shipment_events: [
+        {
+          id: "e1",
+          order_id: "o1",
+          status: "confirmed",
+          occurred_at: "2026-07-20T01:00:00Z",
+          created_at: "2026-07-20T01:00:05Z",
+        },
+      ],
+    };
+    render(<ShippingInfo order={withEvents} />);
+    expect(screen.getByText("Riwayat Pengiriman")).toBeTruthy();
+    expect(screen.getByTestId("shipment-event-status").textContent).toBe("confirmed");
+  });
+
+  it("renders no timeline heading when there are no shipment events", () => {
+    render(<ShippingInfo order={physicalOrder} />);
+    expect(screen.queryByText("Riwayat Pengiriman")).toBeNull();
+  });
 });

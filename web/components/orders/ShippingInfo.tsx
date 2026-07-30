@@ -4,6 +4,7 @@ import type { Order } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import { hasPhysicalItems } from "@/lib/shipping";
+import { ShipmentTimeline } from "@/components/orders/ShipmentTimeline";
 
 export interface ShippingInfoProps {
   order: Order;
@@ -58,7 +59,16 @@ export function ShippingInfo({ order }: ShippingInfoProps) {
             <dd className="text-right text-ink-900">{order.tracking_number}</dd>
           </div>
         )}
+        {order.tracking_number && (
+          <div className="flex items-start justify-between gap-3">
+            <dt className="text-ink-500">{t("order_shipment_status")}</dt>
+            <dd className="text-right text-ink-900">
+              {order.shipment_status ?? t("order_shipment_status_unknown")}
+            </dd>
+          </div>
+        )}
       </dl>
+      <ShipmentTimeline events={order.shipment_events} />
     </section>
   );
 }

@@ -29,4 +29,58 @@ describe("OrderDetailModal", () => {
     render(<OrderDetailModal order={real} onOpenChange={vi.fn()} />);
     expect(screen.queryByText("Estimasi — bukan tarif kurir")).toBeNull();
   });
+
+  it("shows the Cetak Resi print action when tracking_number is present", () => {
+    const shipped = { ...physicalOrder, tracking_number: "JP1234567" };
+    render(<OrderDetailModal order={shipped} onOpenChange={vi.fn()} />);
+    expect(screen.getByText("Cetak Resi")).toBeTruthy();
+  });
+
+  it("hides the Cetak Resi print action when tracking_number is empty", () => {
+    const unshipped = { ...physicalOrder, tracking_number: "" };
+    render(<OrderDetailModal order={unshipped} onOpenChange={vi.fn()} />);
+    expect(screen.queryByText("Cetak Resi")).toBeNull();
+  });
+
+  it("shows waybill_source next to the resi, admin-only", () => {
+    const biteshipShipped = {
+      ...physicalOrder,
+      tracking_number: "JP1234567",
+      waybill_source: "biteship",
+    };
+    render(<OrderDetailModal order={biteshipShipped} onOpenChange={vi.fn()} />);
+    expect(screen.getByText(/Booking otomatis \(Biteship\)/)).toBeTruthy();
+  });
+
+  it("renders the shipment timeline with events ordered newest-first", () => {
+    const withEvents = {
+      ...physicalOrder,
+      tracking_number: "JP1234567",
+      shipment_events: [
+        {
+          id: "e1",
+          order_id: "o1",
+          status: "confirmed",
+          occurred_at: "2026-07-20T01:00:00Z",
+          created_at: "2026-07-20T01:00:05Z",
+        },
+        {
+          id: "e2",
+          order_id: "o1",
+          status: "delivered",
+          occurred_at: "2026-07-22T01:00:00Z",
+          created_at: "2026-07-22T01:00:05Z",
+        },
+      ],
+    };
+    render(<OrderDetailModal order={withEvents} onOpenChange={vi.fn()} />);
+    const statuses = screen.getAllByTestId("shipment-event-status").map((el) => el.textContent);
+    expect(statuses).toEqual(["delivered", "confirmed"]);
+  });
+
+  it("renders no timeline heading for an order with no shipment events", () => {
+    const noEvents = { ...physicalOrder, tracking_number: "JP1234567", shipment_events: [] };
+    render(<OrderDetailModal order={noEvents} onOpenChange={vi.fn()} />);
+    expect(screen.queryByText("Riwayat Pengiriman")).toBeNull();
+  });
 });

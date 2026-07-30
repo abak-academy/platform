@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -7,11 +9,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
+import { ShipmentTimeline } from "@/components/orders/ShipmentTimeline";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { Order } from "@/lib/types";
 import { hasPhysicalItems } from "@/lib/shipping";
+import { downloadShippingLabel } from "@/lib/hooks/shipping-label";
 
 export interface OrderDetailModalProps {
   order: Order | null;
@@ -30,6 +35,7 @@ function formatDateTime(iso: string | undefined, lang: string): string | null {
 
 export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps) {
   const { t, lang } = useTranslation();
+  const [isDownloadingLabel, setIsDownloadingLabel] = useState(false);
   if (!order) return null;
 
   const items = order.items ?? [];
@@ -42,6 +48,17 @@ export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps)
   const placed = formatDateTime(order.checked_out_at ?? order.created_at, lang);
   const paid = formatDateTime(order.paid_at, lang);
   const shipped = formatDateTime(order.shipped_at, lang);
+
+  const handlePrintLabel = async () => {
+    setIsDownloadingLabel(true);
+    try {
+      await downloadShippingLabel(order.id);
+    } catch {
+      toast.error(t("error_generic"));
+    } finally {
+      setIsDownloadingLabel(false);
+    }
+  };
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
@@ -91,7 +108,21 @@ export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps)
           </Section>
 
           {hasPhysical && (
-            <Section title={t("order_shipping_heading")}>
+            <Section
+              title={t("order_shipping_heading")}
+              action={
+                order.tracking_number ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isDownloadingLabel}
+                    onClick={handlePrintLabel}
+                  >
+                    {t("order_print_label")}
+                  </Button>
+                ) : undefined
+              }
+            >
               <dl className="space-y-2 text-sm">
                 <Field label={t("order_shipping_address")}>
                   {addr.penerima || addr.alamat ? (
@@ -129,12 +160,29 @@ export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps)
                 )}
                 <Field label={t("order_tracking")}>
                   {order.tracking_number ? (
-                    <span className="font-mono">{order.tracking_number}</span>
+                    <span className="flex items-center justify-end gap-2">
+                      <span className="font-mono">{order.tracking_number}</span>
+                      {order.waybill_source && (
+                        <span className="text-xs text-muted-foreground">
+                          (
+                          {order.waybill_source === "biteship"
+                            ? t("order_shipment_waybill_source_biteship")
+                            : t("order_shipment_waybill_source_manual")}
+                          )
+                        </span>
+                      )}
+                    </span>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
                 </Field>
+                {order.tracking_number && (
+                  <Field label={t("order_shipment_status")}>
+                    <span>{order.shipment_status ?? t("order_shipment_status_unknown")}</span>
+                  </Field>
+                )}
                 {shipped && <Field label={t("status_shipped")}>{shipped}</Field>}
+                <ShipmentTimeline events={order.shipment_events} />
               </dl>
             </Section>
           )}
@@ -169,12 +217,23 @@ export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps)
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="border-b pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        {title}
-      </h3>
+      <div className="flex items-center justify-between border-b pb-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          {title}
+        </h3>
+        {action}
+      </div>
       {children}
     </section>
   );
