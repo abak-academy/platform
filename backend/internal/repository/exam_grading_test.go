@@ -146,6 +146,40 @@ func insertGradingSession(t *testing.T, pool *pgxpool.Pool, studentID, examID uu
 	return sessionID
 }
 
+// insertGradingRegistration seeds a bare exam_registration (no session) for a student,
+// used by tests that then attach multiple exam_session rows themselves (FB-26 retakes).
+func insertGradingRegistration(t *testing.T, pool *pgxpool.Pool, studentID, examID uuid.UUID) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	var regID uuid.UUID
+	err := pool.QueryRow(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3) RETURNING id`,
+		studentID, examID, uuid.NewString(),
+	).Scan(&regID)
+	if err != nil {
+		t.Fatalf("insert exam_registration: %v", err)
+	}
+	return regID
+}
+
+// insertGradingSessionForRegistration seeds an exam_session row on an existing
+// registration with an explicit attempt_number — used to simulate a second FB-26
+// attempt on the same registration.
+func insertGradingSessionForRegistration(t *testing.T, pool *pgxpool.Pool, regID, studentID, examID uuid.UUID, attemptNumber int, status string, submittedAt *time.Time, score *float64) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	var sessionID uuid.UUID
+	err := pool.QueryRow(ctx,
+		`INSERT INTO exam_session (registration_id, student_id, exam_id, attempt_number, started_at, status, submitted_at, score)
+		VALUES ($1, $2, $3, $4, now(), $5, $6, $7) RETURNING id`,
+		regID, studentID, examID, attemptNumber, status, submittedAt, score,
+	).Scan(&sessionID)
+	if err != nil {
+		t.Fatalf("insert exam_session for registration: %v", err)
+	}
+	return sessionID
+}
+
 func insertGradingAnswer(t *testing.T, pool *pgxpool.Pool, sessionID, questionID uuid.UUID, answer *string, score *float64, gradedBy *uuid.UUID, gradedAt *time.Time) {
 	t.Helper()
 	ctx := context.Background()
@@ -493,4 +527,72 @@ func TestGetSessionEssayAnswers_orderUsesTestQuestionSortOrder(t *testing.T) {
 	if items[1].QuestionID != qLate {
 		t.Errorf("second question = %v, want %v (higher test_question.sort_order)", items[1].QuestionID, qLate)
 	}
+}
+
+// TestRankReads_DedupeMultipleAttemptsPerRegistration covers the double-count Task 7
+// found: FB-26 lets one registration have two submitted exam_session rows. Student R
+// retakes and does WORSE (90 then 50) — the "latest attempt is authoritative" rule
+// (not highest-score) means R must be counted once, represented by the 50, everywhere
+// that collapses sessions to one row (CountHigherScores, CountFullyGradedSessions,
+// ListExamLeaderboard).
+func TestRankReads_DedupeMultipleAttemptsPerRegistration(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	testID := insertGradingTest(t, pool)
+	examID := insertGradingExam(t, pool, testID)
+	now := time.Now()
+
+	studentR := insertGradingUser(t, pool, "student", "Student R")
+	regR := insertGradingRegistration(t, pool, studentR, examID)
+	insertGradingSessionForRegistration(t, pool, regR, studentR, examID, 1, "submitted", &now, f64PtrG(90))
+	insertGradingSessionForRegistration(t, pool, regR, studentR, examID, 2, "submitted", &now, f64PtrG(50))
+
+	studentY := insertGradingUser(t, pool, "student", "Student Y")
+	insertGradingSession(t, pool, studentY, examID, "submitted", &now, f64PtrG(70))
+
+	t.Run("CountFullyGradedSessions counts R once, not twice", func(t *testing.T) {
+		count, err := repo.CountFullyGradedSessions(ctx, examID)
+		if err != nil {
+			t.Fatalf("CountFullyGradedSessions: %v", err)
+		}
+		if count != 2 {
+			t.Errorf("count = %d, want 2 (R deduped + Y)", count)
+		}
+	})
+
+	t.Run("CountHigherScores does not double-count R's own two rows", func(t *testing.T) {
+		// R's latest attempt is 50 (not > 60): R must not count here. Y's 70 > 60: counts.
+		// A buggy, non-deduped query would also count R's stale 90 > 60, giving 2.
+		count, err := repo.CountHigherScores(ctx, examID, 60)
+		if err != nil {
+			t.Fatalf("CountHigherScores: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("count = %d, want 1 (only Y; R's latest attempt is 50)", count)
+		}
+	})
+
+	t.Run("ListExamLeaderboard shows R once, at the latest attempt's score", func(t *testing.T) {
+		entries, _, err := repo.ListExamLeaderboard(ctx, examID, "", 20)
+		if err != nil {
+			t.Fatalf("ListExamLeaderboard: %v", err)
+		}
+		if len(entries) != 2 {
+			t.Fatalf("want 2 entries (R deduped + Y), got %d: %+v", len(entries), entries)
+		}
+		var rEntries int
+		for _, e := range entries {
+			if e.StudentID == studentR {
+				rEntries++
+				if e.Score != 50 {
+					t.Errorf("R's score = %v, want 50 (latest attempt, not the higher 90)", e.Score)
+				}
+			}
+		}
+		if rEntries != 1 {
+			t.Errorf("R appears %d times in the leaderboard, want 1", rEntries)
+		}
+	})
 }

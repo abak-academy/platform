@@ -363,7 +363,15 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 		}
 	}
 
-	if detail.AttemptsUsed >= 1 {
+	// max_attempts IS NULL or 0 means single-attempt (FR18) — every existing exam row
+	// keeps today's behaviour unless an admin sets max_attempts >= 2. Mirrors the
+	// WHERE clause's COALESCE(NULLIF(...,0),1) in CreateExamSessionTx; this is a cheap
+	// pre-check only, the atomic predicate there stays authoritative (C5, Invariant 4).
+	maxAttempts := 1
+	if exam.MaxAttempts != nil && *exam.MaxAttempts > 0 {
+		maxAttempts = *exam.MaxAttempts
+	}
+	if detail.AttemptsUsed >= maxAttempts {
 		return SessionStartPayload{}, ErrAlreadyAttempted
 	}
 
@@ -375,7 +383,7 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 	}
 	defer tx.Rollback(ctx)
 
-	sess, err := s.storeRepo.CreateExamSessionTx(ctx, tx, detail.ExamRegistration)
+	sess, err := s.storeRepo.CreateExamSessionTx(ctx, tx, detail.ExamRegistration, exam.MaxAttempts)
 	if err != nil {
 		if errors.Is(err, repository.ErrNoAttemptsLeft) {
 			return SessionStartPayload{}, ErrAlreadyAttempted
