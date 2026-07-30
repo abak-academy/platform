@@ -270,7 +270,9 @@ test.describe("question editor toolbar — caret/selection defects", () => {
 
     // Reload to prove durability against the real database, not a client cache.
     await page.reload();
-    await page.getByPlaceholder("Cari…").fill(marker);
+    // Two "Cari…" inputs exist: the admin shell's global search is type="search"
+    // (role searchbox); the question-list filter is a plain textbox.
+    await page.getByRole("textbox", { name: "Cari…" }).fill(marker);
     const row = page.getByRole("row", { name: new RegExp(marker) });
     await expect(row, "saved question should be findable after reload").toBeVisible({ timeout: 10000 });
     await row.click();
