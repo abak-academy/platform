@@ -125,6 +125,14 @@ func (twoServiceLogisticsClient) GetRates(ctx context.Context, req service.Shipp
 	}, nil
 }
 
+func (twoServiceLogisticsClient) CreateOrder(context.Context, service.CreateShipmentRequest) (service.Shipment, error) {
+	return service.Shipment{}, service.ErrShippingUnavailable
+}
+
+func (twoServiceLogisticsClient) GetOrder(context.Context, string) (service.Shipment, error) {
+	return service.Shipment{}, service.ErrShippingUnavailable
+}
+
 // logisticsServer returns a test server wired with the given logistics client,
 // for tests that need to control which courier rates are quoted.
 func logisticsServer(t *testing.T, env *testEnv, logistics service.LogisticsClient) *httptest.Server {

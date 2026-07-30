@@ -530,6 +530,14 @@ func (r *recordingLogisticsClient) GetRates(_ context.Context, req ShippingQuote
 	return []CourierRate{r.rate}, nil
 }
 
+func (r *recordingLogisticsClient) CreateOrder(_ context.Context, _ CreateShipmentRequest) (Shipment, error) {
+	return Shipment{}, ErrShippingUnavailable
+}
+
+func (r *recordingLogisticsClient) GetOrder(_ context.Context, _ string) (Shipment, error) {
+	return Shipment{}, ErrShippingUnavailable
+}
+
 // TestPatchCart_PopulatesItemValueFromPhysicalItemLineTotal covers FR-A-8: the
 // quote request PatchCart builds for a cart with physical items must carry
 // their summed line total (Jumlah) as ItemValue, instead of leaving it at the

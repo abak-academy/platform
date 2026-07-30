@@ -27,6 +27,8 @@ type BiteshipClient struct {
 	httpClient *http.Client
 }
 
+var _ service.LogisticsClient = (*BiteshipClient)(nil)
+
 // NewBiteshipClient creates a real BiteshipClient.
 func NewBiteshipClient(repo configReader, apiKey, baseURL string, httpClient *http.Client) *BiteshipClient {
 	return &BiteshipClient{
@@ -172,6 +174,8 @@ func (c *BiteshipClient) parsePricing(pricing []biteshipPricingItem) []service.C
 			Service:       item.CourierServiceName,
 			EstimatedDays: estimatedDays,
 			Price:         int64(item.Price),
+			CourierCode:   item.CourierCode,
+			ServiceCode:   item.CourierServiceCode,
 		}
 		rates = append(rates, rate)
 	}
@@ -187,6 +191,191 @@ type biteshipRatesResponse struct {
 type biteshipPricingItem struct {
 	CourierName        string `json:"courier_name"`
 	CourierServiceName string `json:"courier_service_name"`
+	CourierCode        string `json:"courier_code"`
+	CourierServiceCode string `json:"courier_service_code"`
 	Price              int64  `json:"price"`
 	Duration           string `json:"duration"`
+}
+
+// CreateOrder calls Biteship's POST /v1/orders to book a pickup, using
+// req.ReferenceID as reference_id so a retry is detected as a duplicate by
+// Biteship itself rather than booking a second pickup.
+func (c *BiteshipClient) CreateOrder(ctx context.Context, req service.CreateShipmentRequest) (service.Shipment, error) {
+	body, err := json.Marshal(buildBiteshipOrderRequest(req))
+	if err != nil {
+		return service.Shipment{}, fmt.Errorf("failed to marshal Biteship order request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/orders", bytes.NewReader(body))
+	if err != nil {
+		return service.Shipment{}, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	httpReq.Header.Set("authorization", c.apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return service.Shipment{}, fmt.Errorf("failed to call Biteship API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return service.Shipment{}, fmt.Errorf("failed to read Biteship response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return service.Shipment{}, classifyBiteshipOrderError(resp.StatusCode, respBody)
+	}
+
+	// Biteship's duplicate-reference case has been seen answering with a 2xx
+	// status and "success": false in the body, so check both.
+	var errProbe biteshipOrderErrorResponse
+	if jsonErr := json.Unmarshal(respBody, &errProbe); jsonErr == nil && !errProbe.Success && errProbe.Code != 0 {
+		return service.Shipment{}, classifyBiteshipOrderError(resp.StatusCode, respBody)
+	}
+
+	return parseBiteshipOrderResponse(respBody)
+}
+
+// GetOrder calls Biteship's GET /v1/orders/:id to re-fetch the authoritative
+// status of a previously created order.
+func (c *BiteshipClient) GetOrder(ctx context.Context, biteshipOrderID string) (service.Shipment, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/orders/"+biteshipOrderID, nil)
+	if err != nil {
+		return service.Shipment{}, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	httpReq.Header.Set("authorization", c.apiKey)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return service.Shipment{}, fmt.Errorf("failed to call Biteship API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return service.Shipment{}, fmt.Errorf("failed to read Biteship response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return service.Shipment{}, classifyBiteshipOrderError(resp.StatusCode, respBody)
+	}
+
+	return parseBiteshipOrderResponse(respBody)
+}
+
+// buildBiteshipOrderRequest maps CreateShipmentRequest onto Biteship's
+// POST /v1/orders body. courier_company/courier_type take Biteship's codes
+// (e.g. "jne"/"reg"), not the display names orders.selected_courier persists.
+func buildBiteshipOrderRequest(req service.CreateShipmentRequest) biteshipOrderRequest {
+	items := make([]biteshipOrderItem, 0, len(req.Items))
+	for _, it := range req.Items {
+		items = append(items, biteshipOrderItem{
+			Name:     it.Name,
+			Value:    it.Value,
+			Quantity: it.Quantity,
+			Weight:   it.WeightGrams,
+		})
+	}
+	return biteshipOrderRequest{
+		ReferenceID:             req.ReferenceID,
+		ShipperContactName:      req.OriginContactName,
+		ShipperContactPhone:     req.OriginContactPhone,
+		OriginContactName:       req.OriginContactName,
+		OriginContactPhone:      req.OriginContactPhone,
+		OriginAddress:           req.OriginAddress,
+		OriginPostalCode:        req.OriginPostalCode,
+		DestinationContactName:  req.DestinationContactName,
+		DestinationContactPhone: req.DestinationContactPhone,
+		DestinationAddress:      req.DestinationAddress,
+		DestinationPostalCode:   req.DestinationPostalCode,
+		CourierCompany:          req.CourierCode,
+		CourierType:             req.ServiceCode,
+		DeliveryType:            "now",
+		Items:                   items,
+	}
+}
+
+// classifyBiteshipOrderError turns a non-2xx (or success:false) /v1/orders
+// response into a typed error. Code 40002060 is Biteship's duplicate
+// reference_id detection; its response echoes the pre-existing order id.
+func classifyBiteshipOrderError(statusCode int, body []byte) error {
+	var errResp biteshipOrderErrorResponse
+	if jsonErr := json.Unmarshal(body, &errResp); jsonErr == nil && errResp.Code == 40002060 {
+		return &service.ShipmentAlreadyBookedError{ExistingBiteshipOrderID: errResp.OrderID}
+	}
+	if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden {
+		return fmt.Errorf("%w: Biteship API returned status %d: %s", service.ErrShippingAuthRejected, statusCode, string(body))
+	}
+	return fmt.Errorf("Biteship API returned status %d: %s", statusCode, string(body))
+}
+
+func parseBiteshipOrderResponse(body []byte) (service.Shipment, error) {
+	var orderResp biteshipOrderResponse
+	if err := json.Unmarshal(body, &orderResp); err != nil {
+		return service.Shipment{}, fmt.Errorf("failed to parse Biteship order response: %w", err)
+	}
+	return service.Shipment{
+		BiteshipOrderID:   orderResp.ID,
+		WaybillID:         orderResp.Courier.WaybillID,
+		Status:            orderResp.Status,
+		CourierDriverName: orderResp.Courier.DriverName,
+	}, nil
+}
+
+// biteshipOrderRequest is the POST /v1/orders body.
+type biteshipOrderRequest struct {
+	ReferenceID string `json:"reference_id"`
+
+	ShipperContactName  string `json:"shipper_contact_name"`
+	ShipperContactPhone string `json:"shipper_contact_phone"`
+
+	OriginContactName  string `json:"origin_contact_name"`
+	OriginContactPhone string `json:"origin_contact_phone"`
+	OriginAddress      string `json:"origin_address"`
+	OriginPostalCode   string `json:"origin_postal_code"`
+
+	DestinationContactName  string `json:"destination_contact_name"`
+	DestinationContactPhone string `json:"destination_contact_phone"`
+	DestinationAddress      string `json:"destination_address"`
+	DestinationPostalCode   string `json:"destination_postal_code"`
+
+	CourierCompany string `json:"courier_company"`
+	CourierType    string `json:"courier_type"`
+	DeliveryType   string `json:"delivery_type"`
+
+	Items []biteshipOrderItem `json:"items"`
+}
+
+type biteshipOrderItem struct {
+	Name     string `json:"name"`
+	Value    int64  `json:"value"`
+	Quantity int    `json:"quantity"`
+	Weight   int    `json:"weight"`
+}
+
+// biteshipOrderResponse is the shared success shape of POST /v1/orders and
+// GET /v1/orders/:id.
+type biteshipOrderResponse struct {
+	ID          string `json:"id"`
+	ReferenceID string `json:"reference_id"`
+	Status      string `json:"status"`
+	Courier     struct {
+		WaybillID  string `json:"waybill_id"`
+		DriverName string `json:"driver_name"`
+	} `json:"courier"`
+}
+
+// biteshipOrderErrorResponse is Biteship's error shape for /v1/orders.
+//
+// OrderID: Biteship's public docs did not name this field explicitly at the
+// time of writing — TODO: uncertain, verify the real field name against a
+// live 40002060 response (the sandbox test in biteship_sandbox_test.go
+// exercises this) before the first production booking.
+type biteshipOrderErrorResponse struct {
+	Success bool   `json:"success"`
+	Code    int    `json:"code"`
+	Error   string `json:"error"`
+	OrderID string `json:"order_id"`
 }

@@ -1,6 +1,10 @@
 package service
 
-import "context"
+import (
+	"context"
+	"errors"
+	"fmt"
+)
 
 type ShippingQuoteRequest struct {
 	DestinationPostalCode string
@@ -20,13 +24,81 @@ type CourierRate struct {
 	// configured flat-rate fallback. The storefront must label these so a buyer
 	// is never shown an invented figure that looks like a real quote.
 	IsEstimate bool `json:"is_estimate"`
+	// CourierCode/ServiceCode are Biteship's codes (e.g. "jne"/"reg"), distinct
+	// from Courier/Service which are display names. POST /v1/orders requires
+	// the codes; a booking must use the code the buyer's quote was priced under.
+	CourierCode string `json:"courier_code"`
+	ServiceCode string `json:"service_code"`
+}
+
+// ShipmentItem is one line item on a CreateShipmentRequest.
+type ShipmentItem struct {
+	Name        string
+	Value       int64
+	Quantity    int
+	WeightGrams int
+}
+
+// CreateShipmentRequest is the input to LogisticsClient.CreateOrder.
+type CreateShipmentRequest struct {
+	ReferenceID string
+
+	OriginContactName  string
+	OriginContactPhone string
+	OriginAddress      string
+	OriginPostalCode   string
+
+	DestinationContactName  string
+	DestinationContactPhone string
+	DestinationAddress      string
+	DestinationPostalCode   string
+
+	// CourierCode/ServiceCode are the codes the rate was quoted under
+	// (CourierRate.CourierCode/ServiceCode), not display names.
+	CourierCode string
+	ServiceCode string
+
+	Items []ShipmentItem
+}
+
+// Shipment is the result of CreateOrder or GetOrder.
+type Shipment struct {
+	BiteshipOrderID   string
+	WaybillID         string
+	Status            string
+	CourierDriverName string
+}
+
+// ErrShipmentAlreadyBooked is the sentinel callers check with errors.Is.
+// BiteshipClient.CreateOrder returns a *ShipmentAlreadyBookedError wrapping
+// it so a retry can also recover the pre-existing Biteship order id
+// (FR-C-7) — an error that only satisfies errors.Is but drops the id is
+// useless to a retry that needs to adopt it rather than book a second pickup.
+var ErrShipmentAlreadyBooked = errors.New("shipment already booked")
+
+// ShipmentAlreadyBookedError carries the Biteship order id echoed back by
+// duplicate-detection error 40002060.
+type ShipmentAlreadyBookedError struct {
+	ExistingBiteshipOrderID string
+}
+
+func (e *ShipmentAlreadyBookedError) Error() string {
+	return fmt.Sprintf("shipment already booked: existing biteship order id %s", e.ExistingBiteshipOrderID)
+}
+
+func (e *ShipmentAlreadyBookedError) Is(target error) bool {
+	return target == ErrShipmentAlreadyBooked
 }
 
 type LogisticsClient interface {
 	GetRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error)
+	CreateOrder(ctx context.Context, req CreateShipmentRequest) (Shipment, error)
+	GetOrder(ctx context.Context, biteshipOrderID string) (Shipment, error)
 }
 
 type NoopLogisticsClient struct{}
+
+var _ LogisticsClient = (*NoopLogisticsClient)(nil)
 
 func (n *NoopLogisticsClient) GetRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
 	// Returning fabricated JNE/TIKI quotes here meant that with no Biteship key
@@ -34,4 +106,13 @@ func (n *NoopLogisticsClient) GetRates(ctx context.Context, req ShippingQuoteReq
 	// Midtrans, indistinguishable from a real quote. Failing is the honest
 	// answer; the flat-rate fallback in resolveShippingRates handles the rest.
 	return nil, ErrShippingUnavailable
+}
+
+func (n *NoopLogisticsClient) CreateOrder(ctx context.Context, req CreateShipmentRequest) (Shipment, error) {
+	// An absent key must fail honestly rather than fabricating a booking.
+	return Shipment{}, ErrShippingUnavailable
+}
+
+func (n *NoopLogisticsClient) GetOrder(ctx context.Context, biteshipOrderID string) (Shipment, error) {
+	return Shipment{}, ErrShippingUnavailable
 }
