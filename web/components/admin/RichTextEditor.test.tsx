@@ -467,6 +467,41 @@ describe("RichTextEditor", () => {
     execSpy.mockRestore();
   });
 
+  it("keeps a pasted table with colspan intact (FR-38)", async () => {
+    const execSpy = vi.spyOn(document, "execCommand").mockImplementation((cmd, _ui, arg) => {
+      if (cmd === "insertHTML" && typeof arg === "string") {
+        const editable = document.querySelector('[contenteditable="true"]');
+        if (editable) editable.innerHTML = arg;
+        return true;
+      }
+      return true;
+    });
+
+    const onChange = vi.fn();
+    render(<RichTextEditor value="" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+
+    const tableHtml = '<table><thead><tr><th>Header</th></tr></thead><tbody><tr><td colspan="2">Cell</td></tr></tbody></table>';
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        getData: (type: string) => (type === "text/html" ? tableHtml : ""),
+      },
+    });
+
+    editable.dispatchEvent(pasteEvent);
+
+    await waitFor(() => {
+      const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0];
+      expect(lastCall).toBeDefined();
+      expect(lastCall).toContain("<table>");
+      expect(lastCall).toContain('colspan="2"');
+    });
+
+    execSpy.mockRestore();
+  });
+
   it("removes disallowed tags (e.g., script) on paste", async () => {
     const execSpy = vi.spyOn(document, "execCommand").mockImplementation((cmd, _ui, arg) => {
       // Mirror the insertHTML behavior so onChange can pick it up.

@@ -50,7 +50,7 @@ function isEffectivelyEmpty(html: string): boolean {
 
 function sanitizeClipboardHtml(html: string): string {
   // For pasted content, only allow src/alt on img, no style attributes
-  const ALLOWED_ATTR = ["src", "alt"];
+  const ALLOWED_ATTR = ["src", "alt", "colspan", "rowspan"];
   return DOMPurify.sanitize(html, { ALLOWED_TAGS: QUESTION_BODY_ALLOWED_TAGS, ALLOWED_ATTR });
 }
 

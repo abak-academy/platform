@@ -59,7 +59,7 @@ func isSectionedMode(mode string) bool { return mode == "utbk" || mode == "ielts
 // test) the three frontend render/sanitize sites. Attribute lists are NOT
 // shared — they deliberately differ per site (see exam.go's style subset vs.
 // RichTextEditor's no-style-on-paste rule).
-var questionBodyAllowedTags = []string{"b", "i", "u", "ul", "ol", "li", "sup", "sub", "img", "br", "p"}
+var questionBodyAllowedTags = []string{"b", "i", "u", "ul", "ol", "li", "sup", "sub", "img", "br", "p", "table", "thead", "tbody", "tr", "td", "th"}
 
 // questionBodyPolicy is the single allowlist used by sanitizeQuestionBody. It is
 // built once at package init and used on every write path. See sanitizeQuestionBody
@@ -68,6 +68,7 @@ var questionBodyPolicy = func() *bluemonday.Policy {
 	p := bluemonday.NewPolicy()
 	p.AllowElements(questionBodyAllowedTags...)
 	p.AllowAttrs("src", "alt").OnElements("img")
+	p.AllowAttrs("colspan", "rowspan").OnElements("td", "th")
 	// Restricted style: only a safe subset is allowed, and "position" is
 	// explicitly rejected by handler (covers "position:fixed" and any
 	// other value). url() in style is rejected wholesale — images carry

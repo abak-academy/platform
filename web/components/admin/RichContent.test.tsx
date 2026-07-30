@@ -54,6 +54,17 @@ describe("RichContent", () => {
     expect(target.querySelector("br")).not.toBeNull();
   });
 
+  it("renders a table with colspan intact after DOMPurify (FR-38)", async () => {
+    const html = '<table><thead><tr><th>Header</th></tr></thead><tbody><tr><td colspan="2">Cell</td></tr></tbody></table>';
+    const { container } = render(<RichContent html={html} />);
+
+    const target = container.querySelector("[data-rich-content]") as HTMLElement;
+    expect(target.querySelector("table")).not.toBeNull();
+    const td = target.querySelector("td");
+    expect(td).not.toBeNull();
+    expect(td?.getAttribute("colspan")).toBe("2");
+  });
+
   it("sanitizes a legacy unsanitized body at render time (defense-in-depth for pre-PR rows)", async () => {
     const legacyMaliciousBody = '<img src=x onerror="window.__xss = true">safe text';
     const { container } = render(<RichContent html={legacyMaliciousBody} />);

@@ -16,7 +16,7 @@ interface RichContentProps {
 // write-time sanitization was added are untrusted and still render through
 // this component.
 const ALLOWED_TAGS = QUESTION_BODY_ALLOWED_TAGS;
-const ALLOWED_ATTR = ["src", "alt", "style"];
+const ALLOWED_ATTR = ["src", "alt", "style", "colspan", "rowspan"];
 
 export function RichContent({ html, className }: RichContentProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);

@@ -47,6 +47,16 @@ func TestValidateQuestion_accepts_paragraph_body_with_text(t *testing.T) {
 }
 
 
+// --- Part C: table tags on the question-body allowlist (FR-36) ---
+
+func TestSanitizeQuestionBody_preservesTable(t *testing.T) {
+	in := `<table><thead><tr><th>Header</th></tr></thead><tbody><tr><td colspan="2">Cell</td></tr></tbody></table>`
+	got := sanitizeQuestionBody(in)
+	if got != in {
+		t.Errorf("table markup with colspan must round-trip unchanged\n in: %q\nout: %q", in, got)
+	}
+}
+
 // --- Cross-language tag-list equality (C4, FR4) ---
 
 func TestQuestionBodyAllowedTags_matchesFrontendAllowlist(t *testing.T) {
