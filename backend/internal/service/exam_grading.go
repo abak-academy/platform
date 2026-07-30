@@ -86,7 +86,7 @@ func gradeMultiAnswer(answer string, options []model.QuestionOption) bool {
 // The question's score is the sum of per-blank scores (not independently clamped).
 // On JSON unmarshal failure, returns 0 (all blanks treated as empty).
 // IsCorrect is true only if all attempted blanks are correct (no wrong blanks).
-func gradeMultiBlank(answer *string, blanks []model.QuestionBlank, pointCorrect, pointWrong int) (float64, bool) {
+func gradeMultiBlank(answer *string, blanks []model.QuestionBlank, pointCorrect, pointWrong float64) (float64, bool) {
 	if answer == nil || *answer == "" {
 		return 0, false
 	}
@@ -113,9 +113,9 @@ func gradeMultiBlank(answer *string, blanks []model.QuestionBlank, pointCorrect,
 
 		hasAnswer = true
 		if strings.EqualFold(blankAnswer, strings.TrimSpace(blank.CorrectAnswer)) {
-			score += float64(pointCorrect)
+			score += pointCorrect
 		} else {
-			score -= float64(pointWrong)
+			score -= pointWrong
 			anyWrong = true
 		}
 	}
@@ -170,11 +170,11 @@ func gradeObjective(questions []model.QuestionWithOptions, answers map[uuid.UUID
 		var score float64
 		switch {
 		case correct:
-			score = float64(q.Question.PointCorrect)
+			score = q.Question.PointCorrect
 		case empty:
 			score = 0
 		default:
-			score = -float64(q.Question.PointWrong)
+			score = -q.Question.PointWrong
 		}
 		sum += score
 
@@ -231,7 +231,7 @@ func topicBreakdown(tests []model.TestDetail, answers []model.ExamSessionAnswer)
 	rows := make([]model.ResultTopicRow, 0, len(tests))
 	for _, td := range tests {
 		var earned float64
-		var max int
+		var max float64
 		for _, q := range td.Questions {
 			max += q.Question.PointCorrect
 			earned += scoreByQuestion[q.Question.ID]

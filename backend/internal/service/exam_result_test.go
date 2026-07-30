@@ -220,7 +220,7 @@ func mcqTest(testID, examID uuid.UUID) model.TestDetail {
 	}
 }
 
-func essayTest(testID uuid.UUID, pointCorrect int) (model.TestDetail, uuid.UUID) {
+func essayTest(testID uuid.UUID, pointCorrect float64) (model.TestDetail, uuid.UUID) {
 	qID := uuid.New()
 	q := model.Question{ID: qID, Format: "essay", Body: "Explain X", PointCorrect: pointCorrect, PointWrong: 0}
 	return model.TestDetail{

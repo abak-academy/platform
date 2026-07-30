@@ -23,8 +23,8 @@ type QuestionImportRow struct {
 	Subject       string
 	Topic         string
 	Difficulty    *string
-	PointCorrect  int
-	PointWrong    int
+	PointCorrect  float64
+	PointWrong    float64
 	CorrectAnswer *string
 	Options       []model.QuestionOption
 	Error         string
@@ -105,8 +105,8 @@ func ParseQuestionImportCSV(data []byte) ([]QuestionImportRow, error) {
 			return strings.TrimSpace(record[idx])
 		}
 
-		pointCorrect, pcErr := parseImportInt(get("point_correct"), "point_correct")
-		pointWrong, pwErr := parseImportInt(get("point_wrong"), "point_wrong")
+		pointCorrect, pcErr := parseImportFloat(get("point_correct"), "point_correct")
+		pointWrong, pwErr := parseImportFloat(get("point_wrong"), "point_wrong")
 
 		rowErr := func() string {
 			if pcErr != nil {
@@ -166,13 +166,13 @@ func ParseQuestionImportCSV(data []byte) ([]QuestionImportRow, error) {
 	return rows, nil
 }
 
-func parseImportInt(raw, field string) (int, error) {
+func parseImportFloat(raw, field string) (float64, error) {
 	if raw == "" {
 		return 0, fmt.Errorf("%w: %s cannot be empty", ErrValidation, field)
 	}
-	v, err := strconv.Atoi(raw)
+	v, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s must be an integer", ErrValidation, field)
+		return 0, fmt.Errorf("%w: %s must be a number", ErrValidation, field)
 	}
 	return v, nil
 }

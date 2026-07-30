@@ -56,8 +56,8 @@ mcq,2+2,Math,Arithmetic,medium,2,0,a,4,5,6`)
 	assert.Equal(t, "Arithmetic", r.Topic)
 	require.NotNil(t, r.Difficulty)
 	assert.Equal(t, "medium", *r.Difficulty)
-	assert.Equal(t, 2, r.PointCorrect)
-	assert.Equal(t, 0, r.PointWrong)
+	assert.Equal(t, 2.0, r.PointCorrect)
+	assert.Equal(t, 0.0, r.PointWrong)
 	require.NotNil(t, r.CorrectAnswer)
 	assert.Equal(t, "a", *r.CorrectAnswer)
 	require.Len(t, r.Options, 3)
@@ -65,6 +65,19 @@ mcq,2+2,Math,Arithmetic,medium,2,0,a,4,5,6`)
 	assert.Equal(t, "4", r.Options[0].Text)
 	assert.True(t, r.Options[0].IsCorrect)
 	assert.False(t, r.Options[1].IsCorrect)
+}
+
+func TestParseQuestionImportCSV_acceptsFractionalPoints(t *testing.T) {
+	csv := []byte(`format,body,subject,topic,point_correct,point_wrong
+essay,explain gravity,Physics,Mechanics,2.5,0.5`)
+
+	rows, err := ParseQuestionImportCSV(csv)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+
+	assert.Equal(t, 2.5, rows[0].PointCorrect)
+	assert.Equal(t, 0.5, rows[0].PointWrong)
+	assert.Empty(t, rows[0].Error)
 }
 
 func TestParseQuestionImportCSV_rejectsMissingHeader(t *testing.T) {

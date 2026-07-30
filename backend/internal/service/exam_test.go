@@ -377,14 +377,33 @@ func TestValidateQuestion_multi_answer_rejects_correct_answer_set(t *testing.T) 
 	}
 }
 
-func TestValidateQuestion_rejects_point_correct_below_1(t *testing.T) {
+func TestValidateQuestion_rejects_point_correct_zero_or_below(t *testing.T) {
 	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 0, PointWrong: 0}
 	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("point_correct=0 should return ErrValidation, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "point_correct must be >= 1") {
-		t.Errorf("point_correct=0 msg should mention 'point_correct must be >= 1', got %q", err.Error())
+	if !strings.Contains(err.Error(), "point_correct must be > 0") {
+		t.Errorf("point_correct=0 msg should mention 'point_correct must be > 0', got %q", err.Error())
+	}
+
+	q.PointCorrect = -1
+	err = validateQuestion(q, nil, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("point_correct=-1 should return ErrValidation, got %v", err)
+	}
+}
+
+// FR-16/FR-17: point_correct is fractional with a > 0 floor.
+func TestValidateQuestion_acceptsFractionalPointCorrect(t *testing.T) {
+	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 2.5, PointWrong: 0}
+	if err := validateQuestion(q, nil, nil); err != nil {
+		t.Errorf("point_correct=2.5 should pass, got %v", err)
+	}
+
+	q.PointCorrect = 0.25
+	if err := validateQuestion(q, nil, nil); err != nil {
+		t.Errorf("point_correct=0.25 should pass, got %v", err)
 	}
 }
 
@@ -2032,6 +2051,35 @@ func TestCreateBankQuestion_sanitizes_option_text(t *testing.T) {
 	// Verify second option: rich text preserved
 	if fetched.Options[1].Text != "<b>bold</b> text" {
 		t.Errorf("option text must preserve allowed tags\n in: %q\nout: %q", "<b>bold</b> text", fetched.Options[1].Text)
+	}
+}
+
+// FR-16: the NUMERIC column and the pgx scan must agree on a fractional value —
+// a build against the widened column alone (Task 1) does not prove this.
+func TestCreateBankQuestion_roundTripsFractionalPoints(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	body := "fractional points round trip " + uniqueSuffix()
+	q := model.Question{
+		Format:       "essay",
+		Body:         body,
+		PointCorrect: 2.5,
+		PointWrong:   0.25,
+	}
+
+	_, err := svc.CreateBankQuestion(ctx, q, nil, nil)
+	require.NoError(t, err)
+
+	items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: body, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	if items[0].Question.PointCorrect != 2.5 {
+		t.Errorf("PointCorrect round trip: want 2.5, got %v", items[0].Question.PointCorrect)
+	}
+	if items[0].Question.PointWrong != 0.25 {
+		t.Errorf("PointWrong round trip: want 0.25, got %v", items[0].Question.PointWrong)
 	}
 }
 

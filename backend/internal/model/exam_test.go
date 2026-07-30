@@ -125,8 +125,8 @@ func TestQuestionStruct(t *testing.T) {
 	fieldType(t, v, "ID", reflect.TypeOf(uuid.UUID{}))
 	fieldKind(t, v, "Format", reflect.String)
 	fieldKind(t, v, "Body", reflect.String)
-	fieldKind(t, v, "PointCorrect", reflect.Int)
-	fieldKind(t, v, "PointWrong", reflect.Int)
+	fieldKind(t, v, "PointCorrect", reflect.Float64)
+	fieldKind(t, v, "PointWrong", reflect.Float64)
 
 	// Nullable pointers
 	for _, name := range []string{"CorrectAnswer", "Explanation", "Difficulty", "ImageURL", "Topic"} {

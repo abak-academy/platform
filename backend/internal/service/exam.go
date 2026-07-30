@@ -292,8 +292,8 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 
 	// FR-S5-02: point_correct/point_wrong are unsigned magnitudes; the scoring
 	// engine (not the author) applies the sign for wrong answers.
-	if q.PointCorrect < 1 {
-		return fmt.Errorf("%w: point_correct must be >= 1", ErrValidation)
+	if q.PointCorrect <= 0 {
+		return fmt.Errorf("%w: point_correct must be > 0", ErrValidation)
 	}
 	if q.PointWrong < 0 {
 		return fmt.Errorf("%w: point_wrong must be >= 0", ErrValidation)

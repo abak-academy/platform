@@ -221,7 +221,7 @@ func (s *shimSessionService) GetExamAnalytics(ctx context.Context, examID uuid.U
 		return model.ExamAnalytics{}, err
 	}
 
-	maxPossible := 0
+	maxPossible := 0.0
 	for _, td := range tests {
 		for _, q := range td.Questions {
 			maxPossible += q.Question.PointCorrect
@@ -237,7 +237,7 @@ func (s *shimSessionService) GetExamAnalytics(ctx context.Context, examID uuid.U
 	}
 
 	if maxPossible > 0 {
-		maxF := float64(maxPossible)
+		maxF := maxPossible
 		for _, sc := range scores {
 			pct := (sc / maxF) * 100
 			switch {

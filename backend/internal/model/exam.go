@@ -51,10 +51,10 @@ type Question struct {
 	AudioURL      *string    `json:"audio_url"`
 	TopicID       *uuid.UUID `json:"topic_id"`
 	Topic         *string    `json:"topic"`
-	// PointCorrect and PointWrong are positive-integer magnitudes authored per question;
-	// the scoring engine (not the author) applies the sign for wrong answers.
-	PointCorrect int `json:"point_correct"`
-	PointWrong   int `json:"point_wrong"`
+	// PointCorrect and PointWrong are positive magnitudes (fractional allowed) authored
+	// per question; the scoring engine (not the author) applies the sign for wrong answers.
+	PointCorrect float64 `json:"point_correct"`
+	PointWrong   float64 `json:"point_wrong"`
 }
 
 // QuestionOption has a composite PK (QuestionID, Key); no surrogate ID. `Key` is the
@@ -351,7 +351,7 @@ type ResultTopicRow struct {
 	Topic       string    `json:"topic"`
 	SectionType *string   `json:"section_type,omitempty"`
 	Earned      float64   `json:"earned"`
-	Max         int       `json:"max"`
+	Max         float64   `json:"max"`
 }
 
 // ResultPembahasanItem is one objective-question row of the score_pembahasan pembahasan
@@ -381,7 +381,7 @@ type GradingEssayItem struct {
 	QuestionID    uuid.UUID  `json:"question_id"`
 	Body          string     `json:"body"`
 	Answer        *string    `json:"answer"`
-	PointCorrect  int        `json:"point_correct"`
+	PointCorrect  float64    `json:"point_correct"`
 	Score         *float64   `json:"score"`
 	GraderComment *string    `json:"grader_comment"`
 	GradedAt      *time.Time `json:"graded_at"`

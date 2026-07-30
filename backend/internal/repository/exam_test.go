@@ -238,11 +238,11 @@ func TestScanQuestion_passes_expected_destinations(t *testing.T) {
 	if _, ok := rec.dests[7].(**uuid.UUID); !ok {
 		t.Errorf("dest[7] = %T, want **uuid.UUID (topic_id, nullable local)", rec.dests[7])
 	}
-	if _, ok := rec.dests[8].(*int); !ok {
-		t.Errorf("dest[8] = %T, want *int (point_correct)", rec.dests[8])
+	if _, ok := rec.dests[8].(*float64); !ok {
+		t.Errorf("dest[8] = %T, want *float64 (point_correct)", rec.dests[8])
 	}
-	if _, ok := rec.dests[9].(*int); !ok {
-		t.Errorf("dest[9] = %T, want *int (point_wrong)", rec.dests[9])
+	if _, ok := rec.dests[9].(*float64); !ok {
+		t.Errorf("dest[9] = %T, want *float64 (point_wrong)", rec.dests[9])
 	}
 }
 

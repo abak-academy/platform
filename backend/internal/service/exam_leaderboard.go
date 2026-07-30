@@ -111,7 +111,7 @@ func (s *Service) GetExamAnalytics(ctx context.Context, examID uuid.UUID) (model
 		return model.ExamAnalytics{}, err
 	}
 
-	maxPossible := 0
+	maxPossible := 0.0
 	for _, td := range tests {
 		for _, q := range td.Questions {
 			maxPossible += q.Question.PointCorrect
@@ -127,7 +127,7 @@ func (s *Service) GetExamAnalytics(ctx context.Context, examID uuid.UUID) (model
 	}
 
 	if maxPossible > 0 {
-		maxF := float64(maxPossible)
+		maxF := maxPossible
 		for _, sc := range scores {
 			pct := (sc / maxF) * 100
 			switch {

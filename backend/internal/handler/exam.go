@@ -472,21 +472,13 @@ type blankRequest struct {
 }
 
 func (r questionRequest) toQuestion() (model.Question, error) {
-	pointCorrect := 1
+	pointCorrect := 1.0
 	if r.PointCorrect != nil {
-		v := *r.PointCorrect
-		if float64(int(v)) != v {
-			return model.Question{}, fmt.Errorf("%w: point_correct must be an integer", service.ErrValidation)
-		}
-		pointCorrect = int(v)
+		pointCorrect = *r.PointCorrect
 	}
-	pointWrong := 0
+	pointWrong := 0.0
 	if r.PointWrong != nil {
-		v := *r.PointWrong
-		if float64(int(v)) != v {
-			return model.Question{}, fmt.Errorf("%w: point_wrong must be an integer", service.ErrValidation)
-		}
-		pointWrong = int(v)
+		pointWrong = *r.PointWrong
 	}
 
 	var topicID *uuid.UUID

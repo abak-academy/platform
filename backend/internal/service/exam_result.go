@@ -210,8 +210,8 @@ func (s *Service) GetSessionEssays(ctx context.Context, sessionID uuid.UUID) ([]
 }
 
 // validateGrade enforces FR-S5-13: score must be an integer in [0, pointCorrect].
-func validateGrade(score float64, pointCorrect int) error {
-	if score != math.Trunc(score) || score < 0 || score > float64(pointCorrect) {
+func validateGrade(score float64, pointCorrect float64) error {
+	if score != math.Trunc(score) || score < 0 || score > pointCorrect {
 		return ErrGradeOutOfRange
 	}
 	return nil

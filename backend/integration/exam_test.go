@@ -588,7 +588,9 @@ func TestExam_AdminCreateQuestion_negative_point_wrong_returns_422(t *testing.T)
 	assert.Equal(t, "validation_failed", out["code"])
 }
 
-func TestExam_AdminCreateQuestion_fractional_point_correct_returns_422(t *testing.T) {
+// FR-16/FR-18: fractional point_correct is accepted end to end (handler no longer
+// coerces to int) and echoes back unchanged.
+func TestExam_AdminCreateQuestion_fractional_point_correct_returns_201(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
@@ -601,11 +603,13 @@ func TestExam_AdminCreateQuestion_fractional_point_correct_returns_422(t *testin
 		"point_correct": 1.5,
 	}
 	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+	q := out["question"].(map[string]any)
+	assert.Equal(t, 1.5, q["point_correct"])
 }
 
-func TestExam_AdminCreateQuestion_fractional_point_wrong_returns_422(t *testing.T) {
+// FR-16/FR-18: same for point_wrong.
+func TestExam_AdminCreateQuestion_fractional_point_wrong_returns_201(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
@@ -618,8 +622,9 @@ func TestExam_AdminCreateQuestion_fractional_point_wrong_returns_422(t *testing.
 		"point_wrong": 0.5,
 	}
 	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+	q := out["question"].(map[string]any)
+	assert.Equal(t, 0.5, q["point_wrong"])
 }
 
 func TestExam_AdminUpdateQuestion_replaces_options_atomically(t *testing.T) {

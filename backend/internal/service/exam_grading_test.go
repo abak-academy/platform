@@ -138,7 +138,7 @@ func TestGrading_unknownFormat(t *testing.T) {
 
 // ---- gradeObjective: points model (FR-S5-06..10) ----
 
-func mcqQuestion(id uuid.UUID, pointCorrect, pointWrong int) model.QuestionWithOptions {
+func mcqQuestion(id uuid.UUID, pointCorrect, pointWrong float64) model.QuestionWithOptions {
 	return model.QuestionWithOptions{
 		Question: model.Question{ID: id, Format: "mcq", Body: "2+2", PointCorrect: pointCorrect, PointWrong: pointWrong},
 		Options: []model.QuestionOption{
@@ -172,6 +172,24 @@ func TestGradingObjective_wrong_subtractsPointWrong(t *testing.T) {
 	assert.False(t, *graded[0].IsCorrect)
 	assert.Equal(t, -1.0, *graded[0].Score, "per-answer score stores the raw (unclamped) penalty")
 	assert.NotNil(t, graded[0].GradedAt)
+}
+
+// FR-20/FR-21: fractional points score exactly, and the session total is still
+// floored at 0 even though the per-answer penalty is negative.
+func TestGradingObjective_fractionalPoints(t *testing.T) {
+	correctQ := mcqQuestion(uuid.New(), 2.5, 0.5)
+	correctAnswers := map[uuid.UUID]*string{correctQ.Question.ID: strPtr("b")}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{correctQ}, correctAnswers)
+	assert.Equal(t, 2.5, score)
+	assert.Equal(t, 2.5, *graded[0].Score)
+
+	wrongQ := mcqQuestion(uuid.New(), 2.5, 0.5)
+	wrongAnswers := map[uuid.UUID]*string{wrongQ.Question.ID: strPtr("a")}
+
+	graded, score = gradeObjective([]model.QuestionWithOptions{wrongQ}, wrongAnswers)
+	assert.Equal(t, 0.0, score, "session total is floored at 0")
+	assert.Equal(t, -0.5, *graded[0].Score, "per-answer score stores the raw penalty")
 }
 
 func TestGradingObjective_wrong_pointWrongZero_noPenalty(t *testing.T) {
@@ -396,7 +414,7 @@ func TestTopicBreakdown_onePerTest_earnedAndMax(t *testing.T) {
 	assert.Equal(t, "Math", rows[0].Subject)
 	assert.Equal(t, "Algebra", rows[0].Topic)
 	assert.Equal(t, 5.0, rows[0].Earned, "earned sums answer scores within the test")
-	assert.Equal(t, 7, rows[0].Max, "max sums point_correct across objective + essay")
+	assert.Equal(t, 7.0, rows[0].Max, "max sums point_correct across objective + essay")
 }
 
 func TestTopicBreakdown_ungradedEssay_earnedZeroContribution(t *testing.T) {
@@ -416,7 +434,7 @@ func TestTopicBreakdown_ungradedEssay_earnedZeroContribution(t *testing.T) {
 
 	assert.Len(t, rows, 1)
 	assert.Equal(t, 0.0, rows[0].Earned)
-	assert.Equal(t, 5, rows[0].Max)
+	assert.Equal(t, 5.0, rows[0].Max)
 }
 
 func TestTopicBreakdown_sectionType_populatedForIelts(t *testing.T) {
@@ -524,7 +542,7 @@ func TestObjectiveCounts_missingAnswerRow_countsAsEmpty(t *testing.T) {
 
 // ---- gradeMultiBlank (FR-20/21/22/24) ----
 
-func multiBlankQuestion(id uuid.UUID, pointCorrect, pointWrong int, correctAnswers []string) model.QuestionWithOptions {
+func multiBlankQuestion(id uuid.UUID, pointCorrect, pointWrong float64, correctAnswers []string) model.QuestionWithOptions {
 	blanks := make([]model.QuestionBlank, len(correctAnswers))
 	for i, ans := range correctAnswers {
 		blanks[i] = model.QuestionBlank{
