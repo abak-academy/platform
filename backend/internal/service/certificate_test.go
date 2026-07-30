@@ -30,7 +30,10 @@ import (
 // asset bytes, which frequently contain '+' and so get entity-escaped.
 func dataURIBytes(t *testing.T, htmlOut, elementPrefix string) []byte {
 	t.Helper()
-	re := regexp.MustCompile(regexp.QuoteMeta(elementPrefix) + `[^>]*src="data:image/png;base64,([^"]*)"`)
+	// Mime-agnostic on purpose: backgrounds are not all PNG since the 2026-07-30
+	// swap, and the renderer sniffs the real mime. The byte-equality assertion at
+	// the call site is what this helper exists to serve.
+	re := regexp.MustCompile(regexp.QuoteMeta(elementPrefix) + `[^>]*src="data:image/[a-z+]+;base64,([^"]*)"`)
 	m := re.FindStringSubmatch(htmlOut)
 	if m == nil {
 		t.Fatalf("no %q data URI found in output:\n%s", elementPrefix, htmlOut)
@@ -93,7 +96,7 @@ func (s *shimSessionService) uploadCertificatePDF(_ context.Context, sessionID u
 // background: returns a real embedded PNG (the classic built-in bytes stand in
 // for "whatever was uploaded") so buildCertificateHTML can embed it for real.
 func (s *shimSessionService) downloadCertificateBackground(_ context.Context, _ string) ([]byte, error) {
-	return certBgClassicPNG, nil
+	return certBgClassic, nil
 }
 
 // resolveCertificateBackground mirrors the real Service.resolveCertificateBackground:
@@ -923,7 +926,9 @@ func TestDefaultLayout_CertificateNumberColorContrastsWithBackground(t *testing.
 		tmpl      string
 		wantColor string
 	}{
-		{"classic", "#F0CB78"}, // gold on the navy footer band
+		{"classic", "#6B5B34"}, // dark gold: the 2026-07-30 background swap replaced
+		// classic's navy footer band with a cream one, so the old pale #F0CB78 was
+		// invisible there. The guard still is "must contrast with the footer".
 		{"elegant", "#8A6A16"}, // dark gold on the cream page fill
 	}
 	for _, tc := range cases {

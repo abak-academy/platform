@@ -131,6 +131,12 @@ func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, 
 		cursor = next
 	}
 
+	return BuildSchoolResultsCSV(rows), nil
+}
+
+// BuildSchoolResultsCSV writes the results export as CSV bytes. Split out of
+// ExportSchoolResultsCSV so the row encoding is reachable without a repository.
+func BuildSchoolResultsCSV(rows []model.AdminResultRow) []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 	_ = w.Write([]string{"name", "username", "score", "submitted_at"})
@@ -147,8 +153,10 @@ func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, 
 		if r.SubmittedAt != nil {
 			submittedAt = r.SubmittedAt.Format(time.RFC3339)
 		}
-		_ = w.Write([]string{r.StudentName, username, scoreStr, submittedAt})
+		// score and submitted_at are machine-formatted, never attacker-supplied;
+		// sanitising them would turn a negative score into text.
+		_ = w.Write([]string{csvSafeField(r.StudentName), csvSafeField(username), scoreStr, submittedAt})
 	}
 	w.Flush()
-	return buf.Bytes(), nil
+	return buf.Bytes()
 }

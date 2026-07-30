@@ -1,6 +1,14 @@
 # Backlog: consolidate certificate rendering into one implementation
 
-**Raised:** 2026-07-26 · **Status:** accepted as tech debt, deliberately not scheduled
+**Raised:** 2026-07-26 · **Status:** ▶ **CHOSEN AS NEXT WORK, 2026-07-30** (was: accepted as tech debt,
+deliberately not scheduled)
+
+> **Why now, in the user's words:** *"sangat tidak enak melihat kita maintain 2 source html dan di
+> generate di backend."* That is this document's premise, and it is the right reason — the duplication is
+> a standing correctness risk, not a tidiness complaint.
+>
+> **D-1's certificate slice is folded in here** — see [Folded-in scope](#folded-in-scope-from-d-1) below.
+> The rest of D-1 stays in [E1](e1-foundation-unblock.md).
 
 ## The problem
 
@@ -52,11 +60,64 @@ the layout half: the two renderers can still disagree about positioning.
 - A gate that renders the same layout through both paths and compares. Without it, any consolidation
   is unverifiable.
 
+## Folded-in scope from D-1
+
+**Decided 2026-07-30.** D-1 (the storage/repository seam) is not taken as a whole. Its **certificate
+slice** moves here, because this work rewrites those exact files anyway and the seam is already the thing
+blocking the adapter move.
+
+### Why the overlap is real, not manufactured
+
+The "Related" note below always said the `pdf_generator.go` → `internal/adapter/` move was *"blocked only
+by `certificate_integration_test.go` … constructing the concrete generator directly."* **That
+understated it.** Verified on `main` 2026-07-30 — six construction sites inside `package service`:
+
+| File | Sites |
+|---|---|
+| `pdf_generator_test.go` | `:60`, `:107`, `:137`, `:162` |
+| `certificate_integration_test.go` | `:84`, `:184` |
+
+Plus production wiring at `service.go:96`. **[PR #63](https://github.com/abak-academy/platform/pull/63)
+adds a seventh** (`certificate_render_gotenberg_test.go`), which is an honest cost of that PR: the render
+proof was written the same way as everything around it, so it grew the blocker rather than avoiding it.
+
+Every one of those sites exists *because* there is no `pdfGenerator` seam at the constructor. The
+interface is already declared in `pdf_generator.go`; nothing injects it.
+
+### In scope here
+
+- Inject `pdfGenerator` at `NewService` instead of constructing it inside. That alone unblocks the
+  `internal/adapter/` move and removes the reason those seven sites reach for the concrete type.
+- The shims in `certificate_test.go` (3 fake methods) and whatever `exam_result_test.go` needs for the
+  certificate path — **only** what this rewrite touches.
+- Keep the **`render-gate` CI job** working throughout. It is a real job
+  (`.github/workflows/pipeline.yml:19` → `deploy/pipeline/backend-render-gate.sh`) and the `images` job
+  `needs:` it, so breaking it blocks every image build.
+
+### Explicitly NOT in scope here
+
+- **The other ~50 shim methods** — `course_test.go`, `store_test.go`, `auth_test.go`,
+  `announcement_test.go`, `exam_session_test.go`. Nothing about certificate rendering touches them.
+- The `storeRepo *repository.Repository` seam. Bigger than the storage one and unrelated to this path.
+
+> **This respects E1's rule rather than breaking it.** E1 says *"do not graft either onto a feature branch
+> — mixing a mechanical refactor with behavioural change makes both unreviewable."* Folding all 62 shims
+> in would be exactly that mistake. **Sequence it as two commits, seam first, behaviour second**, so the
+> mechanical change is reviewable on its own and the consolidation diff stays about rendering.
+
+### Prerequisite
+
+**[PR #63](https://github.com/abak-academy/platform/pull/63) and
+[PR #64](https://github.com/abak-academy/platform/pull/64) must both merge first.** Both are open and both
+touch `internal/service`; #63 also changes `certificate.go`, `certificate_layout.go` and
+`certificate_test.go` — the files this work rewrites.
+
 ## Related
 
 - `docs/runbooks/postgres-16-to-17.md` — unrelated, but the same "verify the layer you did not
   change" lesson applies.
-- The Gotenberg client now lives at `internal/service/pdf_generator.go`. Moving it to
-  `internal/adapter/` alongside the other external-service clients is a separate, smaller cleanup —
-  blocked only by `certificate_integration_test.go` living in `package service` and constructing the
-  concrete generator directly, which the render-gate CI job depends on.
+- The Gotenberg client lives at `internal/service/pdf_generator.go`; moving it to `internal/adapter/`
+  is now part of the scope above rather than a separate cleanup.
+- [`gotenberg-render-proof-local.md` technique](e1-foundation-unblock.md) — the render loop this work
+  needs: local Gotenberg on host port 3001, an env-gated in-package test, then **read the PDF back and
+  look at it**. Byte assertions cannot catch a layout regression, which is the entire risk here.
