@@ -4,9 +4,9 @@
 |---|---|
 | **Issue** | [#62](https://github.com/abak-academy/platform/issues/62) |
 | **Objective** | A 5000-participant exam event runs on the current VM spec without the API serving every question payload itself — and we know where it breaks before the day. |
-| **Source IDs** | NF-4, NF-5 + D-3 (bundle columns) |
+| **Source IDs** | NF-4, NF-5, **F-6** + D-3 (bundle columns) |
 | **Client items** | 2 |
-| **Depends on** | E1 (F-6 — 5000 registrants means 5000 emails), E2 (the bundle serialises questions) |
+| **Depends on** | E2 (the bundle serialises questions) |
 | **Verified against** | `main` @ `211b7b1`, 2026-07-29 |
 
 ---
@@ -65,8 +65,29 @@ SES the event fails at registration, long before any of this matters.
 
 ---
 
+## 3. F-6 — Amazon SES *(moved here from E1 on 2026-07-30)*
+
+The platform stays on the existing Hostinger SMTP for now. The migration is **deferred, not
+cancelled**, and it moved into this epic because this is the epic that forces it.
+
+**The constraint did not move with it.** The mailbox caps at **100 emails/day** and OTP rides the same
+SMTP channel, so registration dies at email 101 — no OTP, no account. That ceiling binds long before
+5,000: any intake past ~100 sign-ups in a day hits it, and a single broadcast through
+`sendAnnouncement` (one email per recipient, no batching, no rate limit) hits it on its own.
+
+**It cannot be done in the last week before an event.** The AWS sandbox review is the one step whose
+timing is out of our hands — a new SES account may only send to verified addresses at ~200/day until
+approved. Everything else is quick: verification and DKIM are three CNAMEs, and the cutover is a
+config swap, since `adapter/smtp.go` is plain SMTP and SES speaks SMTP.
+
+Step-by-step runbook, gotchas and rollback: [`ses-email-migration.md`](ses-email-migration.md).
+
+---
+
 ## Acceptance
 
+- A registration OTP arrives at an external mailbox with **DKIM and DMARC passing**, and the daily cap
+  demonstrably exceeds the event headcount.
 - A published exam with `cdn_bundle = true` serves `bundle_url` on session start.
 - Editing a question nulls `bundle_generated_at`.
 - A stale bundle falls back inline **and** raises the throttled alert.

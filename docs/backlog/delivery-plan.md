@@ -19,7 +19,7 @@ is itself a finding; see [F-5](#f-5--continuous-deployment).
 
 | Epic | Issue | Objective | Client items |
 |---|---|---|---|
-| **[E1 — Foundation & unblock](e1-foundation-unblock.md)** | [#56](https://github.com/abak-academy/platform/issues/56) | Remove the four things blocking other epics | — |
+| **[E1 — Foundation & unblock](e1-foundation-unblock.md)** | [#56](https://github.com/abak-academy/platform/issues/56) | Remove the three things blocking other epics | — |
 | **[E2 — Exam authoring](e2-exam-authoring.md)** | [#61](https://github.com/abak-academy/platform/issues/61) | Write, find, correct and score questions the way the client works | 9 |
 | **[E3 — Exam delivery, results & certificates](e3-exam-delivery-results.md)** | [#58](https://github.com/abak-academy/platform/issues/58) | Results reach the right people; a disconnected student carries on | 6 |
 | **[E4 — Participants & schools](e4-participants-schools.md)** | [#59](https://github.com/abak-academy/platform/issues/59) | A student with no registered school is a first-class participant | 4 |
@@ -38,15 +38,18 @@ compilation.
 
 ```
                 ┌─→ E3   (B-8: the results export writer)
-                ├─→ E4   (B-8: the importer copies that writer)
-   E1 ──────────┼─→ E6   (Gotenberg proven before the label)
-                └─→ E7   (F-6: 5000 registrants = 5000 emails)
+   E1 ──────────┼─→ E4   (B-8: the importer copies that writer)
+                └─→ E6   (Gotenberg proven before the label)
 
    E1 ╌╌╌╌╌╌╌╌╌╌╌→ E2    (D-1: quality gate on regrade tests, not a compile block)
    E3 ──→ E2             (regrade hangs off the results tab)
    E2 ╌╌╌→ E7            (bundle serialises questions — serialising twice is waste)
 
-   free to start now:  E5
+   free to start now:  E5, E7
+
+   F-6 (SES) left E1 on 2026-07-30 — staying on Hostinger SMTP. It is now scope
+   inside E7, which is where the event that forces it lives. The 100/day cap is
+   unchanged and binds at ~100 sign-ups a day, not at 5,000.
 ```
 
 **Two corrections to how this was first written.** The `E1 → E2` edge is a *quality* gate: regrade can
@@ -114,7 +117,7 @@ register, and open GitHub issues.
 | B-4 empty reconcile ref | E5 | D-3 bundle columns | E7 |
 | B-5 commit before gateway | E5 | D-4 digital-vs-physical | E6 |
 | B-6 cursor 500 | E5 | D-6 webhook sig test | E6 |
-| B-7 legacy qty > 1 | E5 | F-6 SES | E1 |
+| B-7 legacy qty > 1 | E5 | F-6 SES | **E7** *(was E1)* |
 | B-8 CSV injection | E1 | F-1a certificate art | E3 *(optional)* |
 | | | F-1b template types | E3 *(optional)* |
 | | | D-8 renderer consolidation | E3 *(optional)* |
@@ -252,7 +255,7 @@ reversal. The client has signed off; the document has not caught up.
 |---|---|---|
 | 1 | **Active promo codes at checkout** — list every active code? | **Opt-in, agreed 2026-07-30.** `promo_code.is_public BOOLEAN NOT NULL DEFAULT false`; only published codes are listed. Default-closed means nothing leaks when the endpoint ships, including existing codes, and the client opens them one at a time. See [E5](e5-orders-payments.md). |
 | 2 | **NF-1 scope change** vs the PRD's out-of-scope list | **Signed off by the client 2026-07-29.** E6 records it before the first commit; the PRD amendment is still owed. |
-| 3 | **Email volume / SES** | Not a cost decision — SES is ~$0.10 per 1,000 emails, so a 5,000-person event is about **$0.50**. The only thing that cannot be compressed is the AWS sandbox review, so this became scheduled work rather than a question. Runbook: [`ses-email-migration.md`](ses-email-migration.md). |
+| 3 | **Email volume / SES** | Not a cost decision — SES is ~$0.10 per 1,000 emails, so a 5,000-person event is about **$0.50**. **Deferred 2026-07-30:** staying on Hostinger SMTP for now; F-6 moved from E1 into E7. The cap is unchanged and binds at ~100 sign-ups a day, and the AWS sandbox review is the step whose timing is out of our hands — so the trigger is *an event date being discussed*, not the event being close. Runbook: [`ses-email-migration.md`](ses-email-migration.md). |
 | 4 | **`/admin/school/classes` stub** | **Not a commitment.** Created 2026-06-19 in `d371213` *"Coming-soon scaffolding for not-ready admin modules"*, orphaned on 2026-07-05 when `ee9bc6f` reverted the `feat/school-slice-a` merge (PR #18). A later commit titled *"remove last ComingSoon stub"* missed it — most likely because it has no nav entry and is unreachable in the UI. Removing it is one file plus six dead i18n lines. |
 | 5 | **FB-1 zero-point question** | **Withdrawn — this was never a client question.** It came from reading the migration, not from the feedback. The real, forced decision is the lower bound, since `>= 1` rejects `0.5`: settled at **`> 0`** (0.1, 0.2 allowed; zero stays impossible). See [E2](e2-exam-authoring.md). |
 | 6 | **FB-10 matching rules** | Answerable without the client — the example (`2`, `dua`) is a *list of accepted answers*, not a request for automatic equivalence. Rule stays minimal: trim, case-fold, collapse internal whitespace, exact match per listed answer. Recorded in [E2](e2-exam-authoring.md) pending a nod. |

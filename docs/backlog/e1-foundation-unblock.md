@@ -3,46 +3,23 @@
 | | |
 |---|---|
 | **Issue** | [#56](https://github.com/abak-academy/platform/issues/56) |
-| **Objective** | Remove the four things that block other epics. Nothing here is client-visible. |
-| **Source IDs** | F-6, B-8, D-1 + one verification-debt item |
+| **Objective** | Remove the three things that block other epics. Nothing here is client-visible. |
+| **Source IDs** | B-8, D-1 + one verification-debt item |
 | **Client items** | none — this is enabling work |
-| **Blocks** | E3, E4, E6, E7 (hard) · E2 (quality gate) — **not** E5, which is free to start |
+| **Blocks** | E3, E4 (B-8) · E6 (Gotenberg) · E2 (quality gate) — **not** E5 or E7 |
 | **Depends on** | — |
 | **Verified against** | `main` @ `211b7b1`, 2026-07-29 |
 
 > **This epic is not a vertical slice.** It has no UI and, apart from one column-free sanitiser, no
-> schema. It exists because four separate pieces of later work each stall on something here. Grouping
-> them buys one round of setup instead of four.
+> schema. It exists because three separate pieces of later work each stall on something here.
+>
+> **F-6 (Amazon SES) was removed from this epic on 2026-07-30** — the platform stays on the existing
+> Hostinger SMTP for now. It moved to [E7](e7-scale-event-readiness.md), where the event that forces
+> it lives. Runbook kept at [`ses-email-migration.md`](ses-email-migration.md).
 
 ---
 
-## 1. F-6 — Amazon SES
-
-**The Hostinger mailbox caps at 100 emails/day, and OTP goes over SMTP.** A 5000-participant event
-does not merely fail to deliver exam cards — **registration itself dies at email 101**. Every student
-who signs up after the cap gets no OTP and cannot complete registration.
-
-SES needs domain verification plus DKIM records in Cloudflare, so it carries DNS propagation lead
-time that cannot be compressed on the day of an event. This is why it leads the epic rather than
-sitting in E7 where the load test lives.
-
-Swap happens behind the existing notification port — the provider is already pluggable. In fact **no
-code changes at all**: `adapter/smtp.go` is plain SMTP (`smtp.PlainAuth` + `smtp.SendMail`) and SES
-exposes an SMTP endpoint, so this is a configuration swap.
-
-**Step-by-step runbook, gotchas and rollback:
-[`ses-email-migration.md`](ses-email-migration.md).** Two things from it worth knowing up front: the
-sandbox-exit review is the only step whose timing cannot be compressed, and `config.go` has no env-var
-override, so the cutover is a rebuild-and-redeploy of api *and* worker rather than a restart.
-
-**Acceptance**
-- A test send through SES arrives at an external address.
-- The daily cap is demonstrably no longer 100 (send 150 in a scripted run, or show the SES quota).
-- OTP registration succeeds through the new provider end to end.
-
----
-
-## 2. B-8 — CSV formula injection, three writers
+## 1. B-8 — CSV formula injection, three writers
 
 No sanitiser exists anywhere in `backend/`. Three writers emit attacker-supplied student names
 straight into CSV:
@@ -69,7 +46,7 @@ vulnerability included.
 
 ---
 
-## 3. D-1 — Storage seam, then delete the shims
+## 2. D-1 — Storage seam, then delete the shims
 
 `internal/service/ports_storage.go` defines a `StorageClient` port that nothing uses. `Service.storage`
 is still a concrete `*minio.Client` ([`service.go:28`](../../backend/internal/service/service.go)), and
@@ -106,7 +83,7 @@ branch — mixing a mechanical refactor with behavioural change makes both unrev
 
 ---
 
-## 4. Prove the Gotenberg sidecar renders
+## 3. Prove the Gotenberg sidecar renders
 
 The sidecar is up on staging and health-checks report chromium `up`, but **it has never actually
 rendered a document end to end**. Cached certificates masked its total absence for weeks and the api

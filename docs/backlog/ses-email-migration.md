@@ -1,8 +1,14 @@
 # Backlog: move transactional email to Amazon SES
 
-**Raised:** 2026-07-30 · **Status:** required before any exam event · **Epic:** [E1](e1-foundation-unblock.md) (F-6)
+**Raised:** 2026-07-30 · **Status:** **deferred 2026-07-30 — staying on Hostinger SMTP for now** ·
+**Epic:** [E7](e7-scale-event-readiness.md) (F-6)
 
-Detail doc for F-6. No GitHub issue of its own — it is scope inside E1 (#56).
+Detail doc for F-6. No GitHub issue of its own — it is scope inside E7 (#62). Originally sat in E1;
+moved out when the decision was taken to keep the current SMTP.
+
+> **Deferring the work does not lift the cap.** 100 emails/day still binds, and it binds at ~100
+> sign-ups in a day — not at 5,000. The one step that cannot be compressed is the AWS sandbox review,
+> so the trigger for starting this is *an event date being discussed*, not the event being close.
 
 ---
 
