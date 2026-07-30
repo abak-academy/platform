@@ -87,6 +87,9 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Payment webhook route (no auth, uses HMAC signature)
 	webhooks := v1.Group("/webhooks")
 	webhooks.POST("/payment", h.HandlePaymentWebhook)
+	// Shipping webhook route (no auth by route; gated by HandleShippingWebhook's
+	// constant-time X-Biteship-Signature check, which fails closed).
+	webhooks.POST("/shipping", h.HandleShippingWebhook)
 
 	// Public config (client key is safe to expose)
 	v1.GET("/config/payment-client-key", h.GetPaymentClientKey)
@@ -160,6 +163,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminOrders.GET("/:id", h.AdminGetOrder)
 	adminOrders.POST("/:id/confirm", h.AdminConfirmOrder)
 	adminOrders.POST("/:id/ship", h.AdminShipOrder)
+	adminOrders.POST("/:id/ship-manual", h.AdminShipOrderManual)
 	adminOrders.POST("/:id/complete", h.AdminCompleteOrder)
 	adminOrders.POST("/:id/refund", h.AdminRefundOrder)
 	adminOrders.POST("/:id/reconcile", h.AdminReconcileOrder)

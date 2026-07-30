@@ -223,6 +223,12 @@ func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Orde
 		return model.Order{}, err
 	}
 	order.Items = items
+
+	events, err := r.ListShipmentEvents(ctx, order.ID)
+	if err != nil {
+		return model.Order{}, err
+	}
+	order.ShipmentEvents = events
 	return order, nil
 }
 

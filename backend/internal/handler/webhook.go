@@ -36,3 +36,25 @@ func (h *Handler) HandlePaymentWebhook(c echo.Context) error {
 		"message": "webhook processed",
 	})
 }
+
+// HandleShippingWebhook reads the raw body so the signature is compared
+// against exactly what Biteship sent (bind-and-re-marshal would drift from
+// that byte sequence). Verification happens inside the service call — this
+// handler never treats the request as authenticated on its own.
+func (h *Handler) HandleShippingWebhook(c echo.Context) error {
+	payload, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	signature := c.Request().Header.Get("X-Biteship-Signature")
+
+	err = h.svc.HandleShippingWebhook(c.Request().Context(), payload, signature)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "webhook processed",
+	})
+}

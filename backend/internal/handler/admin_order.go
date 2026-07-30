@@ -66,6 +66,19 @@ func (h *Handler) AdminConfirmOrder(c echo.Context) error {
 func (h *Handler) AdminShipOrder(c echo.Context) error {
 	orderID := c.Param("id")
 
+	err := h.svc.AdminShipOrder(c.Request().Context(), orderID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "order shipped",
+	})
+}
+
+func (h *Handler) AdminShipOrderManual(c echo.Context) error {
+	orderID := c.Param("id")
+
 	var req struct {
 		TrackingNumber string `json:"tracking_number"`
 	}
@@ -76,7 +89,6 @@ func (h *Handler) AdminShipOrder(c echo.Context) error {
 		return badRequest(c, "tracking_number is required")
 	}
 
-	// AdminShipOrder now auto-books via Biteship; this route stays on the manual escape hatch until Task 12's HTTP surface split.
 	err := h.svc.AdminShipOrderManual(c.Request().Context(), orderID, req.TrackingNumber)
 	if err != nil {
 		return mapServiceError(c, err)
