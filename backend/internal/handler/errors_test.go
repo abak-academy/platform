@@ -76,6 +76,8 @@ func TestMapServiceError(t *testing.T) {
 		{name: "already submitted", err: service.ErrAlreadySubmitted, wantStatus: 409, wantCode: "already_submitted"},
 		{name: "session not found", err: service.ErrSessionNotFound, wantStatus: 404, wantCode: "session_not_found"},
 		{name: "invalid violation type", err: service.ErrInvalidViolationType, wantStatus: 400, wantCode: "invalid_violation_type"},
+		{name: "question in live exam", err: service.ErrQuestionInLiveExam, wantStatus: 409, wantCode: "question_in_published_exam"},
+		{name: "question format locked", err: service.ErrQuestionFormatLocked, wantStatus: 409, wantCode: "question_format_locked"},
 		{name: "unknown error falls to 500", err: errors.New("something unexpected"), wantStatus: 500, wantCode: "internal_error"},
 	}
 

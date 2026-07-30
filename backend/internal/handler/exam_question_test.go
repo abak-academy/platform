@@ -16,6 +16,7 @@ import (
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
@@ -177,7 +178,8 @@ var (
 )
 
 type questionHandlerTestEnv struct {
-	svc *service.Service
+	svc  *service.Service
+	repo *repository.Repository
 }
 
 func newQuestionHandlerEnv(t *testing.T) *questionHandlerTestEnv {
@@ -207,7 +209,7 @@ func newQuestionHandlerEnv(t *testing.T) *questionHandlerTestEnv {
 		}
 		repo := repository.New(pool)
 		svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, nil, nil)
-		questionDBEnv = &questionHandlerTestEnv{svc: svc}
+		questionDBEnv = &questionHandlerTestEnv{svc: svc, repo: repo}
 	})
 	if questionDBEnv == nil {
 		t.Fatal("question handler test env failed to initialize")
@@ -371,5 +373,378 @@ func TestAdminListBankQuestions_honoursIntegerCursor(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("page after cursor=%d must include question_number %d (first)", second, first)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Task 6 (FB-3 + FB-9): delete guard and format lock, exercised end to end
+// through the handler so the 409 codes the frontend reads are actually
+// produced by the server, not just the underlying sentinels.
+// ---------------------------------------------------------------------------
+
+func seedTestRowDirect(t *testing.T, ctx context.Context, repo *repository.Repository, title, subject, topic string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO test (title, subject, topic, duration_minutes) VALUES ($1, $2, $3, $4) RETURNING id`,
+		title, subject, topic, 60,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("seed test: %v", err)
+	}
+	return id
+}
+
+func seedBankQuestionRowDirect(t *testing.T, ctx context.Context, repo *repository.Repository, format, body string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO question (format, body, point_correct, point_wrong) VALUES ($1, $2, 1, 0) RETURNING id`,
+		format, body,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("seed question: %v", err)
+	}
+	return id
+}
+
+func attachQuestionRowDirect(t *testing.T, ctx context.Context, repo *repository.Repository, testID, questionID uuid.UUID) {
+	t.Helper()
+	_, err := repo.Pool().Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, 1)`,
+		testID, questionID,
+	)
+	if err != nil {
+		t.Fatalf("attach question: %v", err)
+	}
+}
+
+// seedExamRowDirect creates an exam (status is always 'draft' — see the task's
+// note that "live" is never read off exam.status) and attaches testID to it.
+func seedExamRowDirect(t *testing.T, ctx context.Context, repo *repository.Repository, testID uuid.UUID, title string) uuid.UUID {
+	t.Helper()
+	var examID uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO exam (title, status) VALUES ($1, 'draft') RETURNING id`,
+		title,
+	).Scan(&examID)
+	if err != nil {
+		t.Fatalf("seed exam: %v", err)
+	}
+	_, err = repo.Pool().Exec(ctx,
+		`INSERT INTO exam_test (exam_id, test_id, sort_order) VALUES ($1, $2, 1)`,
+		examID, testID,
+	)
+	if err != nil {
+		t.Fatalf("attach exam_test: %v", err)
+	}
+	return examID
+}
+
+func seedProductForExamRowDirect(t *testing.T, ctx context.Context, repo *repository.Repository, examID uuid.UUID, status string) {
+	t.Helper()
+	var productID uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, status) VALUES ('exam', $1, 100000, $2) RETURNING id`,
+		"Product "+uuid.NewString(), status,
+	).Scan(&productID)
+	if err != nil {
+		t.Fatalf("seed product: %v", err)
+	}
+	_, err = repo.Pool().Exec(ctx,
+		`INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`,
+		productID, examID,
+	)
+	if err != nil {
+		t.Fatalf("link product_exam: %v", err)
+	}
+}
+
+func seedExamSessionRowDirect(t *testing.T, ctx context.Context, repo *repository.Repository, examID uuid.UUID) {
+	t.Helper()
+	var studentID uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO users (email, name, role, status) VALUES ($1, 'Student', 'student', 'active') RETURNING id`,
+		"student-"+uuid.NewString()+"@example.test",
+	).Scan(&studentID)
+	if err != nil {
+		t.Fatalf("seed student: %v", err)
+	}
+	var regID uuid.UUID
+	err = repo.Pool().QueryRow(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token, status) VALUES ($1, $2, $3, 'registered') RETURNING id`,
+		studentID, examID, "TOKEN-"+uuid.NewString(),
+	).Scan(&regID)
+	if err != nil {
+		t.Fatalf("seed registration: %v", err)
+	}
+	_, err = repo.Pool().Exec(ctx,
+		`INSERT INTO exam_session (registration_id, student_id, exam_id, attempt_number, started_at, status) VALUES ($1, $2, $3, 1, now(), 'in_progress')`,
+		regID, studentID, examID,
+	)
+	if err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+}
+
+func questionExistsInTable(t *testing.T, ctx context.Context, repo *repository.Repository, table string, questionID uuid.UUID) bool {
+	t.Helper()
+	col := "question_id"
+	if table == "question" {
+		col = "id"
+	}
+	var exists bool
+	if err := repo.Pool().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM `+table+` WHERE `+col+` = $1)`, questionID).Scan(&exists); err != nil {
+		t.Fatalf("check %s: %v", table, err)
+	}
+	return exists
+}
+
+// FR-7: the full chain question -> test -> exam -> published product must
+// refuse the delete with 409 question_in_published_exam, and the row survives.
+func TestAdminDeleteQuestion_refused_examHasPublishedProduct(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+	ctx := context.Background()
+
+	testID := seedTestRowDirect(t, ctx, env.repo, "Math "+uuid.NewString(), "math", "algebra")
+	qID := seedBankQuestionRowDirect(t, ctx, env.repo, "essay", "fb3 published product chain")
+	attachQuestionRowDirect(t, ctx, env.repo, testID, qID)
+	examID := seedExamRowDirect(t, ctx, env.repo, testID, "Exam FB3 published "+uuid.NewString())
+	seedProductForExamRowDirect(t, ctx, env.repo, examID, "published")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodDelete, "/admin/questions/"+qID.String(), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(qID.String())
+
+	if err := h.AdminDeleteQuestion(c); err != nil {
+		t.Fatalf("AdminDeleteQuestion returned error: %v", err)
+	}
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("want 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Code != "question_in_published_exam" {
+		t.Errorf("code = %q, want question_in_published_exam", resp.Code)
+	}
+
+	if !questionExistsInTable(t, ctx, env.repo, "question", qID) {
+		t.Error("question must survive a refused delete")
+	}
+}
+
+// FR-6: the same chain with the product left draft and no sessions must
+// succeed with 204, and every dependent row (options, blanks, accepted
+// answers, statements, test_question) must be gone via ON DELETE CASCADE.
+func TestAdminDeleteQuestion_succeeds_examDraftNoSessions_cascadesFully(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+	ctx := context.Background()
+
+	testID := seedTestRowDirect(t, ctx, env.repo, "Math "+uuid.NewString(), "math", "algebra")
+	qID := seedBankQuestionRowDirect(t, ctx, env.repo, "essay", "fb3 draft product cascade")
+	attachQuestionRowDirect(t, ctx, env.repo, testID, qID)
+	examID := seedExamRowDirect(t, ctx, env.repo, testID, "Exam FB3 draft "+uuid.NewString())
+	seedProductForExamRowDirect(t, ctx, env.repo, examID, "draft")
+
+	// Seed one row in every child table to prove the cascade reaches all of
+	// them, regardless of whether this shape is realistic for an "essay" format.
+	if _, err := env.repo.Pool().Exec(ctx, `INSERT INTO question_option (question_id, key, text, sort_order) VALUES ($1, 'a', 'opt', 1)`, qID); err != nil {
+		t.Fatalf("seed option: %v", err)
+	}
+	if _, err := env.repo.Pool().Exec(ctx, `INSERT INTO question_blank (question_id, blank_index, correct_answer) VALUES ($1, 1, 'ans')`, qID); err != nil {
+		t.Fatalf("seed blank: %v", err)
+	}
+	if _, err := env.repo.Pool().Exec(ctx, `INSERT INTO question_accepted_answer (question_id, blank_index, answer_index, answer) VALUES ($1, 0, 1, 'ans')`, qID); err != nil {
+		t.Fatalf("seed accepted answer: %v", err)
+	}
+	if _, err := env.repo.Pool().Exec(ctx, `INSERT INTO question_statement (question_id, statement_index, body, is_true) VALUES ($1, 1, 'stmt', true)`, qID); err != nil {
+		t.Fatalf("seed statement: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodDelete, "/admin/questions/"+qID.String(), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(qID.String())
+
+	if err := h.AdminDeleteQuestion(c); err != nil {
+		t.Fatalf("AdminDeleteQuestion returned error: %v", err)
+	}
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	for _, table := range []string{"question", "question_option", "question_blank", "question_accepted_answer", "question_statement", "test_question"} {
+		if questionExistsInTable(t, ctx, env.repo, table, qID) {
+			t.Errorf("%s row should be gone after delete", table)
+		}
+	}
+}
+
+// The predicate's second arm: an otherwise-draft exam (no product at all) that
+// already has an exam_session row must still refuse the delete.
+func TestAdminDeleteQuestion_refused_examHasSession(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+	ctx := context.Background()
+
+	testID := seedTestRowDirect(t, ctx, env.repo, "Math "+uuid.NewString(), "math", "algebra")
+	qID := seedBankQuestionRowDirect(t, ctx, env.repo, "essay", "fb3 session arm")
+	attachQuestionRowDirect(t, ctx, env.repo, testID, qID)
+	examID := seedExamRowDirect(t, ctx, env.repo, testID, "Exam FB3 session "+uuid.NewString())
+	seedExamSessionRowDirect(t, ctx, env.repo, examID)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodDelete, "/admin/questions/"+qID.String(), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(qID.String())
+
+	if err := h.AdminDeleteQuestion(c); err != nil {
+		t.Fatalf("AdminDeleteQuestion returned error: %v", err)
+	}
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("want 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Code != "question_in_published_exam" {
+		t.Errorf("code = %q, want question_in_published_exam", resp.Code)
+	}
+}
+
+// FR-13/FR-14: a format change on a live-exam question is refused with 409
+// question_format_locked and writes nothing; the same request changing only
+// body succeeds with 200.
+func TestAdminUpdateQuestion_formatChangeOnLiveExamQuestion_refused(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+	ctx := context.Background()
+
+	testID := seedTestRowDirect(t, ctx, env.repo, "Math "+uuid.NewString(), "math", "algebra")
+	qID := seedBankQuestionRowDirect(t, ctx, env.repo, "mcq", "original mcq body")
+	attachQuestionRowDirect(t, ctx, env.repo, testID, qID)
+	examID := seedExamRowDirect(t, ctx, env.repo, testID, "Exam format lock "+uuid.NewString())
+	seedProductForExamRowDirect(t, ctx, env.repo, examID, "published")
+
+	e := echo.New()
+	body := []byte(`{"format":"short","body":"changed body","accepted_answers":["x"]}`)
+	req := httptest.NewRequest(http.MethodPatch, "/admin/questions/"+qID.String(), bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(qID.String())
+
+	if err := h.AdminUpdateQuestion(c); err != nil {
+		t.Fatalf("AdminUpdateQuestion returned error: %v", err)
+	}
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("want 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Code != "question_format_locked" {
+		t.Errorf("code = %q, want question_format_locked", resp.Code)
+	}
+
+	var storedFormat, storedBody string
+	if err := env.repo.Pool().QueryRow(ctx, `SELECT format, body FROM question WHERE id=$1`, qID).Scan(&storedFormat, &storedBody); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if storedFormat != "mcq" || storedBody != "original mcq body" {
+		t.Errorf("refused format change must write nothing, got format=%q body=%q", storedFormat, storedBody)
+	}
+}
+
+func TestAdminUpdateQuestion_bodyOnlyOnLiveExamQuestion_succeeds(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+	ctx := context.Background()
+
+	testID := seedTestRowDirect(t, ctx, env.repo, "Math "+uuid.NewString(), "math", "algebra")
+	qID := seedBankQuestionRowDirect(t, ctx, env.repo, "essay", "original essay body")
+	attachQuestionRowDirect(t, ctx, env.repo, testID, qID)
+	examID := seedExamRowDirect(t, ctx, env.repo, testID, "Exam body edit "+uuid.NewString())
+	seedProductForExamRowDirect(t, ctx, env.repo, examID, "published")
+
+	e := echo.New()
+	body := []byte(`{"format":"essay","body":"updated essay body"}`)
+	req := httptest.NewRequest(http.MethodPatch, "/admin/questions/"+qID.String(), bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(qID.String())
+
+	if err := h.AdminUpdateQuestion(c); err != nil {
+		t.Fatalf("AdminUpdateQuestion returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var storedBody string
+	if err := env.repo.Pool().QueryRow(ctx, `SELECT body FROM question WHERE id=$1`, qID).Scan(&storedBody); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if storedBody != "updated essay body" {
+		t.Errorf("body = %q, want %q", storedBody, "updated essay body")
+	}
+}
+
+// FR-15: a question not in a live exam is free to change format, validated
+// against the new format's own rules.
+func TestAdminUpdateQuestion_formatChangeOnNonLiveQuestion_succeeds(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+	ctx := context.Background()
+
+	qID := seedBankQuestionRowDirect(t, ctx, env.repo, "essay", "not attached to anything "+uuid.NewString())
+
+	e := echo.New()
+	body := []byte(`{"format":"short","body":"changed to short format","accepted_answers":["42"]}`)
+	req := httptest.NewRequest(http.MethodPatch, "/admin/questions/"+qID.String(), bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(qID.String())
+
+	if err := h.AdminUpdateQuestion(c); err != nil {
+		t.Fatalf("AdminUpdateQuestion returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var storedFormat string
+	if err := env.repo.Pool().QueryRow(ctx, `SELECT format FROM question WHERE id=$1`, qID).Scan(&storedFormat); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if storedFormat != "short" {
+		t.Errorf("format = %q, want short", storedFormat)
 	}
 }

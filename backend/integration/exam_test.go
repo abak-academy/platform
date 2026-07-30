@@ -665,7 +665,10 @@ func TestExam_AdminUpdateQuestion_replaces_options_atomically(t *testing.T) {
 	assert.NotContains(t, keys, "a")
 }
 
-func TestExam_AdminDeleteQuestion_attached_returns_422(t *testing.T) {
+// Task 6 relaxed the old "attached to any test" refusal: a question attached
+// only to a draft test (not part of any exam, let alone a live one) is now
+// deletable, and the test_question join row goes with it via ON DELETE CASCADE.
+func TestExam_AdminDeleteQuestion_attachedToDraftTestOnly_returns_204(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
@@ -674,8 +677,12 @@ func TestExam_AdminDeleteQuestion_attached_returns_422(t *testing.T) {
 	qID := seedQuestion(t, env, testID, "essay", "explain", 1)
 
 	resp, out := doJSONBody(t, env, http.MethodDelete, "/api/v1/admin/questions/"+qID, nil, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "body=%v", out)
+
+	ctx := context.Background()
+	var exists bool
+	require.NoError(t, env.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM question WHERE id = $1)`, qID).Scan(&exists))
+	assert.False(t, exists)
 }
 
 func TestExam_AdminCreateBankQuestion_returns_201_and_no_attachment(t *testing.T) {

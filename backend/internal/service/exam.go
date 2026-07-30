@@ -493,6 +493,29 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 	q.Body = sanitizeQuestionBody(q.Body)
 	options = sanitizeQuestionOptions(options)
 	statements = sanitizeQuestionStatements(statements)
+
+	// FR-14: a live-exam question's format is immutable. Checked before any
+	// write, and before validateQuestion so a locked format never has to pass
+	// the new format's validation rules just to be refused.
+	if q.ID != uuid.Nil {
+		stored, err := s.storeRepo.GetQuestionByID(ctx, q.ID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return model.QuestionWithOptions{}, ErrQuestionNotFound
+			}
+			return model.QuestionWithOptions{}, err
+		}
+		if stored.Format != q.Format {
+			inLiveExam, err := s.storeRepo.IsQuestionInLiveExam(ctx, q.ID)
+			if err != nil {
+				return model.QuestionWithOptions{}, err
+			}
+			if inLiveExam {
+				return model.QuestionWithOptions{}, ErrQuestionFormatLocked
+			}
+		}
+	}
+
 	if err := validateQuestion(q, options, blanks, statements); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
@@ -689,12 +712,12 @@ func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, opti
 }
 
 func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
-	attached, err := s.storeRepo.CountQuestionAttachments(ctx, id)
+	inLiveExam, err := s.storeRepo.IsQuestionInLiveExam(ctx, id)
 	if err != nil {
 		return err
 	}
-	if attached > 0 {
-		return fmt.Errorf("%w: question is attached to %d test(s); detach before deleting", ErrValidation, attached)
+	if inLiveExam {
+		return ErrQuestionInLiveExam
 	}
 
 	answered, err := s.storeRepo.CountAnswerReferences(ctx, id)

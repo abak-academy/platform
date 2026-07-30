@@ -656,17 +656,64 @@ func (r *Repository) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-// CountQuestionAttachments returns the number of test_question rows for a question.
-func (r *Repository) CountQuestionAttachments(ctx context.Context, id uuid.UUID) (int, error) {
-	var count int
-	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM test_question WHERE question_id = $1`,
+// GetQuestionByID returns a single question by id (no options/blanks/statements),
+// used by SaveQuestion to compare a submitted format against the stored one
+// before writing (FR-14).
+func (r *Repository) GetQuestionByID(ctx context.Context, id uuid.UUID) (*model.Question, error) {
+	q := &model.Question{}
+	err := scanQuestion(r.pool.QueryRow(ctx,
+		`SELECT id, question_number, format, body, correct_answer, explanation, difficulty, image_url, topic_id, point_correct, point_wrong
+		FROM question
+		WHERE id = $1`,
 		id,
-	).Scan(&count)
+	), q)
 	if err != nil {
-		return 0, err
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
 	}
-	return count, nil
+	return q, nil
+}
+
+// questionInLiveExamSQL returns the boolean predicate for whether the question
+// identified by questionIDExpr is attached (via test_question -> exam_test ->
+// exam) to a live exam: sold through a published product, or already has at
+// least one exam_session row. Shared by IsQuestionInLiveExam and
+// ListBankQuestions so the delete guard and the format lock and the bank-list
+// flag can never drift apart (FR-6/FR-7/FR-13/FR-14).
+func questionInLiveExamSQL(questionIDExpr string) string {
+	return fmt.Sprintf(`EXISTS (
+		SELECT 1
+		FROM test_question tq
+		JOIN exam_test et ON et.test_id = tq.test_id
+		JOIN exam e ON e.id = et.exam_id
+		WHERE tq.question_id = %s
+		  AND (
+			EXISTS (
+				SELECT 1 FROM product_exam pe
+				JOIN product p ON p.id = pe.product_id
+				WHERE pe.exam_id = e.id AND p.status = 'published'
+			)
+			OR EXISTS (
+				SELECT 1 FROM exam_session es WHERE es.exam_id = e.id
+			)
+		  )
+	)`, questionIDExpr)
+}
+
+// IsQuestionInLiveExam reports whether the question is attached to a live exam
+// (FR-7/FR-14 delete-guard and format-lock predicate).
+func (r *Repository) IsQuestionInLiveExam(ctx context.Context, questionID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT `+questionInLiveExamSQL("$1"),
+		questionID,
+	).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 // CountQuestionsByIDs returns how many of the supplied IDs exist in the question table.
@@ -728,7 +775,8 @@ func (r *Repository) ListBankQuestions(ctx context.Context, filter QuestionFilte
 		filter.Limit = 20
 	}
 
-	query := `SELECT q.id, q.question_number, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0)
+	query := `SELECT q.id, q.question_number, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0), ` +
+		questionInLiveExamSQL("q.id") + ` AS in_live_exam
 FROM question q
 LEFT JOIN exam_topic et ON et.id = q.topic_id
 LEFT JOIN (
@@ -772,12 +820,13 @@ WHERE 1=1`
 	for rows.Next() {
 		q := model.Question{}
 		var attachedCount int
+		var inLiveExam bool
 		var correctAnswer, explanation, difficulty, imageURL, audioURL, topic *string
 		var topicID *uuid.UUID
 		if err := rows.Scan(
 			&q.ID, &q.QuestionNumber, &q.Format, &q.Body,
 			&correctAnswer, &explanation, &difficulty, &imageURL, &audioURL,
-			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &attachedCount,
+			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &attachedCount, &inLiveExam,
 		); err != nil {
 			return nil, "", err
 		}
@@ -805,6 +854,7 @@ WHERE 1=1`
 		items = append(items, model.BankQuestionListItem{
 			Question:      q,
 			AttachedCount: attachedCount,
+			InLiveExam:    inLiveExam,
 		})
 	}
 	if err := rows.Err(); err != nil {

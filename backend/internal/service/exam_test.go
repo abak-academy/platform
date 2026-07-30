@@ -1166,6 +1166,46 @@ func seedExamWithTestsDirect(t *testing.T, ctx context.Context, repo *repository
 	return examID
 }
 
+// seedProductForExamDirect creates a product of the given status and links it
+// to examID via product_exam (FR-7's published-product arm of "live").
+func seedProductForExamDirect(t *testing.T, ctx context.Context, repo *repository.Repository, examID uuid.UUID, status string) {
+	t.Helper()
+	var productID uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, status) VALUES ('exam', $1, 100000, $2) RETURNING id`,
+		"Product "+uniqueSuffix(), status,
+	).Scan(&productID)
+	require.NoError(t, err)
+	_, err = repo.Pool().Exec(ctx,
+		`INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`,
+		productID, examID,
+	)
+	require.NoError(t, err)
+}
+
+// seedExamSessionForExamDirect creates a minimal exam_session row against examID
+// (FR-7's second "live" arm, independent of any product).
+func seedExamSessionForExamDirect(t *testing.T, ctx context.Context, repo *repository.Repository, examID uuid.UUID) {
+	t.Helper()
+	var studentID uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO users (email, name, role, status) VALUES ($1, $2, 'student', 'active') RETURNING id`,
+		"student-"+uniqueSuffix()+"@example.com", "Student",
+	).Scan(&studentID)
+	require.NoError(t, err)
+	var regID uuid.UUID
+	err = repo.Pool().QueryRow(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token, status) VALUES ($1, $2, $3, 'registered') RETURNING id`,
+		studentID, examID, "TOKEN"+uniqueSuffix(),
+	).Scan(&regID)
+	require.NoError(t, err)
+	_, err = repo.Pool().Exec(ctx,
+		`INSERT INTO exam_session (registration_id, student_id, exam_id, attempt_number, started_at, status) VALUES ($1, $2, $3, 1, now(), 'in_progress')`,
+		regID, studentID, examID,
+	)
+	require.NoError(t, err)
+}
+
 func attachQuestionDirect(t *testing.T, ctx context.Context, repo *repository.Repository, testID, questionID uuid.UUID, sortOrder int) {
 	t.Helper()
 	_, err := repo.Pool().Exec(ctx,
@@ -1301,7 +1341,10 @@ func TestListBankQuestions_optionlessFormat_returnsNonNilOptions(t *testing.T) {
 	assert.Len(t, items[0].Options, 0)
 }
 
-func TestDeleteQuestion_rejects_when_attached(t *testing.T) {
+// Task 6 relaxes the old "attached to any test" refusal: a question attached
+// only to a draft test (no exam at all, let alone a live one) is now
+// deletable, and the test_question join row goes with it via ON DELETE CASCADE.
+func TestDeleteQuestion_succeeds_when_attached_to_draft_test_only(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 
@@ -1310,11 +1353,67 @@ func TestDeleteQuestion_rejects_when_attached(t *testing.T) {
 	attachQuestionDirect(t, ctx, repo, testID, qID, 1)
 
 	err := svc.DeleteQuestion(ctx, qID)
-	assert.ErrorIs(t, err, ErrValidation)
-	assert.Contains(t, err.Error(), "attached")
+	require.NoError(t, err)
 
-	// Guard must be a no-op: the question and attachment survive.
-	assert.Equal(t, 1, countQuestionAttachments(t, ctx, repo, qID))
+	assert.Equal(t, 0, countQuestionAttachments(t, ctx, repo, qID))
+	var exists bool
+	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM question WHERE id = $1)`, qID).Scan(&exists))
+	assert.False(t, exists)
+}
+
+// FR-7: a question attached (via test -> exam_test -> exam) to an exam sold
+// through a published product must be refused, not just detached-and-warned.
+func TestDeleteQuestion_rejects_when_examHasPublishedProduct(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "Math "+uniqueSuffix(), "math", "algebra")
+	qID := seedBankQuestionDirect(t, ctx, repo, "essay", "explain live exam")
+	attachQuestionDirect(t, ctx, repo, testID, qID, 1)
+	examID := seedExamWithTestsDirect(t, ctx, repo, testID)
+	seedProductForExamDirect(t, ctx, repo, examID, "published")
+
+	err := svc.DeleteQuestion(ctx, qID)
+	assert.ErrorIs(t, err, ErrQuestionInLiveExam)
+
+	var exists bool
+	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM question WHERE id = $1)`, qID).Scan(&exists))
+	assert.True(t, exists, "guard must be a no-op: question survives")
+}
+
+// The predicate's other arm: a draft-product exam that already has a session
+// is still "live" and must refuse deletion (task's second fact about exam.status).
+func TestDeleteQuestion_rejects_when_examHasSession(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "Math "+uniqueSuffix(), "math", "algebra")
+	qID := seedBankQuestionDirect(t, ctx, repo, "essay", "explain session arm")
+	attachQuestionDirect(t, ctx, repo, testID, qID, 1)
+	examID := seedExamWithTestsDirect(t, ctx, repo, testID)
+	seedExamSessionForExamDirect(t, ctx, repo, examID)
+
+	err := svc.DeleteQuestion(ctx, qID)
+	assert.ErrorIs(t, err, ErrQuestionInLiveExam)
+}
+
+// A draft exam with a draft product and no sessions is not live: delete succeeds.
+func TestDeleteQuestion_succeeds_when_examDraftProductNoSessions(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "Math "+uniqueSuffix(), "math", "algebra")
+	qID := seedBankQuestionDirect(t, ctx, repo, "essay", "explain draft exam")
+	attachQuestionDirect(t, ctx, repo, testID, qID, 1)
+	examID := seedExamWithTestsDirect(t, ctx, repo, testID)
+	seedProductForExamDirect(t, ctx, repo, examID, "draft")
+
+	err := svc.DeleteQuestion(ctx, qID)
+	require.NoError(t, err)
+
+	var exists bool
+	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM question WHERE id = $1)`, qID).Scan(&exists))
+	assert.False(t, exists)
 }
 
 func TestDeleteQuestion_rejects_when_answered(t *testing.T) {
@@ -2317,6 +2416,111 @@ func TestSaveQuestion_sanitizes_option_text(t *testing.T) {
 	if !strings.Contains(fetched.Options[0].Text, "updated") {
 		t.Errorf("option text must preserve plain text, got %q", fetched.Options[0].Text)
 	}
+}
+
+// FR-14: changing format on a question attached to a live exam is refused
+// before any write, regardless of other field changes in the same request.
+func TestSaveQuestion_rejects_formatChange_whenInLiveExam(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	qID := seedBankQuestionDirect(t, ctx, repo, "mcq", "original mcq body "+uniqueSuffix())
+	// mcq needs options to be a valid question at read time, but the format-lock
+	// check must fire before validateQuestion ever runs, so this is fine as-is.
+	testID := seedTestDirect(t, ctx, repo, "Math "+uniqueSuffix(), "math", "algebra")
+	attachQuestionDirect(t, ctx, repo, testID, qID, 1)
+	examID := seedExamWithTestsDirect(t, ctx, repo, testID)
+	seedProductForExamDirect(t, ctx, repo, examID, "published")
+
+	q := model.Question{ID: qID, Format: "short", Body: "changed body", PointCorrect: 1, PointWrong: 0, AcceptedAnswers: []string{"x"}}
+	_, err := svc.SaveQuestion(ctx, q, nil, nil, nil)
+	assert.ErrorIs(t, err, ErrQuestionFormatLocked)
+
+	var storedFormat, storedBody string
+	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT format, body FROM question WHERE id = $1`, qID).Scan(&storedFormat, &storedBody))
+	assert.Equal(t, "mcq", storedFormat)
+	assert.NotEqual(t, "changed body", storedBody, "refused format change must write nothing")
+}
+
+// FR-13: fields other than format may change freely on a live-exam question.
+func TestSaveQuestion_allows_nonFormatChange_whenInLiveExam(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	qID := seedBankQuestionDirect(t, ctx, repo, "essay", "original essay body "+uniqueSuffix())
+	testID := seedTestDirect(t, ctx, repo, "Math "+uniqueSuffix(), "math", "algebra")
+	attachQuestionDirect(t, ctx, repo, testID, qID, 1)
+	examID := seedExamWithTestsDirect(t, ctx, repo, testID)
+	seedProductForExamDirect(t, ctx, repo, examID, "published")
+
+	updatedBody := "updated essay body " + uniqueSuffix()
+	q := model.Question{ID: qID, Format: "essay", Body: updatedBody, PointCorrect: 1, PointWrong: 0}
+	_, err := svc.SaveQuestion(ctx, q, nil, nil, nil)
+	require.NoError(t, err)
+
+	var storedBody string
+	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT body FROM question WHERE id = $1`, qID).Scan(&storedBody))
+	assert.Equal(t, updatedBody, storedBody)
+}
+
+// FR-15: a question that is not in a live exam is free to change format, and
+// the new format's own validation rules apply.
+func TestSaveQuestion_allows_formatChange_whenNotInLiveExam(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	qID := seedBankQuestionDirect(t, ctx, repo, "essay", "not attached to anything "+uniqueSuffix())
+
+	q := model.Question{ID: qID, Format: "short", Body: "now a short question", PointCorrect: 1, PointWrong: 0, AcceptedAnswers: []string{"42"}}
+	_, err := svc.SaveQuestion(ctx, q, nil, nil, nil)
+	require.NoError(t, err)
+
+	var storedFormat string
+	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT format FROM question WHERE id = $1`, qID).Scan(&storedFormat))
+	assert.Equal(t, "short", storedFormat)
+}
+
+// FR-15's other half: the new format's validation still applies — a "short"
+// question requires an accepted answer, so an empty one must still be rejected
+// even though the question isn't in a live exam.
+func TestSaveQuestion_formatChange_stillValidatesNewFormat(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	qID := seedBankQuestionDirect(t, ctx, repo, "essay", "not attached "+uniqueSuffix())
+
+	q := model.Question{ID: qID, Format: "short", Body: "now a short question", PointCorrect: 1, PointWrong: 0}
+	_, err := svc.SaveQuestion(ctx, q, nil, nil, nil)
+	assert.ErrorIs(t, err, ErrValidation)
+}
+
+// Task 6: the bank list exposes in_live_exam so the UI can disable controls
+// without a second round trip.
+func TestListBankQuestions_exposes_inLiveExamFlag(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	liveBody := "in live exam list flag " + uniqueSuffix()
+	liveID := seedBankQuestionDirect(t, ctx, repo, "essay", liveBody)
+	testID := seedTestDirect(t, ctx, repo, "Math "+uniqueSuffix(), "math", "algebra")
+	attachQuestionDirect(t, ctx, repo, testID, liveID, 1)
+	examID := seedExamWithTestsDirect(t, ctx, repo, testID)
+	seedProductForExamDirect(t, ctx, repo, examID, "published")
+
+	notLiveBody := "not in live exam list flag " + uniqueSuffix()
+	notLiveID := seedBankQuestionDirect(t, ctx, repo, "essay", notLiveBody)
+
+	liveItems, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: liveBody, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, liveItems, 1)
+	assert.True(t, liveItems[0].InLiveExam)
+	assert.Equal(t, liveID, liveItems[0].Question.ID)
+
+	notLiveItems, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: notLiveBody, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, notLiveItems, 1)
+	assert.False(t, notLiveItems[0].InLiveExam)
+	assert.Equal(t, notLiveID, notLiveItems[0].Question.ID)
 }
 
 // FR-27: accepted_answers round-trips through create -> read -> update -> read,

@@ -68,6 +68,10 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusNotFound, APIError{Code: "test_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrQuestionNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "question_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrQuestionInLiveExam):
+		status, apiErr = http.StatusConflict, APIError{Code: "question_in_published_exam", Message: err.Error()}
+	case errors.Is(err, service.ErrQuestionFormatLocked):
+		status, apiErr = http.StatusConflict, APIError{Code: "question_format_locked", Message: err.Error()}
 	case errors.Is(err, service.ErrExamNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "exam_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrTopicNotFound):

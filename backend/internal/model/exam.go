@@ -241,6 +241,9 @@ type BankQuestionListItem struct {
 	Blanks        []QuestionBlank     `json:"blanks"`
 	Statements    []QuestionStatement `json:"statements"`
 	AttachedCount int                 `json:"attached_count"`
+	// InLiveExam mirrors Service.IsQuestionInLiveExam so the admin bank page can
+	// disable delete/format controls without a second round trip (FR-7/FR-14).
+	InLiveExam bool `json:"in_live_exam"`
 }
 
 // ExamListItem is the read shape returned by GET /admin/exams. Cursor pagination
