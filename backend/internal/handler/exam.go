@@ -369,6 +369,7 @@ func (h *Handler) AdminDeleteTopic(c echo.Context) error {
 }
 
 // AdminListBankQuestions returns the bank question list with cursor pagination (FR-14).
+// cursor is the decimal question_number of the last row of the previous page (FR-4).
 func (h *Handler) AdminListBankQuestions(c echo.Context) error {
 	limit := 20
 	if l := c.QueryParam("limit"); l != "" {
@@ -376,11 +377,17 @@ func (h *Handler) AdminListBankQuestions(c echo.Context) error {
 			limit = n
 		}
 	}
+	cursor := c.QueryParam("cursor")
+	if cursor != "" {
+		if _, err := strconv.Atoi(cursor); err != nil {
+			return badRequest(c, "cursor must be an integer")
+		}
+	}
 	filter := repository.QuestionFilter{
 		Format:  c.QueryParam("format"),
 		TopicID: c.QueryParam("topic_id"),
 		Search:  c.QueryParam("search"),
-		Cursor:  c.QueryParam("cursor"),
+		Cursor:  cursor,
 		Limit:   limit,
 	}
 

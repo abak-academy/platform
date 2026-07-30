@@ -41,16 +41,17 @@ type Test struct {
 // and surfaced via QuestionWithOptions for read paths. topic_id links to the curated
 // exam_topic list; it is nullable for questions created before topics were assigned.
 type Question struct {
-	ID            uuid.UUID  `json:"id"`
-	Format        string     `json:"format"`
-	Body          string     `json:"body"`
-	CorrectAnswer *string    `json:"correct_answer"`
-	Explanation   *string    `json:"explanation"`
-	Difficulty    *string    `json:"difficulty"`
-	ImageURL      *string    `json:"image_url"`
-	AudioURL      *string    `json:"audio_url"`
-	TopicID       *uuid.UUID `json:"topic_id"`
-	Topic         *string    `json:"topic"`
+	ID             uuid.UUID  `json:"id"`
+	QuestionNumber int        `json:"question_number"`
+	Format         string     `json:"format"`
+	Body           string     `json:"body"`
+	CorrectAnswer  *string    `json:"correct_answer"`
+	Explanation    *string    `json:"explanation"`
+	Difficulty     *string    `json:"difficulty"`
+	ImageURL       *string    `json:"image_url"`
+	AudioURL       *string    `json:"audio_url"`
+	TopicID        *uuid.UUID `json:"topic_id"`
+	Topic          *string    `json:"topic"`
 	// PointCorrect and PointWrong are positive magnitudes (fractional allowed) authored
 	// per question; the scoring engine (not the author) applies the sign for wrong answers.
 	PointCorrect float64 `json:"point_correct"`

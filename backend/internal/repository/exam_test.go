@@ -210,39 +210,42 @@ func TestScanQuestion_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanQuestion returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 10 {
-		t.Fatalf("scanQuestion passed %d destinations, want 10 (id, format, body, correct_answer, explanation, difficulty, image_url, topic_id, point_correct, point_wrong)", got)
+	if got := len(rec.dests); got != 11 {
+		t.Fatalf("scanQuestion passed %d destinations, want 11 (id, question_number, format, body, correct_answer, explanation, difficulty, image_url, topic_id, point_correct, point_wrong)", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
 		t.Errorf("dest[0] = %T, want *uuid.UUID (id)", rec.dests[0])
 	}
-	if _, ok := rec.dests[1].(*string); !ok {
-		t.Errorf("dest[1] = %T, want *string (format)", rec.dests[1])
+	if _, ok := rec.dests[1].(*int); !ok {
+		t.Errorf("dest[1] = %T, want *int (question_number)", rec.dests[1])
 	}
 	if _, ok := rec.dests[2].(*string); !ok {
-		t.Errorf("dest[2] = %T, want *string (body)", rec.dests[2])
+		t.Errorf("dest[2] = %T, want *string (format)", rec.dests[2])
 	}
-	if _, ok := rec.dests[3].(**string); !ok {
-		t.Errorf("dest[3] = %T, want **string (correct_answer, nullable local)", rec.dests[3])
+	if _, ok := rec.dests[3].(*string); !ok {
+		t.Errorf("dest[3] = %T, want *string (body)", rec.dests[3])
 	}
 	if _, ok := rec.dests[4].(**string); !ok {
-		t.Errorf("dest[4] = %T, want **string (explanation, nullable local)", rec.dests[4])
+		t.Errorf("dest[4] = %T, want **string (correct_answer, nullable local)", rec.dests[4])
 	}
 	if _, ok := rec.dests[5].(**string); !ok {
-		t.Errorf("dest[5] = %T, want **string (difficulty, nullable local)", rec.dests[5])
+		t.Errorf("dest[5] = %T, want **string (explanation, nullable local)", rec.dests[5])
 	}
 	if _, ok := rec.dests[6].(**string); !ok {
-		t.Errorf("dest[6] = %T, want **string (image_url, nullable local)", rec.dests[6])
+		t.Errorf("dest[6] = %T, want **string (difficulty, nullable local)", rec.dests[6])
 	}
-	if _, ok := rec.dests[7].(**uuid.UUID); !ok {
-		t.Errorf("dest[7] = %T, want **uuid.UUID (topic_id, nullable local)", rec.dests[7])
+	if _, ok := rec.dests[7].(**string); !ok {
+		t.Errorf("dest[7] = %T, want **string (image_url, nullable local)", rec.dests[7])
 	}
-	if _, ok := rec.dests[8].(*float64); !ok {
-		t.Errorf("dest[8] = %T, want *float64 (point_correct)", rec.dests[8])
+	if _, ok := rec.dests[8].(**uuid.UUID); !ok {
+		t.Errorf("dest[8] = %T, want **uuid.UUID (topic_id, nullable local)", rec.dests[8])
 	}
 	if _, ok := rec.dests[9].(*float64); !ok {
-		t.Errorf("dest[9] = %T, want *float64 (point_wrong)", rec.dests[9])
+		t.Errorf("dest[9] = %T, want *float64 (point_correct)", rec.dests[9])
+	}
+	if _, ok := rec.dests[10].(*float64); !ok {
+		t.Errorf("dest[10] = %T, want *float64 (point_wrong)", rec.dests[10])
 	}
 }
 

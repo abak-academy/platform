@@ -73,7 +73,7 @@ func scanTestWithCount(row interface{ Scan(dest ...any) error }, t *model.Test) 
 func scanQuestion(row interface{ Scan(dest ...any) error }, q *model.Question) error {
 	var correctAnswer, explanation, difficulty, imageURL *string
 	err := row.Scan(
-		&q.ID, &q.Format, &q.Body,
+		&q.ID, &q.QuestionNumber, &q.Format, &q.Body,
 		&correctAnswer, &explanation, &difficulty, &imageURL,
 		&q.TopicID, &q.PointCorrect, &q.PointWrong,
 	)
@@ -255,7 +255,7 @@ func (r *Repository) DeleteTest(ctx context.Context, id uuid.UUID) error {
 
 func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]model.QuestionWithOptions, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, tq.sort_order
+		`SELECT q.id, q.question_number, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, tq.sort_order
 		FROM question q
 		JOIN test_question tq ON tq.question_id = q.id
 		LEFT JOIN exam_topic et ON et.id = q.topic_id
@@ -275,7 +275,7 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 		var correctAnswer, explanation, difficulty, imageURL, audioURL, topic *string
 		var topicID *uuid.UUID
 		if err := rows.Scan(
-			&q.ID, &q.Format, &q.Body,
+			&q.ID, &q.QuestionNumber, &q.Format, &q.Body,
 			&correctAnswer, &explanation, &difficulty, &imageURL, &audioURL,
 			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &sortOrder,
 		); err != nil {
@@ -402,9 +402,9 @@ func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 	err := tx.QueryRow(ctx,
 		`INSERT INTO question (format, body, correct_answer, explanation, difficulty, image_url, audio_url, topic_id, point_correct, point_wrong)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING id`,
+		RETURNING id, question_number`,
 		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.AudioURL, q.TopicID, q.PointCorrect, q.PointWrong,
-	).Scan(&q.ID)
+	).Scan(&q.ID, &q.QuestionNumber)
 	if err != nil {
 		return err
 	}
@@ -540,7 +540,7 @@ func (r *Repository) ListBankQuestions(ctx context.Context, filter QuestionFilte
 		filter.Limit = 20
 	}
 
-	query := `SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0)
+	query := `SELECT q.id, q.question_number, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0)
 FROM question q
 LEFT JOIN exam_topic et ON et.id = q.topic_id
 LEFT JOIN (
@@ -566,12 +566,12 @@ WHERE 1=1`
 		argIdx++
 	}
 	if filter.Cursor != "" {
-		query += fmt.Sprintf(` AND q.id > $%d`, argIdx)
+		query += fmt.Sprintf(` AND q.question_number < $%d`, argIdx)
 		args = append(args, filter.Cursor)
 		argIdx++
 	}
 
-	query += ` ORDER BY q.id LIMIT $` + fmt.Sprintf("%d", argIdx)
+	query += ` ORDER BY q.question_number DESC LIMIT $` + fmt.Sprintf("%d", argIdx)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -587,7 +587,7 @@ WHERE 1=1`
 		var correctAnswer, explanation, difficulty, imageURL, audioURL, topic *string
 		var topicID *uuid.UUID
 		if err := rows.Scan(
-			&q.ID, &q.Format, &q.Body,
+			&q.ID, &q.QuestionNumber, &q.Format, &q.Body,
 			&correctAnswer, &explanation, &difficulty, &imageURL, &audioURL,
 			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &attachedCount,
 		); err != nil {
@@ -625,8 +625,9 @@ WHERE 1=1`
 
 	var nextCursor string
 	if len(items) > filter.Limit {
-		// Cursor is the last *returned* row; the next page starts after it.
-		nextCursor = items[filter.Limit-1].Question.ID.String()
+		// Cursor is the question_number of the last *returned* row; the next page
+		// continues strictly below it.
+		nextCursor = strconv.Itoa(items[filter.Limit-1].Question.QuestionNumber)
 		items = items[:filter.Limit]
 	}
 

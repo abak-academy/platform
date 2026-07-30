@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -194,5 +195,133 @@ func TestAdminCreateBankQuestion_acceptsFractionalPointCorrect(t *testing.T) {
 	}
 	if resp.Question.PointCorrect != 2.5 {
 		t.Errorf("response point_correct = %v, want 2.5", resp.Question.PointCorrect)
+	}
+}
+
+// FR-2: a freshly created question's JSON carries a non-zero question_number
+// from the column DEFAULT.
+func TestAdminCreateBankQuestion_returnsNonZeroQuestionNumber(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+
+	body := []byte(`{"format":"essay","body":"explain the tides"}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/questions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	c := e.NewContext(req, rec)
+
+	if err := h.AdminCreateBankQuestion(c); err != nil {
+		t.Fatalf("AdminCreateBankQuestion returned error: %v", err)
+	}
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Question struct {
+			QuestionNumber int `json:"question_number"`
+		} `json:"question"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Question.QuestionNumber == 0 {
+		t.Errorf("response question_number = 0, want a non-zero value assigned by the sequence DEFAULT")
+	}
+}
+
+// FR-4: an unparseable cursor must be rejected, never silently ignored.
+func TestAdminListBankQuestions_invalidCursorReturns400(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/questions?cursor=not-a-number", nil)
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	c := e.NewContext(req, rec)
+
+	if err := h.AdminListBankQuestions(c); err != nil {
+		t.Fatalf("AdminListBankQuestions returned error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Code != "invalid_request" {
+		t.Errorf("response code = %q, want %q", resp.Code, "invalid_request")
+	}
+}
+
+// FR-4: a valid integer cursor is honoured -- it must exclude every question at
+// or above that question_number from the page.
+func TestAdminListBankQuestions_honoursIntegerCursor(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+	e := echo.New()
+
+	create := func(body string) int {
+		reqBody := []byte(`{"format":"essay","body":"` + body + `"}`)
+		req := httptest.NewRequest(http.MethodPost, "/admin/questions", bytes.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		if err := h.AdminCreateBankQuestion(c); err != nil {
+			t.Fatalf("AdminCreateBankQuestion returned error: %v", err)
+		}
+		var resp struct {
+			Question struct {
+				QuestionNumber int `json:"question_number"`
+			} `json:"question"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		return resp.Question.QuestionNumber
+	}
+
+	first := create("cursor question one")
+	second := create("cursor question two")
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/questions?cursor=%d", second), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.AdminListBankQuestions(c); err != nil {
+		t.Fatalf("AdminListBankQuestions returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Data []struct {
+			Question struct {
+				QuestionNumber int `json:"question_number"`
+			} `json:"question"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	for _, item := range resp.Data {
+		if item.Question.QuestionNumber >= second {
+			t.Errorf("page after cursor=%d must not include question_number %d", second, item.Question.QuestionNumber)
+		}
+	}
+	found := false
+	for _, item := range resp.Data {
+		if item.Question.QuestionNumber == first {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("page after cursor=%d must include question_number %d (first)", second, first)
 	}
 }
