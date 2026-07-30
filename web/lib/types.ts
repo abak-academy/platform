@@ -207,6 +207,16 @@ export interface CourierRate {
   is_estimate?: boolean;
 }
 
+export interface OrderShipmentEvent {
+  id: string;
+  order_id: string;
+  status: string;
+  courier_waybill_id?: string | null;
+  courier_driver_name?: string | null;
+  occurred_at: string;
+  created_at: string;
+}
+
 export interface Order {
   id: string;
   student_id: string;
@@ -222,6 +232,12 @@ export interface Order {
   is_estimate?: boolean;
   tracking_number?: string;
   shipped_at?: string;
+  biteship_order_id?: string | null;
+  shipment_status?: string | null;
+  waybill_source?: "biteship" | "manual" | null;
+  courier_code?: string | null;
+  courier_service_code?: string | null;
+  shipment_events?: OrderShipmentEvent[];
   gateway_ref?: string;
   payment_method?: string;
   payment_expires_at?: string;
