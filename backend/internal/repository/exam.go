@@ -1152,9 +1152,15 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
 			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at,
 			e.title, e.scheduled_at, e.scheduled_end_at, e.is_free, e.requires_checkin,
-			e.check_in_window_minutes, e.duration_minutes
+			e.check_in_window_minutes, e.duration_minutes, e.max_attempts, s.id
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
+		LEFT JOIN LATERAL (
+			SELECT id FROM exam_session
+			WHERE registration_id = reg.id
+			ORDER BY attempt_number DESC
+			LIMIT 1
+		) s ON true
 		WHERE reg.student_id = $1
 		ORDER BY reg.created_at DESC`,
 		studentID,
@@ -1173,7 +1179,7 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 			&item.ID, &item.StudentID, &item.ExamID, &item.Token, &cardKey,
 			&checkedInAt, &item.AttemptsUsed, &item.Status, &item.CreatedAt,
 			&item.ExamTitle, &item.ScheduledAt, &item.ScheduledEndAt, &item.IsFree, &item.RequiresCheckin,
-			&item.CheckInWindowMinutes, &item.DurationMinutes,
+			&item.CheckInWindowMinutes, &item.DurationMinutes, &item.MaxAttempts, &item.SessionID,
 		); err != nil {
 			return nil, err
 		}
@@ -1348,32 +1354,37 @@ func (r *Repository) CheckInExamTx(ctx context.Context, tx pgx.Tx, regID uuid.UU
 
 // CreateExamSessionTx increments attempts_used, sets status='in_progress',
 // optionally stamps checked_in_at when NULL, and inserts an exam_session row.
-// The attempts_used = 0 predicate is the atomic 1-attempt guard: the service's
-// read-then-act check alone would let two concurrent starts both pass.
-func (r *Repository) CreateExamSessionTx(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) (model.ExamSession, error) {
-	tag, err := tx.Exec(ctx,
+// The attempts_used < ceiling predicate is the atomic attempt guard: the service's
+// read-then-act check alone would let two concurrent starts both pass. maxAttempts
+// is the exam's raw max_attempts column value (nil or 0 means single-attempt, FR18);
+// COALESCE(NULLIF($2, 0), 1) resolves the ceiling right here, the sole authority
+// (Invariant 4, NF3) — it is not pre-resolved by the caller.
+func (r *Repository) CreateExamSessionTx(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration, maxAttempts *int) (model.ExamSession, error) {
+	var attemptsUsed int
+	err := tx.QueryRow(ctx,
 		`UPDATE exam_registration
 		SET attempts_used = attempts_used + 1,
 		    status = 'in_progress',
 		    checked_in_at = COALESCE(checked_in_at, now())
-		WHERE id = $1 AND attempts_used = 0`,
-		reg.ID,
-	)
+		WHERE id = $1 AND attempts_used < COALESCE(NULLIF($2, 0), 1)
+		RETURNING attempts_used`,
+		reg.ID, maxAttempts,
+	).Scan(&attemptsUsed)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.ExamSession{}, ErrNoAttemptsLeft
+		}
 		return model.ExamSession{}, err
-	}
-	if tag.RowsAffected() == 0 {
-		return model.ExamSession{}, ErrNoAttemptsLeft
 	}
 
 	var s model.ExamSession
 	err = tx.QueryRow(ctx,
 		`INSERT INTO exam_session (registration_id, student_id, exam_id, attempt_number, started_at, status)
-		VALUES ($1, $2, $3, 1, now(), 'in_progress')
+		VALUES ($1, $2, $3, $4, now(), 'in_progress')
 		RETURNING id, registration_id, student_id, exam_id, attempt_number, started_at,
 			submitted_at, extended_until, admin_submitted, score, certificate_key,
 			certificate_generated_at, certificate_number, last_saved_at, status, created_at`,
-		reg.ID, reg.StudentID, reg.ExamID,
+		reg.ID, reg.StudentID, reg.ExamID, attemptsUsed,
 	).Scan(
 		&s.ID, &s.RegistrationID, &s.StudentID, &s.ExamID,
 		&s.AttemptNumber, &s.StartedAt, &s.SubmittedAt,
@@ -1572,6 +1583,14 @@ func (r *Repository) SubmitSessionTx(ctx context.Context, tx pgx.Tx, sessionID u
 	}
 
 	if tag.RowsAffected() == 1 {
+		if _, err := tx.Exec(ctx,
+			`UPDATE exam_registration SET status = 'submitted'
+			WHERE id = (SELECT registration_id FROM exam_session WHERE id = $1)`,
+			sessionID,
+		); err != nil {
+			return 0, err
+		}
+
 		for _, a := range graded {
 			_, err := tx.Exec(ctx,
 				`INSERT INTO exam_session_answer (session_id, question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review, saved_at)
@@ -1606,12 +1625,25 @@ func (r *Repository) SubmitSessionTx(ctx context.Context, tx pgx.Tx, sessionID u
 }
 
 // fullyGradedFilter is the shared "no ungraded essay" predicate for a submitted session,
-// reused by CountHigherScores and CountFullyGradedSessions to keep the rank/total derivation
-// consistent (FR-S5-15/18).
+// reused inside dedupedSubmittedSessions to keep the rank/total derivation consistent
+// (FR-S5-15/18).
 const fullyGradedFilter = `NOT EXISTS (
 	SELECT 1 FROM exam_session_answer a
 	JOIN question q ON q.id = a.question_id
 	WHERE a.session_id = s.id AND q.format = 'essay' AND a.graded_at IS NULL
+)`
+
+// dedupedSubmittedSessions collapses exam_session to one row per registration_id,
+// keeping the row with the greatest attempt_number — "latest attempt is authoritative,
+// everywhere" (FB-26/FR22, Task 7's rule). Without this, a registration with two
+// submitted attempts would double-count in CountHigherScores/CountFullyGradedSessions/
+// GetFullyGradedScores and appear twice in ListExamLeaderboard. References $1 =
+// exam_id; callers append further placeholders starting at $2.
+const dedupedSubmittedSessions = `(
+	SELECT DISTINCT ON (s.registration_id) s.id, s.registration_id, s.student_id, s.score
+	FROM exam_session s
+	WHERE s.exam_id = $1 AND s.status = 'submitted' AND ` + fullyGradedFilter + `
+	ORDER BY s.registration_id, s.attempt_number DESC
 )`
 
 // ListSessionsNeedingGrading returns submitted sessions for an exam that still have at
@@ -1705,10 +1737,7 @@ func (r *Repository) GetSessionEssayAnswers(ctx context.Context, sessionID uuid.
 func (r *Repository) CountHigherScores(ctx context.Context, examID uuid.UUID, score float64) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*)
-		FROM exam_session s
-		WHERE s.exam_id = $1 AND s.status = 'submitted' AND s.score > $2
-			AND `+fullyGradedFilter,
+		`SELECT COUNT(*) FROM `+dedupedSubmittedSessions+` d WHERE d.score > $2`,
 		examID, score,
 	).Scan(&count)
 	if err != nil {
@@ -1722,10 +1751,7 @@ func (r *Repository) CountHigherScores(ctx context.Context, examID uuid.UUID, sc
 func (r *Repository) CountFullyGradedSessions(ctx context.Context, examID uuid.UUID) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*)
-		FROM exam_session s
-		WHERE s.exam_id = $1 AND s.status = 'submitted'
-			AND `+fullyGradedFilter,
+		`SELECT COUNT(*) FROM `+dedupedSubmittedSessions+` d`,
 		examID,
 	).Scan(&count)
 	if err != nil {
@@ -1882,11 +1908,10 @@ func (r *Repository) ListExamLeaderboard(ctx context.Context, examID uuid.UUID, 
 	}
 
 	query := `SELECT id, student_id, student_name, score, rank FROM (
-		SELECT s.id, s.student_id, u.name AS student_name, s.score,
-		       RANK() OVER (ORDER BY s.score DESC) AS rank
-		FROM exam_session s
-		JOIN users u ON u.id = s.student_id
-		WHERE s.exam_id = $1 AND s.status = 'submitted' AND ` + fullyGradedFilter + `
+		SELECT d.id, d.student_id, u.name AS student_name, d.score,
+		       RANK() OVER (ORDER BY d.score DESC) AS rank
+		FROM ` + dedupedSubmittedSessions + ` d
+		JOIN users u ON u.id = d.student_id
 	) ranked`
 	args := []interface{}{examID}
 	argIdx := 2
@@ -1954,10 +1979,13 @@ func (r *Repository) GetExamCompletionStats(ctx context.Context, examID uuid.UUI
 	return total, submitted, nil
 }
 
-// GetFullyGradedScores returns scores for all fully-graded submitted sessions for an exam.
+// GetFullyGradedScores returns scores for all fully-graded submitted sessions for an
+// exam, one per registration (dedupedSubmittedSessions) — otherwise a student who
+// retakes contributes both attempts' scores to GetExamAnalytics' average, silently
+// over-weighting repeat sitters.
 func (r *Repository) GetFullyGradedScores(ctx context.Context, examID uuid.UUID) ([]float64, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT s.score FROM exam_session s WHERE s.exam_id = $1 AND s.status = 'submitted' AND `+fullyGradedFilter,
+		`SELECT d.score FROM `+dedupedSubmittedSessions+` d`,
 		examID,
 	)
 	if err != nil {

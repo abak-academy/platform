@@ -572,6 +572,121 @@ describe("QuestionEditor", () => {
     });
   });
 
+  // ── Insert-blank token lockstep (Task 14, FB-25) ────────────────────────
+
+  function makeMultiBlankQuestion(
+    blanks: Array<{ index: number; correct_answer: string }>,
+    body = "Isi soal: "
+  ): QuestionWithOptions {
+    return {
+      question: makeQuestion({ format: "multi_blank" as QuestionFormat, body }),
+      options: [],
+      blanks,
+    };
+  }
+
+  function mockInsertTextExecCommand() {
+    return vi.spyOn(document, "execCommand").mockImplementation((cmd, _ui, arg) => {
+      if (cmd === "insertText" && typeof arg === "string") {
+        const editable = document.querySelector('[contenteditable="true"]');
+        editable?.appendChild(document.createTextNode(arg));
+      }
+      return true;
+    });
+  }
+
+  it("clicking Tambah opsi on an empty blank list writes {{1}} into the body and appends one row; a second click writes {{2}}", () => {
+    const execSpy = mockInsertTextExecCommand();
+    const qwo = makeMultiBlankQuestion([]);
+    renderWithClient(
+      <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    expect(screen.queryAllByLabelText(/jawaban benar/i).length).toBe(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /tambah opsi/i }));
+
+    expect(screen.getByLabelText(/badan soal/i).textContent).toContain("{{1}}");
+    expect(screen.getAllByLabelText(/jawaban benar/i).length).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /tambah opsi/i }));
+
+    expect(screen.getByLabelText(/badan soal/i).textContent).toContain("{{2}}");
+    expect(screen.getAllByLabelText(/jawaban benar/i).length).toBe(2);
+
+    execSpy.mockRestore();
+  });
+
+  it("removing a blank row keeps the remaining {{N}} tokens in the body contiguous", () => {
+    const execSpy = mockInsertTextExecCommand();
+    const qwo = makeMultiBlankQuestion([], "");
+    renderWithClient(
+      <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    const addButton = screen.getByRole("button", { name: /tambah opsi/i });
+    fireEvent.click(addButton); // {{1}}
+    fireEvent.click(addButton); // {{2}}
+    fireEvent.click(addButton); // {{3}}
+
+    expect(screen.getByLabelText(/badan soal/i).textContent).toBe("{{1}}{{2}}{{3}}");
+
+    // Remove the middle row ({{2}}) — {{3}} must renumber down to {{2}}.
+    const removeButtons = screen.getAllByRole("button", { name: /hapus opsi/i });
+    fireEvent.click(removeButtons[1]);
+
+    const bodyText = screen.getByLabelText(/badan soal/i).textContent;
+    expect(bodyText).toContain("{{1}}");
+    expect(bodyText).toContain("{{2}}");
+    expect(bodyText).not.toContain("{{3}}");
+    expect(screen.getAllByLabelText(/jawaban benar/i).length).toBe(2);
+
+    execSpy.mockRestore();
+  });
+
+  it("multi_blank validation: a body with {{1}} and {{3}} (a gap) is rejected client-side", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "multi_blank" } });
+    setBodyValue("Soal {{1}} dan {{3}}");
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
+    // Fill both default blank rows so the (pre-existing) empty-answer check
+    // cannot be the thing rejecting this submission — only the token gap can.
+    const blankInputs = screen.getAllByLabelText(/jawaban benar/i);
+    fireEvent.change(blankInputs[0], { target: { value: "A" } });
+    fireEvent.change(blankInputs[1], { target: { value: "B" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    expect(mockTestSaveAsync).not.toHaveBeenCalled();
+  });
+
+  it("multi_blank validation: two blank rows but only one {{N}} token in the body is rejected client-side", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "multi_blank" } });
+    // Default multi_blank seeds 2 blank rows; the body carries only one token.
+    setBodyValue("Soal {{1}}");
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
+    const blankInputs = screen.getAllByLabelText(/jawaban benar/i);
+    fireEvent.change(blankInputs[0], { target: { value: "A" } });
+    fireEvent.change(blankInputs[1], { target: { value: "B" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    expect(mockTestSaveAsync).not.toHaveBeenCalled();
+  });
+
   // ── Rich-text option authoring (Task 7, FR-11) ─────────────────────────
 
   it("mcq option text field is present in render (before rich-text swap)", () => {

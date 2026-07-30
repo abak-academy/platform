@@ -57,16 +57,28 @@ type CardState =
   | { kind: "locked"; opensAt: Date }
   | { kind: "checkin" }
   | { kind: "in_progress" }
-  | { kind: "expired" };
+  | { kind: "expired" }
+  | { kind: "submitted"; sessionId: string; hasAttemptsLeft: boolean };
 
 // Mirrors design-app-abak's PkgCard state machine (stateMeta: free/locked/
-// checkin/checkedin/inprogress/expired), driven by real fields instead of
-// mock data. "submitted" isn't derivable here — exam_registration.status
-// never advances past 'in_progress' on submit (score lives on exam_session,
-// which this list endpoint doesn't join) — see registration detail page for
-// the same gap. in_progress renders as a link to the detail page instead of
-// a fabricated "view result" action.
+// checkin/checkedin/inprogress/expired/submitted), driven by real fields
+// instead of mock data.
 function computeCardState(reg: RegistrationListItem, now: number): CardState {
+  if (reg.status === "submitted") {
+    // session_id is nullable (list join picks the latest attempt) — without
+    // it there's nowhere valid to link, so fall back to in_progress's detail link.
+    if (reg.session_id) {
+      // Mirrors CreateExamSessionTx's ceiling exactly (backend/internal/repository/exam.go):
+      // NULL or 0 max_attempts means single-attempt (FR18).
+      const ceiling = reg.max_attempts && reg.max_attempts > 0 ? reg.max_attempts : 1;
+      return {
+        kind: "submitted",
+        sessionId: reg.session_id,
+        hasAttemptsLeft: reg.attempts_used < ceiling,
+      };
+    }
+    return { kind: "in_progress" };
+  }
   if (reg.status === "in_progress") return { kind: "in_progress" };
   if (reg.status === "checked_in") return { kind: "start" };
   if (!reg.requires_checkin) {
@@ -313,6 +325,25 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
           </Button>
         )}
 
+        {state.kind === "submitted" && (
+          <div className="flex items-center gap-2">
+            {state.hasAttemptsLeft && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0 rounded-full"
+                onClick={handleStart}
+                disabled={startSessionMutation.isPending}
+              >
+                {startSessionMutation.isPending ? t("sys_loading") : t("retake_exam")}
+              </Button>
+            )}
+            <Button asChild size="sm" className="flex-1 rounded-full">
+              <Link href={`/exam/sessions/${state.sessionId}/result`}>{t("view_exam_result")}</Link>
+            </Button>
+          </div>
+        )}
+
         {state.kind === "expired" && (
           <div className="flex items-center gap-1.5 text-xs text-ink-500">
             <XCircle className="size-3.5 text-danger" />
@@ -335,7 +366,9 @@ function StateBadge({ state }: { state: CardState }) {
           ? "st_inprogress"
           : state.kind === "expired"
             ? "st_expired"
-            : "st_checkedin";
+            : state.kind === "submitted"
+              ? "st_submitted"
+              : "st_checkedin";
   return (
     <Badge variant="outline" className="rounded-full">
       {t(labelKey)}

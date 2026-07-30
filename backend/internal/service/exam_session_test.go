@@ -811,8 +811,12 @@ func (s *shimSessionService) StartSession(ctx context.Context, studentID, regist
 		}
 	}
 
-	// Attempt limit
-	if detail.AttemptsUsed >= 1 {
+	// Attempt limit — max_attempts IS NULL or 0 means single-attempt (FR18).
+	maxAttempts := 1
+	if exam.MaxAttempts != nil && *exam.MaxAttempts > 0 {
+		maxAttempts = *exam.MaxAttempts
+	}
+	if detail.AttemptsUsed >= maxAttempts {
 		return SessionStartPayload{}, ErrAlreadyAttempted
 	}
 
@@ -914,6 +918,40 @@ func TestStartSession_NoCheckin_AlreadyAttempted(t *testing.T) {
 	_, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
 	if !errors.Is(err, ErrAlreadyAttempted) {
 		t.Errorf("want ErrAlreadyAttempted, got %v", err)
+	}
+}
+
+// TestStartSession_NoCheckin_MaxAttemptsAllowsRetake covers C5: the service's
+// pre-check (a duplicate of the guard exam_session.go:366 formerly hardcoded to 1)
+// must honour exam.MaxAttempts, not reject every retake before the transaction opens.
+func TestStartSession_NoCheckin_MaxAttemptsAllowsRetake(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+		MaxAttempts:     intptr(2),
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) { d.AttemptsUsed = 1 },
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	_, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: want retake allowed (attempts_used=1 < max_attempts=2), got %v", err)
 	}
 }
 

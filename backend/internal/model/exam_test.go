@@ -304,6 +304,17 @@ func TestExamRegistrationStruct(t *testing.T) {
 	fieldType(t, v, "CreatedAt", reflect.TypeOf(time.Time{}))
 }
 
+func TestRegistrationListItemStruct(t *testing.T) {
+	typ := reflect.TypeOf((*RegistrationListItem)(nil)).Elem()
+	v := newModel(typ)
+
+	jsonTag(t, v, "SessionID", "session_id")
+	fieldKind(t, v, "SessionID", reflect.Ptr)
+	if mustField(t, v, "SessionID").Type != reflect.TypeOf((*uuid.UUID)(nil)) {
+		t.Errorf("RegistrationListItem.SessionID should be *uuid.UUID, got %s", mustField(t, v, "SessionID").Type)
+	}
+}
+
 // ---- ExamSession ----
 
 func TestExamSessionStruct(t *testing.T) {

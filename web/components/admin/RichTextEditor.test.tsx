@@ -43,6 +43,13 @@ describe("RichTextEditor", () => {
     expect(editable.innerHTML).toBe("<b>hello</b>");
   });
 
+  it("sets defaultParagraphSeparator to 'p' on mount so Enter produces allowlisted markup (FB-24)", () => {
+    const execSpy = vi.spyOn(document, "execCommand").mockImplementation(() => true);
+    render(<RichTextEditor value="" onChange={vi.fn()} />);
+    expect(execSpy).toHaveBeenCalledWith("defaultParagraphSeparator", false, "p");
+    execSpy.mockRestore();
+  });
+
   it("clicking Bold with a selection invokes document.execCommand with 'bold'", () => {
     const execSpy = vi.spyOn(document, "execCommand").mockImplementation(() => true);
     const onChange = vi.fn();
@@ -182,6 +189,57 @@ describe("RichTextEditor", () => {
     execSpy.mockRestore();
     vi.unstubAllGlobals();
     rerender(<RichTextEditor value="" onChange={onChange} />);
+  });
+
+  it("toolbar buttons prevent default on mousedown so focus never leaves the editable (FR27)", () => {
+    render(<RichTextEditor value="hello" onChange={vi.fn()} />);
+    for (const name of [/bold/i, /italic/i, /underline/i, /bulleted list/i, /numbered list/i, /superscript/i, /subscript/i, /formula/i, /insert image/i]) {
+      const button = screen.getByRole("button", { name });
+      const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+      const prevented = !button.dispatchEvent(event);
+      expect(prevented, `mousedown on "${button.getAttribute("aria-label")}" should be prevented`).toBe(true);
+    }
+  });
+
+  it("exec restores a saved Range before running execCommand, surviving an intervening focus change (FR27/29)", () => {
+    const execSpy = vi.spyOn(document, "execCommand").mockImplementation(() => true);
+    render(<RichTextEditor value="hello world" onChange={vi.fn()} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+
+    // Select "world".
+    const textNode = editable.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(textNode, 6);
+    range.setEnd(textNode, 11);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    // Simulate the toolbar's mousedown firing first (preventDefault keeps
+    // focus/selection intact) — this is what the component wires up.
+    fireEvent.mouseDown(screen.getByRole("button", { name: /bold/i }), {});
+
+    // Now simulate focus moving away entirely (e.g. an async gap, like the
+    // OS file dialog) before the action actually runs. Use a <button>, not
+    // an <input>, so it carries no implicit "textbox" role that could leak
+    // into other tests' getByRole("textbox") queries if cleanup is skipped.
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    try {
+      outside.focus();
+      sel?.removeAllRanges();
+
+      fireEvent.click(screen.getByRole("button", { name: /bold/i }));
+
+      expect(execSpy).toHaveBeenCalledWith("bold", false, undefined);
+      // The selection must have been restored onto the editable before exec ran.
+      const restored = window.getSelection();
+      expect(restored?.toString()).toBe("world");
+    } finally {
+      document.body.removeChild(outside);
+      execSpy.mockRestore();
+    }
   });
 
   it("never uses window.prompt for image insertion", () => {
@@ -368,6 +426,42 @@ describe("RichTextEditor", () => {
       expect(lastCall).toBeDefined();
       expect(lastCall).toContain('<b>bold</b>');
       expect(lastCall).toContain('<i>italic</i>');
+    });
+
+    execSpy.mockRestore();
+  });
+
+  it("preserves <br> and <p> line breaks on paste (FB-24)", async () => {
+    const execSpy = vi.spyOn(document, "execCommand").mockImplementation((cmd, _ui, arg) => {
+      if (cmd === "insertHTML" && typeof arg === "string") {
+        const editable = document.querySelector('[contenteditable="true"]');
+        if (editable) editable.innerHTML = arg;
+        return true;
+      }
+      return true;
+    });
+
+    const onChange = vi.fn();
+    render(<RichTextEditor value="" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+
+    const html = "<p>line one</p><p>line two</p><br>";
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        getData: (type: string) => (type === "text/html" ? html : ""),
+      },
+    });
+
+    editable.dispatchEvent(pasteEvent);
+
+    await waitFor(() => {
+      const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0];
+      expect(lastCall).toBeDefined();
+      expect(lastCall).toContain("<p>line one</p>");
+      expect(lastCall).toContain("<p>line two</p>");
+      expect(lastCall).toContain("<br>");
     });
 
     execSpy.mockRestore();

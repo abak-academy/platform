@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Check, Plus, Trash2, X } from "lucide-react";
 import {
@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { RichTextEditor } from "@/components/admin/RichTextEditor";
+import { RichTextEditor, type RichTextEditorHandle } from "@/components/admin/RichTextEditor";
 import { AudioUploadInput } from "@/components/admin/AudioUploadInput";
 import { useSaveQuestion } from "@/lib/hooks/admin-tests";
 import {
@@ -50,10 +50,12 @@ function nextKey(existing: AdminQuestionOptionInput[]): string {
 interface BlankEditorProps {
   blanks: Array<{ index: number; correct_answer: string }>;
   onChange: (next: Array<{ index: number; correct_answer: string }>) => void;
+  onInsertToken: (index: number) => void;
+  onRemoveToken: (index: number) => void;
   disabled: boolean;
 }
 
-function BlankEditor({ blanks, onChange, disabled }: BlankEditorProps) {
+function BlankEditor({ blanks, onChange, onInsertToken, onRemoveToken, disabled }: BlankEditorProps) {
   const { t } = useTranslation();
 
   function update(index: number, patch: { correct_answer?: string }) {
@@ -62,13 +64,21 @@ function BlankEditor({ blanks, onChange, disabled }: BlankEditorProps) {
 
   function remove(index: number) {
     if (blanks.length <= 1) return;
-    onChange(blanks.filter((_, i) => i !== index));
+    const removedTokenIndex = blanks[index].index;
+    onChange(
+      blanks
+        .filter((_, i) => i !== index)
+        .map((b) => (b.index > removedTokenIndex ? { ...b, index: b.index - 1 } : b))
+    );
+    onRemoveToken(removedTokenIndex);
   }
 
   function add() {
+    const nextIndex = blanks.length + 1;
+    onInsertToken(nextIndex);
     onChange([
       ...blanks,
-      { index: blanks.length + 1, correct_answer: "" },
+      { index: nextIndex, correct_answer: "" },
     ]);
   }
 
@@ -302,6 +312,54 @@ function buildInput(
   return base;
 }
 
+// Mirrors backend/internal/service/exam.go's extractTokensFromStem: finds
+// every {{N}} token in the body, in document order.
+function extractBlankTokens(body: string): number[] {
+  return Array.from(body.matchAll(/\{\{(\d+)\}\}/g), (m) => Number(m[1]));
+}
+
+// Mirrors validateTokenSequence (exam.go:157-181) plus the blanks/tokens
+// count check from validateQuestion's multi_blank case (exam.go:275-277), so
+// the admin sees the same rule the server enforces before they submit.
+function validateBlankTokens(
+  body: string,
+  blanks: Array<{ index: number; correct_answer: string }>
+): { ok: true } | { ok: false; key: string } {
+  const tokens = extractBlankTokens(body);
+  if (tokens.length === 0) {
+    return { ok: false, key: "tests_validation_blank_token_required" };
+  }
+  const seen = new Set<number>();
+  for (const token of tokens) {
+    if (seen.has(token)) {
+      return { ok: false, key: "tests_validation_blank_token_duplicate" };
+    }
+    seen.add(token);
+  }
+  for (let i = 1; i <= tokens.length; i++) {
+    if (!seen.has(i)) {
+      return { ok: false, key: "tests_validation_blank_token_gap" };
+    }
+  }
+  if (blanks.length !== tokens.length) {
+    return { ok: false, key: "tests_validation_blank_row_mismatch" };
+  }
+  return { ok: true };
+}
+
+// Removes the token numbered `removedIndex` from the body and shifts every
+// token above it down by one, so the remaining tokens stay a contiguous
+// 1..N set — pairs with BlankEditor's remove(), which does the same
+// renumbering to the blank rows.
+function renumberTokensInBody(body: string, removedIndex: number): string {
+  return body.replace(/\{\{(\d+)\}\}/g, (match, digits: string) => {
+    const n = Number(digits);
+    if (n === removedIndex) return "";
+    if (n > removedIndex) return `{{${n - 1}}}`;
+    return match;
+  });
+}
+
 function validate(
   format: QuestionFormat,
   body: string,
@@ -330,9 +388,8 @@ function validate(
     }
   }
   if (format === "multi_blank") {
-    if (blanks.length === 0) {
-      return { ok: false, key: "tests_validation_blanks_required" };
-    }
+    const tokenResult = validateBlankTokens(body, blanks);
+    if (!tokenResult.ok) return tokenResult;
     for (const blank of blanks) {
       if (!blank.correct_answer.trim()) {
         return { ok: false, key: "tests_validation_correct_answer_required" };
@@ -369,6 +426,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
     ]
   );
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const bodyEditorRef = useRef<RichTextEditorHandle>(null);
 
   const topics = useTopics();
   const createBankQuestion = useCreateBankQuestion();
@@ -400,6 +458,14 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
 
   function handleDifficultyChange(value: string) {
     setDifficulty(value === "none" ? "" : value);
+  }
+
+  function insertBlankToken(index: number) {
+    bodyEditorRef.current?.insertTextAtCaret(`{{${index}}}`);
+  }
+
+  function removeBlankToken(removedIndex: number) {
+    bodyEditorRef.current?.setContent(renumberTokensInBody(body, removedIndex));
   }
 
   async function handleSave() {
@@ -497,6 +563,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
             <div className="grid gap-2">
               <Label htmlFor="question-body">{t("tests_field_body")}</Label>
               <RichTextEditor
+                ref={bodyEditorRef}
                 id="question-body"
                 aria-label={t("tests_field_body")}
                 value={body}
@@ -541,6 +608,8 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
                     <BlankEditor
                       blanks={blanks}
                       onChange={setBlanks}
+                      onInsertToken={insertBlankToken}
+                      onRemoveToken={removeBlankToken}
                       disabled={savePending}
                     />
                   </div>

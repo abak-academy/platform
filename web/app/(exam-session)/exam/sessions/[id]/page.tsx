@@ -36,6 +36,7 @@ import {
 import type { SessionQuestion } from "@/lib/types";
 import { RichContent } from "@/components/admin/RichContent";
 import { SectionAudioPlayer } from "./section-audio-player";
+import { QUESTION_BODY_ALLOWED_TAGS } from "@/lib/question-html";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -519,8 +520,8 @@ export default function SessionPage() {
               </div>
             )}
 
-            {/* Audio player (listening sections only) */}
-            {isSectioned && activeTest?.section_type === "listening" && activeTest.audio_url && (
+            {/* Section audio player */}
+            {isSectioned && activeTest?.audio_url && (
               <SectionAudioPlayer
                 audioUrl={activeTest.audio_url}
                 playLimit={activeTest.audio_play_limit}
@@ -528,8 +529,8 @@ export default function SessionPage() {
               />
             )}
 
-            {/* Per-question audio player (listening sections only) */}
-            {isSectioned && activeTest?.section_type === "listening" && currentQ?.audio_url && (
+            {/* Per-question audio player */}
+            {currentQ?.audio_url && (
               <SectionAudioPlayer
                 audioUrl={currentQ.audio_url}
                 testId="question-audio-player"
@@ -732,7 +733,7 @@ function LegendItem({
 }
 
 // Helper: sanitize HTML using same allowlist as RichContent
-const ALLOWED_TAGS = ["b", "i", "u", "ul", "ol", "li", "sup", "sub", "img"];
+const ALLOWED_TAGS = QUESTION_BODY_ALLOWED_TAGS;
 const ALLOWED_ATTR = ["src", "alt", "style"];
 
 function sanitizeForRichContent(html: string): string {

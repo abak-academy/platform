@@ -79,12 +79,29 @@ func (s *Service) GrantExamAccess(ctx context.Context, actorID, examID string, s
 			Token:     repository.GenerateExamToken(),
 			Status:    "registered",
 		}
+		// Same advisory lock as CreateExamRegistration (exam.go:1120-1124) — its
+		// comment already names "admin grant" as a caller sharing this MAX+1
+		// sequence, so this path must serialize on it too or a concurrent
+		// checkout/grant pair can compute the same next number and collide on
+		// uq_examregistration_participant.
+		if _, err := tx.Exec(ctx,
+			`SELECT pg_advisory_xact_lock(hashtext('exam_participant_number'), hashtext($1::text))`,
+			examUUID,
+		); err != nil {
+			return GrantExamAccessResult{}, err
+		}
 		// Use RETURNING so we only capture actually-inserted rows.
 		// ON CONFLICT DO NOTHING produces no output for existing rows.
+		// participant_number must be set here too — AllocateCertificateNumber
+		// (exam.go:1849-1860) scans it into a non-nullable int, and a NULL left
+		// by this path fails certificate generation for every grant-path student
+		// (FB-28).
 		var inserted model.ExamRegistration
 		err := tx.QueryRow(ctx,
-			`INSERT INTO exam_registration (student_id, exam_id, token, status)
-			 VALUES ($1, $2, $3, $4)
+			`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number)
+			 VALUES ($1, $2, $3, $4,
+				(SELECT COALESCE(MAX(participant_number), 0) + 1
+				 FROM exam_registration WHERE exam_id = $2))
 			 ON CONFLICT (student_id, exam_id) DO NOTHING
 			 RETURNING id, student_id, exam_id, token, card_key, checked_in_at, attempts_used, status, created_at`,
 			sid, examUUID, reg.Token, "registered",

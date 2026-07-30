@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent } from "react";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import {
@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { fileUrl } from "@/lib/api";
 import { usePresignAdminImageUpload } from "@/lib/hooks/admin-uploads";
+import { QUESTION_BODY_ALLOWED_TAGS } from "@/lib/question-html";
 
 interface RichTextEditorProps {
   value: string;
@@ -30,6 +31,15 @@ interface RichTextEditorProps {
   compact?: boolean;
 }
 
+// Imperative escape hatch for callers that need to write into the editor
+// from outside a toolbar click — e.g. QuestionEditor's insert-blank action
+// (FB-25), which must insert `{{N}}` at the caret in lockstep with adding a
+// blank row.
+export interface RichTextEditorHandle {
+  insertTextAtCaret: (text: string) => void;
+  setContent: (html: string) => void;
+}
+
 function isEffectivelyEmpty(html: string): boolean {
   const tmp = document.createElement("div");
   tmp.innerHTML = html;
@@ -39,40 +49,86 @@ function isEffectivelyEmpty(html: string): boolean {
 }
 
 function sanitizeClipboardHtml(html: string): string {
-  const ALLOWED_TAGS = ["b", "i", "u", "ul", "ol", "li", "sup", "sub", "img"];
   // For pasted content, only allow src/alt on img, no style attributes
   const ALLOWED_ATTR = ["src", "alt"];
-  return DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR });
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS: QUESTION_BODY_ALLOWED_TAGS, ALLOWED_ATTR });
 }
 
-export function RichTextEditor({ value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby, minHeightClassName = "min-h-[130px]", compact = false }: RichTextEditorProps) {
-  const ref = useRef<HTMLDivElement | null>(null);
+export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor(
+  { value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby, minHeightClassName = "min-h-[130px]", compact = false },
+  forwardedRef
+) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const savedRangeRef = useRef<Range | null>(null);
   const [empty, setEmpty] = useState<boolean>(!value || isEffectivelyEmpty(value));
   const presign = usePresignAdminImageUpload();
 
   // On mount only, mirror `value` into the contentEditable if it differs.
   useEffect(() => {
-    if (ref.current && ref.current.innerHTML !== value) {
-      ref.current.innerHTML = value || "";
+    if (editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value || "";
     }
+    // Without this, Chromium's default Enter behaviour wraps new lines in
+    // <div>, which isn't allowlisted and gets stripped server-side (FB-24) —
+    // <p> is.
+    document.execCommand("defaultParagraphSeparator", false, "p");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function sync() {
-    if (!ref.current) return;
-    const html = ref.current.innerHTML;
+    if (!editorRef.current) return;
+    const html = editorRef.current.innerHTML;
     setEmpty(isEffectivelyEmpty(html));
     onChange(html);
   }
 
+  // Captured on toolbar mousedown, before a native OS dialog (the file
+  // chooser) can steal focus and clear window.getSelection() out from under
+  // an in-flight async action (e.g. image upload).
+  function saveSelection() {
+    const sel = typeof window !== "undefined" ? window.getSelection() : null;
+    if (!sel || sel.rangeCount === 0 || !editorRef.current) return;
+    const range = sel.getRangeAt(0);
+    if (editorRef.current.contains(range.commonAncestorContainer)) {
+      savedRangeRef.current = range.cloneRange();
+    }
+  }
+
+  function restoreSelection() {
+    if (!savedRangeRef.current || !editorRef.current) return;
+    editorRef.current.focus();
+    const sel = window.getSelection();
+    if (!sel) return;
+    sel.removeAllRanges();
+    sel.addRange(savedRangeRef.current);
+  }
+
+  // Toolbar buttons carry onMouseDown={preventDefault} so a click never
+  // blurs the editable in the first place; this restore is the second layer
+  // for actions (image insert) where a native OS dialog blurs it anyway.
   function exec(cmd: string, arg?: string) {
+    restoreSelection();
     document.execCommand(cmd, false, arg);
-    if (ref.current) ref.current.focus();
+    if (editorRef.current) editorRef.current.focus();
     sync();
   }
 
+  function preventBlur(e: React.MouseEvent) {
+    e.preventDefault();
+    saveSelection();
+  }
+
+  useImperativeHandle(forwardedRef, () => ({
+    insertTextAtCaret: (text: string) => exec("insertText", text),
+    setContent: (html: string) => {
+      if (editorRef.current) editorRef.current.innerHTML = html;
+      sync();
+    },
+  }));
+
   function insertFormula() {
+    restoreSelection();
     const sel = typeof window !== "undefined" ? window.getSelection() : null;
     const chosen = sel ? sel.toString() : "";
     exec("insertText", chosen ? `\\(${chosen}\\)` : "\\(\\ \\)");
@@ -142,6 +198,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
           type="button"
           variant="ghost"
           size={iconSize}
+          onMouseDown={preventBlur}
           onClick={() => exec("bold")}
           aria-label="Bold"
           disabled={disabled}
@@ -152,6 +209,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
           type="button"
           variant="ghost"
           size={iconSize}
+          onMouseDown={preventBlur}
           onClick={() => exec("italic")}
           aria-label="Italic"
           disabled={disabled}
@@ -162,6 +220,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
           type="button"
           variant="ghost"
           size={iconSize}
+          onMouseDown={preventBlur}
           onClick={() => exec("underline")}
           aria-label="Underline"
           disabled={disabled}
@@ -173,6 +232,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
           type="button"
           variant="ghost"
           size={iconSize}
+          onMouseDown={preventBlur}
           onClick={() => exec("insertUnorderedList")}
           aria-label="Bulleted list"
           disabled={disabled}
@@ -183,6 +243,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
           type="button"
           variant="ghost"
           size={iconSize}
+          onMouseDown={preventBlur}
           onClick={() => exec("insertOrderedList")}
           aria-label="Numbered list"
           disabled={disabled}
@@ -194,6 +255,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
           type="button"
           variant="ghost"
           size={iconSize}
+          onMouseDown={preventBlur}
           onClick={() => exec("superscript")}
           aria-label="Superscript"
           disabled={disabled}
@@ -205,6 +267,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
           type="button"
           variant="ghost"
           size={iconSize}
+          onMouseDown={preventBlur}
           onClick={() => exec("subscript")}
           aria-label="Subscript"
           disabled={disabled}
@@ -217,6 +280,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
           type="button"
           variant="ghost"
           size={formulaSize}
+          onMouseDown={preventBlur}
           onClick={insertFormula}
           aria-label="Insert formula"
           disabled={disabled}
@@ -228,6 +292,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
           type="button"
           variant="ghost"
           size={iconSize}
+          onMouseDown={preventBlur}
           onClick={() => fileInputRef.current?.click()}
           aria-label="Insert image"
           disabled={disabled || uploading}
@@ -244,7 +309,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
       </div>
       <div className="relative">
         <div
-          ref={ref}
+          ref={editorRef}
           id={id}
           aria-label={ariaLabel}
           aria-labelledby={ariaLabelledby}
@@ -264,4 +329,4 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
       </div>
     </div>
   );
-}
+});

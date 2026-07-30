@@ -407,8 +407,9 @@ func TestValidateQuestion_accepts_valid_points(t *testing.T) {
 }
 
 func TestValidateQuestion_rejects_body_empty_after_sanitization(t *testing.T) {
-	// Simulates what every write path does: sanitize, then validate. <br> has
-	// no allowlisted tag and no text content, so it sanitizes to "".
+	// Simulates what every write path does: sanitize, then validate. <br> is
+	// allowlisted (FB-24) and survives sanitization, but carries no text
+	// content, so isQuestionBodyEmpty still treats it as blank.
 	q := model.Question{Format: "essay", Body: sanitizeQuestionBody("<br>"), PointCorrect: 1}
 	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
@@ -1033,9 +1034,9 @@ func TestCreateBankQuestion_rejects_body_that_sanitizes_to_empty(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
 
-	// <br> is not in questionBodyPolicy's allowlist and carries no text
-	// content, so sanitizeQuestionBody reduces it to "" before validateQuestion
-	// runs — a blank question must not be persisted.
+	// <br> is allowlisted (FB-24) but carries no text content, so
+	// isQuestionBodyEmpty still rejects it in validateQuestion — a blank
+	// question must not be persisted.
 	q := model.Question{Format: "essay", Body: "<br>", PointCorrect: 1, PointWrong: 0}
 	_, err := svc.CreateBankQuestion(ctx, q, nil, nil)
 	require.Error(t, err)

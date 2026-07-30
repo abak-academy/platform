@@ -1,5 +1,7 @@
 # Node
 /node_modules/
+web/test-results/
+web/playwright-report/
 
 # Go
 /backend/bin/
