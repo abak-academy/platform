@@ -519,8 +519,8 @@ export default function SessionPage() {
               </div>
             )}
 
-            {/* Audio player (listening sections only) */}
-            {isSectioned && activeTest?.section_type === "listening" && activeTest.audio_url && (
+            {/* Section audio player */}
+            {isSectioned && activeTest?.audio_url && (
               <SectionAudioPlayer
                 audioUrl={activeTest.audio_url}
                 playLimit={activeTest.audio_play_limit}
@@ -528,8 +528,8 @@ export default function SessionPage() {
               />
             )}
 
-            {/* Per-question audio player (listening sections only) */}
-            {isSectioned && activeTest?.section_type === "listening" && currentQ?.audio_url && (
+            {/* Per-question audio player */}
+            {currentQ?.audio_url && (
               <SectionAudioPlayer
                 audioUrl={currentQ.audio_url}
                 testId="question-audio-player"

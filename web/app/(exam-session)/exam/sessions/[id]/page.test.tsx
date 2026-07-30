@@ -1742,5 +1742,72 @@ describe("SessionPage", () => {
     expect(screen.getByTestId("section-audio-player")).toBeInTheDocument();
     expect(screen.queryByTestId("question-audio-player")).not.toBeInTheDocument();
   });
+
+  // ── FB-32: audio plays at both question and section scope, any mode ────
+
+  it("renders per-question audio player in standard mode when the question has audio_url (FB-32)", async () => {
+    const standardWithQuestionAudio = {
+      ...sampleSession,
+      tests: [
+        {
+          ...sampleSession.tests[0],
+          questions: [
+            { ...sampleSession.tests[0].questions[0], audio_url: "https://example.com/std-q-audio.mp3" },
+            ...sampleSession.tests[0].questions.slice(1),
+          ],
+        },
+      ],
+    };
+    sessionState = { ...sessionState, data: standardWithQuestionAudio };
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const questionPlayer = screen.getByTestId("question-audio-player");
+    expect(questionPlayer).toBeInTheDocument();
+    expect(questionPlayer).toHaveAttribute("src", "https://example.com/std-q-audio.mp3");
+  });
+
+  it("renders per-question audio player in a sectioned non-listening test (FB-32)", async () => {
+    const sectionedWithQuestionAudio = {
+      ...sectionedSession,
+      tests: [
+        {
+          ...sectionedSession.tests[0],
+          questions: [
+            { ...sectionedSession.tests[0].questions[0], audio_url: "https://example.com/sec-q-audio.mp3" },
+            ...sectionedSession.tests[0].questions.slice(1),
+          ],
+        },
+        sectionedSession.tests[1],
+      ],
+    };
+    sessionState = { ...sessionState, data: sectionedWithQuestionAudio };
+    render(<SessionPage />);
+    await enterFullscreenSectioned();
+
+    const questionPlayer = screen.getByTestId("question-audio-player");
+    expect(questionPlayer).toBeInTheDocument();
+    expect(questionPlayer).toHaveAttribute("src", "https://example.com/sec-q-audio.mp3");
+  });
+
+  it("renders section audio player for a sectioned test with audio_url and no section_type (FB-32)", async () => {
+    const sectionedWithSectionAudioNoType = {
+      ...sectionedSession,
+      tests: [
+        {
+          ...sectionedSession.tests[0],
+          audio_url: "https://example.com/sec-audio.mp3",
+        },
+        sectionedSession.tests[1],
+      ],
+    };
+    sessionState = { ...sessionState, data: sectionedWithSectionAudioNoType };
+    render(<SessionPage />);
+    await enterFullscreenSectioned();
+
+    const sectionPlayer = screen.getByTestId("section-audio-player");
+    expect(sectionPlayer).toBeInTheDocument();
+    expect(sectionPlayer).toHaveAttribute("src", "https://example.com/sec-audio.mp3");
+  });
 });
 
