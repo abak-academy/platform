@@ -5,6 +5,7 @@
 | **Issue** | [#59](https://github.com/abak-academy/platform/issues/59) |
 | **Objective** | A student whose school is not on the list is a first-class participant — findable, registerable, and able to edit their own profile. |
 | **Source IDs** | FB-12, FB-14, FB-18, NF-3 |
+| **Unscheduled, same surface** | FB-34 (region seed is pre-2022) — [H1](h1-live-bugs-2026-07-30.md). **FB-12 was re-reported on 2026-07-30 as FB-35**, naming exam registration specifically — it is a confirmed blocker, not a suspected gap. |
 | **Client items** | 4 |
 | **Depends on** | E1 (B-8 — the importer copies a vulnerable writer) |
 | **Verified against** | `main` @ `211b7b1`, 2026-07-29 |

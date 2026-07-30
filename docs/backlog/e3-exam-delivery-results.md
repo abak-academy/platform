@@ -4,7 +4,8 @@
 |---|---|
 | **Issue** | [#58](https://github.com/abak-academy/platform/issues/58) |
 | **Objective** | Results reach exactly the people who should see them, a disconnected student can carry on, and the certificate studio stops being a door that is always open. |
-| **Source IDs** | FB-2, FB-8, FB-13, FB-16, FB-17, FB-20 + **GitHub issue #55** · optional: F-1a, F-1b, D-8 |
+| **Source IDs** | FB-2, FB-8, FB-13, FB-16, FB-17, FB-20 *(+FB-33)* + **GitHub issue #55** · optional: F-1a, F-1b, D-8 |
+| **Unscheduled, same surface** | FB-26, FB-27, FB-28, FB-31, FB-32 — [H1](h1-live-bugs-2026-07-30.md) |
 | **Client items** | 6 |
 | **Depends on** | E1 (B-8 — the results export writer) |
 | **Verified against** | `main` @ `211b7b1`, 2026-07-29 |
@@ -70,17 +71,34 @@ The work is affordance and wording. Resist turning either into a feature.
 
 ---
 
-## 4. FB-20 — resume at the same question after a disconnect
+## 4. FB-20 — resume at the same question after a disconnect *(widened by FB-33)*
 
-Answers already survive — they are persisted server-side on every change. **The position does not.**
+> **Corrected 2026-07-30.** An earlier version of this section said *"answers already survive — they
+> are persisted server-side on every change"*. **That was wrong**, and the client's 2026-07-30 report
+> (**FB-33**) is the evidence: saves run on a **fire-and-forget 30-second `setInterval`** with no
+> retry, no error handling and no unsaved indicator
+> ([`sessions/[id]/page.tsx:250-263`](../../web/app/(exam-session)/exam/sessions/[id]/page.tsx)). Up to
+> 30 seconds of answers are lost on a disconnect, and a save attempted while the network is down is
+> lost silently. Full detail: [H1 §7](h1-live-bugs-2026-07-30.md#7-fb-33--up-to-30-seconds-of-answers-are-lost-silently-widens-fb-20).
+>
+> **This item now covers the answer path as well as the position** — debounced save-on-change, retry
+> with backoff, a durable local queue, and a visible saved/unsaved state. Splitting them would mean two
+> branches over one write path, and FB-20's acceptance criterion is untestable until the answer path is
+> trustworthy.
+
+**The position is lost too, and that part was described correctly.**
 `currentQIndex` is `useState(0)` in
 [`(exam-session)/exam/sessions/[id]/page.tsx:68`](../../web/app/(exam-session)/exam/sessions/[id]/page.tsx),
 and there is no `localStorage` or `sessionStorage` anywhere in that route group. A reconnecting student
-lands back on question 1 with their answers intact.
+lands back on question 1, with whatever answers happened to reach the server on the last interval tick.
 
 **Persist the position server-side, alongside the answers — not in the browser.** The client described
 *logging out and logging back in*, possibly on another device; browser storage would not survive
 either. FR-COMP-10 already promises resume "from last saved position".
+
+That rule is about the **authoritative** copy. A local queue for answers still in flight is a different
+thing and is fine — it is a buffer for an offline window, not the source of truth, and it must be
+reconciled against the server on reconnect rather than trusted over it.
 
 ---
 
