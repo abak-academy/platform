@@ -1152,9 +1152,15 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
 			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at,
 			e.title, e.scheduled_at, e.scheduled_end_at, e.is_free, e.requires_checkin,
-			e.check_in_window_minutes, e.duration_minutes
+			e.check_in_window_minutes, e.duration_minutes, s.id
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
+		LEFT JOIN LATERAL (
+			SELECT id FROM exam_session
+			WHERE registration_id = reg.id
+			ORDER BY attempt_number DESC
+			LIMIT 1
+		) s ON true
 		WHERE reg.student_id = $1
 		ORDER BY reg.created_at DESC`,
 		studentID,
@@ -1173,7 +1179,7 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 			&item.ID, &item.StudentID, &item.ExamID, &item.Token, &cardKey,
 			&checkedInAt, &item.AttemptsUsed, &item.Status, &item.CreatedAt,
 			&item.ExamTitle, &item.ScheduledAt, &item.ScheduledEndAt, &item.IsFree, &item.RequiresCheckin,
-			&item.CheckInWindowMinutes, &item.DurationMinutes,
+			&item.CheckInWindowMinutes, &item.DurationMinutes, &item.SessionID,
 		); err != nil {
 			return nil, err
 		}
@@ -1572,6 +1578,14 @@ func (r *Repository) SubmitSessionTx(ctx context.Context, tx pgx.Tx, sessionID u
 	}
 
 	if tag.RowsAffected() == 1 {
+		if _, err := tx.Exec(ctx,
+			`UPDATE exam_registration SET status = 'submitted'
+			WHERE id = (SELECT registration_id FROM exam_session WHERE id = $1)`,
+			sessionID,
+		); err != nil {
+			return 0, err
+		}
+
 		for _, a := range graded {
 			_, err := tx.Exec(ctx,
 				`INSERT INTO exam_session_answer (session_id, question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review, saved_at)

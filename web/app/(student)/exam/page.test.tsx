@@ -59,6 +59,7 @@ const freeUpcoming: RegistrationListItem = {
   requires_checkin: false,
   check_in_window_minutes: null,
   duration_minutes: 90,
+  session_id: null,
 };
 
 const paidNoSchedule: RegistrationListItem = {
@@ -78,6 +79,7 @@ const paidNoSchedule: RegistrationListItem = {
   requires_checkin: true,
   check_in_window_minutes: 15,
   duration_minutes: 60,
+  session_id: null,
 };
 
 const sample: RegistrationListItem[] = [freeUpcoming, paidNoSchedule];

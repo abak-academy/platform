@@ -268,6 +268,7 @@ type RegistrationListItem struct {
 	RequiresCheckin      bool       `json:"requires_checkin"`
 	CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
 	DurationMinutes      *int       `json:"duration_minutes"`
+	SessionID            *uuid.UUID `json:"session_id"`
 }
 
 // RegistrationDetail is the read shape returned by GET /api/v1/exam/registrations/:id:

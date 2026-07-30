@@ -928,6 +928,7 @@ export interface RegistrationListItem {
   requires_checkin: boolean;
   check_in_window_minutes: number | null;
   duration_minutes: number | null;
+  session_id: string | null;
 }
 
 export interface RegistrationDetail {
