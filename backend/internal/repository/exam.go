@@ -1636,9 +1636,9 @@ const fullyGradedFilter = `NOT EXISTS (
 // dedupedSubmittedSessions collapses exam_session to one row per registration_id,
 // keeping the row with the greatest attempt_number — "latest attempt is authoritative,
 // everywhere" (FB-26/FR22, Task 7's rule). Without this, a registration with two
-// submitted attempts would double-count in CountHigherScores/CountFullyGradedSessions
-// and appear twice in ListExamLeaderboard. References $1 = exam_id; callers append
-// further placeholders starting at $2.
+// submitted attempts would double-count in CountHigherScores/CountFullyGradedSessions/
+// GetFullyGradedScores and appear twice in ListExamLeaderboard. References $1 =
+// exam_id; callers append further placeholders starting at $2.
 const dedupedSubmittedSessions = `(
 	SELECT DISTINCT ON (s.registration_id) s.id, s.registration_id, s.student_id, s.score
 	FROM exam_session s
@@ -1979,10 +1979,13 @@ func (r *Repository) GetExamCompletionStats(ctx context.Context, examID uuid.UUI
 	return total, submitted, nil
 }
 
-// GetFullyGradedScores returns scores for all fully-graded submitted sessions for an exam.
+// GetFullyGradedScores returns scores for all fully-graded submitted sessions for an
+// exam, one per registration (dedupedSubmittedSessions) — otherwise a student who
+// retakes contributes both attempts' scores to GetExamAnalytics' average, silently
+// over-weighting repeat sitters.
 func (r *Repository) GetFullyGradedScores(ctx context.Context, examID uuid.UUID) ([]float64, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT s.score FROM exam_session s WHERE s.exam_id = $1 AND s.status = 'submitted' AND `+fullyGradedFilter,
+		`SELECT d.score FROM `+dedupedSubmittedSessions+` d`,
 		examID,
 	)
 	if err != nil {

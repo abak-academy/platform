@@ -595,4 +595,38 @@ func TestRankReads_DedupeMultipleAttemptsPerRegistration(t *testing.T) {
 			t.Errorf("R appears %d times in the leaderboard, want 1", rEntries)
 		}
 	})
+
+	t.Run("GetFullyGradedScores contributes R's latest attempt once, not both scores", func(t *testing.T) {
+		// Only GetExamAnalytics' average-score input (exam_leaderboard.go:95-107) sums
+		// this slice — a non-deduped query would return [90, 50, 70] (mean 70), silently
+		// over-weighting a repeat sitter. Deduped, R contributes only their latest
+		// attempt (50): the set must be exactly {50, 70}.
+		scores, err := repo.GetFullyGradedScores(ctx, examID)
+		if err != nil {
+			t.Fatalf("GetFullyGradedScores: %v", err)
+		}
+		if len(scores) != 2 {
+			t.Fatalf("want 2 scores (R deduped + Y), got %d: %v", len(scores), scores)
+		}
+		var has50, has70, has90 bool
+		for _, sc := range scores {
+			switch sc {
+			case 50:
+				has50 = true
+			case 70:
+				has70 = true
+			case 90:
+				has90 = true
+			}
+		}
+		if has90 {
+			t.Errorf("scores %v include R's stale attempt (90); dedup must drop it", scores)
+		}
+		if !has50 {
+			t.Errorf("scores %v missing R's latest attempt (50)", scores)
+		}
+		if !has70 {
+			t.Errorf("scores %v missing Y's score (70)", scores)
+		}
+	})
 }
