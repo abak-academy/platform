@@ -368,20 +368,57 @@ func defaultLayout(template string) Layout {
 
 	switch template {
 	case "modern":
-		// Asymmetric: a navy songket band occupies the left ~46mm, so text is
-		// centred in the remaining field (x 55..283, centre ~169), not the page.
+		// Score-bearing layout (redesign 2026-07-30). Symmetric around the page
+		// centre; the background's navy waves occupy the top-left and bottom-right
+		// corners and a ribbon sits top-right, so nothing is placed at x<14,
+		// x>246 above y=80, or x>200 below y=150.
+		//
+		// This is the ONLY built-in layout that stamps score/percentile, which
+		// makes it "sensitive" to certificateLayoutAllowed: an exam whose
+		// result_config is 'hidden' (the column default) produces NO certificate
+		// at all on this template, silently. See ADR note in the epic doc.
+		//
+		// Space at x 16..34, y 166..180 is deliberately left empty for the QR
+		// code that "scan to verify" needs; that field type does not exist yet.
 		return Layout{
 			Page:       page,
 			Background: Background{Kind: "builtin", Ref: "modern"},
 			Fields: []LayoutField{
-				{ID: "title", XMm: 55, YMm: 44, WMm: 228, Align: "center", Font: "playfair_display", Weight: "bold", SizePt: 29, Color: "#22315B", Visible: true},
-				{ID: "subtitle", XMm: 55, YMm: 76, WMm: 228, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 12, Color: "#157A6E", Visible: true},
-				{ID: "student_name", XMm: 55, YMm: 100, WMm: 228, Align: "center", Font: "cormorant_garamond", Weight: "bold", SizePt: 34, Color: "#22315B", Visible: true},
-				{ID: "completion_text", XMm: 55, YMm: 122, WMm: 228, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#4A5568", Visible: true},
-				{ID: "exam_title", XMm: 55, YMm: 137, WMm: 228, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#22315B", Visible: true},
-				{ID: "date", XMm: 55, YMm: 160, WMm: 228, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#4A5568", Visible: true},
-				{ID: "certificate_number", XMm: 55, YMm: 196, WMm: 228, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#157A6E", Visible: true},
-				{ID: "signature", XMm: 205, YMm: 150, WMm: 62, HMm: 22, Align: "center", Visible: false},
+				// Off by default: this background's medallion is far smaller than the
+				// mockup's and already carries stars + laurel, so text inside it clips.
+				// Kept as a layer so an admin can enable and reposition it in the studio.
+				{ID: "text_3f2a91c4-0e7b-4a15-9c83-6d1e8b4f27a0", Kind: "text", Name: "well done badge", Content: "WELL DONE!", XMm: 249, YMm: 27, WMm: 29, Align: "center", Font: "public_sans", Weight: "bold", SizePt: 8, Color: "#F0CB78", Visible: false},
+
+				{ID: "title", Content: "CERTIFICATE", XMm: 48, YMm: 35, WMm: 201, Align: "center", Font: "playfair_display", Weight: "bold", SizePt: 38, Color: "#1B2A4E", Visible: true},
+				{ID: "subtitle", Content: "OF COMPLETION", XMm: 48, YMm: 57, WMm: 201, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 12.5, Color: "#B8873B", Visible: true},
+				{ID: "text_8c14d7e2-5b39-4f60-a8d1-2e9f7a03c5b8", Kind: "text", Name: "presented to", Content: "This is proudly presented to", XMm: 48, YMm: 73, WMm: 201, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 12, Color: "#3D4A5C", Visible: true},
+				{ID: "student_name", XMm: 48, YMm: 83, WMm: 201, Align: "center", Font: "great_vibes", Weight: "regular", SizePt: 42, Color: "#1B2A4E", Visible: true},
+				{ID: "completion_text", XMm: 62, YMm: 111, WMm: 173, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#3D4A5C", Visible: true},
+				{ID: "exam_title", XMm: 62, YMm: 117, WMm: 173, Align: "center", Font: "source_serif_4", Weight: "bold", SizePt: 12, Color: "#1B2A4E", Visible: true},
+
+				// Left metadata column. Values are real fields; the labels above
+				// them are static text layers because the background carries no
+				// icons (the mockup's calendar/clock/document glyphs are absent).
+				{ID: "text_a7e05b31-9d64-4c28-b0f7-3a5c1e8d4b26", Kind: "text", Name: "exam date label", Content: "Exam Date", XMm: 16, YMm: 107, WMm: 54, Align: "left", Font: "public_sans", Weight: "bold", SizePt: 9, Color: "#B8873B", Visible: true},
+				{ID: "date", XMm: 16, YMm: 112, WMm: 54, Align: "left", Font: "public_sans", Weight: "regular", SizePt: 10.5, Color: "#3D4A5C", Visible: true},
+				{ID: "text_b2f18c40-6a73-4e91-8d5b-7c0e2f9a4d16", Kind: "text", Name: "duration label", Content: "Duration", XMm: 16, YMm: 123, WMm: 54, Align: "left", Font: "public_sans", Weight: "bold", SizePt: 9, Color: "#B8873B", Visible: true},
+				{ID: "duration", Content: "{{duration}}", XMm: 16, YMm: 128, WMm: 54, Align: "left", Font: "public_sans", Weight: "regular", SizePt: 10.5, Color: "#3D4A5C", Visible: true},
+				{ID: "text_c93d6e57-1f82-4b04-a6c9-8e5b3d7f0a29", Kind: "text", Name: "total questions label", Content: "Total Questions", XMm: 16, YMm: 139, WMm: 54, Align: "left", Font: "public_sans", Weight: "bold", SizePt: 9, Color: "#B8873B", Visible: true},
+				{ID: "total_questions", Content: "{{total_questions}}", XMm: 16, YMm: 144, WMm: 54, Align: "left", Font: "public_sans", Weight: "regular", SizePt: 10.5, Color: "#3D4A5C", Visible: true},
+
+				// Score row. Two composed text layers rather than four bare fields
+				// so "86 / 100" and "TOP 15%" read as single units. Content tokens
+				// are what layoutUsesToken scans, so the gate still sees these.
+				{ID: "text_d40a2b68-7c15-493f-b2e8-1a6d9c4f3e07", Kind: "text", Name: "your score label", Content: "YOUR SCORE", XMm: 80, YMm: 133, WMm: 58, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9.5, Color: "#3D4A5C", Visible: true},
+				{ID: "text_e51b3c79-8d26-4a40-c3f9-2b7e0d5a4f18", Kind: "text", Name: "score value", Content: "{{score}} / {{max_score}}", XMm: 80, YMm: 140, WMm: 58, Align: "center", Font: "playfair_display", Weight: "bold", SizePt: 21, Color: "#1B2A4E", Visible: true},
+				{ID: "text_f62c4d80-9e37-4b51-d40a-3c8f1e6b5a29", Kind: "text", Name: "percentile label", Content: "PERCENTILE", XMm: 140, YMm: 133, WMm: 58, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9.5, Color: "#3D4A5C", Visible: true},
+				{ID: "text_073d5e91-af48-4c62-e51b-4d902f7c6b3a", Kind: "text", Name: "percentile value", Content: "{{percentile}}", XMm: 140, YMm: 140, WMm: 58, Align: "center", Font: "playfair_display", Weight: "bold", SizePt: 21, Color: "#B8873B", Visible: true},
+
+				{ID: "signature", XMm: 118, YMm: 166, WMm: 62, HMm: 18, Align: "center", Visible: false},
+				{ID: "text_184e6fa2-b059-4d73-f62c-5e01308d7c4b", Kind: "text", Name: "signatory title", Content: "Academic Director", XMm: 118, YMm: 187, WMm: 62, Align: "center", Font: "public_sans", Weight: "bold", SizePt: 9.5, Color: "#3D4A5C", Visible: true},
+
+				{ID: "text_29507ab3-c16a-4e84-073d-6f12419e8d5c", Kind: "text", Name: "certificate id label", Content: "Certificate ID", XMm: 16, YMm: 182, WMm: 62, Align: "left", Font: "public_sans", Weight: "bold", SizePt: 8.5, Color: "#B8873B", Visible: true},
+				{ID: "certificate_number", XMm: 16, YMm: 187, WMm: 62, Align: "left", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#3D4A5C", Visible: true},
 			},
 		}
 	case "elegant":
@@ -409,8 +446,8 @@ func defaultLayout(template string) Layout {
 				{ID: "student_name", XMm: 48.5, YMm: 108, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "bold", SizePt: 40, Color: "#22315B", Visible: true},
 				{ID: "completion_text", XMm: 48.5, YMm: 130, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 12, Color: "#4A5568", Visible: true},
 				{ID: "exam_title", XMm: 48.5, YMm: 145, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#22315B", Visible: true},
-				{ID: "date", XMm: 48.5, YMm: 166, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#4A5568", Visible: true},
-				{ID: "certificate_number", XMm: 48.5, YMm: 193, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#F0CB78", Visible: true},
+				{ID: "date", XMm: 48.5, YMm: 157, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#4A5568", Visible: true},
+				{ID: "certificate_number", XMm: 48.5, YMm: 193, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#6B5B34", Visible: true},
 				{ID: "signature", XMm: 205, YMm: 150, WMm: 62, HMm: 22, Align: "center", Visible: false},
 			},
 		}

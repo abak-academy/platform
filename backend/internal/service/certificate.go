@@ -36,14 +36,14 @@ func validateCertificateTemplate(tmpl string) error {
 	return nil
 }
 
-//go:embed assets/cert_bg_classic.png
-var certBgClassicPNG []byte
+//go:embed assets/cert_bg_classic.jpg
+var certBgClassic []byte
 
-//go:embed assets/cert_bg_modern.png
-var certBgModernPNG []byte
+//go:embed assets/cert_bg_modern.jpg
+var certBgModern []byte
 
 //go:embed assets/cert_bg_elegant.png
-var certBgElegantPNG []byte
+var certBgElegant []byte
 
 // builtinCertificateBackground returns the embedded background PNG for a
 // built-in background ref. An unrecognised ref falls back to classic, which
@@ -52,11 +52,11 @@ var certBgElegantPNG []byte
 func builtinCertificateBackground(ref string) []byte {
 	switch ref {
 	case "modern":
-		return certBgModernPNG
+		return certBgModern
 	case "elegant":
-		return certBgElegantPNG
+		return certBgElegant
 	default:
-		return certBgClassicPNG
+		return certBgClassic
 	}
 }
 
