@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"akademi-bimbel/internal/service"
 )
@@ -163,6 +164,103 @@ func TestBiteshipClient_GetOrder_Success(t *testing.T) {
 	}
 	if shipment.CourierDriverName != "Pak Agus" {
 		t.Errorf("expected CourierDriverName Pak Agus, got %q", shipment.CourierDriverName)
+	}
+}
+
+// TestBiteshipClient_OrderResponse_ToleratesUpdatedAtFormats drives real
+// httptest responses through CreateOrder and GetOrder for every plausible
+// (and implausible) updated_at encoding Biteship might send. None of them may
+// fail the parse — the waybill/order id/status must still come through.
+// Unix seconds, "2006-01-02 15:04:05"-style strings and RFC 3339 are all
+// genuinely parsed (they're plausible encodings); absent, null, and anything
+// else fall back to the zero value so shipping_webhook.go's deterministic
+// fallback chain gets a chance to run.
+func TestBiteshipClient_OrderResponse_ToleratesUpdatedAtFormats(t *testing.T) {
+	cases := []struct {
+		name          string
+		updatedAtJSON string // raw JSON literal spliced into the body; "" omits the key entirely
+		wantZero      bool
+		wantParsed    time.Time
+	}{
+		{
+			name:          "unix integer",
+			updatedAtJSON: `1722384000`,
+			wantZero:      false,
+			wantParsed:    time.Unix(1722384000, 0).UTC(),
+		},
+		{
+			name:          "non-RFC3339 string",
+			updatedAtJSON: `"2026-07-31 10:00:00"`,
+			wantZero:      false,
+			wantParsed:    time.Date(2026, 7, 31, 10, 0, 0, 0, time.UTC),
+		},
+		{name: "absent", updatedAtJSON: "", wantZero: true},
+		{name: "null", updatedAtJSON: `null`, wantZero: true},
+		{name: "unrecognisable garbage string", updatedAtJSON: `"not-a-timestamp"`, wantZero: true},
+		{
+			name:          "valid RFC3339",
+			updatedAtJSON: `"2026-07-31T10:00:00Z"`,
+			wantZero:      false,
+			wantParsed:    time.Date(2026, 7, 31, 10, 0, 0, 0, time.UTC),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"success":true,"id":"biteship-order-abc","status":"confirmed"`
+			if tc.updatedAtJSON != "" {
+				body += `,"updated_at":` + tc.updatedAtJSON
+			}
+			body += `,"courier":{"waybill_id":"JNE123456789","driver_name":"Pak Agus"}}`
+
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(body))
+			}))
+			defer ts.Close()
+
+			client := NewBiteshipClient(&mockRepository{}, "test-api-key", ts.URL, http.DefaultClient)
+
+			t.Run("CreateOrder", func(t *testing.T) {
+				shipment, err := client.CreateOrder(t.Context(), service.CreateShipmentRequest{
+					ReferenceID: "order-123", CourierCode: "jne", ServiceCode: "reg",
+				})
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				assertOrderParsed(t, shipment, tc.wantZero, tc.wantParsed)
+			})
+
+			t.Run("GetOrder", func(t *testing.T) {
+				shipment, err := client.GetOrder(t.Context(), "biteship-order-abc")
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				assertOrderParsed(t, shipment, tc.wantZero, tc.wantParsed)
+			})
+		})
+	}
+}
+
+func assertOrderParsed(t *testing.T, shipment service.Shipment, wantZero bool, wantParsed time.Time) {
+	t.Helper()
+	if shipment.BiteshipOrderID != "biteship-order-abc" {
+		t.Errorf("expected BiteshipOrderID biteship-order-abc, got %q", shipment.BiteshipOrderID)
+	}
+	if shipment.WaybillID != "JNE123456789" {
+		t.Errorf("expected WaybillID JNE123456789, got %q", shipment.WaybillID)
+	}
+	if shipment.Status != "confirmed" {
+		t.Errorf("expected Status confirmed, got %q", shipment.Status)
+	}
+	if wantZero {
+		if !shipment.StatusUpdatedAt.IsZero() {
+			t.Errorf("expected zero StatusUpdatedAt, got %v", shipment.StatusUpdatedAt)
+		}
+		return
+	}
+	if !shipment.StatusUpdatedAt.Equal(wantParsed) {
+		t.Errorf("expected StatusUpdatedAt %v, got %v", wantParsed, shipment.StatusUpdatedAt)
 	}
 }
 

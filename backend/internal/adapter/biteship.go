@@ -322,7 +322,7 @@ func parseBiteshipOrderResponse(body []byte) (service.Shipment, error) {
 		WaybillID:         orderResp.Courier.WaybillID,
 		Status:            orderResp.Status,
 		CourierDriverName: orderResp.Courier.DriverName,
-		StatusUpdatedAt:   orderResp.UpdatedAt,
+		StatusUpdatedAt:   orderResp.UpdatedAt.Time,
 	}, nil
 }
 
@@ -365,14 +365,53 @@ type biteshipOrderResponse struct {
 	Status      string `json:"status"`
 	// UpdatedAt sources order_shipment_events.occurred_at (FR-C-12).
 	// TODO: uncertain — Biteship's public docs don't confirm this field name
-	// on GET /v1/orders/:id; verify against a live response, same as OrderID
-	// below. A missing/unparseable value must fall back to something
-	// deterministic in the caller, never time.Now().
-	UpdatedAt time.Time `json:"updated_at"`
+	// on GET /v1/orders/:id, nor its format; verify both against a live
+	// response, same as OrderID below. biteshipTimestamp tolerates a missing
+	// or unrecognised format by zeroing out instead of failing the whole
+	// response parse, so the caller always gets its deterministic fallback,
+	// never time.Now().
+	UpdatedAt biteshipTimestamp `json:"updated_at"`
 	Courier   struct {
 		WaybillID  string `json:"waybill_id"`
 		DriverName string `json:"driver_name"`
 	} `json:"courier"`
+}
+
+// biteshipTimestamp unmarshals updated_at without ever failing: RFC 3339,
+// unix seconds, and "2006-01-02 15:04:05" all parse; anything else (or
+// null/absent) yields the zero time rather than aborting the parse of the
+// whole response.
+type biteshipTimestamp struct {
+	time.Time
+}
+
+func (t *biteshipTimestamp) UnmarshalJSON(data []byte) error {
+	s := string(data)
+	if s == "null" {
+		t.Time = time.Time{}
+		return nil
+	}
+
+	if unquoted, err := strconv.Unquote(s); err == nil {
+		if parsed, err := time.Parse(time.RFC3339, unquoted); err == nil {
+			t.Time = parsed
+			return nil
+		}
+		if parsed, err := time.Parse("2006-01-02 15:04:05", unquoted); err == nil {
+			t.Time = parsed
+			return nil
+		}
+		t.Time = time.Time{}
+		return nil
+	}
+
+	if seconds, err := strconv.ParseInt(s, 10, 64); err == nil {
+		t.Time = time.Unix(seconds, 0).UTC()
+		return nil
+	}
+
+	t.Time = time.Time{}
+	return nil
 }
 
 // biteshipOrderErrorResponse is Biteship's error shape for /v1/orders.
