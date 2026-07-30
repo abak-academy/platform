@@ -240,16 +240,22 @@ Shipped without ever being looked at in a running browser.
 
 ## 8. Questions for the client
 
-1. **`/admin/school/classes` is an entire page stub** ([`classes/page.tsx:9`](../../web/app/(admin)/admin/school/classes/page.tsx)
-   renders `<UnderMaintenance>`). Neither the old register nor the demo feedback mentions it — abandoned
-   scope, or a forgotten commitment?
-2. **Email volume.** A 5000-participant event needs SES first; registration fails at email 101 on the
-   current mailbox. Confirm the migration and its cost before the event date is fixed.
-3. **NF-1 scope change** against the PRD's out-of-scope list — confirm in writing, and that the PRD
-   will be amended.
-4. **Active promo codes at checkout** — should *every* active code be listed publicly? Staff and
+The list started at six. Four are closed and one was withdrawn as scope nobody asked for; **one real
+question remains**, and it needs a nod rather than a discussion.
+
+### Still open
+
+1. **Active promo codes at checkout** — should *every* active code be listed publicly? Staff and
    partner codes would be exposed.
-5. **FB-1** — the current check is `point_correct >= 1`, forbidding a zero-point question. Intended,
-   or should decimal also unlock zero?
-6. **FB-10 matching rules** — are accents, punctuation and number-word equivalence (`2` / `dua` /
-   `two`) in or out?
+   **Proposed:** add `is_public BOOLEAN NOT NULL DEFAULT false` to `promo_code` and list only flagged
+   codes. Closed by default, so nothing leaks; the client opens codes one at a time. Reversible.
+
+### Closed
+
+| # | Question | Outcome |
+|---|---|---|
+| 2 | **NF-1 scope change** vs the PRD's out-of-scope list | **Signed off by the client 2026-07-29.** E6 records it before the first commit; the PRD amendment is still owed. |
+| 3 | **Email volume / SES** | Not a cost decision — SES is ~$0.10 per 1,000 emails, so a 5,000-person event is about **$0.50**. The only thing that cannot be compressed is the AWS sandbox review, so this became scheduled work rather than a question. Runbook: [`ses-email-migration.md`](ses-email-migration.md). |
+| 4 | **`/admin/school/classes` stub** | **Not a commitment.** Created 2026-06-19 in `d371213` *"Coming-soon scaffolding for not-ready admin modules"*, orphaned on 2026-07-05 when `ee9bc6f` reverted the `feat/school-slice-a` merge (PR #18). A later commit titled *"remove last ComingSoon stub"* missed it — most likely because it has no nav entry and is unreachable in the UI. Removing it is one file plus six dead i18n lines. |
+| 5 | **FB-1 zero-point question** | **Withdrawn — this was never a client question.** It came from reading the migration, not from the feedback. The real, forced decision is the lower bound, since `>= 1` rejects `0.5`: settled at **`> 0`** (0.1, 0.2 allowed; zero stays impossible). See [E2](e2-exam-authoring.md). |
+| 6 | **FB-10 matching rules** | Answerable without the client — the example (`2`, `dua`) is a *list of accepted answers*, not a request for automatic equivalence. Rule stays minimal: trim, case-fold, collapse internal whitespace, exact match per listed answer. Recorded in [E2](e2-exam-authoring.md) pending a nod. |

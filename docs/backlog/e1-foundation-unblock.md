@@ -26,7 +26,14 @@ SES needs domain verification plus DKIM records in Cloudflare, so it carries DNS
 time that cannot be compressed on the day of an event. This is why it leads the epic rather than
 sitting in E7 where the load test lives.
 
-Swap happens behind the existing notification port — the provider is already pluggable.
+Swap happens behind the existing notification port — the provider is already pluggable. In fact **no
+code changes at all**: `adapter/smtp.go` is plain SMTP (`smtp.PlainAuth` + `smtp.SendMail`) and SES
+exposes an SMTP endpoint, so this is a configuration swap.
+
+**Step-by-step runbook, gotchas and rollback:
+[`ses-email-migration.md`](ses-email-migration.md).** Two things from it worth knowing up front: the
+sandbox-exit review is the only step whose timing cannot be compressed, and `config.go` has no env-var
+override, so the cutover is a rebuild-and-redeploy of api *and* worker rather than a restart.
 
 **Acceptance**
 - A test send through SES arrives at an external address.

@@ -65,9 +65,23 @@ point_correct INT NOT NULL DEFAULT 1 CHECK (point_correct >= 1)
 point_wrong   INT NOT NULL DEFAULT 0 CHECK (point_wrong >= 0)
 ```
 
-Widen to `NUMERIC`. **Note the `>= 1` check also forbids a zero-point question** — confirm with the
-client whether that is intended before carrying it over. It is a separate decision from decimals and
-is easy to change in the same migration.
+Widening to `NUMERIC` is not enough on its own. **`CHECK (point_correct >= 1)` rejects `0.5`** — the
+constraint has to move or decimals below 1 remain impossible, which is most of the point.
+
+**Decided 2026-07-30 — the new bound is `> 0`:**
+
+```sql
+CHECK (point_correct > 0)
+```
+
+Every question is always worth something. `0.1`, `0.2`, `0.25` are allowed; **zero is not**, which
+preserves the intent of the original constraint. Zero-point questions were never asked for and are not
+in scope.
+
+**Do not miss the twin guard in the service layer** — `exam.go:275` has `if q.PointCorrect < 1`.
+Changing only the migration leaves decimals rejected before they ever reach the database.
+
+`point_wrong` already allows zero (`>= 0`) and keeps that bound.
 
 ### FB-10 — more than one correct answer accepted
 
@@ -118,8 +132,19 @@ shipping code, not a shim copy.
 - Question randomisation (`Exam.randomize` is stored but shuffling was deferred 2026-07-07).
 - Reusing a question across tests — `question.test_id` is `NOT NULL` by design (FR-EXAM-03).
 
+## Resolved
+
+**The lower bound on `point_correct` is `> 0`** *(2026-07-30)*. Decided internally — it is a forced
+consequence of FB-1, not a product choice, since `>= 1` would reject every decimal below 1. Zero-point
+questions stay impossible; nobody asked for them.
+
+*An earlier draft raised "should zero be allowed?" as a question for the client. It should not have
+been — it was an observation made while reading the migration, turned into scope nobody requested.*
+
 ## Open questions for the client
 
-1. Should decimal points also unlock a **zero-point** question? The current `>= 1` check forbids it.
-2. FB-10 matching: are accents, punctuation and number-word equivalence (`2` / `dua` / `two`) in or
-   out?
+1. FB-10 matching: are accents, punctuation and number-word equivalence (`2` / `dua` / `two`) in or
+   out? **Proposed answer, needs only a nod:** none of them. The client's own example (`2`, `dua`) is
+   a *list of accepted answers*, so if the admin writes both, the grader needs no language knowledge.
+   Rule stays minimal and deterministic — trim, case-fold, collapse internal whitespace, then exact
+   match against each listed answer. Anything else is another accepted answer, not another rule.
