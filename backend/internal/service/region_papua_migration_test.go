@@ -2,12 +2,13 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
@@ -54,6 +55,10 @@ const (
 	migration0046Up   = "0046_papua_2022_regions.up.sql"
 	migration0046Down = "0046_papua_2022_regions.down.sql"
 )
+
+// papuaProvinceIDs are the six current-code provinces the whole 91-96 block
+// remaps to (task_15_finding.md, combined Appendix 1 + Appendix 2).
+var papuaProvinceIDs = []string{"91", "92", "93", "94", "95", "96"}
 
 // applyMigrationsExcept0046 applies every *.up.sql migration in order, skipping
 // 0046, leaving the database at the exact baseline that existed right before
@@ -103,10 +108,58 @@ func countRows(t *testing.T, ctx context.Context, pool *pgxpool.Pool, table stri
 	return n
 }
 
-// TestPapuaMigration_ProvinceCountAndNewProvincesHaveCities covers FR36 (38
-// provinces total) and FR37 (every new province has a non-empty kabupaten/kota
-// list via ListCitiesByProvince).
-func TestPapuaMigration_ProvinceCountAndNewProvincesHaveCities(t *testing.T) {
+// nonPapuaSnapshot is the row-count + checksum fingerprint of everything OUTSIDE
+// the six Papua-block province ids. It is the guard for the up migration's DELETE
+// scope: if the DELETE (or the reseed) ever touches so much as one row belonging
+// to the other 32 provinces, this fingerprint changes.
+type nonPapuaSnapshot struct {
+	provinceCount   int
+	provinceHash    string
+	cityCount       int
+	cityHash        string
+	districtCount   int
+	districtHash    string
+}
+
+func captureNonPapuaSnapshot(t *testing.T, ctx context.Context, pool *pgxpool.Pool) nonPapuaSnapshot {
+	t.Helper()
+	var s nonPapuaSnapshot
+
+	err := pool.QueryRow(ctx,
+		`SELECT count(*), coalesce(md5(string_agg(id || name, ',' ORDER BY id)), '')
+		 FROM province WHERE id NOT IN ('91','92','93','94','95','96')`,
+	).Scan(&s.provinceCount, &s.provinceHash)
+	if err != nil {
+		t.Fatalf("snapshot province: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`SELECT count(*), coalesce(md5(string_agg(id || name || province_id, ',' ORDER BY id)), '')
+		 FROM city WHERE province_id NOT IN ('91','92','93','94','95','96')`,
+	).Scan(&s.cityCount, &s.cityHash)
+	if err != nil {
+		t.Fatalf("snapshot city: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`SELECT count(*), coalesce(md5(string_agg(id || name || city_id, ',' ORDER BY id)), '')
+		 FROM district WHERE city_id NOT IN (
+		     SELECT id FROM city WHERE province_id IN ('91','92','93','94','95','96')
+		 )`,
+	).Scan(&s.districtCount, &s.districtHash)
+	if err != nil {
+		t.Fatalf("snapshot district: %v", err)
+	}
+
+	return s
+}
+
+// TestPapuaMigration_ProvinceCountAndAllSixProvincesHaveCities covers FR36 (38
+// provinces total, six Papua-block provinces carrying their official codes and
+// uppercase names) and FR37 (every one of the six has a non-empty kabupaten/kota
+// list via ListCitiesByProvince -- the same repository call the
+// GET /provinces/:id/cities handler makes).
+func TestPapuaMigration_ProvinceCountAndAllSixProvincesHaveCities(t *testing.T) {
 	pool := newPapuaMigrationTestPool(t)
 	ctx := context.Background()
 	applyMigrationsExcept0046(t, ctx, pool)
@@ -118,7 +171,24 @@ func TestPapuaMigration_ProvinceCountAndNewProvincesHaveCities(t *testing.T) {
 		t.Errorf("province count: want 38, got %d", got)
 	}
 
-	for _, provinceID := range []string{"93", "LOC-94", "95", "96"} {
+	wantNames := map[string]string{
+		"91": "PAPUA",
+		"92": "PAPUA BARAT",
+		"93": "PAPUA SELATAN",
+		"94": "PAPUA TENGAH",
+		"95": "PAPUA PEGUNUNGAN",
+		"96": "PAPUA BARAT DAYA",
+	}
+
+	for _, provinceID := range papuaProvinceIDs {
+		prov, err := repo.GetProvinceByID(ctx, provinceID)
+		if err != nil {
+			t.Fatalf("GetProvinceByID(%s): %v", provinceID, err)
+		}
+		if prov == nil || prov.Name != wantNames[provinceID] {
+			t.Errorf("province %s: want name %q, got %+v", provinceID, wantNames[provinceID], prov)
+		}
+
 		cities, err := repo.ListCitiesByProvince(ctx, provinceID)
 		if err != nil {
 			t.Fatalf("ListCitiesByProvince(%s): %v", provinceID, err)
@@ -129,56 +199,98 @@ func TestPapuaMigration_ProvinceCountAndNewProvincesHaveCities(t *testing.T) {
 	}
 }
 
-// TestPapuaMigration_CollidingCodesKeepOriginalSeedNames proves Invariant 5: the
-// migration must not relabel any of the eleven official 2022+ codes that collide
-// with a pre-existing seed id -- province 94 and the ten kabupaten/kota ids below
-// (per task_15_finding.md's collision table). If any of these resolved to their
-// new official name instead of the seed's original name, a historical order FK'd
-// to that id would have been silently relabelled.
-func TestPapuaMigration_CollidingCodesKeepOriginalSeedNames(t *testing.T) {
+// TestPapuaMigration_CombinedTotals covers the finding's combined-totals figures:
+// 42 kabupaten/kota and 793 kecamatan across the full 91-96 block.
+func TestPapuaMigration_CombinedTotals(t *testing.T) {
 	pool := newPapuaMigrationTestPool(t)
 	ctx := context.Background()
 	applyMigrationsExcept0046(t, ctx, pool)
 	applyMigrationFile(t, ctx, pool, migration0046Up)
 
-	repo := repository.New(pool)
-
-	prov, err := repo.GetProvinceByID(ctx, "94")
+	var cityCount int
+	err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM city WHERE province_id IN ('91','92','93','94','95','96')`,
+	).Scan(&cityCount)
 	if err != nil {
-		t.Fatalf("GetProvinceByID(94): %v", err)
+		t.Fatalf("count cities: %v", err)
 	}
-	if prov == nil || prov.Name != "PAPUA" {
-		t.Errorf("province 94: want original seed name PAPUA, got %+v", prov)
+	if cityCount != 42 {
+		t.Errorf("kabupaten/kota count across the 91-96 block: want 42, got %d", cityCount)
 	}
 
-	wantCityNames := map[string]string{
-		"9103": "KABUPATEN TELUK WONDAMA",
-		"9105": "KABUPATEN MANOKWARI",
-		"9106": "KABUPATEN SORONG SELATAN",
-		"9110": "KABUPATEN MAYBRAT",
-		"9111": "KABUPATEN MANOKWARI SELATAN",
-		"9171": "KOTA SORONG",
-		"9401": "KABUPATEN MERAUKE",
-		"9402": "KABUPATEN JAYAWIJAYA",
-		"9403": "KABUPATEN JAYAPURA",
-		"9404": "KABUPATEN NABIRE",
-		"9408": "KABUPATEN KEPULAUAN YAPEN",
+	var districtCount int
+	err = pool.QueryRow(ctx,
+		`SELECT count(*) FROM district WHERE city_id IN (
+		     SELECT id FROM city WHERE province_id IN ('91','92','93','94','95','96')
+		 )`,
+	).Scan(&districtCount)
+	if err != nil {
+		t.Fatalf("count districts: %v", err)
 	}
-	for id, wantName := range wantCityNames {
-		city, err := repo.GetCityByID(ctx, id)
+	if districtCount != 793 {
+		t.Errorf("kecamatan count across the 91-96 block: want 793, got %d", districtCount)
+	}
+}
+
+// TestPapuaMigration_NoLocSurrogatesRemain proves the retracted LOC-<code>
+// surrogate scheme from the additive draft is fully gone: production is
+// confirmed empty, so nothing needs to hide behind a non-official local id.
+func TestPapuaMigration_NoLocSurrogatesRemain(t *testing.T) {
+	pool := newPapuaMigrationTestPool(t)
+	ctx := context.Background()
+	applyMigrationsExcept0046(t, ctx, pool)
+	applyMigrationFile(t, ctx, pool, migration0046Up)
+
+	for _, table := range []string{"province", "city", "district"} {
+		var n int
+		err := pool.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE id LIKE 'LOC-%'").Scan(&n)
 		if err != nil {
-			t.Fatalf("GetCityByID(%s): %v", id, err)
+			t.Fatalf("count LOC- ids in %s: %v", table, err)
 		}
-		if city == nil || city.Name != wantName {
-			t.Errorf("city %s: want original seed name %q, got %+v", id, wantName, city)
+		if n != 0 {
+			t.Errorf("table %s: want 0 LOC- surrogate ids, got %d", table, n)
 		}
 	}
 }
 
+// TestPapuaMigration_NonPapuaProvincesUnchanged is the guard for the up
+// migration's DELETE scope -- the single biggest risk called out for this task.
+// It captures a row-count + checksum fingerprint of the other 32 provinces (and
+// their cities/districts) before 0046 runs and asserts it is bit-identical
+// after. This is the most important test in this file.
+func TestPapuaMigration_NonPapuaProvincesUnchanged(t *testing.T) {
+	pool := newPapuaMigrationTestPool(t)
+	ctx := context.Background()
+	applyMigrationsExcept0046(t, ctx, pool)
+
+	before := captureNonPapuaSnapshot(t, ctx, pool)
+	if before.provinceCount != 32 {
+		t.Fatalf("sanity check failed: expected 32 non-Papua provinces at baseline, got %d", before.provinceCount)
+	}
+
+	applyMigrationFile(t, ctx, pool, migration0046Up)
+
+	after := captureNonPapuaSnapshot(t, ctx, pool)
+
+	if after.provinceCount != before.provinceCount || after.provinceHash != before.provinceHash {
+		t.Errorf("non-Papua provinces changed: before count=%d hash=%s, after count=%d hash=%s",
+			before.provinceCount, before.provinceHash, after.provinceCount, after.provinceHash)
+	}
+	if after.cityCount != before.cityCount || after.cityHash != before.cityHash {
+		t.Errorf("non-Papua cities changed: before count=%d hash=%s, after count=%d hash=%s",
+			before.cityCount, before.cityHash, after.cityCount, after.cityHash)
+	}
+	if after.districtCount != before.districtCount || after.districtHash != before.districtHash {
+		t.Errorf("non-Papua districts changed: before count=%d hash=%s, after count=%d hash=%s",
+			before.districtCount, before.districtHash, after.districtCount, after.districtHash)
+	}
+}
+
 // TestPapuaMigration_ValidateAddressHierarchy_AcceptsNewProvinceTriples covers
-// FR38: validateAddressHierarchy (store.go:604-628) must accept a province -> city
-// -> district triple from a new province, including one built entirely from LOC-
-// surrogate ids (FR36a).
+// FR38: validateAddressHierarchy (store.go:604-628) must accept a province ->
+// city -> district triple drawn from each of the four new provinces (93, 94,
+// 95, 96), all using their true official Kemendagri code -- no LOC- surrogate
+// exists anymore.
 func TestPapuaMigration_ValidateAddressHierarchy_AcceptsNewProvinceTriples(t *testing.T) {
 	pool := newPapuaMigrationTestPool(t)
 	ctx := context.Background()
@@ -194,8 +306,10 @@ func TestPapuaMigration_ValidateAddressHierarchy_AcceptsNewProvinceTriples(t *te
 		cityID     string
 		districtID string
 	}{
-		{"true-code triple (Papua Selatan)", "93", "9301", "930101"},
-		{"LOC- surrogate triple (Papua Tengah / Kabupaten Paniai)", "LOC-94", "LOC-9403", "940301"},
+		{"Papua Selatan", "93", "9301", "930101"},
+		{"Papua Tengah", "94", "9401", "940101"},
+		{"Papua Pegunungan", "95", "9501", "950101"},
+		{"Papua Barat Daya", "96", "9601", "960101"},
 	}
 
 	for _, tc := range cases {
@@ -207,53 +321,11 @@ func TestPapuaMigration_ValidateAddressHierarchy_AcceptsNewProvinceTriples(t *te
 	}
 }
 
-// TestPapuaMigration_NF5_OrdersRowUnchangedAcrossMigration is the NF5 proof: an
-// orders row FK'd into the pre-migration Papua block (province 94 / city 9403 /
-// district 9403080, all pre-existing seed rows) must be byte-for-byte unchanged
-// after 0046 runs.
-func TestPapuaMigration_NF5_OrdersRowUnchangedAcrossMigration(t *testing.T) {
-	pool := newPapuaMigrationTestPool(t)
-	ctx := context.Background()
-	applyMigrationsExcept0046(t, ctx, pool)
-
-	var userID uuid.UUID
-	err := pool.QueryRow(ctx,
-		`INSERT INTO users (email, role, name) VALUES ($1, 'student', 'NF5 Test Student') RETURNING id`,
-		fmt.Sprintf("nf5-%s@test.local", uuid.NewString()),
-	).Scan(&userID)
-	if err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
-
-	var orderID uuid.UUID
-	err = pool.QueryRow(ctx,
-		`INSERT INTO orders (student_id, province_id, city_id, district_id) VALUES ($1, '94', '9403', '9403080') RETURNING id`,
-		userID,
-	).Scan(&orderID)
-	if err != nil {
-		t.Fatalf("insert order: %v", err)
-	}
-
-	applyMigrationFile(t, ctx, pool, migration0046Up)
-
-	var provinceID, cityID, districtID string
-	err = pool.QueryRow(ctx,
-		`SELECT province_id, city_id, district_id FROM orders WHERE id = $1`,
-		orderID,
-	).Scan(&provinceID, &cityID, &districtID)
-	if err != nil {
-		t.Fatalf("re-read order: %v", err)
-	}
-	if provinceID != "94" || cityID != "9403" || districtID != "9403080" {
-		t.Errorf("order region FKs changed by migration: got province=%s city=%s district=%s (want 94/9403/9403080)",
-			provinceID, cityID, districtID)
-	}
-}
-
 // TestPapuaMigration_DownReversesToBaseline exercises 0046's down migration on a
-// database already at 0045: apply up, then down, and assert province/city/district
-// counts return to exactly the pre-migration baseline and the tables still exist
-// (0046's down must not copy 0029's DROP TABLE behavior).
+// database already at 0045: apply up, then down, and assert province/city/
+// district counts return to exactly the pre-migration baseline, that the tables
+// still exist (0046's down must not copy 0029's DROP TABLE behavior), and that
+// the original meanings of 91/94 are restored -- not just the counts.
 func TestPapuaMigration_DownReversesToBaseline(t *testing.T) {
 	pool := newPapuaMigrationTestPool(t)
 	ctx := context.Background()
@@ -275,10 +347,27 @@ func TestPapuaMigration_DownReversesToBaseline(t *testing.T) {
 	assertCounts(t, 34, 514, 7215)
 
 	applyMigrationFile(t, ctx, pool, migration0046Up)
-	assertCounts(t, 38, 540, 7812)
+	assertCounts(t, 38, 514, 7224)
 
 	applyMigrationFile(t, ctx, pool, migration0046Down)
 	assertCounts(t, 34, 514, 7215)
+
+	repo := repository.New(pool)
+	prov91, err := repo.GetProvinceByID(ctx, "91")
+	if err != nil {
+		t.Fatalf("GetProvinceByID(91): %v", err)
+	}
+	if prov91 == nil || prov91.Name != "PAPUA BARAT" {
+		t.Errorf("province 91 after down: want original seed name PAPUA BARAT, got %+v", prov91)
+	}
+
+	prov94, err := repo.GetProvinceByID(ctx, "94")
+	if err != nil {
+		t.Fatalf("GetProvinceByID(94): %v", err)
+	}
+	if prov94 == nil || prov94.Name != "PAPUA" {
+		t.Errorf("province 94 after down: want original seed name PAPUA, got %+v", prov94)
+	}
 
 	for _, table := range []string{"province", "city", "district"} {
 		var exists bool
@@ -291,6 +380,23 @@ func TestPapuaMigration_DownReversesToBaseline(t *testing.T) {
 		}
 		if !exists {
 			t.Errorf("table %s should still exist after down migration", table)
+		}
+	}
+}
+
+// TestPapuaMigration_NoDropOrTruncate is a static guard on the migration files
+// themselves: drop-and-reseed uses DELETE FROM, never DROP TABLE or TRUNCATE.
+func TestPapuaMigration_NoDropOrTruncate(t *testing.T) {
+	dropOrTruncate := regexp.MustCompile(`(?i)DROP TABLE|TRUNCATE`)
+
+	for _, filename := range []string{migration0046Up, migration0046Down} {
+		path := filepath.Join("..", "..", "db", "migrations", filename)
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", filename, err)
+		}
+		if dropOrTruncate.Match(content) {
+			t.Errorf("%s: must not contain DROP TABLE or TRUNCATE", filename)
 		}
 	}
 }

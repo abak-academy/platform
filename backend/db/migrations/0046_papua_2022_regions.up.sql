@@ -1,51 +1,67 @@
 -- 0046_papua_2022_regions.up.sql
--- Additive migration for FB-34 / H1: adds the four provinces created by the 2022/2023
--- Papua split (Papua Selatan, Papua Tengah, Papua Pegunungan, Papua Barat Daya) plus their
--- kabupaten/kota and kecamatan, per the current cahyadsn/wilayah mirror (Kepmendagri
--- 300.2.2-2138/2025 successor decree). Source data and full verification trail: task_15_finding.md.
+-- Full remap of the Papua mega-region (province codes 91-96) to true Kemendagri
+-- codes, per the 2022+ split into six provinces. Source data and full verification
+-- trail: task_15_finding.md (Appendix 1 covers 93/94/95/96, Appendix 2 covers 91/92).
 --
--- Invariant 5: every existing province/city/district row is left exactly as-is --
--- orders.province_id/city_id/district_id (0033_shipping_ongkir.up.sql) FK into the existing
--- seed rows and must keep resolving to exactly what they resolved to before this migration.
+-- Production is confirmed empty (zero orders, zero users with a region set), so the
+-- Invariant-5 constraint from the original additive draft no longer applies -- this is
+-- drop-and-reseed, not additive. Every LOC-<code> surrogate from the retracted draft is
+-- gone; all six provinces and their 42 kabupaten/kota now use their true official code.
 --
--- Twelve official 2022+ codes collide with a *different* place already occupying that id in
--- the seed: 6 of them are in this migration's insert scope (province 94 + city codes
--- 9401/9402/9403/9404/9408 under it) and take LOC- surrogates here; the other 6 sit under the
--- still-untouched province 91 block and are out of scope, so no id is minted for them.
--- (An earlier revision of this comment said "eleven", inherited from a self-inconsistent count
--- in task_15_finding.md whose prose said 11 while its table listed 12. The data below and the
--- collision-name test were always correct; only the count in this header was wrong.)
--- Per FR36a, colliding entries take a surrogate id of the form LOC-<official_code> instead of
--- their true Kemendagri code. LOC- ids are local to this database only -- they are NOT official
--- Kemendagri wilayah codes and must never be presented as such. Non-colliding entries use their
--- true official code directly. See FR36a and task_15_finding.md's collision table for the full
--- rationale (province/city ids are unconstrained TEXT PKs; hierarchy is enforced by FK columns,
--- not by id format; region ids never reach Biteship, which is quoted by postal code).
+-- DELETE is scoped explicitly to province ids '91' and '94' and their descendants (via
+-- city.province_id / district.city_id), not by any LIKE pattern -- the other 32
+-- provinces and their 7000+ districts are untouched.
 
--- 4 new provinces (FR36). Existing '91' (PAPUA BARAT) and '94' (PAPUA) are untouched.
+DELETE FROM district WHERE city_id IN (SELECT id FROM city WHERE province_id IN ('91', '94'));
+DELETE FROM city WHERE province_id IN ('91', '94');
+DELETE FROM province WHERE id IN ('91', '94');
+
+-- 6 provinces across the full 91-96 block.
+INSERT INTO province (id, name) VALUES ('91', 'PAPUA');
+INSERT INTO province (id, name) VALUES ('92', 'PAPUA BARAT');
 INSERT INTO province (id, name) VALUES ('93', 'PAPUA SELATAN');
-INSERT INTO province (id, name) VALUES ('LOC-94', 'PAPUA TENGAH'); -- surrogate: official code 94 already used by seed's PAPUA
+INSERT INTO province (id, name) VALUES ('94', 'PAPUA TENGAH');
 INSERT INTO province (id, name) VALUES ('95', 'PAPUA PEGUNUNGAN');
 INSERT INTO province (id, name) VALUES ('96', 'PAPUA BARAT DAYA');
 
--- 26 kabupaten/kota across the four new provinces.
--- province 93
+-- 42 kabupaten/kota across the six provinces.
+-- province 91 (9 kabupaten/kota)
+INSERT INTO city (id, province_id, name) VALUES ('9103', '91', 'KABUPATEN JAYAPURA');
+INSERT INTO city (id, province_id, name) VALUES ('9105', '91', 'KABUPATEN KEPULAUAN YAPEN');
+INSERT INTO city (id, province_id, name) VALUES ('9106', '91', 'KABUPATEN BIAK NUMFOR');
+INSERT INTO city (id, province_id, name) VALUES ('9110', '91', 'KABUPATEN SARMI');
+INSERT INTO city (id, province_id, name) VALUES ('9111', '91', 'KABUPATEN KEEROM');
+INSERT INTO city (id, province_id, name) VALUES ('9115', '91', 'KABUPATEN WAROPEN');
+INSERT INTO city (id, province_id, name) VALUES ('9119', '91', 'KABUPATEN SUPIORI');
+INSERT INTO city (id, province_id, name) VALUES ('9120', '91', 'KABUPATEN MAMBERAMO RAYA');
+INSERT INTO city (id, province_id, name) VALUES ('9171', '91', 'KOTA JAYAPURA');
+
+-- province 92 (7 kabupaten/kota)
+INSERT INTO city (id, province_id, name) VALUES ('9202', '92', 'KABUPATEN MANOKWARI');
+INSERT INTO city (id, province_id, name) VALUES ('9203', '92', 'KABUPATEN FAK FAK');
+INSERT INTO city (id, province_id, name) VALUES ('9206', '92', 'KABUPATEN TELUK BINTUNI');
+INSERT INTO city (id, province_id, name) VALUES ('9207', '92', 'KABUPATEN TELUK WONDAMA');
+INSERT INTO city (id, province_id, name) VALUES ('9208', '92', 'KABUPATEN KAIMANA');
+INSERT INTO city (id, province_id, name) VALUES ('9211', '92', 'KABUPATEN MANOKWARI SELATAN');
+INSERT INTO city (id, province_id, name) VALUES ('9212', '92', 'KABUPATEN PEGUNUNGAN ARFAK');
+
+-- province 93 (4 kabupaten/kota)
 INSERT INTO city (id, province_id, name) VALUES ('9301', '93', 'KABUPATEN MERAUKE');
 INSERT INTO city (id, province_id, name) VALUES ('9302', '93', 'KABUPATEN BOVEN DIGOEL');
 INSERT INTO city (id, province_id, name) VALUES ('9303', '93', 'KABUPATEN MAPPI');
 INSERT INTO city (id, province_id, name) VALUES ('9304', '93', 'KABUPATEN ASMAT');
 
--- province LOC-94
-INSERT INTO city (id, province_id, name) VALUES ('LOC-9401', 'LOC-94', 'KABUPATEN NABIRE');  -- surrogate: official code collides with existing seed city
-INSERT INTO city (id, province_id, name) VALUES ('LOC-9402', 'LOC-94', 'KABUPATEN PUNCAK JAYA');  -- surrogate: official code collides with existing seed city
-INSERT INTO city (id, province_id, name) VALUES ('LOC-9403', 'LOC-94', 'KABUPATEN PANIAI');  -- surrogate: official code collides with existing seed city
-INSERT INTO city (id, province_id, name) VALUES ('LOC-9404', 'LOC-94', 'KABUPATEN MIMIKA');  -- surrogate: official code collides with existing seed city
-INSERT INTO city (id, province_id, name) VALUES ('9405', 'LOC-94', 'KABUPATEN PUNCAK');
-INSERT INTO city (id, province_id, name) VALUES ('9406', 'LOC-94', 'KABUPATEN DOGIYAI');
-INSERT INTO city (id, province_id, name) VALUES ('9407', 'LOC-94', 'KABUPATEN INTAN JAYA');
-INSERT INTO city (id, province_id, name) VALUES ('LOC-9408', 'LOC-94', 'KABUPATEN DEIYAI');  -- surrogate: official code collides with existing seed city
+-- province 94 (8 kabupaten/kota)
+INSERT INTO city (id, province_id, name) VALUES ('9401', '94', 'KABUPATEN NABIRE');
+INSERT INTO city (id, province_id, name) VALUES ('9402', '94', 'KABUPATEN PUNCAK JAYA');
+INSERT INTO city (id, province_id, name) VALUES ('9403', '94', 'KABUPATEN PANIAI');
+INSERT INTO city (id, province_id, name) VALUES ('9404', '94', 'KABUPATEN MIMIKA');
+INSERT INTO city (id, province_id, name) VALUES ('9405', '94', 'KABUPATEN PUNCAK');
+INSERT INTO city (id, province_id, name) VALUES ('9406', '94', 'KABUPATEN DOGIYAI');
+INSERT INTO city (id, province_id, name) VALUES ('9407', '94', 'KABUPATEN INTAN JAYA');
+INSERT INTO city (id, province_id, name) VALUES ('9408', '94', 'KABUPATEN DEIYAI');
 
--- province 95
+-- province 95 (8 kabupaten/kota)
 INSERT INTO city (id, province_id, name) VALUES ('9501', '95', 'KABUPATEN JAYAWIJAYA');
 INSERT INTO city (id, province_id, name) VALUES ('9502', '95', 'KABUPATEN PEGUNUNGAN BINTANG');
 INSERT INTO city (id, province_id, name) VALUES ('9503', '95', 'KABUPATEN YAHUKIMO');
@@ -55,7 +71,7 @@ INSERT INTO city (id, province_id, name) VALUES ('9506', '95', 'KABUPATEN YALIMO
 INSERT INTO city (id, province_id, name) VALUES ('9507', '95', 'KABUPATEN LANNY JAYA');
 INSERT INTO city (id, province_id, name) VALUES ('9508', '95', 'KABUPATEN NDUGA');
 
--- province 96
+-- province 96 (6 kabupaten/kota)
 INSERT INTO city (id, province_id, name) VALUES ('9601', '96', 'KABUPATEN SORONG');
 INSERT INTO city (id, province_id, name) VALUES ('9602', '96', 'KABUPATEN SORONG SELATAN');
 INSERT INTO city (id, province_id, name) VALUES ('9603', '96', 'KABUPATEN RAJA AMPAT');
@@ -63,7 +79,221 @@ INSERT INTO city (id, province_id, name) VALUES ('9604', '96', 'KABUPATEN TAMBRA
 INSERT INTO city (id, province_id, name) VALUES ('9605', '96', 'KABUPATEN MAYBRAT');
 INSERT INTO city (id, province_id, name) VALUES ('9671', '96', 'KOTA SORONG');
 
--- 597 kecamatan across the 26 new kabupaten/kota.
+-- 793 kecamatan across the 42 kabupaten/kota.
+-- 9103 KABUPATEN JAYAPURA -- city 9103 (19 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('910301', '9103', 'SENTANI');
+INSERT INTO district (id, city_id, name) VALUES ('910302', '9103', 'SENTANI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('910303', '9103', 'DEPAPRE');
+INSERT INTO district (id, city_id, name) VALUES ('910304', '9103', 'SENTANI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('910305', '9103', 'KEMTUK');
+INSERT INTO district (id, city_id, name) VALUES ('910306', '9103', 'KEMTUK GRESI');
+INSERT INTO district (id, city_id, name) VALUES ('910307', '9103', 'NIMBORAN');
+INSERT INTO district (id, city_id, name) VALUES ('910308', '9103', 'NIMBOKRANG');
+INSERT INTO district (id, city_id, name) VALUES ('910309', '9103', 'UNURUM GUAY');
+INSERT INTO district (id, city_id, name) VALUES ('910310', '9103', 'DEMTA');
+INSERT INTO district (id, city_id, name) VALUES ('910311', '9103', 'KAUREH');
+INSERT INTO district (id, city_id, name) VALUES ('910312', '9103', 'EBUNGFAO');
+INSERT INTO district (id, city_id, name) VALUES ('910313', '9103', 'WAIBU');
+INSERT INTO district (id, city_id, name) VALUES ('910314', '9103', 'NAMBLUONG');
+INSERT INTO district (id, city_id, name) VALUES ('910315', '9103', 'YAPSI');
+INSERT INTO district (id, city_id, name) VALUES ('910316', '9103', 'AIRU');
+INSERT INTO district (id, city_id, name) VALUES ('910317', '9103', 'RAVENI RARA');
+INSERT INTO district (id, city_id, name) VALUES ('910318', '9103', 'GRESI SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('910319', '9103', 'YOKARI');
+-- 9105 KABUPATEN KEPULAUAN YAPEN -- city 9105 (17 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('910501', '9105', 'YAPEN SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('910502', '9105', 'YAPEN BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('910503', '9105', 'YAPEN TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('910504', '9105', 'ANGKAISERA');
+INSERT INTO district (id, city_id, name) VALUES ('910505', '9105', 'POOM');
+INSERT INTO district (id, city_id, name) VALUES ('910506', '9105', 'KOSIWO');
+INSERT INTO district (id, city_id, name) VALUES ('910507', '9105', 'YAPEN UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('910508', '9105', 'RAIMBAWI');
+INSERT INTO district (id, city_id, name) VALUES ('910509', '9105', 'TELUK AMPIMOI');
+INSERT INTO district (id, city_id, name) VALUES ('910510', '9105', 'KEPULAUAN AMBAI');
+INSERT INTO district (id, city_id, name) VALUES ('910511', '9105', 'WONAWA');
+INSERT INTO district (id, city_id, name) VALUES ('910512', '9105', 'WINDESI');
+INSERT INTO district (id, city_id, name) VALUES ('910513', '9105', 'PULAU KURUDU');
+INSERT INTO district (id, city_id, name) VALUES ('910514', '9105', 'PULAU YERUI');
+INSERT INTO district (id, city_id, name) VALUES ('910515', '9105', 'ANOTAUREI');
+INSERT INTO district (id, city_id, name) VALUES ('910516', '9105', 'YAWAKUKAT');
+INSERT INTO district (id, city_id, name) VALUES ('910517', '9105', 'NUSAWANI');
+-- 9106 KABUPATEN BIAK NUMFOR -- city 9106 (19 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('910601', '9106', 'BIAK KOTA');
+INSERT INTO district (id, city_id, name) VALUES ('910602', '9106', 'BIAK UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('910603', '9106', 'BIAK TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('910604', '9106', 'NUMFOR BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('910605', '9106', 'NUMFOR TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('910608', '9106', 'BIAK BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('910609', '9106', 'WARSA');
+INSERT INTO district (id, city_id, name) VALUES ('910610', '9106', 'PADAIDO');
+INSERT INTO district (id, city_id, name) VALUES ('910611', '9106', 'YENDIDORI');
+INSERT INTO district (id, city_id, name) VALUES ('910612', '9106', 'SAMOFA');
+INSERT INTO district (id, city_id, name) VALUES ('910613', '9106', 'YAWOSI');
+INSERT INTO district (id, city_id, name) VALUES ('910614', '9106', 'ANDEY');
+INSERT INTO district (id, city_id, name) VALUES ('910615', '9106', 'SWANDIWE');
+INSERT INTO district (id, city_id, name) VALUES ('910616', '9106', 'BRUYADORI');
+INSERT INTO district (id, city_id, name) VALUES ('910617', '9106', 'ORKERI');
+INSERT INTO district (id, city_id, name) VALUES ('910618', '9106', 'POIRU');
+INSERT INTO district (id, city_id, name) VALUES ('910619', '9106', 'AIMANDO PADAIDO');
+INSERT INTO district (id, city_id, name) VALUES ('910620', '9106', 'ORIDEK');
+INSERT INTO district (id, city_id, name) VALUES ('910621', '9106', 'BONDIFUAR');
+-- 9110 KABUPATEN SARMI -- city 9110 (10 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('911001', '9110', 'SARMI');
+INSERT INTO district (id, city_id, name) VALUES ('911002', '9110', 'TOR ATAS');
+INSERT INTO district (id, city_id, name) VALUES ('911003', '9110', 'PANTAI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('911004', '9110', 'PANTAI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('911005', '9110', 'BONGGO');
+INSERT INTO district (id, city_id, name) VALUES ('911009', '9110', 'APAWER HULU');
+INSERT INTO district (id, city_id, name) VALUES ('911012', '9110', 'SARMI SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('911013', '9110', 'SARMI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('911014', '9110', 'PANTAI TIMUR BAGIAN BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('911015', '9110', 'BONGGO TIMUR');
+-- 9111 KABUPATEN KEEROM -- city 9111 (11 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('911101', '9111', 'WARIS');
+INSERT INTO district (id, city_id, name) VALUES ('911102', '9111', 'ARSO');
+INSERT INTO district (id, city_id, name) VALUES ('911103', '9111', 'SENGGI');
+INSERT INTO district (id, city_id, name) VALUES ('911104', '9111', 'WEB');
+INSERT INTO district (id, city_id, name) VALUES ('911105', '9111', 'SKANTO');
+INSERT INTO district (id, city_id, name) VALUES ('911106', '9111', 'ARSO TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('911107', '9111', 'TOWE');
+INSERT INTO district (id, city_id, name) VALUES ('911108', '9111', 'ARSO BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('911109', '9111', 'MANNEM');
+INSERT INTO district (id, city_id, name) VALUES ('911110', '9111', 'YAFFI');
+INSERT INTO district (id, city_id, name) VALUES ('911111', '9111', 'KAISENAR');
+-- 9115 KABUPATEN WAROPEN -- city 9115 (11 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('911501', '9115', 'WAROPEN BAWAH');
+INSERT INTO district (id, city_id, name) VALUES ('911503', '9115', 'MASIREI');
+INSERT INTO district (id, city_id, name) VALUES ('911507', '9115', 'RISEI SAYATI');
+INSERT INTO district (id, city_id, name) VALUES ('911508', '9115', 'UREI FAISEI');
+INSERT INTO district (id, city_id, name) VALUES ('911509', '9115', 'INGGERUS');
+INSERT INTO district (id, city_id, name) VALUES ('911510', '9115', 'KIRIHI');
+INSERT INTO district (id, city_id, name) VALUES ('911511', '9115', 'OUDATE');
+INSERT INTO district (id, city_id, name) VALUES ('911512', '9115', 'WAPOGA');
+INSERT INTO district (id, city_id, name) VALUES ('911513', '9115', 'DEMBA');
+INSERT INTO district (id, city_id, name) VALUES ('911514', '9115', 'WONTI');
+INSERT INTO district (id, city_id, name) VALUES ('911515', '9115', 'SOYOI MAMBAI');
+-- 9119 KABUPATEN SUPIORI -- city 9119 (5 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('911901', '9119', 'SUPIORI SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('911902', '9119', 'SUPIORI UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('911903', '9119', 'SUPIORI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('911904', '9119', 'KEPULAUAN ARURI');
+INSERT INTO district (id, city_id, name) VALUES ('911905', '9119', 'SUPIORI BARAT');
+-- 9120 KABUPATEN MAMBERAMO RAYA -- city 9120 (8 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('912001', '9120', 'MAMBERAMO TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('912002', '9120', 'MAMBERAMO HULU');
+INSERT INTO district (id, city_id, name) VALUES ('912003', '9120', 'RUFAER');
+INSERT INTO district (id, city_id, name) VALUES ('912004', '9120', 'MAMBERAMO TENGAH TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('912005', '9120', 'MAMBERAMO HILIR');
+INSERT INTO district (id, city_id, name) VALUES ('912006', '9120', 'WAROPEN ATAS');
+INSERT INTO district (id, city_id, name) VALUES ('912007', '9120', 'BENUKI');
+INSERT INTO district (id, city_id, name) VALUES ('912008', '9120', 'SAWAI');
+-- 9171 KOTA JAYAPURA -- city 9171 (5 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('917101', '9171', 'JAYAPURA UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('917102', '9171', 'JAYAPURA SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('917103', '9171', 'ABEPURA');
+INSERT INTO district (id, city_id, name) VALUES ('917104', '9171', 'MUARA TAMI');
+INSERT INTO district (id, city_id, name) VALUES ('917105', '9171', 'HERAM');
+
+-- 9202 KABUPATEN MANOKWARI -- city 9202 (14 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('920203', '9202', 'WARMARE');
+INSERT INTO district (id, city_id, name) VALUES ('920204', '9202', 'PRAFI');
+INSERT INTO district (id, city_id, name) VALUES ('920205', '9202', 'MASNI');
+INSERT INTO district (id, city_id, name) VALUES ('920212', '9202', 'MANOKWARI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('920213', '9202', 'MANOKWARI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('920214', '9202', 'MANOKWARI UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('920215', '9202', 'MANOKWARI SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('920217', '9202', 'TANAH RUBUH');
+INSERT INTO district (id, city_id, name) VALUES ('920221', '9202', 'SIDEY');
+INSERT INTO district (id, city_id, name) VALUES ('920231', '9202', 'AIMASI');
+INSERT INTO district (id, city_id, name) VALUES ('920232', '9202', 'MOKWAM');
+INSERT INTO district (id, city_id, name) VALUES ('920233', '9202', 'MASNI UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('920234', '9202', 'WASIRAWI');
+INSERT INTO district (id, city_id, name) VALUES ('920235', '9202', 'MORUJ MEGA');
+-- 9203 KABUPATEN FAK FAK -- city 9203 (17 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('920301', '9203', 'FAK-FAK');
+INSERT INTO district (id, city_id, name) VALUES ('920302', '9203', 'FAK-FAK BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('920303', '9203', 'FAK-FAK TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('920304', '9203', 'KOKAS');
+INSERT INTO district (id, city_id, name) VALUES ('920305', '9203', 'FAK-FAK TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('920306', '9203', 'KARAS');
+INSERT INTO district (id, city_id, name) VALUES ('920307', '9203', 'BOMBERAY');
+INSERT INTO district (id, city_id, name) VALUES ('920308', '9203', 'KRAMONGMONGGA');
+INSERT INTO district (id, city_id, name) VALUES ('920309', '9203', 'TELUK PATIPI');
+INSERT INTO district (id, city_id, name) VALUES ('920310', '9203', 'PARIWARI');
+INSERT INTO district (id, city_id, name) VALUES ('920311', '9203', 'WARTUTIN');
+INSERT INTO district (id, city_id, name) VALUES ('920312', '9203', 'FAKFAK TIMUR TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('920313', '9203', 'ARGUNI');
+INSERT INTO district (id, city_id, name) VALUES ('920314', '9203', 'MBAHAMDANDARA');
+INSERT INTO district (id, city_id, name) VALUES ('920315', '9203', 'KAYAUNI');
+INSERT INTO district (id, city_id, name) VALUES ('920316', '9203', 'FURWAGI');
+INSERT INTO district (id, city_id, name) VALUES ('920317', '9203', 'TOMAGE');
+-- 9206 KABUPATEN TELUK BINTUNI -- city 9206 (24 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('920601', '9206', 'BINTUNI');
+INSERT INTO district (id, city_id, name) VALUES ('920602', '9206', 'MERDEY');
+INSERT INTO district (id, city_id, name) VALUES ('920603', '9206', 'BABO');
+INSERT INTO district (id, city_id, name) VALUES ('920604', '9206', 'ARANDAY');
+INSERT INTO district (id, city_id, name) VALUES ('920605', '9206', 'MOSKONA SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('920606', '9206', 'MOSKONA UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('920607', '9206', 'WAMESA');
+INSERT INTO district (id, city_id, name) VALUES ('920608', '9206', 'FAFURWAR');
+INSERT INTO district (id, city_id, name) VALUES ('920609', '9206', 'TEMBUNI');
+INSERT INTO district (id, city_id, name) VALUES ('920610', '9206', 'KURI');
+INSERT INTO district (id, city_id, name) VALUES ('920611', '9206', 'MANIMERI');
+INSERT INTO district (id, city_id, name) VALUES ('920612', '9206', 'TUHIBA');
+INSERT INTO district (id, city_id, name) VALUES ('920613', '9206', 'DATARAN BEIMES');
+INSERT INTO district (id, city_id, name) VALUES ('920614', '9206', 'SUMURI');
+INSERT INTO district (id, city_id, name) VALUES ('920615', '9206', 'KAITARO');
+INSERT INTO district (id, city_id, name) VALUES ('920616', '9206', 'AROBA');
+INSERT INTO district (id, city_id, name) VALUES ('920617', '9206', 'MASYETA');
+INSERT INTO district (id, city_id, name) VALUES ('920618', '9206', 'BISCOOP');
+INSERT INTO district (id, city_id, name) VALUES ('920619', '9206', 'TOMU');
+INSERT INTO district (id, city_id, name) VALUES ('920620', '9206', 'KAMUNDAN');
+INSERT INTO district (id, city_id, name) VALUES ('920621', '9206', 'WERIAGAR');
+INSERT INTO district (id, city_id, name) VALUES ('920622', '9206', 'MOSKONA BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('920623', '9206', 'MEYADO');
+INSERT INTO district (id, city_id, name) VALUES ('920624', '9206', 'MOSKONA TIMUR');
+-- 9207 KABUPATEN TELUK WONDAMA -- city 9207 (13 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('920701', '9207', 'WASIOR');
+INSERT INTO district (id, city_id, name) VALUES ('920702', '9207', 'WINDESI');
+INSERT INTO district (id, city_id, name) VALUES ('920703', '9207', 'TELUK DUAIRI');
+INSERT INTO district (id, city_id, name) VALUES ('920704', '9207', 'WONDIBOY');
+INSERT INTO district (id, city_id, name) VALUES ('920705', '9207', 'WAMESA');
+INSERT INTO district (id, city_id, name) VALUES ('920706', '9207', 'RUMBERPON');
+INSERT INTO district (id, city_id, name) VALUES ('920707', '9207', 'NAIKERE');
+INSERT INTO district (id, city_id, name) VALUES ('920708', '9207', 'RASIEI');
+INSERT INTO district (id, city_id, name) VALUES ('920709', '9207', 'KURI WAMESA');
+INSERT INTO district (id, city_id, name) VALUES ('920710', '9207', 'ROON');
+INSERT INTO district (id, city_id, name) VALUES ('920711', '9207', 'ROSWAR');
+INSERT INTO district (id, city_id, name) VALUES ('920712', '9207', 'NIKIWAR');
+INSERT INTO district (id, city_id, name) VALUES ('920713', '9207', 'SOUG JAYA');
+-- 9208 KABUPATEN KAIMANA -- city 9208 (7 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('920801', '9208', 'KAIMANA');
+INSERT INTO district (id, city_id, name) VALUES ('920802', '9208', 'BURUWAY');
+INSERT INTO district (id, city_id, name) VALUES ('920803', '9208', 'TELUK ARGUNI ATAS');
+INSERT INTO district (id, city_id, name) VALUES ('920804', '9208', 'TELUK ETNA');
+INSERT INTO district (id, city_id, name) VALUES ('920805', '9208', 'KAMBRAU');
+INSERT INTO district (id, city_id, name) VALUES ('920806', '9208', 'TELUK ARGUNI BAWAH');
+INSERT INTO district (id, city_id, name) VALUES ('920807', '9208', 'YAMOR');
+-- 9211 KABUPATEN MANOKWARI SELATAN -- city 9211 (6 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('921101', '9211', 'RANSIKI');
+INSERT INTO district (id, city_id, name) VALUES ('921102', '9211', 'ORANSBARI');
+INSERT INTO district (id, city_id, name) VALUES ('921103', '9211', 'NENEY');
+INSERT INTO district (id, city_id, name) VALUES ('921104', '9211', 'DATARAN ISIM');
+INSERT INTO district (id, city_id, name) VALUES ('921105', '9211', 'MOMI WAREN');
+INSERT INTO district (id, city_id, name) VALUES ('921106', '9211', 'TAHOTA');
+-- 9212 KABUPATEN PEGUNUNGAN ARFAK -- city 9212 (10 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('921201', '9212', 'ANGGI');
+INSERT INTO district (id, city_id, name) VALUES ('921202', '9212', 'ANGGI GIDA');
+INSERT INTO district (id, city_id, name) VALUES ('921203', '9212', 'MEMBEY');
+INSERT INTO district (id, city_id, name) VALUES ('921204', '9212', 'SURUREY');
+INSERT INTO district (id, city_id, name) VALUES ('921205', '9212', 'DIDOHU');
+INSERT INTO district (id, city_id, name) VALUES ('921206', '9212', 'TAIGE');
+INSERT INTO district (id, city_id, name) VALUES ('921207', '9212', 'CATUBOUW');
+INSERT INTO district (id, city_id, name) VALUES ('921208', '9212', 'TESTEGA');
+INSERT INTO district (id, city_id, name) VALUES ('921209', '9212', 'MINYAMBAOUW');
+INSERT INTO district (id, city_id, name) VALUES ('921210', '9212', 'HINGK');
+
 -- 9301 KABUPATEN MERAUKE -- city 9301 (22 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('930101', '9301', 'MERAUKE');
 INSERT INTO district (id, city_id, name) VALUES ('930102', '9301', 'MUTING');
@@ -87,7 +317,6 @@ INSERT INTO district (id, city_id, name) VALUES ('930119', '9301', 'WAAN');
 INSERT INTO district (id, city_id, name) VALUES ('930120', '9301', 'ILWAYAB');
 INSERT INTO district (id, city_id, name) VALUES ('930121', '9301', 'PADUA');
 INSERT INTO district (id, city_id, name) VALUES ('930122', '9301', 'KONTUAR');
-
 -- 9302 KABUPATEN BOVEN DIGOEL -- city 9302 (20 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('930201', '9302', 'MANDOBO');
 INSERT INTO district (id, city_id, name) VALUES ('930202', '9302', 'MINDIPTANA');
@@ -109,7 +338,6 @@ INSERT INTO district (id, city_id, name) VALUES ('930217', '9302', 'NINATI');
 INSERT INTO district (id, city_id, name) VALUES ('930218', '9302', 'SESNUK');
 INSERT INTO district (id, city_id, name) VALUES ('930219', '9302', 'KI');
 INSERT INTO district (id, city_id, name) VALUES ('930220', '9302', 'KAWAGIT');
-
 -- 9303 KABUPATEN MAPPI -- city 9303 (15 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('930301', '9303', 'OBAA');
 INSERT INTO district (id, city_id, name) VALUES ('930302', '9303', 'MAMBIOMAN BAPAI');
@@ -126,7 +354,6 @@ INSERT INTO district (id, city_id, name) VALUES ('930312', '9303', 'YAKOMI');
 INSERT INTO district (id, city_id, name) VALUES ('930313', '9303', 'BAMGI');
 INSERT INTO district (id, city_id, name) VALUES ('930314', '9303', 'PASSUE BAWAH');
 INSERT INTO district (id, city_id, name) VALUES ('930315', '9303', 'TI ZAIN');
-
 -- 9304 KABUPATEN ASMAT -- city 9304 (25 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('930401', '9304', 'AGATS');
 INSERT INTO district (id, city_id, name) VALUES ('930402', '9304', 'ATSJ');
@@ -154,97 +381,93 @@ INSERT INTO district (id, city_id, name) VALUES ('930423', '9304', 'KOROWAY BULU
 INSERT INTO district (id, city_id, name) VALUES ('930424', '9304', 'TOMOR BIRIP');
 INSERT INTO district (id, city_id, name) VALUES ('930425', '9304', 'SOR EP');
 
--- 9401 KABUPATEN NABIRE -- city LOC-9401 (15 kecamatan)
-INSERT INTO district (id, city_id, name) VALUES ('940101', 'LOC-9401', 'NABIRE');
-INSERT INTO district (id, city_id, name) VALUES ('940102', 'LOC-9401', 'NAPAN');
-INSERT INTO district (id, city_id, name) VALUES ('940103', 'LOC-9401', 'YAUR');
-INSERT INTO district (id, city_id, name) VALUES ('940104', 'LOC-9401', 'UWAPA');
-INSERT INTO district (id, city_id, name) VALUES ('940105', 'LOC-9401', 'WANGGAR');
-INSERT INTO district (id, city_id, name) VALUES ('940106', 'LOC-9401', 'SIRIWO');
-INSERT INTO district (id, city_id, name) VALUES ('940107', 'LOC-9401', 'MAKIMI');
-INSERT INTO district (id, city_id, name) VALUES ('940108', 'LOC-9401', 'TELUK UMAR');
-INSERT INTO district (id, city_id, name) VALUES ('940109', 'LOC-9401', 'TELUK KIMI');
-INSERT INTO district (id, city_id, name) VALUES ('940110', 'LOC-9401', 'YARO');
-INSERT INTO district (id, city_id, name) VALUES ('940111', 'LOC-9401', 'WAPOGA');
-INSERT INTO district (id, city_id, name) VALUES ('940112', 'LOC-9401', 'NABIRE BARAT');
-INSERT INTO district (id, city_id, name) VALUES ('940113', 'LOC-9401', 'MOORA');
-INSERT INTO district (id, city_id, name) VALUES ('940114', 'LOC-9401', 'DIPA');
-INSERT INTO district (id, city_id, name) VALUES ('940115', 'LOC-9401', 'MENOU');
-
--- 9402 KABUPATEN PUNCAK JAYA -- city LOC-9402 (26 kecamatan)
-INSERT INTO district (id, city_id, name) VALUES ('940201', 'LOC-9402', 'MULIA');
-INSERT INTO district (id, city_id, name) VALUES ('940202', 'LOC-9402', 'ILU');
-INSERT INTO district (id, city_id, name) VALUES ('940203', 'LOC-9402', 'FAWI');
-INSERT INTO district (id, city_id, name) VALUES ('940204', 'LOC-9402', 'MEWOLUK');
-INSERT INTO district (id, city_id, name) VALUES ('940205', 'LOC-9402', 'YAMO');
-INSERT INTO district (id, city_id, name) VALUES ('940206', 'LOC-9402', 'NUME');
-INSERT INTO district (id, city_id, name) VALUES ('940207', 'LOC-9402', 'TORERE');
-INSERT INTO district (id, city_id, name) VALUES ('940208', 'LOC-9402', 'TINGGINAMBUT');
-INSERT INTO district (id, city_id, name) VALUES ('940209', 'LOC-9402', 'PAGALEME');
-INSERT INTO district (id, city_id, name) VALUES ('940210', 'LOC-9402', 'GURAGE');
-INSERT INTO district (id, city_id, name) VALUES ('940211', 'LOC-9402', 'IRIMULI');
-INSERT INTO district (id, city_id, name) VALUES ('940212', 'LOC-9402', 'MUARA');
-INSERT INTO district (id, city_id, name) VALUES ('940213', 'LOC-9402', 'ILAMBURAWI');
-INSERT INTO district (id, city_id, name) VALUES ('940214', 'LOC-9402', 'YAMBI');
-INSERT INTO district (id, city_id, name) VALUES ('940215', 'LOC-9402', 'LUMO');
-INSERT INTO district (id, city_id, name) VALUES ('940216', 'LOC-9402', 'MOLANIKIME');
-INSERT INTO district (id, city_id, name) VALUES ('940217', 'LOC-9402', 'DOKOME');
-INSERT INTO district (id, city_id, name) VALUES ('940218', 'LOC-9402', 'KALOME');
-INSERT INTO district (id, city_id, name) VALUES ('940219', 'LOC-9402', 'WANWI');
-INSERT INTO district (id, city_id, name) VALUES ('940220', 'LOC-9402', 'YAMONERI');
-INSERT INTO district (id, city_id, name) VALUES ('940221', 'LOC-9402', 'WAEGI');
-INSERT INTO district (id, city_id, name) VALUES ('940222', 'LOC-9402', 'NIOGA');
-INSERT INTO district (id, city_id, name) VALUES ('940223', 'LOC-9402', 'GUBUME');
-INSERT INTO district (id, city_id, name) VALUES ('940224', 'LOC-9402', 'TAGANOMBAK');
-INSERT INTO district (id, city_id, name) VALUES ('940225', 'LOC-9402', 'DAGAI');
-INSERT INTO district (id, city_id, name) VALUES ('940226', 'LOC-9402', 'KIYAGE');
-
--- 9403 KABUPATEN PANIAI -- city LOC-9403 (24 kecamatan)
-INSERT INTO district (id, city_id, name) VALUES ('940301', 'LOC-9403', 'PANIAI TIMUR');
-INSERT INTO district (id, city_id, name) VALUES ('940302', 'LOC-9403', 'PANIAI BARAT');
-INSERT INTO district (id, city_id, name) VALUES ('940303', 'LOC-9403', 'ARADIDE');
-INSERT INTO district (id, city_id, name) VALUES ('940304', 'LOC-9403', 'BOGABAIDA');
-INSERT INTO district (id, city_id, name) VALUES ('940305', 'LOC-9403', 'BIBIDA');
-INSERT INTO district (id, city_id, name) VALUES ('940306', 'LOC-9403', 'DUMADAMA');
-INSERT INTO district (id, city_id, name) VALUES ('940307', 'LOC-9403', 'SIRIWO');
-INSERT INTO district (id, city_id, name) VALUES ('940308', 'LOC-9403', 'KEBO');
-INSERT INTO district (id, city_id, name) VALUES ('940309', 'LOC-9403', 'YATAMO');
-INSERT INTO district (id, city_id, name) VALUES ('940310', 'LOC-9403', 'EKADIDE');
-INSERT INTO district (id, city_id, name) VALUES ('940311', 'LOC-9403', 'WEGEE MUKA');
-INSERT INTO district (id, city_id, name) VALUES ('940312', 'LOC-9403', 'WEGEE BINO');
-INSERT INTO district (id, city_id, name) VALUES ('940313', 'LOC-9403', 'PUGO DAGI');
-INSERT INTO district (id, city_id, name) VALUES ('940314', 'LOC-9403', 'MUYE');
-INSERT INTO district (id, city_id, name) VALUES ('940315', 'LOC-9403', 'NAKAMA');
-INSERT INTO district (id, city_id, name) VALUES ('940316', 'LOC-9403', 'TELUK DEYA');
-INSERT INTO district (id, city_id, name) VALUES ('940317', 'LOC-9403', 'YAGAI');
-INSERT INTO district (id, city_id, name) VALUES ('940318', 'LOC-9403', 'YOUTADI');
-INSERT INTO district (id, city_id, name) VALUES ('940319', 'LOC-9403', 'BAYA BIRU');
-INSERT INTO district (id, city_id, name) VALUES ('940320', 'LOC-9403', 'DEIYAI MIYO');
-INSERT INTO district (id, city_id, name) VALUES ('940321', 'LOC-9403', 'DOGOMO');
-INSERT INTO district (id, city_id, name) VALUES ('940322', 'LOC-9403', 'AWEIDA');
-INSERT INTO district (id, city_id, name) VALUES ('940323', 'LOC-9403', 'TOPIYAI');
-INSERT INTO district (id, city_id, name) VALUES ('940324', 'LOC-9403', 'FAJAR TIMUR');
-
--- 9404 KABUPATEN MIMIKA -- city LOC-9404 (18 kecamatan)
-INSERT INTO district (id, city_id, name) VALUES ('940401', 'LOC-9404', 'MIMIKA BARU');
-INSERT INTO district (id, city_id, name) VALUES ('940402', 'LOC-9404', 'AGIMUGA');
-INSERT INTO district (id, city_id, name) VALUES ('940403', 'LOC-9404', 'MIMIKA TIMUR');
-INSERT INTO district (id, city_id, name) VALUES ('940404', 'LOC-9404', 'MIMIKA BARAT');
-INSERT INTO district (id, city_id, name) VALUES ('940405', 'LOC-9404', 'JITA');
-INSERT INTO district (id, city_id, name) VALUES ('940406', 'LOC-9404', 'JILA');
-INSERT INTO district (id, city_id, name) VALUES ('940407', 'LOC-9404', 'MIMIKA TIMUR JAUH');
-INSERT INTO district (id, city_id, name) VALUES ('940408', 'LOC-9404', 'MIMIKA TENGAH');
-INSERT INTO district (id, city_id, name) VALUES ('940409', 'LOC-9404', 'KUALA KENCANA');
-INSERT INTO district (id, city_id, name) VALUES ('940410', 'LOC-9404', 'TEMBAGAPURA');
-INSERT INTO district (id, city_id, name) VALUES ('940411', 'LOC-9404', 'MIMIKA BARAT JAUH');
-INSERT INTO district (id, city_id, name) VALUES ('940412', 'LOC-9404', 'MIMIKA BARAT TENGAH');
-INSERT INTO district (id, city_id, name) VALUES ('940413', 'LOC-9404', 'KWAMKI NARAMA');
-INSERT INTO district (id, city_id, name) VALUES ('940414', 'LOC-9404', 'HOYA');
-INSERT INTO district (id, city_id, name) VALUES ('940415', 'LOC-9404', 'IWAKA');
-INSERT INTO district (id, city_id, name) VALUES ('940416', 'LOC-9404', 'WANIA');
-INSERT INTO district (id, city_id, name) VALUES ('940417', 'LOC-9404', 'AMAR');
-INSERT INTO district (id, city_id, name) VALUES ('940418', 'LOC-9404', 'ALAMA');
-
+-- 9401 KABUPATEN NABIRE -- city 9401 (15 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('940101', '9401', 'NABIRE');
+INSERT INTO district (id, city_id, name) VALUES ('940102', '9401', 'NAPAN');
+INSERT INTO district (id, city_id, name) VALUES ('940103', '9401', 'YAUR');
+INSERT INTO district (id, city_id, name) VALUES ('940104', '9401', 'UWAPA');
+INSERT INTO district (id, city_id, name) VALUES ('940105', '9401', 'WANGGAR');
+INSERT INTO district (id, city_id, name) VALUES ('940106', '9401', 'SIRIWO');
+INSERT INTO district (id, city_id, name) VALUES ('940107', '9401', 'MAKIMI');
+INSERT INTO district (id, city_id, name) VALUES ('940108', '9401', 'TELUK UMAR');
+INSERT INTO district (id, city_id, name) VALUES ('940109', '9401', 'TELUK KIMI');
+INSERT INTO district (id, city_id, name) VALUES ('940110', '9401', 'YARO');
+INSERT INTO district (id, city_id, name) VALUES ('940111', '9401', 'WAPOGA');
+INSERT INTO district (id, city_id, name) VALUES ('940112', '9401', 'NABIRE BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('940113', '9401', 'MOORA');
+INSERT INTO district (id, city_id, name) VALUES ('940114', '9401', 'DIPA');
+INSERT INTO district (id, city_id, name) VALUES ('940115', '9401', 'MENOU');
+-- 9402 KABUPATEN PUNCAK JAYA -- city 9402 (26 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('940201', '9402', 'MULIA');
+INSERT INTO district (id, city_id, name) VALUES ('940202', '9402', 'ILU');
+INSERT INTO district (id, city_id, name) VALUES ('940203', '9402', 'FAWI');
+INSERT INTO district (id, city_id, name) VALUES ('940204', '9402', 'MEWOLUK');
+INSERT INTO district (id, city_id, name) VALUES ('940205', '9402', 'YAMO');
+INSERT INTO district (id, city_id, name) VALUES ('940206', '9402', 'NUME');
+INSERT INTO district (id, city_id, name) VALUES ('940207', '9402', 'TORERE');
+INSERT INTO district (id, city_id, name) VALUES ('940208', '9402', 'TINGGINAMBUT');
+INSERT INTO district (id, city_id, name) VALUES ('940209', '9402', 'PAGALEME');
+INSERT INTO district (id, city_id, name) VALUES ('940210', '9402', 'GURAGE');
+INSERT INTO district (id, city_id, name) VALUES ('940211', '9402', 'IRIMULI');
+INSERT INTO district (id, city_id, name) VALUES ('940212', '9402', 'MUARA');
+INSERT INTO district (id, city_id, name) VALUES ('940213', '9402', 'ILAMBURAWI');
+INSERT INTO district (id, city_id, name) VALUES ('940214', '9402', 'YAMBI');
+INSERT INTO district (id, city_id, name) VALUES ('940215', '9402', 'LUMO');
+INSERT INTO district (id, city_id, name) VALUES ('940216', '9402', 'MOLANIKIME');
+INSERT INTO district (id, city_id, name) VALUES ('940217', '9402', 'DOKOME');
+INSERT INTO district (id, city_id, name) VALUES ('940218', '9402', 'KALOME');
+INSERT INTO district (id, city_id, name) VALUES ('940219', '9402', 'WANWI');
+INSERT INTO district (id, city_id, name) VALUES ('940220', '9402', 'YAMONERI');
+INSERT INTO district (id, city_id, name) VALUES ('940221', '9402', 'WAEGI');
+INSERT INTO district (id, city_id, name) VALUES ('940222', '9402', 'NIOGA');
+INSERT INTO district (id, city_id, name) VALUES ('940223', '9402', 'GUBUME');
+INSERT INTO district (id, city_id, name) VALUES ('940224', '9402', 'TAGANOMBAK');
+INSERT INTO district (id, city_id, name) VALUES ('940225', '9402', 'DAGAI');
+INSERT INTO district (id, city_id, name) VALUES ('940226', '9402', 'KIYAGE');
+-- 9403 KABUPATEN PANIAI -- city 9403 (24 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('940301', '9403', 'PANIAI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('940302', '9403', 'PANIAI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('940303', '9403', 'ARADIDE');
+INSERT INTO district (id, city_id, name) VALUES ('940304', '9403', 'BOGABAIDA');
+INSERT INTO district (id, city_id, name) VALUES ('940305', '9403', 'BIBIDA');
+INSERT INTO district (id, city_id, name) VALUES ('940306', '9403', 'DUMADAMA');
+INSERT INTO district (id, city_id, name) VALUES ('940307', '9403', 'SIRIWO');
+INSERT INTO district (id, city_id, name) VALUES ('940308', '9403', 'KEBO');
+INSERT INTO district (id, city_id, name) VALUES ('940309', '9403', 'YATAMO');
+INSERT INTO district (id, city_id, name) VALUES ('940310', '9403', 'EKADIDE');
+INSERT INTO district (id, city_id, name) VALUES ('940311', '9403', 'WEGEE MUKA');
+INSERT INTO district (id, city_id, name) VALUES ('940312', '9403', 'WEGEE BINO');
+INSERT INTO district (id, city_id, name) VALUES ('940313', '9403', 'PUGO DAGI');
+INSERT INTO district (id, city_id, name) VALUES ('940314', '9403', 'MUYE');
+INSERT INTO district (id, city_id, name) VALUES ('940315', '9403', 'NAKAMA');
+INSERT INTO district (id, city_id, name) VALUES ('940316', '9403', 'TELUK DEYA');
+INSERT INTO district (id, city_id, name) VALUES ('940317', '9403', 'YAGAI');
+INSERT INTO district (id, city_id, name) VALUES ('940318', '9403', 'YOUTADI');
+INSERT INTO district (id, city_id, name) VALUES ('940319', '9403', 'BAYA BIRU');
+INSERT INTO district (id, city_id, name) VALUES ('940320', '9403', 'DEIYAI MIYO');
+INSERT INTO district (id, city_id, name) VALUES ('940321', '9403', 'DOGOMO');
+INSERT INTO district (id, city_id, name) VALUES ('940322', '9403', 'AWEIDA');
+INSERT INTO district (id, city_id, name) VALUES ('940323', '9403', 'TOPIYAI');
+INSERT INTO district (id, city_id, name) VALUES ('940324', '9403', 'FAJAR TIMUR');
+-- 9404 KABUPATEN MIMIKA -- city 9404 (18 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('940401', '9404', 'MIMIKA BARU');
+INSERT INTO district (id, city_id, name) VALUES ('940402', '9404', 'AGIMUGA');
+INSERT INTO district (id, city_id, name) VALUES ('940403', '9404', 'MIMIKA TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('940404', '9404', 'MIMIKA BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('940405', '9404', 'JITA');
+INSERT INTO district (id, city_id, name) VALUES ('940406', '9404', 'JILA');
+INSERT INTO district (id, city_id, name) VALUES ('940407', '9404', 'MIMIKA TIMUR JAUH');
+INSERT INTO district (id, city_id, name) VALUES ('940408', '9404', 'MIMIKA TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('940409', '9404', 'KUALA KENCANA');
+INSERT INTO district (id, city_id, name) VALUES ('940410', '9404', 'TEMBAGAPURA');
+INSERT INTO district (id, city_id, name) VALUES ('940411', '9404', 'MIMIKA BARAT JAUH');
+INSERT INTO district (id, city_id, name) VALUES ('940412', '9404', 'MIMIKA BARAT TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('940413', '9404', 'KWAMKI NARAMA');
+INSERT INTO district (id, city_id, name) VALUES ('940414', '9404', 'HOYA');
+INSERT INTO district (id, city_id, name) VALUES ('940415', '9404', 'IWAKA');
+INSERT INTO district (id, city_id, name) VALUES ('940416', '9404', 'WANIA');
+INSERT INTO district (id, city_id, name) VALUES ('940417', '9404', 'AMAR');
+INSERT INTO district (id, city_id, name) VALUES ('940418', '9404', 'ALAMA');
 -- 9405 KABUPATEN PUNCAK -- city 9405 (25 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('940501', '9405', 'ILAGA');
 INSERT INTO district (id, city_id, name) VALUES ('940502', '9405', 'WANGBE');
@@ -271,7 +494,6 @@ INSERT INTO district (id, city_id, name) VALUES ('940522', '9405', 'ONERI');
 INSERT INTO district (id, city_id, name) VALUES ('940523', '9405', 'AMUNGKALPIA');
 INSERT INTO district (id, city_id, name) VALUES ('940524', '9405', 'GOME UTARA');
 INSERT INTO district (id, city_id, name) VALUES ('940525', '9405', 'ERELMAKAWIA');
-
 -- 9406 KABUPATEN DOGIYAI -- city 9406 (10 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('940601', '9406', 'KAMU');
 INSERT INTO district (id, city_id, name) VALUES ('940602', '9406', 'MAPIA');
@@ -283,7 +505,6 @@ INSERT INTO district (id, city_id, name) VALUES ('940607', '9406', 'KAMU SELATAN
 INSERT INTO district (id, city_id, name) VALUES ('940608', '9406', 'KAMU TIMUR');
 INSERT INTO district (id, city_id, name) VALUES ('940609', '9406', 'MAPIA TENGAH');
 INSERT INTO district (id, city_id, name) VALUES ('940610', '9406', 'DOGIYAI');
-
 -- 9407 KABUPATEN INTAN JAYA -- city 9407 (8 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('940701', '9407', 'SUGAPA');
 INSERT INTO district (id, city_id, name) VALUES ('940702', '9407', 'HOMEYO');
@@ -293,13 +514,12 @@ INSERT INTO district (id, city_id, name) VALUES ('940705', '9407', 'AGISIGA');
 INSERT INTO district (id, city_id, name) VALUES ('940706', '9407', 'HITADIPA');
 INSERT INTO district (id, city_id, name) VALUES ('940707', '9407', 'UGIMBA');
 INSERT INTO district (id, city_id, name) VALUES ('940708', '9407', 'TOMOSIGA');
-
--- 9408 KABUPATEN DEIYAI -- city LOC-9408 (5 kecamatan)
-INSERT INTO district (id, city_id, name) VALUES ('940801', 'LOC-9408', 'TIGI');
-INSERT INTO district (id, city_id, name) VALUES ('940802', 'LOC-9408', 'TIGI TIMUR');
-INSERT INTO district (id, city_id, name) VALUES ('940803', 'LOC-9408', 'BOWOBADO');
-INSERT INTO district (id, city_id, name) VALUES ('940804', 'LOC-9408', 'TIGI BARAT');
-INSERT INTO district (id, city_id, name) VALUES ('940805', 'LOC-9408', 'KAPIRAYA');
+-- 9408 KABUPATEN DEIYAI -- city 9408 (5 kecamatan)
+INSERT INTO district (id, city_id, name) VALUES ('940801', '9408', 'TIGI');
+INSERT INTO district (id, city_id, name) VALUES ('940802', '9408', 'TIGI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('940803', '9408', 'BOWOBADO');
+INSERT INTO district (id, city_id, name) VALUES ('940804', '9408', 'TIGI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('940805', '9408', 'KAPIRAYA');
 
 -- 9501 KABUPATEN JAYAWIJAYA -- city 9501 (40 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('950101', '9501', 'WAMENA');
@@ -342,7 +562,6 @@ INSERT INTO district (id, city_id, name) VALUES ('950137', '9501', 'MAIMA');
 INSERT INTO district (id, city_id, name) VALUES ('950138', '9501', 'POPUGOBA');
 INSERT INTO district (id, city_id, name) VALUES ('950139', '9501', 'WAME');
 INSERT INTO district (id, city_id, name) VALUES ('950140', '9501', 'WESAPUT');
-
 -- 9502 KABUPATEN PEGUNUNGAN BINTANG -- city 9502 (34 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('950201', '9502', 'OKSIBIL');
 INSERT INTO district (id, city_id, name) VALUES ('950202', '9502', 'KIWIROK');
@@ -378,7 +597,6 @@ INSERT INTO district (id, city_id, name) VALUES ('950231', '9502', 'TEIRAPLU');
 INSERT INTO district (id, city_id, name) VALUES ('950232', '9502', 'EIPUMEK');
 INSERT INTO district (id, city_id, name) VALUES ('950233', '9502', 'PAMEK');
 INSERT INTO district (id, city_id, name) VALUES ('950234', '9502', 'NONGME');
-
 -- 9503 KABUPATEN YAHUKIMO -- city 9503 (51 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('950301', '9503', 'KURIMA');
 INSERT INTO district (id, city_id, name) VALUES ('950302', '9503', 'ANGGRUK');
@@ -431,7 +649,6 @@ INSERT INTO district (id, city_id, name) VALUES ('950348', '9503', 'DURAM');
 INSERT INTO district (id, city_id, name) VALUES ('950349', '9503', 'YOGOSEM');
 INSERT INTO district (id, city_id, name) VALUES ('950350', '9503', 'KAYO');
 INSERT INTO district (id, city_id, name) VALUES ('950351', '9503', 'SUMO');
-
 -- 9504 KABUPATEN TOLIKARA -- city 9504 (46 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('950401', '9504', 'KARUBAGA');
 INSERT INTO district (id, city_id, name) VALUES ('950402', '9504', 'BOKONDINI');
@@ -479,21 +696,18 @@ INSERT INTO district (id, city_id, name) VALUES ('950443', '9504', 'BOGONUK');
 INSERT INTO district (id, city_id, name) VALUES ('950444', '9504', 'LI ANOGOMMA');
 INSERT INTO district (id, city_id, name) VALUES ('950445', '9504', 'BIUK');
 INSERT INTO district (id, city_id, name) VALUES ('950446', '9504', 'YUKO');
-
 -- 9505 KABUPATEN MAMBERAMO TENGAH -- city 9505 (5 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('950501', '9505', 'KOBAKMA');
 INSERT INTO district (id, city_id, name) VALUES ('950502', '9505', 'KELILA');
 INSERT INTO district (id, city_id, name) VALUES ('950503', '9505', 'ERAGAYAM');
 INSERT INTO district (id, city_id, name) VALUES ('950504', '9505', 'MEGAMBILIS');
 INSERT INTO district (id, city_id, name) VALUES ('950505', '9505', 'ILUGWA');
-
 -- 9506 KABUPATEN YALIMO -- city 9506 (5 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('950601', '9506', 'ELELIM');
 INSERT INTO district (id, city_id, name) VALUES ('950602', '9506', 'APALAPSILI');
 INSERT INTO district (id, city_id, name) VALUES ('950603', '9506', 'ABENAHO');
 INSERT INTO district (id, city_id, name) VALUES ('950604', '9506', 'BENAWA');
 INSERT INTO district (id, city_id, name) VALUES ('950605', '9506', 'WELAREK');
-
 -- 9507 KABUPATEN LANNY JAYA -- city 9507 (39 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('950701', '9507', 'TIOM');
 INSERT INTO district (id, city_id, name) VALUES ('950702', '9507', 'PIRIME');
@@ -534,7 +748,6 @@ INSERT INTO district (id, city_id, name) VALUES ('950736', '9507', 'NIKOGWE');
 INSERT INTO district (id, city_id, name) VALUES ('950737', '9507', 'MUARA');
 INSERT INTO district (id, city_id, name) VALUES ('950738', '9507', 'BUGUK GONA');
 INSERT INTO district (id, city_id, name) VALUES ('950739', '9507', 'MELAGI');
-
 -- 9508 KABUPATEN NDUGA -- city 9508 (32 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('950801', '9508', 'KENYAM');
 INSERT INTO district (id, city_id, name) VALUES ('950802', '9508', 'MAPENDUMA');
@@ -600,7 +813,6 @@ INSERT INTO district (id, city_id, name) VALUES ('960127', '9601', 'HOBARD');
 INSERT INTO district (id, city_id, name) VALUES ('960128', '9601', 'SALAWATI TENGAH');
 INSERT INTO district (id, city_id, name) VALUES ('960129', '9601', 'BOTAIN');
 INSERT INTO district (id, city_id, name) VALUES ('960130', '9601', 'SAYOSA TIMUR');
-
 -- 9602 KABUPATEN SORONG SELATAN -- city 9602 (15 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('960201', '9602', 'TEMINABUAN');
 INSERT INTO district (id, city_id, name) VALUES ('960202', '9602', 'INANWATAN');
@@ -617,7 +829,6 @@ INSERT INTO district (id, city_id, name) VALUES ('960212', '9602', 'SAIFI');
 INSERT INTO district (id, city_id, name) VALUES ('960213', '9602', 'FOKOUR');
 INSERT INTO district (id, city_id, name) VALUES ('960214', '9602', 'SALKMA');
 INSERT INTO district (id, city_id, name) VALUES ('960215', '9602', 'KAIS DARAT');
-
 -- 9603 KABUPATEN RAJA AMPAT -- city 9603 (24 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('960301', '9603', 'MISOOL (MISOOL UTARA)');
 INSERT INTO district (id, city_id, name) VALUES ('960302', '9603', 'WAIGEO UTARA');
@@ -643,7 +854,6 @@ INSERT INTO district (id, city_id, name) VALUES ('960321', '9603', 'SALAWATI TEN
 INSERT INTO district (id, city_id, name) VALUES ('960322', '9603', 'SUPNIN');
 INSERT INTO district (id, city_id, name) VALUES ('960323', '9603', 'KEPULAUAN AYAU');
 INSERT INTO district (id, city_id, name) VALUES ('960324', '9603', 'BATANTA SELATAN');
-
 -- 9604 KABUPATEN TAMBRAUW -- city 9604 (29 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('960401', '9604', 'FEF');
 INSERT INTO district (id, city_id, name) VALUES ('960402', '9604', 'MIYAH');
@@ -674,7 +884,6 @@ INSERT INTO district (id, city_id, name) VALUES ('960426', '9604', 'MPUR');
 INSERT INTO district (id, city_id, name) VALUES ('960427', '9604', 'AMBERBAKEN BARAT');
 INSERT INTO district (id, city_id, name) VALUES ('960428', '9604', 'KASI');
 INSERT INTO district (id, city_id, name) VALUES ('960429', '9604', 'SELEMKAI');
-
 -- 9605 KABUPATEN MAYBRAT -- city 9605 (24 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('960501', '9605', 'AIFAT');
 INSERT INTO district (id, city_id, name) VALUES ('960502', '9605', 'AIFAT UTARA');
@@ -700,7 +909,6 @@ INSERT INTO district (id, city_id, name) VALUES ('960521', '9605', 'AYAMARU BARA
 INSERT INTO district (id, city_id, name) VALUES ('960522', '9605', 'AITINYO TENGAH');
 INSERT INTO district (id, city_id, name) VALUES ('960523', '9605', 'AITINYO RAYA');
 INSERT INTO district (id, city_id, name) VALUES ('960524', '9605', 'MARE SELATAN');
-
 -- 9671 KOTA SORONG -- city 9671 (10 kecamatan)
 INSERT INTO district (id, city_id, name) VALUES ('967101', '9671', 'SORONG');
 INSERT INTO district (id, city_id, name) VALUES ('967102', '9671', 'SORONG TIMUR');

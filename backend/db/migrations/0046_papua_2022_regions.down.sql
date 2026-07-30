@@ -1,641 +1,848 @@
 -- 0046_papua_2022_regions.down.sql
--- Reverses exactly the rows 0046's up migration inserted -- the 597 kecamatan, 26
--- kabupaten/kota, and 4 provinces added for FB-34 / H1. Does not touch any pre-existing row
--- and leaves the province/city/district tables themselves in place (Invariant 5).
+-- Reverses 0046's up migration: deletes the six current-code Papua provinces (91-96)
+-- and their kabupaten/kota + kecamatan, then restores the old seed's pre-migration
+-- Papua block exactly as it existed at 0045 -- 2 provinces (91 PAPUA BARAT, 94 PAPUA),
+-- 42 kabupaten/kota, 784 kecamatan -- sourced verbatim from
+-- 0029_seed_province_city_district.up.sql (0029 cannot simply be re-run since it also
+-- seeds the other 32 provinces, which must stay untouched).
+--
+-- DELETE is scoped explicitly to province ids '91'..'96' and their descendants, not by
+-- any LIKE pattern -- the other 32 provinces are untouched.
 
-DELETE FROM district WHERE id IN (
-    '930101',
-    '930102',
-    '930103',
-    '930104',
-    '930105',
-    '930106',
-    '930107',
-    '930108',
-    '930109',
-    '930110',
-    '930111',
-    '930112',
-    '930113',
-    '930114',
-    '930115',
-    '930116',
-    '930117',
-    '930118',
-    '930119',
-    '930120',
-    '930121',
-    '930122',
-    '930201',
-    '930202',
-    '930203',
-    '930204',
-    '930205',
-    '930206',
-    '930207',
-    '930208',
-    '930209',
-    '930210',
-    '930211',
-    '930212',
-    '930213',
-    '930214',
-    '930215',
-    '930216',
-    '930217',
-    '930218',
-    '930219',
-    '930220',
-    '930301',
-    '930302',
-    '930303',
-    '930304',
-    '930305',
-    '930306',
-    '930307',
-    '930308',
-    '930309',
-    '930310',
-    '930311',
-    '930312',
-    '930313',
-    '930314',
-    '930315',
-    '930401',
-    '930402',
-    '930403',
-    '930404',
-    '930405',
-    '930406',
-    '930407',
-    '930408',
-    '930409',
-    '930410',
-    '930411',
-    '930412',
-    '930413',
-    '930414',
-    '930415',
-    '930416',
-    '930417',
-    '930418',
-    '930419',
-    '930420',
-    '930421',
-    '930422',
-    '930423',
-    '930424',
-    '930425',
-    '940101',
-    '940102',
-    '940103',
-    '940104',
-    '940105',
-    '940106',
-    '940107',
-    '940108',
-    '940109',
-    '940110',
-    '940111',
-    '940112',
-    '940113',
-    '940114',
-    '940115',
-    '940201',
-    '940202',
-    '940203',
-    '940204',
-    '940205',
-    '940206',
-    '940207',
-    '940208',
-    '940209',
-    '940210',
-    '940211',
-    '940212',
-    '940213',
-    '940214',
-    '940215',
-    '940216',
-    '940217',
-    '940218',
-    '940219',
-    '940220',
-    '940221',
-    '940222',
-    '940223',
-    '940224',
-    '940225',
-    '940226',
-    '940301',
-    '940302',
-    '940303',
-    '940304',
-    '940305',
-    '940306',
-    '940307',
-    '940308',
-    '940309',
-    '940310',
-    '940311',
-    '940312',
-    '940313',
-    '940314',
-    '940315',
-    '940316',
-    '940317',
-    '940318',
-    '940319',
-    '940320',
-    '940321',
-    '940322',
-    '940323',
-    '940324',
-    '940401',
-    '940402',
-    '940403',
-    '940404',
-    '940405',
-    '940406',
-    '940407',
-    '940408',
-    '940409',
-    '940410',
-    '940411',
-    '940412',
-    '940413',
-    '940414',
-    '940415',
-    '940416',
-    '940417',
-    '940418',
-    '940501',
-    '940502',
-    '940503',
-    '940504',
-    '940505',
-    '940506',
-    '940507',
-    '940508',
-    '940509',
-    '940510',
-    '940511',
-    '940512',
-    '940513',
-    '940514',
-    '940515',
-    '940516',
-    '940517',
-    '940518',
-    '940519',
-    '940520',
-    '940521',
-    '940522',
-    '940523',
-    '940524',
-    '940525',
-    '940601',
-    '940602',
-    '940603',
-    '940604',
-    '940605',
-    '940606',
-    '940607',
-    '940608',
-    '940609',
-    '940610',
-    '940701',
-    '940702',
-    '940703',
-    '940704',
-    '940705',
-    '940706',
-    '940707',
-    '940708',
-    '940801',
-    '940802',
-    '940803',
-    '940804',
-    '940805',
-    '950101',
-    '950102',
-    '950103',
-    '950104',
-    '950105',
-    '950106',
-    '950107',
-    '950108',
-    '950109',
-    '950110',
-    '950111',
-    '950112',
-    '950113',
-    '950114',
-    '950115',
-    '950116',
-    '950117',
-    '950118',
-    '950119',
-    '950120',
-    '950121',
-    '950122',
-    '950123',
-    '950124',
-    '950125',
-    '950126',
-    '950127',
-    '950128',
-    '950129',
-    '950130',
-    '950131',
-    '950132',
-    '950133',
-    '950134',
-    '950135',
-    '950136',
-    '950137',
-    '950138',
-    '950139',
-    '950140',
-    '950201',
-    '950202',
-    '950203',
-    '950204',
-    '950205',
-    '950206',
-    '950207',
-    '950208',
-    '950209',
-    '950210',
-    '950211',
-    '950212',
-    '950213',
-    '950214',
-    '950215',
-    '950216',
-    '950217',
-    '950218',
-    '950219',
-    '950220',
-    '950221',
-    '950222',
-    '950223',
-    '950224',
-    '950225',
-    '950226',
-    '950227',
-    '950228',
-    '950229',
-    '950230',
-    '950231',
-    '950232',
-    '950233',
-    '950234',
-    '950301',
-    '950302',
-    '950303',
-    '950304',
-    '950305',
-    '950306',
-    '950307',
-    '950308',
-    '950309',
-    '950310',
-    '950311',
-    '950312',
-    '950313',
-    '950314',
-    '950315',
-    '950316',
-    '950317',
-    '950318',
-    '950319',
-    '950320',
-    '950321',
-    '950322',
-    '950323',
-    '950324',
-    '950325',
-    '950326',
-    '950327',
-    '950328',
-    '950329',
-    '950330',
-    '950331',
-    '950332',
-    '950333',
-    '950334',
-    '950335',
-    '950336',
-    '950337',
-    '950338',
-    '950339',
-    '950340',
-    '950341',
-    '950342',
-    '950343',
-    '950344',
-    '950345',
-    '950346',
-    '950347',
-    '950348',
-    '950349',
-    '950350',
-    '950351',
-    '950401',
-    '950402',
-    '950403',
-    '950404',
-    '950405',
-    '950406',
-    '950407',
-    '950408',
-    '950409',
-    '950410',
-    '950411',
-    '950412',
-    '950413',
-    '950414',
-    '950415',
-    '950416',
-    '950417',
-    '950418',
-    '950419',
-    '950420',
-    '950421',
-    '950422',
-    '950423',
-    '950424',
-    '950425',
-    '950426',
-    '950427',
-    '950428',
-    '950429',
-    '950430',
-    '950431',
-    '950432',
-    '950433',
-    '950434',
-    '950435',
-    '950436',
-    '950437',
-    '950438',
-    '950439',
-    '950440',
-    '950441',
-    '950442',
-    '950443',
-    '950444',
-    '950445',
-    '950446',
-    '950501',
-    '950502',
-    '950503',
-    '950504',
-    '950505',
-    '950601',
-    '950602',
-    '950603',
-    '950604',
-    '950605',
-    '950701',
-    '950702',
-    '950703',
-    '950704',
-    '950705',
-    '950706',
-    '950707',
-    '950708',
-    '950709',
-    '950710',
-    '950711',
-    '950712',
-    '950713',
-    '950714',
-    '950715',
-    '950716',
-    '950717',
-    '950718',
-    '950719',
-    '950720',
-    '950721',
-    '950722',
-    '950723',
-    '950724',
-    '950725',
-    '950726',
-    '950727',
-    '950728',
-    '950729',
-    '950730',
-    '950731',
-    '950732',
-    '950733',
-    '950734',
-    '950735',
-    '950736',
-    '950737',
-    '950738',
-    '950739',
-    '950801',
-    '950802',
-    '950803',
-    '950804',
-    '950805',
-    '950806',
-    '950807',
-    '950808',
-    '950809',
-    '950810',
-    '950811',
-    '950812',
-    '950813',
-    '950814',
-    '950815',
-    '950816',
-    '950817',
-    '950818',
-    '950819',
-    '950820',
-    '950821',
-    '950822',
-    '950823',
-    '950824',
-    '950825',
-    '950826',
-    '950827',
-    '950828',
-    '950829',
-    '950830',
-    '950831',
-    '950832',
-    '960101',
-    '960102',
-    '960103',
-    '960104',
-    '960105',
-    '960106',
-    '960107',
-    '960108',
-    '960109',
-    '960110',
-    '960111',
-    '960112',
-    '960113',
-    '960114',
-    '960115',
-    '960116',
-    '960117',
-    '960118',
-    '960119',
-    '960120',
-    '960121',
-    '960122',
-    '960123',
-    '960124',
-    '960125',
-    '960126',
-    '960127',
-    '960128',
-    '960129',
-    '960130',
-    '960201',
-    '960202',
-    '960203',
-    '960204',
-    '960205',
-    '960206',
-    '960207',
-    '960208',
-    '960209',
-    '960210',
-    '960211',
-    '960212',
-    '960213',
-    '960214',
-    '960215',
-    '960301',
-    '960302',
-    '960303',
-    '960304',
-    '960305',
-    '960306',
-    '960307',
-    '960308',
-    '960309',
-    '960310',
-    '960311',
-    '960312',
-    '960313',
-    '960314',
-    '960315',
-    '960316',
-    '960317',
-    '960318',
-    '960319',
-    '960320',
-    '960321',
-    '960322',
-    '960323',
-    '960324',
-    '960401',
-    '960402',
-    '960403',
-    '960404',
-    '960405',
-    '960406',
-    '960407',
-    '960408',
-    '960409',
-    '960410',
-    '960411',
-    '960412',
-    '960413',
-    '960414',
-    '960415',
-    '960416',
-    '960417',
-    '960418',
-    '960419',
-    '960420',
-    '960421',
-    '960422',
-    '960423',
-    '960424',
-    '960425',
-    '960426',
-    '960427',
-    '960428',
-    '960429',
-    '960501',
-    '960502',
-    '960503',
-    '960504',
-    '960505',
-    '960506',
-    '960507',
-    '960508',
-    '960509',
-    '960510',
-    '960511',
-    '960512',
-    '960513',
-    '960514',
-    '960515',
-    '960516',
-    '960517',
-    '960518',
-    '960519',
-    '960520',
-    '960521',
-    '960522',
-    '960523',
-    '960524',
-    '967101',
-    '967102',
-    '967103',
-    '967104',
-    '967105',
-    '967106',
-    '967107',
-    '967108',
-    '967109',
-    '967110'
-);
+DELETE FROM district WHERE city_id IN (SELECT id FROM city WHERE province_id IN ('91', '92', '93', '94', '95', '96'));
+DELETE FROM city WHERE province_id IN ('91', '92', '93', '94', '95', '96');
+DELETE FROM province WHERE id IN ('91', '92', '93', '94', '95', '96');
 
-DELETE FROM city WHERE id IN (
-    '9301',
-    '9302',
-    '9303',
-    '9304',
-    'LOC-9401',
-    'LOC-9402',
-    'LOC-9403',
-    'LOC-9404',
-    '9405',
-    '9406',
-    '9407',
-    'LOC-9408',
-    '9501',
-    '9502',
-    '9503',
-    '9504',
-    '9505',
-    '9506',
-    '9507',
-    '9508',
-    '9601',
-    '9602',
-    '9603',
-    '9604',
-    '9605',
-    '9671'
-);
+-- 2 provinces (old seed meaning).
+INSERT INTO province (id, name) VALUES ('91', 'PAPUA BARAT');
+INSERT INTO province (id, name) VALUES ('94', 'PAPUA');
 
-DELETE FROM province WHERE id IN (
-    '93',
-    'LOC-94',
-    '95',
-    '96'
-);
+-- 42 kabupaten/kota (old seed meaning).
+INSERT INTO city (id, province_id, name) VALUES ('9101', '91', 'KABUPATEN FAKFAK');
+INSERT INTO city (id, province_id, name) VALUES ('9102', '91', 'KABUPATEN KAIMANA');
+INSERT INTO city (id, province_id, name) VALUES ('9103', '91', 'KABUPATEN TELUK WONDAMA');
+INSERT INTO city (id, province_id, name) VALUES ('9104', '91', 'KABUPATEN TELUK BINTUNI');
+INSERT INTO city (id, province_id, name) VALUES ('9105', '91', 'KABUPATEN MANOKWARI');
+INSERT INTO city (id, province_id, name) VALUES ('9106', '91', 'KABUPATEN SORONG SELATAN');
+INSERT INTO city (id, province_id, name) VALUES ('9107', '91', 'KABUPATEN SORONG');
+INSERT INTO city (id, province_id, name) VALUES ('9108', '91', 'KABUPATEN RAJA AMPAT');
+INSERT INTO city (id, province_id, name) VALUES ('9109', '91', 'KABUPATEN TAMBRAUW');
+INSERT INTO city (id, province_id, name) VALUES ('9110', '91', 'KABUPATEN MAYBRAT');
+INSERT INTO city (id, province_id, name) VALUES ('9111', '91', 'KABUPATEN MANOKWARI SELATAN');
+INSERT INTO city (id, province_id, name) VALUES ('9112', '91', 'KABUPATEN PEGUNUNGAN ARFAK');
+INSERT INTO city (id, province_id, name) VALUES ('9171', '91', 'KOTA SORONG');
+INSERT INTO city (id, province_id, name) VALUES ('9401', '94', 'KABUPATEN MERAUKE');
+INSERT INTO city (id, province_id, name) VALUES ('9402', '94', 'KABUPATEN JAYAWIJAYA');
+INSERT INTO city (id, province_id, name) VALUES ('9403', '94', 'KABUPATEN JAYAPURA');
+INSERT INTO city (id, province_id, name) VALUES ('9404', '94', 'KABUPATEN NABIRE');
+INSERT INTO city (id, province_id, name) VALUES ('9408', '94', 'KABUPATEN KEPULAUAN YAPEN');
+INSERT INTO city (id, province_id, name) VALUES ('9409', '94', 'KABUPATEN BIAK NUMFOR');
+INSERT INTO city (id, province_id, name) VALUES ('9410', '94', 'KABUPATEN PANIAI');
+INSERT INTO city (id, province_id, name) VALUES ('9411', '94', 'KABUPATEN PUNCAK JAYA');
+INSERT INTO city (id, province_id, name) VALUES ('9412', '94', 'KABUPATEN MIMIKA');
+INSERT INTO city (id, province_id, name) VALUES ('9413', '94', 'KABUPATEN BOVEN DIGOEL');
+INSERT INTO city (id, province_id, name) VALUES ('9414', '94', 'KABUPATEN MAPPI');
+INSERT INTO city (id, province_id, name) VALUES ('9415', '94', 'KABUPATEN ASMAT');
+INSERT INTO city (id, province_id, name) VALUES ('9416', '94', 'KABUPATEN YAHUKIMO');
+INSERT INTO city (id, province_id, name) VALUES ('9417', '94', 'KABUPATEN PEGUNUNGAN BINTANG');
+INSERT INTO city (id, province_id, name) VALUES ('9418', '94', 'KABUPATEN TOLIKARA');
+INSERT INTO city (id, province_id, name) VALUES ('9419', '94', 'KABUPATEN SARMI');
+INSERT INTO city (id, province_id, name) VALUES ('9420', '94', 'KABUPATEN KEEROM');
+INSERT INTO city (id, province_id, name) VALUES ('9426', '94', 'KABUPATEN WAROPEN');
+INSERT INTO city (id, province_id, name) VALUES ('9427', '94', 'KABUPATEN SUPIORI');
+INSERT INTO city (id, province_id, name) VALUES ('9428', '94', 'KABUPATEN MAMBERAMO RAYA');
+INSERT INTO city (id, province_id, name) VALUES ('9429', '94', 'KABUPATEN NDUGA');
+INSERT INTO city (id, province_id, name) VALUES ('9430', '94', 'KABUPATEN LANNY JAYA');
+INSERT INTO city (id, province_id, name) VALUES ('9431', '94', 'KABUPATEN MAMBERAMO TENGAH');
+INSERT INTO city (id, province_id, name) VALUES ('9432', '94', 'KABUPATEN YALIMO');
+INSERT INTO city (id, province_id, name) VALUES ('9433', '94', 'KABUPATEN PUNCAK');
+INSERT INTO city (id, province_id, name) VALUES ('9434', '94', 'KABUPATEN DOGIYAI');
+INSERT INTO city (id, province_id, name) VALUES ('9435', '94', 'KABUPATEN INTAN JAYA');
+INSERT INTO city (id, province_id, name) VALUES ('9436', '94', 'KABUPATEN DEIYAI');
+INSERT INTO city (id, province_id, name) VALUES ('9471', '94', 'KOTA JAYAPURA');
 
+-- 784 kecamatan (old seed meaning).
+INSERT INTO district (id, city_id, name) VALUES ('9101050', '9101', 'FAKFAK TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9101051', '9101', 'KARAS');
+INSERT INTO district (id, city_id, name) VALUES ('9101052', '9101', 'FAKFAK TIMUR TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9101060', '9101', 'FAKFAK');
+INSERT INTO district (id, city_id, name) VALUES ('9101061', '9101', 'FAKFAK TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9101062', '9101', 'PARIWARI');
+INSERT INTO district (id, city_id, name) VALUES ('9101070', '9101', 'FAKFAK BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9101071', '9101', 'WARTUTIN');
+INSERT INTO district (id, city_id, name) VALUES ('9101080', '9101', 'KOKAS');
+INSERT INTO district (id, city_id, name) VALUES ('9101081', '9101', 'TELUK PATIPI');
+INSERT INTO district (id, city_id, name) VALUES ('9101082', '9101', 'KRAMONGMONGGA');
+INSERT INTO district (id, city_id, name) VALUES ('9101083', '9101', 'BOMBERAY');
+INSERT INTO district (id, city_id, name) VALUES ('9101084', '9101', 'ARGUNI');
+INSERT INTO district (id, city_id, name) VALUES ('9101085', '9101', 'MBAHAMDANDARA');
+INSERT INTO district (id, city_id, name) VALUES ('9101086', '9101', 'FURWAGI');
+INSERT INTO district (id, city_id, name) VALUES ('9101087', '9101', 'KAYAUNI');
+INSERT INTO district (id, city_id, name) VALUES ('9101088', '9101', 'TOMAGE');
+INSERT INTO district (id, city_id, name) VALUES ('9102010', '9102', 'BURUWAY');
+INSERT INTO district (id, city_id, name) VALUES ('9102020', '9102', 'TELUK ARGUNI');
+INSERT INTO district (id, city_id, name) VALUES ('9102021', '9102', 'TELUK ARGUNI BAWAH');
+INSERT INTO district (id, city_id, name) VALUES ('9102030', '9102', 'KAIMANA');
+INSERT INTO district (id, city_id, name) VALUES ('9102031', '9102', 'KAMBRAU');
+INSERT INTO district (id, city_id, name) VALUES ('9102040', '9102', 'TELUK ETNA');
+INSERT INTO district (id, city_id, name) VALUES ('9102041', '9102', 'YAMOR');
+INSERT INTO district (id, city_id, name) VALUES ('9103010', '9103', 'NAIKERE');
+INSERT INTO district (id, city_id, name) VALUES ('9103020', '9103', 'WONDIBOY');
+INSERT INTO district (id, city_id, name) VALUES ('9103021', '9103', 'RASIEY');
+INSERT INTO district (id, city_id, name) VALUES ('9103022', '9103', 'KURI WAMESA');
+INSERT INTO district (id, city_id, name) VALUES ('9103030', '9103', 'WASIOR');
+INSERT INTO district (id, city_id, name) VALUES ('9103040', '9103', 'DUAIRI');
+INSERT INTO district (id, city_id, name) VALUES ('9103041', '9103', 'ROON');
+INSERT INTO district (id, city_id, name) VALUES ('9103050', '9103', 'WINDESI');
+INSERT INTO district (id, city_id, name) VALUES ('9103051', '9103', 'NIKIWAR');
+INSERT INTO district (id, city_id, name) VALUES ('9103060', '9103', 'WAMESA');
+INSERT INTO district (id, city_id, name) VALUES ('9103061', '9103', 'ROSWAR');
+INSERT INTO district (id, city_id, name) VALUES ('9103070', '9103', 'RUMBERPON');
+INSERT INTO district (id, city_id, name) VALUES ('9103071', '9103', 'SOUG JAYA');
+INSERT INTO district (id, city_id, name) VALUES ('9104010', '9104', 'FAFURWAR');
+INSERT INTO district (id, city_id, name) VALUES ('9104020', '9104', 'BABO');
+INSERT INTO district (id, city_id, name) VALUES ('9104021', '9104', 'SUMURI');
+INSERT INTO district (id, city_id, name) VALUES ('9104022', '9104', 'AROBA');
+INSERT INTO district (id, city_id, name) VALUES ('9104023', '9104', 'KAITARO');
+INSERT INTO district (id, city_id, name) VALUES ('9104030', '9104', 'KURI');
+INSERT INTO district (id, city_id, name) VALUES ('9104040', '9104', 'WAMESA');
+INSERT INTO district (id, city_id, name) VALUES ('9104050', '9104', 'BINTUNI');
+INSERT INTO district (id, city_id, name) VALUES ('9104051', '9104', 'MANIMERI');
+INSERT INTO district (id, city_id, name) VALUES ('9104052', '9104', 'TUHIBA');
+INSERT INTO district (id, city_id, name) VALUES ('9104053', '9104', 'DATARAN BEIMES');
+INSERT INTO district (id, city_id, name) VALUES ('9104060', '9104', 'TEMBUNI');
+INSERT INTO district (id, city_id, name) VALUES ('9104070', '9104', 'ARANDAY');
+INSERT INTO district (id, city_id, name) VALUES ('9104071', '9104', 'KAMUNDAN');
+INSERT INTO district (id, city_id, name) VALUES ('9104072', '9104', 'TOMU');
+INSERT INTO district (id, city_id, name) VALUES ('9104073', '9104', 'WERIAGAR');
+INSERT INTO district (id, city_id, name) VALUES ('9104080', '9104', 'MOSKONA SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9104081', '9104', 'MEYADO');
+INSERT INTO district (id, city_id, name) VALUES ('9104082', '9104', 'MOSKONA BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9104090', '9104', 'MERDEY');
+INSERT INTO district (id, city_id, name) VALUES ('9104091', '9104', 'BISCOOP');
+INSERT INTO district (id, city_id, name) VALUES ('9104092', '9104', 'MASYETA');
+INSERT INTO district (id, city_id, name) VALUES ('9104100', '9104', 'MOSKONA UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9104101', '9104', 'MOSKONA TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9105110', '9105', 'WARMARE');
+INSERT INTO district (id, city_id, name) VALUES ('9105120', '9105', 'PRAFI');
+INSERT INTO district (id, city_id, name) VALUES ('9105141', '9105', 'MANOKWARI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9105142', '9105', 'MANOKWARI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9105143', '9105', 'MANOKWARI UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9105144', '9105', 'MANOKWARI SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9105146', '9105', 'TANAH RUBU');
+INSERT INTO district (id, city_id, name) VALUES ('9105170', '9105', 'MASNI');
+INSERT INTO district (id, city_id, name) VALUES ('9105171', '9105', 'SIDEY');
+INSERT INTO district (id, city_id, name) VALUES ('9106010', '9106', 'INANWATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9106011', '9106', 'METEMANI');
+INSERT INTO district (id, city_id, name) VALUES ('9106020', '9106', 'KOKODA');
+INSERT INTO district (id, city_id, name) VALUES ('9106021', '9106', 'KAIS');
+INSERT INTO district (id, city_id, name) VALUES ('9106022', '9106', 'KOKODA UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9106023', '9106', 'KAIS DARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9106060', '9106', 'MOSWAREN');
+INSERT INTO district (id, city_id, name) VALUES ('9106070', '9106', 'TEMINABUAN');
+INSERT INTO district (id, city_id, name) VALUES ('9106071', '9106', 'SEREMUK');
+INSERT INTO district (id, city_id, name) VALUES ('9106072', '9106', 'WAYER');
+INSERT INTO district (id, city_id, name) VALUES ('9106073', '9106', 'KONDA');
+INSERT INTO district (id, city_id, name) VALUES ('9106074', '9106', 'SAIFI');
+INSERT INTO district (id, city_id, name) VALUES ('9106080', '9106', 'SAWIAT');
+INSERT INTO district (id, city_id, name) VALUES ('9106081', '9106', 'FOKOUR');
+INSERT INTO district (id, city_id, name) VALUES ('9106082', '9106', 'SALKMA');
+INSERT INTO district (id, city_id, name) VALUES ('9107061', '9107', 'KLASO');
+INSERT INTO district (id, city_id, name) VALUES ('9107062', '9107', 'SAENGKEDUK');
+INSERT INTO district (id, city_id, name) VALUES ('9107100', '9107', 'MAKBON');
+INSERT INTO district (id, city_id, name) VALUES ('9107101', '9107', 'KLAYILI');
+INSERT INTO district (id, city_id, name) VALUES ('9107110', '9107', 'BERAUR');
+INSERT INTO district (id, city_id, name) VALUES ('9107111', '9107', 'KLAMONO');
+INSERT INTO district (id, city_id, name) VALUES ('9107112', '9107', 'KLABOT');
+INSERT INTO district (id, city_id, name) VALUES ('9107113', '9107', 'KLAWAK');
+INSERT INTO district (id, city_id, name) VALUES ('9107114', '9107', 'BAGUN');
+INSERT INTO district (id, city_id, name) VALUES ('9107115', '9107', 'KLASAFET');
+INSERT INTO district (id, city_id, name) VALUES ('9107116', '9107', 'MALABOTOM');
+INSERT INTO district (id, city_id, name) VALUES ('9107118', '9107', 'BOTAIN');
+INSERT INTO district (id, city_id, name) VALUES ('9107119', '9107', 'KONHIR');
+INSERT INTO district (id, city_id, name) VALUES ('9107120', '9107', 'SALAWATI');
+INSERT INTO district (id, city_id, name) VALUES ('9107121', '9107', 'MAYAMUK');
+INSERT INTO district (id, city_id, name) VALUES ('9107122', '9107', 'SALAWATI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9107123', '9107', 'HOBARD');
+INSERT INTO district (id, city_id, name) VALUES ('9107124', '9107', 'BUK');
+INSERT INTO district (id, city_id, name) VALUES ('9107130', '9107', 'SEGET');
+INSERT INTO district (id, city_id, name) VALUES ('9107131', '9107', 'SEGUN');
+INSERT INTO district (id, city_id, name) VALUES ('9107132', '9107', 'SALAWATI SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9107133', '9107', 'SALAWATI TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9107170', '9107', 'AIMAS');
+INSERT INTO district (id, city_id, name) VALUES ('9107171', '9107', 'MARIAT');
+INSERT INTO district (id, city_id, name) VALUES ('9107172', '9107', 'SORONG');
+INSERT INTO district (id, city_id, name) VALUES ('9107180', '9107', 'SAYOSA');
+INSERT INTO district (id, city_id, name) VALUES ('9107181', '9107', 'MAUDUS');
+INSERT INTO district (id, city_id, name) VALUES ('9107182', '9107', 'WEMAK');
+INSERT INTO district (id, city_id, name) VALUES ('9107183', '9107', 'SAYOSA TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9107184', '9107', 'SUNOOK');
+INSERT INTO district (id, city_id, name) VALUES ('9108011', '9108', 'MISOOL SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9108012', '9108', 'MISOOL BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9108020', '9108', 'MISOOL');
+INSERT INTO district (id, city_id, name) VALUES ('9108021', '9108', 'KOFIAU');
+INSERT INTO district (id, city_id, name) VALUES ('9108022', '9108', 'MISOOL TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9108023', '9108', 'KEPULAUAN SEMBILAN');
+INSERT INTO district (id, city_id, name) VALUES ('9108031', '9108', 'SALAWATI UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9108033', '9108', 'SALAWATI TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9108034', '9108', 'SALAWATI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9108035', '9108', 'BATANTA SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9108036', '9108', 'BATANTA UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9108040', '9108', 'WAIGEO SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9108041', '9108', 'TELUK MAYALIBIT');
+INSERT INTO district (id, city_id, name) VALUES ('9108042', '9108', 'MEOS MANSAR');
+INSERT INTO district (id, city_id, name) VALUES ('9108043', '9108', 'KOTA WAISAI');
+INSERT INTO district (id, city_id, name) VALUES ('9108044', '9108', 'TIPLOL MAYALIBIT');
+INSERT INTO district (id, city_id, name) VALUES ('9108050', '9108', 'WAIGEO BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9108051', '9108', 'WAIGEO BARAT KEPULAUAN');
+INSERT INTO district (id, city_id, name) VALUES ('9108060', '9108', 'WAIGEO UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9108061', '9108', 'WARWARBOMI');
+INSERT INTO district (id, city_id, name) VALUES ('9108062', '9108', 'SUPNIN');
+INSERT INTO district (id, city_id, name) VALUES ('9108070', '9108', 'KEPULAUAN AYAU');
+INSERT INTO district (id, city_id, name) VALUES ('9108071', '9108', 'AYAU');
+INSERT INTO district (id, city_id, name) VALUES ('9108080', '9108', 'WAIGEO TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9109010', '9109', 'FEF');
+INSERT INTO district (id, city_id, name) VALUES ('9109011', '9109', 'SYUJAK');
+INSERT INTO district (id, city_id, name) VALUES ('9109012', '9109', 'ASES');
+INSERT INTO district (id, city_id, name) VALUES ('9109013', '9109', 'TINGGOUW');
+INSERT INTO district (id, city_id, name) VALUES ('9109020', '9109', 'MIYAH');
+INSERT INTO district (id, city_id, name) VALUES ('9109021', '9109', 'MIYAH SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9109022', '9109', 'IRERES');
+INSERT INTO district (id, city_id, name) VALUES ('9109023', '9109', 'WILHEM ROUMBOUTS');
+INSERT INTO district (id, city_id, name) VALUES ('9109030', '9109', 'ABUN');
+INSERT INTO district (id, city_id, name) VALUES ('9109040', '9109', 'KWOOR');
+INSERT INTO district (id, city_id, name) VALUES ('9109041', '9109', 'TOBOUW');
+INSERT INTO district (id, city_id, name) VALUES ('9109042', '9109', 'KWESEFO');
+INSERT INTO district (id, city_id, name) VALUES ('9109050', '9109', 'SAUSAPOR');
+INSERT INTO district (id, city_id, name) VALUES ('9109051', '9109', 'BIKAR');
+INSERT INTO district (id, city_id, name) VALUES ('9109060', '9109', 'YEMBUN');
+INSERT INTO district (id, city_id, name) VALUES ('9109061', '9109', 'BAMUSBAMA');
+INSERT INTO district (id, city_id, name) VALUES ('9109070', '9109', 'KEBAR');
+INSERT INTO district (id, city_id, name) VALUES ('9109071', '9109', 'KEBAR TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9109072', '9109', 'KEBAR SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9109073', '9109', 'MANEKAR');
+INSERT INTO district (id, city_id, name) VALUES ('9109080', '9109', 'SENOPI');
+INSERT INTO district (id, city_id, name) VALUES ('9109081', '9109', 'MAWABUAN');
+INSERT INTO district (id, city_id, name) VALUES ('9109090', '9109', 'AMBERBAKEN');
+INSERT INTO district (id, city_id, name) VALUES ('9109091', '9109', 'MPUR');
+INSERT INTO district (id, city_id, name) VALUES ('9109092', '9109', 'AMBERBAKEN BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9109100', '9109', 'MUBARNI / ARFU');
+INSERT INTO district (id, city_id, name) VALUES ('9109110', '9109', 'MORAID');
+INSERT INTO district (id, city_id, name) VALUES ('9109111', '9109', 'SELEMKAI');
+INSERT INTO district (id, city_id, name) VALUES ('9110010', '9110', 'AITINYO BARAT/ATHABU');
+INSERT INTO district (id, city_id, name) VALUES ('9110011', '9110', 'AYAMARU SELATAN JAYA');
+INSERT INTO district (id, city_id, name) VALUES ('9110020', '9110', 'AITINYO');
+INSERT INTO district (id, city_id, name) VALUES ('9110021', '9110', 'AITINYO TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9110030', '9110', 'AIFAT SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9110031', '9110', 'AIFAT TIMUR SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9110040', '9110', 'AIFAT');
+INSERT INTO district (id, city_id, name) VALUES ('9110050', '9110', 'AITINYO UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9110051', '9110', 'AITINYO RAYA');
+INSERT INTO district (id, city_id, name) VALUES ('9110060', '9110', 'AYAMARU TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9110061', '9110', 'AYAMARU TIMUR SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9110070', '9110', 'AYAMARU');
+INSERT INTO district (id, city_id, name) VALUES ('9110071', '9110', 'AYAMARU SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9110072', '9110', 'AYAMARU JAYA');
+INSERT INTO district (id, city_id, name) VALUES ('9110073', '9110', 'AYAMARU TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9110074', '9110', 'AYAMARU BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9110080', '9110', 'AYAMARU UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9110081', '9110', 'AYAMARU UTARA TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9110090', '9110', 'MARE');
+INSERT INTO district (id, city_id, name) VALUES ('9110091', '9110', 'MARE SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9110100', '9110', 'AIFAT UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9110110', '9110', 'AIFAT TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9110111', '9110', 'AIFAT TIMUR TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9110112', '9110', 'AIFAT TIMUR JAUH');
+INSERT INTO district (id, city_id, name) VALUES ('9111010', '9111', 'TAHOTA');
+INSERT INTO district (id, city_id, name) VALUES ('9111020', '9111', 'DATARAN ISIM');
+INSERT INTO district (id, city_id, name) VALUES ('9111030', '9111', 'NENEI');
+INSERT INTO district (id, city_id, name) VALUES ('9111040', '9111', 'MOMI WAREN');
+INSERT INTO district (id, city_id, name) VALUES ('9111050', '9111', 'RANSIKI');
+INSERT INTO district (id, city_id, name) VALUES ('9111060', '9111', 'ORANSBARI');
+INSERT INTO district (id, city_id, name) VALUES ('9112010', '9112', 'DIDOHU');
+INSERT INTO district (id, city_id, name) VALUES ('9112020', '9112', 'SURUREY');
+INSERT INTO district (id, city_id, name) VALUES ('9112030', '9112', 'ANGGI GIDA');
+INSERT INTO district (id, city_id, name) VALUES ('9112040', '9112', 'MEMBEY');
+INSERT INTO district (id, city_id, name) VALUES ('9112050', '9112', 'ANGGI');
+INSERT INTO district (id, city_id, name) VALUES ('9112060', '9112', 'TAIGE');
+INSERT INTO district (id, city_id, name) VALUES ('9112070', '9112', 'HINGK');
+INSERT INTO district (id, city_id, name) VALUES ('9112080', '9112', 'MENYAMBOUW');
+INSERT INTO district (id, city_id, name) VALUES ('9112090', '9112', 'CATUBOUW');
+INSERT INTO district (id, city_id, name) VALUES ('9112100', '9112', 'TESTEGA');
+INSERT INTO district (id, city_id, name) VALUES ('9171010', '9171', 'SORONG BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9171011', '9171', 'SORONG KEPULAUAN');
+INSERT INTO district (id, city_id, name) VALUES ('9171012', '9171', 'MALADUM MES');
+INSERT INTO district (id, city_id, name) VALUES ('9171020', '9171', 'SORONG TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9171021', '9171', 'SORONG UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9171022', '9171', 'SORONG');
+INSERT INTO district (id, city_id, name) VALUES ('9171023', '9171', 'SORONG MANOI');
+INSERT INTO district (id, city_id, name) VALUES ('9171024', '9171', 'KLAURUNG');
+INSERT INTO district (id, city_id, name) VALUES ('9171025', '9171', 'MALAIMSIMSA');
+INSERT INTO district (id, city_id, name) VALUES ('9171026', '9171', 'SORONG KOTA');
+INSERT INTO district (id, city_id, name) VALUES ('9401010', '9401', 'KIMAAM');
+INSERT INTO district (id, city_id, name) VALUES ('9401011', '9401', 'WAAN');
+INSERT INTO district (id, city_id, name) VALUES ('9401012', '9401', 'TABONJI');
+INSERT INTO district (id, city_id, name) VALUES ('9401013', '9401', 'ILWAYAB');
+INSERT INTO district (id, city_id, name) VALUES ('9401020', '9401', 'OKABA');
+INSERT INTO district (id, city_id, name) VALUES ('9401021', '9401', 'TUBANG');
+INSERT INTO district (id, city_id, name) VALUES ('9401022', '9401', 'NGGUTI');
+INSERT INTO district (id, city_id, name) VALUES ('9401023', '9401', 'KAPTEL');
+INSERT INTO district (id, city_id, name) VALUES ('9401030', '9401', 'KURIK');
+INSERT INTO district (id, city_id, name) VALUES ('9401031', '9401', 'MALIND');
+INSERT INTO district (id, city_id, name) VALUES ('9401032', '9401', 'ANIMHA');
+INSERT INTO district (id, city_id, name) VALUES ('9401040', '9401', 'MERAUKE');
+INSERT INTO district (id, city_id, name) VALUES ('9401041', '9401', 'SEMANGGA');
+INSERT INTO district (id, city_id, name) VALUES ('9401042', '9401', 'TANAH MIRING');
+INSERT INTO district (id, city_id, name) VALUES ('9401043', '9401', 'JAGEBOB');
+INSERT INTO district (id, city_id, name) VALUES ('9401044', '9401', 'SOTA');
+INSERT INTO district (id, city_id, name) VALUES ('9401045', '9401', 'NAUKENJERAI');
+INSERT INTO district (id, city_id, name) VALUES ('9401050', '9401', 'MUTING');
+INSERT INTO district (id, city_id, name) VALUES ('9401051', '9401', 'ELIGOBEL');
+INSERT INTO district (id, city_id, name) VALUES ('9401052', '9401', 'ULILIN');
+INSERT INTO district (id, city_id, name) VALUES ('9402110', '9402', 'WAMENA');
+INSERT INTO district (id, city_id, name) VALUES ('9402111', '9402', 'ASOLOKOBAL');
+INSERT INTO district (id, city_id, name) VALUES ('9402112', '9402', 'WALELAGAMA');
+INSERT INTO district (id, city_id, name) VALUES ('9402113', '9402', 'TRIKORA');
+INSERT INTO district (id, city_id, name) VALUES ('9402114', '9402', 'NAPUA');
+INSERT INTO district (id, city_id, name) VALUES ('9402115', '9402', 'WALAIK');
+INSERT INTO district (id, city_id, name) VALUES ('9402116', '9402', 'WOUMA');
+INSERT INTO district (id, city_id, name) VALUES ('9402117', '9402', 'WALESI');
+INSERT INTO district (id, city_id, name) VALUES ('9402118', '9402', 'ASOTIPO');
+INSERT INTO district (id, city_id, name) VALUES ('9402119', '9402', 'MAIMA');
+INSERT INTO district (id, city_id, name) VALUES ('9402120', '9402', 'HUBIKOSI');
+INSERT INTO district (id, city_id, name) VALUES ('9402121', '9402', 'PELEBAGA');
+INSERT INTO district (id, city_id, name) VALUES ('9402122', '9402', 'IBELE');
+INSERT INTO district (id, city_id, name) VALUES ('9402123', '9402', 'TAILAREK');
+INSERT INTO district (id, city_id, name) VALUES ('9402124', '9402', 'HUBIKIAK');
+INSERT INTO district (id, city_id, name) VALUES ('9402180', '9402', 'ASOLOGAIMA');
+INSERT INTO district (id, city_id, name) VALUES ('9402181', '9402', 'MUSATFAK');
+INSERT INTO district (id, city_id, name) VALUES ('9402182', '9402', 'SILO KARNO DOGA');
+INSERT INTO district (id, city_id, name) VALUES ('9402183', '9402', 'PYRAMID');
+INSERT INTO district (id, city_id, name) VALUES ('9402184', '9402', 'MULIAMA');
+INSERT INTO district (id, city_id, name) VALUES ('9402185', '9402', 'WAME');
+INSERT INTO district (id, city_id, name) VALUES ('9402190', '9402', 'KURULU');
+INSERT INTO district (id, city_id, name) VALUES ('9402191', '9402', 'USILIMO');
+INSERT INTO district (id, city_id, name) VALUES ('9402192', '9402', 'WITA WAYA');
+INSERT INTO district (id, city_id, name) VALUES ('9402193', '9402', 'LIBAREK');
+INSERT INTO district (id, city_id, name) VALUES ('9402194', '9402', 'WADANGKU');
+INSERT INTO district (id, city_id, name) VALUES ('9402195', '9402', 'PISUGI');
+INSERT INTO district (id, city_id, name) VALUES ('9402220', '9402', 'BOLAKME');
+INSERT INTO district (id, city_id, name) VALUES ('9402221', '9402', 'WOLLO');
+INSERT INTO district (id, city_id, name) VALUES ('9402222', '9402', 'YALENGGA');
+INSERT INTO district (id, city_id, name) VALUES ('9402223', '9402', 'TAGIME');
+INSERT INTO district (id, city_id, name) VALUES ('9402224', '9402', 'MOLAGALOME');
+INSERT INTO district (id, city_id, name) VALUES ('9402225', '9402', 'TAGINERI');
+INSERT INTO district (id, city_id, name) VALUES ('9402226', '9402', 'BUGI');
+INSERT INTO district (id, city_id, name) VALUES ('9402227', '9402', 'BPIRI');
+INSERT INTO district (id, city_id, name) VALUES ('9402228', '9402', 'KORAGI');
+INSERT INTO district (id, city_id, name) VALUES ('9402611', '9402', 'ITLAY HASIGE');
+INSERT INTO district (id, city_id, name) VALUES ('9402612', '9402', 'SIEPKOSI');
+INSERT INTO district (id, city_id, name) VALUES ('9402614', '9402', 'POPUGOBA');
+INSERT INTO district (id, city_id, name) VALUES ('9403080', '9403', 'KAUREH');
+INSERT INTO district (id, city_id, name) VALUES ('9403081', '9403', 'AIRU');
+INSERT INTO district (id, city_id, name) VALUES ('9403082', '9403', 'YAPSI');
+INSERT INTO district (id, city_id, name) VALUES ('9403140', '9403', 'KEMTUK');
+INSERT INTO district (id, city_id, name) VALUES ('9403150', '9403', 'KEMTUK GRESI');
+INSERT INTO district (id, city_id, name) VALUES ('9403151', '9403', 'GRESI SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9403160', '9403', 'NIMBORAN');
+INSERT INTO district (id, city_id, name) VALUES ('9403161', '9403', 'NIMBORAN TIMUR / NAMBLONG');
+INSERT INTO district (id, city_id, name) VALUES ('9403170', '9403', 'NIMBOKRANG');
+INSERT INTO district (id, city_id, name) VALUES ('9403180', '9403', 'UNURUM GUAY');
+INSERT INTO district (id, city_id, name) VALUES ('9403200', '9403', 'DEMTA');
+INSERT INTO district (id, city_id, name) VALUES ('9403201', '9403', 'YOKARI');
+INSERT INTO district (id, city_id, name) VALUES ('9403210', '9403', 'DEPAPRE');
+INSERT INTO district (id, city_id, name) VALUES ('9403211', '9403', 'RAVENIRARA');
+INSERT INTO district (id, city_id, name) VALUES ('9403220', '9403', 'SENTANI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9403221', '9403', 'WAIBU');
+INSERT INTO district (id, city_id, name) VALUES ('9403230', '9403', 'SENTANI');
+INSERT INTO district (id, city_id, name) VALUES ('9403231', '9403', 'EBUNGFAU');
+INSERT INTO district (id, city_id, name) VALUES ('9403240', '9403', 'SENTANI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9404050', '9404', 'UWAPA');
+INSERT INTO district (id, city_id, name) VALUES ('9404051', '9404', 'MENOU');
+INSERT INTO district (id, city_id, name) VALUES ('9404052', '9404', 'DIPA');
+INSERT INTO district (id, city_id, name) VALUES ('9404060', '9404', 'YAUR');
+INSERT INTO district (id, city_id, name) VALUES ('9404061', '9404', 'TELUK UMAR');
+INSERT INTO district (id, city_id, name) VALUES ('9404070', '9404', 'WANGGAR');
+INSERT INTO district (id, city_id, name) VALUES ('9404071', '9404', 'NABIRE BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9404080', '9404', 'NABIRE');
+INSERT INTO district (id, city_id, name) VALUES ('9404081', '9404', 'TELUK KIMI');
+INSERT INTO district (id, city_id, name) VALUES ('9404090', '9404', 'NAPAN');
+INSERT INTO district (id, city_id, name) VALUES ('9404091', '9404', 'MAKIMI');
+INSERT INTO district (id, city_id, name) VALUES ('9404092', '9404', 'WAPOGA');
+INSERT INTO district (id, city_id, name) VALUES ('9404093', '9404', 'KEPULAUAN MOORA');
+INSERT INTO district (id, city_id, name) VALUES ('9404100', '9404', 'SIRIWO');
+INSERT INTO district (id, city_id, name) VALUES ('9404110', '9404', 'YARO');
+INSERT INTO district (id, city_id, name) VALUES ('9408040', '9408', 'YAPEN TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9408041', '9408', 'PANTURA YAPEN');
+INSERT INTO district (id, city_id, name) VALUES ('9408042', '9408', 'TELUK AMPIMOI');
+INSERT INTO district (id, city_id, name) VALUES ('9408043', '9408', 'RAIMBAWI');
+INSERT INTO district (id, city_id, name) VALUES ('9408044', '9408', 'PULAU KURUDU');
+INSERT INTO district (id, city_id, name) VALUES ('9408050', '9408', 'ANGKAISERA');
+INSERT INTO district (id, city_id, name) VALUES ('9408051', '9408', 'KEP. AMBAI');
+INSERT INTO district (id, city_id, name) VALUES ('9408052', '9408', 'YAWAKUKAT');
+INSERT INTO district (id, city_id, name) VALUES ('9408060', '9408', 'YAPEN SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9408061', '9408', 'KOSIWO');
+INSERT INTO district (id, city_id, name) VALUES ('9408062', '9408', 'ANATAUREI');
+INSERT INTO district (id, city_id, name) VALUES ('9408070', '9408', 'YAPEN BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9408071', '9408', 'WONAWA');
+INSERT INTO district (id, city_id, name) VALUES ('9408072', '9408', 'PULAU YERUI');
+INSERT INTO district (id, city_id, name) VALUES ('9408080', '9408', 'POOM');
+INSERT INTO district (id, city_id, name) VALUES ('9408081', '9408', 'WINDESI');
+INSERT INTO district (id, city_id, name) VALUES ('9409010', '9409', 'NUMFOR BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9409011', '9409', 'ORKERI');
+INSERT INTO district (id, city_id, name) VALUES ('9409020', '9409', 'NUMFOR TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9409021', '9409', 'BRUYADORI');
+INSERT INTO district (id, city_id, name) VALUES ('9409022', '9409', 'POIRU');
+INSERT INTO district (id, city_id, name) VALUES ('9409030', '9409', 'PADAIDO');
+INSERT INTO district (id, city_id, name) VALUES ('9409031', '9409', 'AIMANDO PADAIDO');
+INSERT INTO district (id, city_id, name) VALUES ('9409040', '9409', 'BIAK TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9409041', '9409', 'ORIDEK');
+INSERT INTO district (id, city_id, name) VALUES ('9409050', '9409', 'BIAK KOTA');
+INSERT INTO district (id, city_id, name) VALUES ('9409060', '9409', 'SAMOFA');
+INSERT INTO district (id, city_id, name) VALUES ('9409070', '9409', 'YENDIDORI');
+INSERT INTO district (id, city_id, name) VALUES ('9409080', '9409', 'BIAK UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9409081', '9409', 'ANDEY');
+INSERT INTO district (id, city_id, name) VALUES ('9409090', '9409', 'WARSA');
+INSERT INTO district (id, city_id, name) VALUES ('9409091', '9409', 'YAWOSI');
+INSERT INTO district (id, city_id, name) VALUES ('9409092', '9409', 'BONDIFUAR');
+INSERT INTO district (id, city_id, name) VALUES ('9409100', '9409', 'BIAK BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9409101', '9409', 'SWANDIWE');
+INSERT INTO district (id, city_id, name) VALUES ('9410030', '9410', 'PANIAI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9410031', '9410', 'YATAMO');
+INSERT INTO district (id, city_id, name) VALUES ('9410032', '9410', 'KEBO');
+INSERT INTO district (id, city_id, name) VALUES ('9410033', '9410', 'PUGO DAGI');
+INSERT INTO district (id, city_id, name) VALUES ('9410034', '9410', 'WEGE MUKA');
+INSERT INTO district (id, city_id, name) VALUES ('9410035', '9410', 'WEGEE BINO');
+INSERT INTO district (id, city_id, name) VALUES ('9410036', '9410', 'YAGAI');
+INSERT INTO district (id, city_id, name) VALUES ('9410040', '9410', 'BIBIDA');
+INSERT INTO district (id, city_id, name) VALUES ('9410041', '9410', 'DUMADAMA');
+INSERT INTO district (id, city_id, name) VALUES ('9410070', '9410', 'ARADIDE');
+INSERT INTO district (id, city_id, name) VALUES ('9410071', '9410', 'EKADIDE');
+INSERT INTO district (id, city_id, name) VALUES ('9410072', '9410', 'AWEIDA');
+INSERT INTO district (id, city_id, name) VALUES ('9410073', '9410', 'FAJAR TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9410074', '9410', 'TOPIYAI');
+INSERT INTO district (id, city_id, name) VALUES ('9410080', '9410', 'PANIAI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9410081', '9410', 'SIRIWO');
+INSERT INTO district (id, city_id, name) VALUES ('9410082', '9410', 'MUYE');
+INSERT INTO district (id, city_id, name) VALUES ('9410083', '9410', 'NAKAMA');
+INSERT INTO district (id, city_id, name) VALUES ('9410084', '9410', 'TELUK DEYA');
+INSERT INTO district (id, city_id, name) VALUES ('9410090', '9410', 'BOGOBAIDA');
+INSERT INTO district (id, city_id, name) VALUES ('9411040', '9411', 'FAWI');
+INSERT INTO district (id, city_id, name) VALUES ('9411041', '9411', 'DAGAI');
+INSERT INTO district (id, city_id, name) VALUES ('9411042', '9411', 'KIYAGE');
+INSERT INTO district (id, city_id, name) VALUES ('9411050', '9411', 'MULIA');
+INSERT INTO district (id, city_id, name) VALUES ('9411053', '9411', 'YAMBI');
+INSERT INTO district (id, city_id, name) VALUES ('9411054', '9411', 'ILAMBURAWI');
+INSERT INTO district (id, city_id, name) VALUES ('9411055', '9411', 'MUARA');
+INSERT INTO district (id, city_id, name) VALUES ('9411056', '9411', 'PAGALEME');
+INSERT INTO district (id, city_id, name) VALUES ('9411057', '9411', 'GURAGE');
+INSERT INTO district (id, city_id, name) VALUES ('9411058', '9411', 'IRIMULI');
+INSERT INTO district (id, city_id, name) VALUES ('9411060', '9411', 'ILU');
+INSERT INTO district (id, city_id, name) VALUES ('9411061', '9411', 'TORERE');
+INSERT INTO district (id, city_id, name) VALUES ('9411063', '9411', 'YAMONERI');
+INSERT INTO district (id, city_id, name) VALUES ('9411064', '9411', 'WAEGI');
+INSERT INTO district (id, city_id, name) VALUES ('9411065', '9411', 'NUME');
+INSERT INTO district (id, city_id, name) VALUES ('9411066', '9411', 'NIOGA');
+INSERT INTO district (id, city_id, name) VALUES ('9411067', '9411', 'GUBUME');
+INSERT INTO district (id, city_id, name) VALUES ('9411068', '9411', 'TAGANOMBAK');
+INSERT INTO district (id, city_id, name) VALUES ('9411070', '9411', 'TINGGINAMBUT');
+INSERT INTO district (id, city_id, name) VALUES ('9411071', '9411', 'KALOME');
+INSERT INTO district (id, city_id, name) VALUES ('9411072', '9411', 'WANWI');
+INSERT INTO district (id, city_id, name) VALUES ('9411080', '9411', 'MEWOLUK');
+INSERT INTO district (id, city_id, name) VALUES ('9411081', '9411', 'LUMO');
+INSERT INTO district (id, city_id, name) VALUES ('9411082', '9411', 'MOLANIKIME');
+INSERT INTO district (id, city_id, name) VALUES ('9411090', '9411', 'YAMO');
+INSERT INTO district (id, city_id, name) VALUES ('9411091', '9411', 'DOKOME');
+INSERT INTO district (id, city_id, name) VALUES ('9412010', '9412', 'MIMIKA BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9412011', '9412', 'MIMIKA BARAT JAUH');
+INSERT INTO district (id, city_id, name) VALUES ('9412012', '9412', 'MIMIKA BARAT TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9412013', '9412', 'AMAR');
+INSERT INTO district (id, city_id, name) VALUES ('9412020', '9412', 'MIMIKA TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9412021', '9412', 'MIMIKA TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9412022', '9412', 'MIMIKA TIMUR JAUH');
+INSERT INTO district (id, city_id, name) VALUES ('9412030', '9412', 'MIMIKA BARU');
+INSERT INTO district (id, city_id, name) VALUES ('9412031', '9412', 'KUALA KENCANA');
+INSERT INTO district (id, city_id, name) VALUES ('9412032', '9412', 'TEMBAGAPURA');
+INSERT INTO district (id, city_id, name) VALUES ('9412033', '9412', 'WANIA');
+INSERT INTO district (id, city_id, name) VALUES ('9412034', '9412', 'IWAKA');
+INSERT INTO district (id, city_id, name) VALUES ('9412035', '9412', 'KWAMKI NARAMA');
+INSERT INTO district (id, city_id, name) VALUES ('9412040', '9412', 'AGIMUGA');
+INSERT INTO district (id, city_id, name) VALUES ('9412041', '9412', 'JILA');
+INSERT INTO district (id, city_id, name) VALUES ('9412042', '9412', 'JITA');
+INSERT INTO district (id, city_id, name) VALUES ('9412043', '9412', 'ALAMA');
+INSERT INTO district (id, city_id, name) VALUES ('9412044', '9412', 'HOYA');
+INSERT INTO district (id, city_id, name) VALUES ('9413010', '9413', 'JAIR');
+INSERT INTO district (id, city_id, name) VALUES ('9413011', '9413', 'SUBUR');
+INSERT INTO district (id, city_id, name) VALUES ('9413013', '9413', 'KIA');
+INSERT INTO district (id, city_id, name) VALUES ('9413020', '9413', 'MINDIPTANA');
+INSERT INTO district (id, city_id, name) VALUES ('9413021', '9413', 'INIYANDIT');
+INSERT INTO district (id, city_id, name) VALUES ('9413022', '9413', 'KOMBUT');
+INSERT INTO district (id, city_id, name) VALUES ('9413023', '9413', 'SESNUK');
+INSERT INTO district (id, city_id, name) VALUES ('9413030', '9413', 'MANDOBO');
+INSERT INTO district (id, city_id, name) VALUES ('9413031', '9413', 'FOFI');
+INSERT INTO district (id, city_id, name) VALUES ('9413032', '9413', 'ARIMOP');
+INSERT INTO district (id, city_id, name) VALUES ('9413040', '9413', 'KOUH');
+INSERT INTO district (id, city_id, name) VALUES ('9413041', '9413', 'BOMAKIA');
+INSERT INTO district (id, city_id, name) VALUES ('9413042', '9413', 'FIRIWAGE');
+INSERT INTO district (id, city_id, name) VALUES ('9413043', '9413', 'MANGGELUM');
+INSERT INTO district (id, city_id, name) VALUES ('9413044', '9413', 'YANIRUMA');
+INSERT INTO district (id, city_id, name) VALUES ('9413045', '9413', 'KAWAGIT');
+INSERT INTO district (id, city_id, name) VALUES ('9413046', '9413', 'KOMBAY');
+INSERT INTO district (id, city_id, name) VALUES ('9413050', '9413', 'WAROPKO');
+INSERT INTO district (id, city_id, name) VALUES ('9413051', '9413', 'AMBATKWI');
+INSERT INTO district (id, city_id, name) VALUES ('9413052', '9413', 'NINATI');
+INSERT INTO district (id, city_id, name) VALUES ('9414010', '9414', 'NAMBIOMAN BAPAI');
+INSERT INTO district (id, city_id, name) VALUES ('9414011', '9414', 'MINYAMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9414020', '9414', 'EDERA');
+INSERT INTO district (id, city_id, name) VALUES ('9414021', '9414', 'VENAHA');
+INSERT INTO district (id, city_id, name) VALUES ('9414022', '9414', 'SYAHCAME');
+INSERT INTO district (id, city_id, name) VALUES ('9414023', '9414', 'BAMGI');
+INSERT INTO district (id, city_id, name) VALUES ('9414024', '9414', 'YAKOMI');
+INSERT INTO district (id, city_id, name) VALUES ('9414030', '9414', 'OBAA');
+INSERT INTO district (id, city_id, name) VALUES ('9414031', '9414', 'PASSUE');
+INSERT INTO district (id, city_id, name) VALUES ('9414040', '9414', 'HAJU');
+INSERT INTO district (id, city_id, name) VALUES ('9414050', '9414', 'ASSUE');
+INSERT INTO district (id, city_id, name) VALUES ('9414060', '9414', 'CITAKMITAK');
+INSERT INTO district (id, city_id, name) VALUES ('9414061', '9414', 'KAIBAR');
+INSERT INTO district (id, city_id, name) VALUES ('9414062', '9414', 'PASSUE BAWAH');
+INSERT INTO district (id, city_id, name) VALUES ('9414063', '9414', 'TI-ZAIN');
+INSERT INTO district (id, city_id, name) VALUES ('9415010', '9415', 'PANTAI KASUARI');
+INSERT INTO district (id, city_id, name) VALUES ('9415011', '9415', 'KOPAY');
+INSERT INTO district (id, city_id, name) VALUES ('9415012', '9415', 'DER KOUMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9415013', '9415', 'SAFAN');
+INSERT INTO district (id, city_id, name) VALUES ('9415014', '9415', 'AWYU');
+INSERT INTO district (id, city_id, name) VALUES ('9415020', '9415', 'FAYIT');
+INSERT INTO district (id, city_id, name) VALUES ('9415021', '9415', 'ASWI');
+INSERT INTO district (id, city_id, name) VALUES ('9415030', '9415', 'ATSY');
+INSERT INTO district (id, city_id, name) VALUES ('9415031', '9415', 'SIRETS');
+INSERT INTO district (id, city_id, name) VALUES ('9415032', '9415', 'AYIP');
+INSERT INTO district (id, city_id, name) VALUES ('9415033', '9415', 'BECTBAMU');
+INSERT INTO district (id, city_id, name) VALUES ('9415040', '9415', 'SUATOR');
+INSERT INTO district (id, city_id, name) VALUES ('9415041', '9415', 'KOLF BRAZA');
+INSERT INTO district (id, city_id, name) VALUES ('9415042', '9415', 'JOUTU');
+INSERT INTO district (id, city_id, name) VALUES ('9415043', '9415', 'KOROWAY BULUANOP');
+INSERT INTO district (id, city_id, name) VALUES ('9415050', '9415', 'AKAT');
+INSERT INTO district (id, city_id, name) VALUES ('9415051', '9415', 'JETSY');
+INSERT INTO district (id, city_id, name) VALUES ('9415060', '9415', 'AGATS');
+INSERT INTO district (id, city_id, name) VALUES ('9415070', '9415', 'SAWA ERMA');
+INSERT INTO district (id, city_id, name) VALUES ('9415071', '9415', 'SURU-SURU');
+INSERT INTO district (id, city_id, name) VALUES ('9415072', '9415', 'UNIR SIRAU');
+INSERT INTO district (id, city_id, name) VALUES ('9415073', '9415', 'JOERAT');
+INSERT INTO district (id, city_id, name) VALUES ('9415074', '9415', 'PULAU TIGA');
+INSERT INTO district (id, city_id, name) VALUES ('9416010', '9416', 'KURIMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416011', '9416', 'MUSAIK');
+INSERT INTO district (id, city_id, name) VALUES ('9416013', '9416', 'DEKAI');
+INSERT INTO district (id, city_id, name) VALUES ('9416014', '9416', 'OBIO');
+INSERT INTO district (id, city_id, name) VALUES ('9416015', '9416', 'PASEMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416016', '9416', 'AMUMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416017', '9416', 'SURU-SURU');
+INSERT INTO district (id, city_id, name) VALUES ('9416018', '9416', 'WUSAMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416019', '9416', 'SILIMO');
+INSERT INTO district (id, city_id, name) VALUES ('9416020', '9416', 'NINIA');
+INSERT INTO district (id, city_id, name) VALUES ('9416021', '9416', 'HOLUWON');
+INSERT INTO district (id, city_id, name) VALUES ('9416022', '9416', 'LOLAT');
+INSERT INTO district (id, city_id, name) VALUES ('9416023', '9416', 'LANGDA');
+INSERT INTO district (id, city_id, name) VALUES ('9416024', '9416', 'BOMELA');
+INSERT INTO district (id, city_id, name) VALUES ('9416025', '9416', 'SUNTAMON');
+INSERT INTO district (id, city_id, name) VALUES ('9416026', '9416', 'SOBAHAM');
+INSERT INTO district (id, city_id, name) VALUES ('9416027', '9416', 'KORUPUN');
+INSERT INTO district (id, city_id, name) VALUES ('9416028', '9416', 'SELA');
+INSERT INTO district (id, city_id, name) VALUES ('9416029', '9416', 'KWELAMDUA');
+INSERT INTO district (id, city_id, name) VALUES ('9416030', '9416', 'ANGGRUK');
+INSERT INTO district (id, city_id, name) VALUES ('9416031', '9416', 'PANGGEMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416032', '9416', 'WALMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416033', '9416', 'KOSAREK');
+INSERT INTO district (id, city_id, name) VALUES ('9416034', '9416', 'UBAHAK');
+INSERT INTO district (id, city_id, name) VALUES ('9416035', '9416', 'NALCA');
+INSERT INTO district (id, city_id, name) VALUES ('9416036', '9416', 'PULDAMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416037', '9416', 'NIPSAN');
+INSERT INTO district (id, city_id, name) VALUES ('9416041', '9416', 'SAMENAGE');
+INSERT INTO district (id, city_id, name) VALUES ('9416042', '9416', 'TANGMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416043', '9416', 'SOBA');
+INSERT INTO district (id, city_id, name) VALUES ('9416044', '9416', 'MUGI');
+INSERT INTO district (id, city_id, name) VALUES ('9416045', '9416', 'YOGOSEM');
+INSERT INTO district (id, city_id, name) VALUES ('9416046', '9416', 'KAYO');
+INSERT INTO district (id, city_id, name) VALUES ('9416047', '9416', 'SUMO');
+INSERT INTO district (id, city_id, name) VALUES ('9416048', '9416', 'HOGIO');
+INSERT INTO district (id, city_id, name) VALUES ('9416049', '9416', 'UKHA');
+INSERT INTO district (id, city_id, name) VALUES ('9416051', '9416', 'WERIMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416052', '9416', 'SOLOIKMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416053', '9416', 'SERADALA');
+INSERT INTO district (id, city_id, name) VALUES ('9416054', '9416', 'KABIANGGAMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416055', '9416', 'KWIKMA');
+INSERT INTO district (id, city_id, name) VALUES ('9416056', '9416', 'HILIPUK');
+INSERT INTO district (id, city_id, name) VALUES ('9416057', '9416', 'YAHULIAMBUT');
+INSERT INTO district (id, city_id, name) VALUES ('9416058', '9416', 'HEREAPINI');
+INSERT INTO district (id, city_id, name) VALUES ('9416059', '9416', 'UBALIHI');
+INSERT INTO district (id, city_id, name) VALUES ('9416061', '9416', 'TALAMBO');
+INSERT INTO district (id, city_id, name) VALUES ('9416062', '9416', 'PRONGGOLI');
+INSERT INTO district (id, city_id, name) VALUES ('9416063', '9416', 'ENDOMEN');
+INSERT INTO district (id, city_id, name) VALUES ('9416065', '9416', 'KONA');
+INSERT INTO district (id, city_id, name) VALUES ('9416066', '9416', 'DURAM');
+INSERT INTO district (id, city_id, name) VALUES ('9416067', '9416', 'DIRWEMNA');
+INSERT INTO district (id, city_id, name) VALUES ('9417010', '9417', 'IWUR');
+INSERT INTO district (id, city_id, name) VALUES ('9417011', '9417', 'KAWOR');
+INSERT INTO district (id, city_id, name) VALUES ('9417012', '9417', 'TARUP');
+INSERT INTO district (id, city_id, name) VALUES ('9417013', '9417', 'AWINBON');
+INSERT INTO district (id, city_id, name) VALUES ('9417020', '9417', 'OKSIBIL');
+INSERT INTO district (id, city_id, name) VALUES ('9417021', '9417', 'PEPERA');
+INSERT INTO district (id, city_id, name) VALUES ('9417022', '9417', 'ALEMSOM');
+INSERT INTO district (id, city_id, name) VALUES ('9417023', '9417', 'SERAMBAKON');
+INSERT INTO district (id, city_id, name) VALUES ('9417024', '9417', 'KOLOMDOL');
+INSERT INTO district (id, city_id, name) VALUES ('9417025', '9417', 'OKSOP');
+INSERT INTO district (id, city_id, name) VALUES ('9417026', '9417', 'OK BAPE');
+INSERT INTO district (id, city_id, name) VALUES ('9417027', '9417', 'OK AON');
+INSERT INTO district (id, city_id, name) VALUES ('9417030', '9417', 'BORME');
+INSERT INTO district (id, city_id, name) VALUES ('9417031', '9417', 'BIME');
+INSERT INTO district (id, city_id, name) VALUES ('9417032', '9417', 'EPUMEK');
+INSERT INTO district (id, city_id, name) VALUES ('9417033', '9417', 'WEIME');
+INSERT INTO district (id, city_id, name) VALUES ('9417034', '9417', 'PAMEK');
+INSERT INTO district (id, city_id, name) VALUES ('9417035', '9417', 'NONGME');
+INSERT INTO district (id, city_id, name) VALUES ('9417036', '9417', 'BATANI');
+INSERT INTO district (id, city_id, name) VALUES ('9417040', '9417', 'OKBI');
+INSERT INTO district (id, city_id, name) VALUES ('9417041', '9417', 'ABOY');
+INSERT INTO district (id, city_id, name) VALUES ('9417042', '9417', 'OKBAB');
+INSERT INTO district (id, city_id, name) VALUES ('9417043', '9417', 'TEIRAPLU');
+INSERT INTO district (id, city_id, name) VALUES ('9417044', '9417', 'YEFTA');
+INSERT INTO district (id, city_id, name) VALUES ('9417050', '9417', 'KIWIROK');
+INSERT INTO district (id, city_id, name) VALUES ('9417051', '9417', 'KIWIROK TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9417052', '9417', 'OKSEBANG');
+INSERT INTO district (id, city_id, name) VALUES ('9417053', '9417', 'OKHIKA');
+INSERT INTO district (id, city_id, name) VALUES ('9417054', '9417', 'OKLIP');
+INSERT INTO district (id, city_id, name) VALUES ('9417055', '9417', 'OKSAMOL');
+INSERT INTO district (id, city_id, name) VALUES ('9417056', '9417', 'OKBEMTA');
+INSERT INTO district (id, city_id, name) VALUES ('9417060', '9417', 'BATOM');
+INSERT INTO district (id, city_id, name) VALUES ('9417061', '9417', 'MURKIM');
+INSERT INTO district (id, city_id, name) VALUES ('9417062', '9417', 'MOFINOP');
+INSERT INTO district (id, city_id, name) VALUES ('9418010', '9418', 'KANGGIME');
+INSERT INTO district (id, city_id, name) VALUES ('9418011', '9418', 'WONIKI');
+INSERT INTO district (id, city_id, name) VALUES ('9418012', '9418', 'NABUNAGE');
+INSERT INTO district (id, city_id, name) VALUES ('9418013', '9418', 'GILUBANDU');
+INSERT INTO district (id, city_id, name) VALUES ('9418014', '9418', 'WAKUO');
+INSERT INTO district (id, city_id, name) VALUES ('9418015', '9418', 'AWEKU');
+INSERT INTO district (id, city_id, name) VALUES ('9418016', '9418', 'BOGONUK');
+INSERT INTO district (id, city_id, name) VALUES ('9418020', '9418', 'KARUBAGA');
+INSERT INTO district (id, city_id, name) VALUES ('9418021', '9418', 'GOYAGE');
+INSERT INTO district (id, city_id, name) VALUES ('9418022', '9418', 'WUNIN');
+INSERT INTO district (id, city_id, name) VALUES ('9418023', '9418', 'KONDAGA');
+INSERT INTO district (id, city_id, name) VALUES ('9418024', '9418', 'NELAWI');
+INSERT INTO district (id, city_id, name) VALUES ('9418025', '9418', 'KUARI');
+INSERT INTO district (id, city_id, name) VALUES ('9418026', '9418', 'LIANOGOMA');
+INSERT INTO district (id, city_id, name) VALUES ('9418027', '9418', 'BIUK');
+INSERT INTO district (id, city_id, name) VALUES ('9418030', '9418', 'BOKONDINI');
+INSERT INTO district (id, city_id, name) VALUES ('9418031', '9418', 'BOKONERI');
+INSERT INTO district (id, city_id, name) VALUES ('9418032', '9418', 'BEWANI');
+INSERT INTO district (id, city_id, name) VALUES ('9418040', '9418', 'KEMBU');
+INSERT INTO district (id, city_id, name) VALUES ('9418041', '9418', 'WINA');
+INSERT INTO district (id, city_id, name) VALUES ('9418042', '9418', 'UMAGI');
+INSERT INTO district (id, city_id, name) VALUES ('9418043', '9418', 'PANAGA');
+INSERT INTO district (id, city_id, name) VALUES ('9418044', '9418', 'POGANERI');
+INSERT INTO district (id, city_id, name) VALUES ('9418045', '9418', 'KAMBONERI');
+INSERT INTO district (id, city_id, name) VALUES ('9418046', '9418', 'AIR GARAM');
+INSERT INTO district (id, city_id, name) VALUES ('9418047', '9418', 'DOW');
+INSERT INTO district (id, city_id, name) VALUES ('9418048', '9418', 'WARI / TAIYEVE');
+INSERT INTO district (id, city_id, name) VALUES ('9418049', '9418', 'EGIAM');
+INSERT INTO district (id, city_id, name) VALUES ('9418051', '9418', 'NUNGGAWI');
+INSERT INTO district (id, city_id, name) VALUES ('9418060', '9418', 'KUBU');
+INSERT INTO district (id, city_id, name) VALUES ('9418061', '9418', 'ANAWI');
+INSERT INTO district (id, city_id, name) VALUES ('9418062', '9418', 'WUGI');
+INSERT INTO district (id, city_id, name) VALUES ('9418070', '9418', 'GEYA');
+INSERT INTO district (id, city_id, name) VALUES ('9418071', '9418', 'WENAM');
+INSERT INTO district (id, city_id, name) VALUES ('9418080', '9418', 'NUMBA');
+INSERT INTO district (id, city_id, name) VALUES ('9418081', '9418', 'KAI');
+INSERT INTO district (id, city_id, name) VALUES ('9418090', '9418', 'DUNDU');
+INSERT INTO district (id, city_id, name) VALUES ('9418100', '9418', 'GUNDAGI');
+INSERT INTO district (id, city_id, name) VALUES ('9418110', '9418', 'TIMORI');
+INSERT INTO district (id, city_id, name) VALUES ('9418121', '9418', 'YUNERI');
+INSERT INTO district (id, city_id, name) VALUES ('9418125', '9418', 'TAGIME');
+INSERT INTO district (id, city_id, name) VALUES ('9418126', '9418', 'DANIME');
+INSERT INTO district (id, city_id, name) VALUES ('9418127', '9418', 'YUKO');
+INSERT INTO district (id, city_id, name) VALUES ('9418541', '9418', 'TELENGGEME');
+INSERT INTO district (id, city_id, name) VALUES ('9418542', '9418', 'GIKA');
+INSERT INTO district (id, city_id, name) VALUES ('9418543', '9418', 'TAGINERI');
+INSERT INTO district (id, city_id, name) VALUES ('9419021', '9419', 'PANTAI TIMUR BAGIAN BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9419022', '9419', 'PANTAI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9419024', '9419', 'SUNGAI BIRI');
+INSERT INTO district (id, city_id, name) VALUES ('9419025', '9419', 'VEEN');
+INSERT INTO district (id, city_id, name) VALUES ('9419031', '9419', 'BONGGO');
+INSERT INTO district (id, city_id, name) VALUES ('9419032', '9419', 'BONGGO TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9419033', '9419', 'BONGGO BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9419040', '9419', 'TOR ATAS');
+INSERT INTO district (id, city_id, name) VALUES ('9419041', '9419', 'ISMARI');
+INSERT INTO district (id, city_id, name) VALUES ('9419050', '9419', 'SARMI');
+INSERT INTO district (id, city_id, name) VALUES ('9419051', '9419', 'SARMI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9419052', '9419', 'SARMI SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9419053', '9419', 'SOBEY');
+INSERT INTO district (id, city_id, name) VALUES ('9419054', '9419', 'MUARA TOR');
+INSERT INTO district (id, city_id, name) VALUES ('9419055', '9419', 'VERKAM');
+INSERT INTO district (id, city_id, name) VALUES ('9419060', '9419', 'PANTAI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9419061', '9419', 'APAWER HULU');
+INSERT INTO district (id, city_id, name) VALUES ('9419062', '9419', 'APAWER HILIR');
+INSERT INTO district (id, city_id, name) VALUES ('9419063', '9419', 'APAWER TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9420010', '9420', 'WEB');
+INSERT INTO district (id, city_id, name) VALUES ('9420011', '9420', 'TOWE');
+INSERT INTO district (id, city_id, name) VALUES ('9420012', '9420', 'YAFFI');
+INSERT INTO district (id, city_id, name) VALUES ('9420020', '9420', 'SENGGI');
+INSERT INTO district (id, city_id, name) VALUES ('9420021', '9420', 'KAISENAR');
+INSERT INTO district (id, city_id, name) VALUES ('9420030', '9420', 'WARIS');
+INSERT INTO district (id, city_id, name) VALUES ('9420040', '9420', 'ARSO');
+INSERT INTO district (id, city_id, name) VALUES ('9420041', '9420', 'ARSO TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9420042', '9420', 'ARSO BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9420043', '9420', 'MANNEM');
+INSERT INTO district (id, city_id, name) VALUES ('9420050', '9420', 'SKANTO');
+INSERT INTO district (id, city_id, name) VALUES ('9426010', '9426', 'WAROPEN BAWAH');
+INSERT INTO district (id, city_id, name) VALUES ('9426011', '9426', 'INGGERUS');
+INSERT INTO district (id, city_id, name) VALUES ('9426012', '9426', 'UREI FAISEI');
+INSERT INTO district (id, city_id, name) VALUES ('9426013', '9426', 'OUDATE');
+INSERT INTO district (id, city_id, name) VALUES ('9426014', '9426', 'WAPOGA');
+INSERT INTO district (id, city_id, name) VALUES ('9426020', '9426', 'MASIREI');
+INSERT INTO district (id, city_id, name) VALUES ('9426021', '9426', 'RISEI SAYATI');
+INSERT INTO district (id, city_id, name) VALUES ('9426022', '9426', 'DEMBA');
+INSERT INTO district (id, city_id, name) VALUES ('9426023', '9426', 'SOYOI MAMBAI');
+INSERT INTO district (id, city_id, name) VALUES ('9426024', '9426', 'WONTI');
+INSERT INTO district (id, city_id, name) VALUES ('9426030', '9426', 'WALANI');
+INSERT INTO district (id, city_id, name) VALUES ('9426040', '9426', 'KIRIHI');
+INSERT INTO district (id, city_id, name) VALUES ('9427010', '9427', 'SUPIORI SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9427011', '9427', 'KEPULAUAN ARURI');
+INSERT INTO district (id, city_id, name) VALUES ('9427020', '9427', 'SUPIORI UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9427021', '9427', 'SUPIORI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9427030', '9427', 'SUPIORI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9428030', '9428', 'WAROPEN ATAS');
+INSERT INTO district (id, city_id, name) VALUES ('9428031', '9428', 'BENUKI');
+INSERT INTO district (id, city_id, name) VALUES ('9428032', '9428', 'SAWAI');
+INSERT INTO district (id, city_id, name) VALUES ('9428040', '9428', 'MAMBERAMO ILIR');
+INSERT INTO district (id, city_id, name) VALUES ('9428050', '9428', 'MAMBERAMO TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9428051', '9428', 'IWASO');
+INSERT INTO district (id, city_id, name) VALUES ('9428060', '9428', 'MAMBERAMO TENGAH TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9428070', '9428', 'ROFAER');
+INSERT INTO district (id, city_id, name) VALUES ('9428080', '9428', 'MAMBERAMO ULU');
+INSERT INTO district (id, city_id, name) VALUES ('9429010', '9429', 'WOSAK');
+INSERT INTO district (id, city_id, name) VALUES ('9429011', '9429', 'MOBA');
+INSERT INTO district (id, city_id, name) VALUES ('9429012', '9429', 'PIJA');
+INSERT INTO district (id, city_id, name) VALUES ('9429013', '9429', 'KORA');
+INSERT INTO district (id, city_id, name) VALUES ('9429020', '9429', 'KENYAM');
+INSERT INTO district (id, city_id, name) VALUES ('9429021', '9429', 'MBUWA TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9429022', '9429', 'KREPKURI');
+INSERT INTO district (id, city_id, name) VALUES ('9429023', '9429', 'EMBETPEM');
+INSERT INTO district (id, city_id, name) VALUES ('9429030', '9429', 'GESELMA');
+INSERT INTO district (id, city_id, name) VALUES ('9429031', '9429', 'KILMID');
+INSERT INTO district (id, city_id, name) VALUES ('9429032', '9429', 'YENGGELO');
+INSERT INTO district (id, city_id, name) VALUES ('9429033', '9429', 'ALAMA');
+INSERT INTO district (id, city_id, name) VALUES ('9429034', '9429', 'MEBOROK');
+INSERT INTO district (id, city_id, name) VALUES ('9429040', '9429', 'MAPENDUMA');
+INSERT INTO district (id, city_id, name) VALUES ('9429041', '9429', 'KROPTAK');
+INSERT INTO district (id, city_id, name) VALUES ('9429042', '9429', 'PARO');
+INSERT INTO district (id, city_id, name) VALUES ('9429043', '9429', 'KEGAYEM');
+INSERT INTO district (id, city_id, name) VALUES ('9429050', '9429', 'MUGI');
+INSERT INTO district (id, city_id, name) VALUES ('9429051', '9429', 'YAL');
+INSERT INTO district (id, city_id, name) VALUES ('9429052', '9429', 'MAM');
+INSERT INTO district (id, city_id, name) VALUES ('9429060', '9429', 'YIGI');
+INSERT INTO district (id, city_id, name) VALUES ('9429061', '9429', 'DAL');
+INSERT INTO district (id, city_id, name) VALUES ('9429062', '9429', 'NIRKURI');
+INSERT INTO district (id, city_id, name) VALUES ('9429063', '9429', 'INIKGAL');
+INSERT INTO district (id, city_id, name) VALUES ('9429070', '9429', 'MBUWA');
+INSERT INTO district (id, city_id, name) VALUES ('9429071', '9429', 'INIYE');
+INSERT INTO district (id, city_id, name) VALUES ('9429072', '9429', 'WUTPAGA');
+INSERT INTO district (id, city_id, name) VALUES ('9429073', '9429', 'NENGGEANGIN');
+INSERT INTO district (id, city_id, name) VALUES ('9429074', '9429', 'MBULMU YALMA');
+INSERT INTO district (id, city_id, name) VALUES ('9429080', '9429', 'GEAREK');
+INSERT INTO district (id, city_id, name) VALUES ('9429081', '9429', 'PASIR PUTIH');
+INSERT INTO district (id, city_id, name) VALUES ('9429082', '9429', 'WUSI');
+INSERT INTO district (id, city_id, name) VALUES ('9430010', '9430', 'MAKKI');
+INSERT INTO district (id, city_id, name) VALUES ('9430011', '9430', 'GUPURA');
+INSERT INTO district (id, city_id, name) VALUES ('9430012', '9430', 'KOLAWA');
+INSERT INTO district (id, city_id, name) VALUES ('9430013', '9430', 'GELOK BEAM');
+INSERT INTO district (id, city_id, name) VALUES ('9430014', '9430', 'AWINA');
+INSERT INTO district (id, city_id, name) VALUES ('9430020', '9430', 'PIRIME');
+INSERT INTO district (id, city_id, name) VALUES ('9430021', '9430', 'BUGUK GONA');
+INSERT INTO district (id, city_id, name) VALUES ('9430022', '9430', 'MILIMBO');
+INSERT INTO district (id, city_id, name) VALUES ('9430023', '9430', 'GOLLO');
+INSERT INTO district (id, city_id, name) VALUES ('9430024', '9430', 'WIRINGGABUT');
+INSERT INTO district (id, city_id, name) VALUES ('9430030', '9430', 'TIOM');
+INSERT INTO district (id, city_id, name) VALUES ('9430031', '9430', 'NOGI');
+INSERT INTO district (id, city_id, name) VALUES ('9430032', '9430', 'MOKONI');
+INSERT INTO district (id, city_id, name) VALUES ('9430033', '9430', 'NINAME');
+INSERT INTO district (id, city_id, name) VALUES ('9430034', '9430', 'YIGINUA');
+INSERT INTO district (id, city_id, name) VALUES ('9430035', '9430', 'TIOM OLLO');
+INSERT INTO district (id, city_id, name) VALUES ('9430036', '9430', 'YUGUNWI');
+INSERT INTO district (id, city_id, name) VALUES ('9430037', '9430', 'LANNYNA');
+INSERT INTO district (id, city_id, name) VALUES ('9430040', '9430', 'BALINGGA');
+INSERT INTO district (id, city_id, name) VALUES ('9430041', '9430', 'BALINGGA BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9430042', '9430', 'BRUWA');
+INSERT INTO district (id, city_id, name) VALUES ('9430043', '9430', 'AYUMNATI');
+INSERT INTO district (id, city_id, name) VALUES ('9430050', '9430', 'KUYAWAGE');
+INSERT INTO district (id, city_id, name) VALUES ('9430051', '9430', 'WANO BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9430060', '9430', 'MALAGAINERI');
+INSERT INTO district (id, city_id, name) VALUES ('9430061', '9430', 'MELAGAI');
+INSERT INTO district (id, city_id, name) VALUES ('9430070', '9430', 'TIOMNERI');
+INSERT INTO district (id, city_id, name) VALUES ('9430071', '9430', 'WEREKA');
+INSERT INTO district (id, city_id, name) VALUES ('9430080', '9430', 'DIMBA');
+INSERT INTO district (id, city_id, name) VALUES ('9430081', '9430', 'KELULOME');
+INSERT INTO district (id, city_id, name) VALUES ('9430082', '9430', 'NIKOGWE');
+INSERT INTO district (id, city_id, name) VALUES ('9430090', '9430', 'GAMELIA');
+INSERT INTO district (id, city_id, name) VALUES ('9430091', '9430', 'KARU');
+INSERT INTO district (id, city_id, name) VALUES ('9430092', '9430', 'YILUK');
+INSERT INTO district (id, city_id, name) VALUES ('9430093', '9430', 'GUNA');
+INSERT INTO district (id, city_id, name) VALUES ('9430100', '9430', 'POGA');
+INSERT INTO district (id, city_id, name) VALUES ('9430101', '9430', 'MUARA');
+INSERT INTO district (id, city_id, name) VALUES ('9431010', '9431', 'KOBAKMA');
+INSERT INTO district (id, city_id, name) VALUES ('9431020', '9431', 'ILUGWA');
+INSERT INTO district (id, city_id, name) VALUES ('9431030', '9431', 'KELILA');
+INSERT INTO district (id, city_id, name) VALUES ('9431040', '9431', 'ERAGAYAM');
+INSERT INTO district (id, city_id, name) VALUES ('9431050', '9431', 'MEGAMBILIS');
+INSERT INTO district (id, city_id, name) VALUES ('9432010', '9432', 'WELAREK');
+INSERT INTO district (id, city_id, name) VALUES ('9432020', '9432', 'APALAPSILI');
+INSERT INTO district (id, city_id, name) VALUES ('9432030', '9432', 'ABENAHO');
+INSERT INTO district (id, city_id, name) VALUES ('9432040', '9432', 'ELELIM');
+INSERT INTO district (id, city_id, name) VALUES ('9432050', '9432', 'BENAWA');
+INSERT INTO district (id, city_id, name) VALUES ('9433010', '9433', 'AGADUGUME');
+INSERT INTO district (id, city_id, name) VALUES ('9433011', '9433', 'LAMBEWI');
+INSERT INTO district (id, city_id, name) VALUES ('9433012', '9433', 'ONERI');
+INSERT INTO district (id, city_id, name) VALUES ('9433020', '9433', 'GOME');
+INSERT INTO district (id, city_id, name) VALUES ('9433021', '9433', 'AMUNGKALPIA');
+INSERT INTO district (id, city_id, name) VALUES ('9433022', '9433', 'GOME UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9433023', '9433', 'ERELMAKAWIA');
+INSERT INTO district (id, city_id, name) VALUES ('9433030', '9433', 'ILAGA');
+INSERT INTO district (id, city_id, name) VALUES ('9433031', '9433', 'ILAGA UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9433032', '9433', 'MABUGI');
+INSERT INTO district (id, city_id, name) VALUES ('9433033', '9433', 'OMUKIA');
+INSERT INTO district (id, city_id, name) VALUES ('9433040', '9433', 'SINAK');
+INSERT INTO district (id, city_id, name) VALUES ('9433041', '9433', 'SINAK BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9433042', '9433', 'MAGEÁBUME');
+INSERT INTO district (id, city_id, name) VALUES ('9433043', '9433', 'YUGUMUAK');
+INSERT INTO district (id, city_id, name) VALUES ('9433050', '9433', 'POGOMA');
+INSERT INTO district (id, city_id, name) VALUES ('9433051', '9433', 'KEMBRU');
+INSERT INTO district (id, city_id, name) VALUES ('9433052', '9433', 'BINA');
+INSERT INTO district (id, city_id, name) VALUES ('9433060', '9433', 'WANGBE');
+INSERT INTO district (id, city_id, name) VALUES ('9433061', '9433', 'OGAMANIM');
+INSERT INTO district (id, city_id, name) VALUES ('9433070', '9433', 'BEOGA');
+INSERT INTO district (id, city_id, name) VALUES ('9433071', '9433', 'BEOGA BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9433072', '9433', 'BEOGA TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9433080', '9433', 'DOUFO');
+INSERT INTO district (id, city_id, name) VALUES ('9433081', '9433', 'DERVOS');
+INSERT INTO district (id, city_id, name) VALUES ('9434010', '9434', 'SUKIKAI SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9434020', '9434', 'PIYAIYE');
+INSERT INTO district (id, city_id, name) VALUES ('9434030', '9434', 'MAPIA BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9434040', '9434', 'MAPIA TENGAH');
+INSERT INTO district (id, city_id, name) VALUES ('9434050', '9434', 'MAPIA');
+INSERT INTO district (id, city_id, name) VALUES ('9434060', '9434', 'DOGIYAI');
+INSERT INTO district (id, city_id, name) VALUES ('9434070', '9434', 'KAMU SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9434080', '9434', 'KAMU');
+INSERT INTO district (id, city_id, name) VALUES ('9434090', '9434', 'KAMU TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9434100', '9434', 'KAMU UTARA');
+INSERT INTO district (id, city_id, name) VALUES ('9435010', '9435', 'HOMEYO');
+INSERT INTO district (id, city_id, name) VALUES ('9435020', '9435', 'SUGAPA');
+INSERT INTO district (id, city_id, name) VALUES ('9435030', '9435', 'HITADIPA');
+INSERT INTO district (id, city_id, name) VALUES ('9435040', '9435', 'AGISIGA');
+INSERT INTO district (id, city_id, name) VALUES ('9435050', '9435', 'BIANDOGA');
+INSERT INTO district (id, city_id, name) VALUES ('9435060', '9435', 'WANDAI');
+INSERT INTO district (id, city_id, name) VALUES ('9436010', '9436', 'KAPIRAYA');
+INSERT INTO district (id, city_id, name) VALUES ('9436020', '9436', 'TIGI BARAT');
+INSERT INTO district (id, city_id, name) VALUES ('9436030', '9436', 'TIGI');
+INSERT INTO district (id, city_id, name) VALUES ('9436040', '9436', 'TIGI TIMUR');
+INSERT INTO district (id, city_id, name) VALUES ('9436050', '9436', 'BOWOBADO');
+INSERT INTO district (id, city_id, name) VALUES ('9471010', '9471', 'MUARA TAMI');
+INSERT INTO district (id, city_id, name) VALUES ('9471020', '9471', 'ABEPURA');
+INSERT INTO district (id, city_id, name) VALUES ('9471021', '9471', 'HERAM');
+INSERT INTO district (id, city_id, name) VALUES ('9471030', '9471', 'JAYAPURA SELATAN');
+INSERT INTO district (id, city_id, name) VALUES ('9471040', '9471', 'JAYAPURA UTARA');
