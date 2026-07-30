@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
@@ -321,6 +322,7 @@ func parseBiteshipOrderResponse(body []byte) (service.Shipment, error) {
 		WaybillID:         orderResp.Courier.WaybillID,
 		Status:            orderResp.Status,
 		CourierDriverName: orderResp.Courier.DriverName,
+		StatusUpdatedAt:   orderResp.UpdatedAt,
 	}, nil
 }
 
@@ -361,7 +363,13 @@ type biteshipOrderResponse struct {
 	ID          string `json:"id"`
 	ReferenceID string `json:"reference_id"`
 	Status      string `json:"status"`
-	Courier     struct {
+	// UpdatedAt sources order_shipment_events.occurred_at (FR-C-12).
+	// TODO: uncertain — Biteship's public docs don't confirm this field name
+	// on GET /v1/orders/:id; verify against a live response, same as OrderID
+	// below. A missing/unparseable value must fall back to something
+	// deterministic in the caller, never time.Now().
+	UpdatedAt time.Time `json:"updated_at"`
+	Courier   struct {
 		WaybillID  string `json:"waybill_id"`
 		DriverName string `json:"driver_name"`
 	} `json:"courier"`

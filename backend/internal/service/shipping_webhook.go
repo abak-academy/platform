@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -16,12 +15,10 @@ import (
 // Biteship does not sign its webhooks — the static shared header compared
 // in HandleShippingWebhook is the only authentication mechanism it has — so
 // nothing here is trusted as the shipment's state. OrderID only locates our
-// row; UpdatedAt only correlates this specific ping so a replay lands on
-// the same order_shipment_events row. Status is intentionally never read:
-// the re-fetch below is what actually lands (FR-C-12).
+// row. Status and any timestamp are intentionally never read from the body:
+// the re-fetch below is what actually lands, including occurred_at (FR-C-12).
 type biteshipWebhookPayload struct {
-	OrderID   string    `json:"order_id"`
-	UpdatedAt time.Time `json:"updated_at"`
+	OrderID string `json:"order_id"`
 }
 
 // getWebhookSecret reads and decrypts biteship_webhook_secret from
@@ -85,9 +82,20 @@ func (s *Service) HandleShippingWebhook(ctx context.Context, payload []byte, sig
 		return err
 	}
 
-	occurredAt := ping.UpdatedAt
+	// occurredAt must be deterministic per order so a replay lands on the same
+	// order_shipment_events row (FR-C-13) — time.Now() here reproduces the
+	// exact bug this fixes: every retry gets a fresh value and the
+	// UNIQUE(order_id, status, occurred_at) guard never fires. order.ShippedAt
+	// is stable once set and is the only way an order gets a biteship_order_id
+	// to be looked up by in the first place; order.CreatedAt is the
+	// belt-and-braces fallback if it's somehow unset.
+	occurredAt := shipment.StatusUpdatedAt
 	if occurredAt.IsZero() {
-		occurredAt = time.Now()
+		if order.ShippedAt != nil {
+			occurredAt = *order.ShippedAt
+		} else {
+			occurredAt = order.CreatedAt
+		}
 	}
 
 	event := model.OrderShipmentEvent{

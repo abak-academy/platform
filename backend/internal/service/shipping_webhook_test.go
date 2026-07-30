@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
-	"time"
 
 	"akademi-bimbel/config"
 	"akademi-bimbel/internal/repository"
@@ -100,12 +99,14 @@ func seedShippedOrder(t *testing.T, svc *Service, repo *repository.Repository, b
 	return order.ID
 }
 
-func shipWebhookBody(t *testing.T, orderID string, updatedAt time.Time) []byte {
+// shipWebhookBody builds the real Biteship ping shape: order_id plus an
+// untrusted status. It deliberately carries no timestamp — production code
+// must never source occurred_at from the body (FR-C-12).
+func shipWebhookBody(t *testing.T, orderID string) []byte {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"order_id":   orderID,
-		"status":     "confirmed", // deliberately untrusted — see FR-C-12
-		"updated_at": updatedAt,
+		"order_id": orderID,
+		"status":   "confirmed", // deliberately untrusted — see FR-C-12
 	})
 	if err != nil {
 		t.Fatalf("marshal webhook body: %v", err)
@@ -120,7 +121,7 @@ func TestHandleShippingWebhook_WrongSignatureRejectedNothingWritten(t *testing.T
 	orderID := seedShippedOrder(t, svc, repo, "biteship-wrong-sig")
 	ctx := context.Background()
 
-	body := shipWebhookBody(t, "biteship-wrong-sig", time.Now())
+	body := shipWebhookBody(t, "biteship-wrong-sig")
 	err := svc.HandleShippingWebhook(ctx, body, "totally-wrong-signature")
 	if !errors.Is(err, ErrInvalidSignature) {
 		t.Fatalf("want ErrInvalidSignature, got %v", err)
@@ -156,7 +157,7 @@ func TestHandleShippingWebhook_EmptySecretRejectsAnyHeader(t *testing.T) {
 	orderID := seedShippedOrder(t, svc, repo, "biteship-empty-secret")
 	ctx := context.Background()
 
-	body := shipWebhookBody(t, "biteship-empty-secret", time.Now())
+	body := shipWebhookBody(t, "biteship-empty-secret")
 	for _, header := range []string{"", "anything-at-all"} {
 		err := svc.HandleShippingWebhook(ctx, body, header)
 		if !errors.Is(err, ErrInvalidSignature) {
@@ -190,7 +191,7 @@ func TestHandleShippingWebhook_RefetchedStatusLandsNotBodyStatus(t *testing.T) {
 	orderID := seedShippedOrder(t, svc, repo, "biteship-refetch")
 	ctx := context.Background()
 
-	body := shipWebhookBody(t, "biteship-refetch", time.Now())
+	body := shipWebhookBody(t, "biteship-refetch")
 	if err := svc.HandleShippingWebhook(ctx, body, "correct-secret"); err != nil {
 		t.Fatalf("HandleShippingWebhook: %v", err)
 	}
@@ -218,7 +219,9 @@ func TestHandleShippingWebhook_RefetchedStatusLandsNotBodyStatus(t *testing.T) {
 // TestHandleShippingWebhook_ReplayIsInert proves FR-C-13: a replayed webhook
 // with identical content must not create a second event row and must still
 // report success — the UNIQUE (order_id, status, occurred_at) constraint
-// plus ON CONFLICT DO NOTHING makes the second insert a no-op.
+// plus ON CONFLICT DO NOTHING makes the second insert a no-op. The body
+// carries no timestamp (shipWebhookBody never has one) — occurred_at must
+// come from a deterministic fallback, not the request body.
 func TestHandleShippingWebhook_ReplayIsInert(t *testing.T) {
 	fake := &fakeShipWebhookLogistics{
 		getOrderFn: func(ctx context.Context, biteshipOrderID string) (Shipment, error) {
@@ -230,8 +233,7 @@ func TestHandleShippingWebhook_ReplayIsInert(t *testing.T) {
 	orderID := seedShippedOrder(t, svc, repo, "biteship-replay")
 	ctx := context.Background()
 
-	fixedTime := time.Date(2026, 7, 31, 10, 0, 0, 0, time.UTC)
-	body := shipWebhookBody(t, "biteship-replay", fixedTime)
+	body := shipWebhookBody(t, "biteship-replay")
 
 	if err := svc.HandleShippingWebhook(ctx, body, "correct-secret"); err != nil {
 		t.Fatalf("first call: %v", err)
@@ -249,13 +251,49 @@ func TestHandleShippingWebhook_ReplayIsInert(t *testing.T) {
 	}
 }
 
+// TestHandleShippingWebhook_ReplayInertAcrossManyDeliveriesNoBodyTimestamp is
+// the case that broke the replay guard before this fix: the webhook body
+// carries no timestamp whatsoever (the real Biteship ping shape) and the
+// stubbed GetOrder response also has a zero StatusUpdatedAt, so occurredAt
+// must fall back to something stable for the order rather than time.Now().
+// Delivering the same webhook 3 times must still land exactly 1 event row.
+func TestHandleShippingWebhook_ReplayInertAcrossManyDeliveriesNoBodyTimestamp(t *testing.T) {
+	fake := &fakeShipWebhookLogistics{
+		getOrderFn: func(ctx context.Context, biteshipOrderID string) (Shipment, error) {
+			// No StatusUpdatedAt set — mirrors an adapter that couldn't parse
+			// a timestamp out of Biteship's re-fetch response.
+			return Shipment{BiteshipOrderID: biteshipOrderID, Status: "delivered", WaybillID: "WB-1"}, nil
+		},
+	}
+	svc, repo := newShippingWebhookTestService(t, fake)
+	seedWebhookSecret(t, repo, "correct-secret")
+	orderID := seedShippedOrder(t, svc, repo, "biteship-replay-no-ts")
+	ctx := context.Background()
+
+	body := shipWebhookBody(t, "biteship-replay-no-ts")
+
+	for i := 0; i < 3; i++ {
+		if err := svc.HandleShippingWebhook(ctx, body, "correct-secret"); err != nil {
+			t.Fatalf("delivery %d: want success, got error: %v", i+1, err)
+		}
+	}
+
+	events, err := repo.ListShipmentEvents(ctx, orderID)
+	if err != nil {
+		t.Fatalf("ListShipmentEvents: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("want exactly 1 event after 3 identical deliveries with no timestamp anywhere, got %d", len(events))
+	}
+}
+
 func TestHandleShippingWebhook_UnknownBiteshipOrderIDNotFound(t *testing.T) {
 	fake := &fakeShipWebhookLogistics{}
 	svc, repo := newShippingWebhookTestService(t, fake)
 	seedWebhookSecret(t, repo, "correct-secret")
 	ctx := context.Background()
 
-	body := shipWebhookBody(t, "no-such-biteship-order", time.Now())
+	body := shipWebhookBody(t, "no-such-biteship-order")
 	err := svc.HandleShippingWebhook(ctx, body, "correct-secret")
 	if !errors.Is(err, ErrOrderNotFound) {
 		t.Fatalf("want ErrOrderNotFound, got %v", err)

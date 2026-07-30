@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 type ShippingQuoteRequest struct {
@@ -67,6 +68,11 @@ type Shipment struct {
 	WaybillID         string
 	Status            string
 	CourierDriverName string
+	// StatusUpdatedAt is the re-fetch's own timestamp for this status,
+	// sourced for order_shipment_events.occurred_at (FR-C-12). Zero when the
+	// adapter had nothing parseable — callers must fall back to something
+	// deterministic per order, never time.Now() (FR-C-13).
+	StatusUpdatedAt time.Time
 }
 
 // ErrShipmentAlreadyBooked is the sentinel callers check with errors.Is.
