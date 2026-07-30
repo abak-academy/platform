@@ -7,6 +7,7 @@ import {
   useUpdateBankQuestion,
   useDeleteBankQuestion,
   useImportBankQuestions,
+  useDownloadQuestionImportTemplate,
   adminBankQuestionsKeys,
 } from "./admin-bank-questions";
 import type { AdminQuestionImportResponse } from "@/lib/types";
@@ -18,6 +19,7 @@ vi.mock("@/lib/api", () => ({
   authFetch: (...args: Parameters<typeof mockAuthFetch>) => mockAuthFetch(...args),
   authFetchMultipart: (...args: Parameters<typeof mockAuthFetchMultipart>) =>
     mockAuthFetchMultipart(...args),
+  API_BASE: "http://localhost:8080/api/v1",
   ApiError: class extends Error {
     code: string;
     status: number;
@@ -156,6 +158,54 @@ describe("admin-bank-questions hooks", () => {
     expect(body.get("file")).toBe(file);
     expect(mockAuthFetchMultipart).toHaveBeenCalledWith("/admin/questions/import", expect.any(Object));
     expect(spy).toHaveBeenCalledWith({ queryKey: adminBankQuestionsKeys.lists() });
+  });
+});
+
+describe("useDownloadQuestionImportTemplate", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches the template CSV with the auth header", async () => {
+    const mockBlob = new Blob(["subject,topic\n"], { type: "text/csv" });
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      blob: () => Promise.resolve(mockBlob),
+    });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useDownloadQuestionImportTemplate(), { wrapper });
+
+    let returned: Blob | undefined;
+    await act(async () => {
+      returned = await result.current.mutateAsync();
+    });
+
+    expect(returned).toBe(mockBlob);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://localhost:8080/api/v1/admin/questions/import-template",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer test-token" }),
+      }),
+    );
+  });
+
+  it("throws when the download fails", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+    });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useDownloadQuestionImportTemplate(), { wrapper });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync()).rejects.toThrow();
+    });
   });
 });
 

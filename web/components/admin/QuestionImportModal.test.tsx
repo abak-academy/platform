@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { QuestionImportModal } from "./QuestionImportModal";
 
 const mockImportAsync = vi.fn();
+const mockDownloadAsync = vi.fn();
 const mockOnSuccess = vi.fn();
 const mockOnOpenChange = vi.fn();
 
@@ -12,8 +13,14 @@ let importState = {
   isPending: false,
 };
 
+let downloadState = {
+  mutateAsync: mockDownloadAsync,
+  isPending: false,
+};
+
 vi.mock("@/lib/hooks/admin-bank-questions", () => ({
   useImportBankQuestions: () => importState,
+  useDownloadQuestionImportTemplate: () => downloadState,
 }));
 
 const i18nTemplates: Record<string, string> = {
@@ -27,6 +34,7 @@ const i18nTemplates: Record<string, string> = {
   saving: "Saving…",
   cancel: "Cancel",
   error_generic: "An error occurred.",
+  questions_download_template: "Download Template",
 };
 
 vi.mock("@/lib/i18n", () => ({
@@ -61,7 +69,9 @@ function makeFile() {
 describe("QuestionImportModal", () => {
   beforeEach(() => {
     importState = { mutateAsync: mockImportAsync, isPending: false };
+    downloadState = { mutateAsync: mockDownloadAsync, isPending: false };
     mockImportAsync.mockReset();
+    mockDownloadAsync.mockReset();
     mockOnSuccess.mockReset();
     mockOnOpenChange.mockReset();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
@@ -132,5 +142,68 @@ describe("QuestionImportModal", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Cancel/i }));
     expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  describe("download template", () => {
+    let createObjectURL: ReturnType<typeof vi.fn>;
+    let revokeObjectURL: ReturnType<typeof vi.fn>;
+    let createElementSpy: ReturnType<typeof vi.spyOn>;
+    let anchor: HTMLAnchorElement | undefined;
+
+    beforeEach(() => {
+      anchor = undefined;
+      createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
+      revokeObjectURL = vi.fn();
+      URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
+      URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
+
+      const originalCreateElement = document.createElement.bind(document);
+      createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+        const el = originalCreateElement(tag);
+        if (tag === "a") {
+          anchor = el as HTMLAnchorElement;
+          vi.spyOn(el, "click").mockImplementation(() => {});
+        }
+        return el;
+      });
+    });
+
+    afterEach(() => {
+      createElementSpy.mockRestore();
+    });
+
+    it("downloads the template CSV blob and names the file question_import_template.csv", async () => {
+      const mockBlob = new Blob(["subject,topic\n"], { type: "text/csv" });
+      mockDownloadAsync.mockResolvedValueOnce(mockBlob);
+
+      renderWithClient(
+        <QuestionImportModal open={true} onOpenChange={mockOnOpenChange} onSuccess={mockOnSuccess} />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /Download Template/i }));
+
+      await waitFor(() => {
+        expect(mockDownloadAsync).toHaveBeenCalled();
+        expect(createObjectURL).toHaveBeenCalledWith(mockBlob);
+        expect(anchor?.download).toBe("question_import_template.csv");
+        expect(anchor?.click).toHaveBeenCalled();
+        expect(revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
+      });
+    });
+
+    it("shows an error toast when the download fails", async () => {
+      mockDownloadAsync.mockRejectedValueOnce(new Error("template download failed"));
+
+      renderWithClient(
+        <QuestionImportModal open={true} onOpenChange={mockOnOpenChange} onSuccess={mockOnSuccess} />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /Download Template/i }));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith("template download failed");
+        expect(createObjectURL).not.toHaveBeenCalled();
+      });
+    });
   });
 });

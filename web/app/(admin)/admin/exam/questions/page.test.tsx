@@ -73,6 +73,7 @@ vi.mock("@/lib/hooks/admin-bank-questions", () => ({
   useUpdateBankQuestion: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteBankQuestion: () => ({ mutateAsync: mockDeleteMutateAsync, isPending: false }),
   useImportBankQuestions: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDownloadQuestionImportTemplate: () => ({ mutateAsync: vi.fn(), isPending: false }),
   adminBankQuestionsKeys: {
     all: ["admin", "bank-questions"],
     lists: () => ["admin", "bank-questions", "list"],
