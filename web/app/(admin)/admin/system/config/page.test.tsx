@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import ConfigPage from "./page";
@@ -12,6 +13,8 @@ const translationMap: Record<string, string> = {
   config_shipping_rate_placeholder: "Masukkan tarif dalam rupiah",
   config_shipping_biteship_key: "API Key Biteship",
   config_shipping_key_placeholder: "Isi API key Biteship",
+  config_shipping_webhook_secret: "Webhook Secret Biteship",
+  config_shipping_webhook_secret_placeholder: "Isi webhook secret Biteship",
   config_title: "Konfigurasi Sistem",
   config_subtitle: "Pengaturan platform dan fitur global.",
   save: "Simpan",
@@ -85,6 +88,7 @@ let configState = {
     midtrans_env: "sandbox",
     shipping_fallback_flat_rate: "50000",
     biteship_api_key: "***",
+    biteship_webhook_secret: "***",
     notify_on_purchase_admin_store: "false",
     notify_on_purchase_admin_exam: "false",
   },
@@ -164,6 +168,7 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
         midtrans_env: "sandbox",
         shipping_fallback_flat_rate: "50000",
         biteship_api_key: "***",
+        biteship_webhook_secret: "***",
         notify_on_purchase_admin_store: "false",
         notify_on_purchase_admin_exam: "false",
       },
@@ -325,5 +330,69 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
         expect(payload.biteship_api_key).toBe("new_api_key_xyz");
       }
     }
+  });
+
+  it("preserves masked biteship_webhook_secret value when not edited", async () => {
+    const user = userEvent.setup();
+    mockMutateAsync.mockResolvedValue({ success: true });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Konfigurasi Sistem")).toBeInTheDocument();
+    });
+
+    // Integrations tab content only mounts once its trigger is active —
+    // switch to it (Radix requires a real pointer interaction, not a bare
+    // fireEvent.click) before looking for its save button.
+    await user.click(screen.getByRole("tab", { name: /integrasi|integrations/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/pembayaran|payment/i)).toBeInTheDocument();
+    });
+
+    const saveButton = screen.getByRole("button", { name: /simpan|save/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalled();
+    });
+
+    const payload = mockMutateAsync.mock.calls[0][0];
+    expect(payload.biteship_webhook_secret).toBe("***");
+  });
+
+  it("sends new biteship_webhook_secret when modified", async () => {
+    const user = userEvent.setup();
+    mockMutateAsync.mockResolvedValue({ success: true });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Konfigurasi Sistem")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("tab", { name: /integrasi|integrations/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/pembayaran|payment/i)).toBeInTheDocument();
+    });
+
+    // Find all password inputs — server key, client key, api key, webhook secret.
+    const allInputs = document.querySelectorAll('input[type="password"]') as NodeListOf<HTMLInputElement>;
+    expect(allInputs.length).toBeGreaterThanOrEqual(4);
+
+    // The last one is biteship_webhook_secret.
+    const webhookSecretInput = allInputs[allInputs.length - 1];
+
+    fireEvent.change(webhookSecretInput, { target: { value: "" } });
+    fireEvent.change(webhookSecretInput, { target: { value: "test-webhook-secret" } });
+
+    const saveButton = screen.getByRole("button", { name: /simpan|save/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalled();
+    });
+
+    const payload = mockMutateAsync.mock.calls[0][0];
+    expect(payload.biteship_webhook_secret).toBe("test-webhook-secret");
   });
 });

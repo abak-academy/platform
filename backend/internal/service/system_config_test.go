@@ -170,9 +170,9 @@ func TestBuildConfigMap_IgnoresUnknownKeys(t *testing.T) {
 
 func TestValidateConfigKeys_Valid(t *testing.T) {
 	err := validateConfigKeys(map[string]string{
-		"app_name":                    "Test",
+		"app_name":                       "Test",
 		"notify_on_purchase_admin_store": "true",
-		"midtrans_env":                "production",
+		"midtrans_env":                   "production",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -248,8 +248,8 @@ func TestValidateConfigKeys_EnumKeyValidValues(t *testing.T) {
 func TestProcessConfigValues_SkipStarStarStarForSecrets(t *testing.T) {
 	hexKey := "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
 	values := map[string]string{
-		"app_name":                    "New Name",
-		"midtrans_server_key":         "***",
+		"app_name":                       "New Name",
+		"midtrans_server_key":            "***",
 		"notify_on_purchase_admin_store": "true",
 	}
 
@@ -354,7 +354,7 @@ func TestProcessConfigValues_EncryptFailsOnEmptyKey(t *testing.T) {
 func TestProcessConfigValues_NonSecretPassesThrough(t *testing.T) {
 	hexKey := "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
 	values := map[string]string{
-		"app_name":  "New Name",
+		"app_name":    "New Name",
 		"app_address": "Jl. Example 123",
 	}
 
@@ -522,7 +522,7 @@ func TestUpdateSystemConfig_Integration(t *testing.T) {
 
 	// Update with some values
 	result, err := svc.UpdateSystemConfig(ctx, map[string]string{
-		"app_name":    "New Name",
+		"app_name":     "New Name",
 		"midtrans_env": "production",
 	})
 	if err != nil {
@@ -594,8 +594,8 @@ func TestUpdateSystemConfig_SkipsStarStarStarForSecrets(t *testing.T) {
 
 	// Now update with "***" — should keep the existing encrypted value
 	secondResult, err := svc.UpdateSystemConfig(ctx, map[string]string{
-		"app_name":              "Updated",
-		"midtrans_server_key":   "***",
+		"app_name":            "Updated",
+		"midtrans_server_key": "***",
 	})
 	if err != nil {
 		t.Fatalf("second update with '***': %v", err)
@@ -674,10 +674,10 @@ func TestUpdateSystemConfig_NewNonSecretKeys(t *testing.T) {
 	svc := newFakeSystemConfigService("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2")
 
 	result, err := svc.UpdateSystemConfig(ctx, map[string]string{
-		"app_province_id":         "1",
-		"app_city_id":             "2",
-		"app_district_id":         "3",
-		"app_kode_pos":            "12345",
+		"app_province_id":             "1",
+		"app_city_id":                 "2",
+		"app_district_id":             "3",
+		"app_kode_pos":                "12345",
 		"shipping_fallback_flat_rate": "50000",
 	})
 	if err != nil {
@@ -803,5 +803,75 @@ func TestUpdateSystemConfig_BiteshipKeySkipsStarStarStar(t *testing.T) {
 	}
 	if decrypted != "original-key-value" {
 		t.Errorf("decrypted: want 'original-key-value', got %q", decrypted)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// biteship_webhook_secret catalog key (FR-C-5) — the one new key Track C adds
+// ---------------------------------------------------------------------------
+
+func TestConfigKeyCatalog_WebhookSecretIsShippingGroupSecret(t *testing.T) {
+	def, ok := configKeyCatalog["biteship_webhook_secret"]
+	if !ok {
+		t.Fatal("biteship_webhook_secret missing from configKeyCatalog")
+	}
+	if def.group != "shipping" {
+		t.Errorf("group: want 'shipping', got %q", def.group)
+	}
+	if !def.secret {
+		t.Error("biteship_webhook_secret must be secret: true")
+	}
+}
+
+func TestBuildConfigMap_WebhookSecretKeyDefaultsEmpty(t *testing.T) {
+	result := buildConfigMap([]repository.SystemConfigRow{})
+	if _, ok := result["biteship_webhook_secret"]; !ok {
+		t.Error("biteship_webhook_secret missing from result")
+	}
+	if result["biteship_webhook_secret"] != "" {
+		t.Errorf("biteship_webhook_secret should default to empty, got %q", result["biteship_webhook_secret"])
+	}
+}
+
+func TestBuildConfigMap_WebhookSecretMasked(t *testing.T) {
+	rows := []repository.SystemConfigRow{
+		{Key: "biteship_webhook_secret", Value: "encrypted-blob", IsSecret: true},
+	}
+	result := buildConfigMap(rows)
+	if result["biteship_webhook_secret"] != "***" {
+		t.Errorf("biteship_webhook_secret: want '***', got %q", result["biteship_webhook_secret"])
+	}
+}
+
+func TestUpdateSystemConfig_WebhookSecretIsEncryptedAndMasked(t *testing.T) {
+	ctx := context.Background()
+	svc := newFakeSystemConfigService("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2")
+
+	result, err := svc.UpdateSystemConfig(ctx, map[string]string{
+		"biteship_webhook_secret": "test-webhook-secret",
+	})
+	if err != nil {
+		t.Fatalf("UpdateSystemConfig: %v", err)
+	}
+	if result["biteship_webhook_secret"] != "***" {
+		t.Errorf("biteship_webhook_secret: want '***', got %q", result["biteship_webhook_secret"])
+	}
+
+	rows, _ := svc.repo.ListSystemConfig(ctx)
+	var stored string
+	for _, r := range rows {
+		if r.Key == "biteship_webhook_secret" {
+			stored = r.Value
+		}
+	}
+	if stored == "" || stored == "test-webhook-secret" {
+		t.Fatalf("biteship_webhook_secret should be stored encrypted, got %q", stored)
+	}
+	decrypted, err := decryptConfigValue("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2", stored)
+	if err != nil {
+		t.Fatalf("decrypt: %v", err)
+	}
+	if decrypted != "test-webhook-secret" {
+		t.Errorf("decrypted: want 'test-webhook-secret', got %q", decrypted)
 	}
 }

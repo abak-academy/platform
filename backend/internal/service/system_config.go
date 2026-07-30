@@ -41,6 +41,7 @@ var configKeyCatalog = map[string]configKeyDef{
 	"midtrans_env":                   {group: "payment", valueType: "enum", enumValues: []string{"sandbox", "production"}},
 	"shipping_fallback_flat_rate":    {group: "shipping", valueType: "string"},
 	"biteship_api_key":               {group: "shipping", valueType: "string", secret: true},
+	"biteship_webhook_secret":        {group: "shipping", valueType: "string", secret: true},
 }
 
 // encryptConfigValue encrypts plaintext with AES-256-GCM.
