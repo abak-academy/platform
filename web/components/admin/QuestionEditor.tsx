@@ -182,6 +182,96 @@ function BlankEditor({ blanks, onChange, onInsertToken, onRemoveToken, disabled 
   );
 }
 
+interface StatementRow {
+  index: number;
+  body: string;
+  is_true: boolean;
+}
+
+function buildStatementsFromQuestion(
+  statements?: { index: number; body: string; is_true: boolean }[]
+): StatementRow[] {
+  if (!statements || statements.length === 0) {
+    return [
+      { index: 1, body: "", is_true: false },
+      { index: 2, body: "", is_true: false },
+    ];
+  }
+  return statements.map((s) => ({ index: s.index, body: s.body, is_true: s.is_true }));
+}
+
+function renumberStatements(rows: StatementRow[]): StatementRow[] {
+  return rows.map((r, i) => ({ ...r, index: i + 1 }));
+}
+
+interface StatementEditorProps {
+  statements: StatementRow[];
+  onChange: (next: StatementRow[]) => void;
+  disabled: boolean;
+}
+
+function StatementEditor({ statements, onChange, disabled }: StatementEditorProps) {
+  const { t } = useTranslation();
+
+  function update(index: number, patch: Partial<StatementRow>) {
+    onChange(statements.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+  }
+
+  function remove(index: number) {
+    if (statements.length <= 1) return;
+    onChange(renumberStatements(statements.filter((_, i) => i !== index)));
+  }
+
+  function add() {
+    onChange([...statements, { index: statements.length + 1, body: "", is_true: false }]);
+  }
+
+  return (
+    <div className="space-y-3">
+      {statements.map((statement, index) => (
+        <div key={index} className="flex items-start gap-2 rounded-lg border p-2">
+          <div className="w-8 pt-2 text-sm font-mono text-muted-foreground">
+            {statement.index}
+          </div>
+          <div className="flex-1 space-y-2">
+            <Input
+              aria-label={t("tests_field_statement_body")}
+              value={statement.body}
+              onChange={(e) => update(index, { body: e.target.value })}
+              placeholder={t("tests_field_statement_body")}
+              disabled={disabled}
+            />
+            <label className="flex items-center gap-1 text-sm">
+              <input
+                type="checkbox"
+                checked={statement.is_true}
+                onChange={(e) => update(index, { is_true: e.target.checked })}
+                disabled={disabled}
+                aria-label={t("tests_field_statement_is_true")}
+              />
+              <span>{t("tests_field_statement_is_true")}</span>
+            </label>
+          </div>
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            onClick={() => remove(index)}
+            disabled={disabled || statements.length <= 1}
+            aria-label={t("tests_remove_statement")}
+          >
+            <Trash2 className="size-3" />
+          </Button>
+        </div>
+      ))}
+      <Button type="button" size="sm" variant="outline" onClick={add} disabled={disabled}>
+        <Plus className="mr-1 size-4" />
+        {t("tests_add_statement")}
+      </Button>
+    </div>
+  );
+}
+
 function OptionEditor({
   format,
   options,
@@ -361,6 +451,7 @@ function buildInput(
   acceptedAnswers: string[],
   options: AdminQuestionOptionInput[],
   blanks: BlankRow[],
+  statements: StatementRow[],
   pointCorrectRaw: string,
   pointWrongRaw: string,
   topicId: string
@@ -400,6 +491,13 @@ function buildInput(
         accepted_answers: trimmed,
       };
     });
+  }
+  if (format === "true_false") {
+    base.statements = statements.map((s) => ({
+      index: s.index,
+      body: s.body.trim(),
+      is_true: s.is_true,
+    }));
   }
   return base;
 }
@@ -481,12 +579,24 @@ function renumberTokensInBody(body: string, removedIndex: number): string {
   });
 }
 
+// Mirrors the server's FR-29/FR-30 checks: at least 2 statements, no empty body.
+function validateStatements(statements: StatementRow[]): { ok: true } | { ok: false; key: string } {
+  if (statements.length < 2) {
+    return { ok: false, key: "tests_validation_statements_min" };
+  }
+  if (statements.some((s) => s.body.trim() === "")) {
+    return { ok: false, key: "tests_validation_statement_body_required" };
+  }
+  return { ok: true };
+}
+
 function validate(
   format: QuestionFormat,
   body: string,
   acceptedAnswers: string[],
   options: AdminQuestionOptionInput[],
   blanks: BlankRow[],
+  statements: StatementRow[],
   topicId: string,
   pointCorrectRaw: string
 ): { ok: true } | { ok: false; key: string } {
@@ -520,6 +630,10 @@ function validate(
       if (!result.ok) return result;
     }
   }
+  if (format === "true_false") {
+    const result = validateStatements(statements);
+    if (!result.ok) return result;
+  }
   return { ok: true };
 }
 
@@ -547,6 +661,9 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
     ]
   );
   const [blanks, setBlanks] = useState<BlankRow[]>(buildBlanksFromQuestion(question?.blanks));
+  const [statements, setStatements] = useState<StatementRow[]>(
+    buildStatementsFromQuestion(question?.question.statements)
+  );
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const bodyEditorRef = useRef<RichTextEditorHandle>(null);
 
@@ -575,6 +692,10 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
         { index: 1, accepted_answers: [""] },
         { index: 2, accepted_answers: [""] },
       ]);
+      setStatements([
+        { index: 1, body: "", is_true: false },
+        { index: 2, body: "", is_true: false },
+      ]);
     }
   }, [question]);
 
@@ -591,7 +712,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   }
 
   async function handleSave() {
-    const result = validate(format, body, acceptedAnswers, options, blanks, topicId, pointCorrect);
+    const result = validate(format, body, acceptedAnswers, options, blanks, statements, topicId, pointCorrect);
     if (!result.ok) {
       setErrorKey(result.key);
       return;
@@ -607,6 +728,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       acceptedAnswers,
       options,
       blanks,
+      statements,
       pointCorrect,
       pointWrong,
       topicId
@@ -633,6 +755,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const showOptions = format === "mcq" || format === "multi_answer";
   const showCorrectAnswer = format === "short" || format === "fill_blank";
   const showBlanks = format === "multi_blank";
+  const showStatements = format === "true_false";
   const errorMessage = errorKey ? t(errorKey as Parameters<typeof t>[0]) : null;
   const savePending = testSave.isPending || createBankQuestion.isPending || updateBankQuestion.isPending;
 
@@ -703,7 +826,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
               />
             </div>
 
-            {(showOptions || showCorrectAnswer || showBlanks) && (
+            {(showOptions || showCorrectAnswer || showBlanks || showStatements) && (
               <>
                 <Separator />
 
@@ -738,6 +861,17 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
                       onChange={setBlanks}
                       onInsertToken={insertBlankToken}
                       onRemoveToken={removeBlankToken}
+                      disabled={savePending}
+                    />
+                  </div>
+                )}
+
+                {showStatements && (
+                  <div className="grid gap-2">
+                    <Label>{t("tests_field_statements")}</Label>
+                    <StatementEditor
+                      statements={statements}
+                      onChange={setStatements}
                       disabled={savePending}
                     />
                   </div>

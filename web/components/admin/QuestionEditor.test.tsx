@@ -741,6 +741,126 @@ describe("QuestionEditor", () => {
     expect(mockTestSaveAsync).not.toHaveBeenCalled();
   });
 
+  // ── true_false statement authoring (Task 11, FR-29/FR-30) ──────────────
+
+  it("selecting true_false shows the statement editor and hides options, correct-answer and blanks editors", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    expect(screen.getAllByRole("radio").length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "true_false" } });
+
+    expect(screen.queryAllByRole("radio").length).toBe(0);
+    expect(screen.queryAllByLabelText(/teks opsi/i).length).toBe(0);
+    expect(screen.queryByLabelText(/jawaban yang diterima/i)).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText(/isi pernyataan/i).length).toBe(2);
+  });
+
+  it("adding statements to 4, marking two true, saves exactly 4 statements with indices 1..4 (FR-29)", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "true_false" } });
+    setBodyValue("Soal benar/salah");
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
+
+    const addButton = screen.getByRole("button", { name: /tambah pernyataan/i });
+    fireEvent.click(addButton); // 3 rows
+    fireEvent.click(addButton); // 4 rows
+
+    const bodies = screen.getAllByLabelText(/isi pernyataan/i);
+    expect(bodies.length).toBe(4);
+    fireEvent.change(bodies[0], { target: { value: "Statement 1" } });
+    fireEvent.change(bodies[1], { target: { value: "Statement 2" } });
+    fireEvent.change(bodies[2], { target: { value: "Statement 3" } });
+    fireEvent.change(bodies[3], { target: { value: "Statement 4" } });
+
+    const trueToggles = screen.getAllByLabelText(/^benar$/i);
+    fireEvent.click(trueToggles[0]);
+    fireEvent.click(trueToggles[2]);
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            format: "true_false",
+            statements: [
+              { index: 1, body: "Statement 1", is_true: true },
+              { index: 2, body: "Statement 2", is_true: false },
+              { index: 3, body: "Statement 3", is_true: true },
+              { index: 4, body: "Statement 4", is_true: false },
+            ],
+          }),
+        })
+      );
+    });
+  });
+
+  it("removing statement rows down to 1 blocks save with the minimum-2 message (FR-30)", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "true_false" } });
+    setBodyValue("Soal benar/salah");
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
+
+    const bodies = screen.getAllByLabelText(/isi pernyataan/i);
+    fireEvent.change(bodies[0], { target: { value: "Statement 1" } });
+    fireEvent.change(bodies[1], { target: { value: "Statement 2" } });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /hapus pernyataan/i })[1]);
+    expect(screen.getAllByLabelText(/isi pernyataan/i).length).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/minimal 2 pernyataan/i);
+    });
+    expect(mockTestSaveAsync).not.toHaveBeenCalled();
+  });
+
+  it("removing the middle statement of 3 renumbers the remaining rows to 1,2 in the save payload", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "true_false" } });
+    setBodyValue("Soal benar/salah");
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /tambah pernyataan/i })); // 3 rows
+
+    const bodies = screen.getAllByLabelText(/isi pernyataan/i);
+    fireEvent.change(bodies[0], { target: { value: "Statement A" } });
+    fireEvent.change(bodies[1], { target: { value: "Statement B" } });
+    fireEvent.change(bodies[2], { target: { value: "Statement C" } });
+
+    // Remove the middle row (originally index 2) — the last row (index 3)
+    // must renumber down to 2, leaving no gap.
+    fireEvent.click(screen.getAllByRole("button", { name: /hapus pernyataan/i })[1]);
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            statements: [
+              { index: 1, body: "Statement A", is_true: false },
+              { index: 2, body: "Statement C", is_true: false },
+            ],
+          }),
+        })
+      );
+    });
+  });
+
   // ── Rich-text option authoring (Task 7, FR-11) ─────────────────────────
 
   it("mcq option text field is present in render (before rich-text swap)", () => {
