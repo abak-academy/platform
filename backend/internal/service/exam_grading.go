@@ -14,9 +14,10 @@ import (
 // gradeAnswer determines correctness per format rules (FR20, R3).
 // For mcq the correct key is derived from options (is_correct=true).
 // For multi_answer the correct keys are derived from options.
-// For short/fill_blank the correct_answer field is used (trim+lower).
+// For short/fill_blank the answer must match any of acceptedAnswers under the
+// confirmed FB-10 matching rule (FR-22/FR-23, see answer_match.go).
 // For essay or unknown formats returns false (not auto-graded).
-func gradeAnswer(format string, answer *string, correctAnswer *string, options []model.QuestionOption) bool {
+func gradeAnswer(format string, answer *string, acceptedAnswers []string, options []model.QuestionOption) bool {
 	if answer == nil || *answer == "" {
 		return false
 	}
@@ -27,13 +28,7 @@ func gradeAnswer(format string, answer *string, correctAnswer *string, options [
 	case "multi_answer":
 		return gradeMultiAnswer(*answer, options)
 	case "short", "fill_blank":
-		if correctAnswer == nil {
-			return false
-		}
-		return strings.EqualFold(
-			strings.TrimSpace(*answer),
-			strings.TrimSpace(*correctAnswer),
-		)
+		return matchesAnyAccepted(*answer, acceptedAnswers)
 	default:
 		return false
 	}
@@ -80,8 +75,9 @@ func gradeMultiAnswer(answer string, options []model.QuestionOption) bool {
 }
 
 // gradeMultiBlank grades a multi_blank question by unmarshaling the answer
-// string (JSON array of strings) and comparing each blank against the
-// corresponding question_blank.correct_answer (case-insensitive, trimmed).
+// string (JSON array of strings) and comparing each blank against its
+// accepted-answer set under the confirmed FB-10 matching rule (FR-24, see
+// answer_match.go).
 // Per-blank scoring: empty -> 0, correct -> +point_correct, wrong -> -point_wrong.
 // The question's score is the sum of per-blank scores (not independently clamped).
 // On JSON unmarshal failure, returns 0 (all blanks treated as empty).
@@ -112,7 +108,7 @@ func gradeMultiBlank(answer *string, blanks []model.QuestionBlank, pointCorrect,
 		}
 
 		hasAnswer = true
-		if strings.EqualFold(blankAnswer, strings.TrimSpace(blank.CorrectAnswer)) {
+		if matchesAnyAccepted(blankAnswer, blank.AcceptedAnswers) {
 			score += pointCorrect
 		} else {
 			score -= pointWrong
@@ -164,7 +160,7 @@ func gradeObjective(questions []model.QuestionWithOptions, answers map[uuid.UUID
 			continue
 		}
 
-		correct := gradeAnswer(q.Question.Format, ans, q.Question.CorrectAnswer, q.Options)
+		correct := gradeAnswer(q.Question.Format, ans, q.Question.AcceptedAnswers, q.Options)
 		empty := ans == nil || *ans == ""
 
 		var score float64

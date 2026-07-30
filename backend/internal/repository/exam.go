@@ -326,9 +326,20 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 		return nil, err
 	}
 
+	acceptedAnswers, err := r.queryAcceptedAnswersForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	for i := range questions {
-		questions[i].Options = opts[questions[i].Question.ID]
-		questions[i].Blanks = blanks[questions[i].Question.ID]
+		qid := questions[i].Question.ID
+		questions[i].Options = opts[qid]
+		questions[i].Blanks = blanks[qid]
+		questions[i].Question.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][0], derefString(questions[i].Question.CorrectAnswer))
+		for bi := range questions[i].Blanks {
+			b := &questions[i].Blanks[bi]
+			b.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][b.Index], b.CorrectAnswer)
+		}
 	}
 	return questions, nil
 }
@@ -398,7 +409,121 @@ func (r *Repository) queryBlanksForQuestions(ctx context.Context, questionIDs []
 	return out, nil
 }
 
+// queryAcceptedAnswersForQuestions reads question_accepted_answer for a question set,
+// keyed by question_id then blank_index (0 = question-level, mirroring
+// queryOptionsForQuestions / queryBlanksForQuestions). Every requested id is seeded with
+// a non-nil (possibly empty) inner map so callers can look up any blank_index safely.
+func (r *Repository) queryAcceptedAnswersForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID]map[int][]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT question_id, blank_index, answer
+		FROM question_accepted_answer
+		WHERE question_id = ANY($1)
+		ORDER BY question_id, blank_index, answer_index`,
+		questionIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[uuid.UUID]map[int][]string, len(questionIDs))
+	for _, id := range questionIDs {
+		out[id] = map[int][]string{}
+	}
+	for rows.Next() {
+		var qid uuid.UUID
+		var blankIndex int
+		var answer string
+		if err := rows.Scan(&qid, &blankIndex, &answer); err != nil {
+			return nil, err
+		}
+		if out[qid] == nil {
+			out[qid] = map[int][]string{}
+		}
+		out[qid][blankIndex] = append(out[qid][blankIndex], answer)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// acceptedAnswersOrFallback returns accepted when non-empty, else a single-element
+// set built from the legacy scalar correct_answer column (FR-27) — [] when both are
+// empty/unset, never nil.
+func acceptedAnswersOrFallback(accepted []string, scalar string) []string {
+	if len(accepted) > 0 {
+		return accepted
+	}
+	if scalar != "" {
+		return []string{scalar}
+	}
+	return []string{}
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// stampScalarCorrectAnswers writes the first accepted answer into the legacy scalar
+// correct_answer column — on the question and on each blank — so existing display
+// and import paths keep working unchanged (FR-27). A question/blank with no accepted
+// answers is left untouched (whatever correct_answer it already carries, if any).
+func stampScalarCorrectAnswers(q *model.Question, blanks []model.QuestionBlank) {
+	if len(q.AcceptedAnswers) > 0 {
+		first := q.AcceptedAnswers[0]
+		q.CorrectAnswer = &first
+	}
+	for i := range blanks {
+		if len(blanks[i].AcceptedAnswers) > 0 {
+			blanks[i].CorrectAnswer = blanks[i].AcceptedAnswers[0]
+		}
+	}
+}
+
+// replaceAcceptedAnswersTx deletes and reinserts question_accepted_answer rows for a
+// question — delete-then-insert, the same shape used for options and blanks.
+// blank_index 0 holds the question-level set; each blank's set is stored under its
+// own blank_index.
+func replaceAcceptedAnswersTx(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, questionAccepted []string, blanks []model.QuestionBlank) error {
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM question_accepted_answer WHERE question_id = $1`,
+		questionID,
+	); err != nil {
+		return err
+	}
+
+	for i, a := range questionAccepted {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO question_accepted_answer (question_id, blank_index, answer_index, answer)
+			VALUES ($1, 0, $2, $3)`,
+			questionID, i+1, a,
+		); err != nil {
+			return err
+		}
+	}
+
+	for _, b := range blanks {
+		for i, a := range b.AcceptedAnswers {
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO question_accepted_answer (question_id, blank_index, answer_index, answer)
+				VALUES ($1, $2, $3, $4)`,
+				questionID, b.Index, i+1, a,
+			); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) error {
+	stampScalarCorrectAnswers(q, blanks)
+
 	err := tx.QueryRow(ctx,
 		`INSERT INTO question (format, body, correct_answer, explanation, difficulty, image_url, audio_url, topic_id, point_correct, point_wrong)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -417,10 +542,16 @@ func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 		return err
 	}
 
+	if err := replaceAcceptedAnswersTx(ctx, tx, q.ID, q.AcceptedAnswers, blanks); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) error {
+	stampScalarCorrectAnswers(q, blanks)
+
 	var updatedID uuid.UUID
 	err := tx.QueryRow(ctx,
 		`UPDATE question
@@ -454,6 +585,10 @@ func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 	}
 
 	if err := insertQuestionBlanks(ctx, tx, q.ID, blanks); err != nil {
+		return err
+	}
+
+	if err := replaceAcceptedAnswersTx(ctx, tx, q.ID, q.AcceptedAnswers, blanks); err != nil {
 		return err
 	}
 
@@ -645,9 +780,20 @@ WHERE 1=1`
 		return nil, "", err
 	}
 
+	acceptedAnswers, err := r.queryAcceptedAnswersForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, "", err
+	}
+
 	for i := range items {
-		items[i].Options = opts[items[i].Question.ID]
-		items[i].Blanks = blanks[items[i].Question.ID]
+		qid := items[i].Question.ID
+		items[i].Options = opts[qid]
+		items[i].Blanks = blanks[qid]
+		items[i].Question.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][0], derefString(items[i].Question.CorrectAnswer))
+		for bi := range items[i].Blanks {
+			b := &items[i].Blanks[bi]
+			b.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][b.Index], b.CorrectAnswer)
+		}
 	}
 
 	return items, nextCursor, nil

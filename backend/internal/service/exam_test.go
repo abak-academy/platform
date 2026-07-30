@@ -135,10 +135,10 @@ func TestValidateQuestion_short_requires_correct_answer(t *testing.T) {
 	q := model.Question{Format: "short", Body: "capital of France"}
 	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
-		t.Errorf("short with empty correct_answer should return ErrValidation, got %v", err)
+		t.Errorf("short with no accepted_answers should return ErrValidation, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "non-empty correct_answer") {
-		t.Errorf("short empty-answer msg should mention 'non-empty correct_answer', got %q", err.Error())
+	if !strings.Contains(err.Error(), "at least one accepted answer") {
+		t.Errorf("short empty-answer msg should mention 'at least one accepted answer', got %q", err.Error())
 	}
 }
 
@@ -160,10 +160,10 @@ func TestValidateQuestion_fill_blank_requires_correct_answer(t *testing.T) {
 	q := model.Question{Format: "fill_blank", Body: "the ___ is blue"}
 	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
-		t.Errorf("fill_blank with empty correct_answer should return ErrValidation, got %v", err)
+		t.Errorf("fill_blank with no accepted_answers should return ErrValidation, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "non-empty correct_answer") {
-		t.Errorf("fill_blank empty-answer msg should mention 'non-empty correct_answer', got %q", err.Error())
+	if !strings.Contains(err.Error(), "at least one accepted answer") {
+		t.Errorf("fill_blank empty-answer msg should mention 'at least one accepted answer', got %q", err.Error())
 	}
 }
 
@@ -579,8 +579,116 @@ func TestValidateQuestion_multi_blank_rejects_empty_blank_correct_answer(t *test
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("empty blank correct_answer should return ErrValidation, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "empty correct_answer") {
-		t.Errorf("empty blank correct_answer msg should mention 'empty correct_answer', got %q", err.Error())
+	if !strings.Contains(err.Error(), "at least one accepted answer") {
+		t.Errorf("empty blank correct_answer msg should mention 'at least one accepted answer', got %q", err.Error())
+	}
+}
+
+// ---- FB-10 accepted-answer set validation (FR-25/FR-26) ----
+
+func TestValidateQuestion_short_rejects_empty_accepted_answers_set(t *testing.T) {
+	q := model.Question{Format: "short", Body: "1+1", PointCorrect: 1, AcceptedAnswers: []string{}}
+	err := validateQuestion(q, nil, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("empty accepted_answers set should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "at least one accepted answer") {
+		t.Errorf("empty set msg should mention 'at least one accepted answer', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_short_rejects_whitespace_only_entry_in_accepted_answers(t *testing.T) {
+	q := model.Question{Format: "short", Body: "1+1", PointCorrect: 1, AcceptedAnswers: []string{"2", "  "}}
+	err := validateQuestion(q, nil, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("accepted_answers containing a blank entry should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "cannot be empty") {
+		t.Errorf("blank entry msg should mention 'cannot be empty', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_short_rejects_duplicate_after_normalisation(t *testing.T) {
+	q := model.Question{Format: "short", Body: "1+1", PointCorrect: 1, AcceptedAnswers: []string{"Dua", "dua"}}
+	err := validateQuestion(q, nil, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("duplicate accepted answers after normalisation should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "duplicate accepted answer") {
+		t.Errorf("duplicate msg should mention 'duplicate accepted answer', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_short_accepts_multiple_accepted_answers(t *testing.T) {
+	q := model.Question{Format: "short", Body: "1+1", PointCorrect: 1, AcceptedAnswers: []string{"2", "dua"}}
+	if err := validateQuestion(q, nil, nil); err != nil {
+		t.Errorf("short with 2 distinct accepted answers should pass, got %v", err)
+	}
+}
+
+func TestValidateQuestion_mcq_rejects_non_empty_accepted_answers(t *testing.T) {
+	q := model.Question{Format: "mcq", Body: "x", AcceptedAnswers: []string{"a"}}
+	options := []model.QuestionOption{
+		{Key: "a", Text: "1", IsCorrect: true, SortOrder: 1},
+		{Key: "b", Text: "2", SortOrder: 2},
+	}
+	err := validateQuestion(q, options, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("mcq with non-empty accepted_answers should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "mcq cannot have accepted_answers") {
+		t.Errorf("mcq accepted_answers msg should mention 'mcq cannot have accepted_answers', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_multi_answer_rejects_non_empty_accepted_answers(t *testing.T) {
+	q := model.Question{Format: "multi_answer", Body: "x", AcceptedAnswers: []string{"a"}}
+	options := []model.QuestionOption{
+		{Key: "a", Text: "1", IsCorrect: true, SortOrder: 1},
+		{Key: "b", Text: "2", SortOrder: 2},
+	}
+	err := validateQuestion(q, options, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("multi_answer with non-empty accepted_answers should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "multi_answer cannot have accepted_answers") {
+		t.Errorf("multi_answer accepted_answers msg should mention 'multi_answer cannot have accepted_answers', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_essay_rejects_non_empty_accepted_answers(t *testing.T) {
+	q := model.Question{Format: "essay", Body: "explain", AcceptedAnswers: []string{"a"}}
+	err := validateQuestion(q, nil, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("essay with non-empty accepted_answers should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "essay cannot have accepted_answers") {
+		t.Errorf("essay accepted_answers msg should mention 'essay cannot have accepted_answers', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_multi_blank_rejects_duplicate_accepted_answer_in_blank(t *testing.T) {
+	q := model.Question{Format: "multi_blank", Body: "{{1}}", PointCorrect: 1}
+	blanks := []model.QuestionBlank{
+		{Index: 1, AcceptedAnswers: []string{"Empat", "empat"}},
+	}
+	err := validateQuestion(q, nil, blanks)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("multi_blank with a duplicate per-blank accepted answer should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "duplicate accepted answer") {
+		t.Errorf("duplicate per-blank msg should mention 'duplicate accepted answer', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_multi_blank_accepts_per_blank_accepted_answers(t *testing.T) {
+	q := model.Question{Format: "multi_blank", Body: "{{1}} and {{2}}", PointCorrect: 1}
+	blanks := []model.QuestionBlank{
+		{Index: 1, AcceptedAnswers: []string{"4", "empat"}},
+		{Index: 2, AcceptedAnswers: []string{"jakarta"}},
+	}
+	if err := validateQuestion(q, nil, blanks); err != nil {
+		t.Errorf("multi_blank with valid per-blank accepted answers should pass, got %v", err)
 	}
 }
 
@@ -2128,6 +2236,50 @@ func TestSaveQuestion_sanitizes_option_text(t *testing.T) {
 	if !strings.Contains(fetched.Options[0].Text, "updated") {
 		t.Errorf("option text must preserve plain text, got %q", fetched.Options[0].Text)
 	}
+}
+
+// FR-27: accepted_answers round-trips through create -> read -> update -> read,
+// and question.correct_answer (the legacy scalar column) always holds the first
+// entry of the CURRENT accepted-answer set.
+func TestAcceptedAnswers_roundTripsAndStampsScalarCorrectAnswer_FR27(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	body := "FB-10 accepted answers round trip " + uniqueSuffix()
+	q := model.Question{
+		Format:          "short",
+		Body:            body,
+		PointCorrect:    1,
+		AcceptedAnswers: []string{"2", "dua"},
+	}
+
+	created, err := svc.CreateBankQuestion(ctx, q, nil, nil)
+	require.NoError(t, err)
+	qid := created.Question.ID
+
+	fetch := func() model.Question {
+		t.Helper()
+		items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: body, Limit: 10})
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		return items[0].Question
+	}
+
+	afterCreate := fetch()
+	assert.Equal(t, []string{"2", "dua"}, afterCreate.AcceptedAnswers)
+	require.NotNil(t, afterCreate.CorrectAnswer)
+	assert.Equal(t, "2", *afterCreate.CorrectAnswer, "correct_answer must hold the first accepted answer")
+
+	// Update to three entries with a different first entry.
+	q.ID = qid
+	q.AcceptedAnswers = []string{"dua", "2", "empat"}
+	_, err = svc.SaveQuestion(ctx, q, nil, nil)
+	require.NoError(t, err)
+
+	afterUpdate := fetch()
+	assert.Equal(t, []string{"dua", "2", "empat"}, afterUpdate.AcceptedAnswers)
+	require.NotNil(t, afterUpdate.CorrectAnswer)
+	assert.Equal(t, "dua", *afterUpdate.CorrectAnswer, "correct_answer must track the first entry of the updated set")
 }
 
 func TestCreateQuestionForTest_sanitizes_option_text(t *testing.T) {

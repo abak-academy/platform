@@ -230,6 +230,9 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 		if hasCorrectAnswer {
 			return fmt.Errorf("%w: mcq cannot have correct_answer", ErrValidation)
 		}
+		if len(q.AcceptedAnswers) > 0 {
+			return fmt.Errorf("%w: mcq cannot have accepted_answers", ErrValidation)
+		}
 	case "multi_answer":
 		if len(options) < 2 {
 			return fmt.Errorf("%w: multi_answer requires at least 2 options", ErrValidation)
@@ -240,28 +243,34 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 		if hasCorrectAnswer {
 			return fmt.Errorf("%w: multi_answer cannot have correct_answer", ErrValidation)
 		}
+		if len(q.AcceptedAnswers) > 0 {
+			return fmt.Errorf("%w: multi_answer cannot have accepted_answers", ErrValidation)
+		}
 	case "short":
 		if hasOptions {
 			return fmt.Errorf("%w: short cannot have options", ErrValidation)
 		}
-		if !hasCorrectAnswer {
-			return fmt.Errorf("%w: short requires non-empty correct_answer", ErrValidation)
+		if err := validateAcceptedAnswerSet("short", effectiveAcceptedAnswers(q.AcceptedAnswers, deref(q.CorrectAnswer))); err != nil {
+			return err
 		}
 	case "fill_blank":
 		if hasOptions {
 			return fmt.Errorf("%w: fill_blank cannot have options", ErrValidation)
 		}
-		if !hasCorrectAnswer {
-			return fmt.Errorf("%w: fill_blank requires non-empty correct_answer", ErrValidation)
+		if err := validateAcceptedAnswerSet("fill_blank", effectiveAcceptedAnswers(q.AcceptedAnswers, deref(q.CorrectAnswer))); err != nil {
+			return err
 		}
 	case "multi_blank":
 		// multi_blank: stem contains {{N}} tokens, no options, no scalar correct_answer,
-		// blanks array has one entry per token with non-empty correct_answer
+		// blanks array has one entry per token with its own accepted-answer set (FR-24/26)
 		if hasOptions {
 			return fmt.Errorf("%w: multi_blank cannot have options", ErrValidation)
 		}
 		if hasCorrectAnswer {
 			return fmt.Errorf("%w: multi_blank cannot have correct_answer", ErrValidation)
+		}
+		if len(q.AcceptedAnswers) > 0 {
+			return fmt.Errorf("%w: multi_blank cannot have accepted_answers", ErrValidation)
 		}
 
 		tokens, err := extractTokensFromStem(q.Body)
@@ -277,8 +286,9 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 		}
 
 		for i, blank := range blanks {
-			if strings.TrimSpace(blank.CorrectAnswer) == "" {
-				return fmt.Errorf("%w: blank at index %d has empty correct_answer", ErrValidation, i)
+			label := fmt.Sprintf("blank at index %d", i)
+			if err := validateAcceptedAnswerSet(label, effectiveAcceptedAnswers(blank.AcceptedAnswers, blank.CorrectAnswer)); err != nil {
+				return err
 			}
 		}
 	case "essay":
@@ -287,6 +297,9 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 		}
 		if hasCorrectAnswer {
 			return fmt.Errorf("%w: essay cannot have correct_answer", ErrValidation)
+		}
+		if len(q.AcceptedAnswers) > 0 {
+			return fmt.Errorf("%w: essay cannot have accepted_answers", ErrValidation)
 		}
 	}
 
@@ -299,6 +312,42 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 		return fmt.Errorf("%w: point_wrong must be >= 0", ErrValidation)
 	}
 
+	return nil
+}
+
+// effectiveAcceptedAnswers returns accepted when non-empty, else falls back to
+// a single-element set built from the legacy scalar correct-answer column
+// (e.g. the CSV importer, which never populates accepted_answers directly).
+// Mirrors the repository's read-side fallback (FR-27) so validation and reads
+// agree on what "no accepted answers" means.
+func effectiveAcceptedAnswers(accepted []string, scalar string) []string {
+	if len(accepted) > 0 {
+		return accepted
+	}
+	if strings.TrimSpace(scalar) != "" {
+		return []string{scalar}
+	}
+	return nil
+}
+
+// validateAcceptedAnswerSet enforces FR-26: at least one entry, no entry empty
+// after trimming, no duplicates after normalizeAnswer (FR-23). label identifies
+// the set in the error message (e.g. "short", "blank at index 1").
+func validateAcceptedAnswerSet(label string, answers []string) error {
+	if len(answers) == 0 {
+		return fmt.Errorf("%w: %s requires at least one accepted answer", ErrValidation, label)
+	}
+	seen := map[string]bool{}
+	for _, a := range answers {
+		if strings.TrimSpace(a) == "" {
+			return fmt.Errorf("%w: %s accepted answer cannot be empty", ErrValidation, label)
+		}
+		norm := normalizeAnswer(a)
+		if seen[norm] {
+			return fmt.Errorf("%w: %s has duplicate accepted answer after normalisation: %q", ErrValidation, label, a)
+		}
+		seen[norm] = true
+	}
 	return nil
 }
 

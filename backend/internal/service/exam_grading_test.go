@@ -84,43 +84,52 @@ func TestGrading_multiAnswer_setEquality(t *testing.T) {
 
 func TestGrading_short_trimLower(t *testing.T) {
 	tests := []struct {
-		name          string
-		answer        *string
-		correctAnswer *string
-		want          bool
+		name     string
+		answer   *string
+		accepted []string
+		want     bool
 	}{
-		{"exact match", strPtr("hello"), strPtr("hello"), true},
-		{"case-insensitive", strPtr("Hello"), strPtr("hello"), true},
-		{"trimmed", strPtr("  hello  "), strPtr("hello"), true},
-		{"wrong answer", strPtr("world"), strPtr("hello"), false},
-		{"nil answer", nil, strPtr("hello"), false},
-		{"empty answer", strPtr(""), strPtr("hello"), false},
-		{"nil correctAnswer", strPtr("hello"), nil, false},
+		{"exact match", strPtr("hello"), []string{"hello"}, true},
+		{"case-insensitive", strPtr("Hello"), []string{"hello"}, true},
+		{"trimmed", strPtr("  hello  "), []string{"hello"}, true},
+		{"wrong answer", strPtr("world"), []string{"hello"}, false},
+		{"nil answer", nil, []string{"hello"}, false},
+		{"empty answer", strPtr(""), []string{"hello"}, false},
+		{"empty accepted set", strPtr("hello"), nil, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := gradeAnswer("short", tt.answer, tt.correctAnswer, nil)
+			got := gradeAnswer("short", tt.answer, tt.accepted, nil)
 			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
+// FR-22: a set of accepted answers, not a single scalar.
+func TestGrading_short_multipleAcceptedAnswers(t *testing.T) {
+	accepted := []string{"2", "dua"}
+
+	assert.True(t, gradeAnswer("short", strPtr("2"), accepted, nil))
+	assert.True(t, gradeAnswer("short", strPtr("dua"), accepted, nil))
+	assert.False(t, gradeAnswer("short", strPtr("two"), accepted, nil))
+}
+
 func TestGrading_fillBlank_trimLower(t *testing.T) {
 	tests := []struct {
-		name          string
-		answer        *string
-		correctAnswer *string
-		want          bool
+		name     string
+		answer   *string
+		accepted []string
+		want     bool
 	}{
-		{"exact match", strPtr("jakarta"), strPtr("jakarta"), true},
-		{"case-insensitive", strPtr("Jakarta"), strPtr("jakarta"), true},
-		{"wrong answer", strPtr("bandung"), strPtr("jakarta"), false},
+		{"exact match", strPtr("jakarta"), []string{"jakarta"}, true},
+		{"case-insensitive", strPtr("Jakarta"), []string{"jakarta"}, true},
+		{"wrong answer", strPtr("bandung"), []string{"jakarta"}, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := gradeAnswer("fill_blank", tt.answer, tt.correctAnswer, nil)
+			got := gradeAnswer("fill_blank", tt.answer, tt.accepted, nil)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -546,9 +555,10 @@ func multiBlankQuestion(id uuid.UUID, pointCorrect, pointWrong float64, correctA
 	blanks := make([]model.QuestionBlank, len(correctAnswers))
 	for i, ans := range correctAnswers {
 		blanks[i] = model.QuestionBlank{
-			QuestionID:    id,
-			Index:         i + 1,
-			CorrectAnswer: ans,
+			QuestionID:      id,
+			Index:           i + 1,
+			CorrectAnswer:   ans,
+			AcceptedAnswers: []string{ans},
 		}
 	}
 	return model.QuestionWithOptions{
@@ -625,12 +635,36 @@ func TestGradingMultiBlank_caseInsensitiveTrim(t *testing.T) {
 	assert.True(t, *graded[0].IsCorrect)
 }
 
+// FR-24: a multi_blank blank with its own accepted-answer set awards
+// +point_correct for an alternate accepted spelling and -point_wrong for a
+// wrong one.
+func TestGradingMultiBlank_perBlankAcceptedAnswerSet_FR24(t *testing.T) {
+	id := uuid.New()
+	blanks := []model.QuestionBlank{
+		{QuestionID: id, Index: 1, CorrectAnswer: "4", AcceptedAnswers: []string{"4", "empat"}},
+		{QuestionID: id, Index: 2, CorrectAnswer: "4", AcceptedAnswers: []string{"4", "empat"}},
+	}
+	q := model.QuestionWithOptions{
+		Question: model.Question{ID: id, Format: "multi_blank", Body: "Stem", PointCorrect: 1, PointWrong: 0.5},
+		Blanks:   blanks,
+	}
+
+	answer := `["empat","four"]` // blank 1 alternate accepted spelling, blank 2 wrong
+	answers := map[uuid.UUID]*string{id: &answer}
+
+	graded, _ := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Len(t, graded, 1)
+	assert.Equal(t, 0.5, *graded[0].Score, "empat (+1) minus four (-0.5) = 0.5")
+	assert.False(t, *graded[0].IsCorrect, "one blank was wrong")
+}
+
 func TestGradingObjective_multiBlankMixed_withOtherFormats(t *testing.T) {
 	// Full-session test: multi_blank + mcq + short to verify sum and session clamping
 	multiBlankQ := multiBlankQuestion(uuid.New(), 2, 1, []string{"jakarta", "1945"})
 	mcqQ := mcqQuestion(uuid.New(), 2, 1)
 	shortQ := model.QuestionWithOptions{
-		Question: model.Question{ID: uuid.New(), Format: "short", Body: "Q3", PointCorrect: 2, PointWrong: 1, CorrectAnswer: strPtr("answer")},
+		Question: model.Question{ID: uuid.New(), Format: "short", Body: "Q3", PointCorrect: 2, PointWrong: 1, CorrectAnswer: strPtr("answer"), AcceptedAnswers: []string{"answer"}},
 	}
 
 	answers := map[uuid.UUID]*string{

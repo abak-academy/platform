@@ -56,6 +56,10 @@ type Question struct {
 	// per question; the scoring engine (not the author) applies the sign for wrong answers.
 	PointCorrect float64 `json:"point_correct"`
 	PointWrong   float64 `json:"point_wrong"`
+	// AcceptedAnswers is the question-level accepted-answer set (short/fill_blank only);
+	// always a non-nil slice on read (falls back to []string{*CorrectAnswer} when no
+	// question_accepted_answer rows exist, FR-27).
+	AcceptedAnswers []string `json:"accepted_answers"`
 }
 
 // QuestionOption has a composite PK (QuestionID, Key); no surrogate ID. `Key` is the
@@ -75,6 +79,9 @@ type QuestionBlank struct {
 	QuestionID    uuid.UUID `json:"question_id"`
 	Index         int       `json:"index"`
 	CorrectAnswer string    `json:"correct_answer"`
+	// AcceptedAnswers is this blank's accepted-answer set; always a non-nil slice on
+	// read (falls back to []string{CorrectAnswer} when no accepted-answer rows exist).
+	AcceptedAnswers []string `json:"accepted_answers"`
 }
 
 // Exam is a scheduled test offering. It bundles one or more Tests via ExamTest and may

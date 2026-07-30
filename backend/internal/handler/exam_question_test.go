@@ -117,6 +117,54 @@ func TestQuestionRequest_toQuestion_rejectsInvalidTopicID(t *testing.T) {
 	}
 }
 
+// FR-25/FR-26: accepted_answers travels from the request body through
+// toQuestion()/toBlanks() unchanged.
+func TestQuestionRequest_toQuestion_carriesAcceptedAnswers(t *testing.T) {
+	req := questionRequest{Format: "short", Body: "1+1", AcceptedAnswers: []string{"2", "dua"}}
+	q, err := req.toQuestion()
+	if err != nil {
+		t.Fatalf("toQuestion returned error: %v", err)
+	}
+	if len(q.AcceptedAnswers) != 2 || q.AcceptedAnswers[0] != "2" || q.AcceptedAnswers[1] != "dua" {
+		t.Errorf("AcceptedAnswers = %v, want [2 dua]", q.AcceptedAnswers)
+	}
+}
+
+func TestQuestionRequest_toQuestion_defaultsAcceptedAnswersToEmptySlice(t *testing.T) {
+	req := questionRequest{Format: "essay", Body: "explain"}
+	q, err := req.toQuestion()
+	if err != nil {
+		t.Fatalf("toQuestion returned error: %v", err)
+	}
+	if q.AcceptedAnswers == nil {
+		t.Error("AcceptedAnswers should default to a non-nil empty slice")
+	}
+	if len(q.AcceptedAnswers) != 0 {
+		t.Errorf("AcceptedAnswers = %v, want empty", q.AcceptedAnswers)
+	}
+}
+
+func TestQuestionRequest_toBlanks_carriesAcceptedAnswers(t *testing.T) {
+	req := questionRequest{
+		Format: "multi_blank",
+		Body:   "{{1}} and {{2}}",
+		Blanks: []blankRequest{
+			{Index: 1, CorrectAnswer: "4", AcceptedAnswers: []string{"4", "empat"}},
+			{Index: 2, CorrectAnswer: "jakarta"},
+		},
+	}
+	blanks := req.toBlanks()
+	if len(blanks) != 2 {
+		t.Fatalf("toBlanks returned %d blanks, want 2", len(blanks))
+	}
+	if len(blanks[0].AcceptedAnswers) != 2 || blanks[0].AcceptedAnswers[0] != "4" || blanks[0].AcceptedAnswers[1] != "empat" {
+		t.Errorf("blanks[0].AcceptedAnswers = %v, want [4 empat]", blanks[0].AcceptedAnswers)
+	}
+	if blanks[1].AcceptedAnswers == nil || len(blanks[1].AcceptedAnswers) != 0 {
+		t.Errorf("blanks[1].AcceptedAnswers = %v, want non-nil empty slice", blanks[1].AcceptedAnswers)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // DB-backed: FR-16/FR-18 must hold at the handler layer, not only in
 // toQuestion() unit tests above. This is the exact guard that used to

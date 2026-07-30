@@ -451,18 +451,19 @@ func (h *Handler) AdminCreateBankQuestion(c echo.Context) error {
 
 // questionRequest is the shared body for AdminCreateQuestion / AdminUpdateQuestion.
 type questionRequest struct {
-	Format        string          `json:"format"`
-	Body          string          `json:"body"`
-	Difficulty    *string         `json:"difficulty,omitempty"`
-	Explanation   *string         `json:"explanation,omitempty"`
-	ImageURL      *string         `json:"image_url,omitempty"`
-	AudioURL      *string         `json:"audio_url,omitempty"`
-	CorrectAnswer *string         `json:"correct_answer,omitempty"`
-	TopicID       *string         `json:"topic_id,omitempty"`
-	Options       []optionRequest `json:"options,omitempty"`
-	Blanks        []blankRequest  `json:"blanks,omitempty"`
-	PointCorrect  *float64        `json:"point_correct,omitempty"`
-	PointWrong    *float64        `json:"point_wrong,omitempty"`
+	Format          string          `json:"format"`
+	Body            string          `json:"body"`
+	Difficulty      *string         `json:"difficulty,omitempty"`
+	Explanation     *string         `json:"explanation,omitempty"`
+	ImageURL        *string         `json:"image_url,omitempty"`
+	AudioURL        *string         `json:"audio_url,omitempty"`
+	CorrectAnswer   *string         `json:"correct_answer,omitempty"`
+	AcceptedAnswers []string        `json:"accepted_answers,omitempty"`
+	TopicID         *string         `json:"topic_id,omitempty"`
+	Options         []optionRequest `json:"options,omitempty"`
+	Blanks          []blankRequest  `json:"blanks,omitempty"`
+	PointCorrect    *float64        `json:"point_correct,omitempty"`
+	PointWrong      *float64        `json:"point_wrong,omitempty"`
 }
 
 type optionRequest struct {
@@ -474,8 +475,9 @@ type optionRequest struct {
 }
 
 type blankRequest struct {
-	Index         int    `json:"index"`
-	CorrectAnswer string `json:"correct_answer"`
+	Index           int      `json:"index"`
+	CorrectAnswer   string   `json:"correct_answer"`
+	AcceptedAnswers []string `json:"accepted_answers,omitempty"`
 }
 
 func (r questionRequest) toQuestion() (model.Question, error) {
@@ -497,17 +499,23 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		topicID = &tid
 	}
 
+	acceptedAnswers := r.AcceptedAnswers
+	if acceptedAnswers == nil {
+		acceptedAnswers = []string{}
+	}
+
 	return model.Question{
-		Format:        r.Format,
-		Body:          r.Body,
-		CorrectAnswer: r.CorrectAnswer,
-		Explanation:   r.Explanation,
-		Difficulty:    r.Difficulty,
-		ImageURL:      r.ImageURL,
-		AudioURL:      r.AudioURL,
-		TopicID:       topicID,
-		PointCorrect:  pointCorrect,
-		PointWrong:    pointWrong,
+		Format:          r.Format,
+		Body:            r.Body,
+		CorrectAnswer:   r.CorrectAnswer,
+		Explanation:     r.Explanation,
+		Difficulty:      r.Difficulty,
+		ImageURL:        r.ImageURL,
+		AudioURL:        r.AudioURL,
+		TopicID:         topicID,
+		PointCorrect:    pointCorrect,
+		PointWrong:      pointWrong,
+		AcceptedAnswers: acceptedAnswers,
 	}, nil
 }
 
@@ -528,9 +536,14 @@ func (r questionRequest) toOptions() []model.QuestionOption {
 func (r questionRequest) toBlanks() []model.QuestionBlank {
 	out := make([]model.QuestionBlank, 0, len(r.Blanks))
 	for _, b := range r.Blanks {
+		acceptedAnswers := b.AcceptedAnswers
+		if acceptedAnswers == nil {
+			acceptedAnswers = []string{}
+		}
 		out = append(out, model.QuestionBlank{
-			Index:         b.Index,
-			CorrectAnswer: b.CorrectAnswer,
+			Index:           b.Index,
+			CorrectAnswer:   b.CorrectAnswer,
+			AcceptedAnswers: acceptedAnswers,
 		})
 	}
 	return out

@@ -98,6 +98,19 @@ silently diverges between the grader and the admin's expectation.
 
 Applies to `short`, `fill_blank` and `multi_blank`.
 
+**Confirmed rule (2026-07-30, see Open questions item 1 below):** normalise both the accepted answer
+and the submitted answer by — trim leading/trailing whitespace, Unicode-lowercase, then collapse
+every internal run of whitespace to one space — and report a match only on exact string equality of
+the normalised forms. No accent folding, no punctuation stripping, no number-word equivalence:
+`"2"` and `"dua"` must both be listed as accepted answers if either is to match. Implemented in
+`backend/internal/service/answer_match.go` (`normalizeAnswer` / `matchesAnyAccepted`).
+
+Persistence: `question_accepted_answer (question_id, blank_index, answer_index, answer)`, with
+`blank_index = 0` meaning question-level (`short`/`fill_blank`) and `blank_index > 0` a per-blank
+set for `multi_blank`. The legacy scalar columns (`question.correct_answer`,
+`question_blank.correct_answer`) are kept in sync — always the **first** accepted answer of the
+current set — so the result page and CSV import continue to work unchanged (FR-27).
+
 ### FB-6 — true/false with several statements per question
 
 A seventh format. Each statement is independently true or false and independently scored, which makes
@@ -218,8 +231,8 @@ been — it was an observation made while reading the migration, turned into sco
 
 ## Open questions for the client
 
-1. FB-10 matching: are accents, punctuation and number-word equivalence (`2` / `dua` / `two`) in or
-   out? **Proposed answer, needs only a nod:** none of them. The client's own example (`2`, `dua`) is
+1. **RESOLVED (2026-07-30).** FB-10 matching: are accents, punctuation and number-word equivalence
+   (`2` / `dua` / `two`) in or out? **Answer: none of them.** The client's own example (`2`, `dua`) is
    a *list of accepted answers*, so if the admin writes both, the grader needs no language knowledge.
    Rule stays minimal and deterministic — trim, case-fold, collapse internal whitespace, then exact
    match against each listed answer. Anything else is another accepted answer, not another rule.
