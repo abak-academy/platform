@@ -29,9 +29,18 @@ Two forced dependencies:
 - **C before D.** The label is built from the Biteship waybill; building it from the
   manually-typed number first is throwaway work.
 
-**Pre-commit gate.** E6 requires the PRD scope-reversal sign-off recorded *before the
+~~**Pre-commit gate.** E6 requires the PRD scope-reversal sign-off recorded *before the
 first commit*: `docs/decisions/2026-07-29-logistics-level-3-signoff.md`, plus an
-amendment to `prd-trd-drift.md`. This is commit 1.
+amendment to `prd-trd-drift.md`. This is commit 1.~~
+
+**Gate dropped 2026-07-30 — settled a better way.** The PRD itself was amended
+(**v1.2**): the out-of-scope bullet is struck through and reversed in place, with
+**FR-STORE-ADM-08a/b/c** and FR-STORE-05c added. A separate decision record would only
+have restated it, so `docs/decisions/` was never created; [`prd-trd-drift.md`](prd-trd-drift.md)
+carries the repo-side entry. **E6 now builds against FR-STORE-ADM-08a/b/c as ordinary
+in-scope requirements** — with one caveat: **08c demands verified webhook signatures and
+Biteship publishes no signing scheme**, so §"Webhook" below is the honest substitute, not
+a shortfall.
 
 ---
 
