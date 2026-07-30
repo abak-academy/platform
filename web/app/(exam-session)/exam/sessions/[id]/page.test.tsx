@@ -1524,6 +1524,120 @@ describe("SessionPage", () => {
     });
   });
 
+  // ── true_false rendering (FR-31, FR-32) ─────────────────────────────────
+
+  function trueFalseSession(overrides?: { answers?: SessionState["answers"] }): SessionState {
+    return {
+      ...sampleSession,
+      answers: overrides?.answers ?? [],
+      tests: [
+        {
+          ...sampleSession.tests[0],
+          questions: [
+            {
+              id: "q-tf",
+              test_id: "test-1",
+              format: "true_false",
+              body: "Which statements are true?",
+              sort_order: 1,
+              options: [],
+              statements: [
+                { index: 1, body: "Statement A" },
+                { index: 2, body: "Statement B" },
+                { index: 3, body: "Statement C" },
+                { index: 4, body: "Statement D" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it("renders one question card with four statement controls, in index order (FR-31)", async () => {
+    sessionState = { ...sessionState, data: trueFalseSession() };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Which statements are true\?/);
+
+    const rows = screen.getAllByTestId(/^tf-statement-\d+$/);
+    expect(rows).toHaveLength(4);
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("Statement A"),
+      expect.stringContaining("Statement B"),
+      expect.stringContaining("Statement C"),
+      expect.stringContaining("Statement D"),
+    ]);
+  });
+
+  it("answers statements 1 and 3 true, 2 false, leaves 4 untouched — encodes [\"true\",\"false\",\"true\",\"\"] (FR-32)", async () => {
+    sessionState = { ...sessionState, data: trueFalseSession() };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Which statements are true\?/);
+
+    fireEvent.click(screen.getByTestId("tf-radio-true-1"));
+    fireEvent.click(screen.getByTestId("tf-radio-false-2"));
+    fireEvent.click(screen.getByTestId("tf-radio-true-3"));
+    // statement 4 left untouched
+
+    // The re-rendered controls reflect exactly what was handed to onChange —
+    // the encoded value round-trips back in as currentValue on every keystroke.
+    expect((screen.getByTestId("tf-radio-true-1") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId("tf-radio-false-1") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByTestId("tf-radio-false-2") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId("tf-radio-true-2") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByTestId("tf-radio-true-3") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId("tf-radio-false-3") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByTestId("tf-radio-true-4") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByTestId("tf-radio-false-4") as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("rehydrates a saved [\"true\",\"\",\"false\",\"\"] answer and shows that state", async () => {
+    sessionState = {
+      ...sessionState,
+      data: trueFalseSession({
+        answers: [{ question_id: "q-tf", answer: '["true","","false",""]', flagged_for_review: false }],
+      }),
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Which statements are true\?/);
+
+    expect(
+      (screen.getByTestId("tf-radio-true-1") as HTMLInputElement).checked
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("tf-radio-false-1") as HTMLInputElement).checked
+    ).toBe(false);
+    expect(
+      (screen.getByTestId("tf-radio-true-2") as HTMLInputElement).checked
+    ).toBe(false);
+    expect(
+      (screen.getByTestId("tf-radio-false-2") as HTMLInputElement).checked
+    ).toBe(false);
+    expect(
+      (screen.getByTestId("tf-radio-false-3") as HTMLInputElement).checked
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("tf-radio-true-3") as HTMLInputElement).checked
+    ).toBe(false);
+    expect(
+      (screen.getByTestId("tf-radio-true-4") as HTMLInputElement).checked
+    ).toBe(false);
+    expect(
+      (screen.getByTestId("tf-radio-false-4") as HTMLInputElement).checked
+    ).toBe(false);
+  });
+
+  it("never reads an is_true field from the payload — omitted entirely, component still renders (NFR-5)", async () => {
+    // The fixture's statements carry only { index, body } — no is_true anywhere,
+    // proving the session page cannot leak the answer key even if it tried.
+    sessionState = { ...sessionState, data: trueFalseSession() };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Which statements are true\?/);
+
+    expect(screen.getAllByTestId(/^tf-statement-\d+$/)).toHaveLength(4);
+    expect(document.body.innerHTML).not.toContain("is_true");
+  });
+
   // ── Rich-text option rendering (FR-12) ─────────────────────────────────
 
   it("renders mcq option text with RichContent (formatted, not literal tags) (FR-12)", async () => {

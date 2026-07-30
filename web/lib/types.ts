@@ -793,6 +793,8 @@ export interface SessionQuestion {
   sort_order: number;
   options: SessionQuestionOption[];
   blanks?: number[];
+  /** `true_false` only — bodies in index order, never truth values. */
+  statements?: { index: number; body: string }[];
 }
 
 export interface SessionTest {

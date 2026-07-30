@@ -44,6 +44,7 @@ export function QuestionPreview({ item, open, onOpenChange, onEdit }: QuestionPr
   const { question, options, blanks } = item;
   const showOptions = question.format === "mcq" || question.format === "multi_answer";
   const showBlanks = question.format === "multi_blank";
+  const showStatements = question.format === "true_false";
   const formatKey = FORMAT_LABELS[question.format];
   const difficultyKey = question.difficulty ? DIFFICULTY_LABELS[question.difficulty] : undefined;
 
@@ -119,6 +120,31 @@ export function QuestionPreview({ item, open, onOpenChange, onEdit }: QuestionPr
                   <p className="font-medium">{blank.correct_answer}</p>
                 </div>
               ))}
+            </div>
+          )}
+
+          {showStatements && question.statements && question.statements.length > 0 && (
+            <div className="space-y-2">
+              {[...question.statements]
+                .sort((a, b) => a.index - b.index)
+                .map((statement) => (
+                  <div
+                    key={statement.index}
+                    className="flex items-center gap-3 rounded-lg border p-3 text-sm"
+                  >
+                    <span className="w-6 text-center font-mono font-medium">
+                      {statement.index}
+                    </span>
+                    <div className="flex-1">
+                      <RichContent html={statement.body} />
+                    </div>
+                    <Badge variant={statement.is_true ? "default" : "outline"}>
+                      {statement.is_true
+                        ? t("tests_field_statement_is_true")
+                        : t("tests_field_statement_is_false")}
+                    </Badge>
+                  </div>
+                ))}
             </div>
           )}
 

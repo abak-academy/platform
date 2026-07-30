@@ -432,4 +432,41 @@ describe("SessionResultPage", () => {
       screen.getByText(/Penjelasan polos.*tidak.*dirich/)
     ).toBeInTheDocument();
   });
+
+  it("renders a true_false pembahasan row without crashing on the new shape", () => {
+    resultState = {
+      data: {
+        state: "result",
+        result_config: "score_pembahasan",
+        score: 90,
+        correct_count: 9,
+        wrong_count: 0,
+        empty_count: 1,
+        rank: 1,
+        breakdown: [],
+        pembahasan: [
+          {
+            question_id: "q-tf",
+            body: "Which statements are true?",
+            format: "true_false",
+            your_answer: '["true","false","true",""]',
+            correct_answer: null,
+            is_correct: false,
+            explanation: "Statement 2 is actually true.",
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    expect(
+      screen.getByText(/Which statements are true\?/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('["true","false","true",""]')
+    ).toBeInTheDocument();
+  });
 });

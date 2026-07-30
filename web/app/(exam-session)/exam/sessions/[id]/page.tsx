@@ -885,6 +885,80 @@ function MultiBlankInput({
   return <div ref={containerRef} className="text-base text-ink-900" />;
 }
 
+// Component: render true_false with one true/false control per statement.
+// Serialises to a JSON array of "true"/"false"/"" in statement index order.
+function TrueFalseInput({
+  statements,
+  currentValue,
+  onChange,
+  disabled,
+}: {
+  statements: { index: number; body: string }[] | undefined;
+  currentValue: string;
+  onChange: (val: string) => void;
+  disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  if (!statements || statements.length === 0) return null;
+
+  let parsed: string[] = [];
+  try {
+    const p = currentValue ? JSON.parse(currentValue) : [];
+    if (Array.isArray(p)) parsed = p;
+  } catch {
+    parsed = [];
+  }
+  while (parsed.length < statements.length) parsed.push("");
+
+  const setStatement = (i: number, val: "true" | "false") => {
+    const next = [...parsed];
+    next[i] = val;
+    onChange(JSON.stringify(next));
+  };
+
+  return (
+    <div className="space-y-2">
+      {statements.map((s, i) => (
+        <div
+          key={s.index}
+          data-testid={`tf-statement-${s.index}`}
+          className="flex items-center justify-between gap-3 rounded-lg border border-line p-3"
+        >
+          <div className="flex-1 text-sm text-ink-800">
+            <RichContent html={sanitizeForRichContent(s.body)} />
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                name={`tf-${s.index}`}
+                data-testid={`tf-radio-true-${s.index}`}
+                checked={parsed[i] === "true"}
+                onChange={() => setStatement(i, "true")}
+                disabled={disabled}
+                className="accent-brand-600"
+              />
+              {t("tests_field_statement_is_true")}
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                name={`tf-${s.index}`}
+                data-testid={`tf-radio-false-${s.index}`}
+                checked={parsed[i] === "false"}
+                onChange={() => setStatement(i, "false")}
+                disabled={disabled}
+                className="accent-brand-600"
+              />
+              {t("tests_field_statement_is_false")}
+            </label>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function renderAnswerInput(
   question: SessionQuestion,
   currentValue: string,
@@ -981,6 +1055,17 @@ function renderAnswerInput(
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         className="w-full rounded-lg border border-line bg-background px-3 py-2 text-sm text-ink-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-60"
+      />
+    );
+  }
+
+  if (format === "true_false") {
+    return (
+      <TrueFalseInput
+        statements={question.statements}
+        currentValue={currentValue}
+        onChange={onChange}
+        disabled={disabled}
       />
     );
   }
