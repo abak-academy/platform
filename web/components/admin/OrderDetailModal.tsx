@@ -13,11 +13,6 @@ import { useTranslation } from "@/lib/i18n";
 import type { Order } from "@/lib/types";
 import { hasPhysicalItems } from "@/lib/shipping";
 
-// Mirrors FallbackCourier in backend/internal/service/shipping_rates.go, same as
-// the storefront's ShippingInfo. The order row carries no is_estimate flag, so a
-// flat rate can only be recognised by name — see docs/backlog/shipping-estimate-flag.md.
-const ESTIMATE_COURIERS = new Set(["Ongkir Flat", "Flat"]);
-
 export interface OrderDetailModalProps {
   order: Order | null;
   onOpenChange: (open: boolean) => void;
@@ -43,7 +38,7 @@ export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps)
   // Narrowest first, the way an Indonesian address is written.
   const region = [addr.kecamatan, addr.kota, addr.provinsi].filter(Boolean).join(", ");
   const courier = [order.selected_courier, order.selected_service].filter(Boolean).join(" — ");
-  const isEstimate = ESTIMATE_COURIERS.has(order.selected_courier ?? "");
+  const isEstimate = order.is_estimate ?? false;
   const placed = formatDateTime(order.checked_out_at ?? order.created_at, lang);
   const paid = formatDateTime(order.paid_at, lang);
   const shipped = formatDateTime(order.shipped_at, lang);

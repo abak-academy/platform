@@ -219,6 +219,7 @@ export interface Order {
   shipping_address?: Record<string, string> | null;
   selected_courier?: string;
   selected_service?: string;
+  is_estimate?: boolean;
   tracking_number?: string;
   shipped_at?: string;
   gateway_ref?: string;
