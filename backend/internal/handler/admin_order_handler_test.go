@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"akademi-bimbel/config"
 	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/repository"
@@ -155,6 +156,34 @@ func newShipHandlerTestService(t *testing.T, logistics service.LogisticsClient) 
 	}
 
 	svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, &service.NoopPaymentClient{}, logistics, nil, nil)
+	return handler.New(svc), svc, repo
+}
+
+// newShipHandlerTestServiceWithRenderer is newShipHandlerTestService plus a
+// config.Config pointing the Gotenberg renderer at a fake sidecar
+// (newFakeGotenbergServer, defined in exam_certificate_handler_test.go in
+// this same package) — needed only by the shipping-label test below, which
+// is the first admin-order handler test that actually streams a rendered
+// PDF rather than just a JSON status.
+func newShipHandlerTestServiceWithRenderer(t *testing.T, logistics service.LogisticsClient) (*handler.Handler, *service.Service, *repository.Repository) {
+	t.Helper()
+	repo := shipHandlerRepoFixture(t)
+
+	ctx := context.Background()
+	senderVals := map[string]string{
+		"app_name":          "Toko Contoh",
+		"app_contact_phone": "081200000000",
+		"app_address":       "Jl. Contoh No. 1",
+		"app_kode_pos":      "12345",
+	}
+	for k, v := range senderVals {
+		if err := repo.UpsertSystemConfig(ctx, k, v, false); err != nil {
+			t.Fatalf("seed system config %s: %v", k, err)
+		}
+	}
+
+	cfg := &config.Config{GotenbergURL: newFakeGotenbergServer(t).URL}
+	svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, &service.NoopPaymentClient{}, logistics, nil, cfg)
 	return handler.New(svc), svc, repo
 }
 
@@ -373,5 +402,61 @@ func TestAdminGetOrder_JSONCarriesShipmentFields(t *testing.T) {
 	}
 	if raw["waybill_source"] != "biteship" {
 		t.Errorf("waybill_source: want biteship, got %v", raw["waybill_source"])
+	}
+}
+
+// TestAdminGetShippingLabel_StreamsApplicationPDF proves GET
+// /admin/orders/:id/label reaches GetShippingLabel and streams the rendered
+// packing slip back as application/pdf (FR-D-1).
+func TestAdminGetShippingLabel_StreamsApplicationPDF(t *testing.T) {
+	fake := &fakeShipHandlerLogistics{}
+	h, svc, repo := newShipHandlerTestServiceWithRenderer(t, fake)
+
+	orderID := createShippableOrderForHandler(t, svc, repo, "paid", true)
+	shipCtx, shipRec := newShipRequestCtx(t, http.MethodPost, "/api/v1/admin/orders/"+orderID.String()+"/ship", "id", orderID.String(), nil)
+	if err := h.AdminShipOrder(shipCtx); err != nil {
+		t.Fatalf("AdminShipOrder: %v", err)
+	}
+	if shipRec.Code != http.StatusOK {
+		t.Fatalf("AdminShipOrder: want 200, got %d: %s", shipRec.Code, shipRec.Body.String())
+	}
+
+	c, rec := newShipRequestCtx(t, http.MethodGet, "/api/v1/admin/orders/"+orderID.String()+"/label", "id", orderID.String(), nil)
+	if err := h.AdminGetShippingLabel(c); err != nil {
+		t.Fatalf("AdminGetShippingLabel: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("AdminGetShippingLabel: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/pdf" {
+		t.Errorf("Content-Type: want application/pdf, got %q", ct)
+	}
+	if rec.Body.Len() == 0 {
+		t.Errorf("expected a non-empty PDF body")
+	}
+}
+
+// TestAdminGetShippingLabel_NoTrackingNumber_Returns422 proves FR-D-2: an
+// order that hasn't been shipped yet (no tracking_number) is refused with a
+// clear reason before any PDF is produced.
+func TestAdminGetShippingLabel_NoTrackingNumber_Returns422(t *testing.T) {
+	fake := &fakeShipHandlerLogistics{}
+	h, svc, repo := newShipHandlerTestServiceWithRenderer(t, fake)
+
+	orderID := createShippableOrderForHandler(t, svc, repo, "paid", true)
+
+	c, rec := newShipRequestCtx(t, http.MethodGet, "/api/v1/admin/orders/"+orderID.String()+"/label", "id", orderID.String(), nil)
+	if err := h.AdminGetShippingLabel(c); err != nil {
+		t.Fatalf("AdminGetShippingLabel: %v", err)
+	}
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var apiErr handler.APIError
+	if err := json.Unmarshal(rec.Body.Bytes(), &apiErr); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if apiErr.Code != "no_tracking_number" {
+		t.Errorf("code: want no_tracking_number, got %q", apiErr.Code)
 	}
 }

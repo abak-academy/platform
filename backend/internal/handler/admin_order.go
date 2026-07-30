@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"net/http"
 
 	"akademi-bimbel/internal/repository"
@@ -74,6 +75,20 @@ func (h *Handler) AdminShipOrder(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "order shipped",
 	})
+}
+
+// AdminGetShippingLabel streams a printable packing slip PDF for an order's
+// waybill (FR-D-1..D-4) — a packing slip, not the scannable carrier label,
+// which comes from Biteship's dashboard.
+func (h *Handler) AdminGetShippingLabel(c echo.Context) error {
+	orderID := c.Param("id")
+
+	pdf, err := h.svc.GetShippingLabel(c.Request().Context(), orderID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	c.Response().Header().Set("Content-Type", "application/pdf")
+	return c.Stream(http.StatusOK, "application/pdf", bytes.NewReader(pdf))
 }
 
 func (h *Handler) AdminShipOrderManual(c echo.Context) error {
