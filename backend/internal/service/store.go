@@ -428,7 +428,11 @@ func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest
 		}
 	}
 
-	return resolveShippingRates(rates, clientErr, flatRate)
+	resolved, cause, err := resolveShippingRates(rates, clientErr, flatRate)
+	if cause != "" {
+		slog.Warn("shipping quote degraded to fallback", "cause", cause)
+	}
+	return resolved, err
 }
 
 func (s *Service) MintCart(ctx context.Context, studentID string) (model.Order, bool, error) {
@@ -681,11 +685,13 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 
 	if patch.Courier != "" {
 		var weightGrams int
+		var itemValue int64
 		hasPhysical := false
 		for _, item := range order.Items {
 			if isPhysicalType(item.ProductType) {
 				hasPhysical = true
 				weightGrams += item.WeightGrams * item.Qty
+				itemValue += int64(item.Jumlah)
 			}
 		}
 
@@ -700,6 +706,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 			rates, err := s.GetShippingRates(ctx, ShippingQuoteRequest{
 				DestinationPostalCode: *patch.KodePos,
 				WeightGrams:           weightGrams,
+				ItemValue:             itemValue,
 			})
 			if err != nil {
 				return err

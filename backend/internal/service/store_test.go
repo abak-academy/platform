@@ -518,6 +518,72 @@ func TestGetShippingRates(t *testing.T) {
 	}
 }
 
+// recordingLogisticsClient captures the last ShippingQuoteRequest it received
+// and always answers with rate, so PatchCart's courier-match loop succeeds.
+type recordingLogisticsClient struct {
+	lastReq ShippingQuoteRequest
+	rate    CourierRate
+}
+
+func (r *recordingLogisticsClient) GetRates(_ context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
+	r.lastReq = req
+	return []CourierRate{r.rate}, nil
+}
+
+// TestPatchCart_PopulatesItemValueFromPhysicalItemLineTotal covers FR-A-8: the
+// quote request PatchCart builds for a cart with physical items must carry
+// their summed line total (Jumlah) as ItemValue, instead of leaving it at the
+// zero value that makes BiteshipClient fall back to the pre-existing
+// hardcoded 1.
+func TestPatchCart_PopulatesItemValueFromPhysicalItemLineTotal(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
+	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, spy, nil, nil)
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status, weight_grams)
+		 VALUES ('book', $1, 50000, 10, 'published', 500) RETURNING id`,
+		"Shipping Test Book "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "Item Value Student", "itemval_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 2); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	// Papua Selatan / Kabupaten Merauke / Merauke — a province/city/district
+	// triple seeded by migration 0046, reused from
+	// TestPapuaMigration_ValidateAddressHierarchy_AcceptsNewProvinceTriples.
+	provinceID, cityID, districtID := "93", "9301", "930101"
+	kodePos := "12345"
+	err = svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{
+		Courier:    "JNE",
+		Service:    "REG",
+		ProvinceID: &provinceID,
+		CityID:     &cityID,
+		DistrictID: &districtID,
+		KodePos:    &kodePos,
+	})
+	if err != nil {
+		t.Fatalf("PatchCart: %v", err)
+	}
+
+	want := int64(100000) // unit_price 50000 * qty 2
+	if spy.lastReq.ItemValue != want {
+		t.Errorf("want ItemValue=%d (2x50000 book line total), got %d", want, spy.lastReq.ItemValue)
+	}
+}
+
 func TestCheckout_PhysicalItemWithoutShipping_ReturnsError(t *testing.T) {
 	ctx := context.Background()
 	mr, err := miniredis.Run()
