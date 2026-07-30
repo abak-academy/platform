@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent } from "react";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import {
@@ -31,6 +31,15 @@ interface RichTextEditorProps {
   compact?: boolean;
 }
 
+// Imperative escape hatch for callers that need to write into the editor
+// from outside a toolbar click — e.g. QuestionEditor's insert-blank action
+// (FB-25), which must insert `{{N}}` at the caret in lockstep with adding a
+// blank row.
+export interface RichTextEditorHandle {
+  insertTextAtCaret: (text: string) => void;
+  setContent: (html: string) => void;
+}
+
 function isEffectivelyEmpty(html: string): boolean {
   const tmp = document.createElement("div");
   tmp.innerHTML = html;
@@ -45,16 +54,19 @@ function sanitizeClipboardHtml(html: string): string {
   return DOMPurify.sanitize(html, { ALLOWED_TAGS: QUESTION_BODY_ALLOWED_TAGS, ALLOWED_ATTR });
 }
 
-export function RichTextEditor({ value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby, minHeightClassName = "min-h-[130px]", compact = false }: RichTextEditorProps) {
-  const ref = useRef<HTMLDivElement | null>(null);
+export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor(
+  { value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby, minHeightClassName = "min-h-[130px]", compact = false },
+  forwardedRef
+) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [empty, setEmpty] = useState<boolean>(!value || isEffectivelyEmpty(value));
   const presign = usePresignAdminImageUpload();
 
   // On mount only, mirror `value` into the contentEditable if it differs.
   useEffect(() => {
-    if (ref.current && ref.current.innerHTML !== value) {
-      ref.current.innerHTML = value || "";
+    if (editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value || "";
     }
     // Without this, Chromium's default Enter behaviour wraps new lines in
     // <div>, which isn't allowlisted and gets stripped server-side (FB-24) —
@@ -64,17 +76,25 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
   }, []);
 
   function sync() {
-    if (!ref.current) return;
-    const html = ref.current.innerHTML;
+    if (!editorRef.current) return;
+    const html = editorRef.current.innerHTML;
     setEmpty(isEffectivelyEmpty(html));
     onChange(html);
   }
 
   function exec(cmd: string, arg?: string) {
     document.execCommand(cmd, false, arg);
-    if (ref.current) ref.current.focus();
+    if (editorRef.current) editorRef.current.focus();
     sync();
   }
+
+  useImperativeHandle(forwardedRef, () => ({
+    insertTextAtCaret: (text: string) => exec("insertText", text),
+    setContent: (html: string) => {
+      if (editorRef.current) editorRef.current.innerHTML = html;
+      sync();
+    },
+  }));
 
   function insertFormula() {
     const sel = typeof window !== "undefined" ? window.getSelection() : null;
@@ -248,7 +268,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
       </div>
       <div className="relative">
         <div
-          ref={ref}
+          ref={editorRef}
           id={id}
           aria-label={ariaLabel}
           aria-labelledby={ariaLabelledby}
@@ -268,4 +288,4 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
       </div>
     </div>
   );
-}
+});
