@@ -53,14 +53,20 @@ var validSectionTypes = map[string]bool{
 // (FR-19 publish-gate trigger). 'standard' is excluded.
 func isSectionedMode(mode string) bool { return mode == "utbk" || mode == "ielts" }
 
+// questionBodyAllowedTags is the tag allowlist shared by sanitizeQuestionBody
+// and (via web/lib/question-html.ts, kept in lockstep by a cross-language
+// test) the three frontend render/sanitize sites. Attribute lists are NOT
+// shared — they deliberately differ per site (see exam.go's style subset vs.
+// RichTextEditor's no-style-on-paste rule).
+var questionBodyAllowedTags = []string{"b", "i", "u", "ul", "ol", "li", "sup", "sub", "img", "br", "p"}
+
 // questionBodyPolicy is the single allowlist used by sanitizeQuestionBody. It is
 // built once at package init and used on every write path. See sanitizeQuestionBody
 // for the rationale behind each element/attribute.
 var questionBodyPolicy = func() *bluemonday.Policy {
 	p := bluemonday.NewPolicy()
-	p.AllowElements("b", "i", "u", "ul", "ol", "li", "sup", "sub")
+	p.AllowElements(questionBodyAllowedTags...)
 	p.AllowAttrs("src", "alt").OnElements("img")
-	p.AllowElements("img")
 	// Restricted style: only a safe subset is allowed, and "position" is
 	// explicitly rejected by handler (covers "position:fixed" and any
 	// other value). url() in style is rejected wholesale — images carry
@@ -76,10 +82,11 @@ var questionBodyPolicy = func() *bluemonday.Policy {
 // (CreateBankQuestion, SaveQuestion, CreateQuestionForTest,
 // ProcessQuestionImportRows) so the persisted value is the sanitized one.
 //
-// Allowlist: b, i, u, ul, ol, li, sup, sub, img (with src/alt and a restricted
-// style attribute). On* handlers, <script>, <iframe>, javascript: URLs, and
-// any non-allowlisted tag are stripped. "position" in style is rejected via
-// the regex below; url() in style is rejected via the policy's value handler.
+// Allowlist: b, i, u, ul, ol, li, sup, sub, br, p, img (with src/alt and a
+// restricted style attribute). On* handlers, <script>, <iframe>, javascript:
+// URLs, and any non-allowlisted tag are stripped. "position" in style is
+// rejected via the regex below; url() in style is rejected via the policy's
+// value handler.
 func sanitizeQuestionBody(body string) string {
 	if body == "" {
 		return body
@@ -97,6 +104,19 @@ func sanitizeQuestionBody(body string) string {
 	cleaned = regexp.MustCompile(`;\s*;`).ReplaceAllString(cleaned, ";")
 	cleaned = strings.TrimSpace(cleaned)
 	return cleaned
+}
+
+var htmlTagPattern = regexp.MustCompile(`<[^>]*>`)
+
+// isQuestionBodyEmpty reports whether a question body carries no real
+// content: stripping every tag leaves nothing but whitespace, and there is
+// no <img>. Used instead of a raw TrimSpace check because br/p are
+// allowlisted tags with no text content of their own (FR5).
+func isQuestionBodyEmpty(body string) bool {
+	if strings.Contains(body, "<img") {
+		return false
+	}
+	return strings.TrimSpace(htmlTagPattern.ReplaceAllString(body, "")) == ""
 }
 
 // sanitizeQuestionOptions sanitizes the Text field of each option using the same
@@ -169,10 +189,10 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 		return fmt.Errorf("%w: unknown question format: %s", ErrValidation, q.Format)
 	}
 
-	// Callers sanitize q.Body via sanitizeQuestionBody before calling here, which
-	// strips non-allowlisted tags (e.g. <br>) with no text content down to "".
-	// Reject that post-sanitize emptiness so a blank question can't be saved.
-	if strings.TrimSpace(q.Body) == "" {
+	// br/p are allowlisted (FB-24) so a body of just breaks and empty
+	// paragraphs no longer sanitizes to "" — strip all tags before judging
+	// emptiness, but still accept an <img>-only body as content.
+	if isQuestionBodyEmpty(q.Body) {
 		return fmt.Errorf("%w: body cannot be empty", ErrValidation)
 	}
 

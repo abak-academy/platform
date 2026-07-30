@@ -36,6 +36,7 @@ import {
 import type { SessionQuestion } from "@/lib/types";
 import { RichContent } from "@/components/admin/RichContent";
 import { SectionAudioPlayer } from "./section-audio-player";
+import { QUESTION_BODY_ALLOWED_TAGS } from "@/lib/question-html";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -732,7 +733,7 @@ function LegendItem({
 }
 
 // Helper: sanitize HTML using same allowlist as RichContent
-const ALLOWED_TAGS = ["b", "i", "u", "ul", "ol", "li", "sup", "sub", "img"];
+const ALLOWED_TAGS = QUESTION_BODY_ALLOWED_TAGS;
 const ALLOWED_ATTR = ["src", "alt", "style"];
 
 function sanitizeForRichContent(html: string): string {

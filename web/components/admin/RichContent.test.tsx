@@ -46,6 +46,14 @@ describe("RichContent", () => {
     expect(target.querySelector(".katex")).not.toBeNull();
   });
 
+  it("preserves <br> and <p> line breaks (FB-24)", async () => {
+    const { container } = render(<RichContent html="<p>line one</p><p>line two</p><br>" />);
+
+    const target = container.querySelector("[data-rich-content]") as HTMLElement;
+    expect(target.querySelectorAll("p")).toHaveLength(2);
+    expect(target.querySelector("br")).not.toBeNull();
+  });
+
   it("sanitizes a legacy unsanitized body at render time (defense-in-depth for pre-PR rows)", async () => {
     const legacyMaliciousBody = '<img src=x onerror="window.__xss = true">safe text';
     const { container } = render(<RichContent html={legacyMaliciousBody} />);

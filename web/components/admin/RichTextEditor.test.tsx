@@ -43,6 +43,13 @@ describe("RichTextEditor", () => {
     expect(editable.innerHTML).toBe("<b>hello</b>");
   });
 
+  it("sets defaultParagraphSeparator to 'p' on mount so Enter produces allowlisted markup (FB-24)", () => {
+    const execSpy = vi.spyOn(document, "execCommand").mockImplementation(() => true);
+    render(<RichTextEditor value="" onChange={vi.fn()} />);
+    expect(execSpy).toHaveBeenCalledWith("defaultParagraphSeparator", false, "p");
+    execSpy.mockRestore();
+  });
+
   it("clicking Bold with a selection invokes document.execCommand with 'bold'", () => {
     const execSpy = vi.spyOn(document, "execCommand").mockImplementation(() => true);
     const onChange = vi.fn();
@@ -368,6 +375,42 @@ describe("RichTextEditor", () => {
       expect(lastCall).toBeDefined();
       expect(lastCall).toContain('<b>bold</b>');
       expect(lastCall).toContain('<i>italic</i>');
+    });
+
+    execSpy.mockRestore();
+  });
+
+  it("preserves <br> and <p> line breaks on paste (FB-24)", async () => {
+    const execSpy = vi.spyOn(document, "execCommand").mockImplementation((cmd, _ui, arg) => {
+      if (cmd === "insertHTML" && typeof arg === "string") {
+        const editable = document.querySelector('[contenteditable="true"]');
+        if (editable) editable.innerHTML = arg;
+        return true;
+      }
+      return true;
+    });
+
+    const onChange = vi.fn();
+    render(<RichTextEditor value="" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+
+    const html = "<p>line one</p><p>line two</p><br>";
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        getData: (type: string) => (type === "text/html" ? html : ""),
+      },
+    });
+
+    editable.dispatchEvent(pasteEvent);
+
+    await waitFor(() => {
+      const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0];
+      expect(lastCall).toBeDefined();
+      expect(lastCall).toContain("<p>line one</p>");
+      expect(lastCall).toContain("<p>line two</p>");
+      expect(lastCall).toContain("<br>");
     });
 
     execSpy.mockRestore();

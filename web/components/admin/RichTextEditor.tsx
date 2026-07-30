@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { fileUrl } from "@/lib/api";
 import { usePresignAdminImageUpload } from "@/lib/hooks/admin-uploads";
+import { QUESTION_BODY_ALLOWED_TAGS } from "@/lib/question-html";
 
 interface RichTextEditorProps {
   value: string;
@@ -39,10 +40,9 @@ function isEffectivelyEmpty(html: string): boolean {
 }
 
 function sanitizeClipboardHtml(html: string): string {
-  const ALLOWED_TAGS = ["b", "i", "u", "ul", "ol", "li", "sup", "sub", "img"];
   // For pasted content, only allow src/alt on img, no style attributes
   const ALLOWED_ATTR = ["src", "alt"];
-  return DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR });
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS: QUESTION_BODY_ALLOWED_TAGS, ALLOWED_ATTR });
 }
 
 export function RichTextEditor({ value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby, minHeightClassName = "min-h-[130px]", compact = false }: RichTextEditorProps) {
@@ -56,6 +56,10 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
     if (ref.current && ref.current.innerHTML !== value) {
       ref.current.innerHTML = value || "";
     }
+    // Without this, Chromium's default Enter behaviour wraps new lines in
+    // <div>, which isn't allowlisted and gets stripped server-side (FB-24) —
+    // <p> is.
+    document.execCommand("defaultParagraphSeparator", false, "p");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
