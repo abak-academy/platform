@@ -224,6 +224,54 @@ describe("ExamPage", () => {
     expect(pushMock).toHaveBeenCalledWith("/exam/reg-5/card");
   });
 
+  it("shows a Lihat hasil action linking to the result page when submitted with a session", async () => {
+    const submittedReg: RegistrationListItem = {
+      ...paidNoSchedule,
+      id: "reg-6",
+      exam_title: "Tryout Sudah Selesai",
+      status: "submitted",
+      session_id: "sess-42",
+    };
+    registrationsState = {
+      data: [submittedReg],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tryout Sudah Selesai")).toBeInTheDocument();
+    });
+    const link = screen.getByRole("link", { name: /Lihat hasil/i });
+    expect(link).toHaveAttribute("href", "/exam/sessions/sess-42/result");
+  });
+
+  it("does not render a broken result link when submitted but session_id is null", async () => {
+    const submittedNoSession: RegistrationListItem = {
+      ...paidNoSchedule,
+      id: "reg-7",
+      exam_title: "Tryout Tanpa Sesi",
+      status: "submitted",
+      session_id: null,
+    };
+    registrationsState = {
+      data: [submittedNoSession],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tryout Tanpa Sesi")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("link", { name: /Lihat hasil/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/exam\/sessions\/null/)).not.toBeInTheDocument();
+  });
+
   it("shows an error state with a retry action", async () => {
     const refetch = vi.fn();
     registrationsState = {
