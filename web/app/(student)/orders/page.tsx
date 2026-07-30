@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle, ArrowRight, CreditCard, Lock, Receipt, ShoppingCart } from "lucide-react";
+import { ArrowRight, CreditCard, Lock, Receipt, ShoppingCart } from "lucide-react";
 import { useOrders } from "@/lib/hooks/orders";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
@@ -37,10 +37,6 @@ function BillingEmpty() {
               <ShoppingCart className="mr-2 size-4" />
               {t("billing_browse_store")}
             </Link>
-          </Button>
-          <Button variant="outline">
-            <AlertCircle className="mr-2 size-4" />
-            {t("billing_how_payments")}
           </Button>
         </div>
       </div>
