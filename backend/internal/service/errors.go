@@ -180,6 +180,14 @@ var (
 	ErrShippingUnavailable = errors.New("shipping is unavailable")
 )
 
+// --- from biteship.go ---
+var (
+	// ErrShippingOriginUnset means app_kode_pos is not configured in system_config.
+	ErrShippingOriginUnset = errors.New("shipping origin postal code not configured")
+	// ErrShippingAuthRejected means Biteship rejected the request as unauthorized (401/403).
+	ErrShippingAuthRejected = errors.New("shipping provider rejected credentials")
+)
+
 // --- from store.go ---
 var (
 	ErrForbidden               = errors.New("forbidden")

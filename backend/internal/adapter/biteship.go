@@ -73,6 +73,9 @@ func (c *BiteshipClient) GetRates(ctx context.Context, req service.ShippingQuote
 	// Check response status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, fmt.Errorf("%w: Biteship API returned status %d: %s", service.ErrShippingAuthRejected, resp.StatusCode, string(respBody))
+		}
 		return nil, fmt.Errorf("Biteship API returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
@@ -100,11 +103,15 @@ func (c *BiteshipClient) getOriginPostalCode(ctx context.Context) (string, error
 		}
 	}
 
-	return "", fmt.Errorf("app_kode_pos not configured in system_config")
+	return "", fmt.Errorf("%w: app_kode_pos not configured in system_config", service.ErrShippingOriginUnset)
 }
 
 // buildBiteshipRequest constructs the request body for Biteship's Rates API.
 func (c *BiteshipClient) buildBiteshipRequest(originPostalCode string, req service.ShippingQuoteRequest) map[string]interface{} {
+	itemValue := req.ItemValue
+	if itemValue == 0 {
+		itemValue = 1
+	}
 	return map[string]interface{}{
 		"origin_postal_code":      originPostalCode,
 		"destination_postal_code": req.DestinationPostalCode,
@@ -112,7 +119,7 @@ func (c *BiteshipClient) buildBiteshipRequest(originPostalCode string, req servi
 		"items": []map[string]interface{}{
 			{
 				"name":     "items",
-				"value":    1, // Default value
+				"value":    itemValue,
 				"quantity": 1,
 				"weight":   req.WeightGrams,
 			},

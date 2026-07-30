@@ -5,6 +5,10 @@ import "context"
 type ShippingQuoteRequest struct {
 	DestinationPostalCode string
 	WeightGrams           int
+	// ItemValue is the item's value in rupiah, used for Biteship's insurance
+	// valuation. Zero means unknown; callers that don't set it (the standalone
+	// POST /orders/shipping endpoint) fall back to the pre-existing hardcoded 1.
+	ItemValue int64
 }
 
 type CourierRate struct {
