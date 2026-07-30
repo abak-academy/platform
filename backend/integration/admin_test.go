@@ -64,8 +64,10 @@ func TestAdmin(t *testing.T) {
 		).Scan(&orderID)
 		require.NoError(t, err)
 
+		// /ship auto-books at the carrier and takes no body; manual waybill entry
+		// moved to /ship-manual, which is what this case has always exercised.
 		resp := env.doJSON(t, http.MethodPost,
-			"/api/v1/admin/orders/"+orderID+"/ship",
+			"/api/v1/admin/orders/"+orderID+"/ship-manual",
 			map[string]string{"tracking_number": "JNE-123456"},
 			adminToken,
 		)
