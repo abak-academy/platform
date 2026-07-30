@@ -5,7 +5,7 @@
 | **Issue** | [#58](https://github.com/abak-academy/platform/issues/58) |
 | **Objective** | Results reach exactly the people who should see them, a disconnected student can carry on, and the certificate studio stops being a door that is always open. |
 | **Source IDs** | FB-2, FB-8, FB-13, FB-16, FB-17, FB-20 *(+FB-33)* + **GitHub issue #55** · optional: F-1a, F-1b, D-8 |
-| **Unscheduled, same surface** | FB-26, FB-27, FB-28, FB-31, FB-32 — [H1](h1-live-bugs-2026-07-30.md) |
+| **Unscheduled, same surface** | FB-26, FB-27, FB-28, FB-32 — [H1](h1-live-bugs-2026-07-30.md), all in scope · FB-31 — blocked on a client decision, [H1 §10](h1-live-bugs-2026-07-30.md#10-fb-31--alttab-is-detected-counted-and-then-nothing-happens--blocked) |
 | **Client items** | 6 |
 | **Depends on** | E1 (B-8 — the results export writer) |
 | **Verified against** | `main` @ `211b7b1`, 2026-07-29 |
@@ -79,7 +79,8 @@ The work is affordance and wording. Resist turning either into a feature.
 > retry, no error handling and no unsaved indicator
 > ([`sessions/[id]/page.tsx:250-263`](../../web/app/(exam-session)/exam/sessions/[id]/page.tsx)). Up to
 > 30 seconds of answers are lost on a disconnect, and a save attempted while the network is down is
-> lost silently. Full detail: [H1 §7](h1-live-bugs-2026-07-30.md#7-fb-33--up-to-30-seconds-of-answers-are-lost-silently-widens-fb-20).
+> lost silently. [H1](h1-live-bugs-2026-07-30.md) records FB-33 as widening FB-20 and points back
+> here — this section is the detail.
 >
 > **This item now covers the answer path as well as the position** — debounced save-on-change, retry
 > with backoff, a durable local queue, and a visible saved/unsaved state. Splitting them would mean two
