@@ -90,8 +90,11 @@ const ImageTag = ImageExtension.extend({
 // The plain-text math syntax `question.body` already stores today — mirrors
 // RichContent's renderMathInElement delimiters ("\(" ... "\)"). Matches the
 // literal 2-char backslash+paren sequences, not a regex grouping construct.
-const INLINE_MATH_RE = /\\\(([^)]+?)\\\)/;
-const INLINE_MATH_RE_GLOBAL = /\\\(([^)]+?)\\\)/g;
+// The body is lazily matched up to the first literal \) — it must NOT exclude a bare
+// ")", or common latex (\sin(x), f(x), \left(a+b\right)) never matches and sits in the
+// editor as literal text.
+const INLINE_MATH_RE = /\\\(([\s\S]+?)\\\)/;
+const INLINE_MATH_RE_GLOBAL = /\\\(([\s\S]+?)\\\)/g;
 
 // @tiptap/extension-mathematics's default renderHTML emits
 // `<span data-type="inline-math" data-latex="...">` — `span` isn't in

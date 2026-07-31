@@ -820,6 +820,40 @@ describe("RichTextEditor — live math (Task 19)", () => {
     expect(stored).not.toContain("<span");
   });
 
+  // A closing paren inside the latex body is extremely common in this app's content
+  // (\sin(x), f(x), \left(a+b\right)). The delimiter is the 2-char sequence \) — a bare
+  // ) must not terminate the match, or these sit in the editor as literal text.
+  it.each([
+    ["\\(\\sin(x)\\)", "\\sin(x)"],
+    ["\\(f(x)\\)", "f(x)"],
+    ["\\(\\left(a+b\\right)\\)", "\\left(a+b\\right)"],
+  ])("legacy math containing a closing paren still becomes live math: %s (FR-46)", async (stored, _latex) => {
+    const editor = createMathTestEditor(`<p>Given ${stored} solve</p>`);
+
+    migrateLegacyInlineMath(editor);
+
+    await waitFor(() => {
+      expect(editor.view.dom.querySelectorAll(".katex").length).toBe(1);
+    });
+    expect(editor.view.dom.textContent).not.toContain(stored);
+    // Storage round-trips byte-identically — the paren must survive too.
+    expect(getStorageHtml(editor)).toContain(stored);
+  });
+
+  it("two adjacent equations each containing parens migrate separately, not as one blob (FR-46)", async () => {
+    const editor = createMathTestEditor("<p>\\(f(x)\\) and \\(g(y)\\)</p>");
+
+    migrateLegacyInlineMath(editor);
+
+    await waitFor(() => {
+      expect(editor.view.dom.querySelectorAll(".katex").length).toBe(2);
+    });
+    const stored = getStorageHtml(editor);
+    expect(stored).toContain("\\(f(x)\\)");
+    expect(stored).toContain("\\(g(y)\\)");
+    expect(stored).not.toContain("<span");
+  });
+
   it("the allowlist is not widened to accommodate math (FR-45): span/data-type/data-latex/class stay off QUESTION_BODY_ALLOWED_TAGS", () => {
     expect(QUESTION_BODY_ALLOWED_TAGS).not.toContain("span");
     for (const forbidden of ["class", "data-type", "data-latex"]) {
