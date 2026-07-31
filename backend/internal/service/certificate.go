@@ -286,21 +286,22 @@ func certificateLayoutAllowed(exam model.Exam, sess *model.ExamSession, layout L
 	return !gated
 }
 
-func (s *Service) addCertificateSessionValues(ctx context.Context, vals map[FieldID]string, exam *model.Exam, sess *model.ExamSession, layout Layout, answers []model.ExamSessionAnswer) (bool, error) {
+// addCertificateSessionValues stamps score/rank-derived field values onto vals.
+// questions/haveQuestions carry a gate-time GetSessionWithQuestions result
+// (resolveCertificateURL fetches it once, up front, when the layout is
+// score-bearing) so this never re-issues that query — it only fetches when the
+// layout needs questions for a non-gated reason (e.g. total_questions alone)
+// and the caller didn't already have them.
+func (s *Service) addCertificateSessionValues(ctx context.Context, vals map[FieldID]string, sess *model.ExamSession, layout Layout, questions []model.QuestionWithOptions, haveQuestions bool) error {
 	needsQuestions := layoutUsesToken(layout, "max_score", "score_percent", "total_questions", "rank", "percentile")
-	sensitive := layoutUsesToken(layout, "score", "max_score", "score_percent", "rank", "percentile")
-	var tests []model.TestDetail
-	var questions []model.QuestionWithOptions
 	var err error
-	if needsQuestions || sensitive {
+	if needsQuestions && !haveQuestions {
+		var tests []model.TestDetail
 		tests, err = s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
 		if err != nil {
-			return false, err
+			return err
 		}
 		questions = flattenCertificateQuestions(tests)
-	}
-	if sensitive && !certificateLayoutAllowed(*exam, sess, layout, questions, answers) {
-		return false, nil
 	}
 	higher, total := -1, -1
 	if layoutUsesToken(layout, "rank", "percentile") {
@@ -310,17 +311,17 @@ func (s *Service) addCertificateSessionValues(ctx context.Context, vals map[Fiel
 		}
 		higher, err = s.storeRepo.CountHigherScores(ctx, sess.ExamID, score)
 		if err != nil {
-			return false, err
+			return err
 		}
 		total, err = s.storeRepo.CountFullyGradedSessions(ctx, sess.ExamID)
 		if err != nil {
-			return false, err
+			return err
 		}
 	}
 	for field, value := range certificateSessionValues(sess, questions, higher, total) {
 		vals[field] = value
 	}
-	return true, nil
+	return nil
 }
 
 // resolveCertificateURL determines a presigned certificate URL for a session,
@@ -331,10 +332,37 @@ func (s *Service) addCertificateSessionValues(ctx context.Context, vals map[Fiel
 // to (nil, nil) and generates nothing (FR-16); generation/upload/persist
 // failures are returned. Regeneration reuses the session's original
 // certificate number — AllocateCertificateNumber is idempotent (FR-10).
+//
+// The layout is resolved first and certificateLayoutAllowed is checked on
+// every access, cached or not (issue #55, NFR-S4) — a rendered PDF must never
+// stand in for an authorization decision. GetSessionWithQuestions is fetched
+// only when the layout is score-bearing (NFR-P1), so a non-score layout on the
+// cache path issues zero extra queries.
 func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, sess *model.ExamSession, answers []model.ExamSessionAnswer, studentName string) (*string, error) {
 	if sess.Status != "submitted" {
 		return nil, nil
 	}
+
+	layout, err := resolveCertificateLayout(exam)
+	if err != nil {
+		return nil, err
+	}
+
+	sensitive := layoutUsesToken(layout, "score", "max_score", "score_percent", "rank", "percentile")
+	var questions []model.QuestionWithOptions
+	haveQuestions := false
+	if sensitive {
+		tests, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+		if err != nil {
+			return nil, err
+		}
+		questions = flattenCertificateQuestions(tests)
+		haveQuestions = true
+		if !certificateLayoutAllowed(*exam, sess, layout, questions, answers) {
+			return nil, nil
+		}
+	}
+
 	gradedAt := latestGradedAt(answers)
 	designStale := exam.CertificateDesignUpdatedAt != nil && sess.CertificateGeneratedAt != nil &&
 		exam.CertificateDesignUpdatedAt.After(*sess.CertificateGeneratedAt)
@@ -345,22 +373,14 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 		if sess.SubmittedAt == nil {
 			return nil, nil
 		}
-		layout, err := resolveCertificateLayout(exam)
-		if err != nil {
-			return nil, err
-		}
 		loc, err := time.LoadLocation("Asia/Jakarta")
 		if err != nil {
 			return nil, err
 		}
 		dateStr := sess.SubmittedAt.In(loc).Format("2 January 2006")
 		vals := certificateFieldValues(exam.Title, studentName, dateStr, "")
-		allowed, err := s.addCertificateSessionValues(ctx, vals, exam, sess, layout, answers)
-		if err != nil {
+		if err := s.addCertificateSessionValues(ctx, vals, sess, layout, questions, haveQuestions); err != nil {
 			return nil, err
-		}
-		if !allowed {
-			return nil, nil
 		}
 
 		number, err := s.storeRepo.AllocateCertificateNumber(ctx, sess.ID)
