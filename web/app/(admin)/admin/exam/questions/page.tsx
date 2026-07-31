@@ -301,8 +301,8 @@ export default function QuestionBankPage() {
                         variant="ghost"
                         size="icon"
                         aria-label={t("action_delete")}
-                        title={question.in_live_exam ? t("question_in_published_exam_reason") : undefined}
-                        disabled={question.in_live_exam}
+                        title={item.in_live_exam ? t("question_in_published_exam_reason") : undefined}
+                        disabled={item.in_live_exam}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDelete(item);

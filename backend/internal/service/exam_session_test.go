@@ -142,13 +142,12 @@ func TestGroupQuestionsByTest_trueFalse_populatesStatementsWithoutIsTrue_NFR5(t 
 			Test: model.Test{ID: testID, Title: "T1"},
 			Questions: []model.QuestionWithOptions{
 				{
-					Question: model.Question{ID: qID, Format: "true_false", Body: "stem"},
-					Statements: []model.QuestionStatement{
+					Question: model.Question{ID: qID, Format: "true_false", Body: "stem", Statements: []model.QuestionStatement{
 						{QuestionID: qID, Index: 1, Body: bodies[0], IsTrue: true},
 						{QuestionID: qID, Index: 2, Body: bodies[1], IsTrue: false},
 						{QuestionID: qID, Index: 3, Body: bodies[2], IsTrue: true},
 						{QuestionID: qID, Index: 4, Body: bodies[3], IsTrue: false},
-					},
+					}},
 					SortOrder: 1,
 				},
 			},

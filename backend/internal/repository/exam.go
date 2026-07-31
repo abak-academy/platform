@@ -340,7 +340,7 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 		qid := questions[i].Question.ID
 		questions[i].Options = opts[qid]
 		questions[i].Blanks = blanks[qid]
-		questions[i].Statements = statements[qid]
+		questions[i].Question.Statements = statements[qid]
 		questions[i].Question.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][0], derefString(questions[i].Question.CorrectAnswer))
 		for bi := range questions[i].Blanks {
 			b := &questions[i].Blanks[bi]
@@ -897,7 +897,7 @@ WHERE 1=1`
 		qid := items[i].Question.ID
 		items[i].Options = opts[qid]
 		items[i].Blanks = blanks[qid]
-		items[i].Statements = statements[qid]
+		items[i].Question.Statements = statements[qid]
 		items[i].Question.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][0], derefString(items[i].Question.CorrectAnswer))
 		for bi := range items[i].Blanks {
 			b := &items[i].Blanks[bi]

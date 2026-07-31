@@ -166,7 +166,7 @@ func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
 			// Populate statements (index + body, never is_true) for true_false
 			// questions (FR-31, NFR-5).
 			if q.Question.Format == "true_false" {
-				for _, stmt := range q.Statements {
+				for _, stmt := range q.Question.Statements {
 					sq.Statements = append(sq.Statements, SessionStatement{Index: stmt.Index, Body: stmt.Body})
 				}
 			}

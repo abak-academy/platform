@@ -103,12 +103,12 @@ func TestQuestionStruct(t *testing.T) {
 	typ := reflect.TypeOf((*Question)(nil)).Elem()
 	v := newModel(typ)
 
-	// Question has NO created_at (migration doesn't define one). 14 fields: id,
+	// Question has NO created_at (migration doesn't define one). 15 fields: id,
 	// question_number, format, body, correct_answer, explanation, difficulty,
 	// image_url, audio_url, topic_id, topic, point_correct, point_wrong,
-	// accepted_answers.
-	if typ.NumField() != 14 {
-		t.Fatalf("Question struct: got %d fields, want 14", typ.NumField())
+	// accepted_answers, statements.
+	if typ.NumField() != 15 {
+		t.Fatalf("Question struct: got %d fields, want 15", typ.NumField())
 	}
 	if _, ok := typ.FieldByName("CreatedAt"); ok {
 		t.Errorf("Question must NOT have CreatedAt — migration 0014_exam.up.sql does not define it")
@@ -687,3 +687,90 @@ var typesByName = func() map[string]reflect.Type {
 	}
 	return m
 }()
+
+// ---- Wire shape guard (cross-language) ----
+//
+// The TypeScript side declares these fields at a fixed nesting level in
+// web/lib/types.ts: `question_number`, `accepted_answers` and `statements` on
+// `Question`; `blanks` and `in_live_exam` on the wrapper. Nothing else compares
+// the two languages, so a field silently moving a level here reads as
+// `undefined` in the browser with every unit test on both sides still green.
+// Keep this in sync with web/lib/types.ts.
+func questionWireKeys(t *testing.T, v any) (top, question map[string]json.RawMessage) {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := json.Unmarshal(raw, &top); err != nil {
+		t.Fatalf("unmarshal top level: %v", err)
+	}
+	nested, ok := top["question"]
+	if !ok {
+		t.Fatalf("payload has no top-level %q key: %s", "question", raw)
+	}
+	if err := json.Unmarshal(nested, &question); err != nil {
+		t.Fatalf("unmarshal nested question: %v", err)
+	}
+	return top, question
+}
+
+func assertKeys(t *testing.T, level string, keys map[string]json.RawMessage, want, notWant []string) {
+	t.Helper()
+	for _, k := range want {
+		if _, ok := keys[k]; !ok {
+			t.Errorf("%s: missing key %q (frontend reads it here)", level, k)
+		}
+	}
+	for _, k := range notWant {
+		if _, ok := keys[k]; ok {
+			t.Errorf("%s: key %q must NOT be at this level", level, k)
+		}
+	}
+}
+
+func populatedQuestion() Question {
+	return Question{
+		ID:              uuid.New(),
+		QuestionNumber:  7,
+		Format:          "true_false",
+		Body:            "<p>body</p>",
+		PointCorrect:    1,
+		PointWrong:      0,
+		AcceptedAnswers: []string{"a"},
+		Statements:      []QuestionStatement{{Index: 1, Body: "s1", IsTrue: true}},
+	}
+}
+
+func TestQuestionWithOptionsWireShape_matchesFrontendTypes(t *testing.T) {
+	top, question := questionWireKeys(t, QuestionWithOptions{
+		Question:  populatedQuestion(),
+		Options:   []QuestionOption{},
+		Blanks:    []QuestionBlank{},
+		SortOrder: 1,
+	})
+
+	assertKeys(t, "QuestionWithOptions", top,
+		[]string{"question", "options", "blanks", "sort_order"},
+		[]string{"statements", "accepted_answers", "question_number", "in_live_exam"})
+	assertKeys(t, "QuestionWithOptions.question", question,
+		[]string{"statements", "accepted_answers", "question_number"},
+		[]string{"blanks", "in_live_exam", "options"})
+}
+
+func TestBankQuestionListItemWireShape_matchesFrontendTypes(t *testing.T) {
+	top, question := questionWireKeys(t, BankQuestionListItem{
+		Question:      populatedQuestion(),
+		Options:       []QuestionOption{},
+		Blanks:        []QuestionBlank{},
+		AttachedCount: 2,
+		InLiveExam:    true,
+	})
+
+	assertKeys(t, "BankQuestionListItem", top,
+		[]string{"question", "options", "blanks", "attached_count", "in_live_exam"},
+		[]string{"statements", "accepted_answers", "question_number"})
+	assertKeys(t, "BankQuestionListItem.question", question,
+		[]string{"statements", "accepted_answers", "question_number"},
+		[]string{"blanks", "in_live_exam", "options"})
+}

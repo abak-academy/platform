@@ -2594,12 +2594,12 @@ func TestStatements_roundTripsCreateReadUpdateDeleteRow(t *testing.T) {
 		items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: body, Limit: 10})
 		require.NoError(t, err)
 		require.Len(t, items, 1)
-		return model.QuestionWithOptions{Question: items[0].Question, Statements: items[0].Statements}
+		return model.QuestionWithOptions{Question: items[0].Question}
 	}
 
 	afterCreate := fetch()
-	require.Len(t, afterCreate.Statements, 4)
-	for i, st := range afterCreate.Statements {
+	require.Len(t, afterCreate.Question.Statements, 4)
+	for i, st := range afterCreate.Question.Statements {
 		assert.Equal(t, i+1, st.Index)
 		assert.Equal(t, statements[i].Body, st.Body)
 		assert.Equal(t, statements[i].IsTrue, st.IsTrue)
@@ -2620,8 +2620,8 @@ func TestStatements_roundTripsCreateReadUpdateDeleteRow(t *testing.T) {
 	require.NoError(t, err)
 
 	afterUpdate := fetch()
-	require.Len(t, afterUpdate.Statements, 3)
-	for i, st := range afterUpdate.Statements {
+	require.Len(t, afterUpdate.Question.Statements, 3)
+	for i, st := range afterUpdate.Question.Statements {
 		assert.Equal(t, i+1, st.Index)
 		assert.Equal(t, updated[i].Body, st.Body)
 		assert.Equal(t, updated[i].IsTrue, st.IsTrue)

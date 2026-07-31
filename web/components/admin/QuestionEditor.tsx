@@ -27,6 +27,7 @@ import { useTranslation } from "@/lib/i18n";
 import type {
   AdminQuestionInput,
   AdminQuestionOptionInput,
+  BankQuestionListItem,
   Question,
   QuestionFormat,
   QuestionWithOptions,
@@ -34,7 +35,7 @@ import type {
 
 interface QuestionEditorProps {
   testId?: string;
-  question?: QuestionWithOptions;
+  question?: BankQuestionListItem;
   onCancel: () => void;
   onSaved?: () => void;
 }
@@ -641,7 +642,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const { t } = useTranslation();
   const isEdit = Boolean(question);
   const isTestScoped = Boolean(testId);
-  const formatLocked = Boolean(question?.question.in_live_exam);
+  const formatLocked = Boolean(question?.in_live_exam);
   const [format, setFormat] = useState<QuestionFormat>(question?.question.format ?? "mcq");
   const [body, setBody] = useState(question?.question.body ?? "");
   const [difficulty, setDifficulty] = useState<string>(question?.question.difficulty ?? "");

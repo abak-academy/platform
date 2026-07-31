@@ -60,6 +60,10 @@ type Question struct {
 	// always a non-nil slice on read (falls back to []string{*CorrectAnswer} when no
 	// question_accepted_answer rows exist, FR-27).
 	AcceptedAnswers []string `json:"accepted_answers"`
+	// Statements is the true_false statement set (admin payloads only); the
+	// student session shape strips IsTrue. Lives here, not on the wrapper —
+	// web/lib/types.ts declares it on Question.
+	Statements []QuestionStatement `json:"statements"`
 }
 
 // QuestionOption has a composite PK (QuestionID, Key); no surrogate ID. `Key` is the
@@ -224,11 +228,10 @@ type TestDetail struct {
 // Options are empty for non-option formats (short / fill_blank / essay).
 // Blanks are empty for non-multi_blank formats, never nil (consistent with options).
 type QuestionWithOptions struct {
-	Question   Question            `json:"question"`
-	Options    []QuestionOption    `json:"options"`
-	Blanks     []QuestionBlank     `json:"blanks"`
-	Statements []QuestionStatement `json:"statements"`
-	SortOrder  int                 `json:"sort_order"`
+	Question  Question         `json:"question"`
+	Options   []QuestionOption `json:"options"`
+	Blanks    []QuestionBlank  `json:"blanks"`
+	SortOrder int              `json:"sort_order"`
 }
 
 // BankQuestionListItem is one row of GET /admin/questions — a bank question with
@@ -236,11 +239,10 @@ type QuestionWithOptions struct {
 // to (Used-in). Nested (not embedded) to match the {question, options, blanks, ...} shape
 // the admin bank page and QuestionWithOptions both expect.
 type BankQuestionListItem struct {
-	Question      Question            `json:"question"`
-	Options       []QuestionOption    `json:"options"`
-	Blanks        []QuestionBlank     `json:"blanks"`
-	Statements    []QuestionStatement `json:"statements"`
-	AttachedCount int                 `json:"attached_count"`
+	Question      Question         `json:"question"`
+	Options       []QuestionOption `json:"options"`
+	Blanks        []QuestionBlank  `json:"blanks"`
+	AttachedCount int              `json:"attached_count"`
 	// InLiveExam mirrors Service.IsQuestionInLiveExam so the admin bank page can
 	// disable delete/format controls without a second round trip (FR-7/FR-14).
 	InLiveExam bool `json:"in_live_exam"`

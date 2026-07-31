@@ -1554,6 +1554,27 @@ describe("SessionPage", () => {
     };
   }
 
+  it("keeps colspan on a merged table cell in a statement body — the page's own sanitiser runs before RichContent (FR-36)", async () => {
+    const merged = trueFalseSession();
+    merged.tests[0].questions[0].statements = [
+      {
+        index: 1,
+        body: '<table><tbody><tr><td colspan="2" rowspan="2">Merged</td></tr></tbody></table>',
+      },
+      { index: 2, body: "Statement B" },
+    ];
+    sessionState = { ...sessionState, data: merged };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Which statements are true\?/);
+
+    const cell = screen
+      .getByTestId("tf-statement-1")
+      .querySelector("td") as HTMLTableCellElement;
+    expect(cell).not.toBeNull();
+    expect(cell.getAttribute("colspan")).toBe("2");
+    expect(cell.getAttribute("rowspan")).toBe("2");
+  });
+
   it("renders one question card with four statement controls, in index order (FR-31)", async () => {
     sessionState = { ...sessionState, data: trueFalseSession() };
     render(<SessionPage />);

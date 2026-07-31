@@ -15,7 +15,7 @@ describe("E2 shared frontend contract — widened question types", () => {
     expect(formats).toContain("true_false");
   });
 
-  it("Question carries question_number, accepted_answers, statements and in_live_exam", () => {
+  it("Question carries question_number, accepted_answers and statements; in_live_exam sits on the wrapper", () => {
     const q: Question = {
       id: "q1",
       format: "true_false",
@@ -29,13 +29,13 @@ describe("E2 shared frontend contract — widened question types", () => {
         { index: 1, body: "Jakarta is the capital", is_true: true },
         { index: 2, body: "The earth is flat", is_true: false },
       ],
-      in_live_exam: true,
     };
+    const item: BankQuestionListItem = { question: q, options: [], attached_count: 0, in_live_exam: true };
     expect(q.question_number).toBe(42);
     expect(q.accepted_answers).toEqual(["2", "dua"]);
     expect(q.statements).toHaveLength(2);
     expect(q.statements?.[0].is_true).toBe(true);
-    expect(q.in_live_exam).toBe(true);
+    expect(item.in_live_exam).toBe(true);
   });
 
   it("Question still accepts a minimal literal without the new fields", () => {

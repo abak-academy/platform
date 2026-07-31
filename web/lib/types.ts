@@ -511,7 +511,6 @@ export interface Question {
   accepted_answers?: string[];
   /** `true_false` only; admin payloads only. */
   statements?: { index: number; body: string; is_true: boolean }[];
-  in_live_exam?: boolean;
 }
 
 export interface ExamTopic {
@@ -527,6 +526,8 @@ export interface BankQuestionListItem {
   options: QuestionOption[];
   attached_count: number;
   blanks?: { index: number; correct_answer: string; accepted_answers?: string[] }[];
+  /** Wrapper-level, like `blanks` — the server emits it on BankQuestionListItem, never on Question. */
+  in_live_exam?: boolean;
 }
 
 export interface BankQuestionListResponse {

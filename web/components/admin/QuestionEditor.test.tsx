@@ -3,7 +3,7 @@ import { render, screen, waitFor, fireEvent, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { QuestionEditor } from "./QuestionEditor";
 import { ApiError } from "@/lib/api";
-import type { QuestionWithOptions, QuestionFormat, Question, QuestionOption, ExamTopic } from "@/lib/types";
+import type { BankQuestionListItem, QuestionFormat, Question, QuestionOption, ExamTopic } from "@/lib/types";
 
 vi.mock("sonner", () => {
   const success = vi.fn();
@@ -88,16 +88,20 @@ function makeOption(overrides: Partial<QuestionOption> = {}): QuestionOption {
   };
 }
 
+// Mirrors the real GET /admin/questions row: `in_live_exam` and `attached_count`
+// are wrapper-level, `statements` is nested under `question`.
 function makeQuestionWithOptions(
   q?: Partial<Question>,
   opts?: QuestionOption[]
-): QuestionWithOptions {
+): BankQuestionListItem {
   return {
     question: makeQuestion(q),
     options: opts ?? [
       makeOption({ key: "a", text: "Jakarta", is_correct: true, sort_order: 1 }),
       makeOption({ question_id: "q1", key: "b", text: "Bandung", is_correct: false, sort_order: 2 }),
     ],
+    attached_count: 0,
+    in_live_exam: false,
   };
 }
 
@@ -184,6 +188,8 @@ describe("QuestionEditor", () => {
     const qwo = {
       question: makeQuestion({ format: "fill_blank", correct_answer: "Jakarta" }),
       options: null as unknown as QuestionOption[],
+      attached_count: 0,
+      in_live_exam: false,
     };
     expect(() =>
       renderWithClient(
@@ -645,11 +651,13 @@ describe("QuestionEditor", () => {
   function makeMultiBlankQuestion(
     blanks: Array<{ index: number; correct_answer: string }>,
     body = "Isi soal: "
-  ): QuestionWithOptions {
+  ): BankQuestionListItem {
     return {
       question: makeQuestion({ format: "multi_blank" as QuestionFormat, body }),
       options: [],
       blanks,
+      attached_count: 0,
+      in_live_exam: false,
     };
   }
 
@@ -770,6 +778,30 @@ describe("QuestionEditor", () => {
     expect(screen.queryAllByLabelText(/teks opsi/i).length).toBe(0);
     expect(screen.queryByLabelText(/jawaban yang diterima/i)).not.toBeInTheDocument();
     expect(screen.getAllByLabelText(/isi pernyataan/i).length).toBe(2);
+  });
+
+  it("edit mode pre-fills the stored statements of a true_false question (FR-13)", () => {
+    const qwo = {
+      ...makeQuestionWithOptions({
+        format: "true_false",
+        statements: [
+          { index: 1, body: "Pernyataan satu", is_true: true },
+          { index: 2, body: "Pernyataan dua", is_true: false },
+          { index: 3, body: "Pernyataan tiga", is_true: true },
+        ],
+      }),
+    };
+    renderWithClient(
+      <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    const bodies = screen.getAllByLabelText(/isi pernyataan/i) as HTMLInputElement[];
+    expect(bodies.length).toBe(3);
+    expect(bodies.map((b) => b.value)).toEqual([
+      "Pernyataan satu",
+      "Pernyataan dua",
+      "Pernyataan tiga",
+    ]);
   });
 
   it("adding statements to 4, marking two true, saves exactly 4 statements with indices 1..4 (FR-29)", async () => {
@@ -1131,7 +1163,7 @@ describe("QuestionEditor", () => {
   // ── Format lock (Task 10, FR-14, FR-15) ─────────────────────────────────
 
   it("format select is disabled and shows the locked reason when in_live_exam is true", () => {
-    const qwo = makeQuestionWithOptions({ in_live_exam: true });
+    const qwo = { ...makeQuestionWithOptions(), in_live_exam: true };
     renderWithClient(
       <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
     );
@@ -1143,7 +1175,7 @@ describe("QuestionEditor", () => {
   });
 
   it("format select is enabled and shows no locked reason when in_live_exam is false", () => {
-    const qwo = makeQuestionWithOptions({ in_live_exam: false });
+    const qwo = { ...makeQuestionWithOptions(), in_live_exam: false };
     renderWithClient(
       <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
     );

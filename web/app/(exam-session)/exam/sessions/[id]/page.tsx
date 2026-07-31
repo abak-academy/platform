@@ -734,7 +734,9 @@ function LegendItem({
 
 // Helper: sanitize HTML using same allowlist as RichContent
 const ALLOWED_TAGS = QUESTION_BODY_ALLOWED_TAGS;
-const ALLOWED_ATTR = ["src", "alt", "style"];
+// Must stay identical to RichContent's list: this pass runs first, so anything
+// missing here is already gone before RichContent's own allowlist is consulted.
+const ALLOWED_ATTR = ["src", "alt", "style", "colspan", "rowspan"];
 
 function sanitizeForRichContent(html: string): string {
   return DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR });

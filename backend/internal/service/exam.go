@@ -544,7 +544,8 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 		return model.QuestionWithOptions{}, err
 	}
 
-	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks, Statements: statements}, nil
+	q.Statements = statements
+	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
 // CreateQuestionForTest creates a bank question and atomically attaches it to the
@@ -575,7 +576,8 @@ func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q
 		return model.QuestionWithOptions{}, err
 	}
 
-	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks, Statements: statements}, nil
+	q.Statements = statements
+	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
 // AttachQuestions appends bank questions to a test. Already-attached questions are
@@ -709,7 +711,8 @@ func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, opti
 		return model.QuestionWithOptions{}, err
 	}
 
-	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks, Statements: statements}, nil
+	q.Statements = statements
+	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
 func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {

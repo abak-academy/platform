@@ -302,13 +302,12 @@ func TestCertificateSessionValues_TrueFalseAndMultiBlank_maxScoreUsesSharedHelpe
 	mbID := uuid.New()
 	questions := []model.QuestionWithOptions{
 		{
-			Question: model.Question{ID: tfID, Format: "true_false", PointCorrect: 1},
-			Statements: []model.QuestionStatement{
+			Question: model.Question{ID: tfID, Format: "true_false", PointCorrect: 1, Statements: []model.QuestionStatement{
 				{QuestionID: tfID, Index: 1, Body: "s1", IsTrue: true},
 				{QuestionID: tfID, Index: 2, Body: "s2", IsTrue: false},
 				{QuestionID: tfID, Index: 3, Body: "s3", IsTrue: true},
 				{QuestionID: tfID, Index: 4, Body: "s4", IsTrue: false},
-			},
+			}},
 		},
 		{
 			Question: model.Question{ID: mbID, Format: "multi_blank", PointCorrect: 1},

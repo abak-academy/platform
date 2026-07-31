@@ -697,8 +697,7 @@ func tfQuestion(id uuid.UUID, pointCorrect, pointWrong float64, truths []bool) m
 		statements[i] = model.QuestionStatement{QuestionID: id, Index: i + 1, Body: fmt.Sprintf("statement %d", i+1), IsTrue: isTrue}
 	}
 	return model.QuestionWithOptions{
-		Question:   model.Question{ID: id, Format: "true_false", Body: "Stem", PointCorrect: pointCorrect, PointWrong: pointWrong},
-		Statements: statements,
+		Question: model.Question{ID: id, Format: "true_false", Body: "Stem", PointCorrect: pointCorrect, PointWrong: pointWrong, Statements: statements},
 	}
 }
 
@@ -802,7 +801,7 @@ func TestTopicBreakdown_trueFalseAndMultiBlank_maxUsesSharedHelper_FR35(t *testi
 		{
 			Test: model.Test{ID: testID, Title: "Mixed", Subject: "Math", Topic: "Mixed"},
 			Questions: []model.QuestionWithOptions{
-				{Question: tfQ.Question, Statements: tfQ.Statements, SortOrder: 1},
+				{Question: tfQ.Question, SortOrder: 1},
 				{Question: mbQ.Question, Blanks: mbQ.Blanks, SortOrder: 2},
 			},
 		},

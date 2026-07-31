@@ -178,7 +178,7 @@ func questionMaxPoints(q model.QuestionWithOptions) float64 {
 	case "multi_blank":
 		return float64(len(q.Blanks)) * q.Question.PointCorrect
 	case "true_false":
-		return float64(len(q.Statements)) * q.Question.PointCorrect
+		return float64(len(q.Question.Statements)) * q.Question.PointCorrect
 	default:
 		return q.Question.PointCorrect
 	}
@@ -225,7 +225,7 @@ func gradeObjective(questions []model.QuestionWithOptions, answers map[uuid.UUID
 		}
 
 		if q.Question.Format == "true_false" {
-			score, anyCorrect := gradeTrueFalse(ans, q.Statements, q.Question.PointCorrect, q.Question.PointWrong)
+			score, anyCorrect := gradeTrueFalse(ans, q.Question.Statements, q.Question.PointCorrect, q.Question.PointWrong)
 			sum += score
 
 			gradedAt := now
