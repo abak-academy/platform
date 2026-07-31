@@ -36,7 +36,11 @@ const DIFFICULTY_LABEL: Record<string, string> = {
   hard: "diff_hard",
 };
 
-const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "short", "fill_blank", "essay"];
+// Was ["mcq","multi_answer","short","fill_blank","essay"] — stale twice over:
+// it still offered the two retired formats and never offered multi_blank or
+// true_false at all, so the picker couldn't filter by the formats that
+// actually exist going forward.
+const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "essay", "multi_blank", "true_false"];
 
 interface QuestionPickerModalProps {
   open: boolean;

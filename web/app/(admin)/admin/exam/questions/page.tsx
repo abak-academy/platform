@@ -28,12 +28,14 @@ import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
 
 const PAGE_SIZE = 25;
 
+// short/fill_blank are retired from authoring (2026-07-31 merge into
+// multi_blank) and are dropped from the filter too — legacy questions in
+// those formats still appear under "Semua" and in search, and their row
+// badges still render via FORMAT_LABELS below, which stays complete.
 const ALL_FORMATS: Array<QuestionFormat | "all"> = [
   "all",
   "mcq",
   "multi_answer",
-  "short",
-  "fill_blank",
   "essay",
   "multi_blank",
   "true_false",
