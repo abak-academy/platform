@@ -365,6 +365,80 @@ describe("ExamPage", () => {
     expect(screen.queryByRole("button", { name: /Ulangi ujian/i })).not.toBeInTheDocument();
   });
 
+  it("exposes a route to the card from every registration state (FR-45)", async () => {
+    const cases: Array<{ label: string; reg: RegistrationListItem }> = [
+      {
+        label: "locked",
+        reg: {
+          ...paidNoSchedule,
+          id: "reg-locked",
+          exam_title: "Tryout Status Locked",
+          scheduled_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+          check_in_window_minutes: 15,
+        },
+      },
+      {
+        label: "checkin",
+        reg: {
+          ...paidNoSchedule,
+          id: "reg-checkin",
+          exam_title: "Tryout Status Checkin",
+        },
+      },
+      {
+        label: "start",
+        reg: {
+          ...paidNoSchedule,
+          id: "reg-start",
+          exam_title: "Tryout Status Start",
+          status: "checked_in",
+        },
+      },
+      {
+        label: "in_progress",
+        reg: {
+          ...paidNoSchedule,
+          id: "reg-in-progress",
+          exam_title: "Tryout Status In Progress",
+          status: "in_progress",
+        },
+      },
+      {
+        label: "submitted",
+        reg: {
+          ...paidNoSchedule,
+          id: "reg-submitted",
+          exam_title: "Tryout Status Submitted",
+          status: "submitted",
+          session_id: "sess-submitted",
+        },
+      },
+    ];
+
+    for (const { label, reg } of cases) {
+      registrationsState = {
+        data: [reg],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+      const { unmount } = render(<ExamPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText(reg.exam_title)).toBeInTheDocument();
+      });
+
+      const link = screen.getByRole("link", { name: /Lihat Detail/i });
+      expect(link, `state "${label}" should expose a route to the card`).toHaveAttribute(
+        "href",
+        `/exam/${reg.id}`,
+      );
+
+      unmount();
+    }
+  });
+
   it("shows an error state with a retry action", async () => {
     const refetch = vi.fn();
     registrationsState = {
