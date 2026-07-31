@@ -1,6 +1,13 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent } from "react";
+import { Editor, mergeAttributes } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import { Bold as BoldMark } from "@tiptap/extension-bold";
+import { Italic as ItalicMark } from "@tiptap/extension-italic";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
+import ImageExtension from "@tiptap/extension-image";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import {
@@ -40,6 +47,34 @@ export interface RichTextEditorHandle {
   setContent: (html: string) => void;
 }
 
+// Retag Bold/Italic to <b>/<i> — TipTap's defaults render <strong>/<em>,
+// neither of which is in QUESTION_BODY_ALLOWED_TAGS (the Go sanitizer's
+// allowlist). Rendering <strong>/<em> would have the server silently strip
+// every bold/italic run — a worse regression than FB-24, not a like-for-like
+// swap. <b>/<i> parse back into these same marks unchanged (see parseHTML).
+const BTag = BoldMark.extend({
+  renderHTML({ HTMLAttributes }) {
+    return ["b", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+  },
+});
+const ITag = ItalicMark.extend({
+  renderHTML({ HTMLAttributes }) {
+    return ["i", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+  },
+});
+
+// The stock Image node only round-trips src/alt/title/width/height — it
+// would drop the inline `style` the upload handler sets (FB-23's inserted
+// <img> carries sizing/spacing via `style`, not a class).
+const ImageTag = ImageExtension.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      style: { default: null },
+    };
+  },
+});
+
 function isEffectivelyEmpty(html: string): boolean {
   const tmp = document.createElement("div");
   tmp.innerHTML = html;
@@ -54,64 +89,123 @@ function sanitizeClipboardHtml(html: string): string {
   return DOMPurify.sanitize(html, { ALLOWED_TAGS: QUESTION_BODY_ALLOWED_TAGS, ALLOWED_ATTR });
 }
 
+// Replaces the current selection (or inserts at a collapsed caret) with
+// literal text — never parsed as markup. This is the TipTap-native
+// equivalent of `execCommand("insertText", ...)`: used for the plain-text
+// paste fallback (angle brackets must stay literal, not become elements),
+// the formula button, and the imperative `insertTextAtCaret` handle that
+// QuestionEditor's blank-token insertion rides on.
+function insertLiteralText(editor: Editor, text: string) {
+  editor
+    .chain()
+    .focus()
+    .command(({ tr, dispatch }) => {
+      if (dispatch) dispatch(tr.insertText(text));
+      return true;
+    })
+    .run();
+}
+
 export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor(
   { value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby, minHeightClassName = "min-h-[130px]", compact = false },
   forwardedRef
 ) {
-  const editorRef = useRef<HTMLDivElement | null>(null);
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const editorInstanceRef = useRef<Editor | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const savedRangeRef = useRef<Range | null>(null);
+  const savedRangeRef = useRef<{ from: number; to: number } | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const [empty, setEmpty] = useState<boolean>(!value || isEffectivelyEmpty(value));
   const presign = usePresignAdminImageUpload();
 
-  // On mount only, mirror `value` into the contentEditable if it differs.
   useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value || "";
-    }
-    // Without this, Chromium's default Enter behaviour wraps new lines in
-    // <div>, which isn't allowlisted and gets stripped server-side (FB-24) —
-    // <p> is.
-    document.execCommand("defaultParagraphSeparator", false, "p");
+    if (!mountRef.current) return;
+    const attributes: Record<string, string> = {
+      // TipTap only merges its own `role: "textbox"` default in at initial
+      // mount (inside createView); editor.setEditable() later calls
+      // view.setProps() with this *raw* editorProps object, replacing
+      // view.dom's props wholesale and silently dropping that one-time
+      // default. Setting it here ourselves survives every setEditable call,
+      // not just the first.
+      role: "textbox",
+      class: cn(minHeightClassName, "px-3 py-2 text-sm leading-relaxed outline-none"),
+    };
+    if (id) attributes.id = id;
+    if (ariaLabel) attributes["aria-label"] = ariaLabel;
+    if (ariaLabelledby) attributes["aria-labelledby"] = ariaLabelledby;
+
+    const editor = new Editor({
+      element: mountRef.current,
+      editable: !disabled,
+      content: value || "",
+      extensions: [
+        StarterKit.configure({
+          bold: false,
+          italic: false,
+          blockquote: false,
+          code: false,
+          codeBlock: false,
+          heading: false,
+          horizontalRule: false,
+          link: false,
+          strike: false,
+          dropcursor: false,
+          gapcursor: false,
+        }),
+        BTag,
+        ITag,
+        Subscript,
+        Superscript,
+        ImageTag.configure({ inline: true, allowBase64: false }),
+      ],
+      editorProps: {
+        attributes,
+        // Runs before ProseMirror parses pasted HTML into the doc — the
+        // correct hook for sanitizing paste, unlike a React onPaste handler,
+        // which would race the view's own native paste listener (already
+        // fired and applied its default parse by the time ours runs). Plain
+        // text-only paste never reaches this: ProseMirror inserts it as a
+        // literal text node by default, so angle brackets already can't
+        // become markup without any code here.
+        transformPastedHTML: (html: string) => sanitizeClipboardHtml(html),
+      },
+      onUpdate: ({ editor: ed }) => {
+        const html = ed.getHTML();
+        setEmpty(isEffectivelyEmpty(html));
+        onChangeRef.current(html);
+      },
+    });
+    editorInstanceRef.current = editor;
+
+    return () => {
+      editor.destroy();
+      editorInstanceRef.current = null;
+    };
+    // Mount once, mirroring the previous "on mount only" contract for `value`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function sync() {
-    if (!editorRef.current) return;
-    const html = editorRef.current.innerHTML;
-    setEmpty(isEffectivelyEmpty(html));
-    onChange(html);
-  }
+  useEffect(() => {
+    // emitUpdate=false: editability is a UI-availability concern, not a
+    // content change. setEditable() defaults to emitting a synthetic
+    // "update" event even when nothing about the document changed — left
+    // at its default, that fires onChange(getHTML()) on every mount
+    // (disabled starts undefined, so this effect always runs once) as well
+    // as on every later toggle (e.g. savePending flipping disabled during a
+    // save), which would misreport "content changed" with identical HTML.
+    editorInstanceRef.current?.setEditable(!disabled, false);
+  }, [disabled]);
 
   // Captured on toolbar mousedown, before a native OS dialog (the file
-  // chooser) can steal focus and clear window.getSelection() out from under
-  // an in-flight async action (e.g. image upload).
+  // chooser) can steal focus mid-upload. TipTap's own selection state
+  // survives a DOM blur, but this mirrors the original defensive capture for
+  // the async image-insert path.
   function saveSelection() {
-    const sel = typeof window !== "undefined" ? window.getSelection() : null;
-    if (!sel || sel.rangeCount === 0 || !editorRef.current) return;
-    const range = sel.getRangeAt(0);
-    if (editorRef.current.contains(range.commonAncestorContainer)) {
-      savedRangeRef.current = range.cloneRange();
-    }
-  }
-
-  function restoreSelection() {
-    if (!savedRangeRef.current || !editorRef.current) return;
-    editorRef.current.focus();
-    const sel = window.getSelection();
-    if (!sel) return;
-    sel.removeAllRanges();
-    sel.addRange(savedRangeRef.current);
-  }
-
-  // Toolbar buttons carry onMouseDown={preventDefault} so a click never
-  // blurs the editable in the first place; this restore is the second layer
-  // for actions (image insert) where a native OS dialog blurs it anyway.
-  function exec(cmd: string, arg?: string) {
-    restoreSelection();
-    document.execCommand(cmd, false, arg);
-    if (editorRef.current) editorRef.current.focus();
-    sync();
+    const editor = editorInstanceRef.current;
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    savedRangeRef.current = { from, to };
   }
 
   function preventBlur(e: React.MouseEvent) {
@@ -120,42 +214,28 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
   }
 
   useImperativeHandle(forwardedRef, () => ({
-    insertTextAtCaret: (text: string) => exec("insertText", text),
+    insertTextAtCaret: (text: string) => {
+      const editor = editorInstanceRef.current;
+      if (!editor) return;
+      insertLiteralText(editor, text);
+    },
     setContent: (html: string) => {
-      if (editorRef.current) editorRef.current.innerHTML = html;
-      sync();
+      editorInstanceRef.current?.commands.setContent(html);
     },
   }));
 
   function insertFormula() {
-    restoreSelection();
-    const sel = typeof window !== "undefined" ? window.getSelection() : null;
-    const chosen = sel ? sel.toString() : "";
-    exec("insertText", chosen ? `\\(${chosen}\\)` : "\\(\\ \\)");
-  }
-
-  function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
-    e.preventDefault();
-    const html = e.clipboardData?.getData("text/html");
-
-    if (html) {
-      const sanitized = sanitizeClipboardHtml(html);
-      if (sanitized) {
-        exec("insertHTML", sanitized);
-      }
-    } else {
-      // Fall back to plain text if HTML is not available.
-      // Use insertText to insert literal text without parsing markup.
-      const text = e.clipboardData?.getData("text/plain") || "";
-      if (text) {
-        exec("insertText", text);
-      }
-    }
+    const editor = editorInstanceRef.current;
+    if (!editor) return;
+    const { from, to, empty: noSelection } = editor.state.selection;
+    const chosen = noSelection ? "" : editor.state.doc.textBetween(from, to);
+    insertLiteralText(editor, chosen ? `\\(${chosen}\\)` : "\\(\\ \\)");
   }
 
   async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const editor = editorInstanceRef.current;
     try {
       const presigned = await presign.mutateAsync({
         filename: file.name,
@@ -170,10 +250,17 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
         throw new Error(`Upload failed: ${uploadRes.status}`);
       }
       const src = fileUrl(presigned.key) ?? presigned.key;
-      exec(
-        "insertHTML",
-        `<img src="${src}" alt="" style="max-width:60%;border-radius:8px;margin:6px 0;" />`,
-      );
+      if (editor) {
+        const range = savedRangeRef.current ?? editor.state.selection;
+        editor
+          .chain()
+          .focus()
+          .insertContentAt(
+            { from: range.from, to: range.to },
+            { type: "image", attrs: { src, alt: "", style: "max-width:60%;border-radius:8px;margin:6px 0;" } }
+          )
+          .run();
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -199,7 +286,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           variant="ghost"
           size={iconSize}
           onMouseDown={preventBlur}
-          onClick={() => exec("bold")}
+          onClick={() => editorInstanceRef.current?.chain().focus().toggleBold().run()}
           aria-label="Bold"
           disabled={disabled}
         >
@@ -210,7 +297,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           variant="ghost"
           size={iconSize}
           onMouseDown={preventBlur}
-          onClick={() => exec("italic")}
+          onClick={() => editorInstanceRef.current?.chain().focus().toggleItalic().run()}
           aria-label="Italic"
           disabled={disabled}
         >
@@ -221,7 +308,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           variant="ghost"
           size={iconSize}
           onMouseDown={preventBlur}
-          onClick={() => exec("underline")}
+          onClick={() => editorInstanceRef.current?.chain().focus().toggleUnderline().run()}
           aria-label="Underline"
           disabled={disabled}
         >
@@ -233,7 +320,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           variant="ghost"
           size={iconSize}
           onMouseDown={preventBlur}
-          onClick={() => exec("insertUnorderedList")}
+          onClick={() => editorInstanceRef.current?.chain().focus().toggleBulletList().run()}
           aria-label="Bulleted list"
           disabled={disabled}
         >
@@ -244,7 +331,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           variant="ghost"
           size={iconSize}
           onMouseDown={preventBlur}
-          onClick={() => exec("insertOrderedList")}
+          onClick={() => editorInstanceRef.current?.chain().focus().toggleOrderedList().run()}
           aria-label="Numbered list"
           disabled={disabled}
         >
@@ -256,7 +343,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           variant="ghost"
           size={iconSize}
           onMouseDown={preventBlur}
-          onClick={() => exec("superscript")}
+          onClick={() => editorInstanceRef.current?.chain().focus().toggleSuperscript().run()}
           aria-label="Superscript"
           disabled={disabled}
           className="font-mono text-xs"
@@ -268,7 +355,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           variant="ghost"
           size={iconSize}
           onMouseDown={preventBlur}
-          onClick={() => exec("subscript")}
+          onClick={() => editorInstanceRef.current?.chain().focus().toggleSubscript().run()}
           aria-label="Subscript"
           disabled={disabled}
           className="font-mono text-xs"
@@ -307,20 +394,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           onChange={handleFileSelected}
         />
       </div>
-      <div className="relative">
-        <div
-          ref={editorRef}
-          id={id}
-          aria-label={ariaLabel}
-          aria-labelledby={ariaLabelledby}
-          role="textbox"
-          contentEditable={!disabled}
-          suppressContentEditableWarning
-          onInput={sync}
-          onBlur={sync}
-          onPaste={handlePaste}
-          className={cn(minHeightClassName, "px-3 py-2 text-sm leading-relaxed outline-none")}
-        />
+      <div className="relative" ref={mountRef}>
         {empty && placeholder && (
           <div className="pointer-events-none absolute left-3 top-2 text-sm text-muted-foreground">
             {placeholder}

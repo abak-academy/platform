@@ -101,16 +101,27 @@ function makeQuestionWithOptions(
   };
 }
 
-function setBodyValue(html: string) {
-  // Body field is a contentEditable div (role="textbox") with no `.value`.
-  // Drive it by setting innerHTML then firing `input` so the editor's onInput handler syncs state.
+async function setBodyValue(text: string) {
+  // Body field is TipTap's ProseMirror-managed contentEditable div (role
+  // "textbox") with no `.value`. Mutating its innerHTML directly and firing
+  // `input` still works — ProseMirror's own DOM observer reconciles an
+  // external DOM mutation back into its model, same as it would for a
+  // browser extension or spellcheck correction — but only if the mutated
+  // DOM is schema-valid. A bare text node with no block wrapper isn't (the
+  // doc requires block-level content at the top level), so it gets silently
+  // discarded; wrapping in <p> gives the observer something it can actually
+  // parse. Every caller here passes plain text, so this is a safe, direct
+  // substitution for typing it. The reconciliation is async (a
+  // MutationObserver callback, not synchronous with fireEvent.input), so
+  // callers must await this before relying on the editor's React state.
   const body = screen.getByLabelText(/badan soal/i);
-  body.innerHTML = html;
+  body.innerHTML = `<p>${text}</p>`;
   fireEvent.input(body, { bubbles: true });
+  await waitFor(() => expect(body.textContent).toBe(text));
 }
 
-function fillRequiredFields() {
-  setBodyValue("Soal");
+async function fillRequiredFields() {
+  await setBodyValue("Soal");
   fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 }
 
@@ -239,7 +250,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    setBodyValue("Soal baru");
+    await setBodyValue("Soal baru");
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
@@ -249,7 +260,10 @@ describe("QuestionEditor", () => {
         expect.objectContaining({
           input: expect.objectContaining({
             format: "mcq",
-            body: "Soal baru",
+            // TipTap always wraps content in a block-level node — bare text
+            // becomes <p>text</p>, never bare text, since the schema
+            // requires block content at the doc's top level.
+            body: "<p>Soal baru</p>",
             topic_id: "topic-1",
             options: expect.any(Array),
           }),
@@ -270,7 +284,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
@@ -284,7 +298,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
 
     const radios = screen.getAllByRole("radio");
     fireEvent.change(radios[1], { target: { checked: true } });
@@ -301,7 +315,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "multi_answer" } });
 
     const checkboxes = screen.getAllByRole("checkbox");
@@ -322,7 +336,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "multi_answer" } });
 
     const checkboxes = screen.getAllByRole("checkbox");
@@ -340,7 +354,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "short" } });
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
@@ -409,7 +423,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     fireEvent.input(screen.getByLabelText(/poin benar/i), { target: { value: "4" } });
     fireEvent.input(screen.getByLabelText(/poin salah/i), { target: { value: "2" } });
 
@@ -439,7 +453,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     fireEvent.input(screen.getByLabelText(/poin benar/i), { target: { value: "2.5" } });
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
@@ -458,7 +472,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     fireEvent.input(screen.getByLabelText(/poin benar/i), { target: { value: "0" } });
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
@@ -487,7 +501,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    setBodyValue("Soal");
+    await setBodyValue("Soal");
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
@@ -501,14 +515,14 @@ describe("QuestionEditor", () => {
       <QuestionEditor onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
       expect(mockCreateBankAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           format: "mcq",
-          body: "Soal",
+          body: "<p>Soal</p>",
           topic_id: "topic-1",
           options: expect.any(Array),
         })
@@ -544,7 +558,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
@@ -559,7 +573,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
@@ -599,7 +613,7 @@ describe("QuestionEditor", () => {
     fireEvent.change(formatSelect, { target: { value: "multi_blank" } });
 
     // Fill required fields
-    setBodyValue("Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.");
+    await setBodyValue("Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.");
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 
     // Fill in the blank accepted answers
@@ -614,7 +628,7 @@ describe("QuestionEditor", () => {
         expect.objectContaining({
           input: expect.objectContaining({
             format: "multi_blank",
-            body: "Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.",
+            body: "<p>Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.</p>",
             topic_id: "topic-1",
             blanks: expect.arrayContaining([
               expect.objectContaining({ index: 1, correct_answer: "Jakarta", accepted_answers: ["Jakarta"] }),
@@ -704,7 +718,7 @@ describe("QuestionEditor", () => {
     );
 
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "multi_blank" } });
-    setBodyValue("Soal {{1}} dan {{3}}");
+    await setBodyValue("Soal {{1}} dan {{3}}");
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
     // Fill both default blank rows so the (pre-existing) empty-answer check
     // cannot be the thing rejecting this submission — only the token gap can.
@@ -727,7 +741,7 @@ describe("QuestionEditor", () => {
 
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "multi_blank" } });
     // Default multi_blank seeds 2 blank rows; the body carries only one token.
-    setBodyValue("Soal {{1}}");
+    await setBodyValue("Soal {{1}}");
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
     const blankInputs = screen.getAllByLabelText(/jawaban yang diterima/i);
     fireEvent.change(blankInputs[0], { target: { value: "A" } });
@@ -764,7 +778,7 @@ describe("QuestionEditor", () => {
     );
 
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "true_false" } });
-    setBodyValue("Soal benar/salah");
+    await setBodyValue("Soal benar/salah");
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 
     const addButton = screen.getByRole("button", { name: /tambah pernyataan/i });
@@ -807,7 +821,7 @@ describe("QuestionEditor", () => {
     );
 
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "true_false" } });
-    setBodyValue("Soal benar/salah");
+    await setBodyValue("Soal benar/salah");
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 
     const bodies = screen.getAllByLabelText(/isi pernyataan/i);
@@ -831,7 +845,7 @@ describe("QuestionEditor", () => {
     );
 
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "true_false" } });
-    setBodyValue("Soal benar/salah");
+    await setBodyValue("Soal benar/salah");
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 
     fireEvent.click(screen.getByRole("button", { name: /tambah pernyataan/i })); // 3 rows
@@ -888,7 +902,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     const audioInput = screen.getByLabelText(/url audio/i);
     fireEvent.change(audioInput, { target: { value: "https://example.com/audio.mp3" } });
 
@@ -910,7 +924,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     // Don't fill audio_url
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
@@ -957,7 +971,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={onChange} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
 
     const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchSpy);
@@ -1040,7 +1054,7 @@ describe("QuestionEditor", () => {
     );
 
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "short" } });
-    fillRequiredFields();
+    await fillRequiredFields();
 
     const firstAnswer = screen.getByLabelText(/jawaban yang diterima/i);
     fireEvent.change(firstAnswer, { target: { value: "2" } });
@@ -1084,7 +1098,7 @@ describe("QuestionEditor", () => {
     );
 
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "multi_blank" } });
-    setBodyValue("Soal {{1}} dan {{2}}");
+    await setBodyValue("Soal {{1}} dan {{2}}");
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 
     const answerInputs = screen.getAllByLabelText(/jawaban yang diterima/i);
@@ -1149,7 +1163,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fillRequiredFields();
+    await fillRequiredFields();
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
