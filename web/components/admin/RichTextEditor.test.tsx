@@ -710,7 +710,10 @@ func ${BRIDGE_TEST_NAME}(t *testing.T) {
         expect(merged).not.toBeNull();
       });
     },
-    30000,
+    // Matches tiptap-spike.test.tsx's GO_BRIDGE_TIMEOUT_MS. The go-test bridge
+    // recompiles internal/service, and CI's frontend job has no Go build cache:
+    // 30s passes warm locally and times out cold on CI.
+    120_000,
   );
 });
 

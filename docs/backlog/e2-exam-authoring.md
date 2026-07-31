@@ -147,10 +147,28 @@ destroyed data on every save.
 
 So Part C is a **replacement**, not an extension.
 
-### Library choice — OPEN
+### Library choice — DECIDED 2026-07-31: **TipTap 3.29.2**
 
-**The user is evaluating options as of 2026-07-30. Do not start implementation until it is chosen.**
-Recorded criteria, in the order they matter for this codebase:
+**Chosen and shipped.** `@tiptap/core` + `starter-kit` + the table extensions, all MIT, pinned to
+exact versions. Tables are MIT, not Pro.
+
+**Lexical was rejected on criterion 2:** its own docs state HTML serialisation is lossy and is not
+the recommended storage format, so it would force either a migration of every existing body to JSON
+or a lossy round-trip on every save — rebuilding FB-24 deliberately. **Slate was eliminated on
+criterion 1** (no official table support).
+
+Two constraints the choice carries, both now implemented:
+- **KaTeX needed no editor extension for storage.** Math is plain `\(…\)` text rendered by a
+  post-render pass in `RichContent`. Live in-editor math was added via
+  `@tiptap/extension-mathematics` with `renderHTML` **overridden so storage stays `\(latex\)` text** —
+  its default `<span data-type="inline-math">` would be stripped on save (FB-24 again).
+- **Merged cells were gated on a spike**, which passed: insert → merge → real Go `sanitizeQuestionBody`
+  → re-parse, structurally identical.
+
+⚠️ **Never widen the HTML allowlist to accommodate an editor default.** TipTap renders
+`<strong>`/`<em>` by default and neither is allowlisted; they were retagged to `<b>`/`<i>` instead.
+
+Criteria that drove the decision, in the order they matter for this codebase:
 
 | Criterion | Why it matters here |
 |---|---|
