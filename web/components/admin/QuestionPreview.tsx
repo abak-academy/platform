@@ -145,6 +145,11 @@ export function QuestionPreview({ item, open, onOpenChange, onEdit }: QuestionPr
                   <div className="flex-1">
                     <RichContent html={opt.text} />
                   </div>
+                  {opt.is_correct && opt.points !== undefined && (
+                    <Badge variant="outline" className="border-transparent bg-primary/10 text-primary">
+                      {opt.points} {t("tests_field_item_points").toLowerCase()}
+                    </Badge>
+                  )}
                   {opt.is_correct && <Badge variant="default">{t("tests_field_option_is_correct")}</Badge>}
                 </div>
               ))}
@@ -153,19 +158,46 @@ export function QuestionPreview({ item, open, onOpenChange, onEdit }: QuestionPr
 
           {showBlanks && blanks && blanks.length > 0 && (
             <div className="space-y-2">
-              {blanks.map((blank) => (
-                <div
-                  key={blank.index}
-                  className="rounded-lg border p-3 text-sm border-primary/50 bg-primary/5"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {t("tests_format_multi_blank")} #{blank.index}
-                    </span>
+              {blanks.map((blank) => {
+                // The grader accepts EVERY entry in accepted_answers (all
+                // case-insensitive) — showing only correct_answer here made
+                // admins believe the extra answers were never saved.
+                const accepted =
+                  blank.accepted_answers && blank.accepted_answers.length > 0
+                    ? blank.accepted_answers
+                    : [blank.correct_answer];
+                return (
+                  <div
+                    key={blank.index}
+                    className="rounded-lg border p-3 text-sm border-primary/50 bg-primary/5"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {t("tests_format_multi_blank")} #{blank.index}
+                      </span>
+                      {blank.points !== undefined && (
+                        <Badge variant="outline" className="border-transparent bg-primary/10 text-primary">
+                          {blank.points} {t("tests_field_item_points").toLowerCase()}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {accepted.map((answer, i) => (
+                        <span
+                          key={i}
+                          className={
+                            i === 0
+                              ? "rounded bg-primary/15 px-2 py-0.5 font-medium"
+                              : "rounded bg-muted px-2 py-0.5"
+                          }
+                        >
+                          {answer}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  <p className="font-medium">{blank.correct_answer}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -184,6 +216,11 @@ export function QuestionPreview({ item, open, onOpenChange, onEdit }: QuestionPr
                     <div className="flex-1">
                       <RichContent html={statement.body} />
                     </div>
+                    {statement.points !== undefined && (
+                      <Badge variant="outline" className="border-transparent bg-primary/10 text-primary">
+                        {statement.points} {t("tests_field_item_points").toLowerCase()}
+                      </Badge>
+                    )}
                     <Badge variant={statement.is_true ? "default" : "outline"}>
                       {statement.is_true
                         ? t("tests_field_statement_is_true")
@@ -196,8 +233,24 @@ export function QuestionPreview({ item, open, onOpenChange, onEdit }: QuestionPr
 
           {(question.format === "short" || question.format === "fill_blank") && (
             <div className="rounded-lg border p-3 text-sm">
-              <span className="text-muted-foreground">{t("tests_field_correct_answer")}</span>
-              <p className="font-medium">{question.correct_answer || "—"}</p>
+              <span className="text-muted-foreground">{t("tests_field_accepted_answers")}</span>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {(question.accepted_answers && question.accepted_answers.length > 0
+                  ? question.accepted_answers
+                  : [question.correct_answer ?? "—"]
+                ).map((answer, i) => (
+                  <span
+                    key={i}
+                    className={
+                      i === 0
+                        ? "rounded bg-primary/15 px-2 py-0.5 font-medium"
+                        : "rounded bg-muted px-2 py-0.5"
+                    }
+                  >
+                    {answer}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 
