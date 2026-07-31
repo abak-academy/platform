@@ -857,12 +857,19 @@ export interface SessionState extends SessionStartPayload {
   extended_until?: string | null;
   last_saved_at?: string | null;
   answers: SessionAnswer[];
+  /** Last server-persisted question index (FR-35/FR-36). Never read from browser storage. */
+  current_position?: number | null;
 }
 
 export interface SessionAnswerInput {
   question_id: string;
   answer: string;
   flagged_for_review?: boolean;
+}
+
+export interface SaveAnswersRequest {
+  answers: SessionAnswerInput[];
+  current_position?: number | null;
 }
 
 export interface SubmitResult {

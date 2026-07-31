@@ -101,6 +101,12 @@ export default function SessionPage() {
   // from a submitted (locked) section — the backend rejects the whole batch
   // otherwise (ErrSectionLocked), silently dropping every section past the first.
   const activeQuestionIdsRef = useRef<Set<string> | null>(null);
+  // Mirrors `currentQIndex` for the save pipeline, plus the last position the
+  // server acknowledged — used to decide whether a position-only change (no
+  // answer edits) still needs to go out (FR-35/FR-36).
+  const currentQIndexRef = useRef(currentQIndex);
+  currentQIndexRef.current = currentQIndex;
+  const lastSavedPositionRef = useRef(0);
 
   // buildSavePayload unions answered and flagged questions so a flag on an
   // unanswered question still persists server-side.
@@ -142,14 +148,17 @@ export default function SessionPage() {
   const attemptSave = useCallback(
     (payload: SessionAnswerInput[]) => {
       if (submittingRef.current) return;
-      if (payload.length === 0) {
+      const position = currentQIndexRef.current;
+      const positionChanged = position !== lastSavedPositionRef.current;
+      if (payload.length === 0 && !positionChanged) {
         setSaveStatus("saved");
         return;
       }
       setSaveStatus("saving");
-      saveAnswers.mutate(payload, {
+      saveAnswers.mutate({ answers: payload, current_position: position }, {
         onSuccess: () => {
           retryAttemptRef.current = 0;
+          lastSavedPositionRef.current = position;
           clearQueue(sessionId);
           setSaveStatus("saved");
         },
@@ -238,6 +247,14 @@ export default function SessionPage() {
     }
     setAnswers(initAnswers);
     setFlagged(initFlags);
+    // Position is always seeded from the server response, never from
+    // localStorage — it must survive a reconnect on a different device
+    // (FR-36). Written to the ref synchronously for the same reason as
+    // remainingRef above.
+    const savedPosition = session.current_position ?? 0;
+    currentQIndexRef.current = savedPosition;
+    lastSavedPositionRef.current = savedPosition;
+    setCurrentQIndex(savedPosition);
     if (isSectioned && session.active_test_id) {
       const sec = session.tests.find((t) => t.id === session.active_test_id);
       const nextRemaining = sec?.remaining_seconds ?? 0;
@@ -278,9 +295,12 @@ export default function SessionPage() {
 
   // Sectioned mode: land on the new section's first question when it changes,
   // else a shorter next section leaves currentQIndex out of range (blank panel).
+  // Standard mode has no sections to reset for — it must keep the position
+  // hydrated from the server above (FR-36), not snap back to 0 on mount.
   useEffect(() => {
+    if (!isSectioned) return;
     setCurrentQIndex(0);
-  }, [session?.active_test_id]);
+  }, [isSectioned, session?.active_test_id]);
 
   // Untimed exams (timer_mode=per_test → duration_minutes null) get no countdown
   // and must never auto-submit: the backend reports remaining_seconds=0 for them.
@@ -316,7 +336,10 @@ export default function SessionPage() {
       const arr = buildSavePayload();
       if (arr.length > 0) {
         try {
-          await saveAnswers.mutateAsync(arr);
+          await saveAnswers.mutateAsync({
+            answers: arr,
+            current_position: currentQIndexRef.current,
+          });
         } catch {
           /* best-effort */
         }
@@ -349,7 +372,10 @@ export default function SessionPage() {
       // state and may not yet include effect-hydrated answers on first fire.
       const arr = buildSavePayload();
       try {
-        await saveAnswers.mutateAsync(arr);
+        await saveAnswers.mutateAsync({
+          answers: arr,
+          current_position: currentQIndexRef.current,
+        });
       } catch {
         /* best-effort */
       }
@@ -444,6 +470,16 @@ export default function SessionPage() {
     [scheduleAutosave],
   );
 
+  // Navigation rides the same debounced save pipeline as answers/flags so the
+  // position travels with the next save payload (FR-35/FR-36).
+  const goToQuestion = useCallback(
+    (index: number) => {
+      setCurrentQIndex(index);
+      scheduleAutosave();
+    },
+    [scheduleAutosave],
+  );
+
   const handleSubmit = useCallback(async () => {
     if (submitting) return;
     setSubmitting(true);
@@ -451,7 +487,10 @@ export default function SessionPage() {
     const arr = buildSavePayload();
     if (arr.length > 0) {
       try {
-        await saveAnswers.mutateAsync(arr);
+        await saveAnswers.mutateAsync({
+          answers: arr,
+          current_position: currentQIndexRef.current,
+        });
       } catch {
         /* best-effort */
       }
@@ -717,7 +756,7 @@ export default function SessionPage() {
                 variant="outline"
                 size="sm"
                 disabled={currentQIndex === 0}
-                onClick={() => setCurrentQIndex((i) => Math.max(0, i - 1))}
+                onClick={() => goToQuestion(Math.max(0, currentQIndex - 1))}
               >
                 <ChevronLeft className="size-4" />
               </Button>
@@ -728,8 +767,8 @@ export default function SessionPage() {
                 size="sm"
                 disabled={currentQIndex >= questionsToShow.length - 1}
                 onClick={() =>
-                  setCurrentQIndex((i) =>
-                    Math.min(questionsToShow.length - 1, i + 1),
+                  goToQuestion(
+                    Math.min(questionsToShow.length - 1, currentQIndex + 1),
                   )
                 }
               >
@@ -767,7 +806,7 @@ export default function SessionPage() {
                 <button
                   key={q.id}
                   type="button"
-                  onClick={() => setCurrentQIndex(i)}
+                  onClick={() => goToQuestion(i)}
                   className={cellClass}
                   data-testid={`session-nav-${i}`}
                 >

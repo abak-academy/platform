@@ -7,7 +7,7 @@ import type {
   RegistrationListItem,
   SessionStartPayload,
   SessionState,
-  SessionAnswerInput,
+  SaveAnswersRequest,
   SubmitResult,
   CheckInResult,
   SessionResult,
@@ -94,10 +94,10 @@ export function useReconnectSession(sessionId: string | undefined) {
 export function useSaveAnswers(sessionId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (answers: SessionAnswerInput[]) =>
+    mutationFn: (payload: SaveAnswersRequest) =>
       authFetch<void>(`/exam/sessions/${encodeURIComponent(sessionId)}/answers`, {
         method: "PATCH",
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify(payload),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: examKeys.session(sessionId) });

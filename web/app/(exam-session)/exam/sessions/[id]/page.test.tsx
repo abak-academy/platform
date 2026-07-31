@@ -549,7 +549,7 @@ describe("SessionPage", () => {
       expect(saveAnswersMutateAsync).toHaveBeenCalled();
     });
     const payload = saveAnswersMutateAsync.mock.calls[0][0];
-    expect(payload).toEqual(
+    expect(payload.answers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           question_id: "q-mcq",
@@ -645,9 +645,10 @@ describe("SessionPage", () => {
     fireEvent.click(btns[btns.length - 1]);
 
     // Verify save was triggered before submit
-    expect(saveAnswersMutateAsync).toHaveBeenCalledWith(
-      [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
-    );
+    expect(saveAnswersMutateAsync).toHaveBeenCalledWith({
+      answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
+      current_position: 0,
+    });
 
     // Verify submitSession was called (handleSubmit awaits the save first,
     // so the mutate call lands on a later microtask).
@@ -831,7 +832,9 @@ describe("SessionPage", () => {
 
     expect(saveAnswersMutate).toHaveBeenCalled();
     const sentIds = saveAnswersMutate.mock.calls.flatMap(([payload]) =>
-      (payload as Array<{ question_id: string }>).map((p) => p.question_id),
+      (payload as { answers: Array<{ question_id: string }> }).answers.map(
+        (p) => p.question_id,
+      ),
     );
     expect(sentIds).toContain("q-sec2-mcq"); // active section answer is saved
     expect(sentIds).not.toContain("q-sec1-mcq"); // submitted section answer is not resent
@@ -2052,7 +2055,10 @@ describe("SessionPage", () => {
       expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
     });
     expect(saveAnswersMutate).toHaveBeenCalledWith(
-      [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
+      {
+        answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
+        current_position: 0,
+      },
       expect.anything(),
     );
     expect(loadQueue("session-1")).toEqual([]);
@@ -2121,10 +2127,69 @@ describe("SessionPage", () => {
 
     // Replay sent exactly the queue's content — nothing more, nothing less.
     expect(saveAnswersMutate).toHaveBeenCalledWith(
-      [{ question_id: "q-short", answer: "queued-value", flagged_for_review: false }],
+      {
+        answers: [{ question_id: "q-short", answer: "queued-value", flagged_for_review: false }],
+        current_position: 0,
+      },
       expect.anything(),
     );
     expect(loadQueue("session-1")).toEqual([]);
+  });
+
+  // ── Resume at the same question on reconnect (FR-36, FR-37) ────────────
+
+  it("seeds currentQIndex from session.current_position on load, landing on question 6 (FR-36)", async () => {
+    const questions = Array.from({ length: 6 }, (_, i) => ({
+      id: `q-pos-${i}`,
+      test_id: "test-1",
+      format: "mcq" as const,
+      body: `Question ${i + 1}?`,
+      sort_order: i + 1,
+      options: [
+        { key: "A", text: "Opt A", sort_order: 1 },
+        { key: "B", text: "Opt B", sort_order: 2 },
+      ],
+    }));
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        current_position: 5,
+        tests: [{ ...sampleSession.tests[0], questions }],
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Question 6\?/);
+
+    expect(screen.getByText(/Soal 6 dari 6/)).toBeInTheDocument();
+  });
+
+  it("includes the new question index in the next save payload after navigating (FR-36)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ current_position: 2 }),
+      expect.anything(),
+    );
+  });
+
+  it("hydrates position from the server response even when localStorage is empty (FR-36, FR-37)", async () => {
+    localStorage.clear();
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, current_position: 3 },
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Bendera Indonesia berwarna/);
+
+    expect(screen.getByText(/Soal 4 dari 5/)).toBeInTheDocument();
   });
 });
 
