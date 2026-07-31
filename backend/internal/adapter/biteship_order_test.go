@@ -237,16 +237,18 @@ func TestBiteshipClient_GetOrder_Success(t *testing.T) {
 
 // TestBiteshipClient_OrderResponse_ToleratesUpdatedAtFormats drives real
 // httptest responses through CreateOrder and GetOrder for every plausible
-// (and implausible) updated_at encoding Biteship might send. None of them may
-// fail the parse — the waybill/order id/status must still come through.
-// Unix seconds, "2006-01-02 15:04:05"-style strings and RFC 3339 are all
-// genuinely parsed (they're plausible encodings); absent, null, and anything
-// else fall back to the zero value so shipping_webhook.go's deterministic
-// fallback chain gets a chance to run.
+// (and implausible) updated_at encoding Biteship might send inside a
+// courier.history[] entry — there is no top-level updated_at
+// (https://biteship.com/id/docs/api/orders/retrieve). None of them may fail
+// the parse — the waybill/order id/status must still come through. Unix
+// seconds, "2006-01-02 15:04:05"-style strings and RFC 3339 are all genuinely
+// parsed (they're plausible encodings); absent, null, and anything else fall
+// back to the zero value so shipping_webhook.go's deterministic fallback
+// chain gets a chance to run.
 func TestBiteshipClient_OrderResponse_ToleratesUpdatedAtFormats(t *testing.T) {
 	cases := []struct {
 		name          string
-		updatedAtJSON string // raw JSON literal spliced into the body; "" omits the key entirely
+		updatedAtJSON string // raw JSON literal for the history entry's updated_at; "" omits history entirely
 		wantZero      bool
 		wantParsed    time.Time
 	}{
@@ -275,11 +277,12 @@ func TestBiteshipClient_OrderResponse_ToleratesUpdatedAtFormats(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			body := `{"success":true,"id":"biteship-order-abc","status":"confirmed"`
+			courier := `{"waybill_id":"JNE123456789","driver_name":"Pak Agus"}`
 			if tc.updatedAtJSON != "" {
-				body += `,"updated_at":` + tc.updatedAtJSON
+				courier = `{"waybill_id":"JNE123456789","driver_name":"Pak Agus","history":[` +
+					`{"service_type":"-","status":"confirmed","note":"n","updated_at":` + tc.updatedAtJSON + `}]}`
 			}
-			body += `,"courier":{"waybill_id":"JNE123456789","driver_name":"Pak Agus"}}`
+			body := `{"success":true,"id":"biteship-order-abc","status":"confirmed","courier":` + courier + `}`
 
 			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -329,6 +332,163 @@ func assertOrderParsed(t *testing.T, shipment service.Shipment, wantZero bool, w
 	}
 	if !shipment.StatusUpdatedAt.Equal(wantParsed) {
 		t.Errorf("expected StatusUpdatedAt %v, got %v", wantParsed, shipment.StatusUpdatedAt)
+	}
+}
+
+// TestBiteshipClient_GetOrder_HistoryMatchingStatus drives a documented-shape
+// GET /v1/orders/:id response (https://biteship.com/id/docs/api/orders/retrieve)
+// through the real parse path: there is no top-level updated_at on this
+// endpoint, only courier.history[], each entry shaped
+// {"service_type", "status", "note", "updated_at"} per the doc's example.
+// With multiple history entries, the one matching the top-level status must
+// be selected, not the first or the last in the array.
+func TestBiteshipClient_GetOrder_HistoryMatchingStatus(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"success": true,
+			"id": "biteship-order-abc",
+			"status": "confirmed",
+			"courier": {
+				"waybill_id": "JNE123456789",
+				"driver_name": "Pak Agus",
+				"history": [
+					{"service_type": "-", "status": "confirmed", "note": "Order has been confirmed. Locating nearest driver to pickup.", "updated_at": "2021-01-11T14:03:41+07:00"},
+					{"service_type": "-", "status": "allocated", "note": "Driver assigned.", "updated_at": "2021-01-11T15:00:00+07:00"}
+				]
+			}
+		}`))
+	}))
+	defer ts.Close()
+
+	client := NewBiteshipClient(&mockRepository{}, "test-api-key", ts.URL, http.DefaultClient)
+
+	shipment, err := client.GetOrder(t.Context(), "biteship-order-abc")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	want, err := time.Parse(time.RFC3339, "2021-01-11T14:03:41+07:00")
+	if err != nil {
+		t.Fatalf("failed to parse expected time: %v", err)
+	}
+	if !shipment.StatusUpdatedAt.Equal(want) {
+		t.Errorf("expected StatusUpdatedAt %v (from the 'confirmed' history entry), got %v", want, shipment.StatusUpdatedAt)
+	}
+}
+
+// TestBiteshipClient_GetOrder_HistoryNoMatchingStatus_UsesLatest covers the
+// case where none of the courier.history[] entries' status matches the
+// response's top-level status (e.g. Biteship added a new status Amartha
+// doesn't recognise yet). The latest entry by updated_at should win rather
+// than leaving StatusUpdatedAt zero.
+func TestBiteshipClient_GetOrder_HistoryNoMatchingStatus_UsesLatest(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"success": true,
+			"id": "biteship-order-abc",
+			"status": "delivered",
+			"courier": {
+				"waybill_id": "JNE123456789",
+				"driver_name": "Pak Agus",
+				"history": [
+					{"service_type": "-", "status": "confirmed", "note": "Order has been confirmed.", "updated_at": "2021-01-11T14:03:41+07:00"},
+					{"service_type": "-", "status": "allocated", "note": "Driver assigned.", "updated_at": "2021-01-11T15:00:00+07:00"}
+				]
+			}
+		}`))
+	}))
+	defer ts.Close()
+
+	client := NewBiteshipClient(&mockRepository{}, "test-api-key", ts.URL, http.DefaultClient)
+
+	shipment, err := client.GetOrder(t.Context(), "biteship-order-abc")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	want, err := time.Parse(time.RFC3339, "2021-01-11T15:00:00+07:00")
+	if err != nil {
+		t.Fatalf("failed to parse expected time: %v", err)
+	}
+	if !shipment.StatusUpdatedAt.Equal(want) {
+		t.Errorf("expected StatusUpdatedAt %v (latest entry, none matched status), got %v", want, shipment.StatusUpdatedAt)
+	}
+}
+
+// TestBiteshipClient_GetOrder_HistoryAbsent_ZeroStatusUpdatedAt covers a
+// response with no courier.history at all — StatusUpdatedAt must stay zero
+// so shipping_webhook.go's deterministic fallback chain engages, and the
+// rest of the shipment (id, status, waybill) must still parse.
+func TestBiteshipClient_GetOrder_HistoryAbsent_ZeroStatusUpdatedAt(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"success": true,
+			"id": "biteship-order-abc",
+			"status": "confirmed",
+			"courier": {
+				"waybill_id": "JNE123456789",
+				"driver_name": "Pak Agus"
+			}
+		}`))
+	}))
+	defer ts.Close()
+
+	client := NewBiteshipClient(&mockRepository{}, "test-api-key", ts.URL, http.DefaultClient)
+
+	shipment, err := client.GetOrder(t.Context(), "biteship-order-abc")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !shipment.StatusUpdatedAt.IsZero() {
+		t.Errorf("expected zero StatusUpdatedAt when courier.history is absent, got %v", shipment.StatusUpdatedAt)
+	}
+	if shipment.BiteshipOrderID != "biteship-order-abc" {
+		t.Errorf("expected BiteshipOrderID biteship-order-abc, got %q", shipment.BiteshipOrderID)
+	}
+	if shipment.Status != "confirmed" {
+		t.Errorf("expected Status confirmed, got %q", shipment.Status)
+	}
+	if shipment.WaybillID != "JNE123456789" {
+		t.Errorf("expected WaybillID JNE123456789, got %q", shipment.WaybillID)
+	}
+}
+
+// TestBiteshipClient_GetOrder_HistoryMalformedUpdatedAt_StillParses proves
+// biteshipTimestamp's tolerant UnmarshalJSON still holds when the malformed
+// value is nested inside a courier.history[] entry rather than a top-level
+// field: the whole response must still parse without error.
+func TestBiteshipClient_GetOrder_HistoryMalformedUpdatedAt_StillParses(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"success": true,
+			"id": "biteship-order-abc",
+			"status": "confirmed",
+			"courier": {
+				"waybill_id": "JNE123456789",
+				"driver_name": "Pak Agus",
+				"history": [
+					{"service_type": "-", "status": "confirmed", "note": "Order has been confirmed.", "updated_at": "not-a-timestamp"}
+				]
+			}
+		}`))
+	}))
+	defer ts.Close()
+
+	client := NewBiteshipClient(&mockRepository{}, "test-api-key", ts.URL, http.DefaultClient)
+
+	shipment, err := client.GetOrder(t.Context(), "biteship-order-abc")
+	if err != nil {
+		t.Fatalf("expected no error even with a malformed updated_at in courier.history, got %v", err)
+	}
+	if shipment.BiteshipOrderID != "biteship-order-abc" {
+		t.Errorf("expected BiteshipOrderID biteship-order-abc, got %q", shipment.BiteshipOrderID)
+	}
+	if !shipment.StatusUpdatedAt.IsZero() {
+		t.Errorf("expected zero StatusUpdatedAt for an unparseable history entry, got %v", shipment.StatusUpdatedAt)
 	}
 }
 

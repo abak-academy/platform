@@ -326,8 +326,25 @@ func parseBiteshipOrderResponse(body []byte) (service.Shipment, error) {
 		WaybillID:         orderResp.Courier.WaybillID,
 		Status:            orderResp.Status,
 		CourierDriverName: orderResp.Courier.DriverName,
-		StatusUpdatedAt:   orderResp.UpdatedAt.Time,
+		StatusUpdatedAt:   statusUpdatedAtFromHistory(orderResp.Status, orderResp.Courier.History),
 	}, nil
+}
+
+// statusUpdatedAtFromHistory picks the courier.history[] entry whose status
+// matches the response's top-level status; if none matches, the latest entry
+// by updated_at wins. Zero when history is absent or empty, so the caller's
+// deterministic fallback chain still engages.
+func statusUpdatedAtFromHistory(status string, history []biteshipCourierHistoryEntry) time.Time {
+	var latest time.Time
+	for _, h := range history {
+		if h.Status == status {
+			return h.UpdatedAt.Time
+		}
+		if h.UpdatedAt.Time.After(latest) {
+			latest = h.UpdatedAt.Time
+		}
+	}
+	return latest
 }
 
 // biteshipOrderRequest is the POST /v1/orders body.
@@ -362,23 +379,30 @@ type biteshipOrderItem struct {
 }
 
 // biteshipOrderResponse is the shared success shape of POST /v1/orders and
-// GET /v1/orders/:id.
+// GET /v1/orders/:id. There is no top-level updated_at on this response
+// (https://biteship.com/id/docs/api/orders/retrieve) — the per-status
+// timestamp used for order_shipment_events.occurred_at (FR-C-12) lives in
+// courier.history[] instead.
 type biteshipOrderResponse struct {
 	ID          string `json:"id"`
 	ReferenceID string `json:"reference_id"`
 	Status      string `json:"status"`
-	// UpdatedAt sources order_shipment_events.occurred_at (FR-C-12).
-	// TODO: uncertain — Biteship's public docs don't confirm this field name
-	// on GET /v1/orders/:id, nor its format; verify both against a live
-	// response, same as OrderID below. biteshipTimestamp tolerates a missing
-	// or unrecognised format by zeroing out instead of failing the whole
-	// response parse, so the caller always gets its deterministic fallback,
-	// never time.Now().
-	UpdatedAt biteshipTimestamp `json:"updated_at"`
-	Courier   struct {
-		WaybillID  string `json:"waybill_id"`
-		DriverName string `json:"driver_name"`
+	Courier     struct {
+		WaybillID  string                        `json:"waybill_id"`
+		DriverName string                        `json:"driver_name"`
+		History    []biteshipCourierHistoryEntry `json:"history"`
 	} `json:"courier"`
+}
+
+// biteshipCourierHistoryEntry is one entry of courier.history[] on
+// GET /v1/orders/:id (https://biteship.com/id/docs/api/orders/retrieve), e.g.
+// {"service_type": "-", "status": "confirmed", "note": "...",
+// "updated_at": "2021-01-11T14:03:41+07:00"}.
+type biteshipCourierHistoryEntry struct {
+	ServiceType string            `json:"service_type"`
+	Status      string            `json:"status"`
+	Note        string            `json:"note"`
+	UpdatedAt   biteshipTimestamp `json:"updated_at"`
 }
 
 // biteshipTimestamp unmarshals updated_at without ever failing: RFC 3339,
