@@ -61,9 +61,9 @@ const sampleOrders: Order[] = [
     selected_courier: "JNE",
     selected_service: "Reguler",
     shipping_address: {
-      penerima: "Sabian Isaac",
-      telepon: "082113092527",
-      alamat: "Jl. Melati 9",
+      penerima: "Budi Test",
+      telepon: "081200000000",
+      alamat: "Jl. Contoh No. 1",
       kecamatan: "Bantargebang",
       kota: "Kota Bekasi",
       provinsi: "Jawa Barat",
@@ -192,7 +192,7 @@ describe("OrdersPage", () => {
     fireEvent.click(screen.getByText(/Buku Shipped/).closest("tr")!);
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Jl. Melati 9")).toBeInTheDocument();
+    expect(within(dialog).getByText("Jl. Contoh No. 1")).toBeInTheDocument();
     expect(within(dialog).getByText("Titip di pos satpam")).toBeInTheDocument();
     expect(within(dialog).getByText("JNE-999")).toBeInTheDocument();
     expect(within(dialog).getByText(/JNE — Reguler/)).toBeInTheDocument();
@@ -220,8 +220,8 @@ describe("OrdersPage", () => {
         {
           ...sampleOrders[1],
           shipping_address: {
-            penerima: "Sabian Isaac",
-            alamat: "Jl. Melati 9",
+            penerima: "Budi Test",
+            alamat: "Jl. Contoh No. 1",
             provinsi_id: "32",
             kota_id: "3275",
             kecamatan_id: "327501",
@@ -237,7 +237,7 @@ describe("OrdersPage", () => {
     fireEvent.click(screen.getByText(/Buku Shipped/).closest("tr")!);
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Jl. Melati 9")).toBeInTheDocument();
+    expect(within(dialog).getByText("Jl. Contoh No. 1")).toBeInTheDocument();
     expect(within(dialog).queryByText(/3275/)).toBeNull();
     expect(within(dialog).queryByText("327501")).toBeNull();
   });
