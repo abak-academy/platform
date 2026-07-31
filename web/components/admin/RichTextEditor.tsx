@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent } from "react";
-import { Editor, mergeAttributes } from "@tiptap/core";
+import { Editor, InputRule, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Bold as BoldMark } from "@tiptap/extension-bold";
 import { Italic as ItalicMark } from "@tiptap/extension-italic";
@@ -12,6 +12,8 @@ import { Table as TableExtension } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
+import { InlineMath } from "@tiptap/extension-mathematics";
+import "katex/dist/katex.min.css";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import {
@@ -84,6 +86,98 @@ const ImageTag = ImageExtension.extend({
     };
   },
 });
+
+// The plain-text math syntax `question.body` already stores today — mirrors
+// RichContent's renderMathInElement delimiters ("\(" ... "\)"). Matches the
+// literal 2-char backslash+paren sequences, not a regex grouping construct.
+const INLINE_MATH_RE = /\\\(([^)]+?)\\\)/;
+const INLINE_MATH_RE_GLOBAL = /\\\(([^)]+?)\\\)/g;
+
+// @tiptap/extension-mathematics's default renderHTML emits
+// `<span data-type="inline-math" data-latex="...">` — `span` isn't in
+// QUESTION_BODY_ALLOWED_TAGS, so that would be stripped on save (FB-24
+// again) and split the DB into two math formats (decision-editor-library.md,
+// spec.md FR-44/FR-45). This override instead renders the literal delimited
+// text as the span's only child, with no attributes at all — an
+// attribute-less <span> is a marker nothing else in this schema produces, so
+// getStorageHtml (below) can find and unwrap exactly this wrapper
+// deterministically, and only this wrapper: if the override above were ever
+// lost, the reverted default's `data-type`/`data-latex` attributes would
+// make getStorageHtml leave the span alone, so FR-44's guard test goes red
+// instead of the app quietly storing an unsanitisable span.
+// Exported for RichTextEditor.test.tsx's Task 19 harness — the extension
+// and its serialisation helpers are tested directly against a bare Editor
+// (mirroring tiptap-spike.test.tsx), since jsdom cannot drive the real
+// keystroke-detection path TipTap's input rules rely on.
+export const InlineMathText = InlineMath.extend({
+  renderHTML({ node }) {
+    return ["span", {}, `\\(${node.attrs.latex}\\)`] as unknown as [string, Record<string, never>, 0];
+  },
+  // Replaces the base extension's own input rule (which matches "$$latex$$")
+  // with one matching the app's actual delimiter, so typing "\(x^2\)" is
+  // what triggers live rendering — FR-44.
+  addInputRules() {
+    return [
+      new InputRule({
+        find: INLINE_MATH_RE,
+        handler: ({ state, range, match }) => {
+          const latex = match[1];
+          state.tr.replaceWith(range.from, range.to, this.type.create({ latex }));
+        },
+      }),
+    ];
+  },
+});
+
+// FR-46: every question body already in the database stores math as plain
+// "\(latex\)" text. Converts each such run into a live inlineMath node so
+// existing questions render their math on open, not just freshly-typed
+// formulas.
+export function migrateLegacyInlineMath(editor: Editor) {
+  const { state } = editor;
+  const inlineMathType = state.schema.nodes.inlineMath;
+  if (!inlineMathType) return;
+
+  const replacements: { from: number; to: number; latex: string }[] = [];
+  state.doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return;
+    for (const match of node.text.matchAll(INLINE_MATH_RE_GLOBAL)) {
+      const start = pos + (match.index ?? 0);
+      replacements.push({ from: start, to: start + match[0].length, latex: match[1] });
+    }
+  });
+  if (replacements.length === 0) return;
+
+  const tr = state.tr;
+  for (let i = replacements.length - 1; i >= 0; i -= 1) {
+    const { from, to, latex } = replacements[i];
+    tr.replaceWith(from, to, inlineMathType.create({ latex }));
+  }
+  // Not a user edit — don't let it show up in undo history or trigger onChange.
+  tr.setMeta("addToHistory", false);
+  tr.setMeta("inlineMathMigration", true);
+  editor.view.dispatch(tr);
+}
+
+// The storage-facing counterpart of InlineMathText's renderHTML override:
+// unwraps its bare <span> back into the plain "\(latex\)" text it wraps.
+// This, not the node's own renderHTML, is what actually achieves "no
+// wrapping element in storage" — ProseMirror's DOMOutputSpec has no way for
+// a node to serialize as a naked text node, only elements, so the
+// span-then-unwrap round trip is the only way to get byte-identical plain
+// text out of getHTML(). See FR-44 and the InlineMathText comment above for
+// why a span with attributes is deliberately left untouched here.
+export function getStorageHtml(editor: Editor): string {
+  const raw = editor.getHTML();
+  if (!raw.includes("<span")) return raw;
+  const tmp = document.createElement("div");
+  tmp.innerHTML = raw;
+  tmp.querySelectorAll("span").forEach((span) => {
+    if (span.attributes.length > 0) return;
+    span.replaceWith(document.createTextNode(span.textContent ?? ""));
+  });
+  return tmp.innerHTML;
+}
 
 function isEffectivelyEmpty(html: string): boolean {
   const tmp = document.createElement("div");
@@ -172,6 +266,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
         TableRow,
         TableHeader,
         TableCell,
+        InlineMathText,
       ],
       editorProps: {
         attributes,
@@ -184,13 +279,18 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
         // become markup without any code here.
         transformPastedHTML: (html: string) => sanitizeClipboardHtml(html),
       },
-      onUpdate: ({ editor: ed }) => {
-        const html = ed.getHTML();
+      onUpdate: ({ editor: ed, transaction }) => {
+        // Skip the migration's own transaction (FR-46) — it converts
+        // existing text to a math node without the user having changed
+        // anything, so it must not report a content change.
+        if (transaction.getMeta("inlineMathMigration")) return;
+        const html = getStorageHtml(ed);
         setEmpty(isEffectivelyEmpty(html));
         onChangeRef.current(html);
       },
     });
     editorInstanceRef.current = editor;
+    migrateLegacyInlineMath(editor);
 
     return () => {
       editor.destroy();
@@ -234,7 +334,10 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       insertLiteralText(editor, text);
     },
     setContent: (html: string) => {
-      editorInstanceRef.current?.commands.setContent(html);
+      const ed = editorInstanceRef.current;
+      if (!ed) return;
+      ed.commands.setContent(html);
+      migrateLegacyInlineMath(ed);
     },
   }));
 

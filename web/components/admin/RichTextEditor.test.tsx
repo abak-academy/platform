@@ -1,7 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { RichTextEditor } from "./RichTextEditor";
+import { Editor } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import { RichTextEditor, InlineMathText, migrateLegacyInlineMath, getStorageHtml } from "./RichTextEditor";
 import { RichContent } from "./RichContent";
+import { QUESTION_BODY_ALLOWED_TAGS } from "@/lib/question-html";
 import { execFileSync } from "node:child_process";
 import { writeFileSync, readFileSync, rmSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -709,4 +712,150 @@ func ${BRIDGE_TEST_NAME}(t *testing.T) {
     },
     30000,
   );
+});
+
+// Task 19 (FR-44/FR-45/FR-46): live in-editor math via
+// @tiptap/extension-mathematics's InlineMath node, with its default
+// serialisation overridden so storage stays plain "\(latex\)" text.
+//
+// Exercised against a bare Editor built from the exact InlineMathText export
+// RichTextEditor.tsx wires in — not a React-level simulation — because
+// jsdom cannot drive the real keystroke-detection path
+// (MutationObserver-based DOM diffing) TipTap's input rules rely on to fire
+// from an actual keypress. `applyInputRules: true` on `insertContent` is
+// TipTap's own supported hook for simulating that same trigger
+// (@tiptap/core's inputRulesPlugin reads the `applyInputRules` transaction
+// meta it sets), so this exercises the real InputRule handler, not a
+// hand-rolled substitute. See tiptap-spike.test.tsx for the precedent of
+// testing a TipTap extension against a bare Editor instead of the full
+// React component.
+describe("RichTextEditor — live math (Task 19)", () => {
+  // Bare-Editor instances mount their contentEditable directly onto
+  // document.body (mirroring tiptap-spike.test.tsx) rather than into a
+  // React tree, so testing-library's automatic cleanup() between tests
+  // never touches them — left unremoved, a leftover contenteditable (which
+  // carries TipTap's own default role="textbox") makes screen.getByRole in
+  // later component-level tests ambiguous. Track and tear down every one.
+  let mounted: { editor: Editor; element: HTMLElement }[] = [];
+
+  function createMathTestEditor(content: string) {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const editor = new Editor({
+      element,
+      extensions: [StarterKit, InlineMathText],
+      content,
+    });
+    mounted.push({ editor, element });
+    return editor;
+  }
+
+  afterEach(() => {
+    for (const { editor, element } of mounted) {
+      editor.destroy();
+      element.remove();
+    }
+    mounted = [];
+  });
+
+  it("typing \\(x^2\\) converts to a live KaTeX-rendered node in the editing surface, not literal text (FR-44)", async () => {
+    const editor = createMathTestEditor("<p></p>");
+
+    editor.chain().insertContent("\\(x^2\\)", { applyInputRules: true }).run();
+
+    await waitFor(() => {
+      expect(editor.view.dom.querySelector(".katex")).not.toBeNull();
+      expect(editor.view.dom.textContent).not.toContain("\\(x^2\\)");
+    });
+  });
+
+  it("a math node's storage HTML round-trips byte-identical to plain \\(latex\\) text (FR-44)", () => {
+    const editor = createMathTestEditor("<p></p>");
+    editor.commands.insertInlineMath({ latex: "x^2" });
+
+    const stored = getStorageHtml(editor);
+    expect(stored).toContain("\\(x^2\\)");
+    expect(stored).not.toContain("<span");
+  });
+
+  // The point of this task's design (spec.md FR-44): if InlineMathText's
+  // renderHTML override is ever lost — e.g. a future TipTap upgrade changes
+  // internal behaviour the override relied on — this must go red instead of
+  // the app quietly writing an unsanitisable format. Deliberately asserts on
+  // getStorageHtml's string output, not the editing-surface DOM: an editor
+  // that escapes a backslash still looks correct on screen while silently
+  // corrupting every stored equation. Because renderHTML and parseHTML live
+  // on the same node type, reverting the override would make even
+  // legacy-shaped `<span data-type="inline-math">` input serialize back out
+  // through the (now default) renderHTML too — there is no separate code
+  // path to pin down; this test IS the pinned-down behaviour.
+  it("never emits data-type=\"inline-math\", data-type=\"block-math\", or tiptap-mathematics-render in storage (FR-44 anti-quiet-failure guard)", () => {
+    const editor = createMathTestEditor("<p></p>");
+    editor.commands.insertInlineMath({ latex: "x^2" });
+
+    const stored = getStorageHtml(editor);
+    expect(stored).not.toContain('data-type="inline-math"');
+    expect(stored).not.toContain('data-type="block-math"');
+    expect(stored).not.toContain("tiptap-mathematics-render");
+  });
+
+  it("loading a body with legacy \\(latex\\) text renders it as math, not literal text (FR-46)", async () => {
+    const editor = createMathTestEditor("<p>Solve \\(x^2\\) and \\(\\frac{1}{2}\\) now</p>");
+
+    migrateLegacyInlineMath(editor);
+
+    await waitFor(() => {
+      expect(editor.view.dom.querySelectorAll(".katex").length).toBe(2);
+    });
+    expect(editor.view.dom.textContent).not.toContain("\\(x^2\\)");
+    expect(editor.view.dom.textContent).not.toContain("\\(\\frac{1}{2}\\)");
+
+    // And storage is unchanged by the migration — still plain text.
+    const stored = getStorageHtml(editor);
+    expect(stored).toContain("\\(x^2\\)");
+    expect(stored).toContain("\\(\\frac{1}{2}\\)");
+    expect(stored).not.toContain("<span");
+  });
+
+  it("the allowlist is not widened to accommodate math (FR-45): span/data-type/data-latex/class stay off QUESTION_BODY_ALLOWED_TAGS", () => {
+    expect(QUESTION_BODY_ALLOWED_TAGS).not.toContain("span");
+    for (const forbidden of ["class", "data-type", "data-latex"]) {
+      expect(QUESTION_BODY_ALLOWED_TAGS).not.toContain(forbidden);
+    }
+  });
+
+  it("@tiptap/extension-mathematics is pinned to an exact version in package.json (no ^)", () => {
+    const pkg = JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8"));
+    expect(pkg.dependencies["@tiptap/extension-mathematics"]).toBe("3.29.2");
+  });
+});
+
+// Component-level proof of FR-46: the actual RichTextEditor, mounted with a
+// `value` shaped like a real pre-existing question body, renders its math —
+// not just the bare-Editor harness above.
+describe("RichTextEditor component — legacy math on load (Task 19, FR-46)", () => {
+  it("mounting with a body containing \\(x^2\\) renders KaTeX markup in the editing surface", async () => {
+    // Bare JSX attribute string literals don't process backslash escapes the
+    // way JS strings do (JSX treats them like HTML text) — "\\(" here would
+    // stay two literal backslashes, not one. The {"..."} expression form
+    // goes through normal JS string escaping instead.
+    render(<RichTextEditor value={"<p>Solve \\(x^2\\) please</p>"} onChange={vi.fn()} />);
+    const editable = screen.getByRole("textbox");
+
+    await waitFor(() => {
+      expect(editable.querySelector(".katex")).not.toBeNull();
+    });
+    expect(editable.textContent).not.toContain("\\(x^2\\)");
+  });
+
+  it("does not call onChange merely from migrating legacy math on mount", async () => {
+    const onChange = vi.fn();
+    render(<RichTextEditor value={"<p>Solve \\(x^2\\) please</p>"} onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+
+    await waitFor(() => {
+      expect(editable.querySelector(".katex")).not.toBeNull();
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
