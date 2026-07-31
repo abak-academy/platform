@@ -327,9 +327,54 @@ func TestGradingObjective_multiAnswerCorrect(t *testing.T) {
 
 	graded, score := gradeObjective(questions, answers)
 
-	assert.Equal(t, 1.0, score)
+	// Partial credit per selected option (2026-07-31): three correct
+	// selections at point_correct=1 score 3, no longer all-or-nothing 1.
+	assert.Equal(t, 3.0, score)
 	assert.Len(t, graded, 1)
 	assert.True(t, *graded[0].IsCorrect)
+}
+
+func TestGradeMultiAnswerPartial_pinsTheRule(t *testing.T) {
+	options := []model.QuestionOption{
+		{Key: "a", IsCorrect: true},
+		{Key: "b", IsCorrect: true},
+		{Key: "c", IsCorrect: false},
+		{Key: "d", IsCorrect: false},
+	}
+
+	cases := []struct {
+		name      string
+		answer    string
+		wantScore float64
+		wantOK    bool
+	}{
+		{"one of two correct earns one point, still counts correct", "a", 1, true},
+		{"both correct earns both points", "a,b", 2, true},
+		{"a wrong selection costs point_wrong and kills is_correct", "a,c", 0.5, false},
+		{"selecting everything cannot farm points", "a,b,c,d", 1, false},
+		{"only wrong selections go negative (session floor handles it)", "c,d", -1, false},
+		{"duplicate keys are counted once", "a,a,a", 1, true},
+		{"unknown key is a wrong selection (tampered payload)", "a,zz", 0.5, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			score, ok := gradeMultiAnswerPartial(tc.answer, options, 1, 0.5)
+			assert.Equal(t, tc.wantScore, score)
+			assert.Equal(t, tc.wantOK, ok)
+		})
+	}
+}
+
+func TestQuestionMaxPoints_multiAnswerCountsCorrectOptions(t *testing.T) {
+	q := model.QuestionWithOptions{
+		Question: model.Question{Format: "multi_answer", PointCorrect: 2},
+		Options: []model.QuestionOption{
+			{Key: "a", IsCorrect: true},
+			{Key: "b", IsCorrect: true},
+			{Key: "c", IsCorrect: false},
+		},
+	}
+	assert.Equal(t, 4.0, questionMaxPoints(q))
 }
 
 func TestGradingObjective_noQuestions_scoreZero(t *testing.T) {

@@ -48,6 +48,53 @@ func gradeMCQ(answer string, options []model.QuestionOption) bool {
 	return strings.EqualFold(strings.TrimSpace(answer), strings.TrimSpace(correctKey))
 }
 
+// itemPoints resolves a per-item point value (0050): the item's own points when
+// set, else the question-level fallback.
+func itemPoints(points *float64, fallback float64) float64 {
+	if points != nil {
+		return *points
+	}
+	return fallback
+}
+
+// gradeMultiAnswerPartial scores a multi_answer question per selected option,
+// mirroring gradeMultiBlank (user decision, 2026-07-31 — previously exact-set
+// all-or-nothing): each selected correct option earns +pointCorrect, each
+// selected wrong option costs -pointWrong, unselected options score nothing
+// either way. The per-selection penalty is what stops select-everything from
+// farming points. Unclamped per-question; the session total is floored by the
+// caller. IsCorrect follows the multi_blank rule: something was selected and
+// nothing selected was wrong.
+func gradeMultiAnswerPartial(answer string, options []model.QuestionOption, pointCorrect, pointWrong float64) (float64, bool) {
+	correctByKey := make(map[string]bool, len(options))
+	pointsByKey := make(map[string]*float64, len(options))
+	for _, o := range options {
+		correctByKey[o.Key] = o.IsCorrect
+		pointsByKey[o.Key] = o.Points
+	}
+
+	var score float64
+	var hasAnswer, anyWrong bool
+	seen := make(map[string]bool)
+	for _, raw := range strings.Split(answer, ",") {
+		key := strings.TrimSpace(raw)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		hasAnswer = true
+		if correctByKey[key] {
+			score += itemPoints(pointsByKey[key], pointCorrect)
+		} else {
+			// Unknown keys count as wrong selections too — the client never
+			// sends them, so anything here is a tampered payload.
+			score -= pointWrong
+			anyWrong = true
+		}
+	}
+	return score, hasAnswer && !anyWrong
+}
+
 func gradeMultiAnswer(answer string, options []model.QuestionOption) bool {
 	selected := strings.Split(answer, ",")
 	for i := range selected {
@@ -109,7 +156,7 @@ func gradeMultiBlank(answer *string, blanks []model.QuestionBlank, pointCorrect,
 
 		hasAnswer = true
 		if matchesAnyAccepted(blankAnswer, blank.AcceptedAnswers) {
-			score += pointCorrect
+			score += itemPoints(blank.Points, pointCorrect)
 		} else {
 			score -= pointWrong
 			anyWrong = true
@@ -165,7 +212,7 @@ func gradeTrueFalse(answer *string, statements []model.QuestionStatement, pointC
 
 		hasAnswer = true
 		if answeredTrue == st.IsTrue {
-			score += pointCorrect
+			score += itemPoints(st.Points, pointCorrect)
 		} else {
 			score -= pointWrong
 			anyWrong = true
@@ -184,9 +231,27 @@ func gradeTrueFalse(answer *string, statements []model.QuestionStatement, pointC
 func questionMaxPoints(q model.QuestionWithOptions) float64 {
 	switch q.Question.Format {
 	case "multi_blank":
-		return float64(len(q.Blanks)) * q.Question.PointCorrect
+		var max float64
+		for _, b := range q.Blanks {
+			max += itemPoints(b.Points, q.Question.PointCorrect)
+		}
+		return max
 	case "true_false":
-		return float64(len(q.Question.Statements)) * q.Question.PointCorrect
+		var max float64
+		for _, st := range q.Question.Statements {
+			max += itemPoints(st.Points, q.Question.PointCorrect)
+		}
+		return max
+	case "multi_answer":
+		// Partial credit per selected-correct option (2026-07-31): the maximum
+		// is selecting every correct option and nothing else.
+		var max float64
+		for _, o := range q.Options {
+			if o.IsCorrect {
+				max += itemPoints(o.Points, q.Question.PointCorrect)
+			}
+		}
+		return max
 	default:
 		return q.Question.PointCorrect
 	}
@@ -234,6 +299,25 @@ func gradeObjective(questions []model.QuestionWithOptions, answers map[uuid.UUID
 
 		if q.Question.Format == "true_false" {
 			score, anyCorrect := gradeTrueFalse(ans, q.Question.Statements, q.Question.PointCorrect, q.Question.PointWrong)
+			sum += score
+
+			gradedAt := now
+			graded = append(graded, model.ExamSessionAnswer{
+				QuestionID: q.Question.ID,
+				Answer:     ans,
+				IsCorrect:  &anyCorrect,
+				Score:      &score,
+				GradedAt:   &gradedAt,
+			})
+			continue
+		}
+
+		if q.Question.Format == "multi_answer" {
+			var score float64
+			var anyCorrect bool
+			if ans != nil && *ans != "" {
+				score, anyCorrect = gradeMultiAnswerPartial(*ans, q.Options, q.Question.PointCorrect, q.Question.PointWrong)
+			}
 			sum += score
 
 			gradedAt := now

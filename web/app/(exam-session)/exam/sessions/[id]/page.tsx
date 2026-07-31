@@ -884,7 +884,10 @@ function MultiBlankInput({
     return <RichContent html={sanitizedHtml} />;
   }
 
-  return <div ref={containerRef} className="text-base text-ink-900" />;
+  // data-rich-content: picks up the shared authored-content CSS in globals.css
+  // (list bullets, table borders, empty-paragraph height) — this container
+  // bypasses RichContent, so without the marker those rules never apply here.
+  return <div ref={containerRef} data-rich-content className="text-base text-ink-900" />;
 }
 
 // Component: render true_false with one true/false control per statement.

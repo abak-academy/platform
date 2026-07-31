@@ -196,3 +196,56 @@ html[data-theme="dark"] {
   --radius-lg: var(--r-lg);
   --radius-xl: var(--r-xl);
 }
+/* Rich-text content — Tailwind preflight strips list-style/margins, so
+   authored <ul>/<ol> render bulletless everywhere (the editor's list buttons
+   looked broken while producing correct markup). One block covers all three
+   surfaces: the TipTap editing area (.ProseMirror), the sanitised renderer
+   ([data-rich-content]: admin preview, student session, result), and tables
+   authored via the editor. */
+.ProseMirror ul,
+[data-rich-content] ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin: 0.25rem 0;
+}
+.ProseMirror ol,
+[data-rich-content] ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 0.25rem 0;
+}
+.ProseMirror li > ul,
+[data-rich-content] li > ul {
+  list-style: circle;
+}
+.ProseMirror table,
+[data-rich-content] table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+}
+.ProseMirror td,
+.ProseMirror th,
+[data-rich-content] td,
+[data-rich-content] th {
+  border: 1px solid var(--border);
+  padding: 0.375rem 0.625rem;
+  vertical-align: top;
+}
+.ProseMirror th,
+[data-rich-content] th {
+  background: var(--muted);
+  font-weight: 600;
+  text-align: left;
+}
+/* TipTap renders the selected cell range with this class. */
+.ProseMirror .selectedCell {
+  background: var(--accent);
+}
+/* An authored blank line is stored as <p></p> (survives sanitisation), but
+   with preflight's margin:0 an empty <p> is 0px tall, so blank lines vanish
+   everywhere OUTSIDE the editor — ProseMirror props empty paragraphs open
+   with a trailing <br>, which is why the editor and the rendered views
+   disagreed. The ::before nbsp gives the paragraph one line of height. */
+[data-rich-content] p:empty::before {
+  content: "\00a0";
+}

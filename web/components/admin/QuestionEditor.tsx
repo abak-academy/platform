@@ -40,7 +40,7 @@ interface QuestionEditorProps {
   onSaved?: () => void;
 }
 
-const DEFAULT_KEYS: Array<"a" | "b" | "c" | "d"> = ["a", "b", "c", "d"];
+const DEFAULT_KEYS = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 
 function nextKey(existing: AdminQuestionOptionInput[]): string {
   const used = new Set(existing.map((o) => o.key.toLowerCase()));
@@ -53,6 +53,38 @@ function nextKey(existing: AdminQuestionOptionInput[]): string {
 interface BlankRow {
   index: number;
   accepted_answers: string[];
+  points?: number;
+}
+
+// Per-item worth (0050). Empty = inherit the question's "Poin benar" — that
+// contract lives in the placeholder so it needs no extra label row.
+function ItemPointsInput({
+  value,
+  onChange,
+  disabled,
+}: {
+  value?: number;
+  onChange: (v?: number) => void;
+  disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <input
+      type="number"
+      step="any"
+      min="0"
+      value={value ?? ""}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v === "" ? undefined : Number(v));
+      }}
+      placeholder={t("tests_field_item_points")}
+      title={t("tests_field_item_points_hint")}
+      aria-label={t("tests_field_item_points")}
+      disabled={disabled}
+      className="h-8 w-20 rounded-md border border-input bg-transparent px-2 text-sm shadow-xs focus-visible:border-ring"
+    />
+  );
 }
 
 function AcceptedAnswerEditor({
@@ -157,6 +189,13 @@ function BlankEditor({ blanks, onChange, onInsertToken, onRemoveToken, disabled 
               disabled={disabled}
             />
           </div>
+          <div className="pt-1">
+            <ItemPointsInput
+              value={blank.points}
+              onChange={(v) => onChange(blanks.map((b, i) => (i === index ? { ...b, points: v } : b)))}
+              disabled={disabled}
+            />
+          </div>
           <Button
             type="button"
             size="icon-xs"
@@ -187,10 +226,11 @@ interface StatementRow {
   index: number;
   body: string;
   is_true: boolean;
+  points?: number;
 }
 
 function buildStatementsFromQuestion(
-  statements?: { index: number; body: string; is_true: boolean }[]
+  statements?: { index: number; body: string; is_true: boolean; points?: number }[]
 ): StatementRow[] {
   if (!statements || statements.length === 0) {
     return [
@@ -198,7 +238,7 @@ function buildStatementsFromQuestion(
       { index: 2, body: "", is_true: false },
     ];
   }
-  return statements.map((s) => ({ index: s.index, body: s.body, is_true: s.is_true }));
+  return statements.map((s) => ({ index: s.index, body: s.body, is_true: s.is_true, points: s.points }));
 }
 
 function renumberStatements(rows: StatementRow[]): StatementRow[] {
@@ -242,16 +282,51 @@ function StatementEditor({ statements, onChange, disabled }: StatementEditorProp
               placeholder={t("tests_field_statement_body")}
               disabled={disabled}
             />
-            <label className="flex items-center gap-1 text-sm">
-              <input
-                type="checkbox"
-                checked={statement.is_true}
-                onChange={(e) => update(index, { is_true: e.target.checked })}
-                disabled={disabled}
+            {/* Segmented Benar/Salah rather than a lone checkbox — a checkbox
+                labelled "Benar" reads as "checked = done", not "this statement
+                is true", and the false state is invisible (user, 2026-07-31).
+                Toggle and per-item Poin share one line (user, 2026-07-31). */}
+            <div className="flex items-center gap-2">
+            <div
+              role="group"
+              aria-label={`${t("tests_field_statement_is_true")}/${t("tests_field_statement_is_false")}`}
+              className="inline-flex rounded-md border p-0.5"
+            >
+              <button
+                type="button"
+                aria-pressed={statement.is_true}
                 aria-label={t("tests_field_statement_is_true")}
+                onClick={() => update(index, { is_true: true })}
+                disabled={disabled}
+                className={
+                  statement.is_true
+                    ? "rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
+                    : "rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                }
+              >
+                {t("tests_field_statement_is_true")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={!statement.is_true}
+                aria-label={t("tests_field_statement_is_false")}
+                onClick={() => update(index, { is_true: false })}
+                disabled={disabled}
+                className={
+                  !statement.is_true
+                    ? "rounded bg-destructive/90 px-3 py-1 text-xs font-medium text-white"
+                    : "rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                }
+              >
+                {t("tests_field_statement_is_false")}
+              </button>
+              </div>
+              <ItemPointsInput
+                value={statement.points}
+                onChange={(v) => update(index, { points: v })}
+                disabled={disabled}
               />
-              <span>{t("tests_field_statement_is_true")}</span>
-            </label>
+            </div>
           </div>
           <Button
             type="button"
@@ -300,7 +375,7 @@ function OptionEditor({
   }
 
   function remove(index: number) {
-    if (options.length <= 2) return;
+    if (options.length <= 4) return;
     onChange(options.filter((_, i) => i !== index));
   }
 
@@ -347,12 +422,21 @@ function OptionEditor({
                 )}
                 <span>{t("tests_field_option_is_correct")}</span>
               </label>
+              {format === "multi_answer" && (
+                <ItemPointsInput
+                  value={opt.points}
+                  onChange={(v) =>
+                    onChange(options.map((o, i) => (i === index ? { ...o, points: v } : o)))
+                  }
+                  disabled={disabled || !opt.is_correct}
+                />
+              )}
               <Button
                 type="button"
                 size="icon-xs"
                 variant="ghost"
                 onClick={() => remove(index)}
-                disabled={disabled || options.length <= 2}
+                disabled={disabled || options.length <= 4}
                 aria-label={t("tests_remove_option")}
               >
                 <Trash2 className="size-3" />
@@ -376,7 +460,7 @@ function OptionEditor({
         size="sm"
         variant="outline"
         onClick={add}
-        disabled={disabled || options.length >= 4}
+        disabled={disabled || options.length >= 8}
       >
         <Plus className="mr-1 size-4" />
         {t("tests_add_option")}
@@ -395,15 +479,24 @@ const FORMAT_LABELS: Record<QuestionFormat, "tests_format_mcq" | "tests_format_m
   true_false: "tests_format_true_false",
 };
 
-const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "short", "fill_blank", "essay", "multi_blank", "true_false"];
+// short and fill_blank are retired from authoring (user decision, 2026-07-31):
+// they graded and rendered identically, and the inline-box use case both were
+// reached for is multi_blank's — with one blank when one is enough. Existing
+// questions in either format stay editable (see formatOptions below), gradeable
+// and renderable; only NEW questions can no longer pick them.
+const CREATABLE_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "essay", "multi_blank", "true_false"];
 
 
 function buildOptionsFromQuestion(q: QuestionWithOptions): AdminQuestionOptionInput[] {
   // options is null (not []) for optionless formats coming from the bank API.
   if (!q.options || q.options.length === 0) {
+    // Min 4 options for choice formats (user request 2026-07-31); legacy
+    // questions below 4 stay editable — the remove guard just stops going lower.
     return [
       { key: "a", text: "", is_correct: true, sort_order: 1 },
       { key: "b", text: "", is_correct: false, sort_order: 2 },
+      { key: "c", text: "", is_correct: false, sort_order: 3 },
+      { key: "d", text: "", is_correct: false, sort_order: 4 },
     ];
   }
   return q.options.map((o) => ({
@@ -412,6 +505,7 @@ function buildOptionsFromQuestion(q: QuestionWithOptions): AdminQuestionOptionIn
     image_url: o.image_url ?? undefined,
     is_correct: o.is_correct,
     sort_order: o.sort_order,
+    points: o.points,
   }));
 }
 
@@ -423,7 +517,7 @@ function buildAcceptedAnswersFromQuestion(q?: Question): string[] {
 }
 
 function buildBlanksFromQuestion(
-  blanks?: Array<{ index: number; correct_answer: string; accepted_answers?: string[] }>
+  blanks?: Array<{ index: number; correct_answer: string; accepted_answers?: string[]; points?: number }>
 ): BlankRow[] {
   if (!blanks) {
     return [
@@ -433,6 +527,7 @@ function buildBlanksFromQuestion(
   }
   return blanks.map((b) => ({
     index: b.index,
+    points: b.points,
     accepted_answers:
       b.accepted_answers && b.accepted_answers.length > 0
         ? b.accepted_answers
@@ -481,6 +576,8 @@ function buildInput(
       image_url: o.image_url,
       is_correct: o.is_correct,
       sort_order: i + 1,
+      // Worth only means anything on a correct option; never send it on wrong ones.
+      ...(o.is_correct && o.points !== undefined ? { points: o.points } : {}),
     }));
   }
   if (format === "multi_blank") {
@@ -490,6 +587,7 @@ function buildInput(
         index: b.index,
         correct_answer: trimmed[0] ?? "",
         accepted_answers: trimmed,
+        ...(b.points !== undefined ? { points: b.points } : {}),
       };
     });
   }
@@ -498,6 +596,7 @@ function buildInput(
       index: s.index,
       body: s.body.trim(),
       is_true: s.is_true,
+      ...(s.points !== undefined ? { points: s.points } : {}),
     }));
   }
   return base;
@@ -635,6 +734,16 @@ function validate(
     const result = validateStatements(statements);
     if (!result.ok) return result;
   }
+  const itemPointsValues = [
+    ...options.filter((o) => o.is_correct).map((o) => o.points),
+    ...blanks.map((b) => b.points),
+    ...statements.map((st) => st.points),
+  ];
+  for (const v of itemPointsValues) {
+    if (v !== undefined && !(v > 0)) {
+      return { ok: false, key: "tests_validation_item_points_positive" };
+    }
+  }
   return { ok: true };
 }
 
@@ -644,6 +753,11 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const isTestScoped = Boolean(testId);
   const formatLocked = Boolean(question?.in_live_exam);
   const [format, setFormat] = useState<QuestionFormat>(question?.question.format ?? "mcq");
+  // Editing a legacy short/fill_blank question must keep its format selectable —
+  // a controlled <select> whose value has no matching <option> renders blank.
+  const formatOptions: QuestionFormat[] = CREATABLE_FORMATS.includes(format)
+    ? CREATABLE_FORMATS
+    : [format, ...CREATABLE_FORMATS];
   const [body, setBody] = useState(question?.question.body ?? "");
   const [difficulty, setDifficulty] = useState<string>(question?.question.difficulty ?? "");
   const [explanation, setExplanation] = useState(question?.question.explanation ?? "");
@@ -659,6 +773,8 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
     question ? buildOptionsFromQuestion(question) : [
       { key: "a", text: "", is_correct: true, sort_order: 1 },
       { key: "b", text: "", is_correct: false, sort_order: 2 },
+      { key: "c", text: "", is_correct: false, sort_order: 3 },
+      { key: "d", text: "", is_correct: false, sort_order: 4 },
     ]
   );
   const [blanks, setBlanks] = useState<BlankRow[]>(buildBlanksFromQuestion(question?.blanks));
@@ -688,6 +804,8 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       setOptions([
         { key: "a", text: "", is_correct: true, sort_order: 1 },
         { key: "b", text: "", is_correct: false, sort_order: 2 },
+        { key: "c", text: "", is_correct: false, sort_order: 3 },
+        { key: "d", text: "", is_correct: false, sort_order: 4 },
       ]);
       setBlanks([
         { index: 1, accepted_answers: [""] },
@@ -783,7 +901,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
                   disabled={savePending || formatLocked}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
                 >
-                  {ALL_FORMATS.map((f) => (
+                  {formatOptions.map((f) => (
                     <option key={f} value={f}>
                       {t(FORMAT_LABELS[f])}
                     </option>

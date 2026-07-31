@@ -99,7 +99,7 @@ func scanQuestionOption(row interface{ Scan(dest ...any) error }, o *model.Quest
 	var imageURL *string
 	var isCorrect bool
 	err := row.Scan(
-		&o.QuestionID, &o.Key, &o.Text, &imageURL, &isCorrect, &o.SortOrder,
+		&o.QuestionID, &o.Key, &o.Text, &imageURL, &isCorrect, &o.SortOrder, &o.Points,
 	)
 	if err != nil {
 		return err
@@ -125,7 +125,41 @@ type QuestionFilter struct {
 	TopicID string
 	Search  string
 	Cursor  string
+	Offset  int
 	Limit   int
+}
+
+// bankQuestionFilterSQL renders the shared WHERE tail for the bank list and its
+// count so the two cannot drift. Cursor/Offset are pagination, not filtering,
+// and are deliberately excluded here.
+func bankQuestionFilterSQL(filter QuestionFilter, argIdx int) (string, []interface{}, int) {
+	query := ""
+	args := []interface{}{}
+	if filter.Format != "" {
+		query += fmt.Sprintf(` AND q.format = $%d`, argIdx)
+		args = append(args, filter.Format)
+		argIdx++
+	}
+	if filter.TopicID != "" {
+		query += fmt.Sprintf(` AND q.topic_id = $%d::uuid`, argIdx)
+		args = append(args, filter.TopicID)
+		argIdx++
+	}
+	if filter.Search != "" {
+		query += fmt.Sprintf(` AND (LOWER(q.body) LIKE LOWER($%d) OR q.id::text LIKE $%d)`, argIdx, argIdx)
+		args = append(args, "%"+filter.Search+"%")
+		argIdx++
+	}
+	return query, args, argIdx
+}
+
+// CountBankQuestions returns the total row count for the same filters the bank
+// list applies, so the UI can render numbered pages.
+func (r *Repository) CountBankQuestions(ctx context.Context, filter QuestionFilter) (int, error) {
+	where, args, _ := bankQuestionFilterSQL(filter, 1)
+	var total int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM question q WHERE 1=1`+where, args...).Scan(&total)
+	return total, err
 }
 
 func (r *Repository) CreateTest(ctx context.Context, t *model.Test) error {
@@ -352,7 +386,7 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 
 func (r *Repository) queryOptionsForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID][]model.QuestionOption, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT question_id, key, text, image_url, is_correct, sort_order
+		`SELECT question_id, key, text, image_url, is_correct, sort_order, points
 		FROM question_option
 		WHERE question_id = ANY($1)
 		ORDER BY question_id, sort_order`,
@@ -385,7 +419,7 @@ func (r *Repository) queryOptionsForQuestions(ctx context.Context, questionIDs [
 
 func (r *Repository) queryBlanksForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID][]model.QuestionBlank, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT question_id, blank_index, correct_answer
+		`SELECT question_id, blank_index, correct_answer, points
 		FROM question_blank
 		WHERE question_id = ANY($1)
 		ORDER BY question_id, blank_index`,
@@ -404,7 +438,7 @@ func (r *Repository) queryBlanksForQuestions(ctx context.Context, questionIDs []
 	}
 	for rows.Next() {
 		b := model.QuestionBlank{}
-		if err := rows.Scan(&b.QuestionID, &b.Index, &b.CorrectAnswer); err != nil {
+		if err := rows.Scan(&b.QuestionID, &b.Index, &b.CorrectAnswer, &b.Points); err != nil {
 			return nil, err
 		}
 		out[b.QuestionID] = append(out[b.QuestionID], b)
@@ -417,7 +451,7 @@ func (r *Repository) queryBlanksForQuestions(ctx context.Context, questionIDs []
 
 func (r *Repository) queryStatementsForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID][]model.QuestionStatement, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT question_id, statement_index, body, is_true
+		`SELECT question_id, statement_index, body, is_true, points
 		FROM question_statement
 		WHERE question_id = ANY($1)
 		ORDER BY question_id, statement_index`,
@@ -436,7 +470,7 @@ func (r *Repository) queryStatementsForQuestions(ctx context.Context, questionID
 	}
 	for rows.Next() {
 		st := model.QuestionStatement{}
-		if err := rows.Scan(&st.QuestionID, &st.Index, &st.Body, &st.IsTrue); err != nil {
+		if err := rows.Scan(&st.QuestionID, &st.Index, &st.Body, &st.IsTrue, &st.Points); err != nil {
 			return nil, err
 		}
 		out[st.QuestionID] = append(out[st.QuestionID], st)
@@ -783,24 +817,9 @@ LEFT JOIN (
     SELECT question_id, COUNT(*) AS cnt FROM test_question GROUP BY question_id
 ) tq ON tq.question_id = q.id
 WHERE 1=1`
-	args := []interface{}{}
-	argIdx := 1
+	where, args, argIdx := bankQuestionFilterSQL(filter, 1)
+	query += where
 
-	if filter.Format != "" {
-		query += fmt.Sprintf(` AND q.format = $%d`, argIdx)
-		args = append(args, filter.Format)
-		argIdx++
-	}
-	if filter.TopicID != "" {
-		query += fmt.Sprintf(` AND q.topic_id = $%d::uuid`, argIdx)
-		args = append(args, filter.TopicID)
-		argIdx++
-	}
-	if filter.Search != "" {
-		query += fmt.Sprintf(` AND (LOWER(q.body) LIKE LOWER($%d) OR q.id::text LIKE $%d)`, argIdx, argIdx)
-		args = append(args, "%"+filter.Search+"%")
-		argIdx++
-	}
 	if filter.Cursor != "" {
 		query += fmt.Sprintf(` AND q.question_number < $%d`, argIdx)
 		args = append(args, filter.Cursor)
@@ -809,6 +828,11 @@ WHERE 1=1`
 
 	query += ` ORDER BY q.question_number DESC LIMIT $` + fmt.Sprintf("%d", argIdx)
 	args = append(args, filter.Limit+1)
+	argIdx++
+	if filter.Offset > 0 {
+		query += fmt.Sprintf(` OFFSET $%d`, argIdx)
+		args = append(args, filter.Offset)
+	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -1056,9 +1080,9 @@ func (r *Repository) ReorderTestQuestionsTx(ctx context.Context, tx pgx.Tx, test
 func insertQuestionOptions(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, options []model.QuestionOption) error {
 	for _, o := range options {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO question_option (question_id, key, text, image_url, is_correct, sort_order)
-			VALUES ($1, $2, $3, $4, $5, $6)`,
-			questionID, o.Key, o.Text, o.ImageURL, o.IsCorrect, o.SortOrder,
+			`INSERT INTO question_option (question_id, key, text, image_url, is_correct, sort_order, points)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			questionID, o.Key, o.Text, o.ImageURL, o.IsCorrect, o.SortOrder, o.Points,
 		)
 		if err != nil {
 			return err
@@ -1070,9 +1094,9 @@ func insertQuestionOptions(ctx context.Context, tx pgx.Tx, questionID uuid.UUID,
 func insertQuestionBlanks(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, blanks []model.QuestionBlank) error {
 	for _, b := range blanks {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO question_blank (question_id, blank_index, correct_answer)
-			VALUES ($1, $2, $3)`,
-			questionID, b.Index, b.CorrectAnswer,
+			`INSERT INTO question_blank (question_id, blank_index, correct_answer, points)
+			VALUES ($1, $2, $3, $4)`,
+			questionID, b.Index, b.CorrectAnswer, b.Points,
 		)
 		if err != nil {
 			return err
@@ -1084,9 +1108,9 @@ func insertQuestionBlanks(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, 
 func insertQuestionStatements(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, statements []model.QuestionStatement) error {
 	for _, st := range statements {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO question_statement (question_id, statement_index, body, is_true)
-			VALUES ($1, $2, $3, $4)`,
-			questionID, st.Index, st.Body, st.IsTrue,
+			`INSERT INTO question_statement (question_id, statement_index, body, is_true, points)
+			VALUES ($1, $2, $3, $4, $5)`,
+			questionID, st.Index, st.Body, st.IsTrue, st.Points,
 		)
 		if err != nil {
 			return err

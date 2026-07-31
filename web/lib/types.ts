@@ -527,7 +527,7 @@ export interface Question {
   /** question-level set; `short` / `fill_blank` only. */
   accepted_answers?: string[];
   /** `true_false` only; admin payloads only. */
-  statements?: { index: number; body: string; is_true: boolean }[];
+  statements?: { index: number; body: string; is_true: boolean; points?: number }[];
 }
 
 export interface ExamTopic {
@@ -542,7 +542,7 @@ export interface BankQuestionListItem {
   question: Question;
   options: QuestionOption[];
   attached_count: number;
-  blanks?: { index: number; correct_answer: string; accepted_answers?: string[] }[];
+  blanks?: { index: number; correct_answer: string; accepted_answers?: string[]; points?: number }[];
   /** Wrapper-level, like `blanks` — the server emits it on BankQuestionListItem, never on Question. */
   in_live_exam?: boolean;
 }
@@ -550,6 +550,7 @@ export interface BankQuestionListItem {
 export interface BankQuestionListResponse {
   data: BankQuestionListItem[];
   next_cursor?: string;
+  total?: number;
 }
 
 export interface QuestionOption {
@@ -559,12 +560,14 @@ export interface QuestionOption {
   image_url?: string | null;
   is_correct: boolean;
   sort_order: number;
+  /** Per-item worth when selected correctly; absent = question's point_correct. */
+  points?: number;
 }
 
 export interface QuestionWithOptions {
   question: Question;
   options: QuestionOption[];
-  blanks?: { index: number; correct_answer: string; accepted_answers?: string[] }[];
+  blanks?: { index: number; correct_answer: string; accepted_answers?: string[]; points?: number }[];
 }
 
 export interface TestDetail {
@@ -598,6 +601,8 @@ export interface AdminQuestionOptionInput {
   image_url?: string;
   is_correct: boolean;
   sort_order: number;
+  /** Per-item worth when selected correctly; absent = question's point_correct. */
+  points?: number;
 }
 
 export interface AdminQuestionInput {
@@ -609,12 +614,12 @@ export interface AdminQuestionInput {
   audio_url?: string;
   correct_answer?: string;
   options?: AdminQuestionOptionInput[];
-  blanks?: { index: number; correct_answer: string; accepted_answers?: string[] }[];
+  blanks?: { index: number; correct_answer: string; accepted_answers?: string[]; points?: number }[];
   point_correct?: number;
   point_wrong?: number;
   topic_id?: string;
   accepted_answers?: string[];
-  statements?: { index: number; body: string; is_true: boolean }[];
+  statements?: { index: number; body: string; is_true: boolean; points?: number }[];
 }
 
 export interface AdminQuestionImportResultRow {

@@ -258,8 +258,8 @@ func TestScanQuestionOption_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanQuestionOption returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 6 {
-		t.Fatalf("scanQuestionOption passed %d destinations, want 6 (question_id, key, text, image_url, is_correct, sort_order)", got)
+	if got := len(rec.dests); got != 7 {
+		t.Fatalf("scanQuestionOption passed %d destinations, want 7 (question_id, key, text, image_url, is_correct, sort_order, points)", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {

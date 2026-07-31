@@ -383,11 +383,23 @@ func (h *Handler) AdminListBankQuestions(c echo.Context) error {
 			return badRequest(c, "cursor must be an integer")
 		}
 	}
+	// page (1-based) selects offset pagination and takes precedence over cursor;
+	// the response always carries total so the UI can render numbered pages.
+	offset := 0
+	if p := c.QueryParam("page"); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 {
+			return badRequest(c, "page must be a positive integer")
+		}
+		offset = (n - 1) * limit
+		cursor = ""
+	}
 	filter := repository.QuestionFilter{
 		Format:  c.QueryParam("format"),
 		TopicID: c.QueryParam("topic_id"),
 		Search:  c.QueryParam("search"),
 		Cursor:  cursor,
+		Offset:  offset,
 		Limit:   limit,
 	}
 
@@ -395,9 +407,14 @@ func (h *Handler) AdminListBankQuestions(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
+	total, err := h.svc.CountBankQuestions(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"data":        items,
 		"next_cursor": nextCursor,
+		"total":       total,
 	})
 }
 
@@ -486,18 +503,22 @@ type optionRequest struct {
 	ImageURL  *string `json:"image_url,omitempty"`
 	IsCorrect bool    `json:"is_correct"`
 	SortOrder int     `json:"sort_order"`
+	// Points: per-item worth when selected correctly; nil = question's point_correct.
+	Points *float64 `json:"points,omitempty"`
 }
 
 type blankRequest struct {
 	Index           int      `json:"index"`
 	CorrectAnswer   string   `json:"correct_answer"`
 	AcceptedAnswers []string `json:"accepted_answers,omitempty"`
+	Points          *float64 `json:"points,omitempty"`
 }
 
 type statementRequest struct {
-	Index  int    `json:"index"`
-	Body   string `json:"body"`
-	IsTrue bool   `json:"is_true"`
+	Index  int      `json:"index"`
+	Body   string   `json:"body"`
+	IsTrue bool     `json:"is_true"`
+	Points *float64 `json:"points,omitempty"`
 }
 
 func (r questionRequest) toQuestion() (model.Question, error) {
@@ -548,6 +569,7 @@ func (r questionRequest) toOptions() []model.QuestionOption {
 			ImageURL:  o.ImageURL,
 			IsCorrect: o.IsCorrect,
 			SortOrder: o.SortOrder,
+			Points:    o.Points,
 		})
 	}
 	return out
@@ -564,6 +586,7 @@ func (r questionRequest) toBlanks() []model.QuestionBlank {
 			Index:           b.Index,
 			CorrectAnswer:   b.CorrectAnswer,
 			AcceptedAnswers: acceptedAnswers,
+			Points:          b.Points,
 		})
 	}
 	return out
@@ -576,6 +599,7 @@ func (r questionRequest) toStatements() []model.QuestionStatement {
 			Index:  st.Index,
 			Body:   st.Body,
 			IsTrue: st.IsTrue,
+			Points: st.Points,
 		})
 	}
 	return out

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { QuestionEditor } from "./QuestionEditor";
 import { ApiError } from "@/lib/api";
@@ -162,7 +162,7 @@ describe("QuestionEditor", () => {
 
     expect(screen.getByLabelText(/badan soal/i).textContent).toBe("");
     const radios = screen.getAllByRole("radio");
-    expect(radios.length).toBe(2);
+    expect(radios.length).toBe(4); // min-4 default (2026-07-31)
   });
 
   it("renders edit mode with existing mcq options prefilled and correct radio set", () => {
@@ -220,9 +220,17 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    const formatSelect = screen.getByLabelText(/format/i);
-    fireEvent.change(formatSelect, { target: { value: "short" } });
-
+    // short is retired from creation (merged into multi_blank, 2026-07-31) —
+    // the accepted-answers editor now only appears when EDITING a legacy one.
+    cleanup();
+    renderWithClient(
+      <QuestionEditor
+        testId="test-1"
+        question={makeQuestionWithOptions({ format: "short", correct_answer: "Jakarta" })}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
     expect(screen.getByLabelText(/jawaban yang diterima/i)).toBeInTheDocument();
     expect(screen.queryAllByRole("radio").length).toBe(0);
   });
@@ -232,9 +240,15 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    const formatSelect = screen.getByLabelText(/format/i);
-    fireEvent.change(formatSelect, { target: { value: "fill_blank" } });
-
+    cleanup();
+    renderWithClient(
+      <QuestionEditor
+        testId="test-1"
+        question={makeQuestionWithOptions({ format: "fill_blank", correct_answer: "Jakarta" })}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
     expect(screen.getByLabelText(/jawaban yang diterima/i)).toBeInTheDocument();
     expect(screen.queryAllByRole("radio").length).toBe(0);
   });
@@ -356,12 +370,18 @@ describe("QuestionEditor", () => {
   });
 
   it("short validation: empty accepted answer blocks submit", async () => {
+    // Creation can no longer pick short; the guard still matters when editing
+    // a legacy short question whose answer the admin blanks out.
     renderWithClient(
-      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+      <QuestionEditor
+        testId="test-1"
+        question={makeQuestionWithOptions({ format: "short", correct_answer: "Jakarta" })}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />
     );
 
-    await fillRequiredFields();
-    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "short" } });
+    fireEvent.change(screen.getByLabelText(/jawaban yang diterima/i), { target: { value: "" } });
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
@@ -1078,15 +1098,99 @@ describe("QuestionEditor", () => {
     });
   });
 
-  // ── Accepted-answer sets (Task 10, FR-22, FR-24, FR-26) ─────────────────
+  // ── Option count bounds: min 4, max 8 (user request 2026-07-31) ─────────
 
-  it("short question: adding two accepted answers saves accepted_answers: [\"2\",\"dua\"]", async () => {
+  it("choice formats start with 4 options; remove is blocked at 4; add is blocked at 8", () => {
     renderWithClient(
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "short" } });
-    await fillRequiredFields();
+    // default mcq: 4 rows a-d
+    expect(screen.getAllByRole("radio").length).toBe(4);
+
+    const removeButtons = screen.getAllByRole("button", { name: /hapus opsi/i });
+    expect(removeButtons[0]).toBeDisabled();
+
+    const add = screen.getByRole("button", { name: /tambah opsi/i });
+    for (let i = 0; i < 4; i++) fireEvent.click(add); // 8 rows
+    expect(screen.getAllByRole("radio").length).toBe(8);
+    expect(add).toBeDisabled();
+
+    // at 8, remove works again
+    expect(screen.getAllByRole("button", { name: /hapus opsi/i })[0]).toBeEnabled();
+  });
+
+  // ── Per-item points (0050) ───────────────────────────────────────────────
+
+  it("statement points reach the save payload; empty inherits (absent key)", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "true_false" } });
+    await setBodyValue("Soal benar/salah");
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
+
+    const bodies = screen.getAllByLabelText(/isi pernyataan/i);
+    fireEvent.change(bodies[0], { target: { value: "S1" } });
+    fireEvent.change(bodies[1], { target: { value: "S2" } });
+
+    const pointInputs = screen.getAllByLabelText(/^poin$/i);
+    fireEvent.change(pointInputs[0], { target: { value: "5" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            statements: [
+              expect.objectContaining({ index: 1, points: 5 }),
+              expect.not.objectContaining({ points: expect.anything() }),
+            ],
+          }),
+        })
+      );
+    });
+  });
+
+  // ── Format merge: short/fill_blank retired from creation (2026-07-31) ────
+
+  it("creation offers no short or fill_blank; editing a legacy one keeps its format", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+    const values = [...screen.getByLabelText(/format/i).querySelectorAll("option")].map(
+      (o) => (o as HTMLOptionElement).value
+    );
+    expect(values).not.toContain("short");
+    expect(values).not.toContain("fill_blank");
+    expect(values).toContain("multi_blank");
+
+    cleanup();
+    renderWithClient(
+      <QuestionEditor
+        testId="test-1"
+        question={makeQuestionWithOptions({ format: "fill_blank", correct_answer: "x" })}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
+    const select = screen.getByLabelText(/format/i) as HTMLSelectElement;
+    expect(select.value).toBe("fill_blank");
+  });
+
+  // ── Accepted-answer sets (Task 10, FR-22, FR-24, FR-26) ─────────────────
+
+  it("short question: adding two accepted answers saves accepted_answers: [\"2\",\"dua\"]", async () => {
+    renderWithClient(
+      <QuestionEditor
+        testId="test-1"
+        question={makeQuestionWithOptions({ format: "short", correct_answer: "1" })}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
 
     const firstAnswer = screen.getByLabelText(/jawaban yang diterima/i);
     fireEvent.change(firstAnswer, { target: { value: "2" } });
@@ -1111,10 +1215,13 @@ describe("QuestionEditor", () => {
 
   it("short question: removing accepted-answer rows down to zero is prevented — the last row's remove control is disabled", () => {
     renderWithClient(
-      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+      <QuestionEditor
+        testId="test-1"
+        question={makeQuestionWithOptions({ format: "short", correct_answer: "1" })}
+        onCancel={vi.fn()}
+        onSaved={vi.fn()}
+      />
     );
-
-    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "short" } });
 
     expect(screen.getAllByLabelText(/jawaban yang diterima/i).length).toBe(1);
     const removeButton = screen.getByRole("button", { name: /hapus jawaban/i });
