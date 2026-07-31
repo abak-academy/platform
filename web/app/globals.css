@@ -241,3 +241,11 @@ html[data-theme="dark"] {
 .ProseMirror .selectedCell {
   background: var(--accent);
 }
+/* An authored blank line is stored as <p></p> (survives sanitisation), but
+   with preflight's margin:0 an empty <p> is 0px tall, so blank lines vanish
+   everywhere OUTSIDE the editor — ProseMirror props empty paragraphs open
+   with a trailing <br>, which is why the editor and the rendered views
+   disagreed. The ::before nbsp gives the paragraph one line of height. */
+[data-rich-content] p:empty::before {
+  content: "\00a0";
+}
