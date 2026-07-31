@@ -42,6 +42,7 @@ var _ interface {
 	GetExamDetail(context.Context, uuid.UUID) (*model.ExamDetail, error)
 	UpdateExam(context.Context, uuid.UUID, *model.Exam) error
 	ReplaceExamTestsTx(context.Context, pgx.Tx, uuid.UUID, []model.ExamTest) error
+	SetExamCertificateEnabled(context.Context, uuid.UUID, bool) error
 } = (*Repository)(nil)
 
 // Compile-time check: *Repository must implement all registration repository
@@ -301,8 +302,8 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 24 {
-		t.Fatalf("scanExam passed %d destinations, want 24", got)
+	if got := len(rec.dests); got != 25 {
+		t.Fatalf("scanExam passed %d destinations, want 25", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -343,6 +344,9 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 	}
 	if _, ok := rec.dests[23].(**int); !ok {
 		t.Errorf("dest[23] = %T, want **int (exam_number, nullable pointer field)", rec.dests[23])
+	}
+	if _, ok := rec.dests[24].(*bool); !ok {
+		t.Errorf("dest[24] = %T, want *bool (certificate_enabled)", rec.dests[24])
 	}
 }
 

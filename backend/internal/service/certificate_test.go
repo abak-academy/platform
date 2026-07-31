@@ -520,7 +520,7 @@ func TestServiceResolveCertificateURL_FreshCacheStillResolvesLayoutForGate(t *te
 		CertificateGeneratedAt: &generatedAt,
 	}
 	malformed := json.RawMessage(`{`)
-	exam := &model.Exam{CertificateDesign: &malformed, Title: "Test"}
+	exam := &model.Exam{CertificateDesign: &malformed, Title: "Test", CertificateEnabled: true}
 
 	url, err := svc.resolveCertificateURL(context.Background(), exam, sess, nil, "Budi")
 	if err == nil {

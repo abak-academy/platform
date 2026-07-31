@@ -147,6 +147,11 @@ type Exam struct {
 	// changes (C3/FR-14) — the single staleness timestamp compared against a session's
 	// certificate_generated_at.
 	CertificateDesignUpdatedAt *time.Time `json:"certificate_design_updated_at"`
+	// CertificateEnabled gates the whole certificate feature for this exam
+	// (FB-8/FR-8..FR-12); DEFAULT false. Mutated only via the dedicated
+	// enable/disable action, never through the general exam PATCH, so toggling
+	// it never touches CertificateDesign or CertificateDesignUpdatedAt.
+	CertificateEnabled bool `json:"certificate_enabled"`
 	// ExamNumber is a global human-friendly serial (FR-23) assigned from exam_number_seq,
 	// distinct from the exam UUID. Non-nil after create; nil only pre-migration/pre-backfill.
 	ExamNumber *int `json:"exam_number"`

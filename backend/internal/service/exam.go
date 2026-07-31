@@ -928,6 +928,30 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 	return m, nil
 }
 
+// SetExamCertificateEnabled flips an exam's certificate_enabled flag through
+// its own dedicated action (FR-11/FR-12) — never through UpdateExam's general
+// PATCH — mirroring ChangeSchoolStatus. The underlying UPDATE touches only the
+// certificate_enabled column, so certificate_design and
+// certificate_design_updated_at are byte-for-byte unchanged across a
+// disable/re-enable round trip.
+func (s *Service) SetExamCertificateEnabled(ctx context.Context, id uuid.UUID, enabled bool) (model.Exam, error) {
+	exam, err := s.storeRepo.GetExamByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Exam{}, ErrExamNotFound
+		}
+		return model.Exam{}, err
+	}
+	if err := s.storeRepo.SetExamCertificateEnabled(ctx, id, enabled); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Exam{}, ErrExamNotFound
+		}
+		return model.Exam{}, err
+	}
+	exam.CertificateEnabled = enabled
+	return *exam, nil
+}
+
 func rawMessagePtrEqual(a, b *json.RawMessage) bool {
 	if a == nil || b == nil {
 		return a == b
@@ -967,6 +991,9 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 			return nil, ErrExamNotFound
 		}
 		return nil, err
+	}
+	if !exam.CertificateEnabled {
+		return nil, ErrCertificateDisabled
 	}
 
 	layout, err := resolveCertificateLayout(exam)

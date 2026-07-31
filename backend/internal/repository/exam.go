@@ -1134,7 +1134,7 @@ func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 		&e.TimerMode, &e.DurationMinutes, &e.Randomize,
 		&e.ResultConfig, &e.ResultReleaseAt, &e.Status, &e.CreatedAt,
 		&e.Mode, &e.CertificateDesign, &e.CertificateDesignUpdatedAt,
-		&e.ExamNumber,
+		&e.ExamNumber, &e.CertificateEnabled,
 	)
 	if err != nil {
 		return err
@@ -1153,7 +1153,7 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.Exam
 		&item.TimerMode, &item.DurationMinutes, &item.Randomize,
 		&item.ResultConfig, &item.ResultReleaseAt, &item.Status, &item.CreatedAt,
 		&item.Mode, &item.CertificateDesign, &item.CertificateDesignUpdatedAt,
-		&item.ExamNumber,
+		&item.ExamNumber, &item.CertificateEnabled,
 		&item.HasPublishedProduct,
 	)
 }
@@ -1190,7 +1190,7 @@ func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
 			status, created_at, mode,
-			certificate_design, certificate_design_updated_at, exam_number
+			certificate_design, certificate_design_updated_at, exam_number, certificate_enabled
 		FROM exam
 		WHERE id = $1`,
 		id,
@@ -1212,7 +1212,7 @@ func (r *Repository) GetExamsByProductID(ctx context.Context, productID uuid.UUI
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.mode,
-			e.certificate_design, e.certificate_design_updated_at, e.exam_number
+			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled
 		FROM exam e
 		JOIN product_exam pe ON pe.exam_id = e.id
 		WHERE pe.product_id = $1
@@ -1247,7 +1247,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 		e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 		e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 		e.status, e.created_at, e.mode,
-		e.certificate_design, e.certificate_design_updated_at, e.exam_number,
+		e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled,
 		EXISTS (
 			SELECT 1 FROM product_exam pe
 			JOIN product p ON p.id = pe.product_id
@@ -1303,7 +1303,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.mode,
-			e.certificate_design, e.certificate_design_updated_at, e.exam_number
+			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled
 		FROM exam e
 		WHERE e.id = $1`,
 		id,
@@ -1378,6 +1378,20 @@ func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam
 		e.ResultConfig, e.ResultReleaseAt, e.Status, e.Mode,
 		e.CertificateDesign, e.CertificateDesignUpdatedAt, id,
 	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetExamCertificateEnabled flips certificate_enabled in isolation — never
+// certificate_design or certificate_design_updated_at (FR-11/FR-12) — a
+// single-column UPDATE mirroring UpdateSchoolStatus.
+func (r *Repository) SetExamCertificateEnabled(ctx context.Context, id uuid.UUID, enabled bool) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE exam SET certificate_enabled = $1 WHERE id = $2`, enabled, id)
 	if err != nil {
 		return err
 	}

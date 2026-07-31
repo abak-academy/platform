@@ -342,6 +342,9 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 	if sess.Status != "submitted" {
 		return nil, nil
 	}
+	if !exam.CertificateEnabled {
+		return nil, nil
+	}
 
 	layout, err := resolveCertificateLayout(exam)
 	if err != nil {

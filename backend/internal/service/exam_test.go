@@ -2846,6 +2846,12 @@ func TestGetCertificateDesign_Integration_UntouchedExam_ReturnsBuiltinDefaultLay
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
+	// certificate_enabled is only ever mutated through the dedicated action
+	// (never CreateExam/UpdateExam), so tests exercising GetCertificateDesign
+	// must flip it explicitly.
+	if _, err := svc.SetExamCertificateEnabled(ctx, exam.ID, true); err != nil {
+		t.Fatalf("SetExamCertificateEnabled: %v", err)
+	}
 
 	design, err := svc.GetCertificateDesign(ctx, exam.ID)
 	if err != nil {
@@ -2898,6 +2904,9 @@ func TestGetCertificateDesign_Integration_CustomBackground_ReturnsPresignedURLNo
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
+	if _, err := svc.SetExamCertificateEnabled(ctx, exam.ID, true); err != nil {
+		t.Fatalf("SetExamCertificateEnabled: %v", err)
+	}
 	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
 	designWithKey := json.RawMessage(`{"template":"custom","background_key":"` + key + `"}`)
 	exam.CertificateDesign = &designWithKey
@@ -2938,6 +2947,9 @@ func TestGetCertificateDesign_Integration_NoCustomBackground_ReturnsNilKey(t *te
 	exam, err := svc.CreateExam(ctx, model.Exam{Title: "No Background Exam " + uniqueSuffix(), CertificateDesign: certDesignJSON("classic")})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
+	}
+	if _, err := svc.SetExamCertificateEnabled(ctx, exam.ID, true); err != nil {
+		t.Fatalf("SetExamCertificateEnabled: %v", err)
 	}
 
 	design, err := svc.GetCertificateDesign(ctx, exam.ID)

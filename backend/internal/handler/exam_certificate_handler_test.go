@@ -49,6 +49,7 @@ func registerAdminExamRoutes(t *testing.T, env *testEnv, h *handler.Handler) {
 	adminExams.POST("/:id/certificate-assets/presign", h.AdminPresignExamCertificateAsset)
 	adminExams.GET("/:id/certificate-design", h.AdminGetExamCertificateDesign)
 	adminExams.PUT("/:id/certificate-design", h.AdminUpdateExamCertificateDesign)
+	adminExams.PATCH("/:id/certificate-enabled", h.AdminSetExamCertificateEnabled)
 	adminExams.PATCH("/:id", h.AdminUpdateExam)
 }
 
@@ -358,6 +359,10 @@ func seedMCQuestion(t *testing.T, pool *pgxpool.Pool, testID uuid.UUID, body str
 	return id
 }
 
+// seedExam inserts an exam with certificate_enabled = true — most callers
+// exercise certificate-design/preview/leaderboard flows that assume the
+// feature is on; tests for the certificate_enabled gate itself (Task 4)
+// explicitly flip it off with seedExamCertificateDisabled or a direct UPDATE.
 func seedExam(t *testing.T, pool *pgxpool.Pool, title string, allowLeaderboard bool, resultConfig string, certificateTemplate string) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
@@ -368,14 +373,26 @@ func seedExam(t *testing.T, pool *pgxpool.Pool, title string, allowLeaderboard b
 		certificateTemplate = "classic"
 	}
 	err := pool.QueryRow(context.Background(),
-		`INSERT INTO exam (title, allow_leaderboard, result_config, certificate_design, timer_mode, duration_minutes)
-		VALUES ($1, $2, $3, $4, 'overall', 60) RETURNING id`,
+		`INSERT INTO exam (title, allow_leaderboard, result_config, certificate_design, certificate_enabled, timer_mode, duration_minutes)
+		VALUES ($1, $2, $3, $4, true, 'overall', 60) RETURNING id`,
 		title, allowLeaderboard, resultConfig, fmt.Sprintf(`{"template":%q}`, certificateTemplate),
 	).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert exam: %v", err)
 	}
 	return id
+}
+
+// setExamCertificateEnabled directly flips certificate_enabled in the DB —
+// used by tests that need a specific starting state without going through
+// the admin action under test.
+func setExamCertificateEnabled(t *testing.T, pool *pgxpool.Pool, examID uuid.UUID, enabled bool) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE exam SET certificate_enabled = $1 WHERE id = $2`, enabled, examID,
+	); err != nil {
+		t.Fatalf("set certificate_enabled: %v", err)
+	}
 }
 
 func seedExamTest(t *testing.T, pool *pgxpool.Pool, examID, testID uuid.UUID, sortOrder int) {
@@ -1078,6 +1095,218 @@ func TestAdminUpdateExamCertificateDesign_UnknownExam_Returns404(t *testing.T) {
 	)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AdminSetExamCertificateEnabled / certificate_enabled gate tests (Task 4)
+// ---------------------------------------------------------------------------
+
+// TestAdminGetExamCertificateDesign_Disabled_Returns404 proves FR-9: the
+// design editor is unreachable while certificate_enabled is false, even
+// though the exam itself (and any saved design) exists.
+func TestAdminGetExamCertificateDesign_Disabled_Returns404(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert Disabled")
+
+	examID := seedExam(t, env.pool, "Disabled Cert Exam", false, "hidden", "classic")
+	setExamCertificateEnabled(t, env.pool, examID, false)
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "certificate_disabled" {
+		t.Errorf("code: want certificate_disabled, got %v", resp["code"])
+	}
+	if _, hasLayout := resp["layout"]; hasLayout {
+		t.Errorf("expected no design payload on a disabled exam, got layout=%v", resp["layout"])
+	}
+}
+
+// TestAdminGetExamCertificateDesign_EnabledAfterAction_Returns200 proves
+// FR-9/FR-11: the same GET that 404s while disabled returns 200 once an
+// admin enables the exam's certificate through the dedicated action.
+func TestAdminGetExamCertificateDesign_EnabledAfterAction_Returns200(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert Enable")
+
+	examID := seedExam(t, env.pool, "Enable Cert Exam", false, "hidden", "classic")
+	setExamCertificateEnabled(t, env.pool, examID, false)
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("before enabling: want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	enableRec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-enabled", token,
+		map[string]any{"enabled": true},
+	)
+	if enableRec.Code != http.StatusOK {
+		t.Fatalf("enable: want 200, got %d body=%s", enableRec.Code, enableRec.Body.String())
+	}
+	// The JSON key must be visible in a real handler response body, not only
+	// asserted against the Go struct.
+	var enableResp map[string]any
+	if err := json.NewDecoder(enableRec.Body).Decode(&enableResp); err != nil {
+		t.Fatalf("decode enable response: %v", err)
+	}
+	enabledVal, ok := enableResp["certificate_enabled"]
+	if !ok {
+		t.Fatal("enable response missing certificate_enabled key")
+	}
+	if enabledVal != true {
+		t.Errorf("certificate_enabled: want true, got %v", enabledVal)
+	}
+
+	rec = getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("after enabling: want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAdminSetExamCertificateEnabled_DisableThenReenable_PreservesDesign
+// proves FR-12: toggling certificate_enabled off and back on never touches
+// certificate_design or certificate_design_updated_at — the dedicated action
+// is a single-column write, not a general update.
+func TestAdminSetExamCertificateEnabled_DisableThenReenable_PreservesDesign(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert Preserve")
+
+	examID := seedExam(t, env.pool, "Preserve Cert Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	putRec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{"template": "classic", "layout": validCertLayoutBody()},
+	)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("seed design PUT: want 200, got %d body=%s", putRec.Code, putRec.Body.String())
+	}
+
+	var beforeDesign []byte
+	var beforeUpdatedAt time.Time
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_design, certificate_design_updated_at FROM exam WHERE id = $1`, examID,
+	).Scan(&beforeDesign, &beforeUpdatedAt); err != nil {
+		t.Fatalf("query design before: %v", err)
+	}
+
+	disableRec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-enabled", token,
+		map[string]any{"enabled": false},
+	)
+	if disableRec.Code != http.StatusOK {
+		t.Fatalf("disable: want 200, got %d body=%s", disableRec.Code, disableRec.Body.String())
+	}
+	enableRec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-enabled", token,
+		map[string]any{"enabled": true},
+	)
+	if enableRec.Code != http.StatusOK {
+		t.Fatalf("re-enable: want 200, got %d body=%s", enableRec.Code, enableRec.Body.String())
+	}
+
+	var afterDesign []byte
+	var afterUpdatedAt time.Time
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_design, certificate_design_updated_at FROM exam WHERE id = $1`, examID,
+	).Scan(&afterDesign, &afterUpdatedAt); err != nil {
+		t.Fatalf("query design after: %v", err)
+	}
+
+	if !bytes.Equal(beforeDesign, afterDesign) {
+		t.Errorf("certificate_design changed across disable/re-enable:\nbefore=%s\nafter=%s", beforeDesign, afterDesign)
+	}
+	if !beforeUpdatedAt.Equal(afterUpdatedAt) {
+		t.Errorf("certificate_design_updated_at changed across disable/re-enable: before=%v after=%v", beforeUpdatedAt, afterUpdatedAt)
+	}
+}
+
+func TestAdminSetExamCertificateEnabled_NoToken_Returns401(t *testing.T) {
+	env := newTestEnv(t)
+	h := handler.New(env.svc)
+	registerAdminExamRoutes(t, env, h)
+
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-enabled", "",
+		map[string]any{"enabled": true},
+	)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminSetExamCertificateEnabled_StudentToken_Returns403(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:     "student-cert-enabled",
+		Email:  strptr("student-cert-enabled@test.com"),
+		Role:   service.RoleStudent,
+		Status: "active",
+	})
+	h := handler.New(env.svc)
+	registerAdminExamRoutes(t, env, h)
+
+	token := mintToken(t, env, "student-cert-enabled", service.RoleStudent)
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-enabled", token,
+		map[string]any{"enabled": true},
+	)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminSetExamCertificateEnabled_UnknownExam_Returns404(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert Enable 404")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-0000000000aa/certificate-enabled", token,
+		map[string]any{"enabled": true},
+	)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestStudentGetSessionResult_DisabledCertificate_ReturnsNullCertificateURL
+// proves FR-10 end-to-end through the real result endpoint: a submitted
+// session of an exam with certificate_enabled=false must carry a null
+// certificate_url, not merely at the service unit level.
+func TestStudentGetSessionResult_DisabledCertificate_ReturnsNullCertificateURL(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	student := seedUser(t, env.pool, "student", "Student Disabled Cert")
+
+	testID := seedTest(t, env.pool)
+	qID := seedMCQuestion(t, env.pool, testID, "2+2", 1, 1)
+
+	examID := seedExam(t, env.pool, "Disabled Cert Result Exam", false, "score_only", "classic")
+	setExamCertificateEnabled(t, env.pool, examID, false)
+	seedExamTest(t, env.pool, examID, testID, 1)
+
+	regID := seedRegistration(t, env.pool, student, examID)
+	submittedAt := time.Now()
+	sessionID := seedSession(t, env.pool, regID, student, examID, "submitted", 1, &submittedAt)
+	seedAnswer(t, env.pool, sessionID, qID, "a", 1)
+
+	token := mintTokenForEnv(t, env, student.String(), service.RoleStudent)
+	rec := getRequest(t, env.e, "/api/v1/exam/sessions/"+sessionID.String()+"/result", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	// SessionResult.CertificateURL is `json:"certificate_url,omitempty"`, so a
+	// nil value is indistinguishable here from an absent key — both decode to
+	// a missing map entry (nil). NFR-R3 wants the key always present; that's
+	// a pre-existing gap outside Task 4's scope (FR-8..FR-12), flagged in
+	// concerns rather than fixed here.
+	if certURL := resp["certificate_url"]; certURL != nil {
+		t.Errorf("certificate_url: want nil for a disabled exam, got %v", certURL)
 	}
 }
 

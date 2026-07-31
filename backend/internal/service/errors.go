@@ -129,6 +129,10 @@ var (
 	// current_position outside [0, total_questions) for the exam (FR-35). Maps
 	// to 400; rejects the whole request so answers are never written either.
 	ErrInvalidPosition = errors.New("invalid session position")
+	// ErrCertificateDisabled is returned when the certificate feature is
+	// disabled for an exam (certificate_enabled = false); the admin design
+	// editor is unreachable until an admin explicitly enables it (FB-8/FR-9).
+	ErrCertificateDisabled = errors.New("certificate disabled for this exam")
 )
 
 // --- from exam_grant.go ---

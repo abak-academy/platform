@@ -169,6 +169,24 @@ func gateCachedSession() *model.ExamSession {
 	}
 }
 
+// freshUncachedSession builds a submitted session with no cached certificate
+// (CertificateKey nil) — the path that would normally regenerate — so a
+// certificate_enabled=false test proves the gate short-circuits before any
+// generation work, not just on the cache-hit path.
+func freshUncachedSession() *model.ExamSession {
+	submittedAt := time.Now().Add(-time.Hour)
+	score := 8.0
+	return &model.ExamSession{
+		ID:          uuid.New(),
+		ExamID:      uuid.New(),
+		StudentID:   uuid.New(),
+		StartedAt:   submittedAt,
+		SubmittedAt: &submittedAt,
+		Status:      "submitted",
+		Score:       &score,
+	}
+}
+
 func TestResolveCertificateURL_CachedGate(t *testing.T) {
 	pool, counter := gateTestPool(t)
 	renderer := &gateFakeRenderer{}
@@ -177,7 +195,7 @@ func TestResolveCertificateURL_CachedGate(t *testing.T) {
 
 	t.Run("FR-1: cached score-bearing certificate is denied when result_config is hidden", func(t *testing.T) {
 		counter.reset()
-		exam := &model.Exam{Title: "Gate Exam", ResultConfig: "hidden", CertificateDesign: certDesignJSON("modern")}
+		exam := &model.Exam{Title: "Gate Exam", ResultConfig: "hidden", CertificateDesign: certDesignJSON("modern"), CertificateEnabled: true}
 		sess := gateCachedSession()
 
 		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Student")
@@ -195,7 +213,7 @@ func TestResolveCertificateURL_CachedGate(t *testing.T) {
 	t.Run("FR-2: cached score-bearing certificate is served without regeneration when result_config permits", func(t *testing.T) {
 		counter.reset()
 		renderer.calls = 0
-		exam := &model.Exam{Title: "Gate Exam", ResultConfig: "score_only", CertificateDesign: certDesignJSON("modern")}
+		exam := &model.Exam{Title: "Gate Exam", ResultConfig: "score_only", CertificateDesign: certDesignJSON("modern"), CertificateEnabled: true}
 		sess := gateCachedSession()
 
 		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Student")
@@ -212,7 +230,7 @@ func TestResolveCertificateURL_CachedGate(t *testing.T) {
 
 	t.Run("FR-3/NFR-P1: cached non-score layout skips the gate and issues zero extra queries", func(t *testing.T) {
 		counter.reset()
-		exam := &model.Exam{Title: "Gate Exam", ResultConfig: "hidden", CertificateDesign: certDesignJSON("classic")}
+		exam := &model.Exam{Title: "Gate Exam", ResultConfig: "hidden", CertificateDesign: certDesignJSON("classic"), CertificateEnabled: true}
 		sess := gateCachedSession()
 
 		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Student")
@@ -224,6 +242,37 @@ func TestResolveCertificateURL_CachedGate(t *testing.T) {
 		}
 		if got := counter.count(); got != 0 {
 			t.Errorf("GetSessionWithQuestions calls = %d, want 0 — a non-score layout on the cache path must not read session questions", got)
+		}
+	})
+
+	t.Run("FR-10: certificate_enabled=false denies an uncached session before any regeneration work", func(t *testing.T) {
+		renderer.calls = 0
+		exam := &model.Exam{Title: "Disabled Cert Exam", ResultConfig: "score_only", CertificateDesign: certDesignJSON("classic"), CertificateEnabled: false}
+		sess := freshUncachedSession()
+
+		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Student")
+		if err != nil {
+			t.Fatalf("resolveCertificateURL: %v", err)
+		}
+		if url != nil {
+			t.Fatalf("certificate_url = %q, want nil — certificate_enabled=false must gate access regardless of result_config", *url)
+		}
+		if renderer.calls != 0 {
+			t.Errorf("PDF renderer calls = %d, want 0 — a disabled exam must never generate a certificate", renderer.calls)
+		}
+	})
+
+	t.Run("FR-10: certificate_enabled=false denies an already-cached, permitted certificate", func(t *testing.T) {
+		renderer.calls = 0
+		exam := &model.Exam{Title: "Disabled Cert Exam", ResultConfig: "score_only", CertificateDesign: certDesignJSON("classic"), CertificateEnabled: false}
+		sess := gateCachedSession()
+
+		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Student")
+		if err != nil {
+			t.Fatalf("resolveCertificateURL: %v", err)
+		}
+		if url != nil {
+			t.Fatalf("certificate_url = %q, want nil — certificate_enabled=false must gate even an already-cached certificate", *url)
 		}
 	})
 }

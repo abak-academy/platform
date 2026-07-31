@@ -966,6 +966,30 @@ func (h *Handler) AdminGetExamCertificateDesign(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+// certificateEnabledRequest is the PATCH body for AdminSetExamCertificateEnabled.
+type certificateEnabledRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// AdminSetExamCertificateEnabled toggles an exam's certificate_enabled flag via
+// its own dedicated action — not AdminUpdateExam's general PATCH — so enabling
+// or disabling never touches the saved certificate_design (FR-11/FR-12).
+func (h *Handler) AdminSetExamCertificateEnabled(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	var req certificateEnabledRequest
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	exam, err := h.svc.SetExamCertificateEnabled(c.Request().Context(), id, req.Enabled)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, exam)
+}
+
 func (h *Handler) AdminPresignExamCertificateAsset(c echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
