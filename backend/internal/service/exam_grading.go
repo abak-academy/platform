@@ -150,12 +150,20 @@ func gradeTrueFalse(answer *string, statements []model.QuestionStatement, pointC
 			raw = strings.TrimSpace(answers[idx])
 		}
 
-		if raw == "" {
-			continue
+		// Only an explicit true/false counts. SaveAnswers stores these strings
+		// opaquely, so a direct API call can submit any token; treating "not true"
+		// as an explicit false credited garbage on every false statement.
+		var answeredTrue bool
+		switch {
+		case strings.EqualFold(raw, "true"):
+			answeredTrue = true
+		case strings.EqualFold(raw, "false"):
+			answeredTrue = false
+		default:
+			continue // "" and every malformed token are unanswered
 		}
 
 		hasAnswer = true
-		answeredTrue := strings.EqualFold(raw, "true")
 		if answeredTrue == st.IsTrue {
 			score += pointCorrect
 		} else {

@@ -760,6 +760,46 @@ func TestGradingTrueFalse_malformedJSON_treatsAllEmpty(t *testing.T) {
 	assert.Equal(t, 0.0, *graded[0].Score)
 }
 
+// Scoring integrity: SaveAnswers stores answer strings opaquely — it validates ids and
+// section membership, never content — so a direct API submission can carry arbitrary
+// tokens. Treating "anything that isn't true" as an explicit false handed full credit
+// to garbage on every false statement. Only explicit true/false may score; every other
+// token is unanswered, exactly like "".
+func TestGradingTrueFalse_malformedTokens_scoreZero_notCredited(t *testing.T) {
+	q := tfQuestion(uuid.New(), 1, 0.5, []bool{false, false})
+	answer := `["garbage","garbage"]` // both statements are false — the exploitable case
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 0.0, score, "malformed tokens must not earn credit")
+	assert.Equal(t, 0.0, *graded[0].Score)
+	assert.False(t, *graded[0].IsCorrect, "malformed tokens are unanswered, not correct")
+}
+
+func TestGradingTrueFalse_malformedTokenIsUnanswered_notWrong(t *testing.T) {
+	q := tfQuestion(uuid.New(), 1, 0.5, []bool{true, true})
+	answer := `["true","garbage"]` // statement 2 malformed -> unanswered, not a wrong answer
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 1.0, score, "no point_wrong deduction for an unanswered statement")
+	assert.Equal(t, 1.0, *graded[0].Score)
+	assert.True(t, *graded[0].IsCorrect, "one correct, one unanswered, nothing wrong")
+}
+
+func TestGradingTrueFalse_explicitFalseStillScores(t *testing.T) {
+	q := tfQuestion(uuid.New(), 1, 0.5, []bool{false, false})
+	answer := `["false","FALSE"]` // case-insensitive, both explicit
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 2.0, score)
+	assert.True(t, *graded[0].IsCorrect)
+}
+
 func TestGradingTrueFalse_allWrong_unclamped(t *testing.T) {
 	q := tfQuestion(uuid.New(), 1, 0.5, []bool{true, false})
 	answer := `["false","true"]` // both wrong
