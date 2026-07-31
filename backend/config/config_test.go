@@ -275,6 +275,7 @@ object_storage_region: "asia-southeast2"
 object_storage_bucket_name: "my-bucket"
 object_storage_private_bucket_name: "my-private-bucket"
 gotenberg_url: "http://gotenberg:3000"
+web_internal_url: "http://web:3000"
 `)
 	writeYAML(t, envDir, "secrets.yaml", `
 database_url: "postgres://user:pass@db.example.com/dbname"
@@ -333,6 +334,7 @@ smtp_password: "smtp-pass"
 		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "my-bucket"},
 		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "my-private-bucket"},
 		{"GotenbergURL", cfg.GotenbergURL, "http://gotenberg:3000"},
+		{"WebInternalURL", cfg.WebInternalURL, "http://web:3000"},
 	}
 	for _, c := range checks {
 		if c.got != c.want {

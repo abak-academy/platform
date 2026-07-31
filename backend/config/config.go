@@ -51,7 +51,8 @@ type Config struct {
 	ObjectStorageBucketName        string
 	ObjectStoragePrivateBucketName string
 
-	GotenbergURL string
+	GotenbergURL   string
+	WebInternalURL string
 }
 
 type fileConfig struct {
@@ -76,6 +77,7 @@ type fileConfig struct {
 	ObjectStorageBucketName        string   `yaml:"object_storage_bucket_name"`
 	ObjectStoragePrivateBucketName string   `yaml:"object_storage_private_bucket_name"`
 	GotenbergURL                   string   `yaml:"gotenberg_url"`
+	WebInternalURL                 string   `yaml:"web_internal_url"`
 }
 
 type fileSecrets struct {
@@ -221,7 +223,8 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		ObjectStorageBucketName:        fc.ObjectStorageBucketName,
 		ObjectStoragePrivateBucketName: fc.ObjectStoragePrivateBucketName,
 
-		GotenbergURL: fc.GotenbergURL,
+		GotenbergURL:   fc.GotenbergURL,
+		WebInternalURL: fc.WebInternalURL,
 
 		DatabaseURL:            s.DatabaseURL,
 		MigrationDatabaseURL:   migrationDatabaseURL,

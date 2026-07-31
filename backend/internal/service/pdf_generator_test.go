@@ -168,3 +168,108 @@ func TestNewGotenbergRenderer_AppliesDefaultTimeout(t *testing.T) {
 func TestGotenbergRenderer_ImplementsCertificateRenderer(t *testing.T) {
 	var _ pdfGenerator = (*gotenbergPDFGenerator)(nil)
 }
+
+func TestGotenbergRenderer_RenderURL_PostsURLForm(t *testing.T) {
+	var (
+		gotMethod     string
+		gotPath       string
+		gotFormFields = map[string]string{}
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+
+		mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil || mediaType != "multipart/form-data" {
+			t.Fatalf("expected multipart/form-data content-type, got %q (err=%v)", r.Header.Get("Content-Type"), err)
+		}
+		mr := multipart.NewReader(r.Body, params["boundary"])
+		for {
+			part, err := mr.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Fatalf("multipart read error: %v", err)
+			}
+			data, err := io.ReadAll(part)
+			if err != nil {
+				t.Fatalf("read part error: %v", err)
+			}
+			gotFormFields[part.FormName()] = string(data)
+		}
+
+		w.Header().Set("Content-Type", "application/pdf")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("%PDF-fake-url-bytes"))
+	}))
+	defer srv.Close()
+
+	r := newGotenbergPDFGenerator(srv.URL, srv.Client())
+
+	pdfBytes, err := r.RenderURL(context.Background(), "http://web:3000/print/certificate/abc")
+	if err != nil {
+		t.Fatalf("RenderURL returned error: %v", err)
+	}
+
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if gotPath != "/forms/chromium/convert/url" {
+		t.Errorf("path = %q, want /forms/chromium/convert/url", gotPath)
+	}
+
+	wantFields := map[string]string{
+		"url":               "http://web:3000/print/certificate/abc",
+		"printBackground":   "true",
+		"preferCssPageSize": "true",
+		"marginTop":         "0",
+		"marginBottom":      "0",
+		"marginLeft":        "0",
+		"marginRight":       "0",
+	}
+	for k, want := range wantFields {
+		if got := gotFormFields[k]; got != want {
+			t.Errorf("form field %q = %q, want %q", k, got, want)
+		}
+	}
+
+	if string(pdfBytes) != "%PDF-fake-url-bytes" {
+		t.Errorf("returned bytes = %q, want %q", pdfBytes, "%PDF-fake-url-bytes")
+	}
+}
+
+// Mirrors TestGotenbergRenderer_RenderHTML_StalledUpstreamTimesOut: RenderURL
+// must be bounded by the same context deadline, not just RenderHTML.
+func TestGotenbergRenderer_RenderURL_StalledUpstreamTimesOut(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	defer func() {
+		close(release)
+		srv.Close()
+	}()
+
+	r := newGotenbergPDFGenerator(srv.URL, srv.Client())
+	r.timeout = 50 * time.Millisecond
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.RenderURL(context.Background(), "http://web:3000/print/certificate/abc")
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected an error when the upstream stalls, got nil")
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("expected a deadline-exceeded error, got %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("RenderURL did not return: the render is unbounded")
+	}
+}

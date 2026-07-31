@@ -2036,6 +2036,14 @@ func (f *fakeCardRenderer) RenderHTML(_ context.Context, _ []byte) ([]byte, erro
 	return f.pdf, nil
 }
 
+func (f *fakeCardRenderer) RenderURL(_ context.Context, _ string) ([]byte, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.pdf, nil
+}
+
 var fakeCardPDFBytes = []byte("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF")
 
 // shimExamCardService mirrors Service.GetExamCard against a fakeRegRepo; injected

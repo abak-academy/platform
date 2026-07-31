@@ -75,6 +75,11 @@ func (r *gateFakeRenderer) RenderHTML(context.Context, []byte) ([]byte, error) {
 	return []byte("%PDF-1.4"), nil
 }
 
+func (r *gateFakeRenderer) RenderURL(context.Context, string) ([]byte, error) {
+	r.calls++
+	return []byte("%PDF-1.4"), nil
+}
+
 // gateTestPool starts an ephemeral Postgres, applies migrations, and wires a
 // query tracer so tests can prove how many times GetSessionWithQuestions ran.
 func gateTestPool(t *testing.T) (*pgxpool.Pool, *gateQueryCounter) {
