@@ -383,11 +383,23 @@ func (h *Handler) AdminListBankQuestions(c echo.Context) error {
 			return badRequest(c, "cursor must be an integer")
 		}
 	}
+	// page (1-based) selects offset pagination and takes precedence over cursor;
+	// the response always carries total so the UI can render numbered pages.
+	offset := 0
+	if p := c.QueryParam("page"); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 {
+			return badRequest(c, "page must be a positive integer")
+		}
+		offset = (n - 1) * limit
+		cursor = ""
+	}
 	filter := repository.QuestionFilter{
 		Format:  c.QueryParam("format"),
 		TopicID: c.QueryParam("topic_id"),
 		Search:  c.QueryParam("search"),
 		Cursor:  cursor,
+		Offset:  offset,
 		Limit:   limit,
 	}
 
@@ -395,9 +407,14 @@ func (h *Handler) AdminListBankQuestions(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
+	total, err := h.svc.CountBankQuestions(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"data":        items,
 		"next_cursor": nextCursor,
+		"total":       total,
 	})
 }
 

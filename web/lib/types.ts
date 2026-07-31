@@ -550,6 +550,7 @@ export interface BankQuestionListItem {
 export interface BankQuestionListResponse {
   data: BankQuestionListItem[];
   next_cursor?: string;
+  total?: number;
 }
 
 export interface QuestionOption {

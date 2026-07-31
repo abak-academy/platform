@@ -774,3 +774,55 @@ func TestAdminUpdateQuestion_formatChangeOnNonLiveQuestion_succeeds(t *testing.T
 		t.Errorf("format = %q, want short", storedFormat)
 	}
 }
+
+// page selects offset pagination; a bad value must be rejected like a bad cursor.
+func TestAdminListBankQuestions_invalidPageReturns400(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+
+	for _, bad := range []string{"0", "-1", "x"} {
+		req := httptest.NewRequest(http.MethodGet, "/admin/questions?page="+bad, nil)
+		rec := httptest.NewRecorder()
+		c := echo.New().NewContext(req, rec)
+		if err := h.AdminListBankQuestions(c); err != nil {
+			t.Fatalf("page=%s: returned error: %v", bad, err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("page=%s: want 400, got %d: %s", bad, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// The list response carries total at the top level — the numbered-pagination UI
+// computes its page count from it, so the key going missing or moving breaks
+// pages silently (fixtures-invent-the-payload failure shape).
+func TestAdminListBankQuestions_pageModeCarriesTotal(t *testing.T) {
+	env := newQuestionHandlerEnv(t)
+	h := New(env.svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/questions?page=1&limit=1", nil)
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+	if err := h.AdminListBankQuestions(c); err != nil {
+		t.Fatalf("AdminListBankQuestions returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Data  []json.RawMessage `json:"data"`
+		Total *int              `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Total == nil {
+		t.Fatal("response has no top-level total")
+	}
+	if len(resp.Data) > 1 {
+		t.Fatalf("limit=1 returned %d rows", len(resp.Data))
+	}
+	if *resp.Total < len(resp.Data) {
+		t.Fatalf("total %d < returned rows %d", *resp.Total, len(resp.Data))
+	}
+}

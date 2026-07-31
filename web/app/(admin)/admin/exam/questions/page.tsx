@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Library, Plus, Search, Trash2, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Library, Plus, Search, Trash2, Upload } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { QuestionEditor } from "@/components/admin/QuestionEditor";
 import { QuestionPreview } from "@/components/admin/QuestionPreview";
@@ -25,6 +25,8 @@ import { ApiError } from "@/lib/api";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import { FORMAT_TONE, DIFFICULTY_TONE } from "@/lib/question-tone";
 import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
+
+const PAGE_SIZE = 25;
 
 const ALL_FORMATS: Array<QuestionFormat | "all"> = [
   "all",
@@ -71,14 +73,22 @@ export default function QuestionBankPage() {
 
   const queryClient = useQueryClient();
 
+  const [page, setPage] = useState(1);
+  // A filter change re-scopes the list; staying on page 5 of the old scope
+  // would show an arbitrary window of the new one.
+  useEffect(() => {
+    setPage(1);
+  }, [format, topicId, search]);
+
   const filters = useMemo(
     () => ({
       format: format === "all" ? undefined : format,
       topic_id: topicId || undefined,
       search: search.trim() || undefined,
-      limit: 25,
+      page,
+      limit: PAGE_SIZE,
     }),
-    [format, topicId, search]
+    [format, topicId, search, page]
   );
 
   const bank = useBankQuestions(filters);
@@ -86,6 +96,8 @@ export default function QuestionBankPage() {
   const deleteQuestion = useDeleteBankQuestion();
 
   const rows = bank.data?.data ?? [];
+  const total = bank.data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const topicOptions = topics.data?.data ?? [];
 
   function openCreate() {
@@ -323,6 +335,52 @@ export default function QuestionBankPage() {
               )}
             </tbody>
           </table>
+          {total > PAGE_SIZE && (
+            <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
+              <span className="text-muted-foreground">
+                {t("pagination_summary")
+                  .replace("{page}", String(page))
+                  .replace("{pages}", String(pageCount))
+                  .replace("{total}", String(total))}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="size-4" />
+                  {t("pagination_prev")}
+                </Button>
+                {Array.from({ length: pageCount }, (_, i) => i + 1)
+                  .filter((n) => n === 1 || n === pageCount || Math.abs(n - page) <= 2)
+                  .map((n, idx, arr) => (
+                    <span key={n} className="flex items-center">
+                      {idx > 0 && arr[idx - 1] !== n - 1 && (
+                        <span className="px-1 text-muted-foreground">…</span>
+                      )}
+                      <Button
+                        variant={n === page ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => setPage(n)}
+                      >
+                        {n}
+                      </Button>
+                    </span>
+                  ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= pageCount}
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                >
+                  {t("pagination_next")}
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

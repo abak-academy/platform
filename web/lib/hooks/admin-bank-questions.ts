@@ -23,6 +23,7 @@ export interface BankQuestionsFilters {
   topic_id?: string;
   search?: string;
   cursor?: string;
+  page?: number;
   limit?: number;
 }
 
@@ -32,6 +33,7 @@ function buildListPath(filters?: BankQuestionsFilters): string {
   if (filters?.topic_id) params.set("topic_id", filters.topic_id);
   if (filters?.search) params.set("search", filters.search);
   if (filters?.cursor) params.set("cursor", filters.cursor);
+  if (filters?.page !== undefined) params.set("page", String(filters.page));
   if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
   const query = params.toString();
   return query ? `/admin/questions?${query}` : "/admin/questions";

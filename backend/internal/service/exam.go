@@ -747,6 +747,10 @@ func (s *Service) ListBankQuestions(ctx context.Context, filter repository.Quest
 	return s.storeRepo.ListBankQuestions(ctx, filter)
 }
 
+func (s *Service) CountBankQuestions(ctx context.Context, filter repository.QuestionFilter) (int, error) {
+	return s.storeRepo.CountBankQuestions(ctx, filter)
+}
+
 var validTimerModes = map[string]bool{
 	"overall":  true,
 	"per_test": true,

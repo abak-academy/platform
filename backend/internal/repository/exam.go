@@ -125,7 +125,41 @@ type QuestionFilter struct {
 	TopicID string
 	Search  string
 	Cursor  string
+	Offset  int
 	Limit   int
+}
+
+// bankQuestionFilterSQL renders the shared WHERE tail for the bank list and its
+// count so the two cannot drift. Cursor/Offset are pagination, not filtering,
+// and are deliberately excluded here.
+func bankQuestionFilterSQL(filter QuestionFilter, argIdx int) (string, []interface{}, int) {
+	query := ""
+	args := []interface{}{}
+	if filter.Format != "" {
+		query += fmt.Sprintf(` AND q.format = $%d`, argIdx)
+		args = append(args, filter.Format)
+		argIdx++
+	}
+	if filter.TopicID != "" {
+		query += fmt.Sprintf(` AND q.topic_id = $%d::uuid`, argIdx)
+		args = append(args, filter.TopicID)
+		argIdx++
+	}
+	if filter.Search != "" {
+		query += fmt.Sprintf(` AND (LOWER(q.body) LIKE LOWER($%d) OR q.id::text LIKE $%d)`, argIdx, argIdx)
+		args = append(args, "%"+filter.Search+"%")
+		argIdx++
+	}
+	return query, args, argIdx
+}
+
+// CountBankQuestions returns the total row count for the same filters the bank
+// list applies, so the UI can render numbered pages.
+func (r *Repository) CountBankQuestions(ctx context.Context, filter QuestionFilter) (int, error) {
+	where, args, _ := bankQuestionFilterSQL(filter, 1)
+	var total int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM question q WHERE 1=1`+where, args...).Scan(&total)
+	return total, err
 }
 
 func (r *Repository) CreateTest(ctx context.Context, t *model.Test) error {
@@ -783,24 +817,9 @@ LEFT JOIN (
     SELECT question_id, COUNT(*) AS cnt FROM test_question GROUP BY question_id
 ) tq ON tq.question_id = q.id
 WHERE 1=1`
-	args := []interface{}{}
-	argIdx := 1
+	where, args, argIdx := bankQuestionFilterSQL(filter, 1)
+	query += where
 
-	if filter.Format != "" {
-		query += fmt.Sprintf(` AND q.format = $%d`, argIdx)
-		args = append(args, filter.Format)
-		argIdx++
-	}
-	if filter.TopicID != "" {
-		query += fmt.Sprintf(` AND q.topic_id = $%d::uuid`, argIdx)
-		args = append(args, filter.TopicID)
-		argIdx++
-	}
-	if filter.Search != "" {
-		query += fmt.Sprintf(` AND (LOWER(q.body) LIKE LOWER($%d) OR q.id::text LIKE $%d)`, argIdx, argIdx)
-		args = append(args, "%"+filter.Search+"%")
-		argIdx++
-	}
 	if filter.Cursor != "" {
 		query += fmt.Sprintf(` AND q.question_number < $%d`, argIdx)
 		args = append(args, filter.Cursor)
@@ -809,6 +828,11 @@ WHERE 1=1`
 
 	query += ` ORDER BY q.question_number DESC LIMIT $` + fmt.Sprintf("%d", argIdx)
 	args = append(args, filter.Limit+1)
+	argIdx++
+	if filter.Offset > 0 {
+		query += fmt.Sprintf(` OFFSET $%d`, argIdx)
+		args = append(args, filter.Offset)
+	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {

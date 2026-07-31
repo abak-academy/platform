@@ -24,9 +24,9 @@ import {
   ListOrdered,
   Image as ImageIcon,
   ImagePlus,
+  Minus,
+  Plus,
   Table as TableIcon,
-  Rows3,
-  Columns3,
   TableCellsMerge,
   TableCellsSplit,
   Trash2,
@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { fileUrl } from "@/lib/api";
+import { useTranslation } from "@/lib/i18n";
 import { usePresignAdminImageUpload } from "@/lib/hooks/admin-uploads";
 import { QUESTION_BODY_ALLOWED_TAGS } from "@/lib/question-html";
 
@@ -224,6 +225,10 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const [empty, setEmpty] = useState<boolean>(!value || isEffectivelyEmpty(value));
+  // Drives the contextual table-ops row: the row/column/merge actions only
+  // exist while the caret is inside a table, so they never crowd the toolbar.
+  const [inTable, setInTable] = useState(false);
+  const { t } = useTranslation();
   const presign = usePresignAdminImageUpload();
 
   useEffect(() => {
@@ -283,6 +288,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
         transformPastedHTML: (html: string) => sanitizeClipboardHtml(html),
       },
       onUpdate: ({ editor: ed, transaction }) => {
+        setInTable(ed.isActive("table"));
         // Skip the migration's own transaction (FR-46) — it converts
         // existing text to a math node without the user having changed
         // anything, so it must not report a content change.
@@ -290,6 +296,9 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
         const html = getStorageHtml(ed);
         setEmpty(isEffectivelyEmpty(html));
         onChangeRef.current(html);
+      },
+      onSelectionUpdate: ({ editor: ed }) => {
+        setInTable(ed.isActive("table"));
       },
     });
     editorInstanceRef.current = editor;
@@ -400,14 +409,14 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
         disabled && "pointer-events-none opacity-50",
       )}
     >
-      <div className={cn("flex items-center border-b bg-muted/40", compact ? "flex-nowrap gap-0.5 p-1" : "flex-wrap gap-1 p-1.5")}>
+      <div className={cn("flex items-center border-b bg-muted/40", compact ? "flex-wrap gap-0.5 p-1" : "flex-wrap gap-1 p-1.5")}>
         <Button
           type="button"
           variant="ghost"
           size={iconSize}
           onMouseDown={preventBlur}
           onClick={() => editorInstanceRef.current?.chain().focus().toggleBold().run()}
-          aria-label="Bold"
+          aria-label="Bold" title={t("rte_bold")}
           disabled={disabled}
         >
           <Bold className={iconGlyphSize} />
@@ -418,7 +427,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           size={iconSize}
           onMouseDown={preventBlur}
           onClick={() => editorInstanceRef.current?.chain().focus().toggleItalic().run()}
-          aria-label="Italic"
+          aria-label="Italic" title={t("rte_italic")}
           disabled={disabled}
         >
           <Italic className={iconGlyphSize} />
@@ -429,7 +438,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           size={iconSize}
           onMouseDown={preventBlur}
           onClick={() => editorInstanceRef.current?.chain().focus().toggleUnderline().run()}
-          aria-label="Underline"
+          aria-label="Underline" title={t("rte_underline")}
           disabled={disabled}
         >
           <Underline className={iconGlyphSize} />
@@ -441,7 +450,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           size={iconSize}
           onMouseDown={preventBlur}
           onClick={() => editorInstanceRef.current?.chain().focus().toggleBulletList().run()}
-          aria-label="Bulleted list"
+          aria-label="Bulleted list" title={t("rte_bullet_list")}
           disabled={disabled}
         >
           <List className={iconGlyphSize} />
@@ -452,7 +461,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           size={iconSize}
           onMouseDown={preventBlur}
           onClick={() => editorInstanceRef.current?.chain().focus().toggleOrderedList().run()}
-          aria-label="Numbered list"
+          aria-label="Numbered list" title={t("rte_numbered_list")}
           disabled={disabled}
         >
           <ListOrdered className={iconGlyphSize} />
@@ -464,7 +473,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           size={iconSize}
           onMouseDown={preventBlur}
           onClick={() => editorInstanceRef.current?.chain().focus().toggleSuperscript().run()}
-          aria-label="Superscript"
+          aria-label="Superscript" title={t("rte_superscript")}
           disabled={disabled}
           className="font-mono text-xs"
         >
@@ -476,7 +485,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           size={iconSize}
           onMouseDown={preventBlur}
           onClick={() => editorInstanceRef.current?.chain().focus().toggleSubscript().run()}
-          aria-label="Subscript"
+          aria-label="Subscript" title={t("rte_subscript")}
           disabled={disabled}
           className="font-mono text-xs"
         >
@@ -489,7 +498,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           size={formulaSize}
           onMouseDown={preventBlur}
           onClick={insertFormula}
-          aria-label="Insert formula"
+          aria-label="Insert formula" title={t("rte_formula")}
           disabled={disabled}
         >
           <span className="italic">ƒ</span>
@@ -501,7 +510,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           size={iconSize}
           onMouseDown={preventBlur}
           onClick={() => fileInputRef.current?.click()}
-          aria-label="Insert image"
+          aria-label="Insert image" title={t("rte_image")}
           disabled={disabled || uploading}
         >
           {uploading ? <ImageIcon className={cn(iconGlyphSize, "animate-pulse")} /> : <ImagePlus className={iconGlyphSize} />}
@@ -513,91 +522,116 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           hidden
           onChange={handleFileSelected}
         />
-        <Separator orientation="vertical" className={cn(compact ? "mx-0.5 h-4" : "mx-1 h-5")} />
-        <Button
-          type="button"
-          variant="ghost"
-          size={iconSize}
-          onMouseDown={preventBlur}
-          onClick={() =>
-            editorInstanceRef.current
-              ?.chain()
-              .focus()
-              .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-              .run()
-          }
-          aria-label="Insert table"
-          disabled={disabled}
-        >
-          <TableIcon className={iconGlyphSize} />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size={iconSize}
-          onMouseDown={preventBlur}
-          onClick={() => editorInstanceRef.current?.chain().focus().addRowAfter().run()}
-          aria-label="Add row"
-          disabled={disabled}
-        >
-          <Rows3 className={iconGlyphSize} />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size={iconSize}
-          onMouseDown={preventBlur}
-          onClick={() => editorInstanceRef.current?.chain().focus().deleteRow().run()}
-          aria-label="Delete row"
-          disabled={disabled}
-        >
-          <Trash2 className={iconGlyphSize} />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size={iconSize}
-          onMouseDown={preventBlur}
-          onClick={() => editorInstanceRef.current?.chain().focus().addColumnAfter().run()}
-          aria-label="Add column"
-          disabled={disabled}
-        >
-          <Columns3 className={iconGlyphSize} />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size={iconSize}
-          onMouseDown={preventBlur}
-          onClick={() => editorInstanceRef.current?.chain().focus().deleteColumn().run()}
-          aria-label="Delete column"
-          disabled={disabled}
-        >
-          <Trash2 className={iconGlyphSize} />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size={iconSize}
-          onMouseDown={preventBlur}
-          onClick={() => editorInstanceRef.current?.chain().focus().mergeCells().run()}
-          aria-label="Merge cells"
-          disabled={disabled}
-        >
-          <TableCellsMerge className={iconGlyphSize} />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size={iconSize}
-          onMouseDown={preventBlur}
-          onClick={() => editorInstanceRef.current?.chain().focus().splitCell().run()}
-          aria-label="Split cell"
-          disabled={disabled}
-        >
-          <TableCellsSplit className={iconGlyphSize} />
-        </Button>
+        {!compact && (
+          <>
+            <Separator orientation="vertical" className="mx-1 h-5" />
+            <Button
+              type="button"
+              variant="ghost"
+              size={iconSize}
+              onMouseDown={preventBlur}
+              onClick={() =>
+                editorInstanceRef.current
+                  ?.chain()
+                  .focus()
+                  .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+                  .run()
+              }
+              aria-label="Insert table"
+              title={t("rte_insert_table")}
+              disabled={disabled || inTable}
+            >
+              <TableIcon className={iconGlyphSize} />
+            </Button>
+          </>
+        )}
       </div>
+      {!compact && inTable && (
+        <div className="flex flex-wrap items-center gap-1 border-b bg-muted/20 p-1.5 text-xs">
+          <TableIcon className="mx-1 size-3.5 text-muted-foreground" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onMouseDown={preventBlur}
+            onClick={() => editorInstanceRef.current?.chain().focus().addRowAfter().run()}
+            aria-label="Add row"
+          >
+            <Plus className="size-3" />
+            {t("rte_row")}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onMouseDown={preventBlur}
+            onClick={() => editorInstanceRef.current?.chain().focus().deleteRow().run()}
+            aria-label="Delete row"
+          >
+            <Minus className="size-3" />
+            {t("rte_row")}
+          </Button>
+          <Separator orientation="vertical" className="mx-0.5 h-4" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onMouseDown={preventBlur}
+            onClick={() => editorInstanceRef.current?.chain().focus().addColumnAfter().run()}
+            aria-label="Add column"
+          >
+            <Plus className="size-3" />
+            {t("rte_column")}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onMouseDown={preventBlur}
+            onClick={() => editorInstanceRef.current?.chain().focus().deleteColumn().run()}
+            aria-label="Delete column"
+          >
+            <Minus className="size-3" />
+            {t("rte_column")}
+          </Button>
+          <Separator orientation="vertical" className="mx-0.5 h-4" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onMouseDown={preventBlur}
+            onClick={() => editorInstanceRef.current?.chain().focus().mergeCells().run()}
+            aria-label="Merge cells"
+          >
+            <TableCellsMerge className="size-3" />
+            {t("rte_merge")}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onMouseDown={preventBlur}
+            onClick={() => editorInstanceRef.current?.chain().focus().splitCell().run()}
+            aria-label="Split cell"
+          >
+            <TableCellsSplit className="size-3" />
+            {t("rte_split")}
+          </Button>
+          <Separator orientation="vertical" className="mx-0.5 h-4" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="text-destructive hover:text-destructive"
+            onMouseDown={preventBlur}
+            onClick={() => editorInstanceRef.current?.chain().focus().deleteTable().run()}
+            aria-label="Delete table"
+          >
+            <Trash2 className="size-3" />
+            {t("rte_table")}
+          </Button>
+        </div>
+      )}
       <div
         className={cn(
           "relative",
