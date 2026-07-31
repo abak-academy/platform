@@ -1,4 +1,5 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { API_BASE, seedSession, loginRealAdmin } from "./helpers/session";
 
 /**
  * Executable repro for FB-22, FB-23, FB-24 and FB-25 (spec.md "the editor
@@ -32,8 +33,6 @@ import { test, expect, type BrowserContext, type Page } from "@playwright/test";
  * ones.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
-
 const FAKE_ADMIN_USER = {
   id: "e2e-fake-admin-id",
   email: "e2e-fake-admin@example.test",
@@ -45,22 +44,6 @@ const FAKE_ADMIN_USER = {
 const TINY_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
-interface SeededSession {
-  token: string;
-  refreshToken: string;
-  user: Record<string, unknown>;
-}
-
-// Mirrors the zustand persist shape stores/auth.ts writes under the
-// "abak-auth" localStorage key.
-async function seedSession(context: BrowserContext, session: SeededSession) {
-  await context.addInitScript((s) => {
-    window.localStorage.setItem(
-      "abak-auth",
-      JSON.stringify({ state: { token: s.token, refreshToken: s.refreshToken, user: s.user }, version: 0 })
-    );
-  }, session);
-}
 
 // AdminLayout only trusts the persisted user.role (no /me call once a role is
 // present), but authFetch hard-redirects to /login on any 401 — and AppShell
@@ -179,37 +162,6 @@ async function clickBeforeWord(page: Page, fieldSelector: string, word: string) 
   await page.mouse.click(point.x, point.y);
 }
 
-// Shared by every case below that must hit the real backend (FB-24, and the
-// table/math round trips) rather than the mocked-fetch session the pure-DOM
-// cases (FB-22/23/25) use.
-async function loginRealAdmin(context: BrowserContext, request: import("@playwright/test").APIRequestContext) {
-  const identifier = process.env.E2E_ADMIN_IDENTIFIER;
-  const password = process.env.E2E_ADMIN_PASSWORD;
-  if (!identifier || !password) {
-    throw new Error(
-      "this case exercises the real backend save/reload round trip and needs a real session: " +
-        "set E2E_ADMIN_IDENTIFIER and E2E_ADMIN_PASSWORD to a local admin_exam or super_admin " +
-        "account before running this spec. This is an environment/credentials gap, not a repro."
-    );
-  }
-  const loginRes = await request.post(`${API_BASE}/auth/login`, { data: { identifier, password } });
-  if (!loginRes.ok()) {
-    throw new Error(
-      `real-backend setup: login failed (${loginRes.status()}) — check E2E_ADMIN_IDENTIFIER/E2E_ADMIN_PASSWORD. ` +
-        `Body: ${await loginRes.text()}`
-    );
-  }
-  const session = (await loginRes.json()) as {
-    access_token: string;
-    refresh_token?: string;
-    user: Record<string, unknown>;
-  };
-  await seedSession(context, {
-    token: session.access_token,
-    refreshToken: session.refresh_token ?? "",
-    user: session.user,
-  });
-}
 
 // Opens the create-question dialog with a real session, sets format and the
 // first real topic — the shape FB-24, the table round trip and the math

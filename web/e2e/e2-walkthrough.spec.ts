@@ -1,4 +1,5 @@
-import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import { loginRealAdmin, fetchSavedQuestion } from "./helpers/session";
 
 /**
  * Full-flow coverage for the bank-soal walkthrough batch (PR #68): numbered
@@ -6,71 +7,8 @@ import { test, expect, type BrowserContext, type Page } from "@playwright/test";
  * Benar/Salah segmented toggle, and per-item points (migration 0050) surviving
  * the REAL save → database → reload round trip.
  *
- * Every case here follows question-editor.spec.ts's real-backend pattern —
- * these are wire/durability claims, so mocking the API would prove nothing.
- * Needs E2E_ADMIN_IDENTIFIER / E2E_ADMIN_PASSWORD (same contract as FB-24).
+ * Real-backend pattern — see helpers/session.ts for the credentials contract.
  */
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
-
-interface SeededSession {
-  token: string;
-  refreshToken: string;
-  user: Record<string, unknown>;
-}
-
-async function seedSession(context: BrowserContext, session: SeededSession) {
-  await context.addInitScript((s) => {
-    window.localStorage.setItem(
-      "abak-auth",
-      JSON.stringify({ state: { token: s.token, refreshToken: s.refreshToken, user: s.user }, version: 0 })
-    );
-  }, session);
-}
-
-let cachedToken = "";
-
-async function loginRealAdmin(context: BrowserContext, request: import("@playwright/test").APIRequestContext) {
-  const identifier = process.env.E2E_ADMIN_IDENTIFIER;
-  const password = process.env.E2E_ADMIN_PASSWORD;
-  if (!identifier || !password) {
-    throw new Error(
-      "set E2E_ADMIN_IDENTIFIER and E2E_ADMIN_PASSWORD — this spec exercises the real backend."
-    );
-  }
-  const loginRes = await request.post(`${API_BASE}/auth/login`, { data: { identifier, password } });
-  if (!loginRes.ok()) {
-    throw new Error(`login failed (${loginRes.status()}): ${await loginRes.text()}`);
-  }
-  const session = (await loginRes.json()) as {
-    access_token: string;
-    refresh_token?: string;
-    user: Record<string, unknown>;
-  };
-  cachedToken = session.access_token;
-  await seedSession(context, {
-    token: session.access_token,
-    refreshToken: session.refresh_token ?? "",
-    user: session.user,
-  });
-}
-
-// Reads the saved question back over the wire — the same list payload the
-// edit dialog consumes, so a points value visible here is a points value the
-// admin will see on reopen.
-async function fetchSavedQuestion(
-  request: import("@playwright/test").APIRequestContext,
-  marker: string
-) {
-  const res = await request.get(
-    `${API_BASE}/admin/questions?search=${encodeURIComponent(marker)}`,
-    { headers: { Authorization: `Bearer ${cachedToken}` } }
-  );
-  expect(res.ok(), `list lookup for ${marker} should succeed`).toBeTruthy();
-  const body = (await res.json()) as { data: Array<Record<string, any>> };
-  expect(body.data.length, `exactly one question should match ${marker}`).toBe(1);
-  return body.data[0];
-}
 
 async function openCreate(page: Page, format: string) {
   await page.goto("/admin/exam/questions");
@@ -142,7 +80,7 @@ test.describe("bank-soal walkthrough batch — full flow", () => {
     context,
     request,
   }) => {
-    await loginRealAdmin(context, request);
+    const token = await loginRealAdmin(context, request);
     const marker = `e2ema${Date.now()}`;
     await openCreate(page, "multi_answer");
 
@@ -179,7 +117,7 @@ test.describe("bank-soal walkthrough batch — full flow", () => {
 
     await save(page);
 
-    const q = await fetchSavedQuestion(request, marker);
+    const q = await fetchSavedQuestion(request, token, marker);
     const options = q.options as Array<{ key: string; is_correct: boolean; points?: number }>;
     expect(options.length).toBe(8);
     expect(options.find((o) => o.key === "a")?.points).toBe(2);
@@ -192,7 +130,7 @@ test.describe("bank-soal walkthrough batch — full flow", () => {
     context,
     request,
   }) => {
-    await loginRealAdmin(context, request);
+    const token = await loginRealAdmin(context, request);
     const marker = `e2etf${Date.now()}`;
     await openCreate(page, "true_false");
     await typeBody(page, `${marker} benar salah`);
@@ -211,7 +149,7 @@ test.describe("bank-soal walkthrough batch — full flow", () => {
 
     await save(page);
 
-    const q = await fetchSavedQuestion(request, marker);
+    const q = await fetchSavedQuestion(request, token, marker);
     const statements = (q.question?.statements ?? q.statements) as Array<{
       index: number;
       is_true: boolean;
@@ -228,7 +166,7 @@ test.describe("bank-soal walkthrough batch — full flow", () => {
     context,
     request,
   }) => {
-    await loginRealAdmin(context, request);
+    const token = await loginRealAdmin(context, request);
     const marker = `e2emb${Date.now()}`;
     await openCreate(page, "multi_blank");
 
@@ -243,7 +181,7 @@ test.describe("bank-soal walkthrough batch — full flow", () => {
 
     await save(page);
 
-    const q = await fetchSavedQuestion(request, marker);
+    const q = await fetchSavedQuestion(request, token, marker);
     const blanks = q.blanks as Array<{ index: number; points?: number }>;
     expect(blanks.find((b) => b.index === 1)?.points).toBe(3);
     expect(blanks.find((b) => b.index === 2)?.points).toBeUndefined();
