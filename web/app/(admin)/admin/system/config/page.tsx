@@ -95,6 +95,7 @@ const INITIAL_PAYMENT = {
   midtrans_env: "sandbox",
   shipping_fallback_flat_rate: "",
   biteship_api_key: "",
+  biteship_webhook_secret: "",
 };
 
 export default function SystemConfigPage() {
@@ -137,6 +138,7 @@ export default function SystemConfigPage() {
         midtrans_env: (config.midtrans_env as "sandbox" | "production") ?? "sandbox",
         shipping_fallback_flat_rate: config.shipping_fallback_flat_rate ?? "",
         biteship_api_key: config.biteship_api_key ?? "",
+        biteship_webhook_secret: config.biteship_webhook_secret ?? "",
       });
     }
   }, [config]);
@@ -547,6 +549,29 @@ export default function SystemConfigPage() {
                       }
                     />
                     {paymentFields.biteship_api_key === "***" && (
+                      <div className="mt-1 text-xs text-ink-500">
+                        {t("config_payment_mask_hint")}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <Label>{t("config_shipping_webhook_secret")}</Label>
+                    <Input
+                      type="password"
+                      value={paymentFields.biteship_webhook_secret}
+                      onChange={(e) =>
+                        setPaymentFields((f) => ({
+                          ...f,
+                          biteship_webhook_secret: e.target.value,
+                        }))
+                      }
+                      placeholder={
+                        paymentFields.biteship_webhook_secret === "***"
+                          ? "***"
+                          : t("config_shipping_webhook_secret_placeholder")
+                      }
+                    />
+                    {paymentFields.biteship_webhook_secret === "***" && (
                       <div className="mt-1 text-xs text-ink-500">
                         {t("config_payment_mask_hint")}
                       </div>

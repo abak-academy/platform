@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"net/http"
 
 	"akademi-bimbel/internal/repository"
@@ -66,6 +67,33 @@ func (h *Handler) AdminConfirmOrder(c echo.Context) error {
 func (h *Handler) AdminShipOrder(c echo.Context) error {
 	orderID := c.Param("id")
 
+	err := h.svc.AdminShipOrder(c.Request().Context(), orderID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "order shipped",
+	})
+}
+
+// AdminGetShippingLabel streams a printable packing slip PDF for an order's
+// waybill (FR-D-1..D-4) — a packing slip, not the scannable carrier label,
+// which comes from Biteship's dashboard.
+func (h *Handler) AdminGetShippingLabel(c echo.Context) error {
+	orderID := c.Param("id")
+
+	pdf, err := h.svc.GetShippingLabel(c.Request().Context(), orderID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	c.Response().Header().Set("Content-Type", "application/pdf")
+	return c.Stream(http.StatusOK, "application/pdf", bytes.NewReader(pdf))
+}
+
+func (h *Handler) AdminShipOrderManual(c echo.Context) error {
+	orderID := c.Param("id")
+
 	var req struct {
 		TrackingNumber string `json:"tracking_number"`
 	}
@@ -76,7 +104,7 @@ func (h *Handler) AdminShipOrder(c echo.Context) error {
 		return badRequest(c, "tracking_number is required")
 	}
 
-	err := h.svc.AdminShipOrder(c.Request().Context(), orderID, req.TrackingNumber)
+	err := h.svc.AdminShipOrderManual(c.Request().Context(), orderID, req.TrackingNumber)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

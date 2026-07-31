@@ -35,23 +35,54 @@ describe("ShippingInfo", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("flags a flat-rate estimate as not being a carrier quote", () => {
-    const flat = { ...physicalOrder, selected_courier: "Ongkir Flat", selected_service: "Standar" };
-    render(<ShippingInfo order={flat} />);
+  // The old check inferred the badge from selected_courier; both cases below
+  // are where that inference gets it backwards.
+  it("flags an estimate even when the courier name looks like a real carrier", () => {
+    const estimate = { ...physicalOrder, is_estimate: true, selected_courier: "JNE", selected_service: "REG" };
+    render(<ShippingInfo order={estimate} />);
     expect(screen.getByText("Estimasi — bukan tarif kurir")).toBeTruthy();
   });
 
-  // Orders placed before the fallback was renamed still say "Flat". They must
-  // keep the badge, or history silently reads as though those were real quotes.
-  it("still flags orders stored under the pre-rename fallback label", () => {
-    const legacy = { ...physicalOrder, selected_courier: "Flat", selected_service: "Standard" };
-    render(<ShippingInfo order={legacy} />);
-    expect(screen.getByText("Estimasi — bukan tarif kurir")).toBeTruthy();
-  });
-
-  it("does not flag a real carrier quote as an estimate", () => {
-    const real = { ...physicalOrder, selected_courier: "JNE", selected_service: "REG" };
+  it("does not flag a real quote even when the courier name is the fallback label", () => {
+    const real = { ...physicalOrder, is_estimate: false, selected_courier: "Ongkir Flat", selected_service: "Standar" };
     render(<ShippingInfo order={real} />);
     expect(screen.queryByText("Estimasi — bukan tarif kurir")).toBeNull();
+  });
+
+  it("shows shipment_status alongside the resi", () => {
+    const withStatus = { ...physicalOrder, shipment_status: "delivered" };
+    render(<ShippingInfo order={withStatus} />);
+    expect(screen.getByText("delivered")).toBeTruthy();
+  });
+
+  // A buyer has no use for "we typed this in by hand"; only an admin does.
+  it("never shows waybill_source — that is admin-only, in OrderDetailModal", () => {
+    const withWaybillSource = { ...physicalOrder, waybill_source: "manual" };
+    render(<ShippingInfo order={withWaybillSource} />);
+    expect(screen.queryByText(/Input manual/)).toBeNull();
+    expect(screen.queryByText(/Booking otomatis/)).toBeNull();
+  });
+
+  it("renders the shipment timeline when events are present", () => {
+    const withEvents = {
+      ...physicalOrder,
+      shipment_events: [
+        {
+          id: "e1",
+          order_id: "o1",
+          status: "confirmed",
+          occurred_at: "2026-07-20T01:00:00Z",
+          created_at: "2026-07-20T01:00:05Z",
+        },
+      ],
+    };
+    render(<ShippingInfo order={withEvents} />);
+    expect(screen.getByText("Riwayat Pengiriman")).toBeTruthy();
+    expect(screen.getByTestId("shipment-event-status").textContent).toBe("confirmed");
+  });
+
+  it("renders no timeline heading when there are no shipment events", () => {
+    render(<ShippingInfo order={physicalOrder} />);
+    expect(screen.queryByText("Riwayat Pengiriman")).toBeNull();
   });
 });

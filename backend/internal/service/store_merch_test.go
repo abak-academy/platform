@@ -100,7 +100,7 @@ func TestAdminCompleteOrder_ProcessingMerchandise_RejectedUntilShipped(t *testin
 
 	require.ErrorIs(t, svc.AdminCompleteOrder(ctx, order.ID.String()), ErrMustShipBeforeComplete)
 
-	require.NoError(t, svc.AdminShipOrder(ctx, order.ID.String(), "JNE-123"))
+	require.NoError(t, svc.AdminShipOrderManual(ctx, order.ID.String(), "JNE-123"))
 	require.NoError(t, svc.AdminCompleteOrder(ctx, order.ID.String()))
 
 	completed, err := repo.GetOrderByID(ctx, order.ID)

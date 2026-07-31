@@ -73,8 +73,21 @@ export function useConfirmOrder() {
 export function useShipOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, trackingNumber }: { id: string; trackingNumber: string }) =>
+    mutationFn: (id: string) =>
       authFetch<{ message: string }>(`/admin/orders/${encodeURIComponent(id)}/ship`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminOrdersKeys.all });
+    },
+  });
+}
+
+export function useShipOrderManual() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, trackingNumber }: { id: string; trackingNumber: string }) =>
+      authFetch<{ message: string }>(`/admin/orders/${encodeURIComponent(id)}/ship-manual`, {
         method: "POST",
         body: JSON.stringify({ tracking_number: trackingNumber }),
       }),

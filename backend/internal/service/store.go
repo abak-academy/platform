@@ -428,7 +428,11 @@ func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest
 		}
 	}
 
-	return resolveShippingRates(rates, clientErr, flatRate)
+	resolved, cause, err := resolveShippingRates(rates, clientErr, flatRate)
+	if cause != "" {
+		slog.Warn("shipping quote degraded to fallback", "cause", cause)
+	}
+	return resolved, err
 }
 
 func (s *Service) MintCart(ctx context.Context, studentID string) (model.Order, bool, error) {
@@ -670,6 +674,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		ShippingAddress: patch.ShippingAddress,
 		SelectedCourier: order.SelectedCourier,
 		SelectedService: order.SelectedService,
+		IsEstimate:      order.IsEstimate,
 		Discount:        order.Discount,
 		ShippingCost:    order.ShippingCost,
 		Total:           order.Total,
@@ -681,11 +686,13 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 
 	if patch.Courier != "" {
 		var weightGrams int
+		var itemValue int64
 		hasPhysical := false
 		for _, item := range order.Items {
 			if isPhysicalType(item.ProductType) {
 				hasPhysical = true
 				weightGrams += item.WeightGrams * item.Qty
+				itemValue += int64(item.Jumlah)
 			}
 		}
 
@@ -700,6 +707,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 			rates, err := s.GetShippingRates(ctx, ShippingQuoteRequest{
 				DestinationPostalCode: *patch.KodePos,
 				WeightGrams:           weightGrams,
+				ItemValue:             itemValue,
 			})
 			if err != nil {
 				return err
@@ -708,6 +716,9 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 			for _, rate := range rates {
 				if strings.EqualFold(rate.Courier, patch.Courier) && strings.EqualFold(rate.Service, patch.Service) {
 					repoPatch.ShippingCost = float64(rate.Price)
+					repoPatch.IsEstimate = rate.IsEstimate
+					repoPatch.CourierCode = &rate.CourierCode
+					repoPatch.CourierServiceCode = &rate.ServiceCode
 					matched = true
 					break
 				}
@@ -1232,27 +1243,6 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key s
 // should fire. Only "false" disables it; "" (unset) and "true" are enabled.
 func purchaseNotifyEnabled(cfg map[string]string) bool {
 	return cfg["notify_on_purchase_admin_store"] != "false"
-}
-
-func (s *Service) AdminShipOrder(ctx context.Context, orderID, trackingNumber string) error {
-	id, err := parseUUID(orderID)
-	if err != nil {
-		return err
-	}
-
-	order, err := s.storeRepo.GetOrderByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	if order.ID.String() == "" {
-		return ErrOrderNotFound
-	}
-
-	if order.Status != "paid" && order.Status != "processing" {
-		return errors.New("order not in shippable status")
-	}
-
-	return s.storeRepo.SetShipped(ctx, id, trackingNumber)
 }
 
 func (s *Service) AdminCompleteOrder(ctx context.Context, orderID string) error {

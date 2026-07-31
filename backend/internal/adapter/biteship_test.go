@@ -3,6 +3,8 @@ package adapter
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -257,5 +259,132 @@ func TestBiteshipClient_GetRates_InvalidJSON(t *testing.T) {
 	}
 	if len(rates) != 0 {
 		t.Errorf("expected empty rates on error, got %d", len(rates))
+	}
+}
+
+func TestBiteshipClient_GetRates_OriginUnset(t *testing.T) {
+	mockRepo := &mockRepository{
+		systemConfigRows: []repository.SystemConfigRow{
+			// No app_kode_pos configured
+		},
+	}
+
+	client := NewBiteshipClient(
+		mockRepo,
+		"test-api-key",
+		"https://api.biteship.com",
+		http.DefaultClient,
+	)
+
+	req := service.ShippingQuoteRequest{
+		DestinationPostalCode: "12240",
+		WeightGrams:           1000,
+	}
+
+	_, err := client.GetRates(context.Background(), req)
+	if !errors.Is(err, service.ErrShippingOriginUnset) {
+		t.Fatalf("expected errors.Is(err, service.ErrShippingOriginUnset), got: %v", err)
+	}
+}
+
+func TestBiteshipClient_GetRates_AuthRejected(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(fmt.Sprintf("status_%d", status), func(t *testing.T) {
+			mockRepo := &mockRepository{
+				systemConfigRows: []repository.SystemConfigRow{
+					{Key: "app_kode_pos", Value: "12440"},
+				},
+			}
+
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+				w.Write([]byte("unauthorized: invalid api key"))
+			}))
+			defer ts.Close()
+
+			client := NewBiteshipClient(
+				mockRepo,
+				"bad-api-key",
+				ts.URL,
+				http.DefaultClient,
+			)
+
+			req := service.ShippingQuoteRequest{
+				DestinationPostalCode: "12240",
+				WeightGrams:           1000,
+			}
+
+			_, err := client.GetRates(context.Background(), req)
+			if !errors.Is(err, service.ErrShippingAuthRejected) {
+				t.Fatalf("expected errors.Is(err, service.ErrShippingAuthRejected), got: %v", err)
+			}
+			if !strings.Contains(err.Error(), "unauthorized: invalid api key") {
+				t.Errorf("expected error message to carry response body, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestBiteshipClient_GetRates_ItemValue(t *testing.T) {
+	tests := []struct {
+		name          string
+		itemValue     int64
+		expectedValue float64
+	}{
+		{"nonzero ItemValue carries through", 250000, 250000},
+		{"zero ItemValue falls back to 1", 0, 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockRepo := &mockRepository{
+				systemConfigRows: []repository.SystemConfigRow{
+					{Key: "app_kode_pos", Value: "12440"},
+				},
+			}
+
+			var capturedBody map[string]interface{}
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatalf("failed to read request body: %v", err)
+				}
+				if err := json.Unmarshal(body, &capturedBody); err != nil {
+					t.Fatalf("failed to unmarshal request body: %v", err)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{"pricing": []map[string]interface{}{}})
+			}))
+			defer ts.Close()
+
+			client := NewBiteshipClient(
+				mockRepo,
+				"test-api-key",
+				ts.URL,
+				http.DefaultClient,
+			)
+
+			req := service.ShippingQuoteRequest{
+				DestinationPostalCode: "12240",
+				WeightGrams:           1000,
+				ItemValue:             tt.itemValue,
+			}
+
+			if _, err := client.GetRates(context.Background(), req); err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			items, ok := capturedBody["items"].([]interface{})
+			if !ok || len(items) != 1 {
+				t.Fatalf("expected 1 item in request body, got %v", capturedBody["items"])
+			}
+			item, ok := items[0].(map[string]interface{})
+			if !ok {
+				t.Fatalf("expected item to be an object, got %v", items[0])
+			}
+			if item["value"] != tt.expectedValue {
+				t.Errorf("expected items[0].value=%v, got %v", tt.expectedValue, item["value"])
+			}
+		})
 	}
 }

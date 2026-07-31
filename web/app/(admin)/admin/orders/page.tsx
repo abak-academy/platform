@@ -8,6 +8,7 @@ import {
   useAdminOrders,
   useConfirmOrder,
   useShipOrder,
+  useShipOrderManual,
   useCompleteOrder,
   useRefundOrder,
   useReconcileOrder,
@@ -68,11 +69,13 @@ export default function OrdersPage() {
   const { data: orders, isLoading, isError, error } = useAdminOrders(filter);
   const confirm = useConfirmOrder();
   const ship = useShipOrder();
+  const shipManual = useShipOrderManual();
   const complete = useCompleteOrder();
   const refund = useRefundOrder();
   const reconcile = useReconcileOrder();
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
   const [shippingOrder, setShippingOrder] = useState<Order | null>(null);
+  const [shipError, setShipError] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!orders) return [];
@@ -113,13 +116,25 @@ export default function OrdersPage() {
     }
   }
 
-  async function handleShip(id: string, trackingNumber: string) {
+  async function handleShipBook(id: string) {
+    setShipError(null);
     try {
-      await ship.mutateAsync({ id, trackingNumber });
+      await ship.mutateAsync(id);
       setShippingOrder(null);
       toast.success(t("orders_shipped"));
     } catch (e) {
-      toast.error(errorMessage(e));
+      setShipError(errorMessage(e));
+    }
+  }
+
+  async function handleShipManual(id: string, trackingNumber: string) {
+    setShipError(null);
+    try {
+      await shipManual.mutateAsync({ id, trackingNumber });
+      setShippingOrder(null);
+      toast.success(t("orders_shipped"));
+    } catch (e) {
+      setShipError(errorMessage(e));
     }
   }
 
@@ -245,7 +260,10 @@ export default function OrdersPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => setShippingOrder(order)}
+                          onClick={() => {
+                            setShipError(null);
+                            setShippingOrder(order);
+                          }}
                           disabled={ship.isPending}
                         >
                           {t("action_ship")}
@@ -302,10 +320,15 @@ export default function OrdersPage() {
       {shippingOrder && (
         <ShipOrderModal
           open
-          onOpenChange={() => setShippingOrder(null)}
+          onOpenChange={() => {
+            setShippingOrder(null);
+            setShipError(null);
+          }}
           orderNumber={orderNumber(shippingOrder)}
-          onSubmit={(trackingNumber) => handleShip(shippingOrder.id, trackingNumber)}
-          isPending={ship.isPending}
+          onBook={() => handleShipBook(shippingOrder.id)}
+          onSubmitManual={(trackingNumber) => handleShipManual(shippingOrder.id, trackingNumber)}
+          isPending={ship.isPending || shipManual.isPending}
+          error={shipError}
         />
       )}
     </div>

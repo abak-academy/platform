@@ -25,24 +25,28 @@ type OrderFilter struct {
 }
 
 type OrderPatch struct {
-	ShippingAddress json.RawMessage
-	SelectedCourier string
-	SelectedService string
-	PromoCodeID     *uuid.UUID
-	Discount        float64
-	ShippingCost    float64
-	Total           float64
-	ProvinceID      *string
-	CityID          *string
-	DistrictID      *string
-	KodePos         *string
+	ShippingAddress    json.RawMessage
+	SelectedCourier    string
+	SelectedService    string
+	IsEstimate         bool
+	PromoCodeID        *uuid.UUID
+	Discount           float64
+	ShippingCost       float64
+	Total              float64
+	ProvinceID         *string
+	CityID             *string
+	DistrictID         *string
+	KodePos            *string
+	CourierCode        *string
+	CourierServiceCode *string
 }
 
 const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost, total,
 	promo_code_id, shipping_address, selected_courier, selected_service, tracking_number, shipped_at,
 	gateway_ref, payment_method, payment_expires_at, paid_at, invoice_url,
 	checked_out_at, completed_at, cancelled_at, cancellation_reason,
-	created_at, updated_at`
+	created_at, updated_at, is_estimate,
+	biteship_order_id, shipment_status, waybill_source, courier_code, courier_service_code`
 
 func scanOrder(row interface {
 	Scan(dest ...any) error
@@ -56,7 +60,9 @@ func scanOrder(row interface {
 		&selectedCourier, &selectedService, &trackingNumber, &order.ShippedAt,
 		&gatewayRef, &paymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &invoiceURL,
 		&order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &cancellationReason,
-		&order.CreatedAt, &order.UpdatedAt,
+		&order.CreatedAt, &order.UpdatedAt, &order.IsEstimate,
+		&order.BiteshipOrderID, &order.ShipmentStatus, &order.WaybillSource,
+		&order.CourierCode, &order.CourierServiceCode,
 	)
 	if err != nil {
 		return err
@@ -217,6 +223,12 @@ func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Orde
 		return model.Order{}, err
 	}
 	order.Items = items
+
+	events, err := r.ListShipmentEvents(ctx, order.ID)
+	if err != nil {
+		return model.Order{}, err
+	}
+	order.ShipmentEvents = events
 	return order, nil
 }
 
@@ -384,11 +396,15 @@ func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch Ord
 		 SET shipping_address = COALESCE($1, shipping_address), selected_courier = $2, selected_service = $3, promo_code_id = $4,
 		     discount = $5, shipping_cost = $6, total = $7,
 		     province_id = COALESCE($8, province_id), city_id = COALESCE($9, city_id), district_id = COALESCE($10, district_id), kode_pos = COALESCE($11, kode_pos),
+		     is_estimate = $12,
+		     courier_code = $13, courier_service_code = $14,
 		     updated_at = now()
-		 WHERE id = $12`,
+		 WHERE id = $15`,
 		patch.ShippingAddress, patch.SelectedCourier, patch.SelectedService, patch.PromoCodeID,
 		patch.Discount, patch.ShippingCost, patch.Total,
 		patch.ProvinceID, patch.CityID, patch.DistrictID, patch.KodePos,
+		patch.IsEstimate,
+		patch.CourierCode, patch.CourierServiceCode,
 		orderID,
 	)
 	return err
@@ -416,6 +432,70 @@ func (r *Repository) SetShipped(ctx context.Context, orderID uuid.UUID, tracking
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders SET status = 'shipped', tracking_number = $1, shipped_at = now(), updated_at = now() WHERE id = $2`,
 		trackingNumber, orderID,
+	)
+	return err
+}
+
+// SetShippedBiteship moves an order to shipped via the Biteship booking
+// path (FR-C-6): tracking_number and biteship_order_id come from Biteship's
+// response, waybill_source is stamped 'biteship'.
+func (r *Repository) SetShippedBiteship(ctx context.Context, orderID uuid.UUID, trackingNumber, biteshipOrderID string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE orders SET status = 'shipped', tracking_number = $1, biteship_order_id = $2,
+		     waybill_source = 'biteship', shipped_at = now(), updated_at = now()
+		 WHERE id = $3`,
+		trackingNumber, biteshipOrderID, orderID,
+	)
+	return err
+}
+
+// SetShippedManual moves an order to shipped via the manual-resi escape
+// hatch (FR-C-9): no Biteship call is made, waybill_source is stamped
+// 'manual'.
+func (r *Repository) SetShippedManual(ctx context.Context, orderID uuid.UUID, trackingNumber string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE orders SET status = 'shipped', tracking_number = $1,
+		     waybill_source = 'manual', shipped_at = now(), updated_at = now()
+		 WHERE id = $2`,
+		trackingNumber, orderID,
+	)
+	return err
+}
+
+// GetOrderByBiteshipOrderID looks up an order by the Biteship-side order id
+// so an inbound webhook (FR-C-12) can be matched to our row. Following this
+// file's not-found convention, an unmatched id returns a zero-value Order
+// with a nil error rather than a sentinel — callers distinguish via
+// order.ID == uuid.Nil (see GetOrderByID/GetCartByStudentID above).
+func (r *Repository) GetOrderByBiteshipOrderID(ctx context.Context, biteshipOrderID string) (model.Order, error) {
+	order := model.Order{}
+	err := scanOrder(r.pool.QueryRow(ctx,
+		`SELECT `+orderColumns+` FROM orders WHERE biteship_order_id = $1`,
+		biteshipOrderID,
+	), &order)
+	if err != nil {
+		if isNotFound(err) {
+			return model.Order{}, nil
+		}
+		return model.Order{}, err
+	}
+
+	items, err := r.fetchItems(ctx, order.ID)
+	if err != nil {
+		return model.Order{}, err
+	}
+	order.Items = items
+	return order, nil
+}
+
+// SetShipmentStatus writes the authoritative status from a Biteship
+// GET /v1/orders/:id re-fetch (FR-C-12) onto the order row. It intentionally
+// does not touch orders.status — completion stays a manual admin action
+// (FR-C-15).
+func (r *Repository) SetShipmentStatus(ctx context.Context, orderID uuid.UUID, shipmentStatus string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE orders SET shipment_status = $1, updated_at = now() WHERE id = $2`,
+		shipmentStatus, orderID,
 	)
 	return err
 }

@@ -6,6 +6,7 @@ import {
   useAdminOrder,
   useConfirmOrder,
   useShipOrder,
+  useShipOrderManual,
   useRefundOrder,
   useReconcileOrder,
   adminOrdersKeys,
@@ -103,7 +104,7 @@ describe("admin-orders hooks", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: adminOrdersKeys.all });
   });
 
-  it("useShipOrder posts tracking_number to /admin/orders/:id/ship", async () => {
+  it("useShipOrder posts to /admin/orders/:id/ship with no tracking_number (auto-book)", async () => {
     mockAuthFetch.mockResolvedValueOnce({ message: "order shipped" });
 
     const { wrapper, queryClient } = wrapperFactory();
@@ -111,10 +112,40 @@ describe("admin-orders hooks", () => {
     const { result } = renderHook(() => useShipOrder(), { wrapper });
 
     await act(async () => {
+      await result.current.mutateAsync("o1");
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders/o1/ship", { method: "POST" });
+    const [, init] = mockAuthFetch.mock.calls[0];
+    expect(init).not.toHaveProperty("body");
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminOrdersKeys.all });
+  });
+
+  it("useShipOrder surfaces the server's error message verbatim on rejection", async () => {
+    mockAuthFetch.mockRejectedValueOnce(new Error("order has no persisted courier code"));
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useShipOrder(), { wrapper });
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync("o1");
+      })
+    ).rejects.toThrow("order has no persisted courier code");
+  });
+
+  it("useShipOrderManual posts tracking_number to /admin/orders/:id/ship-manual", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ message: "order shipped" });
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useShipOrderManual(), { wrapper });
+
+    await act(async () => {
       await result.current.mutateAsync({ id: "o1", trackingNumber: "JNE-123" });
     });
 
-    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders/o1/ship", {
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders/o1/ship-manual", {
       method: "POST",
       body: JSON.stringify({ tracking_number: "JNE-123" }),
     });

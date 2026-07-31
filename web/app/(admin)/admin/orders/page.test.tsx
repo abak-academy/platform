@@ -17,6 +17,7 @@ let ordersState = {
 
 let confirmState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let shipState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+let shipManualState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let completeState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let refundState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let reconcileState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
@@ -26,6 +27,7 @@ vi.mock("@/lib/hooks/admin-orders", () => ({
   useAdminOrder: () => ({}),
   useConfirmOrder: () => confirmState,
   useShipOrder: () => shipState,
+  useShipOrderManual: () => shipManualState,
   useCompleteOrder: () => completeState,
   useRefundOrder: () => refundState,
   useReconcileOrder: () => reconcileState,
@@ -96,6 +98,7 @@ describe("OrdersPage", () => {
     };
     confirmState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     shipState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+    shipManualState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     completeState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     refundState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     reconcileState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
@@ -150,7 +153,7 @@ describe("OrdersPage", () => {
 
   // The tracking number used to be collected with window.prompt, which cannot be
   // styled, validated or cancelled cleanly, and blocks the whole tab.
-  it("ships an order with the tracking number typed into the modal", async () => {
+  it("ships an order via the default Biteship auto-booking action", async () => {
     mockMutateAsync.mockResolvedValueOnce({ message: "order shipped" });
 
     render(<OrdersPage />);
@@ -161,6 +164,41 @@ describe("OrdersPage", () => {
     fireEvent.click(within(row!).getByRole("button", { name: /^kirim$/i }));
 
     const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /booking otomatis/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith("o2");
+      expect(toast.success).toHaveBeenCalledWith("Pesanan dikirim.");
+    });
+  });
+
+  // The manual tracking-number field is an escape hatch, not the default path:
+  // it must not be present until the admin explicitly asks for it.
+  it("does not render the manual tracking-number field until manual entry is chosen", async () => {
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Buku Shipped/).closest("tr");
+    fireEvent.click(within(row!).getByRole("button", { name: /^kirim$/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByLabelText(/no\. resi/i)).toBeNull();
+    expect(within(dialog).getByRole("button", { name: /booking otomatis/i })).toBeInTheDocument();
+  });
+
+  it("ships an order with a manually entered tracking number after choosing manual entry", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ message: "order shipped" });
+
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Buku Shipped/).closest("tr");
+    fireEvent.click(within(row!).getByRole("button", { name: /^kirim$/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /input resi manual/i }));
+
+    expect(within(dialog).getByLabelText(/no\. resi/i)).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText(/no\. resi/i), {
       target: { value: "JNE-123" },
     });
@@ -172,7 +210,7 @@ describe("OrdersPage", () => {
     });
   });
 
-  it("will not submit an empty tracking number", async () => {
+  it("will not submit an empty tracking number in manual mode", async () => {
     render(<OrdersPage />);
     await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
 
@@ -180,7 +218,31 @@ describe("OrdersPage", () => {
     fireEvent.click(within(row!).getByRole("button", { name: /^kirim$/i }));
 
     const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /input resi manual/i }));
+
     expect(within(dialog).getByRole("button", { name: /^kirim$/i })).toBeDisabled();
+  });
+
+  // Track C's whole point is that a failed Biteship booking tells the admin the
+  // real reason, not a generic "gagal" — otherwise the manual fallback exists
+  // for nothing.
+  it("renders the server's error message verbatim in the dialog when booking fails", async () => {
+    mockMutateAsync.mockRejectedValueOnce(new Error("order has no persisted courier code"));
+
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Buku Shipped/).closest("tr");
+    fireEvent.click(within(row!).getByRole("button", { name: /^kirim$/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /booking otomatis/i }));
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("order has no persisted courier code")).toBeInTheDocument();
+    });
+    // Dialog stays open on failure — the admin can retry or fall back to manual.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   // The row was inert: an admin could see that an order existed but not who it

@@ -257,3 +257,11 @@ func (stubLogisticsClient) GetRates(context.Context, service.ShippingQuoteReques
 		{Courier: "TIKI", Service: "ONS", EstimatedDays: 1, Price: 25000},
 	}, nil
 }
+
+func (stubLogisticsClient) CreateOrder(context.Context, service.CreateShipmentRequest) (service.Shipment, error) {
+	return service.Shipment{}, service.ErrShippingUnavailable
+}
+
+func (stubLogisticsClient) GetOrder(context.Context, string) (service.Shipment, error) {
+	return service.Shipment{}, service.ErrShippingUnavailable
+}

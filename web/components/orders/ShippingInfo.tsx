@@ -3,15 +3,8 @@
 import type { Order } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
-
-const PHYSICAL_TYPES = new Set(["book", "merchandise", "medal"]);
-
-// Mirrors FallbackCourier in backend/internal/service/shipping_rates.go. The
-// order row does not carry an is_estimate flag, so the badge has to be inferred
-// from the stored courier name. "Flat" is the pre-rename label and is kept so
-// orders placed under it keep their badge. Both entries disappear once the flag
-// is persisted — see docs/backlog/shipping-estimate-flag.md.
-const ESTIMATE_COURIERS = new Set(["Ongkir Flat", "Flat"]);
+import { hasPhysicalItems } from "@/lib/shipping";
+import { ShipmentTimeline } from "@/components/orders/ShipmentTimeline";
 
 export interface ShippingInfoProps {
   order: Order;
@@ -20,7 +13,7 @@ export interface ShippingInfoProps {
 export function ShippingInfo({ order }: ShippingInfoProps) {
   const { t } = useTranslation();
 
-  const hasPhysical = (order.items ?? []).some((i) => PHYSICAL_TYPES.has(i.product_type));
+  const hasPhysical = hasPhysicalItems(order.items ?? []);
   if (!hasPhysical) return null;
 
   const addr = order.shipping_address ?? {};
@@ -29,7 +22,7 @@ export function ShippingInfo({ order }: ShippingInfoProps) {
     .join(" · ");
 
   const courier = [order.selected_courier, order.selected_service].filter(Boolean).join(" — ");
-  const isEstimate = ESTIMATE_COURIERS.has(order.selected_courier ?? "");
+  const isEstimate = order.is_estimate ?? false;
 
   return (
     <section className="rounded-lg border border-line bg-surface p-5">
@@ -66,7 +59,16 @@ export function ShippingInfo({ order }: ShippingInfoProps) {
             <dd className="text-right text-ink-900">{order.tracking_number}</dd>
           </div>
         )}
+        {order.tracking_number && (
+          <div className="flex items-start justify-between gap-3">
+            <dt className="text-ink-500">{t("order_shipment_status")}</dt>
+            <dd className="text-right text-ink-900">
+              {order.shipment_status ?? t("order_shipment_status_unknown")}
+            </dd>
+          </div>
+        )}
       </dl>
+      <ShipmentTimeline events={order.shipment_events} />
     </section>
   );
 }

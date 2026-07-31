@@ -14,6 +14,7 @@ import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import { ApiError, fileUrl } from "@/lib/api";
 import type { ProductType } from "@/lib/types";
+import { isDigitalType, isPhysicalType } from "@/lib/shipping";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -73,8 +74,8 @@ export default function ProductDetailPage({
   const meta = TYPE_META[product.type];
   const { Icon } = meta;
   const cover = fileUrl(product.image_url);
-  const isDigital = product.type === "exam" || product.type === "course";
-  const isPhysical = product.type === "book" || product.type === "merchandise" || product.type === "medal";
+  const isDigital = isDigitalType(product.type);
+  const isPhysical = isPhysicalType(product.type);
   const alreadyInCart = cart?.items?.some((i) => i.product_id === product.id) ?? false;
 
   const handleAdd = (thenRoute?: () => void) => {

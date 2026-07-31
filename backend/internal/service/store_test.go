@@ -518,6 +518,135 @@ func TestGetShippingRates(t *testing.T) {
 	}
 }
 
+// recordingLogisticsClient captures the last ShippingQuoteRequest it received
+// and always answers with rate, so PatchCart's courier-match loop succeeds.
+type recordingLogisticsClient struct {
+	lastReq ShippingQuoteRequest
+	rate    CourierRate
+}
+
+func (r *recordingLogisticsClient) GetRates(_ context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
+	r.lastReq = req
+	return []CourierRate{r.rate}, nil
+}
+
+func (r *recordingLogisticsClient) CreateOrder(_ context.Context, _ CreateShipmentRequest) (Shipment, error) {
+	return Shipment{}, ErrShippingUnavailable
+}
+
+func (r *recordingLogisticsClient) GetOrder(_ context.Context, _ string) (Shipment, error) {
+	return Shipment{}, ErrShippingUnavailable
+}
+
+// TestPatchCart_PopulatesItemValueFromPhysicalItemLineTotal covers FR-A-8: the
+// quote request PatchCart builds for a cart with physical items must carry
+// their summed line total (Jumlah) as ItemValue, instead of leaving it at the
+// zero value that makes BiteshipClient fall back to the pre-existing
+// hardcoded 1.
+func TestPatchCart_PopulatesItemValueFromPhysicalItemLineTotal(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
+	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, spy, nil, nil)
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status, weight_grams)
+		 VALUES ('book', $1, 50000, 10, 'published', 500) RETURNING id`,
+		"Shipping Test Book "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "Item Value Student", "itemval_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 2); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	// Papua Selatan / Kabupaten Merauke / Merauke — a province/city/district
+	// triple seeded by migration 0046, reused from
+	// TestPapuaMigration_ValidateAddressHierarchy_AcceptsNewProvinceTriples.
+	provinceID, cityID, districtID := "93", "9301", "930101"
+	kodePos := "12345"
+	err = svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{
+		Courier:    "JNE",
+		Service:    "REG",
+		ProvinceID: &provinceID,
+		CityID:     &cityID,
+		DistrictID: &districtID,
+		KodePos:    &kodePos,
+	})
+	if err != nil {
+		t.Fatalf("PatchCart: %v", err)
+	}
+
+	want := int64(100000) // unit_price 50000 * qty 2
+	if spy.lastReq.ItemValue != want {
+		t.Errorf("want ItemValue=%d (2x50000 book line total), got %d", want, spy.lastReq.ItemValue)
+	}
+}
+
+// TestPatchCart_AddressOnlyPatchPreservesIsEstimate covers FR-B-4: the
+// OrderPatch struct literal in PatchCart (store.go) must seed IsEstimate from
+// order.IsEstimate exactly as it already does for SelectedCourier. Without
+// that seed, an address-only patch (patch.Courier == "") on an order that
+// already carries is_estimate = true would silently zero it out, since the
+// UPDATE always writes repoPatch.IsEstimate.
+func TestPatchCart_AddressOnlyPatchPreservesIsEstimate(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newRealDBService(t)
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status, weight_grams)
+		 VALUES ('book', $1, 50000, 10, 'published', 500) RETURNING id`,
+		"Address Only Patch Book "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "Address Only Patch Student", "addronly_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	// Simulate a prior courier selection that landed on the flat-rate estimate,
+	// bypassing the live quote path here since only the carry-over behaviour on
+	// a second, address-only patch is under test.
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE orders SET selected_courier = 'Ongkir Flat', selected_service = 'Standar', is_estimate = true WHERE id = $1`,
+		order.ID,
+	); err != nil {
+		t.Fatalf("seed is_estimate: %v", err)
+	}
+
+	err = svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{
+		ShippingAddress: []byte(`{"street":"Jl. Contoh No. 1"}`),
+	})
+	if err != nil {
+		t.Fatalf("PatchCart (address-only): %v", err)
+	}
+
+	reread, err := repo.GetOrderByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if !reread.IsEstimate {
+		t.Error("want is_estimate to stay true after an address-only patch, got false")
+	}
+}
+
 func TestCheckout_PhysicalItemWithoutShipping_ReturnsError(t *testing.T) {
 	ctx := context.Background()
 	mr, err := miniredis.Run()
