@@ -170,6 +170,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusNotFound, APIError{Code: "session_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidViolationType):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_violation_type", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidPosition):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_position", Message: err.Error()}
 	case errors.Is(err, service.ErrGradeOutOfRange):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "grade_out_of_range", Message: err.Error()}
 	case errors.Is(err, service.ErrNotEssayQuestion):

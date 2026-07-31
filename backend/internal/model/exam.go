@@ -195,8 +195,11 @@ type ExamSession struct {
 	// generation and reused thereafter; nil until allocated (FR-9/FR-10).
 	CertificateNumber *string    `json:"certificate_number"`
 	LastSavedAt       *time.Time `json:"last_saved_at"`
-	Status            string     `json:"status"`
-	CreatedAt         time.Time  `json:"created_at"`
+	// CurrentPosition is the student's last-known question index (FR-35/FR-36);
+	// nil until the first save that carries a position.
+	CurrentPosition *int      `json:"current_position"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // ExamSessionAnswer is one answer record per (session, question) — composite PK.

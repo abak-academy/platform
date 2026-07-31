@@ -125,6 +125,10 @@ var (
 	// ErrQuestionFormatLocked is returned when an update changes a live-exam
 	// question's format (FR-14). Other fields on the same question remain editable.
 	ErrQuestionFormatLocked = errors.New("question format is locked while the question is in a live exam")
+	// ErrInvalidPosition is returned when a SaveAnswers request carries a
+	// current_position outside [0, total_questions) for the exam (FR-35). Maps
+	// to 400; rejects the whole request so answers are never written either.
+	ErrInvalidPosition = errors.New("invalid session position")
 )
 
 // --- from exam_grant.go ---

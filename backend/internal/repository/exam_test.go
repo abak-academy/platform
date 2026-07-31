@@ -63,7 +63,7 @@ var _ interface {
 	GetExamSessionForStudent(context.Context, uuid.UUID, uuid.UUID) (*model.ExamSession, error)
 	GetSessionWithQuestions(context.Context, uuid.UUID) ([]model.TestDetail, error)
 	GetSessionAnswers(context.Context, uuid.UUID) ([]model.ExamSessionAnswer, error)
-	SaveAnswersTx(context.Context, uuid.UUID, []model.ExamSessionAnswer) error
+	SaveAnswersTx(context.Context, uuid.UUID, []model.ExamSessionAnswer, *int) error
 	SubmitSessionTx(context.Context, pgx.Tx, uuid.UUID, []model.ExamSessionAnswer, float64, bool) (int64, error)
 	LogViolation(context.Context, model.SessionViolationLog) error
 	ReopenSession(context.Context, uuid.UUID, int) error
@@ -408,8 +408,8 @@ func TestScanExamSession_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExamSession returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 16 {
-		t.Fatalf("scanExamSession passed %d destinations, want 16 (id, registration_id, student_id, exam_id, attempt_number, started_at, submitted_at, extended_until, admin_submitted, score, certificate_key, certificate_generated_at, certificate_number, last_saved_at, status, created_at)", got)
+	if got := len(rec.dests); got != 17 {
+		t.Fatalf("scanExamSession passed %d destinations, want 17 (id, registration_id, student_id, exam_id, attempt_number, started_at, submitted_at, extended_until, admin_submitted, score, certificate_key, certificate_generated_at, certificate_number, last_saved_at, current_position, status, created_at)", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -454,11 +454,14 @@ func TestScanExamSession_passes_expected_destinations(t *testing.T) {
 	if _, ok := rec.dests[13].(**time.Time); !ok {
 		t.Errorf("dest[13] = %T, want **time.Time (last_saved_at, nullable)", rec.dests[13])
 	}
-	if _, ok := rec.dests[14].(*string); !ok {
-		t.Errorf("dest[14] = %T, want *string (status)", rec.dests[14])
+	if _, ok := rec.dests[14].(**int); !ok {
+		t.Errorf("dest[14] = %T, want **int (current_position, nullable)", rec.dests[14])
 	}
-	if _, ok := rec.dests[15].(*time.Time); !ok {
-		t.Errorf("dest[15] = %T, want *time.Time (created_at)", rec.dests[15])
+	if _, ok := rec.dests[15].(*string); !ok {
+		t.Errorf("dest[15] = %T, want *string (status)", rec.dests[15])
+	}
+	if _, ok := rec.dests[16].(*time.Time); !ok {
+		t.Errorf("dest[16] = %T, want *time.Time (created_at)", rec.dests[16])
 	}
 }
 

@@ -717,11 +717,13 @@ func (h *Handler) StudentSaveAnswers(c echo.Context) error {
 	sessionID := c.Param("id")
 	var req struct {
 		Answers []service.AnswerInput `json:"answers"`
+		// CurrentPosition is optional (FR-35): the student's current question index.
+		CurrentPosition *int `json:"current_position"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	if err := h.svc.SaveAnswers(c.Request().Context(), claims.Sub, sessionID, req.Answers); err != nil {
+	if err := h.svc.SaveAnswers(c.Request().Context(), claims.Sub, sessionID, req.Answers, req.CurrentPosition); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})

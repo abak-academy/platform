@@ -1586,7 +1586,8 @@ func scanExamSession(row interface{ Scan(dest ...any) error }, s *model.ExamSess
 		&s.ID, &s.RegistrationID, &s.StudentID, &s.ExamID,
 		&s.AttemptNumber, &s.StartedAt, &s.SubmittedAt,
 		&s.ExtendedUntil, &s.AdminSubmitted, &s.Score,
-		&s.CertificateKey, &s.CertificateGeneratedAt, &s.CertificateNumber, &s.LastSavedAt, &s.Status, &s.CreatedAt,
+		&s.CertificateKey, &s.CertificateGeneratedAt, &s.CertificateNumber, &s.LastSavedAt,
+		&s.CurrentPosition, &s.Status, &s.CreatedAt,
 	)
 }
 
@@ -1697,7 +1698,7 @@ func (r *Repository) GetExamSessionForStudent(ctx context.Context, sessionID, st
 	err := scanExamSession(r.pool.QueryRow(ctx,
 		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
 			submitted_at, extended_until, admin_submitted, score, certificate_key,
-			certificate_generated_at, certificate_number, last_saved_at, status, created_at
+			certificate_generated_at, certificate_number, last_saved_at, current_position, status, created_at
 		FROM exam_session
 		WHERE id = $1 AND student_id = $2`,
 		sessionID, studentID,
@@ -1717,7 +1718,7 @@ func (r *Repository) GetExamSessionByID(ctx context.Context, sessionID uuid.UUID
 	err := scanExamSession(r.pool.QueryRow(ctx,
 		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
 			submitted_at, extended_until, admin_submitted, score, certificate_key,
-			certificate_generated_at, certificate_number, last_saved_at, status, created_at
+			certificate_generated_at, certificate_number, last_saved_at, current_position, status, created_at
 		FROM exam_session
 		WHERE id = $1`,
 		sessionID,
@@ -1808,8 +1809,9 @@ func (r *Repository) GetSessionAnswers(ctx context.Context, sessionID uuid.UUID)
 // transaction. The FOR UPDATE lock serializes saves against SubmitSessionTx's CAS:
 // a late autosave that already passed the service's status pre-check waits on the
 // submit's row lock, re-reads 'submitted', and becomes a no-op instead of
-// overwriting graded rows.
-func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer) error {
+// overwriting graded rows. position is optional (FR-35): when non-nil it is
+// persisted alongside the answers in the same UPDATE.
+func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer, position *int) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -1852,10 +1854,17 @@ func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, ans
 		}
 	}
 
-	_, err = tx.Exec(ctx,
-		`UPDATE exam_session SET last_saved_at = now() WHERE id = $1`,
-		sessionID,
-	)
+	if position != nil {
+		_, err = tx.Exec(ctx,
+			`UPDATE exam_session SET last_saved_at = now(), current_position = $2 WHERE id = $1`,
+			sessionID, *position,
+		)
+	} else {
+		_, err = tx.Exec(ctx,
+			`UPDATE exam_session SET last_saved_at = now() WHERE id = $1`,
+			sessionID,
+		)
+	}
 	if err != nil {
 		return err
 	}

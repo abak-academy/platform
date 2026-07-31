@@ -223,20 +223,20 @@ func TestService_SaveAnswers_SectionGuard(t *testing.T) {
 	ans := "a"
 	err = env.svc.SaveAnswers(ctx, studentID, start.SessionID.String(), []service.AnswerInput{
 		{QuestionID: qActive, Answer: &ans},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Save to the pending section (testIDs[1]) -> ErrSectionLocked.
 	err = env.svc.SaveAnswers(ctx, studentID, start.SessionID.String(), []service.AnswerInput{
 		{QuestionID: qPending, Answer: &ans},
-	})
+	}, nil)
 	assert.ErrorIs(t, err, service.ErrSectionLocked)
 
 	// Mixed batch (active + pending) -> whole batch rejected.
 	err = env.svc.SaveAnswers(ctx, studentID, start.SessionID.String(), []service.AnswerInput{
 		{QuestionID: qActive, Answer: &ans},
 		{QuestionID: qPending, Answer: &ans},
-	})
+	}, nil)
 	assert.ErrorIs(t, err, service.ErrSectionLocked)
 }
 
@@ -332,7 +332,7 @@ func TestService_StandardMode_Regression(t *testing.T) {
 	ans := "a"
 	err = env.svc.SaveAnswers(ctx, student2, start.SessionID.String(), []service.AnswerInput{
 		{QuestionID: quid, Answer: &ans},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Suppress unused-var from the first seed helper (keeps the compiler happy

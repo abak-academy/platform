@@ -232,7 +232,7 @@ func TestSaveAnswersTx_AfterSubmit_NoOverwrite(t *testing.T) {
 		QuestionID: questionID,
 		Answer:     &stale,
 	}}
-	if err := repo.SaveAnswersTx(ctx, sess.ID, late); err != nil {
+	if err := repo.SaveAnswersTx(ctx, sess.ID, late, nil); err != nil {
 		t.Fatalf("SaveAnswersTx: %v", err)
 	}
 
