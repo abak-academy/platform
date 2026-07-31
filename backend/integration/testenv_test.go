@@ -94,6 +94,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		stubLogisticsClient{},
 		nil,
 		cfg,
+		nil,
 	)
 
 	h := handler.New(svc)

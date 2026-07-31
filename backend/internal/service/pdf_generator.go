@@ -17,6 +17,11 @@ type pdfGenerator interface {
 	RenderHTML(ctx context.Context, html []byte) ([]byte, error)
 }
 
+// PDFGenerator is the exported name for pdfGenerator, used by callers outside
+// this package (cmd/api, cmd/worker) that need to construct a renderer to
+// inject into NewWithStore.
+type PDFGenerator = pdfGenerator
+
 // defaultGotenbergTimeout bounds a single render end-to-end. Production injects
 // http.DefaultClient, which has no timeout of its own, so without this a stalled
 // Gotenberg would hang every certificate and card render indefinitely.
@@ -37,6 +42,13 @@ func newGotenbergPDFGenerator(url string, httpClient *http.Client) *gotenbergPDF
 		httpClient = http.DefaultClient
 	}
 	return &gotenbergPDFGenerator{url: url, httpClient: httpClient, timeout: defaultGotenbergTimeout}
+}
+
+// NewGotenbergPDFGenerator is the exported constructor for the Gotenberg
+// implementation, used by cmd/api and cmd/worker to build the real renderer
+// passed into NewWithStore.
+func NewGotenbergPDFGenerator(url string, httpClient *http.Client) PDFGenerator {
+	return newGotenbergPDFGenerator(url, httpClient)
 }
 
 func (r *gotenbergPDFGenerator) RenderHTML(ctx context.Context, html []byte) ([]byte, error) {

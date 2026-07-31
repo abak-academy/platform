@@ -363,6 +363,7 @@ func newAdminResultsDBEnv(t *testing.T) *adminResultsDBTestEnv {
 			&service.NoopOTPProvider{}, &service.NoopEmailProvider{},
 			&service.NoopPaymentClient{}, &service.NoopLogisticsClient{},
 			nil, cfg,
+			nil,
 		)
 		e := echo.New()
 		e.HideBanner = true

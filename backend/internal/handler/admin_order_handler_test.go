@@ -155,7 +155,7 @@ func newShipHandlerTestService(t *testing.T, logistics service.LogisticsClient) 
 		}
 	}
 
-	svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, &service.NoopPaymentClient{}, logistics, nil, nil)
+	svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, &service.NoopPaymentClient{}, logistics, nil, nil, nil)
 	return handler.New(svc), svc, repo
 }
 
@@ -183,7 +183,7 @@ func newShipHandlerTestServiceWithRenderer(t *testing.T, logistics service.Logis
 	}
 
 	cfg := &config.Config{GotenbergURL: newFakeGotenbergServer(t).URL}
-	svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, &service.NoopPaymentClient{}, logistics, nil, cfg)
+	svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, &service.NoopPaymentClient{}, logistics, nil, cfg, nil)
 	return handler.New(svc), svc, repo
 }
 

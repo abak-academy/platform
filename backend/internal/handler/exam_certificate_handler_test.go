@@ -194,6 +194,7 @@ func newTestEnvWithStoreCfg(t *testing.T, storage *minio.Client, cfg *config.Con
 		&service.NoopOTPProvider{}, &service.NoopEmailProvider{},
 		&service.NoopPaymentClient{}, &service.NoopLogisticsClient{},
 		storage, cfg,
+		nil,
 	)
 
 	h := handler.New(svc)

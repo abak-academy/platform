@@ -2883,6 +2883,7 @@ func TestGetCertificateDesign_Integration_CustomBackground_ReturnsPresignedURLNo
 		repo, repo, nil, nil,
 		&NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil,
 		client, &config.Config{ObjectStorageBucketName: "test-bucket", ObjectStorageRegion: "us-east-1"},
+		nil,
 	)
 
 	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Design Presign Exam " + uniqueSuffix(), CertificateDesign: certDesignJSON("custom")})

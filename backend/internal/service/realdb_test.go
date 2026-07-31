@@ -52,7 +52,7 @@ func newRealDBService(t *testing.T) (*Service, *repository.Repository) {
 		}
 		repo := repository.New(pool)
 		realDBRepo = repo
-		realDBSvc = NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil, nil, nil)
+		realDBSvc = NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil, nil, nil, nil)
 	})
 	if realDBSvc == nil {
 		t.Fatal("real db service failed to initialize")

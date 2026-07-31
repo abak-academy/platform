@@ -50,7 +50,7 @@ func newShippingWebhookTestService(t *testing.T, logistics LogisticsClient) (*Se
 	t.Helper()
 	_, repo := newRealDBService(t)
 	cfg := &config.Config{ConfigEncryptionKey: shipWebhookTestHexKey}
-	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, logistics, nil, cfg)
+	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, logistics, nil, cfg, nil)
 	return svc, repo
 }
 

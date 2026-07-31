@@ -23,7 +23,7 @@ func newCheckoutTestService(t *testing.T) (*Service, *repository.Repository) {
 	}
 	t.Cleanup(mr.Close)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil, nil)
 	return svc, repo
 }
 
@@ -97,7 +97,7 @@ func TestCheckout_FreeOrder_PostCommitCacheFailureStillSucceeds(t *testing.T) {
 		t.Fatalf("miniredis: %v", err)
 	}
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil, nil)
 	ctx := context.Background()
 
 	var productID string

@@ -89,6 +89,7 @@ func newWebhookSignatureTestEnv(t *testing.T) (*echo.Echo, *repository.Repositor
 		&service.NoopOTPProvider{}, &service.NoopEmailProvider{},
 		&service.NoopPaymentClient{}, &service.NoopLogisticsClient{},
 		nil, cfg,
+		nil,
 	)
 
 	h := handler.New(svc)
@@ -212,7 +213,7 @@ func TestPaymentWebhookRejectsBadSignature(t *testing.T) {
 // configured. All three must be 401 invalid_signature with nothing written.
 func TestShippingWebhookRejectsBadSecret(t *testing.T) {
 	e, repo := newWebhookSignatureTestEnv(t)
-	svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, &service.NoopPaymentClient{}, &service.NoopLogisticsClient{}, nil, nil)
+	svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, &service.NoopPaymentClient{}, &service.NoopLogisticsClient{}, nil, nil, nil)
 
 	post := func(t *testing.T, header string, setHeader bool, body []byte) *httptest.ResponseRecorder {
 		t.Helper()

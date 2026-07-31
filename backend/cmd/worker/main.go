@@ -4,6 +4,7 @@ import (
 	"akademi-bimbel/config"
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -60,7 +61,8 @@ func main() {
 	logisticsClient := adapter.ResolveShippingClient(ctx, repo, &cfg)
 	storageClient := newStorageClient(cfg)
 
-	svc := service.NewWithStore(repo, repo, rdb, jwtSigner, &service.NoopOTPProvider{}, emailProvider, paymentClient, logisticsClient, storageClient, &cfg)
+	pdfGenerator := service.NewGotenbergPDFGenerator(cfg.GotenbergURL, http.DefaultClient)
+	svc := service.NewWithStore(repo, repo, rdb, jwtSigner, &service.NoopOTPProvider{}, emailProvider, paymentClient, logisticsClient, storageClient, &cfg, pdfGenerator)
 	objectStore := worker.NewMinioObjectStore(storageClient)
 
 	sweeperInterval := 5 * time.Minute
