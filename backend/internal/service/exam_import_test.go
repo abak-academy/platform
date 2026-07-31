@@ -56,8 +56,8 @@ mcq,2+2,Math,Arithmetic,medium,2,0,a,4,5,6`)
 	assert.Equal(t, "Arithmetic", r.Topic)
 	require.NotNil(t, r.Difficulty)
 	assert.Equal(t, "medium", *r.Difficulty)
-	assert.Equal(t, 2, r.PointCorrect)
-	assert.Equal(t, 0, r.PointWrong)
+	assert.Equal(t, 2.0, r.PointCorrect)
+	assert.Equal(t, 0.0, r.PointWrong)
 	require.NotNil(t, r.CorrectAnswer)
 	assert.Equal(t, "a", *r.CorrectAnswer)
 	require.Len(t, r.Options, 3)
@@ -65,6 +65,19 @@ mcq,2+2,Math,Arithmetic,medium,2,0,a,4,5,6`)
 	assert.Equal(t, "4", r.Options[0].Text)
 	assert.True(t, r.Options[0].IsCorrect)
 	assert.False(t, r.Options[1].IsCorrect)
+}
+
+func TestParseQuestionImportCSV_acceptsFractionalPoints(t *testing.T) {
+	csv := []byte(`format,body,subject,topic,point_correct,point_wrong
+essay,explain gravity,Physics,Mechanics,2.5,0.5`)
+
+	rows, err := ParseQuestionImportCSV(csv)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+
+	assert.Equal(t, 2.5, rows[0].PointCorrect)
+	assert.Equal(t, 0.5, rows[0].PointWrong)
+	assert.Empty(t, rows[0].Error)
 }
 
 func TestParseQuestionImportCSV_rejectsMissingHeader(t *testing.T) {
@@ -214,6 +227,67 @@ func TestImportQuestionsFromCSV_endToEnd(t *testing.T) {
 			if r.QuestionID != nil {
 				_ = repo.DeleteQuestion(ctx, *r.QuestionID)
 			}
+		}
+	})
+}
+
+// FR-11: the template's header row must come from the same slice values the
+// parser requires, not a second hardcoded literal. This fails if a required
+// header is added to the parser but not to QuestionImportRequiredHeaders (or
+// vice versa).
+func TestBuildQuestionImportTemplate_headerMatchesParserRequiredHeaders(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	data, err := svc.BuildQuestionImportTemplate(ctx)
+	require.NoError(t, err)
+
+	r := csv.NewReader(bytes.NewReader(data))
+	header, err := r.Read()
+	require.NoError(t, err)
+
+	want := strings.Join(append(append([]string{}, QuestionImportRequiredHeaders...), optionalHeaders...), ",")
+	assert.Equal(t, want, strings.Join(header, ","))
+}
+
+// FR-10: the generated template must parse cleanly with zero row-level errors.
+func TestBuildQuestionImportTemplate_roundTripsThroughParser(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	data, err := svc.BuildQuestionImportTemplate(ctx)
+	require.NoError(t, err)
+
+	rows, err := ParseQuestionImportCSV(data)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Empty(t, rows[0].Error)
+}
+
+// FR-12: with a real exam_topic present, the downloaded template must import
+// unedited -- the example row's subject/topic are filled from that topic.
+func TestBuildQuestionImportTemplate_importsUneditedWithExistingTopic(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	suffix := uniqueSuffix()
+
+	topic := model.ExamTopic{Name: "Template Topic " + suffix, Subject: "Template Subject " + suffix}
+	require.NoError(t, repo.CreateTopic(ctx, &topic))
+	t.Cleanup(func() { _ = repo.DeleteTopic(ctx, topic.ID) })
+
+	data, err := svc.BuildQuestionImportTemplate(ctx)
+	require.NoError(t, err)
+
+	result, err := svc.ImportQuestionsFromCSV(ctx, data)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Inserted)
+	require.Len(t, result.Rows, 1)
+	assert.Equal(t, "inserted", result.Rows[0].Status)
+	assert.Empty(t, result.Rows[0].Error)
+
+	t.Cleanup(func() {
+		if result.Rows[0].QuestionID != nil {
+			_ = repo.DeleteQuestion(ctx, *result.Rows[0].QuestionID)
 		}
 	})
 }

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Library, Plus, Search, Upload } from "lucide-react";
+import { Library, Plus, Search, Trash2, Upload } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { QuestionEditor } from "@/components/admin/QuestionEditor";
 import { QuestionPreview } from "@/components/admin/QuestionPreview";
@@ -12,11 +12,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useQueryClient } from "@tanstack/react-query";
-import { useBankQuestions, adminBankQuestionsKeys } from "@/lib/hooks/admin-bank-questions";
+import {
+  useBankQuestions,
+  useDeleteBankQuestion,
+  adminBankQuestionsKeys,
+} from "@/lib/hooks/admin-bank-questions";
 import { useTopics } from "@/lib/hooks/admin-topics";
 import { QuestionImportModal } from "@/components/admin/QuestionImportModal";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/api";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import { FORMAT_TONE, DIFFICULTY_TONE } from "@/lib/question-tone";
 import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
@@ -29,6 +34,7 @@ const ALL_FORMATS: Array<QuestionFormat | "all"> = [
   "fill_blank",
   "essay",
   "multi_blank",
+  "true_false",
 ];
 
 const FORMAT_LABELS: Record<QuestionFormat | "all", string> = {
@@ -39,6 +45,7 @@ const FORMAT_LABELS: Record<QuestionFormat | "all", string> = {
   fill_blank: "fmt_fill_blank",
   essay: "fmt_essay",
   multi_blank: "fmt_multi_blank",
+  true_false: "fmt_true_false",
 };
 
 const DIFFICULTY_LABELS: Record<string, "diff_easy" | "diff_medium" | "diff_hard"> = {
@@ -76,6 +83,7 @@ export default function QuestionBankPage() {
 
   const bank = useBankQuestions(filters);
   const topics = useTopics();
+  const deleteQuestion = useDeleteBankQuestion();
 
   const rows = bank.data?.data ?? [];
   const topicOptions = topics.data?.data ?? [];
@@ -124,6 +132,20 @@ export default function QuestionBankPage() {
   function errorMessage(err: unknown): string {
     if (err instanceof Error) return err.message;
     return t("error_generic");
+  }
+
+  async function handleDelete(item: BankQuestionListItem) {
+    if (!confirm(t("questions_confirm_delete"))) return;
+    try {
+      await deleteQuestion.mutateAsync(item.question.id);
+      toast.success(t("questions_deleted"));
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "question_in_published_exam") {
+        toast.error(t("question_in_published_exam_reason"));
+      } else {
+        toast.error(errorMessage(e) || t("questions_delete_failed"));
+      }
+    }
   }
 
   return (
@@ -218,6 +240,7 @@ export default function QuestionBankPage() {
                 <th className="px-4 py-3 text-left font-medium">{t("format")}</th>
                 <th className="px-4 py-3 text-left font-medium">{t("difficulty")}</th>
                 <th className="px-4 py-3 text-left font-medium">{t("points")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -233,7 +256,7 @@ export default function QuestionBankPage() {
                     className="border-t transition-colors hover:bg-muted/40 cursor-pointer"
                   >
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                      {question.id.slice(0, 8)}
+                      {question.question_number ?? "—"}
                     </td>
                     <td className="px-4 py-3 max-w-xs truncate">{stripHtmlToPlainText(question.body)}</td>
                     <td className="px-4 py-3">{item.attached_count}</td>
@@ -273,12 +296,27 @@ export default function QuestionBankPage() {
                       <span className="font-semibold text-info">+{question.point_correct}</span>
                       <span className="text-muted-foreground"> / {question.point_wrong}</span>
                     </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t("action_delete")}
+                        title={item.in_live_exam ? t("question_in_published_exam_reason") : undefined}
+                        disabled={item.in_live_exam}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(item);
+                        }}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </td>
                   </tr>
                 );
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                     {t("tests_picker_empty")}
                   </td>
                 </tr>

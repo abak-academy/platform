@@ -41,20 +41,29 @@ type Test struct {
 // and surfaced via QuestionWithOptions for read paths. topic_id links to the curated
 // exam_topic list; it is nullable for questions created before topics were assigned.
 type Question struct {
-	ID            uuid.UUID  `json:"id"`
-	Format        string     `json:"format"`
-	Body          string     `json:"body"`
-	CorrectAnswer *string    `json:"correct_answer"`
-	Explanation   *string    `json:"explanation"`
-	Difficulty    *string    `json:"difficulty"`
-	ImageURL      *string    `json:"image_url"`
-	AudioURL      *string    `json:"audio_url"`
-	TopicID       *uuid.UUID `json:"topic_id"`
-	Topic         *string    `json:"topic"`
-	// PointCorrect and PointWrong are positive-integer magnitudes authored per question;
-	// the scoring engine (not the author) applies the sign for wrong answers.
-	PointCorrect int `json:"point_correct"`
-	PointWrong   int `json:"point_wrong"`
+	ID             uuid.UUID  `json:"id"`
+	QuestionNumber int        `json:"question_number"`
+	Format         string     `json:"format"`
+	Body           string     `json:"body"`
+	CorrectAnswer  *string    `json:"correct_answer"`
+	Explanation    *string    `json:"explanation"`
+	Difficulty     *string    `json:"difficulty"`
+	ImageURL       *string    `json:"image_url"`
+	AudioURL       *string    `json:"audio_url"`
+	TopicID        *uuid.UUID `json:"topic_id"`
+	Topic          *string    `json:"topic"`
+	// PointCorrect and PointWrong are positive magnitudes (fractional allowed) authored
+	// per question; the scoring engine (not the author) applies the sign for wrong answers.
+	PointCorrect float64 `json:"point_correct"`
+	PointWrong   float64 `json:"point_wrong"`
+	// AcceptedAnswers is the question-level accepted-answer set (short/fill_blank only);
+	// always a non-nil slice on read (falls back to []string{*CorrectAnswer} when no
+	// question_accepted_answer rows exist, FR-27).
+	AcceptedAnswers []string `json:"accepted_answers"`
+	// Statements is the true_false statement set (admin payloads only); the
+	// student session shape strips IsTrue. Lives here, not on the wrapper —
+	// web/lib/types.ts declares it on Question.
+	Statements []QuestionStatement `json:"statements"`
 }
 
 // QuestionOption has a composite PK (QuestionID, Key); no surrogate ID. `Key` is the
@@ -74,6 +83,19 @@ type QuestionBlank struct {
 	QuestionID    uuid.UUID `json:"question_id"`
 	Index         int       `json:"index"`
 	CorrectAnswer string    `json:"correct_answer"`
+	// AcceptedAnswers is this blank's accepted-answer set; always a non-nil slice on
+	// read (falls back to []string{CorrectAnswer} when no accepted-answer rows exist).
+	AcceptedAnswers []string `json:"accepted_answers"`
+}
+
+// QuestionStatement has a composite PK (QuestionID, Index); no surrogate ID.
+// Used for true_false questions to store ordered statements. IsTrue is the
+// answer key — it must never appear in a student-facing payload (NFR-5).
+type QuestionStatement struct {
+	QuestionID uuid.UUID `json:"question_id"`
+	Index      int       `json:"index"`
+	Body       string    `json:"body"`
+	IsTrue     bool      `json:"is_true"`
 }
 
 // Exam is a scheduled test offering. It bundles one or more Tests via ExamTest and may
@@ -221,6 +243,9 @@ type BankQuestionListItem struct {
 	Options       []QuestionOption `json:"options"`
 	Blanks        []QuestionBlank  `json:"blanks"`
 	AttachedCount int              `json:"attached_count"`
+	// InLiveExam mirrors Service.IsQuestionInLiveExam so the admin bank page can
+	// disable delete/format controls without a second round trip (FR-7/FR-14).
+	InLiveExam bool `json:"in_live_exam"`
 }
 
 // ExamListItem is the read shape returned by GET /admin/exams. Cursor pagination
@@ -351,7 +376,7 @@ type ResultTopicRow struct {
 	Topic       string    `json:"topic"`
 	SectionType *string   `json:"section_type,omitempty"`
 	Earned      float64   `json:"earned"`
-	Max         int       `json:"max"`
+	Max         float64   `json:"max"`
 }
 
 // ResultPembahasanItem is one objective-question row of the score_pembahasan pembahasan
@@ -381,7 +406,7 @@ type GradingEssayItem struct {
 	QuestionID    uuid.UUID  `json:"question_id"`
 	Body          string     `json:"body"`
 	Answer        *string    `json:"answer"`
-	PointCorrect  int        `json:"point_correct"`
+	PointCorrect  float64    `json:"point_correct"`
 	Score         *float64   `json:"score"`
 	GraderComment *string    `json:"grader_comment"`
 	GradedAt      *time.Time `json:"graded_at"`

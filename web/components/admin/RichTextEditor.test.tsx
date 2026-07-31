@@ -1,6 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { RichTextEditor } from "./RichTextEditor";
+import { Editor } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import { RichTextEditor, InlineMathText, migrateLegacyInlineMath, getStorageHtml } from "./RichTextEditor";
+import { RichContent } from "./RichContent";
+import { QUESTION_BODY_ALLOWED_TAGS } from "@/lib/question-html";
+import { execFileSync } from "node:child_process";
+import { writeFileSync, readFileSync, rmSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 type PresignInput = { filename: string; content_type: string };
 type PresignOutput = { url: string; method: "PUT"; key: string };
@@ -40,69 +48,78 @@ describe("RichTextEditor", () => {
   it("initializes contentEditable with the provided value on mount", () => {
     render(<RichTextEditor value="<b>hello</b>" onChange={vi.fn()} />);
     const editable = screen.getByRole("textbox");
-    expect(editable.innerHTML).toBe("<b>hello</b>");
+    // TipTap's schema requires block-level content at the top level, so bare
+    // inline markup gets wrapped in a paragraph on parse — <b>hello</b>
+    // becomes <p><b>hello</b></p>. The text and its bold mark are unchanged;
+    // only the implicit block wrapper is new (behaviour change, not a loss).
+    expect(editable.innerHTML).toBe("<p><b>hello</b></p>");
   });
 
-  it("sets defaultParagraphSeparator to 'p' on mount so Enter produces allowlisted markup (FB-24)", () => {
-    const execSpy = vi.spyOn(document, "execCommand").mockImplementation(() => true);
-    render(<RichTextEditor value="" onChange={vi.fn()} />);
-    expect(execSpy).toHaveBeenCalledWith("defaultParagraphSeparator", false, "p");
-    execSpy.mockRestore();
-  });
-
-  it("clicking Bold with a selection invokes document.execCommand with 'bold'", () => {
-    const execSpy = vi.spyOn(document, "execCommand").mockImplementation(() => true);
-    const onChange = vi.fn();
-    render(<RichTextEditor value="hello" onChange={onChange} />);
-    const editable = screen.getByRole("textbox");
-    editable.focus();
-
-    // Simulate a selection over the editor's text content.
-    const range = document.createRange();
-    range.selectNodeContents(editable);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-
-    fireEvent.click(screen.getByRole("button", { name: /bold/i }));
-
-    expect(execSpy).toHaveBeenCalledWith("bold", false, undefined);
-    execSpy.mockRestore();
-  });
-
-  it("clicking the formula button with no selection inserts '\\( \\)'", () => {
-    const execSpy = vi.spyOn(document, "execCommand").mockImplementation(() => true);
+  // TipTap owns Enter entirely via its own keymap plugin (splitBlock), which
+  // ProseMirror always registers regardless of the DOM's native
+  // execCommand("defaultParagraphSeparator") setting — there is no more
+  // execCommand call in this component at all, so the old line is
+  // unreachable. Verified here by evidence (FR-40): press real Enter and
+  // assert the resulting markup, rather than assuming.
+  it("Enter produces a new <p>, never a <div> (FB-24, FR-40)", async () => {
     const onChange = vi.fn();
     render(<RichTextEditor value="" onChange={onChange} />);
     const editable = screen.getByRole("textbox");
     editable.focus();
-    // Ensure no selection.
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
+    fireEvent.keyDown(editable, { key: "Enter", code: "Enter" });
+    await waitFor(() => {
+      expect(editable.querySelectorAll("div").length).toBe(0);
+      expect(editable.querySelectorAll("p").length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  // jsdom cannot drive a real native Selection/Range the way a browser can
+  // (see web/e2e/question-editor.spec.ts's docstring) — Ctrl+A is used here
+  // instead of a partial mouse-drag selection because it is a command
+  // TipTap's own keymap intercepts directly, so it is reliable in jsdom.
+  // Partial-selection precision (FB-22) is covered by the Playwright suite.
+  it("clicking Bold with a selection bolds the selected text via the real TipTap command", async () => {
+    const onChange = vi.fn();
+    render(<RichTextEditor value="hello" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+    fireEvent.keyDown(editable, { key: "a", code: "KeyA", ctrlKey: true });
+
+    fireEvent.click(screen.getByRole("button", { name: /bold/i }));
+
+    await waitFor(() => {
+      const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+      expect(last).toBe("<p><b>hello</b></p>");
+    });
+  });
+
+  it("clicking the formula button with no selection inserts '\\( \\)'", async () => {
+    const onChange = vi.fn();
+    render(<RichTextEditor value="" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
 
     fireEvent.click(screen.getByRole("button", { name: /formula/i }));
 
-    expect(execSpy).toHaveBeenCalledWith("insertText", false, "\\(\\ \\)");
-    execSpy.mockRestore();
+    await waitFor(() => {
+      const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+      expect(last).toContain("\\(\\ \\)");
+    });
   });
 
-  it("clicking the formula button with a selection wraps the selection in '\\(...\\)'", () => {
-    const execSpy = vi.spyOn(document, "execCommand").mockImplementation(() => true);
+  it("clicking the formula button with a selection wraps the selection in '\\(...\\)'", async () => {
     const onChange = vi.fn();
     render(<RichTextEditor value="x" onChange={onChange} />);
     const editable = screen.getByRole("textbox");
     editable.focus();
-
-    const range = document.createRange();
-    range.selectNodeContents(editable);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
+    fireEvent.keyDown(editable, { key: "a", code: "KeyA", ctrlKey: true });
 
     fireEvent.click(screen.getByRole("button", { name: /formula/i }));
 
-    expect(execSpy).toHaveBeenCalledWith("insertText", false, "\\(x\\)");
-    execSpy.mockRestore();
+    await waitFor(() => {
+      const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+      expect(last).toContain("\\(x\\)");
+    });
   });
 
   it("disables the image button while a presign is in flight and re-enables on resolve", async () => {
@@ -201,20 +218,19 @@ describe("RichTextEditor", () => {
     }
   });
 
-  it("exec restores a saved Range before running execCommand, surviving an intervening focus change (FR27/29)", () => {
-    const execSpy = vi.spyOn(document, "execCommand").mockImplementation(() => true);
-    render(<RichTextEditor value="hello world" onChange={vi.fn()} />);
+  // The old execCommand engine needed to manually clone and restore a DOM
+  // Range because a native contentEditable's browser Selection is lost on
+  // blur. TipTap keeps selection in its own EditorState, which a DOM blur
+  // does not touch — so there is no Range to clone/restore any more, and
+  // this test now proves the surviving guarantee (selection makes it through
+  // an intervening focus change) at the observable-output level instead of
+  // asserting on the removed internal mechanism.
+  it("Bold survives an intervening focus change between mousedown and click (FR27/29)", async () => {
+    const onChange = vi.fn();
+    render(<RichTextEditor value="hello world" onChange={onChange} />);
     const editable = screen.getByRole("textbox");
     editable.focus();
-
-    // Select "world".
-    const textNode = editable.firstChild as Text;
-    const range = document.createRange();
-    range.setStart(textNode, 6);
-    range.setEnd(textNode, 11);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
+    fireEvent.keyDown(editable, { key: "a", code: "KeyA", ctrlKey: true });
 
     // Simulate the toolbar's mousedown firing first (preventDefault keeps
     // focus/selection intact) — this is what the component wires up.
@@ -228,17 +244,15 @@ describe("RichTextEditor", () => {
     document.body.appendChild(outside);
     try {
       outside.focus();
-      sel?.removeAllRanges();
 
       fireEvent.click(screen.getByRole("button", { name: /bold/i }));
 
-      expect(execSpy).toHaveBeenCalledWith("bold", false, undefined);
-      // The selection must have been restored onto the editable before exec ran.
-      const restored = window.getSelection();
-      expect(restored?.toString()).toBe("world");
+      await waitFor(() => {
+        const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+        expect(last).toBe("<p><b>hello world</b></p>");
+      });
     } finally {
       document.body.removeChild(outside);
-      execSpy.mockRestore();
     }
   });
 
@@ -336,27 +350,12 @@ describe("RichTextEditor", () => {
     execSpy.mockRestore();
   });
 
+  // No execCommand mock needed any more: a text/plain-only paste with no
+  // text/html data is never routed through our code at all — ProseMirror's
+  // own default paste handling inserts it as a literal text node before our
+  // component sees it (see RichTextEditor.tsx's transformPastedHTML
+  // comment), so angle brackets can't become markup without any code here.
   it("does not parse angle brackets in plain-text paste as markup (prevents XSS)", async () => {
-    const execSpy = vi.spyOn(document, "execCommand").mockImplementation((cmd, _ui, arg) => {
-      // For insertText, append the literal text to the editor.
-      if (cmd === "insertText" && typeof arg === "string") {
-        const editable = document.querySelector('[contenteditable="true"]');
-        if (editable) {
-          // insertText should insert literal text, not parse markup.
-          const text = document.createTextNode(arg);
-          editable.appendChild(text);
-        }
-        return true;
-      }
-      // For insertHTML, set innerHTML (for HTML pastes).
-      if (cmd === "insertHTML" && typeof arg === "string") {
-        const editable = document.querySelector('[contenteditable="true"]');
-        if (editable) editable.innerHTML = arg;
-        return true;
-      }
-      return true;
-    });
-
     const onChange = vi.fn();
     render(<RichTextEditor value="" onChange={onChange} />);
     const editable = screen.getByRole("textbox");
@@ -374,14 +373,7 @@ describe("RichTextEditor", () => {
 
     editable.dispatchEvent(pasteEvent);
 
-    // The inserted text must be literal, not parsed as markup.
-    // Verify: should call insertText (not insertHTML) and the text should be literal.
     await waitFor(() => {
-      // execCommand should have been called with insertText for plain text
-      const insertTextCalls = execSpy.mock.calls.filter(([cmd]) => cmd === "insertText");
-      expect(insertTextCalls.length).toBeGreaterThan(0);
-      expect(insertTextCalls[insertTextCalls.length - 1][2]).toBe(plainTextWithTags);
-
       // Verify no actual <div> element was created (text should be escaped/literal)
       const divElements = editable.querySelectorAll("div");
       expect(divElements.length).toBe(0); // The <div> in the plain text should NOT be parsed
@@ -389,8 +381,6 @@ describe("RichTextEditor", () => {
       // Verify the literal text is present in the editor
       expect(editable.textContent).toContain(plainTextWithTags);
     });
-
-    execSpy.mockRestore();
   });
 
   it("preserves clean HTML with allowed tags on paste", async () => {
@@ -432,21 +422,20 @@ describe("RichTextEditor", () => {
   });
 
   it("preserves <br> and <p> line breaks on paste (FB-24)", async () => {
-    const execSpy = vi.spyOn(document, "execCommand").mockImplementation((cmd, _ui, arg) => {
-      if (cmd === "insertHTML" && typeof arg === "string") {
-        const editable = document.querySelector('[contenteditable="true"]');
-        if (editable) editable.innerHTML = arg;
-        return true;
-      }
-      return true;
-    });
-
     const onChange = vi.fn();
     render(<RichTextEditor value="" onChange={onChange} />);
     const editable = screen.getByRole("textbox");
     editable.focus();
 
-    const html = "<p>line one</p><p>line two</p><br>";
+    // A <br> must sit inside a block to be schema-valid (TipTap's doc
+    // requires block-level content at the top level) — a bare/trailing <br>
+    // with nothing after it collapses into the same "trailing break" marker
+    // an empty paragraph gets for free, and is not serialized by getHTML().
+    // That is a real, if narrow, behaviour change from the old execCommand
+    // engine (which inserted any given HTML unconditionally, schema or
+    // not); a <br> that actually separates two runs of text — the
+    // realistic FB-24 shape — still survives, which is what this asserts.
+    const html = "<p>line one</p><p>line two<br>line three</p>";
     const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
     Object.defineProperty(pasteEvent, "clipboardData", {
       value: {
@@ -460,11 +449,38 @@ describe("RichTextEditor", () => {
       const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0];
       expect(lastCall).toBeDefined();
       expect(lastCall).toContain("<p>line one</p>");
-      expect(lastCall).toContain("<p>line two</p>");
-      expect(lastCall).toContain("<br>");
+      expect(lastCall).toContain("line two<br>line three");
+    });
+  });
+
+  // Task 18 wired Table/TableRow/TableHeader/TableCell into the schema, so a
+  // pasted <table> now has somewhere to go instead of collapsing to text.
+  it("keeps a pasted table with colspan intact (FR-38) — restore in Task 18", async () => {
+    const onChange = vi.fn();
+    render(<RichTextEditor value="" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+
+    const tableHtml = '<table><thead><tr><th>Header</th></tr></thead><tbody><tr><td colspan="2">Cell</td></tr></tbody></table>';
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        getData: (type: string) => (type === "text/html" ? tableHtml : ""),
+      },
     });
 
-    execSpy.mockRestore();
+    editable.dispatchEvent(pasteEvent);
+
+    // Assert against the parsed DOM rather than a literal HTML substring —
+    // the Table extension's renderHTML always emits a colgroup + inline
+    // sizing style on <table> (prosemirror-tables' own rendering, unrelated
+    // to paste sanitisation), so the serialized string is no longer the bare
+    // "<table>" this assertion predates. The structural claim FR-38 actually
+    // cares about — the table survived, colspan intact — holds regardless.
+    await waitFor(() => {
+      expect(editable.querySelector("table")).not.toBeNull();
+      expect(editable.querySelector('[colspan="2"]')).not.toBeNull();
+    });
   });
 
   it("removes disallowed tags (e.g., script) on paste", async () => {
@@ -503,5 +519,337 @@ describe("RichTextEditor", () => {
     });
 
     execSpy.mockRestore();
+  });
+});
+
+describe("RichTextEditor tables (Task 18)", () => {
+  it("Insert table adds a 3x3 table with a header row", async () => {
+    render(<RichTextEditor value="" onChange={vi.fn()} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+
+    fireEvent.click(screen.getByRole("button", { name: /insert table/i }));
+
+    await waitFor(() => {
+      expect(editable.querySelectorAll("tr").length).toBe(3);
+      expect(editable.querySelectorAll("tr")[0].children.length).toBe(3);
+      expect(editable.querySelectorAll("th").length).toBe(3);
+    });
+  });
+
+  it("Add row and Add column grow the table from the toolbar", async () => {
+    render(<RichTextEditor value="" onChange={vi.fn()} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+    fireEvent.click(screen.getByRole("button", { name: /insert table/i }));
+    await waitFor(() => expect(editable.querySelector("table")).not.toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: /^add row$/i }));
+    expect(editable.querySelectorAll("tr").length).toBe(4);
+
+    fireEvent.click(screen.getByRole("button", { name: /^add column$/i }));
+    expect(editable.querySelectorAll("tr")[0].children.length).toBe(4);
+  });
+
+  it("Delete row and Delete column shrink the table, leaving the header row intact", async () => {
+    render(<RichTextEditor value="" onChange={vi.fn()} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+    fireEvent.click(screen.getByRole("button", { name: /insert table/i }));
+    await waitFor(() => expect(editable.querySelector("table")).not.toBeNull());
+
+    // Tab (goToNextCell) from the first header cell four times lands the
+    // caret in the second row's first body cell — jsdom has no
+    // posAtCoords, so a mouse-driven click into a specific cell (real
+    // browser navigation) can't be simulated; Tab is a real keymap binding
+    // registered by the Table extension (goToNextCell), not a test-only path.
+    for (let i = 0; i < 4; i++) {
+      fireEvent.keyDown(editable, { key: "Tab", code: "Tab" });
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: /^delete row$/i }));
+    expect(editable.querySelectorAll("tr").length).toBe(2);
+    expect(editable.querySelectorAll("th").length).toBe(3);
+
+    fireEvent.click(screen.getByRole("button", { name: /^delete column$/i }));
+    expect(editable.querySelectorAll("tr")[0].children.length).toBe(2);
+  });
+
+  it("Merge cells and Split cell toggle colspan from the toolbar", async () => {
+    const onChange = vi.fn();
+    render(<RichTextEditor value="" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+    fireEvent.click(screen.getByRole("button", { name: /insert table/i }));
+    await waitFor(() => expect(editable.querySelector("table")).not.toBeNull());
+
+    // Extend the cell selection rightward — the Shift-ArrowRight cell
+    // selection extension registered by prosemirror-tables' tableEditing
+    // plugin, not a test-only shortcut.
+    fireEvent.keyDown(editable, { key: "ArrowRight", code: "ArrowRight", shiftKey: true });
+    fireEvent.click(screen.getByRole("button", { name: /merge cells/i }));
+
+    await waitFor(() => {
+      expect(editable.querySelector('[colspan="2"]')).not.toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /split cell/i }));
+
+    await waitFor(() => {
+      expect(editable.querySelector('[colspan="2"]')).toBeNull();
+    });
+  });
+});
+
+// --- FR-42: the epic's real acceptance is save+reload survival, not a
+// post-insert DOM check. This bridges the actual production RichTextEditor
+// component (toolbar-driven insert + merge) through the REAL Go
+// sanitizeQuestionBody and back through the actual RichContent component —
+// mirroring Task 16's spike (tiptap-spike.test.tsx), whose bridge-file
+// helpers are duplicated here rather than imported: that file is a Task 16
+// artifact explicitly marked "do not modify", and the bridge is a few dozen
+// lines of throwaway plumbing, not a shared abstraction worth extracting for
+// two call sites.
+describe("RichTextEditor + RichContent — table save+reload proof (FR-42)", () => {
+  const BACKEND_DIR = join(__dirname, "..", "..", "..", "backend");
+  const BRIDGE_TEST_NAME = "TestSanitizeQuestionBodyBridge";
+  function sanitizeViaRealGoSanitizer(html: string): string {
+    const dir = mkdtempSync(join(tmpdir(), "task18-roundtrip-"));
+    const inPath = join(dir, "in.html");
+    const outPath = join(dir, "out.html");
+    writeFileSync(inPath, html, "utf8");
+      execFileSync(
+        "bash",
+        [
+          "-lc",
+          `if [ -z "$GOROOT" ] || [ ! -x "$GOROOT/bin/go" ]; then export GOROOT="$(ls -d /opt/homebrew/Cellar/go/*/libexec 2>/dev/null | sort -V | tail -n1)"; fi; cd "${BACKEND_DIR}" && go test ./internal/service/... -run '^${BRIDGE_TEST_NAME}$' -v`,
+        ],
+        { env: { ...process.env, SANITIZE_BRIDGE_IN: inPath, SANITIZE_BRIDGE_OUT: outPath }, stdio: "pipe" },
+      );
+    const result = readFileSync(outPath, "utf8");
+    rmSync(dir, { recursive: true, force: true });
+    return result;
+  }
+
+  it(
+    "a table merged via the toolbar survives getHTML -> real Go sanitizeQuestionBody -> RichContent render, colspan intact",
+    async () => {
+      const onChange = vi.fn();
+      render(<RichTextEditor value="" onChange={onChange} />);
+      const editable = screen.getByRole("textbox");
+      editable.focus();
+
+      fireEvent.click(screen.getByRole("button", { name: /insert table/i }));
+      await waitFor(() => expect(editable.querySelector("table")).not.toBeNull());
+
+      fireEvent.keyDown(editable, { key: "ArrowRight", code: "ArrowRight", shiftKey: true });
+      fireEvent.click(screen.getByRole("button", { name: /merge cells/i }));
+      await waitFor(() => expect(editable.querySelector('[colspan="2"]')).not.toBeNull());
+
+      // This is the "save": the exact string RichTextEditor hands its
+      // caller via onChange, which QuestionEditor persists to the backend.
+      const savedHtml = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+      expect(savedHtml).toContain('colspan="2"');
+
+      // This is the server round-trip: the REAL Go sanitizer, not a JS
+      // reimplementation of its allowlist.
+      const sanitized = sanitizeViaRealGoSanitizer(savedHtml);
+      expect(sanitized).toContain('colspan="2"');
+      expect(sanitized).toContain("<table>");
+      expect(sanitized).not.toContain("colgroup");
+      expect(sanitized).not.toContain("style=");
+
+      // This is the "reload": the actual RichContent component, not a
+      // hand-rolled parse.
+      const { container } = render(<RichContent html={sanitized} />);
+      await waitFor(() => {
+        const merged = container.querySelector('[data-rich-content] [colspan="2"]');
+        expect(merged).not.toBeNull();
+      });
+    },
+    // Matches tiptap-spike.test.tsx's GO_BRIDGE_TIMEOUT_MS. The go-test bridge
+    // recompiles internal/service, and CI's frontend job has no Go build cache:
+    // 30s passes warm locally and times out cold on CI.
+    120_000,
+  );
+});
+
+// Task 19 (FR-44/FR-45/FR-46): live in-editor math via
+// @tiptap/extension-mathematics's InlineMath node, with its default
+// serialisation overridden so storage stays plain "\(latex\)" text.
+//
+// Exercised against a bare Editor built from the exact InlineMathText export
+// RichTextEditor.tsx wires in — not a React-level simulation — because
+// jsdom cannot drive the real keystroke-detection path
+// (MutationObserver-based DOM diffing) TipTap's input rules rely on to fire
+// from an actual keypress. `applyInputRules: true` on `insertContent` is
+// TipTap's own supported hook for simulating that same trigger
+// (@tiptap/core's inputRulesPlugin reads the `applyInputRules` transaction
+// meta it sets), so this exercises the real InputRule handler, not a
+// hand-rolled substitute. See tiptap-spike.test.tsx for the precedent of
+// testing a TipTap extension against a bare Editor instead of the full
+// React component.
+describe("RichTextEditor — live math (Task 19)", () => {
+  // Bare-Editor instances mount their contentEditable directly onto
+  // document.body (mirroring tiptap-spike.test.tsx) rather than into a
+  // React tree, so testing-library's automatic cleanup() between tests
+  // never touches them — left unremoved, a leftover contenteditable (which
+  // carries TipTap's own default role="textbox") makes screen.getByRole in
+  // later component-level tests ambiguous. Track and tear down every one.
+  let mounted: { editor: Editor; element: HTMLElement }[] = [];
+
+  function createMathTestEditor(content: string) {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const editor = new Editor({
+      element,
+      extensions: [StarterKit, InlineMathText],
+      content,
+    });
+    mounted.push({ editor, element });
+    return editor;
+  }
+
+  afterEach(() => {
+    for (const { editor, element } of mounted) {
+      editor.destroy();
+      element.remove();
+    }
+    mounted = [];
+  });
+
+  it("typing \\(x^2\\) converts to a live KaTeX-rendered node in the editing surface, not literal text (FR-44)", async () => {
+    const editor = createMathTestEditor("<p></p>");
+
+    editor.chain().insertContent("\\(x^2\\)", { applyInputRules: true }).run();
+
+    await waitFor(() => {
+      expect(editor.view.dom.querySelector(".katex")).not.toBeNull();
+      expect(editor.view.dom.textContent).not.toContain("\\(x^2\\)");
+    });
+  });
+
+  it("a math node's storage HTML round-trips byte-identical to plain \\(latex\\) text (FR-44)", () => {
+    const editor = createMathTestEditor("<p></p>");
+    editor.commands.insertInlineMath({ latex: "x^2" });
+
+    const stored = getStorageHtml(editor);
+    expect(stored).toContain("\\(x^2\\)");
+    expect(stored).not.toContain("<span");
+  });
+
+  // The point of this task's design (spec.md FR-44): if InlineMathText's
+  // renderHTML override is ever lost — e.g. a future TipTap upgrade changes
+  // internal behaviour the override relied on — this must go red instead of
+  // the app quietly writing an unsanitisable format. Deliberately asserts on
+  // getStorageHtml's string output, not the editing-surface DOM: an editor
+  // that escapes a backslash still looks correct on screen while silently
+  // corrupting every stored equation. Because renderHTML and parseHTML live
+  // on the same node type, reverting the override would make even
+  // legacy-shaped `<span data-type="inline-math">` input serialize back out
+  // through the (now default) renderHTML too — there is no separate code
+  // path to pin down; this test IS the pinned-down behaviour.
+  it("never emits data-type=\"inline-math\", data-type=\"block-math\", or tiptap-mathematics-render in storage (FR-44 anti-quiet-failure guard)", () => {
+    const editor = createMathTestEditor("<p></p>");
+    editor.commands.insertInlineMath({ latex: "x^2" });
+
+    const stored = getStorageHtml(editor);
+    expect(stored).not.toContain('data-type="inline-math"');
+    expect(stored).not.toContain('data-type="block-math"');
+    expect(stored).not.toContain("tiptap-mathematics-render");
+  });
+
+  it("loading a body with legacy \\(latex\\) text renders it as math, not literal text (FR-46)", async () => {
+    const editor = createMathTestEditor("<p>Solve \\(x^2\\) and \\(\\frac{1}{2}\\) now</p>");
+
+    migrateLegacyInlineMath(editor);
+
+    await waitFor(() => {
+      expect(editor.view.dom.querySelectorAll(".katex").length).toBe(2);
+    });
+    expect(editor.view.dom.textContent).not.toContain("\\(x^2\\)");
+    expect(editor.view.dom.textContent).not.toContain("\\(\\frac{1}{2}\\)");
+
+    // And storage is unchanged by the migration — still plain text.
+    const stored = getStorageHtml(editor);
+    expect(stored).toContain("\\(x^2\\)");
+    expect(stored).toContain("\\(\\frac{1}{2}\\)");
+    expect(stored).not.toContain("<span");
+  });
+
+  // A closing paren inside the latex body is extremely common in this app's content
+  // (\sin(x), f(x), \left(a+b\right)). The delimiter is the 2-char sequence \) — a bare
+  // ) must not terminate the match, or these sit in the editor as literal text.
+  it.each([
+    ["\\(\\sin(x)\\)", "\\sin(x)"],
+    ["\\(f(x)\\)", "f(x)"],
+    ["\\(\\left(a+b\\right)\\)", "\\left(a+b\\right)"],
+  ])("legacy math containing a closing paren still becomes live math: %s (FR-46)", async (stored, _latex) => {
+    const editor = createMathTestEditor(`<p>Given ${stored} solve</p>`);
+
+    migrateLegacyInlineMath(editor);
+
+    await waitFor(() => {
+      expect(editor.view.dom.querySelectorAll(".katex").length).toBe(1);
+    });
+    expect(editor.view.dom.textContent).not.toContain(stored);
+    // Storage round-trips byte-identically — the paren must survive too.
+    expect(getStorageHtml(editor)).toContain(stored);
+  });
+
+  it("two adjacent equations each containing parens migrate separately, not as one blob (FR-46)", async () => {
+    const editor = createMathTestEditor("<p>\\(f(x)\\) and \\(g(y)\\)</p>");
+
+    migrateLegacyInlineMath(editor);
+
+    await waitFor(() => {
+      expect(editor.view.dom.querySelectorAll(".katex").length).toBe(2);
+    });
+    const stored = getStorageHtml(editor);
+    expect(stored).toContain("\\(f(x)\\)");
+    expect(stored).toContain("\\(g(y)\\)");
+    expect(stored).not.toContain("<span");
+  });
+
+  it("the allowlist is not widened to accommodate math (FR-45): span/data-type/data-latex/class stay off QUESTION_BODY_ALLOWED_TAGS", () => {
+    expect(QUESTION_BODY_ALLOWED_TAGS).not.toContain("span");
+    for (const forbidden of ["class", "data-type", "data-latex"]) {
+      expect(QUESTION_BODY_ALLOWED_TAGS).not.toContain(forbidden);
+    }
+  });
+
+  it("@tiptap/extension-mathematics is pinned to an exact version in package.json (no ^)", () => {
+    const pkg = JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8"));
+    expect(pkg.dependencies["@tiptap/extension-mathematics"]).toBe("3.29.2");
+  });
+});
+
+// Component-level proof of FR-46: the actual RichTextEditor, mounted with a
+// `value` shaped like a real pre-existing question body, renders its math —
+// not just the bare-Editor harness above.
+describe("RichTextEditor component — legacy math on load (Task 19, FR-46)", () => {
+  it("mounting with a body containing \\(x^2\\) renders KaTeX markup in the editing surface", async () => {
+    // Bare JSX attribute string literals don't process backslash escapes the
+    // way JS strings do (JSX treats them like HTML text) — "\\(" here would
+    // stay two literal backslashes, not one. The {"..."} expression form
+    // goes through normal JS string escaping instead.
+    render(<RichTextEditor value={"<p>Solve \\(x^2\\) please</p>"} onChange={vi.fn()} />);
+    const editable = screen.getByRole("textbox");
+
+    await waitFor(() => {
+      expect(editable.querySelector(".katex")).not.toBeNull();
+    });
+    expect(editable.textContent).not.toContain("\\(x^2\\)");
+  });
+
+  it("does not call onChange merely from migrating legacy math on mount", async () => {
+    const onChange = vi.fn();
+    render(<RichTextEditor value={"<p>Solve \\(x^2\\) please</p>"} onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+
+    await waitFor(() => {
+      expect(editable.querySelector(".katex")).not.toBeNull();
+    });
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

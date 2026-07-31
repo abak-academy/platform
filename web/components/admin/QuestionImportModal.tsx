@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -12,7 +13,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useImportBankQuestions } from "@/lib/hooks/admin-bank-questions";
+import {
+  useImportBankQuestions,
+  useDownloadQuestionImportTemplate,
+} from "@/lib/hooks/admin-bank-questions";
 import { useTranslation } from "@/lib/i18n";
 import type { AdminQuestionImportResponse } from "@/lib/types";
 
@@ -29,12 +33,29 @@ export function QuestionImportModal({ open, onOpenChange, onSuccess }: QuestionI
   const [inputKey, setInputKey] = useState(0);
 
   const importMutation = useImportBankQuestions();
+  const downloadMutation = useDownloadQuestionImportTemplate();
 
   useEffect(() => {
     setFile(null);
     setResult(null);
     setInputKey((k) => k + 1);
   }, [open]);
+
+  async function handleDownloadTemplate() {
+    try {
+      const blob = await downloadMutation.mutateAsync();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "question_import_template.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("error_generic"));
+    }
+  }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     setFile(e.target.files?.[0] ?? null);
@@ -65,6 +86,18 @@ export function QuestionImportModal({ open, onOpenChange, onSuccess }: QuestionI
         <DialogHeader>
           <DialogTitle>{t("import_questions_title")}</DialogTitle>
         </DialogHeader>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          onClick={handleDownloadTemplate}
+          disabled={downloadMutation.isPending}
+        >
+          <Download className="mr-2 size-4" />
+          {t("questions_download_template")}
+        </Button>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="grid gap-2">

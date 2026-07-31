@@ -278,7 +278,7 @@ func TestGradingRepositoryMethods(t *testing.T) {
 			t.Errorf("Answer = %v, want %q", got.Answer, "my essay answer")
 		}
 		if got.PointCorrect != 5 {
-			t.Errorf("PointCorrect = %d, want 5", got.PointCorrect)
+			t.Errorf("PointCorrect = %v, want 5", got.PointCorrect)
 		}
 		if got.Score != nil {
 			t.Errorf("Score = %v, want nil (ungraded)", got.Score)

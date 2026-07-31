@@ -588,7 +588,9 @@ func TestExam_AdminCreateQuestion_negative_point_wrong_returns_422(t *testing.T)
 	assert.Equal(t, "validation_failed", out["code"])
 }
 
-func TestExam_AdminCreateQuestion_fractional_point_correct_returns_422(t *testing.T) {
+// FR-16/FR-18: fractional point_correct is accepted end to end (handler no longer
+// coerces to int) and echoes back unchanged.
+func TestExam_AdminCreateQuestion_fractional_point_correct_returns_201(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
@@ -601,11 +603,13 @@ func TestExam_AdminCreateQuestion_fractional_point_correct_returns_422(t *testin
 		"point_correct": 1.5,
 	}
 	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+	q := out["question"].(map[string]any)
+	assert.Equal(t, 1.5, q["point_correct"])
 }
 
-func TestExam_AdminCreateQuestion_fractional_point_wrong_returns_422(t *testing.T) {
+// FR-16/FR-18: same for point_wrong.
+func TestExam_AdminCreateQuestion_fractional_point_wrong_returns_201(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
@@ -618,8 +622,9 @@ func TestExam_AdminCreateQuestion_fractional_point_wrong_returns_422(t *testing.
 		"point_wrong": 0.5,
 	}
 	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+	q := out["question"].(map[string]any)
+	assert.Equal(t, 0.5, q["point_wrong"])
 }
 
 func TestExam_AdminUpdateQuestion_replaces_options_atomically(t *testing.T) {
@@ -660,7 +665,10 @@ func TestExam_AdminUpdateQuestion_replaces_options_atomically(t *testing.T) {
 	assert.NotContains(t, keys, "a")
 }
 
-func TestExam_AdminDeleteQuestion_attached_returns_422(t *testing.T) {
+// Task 6 relaxed the old "attached to any test" refusal: a question attached
+// only to a draft test (not part of any exam, let alone a live one) is now
+// deletable, and the test_question join row goes with it via ON DELETE CASCADE.
+func TestExam_AdminDeleteQuestion_attachedToDraftTestOnly_returns_204(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
@@ -669,8 +677,12 @@ func TestExam_AdminDeleteQuestion_attached_returns_422(t *testing.T) {
 	qID := seedQuestion(t, env, testID, "essay", "explain", 1)
 
 	resp, out := doJSONBody(t, env, http.MethodDelete, "/api/v1/admin/questions/"+qID, nil, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "body=%v", out)
+
+	ctx := context.Background()
+	var exists bool
+	require.NoError(t, env.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM question WHERE id = $1)`, qID).Scan(&exists))
+	assert.False(t, exists)
 }
 
 func TestExam_AdminCreateBankQuestion_returns_201_and_no_attachment(t *testing.T) {
@@ -1673,6 +1685,86 @@ func TestExam_QuestionAudioURL_persists_and_reads_back(t *testing.T) {
 	require.Len(t, questionsData, 1)
 	detailedQuestion := questionsData[0].(map[string]any)["question"].(map[string]any)
 	assert.Equal(t, "https://example.com/clip.mp3", detailedQuestion["audio_url"], "test detail should return audio_url")
+}
+
+// TestExam_TrueFalseStatements_persist_and_read_back covers the same regression shape as
+// audio_url above, for true_false statements (FR-29): the child rows are written by
+// CreateQuestionTx/UpdateQuestionTx, but each read path has to hydrate them separately.
+// Dropping the hydration in ListQuestions leaves the admin test-detail page with a
+// statement-less true_false question while the bank list still looks correct.
+func TestExam_TrueFalseStatements_persist_and_read_back(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	body := map[string]any{
+		"format": "true_false",
+		"body":   "Decide whether each statement is true.",
+		"statements": []map[string]any{
+			{"index": 1, "body": "Water boils at 100C at sea level.", "is_true": true},
+			{"index": 2, "body": "The sun orbits the earth.", "is_true": false},
+			{"index": 3, "body": "Jakarta is the capital of Indonesia.", "is_true": true},
+		},
+		"point_correct": 1,
+		"point_wrong":   0.5,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/questions", body, token)
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+
+	questionData := out["question"].(map[string]any)
+	questionID := questionData["id"].(string)
+
+	assertStatements := func(t *testing.T, q map[string]any, where string) {
+		t.Helper()
+		raw, ok := q["statements"]
+		require.NotNil(t, raw, "%s should return statements", where)
+		sts, ok := raw.([]any)
+		require.True(t, ok, "%s statements should be an array", where)
+		require.Len(t, sts, 3, "%s should return all 3 statements", where)
+
+		// Index order and the answer key must both survive the round trip.
+		wantBodies := []string{
+			"Water boils at 100C at sea level.",
+			"The sun orbits the earth.",
+			"Jakarta is the capital of Indonesia.",
+		}
+		wantTruth := []bool{true, false, true}
+		for i, s := range sts {
+			st := s.(map[string]any)
+			assert.Equal(t, float64(i+1), st["index"], "%s statement %d index", where, i+1)
+			assert.Equal(t, wantBodies[i], st["body"], "%s statement %d body", where, i+1)
+			assert.Equal(t, wantTruth[i], st["is_true"], "%s statement %d is_true", where, i+1)
+		}
+	}
+
+	assertStatements(t, questionData, "create response")
+
+	// Bank list read path (ListBankQuestions).
+	listResp, listOut := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions", nil, token)
+	require.Equal(t, http.StatusOK, listResp.StatusCode)
+	items := listOut["data"].([]any)
+	var found map[string]any
+	for _, item := range items {
+		q := item.(map[string]any)["question"].(map[string]any)
+		if q["id"] == questionID {
+			found = q
+			break
+		}
+	}
+	require.NotNil(t, found, "created question should appear in bank list")
+	assertStatements(t, found, "bank list")
+
+	// Test-detail read path (ListQuestions via GetTestDetail).
+	testID := seedTest(t, env, "True False Test", "science", "general", 30)
+	attachResp, _ := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions/attach", map[string]any{"question_id": questionID}, token)
+	require.Equal(t, http.StatusNoContent, attachResp.StatusCode)
+
+	detailResp, detailOut := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests/"+testID, nil, token)
+	require.Equal(t, http.StatusOK, detailResp.StatusCode)
+	questionsData := detailOut["questions"].([]any)
+	require.Len(t, questionsData, 1)
+	detailedQuestion := questionsData[0].(map[string]any)["question"].(map[string]any)
+	assertStatements(t, detailedQuestion, "test detail")
 }
 
 // TestExam_MultiBlankQuestion_non_multi_blank_has_empty_blanks tests that non-multi_blank

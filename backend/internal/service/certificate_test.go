@@ -292,6 +292,40 @@ func TestCertificateSessionValues_DerivesDynamicTokens(t *testing.T) {
 	}
 }
 
+// FR-35: certificate max_score must reflect a true_false question's statement
+// count x point_correct and a multi_blank question's blank count x point_correct,
+// not a flat point_correct per question — proven through certificateSessionValues,
+// the same shared questionMaxPoints helper topicBreakdown and the leaderboard use.
+func TestCertificateSessionValues_TrueFalseAndMultiBlank_maxScoreUsesSharedHelper_FR35(t *testing.T) {
+	sess := &model.ExamSession{StartedAt: time.Now(), Score: floatPtr(7)}
+	tfID := uuid.New()
+	mbID := uuid.New()
+	questions := []model.QuestionWithOptions{
+		{
+			Question: model.Question{ID: tfID, Format: "true_false", PointCorrect: 1, Statements: []model.QuestionStatement{
+				{QuestionID: tfID, Index: 1, Body: "s1", IsTrue: true},
+				{QuestionID: tfID, Index: 2, Body: "s2", IsTrue: false},
+				{QuestionID: tfID, Index: 3, Body: "s3", IsTrue: true},
+				{QuestionID: tfID, Index: 4, Body: "s4", IsTrue: false},
+			}},
+		},
+		{
+			Question: model.Question{ID: mbID, Format: "multi_blank", PointCorrect: 1},
+			Blanks: []model.QuestionBlank{
+				{QuestionID: mbID, Index: 1, CorrectAnswer: "a"},
+				{QuestionID: mbID, Index: 2, CorrectAnswer: "b"},
+				{QuestionID: mbID, Index: 3, CorrectAnswer: "c"},
+			},
+		},
+	}
+
+	got := certificateSessionValues(sess, questions, -1, -1)
+
+	if got["max_score"] != "7" {
+		t.Errorf("max_score: want %q (4 true_false + 3 multi_blank), got %q", "7", got["max_score"])
+	}
+}
+
 func TestLayoutUsesToken_FindsSensitiveTokenInMixedCopy(t *testing.T) {
 	layout := Layout{Page: Page{WidthMm: 297, HeightMm: 210}, Fields: []LayoutField{{
 		ID: "score", Kind: "text", Content: "Final score: {{score}}", XMm: 10, YMm: 10, WMm: 100, Visible: true,

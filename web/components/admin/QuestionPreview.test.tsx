@@ -284,4 +284,42 @@ describe("QuestionPreview", () => {
     expect(screen.getByText("answer1")).toBeInTheDocument();
     expect(screen.getByText("answer2")).toBeInTheDocument();
   });
+
+  it("renders true_false question with statements and their authored truth values (FR-31)", () => {
+    const trueFalseItem: BankQuestionListItem = {
+      question: {
+        id: "q4",
+        format: "true_false",
+        body: "Which of the following are true?",
+        difficulty: "easy",
+        point_correct: 1,
+        point_wrong: 0.5,
+        sort_order: 1,
+        statements: [
+          { index: 1, body: "Jakarta is the capital of Indonesia", is_true: true },
+          { index: 2, body: "The sun orbits the Earth", is_true: false },
+        ],
+      },
+      options: [],
+      attached_count: 0,
+    };
+    renderWithClient(
+      <QuestionPreview
+        item={trueFalseItem}
+        open={true}
+        onOpenChange={onOpenChange}
+        onEdit={onEdit}
+      />
+    );
+    // No mcq/multi_answer options section
+    expect(screen.queryByText("tests_field_option_is_correct")).toBeNull();
+    // Both statement bodies render
+    expect(
+      screen.getByText("Jakarta is the capital of Indonesia")
+    ).toBeInTheDocument();
+    expect(screen.getByText("The sun orbits the Earth")).toBeInTheDocument();
+    // Truth values render as admin-only labels
+    expect(screen.getByText("tests_field_statement_is_true")).toBeInTheDocument();
+    expect(screen.getByText("tests_field_statement_is_false")).toBeInTheDocument();
+  });
 });

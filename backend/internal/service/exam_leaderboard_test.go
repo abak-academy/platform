@@ -221,7 +221,7 @@ func (s *shimSessionService) GetExamAnalytics(ctx context.Context, examID uuid.U
 		return model.ExamAnalytics{}, err
 	}
 
-	maxPossible := 0
+	maxPossible := 0.0
 	for _, td := range tests {
 		for _, q := range td.Questions {
 			maxPossible += q.Question.PointCorrect
@@ -237,7 +237,7 @@ func (s *shimSessionService) GetExamAnalytics(ctx context.Context, examID uuid.U
 	}
 
 	if maxPossible > 0 {
-		maxF := float64(maxPossible)
+		maxF := maxPossible
 		for _, sc := range scores {
 			pct := (sc / maxF) * 100
 			switch {
@@ -685,5 +685,65 @@ func TestGetExamAnalytics_ZeroMaxPossible(t *testing.T) {
 		if b.Count != 0 {
 			t.Errorf("bucket %q: want count 0 (maxPossible=0), got %d", b.Label, b.Count)
 		}
+	}
+}
+
+// TestGetExamAnalytics_TrueFalseMaxUsesStatementCount_FR35 exercises the real
+// (*Service).GetExamAnalytics — not the shimSessionService duplicate used by the
+// tests above — against a real Postgres (NFR-8), so the exam_leaderboard.go
+// maxPossible loop's questionMaxPoints wiring is genuinely proven, not shimmed.
+// A 4-statement true_false question at point_correct=1 has max=4: a session
+// scoring 2 is 50% (bucket "41-60"). Had maxPossible stayed a flat point_correct
+// (=1), the same score of 2 would read as 200% and land in "81-100" instead —
+// the two computations are only distinguishable because the session's raw score
+// exceeds a max of 1.
+func TestGetExamAnalytics_TrueFalseMaxUsesStatementCount_FR35(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "TF analytics max "+uniqueSuffix(), "math", "algebra")
+	q := model.Question{Format: "true_false", Body: "four statements " + uniqueSuffix(), PointCorrect: 1, PointWrong: 0}
+	statements := []model.QuestionStatement{
+		{Index: 1, Body: "s1", IsTrue: true},
+		{Index: 2, Body: "s2", IsTrue: false},
+		{Index: 3, Body: "s3", IsTrue: true},
+		{Index: 4, Body: "s4", IsTrue: false},
+	}
+	created, err := svc.CreateBankQuestion(ctx, q, nil, nil, statements)
+	if err != nil {
+		t.Fatalf("CreateBankQuestion: %v", err)
+	}
+	attachQuestionDirect(t, ctx, repo, testID, created.Question.ID, 1)
+	examID := seedExamWithTestsDirect(t, ctx, repo, testID)
+
+	studentID := seedStudentDirect(t, ctx, repo, "TF Analytics Student "+uniqueSuffix(), "tfstudent"+uniqueSuffix())
+	var regID uuid.UUID
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token, status) VALUES ($1, $2, $3, 'registered') RETURNING id`,
+		studentID, examID, "TOKEN"+uniqueSuffix(),
+	).Scan(&regID); err != nil {
+		t.Fatalf("insert exam_registration: %v", err)
+	}
+	score := 2.0
+	submittedAt := time.Now()
+	if _, err := repo.Pool().Exec(ctx,
+		`INSERT INTO exam_session (registration_id, student_id, exam_id, attempt_number, started_at, status, submitted_at, score)
+		VALUES ($1, $2, $3, 1, now(), 'submitted', $4, $5)`,
+		regID, studentID, examID, submittedAt, score,
+	); err != nil {
+		t.Fatalf("insert exam_session: %v", err)
+	}
+
+	analytics, err := svc.GetExamAnalytics(ctx, examID)
+	if err != nil {
+		t.Fatalf("GetExamAnalytics: %v", err)
+	}
+
+	// Buckets are ["0-20","21-40","41-60","61-80","81-100"]; 50% falls in "41-60" (index 2).
+	if analytics.Distribution[2].Count != 1 {
+		t.Errorf("bucket 41-60: want 1 (score 2 / max 4 = 50%%), got %d", analytics.Distribution[2].Count)
+	}
+	if analytics.Distribution[4].Count != 0 {
+		t.Errorf("bucket 81-100: want 0 — a flat point_correct=1 max would wrongly place the session here (200%%), got %d", analytics.Distribution[4].Count)
 	}
 }

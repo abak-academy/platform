@@ -178,7 +178,7 @@ func (h *Handler) AdminCreateQuestion(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	out, err := h.svc.CreateQuestionForTest(c.Request().Context(), testID, q, req.toOptions(), req.toBlanks())
+	out, err := h.svc.CreateQuestionForTest(c.Request().Context(), testID, q, req.toOptions(), req.toBlanks(), req.toStatements())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -287,7 +287,7 @@ func (h *Handler) AdminUpdateQuestion(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	q.ID = qID
-	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks())
+	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks(), req.toStatements())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -369,6 +369,7 @@ func (h *Handler) AdminDeleteTopic(c echo.Context) error {
 }
 
 // AdminListBankQuestions returns the bank question list with cursor pagination (FR-14).
+// cursor is the decimal question_number of the last row of the previous page (FR-4).
 func (h *Handler) AdminListBankQuestions(c echo.Context) error {
 	limit := 20
 	if l := c.QueryParam("limit"); l != "" {
@@ -376,11 +377,17 @@ func (h *Handler) AdminListBankQuestions(c echo.Context) error {
 			limit = n
 		}
 	}
+	cursor := c.QueryParam("cursor")
+	if cursor != "" {
+		if _, err := strconv.Atoi(cursor); err != nil {
+			return badRequest(c, "cursor must be an integer")
+		}
+	}
 	filter := repository.QuestionFilter{
 		Format:  c.QueryParam("format"),
 		TopicID: c.QueryParam("topic_id"),
 		Search:  c.QueryParam("search"),
-		Cursor:  c.QueryParam("cursor"),
+		Cursor:  cursor,
 		Limit:   limit,
 	}
 
@@ -424,6 +431,19 @@ func (h *Handler) AdminImportQuestions(c echo.Context) error {
 	})
 }
 
+// AdminGetQuestionImportTemplate returns a CSV template for question import,
+// generated from the parser's own required/optional headers so it cannot drift
+// (FR-10/FR-11/FR-12).
+func (h *Handler) AdminGetQuestionImportTemplate(c echo.Context) error {
+	data, err := h.svc.BuildQuestionImportTemplate(c.Request().Context())
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="question_import_template.csv"`)
+	return c.Blob(http.StatusOK, "text/csv", data)
+}
+
 // AdminCreateBankQuestion creates a question in the bank with no test attachment (FR-9).
 func (h *Handler) AdminCreateBankQuestion(c echo.Context) error {
 	var req questionRequest
@@ -435,7 +455,7 @@ func (h *Handler) AdminCreateBankQuestion(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	out, err := h.svc.CreateBankQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks())
+	out, err := h.svc.CreateBankQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks(), req.toStatements())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -444,18 +464,20 @@ func (h *Handler) AdminCreateBankQuestion(c echo.Context) error {
 
 // questionRequest is the shared body for AdminCreateQuestion / AdminUpdateQuestion.
 type questionRequest struct {
-	Format        string          `json:"format"`
-	Body          string          `json:"body"`
-	Difficulty    *string         `json:"difficulty,omitempty"`
-	Explanation   *string         `json:"explanation,omitempty"`
-	ImageURL      *string         `json:"image_url,omitempty"`
-	AudioURL      *string         `json:"audio_url,omitempty"`
-	CorrectAnswer *string         `json:"correct_answer,omitempty"`
-	TopicID       *string         `json:"topic_id,omitempty"`
-	Options       []optionRequest `json:"options,omitempty"`
-	Blanks        []blankRequest  `json:"blanks,omitempty"`
-	PointCorrect  *float64        `json:"point_correct,omitempty"`
-	PointWrong    *float64        `json:"point_wrong,omitempty"`
+	Format          string             `json:"format"`
+	Body            string             `json:"body"`
+	Difficulty      *string            `json:"difficulty,omitempty"`
+	Explanation     *string            `json:"explanation,omitempty"`
+	ImageURL        *string            `json:"image_url,omitempty"`
+	AudioURL        *string            `json:"audio_url,omitempty"`
+	CorrectAnswer   *string            `json:"correct_answer,omitempty"`
+	AcceptedAnswers []string           `json:"accepted_answers,omitempty"`
+	TopicID         *string            `json:"topic_id,omitempty"`
+	Options         []optionRequest    `json:"options,omitempty"`
+	Blanks          []blankRequest     `json:"blanks,omitempty"`
+	Statements      []statementRequest `json:"statements,omitempty"`
+	PointCorrect    *float64           `json:"point_correct,omitempty"`
+	PointWrong      *float64           `json:"point_wrong,omitempty"`
 }
 
 type optionRequest struct {
@@ -467,26 +489,25 @@ type optionRequest struct {
 }
 
 type blankRequest struct {
-	Index         int    `json:"index"`
-	CorrectAnswer string `json:"correct_answer"`
+	Index           int      `json:"index"`
+	CorrectAnswer   string   `json:"correct_answer"`
+	AcceptedAnswers []string `json:"accepted_answers,omitempty"`
+}
+
+type statementRequest struct {
+	Index  int    `json:"index"`
+	Body   string `json:"body"`
+	IsTrue bool   `json:"is_true"`
 }
 
 func (r questionRequest) toQuestion() (model.Question, error) {
-	pointCorrect := 1
+	pointCorrect := 1.0
 	if r.PointCorrect != nil {
-		v := *r.PointCorrect
-		if float64(int(v)) != v {
-			return model.Question{}, fmt.Errorf("%w: point_correct must be an integer", service.ErrValidation)
-		}
-		pointCorrect = int(v)
+		pointCorrect = *r.PointCorrect
 	}
-	pointWrong := 0
+	pointWrong := 0.0
 	if r.PointWrong != nil {
-		v := *r.PointWrong
-		if float64(int(v)) != v {
-			return model.Question{}, fmt.Errorf("%w: point_wrong must be an integer", service.ErrValidation)
-		}
-		pointWrong = int(v)
+		pointWrong = *r.PointWrong
 	}
 
 	var topicID *uuid.UUID
@@ -498,17 +519,23 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		topicID = &tid
 	}
 
+	acceptedAnswers := r.AcceptedAnswers
+	if acceptedAnswers == nil {
+		acceptedAnswers = []string{}
+	}
+
 	return model.Question{
-		Format:        r.Format,
-		Body:          r.Body,
-		CorrectAnswer: r.CorrectAnswer,
-		Explanation:   r.Explanation,
-		Difficulty:    r.Difficulty,
-		ImageURL:      r.ImageURL,
-		AudioURL:      r.AudioURL,
-		TopicID:       topicID,
-		PointCorrect:  pointCorrect,
-		PointWrong:    pointWrong,
+		Format:          r.Format,
+		Body:            r.Body,
+		CorrectAnswer:   r.CorrectAnswer,
+		Explanation:     r.Explanation,
+		Difficulty:      r.Difficulty,
+		ImageURL:        r.ImageURL,
+		AudioURL:        r.AudioURL,
+		TopicID:         topicID,
+		PointCorrect:    pointCorrect,
+		PointWrong:      pointWrong,
+		AcceptedAnswers: acceptedAnswers,
 	}, nil
 }
 
@@ -529,9 +556,26 @@ func (r questionRequest) toOptions() []model.QuestionOption {
 func (r questionRequest) toBlanks() []model.QuestionBlank {
 	out := make([]model.QuestionBlank, 0, len(r.Blanks))
 	for _, b := range r.Blanks {
+		acceptedAnswers := b.AcceptedAnswers
+		if acceptedAnswers == nil {
+			acceptedAnswers = []string{}
+		}
 		out = append(out, model.QuestionBlank{
-			Index:         b.Index,
-			CorrectAnswer: b.CorrectAnswer,
+			Index:           b.Index,
+			CorrectAnswer:   b.CorrectAnswer,
+			AcceptedAnswers: acceptedAnswers,
+		})
+	}
+	return out
+}
+
+func (r questionRequest) toStatements() []model.QuestionStatement {
+	out := make([]model.QuestionStatement, 0, len(r.Statements))
+	for _, st := range r.Statements {
+		out = append(out, model.QuestionStatement{
+			Index:  st.Index,
+			Body:   st.Body,
+			IsTrue: st.IsTrue,
 		})
 	}
 	return out

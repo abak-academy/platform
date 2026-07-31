@@ -162,7 +162,7 @@ func TestCreateBankQuestion_roundtrips_topic_id(t *testing.T) {
 		PointCorrect: 1,
 		PointWrong:   0,
 	}
-	out, err := svc.CreateBankQuestion(ctx, q, nil, nil)
+	out, err := svc.CreateBankQuestion(ctx, q, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, out.Question.TopicID)
 	assert.Equal(t, topicID, *out.Question.TopicID)

@@ -30,7 +30,7 @@ func TestSanitizeQuestionBody_retainsTwoParagraphs(t *testing.T) {
 
 func TestValidateQuestion_rejects_break_only_body(t *testing.T) {
 	q := model.Question{Format: "essay", Body: "<br><br>   ", PointCorrect: 1}
-	err := validateQuestion(q, nil, nil)
+	err := validateQuestion(q, nil, nil, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("break-only body should return ErrValidation, got %v", err)
 	}
@@ -41,11 +41,21 @@ func TestValidateQuestion_rejects_break_only_body(t *testing.T) {
 
 func TestValidateQuestion_accepts_paragraph_body_with_text(t *testing.T) {
 	q := model.Question{Format: "essay", Body: "<p>A</p>", PointCorrect: 1}
-	if err := validateQuestion(q, nil, nil); err != nil {
+	if err := validateQuestion(q, nil, nil, nil); err != nil {
 		t.Errorf("paragraph body with real text should be accepted, got %v", err)
 	}
 }
 
+
+// --- Part C: table tags on the question-body allowlist (FR-36) ---
+
+func TestSanitizeQuestionBody_preservesTable(t *testing.T) {
+	in := `<table><thead><tr><th>Header</th></tr></thead><tbody><tr><td colspan="2">Cell</td></tr></tbody></table>`
+	got := sanitizeQuestionBody(in)
+	if got != in {
+		t.Errorf("table markup with colspan must round-trip unchanged\n in: %q\nout: %q", in, got)
+	}
+}
 
 // --- Cross-language tag-list equality (C4, FR4) ---
 

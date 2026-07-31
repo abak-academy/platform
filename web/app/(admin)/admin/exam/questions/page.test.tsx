@@ -65,11 +65,15 @@ let topicsState = {
   refetch: vi.fn(),
 };
 
+const mockDeleteMutateAsync = vi.fn();
+
 vi.mock("@/lib/hooks/admin-bank-questions", () => ({
   useBankQuestions: () => bankState,
   useCreateBankQuestion: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateBankQuestion: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteBankQuestion: () => ({ mutateAsync: mockDeleteMutateAsync, isPending: false }),
   useImportBankQuestions: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDownloadQuestionImportTemplate: () => ({ mutateAsync: vi.fn(), isPending: false }),
   adminBankQuestionsKeys: {
     all: ["admin", "bank-questions"],
     lists: () => ["admin", "bank-questions", "list"],
@@ -112,6 +116,7 @@ vi.mock("sonner", () => {
 });
 
 import { toast } from "sonner";
+import { ApiError } from "@/lib/api";
 
 function renderWithClient(ui: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -138,6 +143,7 @@ describe("QuestionBankPage", () => {
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
     (toast.info as ReturnType<typeof vi.fn>).mockReset();
+    mockDeleteMutateAsync.mockReset();
   });
 
   it("renders title, subtitle, toolbar and table with used-in column", async () => {
@@ -344,6 +350,137 @@ describe("QuestionBankPage", () => {
     const bodyCell = screen.getByText("bold text").closest("td");
     expect(bodyCell?.innerHTML).not.toContain("<b>");
     expect(bodyCell?.textContent).toBe("bold text");
+  });
+
+  it("shows question_number instead of the id prefix", async () => {
+    bankState = {
+      data: {
+        data: [
+          {
+            question: {
+              id: "11111111-2222-3333-4444-555555555555",
+              format: "mcq",
+              body: "Numbered question",
+              point_correct: 1,
+              point_wrong: 0,
+              sort_order: 1,
+              question_number: 42,
+            },
+            options: [],
+            attached_count: 0,
+          },
+        ],
+        next_cursor: "",
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      isFetching: false,
+      refetch: vi.fn(),
+    };
+
+    renderWithClient(<QuestionBankPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("42")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("11111111")).not.toBeInTheDocument();
+  });
+
+  it("does not send a delete request until the confirm control is clicked", async () => {
+    vi.stubGlobal("confirm", () => false);
+
+    renderWithClient(<QuestionBankPage />);
+
+    await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
+
+    const row = screen.getByText("What is 2+2?").closest("tr") as HTMLElement;
+    const deleteButton = within(row).getByRole("button", { name: /action_delete/i });
+    fireEvent.click(deleteButton);
+
+    expect(mockDeleteMutateAsync).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("deletes a question after confirm", async () => {
+    mockDeleteMutateAsync.mockResolvedValueOnce(undefined);
+    vi.stubGlobal("confirm", () => true);
+
+    renderWithClient(<QuestionBankPage />);
+
+    await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
+
+    const row = screen.getByText("What is 2+2?").closest("tr") as HTMLElement;
+    const deleteButton = within(row).getByRole("button", { name: /action_delete/i });
+    fireEvent.click(deleteButton);
+
+    await waitFor(() => {
+      expect(mockDeleteMutateAsync).toHaveBeenCalledWith("q1");
+      expect(toast.success).toHaveBeenCalledWith("questions_deleted");
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the server's reason on a 409 question_in_published_exam response", async () => {
+    mockDeleteMutateAsync.mockRejectedValueOnce(
+      new ApiError("question_in_published_exam", "This question is used in a live exam.", 409)
+    );
+    vi.stubGlobal("confirm", () => true);
+
+    renderWithClient(<QuestionBankPage />);
+
+    await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
+
+    const row = screen.getByText("What is 2+2?").closest("tr") as HTMLElement;
+    const deleteButton = within(row).getByRole("button", { name: /action_delete/i });
+    fireEvent.click(deleteButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("question_in_published_exam_reason");
+    });
+    expect(toast.error).not.toHaveBeenCalledWith("error_generic");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("disables the delete control for a row with in_live_exam true", async () => {
+    bankState = {
+      data: {
+        data: [
+          {
+            question: {
+              id: "q4",
+              format: "mcq",
+              body: "Live exam question",
+              point_correct: 1,
+              point_wrong: 0,
+              sort_order: 1,
+            },
+            options: [],
+            attached_count: 0,
+            in_live_exam: true,
+          },
+        ],
+        next_cursor: "",
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      isFetching: false,
+      refetch: vi.fn(),
+    };
+
+    renderWithClient(<QuestionBankPage />);
+
+    await waitFor(() => expect(screen.getByText("Live exam question")).toBeInTheDocument());
+
+    const row = screen.getByText("Live exam question").closest("tr") as HTMLElement;
+    const deleteButton = within(row).getByRole("button", { name: /action_delete/i });
+
+    expect(deleteButton).toBeDisabled();
+    expect(deleteButton).toHaveAttribute("title", "question_in_published_exam_reason");
   });
 
 });

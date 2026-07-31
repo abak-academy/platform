@@ -29,6 +29,7 @@ var validQuestionFormats = map[string]bool{
 	"fill_blank":   true,
 	"multi_blank":  true,
 	"essay":        true,
+	"true_false":   true,
 }
 
 // validModes enumerates exam.mode values (FR-1). Empty is allowed here so that
@@ -58,7 +59,7 @@ func isSectionedMode(mode string) bool { return mode == "utbk" || mode == "ielts
 // test) the three frontend render/sanitize sites. Attribute lists are NOT
 // shared — they deliberately differ per site (see exam.go's style subset vs.
 // RichTextEditor's no-style-on-paste rule).
-var questionBodyAllowedTags = []string{"b", "i", "u", "ul", "ol", "li", "sup", "sub", "img", "br", "p"}
+var questionBodyAllowedTags = []string{"b", "i", "u", "ul", "ol", "li", "sup", "sub", "img", "br", "p", "table", "thead", "tbody", "tr", "td", "th"}
 
 // questionBodyPolicy is the single allowlist used by sanitizeQuestionBody. It is
 // built once at package init and used on every write path. See sanitizeQuestionBody
@@ -67,6 +68,7 @@ var questionBodyPolicy = func() *bluemonday.Policy {
 	p := bluemonday.NewPolicy()
 	p.AllowElements(questionBodyAllowedTags...)
 	p.AllowAttrs("src", "alt").OnElements("img")
+	p.AllowAttrs("colspan", "rowspan").OnElements("td", "th")
 	// Restricted style: only a safe subset is allowed, and "position" is
 	// explicitly rejected by handler (covers "position:fixed" and any
 	// other value). url() in style is rejected wholesale — images carry
@@ -132,6 +134,18 @@ func sanitizeQuestionOptions(options []model.QuestionOption) []model.QuestionOpt
 	return sanitized
 }
 
+// sanitizeQuestionStatements sanitizes the Body field of each true_false statement
+// using the same policy as sanitizeQuestionBody. Called at every write path so the
+// persisted value is the sanitized one, exactly as option text already is.
+func sanitizeQuestionStatements(statements []model.QuestionStatement) []model.QuestionStatement {
+	sanitized := make([]model.QuestionStatement, len(statements))
+	for i, st := range statements {
+		sanitized[i] = st
+		sanitized[i].Body = sanitizeQuestionBody(st.Body)
+	}
+	return sanitized
+}
+
 // extractTokensFromStem finds all {{N}} tokens in the stem and returns their
 // numeric indices in order. Returns the slice and error if any token is malformed.
 func extractTokensFromStem(body string) ([]int, error) {
@@ -184,7 +198,7 @@ func validateTokenSequence(tokens []int) error {
 // validateQuestion enforces the format-validation matrix from spec.md §4.
 // All error returns wrap ErrValidation with a sub-message so callers can
 // use errors.Is(err, ErrValidation) AND err.Error() carries the WHY.
-func validateQuestion(q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) error {
+func validateQuestion(q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) error {
 	if !validQuestionFormats[q.Format] {
 		return fmt.Errorf("%w: unknown question format: %s", ErrValidation, q.Format)
 	}
@@ -230,6 +244,9 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 		if hasCorrectAnswer {
 			return fmt.Errorf("%w: mcq cannot have correct_answer", ErrValidation)
 		}
+		if len(q.AcceptedAnswers) > 0 {
+			return fmt.Errorf("%w: mcq cannot have accepted_answers", ErrValidation)
+		}
 	case "multi_answer":
 		if len(options) < 2 {
 			return fmt.Errorf("%w: multi_answer requires at least 2 options", ErrValidation)
@@ -240,28 +257,34 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 		if hasCorrectAnswer {
 			return fmt.Errorf("%w: multi_answer cannot have correct_answer", ErrValidation)
 		}
+		if len(q.AcceptedAnswers) > 0 {
+			return fmt.Errorf("%w: multi_answer cannot have accepted_answers", ErrValidation)
+		}
 	case "short":
 		if hasOptions {
 			return fmt.Errorf("%w: short cannot have options", ErrValidation)
 		}
-		if !hasCorrectAnswer {
-			return fmt.Errorf("%w: short requires non-empty correct_answer", ErrValidation)
+		if err := validateAcceptedAnswerSet("short", effectiveAcceptedAnswers(q.AcceptedAnswers, deref(q.CorrectAnswer))); err != nil {
+			return err
 		}
 	case "fill_blank":
 		if hasOptions {
 			return fmt.Errorf("%w: fill_blank cannot have options", ErrValidation)
 		}
-		if !hasCorrectAnswer {
-			return fmt.Errorf("%w: fill_blank requires non-empty correct_answer", ErrValidation)
+		if err := validateAcceptedAnswerSet("fill_blank", effectiveAcceptedAnswers(q.AcceptedAnswers, deref(q.CorrectAnswer))); err != nil {
+			return err
 		}
 	case "multi_blank":
 		// multi_blank: stem contains {{N}} tokens, no options, no scalar correct_answer,
-		// blanks array has one entry per token with non-empty correct_answer
+		// blanks array has one entry per token with its own accepted-answer set (FR-24/26)
 		if hasOptions {
 			return fmt.Errorf("%w: multi_blank cannot have options", ErrValidation)
 		}
 		if hasCorrectAnswer {
 			return fmt.Errorf("%w: multi_blank cannot have correct_answer", ErrValidation)
+		}
+		if len(q.AcceptedAnswers) > 0 {
+			return fmt.Errorf("%w: multi_blank cannot have accepted_answers", ErrValidation)
 		}
 
 		tokens, err := extractTokensFromStem(q.Body)
@@ -277,8 +300,9 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 		}
 
 		for i, blank := range blanks {
-			if strings.TrimSpace(blank.CorrectAnswer) == "" {
-				return fmt.Errorf("%w: blank at index %d has empty correct_answer", ErrValidation, i)
+			label := fmt.Sprintf("blank at index %d", i)
+			if err := validateAcceptedAnswerSet(label, effectiveAcceptedAnswers(blank.AcceptedAnswers, blank.CorrectAnswer)); err != nil {
+				return err
 			}
 		}
 	case "essay":
@@ -288,17 +312,94 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 		if hasCorrectAnswer {
 			return fmt.Errorf("%w: essay cannot have correct_answer", ErrValidation)
 		}
+		if len(q.AcceptedAnswers) > 0 {
+			return fmt.Errorf("%w: essay cannot have accepted_answers", ErrValidation)
+		}
+	case "true_false":
+		// true_false: statements are a child table, no options/blanks/correct_answer/
+		// accepted_answers (FR-29); at least 2 statements with contiguous 1..N indices
+		// and non-empty bodies (FR-30).
+		if hasOptions {
+			return fmt.Errorf("%w: true_false cannot have options", ErrValidation)
+		}
+		if len(blanks) > 0 {
+			return fmt.Errorf("%w: true_false cannot have blanks", ErrValidation)
+		}
+		if hasCorrectAnswer {
+			return fmt.Errorf("%w: true_false cannot have correct_answer", ErrValidation)
+		}
+		if len(q.AcceptedAnswers) > 0 {
+			return fmt.Errorf("%w: true_false cannot have accepted_answers", ErrValidation)
+		}
+		if len(statements) < 2 {
+			return fmt.Errorf("%w: true_false requires at least 2 statements", ErrValidation)
+		}
+
+		seenIdx := map[int]bool{}
+		for _, st := range statements {
+			if st.Index < 1 {
+				return fmt.Errorf("%w: statement index must be >= 1", ErrValidation)
+			}
+			if seenIdx[st.Index] {
+				return fmt.Errorf("%w: duplicate statement index: %d", ErrValidation, st.Index)
+			}
+			seenIdx[st.Index] = true
+			if isQuestionBodyEmpty(st.Body) {
+				return fmt.Errorf("%w: statement body cannot be empty", ErrValidation)
+			}
+		}
+		for i := 1; i <= len(statements); i++ {
+			if !seenIdx[i] {
+				return fmt.Errorf("%w: statement indices must be contiguous 1..%d; missing %d", ErrValidation, len(statements), i)
+			}
+		}
 	}
 
 	// FR-S5-02: point_correct/point_wrong are unsigned magnitudes; the scoring
 	// engine (not the author) applies the sign for wrong answers.
-	if q.PointCorrect < 1 {
-		return fmt.Errorf("%w: point_correct must be >= 1", ErrValidation)
+	if q.PointCorrect <= 0 {
+		return fmt.Errorf("%w: point_correct must be > 0", ErrValidation)
 	}
 	if q.PointWrong < 0 {
 		return fmt.Errorf("%w: point_wrong must be >= 0", ErrValidation)
 	}
 
+	return nil
+}
+
+// effectiveAcceptedAnswers returns accepted when non-empty, else falls back to
+// a single-element set built from the legacy scalar correct-answer column
+// (e.g. the CSV importer, which never populates accepted_answers directly).
+// Mirrors the repository's read-side fallback (FR-27) so validation and reads
+// agree on what "no accepted answers" means.
+func effectiveAcceptedAnswers(accepted []string, scalar string) []string {
+	if len(accepted) > 0 {
+		return accepted
+	}
+	if strings.TrimSpace(scalar) != "" {
+		return []string{scalar}
+	}
+	return nil
+}
+
+// validateAcceptedAnswerSet enforces FR-26: at least one entry, no entry empty
+// after trimming, no duplicates after normalizeAnswer (FR-23). label identifies
+// the set in the error message (e.g. "short", "blank at index 1").
+func validateAcceptedAnswerSet(label string, answers []string) error {
+	if len(answers) == 0 {
+		return fmt.Errorf("%w: %s requires at least one accepted answer", ErrValidation, label)
+	}
+	seen := map[string]bool{}
+	for _, a := range answers {
+		if strings.TrimSpace(a) == "" {
+			return fmt.Errorf("%w: %s accepted answer cannot be empty", ErrValidation, label)
+		}
+		norm := normalizeAnswer(a)
+		if seen[norm] {
+			return fmt.Errorf("%w: %s has duplicate accepted answer after normalisation: %q", ErrValidation, label, a)
+		}
+		seen[norm] = true
+	}
 	return nil
 }
 
@@ -389,10 +490,34 @@ func (s *Service) GetTestDetail(ctx context.Context, id uuid.UUID) (model.TestDe
 }
 
 // SaveQuestion routes create vs update by q.ID == uuid.Nil.
-func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) (model.QuestionWithOptions, error) {
+func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
 	options = sanitizeQuestionOptions(options)
-	if err := validateQuestion(q, options, blanks); err != nil {
+	statements = sanitizeQuestionStatements(statements)
+
+	// FR-14: a live-exam question's format is immutable. Checked before any
+	// write, and before validateQuestion so a locked format never has to pass
+	// the new format's validation rules just to be refused.
+	if q.ID != uuid.Nil {
+		stored, err := s.storeRepo.GetQuestionByID(ctx, q.ID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return model.QuestionWithOptions{}, ErrQuestionNotFound
+			}
+			return model.QuestionWithOptions{}, err
+		}
+		if stored.Format != q.Format {
+			inLiveExam, err := s.storeRepo.IsQuestionInLiveExam(ctx, q.ID)
+			if err != nil {
+				return model.QuestionWithOptions{}, err
+			}
+			if inLiveExam {
+				return model.QuestionWithOptions{}, ErrQuestionFormatLocked
+			}
+		}
+	}
+
+	if err := validateQuestion(q, options, blanks, statements); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 
@@ -403,11 +528,11 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 	defer tx.Rollback(ctx)
 
 	if q.ID == uuid.Nil {
-		if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
+		if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks, statements); err != nil {
 			return model.QuestionWithOptions{}, err
 		}
 	} else {
-		if err := s.storeRepo.UpdateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
+		if err := s.storeRepo.UpdateQuestionTx(ctx, tx, &q, options, blanks, statements); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return model.QuestionWithOptions{}, ErrQuestionNotFound
 			}
@@ -419,16 +544,18 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 		return model.QuestionWithOptions{}, err
 	}
 
+	q.Statements = statements
 	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
 // CreateQuestionForTest creates a bank question and atomically attaches it to the
 // given test (FR-25). This preserves the existing POST /admin/tests/:id/questions
 // behavior after migration 0025 moved attachment to test_question.
-func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) (model.QuestionWithOptions, error) {
+func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
 	options = sanitizeQuestionOptions(options)
-	if err := validateQuestion(q, options, blanks); err != nil {
+	statements = sanitizeQuestionStatements(statements)
+	if err := validateQuestion(q, options, blanks, statements); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 
@@ -438,7 +565,7 @@ func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
+	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks, statements); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 	if err := s.storeRepo.AttachQuestionToTestTx(ctx, tx, testID, q.ID); err != nil {
@@ -449,6 +576,7 @@ func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q
 		return model.QuestionWithOptions{}, err
 	}
 
+	q.Statements = statements
 	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
@@ -561,10 +689,11 @@ func sameUUIDSet(a, b []uuid.UUID) bool {
 }
 
 // CreateBankQuestion creates a question in the bank with no test attachment (FR-9).
-func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) (model.QuestionWithOptions, error) {
+func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
 	options = sanitizeQuestionOptions(options)
-	if err := validateQuestion(q, options, blanks); err != nil {
+	statements = sanitizeQuestionStatements(statements)
+	if err := validateQuestion(q, options, blanks, statements); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 
@@ -574,7 +703,7 @@ func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, opti
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
+	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks, statements); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 
@@ -582,16 +711,17 @@ func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, opti
 		return model.QuestionWithOptions{}, err
 	}
 
+	q.Statements = statements
 	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
 func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
-	attached, err := s.storeRepo.CountQuestionAttachments(ctx, id)
+	inLiveExam, err := s.storeRepo.IsQuestionInLiveExam(ctx, id)
 	if err != nil {
 		return err
 	}
-	if attached > 0 {
-		return fmt.Errorf("%w: question is attached to %d test(s); detach before deleting", ErrValidation, attached)
+	if inLiveExam {
+		return ErrQuestionInLiveExam
 	}
 
 	answered, err := s.storeRepo.CountAnswerReferences(ctx, id)

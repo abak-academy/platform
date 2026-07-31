@@ -23,8 +23,8 @@ type QuestionImportRow struct {
 	Subject       string
 	Topic         string
 	Difficulty    *string
-	PointCorrect  int
-	PointWrong    int
+	PointCorrect  float64
+	PointWrong    float64
 	CorrectAnswer *string
 	Options       []model.QuestionOption
 	Error         string
@@ -43,6 +43,14 @@ type QuestionImportResultRow struct {
 	QuestionID *uuid.UUID `json:"question_id,omitempty"`
 	Error      string     `json:"error,omitempty"`
 }
+
+// QuestionImportRequiredHeaders is the required header list for question import
+// CSVs, in parser order. BuildQuestionImportTemplate reads from this same slice
+// so the parser and the generated template cannot drift (FR-11).
+var QuestionImportRequiredHeaders = []string{"format", "body", "subject", "topic", "point_correct", "point_wrong"}
+
+// optionalHeaders are the optional columns included in the generated template.
+var optionalHeaders = []string{"difficulty", "correct_answer", "option_a", "option_b", "option_c", "option_d"}
 
 // ParseQuestionImportCSV reads a question CSV. Required headers (case-insensitive):
 //   format, body, subject, topic, point_correct, point_wrong
@@ -78,8 +86,7 @@ func ParseQuestionImportCSV(data []byte) ([]QuestionImportRow, error) {
 		}
 	}
 
-	required := []string{"format", "body", "subject", "topic", "point_correct", "point_wrong"}
-	for _, h := range required {
+	for _, h := range QuestionImportRequiredHeaders {
 		if _, ok := colIndex[h]; !ok {
 			return nil, fmt.Errorf("%w: missing required header %q", ErrValidation, h)
 		}
@@ -105,8 +112,8 @@ func ParseQuestionImportCSV(data []byte) ([]QuestionImportRow, error) {
 			return strings.TrimSpace(record[idx])
 		}
 
-		pointCorrect, pcErr := parseImportInt(get("point_correct"), "point_correct")
-		pointWrong, pwErr := parseImportInt(get("point_wrong"), "point_wrong")
+		pointCorrect, pcErr := parseImportFloat(get("point_correct"), "point_correct")
+		pointWrong, pwErr := parseImportFloat(get("point_wrong"), "point_wrong")
 
 		rowErr := func() string {
 			if pcErr != nil {
@@ -166,13 +173,13 @@ func ParseQuestionImportCSV(data []byte) ([]QuestionImportRow, error) {
 	return rows, nil
 }
 
-func parseImportInt(raw, field string) (int, error) {
+func parseImportFloat(raw, field string) (float64, error) {
 	if raw == "" {
 		return 0, fmt.Errorf("%w: %s cannot be empty", ErrValidation, field)
 	}
-	v, err := strconv.Atoi(raw)
+	v, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s must be an integer", ErrValidation, field)
+		return 0, fmt.Errorf("%w: %s must be a number", ErrValidation, field)
 	}
 	return v, nil
 }
@@ -228,14 +235,14 @@ func (s *Service) ProcessQuestionImportRows(ctx context.Context, rows []Question
 
 		q.Body = sanitizeQuestionBody(q.Body)
 		sanitizedOpts := sanitizeQuestionOptions(row.Options)
-		if err := validateQuestion(q, sanitizedOpts, nil); err != nil {
+		if err := validateQuestion(q, sanitizedOpts, nil, nil); err != nil {
 			res.Status = "error"
 			res.Error = err.Error()
 			result.Rows[i] = res
 			continue
 		}
 
-		out, err := s.CreateBankQuestion(ctx, q, sanitizedOpts, nil)
+		out, err := s.CreateBankQuestion(ctx, q, sanitizedOpts, nil, nil)
 		if err != nil {
 			res.Status = "error"
 			res.Error = err.Error()
@@ -286,6 +293,57 @@ func (s *Service) ImportQuestionsFromCSV(ctx context.Context, data []byte) (Ques
 		return QuestionImportResult{}, err
 	}
 	return s.ProcessQuestionImportRows(ctx, rows)
+}
+
+// BuildQuestionImportTemplate generates a CSV template for question import: the
+// header row from QuestionImportRequiredHeaders/optionalHeaders, followed by one
+// example row. subject/topic are filled from the first existing exam_topic so
+// the template imports unedited (FR-10/FR-12); when no topic exists, placeholder
+// values are used instead.
+func (s *Service) BuildQuestionImportTemplate(ctx context.Context) ([]byte, error) {
+	subject, topic := "Math", "Arithmetic"
+	topics, err := s.storeRepo.ListTopics(ctx, repository.TopicFilter{})
+	if err != nil {
+		return nil, err
+	}
+	if len(topics) > 0 {
+		subject = topics[0].Subject
+		topic = topics[0].Name
+	}
+
+	headers := append(append([]string{}, QuestionImportRequiredHeaders...), optionalHeaders...)
+	example := map[string]string{
+		"format":         "mcq",
+		"body":           "2+2",
+		"subject":        subject,
+		"topic":          topic,
+		"point_correct":  "1",
+		"point_wrong":    "0",
+		"difficulty":     "easy",
+		"correct_answer": "a",
+		"option_a":       "4",
+		"option_b":       "5",
+		"option_c":       "6",
+		"option_d":       "7",
+	}
+
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	if err := w.Write(headers); err != nil {
+		return nil, err
+	}
+	row := make([]string, len(headers))
+	for i, h := range headers {
+		row[i] = example[h]
+	}
+	if err := w.Write(row); err != nil {
+		return nil, err
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // resolveImportTopic resolves a CSV row's (subject, topic) to an exam_topic ID.

@@ -51,14 +51,15 @@ type SessionStartPayload struct {
 }
 
 type SessionQuestion struct {
-	ID        uuid.UUID       `json:"id"`
-	TestID    uuid.UUID       `json:"test_id"`
-	Format    string          `json:"format"`
-	Body      string          `json:"body"`
-	Options   []SessionOption `json:"options"`
-	AudioURL  *string         `json:"audio_url,omitempty"`
-	Blanks    []int           `json:"blanks,omitempty"`
-	SortOrder int             `json:"sort_order"`
+	ID         uuid.UUID          `json:"id"`
+	TestID     uuid.UUID          `json:"test_id"`
+	Format     string             `json:"format"`
+	Body       string             `json:"body"`
+	Options    []SessionOption    `json:"options"`
+	AudioURL   *string            `json:"audio_url,omitempty"`
+	Blanks     []int              `json:"blanks,omitempty"`
+	Statements []SessionStatement `json:"statements,omitempty"`
+	SortOrder  int                `json:"sort_order"`
 }
 
 type SessionOption struct {
@@ -66,6 +67,14 @@ type SessionOption struct {
 	Text      string  `json:"text"`
 	ImageURL  *string `json:"image_url"`
 	SortOrder int     `json:"sort_order"`
+}
+
+// SessionStatement is the student-facing statement shape for a true_false
+// question: index and body only. IsTrue (the answer key) must never appear
+// here (NFR-5).
+type SessionStatement struct {
+	Index int    `json:"index"`
+	Body  string `json:"body"`
 }
 
 type SessionStatePayload struct {
@@ -152,6 +161,13 @@ func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
 			if q.Question.Format == "multi_blank" {
 				for _, b := range q.Blanks {
 					sq.Blanks = append(sq.Blanks, b.Index)
+				}
+			}
+			// Populate statements (index + body, never is_true) for true_false
+			// questions (FR-31, NFR-5).
+			if q.Question.Format == "true_false" {
+				for _, stmt := range q.Question.Statements {
+					sq.Statements = append(sq.Statements, SessionStatement{Index: stmt.Index, Body: stmt.Body})
 				}
 			}
 			st.Questions = append(st.Questions, sq)

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { authFetch, authFetchMultipart } from "@/lib/api";
+import { authFetch, authFetchMultipart, API_BASE, ApiError } from "@/lib/api";
 import type {
   AdminQuestionImportResponse,
   AdminQuestionInput,
@@ -99,6 +99,28 @@ export function useImportBankQuestions() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
+    },
+  });
+}
+
+// The template CSV is generated server-side from the same header list the
+// parser requires (FR-11), so the client can't build it from a literal.
+export function useDownloadQuestionImportTemplate() {
+  return useMutation({
+    mutationFn: async (): Promise<Blob> => {
+      const { useAuthStore } = await import("@/stores/auth");
+      const token = useAuthStore.getState().token;
+      const res = await fetch(`${API_BASE}/admin/questions/import-template`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        throw new ApiError(
+          `HTTP_${res.status}`,
+          `Failed to download import template: ${res.status}`,
+          res.status,
+        );
+      }
+      return res.blob();
     },
   });
 }

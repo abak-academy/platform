@@ -118,6 +118,13 @@ var (
 	ErrExamNotFound         = errors.New("exam not found")
 	ErrRegistrationNotFound = errors.New("registration not found")
 	ErrValidation           = errors.New("validation failed")
+	// ErrQuestionInLiveExam is returned when deleting a question that is
+	// attached (via test_question -> exam_test -> exam) to an exam that is
+	// live: sold through a published product, or already has a session (FR-7).
+	ErrQuestionInLiveExam = errors.New("question is in a live exam and cannot be deleted")
+	// ErrQuestionFormatLocked is returned when an update changes a live-exam
+	// question's format (FR-14). Other fields on the same question remain editable.
+	ErrQuestionFormatLocked = errors.New("question format is locked while the question is in a live exam")
 )
 
 // --- from exam_grant.go ---

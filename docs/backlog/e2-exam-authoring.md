@@ -98,6 +98,19 @@ silently diverges between the grader and the admin's expectation.
 
 Applies to `short`, `fill_blank` and `multi_blank`.
 
+**Confirmed rule (2026-07-30, see Open questions item 1 below):** normalise both the accepted answer
+and the submitted answer by — trim leading/trailing whitespace, Unicode-lowercase, then collapse
+every internal run of whitespace to one space — and report a match only on exact string equality of
+the normalised forms. No accent folding, no punctuation stripping, no number-word equivalence:
+`"2"` and `"dua"` must both be listed as accepted answers if either is to match. Implemented in
+`backend/internal/service/answer_match.go` (`normalizeAnswer` / `matchesAnyAccepted`).
+
+Persistence: `question_accepted_answer (question_id, blank_index, answer_index, answer)`, with
+`blank_index = 0` meaning question-level (`short`/`fill_blank`) and `blank_index > 0` a per-blank
+set for `multi_blank`. The legacy scalar columns (`question.correct_answer`,
+`question_blank.correct_answer`) are kept in sync — always the **first** accepted answer of the
+current set — so the result page and CSV import continue to work unchanged (FR-27).
+
 ### FB-6 — true/false with several statements per question
 
 A seventh format. Each statement is independently true or false and independently scored, which makes
@@ -134,10 +147,28 @@ destroyed data on every save.
 
 So Part C is a **replacement**, not an extension.
 
-### Library choice — OPEN
+### Library choice — DECIDED 2026-07-31: **TipTap 3.29.2**
 
-**The user is evaluating options as of 2026-07-30. Do not start implementation until it is chosen.**
-Recorded criteria, in the order they matter for this codebase:
+**Chosen and shipped.** `@tiptap/core` + `starter-kit` + the table extensions, all MIT, pinned to
+exact versions. Tables are MIT, not Pro.
+
+**Lexical was rejected on criterion 2:** its own docs state HTML serialisation is lossy and is not
+the recommended storage format, so it would force either a migration of every existing body to JSON
+or a lossy round-trip on every save — rebuilding FB-24 deliberately. **Slate was eliminated on
+criterion 1** (no official table support).
+
+Two constraints the choice carries, both now implemented:
+- **KaTeX needed no editor extension for storage.** Math is plain `\(…\)` text rendered by a
+  post-render pass in `RichContent`. Live in-editor math was added via
+  `@tiptap/extension-mathematics` with `renderHTML` **overridden so storage stays `\(latex\)` text** —
+  its default `<span data-type="inline-math">` would be stripped on save (FB-24 again).
+- **Merged cells were gated on a spike**, which passed: insert → merge → real Go `sanitizeQuestionBody`
+  → re-parse, structurally identical.
+
+⚠️ **Never widen the HTML allowlist to accommodate an editor default.** TipTap renders
+`<strong>`/`<em>` by default and neither is allowlisted; they were retagged to `<b>`/`<i>` instead.
+
+Criteria that drove the decision, in the order they matter for this codebase:
 
 | Criterion | Why it matters here |
 |---|---|
@@ -218,8 +249,8 @@ been — it was an observation made while reading the migration, turned into sco
 
 ## Open questions for the client
 
-1. FB-10 matching: are accents, punctuation and number-word equivalence (`2` / `dua` / `two`) in or
-   out? **Proposed answer, needs only a nod:** none of them. The client's own example (`2`, `dua`) is
+1. **RESOLVED (2026-07-30).** FB-10 matching: are accents, punctuation and number-word equivalence
+   (`2` / `dua` / `two`) in or out? **Answer: none of them.** The client's own example (`2`, `dua`) is
    a *list of accepted answers*, so if the admin writes both, the grader needs no language knowledge.
    Rule stays minimal and deterministic — trim, case-fold, collapse internal whitespace, then exact
    match against each listed answer. Anything else is another accepted answer, not another rule.

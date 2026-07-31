@@ -220,7 +220,7 @@ func mcqTest(testID, examID uuid.UUID) model.TestDetail {
 	}
 }
 
-func essayTest(testID uuid.UUID, pointCorrect int) (model.TestDetail, uuid.UUID) {
+func essayTest(testID uuid.UUID, pointCorrect float64) (model.TestDetail, uuid.UUID) {
 	qID := uuid.New()
 	q := model.Question{ID: qID, Format: "essay", Body: "Explain X", PointCorrect: pointCorrect, PointWrong: 0}
 	return model.TestDetail{
@@ -590,17 +590,44 @@ func TestGradeEssayAnswer_HappyPath(t *testing.T) {
 	}
 }
 
-func TestGradeEssayAnswer_NonInteger(t *testing.T) {
+// Behaviour change: a fractional grade within range is now accepted end to end.
+// It was rejected while point_correct was an integer column; since 0049 made it
+// NUMERIC, refusing decimals made full marks unreachable on a fractional-point essay.
+func TestGradeEssayAnswer_Fractional_Accepted(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
 	sessID := uuid.New()
 	qID := uuid.New()
 	svc.repo.seedEssays(sessID, []model.GradingEssayItem{{QuestionID: qID, PointCorrect: 5}})
+	svc.repo.sessionAnswers[sessID] = []model.ExamSessionAnswer{{QuestionID: qID, Answer: strPtr("my answer")}}
+	svc.repo.sessions[sessID] = &model.ExamSession{ID: sessID, Status: "submitted"}
 
-	_, err := svc.GradeEssayAnswer(ctx, sessID, qID, 2.5, nil, uuid.New())
-	if !errors.Is(err, ErrGradeOutOfRange) {
-		t.Errorf("want ErrGradeOutOfRange, got %v", err)
+	total, err := svc.GradeEssayAnswer(ctx, sessID, qID, 2.5, nil, uuid.New())
+	if err != nil {
+		t.Fatalf("want nil for a fractional grade in range, got %v", err)
+	}
+	if total != 2.5 {
+		t.Errorf("session total: got %v, want 2.5", total)
+	}
+}
+
+func TestGradeEssayAnswer_FullMarksOnFractionalPointCorrect(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	sessID := uuid.New()
+	qID := uuid.New()
+	svc.repo.seedEssays(sessID, []model.GradingEssayItem{{QuestionID: qID, PointCorrect: 2.5}})
+	svc.repo.sessionAnswers[sessID] = []model.ExamSessionAnswer{{QuestionID: qID, Answer: strPtr("my answer")}}
+	svc.repo.sessions[sessID] = &model.ExamSession{ID: sessID, Status: "submitted"}
+
+	total, err := svc.GradeEssayAnswer(ctx, sessID, qID, 2.5, nil, uuid.New())
+	if err != nil {
+		t.Fatalf("want nil awarding full marks on a 2.5-point essay, got %v", err)
+	}
+	if total != 2.5 {
+		t.Errorf("session total: got %v, want 2.5", total)
 	}
 }
 
@@ -728,8 +755,23 @@ func TestValidateGrade_EqualsMax_OK(t *testing.T) {
 	}
 }
 
-func TestValidateGrade_NonInteger_Rejected(t *testing.T) {
-	if err := validateGrade(2.5, 5); !errors.Is(err, ErrGradeOutOfRange) {
+// Behaviour change: fractional essay grades used to be rejected outright. Since
+// point_correct became fractional, an essay authored at 2.5 points could never be
+// awarded full marks — 2.5 was refused as non-integer and 3 exceeded the cap.
+func TestValidateGrade_Fractional_OK(t *testing.T) {
+	if err := validateGrade(2.5, 5); err != nil {
+		t.Errorf("want nil for a fractional grade within range, got %v", err)
+	}
+}
+
+func TestValidateGrade_FullMarksOnFractionalPointCorrect_OK(t *testing.T) {
+	if err := validateGrade(2.5, 2.5); err != nil {
+		t.Errorf("want nil awarding full marks on a 2.5-point essay, got %v", err)
+	}
+}
+
+func TestValidateGrade_FractionalExceedingFractionalMax_Rejected(t *testing.T) {
+	if err := validateGrade(2.75, 2.5); !errors.Is(err, ErrGradeOutOfRange) {
 		t.Errorf("want ErrGradeOutOfRange, got %v", err)
 	}
 }

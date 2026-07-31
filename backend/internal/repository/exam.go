@@ -73,7 +73,7 @@ func scanTestWithCount(row interface{ Scan(dest ...any) error }, t *model.Test) 
 func scanQuestion(row interface{ Scan(dest ...any) error }, q *model.Question) error {
 	var correctAnswer, explanation, difficulty, imageURL *string
 	err := row.Scan(
-		&q.ID, &q.Format, &q.Body,
+		&q.ID, &q.QuestionNumber, &q.Format, &q.Body,
 		&correctAnswer, &explanation, &difficulty, &imageURL,
 		&q.TopicID, &q.PointCorrect, &q.PointWrong,
 	)
@@ -255,7 +255,7 @@ func (r *Repository) DeleteTest(ctx context.Context, id uuid.UUID) error {
 
 func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]model.QuestionWithOptions, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, tq.sort_order
+		`SELECT q.id, q.question_number, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, tq.sort_order
 		FROM question q
 		JOIN test_question tq ON tq.question_id = q.id
 		LEFT JOIN exam_topic et ON et.id = q.topic_id
@@ -275,7 +275,7 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 		var correctAnswer, explanation, difficulty, imageURL, audioURL, topic *string
 		var topicID *uuid.UUID
 		if err := rows.Scan(
-			&q.ID, &q.Format, &q.Body,
+			&q.ID, &q.QuestionNumber, &q.Format, &q.Body,
 			&correctAnswer, &explanation, &difficulty, &imageURL, &audioURL,
 			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &sortOrder,
 		); err != nil {
@@ -326,9 +326,26 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 		return nil, err
 	}
 
+	acceptedAnswers, err := r.queryAcceptedAnswersForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	statements, err := r.queryStatementsForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	for i := range questions {
-		questions[i].Options = opts[questions[i].Question.ID]
-		questions[i].Blanks = blanks[questions[i].Question.ID]
+		qid := questions[i].Question.ID
+		questions[i].Options = opts[qid]
+		questions[i].Blanks = blanks[qid]
+		questions[i].Question.Statements = statements[qid]
+		questions[i].Question.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][0], derefString(questions[i].Question.CorrectAnswer))
+		for bi := range questions[i].Blanks {
+			b := &questions[i].Blanks[bi]
+			b.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][b.Index], b.CorrectAnswer)
+		}
 	}
 	return questions, nil
 }
@@ -398,13 +415,159 @@ func (r *Repository) queryBlanksForQuestions(ctx context.Context, questionIDs []
 	return out, nil
 }
 
-func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) error {
+func (r *Repository) queryStatementsForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID][]model.QuestionStatement, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT question_id, statement_index, body, is_true
+		FROM question_statement
+		WHERE question_id = ANY($1)
+		ORDER BY question_id, statement_index`,
+		questionIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Seed every requested id with a non-nil empty slice so non-true_false formats
+	// surface as [] not nil, consistent with options/blanks.
+	out := make(map[uuid.UUID][]model.QuestionStatement, len(questionIDs))
+	for _, id := range questionIDs {
+		out[id] = []model.QuestionStatement{}
+	}
+	for rows.Next() {
+		st := model.QuestionStatement{}
+		if err := rows.Scan(&st.QuestionID, &st.Index, &st.Body, &st.IsTrue); err != nil {
+			return nil, err
+		}
+		out[st.QuestionID] = append(out[st.QuestionID], st)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// queryAcceptedAnswersForQuestions reads question_accepted_answer for a question set,
+// keyed by question_id then blank_index (0 = question-level, mirroring
+// queryOptionsForQuestions / queryBlanksForQuestions). Every requested id is seeded with
+// a non-nil (possibly empty) inner map so callers can look up any blank_index safely.
+func (r *Repository) queryAcceptedAnswersForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID]map[int][]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT question_id, blank_index, answer
+		FROM question_accepted_answer
+		WHERE question_id = ANY($1)
+		ORDER BY question_id, blank_index, answer_index`,
+		questionIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[uuid.UUID]map[int][]string, len(questionIDs))
+	for _, id := range questionIDs {
+		out[id] = map[int][]string{}
+	}
+	for rows.Next() {
+		var qid uuid.UUID
+		var blankIndex int
+		var answer string
+		if err := rows.Scan(&qid, &blankIndex, &answer); err != nil {
+			return nil, err
+		}
+		if out[qid] == nil {
+			out[qid] = map[int][]string{}
+		}
+		out[qid][blankIndex] = append(out[qid][blankIndex], answer)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// acceptedAnswersOrFallback returns accepted when non-empty, else a single-element
+// set built from the legacy scalar correct_answer column (FR-27) — [] when both are
+// empty/unset, never nil.
+func acceptedAnswersOrFallback(accepted []string, scalar string) []string {
+	if len(accepted) > 0 {
+		return accepted
+	}
+	if scalar != "" {
+		return []string{scalar}
+	}
+	return []string{}
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// stampScalarCorrectAnswers writes the first accepted answer into the legacy scalar
+// correct_answer column — on the question and on each blank — so existing display
+// and import paths keep working unchanged (FR-27). A question/blank with no accepted
+// answers is left untouched (whatever correct_answer it already carries, if any).
+func stampScalarCorrectAnswers(q *model.Question, blanks []model.QuestionBlank) {
+	if len(q.AcceptedAnswers) > 0 {
+		first := q.AcceptedAnswers[0]
+		q.CorrectAnswer = &first
+	}
+	for i := range blanks {
+		if len(blanks[i].AcceptedAnswers) > 0 {
+			blanks[i].CorrectAnswer = blanks[i].AcceptedAnswers[0]
+		}
+	}
+}
+
+// replaceAcceptedAnswersTx deletes and reinserts question_accepted_answer rows for a
+// question — delete-then-insert, the same shape used for options and blanks.
+// blank_index 0 holds the question-level set; each blank's set is stored under its
+// own blank_index.
+func replaceAcceptedAnswersTx(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, questionAccepted []string, blanks []model.QuestionBlank) error {
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM question_accepted_answer WHERE question_id = $1`,
+		questionID,
+	); err != nil {
+		return err
+	}
+
+	for i, a := range questionAccepted {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO question_accepted_answer (question_id, blank_index, answer_index, answer)
+			VALUES ($1, 0, $2, $3)`,
+			questionID, i+1, a,
+		); err != nil {
+			return err
+		}
+	}
+
+	for _, b := range blanks {
+		for i, a := range b.AcceptedAnswers {
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO question_accepted_answer (question_id, blank_index, answer_index, answer)
+				VALUES ($1, $2, $3, $4)`,
+				questionID, b.Index, i+1, a,
+			); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) error {
+	stampScalarCorrectAnswers(q, blanks)
+
 	err := tx.QueryRow(ctx,
 		`INSERT INTO question (format, body, correct_answer, explanation, difficulty, image_url, audio_url, topic_id, point_correct, point_wrong)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING id`,
+		RETURNING id, question_number`,
 		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.AudioURL, q.TopicID, q.PointCorrect, q.PointWrong,
-	).Scan(&q.ID)
+	).Scan(&q.ID, &q.QuestionNumber)
 	if err != nil {
 		return err
 	}
@@ -417,10 +580,20 @@ func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 		return err
 	}
 
+	if err := insertQuestionStatements(ctx, tx, q.ID, statements); err != nil {
+		return err
+	}
+
+	if err := replaceAcceptedAnswersTx(ctx, tx, q.ID, q.AcceptedAnswers, blanks); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) error {
+func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) error {
+	stampScalarCorrectAnswers(q, blanks)
+
 	var updatedID uuid.UUID
 	err := tx.QueryRow(ctx,
 		`UPDATE question
@@ -457,6 +630,21 @@ func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 		return err
 	}
 
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM question_statement WHERE question_id = $1`,
+		q.ID,
+	); err != nil {
+		return err
+	}
+
+	if err := insertQuestionStatements(ctx, tx, q.ID, statements); err != nil {
+		return err
+	}
+
+	if err := replaceAcceptedAnswersTx(ctx, tx, q.ID, q.AcceptedAnswers, blanks); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -468,17 +656,64 @@ func (r *Repository) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-// CountQuestionAttachments returns the number of test_question rows for a question.
-func (r *Repository) CountQuestionAttachments(ctx context.Context, id uuid.UUID) (int, error) {
-	var count int
-	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM test_question WHERE question_id = $1`,
+// GetQuestionByID returns a single question by id (no options/blanks/statements),
+// used by SaveQuestion to compare a submitted format against the stored one
+// before writing (FR-14).
+func (r *Repository) GetQuestionByID(ctx context.Context, id uuid.UUID) (*model.Question, error) {
+	q := &model.Question{}
+	err := scanQuestion(r.pool.QueryRow(ctx,
+		`SELECT id, question_number, format, body, correct_answer, explanation, difficulty, image_url, topic_id, point_correct, point_wrong
+		FROM question
+		WHERE id = $1`,
 		id,
-	).Scan(&count)
+	), q)
 	if err != nil {
-		return 0, err
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
 	}
-	return count, nil
+	return q, nil
+}
+
+// questionInLiveExamSQL returns the boolean predicate for whether the question
+// identified by questionIDExpr is attached (via test_question -> exam_test ->
+// exam) to a live exam: sold through a published product, or already has at
+// least one exam_session row. Shared by IsQuestionInLiveExam and
+// ListBankQuestions so the delete guard and the format lock and the bank-list
+// flag can never drift apart (FR-6/FR-7/FR-13/FR-14).
+func questionInLiveExamSQL(questionIDExpr string) string {
+	return fmt.Sprintf(`EXISTS (
+		SELECT 1
+		FROM test_question tq
+		JOIN exam_test et ON et.test_id = tq.test_id
+		JOIN exam e ON e.id = et.exam_id
+		WHERE tq.question_id = %s
+		  AND (
+			EXISTS (
+				SELECT 1 FROM product_exam pe
+				JOIN product p ON p.id = pe.product_id
+				WHERE pe.exam_id = e.id AND p.status = 'published'
+			)
+			OR EXISTS (
+				SELECT 1 FROM exam_session es WHERE es.exam_id = e.id
+			)
+		  )
+	)`, questionIDExpr)
+}
+
+// IsQuestionInLiveExam reports whether the question is attached to a live exam
+// (FR-7/FR-14 delete-guard and format-lock predicate).
+func (r *Repository) IsQuestionInLiveExam(ctx context.Context, questionID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT `+questionInLiveExamSQL("$1"),
+		questionID,
+	).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 // CountQuestionsByIDs returns how many of the supplied IDs exist in the question table.
@@ -540,7 +775,8 @@ func (r *Repository) ListBankQuestions(ctx context.Context, filter QuestionFilte
 		filter.Limit = 20
 	}
 
-	query := `SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0)
+	query := `SELECT q.id, q.question_number, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0), ` +
+		questionInLiveExamSQL("q.id") + ` AS in_live_exam
 FROM question q
 LEFT JOIN exam_topic et ON et.id = q.topic_id
 LEFT JOIN (
@@ -566,12 +802,12 @@ WHERE 1=1`
 		argIdx++
 	}
 	if filter.Cursor != "" {
-		query += fmt.Sprintf(` AND q.id > $%d`, argIdx)
+		query += fmt.Sprintf(` AND q.question_number < $%d`, argIdx)
 		args = append(args, filter.Cursor)
 		argIdx++
 	}
 
-	query += ` ORDER BY q.id LIMIT $` + fmt.Sprintf("%d", argIdx)
+	query += ` ORDER BY q.question_number DESC LIMIT $` + fmt.Sprintf("%d", argIdx)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -584,12 +820,13 @@ WHERE 1=1`
 	for rows.Next() {
 		q := model.Question{}
 		var attachedCount int
+		var inLiveExam bool
 		var correctAnswer, explanation, difficulty, imageURL, audioURL, topic *string
 		var topicID *uuid.UUID
 		if err := rows.Scan(
-			&q.ID, &q.Format, &q.Body,
+			&q.ID, &q.QuestionNumber, &q.Format, &q.Body,
 			&correctAnswer, &explanation, &difficulty, &imageURL, &audioURL,
-			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &attachedCount,
+			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &attachedCount, &inLiveExam,
 		); err != nil {
 			return nil, "", err
 		}
@@ -617,6 +854,7 @@ WHERE 1=1`
 		items = append(items, model.BankQuestionListItem{
 			Question:      q,
 			AttachedCount: attachedCount,
+			InLiveExam:    inLiveExam,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -625,8 +863,9 @@ WHERE 1=1`
 
 	var nextCursor string
 	if len(items) > filter.Limit {
-		// Cursor is the last *returned* row; the next page starts after it.
-		nextCursor = items[filter.Limit-1].Question.ID.String()
+		// Cursor is the question_number of the last *returned* row; the next page
+		// continues strictly below it.
+		nextCursor = strconv.Itoa(items[filter.Limit-1].Question.QuestionNumber)
 		items = items[:filter.Limit]
 	}
 
@@ -644,9 +883,26 @@ WHERE 1=1`
 		return nil, "", err
 	}
 
+	acceptedAnswers, err := r.queryAcceptedAnswersForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, "", err
+	}
+
+	statements, err := r.queryStatementsForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, "", err
+	}
+
 	for i := range items {
-		items[i].Options = opts[items[i].Question.ID]
-		items[i].Blanks = blanks[items[i].Question.ID]
+		qid := items[i].Question.ID
+		items[i].Options = opts[qid]
+		items[i].Blanks = blanks[qid]
+		items[i].Question.Statements = statements[qid]
+		items[i].Question.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][0], derefString(items[i].Question.CorrectAnswer))
+		for bi := range items[i].Blanks {
+			b := &items[i].Blanks[bi]
+			b.AcceptedAnswers = acceptedAnswersOrFallback(acceptedAnswers[qid][b.Index], b.CorrectAnswer)
+		}
 	}
 
 	return items, nextCursor, nil
@@ -817,6 +1073,20 @@ func insertQuestionBlanks(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, 
 			`INSERT INTO question_blank (question_id, blank_index, correct_answer)
 			VALUES ($1, $2, $3)`,
 			questionID, b.Index, b.CorrectAnswer,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func insertQuestionStatements(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, statements []model.QuestionStatement) error {
+	for _, st := range statements {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO question_statement (question_id, statement_index, body, is_true)
+			VALUES ($1, $2, $3, $4)`,
+			questionID, st.Index, st.Body, st.IsTrue,
 		)
 		if err != nil {
 			return err

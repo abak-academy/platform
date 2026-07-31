@@ -249,18 +249,18 @@ func certificateSessionValues(sess *model.ExamSession, questions []model.Questio
 	if sess.Score != nil {
 		score = *sess.Score
 	}
-	maxScore := 0
+	maxScore := 0.0
 	for _, question := range questions {
-		maxScore += question.Question.PointCorrect
+		maxScore += questionMaxPoints(question)
 	}
 	values := map[FieldID]string{
 		"score":           formatCertificateNumber(score),
-		"max_score":       strconv.Itoa(maxScore),
+		"max_score":       strconv.FormatFloat(maxScore, 'f', -1, 64),
 		"score_percent":   "0%",
 		"total_questions": strconv.Itoa(len(questions)) + " questions",
 	}
 	if maxScore > 0 {
-		values["score_percent"] = strconv.Itoa(int(math.Round(score/float64(maxScore)*100))) + "%"
+		values["score_percent"] = strconv.Itoa(int(math.Round(score/maxScore*100))) + "%"
 	}
 	if sess.SubmittedAt != nil {
 		minutes := int(math.Ceil(sess.SubmittedAt.Sub(sess.StartedAt).Minutes()))
