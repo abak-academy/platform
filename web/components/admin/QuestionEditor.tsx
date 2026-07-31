@@ -242,16 +242,43 @@ function StatementEditor({ statements, onChange, disabled }: StatementEditorProp
               placeholder={t("tests_field_statement_body")}
               disabled={disabled}
             />
-            <label className="flex items-center gap-1 text-sm">
-              <input
-                type="checkbox"
-                checked={statement.is_true}
-                onChange={(e) => update(index, { is_true: e.target.checked })}
-                disabled={disabled}
+            {/* Segmented Benar/Salah rather than a lone checkbox — a checkbox
+                labelled "Benar" reads as "checked = done", not "this statement
+                is true", and the false state is invisible (user, 2026-07-31). */}
+            <div
+              role="group"
+              aria-label={`${t("tests_field_statement_is_true")}/${t("tests_field_statement_is_false")}`}
+              className="inline-flex rounded-md border p-0.5"
+            >
+              <button
+                type="button"
+                aria-pressed={statement.is_true}
                 aria-label={t("tests_field_statement_is_true")}
-              />
-              <span>{t("tests_field_statement_is_true")}</span>
-            </label>
+                onClick={() => update(index, { is_true: true })}
+                disabled={disabled}
+                className={
+                  statement.is_true
+                    ? "rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
+                    : "rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                }
+              >
+                {t("tests_field_statement_is_true")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={!statement.is_true}
+                aria-label={t("tests_field_statement_is_false")}
+                onClick={() => update(index, { is_true: false })}
+                disabled={disabled}
+                className={
+                  !statement.is_true
+                    ? "rounded bg-destructive/90 px-3 py-1 text-xs font-medium text-white"
+                    : "rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                }
+              >
+                {t("tests_field_statement_is_false")}
+              </button>
+            </div>
           </div>
           <Button
             type="button"
@@ -395,7 +422,12 @@ const FORMAT_LABELS: Record<QuestionFormat, "tests_format_mcq" | "tests_format_m
   true_false: "tests_format_true_false",
 };
 
-const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "short", "fill_blank", "essay", "multi_blank", "true_false"];
+// short and fill_blank are retired from authoring (user decision, 2026-07-31):
+// they graded and rendered identically, and the inline-box use case both were
+// reached for is multi_blank's — with one blank when one is enough. Existing
+// questions in either format stay editable (see formatOptions below), gradeable
+// and renderable; only NEW questions can no longer pick them.
+const CREATABLE_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "essay", "multi_blank", "true_false"];
 
 
 function buildOptionsFromQuestion(q: QuestionWithOptions): AdminQuestionOptionInput[] {
@@ -644,6 +676,11 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const isTestScoped = Boolean(testId);
   const formatLocked = Boolean(question?.in_live_exam);
   const [format, setFormat] = useState<QuestionFormat>(question?.question.format ?? "mcq");
+  // Editing a legacy short/fill_blank question must keep its format selectable —
+  // a controlled <select> whose value has no matching <option> renders blank.
+  const formatOptions: QuestionFormat[] = CREATABLE_FORMATS.includes(format)
+    ? CREATABLE_FORMATS
+    : [format, ...CREATABLE_FORMATS];
   const [body, setBody] = useState(question?.question.body ?? "");
   const [difficulty, setDifficulty] = useState<string>(question?.question.difficulty ?? "");
   const [explanation, setExplanation] = useState(question?.question.explanation ?? "");
@@ -783,7 +820,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
                   disabled={savePending || formatLocked}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
                 >
-                  {ALL_FORMATS.map((f) => (
+                  {formatOptions.map((f) => (
                     <option key={f} value={f}>
                       {t(FORMAT_LABELS[f])}
                     </option>

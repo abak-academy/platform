@@ -251,6 +251,42 @@ describe("QuestionPreview", () => {
     expect(screen.getByText(/The capital of Indonesia/)).toBeInTheDocument();
   });
 
+  it("renders {{N}} tokens as blank chips, never as literal text", () => {
+    const multiBlankItem: BankQuestionListItem = {
+      question: {
+        id: "q2b",
+        format: "multi_blank",
+        body: "Sun rises in {{1}}, sets in {{2}}.",
+        difficulty: "easy",
+        point_correct: 1,
+        point_wrong: 0,
+        sort_order: 1,
+      },
+      options: [],
+      attached_count: 0,
+      blanks: [
+        { index: 1, correct_answer: "east" },
+        { index: 2, correct_answer: "west" },
+      ],
+    };
+    const { container } = renderWithClient(
+      <QuestionPreview
+        item={multiBlankItem}
+        open={true}
+        onOpenChange={onOpenChange}
+        onEdit={onEdit}
+      />
+    );
+    // The admin must see what the student sees — a box per blank, not "{{1}}".
+    // (Literal tokens read as a broken question; this is the exact confusion
+    // reported on 2026-07-31.)
+    const chips = container.ownerDocument.querySelectorAll("[data-blank-chip]");
+    expect(chips.length).toBe(2);
+    expect(chips[0].textContent).toBe("#1");
+    expect(container.ownerDocument.body.textContent).not.toContain("{{1}}");
+    expect(container.ownerDocument.body.textContent).not.toContain("{{2}}");
+  });
+
   it("does not show options section for multi_blank (shows blanks instead)", () => {
     const multiBlankItem: BankQuestionListItem = {
       question: {
