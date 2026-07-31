@@ -8,6 +8,10 @@ import { Italic as ItalicMark } from "@tiptap/extension-italic";
 import Subscript from "@tiptap/extension-subscript";
 import Superscript from "@tiptap/extension-superscript";
 import ImageExtension from "@tiptap/extension-image";
+import { Table as TableExtension } from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableHeader from "@tiptap/extension-table-header";
+import TableCell from "@tiptap/extension-table-cell";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import {
@@ -18,6 +22,12 @@ import {
   ListOrdered,
   Image as ImageIcon,
   ImagePlus,
+  Table as TableIcon,
+  Rows3,
+  Columns3,
+  TableCellsMerge,
+  TableCellsSplit,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -158,6 +168,10 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
         Subscript,
         Superscript,
         ImageTag.configure({ inline: true, allowBase64: false }),
+        TableExtension.configure({ resizable: false }),
+        TableRow,
+        TableHeader,
+        TableCell,
       ],
       editorProps: {
         attributes,
@@ -393,8 +407,100 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
           hidden
           onChange={handleFileSelected}
         />
+        <Separator orientation="vertical" className={cn(compact ? "mx-0.5 h-4" : "mx-1 h-5")} />
+        <Button
+          type="button"
+          variant="ghost"
+          size={iconSize}
+          onMouseDown={preventBlur}
+          onClick={() =>
+            editorInstanceRef.current
+              ?.chain()
+              .focus()
+              .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+              .run()
+          }
+          aria-label="Insert table"
+          disabled={disabled}
+        >
+          <TableIcon className={iconGlyphSize} />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size={iconSize}
+          onMouseDown={preventBlur}
+          onClick={() => editorInstanceRef.current?.chain().focus().addRowAfter().run()}
+          aria-label="Add row"
+          disabled={disabled}
+        >
+          <Rows3 className={iconGlyphSize} />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size={iconSize}
+          onMouseDown={preventBlur}
+          onClick={() => editorInstanceRef.current?.chain().focus().deleteRow().run()}
+          aria-label="Delete row"
+          disabled={disabled}
+        >
+          <Trash2 className={iconGlyphSize} />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size={iconSize}
+          onMouseDown={preventBlur}
+          onClick={() => editorInstanceRef.current?.chain().focus().addColumnAfter().run()}
+          aria-label="Add column"
+          disabled={disabled}
+        >
+          <Columns3 className={iconGlyphSize} />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size={iconSize}
+          onMouseDown={preventBlur}
+          onClick={() => editorInstanceRef.current?.chain().focus().deleteColumn().run()}
+          aria-label="Delete column"
+          disabled={disabled}
+        >
+          <Trash2 className={iconGlyphSize} />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size={iconSize}
+          onMouseDown={preventBlur}
+          onClick={() => editorInstanceRef.current?.chain().focus().mergeCells().run()}
+          aria-label="Merge cells"
+          disabled={disabled}
+        >
+          <TableCellsMerge className={iconGlyphSize} />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size={iconSize}
+          onMouseDown={preventBlur}
+          onClick={() => editorInstanceRef.current?.chain().focus().splitCell().run()}
+          aria-label="Split cell"
+          disabled={disabled}
+        >
+          <TableCellsSplit className={iconGlyphSize} />
+        </Button>
       </div>
-      <div className="relative" ref={mountRef}>
+      <div
+        className={cn(
+          "relative",
+          "[&_table]:my-2 [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse",
+          "[&_td]:border [&_td]:border-line [&_td]:p-2 [&_td]:align-top",
+          "[&_th]:border [&_th]:border-line [&_th]:bg-muted/40 [&_th]:p-2 [&_th]:text-left [&_th]:font-medium",
+        )}
+        ref={mountRef}
+      >
         {empty && placeholder && (
           <div className="pointer-events-none absolute left-3 top-2 text-sm text-muted-foreground">
             {placeholder}

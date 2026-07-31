@@ -1,6 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { RichTextEditor } from "./RichTextEditor";
+import { RichContent } from "./RichContent";
+import { execFileSync } from "node:child_process";
+import { writeFileSync, readFileSync, rmSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 type PresignInput = { filename: string; content_type: string };
 type PresignOutput = { url: string; method: "PUT"; key: string };
@@ -445,17 +450,9 @@ describe("RichTextEditor", () => {
     });
   });
 
-  // Task 17 is explicitly the like-for-like swap with NO table support —
-  // Table/TableRow/TableHeader/TableCell are not in this editor's extension
-  // list yet (Task 18 wires them in). DOMPurify's transformPastedHTML step
-  // still keeps <table> in the sanitized string (FR-38's actual claim, about
-  // the sanitiser not stripping table tags, holds), but ProseMirror's
-  // schema-based parser has no node type to place a <table> into once it
-  // gets there, so the table collapses to its inner text. This is a known,
-  // deliberate, temporary regression — Task 18 should restore this
-  // assertion to its Task-16-era form once the Table extensions are wired
-  // into the schema.
-  it.skip("keeps a pasted table with colspan intact (FR-38) — restore in Task 18", async () => {
+  // Task 18 wired Table/TableRow/TableHeader/TableCell into the schema, so a
+  // pasted <table> now has somewhere to go instead of collapsing to text.
+  it("keeps a pasted table with colspan intact (FR-38) — restore in Task 18", async () => {
     const onChange = vi.fn();
     render(<RichTextEditor value="" onChange={onChange} />);
     const editable = screen.getByRole("textbox");
@@ -471,11 +468,15 @@ describe("RichTextEditor", () => {
 
     editable.dispatchEvent(pasteEvent);
 
+    // Assert against the parsed DOM rather than a literal HTML substring —
+    // the Table extension's renderHTML always emits a colgroup + inline
+    // sizing style on <table> (prosemirror-tables' own rendering, unrelated
+    // to paste sanitisation), so the serialized string is no longer the bare
+    // "<table>" this assertion predates. The structural claim FR-38 actually
+    // cares about — the table survived, colspan intact — holds regardless.
     await waitFor(() => {
-      const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0];
-      expect(lastCall).toBeDefined();
-      expect(lastCall).toContain("<table>");
-      expect(lastCall).toContain('colspan="2"');
+      expect(editable.querySelector("table")).not.toBeNull();
+      expect(editable.querySelector('[colspan="2"]')).not.toBeNull();
     });
   });
 
@@ -516,4 +517,196 @@ describe("RichTextEditor", () => {
 
     execSpy.mockRestore();
   });
+});
+
+describe("RichTextEditor tables (Task 18)", () => {
+  it("Insert table adds a 3x3 table with a header row", async () => {
+    render(<RichTextEditor value="" onChange={vi.fn()} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+
+    fireEvent.click(screen.getByRole("button", { name: /insert table/i }));
+
+    await waitFor(() => {
+      expect(editable.querySelectorAll("tr").length).toBe(3);
+      expect(editable.querySelectorAll("tr")[0].children.length).toBe(3);
+      expect(editable.querySelectorAll("th").length).toBe(3);
+    });
+  });
+
+  it("Add row and Add column grow the table from the toolbar", async () => {
+    render(<RichTextEditor value="" onChange={vi.fn()} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+    fireEvent.click(screen.getByRole("button", { name: /insert table/i }));
+    await waitFor(() => expect(editable.querySelector("table")).not.toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: /^add row$/i }));
+    expect(editable.querySelectorAll("tr").length).toBe(4);
+
+    fireEvent.click(screen.getByRole("button", { name: /^add column$/i }));
+    expect(editable.querySelectorAll("tr")[0].children.length).toBe(4);
+  });
+
+  it("Delete row and Delete column shrink the table, leaving the header row intact", async () => {
+    render(<RichTextEditor value="" onChange={vi.fn()} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+    fireEvent.click(screen.getByRole("button", { name: /insert table/i }));
+    await waitFor(() => expect(editable.querySelector("table")).not.toBeNull());
+
+    // Tab (goToNextCell) from the first header cell four times lands the
+    // caret in the second row's first body cell — jsdom has no
+    // posAtCoords, so a mouse-driven click into a specific cell (real
+    // browser navigation) can't be simulated; Tab is a real keymap binding
+    // registered by the Table extension (goToNextCell), not a test-only path.
+    for (let i = 0; i < 4; i++) {
+      fireEvent.keyDown(editable, { key: "Tab", code: "Tab" });
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: /^delete row$/i }));
+    expect(editable.querySelectorAll("tr").length).toBe(2);
+    expect(editable.querySelectorAll("th").length).toBe(3);
+
+    fireEvent.click(screen.getByRole("button", { name: /^delete column$/i }));
+    expect(editable.querySelectorAll("tr")[0].children.length).toBe(2);
+  });
+
+  it("Merge cells and Split cell toggle colspan from the toolbar", async () => {
+    const onChange = vi.fn();
+    render(<RichTextEditor value="" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+    fireEvent.click(screen.getByRole("button", { name: /insert table/i }));
+    await waitFor(() => expect(editable.querySelector("table")).not.toBeNull());
+
+    // Extend the cell selection rightward — the Shift-ArrowRight cell
+    // selection extension registered by prosemirror-tables' tableEditing
+    // plugin, not a test-only shortcut.
+    fireEvent.keyDown(editable, { key: "ArrowRight", code: "ArrowRight", shiftKey: true });
+    fireEvent.click(screen.getByRole("button", { name: /merge cells/i }));
+
+    await waitFor(() => {
+      expect(editable.querySelector('[colspan="2"]')).not.toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /split cell/i }));
+
+    await waitFor(() => {
+      expect(editable.querySelector('[colspan="2"]')).toBeNull();
+    });
+  });
+});
+
+// --- FR-42: the epic's real acceptance is save+reload survival, not a
+// post-insert DOM check. This bridges the actual production RichTextEditor
+// component (toolbar-driven insert + merge) through the REAL Go
+// sanitizeQuestionBody and back through the actual RichContent component —
+// mirroring Task 16's spike (tiptap-spike.test.tsx), whose bridge-file
+// helpers are duplicated here rather than imported: that file is a Task 16
+// artifact explicitly marked "do not modify", and the bridge is a few dozen
+// lines of throwaway plumbing, not a shared abstraction worth extracting for
+// two call sites.
+describe("RichTextEditor + RichContent — table save+reload proof (FR-42)", () => {
+  const BACKEND_DIR = join(__dirname, "..", "..", "..", "backend");
+  const BRIDGE_TEST_NAME = "TestZZZTask18SanitizeBridge";
+  const BRIDGE_FILE = join(BACKEND_DIR, "internal/service/zzz_task18_sanitize_bridge_test.go");
+
+  function writeBridgeFile() {
+    writeFileSync(
+      BRIDGE_FILE,
+      `package service
+
+import (
+	"os"
+	"testing"
+)
+
+// ${BRIDGE_TEST_NAME} is a throwaway bridge used only by Task 18's
+// RichTextEditor+RichContent round-trip test to run real HTML through the
+// production sanitizeQuestionBody from a vitest test. Written and deleted by
+// the test itself on every invocation — never committed.
+func ${BRIDGE_TEST_NAME}(t *testing.T) {
+	in := os.Getenv("SPIKE_SANITIZE_IN")
+	out := os.Getenv("SPIKE_SANITIZE_OUT")
+	if in == "" || out == "" {
+		t.Skip("bridge env vars not set")
+	}
+	data, err := os.ReadFile(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(out, []byte(sanitizeQuestionBody(string(data))), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+`,
+    );
+  }
+
+  function sanitizeViaRealGoSanitizer(html: string): string {
+    const dir = mkdtempSync(join(tmpdir(), "task18-roundtrip-"));
+    const inPath = join(dir, "in.html");
+    const outPath = join(dir, "out.html");
+    writeFileSync(inPath, html, "utf8");
+    writeBridgeFile();
+    try {
+      execFileSync(
+        "bash",
+        [
+          "-lc",
+          `if [ -z "$GOROOT" ] || [ ! -x "$GOROOT/bin/go" ]; then export GOROOT="$(ls -d /opt/homebrew/Cellar/go/*/libexec 2>/dev/null | sort -V | tail -n1)"; fi; cd "${BACKEND_DIR}" && go test ./internal/service/... -run '^${BRIDGE_TEST_NAME}$' -v`,
+        ],
+        { env: { ...process.env, SPIKE_SANITIZE_IN: inPath, SPIKE_SANITIZE_OUT: outPath }, stdio: "pipe" },
+      );
+    } finally {
+      rmSync(BRIDGE_FILE, { force: true });
+    }
+    const result = readFileSync(outPath, "utf8");
+    rmSync(dir, { recursive: true, force: true });
+    return result;
+  }
+
+  afterAll(() => {
+    rmSync(BRIDGE_FILE, { force: true });
+  });
+
+  it(
+    "a table merged via the toolbar survives getHTML -> real Go sanitizeQuestionBody -> RichContent render, colspan intact",
+    async () => {
+      const onChange = vi.fn();
+      render(<RichTextEditor value="" onChange={onChange} />);
+      const editable = screen.getByRole("textbox");
+      editable.focus();
+
+      fireEvent.click(screen.getByRole("button", { name: /insert table/i }));
+      await waitFor(() => expect(editable.querySelector("table")).not.toBeNull());
+
+      fireEvent.keyDown(editable, { key: "ArrowRight", code: "ArrowRight", shiftKey: true });
+      fireEvent.click(screen.getByRole("button", { name: /merge cells/i }));
+      await waitFor(() => expect(editable.querySelector('[colspan="2"]')).not.toBeNull());
+
+      // This is the "save": the exact string RichTextEditor hands its
+      // caller via onChange, which QuestionEditor persists to the backend.
+      const savedHtml = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+      expect(savedHtml).toContain('colspan="2"');
+
+      // This is the server round-trip: the REAL Go sanitizer, not a JS
+      // reimplementation of its allowlist.
+      const sanitized = sanitizeViaRealGoSanitizer(savedHtml);
+      expect(sanitized).toContain('colspan="2"');
+      expect(sanitized).toContain("<table>");
+      expect(sanitized).not.toContain("colgroup");
+      expect(sanitized).not.toContain("style=");
+
+      // This is the "reload": the actual RichContent component, not a
+      // hand-rolled parse.
+      const { container } = render(<RichContent html={sanitized} />);
+      await waitFor(() => {
+        const merged = container.querySelector('[data-rich-content] [colspan="2"]');
+        expect(merged).not.toBeNull();
+      });
+    },
+    30000,
+  );
 });
