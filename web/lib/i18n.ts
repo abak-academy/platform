@@ -959,6 +959,14 @@ export const DICT = {
     exam_packages_modal_result_config_hidden: "Tersembunyi",
     exam_packages_modal_result_config_score_only: "Hanya Skor",
     exam_packages_modal_result_config_score_pembahasan: "Skor + Pembahasan",
+    exam_packages_modal_result_config_hidden_desc:
+      "Siswa tidak melihat skor atau pembahasan apa pun. Sertifikat non-skor (jika ada) tetap bisa diunduh.",
+    exam_packages_modal_result_config_score_only_desc:
+      "Siswa hanya melihat skor akhir mereka, tanpa pembahasan jawaban.",
+    exam_packages_modal_result_config_score_pembahasan_desc:
+      "Siswa melihat skor akhir beserta pembahasan tiap soal.",
+    exam_packages_modal_result_config_never_publish_hint:
+      "Tidak pernah mempublikasikan hasil (tetap Tersembunyi selamanya) adalah pilihan yang sah — bukan kesalahan konfigurasi.",
     exam_packages_modal_result_release_at: "Hasil Dibuka Pada",
     exam_packages_modal_check_in_window: "Jendela Check-in (menit)",
     exam_packages_modal_grace_window: "Jendela Toleransi (menit)",
@@ -984,6 +992,8 @@ export const DICT = {
     admin_exam_detail_tab_grading: "Penilaian",
     admin_exam_detail_tab_leaderboard: "Leaderboard",
     admin_exam_detail_edit: "Edit",
+    admin_exam_detail_draft_notice:
+      "Ujian ini berstatus draft: tidak terlihat oleh siswa dan dapat diubah bebas. Publikasikan ujian untuk membuatnya terlihat oleh siswa — itu satu-satunya hal yang mengubah status ini.",
     admin_exam_detail_tests_attached: "Tes Terlampir",
     admin_exam_detail_tests_available: "Tes Tersedia",
     admin_exam_detail_tests_save: "Simpan",
@@ -2178,6 +2188,14 @@ export const DICT = {
     exam_packages_modal_result_config_hidden: "Hidden",
     exam_packages_modal_result_config_score_only: "Score Only",
     exam_packages_modal_result_config_score_pembahasan: "Score + Explanation",
+    exam_packages_modal_result_config_hidden_desc:
+      "Students see no score or explanation at all. A non-score certificate (if configured) can still be downloaded.",
+    exam_packages_modal_result_config_score_only_desc:
+      "Students see only their final score, without answer explanations.",
+    exam_packages_modal_result_config_score_pembahasan_desc:
+      "Students see their final score along with the explanation for each question.",
+    exam_packages_modal_result_config_never_publish_hint:
+      "Never publishing results (staying Hidden indefinitely) is a valid, supported choice — not a misconfiguration.",
     exam_packages_modal_result_release_at: "Result Release At",
     exam_packages_modal_check_in_window: "Check-in Window (minutes)",
     exam_packages_modal_grace_window: "Grace Window (minutes)",
@@ -2203,6 +2221,8 @@ export const DICT = {
     admin_exam_detail_tab_grading: "Grading",
     admin_exam_detail_tab_leaderboard: "Leaderboard",
     admin_exam_detail_edit: "Edit",
+    admin_exam_detail_draft_notice:
+      "This exam is in draft status: invisible to students and freely editable. Publishing the exam is what makes it visible to students — the only thing that changes this.",
     admin_exam_detail_tests_attached: "Attached Tests",
     admin_exam_detail_tests_available: "Available Tests",
     admin_exam_detail_tests_save: "Save",

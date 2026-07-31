@@ -370,6 +370,35 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                     <option value="score_only">{t("exam_packages_modal_result_config_score_only")}</option>
                     <option value="score_pembahasan">{t("exam_packages_modal_result_config_score_pembahasan")}</option>
                   </select>
+                  <dl className="grid gap-1 text-xs text-ink-400">
+                    <div>
+                      <dt className="inline font-medium text-ink-500">
+                        {t("exam_packages_modal_result_config_hidden")}:{" "}
+                      </dt>
+                      <dd className="inline">
+                        {t("exam_packages_modal_result_config_hidden_desc")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline font-medium text-ink-500">
+                        {t("exam_packages_modal_result_config_score_only")}:{" "}
+                      </dt>
+                      <dd className="inline">
+                        {t("exam_packages_modal_result_config_score_only_desc")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline font-medium text-ink-500">
+                        {t("exam_packages_modal_result_config_score_pembahasan")}:{" "}
+                      </dt>
+                      <dd className="inline">
+                        {t("exam_packages_modal_result_config_score_pembahasan_desc")}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="text-xs text-ink-400">
+                    {t("exam_packages_modal_result_config_never_publish_hint")}
+                  </p>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="exam-result-release-at">{t("exam_packages_modal_result_release_at")}</Label>

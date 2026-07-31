@@ -281,6 +281,10 @@ export default function ExamPackageDetailPage() {
         )}
       </div>
 
+      {data && data.status !== "published" && (
+        <p className="text-sm text-ink-500">{t("admin_exam_detail_draft_notice")}</p>
+      )}
+
       {isLoading && (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (

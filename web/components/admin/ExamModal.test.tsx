@@ -280,6 +280,23 @@ describe("ExamModal", () => {
     });
   });
 
+  it("FR-43: explains what students see for each result_config option, and that never publishing is a supported end state", () => {
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(
+      screen.getByText(/siswa tidak melihat skor atau pembahasan/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/siswa hanya melihat skor akhir/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/siswa melihat skor akhir beserta pembahasan/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/tidak pernah mempublikasikan hasil.*bukan kesalahan konfigurasi/i),
+    ).toBeInTheDocument();
+  });
+
   it("result_config is constrained to allowed options", () => {
     render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
 

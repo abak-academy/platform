@@ -250,6 +250,30 @@ describe("ExamPackageDetailPage — overview tab", () => {
     });
   });
 
+  it("FR-44: shows the draft explanation when the exam status is draft", async () => {
+    examState.data = { ...sampleExamWithExtendedFields, status: "draft" };
+
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/tidak terlihat oleh siswa dan dapat diubah bebas/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("FR-44: does not show the draft explanation when the exam status is published", async () => {
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("UTBK")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText(/tidak terlihat oleh siswa dan dapat diubah bebas/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens the edit modal when the overview edit button is clicked", async () => {
     render(<ExamPackageDetailPage />);
 
