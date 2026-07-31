@@ -4,6 +4,12 @@ import { act } from "react";
 
 import SessionPage from "./page";
 import type { SessionState } from "@/lib/types";
+import {
+  AUTOSAVE_DEBOUNCE_MS,
+  backoffDelayMs,
+  loadQueue,
+  saveQueue,
+} from "@/lib/exam-session-queue";
 
 const routerReplace = vi.fn();
 
@@ -327,6 +333,7 @@ describe("SessionPage", () => {
     advanceSectionMutate.mockReset();
     advanceSectionMutateAsync.mockReset();
     routerReplace.mockReset();
+    localStorage.clear();
   });
 
   afterEach(() => {
@@ -642,8 +649,11 @@ describe("SessionPage", () => {
       [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
     );
 
-    // Verify submitSession was called
-    expect(submitSessionMutate).toHaveBeenCalled();
+    // Verify submitSession was called (handleSubmit awaits the save first,
+    // so the mutate call lands on a later microtask).
+    await waitFor(() => {
+      expect(submitSessionMutate).toHaveBeenCalled();
+    });
 
     // Simulate success response inside act to flush React state updates
     await act(async () => {
@@ -783,9 +793,7 @@ describe("SessionPage", () => {
     );
   });
 
-  it("periodic save excludes a submitted section's answers (FR-14 seam — backend rejects locked-section saves)", async () => {
-    vi.useFakeTimers();
-
+  it("debounced autosave excludes a submitted section's answers (FR-14 seam — backend rejects locked-section saves)", async () => {
     // Section 1 is already submitted; section 2 is active (not expired). Both
     // sections carry a persisted answer, rehydrated into state on reconnect.
     // The autosave must send ONLY the active section's answer — the backend
@@ -813,13 +821,12 @@ describe("SessionPage", () => {
     };
     sessionState = { ...sessionState, data: section2Active };
     render(<SessionPage />);
-    // Flush the init effect so answers hydrate before the autosave fires.
+    await enterFullscreenUntil(/Literasi Question 1\?/);
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getAllByRole("radio")[0]);
     await act(async () => {
-      await Promise.resolve();
-    });
-    // Fire the 30s periodic autosave.
-    await act(async () => {
-      vi.advanceTimersByTime(30000);
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
     });
 
     expect(saveAnswersMutate).toHaveBeenCalled();
@@ -1943,6 +1950,181 @@ describe("SessionPage", () => {
     const sectionPlayer = screen.getByTestId("section-audio-player");
     expect(sectionPlayer).toBeInTheDocument();
     expect(sectionPlayer).toHaveAttribute("src", "https://example.com/sec-audio.mp3");
+  });
+
+  // ── Durable answer saving (FR-31..FR-34, FR-37, NFR-P3, NFR-R5) ─────────
+
+  it("debounces continuous changes to at most one save per debounce window (FR-31, NFR-P3)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    // Navigate to the short-answer question and simulate ~10s of continuous
+    // typing, one keystroke every 300ms (33 changes total).
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = () =>
+      screen.getAllByRole("textbox").filter((tb) => tb.tagName === "INPUT")[0];
+
+    for (let i = 0; i < 33; i++) {
+      fireEvent.change(textInput(), { target: { value: `v${i}` } });
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+    }
+
+    // ~10s of continuous changes over a debounce window well under 10s must
+    // not produce a save per keystroke — at most one save per window.
+    expect(saveAnswersMutate.mock.calls.length).toBeGreaterThan(0);
+    expect(saveAnswersMutate.mock.calls.length).toBeLessThanOrEqual(
+      Math.ceil((33 * 300) / AUTOSAVE_DEBOUNCE_MS) + 1,
+    );
+    expect(saveAnswersMutate.mock.calls.length).toBeLessThan(10);
+  });
+
+  it("retries a failing save with growing backoff delays and eventually succeeds (FR-32)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+
+    // First attempt fails.
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onError(new Error("network error"));
+    });
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Belum tersimpan",
+    );
+
+    const delay1 = backoffDelayMs(0);
+    await act(async () => {
+      vi.advanceTimersByTime(delay1 - 1);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1); // not yet retried
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(2); // first retry fired
+
+    // Second attempt also fails — the next delay must be strictly longer.
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[1];
+      opts.onError(new Error("network error"));
+    });
+    const delay2 = backoffDelayMs(1);
+    expect(delay2).toBeGreaterThan(delay1);
+    await act(async () => {
+      vi.advanceTimersByTime(delay2 - 1);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(3);
+
+    // Third attempt succeeds.
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[2];
+      opts.onSuccess();
+    });
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Tersimpan",
+    );
+  });
+
+  it("replays a localStorage-queued payload exactly once on mount and clears it (FR-33, NFR-R5)", async () => {
+    saveQueue("session-1", [
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+    ]);
+    saveAnswersMutate.mockImplementation((_payload, opts) => {
+      opts?.onSuccess?.();
+    });
+
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    await waitFor(() => {
+      expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledWith(
+      [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
+      expect.anything(),
+    );
+    expect(loadQueue("session-1")).toEqual([]);
+  });
+
+  it("indicator shows unsaved while a save is pending and saved after acknowledgement (FR-34)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Tersimpan",
+    );
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Belum tersimpan",
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onSuccess();
+    });
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Tersimpan",
+    );
+  });
+
+  it("replay does not clobber a server answer for a question absent from the queue (FR-37, NFR-R5)", async () => {
+    saveQueue("session-1", [
+      { question_id: "q-short", answer: "queued-value", flagged_for_review: false },
+    ]);
+    saveAnswersMutate.mockImplementation((_payload, opts) => {
+      opts?.onSuccess?.();
+    });
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        answers: [
+          { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+        ],
+      },
+    };
+
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // q-mcq is server-sourced and absent from the queue — must stay untouched.
+    const radios = screen.getAllByRole("radio");
+    expect(radios[1]).toBeChecked();
+
+    // q-short is the queued question — must show the queued (not server) value.
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await waitFor(() => {
+      const textInputs = screen
+        .getAllByRole("textbox")
+        .filter((tb) => tb.tagName === "INPUT");
+      expect((textInputs[0] as HTMLInputElement).value).toBe("queued-value");
+    });
+
+    // Replay sent exactly the queue's content — nothing more, nothing less.
+    expect(saveAnswersMutate).toHaveBeenCalledWith(
+      [{ question_id: "q-short", answer: "queued-value", flagged_for_review: false }],
+      expect.anything(),
+    );
+    expect(loadQueue("session-1")).toEqual([]);
   });
 });
 

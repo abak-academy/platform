@@ -33,10 +33,17 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import type { SessionQuestion } from "@/lib/types";
+import type { SessionQuestion, SessionAnswerInput } from "@/lib/types";
 import { RichContent } from "@/components/admin/RichContent";
 import { SectionAudioPlayer } from "./section-audio-player";
 import { QUESTION_BODY_ALLOWED_TAGS } from "@/lib/question-html";
+import {
+  loadQueue,
+  saveQueue,
+  clearQueue,
+  backoffDelayMs,
+  AUTOSAVE_DEBOUNCE_MS,
+} from "@/lib/exam-session-queue";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -71,6 +78,9 @@ export default function SessionPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showViolationOverlay, setShowViolationOverlay] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">(
+    "saved",
+  );
   const autoSubmittedRef = useRef(false);
   const submittingRef = useRef(false);
   const autoAdvanceRef = useRef(false);
@@ -79,6 +89,13 @@ export default function SessionPage() {
   answersRef.current = answers;
   const flaggedRef = useRef(flagged);
   flaggedRef.current = flagged;
+  // Mirrors `remaining` for effects that must read the freshly-hydrated value
+  // within the same mount pass — the hydration effect below writes this ref
+  // synchronously (unlike setRemaining, which only applies on the next
+  // render), so an effect declared later in that same pass never reads the
+  // stale default of 0 and treats an untouched timer as already expired.
+  const remainingRef = useRef(remaining);
+  remainingRef.current = remaining;
   // Sectioned mode only: the active section's question ids. Null in standard
   // mode. buildSavePayload filters against this so a save never carries answers
   // from a submitted (locked) section — the backend rejects the whole batch
@@ -103,6 +120,86 @@ export default function SessionPage() {
       answer: curAnswers[qid] ?? "",
       flagged_for_review: curFlags[qid] ?? false,
     }));
+  }, []);
+
+  // ── Durable autosave: debounce on change, retry with backoff, replay the
+  // localStorage queue on reconnect (FR-31..FR-34, FR-37, NFR-P3, NFR-R5) ────
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingChangeRef = useRef(false);
+  const retryAttemptRef = useRef(0);
+
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+
+  // Sends payload to the server and retries on failure with exponential
+  // backoff until it succeeds. submittingRef guards against racing the
+  // submit round-trip (same guard the old 30s tick used).
+  const attemptSave = useCallback(
+    (payload: SessionAnswerInput[]) => {
+      if (submittingRef.current) return;
+      if (payload.length === 0) {
+        setSaveStatus("saved");
+        return;
+      }
+      setSaveStatus("saving");
+      saveAnswers.mutate(payload, {
+        onSuccess: () => {
+          retryAttemptRef.current = 0;
+          clearQueue(sessionId);
+          setSaveStatus("saved");
+        },
+        onError: () => {
+          if (submittingRef.current) return;
+          clearRetryTimer();
+          const delay = backoffDelayMs(retryAttemptRef.current);
+          retryAttemptRef.current += 1;
+          setSaveStatus("unsaved");
+          retryTimerRef.current = setTimeout(() => {
+            retryTimerRef.current = null;
+            attemptSave(loadQueue(sessionId));
+          }, delay);
+        },
+      });
+    },
+    [sessionId, saveAnswers, clearRetryTimer],
+  );
+
+  const flushDebouncedSave = useCallback(() => {
+    debounceTimerRef.current = null;
+    if (!pendingChangeRef.current) return;
+    pendingChangeRef.current = false;
+    const payload = buildSavePayload();
+    saveQueue(sessionId, payload);
+    clearRetryTimer();
+    retryAttemptRef.current = 0;
+    attemptSave(payload);
+  }, [buildSavePayload, sessionId, clearRetryTimer, attemptSave]);
+
+  // At most one save per debounce window (NFR-P3): the first change in a
+  // window starts the timer; later changes in the same window just mark
+  // pending — flushDebouncedSave reads the latest state via buildSavePayload
+  // when the window elapses, then the next change starts a fresh window.
+  const scheduleAutosave = useCallback(() => {
+    setSaveStatus("unsaved");
+    pendingChangeRef.current = true;
+    if (debounceTimerRef.current) return;
+    debounceTimerRef.current = setTimeout(
+      flushDebouncedSave,
+      AUTOSAVE_DEBOUNCE_MS,
+    );
+  }, [flushDebouncedSave]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      clearRetryTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const allQuestions = session
@@ -130,12 +227,24 @@ export default function SessionPage() {
       if (a.answer != null && a.answer !== "") initAnswers[a.question_id] = a.answer;
       if (a.flagged_for_review) initFlags[a.question_id] = true;
     }
+    // Overlay any not-yet-acknowledged local queue on top of server state —
+    // a question absent from the queue keeps its server value untouched
+    // (FR-37, NFR-R5); a question the queue holds shows the local edit until
+    // the replay effect confirms it with the server.
+    for (const q of loadQueue(sessionId)) {
+      initAnswers[q.question_id] = q.answer;
+      if (q.flagged_for_review) initFlags[q.question_id] = true;
+      else delete initFlags[q.question_id];
+    }
     setAnswers(initAnswers);
     setFlagged(initFlags);
     if (isSectioned && session.active_test_id) {
       const sec = session.tests.find((t) => t.id === session.active_test_id);
-      setRemaining(sec?.remaining_seconds ?? 0);
+      const nextRemaining = sec?.remaining_seconds ?? 0;
+      remainingRef.current = nextRemaining;
+      setRemaining(nextRemaining);
     } else {
+      remainingRef.current = session.remaining_seconds;
       setRemaining(session.remaining_seconds);
     }
     autoSubmittedRef.current = false;
@@ -146,6 +255,26 @@ export default function SessionPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
+
+  // Replay any queue left over from a previous tab/session, and again
+  // whenever connectivity returns (FR-33, FR-37). Declared after the
+  // hydration effect above so the UI shows the queued values first — replay
+  // clears the queue on ack, and hydration must have already read it.
+  useEffect(() => {
+    if (!sessionId) return;
+    const replay = () => {
+      const queued = loadQueue(sessionId);
+      if (queued.length > 0) {
+        clearRetryTimer();
+        retryAttemptRef.current = 0;
+        attemptSave(queued);
+      }
+    };
+    replay();
+    window.addEventListener("online", replay);
+    return () => window.removeEventListener("online", replay);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   // Sectioned mode: land on the new section's first question when it changes,
   // else a shorter next section leaves currentQIndex out of range (blank panel).
@@ -161,7 +290,7 @@ export default function SessionPage() {
 
   // Timer countdown
   useEffect(() => {
-    if (!session || !hasTimer || session.status !== "in_progress" || remaining <= 0)
+    if (!session || !hasTimer || session.status !== "in_progress" || remainingRef.current <= 0)
       return;
     const id = setInterval(() => {
       setRemaining((prev) => Math.max(0, prev - 1));
@@ -176,7 +305,7 @@ export default function SessionPage() {
       !session ||
       !hasTimer ||
       session.status !== "in_progress" ||
-      remaining > 0 ||
+      remainingRef.current > 0 ||
       autoSubmittedRef.current ||
       isSectioned
     )
@@ -210,7 +339,7 @@ export default function SessionPage() {
       !isSectioned ||
       !hasTimer ||
       session.status !== "in_progress" ||
-      remaining > 0 ||
+      remainingRef.current > 0 ||
       autoAdvanceRef.current
     )
       return;
@@ -247,21 +376,6 @@ export default function SessionPage() {
     doAdvance();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remaining <= 0, isSectioned]);
-
-  // Periodic save every 30s
-  useEffect(() => {
-    if (!sessionId || session?.status !== "in_progress") return;
-    const id = setInterval(() => {
-      // A save landing while the submit round-trip is in flight could race the
-      // grading write server-side — skip autosaves once submit has started.
-      if (submittingRef.current) return;
-      const arr = buildSavePayload();
-      if (arr.length > 0) {
-        saveAnswers.mutate(arr);
-      }
-    }, 30000);
-    return () => clearInterval(id);
-  }, [sessionId, session?.status, saveAnswers, buildSavePayload]);
 
   // Violation logging
   useEffect(() => {
@@ -314,13 +428,21 @@ export default function SessionPage() {
     setShowViolationOverlay(false);
   }, []);
 
-  const setAnswer = useCallback((questionId: string, value: string) => {
-    setAnswers((prev) => ({ ...prev, [questionId]: value }));
-  }, []);
+  const setAnswer = useCallback(
+    (questionId: string, value: string) => {
+      setAnswers((prev) => ({ ...prev, [questionId]: value }));
+      scheduleAutosave();
+    },
+    [scheduleAutosave],
+  );
 
-  const toggleFlag = useCallback((questionId: string) => {
-    setFlagged((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
-  }, []);
+  const toggleFlag = useCallback(
+    (questionId: string) => {
+      setFlagged((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
+      scheduleAutosave();
+    },
+    [scheduleAutosave],
+  );
 
   const handleSubmit = useCallback(async () => {
     if (submitting) return;
@@ -453,6 +575,16 @@ export default function SessionPage() {
         <div className="whitespace-nowrap text-xs text-ink-500">
           {answeredCount}/{questionsToShow.length}{" "}
           {t("session_legend_answered").toLowerCase()}
+        </div>
+        <div
+          data-testid="save-indicator"
+          className="whitespace-nowrap text-xs text-ink-500"
+        >
+          {saveStatus === "saved"
+            ? t("session_save_saved")
+            : saveStatus === "saving"
+              ? t("session_save_saving")
+              : t("session_save_unsaved")}
         </div>
         {hasTimer && (
           <div
