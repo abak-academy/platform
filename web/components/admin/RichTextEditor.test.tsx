@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
@@ -612,67 +612,24 @@ describe("RichTextEditor tables (Task 18)", () => {
 // two call sites.
 describe("RichTextEditor + RichContent — table save+reload proof (FR-42)", () => {
   const BACKEND_DIR = join(__dirname, "..", "..", "..", "backend");
-  const BRIDGE_TEST_NAME = "TestZZZTask18SanitizeBridge";
-  const BRIDGE_FILE = join(BACKEND_DIR, "internal/service/zzz_task18_sanitize_bridge_test.go");
-
-  function writeBridgeFile() {
-    writeFileSync(
-      BRIDGE_FILE,
-      `package service
-
-import (
-	"os"
-	"testing"
-)
-
-// ${BRIDGE_TEST_NAME} is a throwaway bridge used only by Task 18's
-// RichTextEditor+RichContent round-trip test to run real HTML through the
-// production sanitizeQuestionBody from a vitest test. Written and deleted by
-// the test itself on every invocation — never committed.
-func ${BRIDGE_TEST_NAME}(t *testing.T) {
-	in := os.Getenv("SPIKE_SANITIZE_IN")
-	out := os.Getenv("SPIKE_SANITIZE_OUT")
-	if in == "" || out == "" {
-		t.Skip("bridge env vars not set")
-	}
-	data, err := os.ReadFile(in)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(out, []byte(sanitizeQuestionBody(string(data))), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-`,
-    );
-  }
-
+  const BRIDGE_TEST_NAME = "TestSanitizeQuestionBodyBridge";
   function sanitizeViaRealGoSanitizer(html: string): string {
     const dir = mkdtempSync(join(tmpdir(), "task18-roundtrip-"));
     const inPath = join(dir, "in.html");
     const outPath = join(dir, "out.html");
     writeFileSync(inPath, html, "utf8");
-    writeBridgeFile();
-    try {
       execFileSync(
         "bash",
         [
           "-lc",
           `if [ -z "$GOROOT" ] || [ ! -x "$GOROOT/bin/go" ]; then export GOROOT="$(ls -d /opt/homebrew/Cellar/go/*/libexec 2>/dev/null | sort -V | tail -n1)"; fi; cd "${BACKEND_DIR}" && go test ./internal/service/... -run '^${BRIDGE_TEST_NAME}$' -v`,
         ],
-        { env: { ...process.env, SPIKE_SANITIZE_IN: inPath, SPIKE_SANITIZE_OUT: outPath }, stdio: "pipe" },
+        { env: { ...process.env, SANITIZE_BRIDGE_IN: inPath, SANITIZE_BRIDGE_OUT: outPath }, stdio: "pipe" },
       );
-    } finally {
-      rmSync(BRIDGE_FILE, { force: true });
-    }
     const result = readFileSync(outPath, "utf8");
     rmSync(dir, { recursive: true, force: true });
     return result;
   }
-
-  afterAll(() => {
-    rmSync(BRIDGE_FILE, { force: true });
-  });
 
   it(
     "a table merged via the toolbar survives getHTML -> real Go sanitizeQuestionBody -> RichContent render, colspan intact",

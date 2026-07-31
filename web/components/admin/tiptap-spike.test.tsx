@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Table } from "@tiptap/extension-table";
@@ -17,74 +17,31 @@ import { join } from "node:path";
 //   getHTML() -> the REAL Go sanitizeQuestionBody -> re-parse
 // unchanged. See decision-editor-library.md and spec.md FR-41/FR-42/FR-43.
 //
-// The "real Go sanitizer" is invoked by writing a throwaway bridge _test.go
-// file into backend/internal/service/ (the only place that can call the
-// unexported sanitizeQuestionBody), running it via `go test -run`, and
-// deleting it immediately after every use. Nothing here is a JS
-// reimplementation of the allowlist/bluemonday policy.
+// The "real Go sanitizer" is invoked through a committed, env-gated bridge test
+// in backend/internal/service/ (the only place that can call the unexported
+// sanitizeQuestionBody). Nothing here is a JS reimplementation of the
+// allowlist/bluemonday policy.
 
 const BACKEND_DIR = join(__dirname, "..", "..", "..", "backend");
-const BRIDGE_TEST_NAME = "TestZZZSpikeSanitizeBridge";
+const BRIDGE_TEST_NAME = "TestSanitizeQuestionBodyBridge";
 
-// Writing the bridge file changes internal/service's file set, so the first
-// invocation on a cold build cache recompiles the whole package (~4s standalone,
-// longer under parallel vitest workers) and blows the 5s default timeout.
+// On a cold Go build cache the bridge invocation compiles internal/service from
+// scratch, which far exceeds vitest's 5s default — CI's frontend job has no Go cache.
 const GO_BRIDGE_TIMEOUT_MS = 120_000;
-const BRIDGE_FILE = join(
-  BACKEND_DIR,
-  "internal/service/zzz_spike_sanitize_bridge_test.go",
-);
-
-function writeBridgeFile() {
-  writeFileSync(
-    BRIDGE_FILE,
-    `package service
-
-import (
-	"os"
-	"testing"
-)
-
-// ${BRIDGE_TEST_NAME} is a throwaway bridge used only by the Task 16 TipTap
-// spike to run real HTML through the production sanitizeQuestionBody from a
-// vitest test. Written and deleted by the test itself on every invocation —
-// never committed.
-func ${BRIDGE_TEST_NAME}(t *testing.T) {
-	in := os.Getenv("SPIKE_SANITIZE_IN")
-	out := os.Getenv("SPIKE_SANITIZE_OUT")
-	if in == "" || out == "" {
-		t.Skip("bridge env vars not set")
-	}
-	data, err := os.ReadFile(in)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(out, []byte(sanitizeQuestionBody(string(data))), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-`,
-  );
-}
 
 function sanitizeViaRealGoSanitizer(html: string): string {
   const dir = mkdtempSync(join(tmpdir(), "tiptap-spike-"));
   const inPath = join(dir, "in.html");
   const outPath = join(dir, "out.html");
   writeFileSync(inPath, html, "utf8");
-  writeBridgeFile();
-  try {
-    execFileSync(
-      "bash",
-      [
-        "-lc",
-        `if [ -z "$GOROOT" ] || [ ! -x "$GOROOT/bin/go" ]; then export GOROOT="$(ls -d /opt/homebrew/Cellar/go/*/libexec 2>/dev/null | sort -V | tail -n1)"; fi; cd "${BACKEND_DIR}" && go test ./internal/service/... -run '^${BRIDGE_TEST_NAME}$' -v`,
-      ],
-      { env: { ...process.env, SPIKE_SANITIZE_IN: inPath, SPIKE_SANITIZE_OUT: outPath }, stdio: "pipe" },
-    );
-  } finally {
-    rmSync(BRIDGE_FILE, { force: true });
-  }
+  execFileSync(
+    "bash",
+    [
+      "-lc",
+      `if [ -z "$GOROOT" ] || [ ! -x "$GOROOT/bin/go" ]; then export GOROOT="$(ls -d /opt/homebrew/Cellar/go/*/libexec 2>/dev/null | sort -V | tail -n1)"; fi; cd "${BACKEND_DIR}" && go test ./internal/service/... -run '^${BRIDGE_TEST_NAME}$' -v`,
+    ],
+    { env: { ...process.env, SANITIZE_BRIDGE_IN: inPath, SANITIZE_BRIDGE_OUT: outPath }, stdio: "pipe" },
+  );
   const result = readFileSync(outPath, "utf8");
   rmSync(dir, { recursive: true, force: true });
   return result;
@@ -116,10 +73,6 @@ function cellPositions(editor: Editor, typeName: string): number[] {
 }
 
 describe("TipTap spike — Part C round-trip gate (Task 16)", () => {
-  afterAll(() => {
-    rmSync(BRIDGE_FILE, { force: true });
-  });
-
   it("insert -> addRow -> addColumn -> mergeCells survives getHTML -> real Go sanitizer -> re-parse", () => {
     const editor = createTestEditor("<p></p>");
 
