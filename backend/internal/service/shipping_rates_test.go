@@ -37,15 +37,17 @@ func TestResolveShippingRates(t *testing.T) {
 		if !got[0].IsEstimate {
 			t.Error("the flat-rate fallback must be flagged as an estimate")
 		}
-		// Compared against literals on purpose. The order page has no is_estimate
-		// column to read, so it decides whether to show the estimate badge by
-		// matching the stored courier name against a copy of these strings in
-		// web/components/orders/ShippingInfo.tsx (ESTIMATE_COURIERS). Asserting
-		// against the constants instead would move with any rename and never
-		// fail, leaving the frontend to break in silence.
+		// Compared against literals on purpose: asserting against the constants
+		// would move with any rename and could never fail. The frontend coupling
+		// this used to guard is gone — the badge now reads the persisted
+		// orders.is_estimate rather than matching courier names — but the strings
+		// still matter, because 0047_order_is_estimate.up.sql backfilled historical
+		// rows with `WHERE selected_courier IN ('Ongkir Flat', 'Flat')`. A rename
+		// leaves those rows unreachable by any later backfill, and changes a label
+		// buyers see.
 		if got[0].Courier != "Ongkir Flat" || got[0].Service != "Standar" {
-			t.Errorf("fallback labels changed to %q/%q — update ESTIMATE_COURIERS in "+
-				"web/components/orders/ShippingInfo.tsx and this assertion together",
+			t.Errorf("fallback labels changed to %q/%q — these are the strings "+
+				"0047_order_is_estimate.up.sql backfilled on, and are user-visible",
 				got[0].Courier, got[0].Service)
 		}
 	})
