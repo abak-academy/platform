@@ -503,7 +503,13 @@ func TestServiceResolveCertificateURL_SubmittedWithoutTimestampReturnsNil(t *tes
 	}
 }
 
-func TestServiceResolveCertificateURL_FreshCacheSkipsLayoutResolution(t *testing.T) {
+// TestServiceResolveCertificateURL_FreshCacheStillResolvesLayoutForGate
+// replaces a pre-#55-fix expectation that a fresh cache hit skipped layout
+// resolution entirely. That was precisely the bug (NFR-S4: a cached PDF is
+// never itself an authorization decision) — the gate now resolves the layout
+// on every access, cached or not, so a malformed design surfaces its parse
+// error instead of silently serving an unchecked URL.
+func TestServiceResolveCertificateURL_FreshCacheStillResolvesLayoutForGate(t *testing.T) {
 	svc := newOfflineStorageService(t)
 	generatedAt := time.Date(2026, 7, 29, 10, 0, 0, 0, time.UTC)
 	key := "certificates/session.pdf"
@@ -517,11 +523,8 @@ func TestServiceResolveCertificateURL_FreshCacheSkipsLayoutResolution(t *testing
 	exam := &model.Exam{CertificateDesign: &malformed, Title: "Test"}
 
 	url, err := svc.resolveCertificateURL(context.Background(), exam, sess, nil, "Budi")
-	if err != nil {
-		t.Fatalf("fresh cached certificate should not parse the layout: %v", err)
-	}
-	if url == nil || !strings.Contains(*url, "X-Amz-Signature") {
-		t.Fatalf("expected a presigned cached certificate URL, got %v", url)
+	if err == nil {
+		t.Fatalf("want a layout parse error on a fresh cache hit, got url=%v", url)
 	}
 }
 
