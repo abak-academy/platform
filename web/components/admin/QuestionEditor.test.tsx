@@ -1098,6 +1098,40 @@ describe("QuestionEditor", () => {
     });
   });
 
+  // ── Per-item points (0050) ───────────────────────────────────────────────
+
+  it("statement points reach the save payload; empty inherits (absent key)", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "true_false" } });
+    await setBodyValue("Soal benar/salah");
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
+
+    const bodies = screen.getAllByLabelText(/isi pernyataan/i);
+    fireEvent.change(bodies[0], { target: { value: "S1" } });
+    fireEvent.change(bodies[1], { target: { value: "S2" } });
+
+    const pointInputs = screen.getAllByLabelText(/^poin$/i);
+    fireEvent.change(pointInputs[0], { target: { value: "5" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            statements: [
+              expect.objectContaining({ index: 1, points: 5 }),
+              expect.not.objectContaining({ points: expect.anything() }),
+            ],
+          }),
+        })
+      );
+    });
+  });
+
   // ── Format merge: short/fill_blank retired from creation (2026-07-31) ────
 
   it("creation offers no short or fill_blank; editing a legacy one keeps its format", () => {

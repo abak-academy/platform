@@ -923,6 +923,9 @@ export const DICT = {
     rte_merge: "Gabung",
     rte_split: "Pisah",
     rte_table: "Tabel",
+    tests_field_item_points: "Poin",
+    tests_field_item_points_hint: "Kosongkan untuk mengikuti Poin benar soal",
+    tests_validation_item_points_positive: "Poin per item harus lebih dari 0.",
     tests_picker_confirm: "Tambahkan {n} soal",
     tests_picker_selected: "{n} dipilih",
 
@@ -2136,6 +2139,9 @@ export const DICT = {
     rte_merge: "Merge",
     rte_split: "Split",
     rte_table: "Table",
+    tests_field_item_points: "Points",
+    tests_field_item_points_hint: "Leave empty to inherit the question's points",
+    tests_validation_item_points_positive: "Per-item points must be greater than 0.",
     tests_picker_confirm: "Add {n} questions",
     tests_picker_selected: "{n} selected",
 

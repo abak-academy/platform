@@ -99,7 +99,7 @@ func scanQuestionOption(row interface{ Scan(dest ...any) error }, o *model.Quest
 	var imageURL *string
 	var isCorrect bool
 	err := row.Scan(
-		&o.QuestionID, &o.Key, &o.Text, &imageURL, &isCorrect, &o.SortOrder,
+		&o.QuestionID, &o.Key, &o.Text, &imageURL, &isCorrect, &o.SortOrder, &o.Points,
 	)
 	if err != nil {
 		return err
@@ -386,7 +386,7 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 
 func (r *Repository) queryOptionsForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID][]model.QuestionOption, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT question_id, key, text, image_url, is_correct, sort_order
+		`SELECT question_id, key, text, image_url, is_correct, sort_order, points
 		FROM question_option
 		WHERE question_id = ANY($1)
 		ORDER BY question_id, sort_order`,
@@ -419,7 +419,7 @@ func (r *Repository) queryOptionsForQuestions(ctx context.Context, questionIDs [
 
 func (r *Repository) queryBlanksForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID][]model.QuestionBlank, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT question_id, blank_index, correct_answer
+		`SELECT question_id, blank_index, correct_answer, points
 		FROM question_blank
 		WHERE question_id = ANY($1)
 		ORDER BY question_id, blank_index`,
@@ -438,7 +438,7 @@ func (r *Repository) queryBlanksForQuestions(ctx context.Context, questionIDs []
 	}
 	for rows.Next() {
 		b := model.QuestionBlank{}
-		if err := rows.Scan(&b.QuestionID, &b.Index, &b.CorrectAnswer); err != nil {
+		if err := rows.Scan(&b.QuestionID, &b.Index, &b.CorrectAnswer, &b.Points); err != nil {
 			return nil, err
 		}
 		out[b.QuestionID] = append(out[b.QuestionID], b)
@@ -451,7 +451,7 @@ func (r *Repository) queryBlanksForQuestions(ctx context.Context, questionIDs []
 
 func (r *Repository) queryStatementsForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID][]model.QuestionStatement, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT question_id, statement_index, body, is_true
+		`SELECT question_id, statement_index, body, is_true, points
 		FROM question_statement
 		WHERE question_id = ANY($1)
 		ORDER BY question_id, statement_index`,
@@ -470,7 +470,7 @@ func (r *Repository) queryStatementsForQuestions(ctx context.Context, questionID
 	}
 	for rows.Next() {
 		st := model.QuestionStatement{}
-		if err := rows.Scan(&st.QuestionID, &st.Index, &st.Body, &st.IsTrue); err != nil {
+		if err := rows.Scan(&st.QuestionID, &st.Index, &st.Body, &st.IsTrue, &st.Points); err != nil {
 			return nil, err
 		}
 		out[st.QuestionID] = append(out[st.QuestionID], st)
@@ -1080,9 +1080,9 @@ func (r *Repository) ReorderTestQuestionsTx(ctx context.Context, tx pgx.Tx, test
 func insertQuestionOptions(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, options []model.QuestionOption) error {
 	for _, o := range options {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO question_option (question_id, key, text, image_url, is_correct, sort_order)
-			VALUES ($1, $2, $3, $4, $5, $6)`,
-			questionID, o.Key, o.Text, o.ImageURL, o.IsCorrect, o.SortOrder,
+			`INSERT INTO question_option (question_id, key, text, image_url, is_correct, sort_order, points)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			questionID, o.Key, o.Text, o.ImageURL, o.IsCorrect, o.SortOrder, o.Points,
 		)
 		if err != nil {
 			return err
@@ -1094,9 +1094,9 @@ func insertQuestionOptions(ctx context.Context, tx pgx.Tx, questionID uuid.UUID,
 func insertQuestionBlanks(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, blanks []model.QuestionBlank) error {
 	for _, b := range blanks {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO question_blank (question_id, blank_index, correct_answer)
-			VALUES ($1, $2, $3)`,
-			questionID, b.Index, b.CorrectAnswer,
+			`INSERT INTO question_blank (question_id, blank_index, correct_answer, points)
+			VALUES ($1, $2, $3, $4)`,
+			questionID, b.Index, b.CorrectAnswer, b.Points,
 		)
 		if err != nil {
 			return err
@@ -1108,9 +1108,9 @@ func insertQuestionBlanks(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, 
 func insertQuestionStatements(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, statements []model.QuestionStatement) error {
 	for _, st := range statements {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO question_statement (question_id, statement_index, body, is_true)
-			VALUES ($1, $2, $3, $4)`,
-			questionID, st.Index, st.Body, st.IsTrue,
+			`INSERT INTO question_statement (question_id, statement_index, body, is_true, points)
+			VALUES ($1, $2, $3, $4, $5)`,
+			questionID, st.Index, st.Body, st.IsTrue, st.Points,
 		)
 		if err != nil {
 			return err

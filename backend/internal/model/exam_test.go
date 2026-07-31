@@ -154,8 +154,8 @@ func TestQuestionOptionStruct(t *testing.T) {
 	v := newModel(typ)
 
 	// composite PK: question_id + key (no surrogate UUID primary key)
-	if typ.NumField() != 6 {
-		t.Fatalf("QuestionOption struct: got %d fields, want 6", typ.NumField())
+	if typ.NumField() != 7 {
+		t.Fatalf("QuestionOption struct: got %d fields, want 7", typ.NumField())
 	}
 
 	jsonTag(t, v, "QuestionID", "question_id")
@@ -164,6 +164,7 @@ func TestQuestionOptionStruct(t *testing.T) {
 	jsonTag(t, v, "ImageURL", "image_url")
 	jsonTag(t, v, "IsCorrect", "is_correct")
 	jsonTag(t, v, "SortOrder", "sort_order")
+	jsonTag(t, v, "Points", "points,omitempty")
 
 	// Confirm NO UUID field exists with name like "ID"
 	if _, ok := typ.FieldByName("ID"); ok {

@@ -360,6 +360,24 @@ func validateQuestion(q model.Question, options []model.QuestionOption, blanks [
 	if q.PointCorrect <= 0 {
 		return fmt.Errorf("%w: point_correct must be > 0", ErrValidation)
 	}
+	// Per-item points (0050) share point_correct's bound: nil means "inherit",
+	// but an explicit value must be a real worth. The DB CHECK enforces the
+	// same, this just fails before the transaction with a readable message.
+	for _, o := range options {
+		if o.Points != nil && *o.Points <= 0 {
+			return fmt.Errorf("%w: option points must be > 0", ErrValidation)
+		}
+	}
+	for _, b := range blanks {
+		if b.Points != nil && *b.Points <= 0 {
+			return fmt.Errorf("%w: blank points must be > 0", ErrValidation)
+		}
+	}
+	for _, st := range statements {
+		if st.Points != nil && *st.Points <= 0 {
+			return fmt.Errorf("%w: statement points must be > 0", ErrValidation)
+		}
+	}
 	if q.PointWrong < 0 {
 		return fmt.Errorf("%w: point_wrong must be >= 0", ErrValidation)
 	}

@@ -48,6 +48,15 @@ func gradeMCQ(answer string, options []model.QuestionOption) bool {
 	return strings.EqualFold(strings.TrimSpace(answer), strings.TrimSpace(correctKey))
 }
 
+// itemPoints resolves a per-item point value (0050): the item's own points when
+// set, else the question-level fallback.
+func itemPoints(points *float64, fallback float64) float64 {
+	if points != nil {
+		return *points
+	}
+	return fallback
+}
+
 // gradeMultiAnswerPartial scores a multi_answer question per selected option,
 // mirroring gradeMultiBlank (user decision, 2026-07-31 — previously exact-set
 // all-or-nothing): each selected correct option earns +pointCorrect, each
@@ -58,8 +67,10 @@ func gradeMCQ(answer string, options []model.QuestionOption) bool {
 // nothing selected was wrong.
 func gradeMultiAnswerPartial(answer string, options []model.QuestionOption, pointCorrect, pointWrong float64) (float64, bool) {
 	correctByKey := make(map[string]bool, len(options))
+	pointsByKey := make(map[string]*float64, len(options))
 	for _, o := range options {
 		correctByKey[o.Key] = o.IsCorrect
+		pointsByKey[o.Key] = o.Points
 	}
 
 	var score float64
@@ -73,7 +84,7 @@ func gradeMultiAnswerPartial(answer string, options []model.QuestionOption, poin
 		seen[key] = true
 		hasAnswer = true
 		if correctByKey[key] {
-			score += pointCorrect
+			score += itemPoints(pointsByKey[key], pointCorrect)
 		} else {
 			// Unknown keys count as wrong selections too — the client never
 			// sends them, so anything here is a tampered payload.
@@ -145,7 +156,7 @@ func gradeMultiBlank(answer *string, blanks []model.QuestionBlank, pointCorrect,
 
 		hasAnswer = true
 		if matchesAnyAccepted(blankAnswer, blank.AcceptedAnswers) {
-			score += pointCorrect
+			score += itemPoints(blank.Points, pointCorrect)
 		} else {
 			score -= pointWrong
 			anyWrong = true
@@ -201,7 +212,7 @@ func gradeTrueFalse(answer *string, statements []model.QuestionStatement, pointC
 
 		hasAnswer = true
 		if answeredTrue == st.IsTrue {
-			score += pointCorrect
+			score += itemPoints(st.Points, pointCorrect)
 		} else {
 			score -= pointWrong
 			anyWrong = true
@@ -220,19 +231,27 @@ func gradeTrueFalse(answer *string, statements []model.QuestionStatement, pointC
 func questionMaxPoints(q model.QuestionWithOptions) float64 {
 	switch q.Question.Format {
 	case "multi_blank":
-		return float64(len(q.Blanks)) * q.Question.PointCorrect
+		var max float64
+		for _, b := range q.Blanks {
+			max += itemPoints(b.Points, q.Question.PointCorrect)
+		}
+		return max
 	case "true_false":
-		return float64(len(q.Question.Statements)) * q.Question.PointCorrect
+		var max float64
+		for _, st := range q.Question.Statements {
+			max += itemPoints(st.Points, q.Question.PointCorrect)
+		}
+		return max
 	case "multi_answer":
 		// Partial credit per selected-correct option (2026-07-31): the maximum
 		// is selecting every correct option and nothing else.
-		var correctCount int
+		var max float64
 		for _, o := range q.Options {
 			if o.IsCorrect {
-				correctCount++
+				max += itemPoints(o.Points, q.Question.PointCorrect)
 			}
 		}
-		return float64(correctCount) * q.Question.PointCorrect
+		return max
 	default:
 		return q.Question.PointCorrect
 	}

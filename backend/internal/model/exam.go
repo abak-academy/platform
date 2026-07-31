@@ -75,6 +75,9 @@ type QuestionOption struct {
 	ImageURL   *string   `json:"image_url"`
 	IsCorrect  bool      `json:"is_correct"`
 	SortOrder  int       `json:"sort_order"`
+	// Points is this option's worth when selected correctly; nil falls back to
+	// the question's PointCorrect (0050, per-item points).
+	Points *float64 `json:"points,omitempty"`
 }
 
 // QuestionBlank has a composite PK (QuestionID, BlankIndex); no surrogate ID.
@@ -86,6 +89,8 @@ type QuestionBlank struct {
 	// AcceptedAnswers is this blank's accepted-answer set; always a non-nil slice on
 	// read (falls back to []string{CorrectAnswer} when no accepted-answer rows exist).
 	AcceptedAnswers []string `json:"accepted_answers"`
+	// Points is this blank's worth; nil falls back to the question's PointCorrect.
+	Points *float64 `json:"points,omitempty"`
 }
 
 // QuestionStatement has a composite PK (QuestionID, Index); no surrogate ID.
@@ -96,6 +101,8 @@ type QuestionStatement struct {
 	Index      int       `json:"index"`
 	Body       string    `json:"body"`
 	IsTrue     bool      `json:"is_true"`
+	// Points is this statement's worth; nil falls back to the question's PointCorrect.
+	Points *float64 `json:"points,omitempty"`
 }
 
 // Exam is a scheduled test offering. It bundles one or more Tests via ExamTest and may

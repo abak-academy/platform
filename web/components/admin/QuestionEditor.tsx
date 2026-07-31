@@ -53,6 +53,38 @@ function nextKey(existing: AdminQuestionOptionInput[]): string {
 interface BlankRow {
   index: number;
   accepted_answers: string[];
+  points?: number;
+}
+
+// Per-item worth (0050). Empty = inherit the question's "Poin benar" — that
+// contract lives in the placeholder so it needs no extra label row.
+function ItemPointsInput({
+  value,
+  onChange,
+  disabled,
+}: {
+  value?: number;
+  onChange: (v?: number) => void;
+  disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <input
+      type="number"
+      step="any"
+      min="0"
+      value={value ?? ""}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v === "" ? undefined : Number(v));
+      }}
+      placeholder={t("tests_field_item_points")}
+      title={t("tests_field_item_points_hint")}
+      aria-label={t("tests_field_item_points")}
+      disabled={disabled}
+      className="h-8 w-20 rounded-md border border-input bg-transparent px-2 text-sm shadow-xs focus-visible:border-ring"
+    />
+  );
 }
 
 function AcceptedAnswerEditor({
@@ -157,6 +189,13 @@ function BlankEditor({ blanks, onChange, onInsertToken, onRemoveToken, disabled 
               disabled={disabled}
             />
           </div>
+          <div className="pt-1">
+            <ItemPointsInput
+              value={blank.points}
+              onChange={(v) => onChange(blanks.map((b, i) => (i === index ? { ...b, points: v } : b)))}
+              disabled={disabled}
+            />
+          </div>
           <Button
             type="button"
             size="icon-xs"
@@ -187,10 +226,11 @@ interface StatementRow {
   index: number;
   body: string;
   is_true: boolean;
+  points?: number;
 }
 
 function buildStatementsFromQuestion(
-  statements?: { index: number; body: string; is_true: boolean }[]
+  statements?: { index: number; body: string; is_true: boolean; points?: number }[]
 ): StatementRow[] {
   if (!statements || statements.length === 0) {
     return [
@@ -198,7 +238,7 @@ function buildStatementsFromQuestion(
       { index: 2, body: "", is_true: false },
     ];
   }
-  return statements.map((s) => ({ index: s.index, body: s.body, is_true: s.is_true }));
+  return statements.map((s) => ({ index: s.index, body: s.body, is_true: s.is_true, points: s.points }));
 }
 
 function renumberStatements(rows: StatementRow[]): StatementRow[] {
@@ -278,6 +318,13 @@ function StatementEditor({ statements, onChange, disabled }: StatementEditorProp
               >
                 {t("tests_field_statement_is_false")}
               </button>
+            </div>
+            <div className="mt-1">
+              <ItemPointsInput
+                value={statement.points}
+                onChange={(v) => update(index, { points: v })}
+                disabled={disabled}
+              />
             </div>
           </div>
           <Button
@@ -374,6 +421,15 @@ function OptionEditor({
                 )}
                 <span>{t("tests_field_option_is_correct")}</span>
               </label>
+              {format === "multi_answer" && opt.is_correct && (
+                <ItemPointsInput
+                  value={opt.points}
+                  onChange={(v) =>
+                    onChange(options.map((o, i) => (i === index ? { ...o, points: v } : o)))
+                  }
+                  disabled={disabled}
+                />
+              )}
               <Button
                 type="button"
                 size="icon-xs"
@@ -444,6 +500,7 @@ function buildOptionsFromQuestion(q: QuestionWithOptions): AdminQuestionOptionIn
     image_url: o.image_url ?? undefined,
     is_correct: o.is_correct,
     sort_order: o.sort_order,
+    points: o.points,
   }));
 }
 
@@ -455,7 +512,7 @@ function buildAcceptedAnswersFromQuestion(q?: Question): string[] {
 }
 
 function buildBlanksFromQuestion(
-  blanks?: Array<{ index: number; correct_answer: string; accepted_answers?: string[] }>
+  blanks?: Array<{ index: number; correct_answer: string; accepted_answers?: string[]; points?: number }>
 ): BlankRow[] {
   if (!blanks) {
     return [
@@ -465,6 +522,7 @@ function buildBlanksFromQuestion(
   }
   return blanks.map((b) => ({
     index: b.index,
+    points: b.points,
     accepted_answers:
       b.accepted_answers && b.accepted_answers.length > 0
         ? b.accepted_answers
@@ -513,6 +571,8 @@ function buildInput(
       image_url: o.image_url,
       is_correct: o.is_correct,
       sort_order: i + 1,
+      // Worth only means anything on a correct option; never send it on wrong ones.
+      ...(o.is_correct && o.points !== undefined ? { points: o.points } : {}),
     }));
   }
   if (format === "multi_blank") {
@@ -522,6 +582,7 @@ function buildInput(
         index: b.index,
         correct_answer: trimmed[0] ?? "",
         accepted_answers: trimmed,
+        ...(b.points !== undefined ? { points: b.points } : {}),
       };
     });
   }
@@ -530,6 +591,7 @@ function buildInput(
       index: s.index,
       body: s.body.trim(),
       is_true: s.is_true,
+      ...(s.points !== undefined ? { points: s.points } : {}),
     }));
   }
   return base;
@@ -666,6 +728,16 @@ function validate(
   if (format === "true_false") {
     const result = validateStatements(statements);
     if (!result.ok) return result;
+  }
+  const itemPointsValues = [
+    ...options.filter((o) => o.is_correct).map((o) => o.points),
+    ...blanks.map((b) => b.points),
+    ...statements.map((st) => st.points),
+  ];
+  for (const v of itemPointsValues) {
+    if (v !== undefined && !(v > 0)) {
+      return { ok: false, key: "tests_validation_item_points_positive" };
+    }
   }
   return { ok: true };
 }
