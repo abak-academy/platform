@@ -162,7 +162,7 @@ describe("QuestionEditor", () => {
 
     expect(screen.getByLabelText(/badan soal/i).textContent).toBe("");
     const radios = screen.getAllByRole("radio");
-    expect(radios.length).toBe(2);
+    expect(radios.length).toBe(4); // min-4 default (2026-07-31)
   });
 
   it("renders edit mode with existing mcq options prefilled and correct radio set", () => {
@@ -1096,6 +1096,28 @@ describe("QuestionEditor", () => {
         })
       );
     });
+  });
+
+  // ── Option count bounds: min 4, max 8 (user request 2026-07-31) ─────────
+
+  it("choice formats start with 4 options; remove is blocked at 4; add is blocked at 8", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    // default mcq: 4 rows a-d
+    expect(screen.getAllByRole("radio").length).toBe(4);
+
+    const removeButtons = screen.getAllByRole("button", { name: /hapus opsi/i });
+    expect(removeButtons[0]).toBeDisabled();
+
+    const add = screen.getByRole("button", { name: /tambah opsi/i });
+    for (let i = 0; i < 4; i++) fireEvent.click(add); // 8 rows
+    expect(screen.getAllByRole("radio").length).toBe(8);
+    expect(add).toBeDisabled();
+
+    // at 8, remove works again
+    expect(screen.getAllByRole("button", { name: /hapus opsi/i })[0]).toBeEnabled();
   });
 
   // ── Per-item points (0050) ───────────────────────────────────────────────

@@ -40,7 +40,7 @@ interface QuestionEditorProps {
   onSaved?: () => void;
 }
 
-const DEFAULT_KEYS: Array<"a" | "b" | "c" | "d"> = ["a", "b", "c", "d"];
+const DEFAULT_KEYS = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
 
 function nextKey(existing: AdminQuestionOptionInput[]): string {
   const used = new Set(existing.map((o) => o.key.toLowerCase()));
@@ -284,7 +284,9 @@ function StatementEditor({ statements, onChange, disabled }: StatementEditorProp
             />
             {/* Segmented Benar/Salah rather than a lone checkbox — a checkbox
                 labelled "Benar" reads as "checked = done", not "this statement
-                is true", and the false state is invisible (user, 2026-07-31). */}
+                is true", and the false state is invisible (user, 2026-07-31).
+                Toggle and per-item Poin share one line (user, 2026-07-31). */}
+            <div className="flex items-center gap-2">
             <div
               role="group"
               aria-label={`${t("tests_field_statement_is_true")}/${t("tests_field_statement_is_false")}`}
@@ -318,8 +320,7 @@ function StatementEditor({ statements, onChange, disabled }: StatementEditorProp
               >
                 {t("tests_field_statement_is_false")}
               </button>
-            </div>
-            <div className="mt-1">
+              </div>
               <ItemPointsInput
                 value={statement.points}
                 onChange={(v) => update(index, { points: v })}
@@ -374,7 +375,7 @@ function OptionEditor({
   }
 
   function remove(index: number) {
-    if (options.length <= 2) return;
+    if (options.length <= 4) return;
     onChange(options.filter((_, i) => i !== index));
   }
 
@@ -421,13 +422,13 @@ function OptionEditor({
                 )}
                 <span>{t("tests_field_option_is_correct")}</span>
               </label>
-              {format === "multi_answer" && opt.is_correct && (
+              {format === "multi_answer" && (
                 <ItemPointsInput
                   value={opt.points}
                   onChange={(v) =>
                     onChange(options.map((o, i) => (i === index ? { ...o, points: v } : o)))
                   }
-                  disabled={disabled}
+                  disabled={disabled || !opt.is_correct}
                 />
               )}
               <Button
@@ -435,7 +436,7 @@ function OptionEditor({
                 size="icon-xs"
                 variant="ghost"
                 onClick={() => remove(index)}
-                disabled={disabled || options.length <= 2}
+                disabled={disabled || options.length <= 4}
                 aria-label={t("tests_remove_option")}
               >
                 <Trash2 className="size-3" />
@@ -459,7 +460,7 @@ function OptionEditor({
         size="sm"
         variant="outline"
         onClick={add}
-        disabled={disabled || options.length >= 4}
+        disabled={disabled || options.length >= 8}
       >
         <Plus className="mr-1 size-4" />
         {t("tests_add_option")}
@@ -489,9 +490,13 @@ const CREATABLE_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "essay", "mu
 function buildOptionsFromQuestion(q: QuestionWithOptions): AdminQuestionOptionInput[] {
   // options is null (not []) for optionless formats coming from the bank API.
   if (!q.options || q.options.length === 0) {
+    // Min 4 options for choice formats (user request 2026-07-31); legacy
+    // questions below 4 stay editable — the remove guard just stops going lower.
     return [
       { key: "a", text: "", is_correct: true, sort_order: 1 },
       { key: "b", text: "", is_correct: false, sort_order: 2 },
+      { key: "c", text: "", is_correct: false, sort_order: 3 },
+      { key: "d", text: "", is_correct: false, sort_order: 4 },
     ];
   }
   return q.options.map((o) => ({
@@ -768,6 +773,8 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
     question ? buildOptionsFromQuestion(question) : [
       { key: "a", text: "", is_correct: true, sort_order: 1 },
       { key: "b", text: "", is_correct: false, sort_order: 2 },
+      { key: "c", text: "", is_correct: false, sort_order: 3 },
+      { key: "d", text: "", is_correct: false, sort_order: 4 },
     ]
   );
   const [blanks, setBlanks] = useState<BlankRow[]>(buildBlanksFromQuestion(question?.blanks));
@@ -797,6 +804,8 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       setOptions([
         { key: "a", text: "", is_correct: true, sort_order: 1 },
         { key: "b", text: "", is_correct: false, sort_order: 2 },
+        { key: "c", text: "", is_correct: false, sort_order: 3 },
+        { key: "d", text: "", is_correct: false, sort_order: 4 },
       ]);
       setBlanks([
         { index: 1, accepted_answers: [""] },
