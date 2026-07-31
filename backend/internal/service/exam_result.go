@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -209,9 +208,12 @@ func (s *Service) GetSessionEssays(ctx context.Context, sessionID uuid.UUID) ([]
 	return s.storeRepo.GetSessionEssayAnswers(ctx, sessionID)
 }
 
-// validateGrade enforces FR-S5-13: score must be an integer in [0, pointCorrect].
+// validateGrade enforces FR-S5-13: score must be in [0, pointCorrect]. The grade may be
+// fractional — point_correct is NUMERIC since 0049, so an essay worth 2.5 points must be
+// awardable 2.5. Requiring a whole number here made full marks unreachable on any
+// fractional-point essay.
 func validateGrade(score float64, pointCorrect float64) error {
-	if score != math.Trunc(score) || score < 0 || score > pointCorrect {
+	if score < 0 || score > pointCorrect {
 		return ErrGradeOutOfRange
 	}
 	return nil
