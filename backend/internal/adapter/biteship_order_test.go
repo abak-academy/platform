@@ -91,15 +91,22 @@ func TestBiteshipClient_CreateOrder_Success(t *testing.T) {
 	}
 }
 
+// TestBiteshipClient_CreateOrder_DuplicateReference uses Biteship's documented
+// 40002060 response shape (https://biteship.com/id/docs/api/orders/create),
+// which nests the echoed order id under "details", not at the top level.
 func TestBiteshipClient_CreateOrder_DuplicateReference(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success":  false,
-			"code":     40002060,
-			"error":    "duplicate reference_id",
-			"order_id": "biteship-order-existing",
+			"success": false,
+			"code":    40002060,
+			"error":   "Reference id has already been used before. Please input other reference id",
+			"details": map[string]interface{}{
+				"order_id":     "biteship-order-existing",
+				"waybill_id":   "1028309128390",
+				"reference_id": "order-123",
+			},
 		})
 	}))
 	defer ts.Close()
@@ -122,6 +129,67 @@ func TestBiteshipClient_CreateOrder_DuplicateReference(t *testing.T) {
 	}
 	if alreadyBooked.ExistingBiteshipOrderID != "biteship-order-existing" {
 		t.Errorf("expected echoed existing order id biteship-order-existing, got %q", alreadyBooked.ExistingBiteshipOrderID)
+	}
+}
+
+// TestBiteshipClient_CreateOrder_DuplicateReference_TopLevelFallback covers
+// the legacy/defensive shape: if Biteship (or a sandbox variant) ever echoes
+// order_id at the top level instead of nested under "details", the id must
+// still be recovered.
+func TestBiteshipClient_CreateOrder_DuplicateReference_TopLevelFallback(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":  false,
+			"code":     40002060,
+			"error":    "duplicate reference_id",
+			"order_id": "biteship-order-existing-legacy",
+		})
+	}))
+	defer ts.Close()
+
+	client := NewBiteshipClient(&mockRepository{}, "test-api-key", ts.URL, http.DefaultClient)
+
+	req := service.CreateShipmentRequest{ReferenceID: "order-123", CourierCode: "jne", ServiceCode: "reg"}
+
+	_, err := client.CreateOrder(t.Context(), req)
+	var alreadyBooked *service.ShipmentAlreadyBookedError
+	if !errors.As(err, &alreadyBooked) {
+		t.Fatalf("expected errors.As to find *service.ShipmentAlreadyBookedError, got: %v", err)
+	}
+	if alreadyBooked.ExistingBiteshipOrderID != "biteship-order-existing-legacy" {
+		t.Errorf("expected fallback to top-level order_id biteship-order-existing-legacy, got %q", alreadyBooked.ExistingBiteshipOrderID)
+	}
+}
+
+// TestBiteshipClient_CreateOrder_DuplicateReference_NoIDEchoed proves that
+// when neither details.order_id nor a top-level order_id is present,
+// ExistingBiteshipOrderID comes back empty so the caller's own guard
+// (shipping_order.go) still engages instead of calling GetOrder("").
+func TestBiteshipClient_CreateOrder_DuplicateReference_NoIDEchoed(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"code":    40002060,
+			"error":   "duplicate reference_id",
+		})
+	}))
+	defer ts.Close()
+
+	client := NewBiteshipClient(&mockRepository{}, "test-api-key", ts.URL, http.DefaultClient)
+
+	req := service.CreateShipmentRequest{ReferenceID: "order-123", CourierCode: "jne", ServiceCode: "reg"}
+
+	_, err := client.CreateOrder(t.Context(), req)
+	var alreadyBooked *service.ShipmentAlreadyBookedError
+	if !errors.As(err, &alreadyBooked) {
+		t.Fatalf("expected errors.As to find *service.ShipmentAlreadyBookedError, got: %v", err)
+	}
+	if alreadyBooked.ExistingBiteshipOrderID != "" {
+		t.Errorf("expected empty ExistingBiteshipOrderID when no id is echoed, got %q", alreadyBooked.ExistingBiteshipOrderID)
 	}
 }
 

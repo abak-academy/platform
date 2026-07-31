@@ -304,7 +304,11 @@ func buildBiteshipOrderRequest(req service.CreateShipmentRequest) biteshipOrderR
 func classifyBiteshipOrderError(statusCode int, body []byte) error {
 	var errResp biteshipOrderErrorResponse
 	if jsonErr := json.Unmarshal(body, &errResp); jsonErr == nil && errResp.Code == 40002060 {
-		return &service.ShipmentAlreadyBookedError{ExistingBiteshipOrderID: errResp.OrderID}
+		orderID := errResp.Details.OrderID
+		if orderID == "" {
+			orderID = errResp.OrderID
+		}
+		return &service.ShipmentAlreadyBookedError{ExistingBiteshipOrderID: orderID}
 	}
 	if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden {
 		return fmt.Errorf("%w: Biteship API returned status %d: %s", service.ErrShippingAuthRejected, statusCode, string(body))
@@ -414,15 +418,24 @@ func (t *biteshipTimestamp) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// biteshipOrderErrorResponse is Biteship's error shape for /v1/orders.
+// biteshipOrderErrorResponse is Biteship's error shape for /v1/orders. Per
+// https://biteship.com/id/docs/api/orders/create, the documented 40002060
+// response nests the echoed pre-existing order under "details":
 //
-// OrderID: Biteship's public docs did not name this field explicitly at the
-// time of writing — TODO: uncertain, verify the real field name against a
-// live 40002060 response (the sandbox test in biteship_sandbox_test.go
-// exercises this) before the first production booking.
+//	{"success":false,"error":"...","code":40002060,
+//	 "details":{"order_id":"...","waybill_id":"...","reference_id":"..."}}
+//
+// OrderID is kept as a defensive fallback for a legacy/undocumented
+// top-level echo — classifyBiteshipOrderError prefers Details.OrderID and
+// only falls back to it when Details.OrderID is empty.
 type biteshipOrderErrorResponse struct {
 	Success bool   `json:"success"`
 	Code    int    `json:"code"`
 	Error   string `json:"error"`
 	OrderID string `json:"order_id"`
+	Details struct {
+		OrderID     string `json:"order_id"`
+		WaybillID   string `json:"waybill_id"`
+		ReferenceID string `json:"reference_id"`
+	} `json:"details"`
 }
