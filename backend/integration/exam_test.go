@@ -1687,6 +1687,86 @@ func TestExam_QuestionAudioURL_persists_and_reads_back(t *testing.T) {
 	assert.Equal(t, "https://example.com/clip.mp3", detailedQuestion["audio_url"], "test detail should return audio_url")
 }
 
+// TestExam_TrueFalseStatements_persist_and_read_back covers the same regression shape as
+// audio_url above, for true_false statements (FR-29): the child rows are written by
+// CreateQuestionTx/UpdateQuestionTx, but each read path has to hydrate them separately.
+// Dropping the hydration in ListQuestions leaves the admin test-detail page with a
+// statement-less true_false question while the bank list still looks correct.
+func TestExam_TrueFalseStatements_persist_and_read_back(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	body := map[string]any{
+		"format": "true_false",
+		"body":   "Decide whether each statement is true.",
+		"statements": []map[string]any{
+			{"index": 1, "body": "Water boils at 100C at sea level.", "is_true": true},
+			{"index": 2, "body": "The sun orbits the earth.", "is_true": false},
+			{"index": 3, "body": "Jakarta is the capital of Indonesia.", "is_true": true},
+		},
+		"point_correct": 1,
+		"point_wrong":   0.5,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/questions", body, token)
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+
+	questionData := out["question"].(map[string]any)
+	questionID := questionData["id"].(string)
+
+	assertStatements := func(t *testing.T, q map[string]any, where string) {
+		t.Helper()
+		raw, ok := q["statements"]
+		require.NotNil(t, raw, "%s should return statements", where)
+		sts, ok := raw.([]any)
+		require.True(t, ok, "%s statements should be an array", where)
+		require.Len(t, sts, 3, "%s should return all 3 statements", where)
+
+		// Index order and the answer key must both survive the round trip.
+		wantBodies := []string{
+			"Water boils at 100C at sea level.",
+			"The sun orbits the earth.",
+			"Jakarta is the capital of Indonesia.",
+		}
+		wantTruth := []bool{true, false, true}
+		for i, s := range sts {
+			st := s.(map[string]any)
+			assert.Equal(t, float64(i+1), st["index"], "%s statement %d index", where, i+1)
+			assert.Equal(t, wantBodies[i], st["body"], "%s statement %d body", where, i+1)
+			assert.Equal(t, wantTruth[i], st["is_true"], "%s statement %d is_true", where, i+1)
+		}
+	}
+
+	assertStatements(t, questionData, "create response")
+
+	// Bank list read path (ListBankQuestions).
+	listResp, listOut := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions", nil, token)
+	require.Equal(t, http.StatusOK, listResp.StatusCode)
+	items := listOut["data"].([]any)
+	var found map[string]any
+	for _, item := range items {
+		q := item.(map[string]any)["question"].(map[string]any)
+		if q["id"] == questionID {
+			found = q
+			break
+		}
+	}
+	require.NotNil(t, found, "created question should appear in bank list")
+	assertStatements(t, found, "bank list")
+
+	// Test-detail read path (ListQuestions via GetTestDetail).
+	testID := seedTest(t, env, "True False Test", "science", "general", 30)
+	attachResp, _ := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions/attach", map[string]any{"question_id": questionID}, token)
+	require.Equal(t, http.StatusNoContent, attachResp.StatusCode)
+
+	detailResp, detailOut := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests/"+testID, nil, token)
+	require.Equal(t, http.StatusOK, detailResp.StatusCode)
+	questionsData := detailOut["questions"].([]any)
+	require.Len(t, questionsData, 1)
+	detailedQuestion := questionsData[0].(map[string]any)["question"].(map[string]any)
+	assertStatements(t, detailedQuestion, "test detail")
+}
+
 // TestExam_MultiBlankQuestion_non_multi_blank_has_empty_blanks tests that non-multi_blank
 // questions return an empty blanks slice, not nil.
 func TestExam_MultiBlankQuestion_non_multi_blank_has_empty_blanks(t *testing.T) {

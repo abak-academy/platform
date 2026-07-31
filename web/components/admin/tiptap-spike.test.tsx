@@ -25,6 +25,11 @@ import { join } from "node:path";
 
 const BACKEND_DIR = join(__dirname, "..", "..", "..", "backend");
 const BRIDGE_TEST_NAME = "TestZZZSpikeSanitizeBridge";
+
+// Writing the bridge file changes internal/service's file set, so the first
+// invocation on a cold build cache recompiles the whole package (~4s standalone,
+// longer under parallel vitest workers) and blows the 5s default timeout.
+const GO_BRIDGE_TIMEOUT_MS = 120_000;
 const BRIDGE_FILE = join(
   BACKEND_DIR,
   "internal/service/zzz_spike_sanitize_bridge_test.go",
@@ -149,7 +154,7 @@ describe("TipTap spike — Part C round-trip gate (Task 16)", () => {
     expect(sanitizedRowCount).toBe(originalRowCount);
 
     editor.destroy();
-  });
+  }, GO_BRIDGE_TIMEOUT_MS);
 
   it("math delimiters round-trip byte-identical through getHTML -> real Go sanitizer -> re-parse", () => {
     const mathBody = "<p>Solve \\(x^2\\) and \\(\\frac{1}{2}\\)</p>";
@@ -169,5 +174,5 @@ describe("TipTap spike — Part C round-trip gate (Task 16)", () => {
     expect(sanitized).toContain("\\(\\frac{1}{2}\\)");
 
     editor.destroy();
-  });
+  }, GO_BRIDGE_TIMEOUT_MS);
 });
