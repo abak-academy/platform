@@ -16,6 +16,7 @@ import {
 import { CertificateDesignTab } from "@/components/admin/CertificateDesignTab";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
+import { ExamResultsTab } from "@/components/admin/ExamResultsTab";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -602,7 +603,11 @@ export default function ExamPackageDetailPage() {
             )
           )}
           {tab === "results" && (
-            <UnderMaintenance icon={ListChecks} title={t("admin_exam_detail_tab_results")} />
+            role === "admin_school" || role === "super_admin" ? (
+              <ExamResultsTab examId={id} />
+            ) : (
+              <UnderMaintenance icon={ListChecks} title={t("admin_exam_detail_tab_results")} />
+            )
           )}
           {tab === "grading" && (
             <div className="md-card-outlined space-y-4 p-6">
