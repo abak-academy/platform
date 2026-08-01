@@ -432,7 +432,12 @@ func defaultLayout(template string) Layout {
 				{ID: "completion_text", XMm: 48.5, YMm: 124, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "regular", SizePt: 12, Color: "#6B5B34", Visible: true},
 				{ID: "exam_title", XMm: 48.5, YMm: 139, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#22315B", Visible: true},
 				{ID: "date", XMm: 48.5, YMm: 162, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "regular", SizePt: 12.5, Color: "#6B5B34", Visible: true},
-				{ID: "certificate_number", XMm: 48.5, YMm: 182, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#8A6A16", Visible: true},
+				// YMm 193 (not 182) clears the background's laurel-wreath circle
+				// emblem, which sits at the same pixel position across all three
+				// built-in backgrounds (see classic's certificate_number at YMm 193,
+				// which the same emblem does not overlap) — verified by rendering
+				// (task_15_result.json).
+				{ID: "certificate_number", XMm: 48.5, YMm: 193, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#8A6A16", Visible: true},
 				{ID: "signature", XMm: 205, YMm: 150, WMm: 62, HMm: 22, Align: "center", Visible: false},
 			},
 		}
