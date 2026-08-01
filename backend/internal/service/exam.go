@@ -1005,7 +1005,7 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 	bgKey := certificateBackgroundKey(exam)
 	var bgURL *string
 	if bgKey != nil {
-		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *bgKey, time.Hour)
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *bgKey, presignedDocumentURLTTL)
 		if err != nil {
 			return nil, fmt.Errorf("presign certificate background: %w", err)
 		}
@@ -1018,7 +1018,7 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 		if field.Kind != "image" || field.AssetKey == nil || *field.AssetKey == "" {
 			continue
 		}
-		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *field.AssetKey, time.Hour)
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *field.AssetKey, presignedDocumentURLTTL)
 		if err != nil {
 			return nil, fmt.Errorf("presign certificate image %s: %w", field.ID, err)
 		}
@@ -1351,9 +1351,11 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (str
 	return signed, filename, nil
 }
 
-// cardURLTTL bounds how long a signed card-download link stays valid. Short,
-// because the link is handed straight to the browser on each request.
-const cardURLTTL = 15 * time.Minute
+// presignedDocumentURLTTL bounds every presigned certificate/card/asset URL.
+// Once an admin hides results, this TTL is the entire residual exposure
+// window during which an already-signed URL keeps working — the gate at #55
+// only stops new signs, not URLs already handed to a browser.
+const presignedDocumentURLTTL = 15 * time.Minute
 
 // presignCardURL signs a time-limited GET for a stored card PDF. The bucket is
 // private, so every read signs afresh rather than persisting a URL. The
@@ -1365,7 +1367,7 @@ func (s *Service) presignCardURL(ctx context.Context, key, filename string) (str
 	}
 	params := url.Values{}
 	params.Set("response-content-disposition", `attachment; filename="`+filename+`"`)
-	u, err := s.presignStorage().PresignedGetObject(ctx, s.cfg.ObjectStorageBucketName, key, cardURLTTL, params)
+	u, err := s.presignStorage().PresignedGetObject(ctx, s.cfg.ObjectStorageBucketName, key, presignedDocumentURLTTL, params)
 	if err != nil {
 		return "", fmt.Errorf("presign card url: %w", err)
 	}

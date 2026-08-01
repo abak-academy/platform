@@ -421,7 +421,7 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 		sess.CertificateNumber = &number
 	}
 
-	signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *sess.CertificateKey, time.Hour)
+	signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *sess.CertificateKey, presignedDocumentURLTTL)
 	if err != nil {
 		return nil, fmt.Errorf("presign certificate url: %w", err)
 	}

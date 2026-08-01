@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -2935,6 +2937,63 @@ func TestGetCertificateDesign_Integration_CustomBackground_ReturnsPresignedURLNo
 	}
 	if *design.BackgroundKey != key {
 		t.Errorf("BackgroundKey = %q, want %q", *design.BackgroundKey, key)
+	}
+}
+
+// TestGetCertificateDesign_Integration_BackgroundURL_TTLAtMost15Min proves FR-7:
+// the presigned background URL must expire within 15 minutes, not the old
+// hour-long default — once results are hidden, this TTL is the entire residual
+// window an already-signed URL keeps working.
+func TestGetCertificateDesign_Integration_BackgroundURL_TTLAtMost15Min(t *testing.T) {
+	_, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	client, err := minio.New("localhost:9000", &minio.Options{
+		Creds:  credentials.NewStaticV4("test-access", "test-secret", ""),
+		Secure: false,
+		Region: "us-east-1",
+	})
+	if err != nil {
+		t.Fatalf("minio.New: %v", err)
+	}
+	svc := NewWithStore(
+		repo, repo, nil, nil,
+		&NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil,
+		client, &config.Config{ObjectStorageBucketName: "test-bucket", ObjectStorageRegion: "us-east-1"},
+		nil,
+	)
+
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "TTL Exam " + uniqueSuffix(), CertificateDesign: certDesignJSON("custom")})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+	if _, err := svc.SetExamCertificateEnabled(ctx, exam.ID, true); err != nil {
+		t.Fatalf("SetExamCertificateEnabled: %v", err)
+	}
+	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
+	designWithKey := json.RawMessage(`{"template":"custom","background_key":"` + key + `"}`)
+	exam.CertificateDesign = &designWithKey
+	if _, err := svc.UpdateExam(ctx, exam.ID, exam); err != nil {
+		t.Fatalf("UpdateExam: %v", err)
+	}
+
+	design, err := svc.GetCertificateDesign(ctx, exam.ID)
+	if err != nil {
+		t.Fatalf("GetCertificateDesign: %v", err)
+	}
+	if design.BackgroundURL == nil {
+		t.Fatal("expected a non-nil BackgroundURL for a custom background")
+	}
+	parsed, err := url.Parse(*design.BackgroundURL)
+	if err != nil {
+		t.Fatalf("parse BackgroundURL: %v", err)
+	}
+	expires, err := strconv.Atoi(parsed.Query().Get("X-Amz-Expires"))
+	if err != nil {
+		t.Fatalf("parse X-Amz-Expires: %v", err)
+	}
+	if expires > 15*60 {
+		t.Errorf("X-Amz-Expires = %ds, want <= 900s (15 minutes)", expires)
 	}
 }
 
