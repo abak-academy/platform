@@ -37,3 +37,37 @@ export async function getCertificatePrintData(
     return null;
   }
 }
+
+// CardPrintData mirrors CardPrintData (backend/internal/service/exam.go) —
+// the exam card print-data endpoint deliberately carries only these five
+// fields (FR-20); grade, dob, photo, subject, duration, mode and platform
+// are not part of the server-authored response.
+export interface CardPrintData {
+  participant_no: string;
+  student_name: string;
+  school: string;
+  exam_title: string;
+  exam_schedule: string;
+  check_in_code: string;
+}
+
+// getCardPrintData redeems a single-use print token against the print-data
+// endpoint (backend/internal/handler/print.go, GET /print/cards/:id). Every
+// failure mode collapses to null so the caller renders the same empty
+// document for all of them (FR-22, FR-23, NFR-S1).
+export async function getCardPrintData(
+  id: string,
+  token: string
+): Promise<CardPrintData | null> {
+  if (!id || !token) return null;
+  try {
+    const res = await fetch(
+      `${INTERNAL_API_BASE_URL}/print/cards/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as CardPrintData;
+  } catch {
+    return null;
+  }
+}
