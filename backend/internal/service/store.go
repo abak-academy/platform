@@ -909,6 +909,16 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		}
 	}
 
+	// Re-validate qty at checkout: a row that predates the AddItem/UpdateItemQty
+	// guards can still carry qty > 1 on a digital line, and the qty stepper is
+	// hidden for digital items so the buyer cannot self-correct it. Catching it
+	// here — before BeginTx — stops the wrong price from ever reaching payment.
+	for _, item := range order.Items {
+		if err := ValidateItemQty(item.ProductType, item.Qty); err != nil {
+			return CheckoutResult{}, err
+		}
+	}
+
 	// Biodata gate: a student registering for an exam for themselves must have
 	// complete biodata (school, class, dob). Bulk/admin orders (order_participant
 	// rows present) are exempt — those students' biodata is admin-managed.

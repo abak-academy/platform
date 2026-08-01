@@ -1105,6 +1105,204 @@ func TestCheckout_DigitalItemWithoutShipping_Succeeds(t *testing.T) {
 	}
 }
 
+// recordingPaymentClient records whether CreatePayment was invoked, so a test
+// can assert the payment gateway was never reached.
+type recordingPaymentClient struct {
+	createCalled bool
+}
+
+func (r *recordingPaymentClient) CreatePayment(ctx context.Context, req PaymentRequest) (PaymentResponse, error) {
+	r.createCalled = true
+	return PaymentResponse{
+		GatewayRef: "rec-" + req.OrderID,
+		PaymentURL: "https://rec.payment/pay/" + req.OrderID,
+		ExpiresAt:  time.Now().Add(24 * time.Hour),
+	}, nil
+}
+
+func (r *recordingPaymentClient) QueryStatus(ctx context.Context, reference string) (PaymentStatus, error) {
+	return PaymentStatus{Reference: reference}, nil
+}
+
+func (r *recordingPaymentClient) VerifySignature(_ []byte, _ string) bool {
+	return false
+}
+
+// TestCheckout_DigitalQtyGreaterThanOne_RefusedBeforePayment covers FR-15: a
+// cart carrying an exam line at qty > 1 — the shape of a row written before
+// the AddItem/UpdateItemQty guards existed — must be refused by Checkout
+// itself, before any transaction opens and before the payment gateway is
+// ever called. The item is inserted directly via SQL, bypassing AddItem's
+// own ValidateItemQty check, to mimic that pre-guard row.
+func TestCheckout_DigitalQtyGreaterThanOne_RefusedBeforePayment(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	payment := &recordingPaymentClient{}
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, payment, &NoopLogisticsClient{}, nil, nil)
+
+	examID := createTestExamForBulk(t, repo)
+	productID := createTestExamProductForBulk(t, repo, examID, 50000)
+
+	studentID := insertCheckoutStudent(t, repo, "Qty Guard Student", "qtyguard_")
+	// Complete biodata so the qty guard, not the unrelated biodata gate, is
+	// what the assertion below is isolating.
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE users SET unlisted_school_name = 'SMA Test', grade = 12, dob = '2008-01-01' WHERE id = $1`,
+		studentID,
+	); err != nil {
+		t.Fatalf("set biodata: %v", err)
+	}
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+
+	if _, err := repo.Pool().Exec(ctx,
+		`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams)
+		 VALUES ($1, $2, 'exam', 'Pre-guard Exam Item', 50000, 2, 100000, 0)`,
+		order.ID, productID,
+	); err != nil {
+		t.Fatalf("insert pre-guard item: %v", err)
+	}
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE orders SET subtotal = 100000, total = 100000 WHERE id = $1`, order.ID,
+	); err != nil {
+		t.Fatalf("set order totals: %v", err)
+	}
+
+	wantErr := ValidateItemQty("exam", 2)
+
+	_, err = svc.Checkout(ctx, studentID, order.ID.String(), "qty-guard-key-"+uniqueSuffix())
+	if err == nil || err.Error() != wantErr.Error() {
+		t.Fatalf("want error %q, got %v", wantErr, err)
+	}
+	if !errors.Is(err, ErrDigitalQtyLimit) {
+		t.Fatalf("want errors.Is(err, ErrDigitalQtyLimit), got %v", err)
+	}
+
+	got, err := svc.GetStudentOrder(ctx, studentID, order.ID.String())
+	if err != nil {
+		t.Fatalf("GetStudentOrder: %v", err)
+	}
+	if got.Status != "cart" {
+		t.Errorf("want order status still cart, got %q", got.Status)
+	}
+
+	if payment.createCalled {
+		t.Error("want CreatePayment not called when checkout is refused before any transaction opens")
+	}
+}
+
+// TestCheckout_PhysicalQtyGreaterThanOne_Succeeds pins that FR-15's guard is
+// digital-only: a physical line at qty 3 is exactly what ValidateItemQty
+// already allows, so checkout must still complete normally.
+func TestCheckout_PhysicalQtyGreaterThanOne_Succeeds(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, spy, nil, nil)
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status, weight_grams)
+		 VALUES ('book', $1, 50000, 10, 'published', 500) RETURNING id`,
+		"Qty Guard Book "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "Physical Qty Student", "physqty_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 3); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	provinceID, cityID, districtID := "93", "9301", "930101"
+	kodePos := "12345"
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{
+		Courier:    "JNE",
+		Service:    "REG",
+		ProvinceID: &provinceID,
+		CityID:     &cityID,
+		DistrictID: &districtID,
+		KodePos:    &kodePos,
+	}); err != nil {
+		t.Fatalf("PatchCart: %v", err)
+	}
+
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "physqty-key-"+uniqueSuffix())
+	if err != nil {
+		t.Fatalf("Checkout with physical item at qty 3: %v", err)
+	}
+	if result.GatewayRef == "" {
+		t.Error("want non-empty gateway_ref for successful checkout")
+	}
+}
+
+// TestCheckout_DigitalQtyOne_Succeeds pins that the new guard does not
+// disturb a well-formed digital cart at the only qty digital items may hold.
+func TestCheckout_DigitalQtyOne_Succeeds(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status)
+		 VALUES ('course', $1, 50000, 0, 'published') RETURNING id`,
+		"Qty Guard Course "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "Digital Qty One Student", "digqtyone_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "digqtyone-key-"+uniqueSuffix())
+	if err != nil {
+		t.Fatalf("Checkout with well-formed digital item at qty 1: %v", err)
+	}
+	if result.GatewayRef == "" {
+		t.Error("want non-empty gateway_ref for successful checkout")
+	}
+}
+
 // Order lifecycle tests use fakeOrderRepo for testing service logic.
 type fakeOrderRepo struct {
 	products map[string]*model.Product
