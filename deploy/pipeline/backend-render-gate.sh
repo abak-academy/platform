@@ -13,9 +13,14 @@ cd "$repo_root"
 # hard CI precondition instead of a machine-specific nicety; see
 # certificate_printroute_gate_test.go for the test side of this gate.
 #
-# backend/config/env/dev/ is gitignored (README.md:105) — bootstrap it from
+# backend/config/env/dev/ is gitignored (.gitignore:20) — bootstrap it from
 # the committed example templates, whose values already match
 # deploy/compose/local.yml, exactly like a fresh local dev setup would.
+# mkdir -p is load-bearing on CI: the directory is ignored, so it does not
+# exist in a fresh checkout at all and the cp below fails with "No such file
+# or directory". A dev machine has it already, which is why this passed
+# locally and failed on the first CI run.
+mkdir -p backend/config/env/dev
 if [ ! -f backend/config/env/dev/config.yaml ]; then
   cp backend/config/env/config.example.yaml backend/config/env/dev/config.yaml
 fi
