@@ -28,6 +28,11 @@ jobs:
       # without it renderToPNG skips and the gate silently stops checking layout.
       - name: install poppler-utils
         run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      # NFR-R4/FR-30: certificates render through the real print route now, so
+      # the script below builds and starts web/api/gotenberg (and their
+      # postgres/redis/minio deps) from deploy/compose/local.yml before running
+      # go test — ubuntu-latest ships Docker + the compose plugin already, no
+      # extra setup step needed here.
       - name: certificate render gate
         run: ./deploy/pipeline/backend-render-gate.sh
 
