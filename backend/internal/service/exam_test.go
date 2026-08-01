@@ -3118,3 +3118,91 @@ func TestAdminGetExamRoster_OrdersByParticipantNumber_NilSafeForMissingNumbers(t
 	assert.Nil(t, rows[1].ParticipantNumber)
 	assert.Empty(t, rows[1].ParticipantNo, "nil-safe: missing participant_number must not render a bogus number")
 }
+
+// --- Task 12: exam card renders through the print route (FR-28) ---
+
+// TestRenderCardThroughPrintRoute_UsesRenderURLNotRenderHTML mirrors Task 13's
+// certificate assertion (certificate_gate_db_test.go) for the card path:
+// renderCardThroughPrintRoute (called by GetExamCard on a cache miss) must
+// mint a print token and ask the renderer to fetch the card print route on
+// the configured internal web origin — never build HTML in Go and call
+// RenderHTML. gateTestPool/gateTestService/gateFakeRenderer are defined in
+// certificate_gate_db_test.go and reused here (same package) rather than
+// duplicated.
+func TestRenderCardThroughPrintRoute_UsesRenderURLNotRenderHTML(t *testing.T) {
+	pool, _ := gateTestPool(t)
+	renderer := &gateFakeRenderer{}
+	svc := gateTestService(t, pool, renderer)
+	ctx := context.Background()
+	regID := uuid.New()
+
+	pdf, err := svc.renderCardThroughPrintRoute(ctx, regID)
+	require.NoError(t, err)
+	assert.Equal(t, "%PDF-1.4", string(pdf))
+
+	assert.Equal(t, 0, renderer.htmlCalls, "RenderHTML calls, want 0 — no card HTML may be built in Go (FR-28)")
+	require.Equal(t, 1, renderer.urlCalls)
+
+	wantPrefix := "http://web-internal.test:3000/documents/card?token="
+	assert.True(t, strings.HasPrefix(renderer.lastURL, wantPrefix),
+		"rendered url = %q, want prefix %q (the configured internal web origin)", renderer.lastURL, wantPrefix)
+	assert.Contains(t, renderer.lastURL, "&id="+regID.String())
+}
+
+// TestRenderCardThroughPrintRoute_TokenScopedToRegistration proves the minted
+// token is bound to the registration id it was minted for: redeeming it
+// against a different registration must fail, and redeeming it against the
+// registration it was actually minted for must succeed.
+func TestRenderCardThroughPrintRoute_TokenScopedToRegistration(t *testing.T) {
+	pool, _ := gateTestPool(t)
+	renderer := &gateFakeRenderer{}
+	svc := gateTestService(t, pool, renderer)
+	ctx := context.Background()
+	regID := uuid.New()
+	otherRegID := uuid.New()
+
+	_, err := svc.renderCardThroughPrintRoute(ctx, regID)
+	require.NoError(t, err)
+	token := tokenFromPrintRouteURL(t, renderer.lastURL)
+
+	err = svc.RedeemPrintToken(ctx, token, PrintTokenKindCard, otherRegID.String())
+	require.ErrorIs(t, err, ErrPrintTokenInvalid, "a card token must not redeem against a different registration")
+
+	// Mint a fresh token (the failed redemption above consumed the first one)
+	// and confirm it does redeem successfully against the registration it was
+	// scoped to.
+	_, err = svc.renderCardThroughPrintRoute(ctx, regID)
+	require.NoError(t, err)
+	token = tokenFromPrintRouteURL(t, renderer.lastURL)
+
+	err = svc.RedeemPrintToken(ctx, token, PrintTokenKindCard, regID.String())
+	require.NoError(t, err, "a card token must redeem successfully against the registration it was minted for")
+}
+
+// TestRenderCardThroughPrintRoute_RenderURLFailure_PropagatesError is the
+// unit-level companion to NFR-R1 for the card path: a RenderURL failure
+// (standing in for a stopped/erroring web container) must propagate as a
+// plain error rather than being swallowed.
+func TestRenderCardThroughPrintRoute_RenderURLFailure_PropagatesError(t *testing.T) {
+	pool, _ := gateTestPool(t)
+	wantErr := errors.New("simulated web container failure")
+	renderer := &gateFakeRenderer{urlErr: wantErr}
+	svc := gateTestService(t, pool, renderer)
+	ctx := context.Background()
+
+	_, err := svc.renderCardThroughPrintRoute(ctx, uuid.New())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, wantErr)
+}
+
+// tokenFromPrintRouteURL extracts the "token" query parameter from a print
+// route URL built by cardPrintRouteURL/certificatePrintRouteURL, for tests
+// that need to redeem the token the renderer was actually called with.
+func tokenFromPrintRouteURL(t *testing.T, rawURL string) string {
+	t.Helper()
+	u, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	token := u.Query().Get("token")
+	require.NotEmpty(t, token)
+	return token
+}

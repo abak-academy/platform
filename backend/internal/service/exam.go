@@ -1217,11 +1217,12 @@ func (s *Service) AdminGetExamRoster(ctx context.Context, examID uuid.UUID, scho
 }
 
 // GetExamCard returns a freshly presigned URL for the exam card PDF, generating
-// it once via Gotenberg and caching the object key thereafter (FR-30):
-// buildCardHTML → RenderHTML → object-store put → card_key persisted → fresh
-// presigned GET. A registration with a CardKey already set is presigned
-// straight away, so a repeated download never re-renders — and the API is never
-// the data-transfer path for the PDF bytes themselves.
+// it once via Gotenberg through the print route and caching the object key
+// thereafter (FR-28, FR-30): mint a card print token → RenderURL(card print
+// route) → object-store put → card_key persisted → fresh presigned GET. A
+// registration with a CardKey already set is presigned straight away, so a
+// repeated download never re-renders — and the API is never the data-transfer
+// path for the PDF bytes themselves.
 func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (string, string, error) {
 	detail, err := s.GetExamRegistration(ctx, regID, studentID)
 	if err != nil {
@@ -1237,49 +1238,14 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (str
 		return signed, filename, nil
 	}
 
-	studentName := ""
-	photoURL := ""
-	user, err := s.Me(ctx, studentID)
-	if err == nil && user != nil {
-		studentName = user.Name
-		if user.PhotoURL != nil {
-			photoURL = *user.PhotoURL
-		}
-	}
-	tenantName := ""
-	logoURL := ""
-	cfg, err := s.GetSystemConfig(ctx)
-	if err == nil && cfg != nil {
-		if v, ok := cfg["app_name"]; ok && v != "" {
-			tenantName = v
-		}
-		if v, ok := cfg["app_logo_url"]; ok && v != "" {
-			logoURL = v
-		}
-	}
-	if tenantName == "" {
-		tenantName = "Akademi Bimbel"
-	}
-	// The two images have different trust levels and so different loaders: the
-	// student-controlled photo is read from our own storage BY KEY and never
-	// causes an outbound request (the host in a stored proxy URL is ignored),
-	// while the super_admin-configured logo may legitimately be an external
-	// https URL and is fetched under the restrictions in card_logo.go. Failure
-	// is non-fatal (nil bytes) so a missing asset never blocks generation (FR-21).
-	logoImg := s.loadCardLogoImage(ctx, logoURL)
-	photoImg := s.loadCardAvatarImage(ctx, photoURL)
-
-	html, err := buildCardHTML(detail, studentName, tenantName, logoImg, photoImg)
-	if err != nil {
-		return "", "", err
-	}
-	pdf, err := s.renderer.RenderHTML(ctx, html)
-	if err != nil {
-		return "", "", fmt.Errorf("generate card pdf: %w", err)
-	}
 	regUUID, err := uuid.Parse(regID)
 	if err != nil {
 		return "", "", fmt.Errorf("%w: invalid registration id", ErrValidation)
+	}
+
+	pdf, err := s.renderCardThroughPrintRoute(ctx, regUUID)
+	if err != nil {
+		return "", "", fmt.Errorf("generate card pdf: %w", err)
 	}
 	key, err := s.uploadCardPDF(ctx, regUUID, pdf)
 	if err != nil {
@@ -1294,6 +1260,26 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (str
 		return "", "", err
 	}
 	return signed, filename, nil
+}
+
+// cardPrintRouteURL builds the internal URL Gotenberg's headless Chromium
+// fetches to render an exam card (FR-28): the print token is the only
+// credential, and regID is the same grey-area exposure certificatePrintRouteURL
+// already accepts for its subject id — no other value ever appears in the
+// query string (NFR-S5).
+func cardPrintRouteURL(webInternalURL, token, regID string) string {
+	return webInternalURL + "/documents/card?token=" + url.QueryEscape(token) + "&id=" + url.QueryEscape(regID)
+}
+
+// renderCardThroughPrintRoute mints a single-use print token scoped to regID
+// and asks Gotenberg to render the exam card print route on the internal web
+// origin (FR-28) — no card HTML is built in Go.
+func (s *Service) renderCardThroughPrintRoute(ctx context.Context, regID uuid.UUID) ([]byte, error) {
+	token, err := s.MintPrintToken(ctx, PrintTokenKindCard, regID.String())
+	if err != nil {
+		return nil, fmt.Errorf("mint card print token: %w", err)
+	}
+	return s.renderer.RenderURL(ctx, cardPrintRouteURL(s.cfg.WebInternalURL, token, regID.String()))
 }
 
 // CardPrintData is the full set of server-authored values the exam card
