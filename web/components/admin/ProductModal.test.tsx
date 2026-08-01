@@ -459,7 +459,11 @@ describe("ProductModal", () => {
     const file = new File(["x"], "img.png", { type: "image/png" });
     fireEvent.change(screen.getByLabelText(/gambar/i), { target: { files: [file] } });
 
-    await waitFor(() => expect(mockPresign).toHaveBeenCalled());
+    // Wait for the upload to be APPLIED, not merely started: presign is
+    // followed by a second await (the PUT) before setImageUrl runs, so waiting
+    // on "presign was called" lets Simpan fire while imageUrl is still empty —
+    // onSubmit then commits once, without image_url, and never fires again.
+    await waitFor(() => expect(screen.getByAltText("Pratinjau gambar")).toBeInTheDocument());
     expect(mockPresign).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "product" })
     );
@@ -553,7 +557,11 @@ describe("ProductModal", () => {
 
     const file = new File(["x"], "img.png", { type: "image/png" });
     fireEvent.change(screen.getByLabelText(/gambar/i), { target: { files: [file] } });
-    await waitFor(() => expect(mockPresign).toHaveBeenCalled());
+    // Wait for the upload to be APPLIED, not merely started: presign is
+    // followed by a second await (the PUT) before setImageUrl runs, so waiting
+    // on "presign was called" lets Simpan fire while imageUrl is still empty —
+    // onSubmit then commits once, without image_url, and never fires again.
+    await waitFor(() => expect(screen.getByAltText("Pratinjau gambar")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
@@ -593,7 +601,11 @@ describe("ProductModal", () => {
 
     const file = new File(["x"], "cover.png", { type: "image/png" });
     fireEvent.change(screen.getByLabelText(/gambar/i), { target: { files: [file] } });
-    await waitFor(() => expect(mockPresign).toHaveBeenCalled());
+    // Wait for the upload to be APPLIED, not merely started: presign is
+    // followed by a second await (the PUT) before setImageUrl runs, so waiting
+    // on "presign was called" lets Simpan fire while imageUrl is still empty —
+    // onSubmit then commits once, without image_url, and never fires again.
+    await waitFor(() => expect(screen.getByAltText("Pratinjau gambar")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
