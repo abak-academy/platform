@@ -215,6 +215,7 @@
   min-height: 0;
   display: grid;
   grid-template-columns: 1.2fr 1fr;
+  grid-template-rows: minmax(0, 1fr);
   gap: 2.8cqw;
   padding: 3cqh 4.4cqw 2.4cqh;
 }
@@ -310,6 +311,7 @@
   gap: 1.6cqh;
   flex: 1;
   justify-content: center;
+  min-height: 0;
 }
 .idrow {
   display: flex;

@@ -1371,36 +1371,41 @@ func (s *Service) GetCardPrintData(ctx context.Context, regID string) (*CardPrin
 	}, nil
 }
 
-// presignCardAvatarURL signs a browser-loadable URL for a student's stored
-// avatar for the card print route, reusing avatarKeyFromStored's trust rule
-// (see loadCardAvatarImage): only a key under our own bucket is ever signed,
+// presignCardAvatarURL signs a URL for a student's stored avatar for the card
+// print route, reusing avatarKeyFromStored's trust rule (see
+// loadCardAvatarImage): only a key under our own bucket is ever signed,
 // never an outbound fetch keyed off a stored proxy URL naming some other
-// host. Any failure — no storage key, presign error — collapses to "" so a
-// missing/foreign photo just omits the image (mirrors loadCardAvatarImage's
-// FR-21 best-effort behavior) instead of failing the print route.
+// host. It's signed against the internal storage endpoint, not the
+// browser-facing one (see presignInternalReadURL) — the only consumer is
+// Gotenberg's headless Chromium fetching this print route from inside the
+// docker network. Any failure — no storage key, presign error — collapses
+// to "" so a missing/foreign photo just omits the image (mirrors
+// loadCardAvatarImage's FR-21 best-effort behavior) instead of failing the
+// print route.
 func (s *Service) presignCardAvatarURL(ctx context.Context, stored string) string {
 	key := avatarKeyFromStored(stored)
 	if key == "" {
 		return ""
 	}
-	signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, key, presignedDocumentURLTTL)
+	signed, err := s.presignInternalReadURL(ctx, s.cfg.ObjectStorageBucketName, key, presignedDocumentURLTTL)
 	if err != nil {
 		return ""
 	}
 	return signed
 }
 
-// resolveCardLogoURL returns a browser-loadable URL for the configured
-// tenant logo: a presigned GET when app_logo_url names one of our own
-// avatar keys, or the configured value unchanged when it is an ordinary
-// external https:// URL — the System Config contract (see card_logo.go) —
-// which has no object key to presign.
+// resolveCardLogoURL returns a URL for the configured tenant logo, loadable
+// by Gotenberg's headless Chromium (see presignCardAvatarURL): a presigned
+// GET against the internal storage endpoint when app_logo_url names one of
+// our own avatar keys, or the configured value unchanged when it is an
+// ordinary external https:// URL — the System Config contract (see
+// card_logo.go) — which has no object key to presign.
 func (s *Service) resolveCardLogoURL(ctx context.Context, stored string) string {
 	if stored == "" {
 		return ""
 	}
 	if key := avatarKeyFromStored(stored); key != "" {
-		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, key, presignedDocumentURLTTL)
+		signed, err := s.presignInternalReadURL(ctx, s.cfg.ObjectStorageBucketName, key, presignedDocumentURLTTL)
 		if err != nil {
 			return ""
 		}
