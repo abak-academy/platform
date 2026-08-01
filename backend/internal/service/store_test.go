@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -2913,5 +2914,222 @@ func TestRetryPayment_RecoversFromCreatePaymentFailureOnCheckout(t *testing.T) {
 	}
 	if after.Status != "payment_pending" {
 		t.Errorf("want status still payment_pending after retry, got %q", after.Status)
+	}
+}
+
+// --- Task 9 (FB-19a/b/c): manual confirmation with payment proof, atomically ---
+
+// TestAdminConfirmOrder_Success_WritesManualPaymentAndAuditAtomically covers
+// FR-27/FR-28: a successful confirm must, in one transaction, flip status to
+// paid, set payment_method="manual" and payment_proof_url to the submitted
+// key, emit exactly one OrderPaid outbox row, and write exactly one audit_log
+// row whose metadata carries both "manual" and the proof key.
+func TestAdminConfirmOrder_Success_WritesManualPaymentAndAuditAtomically(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+
+	orderID := newReconcileTestOrder(t, ctx, repo, "confirmok_", "")
+	actorID := insertAdminActor(t, repo, "confirmokact_")
+	proofKey := "payment_proof/" + actorID + "/proof-" + uniqueSuffix() + ".jpg"
+	key := "confirm-key-" + uniqueSuffix()
+
+	if err := svc.AdminConfirmOrder(ctx, actorID, orderID.String(), key, proofKey); err != nil {
+		t.Fatalf("AdminConfirmOrder: %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.Status != "paid" {
+		t.Errorf("want status paid, got %q", got.Status)
+	}
+	if got.PaymentMethod != "manual" {
+		t.Errorf("want payment_method manual, got %q", got.PaymentMethod)
+	}
+	if got.PaymentProofURL == nil || *got.PaymentProofURL != proofKey {
+		t.Errorf("want payment_proof_url %q, got %v", proofKey, got.PaymentProofURL)
+	}
+
+	var outboxCount int
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT COUNT(*) FROM outbox WHERE aggregate_id = $1 AND event_type = 'OrderPaid'`,
+		orderID,
+	).Scan(&outboxCount); err != nil {
+		t.Fatalf("count outbox: %v", err)
+	}
+	if outboxCount != 1 {
+		t.Errorf("want exactly 1 OrderPaid outbox row, got %d", outboxCount)
+	}
+
+	rows, err := repo.Pool().Query(ctx,
+		`SELECT metadata FROM audit_log WHERE target_type = 'order' AND target_id = $1 AND action = 'order.confirm'`,
+		orderID.String(),
+	)
+	if err != nil {
+		t.Fatalf("query audit_log: %v", err)
+	}
+	defer rows.Close()
+	var auditCount int
+	var metadataBytes []byte
+	for rows.Next() {
+		auditCount++
+		if err := rows.Scan(&metadataBytes); err != nil {
+			t.Fatalf("scan audit_log metadata: %v", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows.Err: %v", err)
+	}
+	if auditCount != 1 {
+		t.Fatalf("want exactly 1 audit_log row, got %d", auditCount)
+	}
+	var meta map[string]any
+	if err := json.Unmarshal(metadataBytes, &meta); err != nil {
+		t.Fatalf("unmarshal audit metadata: %v", err)
+	}
+	if manual, _ := meta["manual"].(bool); !manual {
+		t.Errorf("want metadata.manual = true, got %v", meta["manual"])
+	}
+	if meta["payment_proof_url"] != proofKey {
+		t.Errorf("want metadata.payment_proof_url = %q, got %v", proofKey, meta["payment_proof_url"])
+	}
+}
+
+// TestAdminConfirmOrder_AuditInsertFails_RollsBackStatusAndProofWrite covers
+// invariant 6 / FR-27's "if any step fails, none of them is persisted" clause.
+// InsertAuditLogMeta writes actor_id into a NOT NULL UUID column (migration
+// 0022); passing a non-UUID actor id makes that insert fail for real —
+// Postgres itself rejects the value, this is not a mock — and the whole tx,
+// including the earlier status flip and payment_method/proof write, must roll
+// back with it. This is the one place in this task where the atomicity claim
+// is actually forced, not merely asserted in a comment.
+func TestAdminConfirmOrder_AuditInsertFails_RollsBackStatusAndProofWrite(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+
+	orderID := newReconcileTestOrder(t, ctx, repo, "confirmrb_", "")
+	proofKey := "payment_proof/rollback/proof-" + uniqueSuffix() + ".jpg"
+	key := "confirm-key-" + uniqueSuffix()
+
+	err = svc.AdminConfirmOrder(ctx, "not-a-uuid", orderID.String(), key, proofKey)
+	if err == nil {
+		t.Fatal("want AdminConfirmOrder to fail when the audit insert is forced to fail")
+	}
+
+	got, err := repo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.Status != "payment_pending" {
+		t.Errorf("want status still payment_pending after rollback, got %q", got.Status)
+	}
+	if got.PaymentMethod != "" {
+		t.Errorf("want payment_method unchanged (empty) after rollback, got %q", got.PaymentMethod)
+	}
+	if got.PaymentProofURL != nil {
+		t.Errorf("want payment_proof_url unchanged (nil) after rollback, got %v", got.PaymentProofURL)
+	}
+
+	var outboxCount int
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT COUNT(*) FROM outbox WHERE aggregate_id = $1 AND event_type = 'OrderPaid'`,
+		orderID,
+	).Scan(&outboxCount); err != nil {
+		t.Fatalf("count outbox: %v", err)
+	}
+	if outboxCount != 0 {
+		t.Errorf("want 0 OrderPaid outbox rows after rollback, got %d", outboxCount)
+	}
+}
+
+// TestHandlePaymentWebhook_PaymentTypePresent_WritesPaymentMethod covers
+// FR-29: a settlement notification carrying payment_type must write it onto
+// orders.payment_method, so a gateway settlement is distinguishable from a
+// manual confirm rather than merely "manual vs empty".
+func TestHandlePaymentWebhook_PaymentTypePresent_WritesPaymentMethod(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &mockPaymentClient{shouldAccept: true}, &NoopLogisticsClient{}, nil, nil)
+
+	ref := "gw-webhook-pt-" + uniqueSuffix()
+	orderID := newReconcileTestOrder(t, ctx, repo, "webhookpt_", ref)
+
+	payload := []byte(`{"transaction_status":"settlement","order_id":"` + orderID.String() +
+		`","transaction_id":"tx-` + uniqueSuffix() + `","gross_amount":"50000.00","status_code":"200","signature_key":"sig","payment_type":"credit_card"}`)
+
+	if err := svc.HandlePaymentWebhook(ctx, payload, "sig", "webhook-key-"+uniqueSuffix()); err != nil {
+		t.Fatalf("HandlePaymentWebhook: %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.Status != "paid" {
+		t.Errorf("want status paid, got %q", got.Status)
+	}
+	if got.PaymentMethod != "credit_card" {
+		t.Errorf("want payment_method credit_card, got %q", got.PaymentMethod)
+	}
+}
+
+// TestHandlePaymentWebhook_PaymentTypeAbsent_DoesNotOverwriteExistingPaymentMethod
+// covers the second half of FR-29: a notification with no payment_type must
+// never blank out a payment_method the order already carries.
+func TestHandlePaymentWebhook_PaymentTypeAbsent_DoesNotOverwriteExistingPaymentMethod(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &mockPaymentClient{shouldAccept: true}, &NoopLogisticsClient{}, nil, nil)
+
+	ref := "gw-webhook-noover-" + uniqueSuffix()
+	orderID := newReconcileTestOrder(t, ctx, repo, "webhooknoover_", ref)
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET payment_method = 'manual' WHERE id = $1`, orderID); err != nil {
+		t.Fatalf("seed existing payment_method: %v", err)
+	}
+
+	payload := []byte(`{"transaction_status":"settlement","order_id":"` + orderID.String() +
+		`","transaction_id":"tx-` + uniqueSuffix() + `","gross_amount":"50000.00","status_code":"200","signature_key":"sig"}`)
+
+	if err := svc.HandlePaymentWebhook(ctx, payload, "sig", "webhook-key-"+uniqueSuffix()); err != nil {
+		t.Fatalf("HandlePaymentWebhook: %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.PaymentMethod != "manual" {
+		t.Errorf("want payment_method unchanged (manual), got %q", got.PaymentMethod)
 	}
 }

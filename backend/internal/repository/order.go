@@ -46,7 +46,8 @@ const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost,
 	gateway_ref, payment_method, payment_expires_at, paid_at, invoice_url,
 	checked_out_at, completed_at, cancelled_at, cancellation_reason,
 	created_at, updated_at, is_estimate,
-	biteship_order_id, shipment_status, waybill_source, courier_code, courier_service_code`
+	biteship_order_id, shipment_status, waybill_source, courier_code, courier_service_code,
+	payment_proof_url`
 
 func scanOrder(row interface {
 	Scan(dest ...any) error
@@ -63,6 +64,7 @@ func scanOrder(row interface {
 		&order.CreatedAt, &order.UpdatedAt, &order.IsEstimate,
 		&order.BiteshipOrderID, &order.ShipmentStatus, &order.WaybillSource,
 		&order.CourierCode, &order.CourierServiceCode,
+		&order.PaymentProofURL,
 	)
 	if err != nil {
 		return err
@@ -425,6 +427,30 @@ func (r *Repository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID uuid
 	} else {
 		_, err = r.pool.Exec(ctx, q, status, reason, orderID)
 	}
+	return err
+}
+
+// SetOrderManualPayment writes the manual-confirmation payment projection
+// (payment_method = 'manual' plus the proof object key) inside the caller's
+// transaction, alongside the status flip and audit row AdminConfirmOrder
+// writes in the same tx — invariant 6 requires all three to commit together.
+func (r *Repository) SetOrderManualPayment(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, proofURL string) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE orders SET payment_method = 'manual', payment_proof_url = $1, updated_at = now() WHERE id = $2`,
+		proofURL, orderID,
+	)
+	return err
+}
+
+// SetOrderPaymentMethod writes the gateway-reported payment_type onto the
+// order's payment_method projection inside the caller's transaction. Callers
+// must only invoke this when method is non-empty — an empty value must never
+// overwrite a payment_method already on the row (FR-29).
+func (r *Repository) SetOrderPaymentMethod(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, method string) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE orders SET payment_method = $1, updated_at = now() WHERE id = $2`,
+		method, orderID,
+	)
 	return err
 }
 

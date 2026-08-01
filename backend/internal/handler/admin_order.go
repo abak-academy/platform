@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"net/http"
+	"strings"
 
 	"akademi-bimbel/internal/repository"
 	"github.com/labstack/echo/v4"
@@ -54,7 +55,17 @@ func (h *Handler) AdminConfirmOrder(c echo.Context) error {
 		return badRequest(c, "Idempotency-Key header is required")
 	}
 
-	err := h.svc.AdminConfirmOrder(c.Request().Context(), actorID, orderID, key)
+	var req struct {
+		PaymentProofURL string `json:"payment_proof_url"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if !validPaymentProofKey(req.PaymentProofURL) {
+		return badRequest(c, "payment_proof_url is required and must be a payment_proof/ upload key")
+	}
+
+	err := h.svc.AdminConfirmOrder(c.Request().Context(), actorID, orderID, key, req.PaymentProofURL)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -62,6 +73,19 @@ func (h *Handler) AdminConfirmOrder(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "order confirmed",
 	})
+}
+
+// validPaymentProofKey enforces invariant 6 (FR-25/FR-26): a confirmed order
+// must never exist without its evidence, and the evidence key must resolve
+// inside the payment_proof/ upload prefix with no path-traversal segment.
+func validPaymentProofKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	if strings.Contains(key, "..") {
+		return false
+	}
+	return strings.HasPrefix(key, "payment_proof/")
 }
 
 func (h *Handler) AdminShipOrder(c echo.Context) error {

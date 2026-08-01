@@ -29,6 +29,7 @@ type Order struct {
 	CourierServiceCode *string              `json:"courier_service_code"`
 	GatewayRef         string               `json:"gateway_ref"`
 	PaymentMethod      string               `json:"payment_method"`
+	PaymentProofURL    *string              `json:"payment_proof_url"`
 	PaymentExpiresAt   *time.Time           `json:"payment_expires_at"`
 	PaidAt             *time.Time           `json:"paid_at"`
 	InvoiceURL         string               `json:"invoice_url"`

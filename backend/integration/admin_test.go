@@ -1,7 +1,9 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -31,11 +33,17 @@ func TestAdmin(t *testing.T) {
 		require.NoError(t, err)
 
 		key := fmt.Sprintf("confirm-%d", time.Now().UnixNano())
+		// FR-25/FR-26: confirm now requires a payment_proof_url under payment_proof/.
+		bodyBytes, err := json.Marshal(map[string]string{
+			"payment_proof_url": "payment_proof/" + adminID + "/proof.jpg",
+		})
+		require.NoError(t, err)
 		req, err := http.NewRequest(http.MethodPost,
-			env.server.URL+"/api/v1/admin/orders/"+orderID+"/confirm", nil)
+			env.server.URL+"/api/v1/admin/orders/"+orderID+"/confirm", bytes.NewReader(bodyBytes))
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer "+adminToken)
 		req.Header.Set("Idempotency-Key", key)
+		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		drainClose(resp)

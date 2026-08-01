@@ -157,8 +157,15 @@ func (h *Handler) GeneratePresignUploadURL(c echo.Context) error {
 			return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "insufficient permissions"})
 		}
 		prefix = "product"
+	case "payment_proof":
+		// Payment proof is attached by whoever confirms the order manually —
+		// gate it on orders:write, the same capability POST .../confirm needs.
+		if !service.HasCapability(claims.Role, "orders:write") {
+			return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "insufficient permissions"})
+		}
+		prefix = "payment_proof"
 	default:
-		return badRequest(c, "kind must be avatar or product")
+		return badRequest(c, "kind must be avatar, product or payment_proof")
 	}
 	resp, err := h.svc.GeneratePresignedUploadURL(c.Request().Context(), claims.Sub, prefix, filename, contentType)
 	if err != nil {

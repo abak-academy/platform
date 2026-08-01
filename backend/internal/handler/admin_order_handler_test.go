@@ -460,3 +460,152 @@ func TestAdminGetShippingLabel_NoTrackingNumber_Returns422(t *testing.T) {
 		t.Errorf("code: want no_tracking_number, got %q", apiErr.Code)
 	}
 }
+
+// createConfirmableOrderForHandler builds a real cart with one digital course
+// item through MintCart/AddItem, then pushes it to payment_pending directly —
+// manual confirm (Task 9) recovers a stalled/failed gateway payment, so
+// payment_pending is the realistic starting status.
+func createConfirmableOrderForHandler(t *testing.T, svc *service.Service, repo *repository.Repository) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status) VALUES ('course', $1, 50000, 0, 'published') RETURNING id`,
+		"Confirm Handler Test Course "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	var studentID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO users (name, role, status, username, password_hash)
+		 VALUES ('Confirm Handler Test Student', 'student', 'active', $1, '') RETURNING id`,
+		"confirmhandler_"+uuid.New().String(),
+	).Scan(&studentID); err != nil {
+		t.Fatalf("insert student: %v", err)
+	}
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE orders SET status = 'payment_pending' WHERE id = $1`,
+		order.ID,
+	); err != nil {
+		t.Fatalf("seed payment_pending: %v", err)
+	}
+
+	return order.ID
+}
+
+// newConfirmHandlerTestService is newShipHandlerTestService plus a real
+// (miniredis-backed) Redis client — AdminConfirmOrder's idempotency check
+// dereferences svc.rdb, which newShipHandlerTestService leaves nil since its
+// callers never exercise that path.
+func newConfirmHandlerTestService(t *testing.T) (*handler.Handler, *service.Service, *repository.Repository) {
+	t.Helper()
+	repo := shipHandlerRepoFixture(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	svc := service.NewWithStore(repo, repo, rdb, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, &service.NoopPaymentClient{}, &service.NoopLogisticsClient{}, nil, nil)
+	return handler.New(svc), svc, repo
+}
+
+// newConfirmRequestCtx builds an echo.Context for POST /admin/orders/:id/confirm
+// carrying a super_admin actor and, when body is non-nil, a JSON request body.
+func newConfirmRequestCtx(t *testing.T, orderID string, body []byte) (echo.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	c, rec := newShipRequestCtx(t, http.MethodPost, "/api/v1/admin/orders/"+orderID+"/confirm", "id", orderID, body)
+	c.Request().Header.Set("Idempotency-Key", "confirm-handler-"+uuid.New().String())
+	c.Set("claims", &infra.Claims{Sub: uuid.New().String(), Role: "super_admin"})
+	return c, rec
+}
+
+// TestAdminConfirmOrder_RejectsMissingOrInvalidProof covers FR-25/FR-26: a
+// confirm request with an absent, empty, wrong-prefix, or path-traversing
+// payment_proof_url must be rejected with 400 before the order is ever
+// touched — invariant 6 says a confirmed order can never exist without its
+// evidence.
+func TestAdminConfirmOrder_RejectsMissingOrInvalidProof(t *testing.T) {
+	fake := &fakeShipHandlerLogistics{}
+	h, svc, repo := newShipHandlerTestService(t, fake)
+	orderID := createConfirmableOrderForHandler(t, svc, repo)
+
+	cases := []struct {
+		name string
+		body []byte
+	}{
+		{"no body at all", nil},
+		{"empty proof key", []byte(`{"payment_proof_url":""}`)},
+		{"proof key outside payment_proof/ prefix", []byte(`{"payment_proof_url":"product/abc/x.jpg"}`)},
+		{"proof key contains ..", []byte(`{"payment_proof_url":"payment_proof/../../etc/passwd"}`)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, rec := newConfirmRequestCtx(t, orderID.String(), tc.body)
+			if err := h.AdminConfirmOrder(c); err != nil {
+				t.Fatalf("AdminConfirmOrder: %v", err)
+			}
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+
+			got, err := repo.GetOrderByID(context.Background(), orderID)
+			if err != nil {
+				t.Fatalf("GetOrderByID: %v", err)
+			}
+			if got.Status != "payment_pending" {
+				t.Errorf("want order status unchanged (payment_pending), got %q", got.Status)
+			}
+			if got.PaymentMethod != "" {
+				t.Errorf("want payment_method unchanged (empty), got %q", got.PaymentMethod)
+			}
+		})
+	}
+}
+
+// TestAdminConfirmOrder_ValidProof_Returns200AndConfirms proves the accept
+// path of FR-25/FR-26: a key under payment_proof/ with no ".." is accepted,
+// and the order response carries payment_method/payment_proof_url — pinning
+// the exact JSON key names (checked directly here, not invented) that Task 12
+// builds its confirm-request and order-response fixtures on.
+func TestAdminConfirmOrder_ValidProof_Returns200AndConfirms(t *testing.T) {
+	h, svc, repo := newConfirmHandlerTestService(t)
+	orderID := createConfirmableOrderForHandler(t, svc, repo)
+
+	proofKey := "payment_proof/" + uuid.New().String() + "/proof.jpg"
+	body, _ := json.Marshal(map[string]string{"payment_proof_url": proofKey})
+	c, rec := newConfirmRequestCtx(t, orderID.String(), body)
+	if err := h.AdminConfirmOrder(c); err != nil {
+		t.Fatalf("AdminConfirmOrder: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	getCtx, getRec := newShipRequestCtx(t, http.MethodGet, "/api/v1/admin/orders/"+orderID.String(), "id", orderID.String(), nil)
+	if err := h.AdminGetOrder(getCtx); err != nil {
+		t.Fatalf("AdminGetOrder: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(getRec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if raw["payment_method"] != "manual" {
+		t.Errorf(`response["payment_method"]: want "manual", got %v`, raw["payment_method"])
+	}
+	if raw["payment_proof_url"] != proofKey {
+		t.Errorf(`response["payment_proof_url"]: want %q, got %v`, proofKey, raw["payment_proof_url"])
+	}
+}

@@ -334,10 +334,10 @@ func (s *Service) presignReadURL(ctx context.Context, bucket, key string, ttl ti
 }
 
 // OpenAvatar streams a stored upload for the read-proxy endpoint. Only the
-// avatars/, product/ and question/ prefixes are served: certificates and
-// private PII (including student-bulk imports) live in the same bucket but
-// are reached exclusively through presigned URLs, so they can never be
-// fetched through this unauthenticated proxy.
+// avatars/, product/, question/ and payment_proof/ prefixes are served:
+// certificates and private PII (including student-bulk imports) live in the
+// same bucket but are reached exclusively through presigned URLs, so they can
+// never be fetched through this unauthenticated proxy.
 func (s *Service) OpenAvatar(ctx context.Context, key string) (io.ReadCloser, string, error) {
 	if s.storage == nil {
 		return nil, "", ErrStorageNotConfigured
@@ -363,9 +363,10 @@ func (s *Service) OpenAvatar(ctx context.Context, key string) (io.ReadCloser, st
 // prefix and OpenAvatar's read-proxy in tandem — widen one without the other
 // and either signing or reading a newly-uploaded object breaks.
 var uploadPrefixAllowlist = map[string]bool{
-	"avatars":  true,
-	"product":  true,
-	"question": true,
+	"avatars":       true,
+	"product":       true,
+	"question":      true,
+	"payment_proof": true,
 }
 
 func (s *Service) GeneratePresignedUploadURL(ctx context.Context, userID, prefix, filename, contentType string) (*PresignedUploadURL, error) {

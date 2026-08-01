@@ -869,6 +869,7 @@ type MidtransNotification struct {
 	GrossAmount       string `json:"gross_amount"`
 	StatusCode        string `json:"status_code"`
 	SignatureKey      string `json:"signature_key"`
+	PaymentType       string `json:"payment_type"`
 }
 
 // Checkout deliberately commits the pre-gateway transaction (order status,
@@ -1213,7 +1214,7 @@ func (s *Service) markOrderPaidTx(ctx context.Context, tx pgx.Tx, order model.Or
 	return s.storeRepo.InsertAuditLogMeta(ctx, tx, actorID, "order", order.ID.String(), action, meta)
 }
 
-func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key string) error {
+func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key, paymentProofURL string) error {
 	id, err := parseUUID(orderID)
 	if err != nil {
 		return err
@@ -1239,12 +1240,18 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key s
 	}
 	defer tx.Rollback(ctx)
 
-	// Manual settlement — a human asserting payment arrived without gateway proof.
-	// markOrderPaidTx records who/when in the same tx as the status flip so
-	// they commit atomically.
+	// Manual settlement — a human asserting payment arrived, with proof, without
+	// gateway confirmation. The proof write, status flip and audit row all share
+	// this tx (invariant 6): a confirmed order can never exist without its
+	// evidence, so markOrderPaidTx's audit insert failing must roll back the
+	// proof write too.
+	if err := s.storeRepo.SetOrderManualPayment(ctx, tx, order.ID, paymentProofURL); err != nil {
+		return err
+	}
 	actor := &actorID
 	if err := s.markOrderPaidTx(ctx, tx, order, actor, "order.confirm", map[string]any{
-		"manual": true,
+		"manual":            true,
+		"payment_proof_url": paymentProofURL,
 	}); err != nil {
 		return err
 	}
@@ -1523,6 +1530,14 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 
 	if err := s.storeRepo.SetOrderStatus(ctx, tx, orderID, "paid", ""); err != nil {
 		return err
+	}
+
+	// FR-29: only write payment_method when the gateway names one — an absent
+	// payment_type must never blank out a value already on the row.
+	if notif.PaymentType != "" {
+		if err := s.storeRepo.SetOrderPaymentMethod(ctx, tx, orderID, notif.PaymentType); err != nil {
+			return err
+		}
 	}
 
 	outboxPayload := OrderPaidPayload{OrderID: orderID.String()}
