@@ -1594,17 +1594,19 @@ func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUI
 }
 
 // GetExamRoster returns every registration for an exam joined with the
-// student's name/username and the exam's scheduled_at/exam_number (the
+// student's name/username, the exam's scheduled_at/exam_number (the
 // ingredients the service needs to compose each row's FR-24 display
-// participant number), ordered by participant_number (NULLs — rows predating
-// the FR-24 backfill — sort last, then by registration time).
+// participant number), and the registration's check-in token (FR-47), ordered
+// by participant_number (NULLs — rows predating the FR-24 backfill — sort
+// last, then by registration time).
 // GetExamRoster's schoolFilter, when non-nil, constrains rows to students of
 // that school (tenant isolation for admin_school — a nil filter is the
 // all-schools view used by super_admin/admin_exam).
 func (r *Repository) GetExamRoster(ctx context.Context, examID uuid.UUID, schoolFilter *string) ([]model.ExamRosterEntry, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT reg.id, reg.student_id, u.name, u.username, reg.participant_number,
-			reg.status, reg.checked_in_at, reg.created_at, e.scheduled_at, e.exam_number
+			reg.status, reg.checked_in_at, reg.created_at, e.scheduled_at, e.exam_number,
+			reg.token
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
 		JOIN users u ON u.id = reg.student_id
@@ -1623,7 +1625,7 @@ func (r *Repository) GetExamRoster(ctx context.Context, examID uuid.UUID, school
 		if err := rows.Scan(
 			&item.RegistrationID, &item.StudentID, &item.StudentName, &item.StudentUsername,
 			&item.ParticipantNumber, &item.Status, &item.CheckedInAt, &item.RegisteredAt,
-			&item.ExamScheduledAt, &item.ExamNumber,
+			&item.ExamScheduledAt, &item.ExamNumber, &item.Token,
 		); err != nil {
 			return nil, err
 		}

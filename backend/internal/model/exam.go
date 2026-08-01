@@ -350,6 +350,9 @@ type RegistrationDetail struct {
 // the service composes it (formatParticipantNo) from the raw ExamScheduledAt/
 // ExamNumber/RegisteredAt ingredients, which are join inputs only and not
 // surfaced on the wire (json:"-").
+// Token (FR-47/FR-48, NFR-S7) is the exam check-in credential; it must never
+// be added to the CSV export or logged, and only ever served on this
+// read/write-RBAC-gated admin endpoint (see routes.go's adminExamsRead group).
 type ExamRosterEntry struct {
 	RegistrationID    uuid.UUID  `json:"registration_id"`
 	StudentID         uuid.UUID  `json:"student_id"`
@@ -359,6 +362,7 @@ type ExamRosterEntry struct {
 	ParticipantNo     string     `json:"participant_no"`
 	Status            string     `json:"status"`
 	CheckedInAt       *time.Time `json:"checked_in_at"`
+	Token             string     `json:"token"`
 	RegisteredAt      time.Time  `json:"-"`
 	ExamScheduledAt   *time.Time `json:"-"`
 	ExamNumber        *int       `json:"-"`

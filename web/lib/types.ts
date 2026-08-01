@@ -1081,6 +1081,9 @@ export interface ExamRosterEntry {
   participant_no: string;
   status: string;
   checked_in_at?: string | null;
+  // token is the exam check-in credential (FR-47/FR-48, NFR-S7) — masked by
+  // default in the roster UI and revealed only via an explicit per-row toggle.
+  token: string;
 }
 
 export interface ScoreBucket {

@@ -344,6 +344,7 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
       participant_no: "250620-0042-000002",
       status: "registered",
       checked_in_at: null,
+      token: "TOKEN-BUDI-002",
     },
     {
       registration_id: "reg-1",
@@ -354,6 +355,7 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
       participant_no: "250620-0042-000001",
       status: "registered",
       checked_in_at: "2026-06-20T01:00:00Z",
+      token: "TOKEN-ANDI-001",
     },
     {
       registration_id: "reg-3",
@@ -364,6 +366,7 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
       participant_no: "",
       status: "registered",
       checked_in_at: null,
+      token: "TOKEN-CITRA-003",
     },
   ];
 
@@ -410,6 +413,42 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
       "250620-0042-000002",
       "250620-0042-000001",
     ]);
+  });
+
+  // NFR-S7: the exam token is a check-in credential. The realistic leak is a
+  // screen-share/screenshot of the roster, so every row must render masked by
+  // default and only reveal its real token after that row's own toggle fires.
+  it("renders every row's token masked by default", () => {
+    rosterData = { data: rows };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    for (const row of rows) {
+      expect(screen.queryByText(row.token)).not.toBeInTheDocument();
+    }
+    expect(screen.getAllByText("••••••••")).toHaveLength(rows.length);
+  });
+
+  it("reveals only the toggled row's real token, leaving the others masked", () => {
+    rosterData = { data: rows };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    // Default sort is ascending by participant_number, so the first rendered
+    // row/toggle is Andi (participant_number 1), not rows[0] (Budi, no. 2).
+    const revealButtons = screen.getAllByLabelText("exam_roster_show_token");
+    fireEvent.click(revealButtons[0]);
+
+    const andi = rows.find((r) => r.registration_id === "reg-1")!;
+    const others = rows.filter((r) => r.registration_id !== "reg-1");
+
+    expect(screen.getByText(andi.token)).toBeInTheDocument();
+    for (const other of others) {
+      expect(screen.queryByText(other.token)).not.toBeInTheDocument();
+    }
+    expect(screen.getAllByText("••••••••")).toHaveLength(rows.length - 1);
   });
 
   it("exports a CSV blob of the roster rows when Export CSV is clicked", async () => {

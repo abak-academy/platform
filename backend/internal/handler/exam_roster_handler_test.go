@@ -56,6 +56,63 @@ func TestAdminListExamRegistrations_RoleWithoutReadCapability_Returns403(t *test
 	}
 }
 
+// student has no capabilities at all (RoleStudent: {} in rbac.go) — the exam
+// token is a check-in credential (NFR-S7); a student holding another
+// participant's token could check them in, so a student's own access token
+// must never reach the roster response that carries it.
+func TestAdminListExamRegistrations_StudentRole_Returns403(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	student := seedUser(t, env.pool, service.RoleStudent, "Some Student")
+	token := mintTokenForEnv(t, env, student.String(), service.RoleStudent)
+
+	examID := seedExam(t, env.pool, "Roster Student RBAC Exam", false, "hidden", "classic")
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/registrations", token)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// FR-47: the roster must carry the participant's exam token so an admin can
+// help a student who lost it, without database access. Asserted against the
+// real decoded response body (not the Go struct) — this project has shipped
+// features dead in prod behind struct-only assertions that don't prove the
+// wire shape.
+func TestAdminListExamRegistrations_ExposesToken(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	ctx := context.Background()
+
+	admin := seedUser(t, env.pool, service.RoleSuperAdmin, "Super Admin")
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleSuperAdmin)
+
+	examID := seedExam(t, env.pool, "Roster Token Exam", false, "hidden", "classic")
+	student := seedUser(t, env.pool, service.RoleStudent, "Token Student")
+	regID := seedRegistration(t, env.pool, student, examID)
+
+	var wantToken string
+	if err := env.pool.QueryRow(ctx, `SELECT token FROM exam_registration WHERE id = $1`, regID).Scan(&wantToken); err != nil {
+		t.Fatalf("read seeded token: %v", err)
+	}
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/registrations", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	data := decodeRosterData(t, rec.Body.Bytes())
+	if len(data) != 1 {
+		t.Fatalf("want 1 row, got %d", len(data))
+	}
+	row := data[0].(map[string]any)
+	got, ok := row["token"].(string)
+	if !ok {
+		t.Fatalf(`response row missing string "token" key: %+v`, row)
+	}
+	if got != wantToken {
+		t.Errorf("token: want %q (the seeded exam_registration.token), got %q", wantToken, got)
+	}
+}
+
 // An admin_school whose token carries no school_id cannot be scoped, so the
 // roster must refuse rather than fall back to an all-schools view.
 func TestAdminListExamRegistrations_AdminSchoolNilSchool_Returns403(t *testing.T) {
