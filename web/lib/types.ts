@@ -671,6 +671,7 @@ export interface Exam {
   randomize?: boolean;
   result_config?: string;
   result_release_at?: string | null;
+  certificate_enabled?: boolean;
   certificate_template?: string;
   certificate_background_key?: string | null;
   certificate_layout?: CertificateLayout | null;

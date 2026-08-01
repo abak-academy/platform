@@ -106,6 +106,22 @@ export function useUpdateExam(id: string) {
   });
 }
 
+export function useSetCertificateEnabled(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      authFetch<ExamDetail>(`/admin/exams/${encodeURIComponent(id)}/certificate-enabled`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminExamsKeys.lists() });
+      qc.invalidateQueries({ queryKey: adminExamsKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: adminExamsKeys.certificateDesign(id) });
+    },
+  });
+}
+
 export function useCertificateDesign(examId: string | undefined) {
   return useQuery({
     queryKey: adminExamsKeys.certificateDesign(examId ?? ""),

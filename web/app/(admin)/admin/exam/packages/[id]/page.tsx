@@ -31,6 +31,7 @@ import {
   useGradingSessions,
   useReplaceExamTests,
   useSessionEssays,
+  useSetCertificateEnabled,
 } from "@/lib/hooks/admin-exams";
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { useTranslation } from "@/lib/i18n";
@@ -86,13 +87,35 @@ export default function ExamPackageDetailPage() {
   const { t } = useTranslation();
   const role = useAuthStore((s) => s.user?.role);
   const isSchoolScoped = role === "admin_school";
-  const visibleTabs = isSchoolScoped ? SCHOOL_SCOPED_TABS : TAB_ORDER;
 
   const [tab, setTab] = useState<Tab>("overview");
   const [editOpen, setEditOpen] = useState(false);
+  const [confirmDisableCertificate, setConfirmDisableCertificate] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useExam(id);
   const replaceTests = useReplaceExamTests(id);
+  const setCertificateEnabled = useSetCertificateEnabled(id);
+
+  const visibleTabs = (isSchoolScoped ? SCHOOL_SCOPED_TABS : TAB_ORDER).filter(
+    (key) => key !== "certificate" || data?.certificate_enabled,
+  );
+
+  async function handleEnableCertificate() {
+    try {
+      await setCertificateEnabled.mutateAsync(true);
+    } catch (err) {
+      toast.error(errorMessage(err, t("error_generic")));
+    }
+  }
+
+  async function handleConfirmDisableCertificate() {
+    try {
+      await setCertificateEnabled.mutateAsync(false);
+      setConfirmDisableCertificate(false);
+    } catch (err) {
+      toast.error(errorMessage(err, t("error_generic")));
+    }
+  }
   const { data: availableResp, isLoading: availableLoading } = useAdminTests(
     undefined,
     !isSchoolScoped,
@@ -420,6 +443,77 @@ export default function ExamPackageDetailPage() {
                 />
                 <OverviewRow label="Status" value={data.status ?? "—"} />
               </dl>
+
+              {!isSchoolScoped && (
+                <div className="rounded-lg border p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium">
+                        {t("admin_exam_detail_certificate_status_label")}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {data.certificate_enabled
+                          ? t("admin_exam_detail_certificate_enabled_desc")
+                          : t("admin_exam_detail_certificate_disabled_desc")}
+                      </p>
+                    </div>
+                    {data.certificate_enabled ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full"
+                        disabled={setCertificateEnabled.isPending}
+                        onClick={() => setConfirmDisableCertificate(true)}
+                      >
+                        {t("admin_exam_detail_certificate_disable")}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="rounded-full"
+                        disabled={setCertificateEnabled.isPending}
+                        onClick={handleEnableCertificate}
+                      >
+                        {t("admin_exam_detail_certificate_enable")}
+                      </Button>
+                    )}
+                  </div>
+
+                  {confirmDisableCertificate && (
+                    <div className="mt-3 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm">
+                      <p className="font-medium">
+                        {t("admin_exam_detail_certificate_disable_confirm_title")}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">
+                        {t("admin_exam_detail_certificate_disable_confirm_desc")}
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="rounded-full"
+                          disabled={setCertificateEnabled.isPending}
+                          onClick={handleConfirmDisableCertificate}
+                        >
+                          {t("admin_exam_detail_certificate_disable_confirm_action")}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full"
+                          onClick={() => setConfirmDisableCertificate(false)}
+                        >
+                          {t("cancel")}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -595,7 +689,7 @@ export default function ExamPackageDetailPage() {
             </div>
           )}
 
-          {tab === "certificate" && (
+          {tab === "certificate" && data.certificate_enabled && (
             <CertificateDesignTab examId={id} exam={data} onSaved={refetch} />
           )}
 
