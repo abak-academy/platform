@@ -145,13 +145,17 @@ func (h *Handler) AdminRefundOrder(c echo.Context) error {
 }
 
 func (h *Handler) AdminReconcileOrder(c echo.Context) error {
+	actorID, ok := actorFromClaims(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
 	orderID := c.Param("id")
 	key := c.Request().Header.Get("Idempotency-Key")
 	if key == "" {
 		return badRequest(c, "Idempotency-Key header is required")
 	}
 
-	err := h.svc.AdminReconcileOrder(c.Request().Context(), orderID, key)
+	err := h.svc.AdminReconcileOrder(c.Request().Context(), actorID, orderID, key)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

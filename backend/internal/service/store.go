@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -870,6 +871,15 @@ type MidtransNotification struct {
 	SignatureKey      string `json:"signature_key"`
 }
 
+// Checkout deliberately commits the pre-gateway transaction (order status,
+// promo redemption) before calling s.payment.CreatePayment. CreatePayment is
+// a network call to an external gateway and must not hold a DB transaction
+// open for its duration; keeping it outside the tx also means a gateway
+// failure never rolls back work that already happened (e.g. stock deduction).
+// The cost of the split is that a gateway failure leaves a durable
+// payment_pending order whose promo has already been counted — RetryPayment
+// is the documented recovery path for that order, and it does not re-count
+// the promo, so the redemption is not lost or duplicated on retry.
 func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
@@ -1000,6 +1010,18 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{Free: true}, nil
 	}
 
+	// Promo usage settles in the same pre-gateway transaction as the order,
+	// same as the zero-total path above: counting it after CreatePayment
+	// returns would lose the increment on every gateway failure, and an
+	// under-counted promo lets max_uses admit redemptions past its limit.
+	// This means an abandoned or failed checkout still burns a redemption —
+	// accepted trade-off (over-counting a ceiling is the safe direction).
+	if order.PromoCodeID != nil {
+		if err := s.storeRepo.IncrementPromoUsesTx(ctx, tx, *order.PromoCodeID); err != nil {
+			return CheckoutResult{}, err
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return CheckoutResult{}, err
 	}
@@ -1013,12 +1035,6 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 
 	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.GatewayRef, paymentResp.ExpiresAt); err != nil {
 		return CheckoutResult{}, err
-	}
-
-	if order.PromoCodeID != nil {
-		if err := s.storeRepo.IncrementPromoUses(ctx, *order.PromoCodeID); err != nil {
-			return CheckoutResult{}, err
-		}
 	}
 
 	result := CheckoutResult{
@@ -1173,6 +1189,30 @@ func (s *Service) AdminGetOrder(ctx context.Context, orderID string) (model.Orde
 	return s.storeRepo.GetOrderByID(ctx, id)
 }
 
+// markOrderPaidTx flips order to "paid", emits the OrderPaid outbox event,
+// and writes an audit row, all inside tx. AdminConfirmOrder and
+// AdminReconcileOrder are the only two callers — invariant 5 requires exactly
+// one fulfilment path regardless of how an order gets paid.
+func (s *Service) markOrderPaidTx(ctx context.Context, tx pgx.Tx, order model.Order, actorID *string, action string, meta map[string]any) error {
+	if err := s.storeRepo.SetOrderStatus(ctx, tx, order.ID, "paid", ""); err != nil {
+		return err
+	}
+
+	payload := OrderPaidPayload{OrderID: order.ID.String()}
+	for _, item := range order.Items {
+		payload.Items = append(payload.Items, OrderPaidPayloadItem{
+			ProductID:   item.ProductID.String(),
+			ProductType: item.ProductType,
+			Qty:         item.Qty,
+		})
+	}
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, order.ID, "OrderPaid", payload); err != nil {
+		return err
+	}
+
+	return s.storeRepo.InsertAuditLogMeta(ctx, tx, actorID, "order", order.ID.String(), action, meta)
+}
+
 func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key string) error {
 	id, err := parseUUID(orderID)
 	if err != nil {
@@ -1199,27 +1239,11 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key s
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.SetOrderStatus(ctx, tx, id, "paid", ""); err != nil {
-		return err
-	}
-
-	payload := OrderPaidPayload{OrderID: id.String()}
-	for _, item := range order.Items {
-		payload.Items = append(payload.Items, OrderPaidPayloadItem{
-			ProductID:   item.ProductID.String(),
-			ProductType: item.ProductType,
-			Qty:         item.Qty,
-		})
-	}
-
-	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, id, "OrderPaid", payload); err != nil {
-		return err
-	}
-
 	// Manual settlement — a human asserting payment arrived without gateway proof.
-	// Record who/when in the same tx as the status flip so they commit atomically.
+	// markOrderPaidTx records who/when in the same tx as the status flip so
+	// they commit atomically.
 	actor := &actorID
-	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, actor, "order", id.String(), "order.confirm", map[string]any{
+	if err := s.markOrderPaidTx(ctx, tx, order, actor, "order.confirm", map[string]any{
 		"manual": true,
 	}); err != nil {
 		return err
@@ -1352,7 +1376,7 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID string)
 	return nil
 }
 
-func (s *Service) AdminReconcileOrder(ctx context.Context, orderID, key string) error {
+func (s *Service) AdminReconcileOrder(ctx context.Context, actorID, orderID, key string) error {
 	id, err := parseUUID(orderID)
 	if err != nil {
 		return err
@@ -1364,13 +1388,40 @@ func (s *Service) AdminReconcileOrder(ctx context.Context, orderID, key string) 
 		return nil
 	}
 
-	status, err := s.payment.QueryStatus(ctx, "")
+	order, err := s.storeRepo.GetOrderByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if order.ID.String() == "" {
+		return ErrOrderNotFound
+	}
+	// Invariant 7: querying the gateway without a gateway_ref asks about no
+	// particular order, so its answer is never grounds to flip this order to
+	// paid. Refuse before the gateway is ever called.
+	if order.GatewayRef == "" {
+		return ErrMissingGatewayRef
+	}
+
+	status, err := s.payment.QueryStatus(ctx, order.GatewayRef)
 	if err != nil {
 		return err
 	}
 
 	if status.Paid {
-		if err := s.storeRepo.SetOrderStatus(ctx, nil, id, "paid", ""); err != nil {
+		tx, err := s.storeRepo.BeginTx(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+
+		actor := &actorID
+		if err := s.markOrderPaidTx(ctx, tx, order, actor, "order.reconcile", map[string]any{
+			"gateway_ref": order.GatewayRef,
+		}); err != nil {
+			return err
+		}
+
+		if err := tx.Commit(ctx); err != nil {
 			return err
 		}
 	}

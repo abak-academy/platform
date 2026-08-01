@@ -213,6 +213,7 @@ var (
 	ErrShippingRequired        = errors.New("order requires a shipping selection before checkout")
 	ErrInvalidCourierSelection = errors.New("selected courier is not available for this destination")
 	ErrBiodataIncomplete       = errors.New("lengkapi biodata (sekolah, kelas, tanggal lahir) sebelum mendaftar ujian")
+	ErrMissingGatewayRef       = errors.New("order has no gateway reference to reconcile")
 
 	// ErrOrderNotShippable and ErrNoCarrierCode gate AdminShipOrder /
 	// AdminShipOrderManual (shipping_order.go) before any Biteship call is made.

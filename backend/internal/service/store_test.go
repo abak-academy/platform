@@ -2544,3 +2544,374 @@ func TestRemoveItem_DigitalItem_KeepsShipping(t *testing.T) {
 
 // Bug C regression: see integration/TestUpdateProduct_PreservesTypeWeightImage_RealService
 // (real service + real Postgres; the shim-based test here was tautological).
+
+// --- Task 8 (B-4/B-5): reconcile identifies its subject; payment recovery is real ---
+
+// spyReconcilePaymentClient records every reference passed to QueryStatus so
+// a test can assert reconcile did (or, more importantly, did not) ask the
+// gateway, and exactly what it asked about.
+type spyReconcilePaymentClient struct {
+	queryStatusCalls []string
+	paid             bool
+}
+
+func (s *spyReconcilePaymentClient) CreatePayment(_ context.Context, _ PaymentRequest) (PaymentResponse, error) {
+	return PaymentResponse{}, errors.New("spyReconcilePaymentClient: CreatePayment not expected in reconcile tests")
+}
+
+func (s *spyReconcilePaymentClient) QueryStatus(_ context.Context, reference string) (PaymentStatus, error) {
+	s.queryStatusCalls = append(s.queryStatusCalls, reference)
+	return PaymentStatus{Reference: reference, Paid: s.paid}, nil
+}
+
+func (s *spyReconcilePaymentClient) VerifySignature(_ []byte, _ string) bool { return false }
+
+// flakyPaymentClient's CreatePayment fails for the first failFirstN calls and
+// succeeds after — modeling a gateway outage that clears by the time the
+// student (or an admin) retries.
+type flakyPaymentClient struct {
+	failFirstN int
+	calls      int
+}
+
+func (f *flakyPaymentClient) CreatePayment(_ context.Context, req PaymentRequest) (PaymentResponse, error) {
+	f.calls++
+	if f.calls <= f.failFirstN {
+		return PaymentResponse{}, errors.New("gateway unavailable")
+	}
+	return PaymentResponse{
+		GatewayRef: "flaky-" + req.OrderID,
+		PaymentURL: "https://flaky.payment/pay/" + req.OrderID,
+		ExpiresAt:  time.Now().Add(24 * time.Hour),
+	}, nil
+}
+
+func (f *flakyPaymentClient) QueryStatus(_ context.Context, reference string) (PaymentStatus, error) {
+	return PaymentStatus{Reference: reference}, nil
+}
+
+func (f *flakyPaymentClient) VerifySignature(_ []byte, _ string) bool { return false }
+
+// newReconcileTestOrder mints a cart for a fresh student, adds a non-free
+// digital product, and pushes the order straight to payment_pending with the
+// given gateway_ref (empty string writes SQL NULL) — reconcile is exercised
+// against a durable pending order, not through the checkout flow itself.
+func newReconcileTestOrder(t *testing.T, ctx context.Context, repo *repository.Repository, studentPrefix, gatewayRef string) uuid.UUID {
+	t.Helper()
+	productID := insertDigitalCourseProduct(t, repo, "Reconcile Course", 50000)
+	studentID := insertCheckoutStudent(t, repo, "Reconcile Student", studentPrefix)
+
+	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	var ref any = gatewayRef
+	if gatewayRef == "" {
+		ref = nil
+	}
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE orders SET status = 'payment_pending', gateway_ref = $1 WHERE id = $2`,
+		ref, order.ID,
+	); err != nil {
+		t.Fatalf("set payment_pending/gateway_ref: %v", err)
+	}
+	return order.ID
+}
+
+// insertAdminActor creates a super_admin user to use as an audit-log actor
+// (audit_log.actor_id is NOT NULL — migration 0022).
+func insertAdminActor(t *testing.T, repo *repository.Repository, prefix string) string {
+	t.Helper()
+	var id string
+	if err := repo.Pool().QueryRow(context.Background(),
+		`INSERT INTO users (name, role, status, username, password_hash)
+		 VALUES ($1, 'super_admin', 'active', $2, '') RETURNING id`,
+		"Reconcile Actor "+uniqueSuffix(), prefix+uniqueSuffix(),
+	).Scan(&id); err != nil {
+		t.Fatalf("insert admin actor: %v", err)
+	}
+	return id
+}
+
+// TestAdminReconcileOrder_EmptyGatewayRef_NeverCallsGateway covers FR-19 /
+// invariant 7: querying the gateway without a gateway_ref asks about no
+// particular order, so reconcile must refuse before ever calling QueryStatus,
+// and the order's status must be left untouched.
+func TestAdminReconcileOrder_EmptyGatewayRef_NeverCallsGateway(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	spy := &spyReconcilePaymentClient{paid: true}
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, spy, &NoopLogisticsClient{}, nil, nil)
+
+	orderID := newReconcileTestOrder(t, ctx, repo, "reconcnoref_", "")
+	actorID := insertAdminActor(t, repo, "reconcnorefact_")
+
+	err = svc.AdminReconcileOrder(ctx, actorID, orderID.String(), "reconcile-key-"+uniqueSuffix())
+	if !errors.Is(err, ErrMissingGatewayRef) {
+		t.Fatalf("want ErrMissingGatewayRef, got %v", err)
+	}
+	if len(spy.queryStatusCalls) != 0 {
+		t.Fatalf("want QueryStatus never called, got calls %v", spy.queryStatusCalls)
+	}
+
+	got, err := repo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.Status != "payment_pending" {
+		t.Errorf("want order status unchanged (payment_pending), got %q", got.Status)
+	}
+}
+
+// TestAdminReconcileOrder_RealGatewayRef_QueriesThatExactRef covers FR-20:
+// reconcile must pass the order's own gateway_ref to QueryStatus, not the
+// literal empty string it used to send.
+func TestAdminReconcileOrder_RealGatewayRef_QueriesThatExactRef(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	spy := &spyReconcilePaymentClient{paid: false}
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, spy, &NoopLogisticsClient{}, nil, nil)
+
+	ref := "gw-ref-" + uniqueSuffix()
+	orderID := newReconcileTestOrder(t, ctx, repo, "reconcref_", ref)
+	actorID := insertAdminActor(t, repo, "reconcrefact_")
+
+	if err := svc.AdminReconcileOrder(ctx, actorID, orderID.String(), "reconcile-key-"+uniqueSuffix()); err != nil {
+		t.Fatalf("AdminReconcileOrder: %v", err)
+	}
+	if len(spy.queryStatusCalls) != 1 || spy.queryStatusCalls[0] != ref {
+		t.Fatalf("want QueryStatus called once with %q, got %v", ref, spy.queryStatusCalls)
+	}
+}
+
+// TestAdminReconcileOrder_Paid_EmitsOneOutboxAndAuditRow_IdempotentOnRepeat
+// covers FR-21/FR-22 and invariant 5: a reconcile that finds the gateway paid
+// must flip the order through the same fulfilment path manual confirmation
+// uses — status flip + exactly one OrderPaid outbox row + one audit row, all
+// in the same transaction — and a repeat call with the same Idempotency-Key
+// must not emit a second event.
+func TestAdminReconcileOrder_Paid_EmitsOneOutboxAndAuditRow_IdempotentOnRepeat(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	spy := &spyReconcilePaymentClient{paid: true}
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, spy, &NoopLogisticsClient{}, nil, nil)
+
+	ref := "gw-paid-" + uniqueSuffix()
+	orderID := newReconcileTestOrder(t, ctx, repo, "reconcpaid_", ref)
+	actorID := insertAdminActor(t, repo, "reconcpaidact_")
+	key := "reconcile-key-" + uniqueSuffix()
+
+	if err := svc.AdminReconcileOrder(ctx, actorID, orderID.String(), key); err != nil {
+		t.Fatalf("AdminReconcileOrder: %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.Status != "paid" {
+		t.Errorf("want order status paid, got %q", got.Status)
+	}
+
+	var outboxCount int
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT COUNT(*) FROM outbox WHERE aggregate_id = $1 AND event_type = 'OrderPaid'`,
+		orderID,
+	).Scan(&outboxCount); err != nil {
+		t.Fatalf("count outbox: %v", err)
+	}
+	if outboxCount != 1 {
+		t.Errorf("want exactly 1 OrderPaid outbox row, got %d", outboxCount)
+	}
+
+	var auditCount int
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT COUNT(*) FROM audit_log WHERE target_type = 'order' AND target_id = $1 AND action = 'order.reconcile'`,
+		orderID.String(),
+	).Scan(&auditCount); err != nil {
+		t.Fatalf("count audit_log: %v", err)
+	}
+	if auditCount != 1 {
+		t.Errorf("want exactly 1 audit_log row, got %d", auditCount)
+	}
+
+	// Repeat with the same Idempotency-Key: no second event.
+	if err := svc.AdminReconcileOrder(ctx, actorID, orderID.String(), key); err != nil {
+		t.Fatalf("AdminReconcileOrder (repeat): %v", err)
+	}
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT COUNT(*) FROM outbox WHERE aggregate_id = $1 AND event_type = 'OrderPaid'`,
+		orderID,
+	).Scan(&outboxCount); err != nil {
+		t.Fatalf("count outbox (repeat): %v", err)
+	}
+	if outboxCount != 1 {
+		t.Errorf("want outbox row count still 1 after repeated idempotency key, got %d", outboxCount)
+	}
+}
+
+// TestCheckout_PromoBearingOrder_CreatePaymentFails_StillIncrementsUsedCount
+// covers FR-23: IncrementPromoUses must run inside the pre-gateway
+// transaction, so a promo-bearing checkout whose CreatePayment fails has
+// still counted its redemption — otherwise every gateway hiccup grants a
+// free extra redemption past max_uses, since RetryPayment never counts one
+// either. The accepted trade-off is that this abandoned checkout still burns
+// the redemption; what must not happen is the ceiling being bypassed.
+func TestCheckout_PromoBearingOrder_CreatePaymentFails_StillIncrementsUsedCount(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	payment := &flakyPaymentClient{failFirstN: 1}
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, payment, &NoopLogisticsClient{}, nil, nil)
+
+	productID := insertDigitalCourseProduct(t, repo, "Promo Fail Course", 50000)
+
+	code := "PFAIL" + uniqueSuffix()
+	var promoID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO promo_code (code, discount_percent, max_uses, used_count) VALUES ($1, 10, 1, 0) RETURNING id`,
+		code,
+	).Scan(&promoID); err != nil {
+		t.Fatalf("create promo: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "Promo Fail Student", "promofail_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{PromoCode: &code}); err != nil {
+		t.Fatalf("PatchCart (apply promo): %v", err)
+	}
+
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "promofail-key-"+uniqueSuffix()); err == nil {
+		t.Fatal("want Checkout to fail (CreatePayment fails on first call)")
+	}
+
+	var usedCount int
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT used_count FROM promo_code WHERE id = $1`, promoID,
+	).Scan(&usedCount); err != nil {
+		t.Fatalf("read used_count: %v", err)
+	}
+	if usedCount != 1 {
+		t.Fatalf("used_count = %d, want 1 — the redemption must be counted even though CreatePayment failed", usedCount)
+	}
+
+	// The (N+1)th use of this max_uses=1 promo must now be refused.
+	studentID2 := insertCheckoutStudent(t, repo, "Promo Fail Student 2", "promofail2_")
+	order2, _, err := svc.MintCart(ctx, studentID2)
+	if err != nil {
+		t.Fatalf("MintCart (2nd student): %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID2, order2.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem (2nd student): %v", err)
+	}
+	err = svc.PatchCart(ctx, studentID2, order2.ID.String(), CartPatch{PromoCode: &code})
+	if !errors.Is(err, ErrInvalidPromo) {
+		t.Fatalf("want ErrInvalidPromo for a max_uses-exhausted promo, got %v", err)
+	}
+}
+
+// TestRetryPayment_RecoversFromCreatePaymentFailureOnCheckout drives FR-24,
+// the 2026-07-22 recovery: Checkout leaves a durable payment_pending order
+// with an empty gateway_ref when CreatePayment fails; RetryPayment must then
+// succeed, giving the order a gateway_ref and payment_expires_at while it
+// stays payment_pending.
+func TestRetryPayment_RecoversFromCreatePaymentFailureOnCheckout(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	payment := &flakyPaymentClient{failFirstN: 1}
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, payment, &NoopLogisticsClient{}, nil, nil)
+
+	productID := insertDigitalCourseProduct(t, repo, "Retry Recovery Course", 50000)
+	studentID := insertCheckoutStudent(t, repo, "Retry Recovery Student", "retryrec_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "retryrec-checkout-"+uniqueSuffix()); err == nil {
+		t.Fatal("want Checkout to fail (CreatePayment fails on first call)")
+	}
+
+	pending, err := repo.GetOrderByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetOrderByID (after failed checkout): %v", err)
+	}
+	if pending.Status != "payment_pending" {
+		t.Fatalf("want status payment_pending after failed checkout, got %q", pending.Status)
+	}
+	if pending.GatewayRef != "" {
+		t.Fatalf("want empty gateway_ref after failed checkout, got %q", pending.GatewayRef)
+	}
+
+	result, err := svc.RetryPayment(ctx, studentID, order.ID.String(), "retryrec-retry-"+uniqueSuffix())
+	if err != nil {
+		t.Fatalf("RetryPayment: %v", err)
+	}
+	if result.GatewayRef == "" {
+		t.Error("want non-empty gateway_ref from RetryPayment")
+	}
+
+	after, err := repo.GetOrderByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetOrderByID (after retry): %v", err)
+	}
+	if after.GatewayRef == "" {
+		t.Error("want order to carry a gateway_ref after retry")
+	}
+	if after.PaymentExpiresAt == nil {
+		t.Error("want payment_expires_at set after retry")
+	}
+	if after.Status != "payment_pending" {
+		t.Errorf("want status still payment_pending after retry, got %q", after.Status)
+	}
+}
