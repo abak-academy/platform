@@ -2191,5 +2191,166 @@ describe("SessionPage", () => {
 
     expect(screen.getByText(/Soal 4 dari 5/)).toBeInTheDocument();
   });
+
+  // ── Blocker 3: overlapping saves must never lose or misreport an answer ──
+
+  it("a stale save's ack must not report 'saved' while a newer save is still pending, and the newer edit survives that newer save failing (Blocker 3a, FR-32, FR-34, NFR-R5)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = () =>
+      screen.getAllByRole("textbox").filter((tb) => tb.tagName === "INPUT")[0];
+
+    // First edit — flush A.
+    fireEvent.change(textInput(), { target: { value: "v1" } });
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+
+    // Second edit before A resolves — flush B. Both A and B are now
+    // outstanding: exactly the race a 2s debounce makes routine whenever a
+    // request takes longer than the debounce window.
+    fireEvent.change(textInput(), { target: { value: "v2" } });
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(2);
+
+    // A — the OLDER request — acknowledges first. This is the actual race:
+    // an older, slower request settling after a newer one was dispatched.
+    await act(async () => {
+      const [, optsA] = saveAnswersMutate.mock.calls[0];
+      optsA.onSuccess();
+    });
+
+    // The stale ack must not claim everything is saved — B (v2) is still
+    // outstanding.
+    expect(screen.getByTestId("save-indicator")).not.toHaveTextContent(
+      "Tersimpan",
+    );
+    // v2 must still be durably queued — recoverable even if the tab closed
+    // at this exact instant.
+    expect(loadQueue("session-1")).toEqual([
+      { question_id: "q-short", answer: "v2", flagged_for_review: false },
+    ]);
+
+    // Now B fails.
+    await act(async () => {
+      const [, optsB] = saveAnswersMutate.mock.calls[1];
+      optsB.onError(new Error("network error"));
+    });
+
+    // The indicator must say unsaved — the answer is not acknowledged
+    // anywhere, and must not be reported as saved.
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Belum tersimpan",
+    );
+    // Still recoverable in the durable queue...
+    expect(loadQueue("session-1")).toEqual([
+      { question_id: "q-short", answer: "v2", flagged_for_review: false },
+    ]);
+    // ...and actively retried, not silently dropped.
+    const delay = backoffDelayMs(0);
+    await act(async () => {
+      vi.advanceTimersByTime(delay);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(3);
+    const [retryPayload] = saveAnswersMutate.mock.calls[2];
+    expect(retryPayload.answers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ question_id: "q-short", answer: "v2" }),
+      ]),
+    );
+  });
+
+  it("an edit made between a save's PATCH going out and the resulting refetch landing survives the refetch (Blocker 3b, FR-37, NFR-R5)", async () => {
+    const { rerender } = render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    // Answer q-mcq — flush A.
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+
+    // Before A's ack/refetch lands, the student edits a DIFFERENT question.
+    // This edit lives only in React state: the debounce hasn't elapsed, so
+    // it is not yet in the durable queue either.
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = () =>
+      screen.getAllByRole("textbox").filter((tb) => tb.tagName === "INPUT")[0];
+    fireEvent.change(textInput(), { target: { value: "fresh-edit" } });
+
+    // A's PATCH acknowledges. In production this invalidates the session
+    // query, and the refetch lands with a snapshot that predates
+    // "fresh-edit".
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onSuccess();
+    });
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
+      },
+    };
+    rerender(<SessionPage />);
+
+    // The edit made in the gap must still be on screen — hydration must not
+    // have reset local state from the refetched (stale-by-definition)
+    // session snapshot.
+    expect((textInput() as HTMLInputElement).value).toBe("fresh-edit");
+  });
+
+  // ── Blocker 4: sectioned exams must not reset position on mount ─────────
+
+  it("a sectioned exam with a non-zero server position mounts on that question and does not write current_position: 0 back to the server (Blocker 4, FR-36)", async () => {
+    const sixQuestions = Array.from({ length: 6 }, (_, i) => ({
+      id: `q-sec1-${i}`,
+      test_id: "test-section-1",
+      format: "mcq" as const,
+      body: `Section Question ${i + 1}?`,
+      sort_order: i + 1,
+      options: [
+        { key: "A", text: "Opt A", sort_order: 1 },
+        { key: "B", text: "Opt B", sort_order: 2 },
+      ],
+    }));
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sectionedSession,
+        current_position: 5,
+        tests: [
+          { ...sectionedSession.tests[0], questions: sixQuestions },
+          sectionedSession.tests[1],
+        ],
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Section Question 6\?/);
+
+    // Must land on question 6, not be reset to question 1.
+    expect(screen.getByText(/Soal 6 dari 6/)).toBeInTheDocument();
+
+    // The next save must carry the position the student is actually on —
+    // not silently overwrite the server's persisted position with 0.
+    vi.useFakeTimers();
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ current_position: 5 }),
+      expect.anything(),
+    );
+  });
 });
 
