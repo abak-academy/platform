@@ -2096,11 +2096,10 @@ func (s *shimExamCardService) GetExamCard(ctx context.Context, regID, studentID 
 		return pdf, filename, nil
 	}
 
-	html, err := buildCardHTML(detail, s.studentName, s.tenantName, nil, nil)
-	if err != nil {
-		return nil, "", err
-	}
-	pdf, err := s.renderer.RenderHTML(ctx, html)
+	// This shim exercises the plumbing (generate-once/reuse cache), not the real
+	// HTML->PDF conversion, so a fixed byte stand-in serves directly as the
+	// "HTML" passed to the (fake) renderer.
+	pdf, err := s.renderer.RenderHTML(ctx, []byte("<html></html>"))
 	if err != nil {
 		return nil, "", err
 	}

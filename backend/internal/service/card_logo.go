@@ -1,8 +1,13 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net"
 	"net/http"
@@ -115,6 +120,40 @@ func fetchImageWithDialGuard(ctx context.Context, raw string, allow func(net.IP)
 		return nil, fmt.Errorf("logo fetch: body is not a decodable image")
 	}
 	return data, nil
+}
+
+const fallbackImageMime = "image/png"
+
+// decodeImageMime sniffs the real mime of image bytes by decoding just the
+// header, so callers don't have to trust an upload's declared content-type.
+func decodeImageMime(data []byte) (mime string, ok bool) {
+	if len(data) == 0 {
+		return "", false
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width == 0 || cfg.Height == 0 {
+		return "", false
+	}
+	switch format {
+	case "png":
+		return "image/png", true
+	case "jpeg":
+		return "image/jpeg", true
+	case "gif":
+		return "image/gif", true
+	default:
+		return "", false
+	}
+}
+
+// imageMimeOrFallback resolves the real mime of embedded image bytes. Uploads
+// are accepted as any image type (the picker is not restricted to PNG), so
+// hardcoding image/png here would mislabel every JPEG background.
+func imageMimeOrFallback(data []byte) string {
+	if mime, ok := decodeImageMime(data); ok {
+		return mime
+	}
+	return fallbackImageMime
 }
 
 // isPublicIP reports whether ip is routable on the public internet — the only

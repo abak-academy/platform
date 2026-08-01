@@ -1302,6 +1302,31 @@ type CardPrintData struct {
 	FooterNote    string `json:"footer_note"`
 }
 
+// cardScheduleText preserves the pre-existing schedule formatting: Asia/Jakarta,
+// "02 Jan 2006 15:04 WIB" (FR-23).
+func cardScheduleText(reg *model.RegistrationDetail) string {
+	if reg.Exam.ScheduledAt == nil {
+		return "-"
+	}
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		loc = time.UTC
+	}
+	return reg.Exam.ScheduledAt.In(loc).Format("02 Jan 2006 15:04 WIB")
+}
+
+// cardFooterNote preserves the pre-existing check-in vs free-access copy,
+// keyed on reg.Exam.RequiresCheckin / CheckInWindowMinutes.
+func cardFooterNote(reg *model.RegistrationDetail) string {
+	if reg.Exam.RequiresCheckin {
+		if reg.Exam.CheckInWindowMinutes != nil {
+			return fmt.Sprintf("Harap check-in dalam waktu %d menit sebelum ujian.", *reg.Exam.CheckInWindowMinutes)
+		}
+		return "Harap check-in sebelum ujian dimulai."
+	}
+	return "Akses bebas pada waktu yang ditentukan."
+}
+
 // GetCardPrintData computes the print-data response for the exam card print
 // route (FR-20, FR-21): the ONLY input is regID, which the handler has
 // already verified came from a redeemed print token — no student id is
