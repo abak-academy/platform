@@ -204,6 +204,10 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_courier_selection", Message: err.Error()}
 	case errors.Is(err, service.ErrBiodataIncomplete):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "biodata_incomplete", Message: err.Error()}
+		var bioErr *service.BiodataIncompleteError
+		if errors.As(err, &bioErr) {
+			apiErr.Details = map[string]any{"missing_fields": bioErr.Missing}
+		}
 	case errors.Is(err, service.ErrShippingUnavailable):
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_unavailable", Message: "shipping is not available right now"}
 	case errors.Is(err, service.ErrDigitalQtyLimit):
