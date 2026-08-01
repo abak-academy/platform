@@ -323,7 +323,7 @@ func TestCheckout_BulkExamOrder_ExemptFromBiodataGate(t *testing.T) {
 	}
 	t.Cleanup(mr.Close)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil, nil)
 
 	schoolID := createTestSchool(t, svcBase)
 	examID := createTestExamForBulk(t, repo)
