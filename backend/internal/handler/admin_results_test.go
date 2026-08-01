@@ -413,6 +413,22 @@ func seedSchool(t *testing.T, pool *pgxpool.Pool) string {
 	return id
 }
 
+// seedSchoolNamed is seedSchool with a caller-supplied name, for tests that need
+// to tell two schools apart by their rendered school_name.
+func seedSchoolNamed(t *testing.T, pool *pgxpool.Pool, name string) string {
+	t.Helper()
+	ctx := context.Background()
+	var id string
+	err := pool.QueryRow(ctx,
+		`INSERT INTO school (name, code) VALUES ($1, $2) RETURNING id`,
+		name, "ars_"+uuid.NewString()[:8],
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert school: %v", err)
+	}
+	return id
+}
+
 func seedUserWithSchool(t *testing.T, pool *pgxpool.Pool, role, name, schoolID string) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
@@ -693,20 +709,103 @@ func TestAdminResult_List_SuperAdmin_ValidSchool_200(t *testing.T) {
 	}
 }
 
-func TestAdminResult_List_SuperAdmin_NoSchoolID_400(t *testing.T) {
+// TestAdminResult_List_SuperAdmin_NoSchoolID_ReturnsAllSchools replaces the old
+// "400 without school_id" expectation: the results tab now defaults to every
+// school, and the school picker is an optional narrowing filter (the defect this
+// branch fixes). Seeds two schools with a submitted session each and asserts, off
+// the real decoded JSON response body (not a Go struct), that rows from both
+// schools come back with their per-row school_name populated.
+func TestAdminResult_List_SuperAdmin_NoSchoolID_ReturnsAllSchools(t *testing.T) {
 	env := newAdminResultsDBEnv(t)
 
 	examID := seedExamWithMCQ(t, env.pool)
+	schoolA := seedSchoolNamed(t, env.pool, "All Schools Test A")
+	schoolB := seedSchoolNamed(t, env.pool, "All Schools Test B")
+	studentA := seedUserWithSchool(t, env.pool, "student", "All Schools A", schoolA)
+	studentB := seedUserWithSchool(t, env.pool, "student", "All Schools B", schoolB)
+	seedSubmittedSession(t, env.pool, studentA, examID)
+	seedSubmittedSession(t, env.pool, studentB, examID)
+
 	superToken := mintSuperAdminToken(t, env, "super3")
 
 	rec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String(), superToken)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("want 400 for super_admin without school_id, got %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for super_admin without school_id, got %d body=%s", rec.Code, rec.Body.String())
 	}
+
 	var resp map[string]any
-	json.NewDecoder(rec.Body).Decode(&resp)
-	if resp["code"] != "invalid_request" {
-		t.Errorf("code: want invalid_request, got %v", resp["code"])
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	rows, ok := resp["data"].([]any)
+	if !ok {
+		t.Fatalf("data: want array, got %T (%v)", resp["data"], resp["data"])
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows (one per school), got %d: %+v", len(rows), rows)
+	}
+
+	seenSchoolNames := map[string]bool{}
+	for _, raw := range rows {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("row: want object, got %T", raw)
+		}
+		name, ok := row["school_name"]
+		if !ok {
+			t.Fatalf("row missing %q key in real response body: %+v", "school_name", row)
+		}
+		nameStr, ok := name.(string)
+		if !ok || nameStr == "" {
+			t.Fatalf("school_name: want non-empty string, got %v", name)
+		}
+		seenSchoolNames[nameStr] = true
+	}
+	if len(seenSchoolNames) != 2 {
+		t.Errorf("want 2 distinct school_name values across rows, got %v", seenSchoolNames)
+	}
+}
+
+// TestAdminResult_List_AdminSchool_OnlySeesOwnSchool proves the RBAC guarantee
+// holds after the school filter became optional: a school-scoped admin_school
+// token never widens past its own school, even though the underlying repository
+// query can now return every school when unscoped (super_admin only).
+func TestAdminResult_List_AdminSchool_OnlySeesOwnSchool(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	examID := seedExamWithMCQ(t, env.pool)
+	schoolA := seedSchool(t, env.pool)
+	schoolB := seedSchool(t, env.pool)
+	adminA := seedUserWithSchool(t, env.pool, "admin_school", "RBAC Admin A", schoolA)
+	studentA := seedUserWithSchool(t, env.pool, "student", "RBAC Student A", schoolA)
+	studentB := seedUserWithSchool(t, env.pool, "student", "RBAC Student B", schoolB)
+	seedSubmittedSession(t, env.pool, studentA, examID)
+	seedSubmittedSession(t, env.pool, studentB, examID)
+
+	token := mintAdminToken(t, env, adminA.String(), schoolA)
+
+	rec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String(), token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	rows, ok := resp["data"].([]any)
+	if !ok {
+		t.Fatalf("data: want array, got %T", resp["data"])
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want 1 row (own school only), got %d: %+v", len(rows), rows)
+	}
+	row, ok := rows[0].(map[string]any)
+	if !ok {
+		t.Fatalf("row: want object, got %T", rows[0])
+	}
+	if row["student_name"] != "RBAC Student A" {
+		t.Errorf("student_name: want RBAC Student A, got %v", row["student_name"])
 	}
 }
 

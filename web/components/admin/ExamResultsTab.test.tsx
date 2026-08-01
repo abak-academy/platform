@@ -35,14 +35,19 @@ let schoolsState = {
   isError: false,
 };
 
+const mockUseAdminResults = vi.fn();
+
 vi.mock("@/lib/hooks/admin-results", () => ({
   // Spread a fresh object each call so query.data changes reference like real
   // react-query does when the query key changes — the component's accumulate
   // effect keys off that reference to refill after a filter reset.
-  useAdminResults: () => ({
-    ...resultsState,
-    data: resultsState.data ? { ...resultsState.data } : null,
-  }),
+  useAdminResults: (opts: unknown) => {
+    mockUseAdminResults(opts);
+    return {
+      ...resultsState,
+      data: resultsState.data ? { ...resultsState.data } : null,
+    };
+  },
   useAdminResultDetail: () => ({ ...detailState }),
   exportAdminResults: (...args: Parameters<typeof mockExport>) => mockExport(...args),
 }));
@@ -59,6 +64,7 @@ const sampleResultRows: AdminResultRow[] = [
   {
     session_id: "sess-1",
     student_name: "Budi Santoso",
+    school_name: "SMAN 1 Jakarta",
     username: "12345",
     score: 85,
     submitted_at: "2026-01-15T00:00:00Z",
@@ -66,6 +72,7 @@ const sampleResultRows: AdminResultRow[] = [
   {
     session_id: "sess-2",
     student_name: "Siti Aisyah",
+    school_name: "SMAN 2 Bandung",
     username: "67890",
     score: 92,
     submitted_at: "2026-02-20T00:00:00Z",
@@ -104,13 +111,14 @@ describe("ExamResultsTab", () => {
     };
     detailState = { data: null, isLoading: false, isFetching: false, isError: false, error: null };
     mockExport.mockReset();
+    mockUseAdminResults.mockReset();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("renders rows with student name, school, score and submitted date", async () => {
+  it("renders rows with student name, per-row school, score and submitted date", async () => {
     render(<ExamResultsTab examId="exam-1" />);
 
     await waitFor(() => {
@@ -118,7 +126,10 @@ describe("ExamResultsTab", () => {
       expect(screen.getByText("Siti Aisyah")).toBeInTheDocument();
     });
 
-    expect(screen.getAllByText("SMAN 1 Jakarta").length).toBeGreaterThan(0);
+    // Two rows from different schools must show their own school_name, not a
+    // single picked/own school name repeated for every row (FB defect).
+    expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument();
+    expect(screen.getByText("SMAN 2 Bandung")).toBeInTheDocument();
     expect(screen.getByText("85")).toBeInTheDocument();
     expect(screen.getByText("92")).toBeInTheDocument();
   });
@@ -143,30 +154,39 @@ describe("ExamResultsTab", () => {
     });
   });
 
-  it("does not fetch results for super_admin until a school is picked", async () => {
+  it("fetches and renders results for super_admin with no school picked (defaults to all schools)", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
 
     render(<ExamResultsTab examId="exam-1" />);
 
-    expect(screen.queryByText("Budi Santoso")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+      expect(screen.getByText("Siti Aisyah")).toBeInTheDocument();
+    });
     expect(screen.getByRole("combobox")).toBeInTheDocument();
+
+    // No school_id filter is sent when nothing has been picked.
+    const lastCall = mockUseAdminResults.mock.calls.at(-1)?.[0];
+    expect(lastCall.schoolId).toBeUndefined();
   });
 
-  it("shows the picked school's name in the school column for super_admin", async () => {
+  it("narrows results by school_id once a super_admin picks one from the optional filter", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
 
     render(<ExamResultsTab examId="exam-1" />);
+    await screen.findByText("Budi Santoso");
 
     const selectTrigger = screen.getByRole("combobox");
     fireEvent.click(selectTrigger);
 
-    const schoolOption = await screen.findByText("SMAN 2 Bandung");
+    // Table rows already show "SMAN 2 Bandung" as a per-row school_name, so
+    // disambiguate the dropdown item by its option role.
+    const schoolOption = await screen.findByRole("option", { name: "SMAN 2 Bandung" });
     fireEvent.click(schoolOption);
 
     await waitFor(() => {
-      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+      const lastCall = mockUseAdminResults.mock.calls.at(-1)?.[0];
+      expect(lastCall.schoolId).toBe("s2");
     });
-
-    expect(screen.getAllByText("SMAN 2 Bandung").length).toBeGreaterThan(0);
   });
 });

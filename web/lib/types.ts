@@ -1135,6 +1135,7 @@ export interface District {
 export interface AdminResultRow {
   session_id: string;
   student_name: string;
+  school_name?: string | null;
   username?: string | null;
   score: number;
   submitted_at: string;

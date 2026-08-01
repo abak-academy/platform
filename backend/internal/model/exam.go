@@ -458,9 +458,12 @@ type ExamLeaderboardEntry struct {
 
 // AdminResultRow is one row of the school-scoped results list (FR-SCHOOL-08-07).
 // SessionID is the opaque identifier for drill-down to the detail endpoint.
+// SchoolName is resolved from the student's linked school, falling back to
+// their free-text unlisted_school_name when school_id is NULL.
 type AdminResultRow struct {
 	SessionID   uuid.UUID  `json:"session_id"`
 	StudentName string     `json:"student_name"`
+	SchoolName  *string    `json:"school_name"`
 	Username    *string    `json:"username"`
 	Score       *float64   `json:"score"`
 	SubmittedAt *time.Time `json:"submitted_at"`

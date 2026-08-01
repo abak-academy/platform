@@ -31,22 +31,19 @@ interface ExamResultsTabProps {
   examId: string;
 }
 
-// GET /admin/results is single-school-scoped (repository hard-filters by school_id),
-// so the "school" column shows the picked/own school name for every row rather than a per-row field.
+// Radix Select forbids an empty-string item value, so "every school" needs its
+// own sentinel; it maps back to "" (no school_id param, meaning "all schools").
+const ALL_SCHOOLS_VALUE = "_all_";
+
 export function ExamResultsTab({ examId }: ExamResultsTabProps) {
   const { t, lang } = useTranslation();
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
   const role = useAuthStore((s) => s.user?.role);
   const isSuperAdmin = role === "super_admin";
-  const ownSchoolId = useAuthStore((s) => s.user?.school_id);
 
   const { data: schoolsData } = useAdminSchools();
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
-
-  const effectiveSchoolId = isSuperAdmin ? selectedSchoolId : ownSchoolId;
-  const schoolName =
-    schoolsData?.data?.find((s) => s.id === effectiveSchoolId)?.name ?? "";
 
   const [search, setSearch] = useState("");
   const [accumulated, setAccumulated] = useState<AdminResultRow[]>([]);
@@ -71,7 +68,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
     cursor: activeCursor,
     limit: 20,
     ...(isSuperAdmin && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
-    enabled: Boolean(examId) && (!isSuperAdmin || Boolean(selectedSchoolId)),
+    enabled: Boolean(examId),
   });
 
   useEffect(() => {
@@ -118,11 +115,15 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
         {isSuperAdmin && (
           <div>
             <p className="text-xs text-ink-500">{t("select_school")}</p>
-            <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
+            <Select
+              value={selectedSchoolId || ALL_SCHOOLS_VALUE}
+              onValueChange={(v) => setSelectedSchoolId(v === ALL_SCHOOLS_VALUE ? "" : v)}
+            >
               <SelectTrigger className="mt-1 h-9 w-[240px] text-xs" aria-label={t("select_school")}>
-                <SelectValue placeholder={t("select_school")} />
+                <SelectValue placeholder={t("students_all_schools")} />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={ALL_SCHOOLS_VALUE}>{t("students_all_schools")}</SelectItem>
                 {(schoolsData?.data ?? []).map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.name}
@@ -135,7 +136,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
         <Button
           size="sm"
           onClick={handleExport}
-          disabled={exporting || !examId || (isSuperAdmin && !selectedSchoolId)}
+          disabled={exporting || !examId}
         >
           {exporting ? (
             <Loader2 className="mr-1 size-4 animate-spin" />
@@ -146,9 +147,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
         </Button>
       </div>
 
-      {isSuperAdmin && !selectedSchoolId ? (
-        <div className="py-12 text-center text-ink-500">{t("select_school")}</div>
-      ) : query.isLoading && accumulated.length === 0 ? (
+      {query.isLoading && accumulated.length === 0 ? (
         <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
       ) : query.isError && accumulated.length === 0 ? (
         <div className="py-12 text-center text-ink-500">{t("sys_error_load")}</div>
@@ -179,7 +178,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
                     onClick={() => setSelectedSessionId(row.session_id)}
                   >
                     <td className="px-4 py-3 font-medium text-ink-900">{row.student_name}</td>
-                    <td className="px-4 py-3 text-xs text-ink-600">{schoolName || "-"}</td>
+                    <td className="px-4 py-3 text-xs text-ink-600">{row.school_name || "-"}</td>
                     <td className="px-4 py-3 text-xs text-ink-600">{row.score}</td>
                     <td className="px-4 py-3 text-xs text-ink-600">
                       {new Date(row.submitted_at).toLocaleString(dateLocale, {
