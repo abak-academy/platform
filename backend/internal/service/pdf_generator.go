@@ -95,6 +95,15 @@ func (r *gotenbergPDFGenerator) RenderURL(ctx context.Context, url string) ([]by
 	if err := w.WriteField("url", url); err != nil {
 		return nil, fmt.Errorf("gotenberg: write url field: %w", err)
 	}
+	// The certificate/card print routes signal a failed render (missing,
+	// invalid, expired or already-redeemed token; a print-data error) with a
+	// non-2xx status rather than a 200-with-empty-body — a 200 was
+	// indistinguishable from success here and got cached as a permanent blank
+	// PDF (NFR-R1). This is Gotenberg's own documented default for the main
+	// URL, made explicit so the behavior doesn't depend on it.
+	if err := w.WriteField("failOnHttpStatusCodes", "[499,599]"); err != nil {
+		return nil, fmt.Errorf("gotenberg: write failOnHttpStatusCodes field: %w", err)
+	}
 
 	for k, v := range pageOptionFields {
 		if err := w.WriteField(k, v); err != nil {

@@ -28,11 +28,15 @@ docker compose -f deploy/compose/local.yml up -d --build \
 
 # api/web carry no compose healthcheck of their own (only postgres/redis/
 # gotenberg do), so poll their HTTP ports directly rather than let the test
-# race container start.
+# race container start. No -f: this only needs to know the server is
+# listening, not that a bare request to it succeeds — since the NFR-R1 fix,
+# a tokenless GET on /documents/certificate correctly 404s (see
+# documents/certificate/page.tsx's notFound() call), which -f would have
+# reported as "not ready" forever.
 wait_for() {
   local url="$1" name="$2"
   for _ in $(seq 1 60); do
-    if curl -sf -o /dev/null "$url"; then
+    if curl -s -o /dev/null "$url"; then
       return 0
     fi
     sleep 1
@@ -49,6 +53,7 @@ cd backend
 # fetching the real running print route, not the fake renderer the unit tests
 # use, and not buildCertificateHTML called in-process. Kept out of backend.sh
 # so the main suite is not slowed by pulling the Chromium image or building
-# the web/api images. Matches every gate test (TestCertificateRender_*), not
-# one by name — a new gate test must not silently sit unrun.
-go test -tags gotenberg_integration -run 'TestCertificateRender_' -count=1 -v ./internal/service/
+# the web/api images. Matches every gate test by prefix (TestCertificateRender_*,
+# TestCardRender_*), not one by name — a new gate test must not silently sit
+# unrun.
+go test -tags gotenberg_integration -run 'TestCertificateRender_|TestCardRender_' -count=1 -v ./internal/service/

@@ -221,13 +221,14 @@ func TestGotenbergRenderer_RenderURL_PostsURLForm(t *testing.T) {
 	}
 
 	wantFields := map[string]string{
-		"url":               "http://web:3000/print/certificate/abc",
-		"printBackground":   "true",
-		"preferCssPageSize": "true",
-		"marginTop":         "0",
-		"marginBottom":      "0",
-		"marginLeft":        "0",
-		"marginRight":       "0",
+		"url":                   "http://web:3000/print/certificate/abc",
+		"failOnHttpStatusCodes": "[499,599]",
+		"printBackground":       "true",
+		"preferCssPageSize":     "true",
+		"marginTop":             "0",
+		"marginBottom":          "0",
+		"marginLeft":            "0",
+		"marginRight":           "0",
 	}
 	for k, want := range wantFields {
 		if got := gotFormFields[k]; got != want {
@@ -237,6 +238,34 @@ func TestGotenbergRenderer_RenderURL_PostsURLForm(t *testing.T) {
 
 	if string(pdfBytes) != "%PDF-fake-url-bytes" {
 		t.Errorf("returned bytes = %q, want %q", pdfBytes, "%PDF-fake-url-bytes")
+	}
+}
+
+// TestGotenbergRenderer_RenderURL_MainURLNon2xxReturnsError proves the
+// mechanism behind the NFR-R1 fix at the pdf_generator level: Gotenberg
+// returns 409 Conflict (per failOnHttpStatusCodes=[499,599]) when the main
+// URL's own response is a 4xx/5xx — this test stands in for that by having
+// the fake Gotenberg itself return a non-2xx, which RenderURL must surface as
+// an error rather than the PDF bytes. Before the certificate/card print
+// routes were changed to call notFound() on failure (documents/certificate,
+// documents/card page.tsx), the print route answered every failure with a
+// 200-with-empty-body, which a real Gotenberg would happily rasterize into a
+// valid, empty PDF — RenderURL returning success here is exactly that bug.
+func TestGotenbergRenderer_RenderURL_MainURLNon2xxReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"message":"resource generated a HTTP status code >= 400"}`))
+	}))
+	defer srv.Close()
+
+	r := newGotenbergPDFGenerator(srv.URL, srv.Client())
+
+	pdfBytes, err := r.RenderURL(context.Background(), "http://web:3000/documents/certificate?token=bad")
+	if err == nil {
+		t.Fatalf("RenderURL returned no error, pdf = %q — a failed print route must not resolve to PDF bytes", pdfBytes)
+	}
+	if !strings.Contains(err.Error(), "409") {
+		t.Errorf("error must name the upstream status, got %q", err)
 	}
 }
 

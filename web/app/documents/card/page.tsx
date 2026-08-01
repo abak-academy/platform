@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { ExamCardPrintable } from "@/components/exam/ExamCardPrintable";
 import { getCardPrintData } from "@/lib/server/print-api";
 
@@ -17,12 +18,16 @@ const DASH = "—";
 // /login instead of rendering the card. ExamCardPrintable is the single
 // markup source shared with the on-screen card at
 // web/app/(print)/exam/[id]/card/page.tsx (FR-28).
+//
+// A failure calls notFound() rather than returning null — see the identical
+// comment on CertificatePrintPage (documents/certificate/page.tsx) for why a
+// 200-with-empty-body silently caches a blank PDF (NFR-R1).
 export default async function CardPrintPage({ searchParams }: CardPrintPageProps) {
   const { token, id } = await searchParams;
   const data = token && id ? await getCardPrintData(id, token) : null;
 
   if (!data) {
-    return null;
+    notFound();
   }
 
   return (

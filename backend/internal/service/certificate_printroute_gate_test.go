@@ -199,6 +199,47 @@ func TestCertificateRender_PrintRoute(t *testing.T) {
 	}
 }
 
+// TestCertificateRender_PrintRouteInvalidTokenFailsRenderURL is the real-stack
+// proof behind the NFR-R1 fix: before documents/certificate/page.tsx was
+// changed to call notFound() on failure, a rejected token still made the
+// print route answer 200 with an empty body, which a real Gotenberg happily
+// rasterized into a valid, empty PDF — RenderURL returned no error, and
+// resolveCertificateURL (certificate.go) uploaded and cached that blank PDF
+// permanently. This hits the real running `web` and `gotenberg` containers
+// with a token that was never minted, so RenderURL must now surface an error
+// instead of PDF bytes; renderCertificateThroughPrintRoute's own unit test
+// (TestRenderCertificateThroughPrintRoute_RenderURLFailure_PropagatesError)
+// already proves that error propagates out and blocks the upload/persist —
+// this test is what makes that propagation happen for real print-route
+// failures, not just a fake renderer.
+func TestCertificateRender_PrintRouteInvalidTokenFailsRenderURL(t *testing.T) {
+	printURL := certificatePrintRouteURL(renderGateWebInternalURL(), "not-a-real-token", uuid.NewString())
+	renderer := newGotenbergPDFGenerator(renderGateGotenbergURL(), &http.Client{Timeout: 30 * time.Second})
+
+	pdf, err := renderer.RenderURL(context.Background(), printURL)
+	if err == nil {
+		t.Fatalf("RenderURL succeeded for an invalid print token (%d PDF bytes) — a rejected token must not resolve to a cacheable PDF (NFR-R1)", len(pdf))
+	}
+}
+
+// TestCardRender_PrintRouteInvalidTokenFailsRenderURL is the exam-card
+// counterpart of TestCertificateRender_PrintRouteInvalidTokenFailsRenderURL —
+// the blocker requires the fix to hold for both documents. See that test's
+// comment for the full failure mechanism this guards against.
+//
+// Not prefixed TestCertificateRender_: deploy/pipeline/backend-render-gate.sh
+// matches both TestCertificateRender_ and TestCardRender_ explicitly so this
+// can't silently sit unrun the way the old gate did.
+func TestCardRender_PrintRouteInvalidTokenFailsRenderURL(t *testing.T) {
+	printURL := cardPrintRouteURL(renderGateWebInternalURL(), "not-a-real-token", uuid.NewString())
+	renderer := newGotenbergPDFGenerator(renderGateGotenbergURL(), &http.Client{Timeout: 30 * time.Second})
+
+	pdf, err := renderer.RenderURL(context.Background(), printURL)
+	if err == nil {
+		t.Fatalf("RenderURL succeeded for an invalid print token (%d PDF bytes) — a rejected token must not resolve to a cacheable PDF (NFR-R1)", len(pdf))
+	}
+}
+
 // TestCertificateRender_PrintRouteDraggedFieldLandsWhereDragged is the
 // print-route successor to the old
 // TestCertificateRender_DraggedFieldLandsWhereDragged (FR-30): a field
