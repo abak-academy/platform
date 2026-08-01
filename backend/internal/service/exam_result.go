@@ -75,6 +75,8 @@ func (s *Service) GetSessionResult(ctx context.Context, studentID, sessionID str
 	// rank aggregate query when the full result isn't visible yet.
 	if gated, ok := resultGate(*exam, sess.Status == "submitted", isFullyGraded(qs, answers)); ok {
 		gated.CertificateURL = certURL
+		gated.EndScreenImageURL = exam.EndScreenImageURL
+		gated.EndScreenPromoText = exam.EndScreenPromoText
 		return gated, nil
 	}
 
@@ -105,6 +107,8 @@ func (s *Service) GetSessionResult(ctx context.Context, studentID, sessionID str
 	}
 
 	result.CertificateURL = certURL
+	result.EndScreenImageURL = exam.EndScreenImageURL
+	result.EndScreenPromoText = exam.EndScreenPromoText
 	return result, nil
 }
 

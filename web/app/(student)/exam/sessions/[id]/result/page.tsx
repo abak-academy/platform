@@ -74,6 +74,27 @@ export default function SessionResultPage() {
     );
   }
 
+  // ── Configured end screen (FR-38) ──────────────────────────────────────
+  // Shown after submit whenever an admin has set both an image and a promo
+  // text for this exam — replaces the plain result screen below regardless
+  // of result-visibility state (FR-39: falls back to plain when unset).
+
+  if (result.end_screen_image_url && result.end_screen_promo_text) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12 text-center">
+        <img
+          src={result.end_screen_image_url}
+          alt={t("result_end_screen_image_alt")}
+          data-testid="end-screen-image"
+          className="mx-auto mb-6 max-h-80 w-full rounded-lg object-contain"
+        />
+        <p className="whitespace-pre-wrap text-ink-800">
+          {result.end_screen_promo_text}
+        </p>
+      </div>
+    );
+  }
+
   // ── Non-result states (hidden / grading / locked) ─────────────────────
 
   if (result.state === "hidden") {

@@ -1135,6 +1135,7 @@ func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 		&e.ResultConfig, &e.ResultReleaseAt, &e.Status, &e.CreatedAt,
 		&e.Mode, &e.CertificateDesign, &e.CertificateDesignUpdatedAt,
 		&e.ExamNumber, &e.CertificateEnabled,
+		&e.EndScreenImageURL, &e.EndScreenPromoText,
 	)
 	if err != nil {
 		return err
@@ -1154,6 +1155,7 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.Exam
 		&item.ResultConfig, &item.ResultReleaseAt, &item.Status, &item.CreatedAt,
 		&item.Mode, &item.CertificateDesign, &item.CertificateDesignUpdatedAt,
 		&item.ExamNumber, &item.CertificateEnabled,
+		&item.EndScreenImageURL, &item.EndScreenPromoText,
 		&item.HasPublishedProduct,
 	)
 }
@@ -1190,7 +1192,8 @@ func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
 			status, created_at, mode,
-			certificate_design, certificate_design_updated_at, exam_number, certificate_enabled
+			certificate_design, certificate_design_updated_at, exam_number, certificate_enabled,
+			end_screen_image_url, end_screen_promo_text
 		FROM exam
 		WHERE id = $1`,
 		id,
@@ -1212,7 +1215,8 @@ func (r *Repository) GetExamsByProductID(ctx context.Context, productID uuid.UUI
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.mode,
-			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled
+			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled,
+			e.end_screen_image_url, e.end_screen_promo_text
 		FROM exam e
 		JOIN product_exam pe ON pe.exam_id = e.id
 		WHERE pe.product_id = $1
@@ -1248,6 +1252,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 		e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 		e.status, e.created_at, e.mode,
 		e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled,
+		e.end_screen_image_url, e.end_screen_promo_text,
 		EXISTS (
 			SELECT 1 FROM product_exam pe
 			JOIN product p ON p.id = pe.product_id
@@ -1303,7 +1308,8 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.mode,
-			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled
+			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled,
+			e.end_screen_image_url, e.end_screen_promo_text
 		FROM exam e
 		WHERE e.id = $1`,
 		id,
@@ -1369,14 +1375,16 @@ func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam
 			timer_mode = $13, duration_minutes = $14, randomize = $15,
 			result_config = $16, result_release_at = $17, status = $18,
 			mode = COALESCE(NULLIF($19, ''), mode),
-			certificate_design = $20, certificate_design_updated_at = $21
-		WHERE id = $22`,
+			certificate_design = $20, certificate_design_updated_at = $21,
+			end_screen_image_url = $22, end_screen_promo_text = $23
+		WHERE id = $24`,
 		e.Title, e.IsFree, e.ScheduledAt, e.ScheduledEndAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt,
 		e.CheckInWindowMinutes, e.GraceWindowMinutes, e.MaxAttempts,
 		e.TimerMode, e.DurationMinutes, e.Randomize,
 		e.ResultConfig, e.ResultReleaseAt, e.Status, e.Mode,
-		e.CertificateDesign, e.CertificateDesignUpdatedAt, id,
+		e.CertificateDesign, e.CertificateDesignUpdatedAt,
+		e.EndScreenImageURL, e.EndScreenPromoText, id,
 	)
 	if err != nil {
 		return err

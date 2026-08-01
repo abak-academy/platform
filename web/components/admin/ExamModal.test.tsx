@@ -11,6 +11,12 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   useUpdateExam: () => ({ mutateAsync: mockUpdateExam, isPending: false }),
 }));
 
+// ImageUploadInput (end screen) calls usePresignAdminImageUpload, a real
+// useMutation — mock it so rendering the modal doesn't need a QueryClient.
+vi.mock("@/lib/hooks/admin-uploads", () => ({
+  usePresignAdminImageUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
 const sampleExam: ExamListItem = {
   id: "exam-1",
   title: "UTS Matematika",
@@ -387,5 +393,87 @@ describe("ExamModal", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^simpan$/i })).toBeDisabled();
     expect(mockCreateExam).not.toHaveBeenCalled();
+  });
+
+  // ── End screen (FR-38/FR-39, Task 20) ──────────────────────────────────
+
+  it("does not show the end screen section on create (exam does not exist yet)", () => {
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(screen.queryByText("Layar Akhir Ujian")).not.toBeInTheDocument();
+  });
+
+  it("pre-fills end screen fields from exam data on edit", async () => {
+    const examWithEndScreen: ExamListItem = {
+      ...sampleExam,
+      end_screen_image_url: "https://cdn.example.com/end-screen.png",
+      end_screen_promo_text: "Thanks for taking the exam!",
+    };
+
+    render(
+      <ExamModal open={true} onClose={vi.fn()} exam={examWithEndScreen} onSaved={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText("Gambar Layar Akhir") as HTMLInputElement).value,
+      ).toBe("https://cdn.example.com/end-screen.png");
+    });
+    expect(
+      (screen.getByLabelText("Teks Promo") as HTMLTextAreaElement).value,
+    ).toBe("Thanks for taking the exam!");
+  });
+
+  it("submitted update payload includes end screen fields", async () => {
+    mockUpdateExam.mockResolvedValue({ id: "exam-1", title: "UTS Matematika" });
+
+    render(
+      <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/judul/i)).toBeInTheDocument();
+    });
+
+    fireEvent.input(screen.getByLabelText("Gambar Layar Akhir"), {
+      target: { value: "https://cdn.example.com/end-screen.png" },
+    });
+    fireEvent.input(screen.getByLabelText("Teks Promo"), {
+      target: { value: "Thanks for taking the exam!" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateExam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          end_screen_image_url: "https://cdn.example.com/end-screen.png",
+          end_screen_promo_text: "Thanks for taking the exam!",
+        }),
+      );
+    });
+  });
+
+  it("submits null end screen fields when left blank", async () => {
+    mockUpdateExam.mockResolvedValue({ id: "exam-1", title: "UTS Matematika" });
+
+    render(
+      <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/judul/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateExam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          end_screen_image_url: null,
+          end_screen_promo_text: null,
+        }),
+      );
+    });
   });
 });

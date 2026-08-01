@@ -45,6 +45,13 @@ vi.mock("@/components/admin/CertificateDesignTab", () => ({
   ),
 }));
 
+// ExamModal's end-screen section uses ImageUploadInput, which calls
+// usePresignAdminImageUpload (a real useMutation) — mock it so rendering the
+// modal doesn't need a QueryClient.
+vi.mock("@/lib/hooks/admin-uploads", () => ({
+  usePresignAdminImageUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
 beforeEach(() => {
   mockRole = undefined;
   mockSetCertificateEnabled.mockClear();

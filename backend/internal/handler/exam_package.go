@@ -119,6 +119,11 @@ type examPatchRequest struct {
 	CDNBundle            *bool               `json:"cdn_bundle"`
 	Randomize            *bool               `json:"randomize"`
 	Mode                 string              `json:"mode"`
+	// EndScreenImageURL/EndScreenPromoText are the FR-38/FR-39 post-submit
+	// content — Nullable so an admin can explicitly clear a previously-set
+	// image or promo, not just add one.
+	EndScreenImageURL  Nullable[string] `json:"end_screen_image_url"`
+	EndScreenPromoText Nullable[string] `json:"end_screen_promo_text"`
 }
 
 // applyNullable overlays a Nullable[T] PATCH field onto a *T model field: absent
@@ -193,6 +198,8 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	if req.Mode != "" {
 		overlay.Mode = req.Mode
 	}
+	applyNullable(req.EndScreenImageURL, &overlay.EndScreenImageURL)
+	applyNullable(req.EndScreenPromoText, &overlay.EndScreenPromoText)
 
 	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)
 	if err != nil {

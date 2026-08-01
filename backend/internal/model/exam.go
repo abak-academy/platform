@@ -155,6 +155,11 @@ type Exam struct {
 	// ExamNumber is a global human-friendly serial (FR-23) assigned from exam_number_seq,
 	// distinct from the exam UUID. Non-nil after create; nil only pre-migration/pre-backfill.
 	ExamNumber *int `json:"exam_number"`
+	// EndScreenImageURL and EndScreenPromoText are the single admin-configured
+	// image/promo block shown on the post-submit result screen (FR-38/FR-39);
+	// both nil until an admin sets them. No templating — plain values only.
+	EndScreenImageURL  *string `json:"end_screen_image_url"`
+	EndScreenPromoText *string `json:"end_screen_promo_text"`
 }
 
 // ExamTest is the M:N join between Exam and Test with sort order.
@@ -388,6 +393,12 @@ type SessionResult struct {
 	// certificate render fails — omitempty would silently drop the key
 	// instead of serialising null.
 	CertificateURL *string `json:"certificate_url"`
+	// EndScreenImageURL/EndScreenPromoText mirror the exam's configured
+	// post-submit content (FR-38/FR-39); present on every gate state (like
+	// CertificateURL) since they're shown regardless of result visibility.
+	// omitempty so an unconfigured exam's response matches today's shape.
+	EndScreenImageURL  *string `json:"end_screen_image_url,omitempty"`
+	EndScreenPromoText *string `json:"end_screen_promo_text,omitempty"`
 }
 
 // ResultTopicRow is one per-Test row of the score_pembahasan breakdown (FR-S5-19).

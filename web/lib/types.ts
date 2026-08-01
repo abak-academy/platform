@@ -679,6 +679,10 @@ export interface Exam {
   status?: string;
   mode?: string;
   created_at?: string;
+  // end_screen_image_url/end_screen_promo_text are the single admin-configured
+  // post-submit image/promo block (FR-38/FR-39) — no templating, one of each.
+  end_screen_image_url?: string | null;
+  end_screen_promo_text?: string | null;
 }
 
 export interface ExamListItem extends Exam {
@@ -740,6 +744,8 @@ export interface UpdateExamPayload {
   check_in_window_minutes?: number | null;
   grace_window_minutes?: number | null;
   max_attempts?: number | null;
+  end_screen_image_url?: string | null;
+  end_screen_promo_text?: string | null;
 }
 
 // ── Certificate design (admin editor, FR-17/18/25) ───────────────────────
@@ -1031,17 +1037,25 @@ interface SessionResultCounts {
   rank: number;
 }
 
+// EndScreenFields carries the FR-38/FR-39 post-submit content — present on
+// every gate state (like certificate_url) since it's shown regardless of
+// result-visibility config; absent when the exam has none configured.
+interface EndScreenFields {
+  end_screen_image_url?: string | null;
+  end_screen_promo_text?: string | null;
+}
+
 export type SessionResult =
-  | { state: "hidden"; certificate_url?: string | null }
-  | { state: "grading"; certificate_url?: string | null }
-  | { state: "locked"; result_release_at: string; certificate_url?: string | null }
-  | ({ state: "result"; result_config: "score_only" } & SessionResultCounts & { certificate_url?: string | null })
+  | ({ state: "hidden"; certificate_url?: string | null } & EndScreenFields)
+  | ({ state: "grading"; certificate_url?: string | null } & EndScreenFields)
+  | ({ state: "locked"; result_release_at: string; certificate_url?: string | null } & EndScreenFields)
+  | ({ state: "result"; result_config: "score_only" } & SessionResultCounts & { certificate_url?: string | null } & EndScreenFields)
   | ({
       state: "result";
       result_config: "score_pembahasan";
       breakdown: ResultTopicRow[];
       pembahasan: ResultPembahasanItem[];
-    } & SessionResultCounts & { certificate_url?: string | null });
+    } & SessionResultCounts & { certificate_url?: string | null } & EndScreenFields);
 
 export interface GradingSessionItem {
   session_id: string;
