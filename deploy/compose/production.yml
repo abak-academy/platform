@@ -97,6 +97,13 @@ services:
   web:
     image: asia-southeast2-docker.pkg.dev/abak-academy-platform/app/web:prod-${IMAGE_TAG:?set IMAGE_TAG to the deployed commit SHA}
     restart: unless-stopped
+    environment:
+      # Server-only: the certificate/card print routes fetch print-data from
+      # this origin at request time (Gotenberg renders them from inside this
+      # network, where NEXT_PUBLIC_API_BASE_URL is baked into the browser
+      # bundle and unreachable from here). Not a build ARG — this must be
+      # able to change without rebuilding the image.
+      INTERNAL_API_BASE_URL: http://api:8080/api/v1
     depends_on:
       - api
     mem_limit: 1g

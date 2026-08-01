@@ -126,6 +126,10 @@ services:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8080/api/v1
       NEXT_PUBLIC_MIDTRANS_SNAP_URL: ${NEXT_PUBLIC_MIDTRANS_SNAP_URL:-https://app.sandbox.midtrans.com/snap/snap.js}
       NEXT_PUBLIC_MIDTRANS_CLIENT_KEY: ${MIDTRANS_CLIENT_KEY:-}
+      # Server-only: the certificate/card print routes fetch print-data from
+      # this origin at request time (Gotenberg renders them from inside this
+      # network, where NEXT_PUBLIC_API_BASE_URL's localhost:8080 is nothing).
+      INTERNAL_API_BASE_URL: http://api:8080/api/v1
     ports:
       - "3000:3000"
     depends_on:
