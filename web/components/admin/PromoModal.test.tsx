@@ -136,7 +136,63 @@ describe("PromoModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
-      expect(mockOnSubmit).toHaveBeenCalledWith({ max_uses: 200 });
+      expect(mockOnSubmit).toHaveBeenCalledWith({ max_uses: 200, is_public: false });
+    });
+  });
+
+  // FR-13: is_public round-trips through create and edit. is_public is a
+  // plain bool on the wire (not a pointer), so the edit payload must carry
+  // it even when turning it off — an omitted key resets it server-side.
+  it("round-trips is_public: create with it on, then edit it off", async () => {
+    const { rerender } = render(
+      <PromoModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.input(screen.getByPlaceholderText(/contoh: diskon10/i), { target: { value: "PUBLIKPROMO" } });
+    fireEvent.input(screen.getByLabelText(/nilai diskon/i), { target: { value: "10" } });
+    fireEvent.click(screen.getByLabelText(/tampilkan di checkout/i));
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "PUBLIKPROMO", is_public: true })
+      );
+    });
+
+    mockOnSubmit.mockClear();
+
+    const promo: PromoCode = {
+      id: "promo-1",
+      code: "PUBLIKPROMO",
+      discount_percent: 10,
+      used_count: 0,
+      is_public: true,
+    };
+
+    rerender(
+      <PromoModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        promo={promo}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    const toggle = screen.getByLabelText(/tampilkan di checkout/i);
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith({ is_public: false });
     });
   });
 

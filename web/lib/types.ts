@@ -355,6 +355,8 @@ export interface PromoCode {
   used_count: number;
   expires_at?: string;
   created_at?: string;
+  /** FR-13: shown to authenticated students via GET /promo-codes/active when true. */
+  is_public?: boolean;
 }
 
 export interface AdminCreatePromoCodeInput {
@@ -365,11 +367,25 @@ export interface AdminCreatePromoCodeInput {
   min_order_amount?: number;
   max_uses?: number;
   expires_at?: string;
+  is_public?: boolean;
 }
 
 export interface AdminUpdatePromoCodeInput {
   max_uses?: number;
   expires_at?: string;
+  is_public?: boolean;
+}
+
+// GET /promo-codes/active wire shape (FR-11) — deliberately omits id,
+// used_count, and max_uses; see backend/internal/handler/order.go
+// activePublicPromoDTO.
+export interface ActivePromoCode {
+  code: string;
+  discount_percent: number | null;
+  discount_amount: number | null;
+  min_order_amount: number | null;
+  max_discount_amount: number | null;
+  expires_at: string | null;
 }
 
 export interface RevenueByTypeItem {

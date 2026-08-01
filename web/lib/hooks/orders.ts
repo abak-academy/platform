@@ -2,14 +2,29 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { CheckoutResult, CourierRate, Order, PromoValidation } from "@/lib/types";
+import type { ActivePromoCode, CheckoutResult, CourierRate, Order, PromoValidation } from "@/lib/types";
 
 export const ordersKeys = {
   all: ["orders"] as const,
   list: () => [...ordersKeys.all, "list"] as const,
   cart: () => [...ordersKeys.all, "cart"] as const,
   detail: (id: string) => [...ordersKeys.all, "detail", id] as const,
+  activePromos: () => [...ordersKeys.all, "active-promos"] as const,
 };
+
+// FR-14: additive listing next to the manual promo input — must never block
+// manual entry, so callers read isError/isLoading and simply render nothing
+// on failure rather than surfacing an error state.
+export function useActivePromoCodes() {
+  return useQuery({
+    queryKey: ordersKeys.activePromos(),
+    queryFn: async () => {
+      const res = await authFetch<{ data: ActivePromoCode[] }>("/promo-codes/active");
+      return res.data ?? [];
+    },
+    retry: false,
+  });
+}
 
 export function useOrders() {
   return useQuery({

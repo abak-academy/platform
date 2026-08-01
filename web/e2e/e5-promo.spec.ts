@@ -25,13 +25,19 @@ import { API_BASE, loginRealAdmin, loginRealStudent } from "./helpers/session";
  * merchandise or medal product to already exist.
  */
 
-async function createPromoCode(request: APIRequestContext, adminToken: string, code: string): Promise<void> {
+async function createPromoCode(
+  request: APIRequestContext,
+  adminToken: string,
+  code: string,
+  opts: { isPublic?: boolean } = {}
+): Promise<void> {
   const res = await request.post(`${API_BASE}/admin/promo-codes`, {
     headers: { Authorization: `Bearer ${adminToken}` },
     data: {
       code,
       discount_amount: 10000,
       min_order_amount: 0,
+      is_public: opts.isPublic ?? false,
     },
   });
   if (!res.ok()) {
@@ -179,6 +185,34 @@ test.describe("B-1 — promo survives the address and courier patches", () => {
       "promo must survive the courier patch too — this is the production bug (FR-4)"
     ).toBeTruthy();
     expect(order.discount).toBe(appliedDiscount);
+    expect(order.total).toBe(order.subtotal - order.discount + order.shipping_cost);
+  });
+});
+
+// FR-14: the active-promo list next to PromoInput is a picker into the same
+// apply path FR-5 built, not a second mechanism — this proves that end to
+// end against the real backend rather than a mocked usePatchCart.
+test.describe("FR-14 — picking a listed active promo applies it and the discount survives to checkout", () => {
+  test("select a listed promo from /cart -> discount lands on the order", async ({ page, context, request }) => {
+    const adminToken = await loginRealAdmin(context, request);
+    const studentToken = await loginRealStudent(context, request);
+
+    const promoCode = `E2EPUBLICPROMO${Date.now()}`;
+    await createPromoCode(request, adminToken, promoCode, { isPublic: true });
+
+    const product = await findPhysicalProduct(request);
+    const orderId = await mintCartWithItem(request, studentToken, product.id);
+
+    await page.goto("/cart");
+
+    // The listed promo is picked, not typed — this is the case that
+    // distinguishes FR-14 from the FR-5 manual-entry path above.
+    await page.getByRole("button", { name: new RegExp(promoCode) }).click();
+    await expect(page.getByText(/Promo diterapkan/)).toBeVisible({ timeout: 10000 });
+
+    const order = await fetchOrder(request, studentToken, orderId);
+    expect(order.promo_code_id, "promo picked from the list must attach to the order").toBeTruthy();
+    expect(order.discount, "discount should be > 0 after picking the listed promo").toBeGreaterThan(0);
     expect(order.total).toBe(order.subtotal - order.discount + order.shipping_cost);
   });
 });

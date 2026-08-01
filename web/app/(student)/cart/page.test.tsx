@@ -19,6 +19,7 @@ vi.mock("@/lib/hooks/orders", () => ({
   useValidatePromo: vi.fn(),
   useShippingRates: vi.fn(),
   usePatchCart: vi.fn(),
+  useActivePromoCodes: vi.fn(),
   useCheckout: vi.fn(() => ({
     mutate: vi.fn(),
     isPending: false,
@@ -95,7 +96,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart } from "@/lib/hooks/orders";
+import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart, useActivePromoCodes } from "@/lib/hooks/orders";
 import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
 import { useProvinces, useCitiesByProvince, useDistrictsByCity } from "@/lib/hooks/regions";
 
@@ -105,6 +106,7 @@ const mockUseUpdateCartItemQty = useUpdateCartItemQty as ReturnType<typeof vi.fn
 const mockUseValidatePromo = useValidatePromo as ReturnType<typeof vi.fn>;
 const mockUseShippingRates = useShippingRates as ReturnType<typeof vi.fn>;
 const mockUsePatchCart = usePatchCart as ReturnType<typeof vi.fn>;
+const mockUseActivePromoCodes = useActivePromoCodes as ReturnType<typeof vi.fn>;
 const mockUseProfile = useProfile as ReturnType<typeof vi.fn>;
 const mockUseUpdateProfile = useUpdateProfile as ReturnType<typeof vi.fn>;
 const mockUseProvinces = useProvinces as ReturnType<typeof vi.fn>;
@@ -199,6 +201,12 @@ describe("CartPage with Shipping", () => {
     mockUsePatchCart.mockReturnValue({
       mutate: vi.fn(),
       isPending: false,
+      isError: false,
+    });
+
+    mockUseActivePromoCodes.mockReturnValue({
+      data: undefined,
+      isLoading: false,
       isError: false,
     });
 
@@ -918,6 +926,137 @@ describe("CartPage with Shipping", () => {
       // is rendered, and no "Promo diterapkan" badge appears.
       expect(screen.queryByText(/Promo diterapkan/)).not.toBeInTheDocument();
       expect(screen.queryByText("Discount")).not.toBeInTheDocument();
+    });
+
+    // FR-14: picking a listed promo must go through the exact same apply
+    // path as typing it and pressing "Pakai" — same validate call, same PATCH
+    // shape — so a second, divergent apply mechanism would fail this test.
+    it("selecting a listed active promo issues the same validate call and PATCH shape as typing + Pakai", async () => {
+      const user = userEvent.setup();
+      const validatePromoMutate = vi.fn((_input, options) => {
+        options?.onSuccess?.({ code: "HEMAT10", discount: 10000, final_total: 90000 });
+      });
+      const patchCartMutate = vi.fn();
+
+      mockUseCart.mockReturnValue({ data: digitalOnlyCart(), isLoading: false, isError: false, refetch: vi.fn() });
+      mockUseValidatePromo.mockReturnValue({
+        mutate: validatePromoMutate,
+        isPending: false,
+        data: undefined,
+        isError: false,
+      });
+      mockUsePatchCart.mockReturnValue({ mutate: patchCartMutate, isPending: false, isError: false });
+      mockUseActivePromoCodes.mockReturnValue({
+        data: [
+          {
+            code: "HEMAT10",
+            discount_percent: 10,
+            discount_amount: null,
+            min_order_amount: null,
+            max_discount_amount: null,
+            expires_at: null,
+          },
+        ],
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.click(await screen.findByRole("button", { name: /HEMAT10/i }));
+
+      await waitFor(() => {
+        expect(validatePromoMutate).toHaveBeenCalledWith(
+          expect.objectContaining({ code: "HEMAT10", orderId: "o1" }),
+          expect.anything()
+        );
+      });
+      await waitFor(() => {
+        expect(patchCartMutate).toHaveBeenCalled();
+      });
+      const [body] = patchCartMutate.mock.calls[0];
+      expect(body).toHaveProperty("promo_code", "HEMAT10");
+      expect(body).toHaveProperty("orderId", "o1");
+
+      // The manual apply path issues the identical shape — proving the listed
+      // promo did not invent a second mechanism. The input already holds the
+      // selected code (selectedCode filled it), so pressing "Pakai" again
+      // re-runs the exact same handler with the same argument.
+      expect(screen.getByPlaceholderText("Masukkan kode promo")).toHaveValue("HEMAT10");
+      patchCartMutate.mockClear();
+      validatePromoMutate.mockClear();
+      await user.click(screen.getByRole("button", { name: "Pakai" }));
+
+      await waitFor(() => {
+        expect(patchCartMutate).toHaveBeenCalled();
+      });
+      const [manualBody] = patchCartMutate.mock.calls[0];
+      expect(manualBody).toEqual(body);
+    });
+
+    // FR-14 is additive: an empty list and a failing list request must both
+    // leave the manual "Pakai" path fully functional.
+    it("manual promo entry keeps working when the active-promo list is empty", async () => {
+      const user = userEvent.setup();
+      const patchCartMutate = vi.fn();
+      const validatePromoMutate = vi.fn((_input, options) => {
+        options?.onSuccess?.({ code: "MANUAL5", discount: 5000, final_total: 95000 });
+      });
+
+      mockUseCart.mockReturnValue({ data: digitalOnlyCart(), isLoading: false, isError: false, refetch: vi.fn() });
+      mockUseValidatePromo.mockReturnValue({
+        mutate: validatePromoMutate,
+        isPending: false,
+        data: undefined,
+        isError: false,
+      });
+      mockUsePatchCart.mockReturnValue({ mutate: patchCartMutate, isPending: false, isError: false });
+      mockUseActivePromoCodes.mockReturnValue({ data: [], isLoading: false, isError: false });
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "MANUAL5");
+      await user.click(screen.getByRole("button", { name: "Pakai" }));
+
+      await waitFor(() => {
+        expect(patchCartMutate).toHaveBeenCalled();
+      });
+      const [body] = patchCartMutate.mock.calls[0];
+      expect(body).toHaveProperty("promo_code", "MANUAL5");
+    });
+
+    it("manual promo entry keeps working when the active-promo list request fails", async () => {
+      const user = userEvent.setup();
+      const patchCartMutate = vi.fn();
+      const validatePromoMutate = vi.fn((_input, options) => {
+        options?.onSuccess?.({ code: "MANUAL5", discount: 5000, final_total: 95000 });
+      });
+
+      mockUseCart.mockReturnValue({ data: digitalOnlyCart(), isLoading: false, isError: false, refetch: vi.fn() });
+      mockUseValidatePromo.mockReturnValue({
+        mutate: validatePromoMutate,
+        isPending: false,
+        data: undefined,
+        isError: false,
+      });
+      mockUsePatchCart.mockReturnValue({ mutate: patchCartMutate, isPending: false, isError: false });
+      mockUseActivePromoCodes.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: new Error("network error"),
+      });
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "MANUAL5");
+      await user.click(screen.getByRole("button", { name: "Pakai" }));
+
+      await waitFor(() => {
+        expect(patchCartMutate).toHaveBeenCalled();
+      });
+      const [body] = patchCartMutate.mock.calls[0];
+      expect(body).toHaveProperty("promo_code", "MANUAL5");
     });
   });
 });

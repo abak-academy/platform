@@ -114,6 +114,49 @@ describe("admin-promos hooks", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: adminPromosKeys.list() });
   });
 
+  // FR-13: is_public must reach the wire on both create and update, not be
+  // dropped somewhere between the modal and the fetch call.
+  it("useCreatePromoCode forwards is_public in the POST body", async () => {
+    const promo: PromoCode = {
+      id: "promo-3",
+      code: "PUBLIKPROMO",
+      discount_percent: 10,
+      used_count: 0,
+      is_public: true,
+    };
+    mockAuthFetch.mockResolvedValueOnce(promo);
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useCreatePromoCode(), { wrapper });
+
+    const input = { code: "PUBLIKPROMO", discount_percent: 10, is_public: true };
+
+    await act(async () => {
+      await result.current.mutateAsync(input);
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/promo-codes", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  });
+
+  it("useUpdatePromoCode forwards is_public: false in the PUT body", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ message: "promo code updated" });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useUpdatePromoCode(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: "promo-1", input: { is_public: false } });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/promo-codes/promo-1", {
+      method: "PUT",
+      body: JSON.stringify({ is_public: false }),
+    });
+  });
+
   it("useDeletePromoCode deletes /admin/promo-codes/:id and invalidates list", async () => {
     mockAuthFetch.mockResolvedValueOnce(undefined);
 

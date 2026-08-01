@@ -484,6 +484,7 @@ export const DICT = {
     promo_confirm_delete: "Hapus kode promo ini? Tindakan ini tidak dapat dibatalkan.",
     promo_load_failed: "Gagal memuat kode promo",
     empty_promos: "Belum ada kode promo.",
+    cart_promo_active_title: "Promo Tersedia",
 
     // Admin — revenue
     revenue_page_title: "Pendapatan",
@@ -508,6 +509,7 @@ export const DICT = {
     th_discount: "Diskon",
     th_usage: "Digunakan / Maks",
     th_expiry: "Kadaluarsa",
+    th_public: "Publik",
     th_buyer: "Pembeli",
     th_product: "Produk",
     th_total: "Total",
@@ -1700,6 +1702,7 @@ export const DICT = {
     promo_confirm_delete: "Delete this promo code? This action cannot be undone.",
     promo_load_failed: "Failed to load promo codes",
     empty_promos: "No promo codes yet.",
+    cart_promo_active_title: "Available Promos",
 
     // Admin — revenue
     revenue_page_title: "Revenue",
@@ -1724,6 +1727,7 @@ export const DICT = {
     th_discount: "Discount",
     th_usage: "Used / Max",
     th_expiry: "Expiry",
+    th_public: "Public",
     th_buyer: "Buyer",
     th_product: "Product",
     th_total: "Total",

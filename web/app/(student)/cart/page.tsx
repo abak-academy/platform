@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShoppingCart, X } from "lucide-react";
-import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart } from "@/lib/hooks/orders";
+import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart, useActivePromoCodes } from "@/lib/hooks/orders";
 import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
@@ -30,6 +30,9 @@ export default function CartPage() {
   const shippingRates = useShippingRates();
   const patchCart = usePatchCart();
   const updateProfile = useUpdateProfile();
+  // FR-14: additive next to the manual input. isError/data undefined just
+  // means the list renders nothing — manual entry must keep working either way.
+  const { data: activePromos } = useActivePromoCodes();
 
   const [shippingAddress, setShippingAddress] = useState<ShippingAddressFormState>({
     penerima: "",
@@ -42,6 +45,7 @@ export default function CartPage() {
   });
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
   const [promoError, setPromoError] = useState<string | undefined>(undefined);
+  const [selectedPromoCode, setSelectedPromoCode] = useState<string | undefined>(undefined);
   // The form closes when the buyer closes it, never because it looks full.
   // Deriving this from "every field is non-empty" swapped the form out on the
   // first character of the last field — which is how a one-character postcode
@@ -215,6 +219,16 @@ export default function CartPage() {
     [cart, subtotal, shippingAddress, validatePromo, patchCart, t]
   );
 
+  // FR-14: selecting a listed promo goes through the exact same apply path as
+  // typing it in and pressing "Pakai" — no second apply mechanism.
+  const handleSelectListedPromo = useCallback(
+    (code: string) => {
+      setSelectedPromoCode(code);
+      handleApplyPromo(code);
+    },
+    [handleApplyPromo]
+  );
+
   const handleClearPromo = useCallback(() => {
     if (!cart) return;
     setPromoError(undefined);
@@ -366,7 +380,25 @@ export default function CartPage() {
                 applied={Boolean(cart?.promo_code_id)}
                 discount={discount}
                 error={promoError}
+                selectedCode={selectedPromoCode}
               />
+
+              {!cart?.promo_code_id && activePromos && activePromos.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {activePromos.map((promo) => (
+                    <button
+                      key={promo.code}
+                      type="button"
+                      onClick={() => handleSelectListedPromo(promo.code)}
+                      disabled={validatePromo.isPending || patchCart.isPending}
+                      className="rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-ink-700 transition-colors hover:border-brand-500 hover:text-brand-600 disabled:opacity-50"
+                    >
+                      {promo.code}
+                      {promo.discount_percent != null && ` -${promo.discount_percent}%`}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="mt-4 space-y-2 border-t border-line pt-4 text-sm">
                 <Row label={t("cart_subtotal")} value={formatRupiah(subtotal)} />
