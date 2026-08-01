@@ -10,16 +10,19 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/redis/go-redis/v9"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"akademi-bimbel/config"
@@ -65,18 +68,30 @@ func (c *gateQueryCounter) reset() {
 
 // gateFakeRenderer is Task 1's PDFGenerator seam, injected so this test never
 // talks to a real Gotenberg. Its call count is also the proof that a cache hit
-// never regenerates (NFR-P2).
+// never regenerates (NFR-P2). htmlCalls/urlCalls/lastURL let Task 13's tests
+// distinguish RenderHTML from RenderURL — resolveCertificateURL must only
+// ever call the latter (FR-27).
 type gateFakeRenderer struct {
-	calls int
+	calls     int
+	htmlCalls int
+	urlCalls  int
+	lastURL   string
+	urlErr    error
 }
 
 func (r *gateFakeRenderer) RenderHTML(context.Context, []byte) ([]byte, error) {
 	r.calls++
+	r.htmlCalls++
 	return []byte("%PDF-1.4"), nil
 }
 
-func (r *gateFakeRenderer) RenderURL(context.Context, string) ([]byte, error) {
+func (r *gateFakeRenderer) RenderURL(_ context.Context, url string) ([]byte, error) {
 	r.calls++
+	r.urlCalls++
+	r.lastURL = url
+	if r.urlErr != nil {
+		return nil, r.urlErr
+	}
 	return []byte("%PDF-1.4"), nil
 }
 
@@ -125,7 +140,9 @@ func gateTestPool(t *testing.T) (*pgxpool.Pool, *gateQueryCounter) {
 // gateTestService builds a real service.Service backed by the testcontainers
 // pool, a locally-signing MinIO client (region set explicitly so presigning
 // never needs a reachable endpoint, mirroring
-// exam_certificate_handler_test.go:115), and the given fake PDF renderer.
+// exam_certificate_handler_test.go:115), a miniredis-backed rdb (Task 13's
+// renderCertificateThroughPrintRoute mints a print token via s.rdb before it
+// ever reaches the renderer), and the given fake PDF renderer.
 func gateTestService(t *testing.T, pool *pgxpool.Pool, renderer PDFGenerator) *Service {
 	t.Helper()
 	store := repository.New(pool)
@@ -137,9 +154,21 @@ func gateTestService(t *testing.T, pool *pgxpool.Pool, renderer PDFGenerator) *S
 	if err != nil {
 		t.Fatalf("minio.New: %v", err)
 	}
-	cfg := &config.Config{ObjectStorageBucketName: "test-bucket", ObjectStorageRegion: "us-east-1"}
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	cfg := &config.Config{
+		ObjectStorageBucketName: "test-bucket",
+		ObjectStorageRegion:     "us-east-1",
+		WebInternalURL:          "http://web-internal.test:3000",
+	}
 	return NewWithStore(
-		store, store, nil, nil,
+		store, store, rdb, nil,
 		&NoopOTPProvider{}, &NoopEmailProvider{},
 		&NoopPaymentClient{}, &NoopLogisticsClient{},
 		storage, cfg, renderer,
@@ -275,4 +304,65 @@ func TestResolveCertificateURL_CachedGate(t *testing.T) {
 			t.Fatalf("certificate_url = %q, want nil — certificate_enabled=false must gate even an already-cached certificate", *url)
 		}
 	})
+}
+
+// TestRenderCertificateThroughPrintRoute_UsesRenderURLNotRenderHTML is Task
+// 13's core assertion for FR-27, at the unit level: renderCertificateThroughPrintRoute
+// (called by resolveCertificateURL's needsRegeneration branch) must mint a
+// print token and ask the renderer to fetch the certificate print route on
+// the configured internal web origin — never build HTML in Go and call
+// RenderHTML. Called directly rather than through resolveCertificateURL so
+// this doesn't need a real object-store upload to succeed (gateTestService's
+// MinIO client has no valid credentials against the local dev MinIO — see
+// its doc comment).
+func TestRenderCertificateThroughPrintRoute_UsesRenderURLNotRenderHTML(t *testing.T) {
+	pool, _ := gateTestPool(t)
+	renderer := &gateFakeRenderer{}
+	svc := gateTestService(t, pool, renderer)
+	ctx := context.Background()
+	sessionID := uuid.New()
+
+	pdf, err := svc.renderCertificateThroughPrintRoute(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("renderCertificateThroughPrintRoute: %v", err)
+	}
+	if string(pdf) != "%PDF-1.4" {
+		t.Errorf("pdf = %q, want the fake renderer's fixed bytes", pdf)
+	}
+	if renderer.htmlCalls != 0 {
+		t.Errorf("RenderHTML calls = %d, want 0 — no certificate HTML may be built in Go (FR-27)", renderer.htmlCalls)
+	}
+	if renderer.urlCalls != 1 {
+		t.Fatalf("RenderURL calls = %d, want 1", renderer.urlCalls)
+	}
+	wantPrefix := "http://web-internal.test:3000/documents/certificate?token="
+	if !strings.HasPrefix(renderer.lastURL, wantPrefix) {
+		t.Errorf("rendered url = %q, want prefix %q (the configured internal web origin)", renderer.lastURL, wantPrefix)
+	}
+	if !strings.Contains(renderer.lastURL, "&id="+sessionID.String()) {
+		t.Errorf("rendered url = %q, want it to carry id=%s", renderer.lastURL, sessionID.String())
+	}
+}
+
+// TestRenderCertificateThroughPrintRoute_RenderURLFailure_PropagatesError is
+// the unit-level companion to NFR-R1: a RenderURL failure (standing in for a
+// stopped/erroring web container) must propagate as a plain error out of
+// renderCertificateThroughPrintRoute rather than being swallowed — it's
+// exam_result.go's caller (GetSessionResult) that turns this into a logged
+// error and a null certificate_url, proven end-to-end at the handler layer in
+// TestStudentGetSessionResult_CertificateRenderURLFailure_DegradesToNullCertificateURL.
+func TestRenderCertificateThroughPrintRoute_RenderURLFailure_PropagatesError(t *testing.T) {
+	pool, _ := gateTestPool(t)
+	wantErr := errors.New("simulated web container failure")
+	renderer := &gateFakeRenderer{urlErr: wantErr}
+	svc := gateTestService(t, pool, renderer)
+	ctx := context.Background()
+
+	_, err := svc.renderCertificateThroughPrintRoute(ctx, uuid.New())
+	if err == nil {
+		t.Fatal("renderCertificateThroughPrintRoute: want an error when RenderURL fails, got nil")
+	}
+	if !errors.Is(err, wantErr) {
+		t.Errorf("renderCertificateThroughPrintRoute error = %v, want it to wrap %v", err, wantErr)
+	}
 }

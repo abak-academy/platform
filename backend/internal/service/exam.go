@@ -1052,55 +1052,7 @@ func (s *Service) GetCertificatePreviewWithLayout(ctx context.Context, examID uu
 	if err := ValidateLayout(*layoutOverride); err != nil {
 		return nil, err
 	}
-
-	exam, err := s.storeRepo.GetExamByID(ctx, examID)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrExamNotFound
-		}
-		return nil, err
-	}
-
-	storedTmpl := certificateTemplate(exam)
-	tmpl := templateOverride
-	if tmpl == "" {
-		tmpl = storedTmpl
-	}
-	if err := validateCertificateTemplate(tmpl); err != nil {
-		return nil, err
-	}
-
-	previewDesign := certificateDesign{Template: tmpl}
-	if templateOverride == "" || templateOverride == storedTmpl {
-		previewDesign.BackgroundKey = certificateBackgroundKey(exam)
-	}
-	raw, err := marshalCertificateDesign(previewDesign)
-	if err != nil {
-		return nil, err
-	}
-	previewExam := *exam
-	previewExam.CertificateDesign = raw
-
-	bg, err := s.resolveCertificateBackground(ctx, &previewExam)
-	if err != nil {
-		return nil, fmt.Errorf("resolve certificate background: %w", err)
-	}
-
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		return nil, err
-	}
-	vals := certificateFieldValues(exam.Title, previewStudentName, time.Now().In(loc).Format("2 January 2006"), previewCertificateNumber)
-
-	images, err := s.resolveCertificateImages(ctx, *layoutOverride)
-	if err != nil {
-		return nil, err
-	}
-	html, err := buildCertificateHTML(*layoutOverride, vals, bg, images)
-	if err != nil {
-		return nil, fmt.Errorf("build certificate html: %w", err)
-	}
-	return s.renderer.RenderHTML(ctx, html)
+	return s.renderCertificatePreviewPDF(ctx, examID, templateOverride, layoutOverride)
 }
 
 func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testIDs []uuid.UUID) error {

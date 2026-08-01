@@ -383,7 +383,11 @@ type SessionResult struct {
 	Rank            int                    `json:"rank"`
 	Breakdown       []ResultTopicRow       `json:"breakdown,omitempty"`
 	Pembahasan      []ResultPembahasanItem `json:"pembahasan,omitempty"`
-	CertificateURL  *string                `json:"certificate_url,omitempty"`
+	// CertificateURL has no omitempty (NFR-R3, FR-5): the key must appear on
+	// every gated result state, carrying null when the gate denies or a
+	// certificate render fails — omitempty would silently drop the key
+	// instead of serialising null.
+	CertificateURL *string `json:"certificate_url"`
 }
 
 // ResultTopicRow is one per-Test row of the score_pembahasan breakdown (FR-S5-19).

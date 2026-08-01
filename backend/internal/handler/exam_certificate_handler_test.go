@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -71,14 +72,61 @@ func registerStudentLeaderboardRoute(t *testing.T, env *testEnv, h *handler.Hand
 // "%PDF"-prefix/non-empty assertions these tests make on the response body.
 var fakePDFBytes = []byte("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF")
 
+// fakeGotenbergRecorder counts hits per route and captures the last "url"
+// form field posted to /forms/chromium/convert/url, so tests can prove a
+// certificate render went through RenderURL (the print route) and never
+// through RenderHTML (Task 13, FR-27/FR-29).
+type fakeGotenbergRecorder struct {
+	mu        sync.Mutex
+	htmlCalls int
+	urlCalls  int
+	lastURL   string
+}
+
+func (r *fakeGotenbergRecorder) recordHTML() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.htmlCalls++
+}
+
+func (r *fakeGotenbergRecorder) recordURL(u string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.urlCalls++
+	r.lastURL = u
+}
+
+func (r *fakeGotenbergRecorder) snapshot() (htmlCalls, urlCalls int, lastURL string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.htmlCalls, r.urlCalls, r.lastURL
+}
+
 // newFakeGotenbergServer stands in for a real Gotenberg sidecar: it answers
-// the Chromium HTML-to-PDF route the renderer POSTs to with a fixed PDF, so
-// certificate-preview tests get a real 200+PDF round trip without a live
-// Gotenberg in the test environment. Closed automatically via t.Cleanup.
+// both the Chromium HTML-to-PDF route and the URL-to-PDF route (FR-26/FR-27)
+// the renderer POSTs to with a fixed PDF, so certificate tests get a real
+// 200+PDF round trip without a live Gotenberg in the test environment.
+// Closed automatically via t.Cleanup.
 func newFakeGotenbergServer(t *testing.T) *httptest.Server {
+	rec, srv := newRecordingFakeGotenbergServer(t)
+	_ = rec
+	return srv
+}
+
+// newRecordingFakeGotenbergServer is newFakeGotenbergServer plus the request
+// recorder, for tests that need to assert which Gotenberg route was hit.
+func newRecordingFakeGotenbergServer(t *testing.T) (*fakeGotenbergRecorder, *httptest.Server) {
 	t.Helper()
+	rec := &fakeGotenbergRecorder{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/forms/chromium/convert/html" {
+		switch r.URL.Path {
+		case "/forms/chromium/convert/html":
+			rec.recordHTML()
+		case "/forms/chromium/convert/url":
+			if err := r.ParseMultipartForm(1 << 20); err == nil {
+				rec.recordURL(r.FormValue("url"))
+			}
+		default:
 			http.NotFound(w, r)
 			return
 		}
@@ -87,7 +135,7 @@ func newFakeGotenbergServer(t *testing.T) *httptest.Server {
 		w.Write(fakePDFBytes)
 	}))
 	t.Cleanup(srv.Close)
-	return srv
+	return rec, srv
 }
 
 // ---------------------------------------------------------------------------
@@ -95,11 +143,12 @@ func newFakeGotenbergServer(t *testing.T) *httptest.Server {
 // ---------------------------------------------------------------------------
 
 type testEnvWithStore struct {
-	pool   *pgxpool.Pool
-	mr     *miniredis.Miniredis
-	e      *echo.Echo
-	svc    *service.Service
-	signer *infra.JWTSigner
+	pool      *pgxpool.Pool
+	mr        *miniredis.Miniredis
+	e         *echo.Echo
+	svc       *service.Service
+	signer    *infra.JWTSigner
+	gotenberg *fakeGotenbergRecorder
 }
 
 func newTestEnvWithStore(t *testing.T) *testEnvWithStore {
@@ -109,6 +158,7 @@ func newTestEnvWithStore(t *testing.T) *testEnvWithStore {
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 168 * time.Hour,
 		OTPTTL:          5 * time.Minute,
+		WebInternalURL:  "http://web-internal.test:3000",
 	})
 }
 
@@ -134,6 +184,7 @@ func newTestEnvWithStoreAndStorage(t *testing.T) *testEnvWithStore {
 		OTPTTL:                  5 * time.Minute,
 		ObjectStorageBucketName: "test-bucket",
 		ObjectStorageRegion:     "us-east-1",
+		WebInternalURL:          "http://web-internal.test:3000",
 	})
 }
 
@@ -143,8 +194,11 @@ func newTestEnvWithStoreCfg(t *testing.T, storage *minio.Client, cfg *config.Con
 
 	// No live Gotenberg sidecar runs in the test environment; point the
 	// renderer at a fake one unless a caller already configured a URL.
+	var gotenberg *fakeGotenbergRecorder
 	if cfg.GotenbergURL == "" {
-		cfg.GotenbergURL = newFakeGotenbergServer(t).URL
+		var srv *httptest.Server
+		gotenberg, srv = newRecordingFakeGotenbergServer(t)
+		cfg.GotenbergURL = srv.URL
 	}
 
 	pgContainer, err := tcpostgres.Run(ctx,
@@ -203,7 +257,7 @@ func newTestEnvWithStoreCfg(t *testing.T, storage *minio.Client, cfg *config.Con
 	e.HideBanner = true
 	server.RegisterRoutesForTest(e, h, svc, signer)
 
-	return &testEnvWithStore{pool: pool, mr: mr, e: e, svc: svc, signer: signer}
+	return &testEnvWithStore{pool: pool, mr: mr, e: e, svc: svc, signer: signer, gotenberg: gotenberg}
 }
 
 // mintTokenForEnv creates a signed JWT and stores the session in the env's
@@ -732,6 +786,67 @@ func TestAdminGetExamCertificatePreview_WithInvalidUnsavedLayout_Returns422(t *t
 	)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAdminGetExamCertificatePreview_RendersThroughPrintRoute_NotRenderHTML is
+// Task 13's core assertion for FR-27/FR-29: a preview must mint a print token
+// and ask Gotenberg to fetch the certificate print route on the configured
+// internal web origin — never build HTML in Go and post it to Gotenberg's
+// HTML route. The unsaved layout override must travel in the minted token's
+// payload, not the URL (NFR-S5): the posted "url" carries only token+id.
+func TestAdminGetExamCertificatePreview_RendersThroughPrintRoute_NotRenderHTML(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview Print Route")
+
+	examID := seedExam(t, env.pool, "Preview Print Route Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
+		map[string]any{"layout": validCertLayoutBody()},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	htmlCalls, urlCalls, lastURL := env.gotenberg.snapshot()
+	if htmlCalls != 0 {
+		t.Errorf("Gotenberg HTML route calls = %d, want 0 — no certificate HTML may be built in Go (FR-27)", htmlCalls)
+	}
+	if urlCalls != 1 {
+		t.Fatalf("Gotenberg URL route calls = %d, want 1", urlCalls)
+	}
+	wantPrefix := "http://web-internal.test:3000/documents/certificate?token="
+	if !strings.HasPrefix(lastURL, wantPrefix) {
+		t.Errorf("rendered url = %q, want prefix %q (the configured internal web origin)", lastURL, wantPrefix)
+	}
+	if !strings.Contains(lastURL, "&id="+examID.String()) {
+		t.Errorf("rendered url = %q, want it to carry id=%s", lastURL, examID.String())
+	}
+	// NFR-S5: the unsaved layout override must never appear in the URL itself.
+	if strings.Contains(lastURL, "x_mm") || strings.Contains(lastURL, "title") {
+		t.Errorf("rendered url = %q, must not leak the layout override — it belongs in the token payload only", lastURL)
+	}
+}
+
+// TestAdminGetExamCertificatePreview_NoObjectStoreWrite proves FR-29: a
+// preview never serves or writes a stored PDF. env has no MinIO client
+// (newTestEnvWithStore passes storage=nil) — uploadCertificatePDF guards on a
+// nil s.storage and returns ErrStorageNotConfigured immediately, so a 200 PDF
+// response here is direct proof the preview path never attempted an upload.
+func TestAdminGetExamCertificatePreview_NoObjectStoreWrite(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview No Store Write")
+
+	examID := seedExam(t, env.pool, "Preview No Store Write Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := postRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 (which is only reachable if no object-store write was attempted against a nil storage client), got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !bytes.HasPrefix(rec.Body.Bytes(), []byte("%PDF")) {
+		t.Errorf("expected a PDF body, got %q", string(rec.Body.Bytes()[:min(len(rec.Body.Bytes()), 10)]))
 	}
 }
 
@@ -1296,18 +1411,93 @@ func TestStudentGetSessionResult_DisabledCertificate_ReturnsNullCertificateURL(t
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
+	body := rec.Body.Bytes()
 	var resp map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+	if err := json.Unmarshal(body, &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	// SessionResult.CertificateURL is `json:"certificate_url,omitempty"`, so a
-	// nil value is indistinguishable here from an absent key — both decode to
-	// a missing map entry (nil). NFR-R3 wants the key always present; that's
-	// a pre-existing gap outside Task 4's scope (FR-8..FR-12), flagged in
-	// concerns rather than fixed here.
+	// Task 13 dropped `,omitempty` from SessionResult.CertificateURL (NFR-R3,
+	// FR-5): the key must be present and null, not merely absent — so this
+	// checks both, where the pre-Task-13 version of this test could only
+	// check the value (a missing key and a null value decode identically).
+	if !strings.Contains(string(body), `"certificate_url"`) {
+		t.Fatalf(`response body missing the "certificate_url" key entirely, want it present with a null value: %s`, body)
+	}
 	if certURL := resp["certificate_url"]; certURL != nil {
 		t.Errorf("certificate_url: want nil for a disabled exam, got %v", certURL)
 	}
+}
+
+// TestStudentGetSessionResult_CertificateRenderURLFailure_DegradesToNullCertificateURL
+// proves NFR-R1 end to end through the real result endpoint after Task 13's
+// switch to RenderURL: a stopped/erroring web container must degrade to a
+// logged error and a null certificate_url, never a 5xx. The exam here has
+// certificate_enabled=true and no cached certificate, so GetSessionResult must
+// attempt a fresh render (unlike the disabled-certificate test above, which
+// never reaches the renderer at all).
+func TestStudentGetSessionResult_CertificateRenderURLFailure_DegradesToNullCertificateURL(t *testing.T) {
+	failing := newFailingURLGotenbergServer(t)
+	env := newTestEnvWithStoreCfg(t, nil, &config.Config{
+		JWTSecret:       "test-secret",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 168 * time.Hour,
+		OTPTTL:          5 * time.Minute,
+		GotenbergURL:    failing.URL,
+		WebInternalURL:  "http://web-internal.test:3000",
+	})
+	student := seedUser(t, env.pool, "student", "Student RenderURL Failure")
+
+	testID := seedTest(t, env.pool)
+	qID := seedMCQuestion(t, env.pool, testID, "2+2", 1, 1)
+
+	examID := seedExam(t, env.pool, "RenderURL Failure Exam", false, "score_only", "classic")
+	seedExamTest(t, env.pool, examID, testID, 1)
+
+	regID := seedRegistration(t, env.pool, student, examID)
+	submittedAt := time.Now()
+	sessionID := seedSession(t, env.pool, regID, student, examID, "submitted", 1, &submittedAt)
+	seedAnswer(t, env.pool, sessionID, qID, "a", 1)
+
+	token := mintTokenForEnv(t, env, student.String(), service.RoleStudent)
+	rec := getRequest(t, env.e, "/api/v1/exam/sessions/"+sessionID.String()+"/result", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 even though the certificate render failed (NFR-R1), got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.Bytes()
+	if !strings.Contains(string(body), `"certificate_url"`) {
+		t.Fatalf(`response body missing the "certificate_url" key entirely: %s`, body)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if certURL := resp["certificate_url"]; certURL != nil {
+		t.Errorf("certificate_url: want null when the certificate render fails, got %v", certURL)
+	}
+}
+
+// newFailingURLGotenbergServer answers the HTML route like a normal
+// Gotenberg, but always 500s the URL route — standing in for NFR-R1's "a
+// stopped, restarting or erroring web container" scenario, since a failed
+// RenderURL is exactly what a real Gotenberg would report when the web
+// container it's asked to fetch from is down.
+func newFailingURLGotenbergServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/forms/chromium/convert/url":
+			http.Error(w, "simulated web container failure", http.StatusInternalServerError)
+		case "/forms/chromium/convert/html":
+			w.Header().Set("Content-Type", "application/pdf")
+			w.WriteHeader(http.StatusOK)
+			w.Write(fakePDFBytes)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 // ---------------------------------------------------------------------------

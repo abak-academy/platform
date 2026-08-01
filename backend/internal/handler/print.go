@@ -23,17 +23,28 @@ func printTokenUnauthorized(c echo.Context) error {
 // PrintGetCertificateData serves the certificate print route's data (FR-18,
 // FR-19, NFR-S2): every value the rendered certificate displays, authored
 // server-side from the session and exam records. The print token is redeemed
-// (single-use) before any data is resolved.
+// (single-use) before any data is resolved. The redeemed token's kind
+// distinguishes a real session render from an admin preview (FR-29) — id is a
+// session id in the first case, an exam id in the second, and any layout
+// override the preview carries travels in the token's payload, never as a
+// query parameter (NFR-S5).
 func (h *Handler) PrintGetCertificateData(c echo.Context) error {
-	sessionID := c.Param("id")
+	id := c.Param("id")
 	token := c.QueryParam("token")
 	if token == "" {
 		return printTokenUnauthorized(c)
 	}
-	if err := h.svc.RedeemPrintToken(c.Request().Context(), token, service.PrintTokenKindCertificate, sessionID); err != nil {
+	record, err := h.svc.RedeemCertificateToken(c.Request().Context(), token, id)
+	if err != nil {
 		return printTokenUnauthorized(c)
 	}
-	data, err := h.svc.GetCertificatePrintData(c.Request().Context(), sessionID)
+
+	var data *service.CertificatePrintData
+	if record.Preview {
+		data, err = h.svc.GetCertificatePreviewData(c.Request().Context(), id, record.TemplateOverride, record.LayoutOverride)
+	} else {
+		data, err = h.svc.GetCertificatePrintData(c.Request().Context(), id)
+	}
 	if err != nil {
 		if errors.Is(err, service.ErrCertificateGateDenied) {
 			return c.JSON(http.StatusForbidden, APIError{Code: "certificate_gate_denied", Message: err.Error()})
