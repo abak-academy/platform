@@ -13,12 +13,12 @@ import (
 func (r *Repository) GetPromoByCode(ctx context.Context, code string) (model.PromoCode, error) {
 	p := model.PromoCode{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at
+		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at, is_public
 		FROM promo_code
 		WHERE code = $1`,
 		code,
 	).Scan(
-		&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt,
+		&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt, &p.IsPublic,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -31,20 +31,20 @@ func (r *Repository) GetPromoByCode(ctx context.Context, code string) (model.Pro
 
 func (r *Repository) CreatePromoCode(ctx context.Context, p model.PromoCode) (model.PromoCode, error) {
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO promo_code (code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		RETURNING id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at`,
-		p.Code, p.DiscountPercent, p.DiscountAmount, p.MinOrderAmount, p.MaxDiscountAmount, p.MaxUses, p.UsedCount, p.ExpiresAt,
+		`INSERT INTO promo_code (code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, is_public)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at, is_public`,
+		p.Code, p.DiscountPercent, p.DiscountAmount, p.MinOrderAmount, p.MaxDiscountAmount, p.MaxUses, p.UsedCount, p.ExpiresAt, p.IsPublic,
 	).Scan(
-		&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt,
+		&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt, &p.IsPublic,
 	)
 	return p, err
 }
 
-func (r *Repository) UpdatePromoCode(ctx context.Context, id uuid.UUID, maxUses *int, expiresAt *time.Time) error {
+func (r *Repository) UpdatePromoCode(ctx context.Context, id uuid.UUID, maxUses *int, expiresAt *time.Time, isPublic bool) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE promo_code SET max_uses = $1, expires_at = $2 WHERE id = $3`,
-		maxUses, expiresAt, id,
+		`UPDATE promo_code SET max_uses = $1, expires_at = $2, is_public = $3 WHERE id = $4`,
+		maxUses, expiresAt, isPublic, id,
 	)
 	return err
 }
@@ -59,7 +59,7 @@ func (r *Repository) DeletePromoCode(ctx context.Context, id uuid.UUID) error {
 
 func (r *Repository) ListPromoCodes(ctx context.Context) ([]model.PromoCode, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at
+		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at, is_public
 		FROM promo_code
 		ORDER BY created_at DESC`,
 	)
@@ -72,7 +72,39 @@ func (r *Repository) ListPromoCodes(ctx context.Context) ([]model.PromoCode, err
 	for rows.Next() {
 		p := model.PromoCode{}
 		err := rows.Scan(
-			&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt,
+			&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt, &p.IsPublic,
+		)
+		if err != nil {
+			return nil, err
+		}
+		promos = append(promos, p)
+	}
+	return promos, rows.Err()
+}
+
+// ListActivePublicPromos returns promo codes flagged for public listing whose
+// validity still holds under the same rules ValidatePromo applies at
+// store.go:389-394. is_public controls listing only, not a bypass of those
+// rules — an expired or exhausted public code must not appear here.
+func (r *Repository) ListActivePublicPromos(ctx context.Context) ([]model.PromoCode, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at, is_public
+		FROM promo_code
+		WHERE is_public = true
+		AND (expires_at IS NULL OR expires_at > now())
+		AND (max_uses IS NULL OR used_count < max_uses)
+		ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	promos := []model.PromoCode{}
+	for rows.Next() {
+		p := model.PromoCode{}
+		err := rows.Scan(
+			&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt, &p.IsPublic,
 		)
 		if err != nil {
 			return nil, err

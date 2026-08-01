@@ -1450,12 +1450,18 @@ func (s *Service) AdminCreatePromoCode(ctx context.Context, p model.PromoCode) (
 	return s.storeRepo.CreatePromoCode(ctx, p)
 }
 
-func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time) error {
+func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time, isPublic bool) error {
 	pID, err := parseUUID(id)
 	if err != nil {
 		return err
 	}
-	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt)
+	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt, isPublic)
+}
+
+// ListActivePublicPromos returns is_public promo codes that are still valid
+// per ValidatePromo's rules, for display to authenticated students. FR-9/FR-10.
+func (s *Service) ListActivePublicPromos(ctx context.Context) ([]model.PromoCode, error) {
+	return s.storeRepo.ListActivePublicPromos(ctx)
 }
 
 func (s *Service) AdminDeletePromoCode(ctx context.Context, id string) error {

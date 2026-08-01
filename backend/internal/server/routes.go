@@ -84,6 +84,12 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	promo := v1.Group("/promo-codes")
 	promo.POST("/validate", h.ValidatePromo)
 
+	// Active public promo listing — sibling group, same prefix, so JWT auth
+	// here does not leak onto the anonymous /promo-codes/validate route above.
+	promoAuth := v1.Group("/promo-codes")
+	promoAuth.Use(handler.JWTMiddleware(svc, jwtSigner))
+	promoAuth.GET("/active", h.ListActivePublicPromos)
+
 	// Payment webhook route (no auth, uses HMAC signature)
 	webhooks := v1.Group("/webhooks")
 	webhooks.POST("/payment", h.HandlePaymentWebhook)

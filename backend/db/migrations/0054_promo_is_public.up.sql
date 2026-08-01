@@ -1,0 +1,1 @@
+ALTER TABLE promo_code ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT false;
