@@ -675,8 +675,13 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		ShippingAddress: patch.ShippingAddress,
 		SelectedCourier: order.SelectedCourier,
 		SelectedService: order.SelectedService,
-		IsEstimate:      order.IsEstimate,
-		PromoCodeID:     order.PromoCodeID,
+		// Seeded for the same reason as PromoCodeID: the UPDATE writes these
+		// columns unconditionally, so a patch that does not mention the courier
+		// would null them and AdminShipOrder would then fail on ErrNoCarrierCode.
+		CourierCode:        order.CourierCode,
+		CourierServiceCode: order.CourierServiceCode,
+		IsEstimate:         order.IsEstimate,
+		PromoCodeID:        order.PromoCodeID,
 		Discount:        order.Discount,
 		ShippingCost:    order.ShippingCost,
 		Total:           order.Total,

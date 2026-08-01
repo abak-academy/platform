@@ -890,6 +890,54 @@ func TestPatchCart_CourierOnlyPatchDoesNotNullPromo(t *testing.T) {
 	}
 }
 
+// TestPatchCart_PromoPatchDoesNotNullCourierCodes is the mirror of the promo
+// bug: courier_code/courier_service_code are written unconditionally by the
+// UPDATE too, so the dedicated promo-apply patch this epic introduced would
+// null a courier already chosen, and AdminShipOrder would then refuse the
+// order with ErrNoCarrierCode.
+func TestPatchCart_PromoPatchDoesNotNullCourierCodes(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newRealDBService(t)
+
+	productID := insertDigitalCourseProduct(t, repo, "Promo Carrier Course", 100000)
+	code := "CARRIER" + uniqueSuffix()
+	insertFixedPromo(t, repo, code, 15000)
+
+	studentID := insertCheckoutStudent(t, repo, "Promo Carrier Student", "promocarr_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	// Stand in for a completed courier selection: the resolved carrier codes are
+	// what AdminShipOrder later requires.
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE orders SET courier_code = 'jne', courier_service_code = 'REG' WHERE id = $1`,
+		order.ID,
+	); err != nil {
+		t.Fatalf("seed courier codes: %v", err)
+	}
+
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{PromoCode: &code}); err != nil {
+		t.Fatalf("PatchCart (apply promo): %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.CourierCode == nil || *got.CourierCode != "jne" {
+		t.Fatalf("want courier_code to survive a promo-only patch, got %v", got.CourierCode)
+	}
+	if got.CourierServiceCode == nil || *got.CourierServiceCode != "REG" {
+		t.Fatalf("want courier_service_code to survive a promo-only patch, got %v", got.CourierServiceCode)
+	}
+}
+
 // TestPatchCart_PromoSurvivesAddressAndCourierPatchesThroughCheckout covers
 // FR-4 / the acceptance sequence: apply promo, patch address, patch courier —
 // two further, unrelated patches — then checkout, and the promo must still be
