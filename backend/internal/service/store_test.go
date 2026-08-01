@@ -647,6 +647,347 @@ func TestPatchCart_AddressOnlyPatchPreservesIsEstimate(t *testing.T) {
 	}
 }
 
+// insertDigitalCourseProduct creates a published, free-shipping course product
+// for the promo tri-state tests below, which only care about subtotal math and
+// never touch shipping.
+func insertDigitalCourseProduct(t *testing.T, repo *repository.Repository, name string, price int) string {
+	t.Helper()
+	var productID string
+	if err := repo.Pool().QueryRow(context.Background(),
+		`INSERT INTO product (type, name, price, stock, status) VALUES ('course', $1, $2, 0, 'published') RETURNING id`,
+		name+" "+uuid.New().String(), price,
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+	return productID
+}
+
+// insertFixedPromo creates a fixed-amount promo_code row and returns its id.
+func insertFixedPromo(t *testing.T, repo *repository.Repository, code string, discountAmount float64) string {
+	t.Helper()
+	var promoID string
+	if err := repo.Pool().QueryRow(context.Background(),
+		`INSERT INTO promo_code (code, discount_amount) VALUES ($1, $2) RETURNING id`,
+		code, discountAmount,
+	).Scan(&promoID); err != nil {
+		t.Fatalf("create promo: %v", err)
+	}
+	return promoID
+}
+
+// TestPatchCart_PromoSurvivesPatchWithoutPromoCodeKey covers FR-1: once a promo
+// is applied, a later patch whose body carries no promo_code key (CartPatch's
+// zero-value nil pointer) must leave promo_code_id and discount untouched and
+// recompute total from the carried-forward discount. This is the core of B-1 —
+// before the fix, repoPatch.PromoCodeID was never seeded from order.PromoCodeID,
+// so any unrelated patch silently detached the promo.
+func TestPatchCart_PromoSurvivesPatchWithoutPromoCodeKey(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newRealDBService(t)
+
+	productID := insertDigitalCourseProduct(t, repo, "Promo Keep Course", 100000)
+	code := "KEEP" + uniqueSuffix()
+	promoID := insertFixedPromo(t, repo, code, 15000)
+
+	studentID := insertCheckoutStudent(t, repo, "Promo Keep Student", "promokeep_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{PromoCode: &code}); err != nil {
+		t.Fatalf("PatchCart (apply promo): %v", err)
+	}
+
+	// Unrelated patch: no promo_code key at all.
+	unrelated := []byte(`{"street":"Jl. Contoh No. 2"}`)
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{ShippingAddress: unrelated}); err != nil {
+		t.Fatalf("PatchCart (unrelated patch): %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.PromoCodeID == nil || got.PromoCodeID.String() != promoID {
+		t.Fatalf("want promo_code_id to survive the unrelated patch, got %v", got.PromoCodeID)
+	}
+	if got.Discount != 15000 {
+		t.Errorf("want discount unchanged at 15000, got %v", got.Discount)
+	}
+	wantTotal := got.Subtotal - got.Discount + got.ShippingCost
+	if got.Total != wantTotal {
+		t.Errorf("want total=%v (subtotal-discount+shipping), got %v", wantTotal, got.Total)
+	}
+}
+
+// TestPatchCart_EmptyPromoCodeRemovesPromo covers FR-2: promo_code: "" is the
+// remove sentinel — it clears promo_code_id and discount, and total falls back
+// to subtotal + shipping_cost.
+func TestPatchCart_EmptyPromoCodeRemovesPromo(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newRealDBService(t)
+
+	productID := insertDigitalCourseProduct(t, repo, "Promo Remove Course", 100000)
+	code := "REMOVE" + uniqueSuffix()
+	insertFixedPromo(t, repo, code, 15000)
+
+	studentID := insertCheckoutStudent(t, repo, "Promo Remove Student", "promorm_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{PromoCode: &code}); err != nil {
+		t.Fatalf("PatchCart (apply promo): %v", err)
+	}
+
+	empty := ""
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{PromoCode: &empty}); err != nil {
+		t.Fatalf("PatchCart (remove promo): %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.PromoCodeID != nil {
+		t.Errorf("want promo_code_id NULL after removal, got %v", got.PromoCodeID)
+	}
+	if got.Discount != 0 {
+		t.Errorf("want discount 0 after removal, got %v", got.Discount)
+	}
+	wantTotal := got.Subtotal + got.ShippingCost
+	if got.Total != wantTotal {
+		t.Errorf("want total=%v (subtotal+shipping), got %v", wantTotal, got.Total)
+	}
+}
+
+// TestPatchCart_InvalidPromoRejectsWholePatch covers FR-3's failure half: a
+// promo code that is missing, expired, or exhausted must reject the entire
+// patch — including any other field carried in the same request — before
+// anything is written.
+func TestPatchCart_InvalidPromoRejectsWholePatch(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newRealDBService(t)
+
+	expiredCode := "EXPIRED" + uniqueSuffix()
+	past := time.Now().Add(-time.Hour)
+	if _, err := repo.Pool().Exec(ctx,
+		`INSERT INTO promo_code (code, discount_amount, expires_at) VALUES ($1, 15000, $2)`,
+		expiredCode, past,
+	); err != nil {
+		t.Fatalf("create expired promo: %v", err)
+	}
+
+	exhaustedCode := "EXHAUSTED" + uniqueSuffix()
+	if _, err := repo.Pool().Exec(ctx,
+		`INSERT INTO promo_code (code, discount_amount, max_uses, used_count) VALUES ($1, 15000, 1, 1)`,
+		exhaustedCode,
+	); err != nil {
+		t.Fatalf("create exhausted promo: %v", err)
+	}
+
+	run := func(name, code string) {
+		t.Run(name, func(t *testing.T) {
+			productID := insertDigitalCourseProduct(t, repo, "Promo Reject Course", 100000)
+			studentID := insertCheckoutStudent(t, repo, "Promo Reject Student", "promorej_")
+
+			order, _, err := svc.MintCart(ctx, studentID)
+			if err != nil {
+				t.Fatalf("MintCart: %v", err)
+			}
+			if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+				t.Fatalf("AddItem: %v", err)
+			}
+
+			before, err := repo.GetOrderByID(ctx, order.ID)
+			if err != nil {
+				t.Fatalf("GetOrderByID (before): %v", err)
+			}
+
+			attemptedAddress := []byte(`{"street":"Should Not Persist"}`)
+			patchCode := code
+			err = svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{
+				PromoCode:       &patchCode,
+				ShippingAddress: attemptedAddress,
+			})
+			if !errors.Is(err, ErrInvalidPromo) {
+				t.Fatalf("want ErrInvalidPromo, got %v", err)
+			}
+
+			after, err := repo.GetOrderByID(ctx, order.ID)
+			if err != nil {
+				t.Fatalf("GetOrderByID (after): %v", err)
+			}
+			if after.PromoCodeID != nil {
+				t.Errorf("want promo_code_id still nil, got %v", after.PromoCodeID)
+			}
+			if after.Discount != before.Discount {
+				t.Errorf("want discount unchanged at %v, got %v", before.Discount, after.Discount)
+			}
+			if after.Total != before.Total {
+				t.Errorf("want total unchanged at %v, got %v", before.Total, after.Total)
+			}
+			if string(after.ShippingAddress) != string(before.ShippingAddress) {
+				t.Errorf("want shipping_address unchanged (rejected patch must not persist it), got %s", after.ShippingAddress)
+			}
+		})
+	}
+
+	run("missing code", "MISSING"+uniqueSuffix())
+	run("expired code", expiredCode)
+	run("exhausted code", exhaustedCode)
+}
+
+// TestPatchCart_CourierOnlyPatchDoesNotNullPromo is the reverse of the old
+// detaching bug (FR-1/FR-4): a patch carrying only a courier selection, with
+// no promo_code key, must not null promo_code_id. No prior test in this file
+// asserted the old (buggy) detaching behaviour, so there is nothing to delete
+// here — this is a new case.
+func TestPatchCart_CourierOnlyPatchDoesNotNullPromo(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newRealDBService(t)
+
+	productID := insertDigitalCourseProduct(t, repo, "Promo Courier Course", 100000)
+	code := "COURIER" + uniqueSuffix()
+	promoID := insertFixedPromo(t, repo, code, 15000)
+
+	studentID := insertCheckoutStudent(t, repo, "Promo Courier Student", "promocour_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{PromoCode: &code}); err != nil {
+		t.Fatalf("PatchCart (apply promo): %v", err)
+	}
+
+	// The cart has no physical items, so this courier selection is a shipping
+	// no-op — the point is that the patch carries Courier/Service and no
+	// PromoCode key, exactly the shape that used to null promo_code_id.
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{Courier: "JNE", Service: "REG"}); err != nil {
+		t.Fatalf("PatchCart (courier-only): %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.PromoCodeID == nil || got.PromoCodeID.String() != promoID {
+		t.Fatalf("want promo_code_id to survive a courier-only patch, got %v", got.PromoCodeID)
+	}
+}
+
+// TestPatchCart_PromoSurvivesAddressAndCourierPatchesThroughCheckout covers
+// FR-4 / the acceptance sequence: apply promo, patch address, patch courier —
+// two further, unrelated patches — then checkout, and the promo must still be
+// attached and IncrementPromoUses must run for it.
+func TestPatchCart_PromoSurvivesAddressAndCourierPatchesThroughCheckout(t *testing.T) {
+	ctx := context.Background()
+	_, repo := newRealDBService(t)
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, spy, nil, nil)
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status, weight_grams)
+		 VALUES ('book', $1, 50000, 10, 'published', 500) RETURNING id`,
+		"Promo Sequence Book "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	code := "SEQ" + uniqueSuffix()
+	var promoID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO promo_code (code, discount_percent, max_uses, used_count) VALUES ($1, 10, 5, 0) RETURNING id`,
+		code,
+	).Scan(&promoID); err != nil {
+		t.Fatalf("create promo: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "Promo Sequence Student", "promoseq_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	// 1. Apply the promo.
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{PromoCode: &code}); err != nil {
+		t.Fatalf("PatchCart (apply promo): %v", err)
+	}
+
+	// 2. Save an address (no promo_code key).
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{
+		ShippingAddress: []byte(`{"street":"Jl. Contoh No. 3"}`),
+	}); err != nil {
+		t.Fatalf("PatchCart (address): %v", err)
+	}
+
+	// 3. Select a courier (no promo_code key), Papua Selatan / Kabupaten
+	// Merauke / Merauke — the same seeded triple used elsewhere in this file.
+	provinceID, cityID, districtID := "93", "9301", "930101"
+	kodePos := "12345"
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{
+		Courier:    "JNE",
+		Service:    "REG",
+		ProvinceID: &provinceID,
+		CityID:     &cityID,
+		DistrictID: &districtID,
+		KodePos:    &kodePos,
+	}); err != nil {
+		t.Fatalf("PatchCart (courier): %v", err)
+	}
+
+	preCheckout, err := repo.GetOrderByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetOrderByID (pre-checkout): %v", err)
+	}
+	if preCheckout.PromoCodeID == nil || preCheckout.PromoCodeID.String() != promoID {
+		t.Fatalf("want promo_code_id to survive address+courier patches, got %v", preCheckout.PromoCodeID)
+	}
+	if preCheckout.Discount != 5000 {
+		t.Fatalf("want discount=5000 (10%% of 50000), got %v", preCheckout.Discount)
+	}
+
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "seq-key-"+uniqueSuffix()); err != nil {
+		t.Fatalf("Checkout: %v", err)
+	}
+
+	var usedCount int
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT used_count FROM promo_code WHERE id = $1`, promoID,
+	).Scan(&usedCount); err != nil {
+		t.Fatalf("read used_count: %v", err)
+	}
+	if usedCount != 1 {
+		t.Errorf("used_count = %d, want 1 — IncrementPromoUses must run for the surviving promo", usedCount)
+	}
+}
+
 func TestCheckout_PhysicalItemWithoutShipping_ReturnsError(t *testing.T) {
 	ctx := context.Background()
 	mr, err := miniredis.Run()

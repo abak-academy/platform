@@ -675,6 +675,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		SelectedCourier: order.SelectedCourier,
 		SelectedService: order.SelectedService,
 		IsEstimate:      order.IsEstimate,
+		PromoCodeID:     order.PromoCodeID,
 		Discount:        order.Discount,
 		ShippingCost:    order.ShippingCost,
 		Total:           order.Total,
@@ -731,7 +732,16 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		}
 	}
 
-	if patch.PromoCode != nil && *patch.PromoCode != "" {
+	// JSON null and an absent key are indistinguishable once decoded into *string,
+	// so both are treated as "keep" here; "" is the only remove sentinel.
+	switch {
+	case patch.PromoCode == nil:
+		repoPatch.Total = order.Subtotal - repoPatch.Discount + repoPatch.ShippingCost
+	case *patch.PromoCode == "":
+		repoPatch.PromoCodeID = nil
+		repoPatch.Discount = 0
+		repoPatch.Total = order.Subtotal - repoPatch.Discount + repoPatch.ShippingCost
+	default:
 		validation, err := s.ValidatePromo(ctx, *patch.PromoCode, order.Subtotal, repoPatch.ShippingCost)
 		if err != nil {
 			return err
@@ -739,8 +749,6 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		repoPatch.PromoCodeID = &validation.PromoID
 		repoPatch.Discount = validation.Discount
 		repoPatch.Total = validation.Total
-	} else {
-		repoPatch.Total = order.Subtotal - repoPatch.Discount + repoPatch.ShippingCost
 	}
 
 	return s.storeRepo.PatchCart(ctx, oID, repoPatch)
