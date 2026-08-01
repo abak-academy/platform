@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 
 	"github.com/labstack/echo/v4"
@@ -78,6 +79,7 @@ func TestMapServiceError(t *testing.T) {
 		{name: "invalid violation type", err: service.ErrInvalidViolationType, wantStatus: 400, wantCode: "invalid_violation_type"},
 		{name: "question in live exam", err: service.ErrQuestionInLiveExam, wantStatus: 409, wantCode: "question_in_published_exam"},
 		{name: "question format locked", err: service.ErrQuestionFormatLocked, wantStatus: 409, wantCode: "question_format_locked"},
+		{name: "invalid cursor", err: repository.ErrInvalidCursor, wantStatus: 400, wantCode: "invalid_cursor"},
 		{name: "unknown error falls to 500", err: errors.New("something unexpected"), wantStatus: 500, wantCode: "internal_error"},
 	}
 

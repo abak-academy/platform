@@ -149,6 +149,9 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 		query += productAvailabilityFilter
 	}
 	if filter.Cursor != "" {
+		if _, err := uuid.Parse(filter.Cursor); err != nil {
+			return nil, "", ErrInvalidCursor
+		}
 		query += fmt.Sprintf(` AND id > $%d`, argIdx)
 		args = append(args, filter.Cursor)
 		argIdx++
@@ -176,8 +179,10 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 
 	var nextCursor string
 	if len(products) > filter.Limit {
-		nextCursor = products[filter.Limit].ID
 		products = products[:filter.Limit]
+		// cursor is the last row actually returned — `id > $n` on the next
+		// page must exclude it, not the unreturned peek row.
+		nextCursor = products[filter.Limit-1].ID
 	}
 
 	return products, nextCursor, nil
