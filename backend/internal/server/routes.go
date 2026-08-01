@@ -94,6 +94,14 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Public config (client key is safe to expose)
 	v1.GET("/config/payment-client-key", h.GetPaymentClientKey)
 
+	// Print-data routes (FR-18..FR-21, NFR-S2): a print token in the "token"
+	// query parameter is the ONLY accepted credential. Deliberately outside
+	// every JWT-authenticated group above — a normal user access token must
+	// never be accepted in place of a print token here.
+	print := v1.Group("/print")
+	print.GET("/certificates/:id", h.PrintGetCertificateData)
+	print.GET("/cards/:id", h.PrintGetCardData)
+
 	// Public school list
 	v1.GET("/schools", h.ListSchools)
 

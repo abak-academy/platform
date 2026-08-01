@@ -1012,20 +1012,13 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 		bgURL = &signed
 	}
 
+	assetURLs, err := s.certificateImageAssetURLs(ctx, normalizedLayout)
+	if err != nil {
+		return nil, err
+	}
 	var sigURL *string
-	assetURLs := make(map[string]string)
-	for _, field := range normalizedLayout.Fields {
-		if field.Kind != "image" || field.AssetKey == nil || *field.AssetKey == "" {
-			continue
-		}
-		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *field.AssetKey, presignedDocumentURLTTL)
-		if err != nil {
-			return nil, fmt.Errorf("presign certificate image %s: %w", field.ID, err)
-		}
-		assetURLs[field.ID] = signed
-		if field.ID == "signature" {
-			sigURL = &signed
-		}
+	if signed, ok := assetURLs["signature"]; ok {
+		sigURL = &signed
 	}
 
 	presets := make([]CertificatePresetResponse, 0, 3)
@@ -1349,6 +1342,76 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (str
 		return "", "", err
 	}
 	return signed, filename, nil
+}
+
+// CardPrintData is the full set of server-authored values the exam card
+// print route displays (FR-20): the participant number, student name,
+// school, exam title/schedule, and check-in code, resolved from the server's
+// own records — never from anything the caller supplies beyond the
+// registration id bound to a redeemed print token.
+type CardPrintData struct {
+	ParticipantNo string `json:"participant_no"`
+	StudentName   string `json:"student_name"`
+	School        string `json:"school"`
+	ExamTitle     string `json:"exam_title"`
+	ExamSchedule  string `json:"exam_schedule"`
+	CheckInCode   string `json:"check_in_code"`
+}
+
+// GetCardPrintData computes the print-data response for the exam card print
+// route (FR-20, FR-21): the ONLY input is regID, which the handler has
+// already verified came from a redeemed print token — no student id is
+// available or needed here, unlike GetExamCard's JWT-authenticated path.
+func (s *Service) GetCardPrintData(ctx context.Context, regID string) (*CardPrintData, error) {
+	rid, err := uuid.Parse(regID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid registration id", ErrValidation)
+	}
+	detail, err := s.storeRepo.GetRegistrationForPrint(ctx, rid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrRegistrationNotFound
+		}
+		return nil, err
+	}
+
+	studentName, school := "", ""
+	if user, mErr := s.Me(ctx, detail.StudentID.String()); mErr == nil && user != nil {
+		studentName = user.Name
+		if user.SchoolID != nil && *user.SchoolID != "" {
+			if sch, sErr := s.storeRepo.GetSchoolByID(ctx, *user.SchoolID); sErr == nil && sch != nil {
+				school = sch.Name
+			}
+		}
+		if school == "" && user.UnlistedSchoolName != nil {
+			school = *user.UnlistedSchoolName
+		}
+	}
+
+	participantNo := ""
+	if detail.ParticipantNumber != nil {
+		prefix := detail.CreatedAt
+		if detail.Exam.ScheduledAt != nil {
+			prefix = *detail.Exam.ScheduledAt
+		}
+		if wib, e := time.LoadLocation("Asia/Jakarta"); e == nil {
+			prefix = prefix.In(wib)
+		}
+		examNo := 0
+		if detail.Exam.ExamNumber != nil {
+			examNo = *detail.Exam.ExamNumber
+		}
+		participantNo = formatParticipantNo(prefix, examNo, *detail.ParticipantNumber)
+	}
+
+	return &CardPrintData{
+		ParticipantNo: participantNo,
+		StudentName:   studentName,
+		School:        school,
+		ExamTitle:     detail.Exam.Title,
+		ExamSchedule:  cardScheduleText(detail),
+		CheckInCode:   detail.Token,
+	}, nil
 }
 
 // presignedDocumentURLTTL bounds every presigned certificate/card/asset URL.

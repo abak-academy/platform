@@ -1548,6 +1548,51 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 	return &detail, nil
 }
 
+// GetRegistrationForPrint returns a registration by id alone, with no student
+// scoping (mirrors GetExamRegistrationByID minus the student_id predicate):
+// the card print-data endpoint (Task 7) authorizes via a print token bound to
+// the registration id, so there is no student id available to scope by at
+// that call site.
+func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUID) (*model.RegistrationDetail, error) {
+	var detail model.RegistrationDetail
+	var cardKey *string
+	var checkedInAt *time.Time
+	err := r.pool.QueryRow(ctx,
+		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
+			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at, reg.participant_number,
+			e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.check_in_window_minutes,
+			e.timer_mode, e.duration_minutes, e.result_config, e.exam_number,
+			COALESCE((
+				SELECT string_agg(DISTINCT t.subject, ', ')
+				FROM exam_test et JOIN test t ON t.id = et.test_id
+				WHERE et.exam_id = e.id
+			), '') AS subject
+		FROM exam_registration reg
+		JOIN exam e ON e.id = reg.exam_id
+		WHERE reg.id = $1`,
+		regID,
+	).Scan(
+		&detail.ID, &detail.StudentID, &detail.ExamID, &detail.Token, &cardKey,
+		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
+		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
+		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
+		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber, &detail.Subject,
+	)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if cardKey != nil {
+		detail.CardKey = cardKey
+	}
+	if checkedInAt != nil {
+		detail.CheckedInAt = checkedInAt
+	}
+	return &detail, nil
+}
+
 // GetExamRoster returns every registration for an exam joined with the
 // student's name/username and the exam's scheduled_at/exam_number (the
 // ingredients the service needs to compose each row's FR-24 display
