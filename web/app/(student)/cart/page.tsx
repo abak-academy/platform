@@ -41,6 +41,7 @@ export default function CartPage() {
     kode_pos: "",
   });
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
+  const [promoError, setPromoError] = useState<string | undefined>(undefined);
   // The form closes when the buyer closes it, never because it looks full.
   // Deriving this from "every field is non-empty" swapped the form out on the
   // first character of the last field — which is how a one-character postcode
@@ -72,6 +73,9 @@ export default function CartPage() {
   // Saving is what closes the form. The address goes onto the order here rather
   // than riding along with the courier choice, so abandoning the cart before
   // picking one no longer throws the address away.
+  //
+  // Deliberately no promo_code here (FR-5): the promo is attached by its own
+  // patch when the buyer presses "Pakai", not re-sent from every cart mutation.
   const handleSaveAddress = useCallback(
     (saveAsPrimary: boolean) => {
       if (!cart) return;
@@ -128,6 +132,12 @@ export default function CartPage() {
   // The rate and the note are stored by the same PATCH, so both have to be sent
   // whichever one the buyer changed — sending only the note would clear the
   // courier the backend already has.
+  //
+  // Deliberately no promo_code here either (FR-5): this fires on every courier
+  // click, and re-sending the code would re-run ValidatePromo each time — a
+  // promo that becomes exhausted between apply and checkout would then block
+  // courier selection entirely. Omitting it is safe because the backend keeps
+  // whatever promo the order already carries when the key is absent.
   const persistShipping = useCallback(
     (rate: { courier: string; service: string; price: number }, note: string) => {
       if (!cart) return;
@@ -173,6 +183,50 @@ export default function CartPage() {
   const handleNoteBlur = useCallback(() => {
     if (selectedRate) persistShipping(selectedRate, courierNote);
   }, [selectedRate, courierNote, persistShipping]);
+
+  // The dedicated promo patch (FR-5): client-side validation first, then the
+  // code is only attached to the order once that succeeds. The displayed
+  // discount always comes back from cart.discount after invalidation, never
+  // from this validation response.
+  const handleApplyPromo = useCallback(
+    (code: string) => {
+      if (!cart) return;
+      setPromoError(undefined);
+      validatePromo.mutate(
+        { code, orderId: cart.id, subtotal },
+        {
+          onSuccess: () => {
+            patchCart.mutate(
+              {
+                orderId: cart.id,
+                promo_code: code,
+                province_id: shippingAddress.provinsi_id,
+                city_id: shippingAddress.kota_id,
+                district_id: shippingAddress.kecamatan_id,
+                kode_pos: shippingAddress.kode_pos || null,
+              },
+              { onError: () => setPromoError(t("cart_promo_invalid")) }
+            );
+          },
+          onError: () => setPromoError(t("cart_promo_invalid")),
+        }
+      );
+    },
+    [cart, subtotal, shippingAddress, validatePromo, patchCart, t]
+  );
+
+  const handleClearPromo = useCallback(() => {
+    if (!cart) return;
+    setPromoError(undefined);
+    patchCart.mutate({
+      orderId: cart.id,
+      promo_code: "",
+      province_id: shippingAddress.provinsi_id,
+      city_id: shippingAddress.kota_id,
+      district_id: shippingAddress.kecamatan_id,
+      kode_pos: shippingAddress.kode_pos || null,
+    });
+  }, [cart, shippingAddress, patchCart]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
@@ -306,11 +360,12 @@ export default function CartPage() {
               <h2 className="font-serif text-lg font-semibold text-ink-900">{t("cart_order_summary")}</h2>
 
               <PromoInput
-                onValidate={(code) => validatePromo.mutate({ code, orderId: cart?.id, subtotal })}
+                onValidate={handleApplyPromo}
+                onClear={handleClearPromo}
                 isValidating={validatePromo.isPending}
-                discount={validatePromo.data?.discount}
-                finalTotal={validatePromo.data?.final_total}
-                error={validatePromo.isError ? t("cart_promo_invalid") : undefined}
+                applied={Boolean(cart?.promo_code_id)}
+                discount={discount}
+                error={promoError}
               />
 
               <div className="mt-4 space-y-2 border-t border-line pt-4 text-sm">

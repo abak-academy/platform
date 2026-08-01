@@ -801,4 +801,123 @@ describe("CartPage with Shipping", () => {
 
     expect(await screen.findByText("Primary")).toBeInTheDocument();
   });
+
+  // B-1 frontend (FR-5..FR-7): the promo apply/clear patch is dedicated and
+  // separate from the address/courier patches, and the displayed discount is
+  // always the server's, never an optimistic client value.
+  describe("promo apply/clear", () => {
+    const digitalOnlyCart = (overrides: Partial<Order> = {}): Order =>
+      ({
+        id: "o1",
+        student_id: "s1",
+        status: "cart",
+        subtotal: 100000,
+        discount: 0,
+        shipping_cost: 0,
+        total: 100000,
+        items: [digitalItem],
+        ...overrides,
+      }) as Order;
+
+    it('pressing "Pakai" with a valid code issues a PATCH whose body contains promo_code', async () => {
+      const user = userEvent.setup();
+      const patchCartMutate = vi.fn();
+
+      mockUseCart.mockReturnValue({ data: digitalOnlyCart(), isLoading: false, isError: false, refetch: vi.fn() });
+      mockUseValidatePromo.mockReturnValue({
+        mutate: vi.fn((_input, options) => {
+          options?.onSuccess?.({ code: "HEMAT10", discount: 10000, final_total: 90000 });
+        }),
+        isPending: false,
+        data: undefined,
+        isError: false,
+      });
+      mockUsePatchCart.mockReturnValue({ mutate: patchCartMutate, isPending: false, isError: false });
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "HEMAT10");
+      await user.click(screen.getByRole("button", { name: "Pakai" }));
+
+      await waitFor(() => {
+        expect(patchCartMutate).toHaveBeenCalled();
+      });
+      const [body] = patchCartMutate.mock.calls[0];
+      expect(body).toHaveProperty("promo_code", "HEMAT10");
+    });
+
+    it("a courier selection issues a PATCH whose body does not contain the promo_code key at all", async () => {
+      const user = userEvent.setup();
+      const patchCartMutate = vi.fn();
+
+      mockUseCart.mockReturnValue({
+        data: { ...digitalOnlyCart(), items: [physicalItem], promo_code_id: "promo-1", discount: 10000 },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+      mockUseShippingRates.mockReturnValue({ mutate: vi.fn(), isPending: false, data: mockRates, isError: false });
+      mockUsePatchCart.mockReturnValue({ mutate: patchCartMutate, isPending: false, isError: false });
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.click(await screen.findByRole("button", { expanded: false }));
+      await user.click(screen.getByRole("radio", { name: /jne/i }));
+
+      await waitFor(() => {
+        expect(patchCartMutate).toHaveBeenCalledWith(expect.objectContaining({ courier: "jne" }));
+      });
+      const [body] = patchCartMutate.mock.calls[0];
+      expect(body).not.toHaveProperty("promo_code");
+    });
+
+    it('the clear action issues promo_code: ""', async () => {
+      const user = userEvent.setup();
+      const patchCartMutate = vi.fn();
+
+      mockUseCart.mockReturnValue({
+        data: digitalOnlyCart({ promo_code_id: "promo-1", discount: 10000, total: 90000 }),
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+      mockUsePatchCart.mockReturnValue({ mutate: patchCartMutate, isPending: false, isError: false });
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.click(await screen.findByRole("button", { name: "Hapus" }));
+
+      await waitFor(() => {
+        expect(patchCartMutate).toHaveBeenCalledWith(expect.objectContaining({ promo_code: "" }));
+      });
+    });
+
+    it("a rejected promo leaves the displayed discount at the server's value and shows the error, never an optimistic value", async () => {
+      const user = userEvent.setup();
+
+      mockUseCart.mockReturnValue({ data: digitalOnlyCart(), isLoading: false, isError: false, refetch: vi.fn() });
+      mockUseValidatePromo.mockReturnValue({
+        mutate: vi.fn((_input, options) => {
+          options?.onError?.(new Error("invalid promo"));
+        }),
+        isPending: false,
+        data: undefined,
+        isError: false,
+      });
+      mockUsePatchCart.mockReturnValue({ mutate: vi.fn(), isPending: false, isError: false });
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "EXPIRED");
+      await user.click(screen.getByRole("button", { name: "Pakai" }));
+
+      await waitFor(() => {
+        expect(screen.getByText("Promo invalid")).toBeInTheDocument();
+      });
+      // discount stays at the cart's own value (0) — no optimistic discount row
+      // is rendered, and no "Promo diterapkan" badge appears.
+      expect(screen.queryByText(/Promo diterapkan/)).not.toBeInTheDocument();
+      expect(screen.queryByText("Discount")).not.toBeInTheDocument();
+    });
+  });
 });
