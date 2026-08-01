@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"akademi-bimbel/internal/repository"
@@ -239,5 +240,130 @@ func TestCheckout_ExamRequiresBiodata(t *testing.T) {
 	}
 	if result.GatewayRef == "" {
 		t.Error("want a gateway ref once biodata is complete (payment proceeds)")
+	}
+}
+
+// TestCheckout_ExamBiodataError_NamesOnlyMissingFields verifies a student who
+// already has a school and dob on file, but no grade, is told only that grade
+// is missing — not sent to fill in a school they already have.
+func TestCheckout_ExamBiodataError_NamesOnlyMissingFields(t *testing.T) {
+	svc, repo := newCheckoutTestService(t)
+	ctx := context.Background()
+
+	examID := createTestExamForBulk(t, repo)
+	productID := createTestExamProductForBulk(t, repo, examID, 50000)
+
+	studentID := insertCheckoutStudent(t, repo, "Grade Only Student", "bioGrade_")
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE users SET unlisted_school_name = 'SMA Test', dob = '2008-01-01' WHERE id = $1`,
+		studentID,
+	); err != nil {
+		t.Fatalf("set school+dob: %v", err)
+	}
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	_, err = svc.Checkout(ctx, studentID, order.ID.String(), "bio-grade-key-"+uniqueSuffix())
+	var bioErr *BiodataIncompleteError
+	if !errors.As(err, &bioErr) {
+		t.Fatalf("want *BiodataIncompleteError, got %v", err)
+	}
+	if len(bioErr.Missing) != 1 || bioErr.Missing[0] != "grade" {
+		t.Fatalf("Missing: want [grade], got %v", bioErr.Missing)
+	}
+	if !strings.Contains(bioErr.Error(), "kelas") {
+		t.Errorf("message: want it to name grade (kelas), got %q", bioErr.Error())
+	}
+	if strings.Contains(bioErr.Error(), "sekolah") {
+		t.Errorf("message: want it NOT to name school (sekolah) since one is already set, got %q", bioErr.Error())
+	}
+}
+
+// TestCheckout_ExamRequiresBiodata_FreeExam pins that the biodata gate fires
+// regardless of price. The gate exists for exam participation (roster,
+// certificate, exam card), not payment — a free exam must not be exempted.
+func TestCheckout_ExamRequiresBiodata_FreeExam(t *testing.T) {
+	svc, repo := newCheckoutTestService(t)
+	ctx := context.Background()
+
+	examID := createTestExamForBulk(t, repo)
+	productID := createTestExamProductForBulk(t, repo, examID, 0)
+
+	studentID := insertCheckoutStudent(t, repo, "Free Exam Student", "biofree_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "bio-free-key-"+uniqueSuffix()); !errors.Is(err, ErrBiodataIncomplete) {
+		t.Fatalf("want ErrBiodataIncomplete for a free exam with incomplete biodata, got %v", err)
+	}
+}
+
+// TestCheckout_BulkExamOrder_ExemptFromBiodataGate verifies a bulk/admin exam
+// order (order_participant rows present) is not blocked by the buyer's own
+// biodata — those students' biodata is admin-managed, not the buyer's.
+func TestCheckout_BulkExamOrder_ExemptFromBiodataGate(t *testing.T) {
+	svcBase, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+
+	schoolID := createTestSchool(t, svcBase)
+	examID := createTestExamForBulk(t, repo)
+	_ = createTestExamProductForBulk(t, repo, examID, 50000)
+
+	var adminID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO users (name, role, status, username, password_hash, jenjang)
+		 VALUES ($1, 'admin_school', 'active', $2, '', 'sma')
+		 RETURNING id`,
+		"Bulk Exempt Admin", "biobulkadm_"+uniqueSuffix(),
+	).Scan(&adminID); err != nil {
+		t.Fatalf("insert admin: %v", err)
+	}
+
+	var studentID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO users (name, school_id, role, status, username, password_hash, jenjang)
+		 VALUES ($1, $2, 'student', 'active', $3, '', 'sma')
+		 RETURNING id`,
+		"Bulk Exempt Student", schoolID, "biobulkstu_"+uniqueSuffix(),
+	).Scan(&studentID); err != nil {
+		t.Fatalf("insert student: %v", err)
+	}
+
+	// The buyer admin has no school/grade/dob on file — if the gate looked at
+	// the buyer instead of checking for order_participant rows, this would
+	// wrongly block.
+	order, err := svc.CreateBulkExamOrder(ctx, adminID, schoolID, examID, ParticipantSelector{
+		StudentIDs: []string{studentID},
+	})
+	if err != nil {
+		t.Fatalf("CreateBulkExamOrder: %v", err)
+	}
+
+	result, err := svc.Checkout(ctx, adminID, order.ID.String(), "bio-bulk-key-"+uniqueSuffix())
+	if err != nil {
+		t.Fatalf("Checkout: want bulk order exempt from biodata gate, got %v", err)
+	}
+	if result.GatewayRef == "" {
+		t.Error("want a gateway ref (payment proceeded)")
 	}
 }

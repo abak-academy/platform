@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isProfileComplete } from "./profile";
+import { isProfileComplete, missingExamBiodataFields } from "./profile";
 import type { User } from "./types";
 
 function user(overrides: Partial<User> = {}): User {
@@ -49,5 +49,46 @@ describe("isProfileComplete", () => {
 
   it("false when unlisted_school_name is empty string", () => {
     expect(isProfileComplete(user({ grade: 10, unlisted_school_name: "" }))).toBe(false);
+  });
+});
+
+// missingExamBiodataFields mirrors the backend's exam-registration biodata gate
+// (school + grade + dob), which is stricter than isProfileComplete (school +
+// grade only, used for the Google-onboarding gate). It exists to warn a
+// student on the exam page before they hit the checkout 422.
+describe("missingExamBiodataFields", () => {
+  it("returns empty when school, grade and dob are all set", () => {
+    expect(
+      missingExamBiodataFields(user({ school_id: "s1", grade: 10, dob: "2008-01-01" })),
+    ).toEqual([]);
+  });
+
+  it("names only grade when school and dob are already set", () => {
+    expect(
+      missingExamBiodataFields(user({ school_id: "s1", dob: "2008-01-01" })),
+    ).toEqual(["grade"]);
+  });
+
+  it("names only dob when school and grade are already set", () => {
+    expect(
+      missingExamBiodataFields(user({ school_id: "s1", grade: 10 })),
+    ).toEqual(["dob"]);
+  });
+
+  it("accepts unlisted_school_name in place of school_id", () => {
+    expect(
+      missingExamBiodataFields(
+        user({ unlisted_school_name: "SMA Test", grade: 10, dob: "2008-01-01" }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("names all three fields for a user with nothing set", () => {
+    expect(missingExamBiodataFields(user())).toEqual(["school", "grade", "dob"]);
+  });
+
+  it("treats null/undefined user as all fields missing", () => {
+    expect(missingExamBiodataFields(null)).toEqual(["school", "grade", "dob"]);
+    expect(missingExamBiodataFields(undefined)).toEqual(["school", "grade", "dob"]);
   });
 });

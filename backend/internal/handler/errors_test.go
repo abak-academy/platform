@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"akademi-bimbel/internal/service"
@@ -107,6 +108,49 @@ func TestMapServiceError(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestMapServiceError_BiodataIncomplete_BodyCarriesMissingFields checks the
+// raw response bytes (not a decoded APIError struct) so the assertion pins the
+// actual wire shape a frontend has to parse: a "details.missing_fields" array
+// naming only the fields that are actually missing.
+func TestMapServiceError_BiodataIncomplete_BodyCarriesMissingFields(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	_ = mapServiceError(c, &service.BiodataIncompleteError{Missing: []string{"grade"}})
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status: want 422, got %d", rec.Code)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["code"] != "biodata_incomplete" {
+		t.Errorf("code: want biodata_incomplete, got %v", body["code"])
+	}
+	msg, _ := body["message"].(string)
+	if msg == "" {
+		t.Error("want a non-empty message for a client that only reads message")
+	}
+	if !strings.Contains(msg, "kelas") {
+		t.Errorf("message: want it to name grade (kelas), got %q", msg)
+	}
+	details, ok := body["details"].(map[string]any)
+	if !ok {
+		t.Fatalf("details: want an object, got %#v", body["details"])
+	}
+	fields, ok := details["missing_fields"].([]any)
+	if !ok {
+		t.Fatalf("details.missing_fields: want an array, got %#v", details["missing_fields"])
+	}
+	if len(fields) != 1 || fields[0] != "grade" {
+		t.Errorf("details.missing_fields: want [grade], got %v", fields)
 	}
 }
 
