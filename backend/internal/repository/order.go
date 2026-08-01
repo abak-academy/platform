@@ -234,6 +234,35 @@ func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Orde
 	return order, nil
 }
 
+// GetUserNamesByIDs resolves display names for a batch of student ids in a
+// single query, keyed by id string. Ids missing from the returned map (e.g. a
+// deleted student row) are the caller's responsibility to fall back on.
+// ids is []string, not []uuid.UUID — pgx's exec mode under PgBouncer breaks
+// on []uuid.UUID array parameters, and that only surfaces in a deployed
+// environment, never against a local test database.
+func (r *Repository) GetUserNamesByIDs(ctx context.Context, ids []string) (map[string]string, error) {
+	names := make(map[string]string, len(ids))
+	if len(ids) == 0 {
+		return names, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, name FROM users WHERE id = ANY($1::uuid[])`,
+		ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		names[id] = name
+	}
+	return names, rows.Err()
+}
+
 func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]model.Order, string, error) {
 	if filter.Limit == 0 {
 		filter.Limit = 10

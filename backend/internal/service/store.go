@@ -1177,9 +1177,55 @@ func parseUUID(s string) (uuid.UUID, error) {
 
 // Admin order methods
 
+// fallbackStudentName is shown in admin views when an order's student row is
+// missing (e.g. a deleted account) so the row still renders instead of erroring.
+const fallbackStudentName = "Siswa tidak ditemukan"
+
+// attachStudentNames populates StudentName on every order via one batched call
+// to resolve, regardless of len(orders) — FR-35 requires this cost one query
+// for the whole page, not one per order. resolve is s.storeRepo.GetUserNamesByIDs
+// in production and a counting fake in tests.
+func attachStudentNames(ctx context.Context, orders []model.Order, resolve func(context.Context, []string) (map[string]string, error)) error {
+	if len(orders) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(orders))
+	ids := make([]string, 0, len(orders))
+	for _, o := range orders {
+		sid := o.StudentID.String()
+		if _, ok := seen[sid]; ok {
+			continue
+		}
+		seen[sid] = struct{}{}
+		ids = append(ids, sid)
+	}
+	names, err := resolve(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for i := range orders {
+		if name, ok := names[orders[i].StudentID.String()]; ok && name != "" {
+			orders[i].StudentName = name
+		} else {
+			orders[i].StudentName = fallbackStudentName
+		}
+	}
+	return nil
+}
+
+// AdminListOrders and AdminGetOrder are the only two places StudentName is
+// populated — the admin-facing paths. Student-facing paths (ListStudentOrders,
+// GetStudentOrder) leave it as the zero value.
 func (s *Service) AdminListOrders(ctx context.Context, filter repository.OrderFilter) ([]model.Order, string, error) {
 	filter.ExcludeCart = true
-	return s.storeRepo.ListOrders(ctx, filter)
+	orders, cursor, err := s.storeRepo.ListOrders(ctx, filter)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := attachStudentNames(ctx, orders, s.storeRepo.GetUserNamesByIDs); err != nil {
+		return nil, "", err
+	}
+	return orders, cursor, nil
 }
 
 func (s *Service) AdminGetOrder(ctx context.Context, orderID string) (model.Order, error) {
@@ -1187,7 +1233,15 @@ func (s *Service) AdminGetOrder(ctx context.Context, orderID string) (model.Orde
 	if err != nil {
 		return model.Order{}, err
 	}
-	return s.storeRepo.GetOrderByID(ctx, id)
+	order, err := s.storeRepo.GetOrderByID(ctx, id)
+	if err != nil {
+		return model.Order{}, err
+	}
+	orders := []model.Order{order}
+	if err := attachStudentNames(ctx, orders, s.storeRepo.GetUserNamesByIDs); err != nil {
+		return model.Order{}, err
+	}
+	return orders[0], nil
 }
 
 // markOrderPaidTx flips order to "paid", emits the OrderPaid outbox event,

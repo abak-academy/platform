@@ -3133,3 +3133,212 @@ func TestHandlePaymentWebhook_PaymentTypeAbsent_DoesNotOverwriteExistingPaymentM
 		t.Errorf("want payment_method unchanged (manual), got %q", got.PaymentMethod)
 	}
 }
+
+// --- Task 11 (FB-19 backend): buyer name reaches admin order list/detail ---
+
+// TestAttachStudentNames_OneCallRegardlessOfOrderCount covers FR-35: N orders
+// (here 3, over only 2 distinct students) must cost exactly one call to the
+// resolver — the batching contract AdminListOrders/AdminGetOrder rely on by
+// wiring resolve to s.storeRepo.GetUserNamesByIDs. Asserting on the call
+// count, not wall-clock time, is what actually proves batching happened.
+func TestAttachStudentNames_OneCallRegardlessOfOrderCount(t *testing.T) {
+	ctx := context.Background()
+	student1 := uuid.New()
+	student2 := uuid.New()
+	orders := []model.Order{
+		{ID: uuid.New(), StudentID: student1},
+		{ID: uuid.New(), StudentID: student2},
+		{ID: uuid.New(), StudentID: student1},
+	}
+
+	calls := 0
+	resolve := func(_ context.Context, ids []string) (map[string]string, error) {
+		calls++
+		names := make(map[string]string, len(ids))
+		for _, id := range ids {
+			names[id] = "Name-" + id
+		}
+		return names, nil
+	}
+
+	if err := attachStudentNames(ctx, orders, resolve); err != nil {
+		t.Fatalf("attachStudentNames: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("want exactly 1 resolver call for %d orders, got %d", len(orders), calls)
+	}
+	for _, o := range orders {
+		want := "Name-" + o.StudentID.String()
+		if o.StudentName != want {
+			t.Errorf("order %s: want student_name %q, got %q", o.ID, want, o.StudentName)
+		}
+	}
+}
+
+// TestAttachStudentNames_MissingStudentRow_FallsBackWithoutError covers FR-34:
+// a student id absent from the resolver's result (deleted account) must not
+// error the whole page — it renders with a fallback label instead.
+func TestAttachStudentNames_MissingStudentRow_FallsBackWithoutError(t *testing.T) {
+	ctx := context.Background()
+	missingStudent := uuid.New()
+	orders := []model.Order{{ID: uuid.New(), StudentID: missingStudent}}
+
+	resolve := func(_ context.Context, _ []string) (map[string]string, error) {
+		return map[string]string{}, nil
+	}
+
+	if err := attachStudentNames(ctx, orders, resolve); err != nil {
+		t.Fatalf("attachStudentNames: %v", err)
+	}
+	if orders[0].StudentName != fallbackStudentName {
+		t.Errorf("want fallback student_name %q, got %q", fallbackStudentName, orders[0].StudentName)
+	}
+}
+
+// newAdminOrderTestOrder mints a cart, adds one digital item, and flips the
+// order to payment_pending (AdminListOrders always excludes 'cart') so it is
+// visible on the admin order list/detail paths.
+func newAdminOrderTestOrder(t *testing.T, ctx context.Context, repo *repository.Repository, studentID string) uuid.UUID {
+	t.Helper()
+	productID := insertDigitalCourseProduct(t, repo, "Admin Order Name Course", 40000)
+	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET status = 'payment_pending' WHERE id = $1`, order.ID); err != nil {
+		t.Fatalf("set payment_pending: %v", err)
+	}
+	return order.ID
+}
+
+// TestAdminListOrders_PopulatesStudentName covers FR-33: the admin order list
+// carries the buyer's name for every order, and student_id stays present
+// alongside it.
+func TestAdminListOrders_PopulatesStudentName(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newRealDBService(t)
+
+	studentA := insertCheckoutStudent(t, repo, "Admin List Buyer A", "adminlista_")
+	studentB := insertCheckoutStudent(t, repo, "Admin List Buyer B", "adminlistb_")
+	orderA := newAdminOrderTestOrder(t, ctx, repo, studentA)
+	orderB := newAdminOrderTestOrder(t, ctx, repo, studentB)
+
+	orders, _, err := svc.AdminListOrders(ctx, repository.OrderFilter{})
+	if err != nil {
+		t.Fatalf("AdminListOrders: %v", err)
+	}
+
+	seen := map[string]model.Order{}
+	for _, o := range orders {
+		seen[o.ID.String()] = o
+	}
+	gotA, ok := seen[orderA.String()]
+	if !ok {
+		t.Fatalf("order A not present in admin list")
+	}
+	if gotA.StudentName != "Admin List Buyer A" {
+		t.Errorf("order A: want student_name %q, got %q", "Admin List Buyer A", gotA.StudentName)
+	}
+	if gotA.StudentID.String() != studentA {
+		t.Errorf("order A: want student_id %q, got %q", studentA, gotA.StudentID.String())
+	}
+
+	gotB, ok := seen[orderB.String()]
+	if !ok {
+		t.Fatalf("order B not present in admin list")
+	}
+	if gotB.StudentName != "Admin List Buyer B" {
+		t.Errorf("order B: want student_name %q, got %q", "Admin List Buyer B", gotB.StudentName)
+	}
+	if gotB.StudentID.String() != studentB {
+		t.Errorf("order B: want student_id %q, got %q", studentB, gotB.StudentID.String())
+	}
+}
+
+// TestAdminGetOrder_PopulatesStudentName covers FR-33 for the order detail path.
+func TestAdminGetOrder_PopulatesStudentName(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newRealDBService(t)
+
+	studentID := insertCheckoutStudent(t, repo, "Admin Detail Buyer", "admindetail_")
+	orderID := newAdminOrderTestOrder(t, ctx, repo, studentID)
+
+	got, err := svc.AdminGetOrder(ctx, orderID.String())
+	if err != nil {
+		t.Fatalf("AdminGetOrder: %v", err)
+	}
+	if got.StudentName != "Admin Detail Buyer" {
+		t.Errorf("want student_name %q, got %q", "Admin Detail Buyer", got.StudentName)
+	}
+	if got.StudentID.String() != studentID {
+		t.Errorf("want student_id %q, got %q", studentID, got.StudentID.String())
+	}
+}
+
+// TestAdminGetOrder_MissingStudentRow_FallsBackWithoutError covers FR-34 end
+// to end against a real order: student_id NOT NULL REFERENCES users(id) means
+// a dangling reference can't be produced by deleting the row, so this drives
+// the fallback through the same resolver contract TestAttachStudentNames_*
+// exercises directly, confirmed here to actually be wired into AdminGetOrder.
+func TestAdminGetOrder_MissingStudentRow_FallsBackWithoutError(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newRealDBService(t)
+
+	studentID := insertCheckoutStudent(t, repo, "Admin Detail Vanishing Buyer", "adminvanish_")
+	orderID := newAdminOrderTestOrder(t, ctx, repo, studentID)
+
+	// Simulate a student row that no longer resolves to a name without
+	// violating the FK: blank the name out (schema default is '' NOT NULL,
+	// so this is a legitimate state, not a constraint bypass).
+	if _, err := repo.Pool().Exec(ctx, `UPDATE users SET name = '' WHERE id = $1`, studentID); err != nil {
+		t.Fatalf("blank student name: %v", err)
+	}
+
+	got, err := svc.AdminGetOrder(ctx, orderID.String())
+	if err != nil {
+		t.Fatalf("AdminGetOrder: %v", err)
+	}
+	if got.StudentName != fallbackStudentName {
+		t.Errorf("want fallback student_name %q, got %q", fallbackStudentName, got.StudentName)
+	}
+}
+
+// TestStudentFacingOrderPaths_DoNotPopulateStudentName covers the "no leakage
+// where not asked for" half of FR-33: ListStudentOrders and GetStudentOrder
+// are unchanged by this task, so student_name stays the zero value there.
+func TestStudentFacingOrderPaths_DoNotPopulateStudentName(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newRealDBService(t)
+
+	studentID := insertCheckoutStudent(t, repo, "Student Facing Buyer", "studentfacing_")
+	orderID := newAdminOrderTestOrder(t, ctx, repo, studentID)
+
+	listed, _, err := svc.ListStudentOrders(ctx, studentID, "", 10)
+	if err != nil {
+		t.Fatalf("ListStudentOrders: %v", err)
+	}
+	found := false
+	for _, o := range listed {
+		if o.ID == orderID {
+			found = true
+			if o.StudentName != "" {
+				t.Errorf("ListStudentOrders: want empty student_name, got %q", o.StudentName)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("order not present in ListStudentOrders")
+	}
+
+	single, err := svc.GetStudentOrder(ctx, studentID, orderID.String())
+	if err != nil {
+		t.Fatalf("GetStudentOrder: %v", err)
+	}
+	if single.StudentName != "" {
+		t.Errorf("GetStudentOrder: want empty student_name, got %q", single.StudentName)
+	}
+}

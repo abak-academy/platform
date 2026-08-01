@@ -10,6 +10,7 @@ import (
 type Order struct {
 	ID                 uuid.UUID            `json:"id"`
 	StudentID          uuid.UUID            `json:"student_id"`
+	StudentName        string               `json:"student_name"`
 	Status             string               `json:"status"`
 	Subtotal           float64              `json:"subtotal"`
 	Discount           float64              `json:"discount"`
