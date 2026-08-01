@@ -1286,7 +1286,9 @@ func (s *Service) renderCardThroughPrintRoute(ctx context.Context, regID uuid.UU
 // print route displays (FR-20): the participant number, student name,
 // school, exam title/schedule, and check-in code, resolved from the server's
 // own records — never from anything the caller supplies beyond the
-// registration id bound to a redeemed print token.
+// registration id bound to a redeemed print token. TenantName/TenantLogoURL/
+// PhotoURL/FooterNote restore the parity buildCardHTML (card_html.go) used
+// to carry before Task 12 switched GetExamCard to this print route (Task 25).
 type CardPrintData struct {
 	ParticipantNo string `json:"participant_no"`
 	StudentName   string `json:"student_name"`
@@ -1294,6 +1296,10 @@ type CardPrintData struct {
 	ExamTitle     string `json:"exam_title"`
 	ExamSchedule  string `json:"exam_schedule"`
 	CheckInCode   string `json:"check_in_code"`
+	TenantName    string `json:"tenant_name"`
+	TenantLogoURL string `json:"tenant_logo_url,omitempty"`
+	PhotoURL      string `json:"photo_url,omitempty"`
+	FooterNote    string `json:"footer_note"`
 }
 
 // GetCardPrintData computes the print-data response for the exam card print
@@ -1313,7 +1319,7 @@ func (s *Service) GetCardPrintData(ctx context.Context, regID string) (*CardPrin
 		return nil, err
 	}
 
-	studentName, school := "", ""
+	studentName, school, photoURL := "", "", ""
 	if user, mErr := s.Me(ctx, detail.StudentID.String()); mErr == nil && user != nil {
 		studentName = user.Name
 		if user.SchoolID != nil && *user.SchoolID != "" {
@@ -1324,6 +1330,15 @@ func (s *Service) GetCardPrintData(ctx context.Context, regID string) (*CardPrin
 		if school == "" && user.UnlistedSchoolName != nil {
 			school = *user.UnlistedSchoolName
 		}
+		if user.PhotoURL != nil {
+			photoURL = s.presignCardAvatarURL(ctx, *user.PhotoURL)
+		}
+	}
+
+	tenantName, tenantLogoURL := "", ""
+	if cfg, cErr := s.GetSystemConfig(ctx); cErr == nil {
+		tenantName = cfg["app_name"]
+		tenantLogoURL = s.resolveCardLogoURL(ctx, cfg["app_logo_url"])
 	}
 
 	participantNo := ""
@@ -1349,7 +1364,49 @@ func (s *Service) GetCardPrintData(ctx context.Context, regID string) (*CardPrin
 		ExamTitle:     detail.Exam.Title,
 		ExamSchedule:  cardScheduleText(detail),
 		CheckInCode:   detail.Token,
+		TenantName:    tenantName,
+		TenantLogoURL: tenantLogoURL,
+		PhotoURL:      photoURL,
+		FooterNote:    cardFooterNote(detail),
 	}, nil
+}
+
+// presignCardAvatarURL signs a browser-loadable URL for a student's stored
+// avatar for the card print route, reusing avatarKeyFromStored's trust rule
+// (see loadCardAvatarImage): only a key under our own bucket is ever signed,
+// never an outbound fetch keyed off a stored proxy URL naming some other
+// host. Any failure — no storage key, presign error — collapses to "" so a
+// missing/foreign photo just omits the image (mirrors loadCardAvatarImage's
+// FR-21 best-effort behavior) instead of failing the print route.
+func (s *Service) presignCardAvatarURL(ctx context.Context, stored string) string {
+	key := avatarKeyFromStored(stored)
+	if key == "" {
+		return ""
+	}
+	signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, key, presignedDocumentURLTTL)
+	if err != nil {
+		return ""
+	}
+	return signed
+}
+
+// resolveCardLogoURL returns a browser-loadable URL for the configured
+// tenant logo: a presigned GET when app_logo_url names one of our own
+// avatar keys, or the configured value unchanged when it is an ordinary
+// external https:// URL — the System Config contract (see card_logo.go) —
+// which has no object key to presign.
+func (s *Service) resolveCardLogoURL(ctx context.Context, stored string) string {
+	if stored == "" {
+		return ""
+	}
+	if key := avatarKeyFromStored(stored); key != "" {
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, key, presignedDocumentURLTTL)
+		if err != nil {
+			return ""
+		}
+		return signed
+	}
+	return stored
 }
 
 // presignedDocumentURLTTL bounds every presigned certificate/card/asset URL.

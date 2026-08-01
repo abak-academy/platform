@@ -39,9 +39,11 @@ export async function getCertificatePrintData(
 }
 
 // CardPrintData mirrors CardPrintData (backend/internal/service/exam.go) —
-// the exam card print-data endpoint deliberately carries only these five
-// fields (FR-20); grade, dob, photo, subject, duration, mode and platform
-// are not part of the server-authored response.
+// the exam card print-data endpoint's server-authored response (FR-20).
+// grade, dob, subject, duration, mode and platform are still not part of it;
+// tenant_name/tenant_logo_url/photo_url/footer_note restore the parity
+// buildCardHTML (card_html.go) carried before Task 12 switched GetExamCard
+// to this print route (Task 25).
 export interface CardPrintData {
   participant_no: string;
   student_name: string;
@@ -49,6 +51,10 @@ export interface CardPrintData {
   exam_title: string;
   exam_schedule: string;
   check_in_code: string;
+  tenant_name?: string;
+  tenant_logo_url?: string;
+  photo_url?: string;
+  footer_note?: string;
 }
 
 // getCardPrintData redeems a single-use print token against the print-data

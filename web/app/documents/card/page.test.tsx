@@ -66,4 +66,54 @@ describe("CardPrintPage", () => {
     expect(screen.getByText("ABC12345")).toBeInTheDocument();
     expect(screen.getByText("Ujian Simulasi UTBK")).toBeInTheDocument();
   });
+
+  // Task 25: the print route must carry the four values buildCardHTML
+  // (backend/internal/service/card_html.go) showed before Task 12 switched
+  // GetExamCard to this print route — tenant name/logo, student photo, and
+  // the check-in footer note.
+  it("renders tenant name, tenant logo, student photo and the check-in note when the payload supplies them", async () => {
+    mockedGet.mockResolvedValue({
+      ...sampleCardData,
+      tenant_name: "Bimbel Prima",
+      tenant_logo_url: "https://cdn.example.com/logo.png",
+      photo_url: "https://storage.example.com/avatars/budi.png?sig=abc",
+      footer_note: "Harap check-in dalam waktu 15 menit sebelum ujian.",
+    });
+
+    const jsx = await CardPrintPage({
+      searchParams: Promise.resolve({ token: "good-token", id: "reg-1" }),
+    });
+    const { container } = render(jsx as ReactElement);
+
+    expect(container.textContent).toContain("Bimbel Prima");
+    const logo = container.querySelector(
+      'img[alt="Bimbel Prima"]'
+    ) as HTMLImageElement | null;
+    expect(logo?.src).toBe("https://cdn.example.com/logo.png");
+
+    const photo = screen.getByAltText("Budi Santoso") as HTMLImageElement;
+    expect(photo.src).toBe(
+      "https://storage.example.com/avatars/budi.png?sig=abc"
+    );
+
+    expect(
+      screen.getByText("Harap check-in dalam waktu 15 menit sebelum ujian.")
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to today's defaults when the payload omits tenant/photo/footer fields", async () => {
+    mockedGet.mockResolvedValue(sampleCardData);
+
+    const jsx = await CardPrintPage({
+      searchParams: Promise.resolve({ token: "good-token", id: "reg-1" }),
+    });
+    const { container } = render(jsx as ReactElement);
+
+    expect(container.textContent).toContain("Abak Academy");
+    expect(container.querySelector('img[alt="Abak Academy"]')).toBeNull();
+    expect(
+      container.querySelector('svg[aria-label="abak academy"]')
+    ).not.toBeNull();
+    expect(screen.queryByAltText("Budi Santoso")).toBeNull();
+  });
 });

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -250,5 +251,62 @@ func TestPrintGetCardData_ValidToken_ReturnsCardFields(t *testing.T) {
 	checkInCode, _ := resp["check_in_code"].(string)
 	if checkInCode == "" {
 		t.Errorf(`resp["check_in_code"] is empty, want the registration token`)
+	}
+}
+
+// TestPrintGetCardData_ValidToken_ReturnsFieldParityWithBuildCardHTML proves
+// Task 25: the four values buildCardHTML (backend/internal/service/card_html.go)
+// showed before Task 12 switched GetExamCard to the print route — tenant
+// name, tenant logo, student photo, and the check-in footer note — are back
+// in the print-data response, checked against the real response body.
+func TestPrintGetCardData_ValidToken_ReturnsFieldParityWithBuildCardHTML(t *testing.T) {
+	env := newTestEnvWithStoreAndStorage(t)
+	student := seedUser(t, env.pool, "student", "Print Card Parity Student")
+	if _, err := env.pool.Exec(context.Background(),
+		`UPDATE users SET photo_url = $1 WHERE id = $2`, "avatars/print-card-parity.png", student); err != nil {
+		t.Fatalf("set photo_url: %v", err)
+	}
+	examID := seedExam(t, env.pool, "Print Card Parity Exam", false, "hidden", "classic")
+	if _, err := env.pool.Exec(context.Background(),
+		`UPDATE exam SET requires_checkin = true, check_in_window_minutes = 15 WHERE id = $1`, examID); err != nil {
+		t.Fatalf("set requires_checkin: %v", err)
+	}
+	regID := seedRegistration(t, env.pool, student, examID)
+
+	if _, err := env.svc.UpdateSystemConfig(context.Background(), student.String(), map[string]string{
+		"app_name":     "Bimbel Prima",
+		"app_logo_url": "https://cdn.example.com/logo.png",
+	}); err != nil {
+		t.Fatalf("UpdateSystemConfig: %v", err)
+	}
+
+	token, err := env.svc.MintPrintToken(context.Background(), service.PrintTokenKindCard, regID.String())
+	if err != nil {
+		t.Fatalf("MintPrintToken: %v", err)
+	}
+
+	rec := getRequest(t, env.e, "/api/v1/print/cards/"+regID.String()+"?token="+token, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp["tenant_name"] != "Bimbel Prima" {
+		t.Errorf(`resp["tenant_name"] = %v, want "Bimbel Prima"`, resp["tenant_name"])
+	}
+	if resp["tenant_logo_url"] != "https://cdn.example.com/logo.png" {
+		t.Errorf(`resp["tenant_logo_url"] = %v, want the configured external logo URL unchanged`, resp["tenant_logo_url"])
+	}
+	photoURL, _ := resp["photo_url"].(string)
+	if photoURL == "" || !strings.Contains(photoURL, "print-card-parity.png") {
+		t.Errorf(`resp["photo_url"] = %v, want a browser-loadable presigned URL for the stored avatar key`, resp["photo_url"])
+	}
+	footerNote, _ := resp["footer_note"].(string)
+	if !strings.Contains(footerNote, "15") {
+		t.Errorf(`resp["footer_note"] = %v, want the check-in window copy mentioning 15 menit`, footerNote)
 	}
 }

@@ -120,9 +120,11 @@
   height: 9.6cqh;
   flex: none;
 }
-.mark svg {
+.mark svg,
+.mark img {
   width: 100%;
   height: 100%;
+  object-fit: contain;
 }
 .titles h1 {
   margin: 0;

@@ -32,6 +32,7 @@ export default async function CardPrintPage({ searchParams }: CardPrintPageProps
       school={data.school || DASH}
       grade={DASH}
       dob={DASH}
+      photoUrl={data.photo_url || undefined}
       examName={data.exam_title || DASH}
       subject={DASH}
       date={data.exam_schedule || DASH}
@@ -40,6 +41,9 @@ export default async function CardPrintPage({ searchParams }: CardPrintPageProps
       mode={DASH}
       platform={DASH}
       checkInCode={data.check_in_code || DASH}
+      tenantName={data.tenant_name || undefined}
+      tenantLogoUrl={data.tenant_logo_url || undefined}
+      footerNote={data.footer_note || undefined}
     />
   );
 }
