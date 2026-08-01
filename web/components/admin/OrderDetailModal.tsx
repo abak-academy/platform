@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { ShipmentTimeline } from "@/components/orders/ShipmentTimeline";
 import { formatRupiah } from "@/lib/format";
@@ -17,6 +18,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { Order } from "@/lib/types";
 import { hasPhysicalItems } from "@/lib/shipping";
 import { downloadShippingLabel } from "@/lib/hooks/shipping-label";
+import { fileUrl } from "@/lib/api";
 
 export interface OrderDetailModalProps {
   order: Order | null;
@@ -190,8 +192,28 @@ export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps)
           <Section title={t("order_payment_info")}>
             <dl className="space-y-2 text-sm">
               <Field label={t("th_buyer")}>
-                <span className="font-mono text-xs">{order.student_id}</span>
+                <span className="flex flex-col items-end gap-0.5 text-right">
+                  <span className="font-medium">{order.student_name || order.student_id}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{order.student_id}</span>
+                </span>
               </Field>
+              {order.payment_method === "manual" && (
+                <Field label="Konfirmasi">
+                  <span className="flex items-center justify-end gap-2">
+                    <Badge className="bg-green-100 text-green-800 border-green-200">Dikonfirmasi manual</Badge>
+                    {order.payment_proof_url && (
+                      <a
+                        href={fileUrl(order.payment_proof_url)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-primary underline"
+                      >
+                        Lihat bukti
+                      </a>
+                    )}
+                  </span>
+                </Field>
+              )}
               {order.gateway_ref && (
                 <Field label={t("order_gateway_ref")}>
                   <span className="font-mono text-xs">{order.gateway_ref}</span>

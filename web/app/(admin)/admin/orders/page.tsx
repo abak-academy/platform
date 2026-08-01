@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OrderDetailModal } from "@/components/admin/OrderDetailModal";
 import { ShipOrderModal } from "@/components/admin/ShipOrderModal";
+import { ConfirmOrderModal } from "@/components/admin/ConfirmOrderModal";
 import { formatRupiah } from "@/lib/format";
 import type { Order, OrderStatus, AdminOrderFilterStatus } from "@/lib/types";
 
@@ -30,7 +31,7 @@ function orderNumber(order: Order): string {
 }
 
 function buyerLabel(order: Order): string {
-  return `...${order.student_id.slice(-12)}`;
+  return order.student_name?.trim() || order.student_id;
 }
 
 function productSummary(order: Order): string {
@@ -76,6 +77,8 @@ export default function OrdersPage() {
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
   const [shippingOrder, setShippingOrder] = useState<Order | null>(null);
   const [shipError, setShipError] = useState<string | null>(null);
+  const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!orders) return [];
@@ -107,12 +110,14 @@ export default function OrdersPage() {
     return t("error_generic");
   }
 
-  async function handleConfirm(id: string) {
+  async function handleConfirmSubmit(id: string, paymentProofUrl: string) {
+    setConfirmError(null);
     try {
-      await confirm.mutateAsync(id);
+      await confirm.mutateAsync({ id, paymentProofUrl });
+      setConfirmingOrder(null);
       toast.success(t("orders_confirm"));
     } catch (e) {
-      toast.error(errorMessage(e));
+      setConfirmError(errorMessage(e));
     }
   }
 
@@ -232,7 +237,10 @@ export default function OrdersPage() {
                   className="cursor-pointer border-t transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
                 >
                   <td className="px-4 py-3 font-mono font-medium">{orderNumber(order)}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{buyerLabel(order)}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium">{buyerLabel(order)}</div>
+                    <div className="font-mono text-[10px] text-muted-foreground">{order.student_id}</div>
+                  </td>
                   <td className="px-4 py-3 max-w-xs truncate">{productSummary(order)}</td>
                   <td className="px-4 py-3">{formatRupiah(order.total)}</td>
                   <td className="px-4 py-3">
@@ -250,7 +258,10 @@ export default function OrdersPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleConfirm(order.id)}
+                          onClick={() => {
+                            setConfirmError(null);
+                            setConfirmingOrder(order);
+                          }}
                           disabled={confirm.isPending}
                         >
                           {t("action_confirm")}
@@ -316,6 +327,20 @@ export default function OrdersPage() {
       )}
 
       <OrderDetailModal order={detailOrder} onOpenChange={() => setDetailOrder(null)} />
+
+      {confirmingOrder && (
+        <ConfirmOrderModal
+          open
+          onOpenChange={() => {
+            setConfirmingOrder(null);
+            setConfirmError(null);
+          }}
+          orderNumber={orderNumber(confirmingOrder)}
+          onConfirm={(paymentProofUrl) => handleConfirmSubmit(confirmingOrder.id, paymentProofUrl)}
+          isPending={confirm.isPending}
+          error={confirmError}
+        />
+      )}
 
       {shippingOrder && (
         <ShipOrderModal

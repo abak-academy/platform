@@ -83,7 +83,7 @@ describe("admin-orders hooks", () => {
     expect(result.current.data).toEqual(sampleOrder);
   });
 
-  it("useConfirmOrder posts to /admin/orders/:id/confirm with idempotency key", async () => {
+  it("useConfirmOrder posts to /admin/orders/:id/confirm with idempotency key and the proof key", async () => {
     mockAuthFetch.mockResolvedValueOnce({ message: "order confirmed" });
 
     const { wrapper, queryClient } = wrapperFactory();
@@ -91,7 +91,7 @@ describe("admin-orders hooks", () => {
     const { result } = renderHook(() => useConfirmOrder(), { wrapper });
 
     await act(async () => {
-      await result.current.mutateAsync("o1");
+      await result.current.mutateAsync({ id: "o1", paymentProofUrl: "payment_proof/admin1/proof.jpg" });
     });
 
     expect(mockAuthFetch).toHaveBeenCalledWith(
@@ -99,6 +99,7 @@ describe("admin-orders hooks", () => {
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ "Idempotency-Key": expect.any(String) }),
+        body: JSON.stringify({ payment_proof_url: "payment_proof/admin1/proof.jpg" }),
       })
     );
     expect(spy).toHaveBeenCalledWith({ queryKey: adminOrdersKeys.all });

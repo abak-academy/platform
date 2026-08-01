@@ -59,10 +59,11 @@ export function useAdminOrder(id: string) {
 export function useConfirmOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: ({ id, paymentProofUrl }: { id: string; paymentProofUrl: string }) =>
       authFetch<{ message: string }>(`/admin/orders/${encodeURIComponent(id)}/confirm`, {
         method: "POST",
         headers: { "Idempotency-Key": idempotencyKey() },
+        body: JSON.stringify({ payment_proof_url: paymentProofUrl }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminOrdersKeys.all });

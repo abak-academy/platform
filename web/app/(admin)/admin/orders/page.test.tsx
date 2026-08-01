@@ -40,10 +40,20 @@ vi.mock("sonner", () => ({
   },
 }));
 
+// ConfirmOrderModal's own upload-then-submit behavior (proof required before
+// submit, request body carries the uploaded key) is covered directly by
+// ConfirmOrderModal.test.tsx; here we only need to prove the page wires the
+// modal's onConfirm callback to useConfirmOrder correctly.
+vi.mock("@/components/admin/ConfirmOrderModal", () => ({
+  ConfirmOrderModal: ({ open, onConfirm }: { open: boolean; onConfirm: (key: string) => void }) =>
+    open ? <button onClick={() => onConfirm("payment_proof/admin-1/proof.jpg")}>Confirm-Stub</button> : null,
+}));
+
 const sampleOrders: Order[] = [
   {
     id: "o1",
     student_id: "s1",
+    student_name: "Siswa Uji A",
     status: "payment_pending",
     subtotal: 100000,
     discount: 0,
@@ -54,6 +64,7 @@ const sampleOrders: Order[] = [
   {
     id: "o2",
     student_id: "s2",
+    student_name: "Siswa Uji B",
     status: "paid",
     subtotal: 200000,
     discount: 0,
@@ -77,6 +88,7 @@ const sampleOrders: Order[] = [
   {
     id: "o3",
     student_id: "s3",
+    student_name: "Siswa Uji C",
     status: "completed",
     subtotal: 50000,
     discount: 0,
@@ -116,9 +128,24 @@ describe("OrdersPage", () => {
     });
 
     expect(screen.getByText("Rp115.000")).toBeInTheDocument();
-    expect(screen.getByText("...s1")).toBeInTheDocument();
     // Shipping column renders — "Dikirim" appears both as a filter chip and as a badge
     expect(screen.getAllByText("Dikirim").length).toBeGreaterThanOrEqual(1);
+  });
+
+  // FR-33: buyer name is the primary label; no truncated-UUID label
+  // (`...<last12chars>`) appears anywhere in the rendered output.
+  it("renders the buyer's name and no truncated-UUID label appears anywhere", async () => {
+    render(<OrdersPage />);
+
+    await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
+
+    expect(screen.getByText("Siswa Uji A")).toBeInTheDocument();
+    expect(screen.getByText("Siswa Uji B")).toBeInTheDocument();
+    expect(screen.getByText("Siswa Uji C")).toBeInTheDocument();
+    expect(screen.queryByText("...s1")).toBeNull();
+    expect(screen.queryByText(/^\.\.\./)).toBeNull();
+    // student_id stays present as secondary detail.
+    expect(screen.getByText("s1")).toBeInTheDocument();
   });
 
   it("shows confirm and reconcile actions for pending orders", async () => {
@@ -134,7 +161,7 @@ describe("OrdersPage", () => {
     expect(within(row!).queryByRole("button", { name: /refund/i })).not.toBeInTheDocument();
   });
 
-  it("confirms an order and shows success toast", async () => {
+  it("confirms an order after uploading a proof and shows success toast", async () => {
     mockMutateAsync.mockResolvedValueOnce({ message: "order confirmed" });
 
     render(<OrdersPage />);
@@ -145,8 +172,12 @@ describe("OrdersPage", () => {
     const confirmButton = within(row!).getByRole("button", { name: /konfirmasi/i });
     fireEvent.click(confirmButton);
 
+    // ConfirmOrderModal is mocked above; clicking its stub simulates the
+    // admin having already uploaded a proof and pressed submit.
+    fireEvent.click(screen.getByRole("button", { name: "Confirm-Stub" }));
+
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith("o1");
+      expect(mockMutateAsync).toHaveBeenCalledWith({ id: "o1", paymentProofUrl: "payment_proof/admin-1/proof.jpg" });
       expect(toast.success).toHaveBeenCalledWith("Pesanan dikonfirmasi.");
     });
   });

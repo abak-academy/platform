@@ -220,6 +220,8 @@ export interface OrderShipmentEvent {
 export interface Order {
   id: string;
   student_id: string;
+  /** Resolved server-side (FR-33/FR-35); fallback text when the student row is missing. */
+  student_name?: string;
   status: OrderStatus;
   subtotal: number;
   discount: number;
@@ -240,6 +242,7 @@ export interface Order {
   shipment_events?: OrderShipmentEvent[];
   gateway_ref?: string;
   payment_method?: string;
+  payment_proof_url?: string | null;
   payment_expires_at?: string;
   paid_at?: string;
   invoice_url?: string;

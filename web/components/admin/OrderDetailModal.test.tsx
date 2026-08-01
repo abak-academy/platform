@@ -83,4 +83,34 @@ describe("OrderDetailModal", () => {
     render(<OrderDetailModal order={noEvents} onOpenChange={vi.fn()} />);
     expect(screen.queryByText("Riwayat Pengiriman")).toBeNull();
   });
+
+  // FR-33: buyer name is primary, student_id stays visible as secondary detail
+  // — no truncated-UUID label ("...<last12chars>") anywhere in the output.
+  it("renders the buyer's name with student_id as secondary detail, never a truncated-UUID label", () => {
+    const withName = { ...physicalOrder, student_id: "11111111-2222-3333-4444-555555555555", student_name: "Rina Ujian" };
+    render(<OrderDetailModal order={withName} onOpenChange={vi.fn()} />);
+    expect(screen.getByText("Rina Ujian")).toBeTruthy();
+    expect(screen.getByText("11111111-2222-3333-4444-555555555555")).toBeTruthy();
+    expect(screen.queryByText(/^\.\.\./)).toBeNull();
+  });
+
+  // FR-31: an order manually confirmed shows the mark, and the proof image
+  // opens from the detail view.
+  it("shows the Dikonfirmasi manual mark and a reachable proof link when payment_method is manual", () => {
+    const manual = {
+      ...physicalOrder,
+      payment_method: "manual",
+      payment_proof_url: "payment_proof/admin-1/proof.jpg",
+    };
+    render(<OrderDetailModal order={manual} onOpenChange={vi.fn()} />);
+    expect(screen.getByText("Dikonfirmasi manual")).toBeTruthy();
+    const link = screen.getByRole("link", { name: "Lihat bukti" }) as HTMLAnchorElement;
+    expect(link.href).toContain("payment_proof/admin-1/proof.jpg");
+  });
+
+  it("hides the manual-confirm mark for a non-manual payment_method", () => {
+    const gateway = { ...physicalOrder, payment_method: "gopay" };
+    render(<OrderDetailModal order={gateway} onOpenChange={vi.fn()} />);
+    expect(screen.queryByText("Dikonfirmasi manual")).toBeNull();
+  });
 });
