@@ -21,11 +21,17 @@ func (h *Handler) AdminSearchGrantStudents(c echo.Context) error {
 	q := c.QueryParam("q")
 
 	var schoolID *string
+	var noSchool bool
 	if sid := c.QueryParam("school_id"); sid != "" {
-		if _, err := uuid.Parse(sid); err != nil {
-			return c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "school_id must be a valid UUID"})
+		switch {
+		case sid == "none":
+			noSchool = true
+		default:
+			if _, err := uuid.Parse(sid); err != nil {
+				return c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "school_id must be a valid UUID"})
+			}
+			schoolID = &sid
 		}
-		schoolID = &sid
 	}
 
 	limit := 20
@@ -47,7 +53,7 @@ func (h *Handler) AdminSearchGrantStudents(c echo.Context) error {
 	}
 	jenjang := c.QueryParam("jenjang")
 
-	students, nextCursor, err := h.svc.SearchStudentsAcrossSchools(c.Request().Context(), q, schoolID, grade, jenjang, limit, cursor)
+	students, nextCursor, err := h.svc.SearchStudentsAcrossSchools(c.Request().Context(), q, schoolID, noSchool, grade, jenjang, limit, cursor)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

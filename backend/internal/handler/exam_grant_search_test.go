@@ -216,6 +216,25 @@ func seedStudentForSearch(t *testing.T, pool *pgxpool.Pool, name, username, scho
 	}
 }
 
+// seedNullSchoolStudentForSearch inserts a student with school_id IS NULL and
+// a free-text unlisted_school_name, as a self-registering user with no listed
+// school produces (FB-12).
+func seedNullSchoolStudentForSearch(t *testing.T, pool *pgxpool.Pool, name, username, unlistedName, jenjang string, grade int) string {
+	t.Helper()
+	ctx := context.Background()
+	var id string
+	err := pool.QueryRow(ctx,
+		`INSERT INTO users (name, username, role, school_id, unlisted_school_name, status, jenjang, grade, otp_enabled)
+		 VALUES ($1, $2, 'student', NULL, $3, 'active', $4, $5, false)
+		 RETURNING id`,
+		name, username, unlistedName, jenjang, grade,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert null-school student %s: %v", name, err)
+	}
+	return id
+}
+
 func TestAdminSearchGrantStudents_SuperAdmin_ReturnsCrossSchoolResults(t *testing.T) {
 	env := newSearchGrantDBEnv(t)
 
@@ -385,6 +404,176 @@ func TestAdminSearchGrantStudents_SuperAdmin_ReturnsCrossSchoolResults(t *testin
 		nextCursor, ok := resp["next_cursor"].(string)
 		if !ok || nextCursor == "" {
 			t.Error("expected non-empty next_cursor when results exceed limit")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// FB-12: a student with no school is a first-class participant.
+// ---------------------------------------------------------------------------
+
+func TestAdminSearchGrantStudents_NullSchoolStudent(t *testing.T) {
+	env := newSearchGrantDBEnv(t)
+	superToken := mintSearchSuperAdminToken(t, env, "super-fb12")
+
+	schoolC := seedSchoolForSearch(t, env.pool, "SMA FB12", "sma_fb12", []string{"sma"})
+	suffix := "fb12qz"
+	unlistedName := "Sekolah Belum Terdaftar " + suffix
+	nullID := seedNullSchoolStudentForSearch(t, env.pool, "NullSchool "+suffix, "ns_"+suffix, unlistedName, "sma", 10)
+	seedStudentForSearch(t, env.pool, "Schooled "+suffix, "sc_"+suffix, schoolC, "sma", 10)
+
+	t.Run("null-school student JSON has null school_id/school_name and the unlisted name (NFR-3: raw body)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q="+suffix, nil)
+		req.Header.Set("Authorization", "Bearer "+superToken)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		body := rec.Body.String()
+		wantFragment := `"school_id":null,"school_name":null,"unlisted_school_name":"` + unlistedName + `"`
+		if !strings.Contains(body, wantFragment) {
+			t.Errorf("raw response body missing expected fragment %q; body=%s", wantFragment, body)
+		}
+
+		var resp map[string]any
+		if err := json.NewDecoder(strings.NewReader(body)).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		data, ok := resp["data"].([]any)
+		if !ok {
+			t.Fatal("data is not an array")
+		}
+
+		var foundNull, foundSchooled bool
+		for _, item := range data {
+			row := item.(map[string]any)
+			if row["id"] == nullID {
+				foundNull = true
+				if row["school_id"] != nil {
+					t.Errorf("null-school student school_id: want nil, got %v", row["school_id"])
+				}
+				if row["school_name"] != nil {
+					t.Errorf("null-school student school_name: want nil, got %v", row["school_name"])
+				}
+				if row["unlisted_school_name"] != unlistedName {
+					t.Errorf("unlisted_school_name: want %s, got %v", unlistedName, row["unlisted_school_name"])
+				}
+				continue
+			}
+			if name, _ := row["name"].(string); strings.Contains(name, "Schooled "+suffix) {
+				foundSchooled = true
+				if row["school_id"] == nil || row["school_name"] == nil {
+					t.Errorf("schooled student should have non-null school_id/school_name, got %v/%v", row["school_id"], row["school_name"])
+				}
+				if row["unlisted_school_name"] != nil {
+					t.Errorf("schooled student unlisted_school_name: want nil, got %v", row["unlisted_school_name"])
+				}
+			}
+		}
+		if !foundNull {
+			t.Fatal("null-school student not found in results")
+		}
+		if !foundSchooled {
+			t.Fatal("schooled student not found in results")
+		}
+	})
+
+	t.Run("school_id=none returns only null-school rows", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q="+suffix+"&school_id=none", nil)
+		req.Header.Set("Authorization", "Bearer "+superToken)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		data, ok := resp["data"].([]any)
+		if !ok {
+			t.Fatal("data is not an array")
+		}
+		if len(data) != 1 {
+			t.Fatalf("want 1 null-school student, got %d", len(data))
+		}
+		row := data[0].(map[string]any)
+		if row["id"] != nullID {
+			t.Errorf("id: want %s, got %v", nullID, row["id"])
+		}
+		if row["school_id"] != nil {
+			t.Errorf("school_id: want nil, got %v", row["school_id"])
+		}
+	})
+
+	t.Run("school_id=<uuid> is unchanged behaviour", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q="+suffix+"&school_id="+schoolC, nil)
+		req.Header.Set("Authorization", "Bearer "+superToken)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		data, ok := resp["data"].([]any)
+		if !ok {
+			t.Fatal("data is not an array")
+		}
+		if len(data) != 1 {
+			t.Fatalf("want 1 student scoped to school_id, got %d", len(data))
+		}
+		row := data[0].(map[string]any)
+		if row["school_id"] != schoolC {
+			t.Errorf("school_id: want %s, got %v", schoolC, row["school_id"])
+		}
+	})
+
+	t.Run("school_id=garbage still returns 400", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?school_id=garbage", nil)
+		req.Header.Set("Authorization", "Bearer "+superToken)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("NoSchool combined with q and grade still filters correctly", func(t *testing.T) {
+		// A second null-school student with a different grade must be excluded
+		// by the grade filter even though both share NoSchool=true and the q match.
+		seedNullSchoolStudentForSearch(t, env.pool, "NullSchoolOtherGrade "+suffix, "nsg_"+suffix, "Some Other School "+suffix, "sma", 12)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q="+suffix+"&school_id=none&grade=10", nil)
+		req.Header.Set("Authorization", "Bearer "+superToken)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		data, ok := resp["data"].([]any)
+		if !ok {
+			t.Fatal("data is not an array")
+		}
+		if len(data) != 1 {
+			t.Fatalf("want 1 null-school grade-10 student, got %d", len(data))
+		}
+		row := data[0].(map[string]any)
+		if row["id"] != nullID {
+			t.Errorf("id: want %s, got %v", nullID, row["id"])
 		}
 	})
 }

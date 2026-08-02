@@ -270,34 +270,39 @@ type CrossSchoolStudentResponse struct {
 	Email      *string `json:"email"`
 	Status     string  `json:"status"`
 	Grade      *int    `json:"grade"`
-	SchoolID   string  `json:"school_id"`
-	SchoolName string  `json:"school_name"`
-	CreatedAt  string  `json:"created_at"`
+	// SchoolID/SchoolName are nullable for students with no school on file;
+	// UnlistedSchoolName carries the free-text name they typed instead.
+	SchoolID           *string `json:"school_id"`
+	SchoolName         *string `json:"school_name"`
+	UnlistedSchoolName *string `json:"unlisted_school_name"`
+	CreatedAt          string  `json:"created_at"`
 }
 
 func toCrossSchoolStudentResponse(row repository.CrossSchoolStudentRow) CrossSchoolStudentResponse {
 	return CrossSchoolStudentResponse{
-		ID:         row.ID,
-		Name:       row.Name,
-		Username:   row.Username,
-		Email:      row.Email,
-		Status:     row.Status,
-		Grade:      row.Grade,
-		SchoolID:   row.SchoolID,
-		SchoolName: row.SchoolName,
-		CreatedAt:  row.CreatedAt.Format(time.RFC3339),
+		ID:                 row.ID,
+		Name:               row.Name,
+		Username:           row.Username,
+		Email:              row.Email,
+		Status:             row.Status,
+		Grade:              row.Grade,
+		SchoolID:           row.SchoolID,
+		SchoolName:         row.SchoolName,
+		UnlistedSchoolName: row.UnlistedSchoolName,
+		CreatedAt:          row.CreatedAt.Format(time.RFC3339),
 	}
 }
 
 // SearchStudentsAcrossSchools searches students across all schools with optional
 // filters. Thin pass-through to the repository with bounded default limit.
 // This is the super_admin cross-school search (FR-SEARCH-01/03).
-func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, schoolID *string, grade *int, jenjang string, limit int, cursor string) ([]CrossSchoolStudentResponse, string, error) {
+func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, schoolID *string, noSchool bool, grade *int, jenjang string, limit int, cursor string) ([]CrossSchoolStudentResponse, string, error) {
 	rows, nextCursor, err := s.storeRepo.SearchStudentsAcrossSchools(ctx, repository.StudentFilter{
 		Cursor:   cursor,
 		Limit:    limit,
 		Q:        q,
 		SchoolID: schoolID,
+		NoSchool: noSchool,
 		Grade:    grade,
 		Jenjang:  jenjang,
 	})
