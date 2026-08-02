@@ -93,7 +93,8 @@ describe("OrderDetailModal", () => {
       waybill_source: "biteship",
     };
     render(<OrderDetailModal order={biteshipShipped} onOpenChange={vi.fn()} />);
-    expect(screen.getByText(/Booking otomatis \(Biteship\)/)).toBeTruthy();
+    expect(screen.getByText(/\(Booking otomatis\)/)).toBeTruthy();
+    expect(screen.queryByText(/Biteship/)).toBeNull();
   });
 
   it("renders the shipment timeline with events ordered newest-first", () => {
