@@ -177,6 +177,31 @@ func TestAdminResults_ListSchoolResults(t *testing.T) {
 		}
 	})
 
+	t.Run("empty school filter returns rows from every school", func(t *testing.T) {
+		rows, _, err := repo.ListSchoolResults(ctx, examID, "", AdminResultFilter{Limit: 20})
+		if err != nil {
+			t.Fatalf("ListSchoolResults: %v", err)
+		}
+		// A, B, F (school A) + E (school B) — C (ungraded) and D (in_progress) excluded.
+		if len(rows) != 4 {
+			t.Fatalf("want 4 rows across both schools, got %d: %+v", len(rows), rows)
+		}
+		seenSchools := map[string]bool{}
+		for _, r := range rows {
+			if r.SchoolName == nil {
+				t.Errorf("row %v: SchoolName should be populated, got nil", r.SessionID)
+				continue
+			}
+			seenSchools[*r.SchoolName] = true
+		}
+		if len(seenSchools) != 2 {
+			t.Errorf("want rows from 2 distinct schools, got %d: %v", len(seenSchools), seenSchools)
+		}
+		if !seenSchools["School A"] || !seenSchools["School B"] {
+			t.Errorf("want School A and School B both present, got %v", seenSchools)
+		}
+	})
+
 	t.Run("school B sees only its own sessions", func(t *testing.T) {
 		rows, cursor, err := repo.ListSchoolResults(ctx, examID, schoolB, AdminResultFilter{Limit: 20})
 		if err != nil {
@@ -241,6 +266,67 @@ func TestAdminResults_ListSchoolResults(t *testing.T) {
 		}
 		if len(rows) == 0 {
 			t.Error("expected at least some rows with default limit")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Test: NULL school_id students (unlisted_school_name) are not silently dropped
+// ---------------------------------------------------------------------------
+
+// TestAdminResults_ListSchoolResults_NullSchoolID_UsesUnlistedName is the regression
+// test for the inner-join bug: a student with school_id NULL and a free-text
+// unlisted_school_name must still appear in the all-schools view, with that name
+// as their school. A school-scoped filter must NOT surface them (they belong to
+// no tenant), so RBAC for school-scoped admins is unaffected.
+func TestAdminResults_ListSchoolResults_NullSchoolID_UsesUnlistedName(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	schoolA := insertSchool(t, pool, "Unlisted Test School A", "unla")
+
+	// Student with no school_id, but a free-text unlisted_school_name.
+	unlistedName := "SMA Swasta Merdeka"
+	unlistedStudent := insertSchoolUser(t, pool, "student", "Unlisted Student", schoolA)
+	// Clear the school_id set by the helper and set the free-text name instead.
+	if _, err := pool.Exec(ctx,
+		`UPDATE users SET school_id = NULL, unlisted_school_name = $2 WHERE id = $1`,
+		unlistedStudent, unlistedName,
+	); err != nil {
+		t.Fatalf("clear school_id / set unlisted_school_name: %v", err)
+	}
+
+	testID := insertGradingTest(t, pool)
+	insertAdminResultsMCQQuestion(t, pool, testID, "Q1", 5, 1)
+	examID := insertGradingExam(t, pool, testID)
+
+	now := time.Now()
+	session := insertGradingSession(t, pool, unlistedStudent, examID, "submitted", &now, f64PtrG(100))
+
+	t.Run("appears in the all-schools view with the unlisted name", func(t *testing.T) {
+		rows, _, err := repo.ListSchoolResults(ctx, examID, "", AdminResultFilter{Limit: 20})
+		if err != nil {
+			t.Fatalf("ListSchoolResults: %v", err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("want 1 row, got %d: %+v", len(rows), rows)
+		}
+		if rows[0].SessionID != session {
+			t.Errorf("SessionID = %v, want %v", rows[0].SessionID, session)
+		}
+		if rows[0].SchoolName == nil || *rows[0].SchoolName != unlistedName {
+			t.Errorf("SchoolName = %v, want %q", rows[0].SchoolName, unlistedName)
+		}
+	})
+
+	t.Run("does not appear under an unrelated school's scoped filter", func(t *testing.T) {
+		rows, _, err := repo.ListSchoolResults(ctx, examID, schoolA, AdminResultFilter{Limit: 20})
+		if err != nil {
+			t.Fatalf("ListSchoolResults: %v", err)
+		}
+		if len(rows) != 0 {
+			t.Fatalf("want 0 rows for schoolA filter (student has no school_id), got %d: %+v", len(rows), rows)
 		}
 	})
 }

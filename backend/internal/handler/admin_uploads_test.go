@@ -38,7 +38,7 @@ func newAdminUploadsEnvWithStorage(t *testing.T) *adminSystemTestEnv {
 	if err != nil {
 		t.Fatalf("minio.New: %v", err)
 	}
-	svc := service.NewWithStore(newFakeRepo(), nil, nil, nil, nil, nil, nil, nil, storage, &config.Config{ObjectStorageBucketName: "bucket"})
+	svc := service.NewWithStore(newFakeRepo(), nil, nil, nil, nil, nil, nil, nil, storage, &config.Config{ObjectStorageBucketName: "bucket"}, nil)
 	env.h = handler.New(svc)
 	return env
 }

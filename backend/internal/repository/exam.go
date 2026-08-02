@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"akademi-bimbel/internal/model"
 )
@@ -1134,7 +1135,8 @@ func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 		&e.TimerMode, &e.DurationMinutes, &e.Randomize,
 		&e.ResultConfig, &e.ResultReleaseAt, &e.Status, &e.CreatedAt,
 		&e.Mode, &e.CertificateDesign, &e.CertificateDesignUpdatedAt,
-		&e.ExamNumber,
+		&e.ExamNumber, &e.CertificateEnabled, &e.CertificateTemplateHTML,
+		&e.EndScreenImageURL, &e.EndScreenPromoText,
 	)
 	if err != nil {
 		return err
@@ -1153,7 +1155,8 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.Exam
 		&item.TimerMode, &item.DurationMinutes, &item.Randomize,
 		&item.ResultConfig, &item.ResultReleaseAt, &item.Status, &item.CreatedAt,
 		&item.Mode, &item.CertificateDesign, &item.CertificateDesignUpdatedAt,
-		&item.ExamNumber,
+		&item.ExamNumber, &item.CertificateEnabled, &item.CertificateTemplateHTML,
+		&item.EndScreenImageURL, &item.EndScreenPromoText,
 		&item.HasPublishedProduct,
 	)
 }
@@ -1190,7 +1193,8 @@ func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
 			status, created_at, mode,
-			certificate_design, certificate_design_updated_at, exam_number
+			certificate_design, certificate_design_updated_at, exam_number, certificate_enabled, certificate_template_html,
+			end_screen_image_url, end_screen_promo_text
 		FROM exam
 		WHERE id = $1`,
 		id,
@@ -1212,7 +1216,8 @@ func (r *Repository) GetExamsByProductID(ctx context.Context, productID uuid.UUI
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.mode,
-			e.certificate_design, e.certificate_design_updated_at, e.exam_number
+			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled, e.certificate_template_html,
+		e.end_screen_image_url, e.end_screen_promo_text
 		FROM exam e
 		JOIN product_exam pe ON pe.exam_id = e.id
 		WHERE pe.product_id = $1
@@ -1247,7 +1252,8 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 		e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 		e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 		e.status, e.created_at, e.mode,
-		e.certificate_design, e.certificate_design_updated_at, e.exam_number,
+		e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled, e.certificate_template_html,
+		e.end_screen_image_url, e.end_screen_promo_text,
 		EXISTS (
 			SELECT 1 FROM product_exam pe
 			JOIN product p ON p.id = pe.product_id
@@ -1303,7 +1309,8 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.mode,
-			e.certificate_design, e.certificate_design_updated_at, e.exam_number
+			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled, e.certificate_template_html,
+		e.end_screen_image_url, e.end_screen_promo_text
 		FROM exam e
 		WHERE e.id = $1`,
 		id,
@@ -1360,8 +1367,30 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 	return detail, nil
 }
 
+// execer is satisfied by both *pgxpool.Pool and pgx.Tx — it lets UpdateExam
+// and SetExamCertificateEnabled share one SQL statement each with their
+// _Tx twin instead of hand-duplicating a 20+ column UPDATE, which is exactly
+// how certificate_template_html went missing from the SET clause in the
+// first place (present in every SELECT, absent from this one hand-copied
+// statement).
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
 func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam) error {
-	tag, err := r.pool.Exec(ctx,
+	return updateExam(ctx, r.pool, id, e)
+}
+
+// UpdateExamTx is UpdateExam run against a caller-supplied transaction, so an
+// exam update and its outbox fan-out (async redesign 2026-08-02 — certificate
+// design/template edits re-enqueue CertificateNeeded for already-submitted
+// sessions) commit atomically.
+func (r *Repository) UpdateExamTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, e *model.Exam) error {
+	return updateExam(ctx, tx, id, e)
+}
+
+func updateExam(ctx context.Context, q execer, id uuid.UUID, e *model.Exam) error {
+	tag, err := q.Exec(ctx,
 		`UPDATE exam
 		SET title = $1, is_free = $2, scheduled_at = $3, scheduled_end_at = $4, requires_checkin = $5, allow_leaderboard = $6,
 			cdn_bundle = $7, bundle_url = $8, bundle_generated_at = $9,
@@ -1369,14 +1398,18 @@ func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam
 			timer_mode = $13, duration_minutes = $14, randomize = $15,
 			result_config = $16, result_release_at = $17, status = $18,
 			mode = COALESCE(NULLIF($19, ''), mode),
-			certificate_design = $20, certificate_design_updated_at = $21
-		WHERE id = $22`,
+			certificate_design = $20, certificate_design_updated_at = $21,
+			end_screen_image_url = $22, end_screen_promo_text = $23,
+			certificate_template_html = $24
+		WHERE id = $25`,
 		e.Title, e.IsFree, e.ScheduledAt, e.ScheduledEndAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt,
 		e.CheckInWindowMinutes, e.GraceWindowMinutes, e.MaxAttempts,
 		e.TimerMode, e.DurationMinutes, e.Randomize,
 		e.ResultConfig, e.ResultReleaseAt, e.Status, e.Mode,
-		e.CertificateDesign, e.CertificateDesignUpdatedAt, id,
+		e.CertificateDesign, e.CertificateDesignUpdatedAt,
+		e.EndScreenImageURL, e.EndScreenPromoText,
+		e.CertificateTemplateHTML, id,
 	)
 	if err != nil {
 		return err
@@ -1385,6 +1418,57 @@ func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam
 		return ErrNotFound
 	}
 	return nil
+}
+
+// SetExamCertificateEnabled flips certificate_enabled in isolation — never
+// certificate_design or certificate_design_updated_at (FR-11/FR-12) — a
+// single-column UPDATE mirroring UpdateSchoolStatus.
+func (r *Repository) SetExamCertificateEnabled(ctx context.Context, id uuid.UUID, enabled bool) error {
+	return setExamCertificateEnabled(ctx, r.pool, id, enabled)
+}
+
+// SetExamCertificateEnabledTx is SetExamCertificateEnabled run against a
+// caller-supplied transaction, so flipping the flag on and fanning out
+// CertificateNeeded for already-submitted sessions (Finding 3, 2026-08 review)
+// commit atomically.
+func (r *Repository) SetExamCertificateEnabledTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, enabled bool) error {
+	return setExamCertificateEnabled(ctx, tx, id, enabled)
+}
+
+func setExamCertificateEnabled(ctx context.Context, q execer, id uuid.UUID, enabled bool) error {
+	tag, err := q.Exec(ctx, `UPDATE exam SET certificate_enabled = $1 WHERE id = $2`, enabled, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ListSubmittedSessionIDsTx returns every submitted exam_session id for an
+// exam, regardless of grading state (unlike dedupedSubmittedSessions, which
+// dedupes to one row per registration and is scoped to leaderboard/analytics
+// display — regeneration must reach every submitted session, not just the
+// latest graded attempt per student). Used to fan out CertificateNeeded when
+// a design/template edit or a certificate_enabled flip makes previously
+// ineligible sessions eligible (Findings 2/3, 2026-08 review).
+func (r *Repository) ListSubmittedSessionIDsTx(ctx context.Context, tx pgx.Tx, examID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := tx.Query(ctx, `SELECT id FROM exam_session WHERE exam_id = $1 AND status = 'submitted'`, examID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // ReplaceExamTestsTx atomically replaces all exam_test links for an exam. Caller
@@ -1534,18 +1618,65 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 	return &detail, nil
 }
 
+// GetRegistrationForPrint returns a registration by id alone, with no student
+// scoping (mirrors GetExamRegistrationByID minus the student_id predicate):
+// the card print-data endpoint (Task 7) authorizes via a print token bound to
+// the registration id, so there is no student id available to scope by at
+// that call site.
+func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUID) (*model.RegistrationDetail, error) {
+	var detail model.RegistrationDetail
+	var cardKey *string
+	var checkedInAt *time.Time
+	err := r.pool.QueryRow(ctx,
+		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
+			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at, reg.participant_number,
+			e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.check_in_window_minutes,
+			e.timer_mode, e.duration_minutes, e.result_config, e.exam_number,
+			COALESCE((
+				SELECT string_agg(DISTINCT t.subject, ', ')
+				FROM exam_test et JOIN test t ON t.id = et.test_id
+				WHERE et.exam_id = e.id
+			), '') AS subject
+		FROM exam_registration reg
+		JOIN exam e ON e.id = reg.exam_id
+		WHERE reg.id = $1`,
+		regID,
+	).Scan(
+		&detail.ID, &detail.StudentID, &detail.ExamID, &detail.Token, &cardKey,
+		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
+		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
+		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
+		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber, &detail.Subject,
+	)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if cardKey != nil {
+		detail.CardKey = cardKey
+	}
+	if checkedInAt != nil {
+		detail.CheckedInAt = checkedInAt
+	}
+	return &detail, nil
+}
+
 // GetExamRoster returns every registration for an exam joined with the
-// student's name/username and the exam's scheduled_at/exam_number (the
+// student's name/username, the exam's scheduled_at/exam_number (the
 // ingredients the service needs to compose each row's FR-24 display
-// participant number), ordered by participant_number (NULLs — rows predating
-// the FR-24 backfill — sort last, then by registration time).
+// participant number), and the registration's check-in token (FR-47), ordered
+// by participant_number (NULLs — rows predating the FR-24 backfill — sort
+// last, then by registration time).
 // GetExamRoster's schoolFilter, when non-nil, constrains rows to students of
 // that school (tenant isolation for admin_school — a nil filter is the
 // all-schools view used by super_admin/admin_exam).
 func (r *Repository) GetExamRoster(ctx context.Context, examID uuid.UUID, schoolFilter *string) ([]model.ExamRosterEntry, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT reg.id, reg.student_id, u.name, u.username, reg.participant_number,
-			reg.status, reg.checked_in_at, reg.created_at, e.scheduled_at, e.exam_number
+			reg.status, reg.checked_in_at, reg.created_at, e.scheduled_at, e.exam_number,
+			reg.token
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
 		JOIN users u ON u.id = reg.student_id
@@ -1564,7 +1695,7 @@ func (r *Repository) GetExamRoster(ctx context.Context, examID uuid.UUID, school
 		if err := rows.Scan(
 			&item.RegistrationID, &item.StudentID, &item.StudentName, &item.StudentUsername,
 			&item.ParticipantNumber, &item.Status, &item.CheckedInAt, &item.RegisteredAt,
-			&item.ExamScheduledAt, &item.ExamNumber,
+			&item.ExamScheduledAt, &item.ExamNumber, &item.Token,
 		); err != nil {
 			return nil, err
 		}
@@ -1586,7 +1717,8 @@ func scanExamSession(row interface{ Scan(dest ...any) error }, s *model.ExamSess
 		&s.ID, &s.RegistrationID, &s.StudentID, &s.ExamID,
 		&s.AttemptNumber, &s.StartedAt, &s.SubmittedAt,
 		&s.ExtendedUntil, &s.AdminSubmitted, &s.Score,
-		&s.CertificateKey, &s.CertificateGeneratedAt, &s.CertificateNumber, &s.LastSavedAt, &s.Status, &s.CreatedAt,
+		&s.CertificateKey, &s.CertificateGeneratedAt, &s.CertificateNumber, &s.LastSavedAt,
+		&s.CurrentPosition, &s.Status, &s.CreatedAt,
 	)
 }
 
@@ -1697,7 +1829,7 @@ func (r *Repository) GetExamSessionForStudent(ctx context.Context, sessionID, st
 	err := scanExamSession(r.pool.QueryRow(ctx,
 		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
 			submitted_at, extended_until, admin_submitted, score, certificate_key,
-			certificate_generated_at, certificate_number, last_saved_at, status, created_at
+			certificate_generated_at, certificate_number, last_saved_at, current_position, status, created_at
 		FROM exam_session
 		WHERE id = $1 AND student_id = $2`,
 		sessionID, studentID,
@@ -1717,7 +1849,7 @@ func (r *Repository) GetExamSessionByID(ctx context.Context, sessionID uuid.UUID
 	err := scanExamSession(r.pool.QueryRow(ctx,
 		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
 			submitted_at, extended_until, admin_submitted, score, certificate_key,
-			certificate_generated_at, certificate_number, last_saved_at, status, created_at
+			certificate_generated_at, certificate_number, last_saved_at, current_position, status, created_at
 		FROM exam_session
 		WHERE id = $1`,
 		sessionID,
@@ -1808,8 +1940,9 @@ func (r *Repository) GetSessionAnswers(ctx context.Context, sessionID uuid.UUID)
 // transaction. The FOR UPDATE lock serializes saves against SubmitSessionTx's CAS:
 // a late autosave that already passed the service's status pre-check waits on the
 // submit's row lock, re-reads 'submitted', and becomes a no-op instead of
-// overwriting graded rows.
-func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer) error {
+// overwriting graded rows. position is optional (FR-35): when non-nil it is
+// persisted alongside the answers in the same UPDATE.
+func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer, position *int) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -1852,10 +1985,17 @@ func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, ans
 		}
 	}
 
-	_, err = tx.Exec(ctx,
-		`UPDATE exam_session SET last_saved_at = now() WHERE id = $1`,
-		sessionID,
-	)
+	if position != nil {
+		_, err = tx.Exec(ctx,
+			`UPDATE exam_session SET last_saved_at = now(), current_position = $2 WHERE id = $1`,
+			sessionID, *position,
+		)
+	} else {
+		_, err = tx.Exec(ctx,
+			`UPDATE exam_session SET last_saved_at = now() WHERE id = $1`,
+			sessionID,
+		)
+	}
 	if err != nil {
 		return err
 	}

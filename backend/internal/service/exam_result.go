@@ -59,14 +59,10 @@ func (s *Service) GetSessionResult(ctx context.Context, studentID, sessionID str
 
 	// Resolve certificate URL (FR-5..8, FR-4). Must happen before the gate check so
 	// certificate_url is present in any result-visibility state for submitted sessions.
-	user, err := s.Me(ctx, studentID)
-	studentName := ""
-	if err == nil && user != nil {
-		studentName = user.Name
-	}
-	// A certificate failure (MinIO down, PDF error) must not block the result view —
-	// log it and degrade to a nil certificate_url.
-	certURL, certErr := s.resolveCertificateURL(ctx, exam, sess, answers, studentName)
+	// This is a read-only presign of an already-generated PDF (async redesign
+	// 2026-08-02) — a certificate failure (MinIO down) must not block the result
+	// view, so log it and degrade to a nil certificate_url.
+	certURL, certErr := s.resolveCertificateURL(ctx, exam, sess, answers)
 	if certErr != nil {
 		slog.Error("resolve certificate url", "session_id", sessID, "err", certErr)
 	}
@@ -75,6 +71,8 @@ func (s *Service) GetSessionResult(ctx context.Context, studentID, sessionID str
 	// rank aggregate query when the full result isn't visible yet.
 	if gated, ok := resultGate(*exam, sess.Status == "submitted", isFullyGraded(qs, answers)); ok {
 		gated.CertificateURL = certURL
+		gated.EndScreenImageURL = exam.EndScreenImageURL
+		gated.EndScreenPromoText = exam.EndScreenPromoText
 		return gated, nil
 	}
 
@@ -105,6 +103,8 @@ func (s *Service) GetSessionResult(ctx context.Context, studentID, sessionID str
 	}
 
 	result.CertificateURL = certURL
+	result.EndScreenImageURL = exam.EndScreenImageURL
+	result.EndScreenPromoText = exam.EndScreenPromoText
 	return result, nil
 }
 
@@ -262,6 +262,13 @@ func (s *Service) GradeEssayAnswer(ctx context.Context, sessionID, questionID uu
 		return 0, err
 	}
 	if err := s.storeRepo.UpdateSessionScoreTx(ctx, tx, sessionID, total); err != nil {
+		return 0, err
+	}
+	// A grade may be the one that completes a score-bearing certificate's
+	// grading gate (isFullyGraded in GenerateCertificatePDF) — enqueue on
+	// every grade rather than re-deriving that check here; the worker no-ops
+	// when it isn't actually ready yet (async redesign 2026-08-02).
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "exam_session", sessionID, "CertificateNeeded", CertificateNeededPayload{SessionID: sessionID}); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(ctx); err != nil {

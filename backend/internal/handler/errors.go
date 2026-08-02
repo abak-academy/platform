@@ -74,6 +74,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "question_format_locked", Message: err.Error()}
 	case errors.Is(err, service.ErrExamNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "exam_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrCertificateDisabled):
+		status, apiErr = http.StatusNotFound, APIError{Code: "certificate_disabled", Message: err.Error()}
 	case errors.Is(err, service.ErrTopicNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "topic_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrRegistrationNotFound):
@@ -170,6 +172,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusNotFound, APIError{Code: "session_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidViolationType):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_violation_type", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidPosition):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_position", Message: err.Error()}
 	case errors.Is(err, service.ErrGradeOutOfRange):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "grade_out_of_range", Message: err.Error()}
 	case errors.Is(err, service.ErrNotEssayQuestion):
@@ -204,6 +208,10 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_courier_selection", Message: err.Error()}
 	case errors.Is(err, service.ErrBiodataIncomplete):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "biodata_incomplete", Message: err.Error()}
+		var bioErr *service.BiodataIncompleteError
+		if errors.As(err, &bioErr) {
+			apiErr.Details = map[string]any{"missing_fields": bioErr.Missing}
+		}
 	case errors.Is(err, service.ErrShippingUnavailable):
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_unavailable", Message: "shipping is not available right now"}
 	case errors.Is(err, service.ErrDigitalQtyLimit):

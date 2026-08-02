@@ -30,7 +30,7 @@ type Service struct {
 	presignOnce   sync.Once
 	presignClient *minio.Client
 	cfg           *config.Config
-	renderer      pdfGenerator
+	renderer      PDFGenerator
 
 	// reloadPaymentFn is called by ReloadPaymentClient to rebuild the
 	// payment client from current config (DB or env). Injected by main.
@@ -75,12 +75,17 @@ func NewWithStore(
 	logistics LogisticsClient,
 	storage *minio.Client,
 	cfg *config.Config,
+	pdfGen PDFGenerator,
 ) *Service {
 	// cfg is nil in many unit/integration tests that don't render certificates;
 	// guard the renderer URL so construction never nil-derefs.
 	gotenbergURL := ""
 	if cfg != nil {
 		gotenbergURL = cfg.GotenbergURL
+	}
+	renderer := pdfGen
+	if renderer == nil {
+		renderer = newGotenbergPDFGenerator(gotenbergURL, http.DefaultClient)
 	}
 	s := &Service{
 		repo:          repo,
@@ -93,7 +98,7 @@ func NewWithStore(
 		storage:       storage,
 		announceRepo:  storeRepo,
 		cfg:           cfg,
-		renderer:      newGotenbergPDFGenerator(gotenbergURL, http.DefaultClient),
+		renderer:      renderer,
 	}
 	s.logistics.Store(&logistics)
 	return s

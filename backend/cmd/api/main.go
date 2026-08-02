@@ -61,7 +61,8 @@ func main() {
 	paymentClient := adapter.ResolvePaymentClient(ctx, storeRepo, &cfg)
 	logisticsClient := adapter.ResolveShippingClient(ctx, storeRepo, &cfg)
 	storageClient := newStorageClient(cfg)
-	svc := service.NewWithStore(storeRepo, storeRepo, rdb, jwtSigner, otpProvider, emailProvider, paymentClient, logisticsClient, storageClient, &cfg)
+	pdfGenerator := service.NewGotenbergPDFGenerator(cfg.GotenbergURL, http.DefaultClient)
+	svc := service.NewWithStore(storeRepo, storeRepo, rdb, jwtSigner, otpProvider, emailProvider, paymentClient, logisticsClient, storageClient, &cfg, pdfGenerator)
 	svc.SetReloadPaymentFn(func(ctx context.Context) service.PaymentClient {
 		return adapter.ResolvePaymentClient(ctx, storeRepo, &cfg)
 	})

@@ -3,16 +3,18 @@
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Award, Book, ShoppingCart, PlayCircle, ClipboardList, Minus, Plus, Package } from "lucide-react";
+import { AlertCircle, ArrowLeft, Award, Book, ShoppingCart, PlayCircle, ClipboardList, Minus, Plus, Package } from "lucide-react";
 import { toast } from "sonner";
 
 import { useProduct } from "@/lib/hooks/products";
 import { useAddToCart, useCart } from "@/lib/hooks/orders";
+import { useProfile } from "@/lib/hooks/students";
 import { useCartStore } from "@/stores/cart";
 import { useAuthStore } from "@/stores/auth";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import { ApiError, fileUrl } from "@/lib/api";
+import { missingExamBiodataFields, type ExamBiodataField } from "@/lib/profile";
 import type { ProductType } from "@/lib/types";
 import { isDigitalType, isPhysicalType } from "@/lib/shipping";
 
@@ -52,6 +54,7 @@ export default function ProductDetailPage({
   const { data: product, isLoading, isError, error, refetch } = useProduct(id);
   const addToCart = useAddToCart();
   const { data: cart } = useCart();
+  const { data: profile } = useProfile();
   const bumpBadge = useCartStore((s) => s.setCount);
   const token = useAuthStore((s) => s.token);
   const [qty, setQty] = useState(1);
@@ -77,6 +80,16 @@ export default function ProductDetailPage({
   const isDigital = isDigitalType(product.type);
   const isPhysical = isPhysicalType(product.type);
   const alreadyInCart = cart?.items?.some((i) => i.product_id === product.id) ?? false;
+
+  // Warns before checkout instead of only after — the backend still enforces
+  // this gate at checkout regardless.
+  const missingBiodata =
+    product.type === "exam" ? missingExamBiodataFields(profile) : [];
+  const biodataFieldLabelKeys: Record<ExamBiodataField, "product_biodata_field_school" | "product_biodata_field_grade" | "product_biodata_field_dob"> = {
+    school: "product_biodata_field_school",
+    grade: "product_biodata_field_grade",
+    dob: "product_biodata_field_dob",
+  };
 
   const handleAdd = (thenRoute?: () => void) => {
     if (!token) {
@@ -205,6 +218,30 @@ export default function ProductDetailPage({
             )}
             {isDigital && (
               <p className="mb-4 text-xs text-ink-500">{t("product_digital_single_qty")}</p>
+            )}
+            {missingBiodata.length > 0 && (
+              <div className="mb-4 rounded-md border border-warning/30 bg-warning-bg p-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0 text-warning" />
+                  <div className="text-sm">
+                    <p className="font-medium text-ink-900">
+                      {t("product_biodata_warning_heading")}
+                    </p>
+                    <p className="mt-1 text-ink-700">
+                      {t("product_biodata_warning_body").replace(
+                        "{fields}",
+                        missingBiodata.map((f) => t(biodataFieldLabelKeys[f])).join(", "),
+                      )}
+                    </p>
+                    <Link
+                      href="/profile"
+                      className="mt-2 inline-block text-sm font-semibold text-brand-600 hover:underline"
+                    >
+                      {t("product_biodata_warning_link")}
+                    </Link>
+                  </div>
+                </div>
+              </div>
             )}
             {/* The stepper goes to 10, so what the buyer owes stopped being
                 obvious the moment it left 1. */}

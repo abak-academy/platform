@@ -10,14 +10,14 @@ import (
 	"akademi-bimbel/internal/model"
 )
 
-func (r *Repository) InsertOutboxEvent(ctx context.Context, tx pgx.Tx, aggregateID uuid.UUID, eventType string, payload any) error {
+func (r *Repository) InsertOutboxEvent(ctx context.Context, tx pgx.Tx, aggregateType string, aggregateID uuid.UUID, eventType string, payload any) error {
 	b, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 	_, err = tx.Exec(ctx,
 		`INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload) VALUES ($1, $2, $3, $4)`,
-		"order", aggregateID, eventType, b,
+		aggregateType, aggregateID, eventType, b,
 	)
 	return err
 }

@@ -1,0 +1,2 @@
+ALTER TABLE exam_session
+  DROP COLUMN current_position;

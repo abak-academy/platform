@@ -1,6 +1,13 @@
 # Backlog: persist `is_estimate` on the order
 
-**Raised:** 2026-07-27 · **Status:** accepted as tech debt, deliberately deferred
+**Raised:** 2026-07-27 · **Status:** ✅ **CLOSED 2026-07-31 — shipped as [E6](e6-shipping-logistics.md)
+Track B** ([PR #66](https://github.com/abak-academy/platform/pull/66), migration
+`0047_order_is_estimate`). The column is persisted on `orders` and backfilled for historical rows
+(`UPDATE orders SET is_estimate = true WHERE selected_courier IN ('Ongkir Flat', 'Flat')`), so the
+frontend no longer infers the badge from the courier name.
+
+> Everything below is the original problem statement, kept as the record of why the change was made.
+> It is **history, not open work** — do not schedule from it.
 
 ## The problem
 

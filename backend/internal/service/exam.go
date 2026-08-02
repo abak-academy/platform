@@ -902,30 +902,123 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 		}
 		return model.Exam{}, err
 	}
-	if !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign) {
+	designChanged := !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign)
+	if designChanged {
 		if err := validateCertificateDesign(m.CertificateDesign); err != nil {
 			return model.Exam{}, err
 		}
 	}
+	templateChanged := !stringPtrEqual(existing.CertificateTemplateHTML, m.CertificateTemplateHTML)
 	m.ID = id
 	m.CreatedAt = existing.CreatedAt
-	// C3/FR-14: template, background key, and layout now share one JSON blob
-	// (Task 8/FR-26), so a single raw-bytes compare on that blob is the whole
-	// staleness check — bump only when it actually changed, so an unrelated
-	// field edit doesn't falsely mark the design stale.
-	if !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign) {
+	// C3/FR-14: bump on a change to either half of what the worker renders —
+	// the design blob (template name, background key, layout) or the serialized
+	// template HTML. The worker's needsGeneration compares this timestamp against
+	// certificate_generated_at, so a template-only edit that left it untouched
+	// enqueued CertificateNeeded and was then consumed as a no-op, leaving the
+	// stale PDF in place (2026-08 review). Still guarded so an unrelated field
+	// edit does not falsely mark the design stale.
+	if designChanged || templateChanged {
 		now := time.Now()
 		m.CertificateDesignUpdatedAt = &now
 	} else {
 		m.CertificateDesignUpdatedAt = existing.CertificateDesignUpdatedAt
 	}
-	if err := s.storeRepo.UpdateExam(ctx, id, &m); err != nil {
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Exam{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.UpdateExamTx(ctx, tx, id, &m); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return model.Exam{}, ErrExamNotFound
 		}
 		return model.Exam{}, err
 	}
+	// A saved design or template edit can make an already-submitted session
+	// eligible for a certificate it never got — a template that didn't
+	// exist yet at submission time, or a design change that adds a field —
+	// so fan out CertificateNeeded to every submitted session in the same
+	// transaction as the save (2026-08 review, Finding 2). The worker
+	// decides actual readiness on its own; a session this edit didn't
+	// affect just gets a harmless no-op.
+	if designChanged || templateChanged {
+		if err := s.enqueueCertificateNeededForSubmittedSessionsTx(ctx, tx, id); err != nil {
+			return model.Exam{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return model.Exam{}, err
+	}
 	return m, nil
+}
+
+// enqueueCertificateNeededForSubmittedSessionsTx fans out a "CertificateNeeded"
+// outbox event to every submitted session of an exam, in the given
+// transaction. Shared by UpdateExam (design/template edits, Finding 2) and
+// SetExamCertificateEnabled (the off->on transition, Finding 3) — both are
+// "this exam just became more certificate-eligible than it was" triggers,
+// and the worker (GenerateCertificatePDF) decides per-session readiness on
+// its own, so over-enqueueing here is always safe, just possibly a no-op.
+func (s *Service) enqueueCertificateNeededForSubmittedSessionsTx(ctx context.Context, tx pgx.Tx, examID uuid.UUID) error {
+	sessionIDs, err := s.storeRepo.ListSubmittedSessionIDsTx(ctx, tx, examID)
+	if err != nil {
+		return err
+	}
+	for _, sessID := range sessionIDs {
+		if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "exam_session", sessID, "CertificateNeeded", CertificateNeededPayload{SessionID: sessID}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetExamCertificateEnabled flips an exam's certificate_enabled flag through
+// its own dedicated action (FR-11/FR-12) — never through UpdateExam's general
+// PATCH — mirroring ChangeSchoolStatus. The underlying UPDATE touches only the
+// certificate_enabled column, so certificate_design and
+// certificate_design_updated_at are byte-for-byte unchanged across a
+// disable/re-enable round trip.
+func (s *Service) SetExamCertificateEnabled(ctx context.Context, id uuid.UUID, enabled bool) (model.Exam, error) {
+	exam, err := s.storeRepo.GetExamByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Exam{}, ErrExamNotFound
+		}
+		return model.Exam{}, err
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Exam{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.SetExamCertificateEnabledTx(ctx, tx, id, enabled); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Exam{}, ErrExamNotFound
+		}
+		return model.Exam{}, err
+	}
+	// Turning certificates on can make already-submitted sessions eligible
+	// for the first time — without this, a session submitted while
+	// certificates were disabled never got a replacement event and was
+	// abandoned forever (2026-08 review, Finding 3). Only the actual
+	// off->on transition fans out, so a redundant enable call on an
+	// already-enabled exam doesn't re-flood the outbox.
+	if enabled && !exam.CertificateEnabled {
+		if err := s.enqueueCertificateNeededForSubmittedSessionsTx(ctx, tx, id); err != nil {
+			return model.Exam{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return model.Exam{}, err
+	}
+
+	exam.CertificateEnabled = enabled
+	return *exam, nil
 }
 
 func rawMessagePtrEqual(a, b *json.RawMessage) bool {
@@ -933,6 +1026,13 @@ func rawMessagePtrEqual(a, b *json.RawMessage) bool {
 		return a == b
 	}
 	return string(*a) == string(*b)
+}
+
+func stringPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // CertificateDesignResponse is the admin editor's read model for GET
@@ -968,6 +1068,9 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 		}
 		return nil, err
 	}
+	if !exam.CertificateEnabled {
+		return nil, ErrCertificateDisabled
+	}
 
 	layout, err := resolveCertificateLayout(exam)
 	if err != nil {
@@ -978,27 +1081,20 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 	bgKey := certificateBackgroundKey(exam)
 	var bgURL *string
 	if bgKey != nil {
-		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *bgKey, time.Hour)
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *bgKey, presignedDocumentURLTTL)
 		if err != nil {
 			return nil, fmt.Errorf("presign certificate background: %w", err)
 		}
 		bgURL = &signed
 	}
 
+	assetURLs, err := s.certificateImageAssetURLs(ctx, normalizedLayout, s.presignReadURL)
+	if err != nil {
+		return nil, err
+	}
 	var sigURL *string
-	assetURLs := make(map[string]string)
-	for _, field := range normalizedLayout.Fields {
-		if field.Kind != "image" || field.AssetKey == nil || *field.AssetKey == "" {
-			continue
-		}
-		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *field.AssetKey, time.Hour)
-		if err != nil {
-			return nil, fmt.Errorf("presign certificate image %s: %w", field.ID, err)
-		}
-		assetURLs[field.ID] = signed
-		if field.ID == "signature" {
-			sigURL = &signed
-		}
+	if signed, ok := assetURLs["signature"]; ok {
+		sigURL = &signed
 	}
 
 	presets := make([]CertificatePresetResponse, 0, 3)
@@ -1019,68 +1115,6 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 		Presets:       presets,
 		AssetURLs:     assetURLs,
 	}, nil
-}
-
-// GetCertificatePreviewWithLayout previews a certificate like GetCertificatePreview,
-// but lets the editor supply an unsaved layout so an admin can see a change before
-// saving it (still through the Task 5 render engine, FR-4). A nil override delegates
-// to GetCertificatePreview unchanged.
-func (s *Service) GetCertificatePreviewWithLayout(ctx context.Context, examID uuid.UUID, templateOverride string, layoutOverride *Layout) ([]byte, error) {
-	if layoutOverride == nil {
-		return s.GetCertificatePreview(ctx, examID, templateOverride)
-	}
-	if err := ValidateLayout(*layoutOverride); err != nil {
-		return nil, err
-	}
-
-	exam, err := s.storeRepo.GetExamByID(ctx, examID)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrExamNotFound
-		}
-		return nil, err
-	}
-
-	storedTmpl := certificateTemplate(exam)
-	tmpl := templateOverride
-	if tmpl == "" {
-		tmpl = storedTmpl
-	}
-	if err := validateCertificateTemplate(tmpl); err != nil {
-		return nil, err
-	}
-
-	previewDesign := certificateDesign{Template: tmpl}
-	if templateOverride == "" || templateOverride == storedTmpl {
-		previewDesign.BackgroundKey = certificateBackgroundKey(exam)
-	}
-	raw, err := marshalCertificateDesign(previewDesign)
-	if err != nil {
-		return nil, err
-	}
-	previewExam := *exam
-	previewExam.CertificateDesign = raw
-
-	bg, err := s.resolveCertificateBackground(ctx, &previewExam)
-	if err != nil {
-		return nil, fmt.Errorf("resolve certificate background: %w", err)
-	}
-
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		return nil, err
-	}
-	vals := certificateFieldValues(exam.Title, previewStudentName, time.Now().In(loc).Format("2 January 2006"), previewCertificateNumber)
-
-	images, err := s.resolveCertificateImages(ctx, *layoutOverride)
-	if err != nil {
-		return nil, err
-	}
-	html, err := buildCertificateHTML(*layoutOverride, vals, bg, images)
-	if err != nil {
-		return nil, fmt.Errorf("build certificate html: %w", err)
-	}
-	return s.renderer.RenderHTML(ctx, html)
 }
 
 func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testIDs []uuid.UUID) error {
@@ -1245,11 +1279,12 @@ func (s *Service) AdminGetExamRoster(ctx context.Context, examID uuid.UUID, scho
 }
 
 // GetExamCard returns a freshly presigned URL for the exam card PDF, generating
-// it once via Gotenberg and caching the object key thereafter (FR-30):
-// buildCardHTML → RenderHTML → object-store put → card_key persisted → fresh
+// it once via Gotenberg and caching the object key thereafter (async redesign
+// 2026-08-02): GetCardPrintData → substitute into the static build-time
+// template → RenderHTML → object-store put → card_key persisted → fresh
 // presigned GET. A registration with a CardKey already set is presigned
-// straight away, so a repeated download never re-renders — and the API is never
-// the data-transfer path for the PDF bytes themselves.
+// straight away, so a repeated download never re-renders — and the API is
+// never the data-transfer path for the PDF bytes themselves.
 func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (string, string, error) {
 	detail, err := s.GetExamRegistration(ctx, regID, studentID)
 	if err != nil {
@@ -1265,49 +1300,18 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (str
 		return signed, filename, nil
 	}
 
-	studentName := ""
-	photoURL := ""
-	user, err := s.Me(ctx, studentID)
-	if err == nil && user != nil {
-		studentName = user.Name
-		if user.PhotoURL != nil {
-			photoURL = *user.PhotoURL
-		}
-	}
-	tenantName := ""
-	logoURL := ""
-	cfg, err := s.GetSystemConfig(ctx)
-	if err == nil && cfg != nil {
-		if v, ok := cfg["app_name"]; ok && v != "" {
-			tenantName = v
-		}
-		if v, ok := cfg["app_logo_url"]; ok && v != "" {
-			logoURL = v
-		}
-	}
-	if tenantName == "" {
-		tenantName = "Akademi Bimbel"
-	}
-	// The two images have different trust levels and so different loaders: the
-	// student-controlled photo is read from our own storage BY KEY and never
-	// causes an outbound request (the host in a stored proxy URL is ignored),
-	// while the super_admin-configured logo may legitimately be an external
-	// https URL and is fetched under the restrictions in card_logo.go. Failure
-	// is non-fatal (nil bytes) so a missing asset never blocks generation (FR-21).
-	logoImg := s.loadCardLogoImage(ctx, logoURL)
-	photoImg := s.loadCardAvatarImage(ctx, photoURL)
-
-	html, err := buildCardHTML(detail, studentName, tenantName, logoImg, photoImg)
-	if err != nil {
-		return "", "", err
-	}
-	pdf, err := s.renderer.RenderHTML(ctx, html)
-	if err != nil {
-		return "", "", fmt.Errorf("generate card pdf: %w", err)
-	}
 	regUUID, err := uuid.Parse(regID)
 	if err != nil {
 		return "", "", fmt.Errorf("%w: invalid registration id", ErrValidation)
+	}
+
+	data, err := s.GetCardPrintData(ctx, regID)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve card print data: %w", err)
+	}
+	pdf, err := generateExamCardPDF(ctx, s.renderer, data)
+	if err != nil {
+		return "", "", fmt.Errorf("generate card pdf: %w", err)
 	}
 	key, err := s.uploadCardPDF(ctx, regUUID, pdf)
 	if err != nil {
@@ -1324,9 +1328,169 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (str
 	return signed, filename, nil
 }
 
-// cardURLTTL bounds how long a signed card-download link stays valid. Short,
-// because the link is handed straight to the browser on each request.
-const cardURLTTL = 15 * time.Minute
+// CardPrintData is the full set of server-authored values the exam card
+// print route displays (FR-20): the participant number, student name,
+// school, exam title/schedule, and check-in code, resolved from the server's
+// own records — never from anything the caller supplies beyond the
+// registration id bound to a redeemed print token. TenantName/TenantLogoURL/
+// PhotoURL/FooterNote restore the parity buildCardHTML (card_html.go) used
+// to carry before Task 12 switched GetExamCard to this print route (Task 25).
+type CardPrintData struct {
+	ParticipantNo string `json:"participant_no"`
+	StudentName   string `json:"student_name"`
+	School        string `json:"school"`
+	ExamTitle     string `json:"exam_title"`
+	ExamSchedule  string `json:"exam_schedule"`
+	CheckInCode   string `json:"check_in_code"`
+	TenantName    string `json:"tenant_name"`
+	TenantLogoURL string `json:"tenant_logo_url,omitempty"`
+	PhotoURL      string `json:"photo_url,omitempty"`
+	FooterNote    string `json:"footer_note"`
+}
+
+// cardScheduleText preserves the pre-existing schedule formatting: Asia/Jakarta,
+// "02 Jan 2006 15:04 WIB" (FR-23).
+func cardScheduleText(reg *model.RegistrationDetail) string {
+	if reg.Exam.ScheduledAt == nil {
+		return "-"
+	}
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		loc = time.UTC
+	}
+	return reg.Exam.ScheduledAt.In(loc).Format("02 Jan 2006 15:04 WIB")
+}
+
+// cardFooterNote preserves the pre-existing check-in vs free-access copy,
+// keyed on reg.Exam.RequiresCheckin / CheckInWindowMinutes.
+func cardFooterNote(reg *model.RegistrationDetail) string {
+	if reg.Exam.RequiresCheckin {
+		if reg.Exam.CheckInWindowMinutes != nil {
+			return fmt.Sprintf("Harap check-in dalam waktu %d menit sebelum ujian.", *reg.Exam.CheckInWindowMinutes)
+		}
+		return "Harap check-in sebelum ujian dimulai."
+	}
+	return "Akses bebas pada waktu yang ditentukan."
+}
+
+// GetCardPrintData resolves every server-authored value the exam card
+// displays, keyed by regID alone — GetExamCard (JWT-authenticated) calls
+// this directly to build the card's substitution values; it is no longer
+// reached through a print token (async redesign 2026-08-02 removed the
+// print-data HTTP surface entirely).
+func (s *Service) GetCardPrintData(ctx context.Context, regID string) (*CardPrintData, error) {
+	rid, err := uuid.Parse(regID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid registration id", ErrValidation)
+	}
+	detail, err := s.storeRepo.GetRegistrationForPrint(ctx, rid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrRegistrationNotFound
+		}
+		return nil, err
+	}
+
+	studentName, school, photoURL := "", "", ""
+	if user, mErr := s.Me(ctx, detail.StudentID.String()); mErr == nil && user != nil {
+		studentName = user.Name
+		if user.SchoolID != nil && *user.SchoolID != "" {
+			if sch, sErr := s.storeRepo.GetSchoolByID(ctx, *user.SchoolID); sErr == nil && sch != nil {
+				school = sch.Name
+			}
+		}
+		if school == "" && user.UnlistedSchoolName != nil {
+			school = *user.UnlistedSchoolName
+		}
+		if user.PhotoURL != nil {
+			photoURL = s.presignCardAvatarURL(ctx, *user.PhotoURL)
+		}
+	}
+
+	tenantName, tenantLogoURL := "", ""
+	if cfg, cErr := s.GetSystemConfig(ctx); cErr == nil {
+		tenantName = cfg["app_name"]
+		tenantLogoURL = s.resolveCardLogoURL(ctx, cfg["app_logo_url"])
+	}
+
+	participantNo := ""
+	if detail.ParticipantNumber != nil {
+		prefix := detail.CreatedAt
+		if detail.Exam.ScheduledAt != nil {
+			prefix = *detail.Exam.ScheduledAt
+		}
+		if wib, e := time.LoadLocation("Asia/Jakarta"); e == nil {
+			prefix = prefix.In(wib)
+		}
+		examNo := 0
+		if detail.Exam.ExamNumber != nil {
+			examNo = *detail.Exam.ExamNumber
+		}
+		participantNo = formatParticipantNo(prefix, examNo, *detail.ParticipantNumber)
+	}
+
+	return &CardPrintData{
+		ParticipantNo: participantNo,
+		StudentName:   studentName,
+		School:        school,
+		ExamTitle:     detail.Exam.Title,
+		ExamSchedule:  cardScheduleText(detail),
+		CheckInCode:   detail.Token,
+		TenantName:    tenantName,
+		TenantLogoURL: tenantLogoURL,
+		PhotoURL:      photoURL,
+		FooterNote:    cardFooterNote(detail),
+	}, nil
+}
+
+// presignCardAvatarURL signs a URL for a student's stored avatar for the card
+// print route, reusing avatarKeyFromStored's trust rule (see
+// loadCardAvatarImage): only a key under our own bucket is ever signed,
+// never an outbound fetch keyed off a stored proxy URL naming some other
+// host. It's signed against the internal storage endpoint, not the
+// browser-facing one (see presignInternalReadURL) — the only consumer is
+// Gotenberg's headless Chromium fetching this print route from inside the
+// docker network. Any failure — no storage key, presign error — collapses
+// to "" so a missing/foreign photo just omits the image (mirrors
+// loadCardAvatarImage's FR-21 best-effort behavior) instead of failing the
+// print route.
+func (s *Service) presignCardAvatarURL(ctx context.Context, stored string) string {
+	key := avatarKeyFromStored(stored)
+	if key == "" {
+		return ""
+	}
+	signed, err := s.presignInternalReadURL(ctx, s.cfg.ObjectStorageBucketName, key, presignedDocumentURLTTL)
+	if err != nil {
+		return ""
+	}
+	return signed
+}
+
+// resolveCardLogoURL returns a URL for the configured tenant logo, loadable
+// by Gotenberg's headless Chromium (see presignCardAvatarURL): a presigned
+// GET against the internal storage endpoint when app_logo_url names one of
+// our own avatar keys, or the configured value unchanged when it is an
+// ordinary external https:// URL — the System Config contract (see
+// card_logo.go) — which has no object key to presign.
+func (s *Service) resolveCardLogoURL(ctx context.Context, stored string) string {
+	if stored == "" {
+		return ""
+	}
+	if key := avatarKeyFromStored(stored); key != "" {
+		signed, err := s.presignInternalReadURL(ctx, s.cfg.ObjectStorageBucketName, key, presignedDocumentURLTTL)
+		if err != nil {
+			return ""
+		}
+		return signed
+	}
+	return stored
+}
+
+// presignedDocumentURLTTL bounds every presigned certificate/card/asset URL.
+// Once an admin hides results, this TTL is the entire residual exposure
+// window during which an already-signed URL keeps working — the gate at #55
+// only stops new signs, not URLs already handed to a browser.
+const presignedDocumentURLTTL = 15 * time.Minute
 
 // presignCardURL signs a time-limited GET for a stored card PDF. The bucket is
 // private, so every read signs afresh rather than persisting a URL. The
@@ -1338,7 +1502,7 @@ func (s *Service) presignCardURL(ctx context.Context, key, filename string) (str
 	}
 	params := url.Values{}
 	params.Set("response-content-disposition", `attachment; filename="`+filename+`"`)
-	u, err := s.presignStorage().PresignedGetObject(ctx, s.cfg.ObjectStorageBucketName, key, cardURLTTL, params)
+	u, err := s.presignStorage().PresignedGetObject(ctx, s.cfg.ObjectStorageBucketName, key, presignedDocumentURLTTL, params)
 	if err != nil {
 		return "", fmt.Errorf("presign card url: %w", err)
 	}

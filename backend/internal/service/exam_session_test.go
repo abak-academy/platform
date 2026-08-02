@@ -93,7 +93,7 @@ func TestGroupQuestionsByTest_populates_AudioURL_and_Blanks(t *testing.T) {
 					SortOrder: 1,
 				},
 				{
-					Question: model.Question{ID: qID2, Format: "mcq"},
+					Question:  model.Question{ID: qID2, Format: "mcq"},
 					SortOrder: 2,
 				},
 			},
@@ -487,11 +487,9 @@ func (f *fakeSessionRepo) ExtendActiveSection(_ context.Context, sessionID uuid.
 // ---------- shimSessionService ----------
 
 type shimSessionService struct {
-	repo            *fakeSessionRepo
-	rdb             *redis.Client
-	mr              *miniredis.Miniredis
-	uploadCertErr   error
-	uploadCertCalls int
+	repo *fakeSessionRepo
+	rdb  *redis.Client
+	mr   *miniredis.Miniredis
 }
 
 func newShimSessionService(t *testing.T) (*shimSessionService, *miniredis.Miniredis) {
@@ -1843,8 +1841,6 @@ func TestReopenSession_NotFound(t *testing.T) {
 	}
 }
 
-
-
 // ---------- ReopenSession sectioned (FR-22) ----------
 
 func TestReopenSession_Sectioned_ExtendsActiveSection(t *testing.T) {
@@ -2565,13 +2561,11 @@ func TestDeriveStatus_FR6a_ExtendedUntilCanMakeOverdue(t *testing.T) {
 	}
 }
 
-
-
 // ---------- Sectioned deriveStatus tests (FR-20) ----------
 
 func TestDeriveStatus_Sectioned_InProgress(t *testing.T) {
 	started := time.Now().Add(-25 * time.Minute) // section started 25min ago
-	dur := 60 // 60min section duration
+	dur := 60                                    // 60min section duration
 	sessionID := uuid.New()
 	sessionStatus := "in_progress"
 	row := model.SessionMonitorRow{
@@ -2593,16 +2587,16 @@ func TestDeriveStatus_Sectioned_InProgress(t *testing.T) {
 
 func TestDeriveStatus_Sectioned_Overdue(t *testing.T) {
 	started := time.Now().Add(-65 * time.Minute) // section started 65min ago
-	dur := 60 // 60min section, deadline passed 5min ago
+	dur := 60                                    // 60min section, deadline passed 5min ago
 	sessionID := uuid.New()
 	sessionStatus := "in_progress"
 	row := model.SessionMonitorRow{
-		RegistrationID: uuid.New(),
-		StudentID:      uuid.New(),
-		StudentName:    "Sectioned Student",
-		SessionID:      &sessionID,
-		SessionStatus:  &sessionStatus,
-		StartedAt:      &started,
+		RegistrationID:               uuid.New(),
+		StudentID:                    uuid.New(),
+		StudentName:                  "Sectioned Student",
+		SessionID:                    &sessionID,
+		SessionStatus:                &sessionStatus,
+		StartedAt:                    &started,
 		ActiveSectionStartedAt:       &started,
 		ActiveSectionDurationMinutes: &dur,
 	}
@@ -2614,17 +2608,17 @@ func TestDeriveStatus_Sectioned_Overdue(t *testing.T) {
 
 func TestDeriveStatus_Sectioned_Overdue_ViaExtendedUntil(t *testing.T) {
 	started := time.Now().Add(-30 * time.Minute) // section started 30min ago
-	dur := 15 // 15min section deadline passed 15min ago
+	dur := 15                                    // 15min section deadline passed 15min ago
 	extended := time.Now().Add(-1 * time.Minute) // extended_until also passed
 	sessionID := uuid.New()
 	sessionStatus := "in_progress"
 	row := model.SessionMonitorRow{
-		RegistrationID: uuid.New(),
-		StudentID:      uuid.New(),
-		StudentName:    "Sectioned Student",
-		SessionID:      &sessionID,
-		SessionStatus:  &sessionStatus,
-		StartedAt:      &started,
+		RegistrationID:               uuid.New(),
+		StudentID:                    uuid.New(),
+		StudentName:                  "Sectioned Student",
+		SessionID:                    &sessionID,
+		SessionStatus:                &sessionStatus,
+		StartedAt:                    &started,
 		ActiveSectionStartedAt:       &started,
 		ActiveSectionDurationMinutes: &dur,
 		ActiveSectionExtendedUntil:   &extended,
@@ -2642,12 +2636,12 @@ func TestDeriveStatus_Sectioned_FR6a_NilDuration_NotOverdue(t *testing.T) {
 	sessionStatus := "in_progress"
 	var nilDur *int
 	row := model.SessionMonitorRow{
-		RegistrationID: uuid.New(),
-		StudentID:      uuid.New(),
-		StudentName:    "Sectioned Student",
-		SessionID:      &sessionID,
-		SessionStatus:  &sessionStatus,
-		StartedAt:      &started,
+		RegistrationID:               uuid.New(),
+		StudentID:                    uuid.New(),
+		StudentName:                  "Sectioned Student",
+		SessionID:                    &sessionID,
+		SessionStatus:                &sessionStatus,
+		StartedAt:                    &started,
 		ActiveSectionStartedAt:       &started,
 		ActiveSectionDurationMinutes: nilDur,
 	}
@@ -2664,12 +2658,12 @@ func TestDeriveStatus_Sectioned_FR6a_ExtendedUntilCanMakeOverdue(t *testing.T) {
 	sessionID := uuid.New()
 	sessionStatus := "in_progress"
 	row := model.SessionMonitorRow{
-		RegistrationID: uuid.New(),
-		StudentID:      uuid.New(),
-		StudentName:    "Sectioned Student",
-		SessionID:      &sessionID,
-		SessionStatus:  &sessionStatus,
-		StartedAt:      &started,
+		RegistrationID:               uuid.New(),
+		StudentID:                    uuid.New(),
+		StudentName:                  "Sectioned Student",
+		SessionID:                    &sessionID,
+		SessionStatus:                &sessionStatus,
+		StartedAt:                    &started,
 		ActiveSectionStartedAt:       &started,
 		ActiveSectionDurationMinutes: nilDur,
 		ActiveSectionExtendedUntil:   &extended,
@@ -2728,12 +2722,12 @@ func TestGetSessionMonitor_HappyPath_FullResponse(t *testing.T) {
 	svc, _ := newShimSessionService(t)
 
 	exam := &model.Exam{
-		Title:                "Finals",
-		DurationMinutes:      intptr(120),
-		GraceWindowMinutes:   intptr(10),
-		TimerMode:            "overall",
-		Status:               "published",
-		ScheduledAt:          timePtr(time.Now().Add(-24 * time.Hour)),
+		Title:              "Finals",
+		DurationMinutes:    intptr(120),
+		GraceWindowMinutes: intptr(10),
+		TimerMode:          "overall",
+		Status:             "published",
+		ScheduledAt:        timePtr(time.Now().Add(-24 * time.Hour)),
 	}
 	svc.repo.seedExam(exam)
 
@@ -2876,8 +2870,6 @@ func TestGetSessionMonitor_FR6a_NilDuration_NotOverdue(t *testing.T) {
 	}
 }
 
-
-
 // ---------- GetSessionMonitor sectioned test (FR-21) ----------
 
 func TestGetSessionMonitor_SectionedSurfacesActiveSection(t *testing.T) {
@@ -2901,12 +2893,12 @@ func TestGetSessionMonitor_SectionedSurfacesActiveSection(t *testing.T) {
 	sessionStatus := "in_progress"
 
 	row := model.SessionMonitorRow{
-		RegistrationID: uuid.New(),
-		StudentID:      uuid.New(),
-		StudentName:    "Sectioned Student",
-		SessionID:      &sessionID,
-		SessionStatus:  &sessionStatus,
-		StartedAt:      &started,
+		RegistrationID:               uuid.New(),
+		StudentID:                    uuid.New(),
+		StudentName:                  "Sectioned Student",
+		SessionID:                    &sessionID,
+		SessionStatus:                &sessionStatus,
+		StartedAt:                    &started,
 		ActiveSectionTestID:          &sectionTestID,
 		ActiveSectionTitle:           &sectionTitle,
 		ActiveSectionStartedAt:       &started,
@@ -2961,12 +2953,12 @@ func TestGetSessionMonitor_SectionedRow_Overdue(t *testing.T) {
 	sessionStatus := "in_progress"
 
 	row := model.SessionMonitorRow{
-		RegistrationID: uuid.New(),
-		StudentID:      uuid.New(),
-		StudentName:    "IELTS Student",
-		SessionID:      &sessionID,
-		SessionStatus:  &sessionStatus,
-		StartedAt:      &started,
+		RegistrationID:               uuid.New(),
+		StudentID:                    uuid.New(),
+		StudentName:                  "IELTS Student",
+		SessionID:                    &sessionID,
+		SessionStatus:                &sessionStatus,
+		StartedAt:                    &started,
 		ActiveSectionTestID:          &sectionTestID,
 		ActiveSectionTitle:           &sectionTitle,
 		ActiveSectionStartedAt:       &started,
@@ -3047,4 +3039,3 @@ func TestGetSessionViolations_EmptyForUnknownSession(t *testing.T) {
 		t.Errorf("want 0 violations for unknown session, got %d", len(violations))
 	}
 }
-

@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CertificateFieldEditor } from "./CertificateFieldEditor";
 import { CertificateInspector } from "./CertificateInspector";
 import { createImageLayer, createTextLayer, moveLayer, normalizeCertificateLayout } from "@/lib/certificate-studio";
-import { useCertificateDesign, usePresignCertificateAsset, useUpdateCertificateDesign } from "@/lib/hooks/admin-exams";
+import { serializeCertificateTemplate, useCertificateDesign, usePresignCertificateAsset, useUpdateCertificateDesign } from "@/lib/hooks/admin-exams";
 import { useTranslation } from "@/lib/i18n";
 import type { CertificateLayout, CertificateLayoutField, ExamDetail } from "@/lib/types";
 
@@ -155,7 +155,8 @@ export function CertificateDesignTab({ examId, exam, onSaved }: Props) {
 
   async function save() {
     try {
-      await updateDesign.mutateAsync({ template, background_key: backgroundKey, layout: workingLayout });
+      const templateHtml = await serializeCertificateTemplate(workingLayout);
+      await updateDesign.mutateAsync({ template, background_key: backgroundKey, layout: workingLayout, template_html: templateHtml });
       setDirty(false);
       toast.success(t("certificate_studio_saved"));
       onSaved?.();

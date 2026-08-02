@@ -100,3 +100,33 @@ func insertCertNumSession(t *testing.T, pool *pgxpool.Pool, studentID, examID uu
 var _ interface {
 	AllocateCertificateNumber(context.Context, uuid.UUID) (string, error)
 } = (*Repository)(nil)
+
+// TestUpdateExam_PersistsCertificateTemplateHTML proves UpdateExam actually
+// writes certificate_template_html — a real re-read of the column, not a Go
+// struct round-trip, since a round-trip through the same in-memory struct
+// would pass even if the SET clause silently dropped the column (the bug
+// this guards: certificate_template_html was read in every SELECT but
+// missing from UpdateExam's SET list, so AdminUpdateExamCertificateDesign
+// reported success while the template stayed NULL forever).
+func TestUpdateExam_PersistsCertificateTemplateHTML(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	testID := insertGradingTest(t, pool)
+	examID := insertGradingExam(t, pool, testID)
+
+	exam, err := repo.GetExamByID(ctx, examID)
+	require.NoError(t, err)
+
+	html := "<html><body>{{student_name}}</body></html>"
+	exam.CertificateTemplateHTML = &html
+
+	require.NoError(t, repo.UpdateExam(ctx, examID, exam))
+
+	var persisted *string
+	err = pool.QueryRow(ctx, `SELECT certificate_template_html FROM exam WHERE id = $1`, examID).Scan(&persisted)
+	require.NoError(t, err)
+	require.NotNil(t, persisted, "certificate_template_html was not persisted by UpdateExam")
+	require.Equal(t, html, *persisted)
+}

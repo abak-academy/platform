@@ -298,7 +298,7 @@ func TestPapuaMigration_ValidateAddressHierarchy_AcceptsNewProvinceTriples(t *te
 	applyMigrationFile(t, ctx, pool, migration0046Up)
 
 	repo := repository.New(pool)
-	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil, nil, nil)
+	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil, nil, nil, nil)
 
 	cases := []struct {
 		name       string

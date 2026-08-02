@@ -17,7 +17,7 @@ import (
 
 // OrderPaidPayload unmarshals from the outbox event payload written by service.OrderPaidPayload
 type OrderPaidPayload struct {
-	OrderID uuid.UUID      `json:"order_id"`
+	OrderID uuid.UUID       `json:"order_id"`
 	Items   []OrderItemMini `json:"items"`
 }
 
@@ -56,9 +56,10 @@ type Worker struct {
 	svc                      studentBulkProcessor
 	jobPollInterval          time.Duration
 	privateBucket            string
+	certGen                  certificateGenerator
 }
 
-func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval, sweeperInterval, announcementPollInterval time.Duration, dispatcher announcementDispatcher, jobRepo jobRepository, objectStore objectStore, svc studentBulkProcessor, jobPollInterval time.Duration, privateBucket string) *Worker {
+func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval, sweeperInterval, announcementPollInterval time.Duration, dispatcher announcementDispatcher, jobRepo jobRepository, objectStore objectStore, svc studentBulkProcessor, jobPollInterval time.Duration, privateBucket string, certGen certificateGenerator) *Worker {
 	return &Worker{
 		pool:                     pool,
 		rdb:                      rdb,
@@ -72,6 +73,7 @@ func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval,
 		svc:                      svc,
 		jobPollInterval:          jobPollInterval,
 		privateBucket:            privateBucket,
+		certGen:                  certGen,
 	}
 }
 
@@ -144,6 +146,8 @@ func (w *Worker) pollOutbox(ctx context.Context) {
 		switch event.EventType {
 		case "OrderPaid":
 			w.handleOrderPaid(ctx, event)
+		case "CertificateNeeded":
+			w.handleCertificateNeeded(ctx, event)
 		default:
 			slog.Warn("unknown event type", "type", event.EventType)
 		}

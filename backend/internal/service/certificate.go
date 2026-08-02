@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
+	"html/template"
 	"math"
 	"net/http"
 	"net/url"
@@ -98,61 +99,6 @@ func resolveCertificateLayout(exam *model.Exam) (Layout, error) {
 		tmpl = "classic"
 	}
 	return defaultLayout(tmpl), nil
-}
-
-// downloadCertificateBackground fetches an uploaded custom background from the
-// private bucket by its object key — never a raw or presigned URL is stored
-// (FR-18), so every render downloads fresh.
-// resolveCertificateSignatureImages downloads the layout's uploaded signature
-// image (if any) into the images map buildCertificateHTML consumes. Returns
-// nil when no signature key is set.
-func (s *Service) resolveCertificateImages(ctx context.Context, layout Layout) (map[FieldID][]byte, error) {
-	layout = normalizeCertificateLayout(layout)
-	images := make(map[FieldID][]byte)
-	for _, field := range layout.Fields {
-		if field.Kind != "image" || field.AssetKey == nil || *field.AssetKey == "" {
-			continue
-		}
-		img, err := s.downloadCertificateBackground(ctx, *field.AssetKey)
-		if err != nil {
-			return nil, fmt.Errorf("download certificate image %s: %w", field.ID, err)
-		}
-		images[field.ID] = img
-	}
-	return images, nil
-}
-
-func (s *Service) downloadCertificateBackground(ctx context.Context, key string) ([]byte, error) {
-	if s.storage == nil {
-		return nil, ErrStorageNotConfigured
-	}
-	obj, err := s.storage.GetObject(ctx, s.cfg.ObjectStorageBucketName, key, minio.GetObjectOptions{})
-	if err != nil {
-		return nil, err
-	}
-	defer obj.Close()
-	// minio-go defers the request until Stat/Read, so a missing object surfaces here.
-	if _, err := obj.Stat(); err != nil {
-		return nil, err
-	}
-	return io.ReadAll(obj)
-}
-
-// resolveCertificateBackground returns the background image bytes for an
-// exam's certificate: the embedded built-in asset for classic/modern/elegant,
-// or the downloaded custom upload. A "custom" template with a NULL background
-// key falls back to the classic built-in rather than failing (FR-19,
-// Invariant 8) — there is no input state where generation fails for lack of a
-// template.
-func (s *Service) resolveCertificateBackground(ctx context.Context, exam *model.Exam) ([]byte, error) {
-	tmpl := certificateTemplate(exam)
-	if tmpl == "custom" {
-		if key := certificateBackgroundKey(exam); key != nil {
-			return s.downloadCertificateBackground(ctx, *key)
-		}
-		return builtinCertificateBackground("classic"), nil
-	}
-	return builtinCertificateBackground(tmpl), nil
 }
 
 // uploadCertificatePDF uploads a PDF certificate at certificates/<sessionID>.pdf
@@ -279,28 +225,29 @@ func certificateSessionValues(sess *model.ExamSession, questions []model.Questio
 }
 
 func certificateLayoutAllowed(exam model.Exam, sess *model.ExamSession, layout Layout, questions []model.QuestionWithOptions, answers []model.ExamSessionAnswer) bool {
-	if !layoutUsesToken(layout, "score", "max_score", "score_percent", "rank", "percentile") {
+	if !certificateIsSensitive(exam, layout) {
 		return true
 	}
 	_, gated := resultGate(exam, sess.Status == "submitted", isFullyGraded(questions, answers))
 	return !gated
 }
 
-func (s *Service) addCertificateSessionValues(ctx context.Context, vals map[FieldID]string, exam *model.Exam, sess *model.ExamSession, layout Layout, answers []model.ExamSessionAnswer) (bool, error) {
+// addCertificateSessionValues stamps score/rank-derived field values onto vals.
+// questions/haveQuestions carry a gate-time GetSessionWithQuestions result
+// (resolveCertificateURL fetches it once, up front, when the layout is
+// score-bearing) so this never re-issues that query — it only fetches when the
+// layout needs questions for a non-gated reason (e.g. total_questions alone)
+// and the caller didn't already have them.
+func (s *Service) addCertificateSessionValues(ctx context.Context, vals map[FieldID]string, sess *model.ExamSession, layout Layout, questions []model.QuestionWithOptions, haveQuestions bool) error {
 	needsQuestions := layoutUsesToken(layout, "max_score", "score_percent", "total_questions", "rank", "percentile")
-	sensitive := layoutUsesToken(layout, "score", "max_score", "score_percent", "rank", "percentile")
-	var tests []model.TestDetail
-	var questions []model.QuestionWithOptions
 	var err error
-	if needsQuestions || sensitive {
+	if needsQuestions && !haveQuestions {
+		var tests []model.TestDetail
 		tests, err = s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
 		if err != nil {
-			return false, err
+			return err
 		}
 		questions = flattenCertificateQuestions(tests)
-	}
-	if sensitive && !certificateLayoutAllowed(*exam, sess, layout, questions, answers) {
-		return false, nil
 	}
 	higher, total := -1, -1
 	if layoutUsesToken(layout, "rank", "percentile") {
@@ -310,171 +257,343 @@ func (s *Service) addCertificateSessionValues(ctx context.Context, vals map[Fiel
 		}
 		higher, err = s.storeRepo.CountHigherScores(ctx, sess.ExamID, score)
 		if err != nil {
-			return false, err
+			return err
 		}
 		total, err = s.storeRepo.CountFullyGradedSessions(ctx, sess.ExamID)
 		if err != nil {
-			return false, err
+			return err
 		}
 	}
 	for field, value := range certificateSessionValues(sess, questions, higher, total) {
 		vals[field] = value
 	}
-	return true, nil
+	return nil
 }
 
-// resolveCertificateURL determines a presigned certificate URL for a session,
-// regenerating the PDF when missing, stale by grading, or stale by design edit
-// (exam.certificate_design_updated_at newer than sess.certificate_generated_at,
-// FR-13/C3). The DB stores the object key; a fresh time-limited GET is signed
-// on every read since the bucket is private. A non-submitted session resolves
-// to (nil, nil) and generates nothing (FR-16); generation/upload/persist
-// failures are returned. Regeneration reuses the session's original
-// certificate number — AllocateCertificateNumber is idempotent (FR-10).
-func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, sess *model.ExamSession, answers []model.ExamSessionAnswer, studentName string) (*string, error) {
+// certificateValueBundle is the field-value map, certificate number, and
+// layout stamped onto a single certificate render.
+type certificateValueBundle struct {
+	Layout Layout
+	Values map[FieldID]string
+	Number string
+}
+
+// buildCertificateValues resolves the value half of a certificate render —
+// the fixed copy plus session-derived score/rank values plus an allocated
+// certificate number — shared by resolveCertificateURL's regeneration path
+// and the print-data endpoint (Task 7, FR-18) so the two code paths can never
+// diverge. questions/haveQuestions carry a gate-time GetSessionWithQuestions
+// result when the caller already fetched one (mirrors addCertificateSessionValues),
+// so this never re-issues that query. Returns (nil, nil) when sess has not
+// actually submitted (SubmittedAt nil) — callers that already checked
+// sess.Status == "submitted" won't normally see this, but it guards the
+// invariant explicitly rather than assuming it.
+func (s *Service) buildCertificateValues(ctx context.Context, exam *model.Exam, sess *model.ExamSession, layout Layout, questions []model.QuestionWithOptions, haveQuestions bool, studentName string) (*certificateValueBundle, error) {
+	if sess.SubmittedAt == nil {
+		return nil, nil
+	}
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		return nil, err
+	}
+	dateStr := sess.SubmittedAt.In(loc).Format("2 January 2006")
+	vals := certificateFieldValues(exam.Title, studentName, dateStr, "")
+	if err := s.addCertificateSessionValues(ctx, vals, sess, layout, questions, haveQuestions); err != nil {
+		return nil, err
+	}
+
+	number, err := s.storeRepo.AllocateCertificateNumber(ctx, sess.ID)
+	if err != nil {
+		return nil, fmt.Errorf("allocate certificate number: %w", err)
+	}
+	vals["certificate_number"] = number
+
+	return &certificateValueBundle{Layout: layout, Values: vals, Number: number}, nil
+}
+
+// presignFunc abstracts which storage endpoint a caller presigns image URLs
+// against: the browser-facing endpoint for the admin editor (presignReadURL)
+// or the internal endpoint for a worker feeding Gotenberg's headless Chromium
+// directly (presignInternalReadURL) — mirrors the same public/internal split
+// presignCardAvatarURL/resolveCardLogoURL already use for the exam card.
+type presignFunc func(ctx context.Context, bucket, key string, ttl time.Duration) (string, error)
+
+// certificateImageAssetURLs presigns a time-limited GET for every layout
+// image field backed by an uploaded asset (kind=="image" with a non-empty
+// AssetKey), keyed by field id. Shared by the admin design editor's read
+// model (GetCertificateDesign, browser-facing presign) and the worker's
+// generation path (GenerateCertificatePDF, internal presign for Gotenberg).
+func (s *Service) certificateImageAssetURLs(ctx context.Context, layout Layout, presign presignFunc) (map[string]string, error) {
+	urls := make(map[string]string)
+	for _, field := range normalizeCertificateLayout(layout).Fields {
+		if field.Kind != "image" || field.AssetKey == nil || *field.AssetKey == "" {
+			continue
+		}
+		signed, err := presign(ctx, s.cfg.ObjectStorageBucketName, *field.AssetKey, presignedDocumentURLTTL)
+		if err != nil {
+			return nil, fmt.Errorf("presign certificate image %s: %w", field.ID, err)
+		}
+		urls[field.ID] = signed
+	}
+	return urls, nil
+}
+
+// certificateBackgroundURL returns a loadable URL for an exam's certificate
+// background: a presigned GET for a custom upload (the object actually lives
+// in the bucket), or a data: URI embedding the compiled-in built-in asset
+// directly (it has no object key to presign, and it is not sensitive — the
+// same approach GetCertificateDesign's built-in presets already use). A
+// "custom" template with no uploaded background falls back to classic,
+// mirroring resolveCertificateBackground.
+func (s *Service) certificateBackgroundURL(ctx context.Context, exam *model.Exam, presign presignFunc) (string, error) {
+	tmpl := certificateTemplate(exam)
+	if tmpl == "custom" {
+		if key := certificateBackgroundKey(exam); key != nil {
+			signed, err := presign(ctx, s.cfg.ObjectStorageBucketName, *key, presignedDocumentURLTTL)
+			if err != nil {
+				return "", err
+			}
+			return signed, nil
+		}
+		tmpl = "classic"
+	}
+	bg := builtinCertificateBackground(tmpl)
+	return "data:" + imageMimeOrFallback(bg) + ";base64," + base64.StdEncoding.EncodeToString(bg), nil
+}
+
+// resolveCertificateURL determines a presigned certificate URL for a
+// submitted, enabled session's already-cached PDF (issue #55, async redesign
+// 2026-08-02). This is a READ-ONLY path: it never renders, uploads, or
+// persists — that is GenerateCertificatePDF's job, run exclusively by the
+// worker off the CertificateNeeded outbox event. A session with no cached
+// certificate_key resolves to (nil, nil) — not an error — the same as a
+// gate-denied session; the caller has no way to distinguish "not generated
+// yet" from "not visible" and must not need to (NFR-S4: a caller must never
+// infer generation state from this call).
+//
+// The layout is resolved first and certificateLayoutAllowed is checked on
+// every access (NFR-S4) — a cached PDF must never stand in for an
+// authorization decision. GetSessionWithQuestions is fetched only when the
+// layout is score-bearing (NFR-P1), so a non-score layout issues zero extra
+// queries.
+func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, sess *model.ExamSession, answers []model.ExamSessionAnswer) (*string, error) {
 	if sess.Status != "submitted" {
 		return nil, nil
 	}
-	gradedAt := latestGradedAt(answers)
-	designStale := exam.CertificateDesignUpdatedAt != nil && sess.CertificateGeneratedAt != nil &&
-		exam.CertificateDesignUpdatedAt.After(*sess.CertificateGeneratedAt)
-	needsRegeneration := sess.CertificateKey == nil || sess.CertificateGeneratedAt == nil ||
-		(gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) || designStale
-
-	if needsRegeneration {
-		if sess.SubmittedAt == nil {
-			return nil, nil
-		}
-		layout, err := resolveCertificateLayout(exam)
-		if err != nil {
-			return nil, err
-		}
-		loc, err := time.LoadLocation("Asia/Jakarta")
-		if err != nil {
-			return nil, err
-		}
-		dateStr := sess.SubmittedAt.In(loc).Format("2 January 2006")
-		vals := certificateFieldValues(exam.Title, studentName, dateStr, "")
-		allowed, err := s.addCertificateSessionValues(ctx, vals, exam, sess, layout, answers)
-		if err != nil {
-			return nil, err
-		}
-		if !allowed {
-			return nil, nil
-		}
-
-		number, err := s.storeRepo.AllocateCertificateNumber(ctx, sess.ID)
-		if err != nil {
-			return nil, fmt.Errorf("allocate certificate number: %w", err)
-		}
-		bg, err := s.resolveCertificateBackground(ctx, exam)
-		if err != nil {
-			return nil, fmt.Errorf("resolve certificate background: %w", err)
-		}
-		images, err := s.resolveCertificateImages(ctx, layout)
-		if err != nil {
-			return nil, err
-		}
-
-		vals["certificate_number"] = number
-
-		html, err := buildCertificateHTML(layout, vals, bg, images)
-		if err != nil {
-			return nil, fmt.Errorf("build certificate html: %w", err)
-		}
-		pdf, err := s.renderer.RenderHTML(ctx, html)
-		if err != nil {
-			return nil, fmt.Errorf("generate certificate pdf: %w", err)
-		}
-		key, err := s.uploadCertificatePDF(ctx, sess.ID, pdf)
-		if err != nil {
-			return nil, fmt.Errorf("upload certificate pdf: %w", err)
-		}
-		now := time.Now()
-		if err := s.storeRepo.UpdateSessionCertificate(ctx, sess.ID, key, now); err != nil {
-			return nil, fmt.Errorf("persist certificate key: %w", err)
-		}
-		sess.CertificateKey = &key
-		sess.CertificateNumber = &number
+	if !exam.CertificateEnabled {
+		return nil, nil
+	}
+	if sess.CertificateKey == nil {
+		return nil, nil
 	}
 
-	signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *sess.CertificateKey, time.Hour)
+	layout, err := resolveCertificateLayout(exam)
+	if err != nil {
+		return nil, err
+	}
+
+	// certificateIsSensitive also scans the persisted template HTML, not just
+	// the layout (Finding 4, 2026-08 review) — a template can carry a
+	// {{score}} token the layout never declared, and this short-circuit is
+	// what decides whether certificateLayoutAllowed even runs below.
+	sensitive := certificateIsSensitive(*exam, layout)
+	if sensitive {
+		tests, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+		if err != nil {
+			return nil, err
+		}
+		questions := flattenCertificateQuestions(tests)
+		if !certificateLayoutAllowed(*exam, sess, layout, questions, answers) {
+			return nil, nil
+		}
+	}
+
+	signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *sess.CertificateKey, presignedDocumentURLTTL)
 	if err != nil {
 		return nil, fmt.Errorf("presign certificate url: %w", err)
 	}
 	return &signed, nil
 }
 
-// previewStudentName and previewCertificateNumber are the placeholder values a
-// preview stamps instead of real data. The number mirrors the four-segment shape
-// AllocateCertificateNumber produces (ABK/YYYY/<exam:4>/<participant:6>) so the
-// preview shows the width the real string will occupy.
-const (
-	previewStudentName       = "Nama Peserta Contoh"
-	previewCertificateNumber = "ABK/2026/0000/000000"
-)
+// certificateTokenSub matches every {{token}} spot substituteTemplateTokens
+// replaces — the exact same grammar certificateTokenPattern (certificate_layout.go)
+// validates layout Content strings against, plus the certificate_background_url/
+// certificate_asset_<fieldID> image tokens GenerateCertificatePDF adds to the
+// same values map.
+var certificateTokenSub = certificateTokenPattern
 
-// GetCertificatePreview renders a preview certificate through the same
-// background/layout resolution as real generation, using a placeholder
-// student name and placeholder certificate number — it never allocates a real
-// number (FR-12), since preview
-// has no session to allocate against. templateOverride may be empty to use
-// the exam's stored template; when it names a different template, the saved
-// custom background/layout (authored for the stored template) are not carried
-// over, and the override's own built-in default applies instead.
-func (s *Service) GetCertificatePreview(ctx context.Context, examID uuid.UUID, templateOverride string) ([]byte, error) {
-	exam, err := s.storeRepo.GetExamByID(ctx, examID)
+// substituteTemplateTokens replaces every {{token}} in html with values[token],
+// HTML-escaped. A token with no entry in values is blanked rather than left
+// literal — the FE-authored template is untrusted input from the worker's point
+// of view; nothing renders on the PDF that this function didn't put there from
+// a verified DB value moments earlier (NFR-S2's forgery-boundary principle,
+// applied to the async path: the worker, not the template, is the boundary).
+func substituteTemplateTokens(html string, values map[FieldID]string) string {
+	return certificateTokenSub.ReplaceAllStringFunc(html, func(m string) string {
+		token := m[2 : len(m)-2]
+		v, ok := values[token]
+		if !ok {
+			return ""
+		}
+		return template.HTMLEscapeString(v)
+	})
+}
+
+// certificateNeedsRegeneration is GenerateCertificatePDF's staleness check:
+// no cached PDF yet, a re-grade landed after the cached PDF, or an admin
+// saved a design change after the cached PDF (2026-08 review, Finding A —
+// without this last term, the CertificateNeeded event UpdateExam/
+// SetExamCertificateEnabled fan out on a design change is a no-op for every
+// session that already has a certificate_key, so the fan-out never actually
+// repairs the stale PDF it was written for).
+func certificateNeedsRegeneration(sess *model.ExamSession, exam *model.Exam, gradedAt *time.Time) bool {
+	return sess.CertificateKey == nil || sess.CertificateGeneratedAt == nil ||
+		(gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) ||
+		(exam.CertificateDesignUpdatedAt != nil && exam.CertificateDesignUpdatedAt.After(*sess.CertificateGeneratedAt))
+}
+
+// CertificateNeededPayload is the outbox payload for the "CertificateNeeded"
+// event (async redesign 2026-08-02). SubmitSession, ForceSubmitSession, and
+// GradeEssayAnswer each insert this event, in the same transaction as the
+// state change that might make a certificate generatable — the worker
+// decides readiness itself from DB state when it processes the event
+// (GenerateCertificatePDF), so it is safe, and expected, for more than one of
+// those call sites to enqueue this for the same session.
+type CertificateNeededPayload struct {
+	SessionID uuid.UUID `json:"session_id"`
+}
+
+// GenerateCertificatePDF is the ONLY place a certificate is ever generated —
+// called exclusively by the worker's outbox handler for a "CertificateNeeded"
+// event. It substitutes verified DB values into the exam's FE-authored
+// template (exam.certificate_template_html) and renders through Gotenberg's
+// RenderHTML; no certificate HTML is built from scratch in Go, and nothing
+// here ever asks Gotenberg to fetch a URL.
+//
+// A nil error with nothing generated is the expected, ordinary outcome
+// whenever the session isn't ready: not submitted, certificates disabled, no
+// template saved yet, a score-bearing layout still awaiting grading, or an
+// already-current cached PDF. Callers enqueue this event at more than one
+// point in a session's lifecycle and cannot know in advance which one will
+// find it ready — GenerateCertificatePDF is what actually decides, every
+// time, from the current DB state.
+func (s *Service) GenerateCertificatePDF(ctx context.Context, sessionID uuid.UUID) error {
+	sess, err := s.storeRepo.GetExamSessionByID(ctx, sessionID)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	if sess.Status != "submitted" {
+		return nil
+	}
+
+	exam, err := s.storeRepo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return err
+	}
+	if !exam.CertificateEnabled {
+		return nil
+	}
+	if exam.CertificateTemplateHTML == nil || *exam.CertificateTemplateHTML == "" {
+		return nil
+	}
+
+	layout, err := resolveCertificateLayout(exam)
+	if err != nil {
+		return err
+	}
+
+	answers, err := s.storeRepo.GetSessionAnswers(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+
+	sensitive := layoutUsesToken(layout, "score", "max_score", "score_percent", "rank", "percentile")
+	var questions []model.QuestionWithOptions
+	haveQuestions := false
+	if sensitive {
+		tests, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+		if err != nil {
+			return err
+		}
+		questions = flattenCertificateQuestions(tests)
+		haveQuestions = true
+		// The score isn't final yet — generating now would bake in an
+		// incomplete grade. GradeEssayAnswer re-enqueues this event on every
+		// grade, so this session gets another chance once grading finishes.
+		if !isFullyGraded(questions, answers) {
+			return nil
+		}
+	}
+
+	gradedAt := latestGradedAt(answers)
+	if !certificateNeedsRegeneration(sess, exam, gradedAt) {
+		return nil
+	}
+
+	studentName := ""
+	if user, mErr := s.Me(ctx, sess.StudentID.String()); mErr == nil && user != nil {
+		studentName = user.Name
+	}
+
+	bundle, err := s.buildCertificateValues(ctx, exam, sess, layout, questions, haveQuestions, studentName)
+	if err != nil {
+		return err
+	}
+	if bundle == nil {
+		return nil
+	}
+
+	bgURL, err := s.certificateBackgroundURL(ctx, exam, s.presignInternalReadURL)
+	if err != nil {
+		return fmt.Errorf("resolve certificate background url: %w", err)
+	}
+	bundle.Values["certificate_background_url"] = bgURL
+
+	imageURLs, err := s.certificateImageAssetURLs(ctx, layout, s.presignInternalReadURL)
+	if err != nil {
+		return err
+	}
+	for fieldID, imgURL := range imageURLs {
+		bundle.Values["certificate_asset_"+fieldID] = imgURL
+	}
+
+	html := substituteTemplateTokens(*exam.CertificateTemplateHTML, bundle.Values)
+
+	pdf, err := s.renderer.RenderHTML(ctx, []byte(html))
+	if err != nil {
+		return fmt.Errorf("render certificate pdf: %w", err)
+	}
+	key, err := s.uploadCertificatePDF(ctx, sess.ID, pdf)
+	if err != nil {
+		return fmt.Errorf("upload certificate pdf: %w", err)
+	}
+	if err := s.storeRepo.UpdateSessionCertificate(ctx, sess.ID, key, time.Now()); err != nil {
+		return fmt.Errorf("persist certificate key: %w", err)
+	}
+	return nil
+}
+
+// GetCertificatePreviewPDF renders an admin's in-progress certificate design
+// straight to PDF for the live preview panel. The FE has already serialized
+// the (possibly unsaved) layout to self-contained HTML with placeholder
+// preview values baked in via the same in-browser preview path the editor
+// canvas itself uses (web/app/api/admin/certificate-template +
+// lib/certificate-studio's previewContent) — this is a thin pass-through to
+// Gotenberg, no DB write, no object-store write, no field substitution. The
+// exam lookup exists only to 404 an unknown id before spending a Gotenberg
+// round trip.
+func (s *Service) GetCertificatePreviewPDF(ctx context.Context, examID uuid.UUID, html string) ([]byte, error) {
+	if _, err := s.storeRepo.GetExamByID(ctx, examID); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrExamNotFound
 		}
 		return nil, err
 	}
-
-	storedTmpl := certificateTemplate(exam)
-	tmpl := templateOverride
-	if tmpl == "" {
-		tmpl = storedTmpl
+	if html == "" {
+		return nil, fmt.Errorf("%w: html is required", ErrValidation)
 	}
-	if err := validateCertificateTemplate(tmpl); err != nil {
-		return nil, err
-	}
-
-	previewExam := *exam
-	if templateOverride != "" && templateOverride != storedTmpl {
-		// A different template than the one saved: the saved background/layout
-		// were authored for that template, so don't carry them over — seed a
-		// bare design naming only the override, and let resolveCertificateLayout/
-		// resolveCertificateBackground fall back to the override's own built-in.
-		raw, err := marshalCertificateDesign(certificateDesign{Template: tmpl})
-		if err != nil {
-			return nil, err
-		}
-		previewExam.CertificateDesign = raw
-	}
-
-	layout, err := resolveCertificateLayout(&previewExam)
-	if err != nil {
-		return nil, err
-	}
-	bg, err := s.resolveCertificateBackground(ctx, &previewExam)
-	if err != nil {
-		return nil, fmt.Errorf("resolve certificate background: %w", err)
-	}
-
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		return nil, err
-	}
-	vals := certificateFieldValues(exam.Title, previewStudentName, time.Now().In(loc).Format("2 January 2006"), previewCertificateNumber)
-
-	images, err := s.resolveCertificateImages(ctx, layout)
-	if err != nil {
-		return nil, err
-	}
-	html, err := buildCertificateHTML(layout, vals, bg, images)
-	if err != nil {
-		return nil, fmt.Errorf("build certificate html: %w", err)
-	}
-	return s.renderer.RenderHTML(ctx, html)
+	return s.renderer.RenderHTML(ctx, []byte(html))
 }

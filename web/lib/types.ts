@@ -671,6 +671,7 @@ export interface Exam {
   randomize?: boolean;
   result_config?: string;
   result_release_at?: string | null;
+  certificate_enabled?: boolean;
   certificate_template?: string;
   certificate_background_key?: string | null;
   certificate_layout?: CertificateLayout | null;
@@ -678,6 +679,10 @@ export interface Exam {
   status?: string;
   mode?: string;
   created_at?: string;
+  // end_screen_image_url/end_screen_promo_text are the single admin-configured
+  // post-submit image/promo block (FR-38/FR-39) — no templating, one of each.
+  end_screen_image_url?: string | null;
+  end_screen_promo_text?: string | null;
 }
 
 export interface ExamListItem extends Exam {
@@ -739,6 +744,8 @@ export interface UpdateExamPayload {
   check_in_window_minutes?: number | null;
   grace_window_minutes?: number | null;
   max_attempts?: number | null;
+  end_screen_image_url?: string | null;
+  end_screen_promo_text?: string | null;
 }
 
 // ── Certificate design (admin editor, FR-17/18/25) ───────────────────────
@@ -791,6 +798,12 @@ export interface CertificateDesignInput {
   template: string;
   background_key: string | null;
   layout: CertificateLayout;
+  // FE-serialized self-contained HTML with {{token}} placeholders (async
+  // redesign 2026-08-02), produced by POSTing layout to
+  // /api/admin/certificate-template — the worker substitutes verified DB
+  // values into it at generation time. Empty only means "not yet computed
+  // for this save", never a deliberate clear.
+  template_html?: string;
 }
 
 // ── Session engine types (FR26) ──────────────────────────────────────────
@@ -857,12 +870,19 @@ export interface SessionState extends SessionStartPayload {
   extended_until?: string | null;
   last_saved_at?: string | null;
   answers: SessionAnswer[];
+  /** Last server-persisted question index (FR-35/FR-36). Never read from browser storage. */
+  current_position?: number | null;
 }
 
 export interface SessionAnswerInput {
   question_id: string;
   answer: string;
   flagged_for_review?: boolean;
+}
+
+export interface SaveAnswersRequest {
+  answers: SessionAnswerInput[];
+  current_position?: number | null;
 }
 
 export interface SubmitResult {
@@ -1023,17 +1043,25 @@ interface SessionResultCounts {
   rank: number;
 }
 
+// EndScreenFields carries the FR-38/FR-39 post-submit content — present on
+// every gate state (like certificate_url) since it's shown regardless of
+// result-visibility config; absent when the exam has none configured.
+interface EndScreenFields {
+  end_screen_image_url?: string | null;
+  end_screen_promo_text?: string | null;
+}
+
 export type SessionResult =
-  | { state: "hidden"; certificate_url?: string | null }
-  | { state: "grading"; certificate_url?: string | null }
-  | { state: "locked"; result_release_at: string; certificate_url?: string | null }
-  | ({ state: "result"; result_config: "score_only" } & SessionResultCounts & { certificate_url?: string | null })
+  | ({ state: "hidden"; certificate_url?: string | null } & EndScreenFields)
+  | ({ state: "grading"; certificate_url?: string | null } & EndScreenFields)
+  | ({ state: "locked"; result_release_at: string; certificate_url?: string | null } & EndScreenFields)
+  | ({ state: "result"; result_config: "score_only" } & SessionResultCounts & { certificate_url?: string | null } & EndScreenFields)
   | ({
       state: "result";
       result_config: "score_pembahasan";
       breakdown: ResultTopicRow[];
       pembahasan: ResultPembahasanItem[];
-    } & SessionResultCounts & { certificate_url?: string | null });
+    } & SessionResultCounts & { certificate_url?: string | null } & EndScreenFields);
 
 export interface GradingSessionItem {
   session_id: string;
@@ -1073,6 +1101,9 @@ export interface ExamRosterEntry {
   participant_no: string;
   status: string;
   checked_in_at?: string | null;
+  // token is the exam check-in credential (FR-47/FR-48, NFR-S7) — masked by
+  // default in the roster UI and revealed only via an explicit per-row toggle.
+  token: string;
 }
 
 export interface ScoreBucket {
@@ -1110,6 +1141,7 @@ export interface District {
 export interface AdminResultRow {
   session_id: string;
   student_name: string;
+  school_name?: string | null;
   username?: string | null;
   score: number;
   submitted_at: string;

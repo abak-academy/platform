@@ -42,6 +42,7 @@ var _ interface {
 	GetExamDetail(context.Context, uuid.UUID) (*model.ExamDetail, error)
 	UpdateExam(context.Context, uuid.UUID, *model.Exam) error
 	ReplaceExamTestsTx(context.Context, pgx.Tx, uuid.UUID, []model.ExamTest) error
+	SetExamCertificateEnabled(context.Context, uuid.UUID, bool) error
 } = (*Repository)(nil)
 
 // Compile-time check: *Repository must implement all registration repository
@@ -63,7 +64,7 @@ var _ interface {
 	GetExamSessionForStudent(context.Context, uuid.UUID, uuid.UUID) (*model.ExamSession, error)
 	GetSessionWithQuestions(context.Context, uuid.UUID) ([]model.TestDetail, error)
 	GetSessionAnswers(context.Context, uuid.UUID) ([]model.ExamSessionAnswer, error)
-	SaveAnswersTx(context.Context, uuid.UUID, []model.ExamSessionAnswer) error
+	SaveAnswersTx(context.Context, uuid.UUID, []model.ExamSessionAnswer, *int) error
 	SubmitSessionTx(context.Context, pgx.Tx, uuid.UUID, []model.ExamSessionAnswer, float64, bool) (int64, error)
 	LogViolation(context.Context, model.SessionViolationLog) error
 	ReopenSession(context.Context, uuid.UUID, int) error
@@ -301,8 +302,8 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 24 {
-		t.Fatalf("scanExam passed %d destinations, want 24", got)
+	if got := len(rec.dests); got != 28 {
+		t.Fatalf("scanExam passed %d destinations, want 28", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -343,6 +344,18 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 	}
 	if _, ok := rec.dests[23].(**int); !ok {
 		t.Errorf("dest[23] = %T, want **int (exam_number, nullable pointer field)", rec.dests[23])
+	}
+	if _, ok := rec.dests[24].(*bool); !ok {
+		t.Errorf("dest[24] = %T, want *bool (certificate_enabled)", rec.dests[24])
+	}
+	if _, ok := rec.dests[25].(**string); !ok {
+		t.Errorf("dest[25] = %T, want **string (certificate_template_html, nullable pointer field)", rec.dests[25])
+	}
+	if _, ok := rec.dests[26].(**string); !ok {
+		t.Errorf("dest[26] = %T, want **string (end_screen_image_url, nullable pointer field)", rec.dests[26])
+	}
+	if _, ok := rec.dests[27].(**string); !ok {
+		t.Errorf("dest[27] = %T, want **string (end_screen_promo_text, nullable pointer field)", rec.dests[27])
 	}
 }
 
@@ -408,8 +421,8 @@ func TestScanExamSession_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExamSession returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 16 {
-		t.Fatalf("scanExamSession passed %d destinations, want 16 (id, registration_id, student_id, exam_id, attempt_number, started_at, submitted_at, extended_until, admin_submitted, score, certificate_key, certificate_generated_at, certificate_number, last_saved_at, status, created_at)", got)
+	if got := len(rec.dests); got != 17 {
+		t.Fatalf("scanExamSession passed %d destinations, want 17 (id, registration_id, student_id, exam_id, attempt_number, started_at, submitted_at, extended_until, admin_submitted, score, certificate_key, certificate_generated_at, certificate_number, last_saved_at, current_position, status, created_at)", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -454,11 +467,14 @@ func TestScanExamSession_passes_expected_destinations(t *testing.T) {
 	if _, ok := rec.dests[13].(**time.Time); !ok {
 		t.Errorf("dest[13] = %T, want **time.Time (last_saved_at, nullable)", rec.dests[13])
 	}
-	if _, ok := rec.dests[14].(*string); !ok {
-		t.Errorf("dest[14] = %T, want *string (status)", rec.dests[14])
+	if _, ok := rec.dests[14].(**int); !ok {
+		t.Errorf("dest[14] = %T, want **int (current_position, nullable)", rec.dests[14])
 	}
-	if _, ok := rec.dests[15].(*time.Time); !ok {
-		t.Errorf("dest[15] = %T, want *time.Time (created_at)", rec.dests[15])
+	if _, ok := rec.dests[15].(*string); !ok {
+		t.Errorf("dest[15] = %T, want *string (status)", rec.dests[15])
+	}
+	if _, ok := rec.dests[16].(*time.Time); !ok {
+		t.Errorf("dest[16] = %T, want *time.Time (created_at)", rec.dests[16])
 	}
 }
 

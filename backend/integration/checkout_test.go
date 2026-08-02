@@ -104,7 +104,7 @@ func webhookServer(t *testing.T, env *testEnv, payment service.PaymentClient) *h
 	cfg := &config.Config{CORSOrigins: []string{"*"}}
 	svc := service.NewWithStore(repo, repo, env.rdb, env.signer,
 		&service.NoopOTPProvider{}, &service.NoopEmailProvider{}, payment,
-		&service.NoopLogisticsClient{}, nil, cfg)
+		&service.NoopLogisticsClient{}, nil, cfg, nil)
 	h := handler.New(svc)
 	e := echo.New()
 	e.HideBanner = true
@@ -141,7 +141,7 @@ func logisticsServer(t *testing.T, env *testEnv, logistics service.LogisticsClie
 	cfg := &config.Config{CORSOrigins: []string{"*"}}
 	svc := service.NewWithStore(repo, repo, env.rdb, env.signer,
 		&service.NoopOTPProvider{}, &service.NoopEmailProvider{}, &capturingPaymentClient{},
-		logistics, nil, cfg)
+		logistics, nil, cfg, nil)
 	h := handler.New(svc)
 	e := echo.New()
 	e.HideBanner = true

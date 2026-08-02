@@ -116,6 +116,7 @@ describe("admin-exams grading hooks", () => {
         participant_no: "250620-0042-000001",
         status: "registered",
         checked_in_at: null,
+        token: "TOKEN-ANDI-001",
       },
     ];
     mockAuthFetch.mockResolvedValueOnce({ data: rows });

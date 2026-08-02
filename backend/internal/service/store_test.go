@@ -548,7 +548,7 @@ func TestPatchCart_PopulatesItemValueFromPhysicalItemLineTotal(t *testing.T) {
 	_, repo := newRealDBService(t)
 
 	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
-	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, spy, nil, nil)
+	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, spy, nil, nil, nil)
 
 	var productID string
 	if err := repo.Pool().QueryRow(ctx,
