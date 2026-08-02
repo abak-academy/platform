@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"akademi-bimbel/internal/model"
 )
@@ -1366,8 +1367,30 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 	return detail, nil
 }
 
+// execer is satisfied by both *pgxpool.Pool and pgx.Tx — it lets UpdateExam
+// and SetExamCertificateEnabled share one SQL statement each with their
+// _Tx twin instead of hand-duplicating a 20+ column UPDATE, which is exactly
+// how certificate_template_html went missing from the SET clause in the
+// first place (present in every SELECT, absent from this one hand-copied
+// statement).
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
 func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam) error {
-	tag, err := r.pool.Exec(ctx,
+	return updateExam(ctx, r.pool, id, e)
+}
+
+// UpdateExamTx is UpdateExam run against a caller-supplied transaction, so an
+// exam update and its outbox fan-out (async redesign 2026-08-02 — certificate
+// design/template edits re-enqueue CertificateNeeded for already-submitted
+// sessions) commit atomically.
+func (r *Repository) UpdateExamTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, e *model.Exam) error {
+	return updateExam(ctx, tx, id, e)
+}
+
+func updateExam(ctx context.Context, q execer, id uuid.UUID, e *model.Exam) error {
+	tag, err := q.Exec(ctx,
 		`UPDATE exam
 		SET title = $1, is_free = $2, scheduled_at = $3, scheduled_end_at = $4, requires_checkin = $5, allow_leaderboard = $6,
 			cdn_bundle = $7, bundle_url = $8, bundle_generated_at = $9,
@@ -1376,15 +1399,17 @@ func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam
 			result_config = $16, result_release_at = $17, status = $18,
 			mode = COALESCE(NULLIF($19, ''), mode),
 			certificate_design = $20, certificate_design_updated_at = $21,
-			end_screen_image_url = $22, end_screen_promo_text = $23
-		WHERE id = $24`,
+			end_screen_image_url = $22, end_screen_promo_text = $23,
+			certificate_template_html = $24
+		WHERE id = $25`,
 		e.Title, e.IsFree, e.ScheduledAt, e.ScheduledEndAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt,
 		e.CheckInWindowMinutes, e.GraceWindowMinutes, e.MaxAttempts,
 		e.TimerMode, e.DurationMinutes, e.Randomize,
 		e.ResultConfig, e.ResultReleaseAt, e.Status, e.Mode,
 		e.CertificateDesign, e.CertificateDesignUpdatedAt,
-		e.EndScreenImageURL, e.EndScreenPromoText, id,
+		e.EndScreenImageURL, e.EndScreenPromoText,
+		e.CertificateTemplateHTML, id,
 	)
 	if err != nil {
 		return err
@@ -1399,7 +1424,19 @@ func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam
 // certificate_design or certificate_design_updated_at (FR-11/FR-12) — a
 // single-column UPDATE mirroring UpdateSchoolStatus.
 func (r *Repository) SetExamCertificateEnabled(ctx context.Context, id uuid.UUID, enabled bool) error {
-	tag, err := r.pool.Exec(ctx, `UPDATE exam SET certificate_enabled = $1 WHERE id = $2`, enabled, id)
+	return setExamCertificateEnabled(ctx, r.pool, id, enabled)
+}
+
+// SetExamCertificateEnabledTx is SetExamCertificateEnabled run against a
+// caller-supplied transaction, so flipping the flag on and fanning out
+// CertificateNeeded for already-submitted sessions (Finding 3, 2026-08 review)
+// commit atomically.
+func (r *Repository) SetExamCertificateEnabledTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, enabled bool) error {
+	return setExamCertificateEnabled(ctx, tx, id, enabled)
+}
+
+func setExamCertificateEnabled(ctx context.Context, q execer, id uuid.UUID, enabled bool) error {
+	tag, err := q.Exec(ctx, `UPDATE exam SET certificate_enabled = $1 WHERE id = $2`, enabled, id)
 	if err != nil {
 		return err
 	}
@@ -1407,6 +1444,31 @@ func (r *Repository) SetExamCertificateEnabled(ctx context.Context, id uuid.UUID
 		return ErrNotFound
 	}
 	return nil
+}
+
+// ListSubmittedSessionIDsTx returns every submitted exam_session id for an
+// exam, regardless of grading state (unlike dedupedSubmittedSessions, which
+// dedupes to one row per registration and is scoped to leaderboard/analytics
+// display — regeneration must reach every submitted session, not just the
+// latest graded attempt per student). Used to fan out CertificateNeeded when
+// a design/template edit or a certificate_enabled flip makes previously
+// ineligible sessions eligible (Findings 2/3, 2026-08 review).
+func (r *Repository) ListSubmittedSessionIDsTx(ctx context.Context, tx pgx.Tx, examID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := tx.Query(ctx, `SELECT id FROM exam_session WHERE exam_id = $1 AND status = 'submitted'`, examID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // ReplaceExamTestsTx atomically replaces all exam_test links for an exam. Caller
