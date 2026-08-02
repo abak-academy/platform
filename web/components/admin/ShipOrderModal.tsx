@@ -58,7 +58,10 @@ export function ShipOrderModal({
         <DialogHeader>
           <DialogTitle>{t("orders_ship_title")}</DialogTitle>
           <DialogDescription>
-            {t("orders_ship_subtitle").replace("{order}", orderNumber)}
+            {t(manualMode ? "orders_ship_subtitle" : "orders_ship_choice_subtitle").replace(
+              "{order}",
+              orderNumber,
+            )}
           </DialogDescription>
         </DialogHeader>
 
