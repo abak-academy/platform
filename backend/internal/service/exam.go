@@ -902,30 +902,74 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 		}
 		return model.Exam{}, err
 	}
-	if !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign) {
+	designChanged := !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign)
+	if designChanged {
 		if err := validateCertificateDesign(m.CertificateDesign); err != nil {
 			return model.Exam{}, err
 		}
 	}
+	templateChanged := !stringPtrEqual(existing.CertificateTemplateHTML, m.CertificateTemplateHTML)
 	m.ID = id
 	m.CreatedAt = existing.CreatedAt
 	// C3/FR-14: template, background key, and layout now share one JSON blob
 	// (Task 8/FR-26), so a single raw-bytes compare on that blob is the whole
 	// staleness check — bump only when it actually changed, so an unrelated
 	// field edit doesn't falsely mark the design stale.
-	if !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign) {
+	if designChanged {
 		now := time.Now()
 		m.CertificateDesignUpdatedAt = &now
 	} else {
 		m.CertificateDesignUpdatedAt = existing.CertificateDesignUpdatedAt
 	}
-	if err := s.storeRepo.UpdateExam(ctx, id, &m); err != nil {
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Exam{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.UpdateExamTx(ctx, tx, id, &m); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return model.Exam{}, ErrExamNotFound
 		}
 		return model.Exam{}, err
 	}
+	// A saved design or template edit can make an already-submitted session
+	// eligible for a certificate it never got — a template that didn't
+	// exist yet at submission time, or a design change that adds a field —
+	// so fan out CertificateNeeded to every submitted session in the same
+	// transaction as the save (2026-08 review, Finding 2). The worker
+	// decides actual readiness on its own; a session this edit didn't
+	// affect just gets a harmless no-op.
+	if designChanged || templateChanged {
+		if err := s.enqueueCertificateNeededForSubmittedSessionsTx(ctx, tx, id); err != nil {
+			return model.Exam{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return model.Exam{}, err
+	}
 	return m, nil
+}
+
+// enqueueCertificateNeededForSubmittedSessionsTx fans out a "CertificateNeeded"
+// outbox event to every submitted session of an exam, in the given
+// transaction. Shared by UpdateExam (design/template edits, Finding 2) and
+// SetExamCertificateEnabled (the off->on transition, Finding 3) — both are
+// "this exam just became more certificate-eligible than it was" triggers,
+// and the worker (GenerateCertificatePDF) decides per-session readiness on
+// its own, so over-enqueueing here is always safe, just possibly a no-op.
+func (s *Service) enqueueCertificateNeededForSubmittedSessionsTx(ctx context.Context, tx pgx.Tx, examID uuid.UUID) error {
+	sessionIDs, err := s.storeRepo.ListSubmittedSessionIDsTx(ctx, tx, examID)
+	if err != nil {
+		return err
+	}
+	for _, sessID := range sessionIDs {
+		if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "exam_session", sessID, "CertificateNeeded", CertificateNeededPayload{SessionID: sessID}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetExamCertificateEnabled flips an exam's certificate_enabled flag through
@@ -942,12 +986,34 @@ func (s *Service) SetExamCertificateEnabled(ctx context.Context, id uuid.UUID, e
 		}
 		return model.Exam{}, err
 	}
-	if err := s.storeRepo.SetExamCertificateEnabled(ctx, id, enabled); err != nil {
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Exam{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.SetExamCertificateEnabledTx(ctx, tx, id, enabled); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return model.Exam{}, ErrExamNotFound
 		}
 		return model.Exam{}, err
 	}
+	// Turning certificates on can make already-submitted sessions eligible
+	// for the first time — without this, a session submitted while
+	// certificates were disabled never got a replacement event and was
+	// abandoned forever (2026-08 review, Finding 3). Only the actual
+	// off->on transition fans out, so a redundant enable call on an
+	// already-enabled exam doesn't re-flood the outbox.
+	if enabled && !exam.CertificateEnabled {
+		if err := s.enqueueCertificateNeededForSubmittedSessionsTx(ctx, tx, id); err != nil {
+			return model.Exam{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return model.Exam{}, err
+	}
+
 	exam.CertificateEnabled = enabled
 	return *exam, nil
 }
@@ -957,6 +1023,13 @@ func rawMessagePtrEqual(a, b *json.RawMessage) bool {
 		return a == b
 	}
 	return string(*a) == string(*b)
+}
+
+func stringPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // CertificateDesignResponse is the admin editor's read model for GET
