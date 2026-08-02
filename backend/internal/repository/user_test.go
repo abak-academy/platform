@@ -40,7 +40,7 @@ func TestNormalizeEmail(t *testing.T) {
 // TestListSchools verifies that ListSchools returns id, name, code, AND
 // school_types for every active school, ordered by name.
 func TestListSchools(t *testing.T) {
-	pool := newGradingTestPool(t)
+	pool := newPristineTestPool(t)
 	repo := New(pool)
 	ctx := context.Background()
 

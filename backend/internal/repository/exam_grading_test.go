@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,10 +15,59 @@ import (
 	"akademi-bimbel/internal/model"
 )
 
-// newGradingTestPool spins up an ephemeral Postgres container, applies the app's
-// migrations, and returns a connected pool. Used only by this file's real-DB tests
-// for the Slice 5 Task 3 grading/rank/result reads (no fake/mocked SQL at this layer).
+// newGradingTestPool returns a migrated Postgres. Despite the name it is the
+// package's general real-DB helper — 14 files call it — so the container is shared:
+// 44 callers each starting their own cost ~150s of CI. Rows are never reset between
+// tests, so fixtures must key on a unique value (see the uuid in insertGradingUser).
+var (
+	gradingPoolOnce sync.Once
+	gradingPool     *pgxpool.Pool
+	gradingPoolErr  error
+)
+
 func newGradingTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	gradingPoolOnce.Do(func() {
+		ctx := context.Background()
+
+		pgContainer, err := tcpostgres.Run(ctx,
+			"postgres:17-alpine",
+			tcpostgres.WithDatabase("akademi_test"),
+			tcpostgres.WithUsername("test"),
+			tcpostgres.WithPassword("test"),
+			tcpostgres.BasicWaitStrategies(),
+		)
+		if err != nil {
+			gradingPoolErr = fmt.Errorf("start postgres container: %w", err)
+			return
+		}
+
+		dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+		if err != nil {
+			gradingPoolErr = fmt.Errorf("connection string: %w", err)
+			return
+		}
+
+		if err := infra.RunMigrations(ctx, dsn); err != nil {
+			gradingPoolErr = fmt.Errorf("run migrations: %w", err)
+			return
+		}
+
+		gradingPool, err = pgxpool.New(ctx, dsn)
+		if err != nil {
+			gradingPoolErr = fmt.Errorf("open pool: %w", err)
+		}
+	})
+	if gradingPoolErr != nil {
+		t.Fatalf("shared grading pool: %v", gradingPoolErr)
+	}
+	return gradingPool
+}
+
+// newPristineTestPool is newGradingTestPool's un-shared twin, for the handful of
+// tests that assert on global state — an exact row count, or a table they clear
+// first. They cannot see other tests' rows, so they pay for their own container.
+func newPristineTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	ctx := context.Background()
 
@@ -37,11 +87,9 @@ func newGradingTestPool(t *testing.T) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("connection string: %v", err)
 	}
-
 	if err := infra.RunMigrations(ctx, dsn); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
-
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		t.Fatalf("open pool: %v", err)
