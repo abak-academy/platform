@@ -208,20 +208,22 @@ export function ParticipantPicker({
       {/* Selection count + bulk actions */}
       <div className="flex items-center justify-between text-xs text-ink-500">
         <span>
-          {selectableCount} / {students.length} dipilih
+          {t("participant_picker_selected_count")
+            .replace("{selected}", String(selectableCount))
+            .replace("{total}", String(students.length))}
         </span>
         <div className="flex gap-2">
           <button
             onClick={selectAll}
             className="font-medium text-brand-600 hover:underline"
           >
-            Pilih semua
+            {t("participant_picker_select_all")}
           </button>
           <button
             onClick={deselectAll}
             className="font-medium text-ink-500 hover:underline"
           >
-            Hapus semua
+            {t("participant_picker_deselect_all")}
           </button>
         </div>
       </div>
@@ -245,14 +247,22 @@ export function ParticipantPicker({
         )}
         {students.map((s) => {
           const isSelected = selected.includes(s.id);
+          const schoolLabel = s.school_name
+            ? s.school_name
+            : s.unlisted_school_name
+              ? `${t("students_school_unlisted_tag")}: ${s.unlisted_school_name}`
+              : "";
           return (
             <button
               key={s.id}
               type="button"
+              role="checkbox"
+              aria-checked={isSelected}
+              aria-label={s.name}
               onClick={() => toggle(s.id)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-surface-2",
-                isSelected && "bg-brand-50",
+                "flex w-full items-center gap-3 rounded-md border border-transparent px-3 py-2 text-left text-sm transition-colors hover:bg-surface-2",
+                isSelected && "border-brand-600 bg-brand-50",
               )}
             >
               <div
@@ -273,6 +283,7 @@ export function ParticipantPicker({
                   @{s.username}
                   {s.grade ? ` · ${t("school")} ${s.grade}` : ""}
                   {s.jenjang ? ` · ${s.jenjang}` : ""}
+                  {schoolLabel ? ` · ${schoolLabel}` : ""}
                 </div>
               </div>
             </button>
@@ -305,6 +316,7 @@ function SchoolFacetSelect({
         <SelectItem value="">
           <span className="text-ink-500">{t("select_school")}</span>
         </SelectItem>
+        <SelectItem value="none">{t("students_school_facet_none")}</SelectItem>
         {schools.map((s) => (
           <SelectItem key={s.id} value={s.id}>
             {s.name}
