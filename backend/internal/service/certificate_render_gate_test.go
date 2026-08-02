@@ -245,6 +245,50 @@ func TestCertificateRender_ThroughWorker_NoOpWhenDisabled(t *testing.T) {
 	}
 }
 
+// TestCertificateRender_DesignChangeRegeneratesThroughWorker is the
+// end-to-end proof for Finding A (2026-08 review): a design change fanned
+// out as a CertificateNeeded event must actually reach a real regenerated
+// PDF through GenerateCertificatePDF, not just flip a boolean in a unit
+// test. certificate_key is deterministic per session
+// (uploadCertificatePDF: "certificates/<sessionID>.pdf"), so a fresh key
+// can't be the proof — certificate_generated_at advancing is: the worker
+// only ever bumps it after render+upload actually ran again.
+func TestCertificateRender_DesignChangeRegeneratesThroughWorker(t *testing.T) {
+	svc := renderGateService(t)
+	sessID, examID := renderGateSeedSubmittedSession(t, svc, "Render Gate Design Change "+uuid.NewString(), "Render Gate Student")
+
+	if err := svc.GenerateCertificatePDF(context.Background(), sessID); err != nil {
+		t.Fatalf("GenerateCertificatePDF (initial): %v", err)
+	}
+	before, err := svc.storeRepo.GetExamSessionByID(context.Background(), sessID)
+	if err != nil {
+		t.Fatalf("GetExamSessionByID (before): %v", err)
+	}
+	if before.CertificateKey == nil || before.CertificateGeneratedAt == nil {
+		t.Fatal("initial generation did not persist a certificate")
+	}
+
+	// Simulate an admin design edit landing after the cached PDF, the same
+	// way UpdateExam bumps certificate_design_updated_at on a real save.
+	designUpdatedAt := before.CertificateGeneratedAt.Add(time.Second)
+	if _, err := svc.storeRepo.Pool().Exec(context.Background(),
+		`UPDATE exam SET certificate_design_updated_at = $1 WHERE id = $2`, designUpdatedAt, examID,
+	); err != nil {
+		t.Fatalf("set certificate_design_updated_at: %v", err)
+	}
+
+	if err := svc.GenerateCertificatePDF(context.Background(), sessID); err != nil {
+		t.Fatalf("GenerateCertificatePDF (after design change): %v", err)
+	}
+	after, err := svc.storeRepo.GetExamSessionByID(context.Background(), sessID)
+	if err != nil {
+		t.Fatalf("GetExamSessionByID (after): %v", err)
+	}
+	if after.CertificateGeneratedAt == nil || !after.CertificateGeneratedAt.After(*before.CertificateGeneratedAt) {
+		t.Fatalf("certificate_generated_at did not advance (before=%v, after=%v) — the fanned-out CertificateNeeded event was a no-op, the stale PDF is still being served", before.CertificateGeneratedAt, after.CertificateGeneratedAt)
+	}
+}
+
 // TestCardRender_ThroughWorker proves the exam card's static build-time
 // template (backend/internal/service/assets/exam_card_template.html,
 // generated from web/components/exam/ExamCardPrintable.tsx by

@@ -186,3 +186,98 @@ func TestGenerateCertificatePDF_NoTemplateSaved_NoOp(t *testing.T) {
 		t.Errorf("renderer calls = %d, want 0 — no saved template means nothing to render", renderer.calls)
 	}
 }
+
+// ---------- tests: certificateNeedsRegeneration (2026-08 review, Finding A) ----------
+//
+// The previous fix (Findings 2/3) made a design/template save fan out
+// CertificateNeeded to already-submitted sessions, but GenerateCertificatePDF's
+// staleness check never looked at exam.CertificateDesignUpdatedAt — so for a
+// session that already had a certificate_key, that fanned-out event was a
+// no-op and the stale PDF was served forever. These are direct unit tests on
+// the pure decision function (no DB, no renderer) so the design-staleness
+// term is covered without depending on the gotenberg_integration render gate.
+
+func certNeedsRegenSession(certGeneratedAt *time.Time) *model.ExamSession {
+	key := "certificates/existing.pdf"
+	return &model.ExamSession{
+		CertificateKey:         &key,
+		CertificateGeneratedAt: certGeneratedAt,
+	}
+}
+
+func TestCertificateNeedsRegeneration_DesignChangedAfterGeneration_True(t *testing.T) {
+	generatedAt := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	designUpdatedAt := generatedAt.Add(time.Hour)
+	sess := certNeedsRegenSession(&generatedAt)
+	exam := &model.Exam{CertificateDesignUpdatedAt: &designUpdatedAt}
+
+	if got := certificateNeedsRegeneration(sess, exam, nil); !got {
+		t.Errorf("certificateNeedsRegeneration = %v, want true — a design change after the cached PDF must trigger regeneration", got)
+	}
+}
+
+func TestCertificateNeedsRegeneration_DesignChangedBeforeGeneration_False(t *testing.T) {
+	generatedAt := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	designUpdatedAt := generatedAt.Add(-time.Hour)
+	sess := certNeedsRegenSession(&generatedAt)
+	exam := &model.Exam{CertificateDesignUpdatedAt: &designUpdatedAt}
+
+	if got := certificateNeedsRegeneration(sess, exam, nil); got {
+		t.Errorf("certificateNeedsRegeneration = %v, want false — the cached PDF already reflects the latest design", got)
+	}
+}
+
+func TestCertificateNeedsRegeneration_NoDesignChange_False(t *testing.T) {
+	generatedAt := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	sess := certNeedsRegenSession(&generatedAt)
+	exam := &model.Exam{CertificateDesignUpdatedAt: nil}
+
+	if got := certificateNeedsRegeneration(sess, exam, nil); got {
+		t.Errorf("certificateNeedsRegeneration = %v, want false — an already-current cached PDF with no design edit must stay cached", got)
+	}
+}
+
+func TestCertificateNeedsRegeneration_NoCachedCertificate_True(t *testing.T) {
+	sess := &model.ExamSession{}
+	exam := &model.Exam{}
+
+	if got := certificateNeedsRegeneration(sess, exam, nil); !got {
+		t.Errorf("certificateNeedsRegeneration = %v, want true — no cached PDF at all must always generate", got)
+	}
+}
+
+// TestResolveCertificateURL_DesignChangedAfterGeneration_StillNeverRenders
+// proves the design-staleness term added to certificateNeedsRegeneration is
+// scoped to GenerateCertificatePDF (the worker) alone: resolveCertificateURL
+// (the read path, "api langsung ambil dari storage") must keep serving the
+// cached certificate_key and issue zero renderer calls even when the exam's
+// design was edited after the cached PDF was generated. Complements
+// TestResolveCertificateURL_CachedGate (certificate_gate_db_test.go), which
+// this test does not modify.
+func TestResolveCertificateURL_DesignChangedAfterGeneration_StillNeverRenders(t *testing.T) {
+	pool, _ := gateTestPool(t)
+	renderer := &gateFakeRenderer{}
+	svc := gateTestService(t, pool, renderer)
+	ctx := context.Background()
+
+	sess := gateCachedSession() // certificate_generated_at = now - 30m
+	designUpdatedAt := time.Now().Add(-10 * time.Minute)
+	exam := &model.Exam{
+		Title:                      "Design Changed Read Path",
+		ResultConfig:               "score_only",
+		CertificateDesign:          certDesignJSON("classic"),
+		CertificateEnabled:         true,
+		CertificateDesignUpdatedAt: &designUpdatedAt,
+	}
+
+	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil)
+	if err != nil {
+		t.Fatalf("resolveCertificateURL: %v", err)
+	}
+	if url == nil || *url == "" {
+		t.Fatalf("certificate_url = %v, want a presigned URL — the read path must keep serving the cached PDF regardless of design staleness", url)
+	}
+	if renderer.calls != 0 {
+		t.Errorf("PDF renderer calls = %d, want 0 — the read path must never regenerate, even when the design changed after the cached PDF (that is the worker's job alone)", renderer.calls)
+	}
+}

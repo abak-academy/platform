@@ -439,6 +439,19 @@ func substituteTemplateTokens(html string, values map[FieldID]string) string {
 	})
 }
 
+// certificateNeedsRegeneration is GenerateCertificatePDF's staleness check:
+// no cached PDF yet, a re-grade landed after the cached PDF, or an admin
+// saved a design change after the cached PDF (2026-08 review, Finding A —
+// without this last term, the CertificateNeeded event UpdateExam/
+// SetExamCertificateEnabled fan out on a design change is a no-op for every
+// session that already has a certificate_key, so the fan-out never actually
+// repairs the stale PDF it was written for).
+func certificateNeedsRegeneration(sess *model.ExamSession, exam *model.Exam, gradedAt *time.Time) bool {
+	return sess.CertificateKey == nil || sess.CertificateGeneratedAt == nil ||
+		(gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) ||
+		(exam.CertificateDesignUpdatedAt != nil && exam.CertificateDesignUpdatedAt.After(*sess.CertificateGeneratedAt))
+}
+
 // CertificateNeededPayload is the outbox payload for the "CertificateNeeded"
 // event (async redesign 2026-08-02). SubmitSession, ForceSubmitSession, and
 // GradeEssayAnswer each insert this event, in the same transaction as the
@@ -516,9 +529,7 @@ func (s *Service) GenerateCertificatePDF(ctx context.Context, sessionID uuid.UUI
 	}
 
 	gradedAt := latestGradedAt(answers)
-	needsGeneration := sess.CertificateKey == nil || sess.CertificateGeneratedAt == nil ||
-		(gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt))
-	if !needsGeneration {
+	if !certificateNeedsRegeneration(sess, exam, gradedAt) {
 		return nil
 	}
 
