@@ -11,10 +11,11 @@ on:
   pull_request:
 
 # Without this, three pushes in a row leave six runs racing and none cancelled,
-# even though only the newest ref matters.
+# even though only the newest ref matters. Not on main: those runs publish images to
+# two registries from three jobs, and a cancelled one leaves a partial tag set.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   backend:
