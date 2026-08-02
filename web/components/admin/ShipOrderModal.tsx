@@ -75,8 +75,8 @@ export function ShipOrderModal({
         )}
 
         {!manualMode && (
-          <DialogFooter className="sm:justify-between">
-            <Button type="button" variant="ghost" onClick={() => setManualMode(true)} disabled={isPending}>
+          <DialogFooter className="flex-wrap sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => setManualMode(true)} disabled={isPending}>
               {t("orders_ship_manual_choice")}
             </Button>
             <div className="flex gap-2">
