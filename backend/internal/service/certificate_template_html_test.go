@@ -174,6 +174,95 @@ func TestValidateCertificateTemplateHTML_PrependsDoctype(t *testing.T) {
 	}
 }
 
+// ---------- SSRF via CSS @import (2026-08 review, Finding B) ----------
+//
+// certificateTemplateHasExternalResource used to match only src=/href=/
+// url(...) — @import's bare-string form ("@import \"http://...\";", no
+// url() wrapper) slipped through it entirely, and <style> content is
+// deliberately preserved (certificateTemplateDocumentPolicy), so this
+// reached Gotenberg's Chromium, which runs inside the compose network and
+// can reach internal hosts. The fix inverted the check (strip data: URIs,
+// then reject anything shaped like an absolute/protocol-relative URL) so
+// it isn't just this one syntax patched onto the old blacklist.
+
+func TestValidateCertificateTemplateHTML_RejectsAtImportBareString(t *testing.T) {
+	html := `<html><head><style>@import "http://169.254.169.254/latest/meta-data";</style></head><body>{{student_name}}</body></html>`
+	_, err := ValidateCertificateTemplateHTML(html, Layout{
+		Page: Page{WidthMm: 297, HeightMm: 210},
+		Fields: []LayoutField{
+			{ID: "student_name", Kind: "text", Content: "{{student_name}}", XMm: 10, YMm: 10, WMm: 50, Visible: true},
+		},
+	})
+	if err == nil {
+		t.Fatal("want rejection for @import with a bare http:// string (no url() wrapper)")
+	}
+}
+
+func TestValidateCertificateTemplateHTML_RejectsAtImportURLFunction(t *testing.T) {
+	html := `<html><head><style>@import url("http://internal-service/x.css");</style></head><body>{{student_name}}</body></html>`
+	_, err := ValidateCertificateTemplateHTML(html, Layout{
+		Page: Page{WidthMm: 297, HeightMm: 210},
+		Fields: []LayoutField{
+			{ID: "student_name", Kind: "text", Content: "{{student_name}}", XMm: 10, YMm: 10, WMm: 50, Visible: true},
+		},
+	})
+	if err == nil {
+		t.Fatal("want rejection for @import url(\"http://...\")")
+	}
+}
+
+func TestValidateCertificateTemplateHTML_RejectsFontFaceExternalSrc(t *testing.T) {
+	html := `<html><head><style>@font-face{font-family:"x";src:url(http://evil.example/font.ttf) format("truetype");}</style></head><body>{{student_name}}</body></html>`
+	_, err := ValidateCertificateTemplateHTML(html, Layout{
+		Page: Page{WidthMm: 297, HeightMm: 210},
+		Fields: []LayoutField{
+			{ID: "student_name", Kind: "text", Content: "{{student_name}}", XMm: 10, YMm: 10, WMm: 50, Visible: true},
+		},
+	})
+	if err == nil {
+		t.Fatal("want rejection for @font-face src referencing an external http(s) URL")
+	}
+}
+
+func TestValidateCertificateTemplateHTML_RejectsProtocolRelativeInStyle(t *testing.T) {
+	html := `<html><head><style>@import "//evil.example/x.css";</style></head><body>{{student_name}}</body></html>`
+	_, err := ValidateCertificateTemplateHTML(html, Layout{
+		Page: Page{WidthMm: 297, HeightMm: 210},
+		Fields: []LayoutField{
+			{ID: "student_name", Kind: "text", Content: "{{student_name}}", XMm: 10, YMm: 10, WMm: 50, Visible: true},
+		},
+	})
+	if err == nil {
+		t.Fatal("want rejection for a protocol-relative @import")
+	}
+}
+
+// TestValidateCertificateTemplateHTML_LegitimateTemplatePasses is the
+// companion positive case: a template using only data: URIs and
+// {{certificate_*}} tokens — the two legitimate ways to reference an
+// asset — must still be accepted by the inverted check.
+func TestValidateCertificateTemplateHTML_LegitimateTemplatePasses(t *testing.T) {
+	key := "certificates/exam/logo.png"
+	layout := Layout{Page: Page{WidthMm: 297, HeightMm: 210}, Fields: []LayoutField{
+		{ID: "student_name", Kind: "text", Content: "{{student_name}}", XMm: 10, YMm: 10, WMm: 50, Visible: true},
+		{ID: "logo", Kind: "image", XMm: 10, YMm: 10, WMm: 30, HMm: 20, Visible: true, AssetKey: &key},
+	}}
+	html := `<html><head><style>` +
+		`@font-face{font-family:"x";src:url(data:font/ttf;base64,AAAA//BBBB==) format("truetype");}` +
+		`</style></head><body>` +
+		`<div>{{student_name}}</div>` +
+		`<img src="{{certificate_background_url}}"/>` +
+		`<img src="{{certificate_asset_logo}}"/>` +
+		`</body></html>`
+	got, err := ValidateCertificateTemplateHTML(html, layout)
+	if err != nil {
+		t.Fatalf("unexpected rejection of a legitimate data:/{{}}-only template: %v", err)
+	}
+	if !strings.Contains(got, "base64,AAAA//BBBB==") || !strings.Contains(got, "{{certificate_asset_logo}}") {
+		t.Fatalf("sanitizer mangled a legitimate template: %q", got)
+	}
+}
+
 // ---------- defense in depth: certificateIsSensitive / certificateLayoutAllowed ----------
 
 // TestCertificateIsSensitive_TemplateTokenNotInLayout_StillDetected proves

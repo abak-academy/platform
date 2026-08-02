@@ -501,18 +501,60 @@ var certificateTemplateDocumentPolicy = func() *bluemonday.Policy {
 	return p
 }()
 
-// certificateExternalResourcePattern matches an external resource reference
-// in an FE-authored certificate template: an http(s):// or protocol-relative
-// "//" URL immediately following a src=/href= attribute assignment or a CSS
-// url(...). Anchored right after the assignment/paren so a data: URI —
-// which can coincidentally contain "//" deep in its base64 payload — never
-// false-positives; every legitimate asset (fonts, background, field images)
-// must come from backend-controlled storage via a {{certificate_*}} token or
-// a data: URI, never a literal external URL.
-var certificateExternalResourcePattern = regexp.MustCompile(`(?i)(?:src|href)\s*=\s*["']?\s*(?:https?:)?//|url\(\s*["']?\s*(?:https?:)?//`)
+// certificateDataURIPattern matches a data: URI value anywhere it can
+// legally appear in the document (src=, href=, CSS url(...), or a bare
+// quoted string) so certificateTemplateHasExternalResource can strip it
+// before scanning — a long base64 payload (an embedded @font-face, in
+// particular) can coincidentally contain "//" and must never false-positive
+// against the external-resource scan below.
+var certificateDataURIPattern = regexp.MustCompile(`(?i)data:[^"'()\s]*`)
 
+// certificateAbsoluteURLPattern matches the start of an absolute
+// (scheme://) or protocol-relative (//) URL: an optional URI scheme
+// followed by "//" and at least one more non-whitespace, non-delimiter
+// character (so a bare "//" typed as prose, e.g. "8/10 // catatan", does
+// not false-positive — a real URL always has something immediately after
+// the slashes).
+var certificateAbsoluteURLPattern = regexp.MustCompile(`(?i)(?:[a-z][a-z0-9+.-]*:)?//[^\s"'<>()]`)
+
+// certificateTemplateHasExternalResource decides whether html references
+// any external resource. Deliberately inverted from an attribute/syntax
+// blacklist (2026-08 review, Finding B): the previous version matched
+// src=, href=, and CSS url(...) specifically, so it missed CSS @import's
+// bare-string form ("@import \"http://...\";", no url() wrapper) — and the
+// next blacklist gap after that one is only a matter of time (image-set(),
+// -moz-binding, @font-face without url(), ...). The only two ways a
+// certificate template may legitimately reference a resource are a data:
+// URI (asset bytes inlined at save time) and a {{certificate_*}} token the
+// worker substitutes with a backend-presigned URL — so this strips every
+// data: URI first, then rejects the document if anything shaped like an
+// absolute or protocol-relative URL remains, regardless of what surrounds
+// it.
+//
+// Known limits, stated honestly rather than implied complete:
+//   - It catches only URL-shaped text (scheme:// or //). A resource
+//     reference with no "//" at all — e.g. a bare "evil.example/x" relied
+//     on by CSS's protocol-implicit resolution in some non-browser
+//     contexts, or a scheme like "javascript:" with no slashes — would
+//     not be flagged by this check alone. In practice this is moot here:
+//     bluemonday's allowlist (certificateTemplateDocumentPolicy) never
+//     permits an href attribute or an <a>/<script> element, and CSS/HTML
+//     have no resource-fetching syntax that omits "//" for a network URL.
+//   - It is a textual scan of the whole document, not a CSS/HTML parser,
+//     so it cannot distinguish "this // is inside an inert HTML comment"
+//     from "this // is live". Bluemonday strips HTML comments already;
+//     nothing here re-parses <style> content, so a syntactically-invalid
+//     CSS construct that happens to contain "scheme://" text is still
+//     rejected even if a real browser would never have fetched it — a
+//     false rejection is the safe direction to fail in.
+//   - A legitimate template that types a literal "//" followed
+//     immediately by a non-space character (no natural sentence puts
+//     them that close) would be rejected too. This is the trade-off the
+//     review asked for explicitly: reject a shape that might be a URL,
+//     rather than enumerate every syntax that can carry one.
 func certificateTemplateHasExternalResource(html string) bool {
-	return certificateExternalResourcePattern.MatchString(html)
+	stripped := certificateDataURIPattern.ReplaceAllString(html, "")
+	return certificateAbsoluteURLPattern.MatchString(stripped)
 }
 
 // sanitizeCertificateTemplateHTML strips everything outside
