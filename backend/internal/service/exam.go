@@ -911,11 +911,14 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 	templateChanged := !stringPtrEqual(existing.CertificateTemplateHTML, m.CertificateTemplateHTML)
 	m.ID = id
 	m.CreatedAt = existing.CreatedAt
-	// C3/FR-14: template, background key, and layout now share one JSON blob
-	// (Task 8/FR-26), so a single raw-bytes compare on that blob is the whole
-	// staleness check — bump only when it actually changed, so an unrelated
-	// field edit doesn't falsely mark the design stale.
-	if designChanged {
+	// C3/FR-14: bump on a change to either half of what the worker renders —
+	// the design blob (template name, background key, layout) or the serialized
+	// template HTML. The worker's needsGeneration compares this timestamp against
+	// certificate_generated_at, so a template-only edit that left it untouched
+	// enqueued CertificateNeeded and was then consumed as a no-op, leaving the
+	// stale PDF in place (2026-08 review). Still guarded so an unrelated field
+	// edit does not falsely mark the design stale.
+	if designChanged || templateChanged {
 		now := time.Now()
 		m.CertificateDesignUpdatedAt = &now
 	} else {

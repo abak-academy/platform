@@ -178,3 +178,58 @@ func TestSetExamCertificateEnabled_RedundantEnable_DoesNotReFanOut(t *testing.T)
 		t.Fatalf("outbox CertificateNeeded rows after a redundant enable = %d, want 0", got)
 	}
 }
+
+// TestUpdateExam_TemplateOnlyChange_BumpsDesignUpdatedAt is the 2026-08 review's
+// last P1. The fan-out above enqueued CertificateNeeded on a template-only save,
+// but UpdateExam bumped certificate_design_updated_at only when the *design blob*
+// changed — so the worker's needsGeneration saw the cached PDF as current and
+// consumed the event as a no-op, leaving the stale certificate in place. The
+// enqueue was correct and the outcome was still nothing, which is why this
+// asserts the timestamp rather than the event count.
+func TestUpdateExam_TemplateOnlyChange_BumpsDesignUpdatedAt(t *testing.T) {
+	pool, _ := gateTestPool(t)
+	renderer := &gateFakeRenderer{}
+	svc := gateTestService(t, pool, renderer)
+	ctx := context.Background()
+
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Template Bump " + uuid.NewString(), CertificateDesign: certDesignJSON("classic")})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+
+	detail, err := svc.GetExam(ctx, exam.ID)
+	if err != nil {
+		t.Fatalf("GetExam: %v", err)
+	}
+	overlay := detail.Exam
+	first := `<div>{{student_name}}</div>`
+	overlay.CertificateTemplateHTML = &first
+	saved, err := svc.UpdateExam(ctx, exam.ID, overlay)
+	if err != nil {
+		t.Fatalf("UpdateExam (first template): %v", err)
+	}
+	if saved.CertificateDesignUpdatedAt == nil {
+		t.Fatal("first template save left certificate_design_updated_at null")
+	}
+	before := *saved.CertificateDesignUpdatedAt
+
+	// Second save changes ONLY the template HTML — the design blob is identical.
+	detail2, err := svc.GetExam(ctx, exam.ID)
+	if err != nil {
+		t.Fatalf("GetExam (second): %v", err)
+	}
+	overlay2 := detail2.Exam
+	second := `<div>{{student_name}} — revisi</div>`
+	overlay2.CertificateTemplateHTML = &second
+	saved2, err := svc.UpdateExam(ctx, exam.ID, overlay2)
+	if err != nil {
+		t.Fatalf("UpdateExam (template-only): %v", err)
+	}
+	if saved2.CertificateDesignUpdatedAt == nil {
+		t.Fatal("template-only save left certificate_design_updated_at null")
+	}
+	if !saved2.CertificateDesignUpdatedAt.After(before) {
+		t.Fatalf("certificate_design_updated_at did not advance on a template-only change (before=%v after=%v) — the worker will treat cached PDFs as current and consume the event as a no-op",
+			before, *saved2.CertificateDesignUpdatedAt)
+	}
+}
