@@ -4,6 +4,12 @@ import { act } from "react";
 
 import SessionPage from "./page";
 import type { SessionState } from "@/lib/types";
+import {
+  AUTOSAVE_DEBOUNCE_MS,
+  backoffDelayMs,
+  loadQueue,
+  saveQueue,
+} from "@/lib/exam-session-queue";
 
 const routerReplace = vi.fn();
 
@@ -327,6 +333,7 @@ describe("SessionPage", () => {
     advanceSectionMutate.mockReset();
     advanceSectionMutateAsync.mockReset();
     routerReplace.mockReset();
+    localStorage.clear();
   });
 
   afterEach(() => {
@@ -542,7 +549,7 @@ describe("SessionPage", () => {
       expect(saveAnswersMutateAsync).toHaveBeenCalled();
     });
     const payload = saveAnswersMutateAsync.mock.calls[0][0];
-    expect(payload).toEqual(
+    expect(payload.answers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           question_id: "q-mcq",
@@ -638,12 +645,16 @@ describe("SessionPage", () => {
     fireEvent.click(btns[btns.length - 1]);
 
     // Verify save was triggered before submit
-    expect(saveAnswersMutateAsync).toHaveBeenCalledWith(
-      [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
-    );
+    expect(saveAnswersMutateAsync).toHaveBeenCalledWith({
+      answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
+      current_position: 0,
+    });
 
-    // Verify submitSession was called
-    expect(submitSessionMutate).toHaveBeenCalled();
+    // Verify submitSession was called (handleSubmit awaits the save first,
+    // so the mutate call lands on a later microtask).
+    await waitFor(() => {
+      expect(submitSessionMutate).toHaveBeenCalled();
+    });
 
     // Simulate success response inside act to flush React state updates
     await act(async () => {
@@ -783,9 +794,7 @@ describe("SessionPage", () => {
     );
   });
 
-  it("periodic save excludes a submitted section's answers (FR-14 seam — backend rejects locked-section saves)", async () => {
-    vi.useFakeTimers();
-
+  it("debounced autosave excludes a submitted section's answers (FR-14 seam — backend rejects locked-section saves)", async () => {
     // Section 1 is already submitted; section 2 is active (not expired). Both
     // sections carry a persisted answer, rehydrated into state on reconnect.
     // The autosave must send ONLY the active section's answer — the backend
@@ -813,18 +822,19 @@ describe("SessionPage", () => {
     };
     sessionState = { ...sessionState, data: section2Active };
     render(<SessionPage />);
-    // Flush the init effect so answers hydrate before the autosave fires.
+    await enterFullscreenUntil(/Literasi Question 1\?/);
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getAllByRole("radio")[0]);
     await act(async () => {
-      await Promise.resolve();
-    });
-    // Fire the 30s periodic autosave.
-    await act(async () => {
-      vi.advanceTimersByTime(30000);
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
     });
 
     expect(saveAnswersMutate).toHaveBeenCalled();
     const sentIds = saveAnswersMutate.mock.calls.flatMap(([payload]) =>
-      (payload as Array<{ question_id: string }>).map((p) => p.question_id),
+      (payload as { answers: Array<{ question_id: string }> }).answers.map(
+        (p) => p.question_id,
+      ),
     );
     expect(sentIds).toContain("q-sec2-mcq"); // active section answer is saved
     expect(sentIds).not.toContain("q-sec1-mcq"); // submitted section answer is not resent
@@ -1943,6 +1953,404 @@ describe("SessionPage", () => {
     const sectionPlayer = screen.getByTestId("section-audio-player");
     expect(sectionPlayer).toBeInTheDocument();
     expect(sectionPlayer).toHaveAttribute("src", "https://example.com/sec-audio.mp3");
+  });
+
+  // ── Durable answer saving (FR-31..FR-34, FR-37, NFR-P3, NFR-R5) ─────────
+
+  it("debounces continuous changes to at most one save per debounce window (FR-31, NFR-P3)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    // Navigate to the short-answer question and simulate ~10s of continuous
+    // typing, one keystroke every 300ms (33 changes total).
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = () =>
+      screen.getAllByRole("textbox").filter((tb) => tb.tagName === "INPUT")[0];
+
+    for (let i = 0; i < 33; i++) {
+      fireEvent.change(textInput(), { target: { value: `v${i}` } });
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+    }
+
+    // ~10s of continuous changes over a debounce window well under 10s must
+    // not produce a save per keystroke — at most one save per window.
+    expect(saveAnswersMutate.mock.calls.length).toBeGreaterThan(0);
+    expect(saveAnswersMutate.mock.calls.length).toBeLessThanOrEqual(
+      Math.ceil((33 * 300) / AUTOSAVE_DEBOUNCE_MS) + 1,
+    );
+    expect(saveAnswersMutate.mock.calls.length).toBeLessThan(10);
+  });
+
+  it("retries a failing save with growing backoff delays and eventually succeeds (FR-32)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+
+    // First attempt fails.
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onError(new Error("network error"));
+    });
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Belum tersimpan",
+    );
+
+    const delay1 = backoffDelayMs(0);
+    await act(async () => {
+      vi.advanceTimersByTime(delay1 - 1);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1); // not yet retried
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(2); // first retry fired
+
+    // Second attempt also fails — the next delay must be strictly longer.
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[1];
+      opts.onError(new Error("network error"));
+    });
+    const delay2 = backoffDelayMs(1);
+    expect(delay2).toBeGreaterThan(delay1);
+    await act(async () => {
+      vi.advanceTimersByTime(delay2 - 1);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(3);
+
+    // Third attempt succeeds.
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[2];
+      opts.onSuccess();
+    });
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Tersimpan",
+    );
+  });
+
+  it("replays a localStorage-queued payload exactly once on mount and clears it (FR-33, NFR-R5)", async () => {
+    saveQueue("session-1", [
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+    ]);
+    saveAnswersMutate.mockImplementation((_payload, opts) => {
+      opts?.onSuccess?.();
+    });
+
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    await waitFor(() => {
+      expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledWith(
+      {
+        answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
+        current_position: 0,
+      },
+      expect.anything(),
+    );
+    expect(loadQueue("session-1")).toEqual([]);
+  });
+
+  it("indicator shows unsaved while a save is pending and saved after acknowledgement (FR-34)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Tersimpan",
+    );
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Belum tersimpan",
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onSuccess();
+    });
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Tersimpan",
+    );
+  });
+
+  it("replay does not clobber a server answer for a question absent from the queue (FR-37, NFR-R5)", async () => {
+    saveQueue("session-1", [
+      { question_id: "q-short", answer: "queued-value", flagged_for_review: false },
+    ]);
+    saveAnswersMutate.mockImplementation((_payload, opts) => {
+      opts?.onSuccess?.();
+    });
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        answers: [
+          { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+        ],
+      },
+    };
+
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // q-mcq is server-sourced and absent from the queue — must stay untouched.
+    const radios = screen.getAllByRole("radio");
+    expect(radios[1]).toBeChecked();
+
+    // q-short is the queued question — must show the queued (not server) value.
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await waitFor(() => {
+      const textInputs = screen
+        .getAllByRole("textbox")
+        .filter((tb) => tb.tagName === "INPUT");
+      expect((textInputs[0] as HTMLInputElement).value).toBe("queued-value");
+    });
+
+    // Replay sent exactly the queue's content — nothing more, nothing less.
+    expect(saveAnswersMutate).toHaveBeenCalledWith(
+      {
+        answers: [{ question_id: "q-short", answer: "queued-value", flagged_for_review: false }],
+        current_position: 0,
+      },
+      expect.anything(),
+    );
+    expect(loadQueue("session-1")).toEqual([]);
+  });
+
+  // ── Resume at the same question on reconnect (FR-36, FR-37) ────────────
+
+  it("seeds currentQIndex from session.current_position on load, landing on question 6 (FR-36)", async () => {
+    const questions = Array.from({ length: 6 }, (_, i) => ({
+      id: `q-pos-${i}`,
+      test_id: "test-1",
+      format: "mcq" as const,
+      body: `Question ${i + 1}?`,
+      sort_order: i + 1,
+      options: [
+        { key: "A", text: "Opt A", sort_order: 1 },
+        { key: "B", text: "Opt B", sort_order: 2 },
+      ],
+    }));
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        current_position: 5,
+        tests: [{ ...sampleSession.tests[0], questions }],
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Question 6\?/);
+
+    expect(screen.getByText(/Soal 6 dari 6/)).toBeInTheDocument();
+  });
+
+  it("includes the new question index in the next save payload after navigating (FR-36)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ current_position: 2 }),
+      expect.anything(),
+    );
+  });
+
+  it("hydrates position from the server response even when localStorage is empty (FR-36, FR-37)", async () => {
+    localStorage.clear();
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, current_position: 3 },
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Bendera Indonesia berwarna/);
+
+    expect(screen.getByText(/Soal 4 dari 5/)).toBeInTheDocument();
+  });
+
+  // ── Blocker 3: overlapping saves must never lose or misreport an answer ──
+
+  it("a stale save's ack must not report 'saved' while a newer save is still pending, and the newer edit survives that newer save failing (Blocker 3a, FR-32, FR-34, NFR-R5)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = () =>
+      screen.getAllByRole("textbox").filter((tb) => tb.tagName === "INPUT")[0];
+
+    // First edit — flush A.
+    fireEvent.change(textInput(), { target: { value: "v1" } });
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+
+    // Second edit before A resolves — flush B. Both A and B are now
+    // outstanding: exactly the race a 2s debounce makes routine whenever a
+    // request takes longer than the debounce window.
+    fireEvent.change(textInput(), { target: { value: "v2" } });
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(2);
+
+    // A — the OLDER request — acknowledges first. This is the actual race:
+    // an older, slower request settling after a newer one was dispatched.
+    await act(async () => {
+      const [, optsA] = saveAnswersMutate.mock.calls[0];
+      optsA.onSuccess();
+    });
+
+    // The stale ack must not claim everything is saved — B (v2) is still
+    // outstanding.
+    expect(screen.getByTestId("save-indicator")).not.toHaveTextContent(
+      "Tersimpan",
+    );
+    // v2 must still be durably queued — recoverable even if the tab closed
+    // at this exact instant.
+    expect(loadQueue("session-1")).toEqual([
+      { question_id: "q-short", answer: "v2", flagged_for_review: false },
+    ]);
+
+    // Now B fails.
+    await act(async () => {
+      const [, optsB] = saveAnswersMutate.mock.calls[1];
+      optsB.onError(new Error("network error"));
+    });
+
+    // The indicator must say unsaved — the answer is not acknowledged
+    // anywhere, and must not be reported as saved.
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Belum tersimpan",
+    );
+    // Still recoverable in the durable queue...
+    expect(loadQueue("session-1")).toEqual([
+      { question_id: "q-short", answer: "v2", flagged_for_review: false },
+    ]);
+    // ...and actively retried, not silently dropped.
+    const delay = backoffDelayMs(0);
+    await act(async () => {
+      vi.advanceTimersByTime(delay);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(3);
+    const [retryPayload] = saveAnswersMutate.mock.calls[2];
+    expect(retryPayload.answers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ question_id: "q-short", answer: "v2" }),
+      ]),
+    );
+  });
+
+  it("an edit made between a save's PATCH going out and the resulting refetch landing survives the refetch (Blocker 3b, FR-37, NFR-R5)", async () => {
+    const { rerender } = render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    // Answer q-mcq — flush A.
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+
+    // Before A's ack/refetch lands, the student edits a DIFFERENT question.
+    // This edit lives only in React state: the debounce hasn't elapsed, so
+    // it is not yet in the durable queue either.
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = () =>
+      screen.getAllByRole("textbox").filter((tb) => tb.tagName === "INPUT")[0];
+    fireEvent.change(textInput(), { target: { value: "fresh-edit" } });
+
+    // A's PATCH acknowledges. In production this invalidates the session
+    // query, and the refetch lands with a snapshot that predates
+    // "fresh-edit".
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onSuccess();
+    });
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
+      },
+    };
+    rerender(<SessionPage />);
+
+    // The edit made in the gap must still be on screen — hydration must not
+    // have reset local state from the refetched (stale-by-definition)
+    // session snapshot.
+    expect((textInput() as HTMLInputElement).value).toBe("fresh-edit");
+  });
+
+  // ── Blocker 4: sectioned exams must not reset position on mount ─────────
+
+  it("a sectioned exam with a non-zero server position mounts on that question and does not write current_position: 0 back to the server (Blocker 4, FR-36)", async () => {
+    const sixQuestions = Array.from({ length: 6 }, (_, i) => ({
+      id: `q-sec1-${i}`,
+      test_id: "test-section-1",
+      format: "mcq" as const,
+      body: `Section Question ${i + 1}?`,
+      sort_order: i + 1,
+      options: [
+        { key: "A", text: "Opt A", sort_order: 1 },
+        { key: "B", text: "Opt B", sort_order: 2 },
+      ],
+    }));
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sectionedSession,
+        current_position: 5,
+        tests: [
+          { ...sectionedSession.tests[0], questions: sixQuestions },
+          sectionedSession.tests[1],
+        ],
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Section Question 6\?/);
+
+    // Must land on question 6, not be reset to question 1.
+    expect(screen.getByText(/Soal 6 dari 6/)).toBeInTheDocument();
+
+    // The next save must carry the position the student is actually on —
+    // not silently overwrite the server's persisted position with 0.
+    vi.useFakeTimers();
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ current_position: 5 }),
+      expect.anything(),
+    );
   });
 });
 

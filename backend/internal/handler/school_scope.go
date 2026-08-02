@@ -67,9 +67,10 @@ func (h *Handler) resolveSchoolScope(c echo.Context, claims *infra.Claims) (stri
 //
 // Only endpoints that genuinely work without a school may use this — the
 // student roster (registrants are not all school pupils; university students
-// and the general public sign up too) and student registration (an operator
-// can confirm the school after the fact). Every other caller keeps
-// resolveSchoolScope, where a missing school is a client error.
+// and the general public sign up too), student registration (an operator
+// can confirm the school after the fact), and admin results (list/detail/export
+// default to every school; the repository's filter is optional). Every other
+// caller keeps resolveSchoolScope, where a missing school is a client error.
 //
 // admin_school is unaffected: its scope still rides on the JWT and cannot be
 // widened.

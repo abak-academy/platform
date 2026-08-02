@@ -319,12 +319,6 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
           </div>
         )}
 
-        {state.kind === "in_progress" && (
-          <Button asChild size="sm" variant="outline" className="w-full rounded-full">
-            <Link href={`/exam/${reg.id}`}>{t("competition_view_detail")}</Link>
-          </Button>
-        )}
-
         {state.kind === "submitted" && (
           <div className="flex items-center gap-2">
             {state.hasAttemptsLeft && (
@@ -350,6 +344,12 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
             {t("st_expired")}
           </div>
         )}
+
+        {/* FR-45: the card must stay reachable regardless of state, so this link
+            is unconditional rather than duplicated into each branch above. */}
+        <Button asChild size="sm" variant="outline" className="mt-2 w-full rounded-full">
+          <Link href={`/exam/${reg.id}`}>{t("competition_view_detail")}</Link>
+        </Button>
       </div>
     </Card>
   );

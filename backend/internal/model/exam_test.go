@@ -550,7 +550,7 @@ func TestSessionResultStruct(t *testing.T) {
 	jsonTag(t, v, "Rank", "rank")
 	jsonTag(t, v, "Breakdown", "breakdown,omitempty")
 	jsonTag(t, v, "Pembahasan", "pembahasan,omitempty")
-	jsonTag(t, v, "CertificateURL", "certificate_url,omitempty")
+	jsonTag(t, v, "CertificateURL", "certificate_url")
 
 	fieldKind(t, v, "State", reflect.String)
 	fieldKind(t, v, "ResultConfig", reflect.String)

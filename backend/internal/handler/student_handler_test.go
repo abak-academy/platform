@@ -481,7 +481,7 @@ func newStorageBackedTestEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatalf("minio.New: %v", err)
 	}
-	svc := service.NewWithStore(repo, nil, rdb, signer, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, storage, cfg)
+	svc := service.NewWithStore(repo, nil, rdb, signer, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, storage, cfg, nil)
 
 	h := handler.New(svc)
 	e := echo.New()

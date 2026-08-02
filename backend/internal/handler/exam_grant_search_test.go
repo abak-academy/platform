@@ -145,6 +145,7 @@ func newSearchGrantDBEnv(t *testing.T) *searchGrantDBTestEnv {
 			&service.NoopOTPProvider{}, &service.NoopEmailProvider{},
 			&service.NoopPaymentClient{}, &service.NoopLogisticsClient{},
 			nil, cfg,
+			nil,
 		)
 		e := echo.New()
 		e.HideBanner = true

@@ -18,19 +18,25 @@ type AdminResultFilter struct {
 	Limit  int
 }
 
-// ListSchoolResults returns fully-graded submitted sessions for an exam, scoped to
-// a single school. Cursor is keyset-encoded as "<RFC3339Nano submitted_at>,<session id>"
+// ListSchoolResults returns fully-graded submitted sessions for an exam, optionally
+// scoped to a single school. An empty schoolID means "all schools" (the super_admin
+// unscoped view). Cursor is keyset-encoded as "<RFC3339Nano submitted_at>,<session id>"
 // ordered by submitted_at DESC, id ASC. Default limit 20, cap 100.
 func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, schoolID string, filter AdminResultFilter) ([]model.AdminResultRow, string, error) {
 	if filter.Limit <= 0 || filter.Limit > 100 {
 		filter.Limit = 20
 	}
 
-	query := `SELECT s.id, u.name, u.username, s.score, s.submitted_at
+	query := `SELECT s.id, u.name, u.username, s.score, s.submitted_at, COALESCE(sc.name, u.unlisted_school_name)
 		FROM exam_session s
-		JOIN users u ON u.id = s.student_id AND u.school_id = $1 AND u.role = 'student'
-		WHERE s.exam_id = $2 AND s.status = 'submitted' AND ` + fullyGradedFilter
-	args := []any{schoolID, examID}
+		JOIN users u ON u.id = s.student_id AND u.role = 'student'
+		LEFT JOIN school sc ON sc.id = u.school_id
+		WHERE s.exam_id = $2 AND s.status = 'submitted' AND ($1::uuid IS NULL OR u.school_id = $1) AND ` + fullyGradedFilter
+	var schoolArg *string
+	if schoolID != "" {
+		schoolArg = &schoolID
+	}
+	args := []any{schoolArg, examID}
 	argIdx := 3
 
 	if filter.Q != "" {
@@ -69,7 +75,7 @@ func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, sc
 	results := []model.AdminResultRow{}
 	for rows.Next() {
 		var row model.AdminResultRow
-		if err := rows.Scan(&row.SessionID, &row.StudentName, &row.Username, &row.Score, &row.SubmittedAt); err != nil {
+		if err := rows.Scan(&row.SessionID, &row.StudentName, &row.Username, &row.Score, &row.SubmittedAt, &row.SchoolName); err != nil {
 			return nil, "", err
 		}
 		results = append(results, row)
@@ -90,18 +96,23 @@ func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, sc
 	return results, nextCursor, nil
 }
 
-// GetSchoolResultSession returns a single session result scoped to a school.
+// GetSchoolResultSession returns a single session result, optionally scoped to a
+// school. An empty schoolID means "all schools" (the super_admin unscoped view).
 // No status=submitted filter — the service layer needs the actual status value
 // to run resultGate / isFullyGraded. Returns ErrNotFound when the session
 // doesn't exist or belongs to a different school (indistinguishable).
 func (r *Repository) GetSchoolResultSession(ctx context.Context, sessionID uuid.UUID, schoolID string) (*model.AdminResultSession, error) {
 	var s model.AdminResultSession
+	var schoolArg *string
+	if schoolID != "" {
+		schoolArg = &schoolID
+	}
 	err := r.pool.QueryRow(ctx,
 		`SELECT s.id, s.exam_id, s.student_id, u.name, u.username, s.status, s.score, s.submitted_at
 		FROM exam_session s
-		JOIN users u ON u.id = s.student_id AND u.school_id = $2 AND u.role = 'student'
-		WHERE s.id = $1`,
-		sessionID, schoolID,
+		JOIN users u ON u.id = s.student_id AND u.role = 'student'
+		WHERE s.id = $1 AND ($2::uuid IS NULL OR u.school_id = $2)`,
+		sessionID, schoolArg,
 	).Scan(
 		&s.SessionID, &s.ExamID, &s.StudentID, &s.StudentName, &s.Username,
 		&s.Status, &s.Score, &s.SubmittedAt,

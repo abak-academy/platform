@@ -85,6 +85,9 @@ type SessionStatePayload struct {
 	DurationMinutes  *int                      `json:"duration_minutes"`
 	Tests            []SessionTestPayload      `json:"tests"`
 	Answers          []model.ExamSessionAnswer `json:"answers"`
+	// CurrentPosition is the last server-persisted question index (FR-35/FR-36);
+	// nil when the session has never carried a saved position.
+	CurrentPosition *int `json:"current_position"`
 	// Sectioned-exam fields (FR-16). omitempty keeps standard-mode JSON byte-compatible.
 	Mode         string     `json:"mode,omitempty"`
 	ActiveTestID *uuid.UUID `json:"active_test_id,omitempty"`
@@ -549,6 +552,7 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 			TimerMode:        exam.TimerMode,
 			Tests:            grouped,
 			Answers:          answers,
+			CurrentPosition:  sess.CurrentPosition,
 			Mode:             exam.Mode,
 			ActiveTestID:     activeID,
 		}, nil
@@ -562,6 +566,7 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 		DurationMinutes:  exam.DurationMinutes,
 		Tests:            grouped,
 		Answers:          answers,
+		CurrentPosition:  sess.CurrentPosition,
 	}, nil
 }
 
@@ -571,7 +576,11 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 // For sectioned exams (FR-14), a save targeting any question in a non-active
 // section is rejected with ErrSectionLocked; standard mode skips the guard
 // entirely (FR-15).
-func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, inputs []AnswerInput) error {
+// position is optional (FR-35): when non-nil it must fall within
+// [0, total_questions) for the exam or the whole request is rejected with
+// ErrInvalidPosition before any answer or position is written (FR-36 relies on
+// this field never holding a value the client couldn't have reached).
+func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, inputs []AnswerInput, position *int) error {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -629,6 +638,16 @@ func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, 
 		}
 	}
 
+	if position != nil {
+		total, err := s.storeRepo.GetExamQuestionTotal(ctx, sess.ExamID)
+		if err != nil {
+			return err
+		}
+		if *position < 0 || *position >= total {
+			return fmt.Errorf("%w: position must be within [0, %d)", ErrInvalidPosition, total)
+		}
+	}
+
 	answers := make([]model.ExamSessionAnswer, len(inputs))
 	for i, in := range inputs {
 		answers[i] = model.ExamSessionAnswer{
@@ -639,7 +658,7 @@ func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, 
 		}
 	}
 
-	return s.storeRepo.SaveAnswersTx(ctx, sessID, answers)
+	return s.storeRepo.SaveAnswersTx(ctx, sessID, answers, position)
 }
 
 // ---------- AdvanceSection ----------
@@ -798,6 +817,15 @@ func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID string
 		return SubmitResult{}, ErrAlreadySubmitted
 	}
 
+	// Enqueue certificate generation in the same transaction as the submit
+	// (async redesign 2026-08-02): the worker (GenerateCertificatePDF) decides
+	// on its own whether this session is actually ready — a score-bearing
+	// layout awaiting grading no-ops here and gets a second chance from
+	// GradeEssayAnswer's own enqueue once grading completes.
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "exam_session", sessID, "CertificateNeeded", CertificateNeededPayload{SessionID: sessID}); err != nil {
+		return SubmitResult{}, err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return SubmitResult{}, err
 	}
@@ -943,6 +971,11 @@ func (s *Service) ForceSubmitSession(ctx context.Context, sessionID string) (Sub
 	}
 	if rows == 0 {
 		return SubmitResult{}, ErrAlreadySubmitted
+	}
+
+	// See SubmitSession's identical enqueue for why this is unconditional.
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "exam_session", sessID, "CertificateNeeded", CertificateNeededPayload{SessionID: sessID}); err != nil {
+		return SubmitResult{}, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {

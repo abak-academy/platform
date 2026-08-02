@@ -106,6 +106,22 @@ export function useUpdateExam(id: string) {
   });
 }
 
+export function useSetCertificateEnabled(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      authFetch<ExamDetail>(`/admin/exams/${encodeURIComponent(id)}/certificate-enabled`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminExamsKeys.lists() });
+      qc.invalidateQueries({ queryKey: adminExamsKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: adminExamsKeys.certificateDesign(id) });
+    },
+  });
+}
+
 export function useCertificateDesign(examId: string | undefined) {
   return useQuery({
     queryKey: adminExamsKeys.certificateDesign(examId ?? ""),
@@ -115,6 +131,24 @@ export function useCertificateDesign(examId: string | undefined) {
       ),
     enabled: Boolean(examId),
   });
+}
+
+// serializeCertificateTemplate asks the Next.js server (app/api/admin/certificate-template)
+// to render layout to self-contained HTML with {{token}} placeholders (async
+// redesign 2026-08-02) — the FE remains the single source of markup, but the
+// actual react-dom/server call only runs in a Node context, not the browser
+// bundle. Called once per design save, right before the PUT that persists it.
+export async function serializeCertificateTemplate(layout: CertificateLayout): Promise<string> {
+  const res = await fetch("/api/admin/certificate-template", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ layout }),
+  });
+  if (!res.ok) {
+    throw new ApiError(`HTTP_${res.status}`, `Failed to serialize certificate template: ${res.status}`, res.status);
+  }
+  const data = (await res.json()) as { html: string };
+  return data.html;
 }
 
 export function useUpdateCertificateDesign(examId: string) {
@@ -242,26 +276,23 @@ export function useExamAnalytics(examId: string | undefined, enabled = true) {
   });
 }
 
-// fetchCertificatePreview renders a preview PDF. It is a POST (not GET) so an
-// unsaved `layout` — the box positions the admin is currently dragging, before
-// Save — can travel as a JSON body a browser can actually send (FR-26);
-// omitting layout previews the exam's saved (or default) design instead.
-export async function fetchCertificatePreview(
-  examId: string,
-  template?: string,
-  layout?: CertificateLayout,
-): Promise<Blob> {
+// fetchCertificatePreview renders a preview PDF from an already-serialized
+// document (async redesign 2026-08-02): html comes from rendering
+// CertificateDocument with the editor's own live preview values baked in
+// (mirrors lib/certificate-studio's previewContent, the same values the
+// on-screen canvas already shows) — the backend is a thin pass-through to
+// Gotenberg, never a stored PDF, never a second render engine.
+export async function fetchCertificatePreview(examId: string, html: string): Promise<Blob> {
   const token = useAuthStore.getState().token;
-  const params = template ? `?template=${encodeURIComponent(template)}` : "";
   const res = await fetch(
-    `${API_BASE}/admin/exams/${encodeURIComponent(examId)}/certificate-preview${params}`,
+    `${API_BASE}/admin/exams/${encodeURIComponent(examId)}/certificate-preview`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(layout ? { layout } : {}),
+      body: JSON.stringify({ html }),
     },
   );
   if (!res.ok) {

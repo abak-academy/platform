@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -2086,11 +2088,10 @@ func (s *shimExamCardService) GetExamCard(ctx context.Context, regID, studentID 
 		return pdf, filename, nil
 	}
 
-	html, err := buildCardHTML(detail, s.studentName, s.tenantName, nil, nil)
-	if err != nil {
-		return nil, "", err
-	}
-	pdf, err := s.renderer.RenderHTML(ctx, html)
+	// This shim exercises the plumbing (generate-once/reuse cache), not the real
+	// HTML->PDF conversion, so a fixed byte stand-in serves directly as the
+	// "HTML" passed to the (fake) renderer.
+	pdf, err := s.renderer.RenderHTML(ctx, []byte("<html></html>"))
 	if err != nil {
 		return nil, "", err
 	}
@@ -2838,6 +2839,12 @@ func TestGetCertificateDesign_Integration_UntouchedExam_ReturnsBuiltinDefaultLay
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
+	// certificate_enabled is only ever mutated through the dedicated action
+	// (never CreateExam/UpdateExam), so tests exercising GetCertificateDesign
+	// must flip it explicitly.
+	if _, err := svc.SetExamCertificateEnabled(ctx, exam.ID, true); err != nil {
+		t.Fatalf("SetExamCertificateEnabled: %v", err)
+	}
 
 	design, err := svc.GetCertificateDesign(ctx, exam.ID)
 	if err != nil {
@@ -2883,11 +2890,15 @@ func TestGetCertificateDesign_Integration_CustomBackground_ReturnsPresignedURLNo
 		repo, repo, nil, nil,
 		&NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil,
 		client, &config.Config{ObjectStorageBucketName: "test-bucket", ObjectStorageRegion: "us-east-1"},
+		nil,
 	)
 
 	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Design Presign Exam " + uniqueSuffix(), CertificateDesign: certDesignJSON("custom")})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
+	}
+	if _, err := svc.SetExamCertificateEnabled(ctx, exam.ID, true); err != nil {
+		t.Fatalf("SetExamCertificateEnabled: %v", err)
 	}
 	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
 	designWithKey := json.RawMessage(`{"template":"custom","background_key":"` + key + `"}`)
@@ -2920,6 +2931,63 @@ func TestGetCertificateDesign_Integration_CustomBackground_ReturnsPresignedURLNo
 	}
 }
 
+// TestGetCertificateDesign_Integration_BackgroundURL_TTLAtMost15Min proves FR-7:
+// the presigned background URL must expire within 15 minutes, not the old
+// hour-long default — once results are hidden, this TTL is the entire residual
+// window an already-signed URL keeps working.
+func TestGetCertificateDesign_Integration_BackgroundURL_TTLAtMost15Min(t *testing.T) {
+	_, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	client, err := minio.New("localhost:9000", &minio.Options{
+		Creds:  credentials.NewStaticV4("test-access", "test-secret", ""),
+		Secure: false,
+		Region: "us-east-1",
+	})
+	if err != nil {
+		t.Fatalf("minio.New: %v", err)
+	}
+	svc := NewWithStore(
+		repo, repo, nil, nil,
+		&NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil,
+		client, &config.Config{ObjectStorageBucketName: "test-bucket", ObjectStorageRegion: "us-east-1"},
+		nil,
+	)
+
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "TTL Exam " + uniqueSuffix(), CertificateDesign: certDesignJSON("custom")})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+	if _, err := svc.SetExamCertificateEnabled(ctx, exam.ID, true); err != nil {
+		t.Fatalf("SetExamCertificateEnabled: %v", err)
+	}
+	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
+	designWithKey := json.RawMessage(`{"template":"custom","background_key":"` + key + `"}`)
+	exam.CertificateDesign = &designWithKey
+	if _, err := svc.UpdateExam(ctx, exam.ID, exam); err != nil {
+		t.Fatalf("UpdateExam: %v", err)
+	}
+
+	design, err := svc.GetCertificateDesign(ctx, exam.ID)
+	if err != nil {
+		t.Fatalf("GetCertificateDesign: %v", err)
+	}
+	if design.BackgroundURL == nil {
+		t.Fatal("expected a non-nil BackgroundURL for a custom background")
+	}
+	parsed, err := url.Parse(*design.BackgroundURL)
+	if err != nil {
+		t.Fatalf("parse BackgroundURL: %v", err)
+	}
+	expires, err := strconv.Atoi(parsed.Query().Get("X-Amz-Expires"))
+	if err != nil {
+		t.Fatalf("parse X-Amz-Expires: %v", err)
+	}
+	if expires > 15*60 {
+		t.Errorf("X-Amz-Expires = %ds, want <= 900s (15 minutes)", expires)
+	}
+}
+
 // TestGetCertificateDesign_Integration_NoCustomBackground_ReturnsNilKey pins the
 // other half of the round-trip: an exam without an upload must not invent a key.
 func TestGetCertificateDesign_Integration_NoCustomBackground_ReturnsNilKey(t *testing.T) {
@@ -2929,6 +2997,9 @@ func TestGetCertificateDesign_Integration_NoCustomBackground_ReturnsNilKey(t *te
 	exam, err := svc.CreateExam(ctx, model.Exam{Title: "No Background Exam " + uniqueSuffix(), CertificateDesign: certDesignJSON("classic")})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
+	}
+	if _, err := svc.SetExamCertificateEnabled(ctx, exam.ID, true); err != nil {
+		t.Fatalf("SetExamCertificateEnabled: %v", err)
 	}
 
 	design, err := svc.GetCertificateDesign(ctx, exam.ID)
@@ -2943,7 +3014,12 @@ func TestGetCertificateDesign_Integration_NoCustomBackground_ReturnsNilKey(t *te
 	}
 }
 
-func TestGetCertificatePreviewWithLayout_Integration_InvalidOverride_ReturnsValidationError(t *testing.T) {
+// TestGetCertificatePreviewPDF_Integration_EmptyHTML_ReturnsValidationError
+// covers the async redesign's replacement preview contract (2026-08-02): the
+// FE now sends fully-serialized HTML (web/app/api/admin/certificate-template
+// + the editor's own preview values), so there is no server-side layout to
+// validate here — only that html was actually sent.
+func TestGetCertificatePreviewPDF_Integration_EmptyHTML_ReturnsValidationError(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
 
@@ -2952,14 +3028,21 @@ func TestGetCertificatePreviewWithLayout_Integration_InvalidOverride_ReturnsVali
 		t.Fatalf("CreateExam: %v", err)
 	}
 
-	badLayout := Layout{
-		Page:       Page{WidthMm: 297, HeightMm: 210},
-		Background: Background{Kind: "builtin", Ref: "classic"},
-		Fields:     []LayoutField{{ID: "not_a_real_field", XMm: 10, YMm: 10, WMm: 50, Align: "center", Visible: true}},
-	}
-	_, err = svc.GetCertificatePreviewWithLayout(ctx, exam.ID, "", &badLayout)
+	_, err = svc.GetCertificatePreviewPDF(ctx, exam.ID, "")
 	if !errors.Is(err, ErrValidation) {
-		t.Errorf("want ErrValidation for an unknown field id, got %v", err)
+		t.Errorf("want ErrValidation for empty html, got %v", err)
+	}
+}
+
+// TestGetCertificatePreviewPDF_Integration_UnknownExam_ReturnsErrExamNotFound
+// proves the exam lookup 404s before any Gotenberg round trip.
+func TestGetCertificatePreviewPDF_Integration_UnknownExam_ReturnsErrExamNotFound(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	_, err := svc.GetCertificatePreviewPDF(ctx, uuid.New(), "<html></html>")
+	if !errors.Is(err, ErrExamNotFound) {
+		t.Errorf("want ErrExamNotFound, got %v", err)
 	}
 }
 

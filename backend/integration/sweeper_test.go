@@ -57,7 +57,7 @@ func TestSweeper(t *testing.T) {
 
 		// Run the worker with a very short sweeper interval.
 		repo := repository.New(env.pool)
-		w := worker.New(env.pool, env.rdb, repo, 500*time.Millisecond, 100*time.Millisecond, 5*time.Minute, nil, nil, nil, nil, time.Hour, "")
+		w := worker.New(env.pool, env.rdb, repo, 500*time.Millisecond, 100*time.Millisecond, 5*time.Minute, nil, nil, nil, nil, time.Hour, "", nil)
 		wCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		go w.Run(wCtx)

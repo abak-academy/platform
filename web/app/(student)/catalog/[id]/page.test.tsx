@@ -34,6 +34,12 @@ vi.mock("@/lib/hooks/orders", () => ({
   useCart: () => ({ data: { items: [] } }),
 }));
 
+let profile: Record<string, unknown> | undefined;
+
+vi.mock("@/lib/hooks/students", () => ({
+  useProfile: () => ({ data: profile }),
+}));
+
 vi.mock("@/stores/cart", () => ({
   useCartStore: (selector: (state: { setCount: ReturnType<typeof vi.fn> }) => unknown) => selector({ setCount: vi.fn() }),
   default: { getState: () => ({ count: 0 }) },
@@ -56,6 +62,7 @@ async function renderPage(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   product = { ...BASE_PRODUCT };
+  profile = undefined;
 });
 
 describe("ProductDetailPage", () => {
@@ -129,5 +136,42 @@ describe("ProductDetailPage", () => {
     const desc = screen.getByRole("heading", { name: /^deskripsi$/i });
 
     expect(specs.compareDocumentPosition(desc) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // The checkout gate used to be the first place a student learned their
+  // biodata was incomplete. This warns them upfront, on the exam product page.
+  describe("exam biodata warning", () => {
+    it("shows the inline prompt naming missing fields when biodata is incomplete", async () => {
+      profile = { id: "u1", school_id: "s1" }; // grade and dob missing
+
+      await renderPage({ id: "exam-1", type: "exam", name: "Ujian Try Out" });
+
+      expect(
+        screen.getByText(/lengkapi biodata sebelum mendaftar/i),
+      ).toBeInTheDocument();
+      const body = screen.getByText(/kelas, tanggal lahir/i);
+      expect(body.textContent).not.toMatch(/sekolah/i);
+      expect(screen.getByRole("link", { name: /lengkapi profil/i })).toHaveAttribute(
+        "href",
+        "/profile",
+      );
+    });
+
+    it("shows nothing when biodata is complete", async () => {
+      profile = { id: "u1", school_id: "s1", grade: 10, dob: "2008-01-01" };
+
+      await renderPage({ id: "exam-1", type: "exam", name: "Ujian Try Out" });
+
+      expect(screen.queryByText(/lengkapi biodata sebelum mendaftar/i)).toBeNull();
+      expect(screen.queryByRole("link", { name: /lengkapi profil/i })).toBeNull();
+    });
+
+    it("shows nothing for a non-exam product regardless of profile", async () => {
+      profile = undefined;
+
+      await renderPage(); // medal, from BASE_PRODUCT
+
+      expect(screen.queryByText(/lengkapi biodata sebelum mendaftar/i)).toBeNull();
+    });
   });
 });

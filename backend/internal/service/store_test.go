@@ -549,7 +549,7 @@ func TestPatchCart_PopulatesItemValueFromPhysicalItemLineTotal(t *testing.T) {
 	_, repo := newRealDBService(t)
 
 	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
-	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, spy, nil, nil)
+	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, spy, nil, nil, nil)
 
 	var productID string
 	if err := repo.Pool().QueryRow(ctx,
@@ -954,7 +954,7 @@ func TestPatchCart_PromoSurvivesAddressAndCourierPatchesThroughCheckout(t *testi
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, spy, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, spy, nil, nil, nil)
 
 	var productID string
 	if err := repo.Pool().QueryRow(ctx,
@@ -1195,7 +1195,7 @@ func TestCheckout_DigitalQtyGreaterThanOne_RefusedBeforePayment(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	payment := &recordingPaymentClient{}
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, payment, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, payment, &NoopLogisticsClient{}, nil, nil, nil)
 
 	examID := createTestExamForBulk(t, repo)
 	productID := createTestExamProductForBulk(t, repo, examID, 50000)
@@ -1266,7 +1266,7 @@ func TestCheckout_PhysicalQtyGreaterThanOne_Succeeds(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, spy, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, spy, nil, nil, nil)
 
 	var productID string
 	if err := repo.Pool().QueryRow(ctx,
@@ -1322,7 +1322,7 @@ func TestCheckout_DigitalQtyOne_Succeeds(t *testing.T) {
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil, nil)
 
 	var productID string
 	if err := repo.Pool().QueryRow(ctx,
@@ -2650,7 +2650,7 @@ func newReconcileTestOrder(t *testing.T, ctx context.Context, repo *repository.R
 	productID := insertDigitalCourseProduct(t, repo, "Reconcile Course", 50000)
 	studentID := insertCheckoutStudent(t, repo, "Reconcile Student", studentPrefix)
 
-	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil, nil)
 	order, _, err := svc.MintCart(ctx, studentID)
 	if err != nil {
 		t.Fatalf("MintCart: %v", err)
@@ -2702,7 +2702,7 @@ func TestAdminReconcileOrder_EmptyGatewayRef_NeverCallsGateway(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	spy := &spyReconcilePaymentClient{paid: true}
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, spy, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, spy, &NoopLogisticsClient{}, nil, nil, nil)
 
 	orderID := newReconcileTestOrder(t, ctx, repo, "reconcnoref_", "")
 	actorID := insertAdminActor(t, repo, "reconcnorefact_")
@@ -2738,7 +2738,7 @@ func TestAdminReconcileOrder_RealGatewayRef_QueriesThatExactRef(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	spy := &spyReconcilePaymentClient{paid: false}
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, spy, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, spy, &NoopLogisticsClient{}, nil, nil, nil)
 
 	ref := "gw-ref-" + uniqueSuffix()
 	orderID := newReconcileTestOrder(t, ctx, repo, "reconcref_", ref)
@@ -2769,7 +2769,7 @@ func TestAdminReconcileOrder_Paid_EmitsOneOutboxAndAuditRow_IdempotentOnRepeat(t
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	spy := &spyReconcilePaymentClient{paid: true}
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, spy, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, spy, &NoopLogisticsClient{}, nil, nil, nil)
 
 	ref := "gw-paid-" + uniqueSuffix()
 	orderID := newReconcileTestOrder(t, ctx, repo, "reconcpaid_", ref)
@@ -2843,7 +2843,7 @@ func TestCheckout_PromoBearingOrder_CreatePaymentFails_StillIncrementsUsedCount(
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	payment := &flakyPaymentClient{failFirstN: 1}
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, payment, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, payment, &NoopLogisticsClient{}, nil, nil, nil)
 
 	productID := insertDigitalCourseProduct(t, repo, "Promo Fail Course", 50000)
 
@@ -2914,7 +2914,7 @@ func TestRetryPayment_RecoversFromCreatePaymentFailureOnCheckout(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	payment := &flakyPaymentClient{failFirstN: 1}
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, payment, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, payment, &NoopLogisticsClient{}, nil, nil, nil)
 
 	productID := insertDigitalCourseProduct(t, repo, "Retry Recovery Course", 50000)
 	studentID := insertCheckoutStudent(t, repo, "Retry Recovery Student", "retryrec_")
@@ -2982,7 +2982,7 @@ func TestAdminConfirmOrder_Success_WritesManualPaymentAndAuditAtomically(t *test
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil, nil)
 
 	orderID := newReconcileTestOrder(t, ctx, repo, "confirmok_", "")
 	actorID := insertAdminActor(t, repo, "confirmokact_")
@@ -3070,7 +3070,7 @@ func TestAdminConfirmOrder_AuditInsertFails_RollsBackStatusAndProofWrite(t *test
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil, nil)
 
 	orderID := newReconcileTestOrder(t, ctx, repo, "confirmrb_", "")
 	proofKey := "payment_proof/rollback/proof-" + uniqueSuffix() + ".jpg"
@@ -3121,7 +3121,7 @@ func TestHandlePaymentWebhook_PaymentTypePresent_WritesPaymentMethod(t *testing.
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &mockPaymentClient{shouldAccept: true}, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &mockPaymentClient{shouldAccept: true}, &NoopLogisticsClient{}, nil, nil, nil)
 
 	ref := "gw-webhook-pt-" + uniqueSuffix()
 	orderID := newReconcileTestOrder(t, ctx, repo, "webhookpt_", ref)
@@ -3158,7 +3158,7 @@ func TestHandlePaymentWebhook_PaymentTypeAbsent_DoesNotOverwriteExistingPaymentM
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &mockPaymentClient{shouldAccept: true}, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &mockPaymentClient{shouldAccept: true}, &NoopLogisticsClient{}, nil, nil, nil)
 
 	ref := "gw-webhook-noover-" + uniqueSuffix()
 	orderID := newReconcileTestOrder(t, ctx, repo, "webhooknoover_", ref)
@@ -3249,7 +3249,7 @@ func TestAttachStudentNames_MissingStudentRow_FallsBackWithoutError(t *testing.T
 func newAdminOrderTestOrder(t *testing.T, ctx context.Context, repo *repository.Repository, studentID string) uuid.UUID {
 	t.Helper()
 	productID := insertDigitalCourseProduct(t, repo, "Admin Order Name Course", 40000)
-	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil, nil)
 	order, _, err := svc.MintCart(ctx, studentID)
 	if err != nil {
 		t.Fatalf("MintCart: %v", err)

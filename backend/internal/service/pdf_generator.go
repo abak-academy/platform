@@ -17,6 +17,11 @@ type pdfGenerator interface {
 	RenderHTML(ctx context.Context, html []byte) ([]byte, error)
 }
 
+// PDFGenerator is the exported name for pdfGenerator, used by callers outside
+// this package (cmd/api, cmd/worker) that need to construct a renderer to
+// inject into NewWithStore.
+type PDFGenerator = pdfGenerator
+
 // defaultGotenbergTimeout bounds a single render end-to-end. Production injects
 // http.DefaultClient, which has no timeout of its own, so without this a stalled
 // Gotenberg would hang every certificate and card render indefinitely.
@@ -39,13 +44,25 @@ func newGotenbergPDFGenerator(url string, httpClient *http.Client) *gotenbergPDF
 	return &gotenbergPDFGenerator{url: url, httpClient: httpClient, timeout: defaultGotenbergTimeout}
 }
 
-func (r *gotenbergPDFGenerator) RenderHTML(ctx context.Context, html []byte) ([]byte, error) {
-	if r.timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.timeout)
-		defer cancel()
-	}
+// NewGotenbergPDFGenerator is the exported constructor for the Gotenberg
+// implementation, used by cmd/api and cmd/worker to build the real renderer
+// passed into NewWithStore.
+func NewGotenbergPDFGenerator(url string, httpClient *http.Client) PDFGenerator {
+	return newGotenbergPDFGenerator(url, httpClient)
+}
 
+// pageOptionFields are the page/margin options shared by every Gotenberg
+// Chromium route (HTML and URL) so both renders come out with the same layout.
+var pageOptionFields = map[string]string{
+	"printBackground":   "true",
+	"preferCssPageSize": "true",
+	"marginTop":         "0",
+	"marginBottom":      "0",
+	"marginLeft":        "0",
+	"marginRight":       "0",
+}
+
+func (r *gotenbergPDFGenerator) RenderHTML(ctx context.Context, html []byte) ([]byte, error) {
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 
@@ -57,15 +74,7 @@ func (r *gotenbergPDFGenerator) RenderHTML(ctx context.Context, html []byte) ([]
 		return nil, fmt.Errorf("gotenberg: write html part: %w", err)
 	}
 
-	fields := map[string]string{
-		"printBackground":   "true",
-		"preferCssPageSize": "true",
-		"marginTop":         "0",
-		"marginBottom":      "0",
-		"marginLeft":        "0",
-		"marginRight":       "0",
-	}
-	for k, v := range fields {
+	for k, v := range pageOptionFields {
 		if err := w.WriteField(k, v); err != nil {
 			return nil, fmt.Errorf("gotenberg: write field %s: %w", k, err)
 		}
@@ -75,11 +84,21 @@ func (r *gotenbergPDFGenerator) RenderHTML(ctx context.Context, html []byte) ([]
 		return nil, fmt.Errorf("gotenberg: close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.url+"/forms/chromium/convert/html", &body)
+	return r.post(ctx, "/forms/chromium/convert/html", w.FormDataContentType(), &body)
+}
+
+func (r *gotenbergPDFGenerator) post(ctx context.Context, route, contentType string, body *bytes.Buffer) ([]byte, error) {
+	if r.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.timeout)
+		defer cancel()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.url+route, body)
 	if err != nil {
 		return nil, fmt.Errorf("gotenberg: build request: %w", err)
 	}
-	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Content-Type", contentType)
 
 	resp, err := r.httpClient.Do(req)
 	if err != nil {

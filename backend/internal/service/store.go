@@ -16,15 +16,59 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
+// biodataFieldLabels maps a biodataMissingFields key to the Indonesian label
+// used in BiodataIncompleteError's message.
+var biodataFieldLabels = map[string]string{
+	"school": "sekolah",
+	"grade":  "kelas",
+	"dob":    "tanggal lahir",
+}
+
+// biodataMissingFields reports which of school/grade/dob a student is missing
+// for exam registration, in the order the message lists them.
+func biodataMissingFields(u *model.User) []string {
+	if u == nil {
+		return []string{"school", "grade", "dob"}
+	}
+	var missing []string
+	hasSchool := (u.SchoolID != nil && *u.SchoolID != "") ||
+		(u.UnlistedSchoolName != nil && *u.UnlistedSchoolName != "")
+	if !hasSchool {
+		missing = append(missing, "school")
+	}
+	if u.Grade == nil {
+		missing = append(missing, "grade")
+	}
+	if u.DOB == nil {
+		missing = append(missing, "dob")
+	}
+	return missing
+}
+
 // biodataComplete reports whether a student has the biodata required to register
 // for an exam: a school (listed or unlisted), a class/grade, and a date of birth.
 func biodataComplete(u *model.User) bool {
-	if u == nil {
-		return false
+	return len(biodataMissingFields(u)) == 0
+}
+
+// BiodataIncompleteError names exactly which biodata fields are missing, so a
+// student who e.g. already has a school on file isn't told to go fill one in.
+// It satisfies errors.Is(err, ErrBiodataIncomplete) so existing callers that
+// only check the sentinel keep working.
+type BiodataIncompleteError struct {
+	Missing []string // subset of "school", "grade", "dob", in that order
+}
+
+func (e *BiodataIncompleteError) Error() string {
+	labels := make([]string, len(e.Missing))
+	for i, f := range e.Missing {
+		labels[i] = biodataFieldLabels[f]
 	}
-	hasSchool := (u.SchoolID != nil && *u.SchoolID != "") ||
-		(u.UnlistedSchoolName != nil && *u.UnlistedSchoolName != "")
-	return hasSchool && u.Grade != nil && u.DOB != nil
+	return fmt.Sprintf("lengkapi biodata (%s) sebelum mendaftar ujian", strings.Join(labels, ", "))
+}
+
+func (e *BiodataIncompleteError) Is(target error) bool {
+	return target == ErrBiodataIncomplete
 }
 
 type PromoValidation struct {
@@ -955,8 +999,8 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 			if err != nil {
 				return CheckoutResult{}, err
 			}
-			if !biodataComplete(u) {
-				return CheckoutResult{}, ErrBiodataIncomplete
+			if missing := biodataMissingFields(u); len(missing) > 0 {
+				return CheckoutResult{}, &BiodataIncompleteError{Missing: missing}
 			}
 		}
 	}
@@ -989,7 +1033,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 				Qty:         item.Qty,
 			})
 		}
-		if err := s.storeRepo.InsertOutboxEvent(ctx, tx, oID, "OrderPaid", payload); err != nil {
+		if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "order", oID, "OrderPaid", payload); err != nil {
 			return CheckoutResult{}, err
 		}
 		// Promo usage settles inside the same transaction as the order it belongs
@@ -1311,7 +1355,9 @@ func (s *Service) markOrderPaidTx(ctx context.Context, tx pgx.Tx, order model.Or
 			Qty:         item.Qty,
 		})
 	}
-	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, order.ID, "OrderPaid", payload); err != nil {
+	// The aggregate type is explicit as of #69 — orders are no longer the only
+	// thing the outbox carries.
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "order", order.ID, "OrderPaid", payload); err != nil {
 		return err
 	}
 
@@ -1360,6 +1406,9 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key, 
 	if err := s.storeRepo.SetOrderManualPayment(ctx, tx, order.ID, paymentProofURL); err != nil {
 		return err
 	}
+	// The OrderPaid insert that used to sit here moved into markOrderPaidTx
+	// below, which reconcile now shares (invariant 5: exactly one fulfilment
+	// path). Re-adding it here would emit the event twice.
 	actor := &actorID
 	if err := s.markOrderPaidTx(ctx, tx, order, actor, "order.confirm", map[string]any{
 		"manual":            true,
@@ -1697,7 +1746,7 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		})
 	}
 
-	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, orderID, "OrderPaid", outboxPayload); err != nil {
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "order", orderID, "OrderPaid", outboxPayload); err != nil {
 		return err
 	}
 

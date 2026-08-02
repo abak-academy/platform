@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import type {
@@ -7,7 +8,7 @@ import type {
   RegistrationListItem,
   SessionStartPayload,
   SessionState,
-  SessionAnswerInput,
+  SaveAnswersRequest,
   SubmitResult,
   CheckInResult,
   SessionResult,
@@ -93,12 +94,29 @@ export function useReconnectSession(sessionId: string | undefined) {
 
 export function useSaveAnswers(sessionId: string) {
   const qc = useQueryClient();
+  // Serializes PATCH requests for this session so two saves are never in
+  // flight together — otherwise an older, slower request can resolve after a
+  // newer one and its ack (position, queue clear) stomps the newer save's
+  // result (FR-32, NFR-R5). This only orders the network calls: calling
+  // mutate() again before an earlier call settles still detaches that
+  // earlier call's own onSuccess/onError from React Query's mutation
+  // observer (it will never fire) — callers must not depend on a specific
+  // call's callback running once a later mutate() has been issued.
+  const chainRef = useRef<Promise<unknown>>(Promise.resolve());
   return useMutation({
-    mutationFn: (answers: SessionAnswerInput[]) =>
-      authFetch<void>(`/exam/sessions/${encodeURIComponent(sessionId)}/answers`, {
-        method: "PATCH",
-        body: JSON.stringify({ answers }),
-      }),
+    mutationFn: (payload: SaveAnswersRequest) => {
+      const send = () =>
+        authFetch<void>(`/exam/sessions/${encodeURIComponent(sessionId)}/answers`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+      const result = chainRef.current.then(send, send);
+      chainRef.current = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: examKeys.session(sessionId) });
     },

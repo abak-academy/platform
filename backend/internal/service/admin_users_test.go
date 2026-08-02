@@ -279,6 +279,7 @@ func TestChangeAccountStatus_ReactivatesDeactivatedAccount(t *testing.T) {
 		nil,
 		nil,
 		cfg,
+		nil,
 	)
 	ctx := context.Background()
 	actorID := uuid.NewString()

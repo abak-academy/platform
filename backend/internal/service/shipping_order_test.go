@@ -71,7 +71,7 @@ func newShipOrderTestService(t *testing.T, logistics LogisticsClient) (*Service,
 	t.Helper()
 	_, repo := newRealDBService(t)
 	seedSenderConfig(t, repo)
-	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, logistics, nil, nil)
+	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, logistics, nil, nil, nil)
 	return svc, repo
 }
 

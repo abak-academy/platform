@@ -63,7 +63,7 @@ func newAdminJobsEnv(t *testing.T) *adminJobsTestEnv {
 			t.Fatalf("new pool: %v", err)
 		}
 		repo := repository.New(pool)
-		svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, nil, nil)
+		svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, nil, nil, nil)
 		e := echo.New()
 		e.HideBanner = true
 		jobEnv = &adminJobsTestEnv{e: e, h: handler.New(svc), svc: svc, repo: repo}

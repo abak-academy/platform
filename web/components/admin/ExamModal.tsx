@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ImageUploadInput } from "@/components/admin/ImageUploadInput";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/lib/i18n";
@@ -84,6 +85,8 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const [checkInWindow, setCheckInWindow] = useState("");
   const [graceWindow, setGraceWindow] = useState("");
   const [maxAttempts, setMaxAttempts] = useState("");
+  const [endScreenImageUrl, setEndScreenImageUrl] = useState("");
+  const [endScreenPromoText, setEndScreenPromoText] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -103,6 +106,8 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setCheckInWindow(inputValueFromNumber(exam.check_in_window_minutes));
       setGraceWindow(inputValueFromNumber(exam.grace_window_minutes));
       setMaxAttempts(inputValueFromNumber(exam.max_attempts));
+      setEndScreenImageUrl(exam.end_screen_image_url ?? "");
+      setEndScreenPromoText(exam.end_screen_promo_text ?? "");
     } else {
       setTitle("");
       setScheduledAt("");
@@ -119,6 +124,8 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setCheckInWindow("");
       setGraceWindow("");
       setMaxAttempts("");
+      setEndScreenImageUrl("");
+      setEndScreenPromoText("");
     }
   }, [open, exam]);
 
@@ -167,6 +174,8 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
           ...base,
           duration_minutes:
             timerMode === "overall" && duration !== "" ? Number(duration) : null,
+          end_screen_image_url: endScreenImageUrl.trim() || null,
+          end_screen_promo_text: endScreenPromoText.trim() || null,
         };
         const saved = await update.mutateAsync(payload);
         onSaved?.(saved);
@@ -370,6 +379,35 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                     <option value="score_only">{t("exam_packages_modal_result_config_score_only")}</option>
                     <option value="score_pembahasan">{t("exam_packages_modal_result_config_score_pembahasan")}</option>
                   </select>
+                  <dl className="grid gap-1 text-xs text-ink-400">
+                    <div>
+                      <dt className="inline font-medium text-ink-500">
+                        {t("exam_packages_modal_result_config_hidden")}:{" "}
+                      </dt>
+                      <dd className="inline">
+                        {t("exam_packages_modal_result_config_hidden_desc")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline font-medium text-ink-500">
+                        {t("exam_packages_modal_result_config_score_only")}:{" "}
+                      </dt>
+                      <dd className="inline">
+                        {t("exam_packages_modal_result_config_score_only_desc")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline font-medium text-ink-500">
+                        {t("exam_packages_modal_result_config_score_pembahasan")}:{" "}
+                      </dt>
+                      <dd className="inline">
+                        {t("exam_packages_modal_result_config_score_pembahasan_desc")}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="text-xs text-ink-400">
+                    {t("exam_packages_modal_result_config_never_publish_hint")}
+                  </p>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="exam-result-release-at">{t("exam_packages_modal_result_release_at")}</Label>
@@ -419,6 +457,41 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                 </div>
               </div>
             </div>
+
+            {isEdit && (
+              <div className="grid gap-3">
+                <SectionHeading>{t("exam_packages_modal_section_end_screen")}</SectionHeading>
+                <p className="text-xs text-ink-400">
+                  {t("exam_packages_modal_end_screen_hint")}
+                </p>
+                <div className="grid gap-2">
+                  <Label htmlFor="exam-end-screen-image">
+                    {t("exam_packages_modal_end_screen_image")}
+                  </Label>
+                  <ImageUploadInput
+                    id="exam-end-screen-image"
+                    aria-label={t("exam_packages_modal_end_screen_image")}
+                    value={endScreenImageUrl}
+                    onChange={setEndScreenImageUrl}
+                    disabled={isPending}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="exam-end-screen-promo">
+                    {t("exam_packages_modal_end_screen_promo")}
+                  </Label>
+                  <textarea
+                    id="exam-end-screen-promo"
+                    data-slot="textarea"
+                    value={endScreenPromoText}
+                    onChange={(e) => setEndScreenPromoText(e.target.value)}
+                    rows={3}
+                    disabled={isPending}
+                    className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter>

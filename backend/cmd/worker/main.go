@@ -4,6 +4,7 @@ import (
 	"akademi-bimbel/config"
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -60,12 +61,13 @@ func main() {
 	logisticsClient := adapter.ResolveShippingClient(ctx, repo, &cfg)
 	storageClient := newStorageClient(cfg)
 
-	svc := service.NewWithStore(repo, repo, rdb, jwtSigner, &service.NoopOTPProvider{}, emailProvider, paymentClient, logisticsClient, storageClient, &cfg)
+	pdfGenerator := service.NewGotenbergPDFGenerator(cfg.GotenbergURL, http.DefaultClient)
+	svc := service.NewWithStore(repo, repo, rdb, jwtSigner, &service.NoopOTPProvider{}, emailProvider, paymentClient, logisticsClient, storageClient, &cfg, pdfGenerator)
 	objectStore := worker.NewMinioObjectStore(storageClient)
 
 	sweeperInterval := 5 * time.Minute
 	announcementPollInterval := 5 * time.Minute
-	w := worker.New(pool, rdb, repo, cfg.WorkerPollInterval, sweeperInterval, announcementPollInterval, svc, repo, objectStore, svc, cfg.WorkerPollInterval, cfg.ObjectStoragePrivateBucketName)
+	w := worker.New(pool, rdb, repo, cfg.WorkerPollInterval, sweeperInterval, announcementPollInterval, svc, repo, objectStore, svc, cfg.WorkerPollInterval, cfg.ObjectStoragePrivateBucketName, svc)
 	logger.Info("worker started", "poll_interval", cfg.WorkerPollInterval.String(), "sweeper_interval", sweeperInterval.String(), "announcement_poll_interval", announcementPollInterval.String())
 	w.Run(ctx)
 	logger.Info("worker stopped")

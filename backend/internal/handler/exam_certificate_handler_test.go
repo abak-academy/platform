@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,6 +50,7 @@ func registerAdminExamRoutes(t *testing.T, env *testEnv, h *handler.Handler) {
 	adminExams.POST("/:id/certificate-assets/presign", h.AdminPresignExamCertificateAsset)
 	adminExams.GET("/:id/certificate-design", h.AdminGetExamCertificateDesign)
 	adminExams.PUT("/:id/certificate-design", h.AdminUpdateExamCertificateDesign)
+	adminExams.PATCH("/:id/certificate-enabled", h.AdminSetExamCertificateEnabled)
 	adminExams.PATCH("/:id", h.AdminUpdateExam)
 }
 
@@ -70,14 +72,61 @@ func registerStudentLeaderboardRoute(t *testing.T, env *testEnv, h *handler.Hand
 // "%PDF"-prefix/non-empty assertions these tests make on the response body.
 var fakePDFBytes = []byte("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF")
 
+// fakeGotenbergRecorder counts hits per route and captures the last "url"
+// form field posted to /forms/chromium/convert/url, so tests can prove a
+// certificate render went through RenderURL (the print route) and never
+// through RenderHTML (Task 13, FR-27/FR-29).
+type fakeGotenbergRecorder struct {
+	mu        sync.Mutex
+	htmlCalls int
+	urlCalls  int
+	lastURL   string
+}
+
+func (r *fakeGotenbergRecorder) recordHTML() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.htmlCalls++
+}
+
+func (r *fakeGotenbergRecorder) recordURL(u string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.urlCalls++
+	r.lastURL = u
+}
+
+func (r *fakeGotenbergRecorder) snapshot() (htmlCalls, urlCalls int, lastURL string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.htmlCalls, r.urlCalls, r.lastURL
+}
+
 // newFakeGotenbergServer stands in for a real Gotenberg sidecar: it answers
-// the Chromium HTML-to-PDF route the renderer POSTs to with a fixed PDF, so
-// certificate-preview tests get a real 200+PDF round trip without a live
-// Gotenberg in the test environment. Closed automatically via t.Cleanup.
+// both the Chromium HTML-to-PDF route and the URL-to-PDF route (FR-26/FR-27)
+// the renderer POSTs to with a fixed PDF, so certificate tests get a real
+// 200+PDF round trip without a live Gotenberg in the test environment.
+// Closed automatically via t.Cleanup.
 func newFakeGotenbergServer(t *testing.T) *httptest.Server {
+	rec, srv := newRecordingFakeGotenbergServer(t)
+	_ = rec
+	return srv
+}
+
+// newRecordingFakeGotenbergServer is newFakeGotenbergServer plus the request
+// recorder, for tests that need to assert which Gotenberg route was hit.
+func newRecordingFakeGotenbergServer(t *testing.T) (*fakeGotenbergRecorder, *httptest.Server) {
 	t.Helper()
+	rec := &fakeGotenbergRecorder{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/forms/chromium/convert/html" {
+		switch r.URL.Path {
+		case "/forms/chromium/convert/html":
+			rec.recordHTML()
+		case "/forms/chromium/convert/url":
+			if err := r.ParseMultipartForm(1 << 20); err == nil {
+				rec.recordURL(r.FormValue("url"))
+			}
+		default:
 			http.NotFound(w, r)
 			return
 		}
@@ -86,7 +135,7 @@ func newFakeGotenbergServer(t *testing.T) *httptest.Server {
 		w.Write(fakePDFBytes)
 	}))
 	t.Cleanup(srv.Close)
-	return srv
+	return rec, srv
 }
 
 // ---------------------------------------------------------------------------
@@ -94,11 +143,12 @@ func newFakeGotenbergServer(t *testing.T) *httptest.Server {
 // ---------------------------------------------------------------------------
 
 type testEnvWithStore struct {
-	pool   *pgxpool.Pool
-	mr     *miniredis.Miniredis
-	e      *echo.Echo
-	svc    *service.Service
-	signer *infra.JWTSigner
+	pool      *pgxpool.Pool
+	mr        *miniredis.Miniredis
+	e         *echo.Echo
+	svc       *service.Service
+	signer    *infra.JWTSigner
+	gotenberg *fakeGotenbergRecorder
 }
 
 func newTestEnvWithStore(t *testing.T) *testEnvWithStore {
@@ -142,8 +192,11 @@ func newTestEnvWithStoreCfg(t *testing.T, storage *minio.Client, cfg *config.Con
 
 	// No live Gotenberg sidecar runs in the test environment; point the
 	// renderer at a fake one unless a caller already configured a URL.
+	var gotenberg *fakeGotenbergRecorder
 	if cfg.GotenbergURL == "" {
-		cfg.GotenbergURL = newFakeGotenbergServer(t).URL
+		var srv *httptest.Server
+		gotenberg, srv = newRecordingFakeGotenbergServer(t)
+		cfg.GotenbergURL = srv.URL
 	}
 
 	pgContainer, err := tcpostgres.Run(ctx,
@@ -194,6 +247,7 @@ func newTestEnvWithStoreCfg(t *testing.T, storage *minio.Client, cfg *config.Con
 		&service.NoopOTPProvider{}, &service.NoopEmailProvider{},
 		&service.NoopPaymentClient{}, &service.NoopLogisticsClient{},
 		storage, cfg,
+		nil,
 	)
 
 	h := handler.New(svc)
@@ -201,7 +255,7 @@ func newTestEnvWithStoreCfg(t *testing.T, storage *minio.Client, cfg *config.Con
 	e.HideBanner = true
 	server.RegisterRoutesForTest(e, h, svc, signer)
 
-	return &testEnvWithStore{pool: pool, mr: mr, e: e, svc: svc, signer: signer}
+	return &testEnvWithStore{pool: pool, mr: mr, e: e, svc: svc, signer: signer, gotenberg: gotenberg}
 }
 
 // mintTokenForEnv creates a signed JWT and stores the session in the env's
@@ -357,6 +411,10 @@ func seedMCQuestion(t *testing.T, pool *pgxpool.Pool, testID uuid.UUID, body str
 	return id
 }
 
+// seedExam inserts an exam with certificate_enabled = true — most callers
+// exercise certificate-design/preview/leaderboard flows that assume the
+// feature is on; tests for the certificate_enabled gate itself (Task 4)
+// explicitly flip it off with seedExamCertificateDisabled or a direct UPDATE.
 func seedExam(t *testing.T, pool *pgxpool.Pool, title string, allowLeaderboard bool, resultConfig string, certificateTemplate string) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
@@ -367,14 +425,26 @@ func seedExam(t *testing.T, pool *pgxpool.Pool, title string, allowLeaderboard b
 		certificateTemplate = "classic"
 	}
 	err := pool.QueryRow(context.Background(),
-		`INSERT INTO exam (title, allow_leaderboard, result_config, certificate_design, timer_mode, duration_minutes)
-		VALUES ($1, $2, $3, $4, 'overall', 60) RETURNING id`,
+		`INSERT INTO exam (title, allow_leaderboard, result_config, certificate_design, certificate_enabled, timer_mode, duration_minutes)
+		VALUES ($1, $2, $3, $4, true, 'overall', 60) RETURNING id`,
 		title, allowLeaderboard, resultConfig, fmt.Sprintf(`{"template":%q}`, certificateTemplate),
 	).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert exam: %v", err)
 	}
 	return id
+}
+
+// setExamCertificateEnabled directly flips certificate_enabled in the DB —
+// used by tests that need a specific starting state without going through
+// the admin action under test.
+func setExamCertificateEnabled(t *testing.T, pool *pgxpool.Pool, examID uuid.UUID, enabled bool) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE exam SET certificate_enabled = $1 WHERE id = $2`, enabled, examID,
+	); err != nil {
+		t.Fatalf("set certificate_enabled: %v", err)
+	}
 }
 
 func seedExamTest(t *testing.T, pool *pgxpool.Pool, examID, testID uuid.UUID, sortOrder int) {
@@ -623,6 +693,11 @@ func TestAdminGetExamCertificatePreview_StudentToken_Returns403(t *testing.T) {
 	}
 }
 
+// TestAdminGetExamCertificatePreview_ValidToken_Returns200PDF covers the
+// async redesign's preview contract (2026-08-02): the FE has already
+// serialized the (possibly unsaved) design to self-contained HTML with its
+// own live-preview values baked in — the handler is a thin pass-through to
+// Gotenberg.
 func TestAdminGetExamCertificatePreview_ValidToken_Returns200PDF(t *testing.T) {
 	env := newTestEnvWithStore(t)
 	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert Preview")
@@ -630,7 +705,9 @@ func TestAdminGetExamCertificatePreview_ValidToken_Returns200PDF(t *testing.T) {
 	examID := seedExam(t, env.pool, "Certificate Test Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token)
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview", token,
+		map[string]any{"html": "<html><body>preview</body></html>"},
+	)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -647,14 +724,16 @@ func TestAdminGetExamCertificatePreview_ValidToken_Returns200PDF(t *testing.T) {
 	}
 }
 
-func TestAdminGetExamCertificatePreview_InvalidTemplate_Returns422(t *testing.T) {
+// TestAdminGetExamCertificatePreview_EmptyHTML_Returns422 proves the handler
+// refuses to spend a Gotenberg round trip on an empty body.
+func TestAdminGetExamCertificatePreview_EmptyHTML_Returns422(t *testing.T) {
 	env := newTestEnvWithStore(t)
 	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert 422")
 
 	examID := seedExam(t, env.pool, "Cert 422 Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=invalid-template-key", token)
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview", token, map[string]any{})
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -670,7 +749,9 @@ func TestAdminGetExamCertificatePreview_UnknownExam_Returns404(t *testing.T) {
 	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert 404")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-0000000000aa/certificate-preview", token)
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-0000000000aa/certificate-preview", token,
+		map[string]any{"html": "<html></html>"},
+	)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -681,39 +762,50 @@ func TestAdminGetExamCertificatePreview_UnknownExam_Returns404(t *testing.T) {
 	}
 }
 
-// TestAdminGetExamCertificatePreview_WithUnsavedLayout_RendersOverride proves
-// the editor can preview a change before saving: an optional body layout still
-// renders through the same engine as real generation.
-func TestAdminGetExamCertificatePreview_WithUnsavedLayout_RendersOverride(t *testing.T) {
+// TestAdminGetExamCertificatePreview_CallsRenderHTMLWithPostedBody proves the
+// async redesign's preview path (2026-08-02): the handler posts the FE's
+// html verbatim to Gotenberg's HTML route — never RenderURL (which no longer
+// exists at all) and never a second Go-side render engine.
+func TestAdminGetExamCertificatePreview_CallsRenderHTMLWithPostedBody(t *testing.T) {
 	env := newTestEnvWithStore(t)
-	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview Override")
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview Render HTML")
 
-	examID := seedExam(t, env.pool, "Preview Override Exam", false, "hidden", "classic")
+	examID := seedExam(t, env.pool, "Preview Render HTML Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
-		map[string]any{"layout": validCertLayoutBody()},
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview", token,
+		map[string]any{"html": "<html><body>marker-content</body></html>"},
 	)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if !bytes.HasPrefix(rec.Body.Bytes(), []byte("%PDF")) {
-		t.Errorf("expected a PDF body, got %q", string(rec.Body.Bytes()[:min(len(rec.Body.Bytes()), 10)]))
+
+	htmlCalls, _, _ := env.gotenberg.snapshot()
+	if htmlCalls != 1 {
+		t.Fatalf("Gotenberg HTML route calls = %d, want 1", htmlCalls)
 	}
 }
 
-func TestAdminGetExamCertificatePreview_WithInvalidUnsavedLayout_Returns422(t *testing.T) {
+// TestAdminGetExamCertificatePreview_NoObjectStoreWrite proves FR-29: a
+// preview never serves or writes a stored PDF. env has no MinIO client
+// (newTestEnvWithStore passes storage=nil) — uploadCertificatePDF guards on a
+// nil s.storage and returns ErrStorageNotConfigured immediately, so a 200 PDF
+// response here is direct proof the preview path never attempted an upload.
+func TestAdminGetExamCertificatePreview_NoObjectStoreWrite(t *testing.T) {
 	env := newTestEnvWithStore(t)
-	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview Bad Override")
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview No Store Write")
 
-	examID := seedExam(t, env.pool, "Preview Bad Override Exam", false, "hidden", "classic")
+	examID := seedExam(t, env.pool, "Preview No Store Write Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
-		map[string]any{"layout": invalidCertLayoutBody()},
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview", token,
+		map[string]any{"html": "<html><body>preview</body></html>"},
 	)
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 (which is only reachable if no object-store write was attempted against a nil storage client), got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !bytes.HasPrefix(rec.Body.Bytes(), []byte("%PDF")) {
+		t.Errorf("expected a PDF body, got %q", string(rec.Body.Bytes()[:min(len(rec.Body.Bytes()), 10)]))
 	}
 }
 
@@ -1067,6 +1159,117 @@ func TestAdminUpdateExamCertificateDesign_OmittedLayout_Rejected(t *testing.T) {
 	}
 }
 
+// certLayoutWithStudentNameBody carries one real field (student_name),
+// which normalizeCertificateLayout defaults to Content "{{student_name}}" —
+// used by the template_html tests below to exercise a layout that actually
+// declares a token, unlike validCertLayoutBody's plain "title" field.
+func certLayoutWithStudentNameBody() map[string]any {
+	return map[string]any{
+		"page":       map[string]any{"width_mm": 297, "height_mm": 210},
+		"background": map[string]any{"kind": "builtin", "ref": "classic"},
+		"fields": []map[string]any{
+			{"id": "student_name", "x_mm": 48.5, "y_mm": 100, "w_mm": 200, "align": "center", "visible": true},
+		},
+	}
+}
+
+// TestAdminUpdateExamCertificateDesign_TemplateHTMLTokenNotInLayout_Rejected
+// is Finding 4's exact scenario (2026-08 review): a template_html carrying a
+// {{score}} spot on a layout that declares no score field must be rejected
+// — otherwise the stored template could bypass certificateLayoutAllowed's
+// result gate, which only ever inspects the layout.
+func TestAdminUpdateExamCertificateDesign_TemplateHTMLTokenNotInLayout_Rejected(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Template Token")
+
+	examID := seedExam(t, env.pool, "Design Template Token Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{"template": "classic", "layout": validCertLayoutBody(), "template_html": "<div>{{score}}</div>"},
+	)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "validation_failed" {
+		t.Errorf("code: want validation_failed, got %v", resp["code"])
+	}
+
+	var persisted *string
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_template_html FROM exam WHERE id = $1`, examID,
+	).Scan(&persisted); err != nil {
+		t.Fatalf("query certificate_template_html: %v", err)
+	}
+	if persisted != nil {
+		t.Fatalf("rejected template_html must not be persisted, got %q", *persisted)
+	}
+}
+
+// TestAdminUpdateExamCertificateDesign_TemplateHTMLExternalResource_Rejected
+// proves the same PUT rejects a template referencing an external resource —
+// every asset must come from backend-controlled storage.
+func TestAdminUpdateExamCertificateDesign_TemplateHTMLExternalResource_Rejected(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Template External")
+
+	examID := seedExam(t, env.pool, "Design Template External Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{"template": "classic", "layout": validCertLayoutBody(), "template_html": `<img src="https://evil.example/x.png"/>`},
+	)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAdminUpdateExamCertificateDesign_ValidTemplateHTML_PersistsSanitized
+// proves a legitimate template_html — declared tokens only, no external
+// resources — is accepted, sanitized (script stripped, style preserved,
+// doctype prepended), and persisted to certificate_template_html.
+func TestAdminUpdateExamCertificateDesign_ValidTemplateHTML_PersistsSanitized(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Template Valid")
+
+	examID := seedExam(t, env.pool, "Design Template Valid Exam", false, "hidden", "classic")
+
+	templateHTML := `<html><head><style>@page{size:297mm 210mm;margin:0}</style></head>` +
+		`<body><script>alert(1)</script><div>{{student_name}}</div></body></html>`
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{"template": "classic", "layout": certLayoutWithStudentNameBody(), "template_html": templateHTML},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var persisted *string
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_template_html FROM exam WHERE id = $1`, examID,
+	).Scan(&persisted); err != nil {
+		t.Fatalf("query certificate_template_html: %v", err)
+	}
+	if persisted == nil {
+		t.Fatal("certificate_template_html was not persisted")
+	}
+	if !strings.HasPrefix(*persisted, "<!DOCTYPE html>") {
+		t.Errorf("persisted template missing leading doctype: %q", *persisted)
+	}
+	if !strings.Contains(*persisted, "@page{size:297mm 210mm;margin:0}") {
+		t.Errorf("persisted template lost load-bearing <style> content: %q", *persisted)
+	}
+	if strings.Contains(*persisted, "<script") {
+		t.Errorf("persisted template still carries <script>: %q", *persisted)
+	}
+	if !strings.Contains(*persisted, "{{student_name}}") {
+		t.Errorf("persisted template lost the declared {{student_name}} token: %q", *persisted)
+	}
+}
+
 func TestAdminUpdateExamCertificateDesign_UnknownExam_Returns404(t *testing.T) {
 	env := newTestEnvWithStore(t)
 	admin := seedUser(t, env.pool, "admin_exam", "Admin Design PUT 404")
@@ -1077,6 +1280,262 @@ func TestAdminUpdateExamCertificateDesign_UnknownExam_Returns404(t *testing.T) {
 	)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AdminSetExamCertificateEnabled / certificate_enabled gate tests (Task 4)
+// ---------------------------------------------------------------------------
+
+// TestAdminGetExamCertificateDesign_Disabled_Returns404 proves FR-9: the
+// design editor is unreachable while certificate_enabled is false, even
+// though the exam itself (and any saved design) exists.
+func TestAdminGetExamCertificateDesign_Disabled_Returns404(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert Disabled")
+
+	examID := seedExam(t, env.pool, "Disabled Cert Exam", false, "hidden", "classic")
+	setExamCertificateEnabled(t, env.pool, examID, false)
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "certificate_disabled" {
+		t.Errorf("code: want certificate_disabled, got %v", resp["code"])
+	}
+	if _, hasLayout := resp["layout"]; hasLayout {
+		t.Errorf("expected no design payload on a disabled exam, got layout=%v", resp["layout"])
+	}
+}
+
+// TestAdminGetExamCertificateDesign_EnabledAfterAction_Returns200 proves
+// FR-9/FR-11: the same GET that 404s while disabled returns 200 once an
+// admin enables the exam's certificate through the dedicated action.
+func TestAdminGetExamCertificateDesign_EnabledAfterAction_Returns200(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert Enable")
+
+	examID := seedExam(t, env.pool, "Enable Cert Exam", false, "hidden", "classic")
+	setExamCertificateEnabled(t, env.pool, examID, false)
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("before enabling: want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	enableRec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-enabled", token,
+		map[string]any{"enabled": true},
+	)
+	if enableRec.Code != http.StatusOK {
+		t.Fatalf("enable: want 200, got %d body=%s", enableRec.Code, enableRec.Body.String())
+	}
+	// The JSON key must be visible in a real handler response body, not only
+	// asserted against the Go struct.
+	var enableResp map[string]any
+	if err := json.NewDecoder(enableRec.Body).Decode(&enableResp); err != nil {
+		t.Fatalf("decode enable response: %v", err)
+	}
+	enabledVal, ok := enableResp["certificate_enabled"]
+	if !ok {
+		t.Fatal("enable response missing certificate_enabled key")
+	}
+	if enabledVal != true {
+		t.Errorf("certificate_enabled: want true, got %v", enabledVal)
+	}
+
+	rec = getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("after enabling: want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAdminSetExamCertificateEnabled_DisableThenReenable_PreservesDesign
+// proves FR-12: toggling certificate_enabled off and back on never touches
+// certificate_design or certificate_design_updated_at — the dedicated action
+// is a single-column write, not a general update.
+func TestAdminSetExamCertificateEnabled_DisableThenReenable_PreservesDesign(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert Preserve")
+
+	examID := seedExam(t, env.pool, "Preserve Cert Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	putRec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{"template": "classic", "layout": validCertLayoutBody()},
+	)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("seed design PUT: want 200, got %d body=%s", putRec.Code, putRec.Body.String())
+	}
+
+	var beforeDesign []byte
+	var beforeUpdatedAt time.Time
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_design, certificate_design_updated_at FROM exam WHERE id = $1`, examID,
+	).Scan(&beforeDesign, &beforeUpdatedAt); err != nil {
+		t.Fatalf("query design before: %v", err)
+	}
+
+	disableRec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-enabled", token,
+		map[string]any{"enabled": false},
+	)
+	if disableRec.Code != http.StatusOK {
+		t.Fatalf("disable: want 200, got %d body=%s", disableRec.Code, disableRec.Body.String())
+	}
+	enableRec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-enabled", token,
+		map[string]any{"enabled": true},
+	)
+	if enableRec.Code != http.StatusOK {
+		t.Fatalf("re-enable: want 200, got %d body=%s", enableRec.Code, enableRec.Body.String())
+	}
+
+	var afterDesign []byte
+	var afterUpdatedAt time.Time
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_design, certificate_design_updated_at FROM exam WHERE id = $1`, examID,
+	).Scan(&afterDesign, &afterUpdatedAt); err != nil {
+		t.Fatalf("query design after: %v", err)
+	}
+
+	if !bytes.Equal(beforeDesign, afterDesign) {
+		t.Errorf("certificate_design changed across disable/re-enable:\nbefore=%s\nafter=%s", beforeDesign, afterDesign)
+	}
+	if !beforeUpdatedAt.Equal(afterUpdatedAt) {
+		t.Errorf("certificate_design_updated_at changed across disable/re-enable: before=%v after=%v", beforeUpdatedAt, afterUpdatedAt)
+	}
+}
+
+func TestAdminSetExamCertificateEnabled_NoToken_Returns401(t *testing.T) {
+	env := newTestEnv(t)
+	h := handler.New(env.svc)
+	registerAdminExamRoutes(t, env, h)
+
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-enabled", "",
+		map[string]any{"enabled": true},
+	)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminSetExamCertificateEnabled_StudentToken_Returns403(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:     "student-cert-enabled",
+		Email:  strptr("student-cert-enabled@test.com"),
+		Role:   service.RoleStudent,
+		Status: "active",
+	})
+	h := handler.New(env.svc)
+	registerAdminExamRoutes(t, env, h)
+
+	token := mintToken(t, env, "student-cert-enabled", service.RoleStudent)
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-enabled", token,
+		map[string]any{"enabled": true},
+	)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminSetExamCertificateEnabled_UnknownExam_Returns404(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert Enable 404")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-0000000000aa/certificate-enabled", token,
+		map[string]any{"enabled": true},
+	)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestStudentGetSessionResult_DisabledCertificate_ReturnsNullCertificateURL
+// proves FR-10 end-to-end through the real result endpoint: a submitted
+// session of an exam with certificate_enabled=false must carry a null
+// certificate_url, not merely at the service unit level.
+func TestStudentGetSessionResult_DisabledCertificate_ReturnsNullCertificateURL(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	student := seedUser(t, env.pool, "student", "Student Disabled Cert")
+
+	testID := seedTest(t, env.pool)
+	qID := seedMCQuestion(t, env.pool, testID, "2+2", 1, 1)
+
+	examID := seedExam(t, env.pool, "Disabled Cert Result Exam", false, "score_only", "classic")
+	setExamCertificateEnabled(t, env.pool, examID, false)
+	seedExamTest(t, env.pool, examID, testID, 1)
+
+	regID := seedRegistration(t, env.pool, student, examID)
+	submittedAt := time.Now()
+	sessionID := seedSession(t, env.pool, regID, student, examID, "submitted", 1, &submittedAt)
+	seedAnswer(t, env.pool, sessionID, qID, "a", 1)
+
+	token := mintTokenForEnv(t, env, student.String(), service.RoleStudent)
+	rec := getRequest(t, env.e, "/api/v1/exam/sessions/"+sessionID.String()+"/result", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.Bytes()
+	var resp map[string]any
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	// Task 13 dropped `,omitempty` from SessionResult.CertificateURL (NFR-R3,
+	// FR-5): the key must be present and null, not merely absent — so this
+	// checks both, where the pre-Task-13 version of this test could only
+	// check the value (a missing key and a null value decode identically).
+	if !strings.Contains(string(body), `"certificate_url"`) {
+		t.Fatalf(`response body missing the "certificate_url" key entirely, want it present with a null value: %s`, body)
+	}
+	if certURL := resp["certificate_url"]; certURL != nil {
+		t.Errorf("certificate_url: want nil for a disabled exam, got %v", certURL)
+	}
+}
+
+// TestStudentGetSessionResult_NoCachedCertificate_DegradesToNullCertificateURL
+// proves the async redesign's core read-path invariant (2026-08-02,
+// superseding this file's old RenderURL-failure test): a submitted,
+// certificate-enabled session with nothing generated yet (no
+// CertificateNeeded outbox worker runs in this handler-only test) returns a
+// null certificate_url and never a 5xx — GetSessionResult never renders, so
+// there is no failure mode here to simulate anymore.
+func TestStudentGetSessionResult_NoCachedCertificate_DegradesToNullCertificateURL(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	student := seedUser(t, env.pool, "student", "Student No Cached Cert")
+
+	testID := seedTest(t, env.pool)
+	qID := seedMCQuestion(t, env.pool, testID, "2+2", 1, 1)
+
+	examID := seedExam(t, env.pool, "No Cached Cert Exam", false, "score_only", "classic")
+	seedExamTest(t, env.pool, examID, testID, 1)
+
+	regID := seedRegistration(t, env.pool, student, examID)
+	submittedAt := time.Now()
+	sessionID := seedSession(t, env.pool, regID, student, examID, "submitted", 1, &submittedAt)
+	seedAnswer(t, env.pool, sessionID, qID, "a", 1)
+
+	token := mintTokenForEnv(t, env, student.String(), service.RoleStudent)
+	rec := getRequest(t, env.e, "/api/v1/exam/sessions/"+sessionID.String()+"/result", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.Bytes()
+	if !strings.Contains(string(body), `"certificate_url"`) {
+		t.Fatalf(`response body missing the "certificate_url" key entirely: %s`, body)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if certURL := resp["certificate_url"]; certURL != nil {
+		t.Errorf("certificate_url: want null when nothing has been generated yet, got %v", certURL)
 	}
 }
 

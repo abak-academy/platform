@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowUpDown, CheckCircle, Loader2 } from "lucide-react";
+import { ArrowUpDown, CheckCircle, Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { ParticipantPicker } from "@/components/admin/ParticipantPicker";
@@ -73,7 +73,20 @@ function downloadRosterCSV(rows: ExamRosterEntry[]): void {
 function ExamRosterSection({ examId }: { examId: string }) {
   const { t } = useTranslation();
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [revealedTokens, setRevealedTokens] = useState<Set<string>>(new Set());
   const { data, isLoading, isError } = useExamRoster(examId);
+
+  const toggleToken = (registrationId: string) => {
+    setRevealedTokens((prev) => {
+      const next = new Set(prev);
+      if (next.has(registrationId)) {
+        next.delete(registrationId);
+      } else {
+        next.add(registrationId);
+      }
+      return next;
+    });
+  };
 
   const rows = useMemo(() => {
     const list = data?.data ?? [];
@@ -130,26 +143,54 @@ function ExamRosterSection({ examId }: { examId: string }) {
                 <th className="py-2 pr-3 font-medium">{t("exam_roster_th_name")}</th>
                 <th className="py-2 pr-3 font-medium">{t("exam_roster_th_username")}</th>
                 <th className="py-2 pr-3 font-medium">{t("exam_roster_th_status")}</th>
-                <th className="py-2 font-medium">{t("exam_roster_th_checked_in")}</th>
+                <th className="py-2 pr-3 font-medium">{t("exam_roster_th_checked_in")}</th>
+                <th className="py-2 font-medium">{t("exam_roster_th_token")}</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.registration_id} className="border-b border-line/50">
-                  <td
-                    data-testid="roster-participant-no"
-                    className="py-2 pr-3 font-medium text-ink-900"
-                  >
-                    {r.participant_no || "—"}
-                  </td>
-                  <td className="py-2 pr-3 text-ink-900">{r.student_name}</td>
-                  <td className="py-2 pr-3 text-ink-500">
-                    {r.student_username ? `@${r.student_username}` : "—"}
-                  </td>
-                  <td className="py-2 pr-3">{r.status}</td>
-                  <td className="py-2">{r.checked_in_at ? "✓" : "—"}</td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const revealed = revealedTokens.has(r.registration_id);
+                return (
+                  <tr key={r.registration_id} className="border-b border-line/50">
+                    <td
+                      data-testid="roster-participant-no"
+                      className="py-2 pr-3 font-medium text-ink-900"
+                    >
+                      {r.participant_no || "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-ink-900">{r.student_name}</td>
+                    <td className="py-2 pr-3 text-ink-500">
+                      {r.student_username ? `@${r.student_username}` : "—"}
+                    </td>
+                    <td className="py-2 pr-3">{r.status}</td>
+                    <td className="py-2 pr-3">{r.checked_in_at ? "✓" : "—"}</td>
+                    <td className="py-2">
+                      <div className="flex items-center gap-2 font-mono text-xs">
+                        <span className="select-all">
+                          {revealed ? r.token : "••••••••"}
+                        </span>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => toggleToken(r.registration_id)}
+                          aria-label={
+                            revealed
+                              ? t("exam_roster_hide_token")
+                              : t("exam_roster_show_token")
+                          }
+                        >
+                          {revealed ? (
+                            <EyeOff className="size-3.5" />
+                          ) : (
+                            <Eye className="size-3.5" />
+                          )}
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

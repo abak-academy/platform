@@ -147,9 +147,26 @@ type Exam struct {
 	// changes (C3/FR-14) — the single staleness timestamp compared against a session's
 	// certificate_generated_at.
 	CertificateDesignUpdatedAt *time.Time `json:"certificate_design_updated_at"`
+	// CertificateEnabled gates the whole certificate feature for this exam
+	// (FB-8/FR-8..FR-12); DEFAULT false. Mutated only via the dedicated
+	// enable/disable action, never through the general exam PATCH, so toggling
+	// it never touches CertificateDesign or CertificateDesignUpdatedAt.
+	CertificateEnabled bool `json:"certificate_enabled"`
+	// CertificateTemplateHTML is the FE-serialized self-contained HTML for this
+	// exam's certificate design, carrying {{token}} placeholders for every
+	// verified value (score, student_name, certificate_number, image URLs...).
+	// Nil until an admin has saved a design (migration 0056). The worker
+	// substitutes it at generation time; nothing here is ever trusted as a
+	// finished document on its own.
+	CertificateTemplateHTML *string `json:"certificate_template_html,omitempty"`
 	// ExamNumber is a global human-friendly serial (FR-23) assigned from exam_number_seq,
 	// distinct from the exam UUID. Non-nil after create; nil only pre-migration/pre-backfill.
 	ExamNumber *int `json:"exam_number"`
+	// EndScreenImageURL and EndScreenPromoText are the single admin-configured
+	// image/promo block shown on the post-submit result screen (FR-38/FR-39);
+	// both nil until an admin sets them. No templating — plain values only.
+	EndScreenImageURL  *string `json:"end_screen_image_url"`
+	EndScreenPromoText *string `json:"end_screen_promo_text"`
 }
 
 // ExamTest is the M:N join between Exam and Test with sort order.
@@ -195,8 +212,11 @@ type ExamSession struct {
 	// generation and reused thereafter; nil until allocated (FR-9/FR-10).
 	CertificateNumber *string    `json:"certificate_number"`
 	LastSavedAt       *time.Time `json:"last_saved_at"`
-	Status            string     `json:"status"`
-	CreatedAt         time.Time  `json:"created_at"`
+	// CurrentPosition is the student's last-known question index (FR-35/FR-36);
+	// nil until the first save that carries a position.
+	CurrentPosition *int      `json:"current_position"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // ExamSessionAnswer is one answer record per (session, question) — composite PK.
@@ -342,6 +362,9 @@ type RegistrationDetail struct {
 // the service composes it (formatParticipantNo) from the raw ExamScheduledAt/
 // ExamNumber/RegisteredAt ingredients, which are join inputs only and not
 // surfaced on the wire (json:"-").
+// Token (FR-47/FR-48, NFR-S7) is the exam check-in credential; it must never
+// be added to the CSV export or logged, and only ever served on this
+// read/write-RBAC-gated admin endpoint (see routes.go's adminExamsRead group).
 type ExamRosterEntry struct {
 	RegistrationID    uuid.UUID  `json:"registration_id"`
 	StudentID         uuid.UUID  `json:"student_id"`
@@ -351,6 +374,7 @@ type ExamRosterEntry struct {
 	ParticipantNo     string     `json:"participant_no"`
 	Status            string     `json:"status"`
 	CheckedInAt       *time.Time `json:"checked_in_at"`
+	Token             string     `json:"token"`
 	RegisteredAt      time.Time  `json:"-"`
 	ExamScheduledAt   *time.Time `json:"-"`
 	ExamNumber        *int       `json:"-"`
@@ -371,7 +395,17 @@ type SessionResult struct {
 	Rank            int                    `json:"rank"`
 	Breakdown       []ResultTopicRow       `json:"breakdown,omitempty"`
 	Pembahasan      []ResultPembahasanItem `json:"pembahasan,omitempty"`
-	CertificateURL  *string                `json:"certificate_url,omitempty"`
+	// CertificateURL has no omitempty (NFR-R3, FR-5): the key must appear on
+	// every gated result state, carrying null when the gate denies or a
+	// certificate render fails — omitempty would silently drop the key
+	// instead of serialising null.
+	CertificateURL *string `json:"certificate_url"`
+	// EndScreenImageURL/EndScreenPromoText mirror the exam's configured
+	// post-submit content (FR-38/FR-39); present on every gate state (like
+	// CertificateURL) since they're shown regardless of result visibility.
+	// omitempty so an unconfigured exam's response matches today's shape.
+	EndScreenImageURL  *string `json:"end_screen_image_url,omitempty"`
+	EndScreenPromoText *string `json:"end_screen_promo_text,omitempty"`
 }
 
 // ResultTopicRow is one per-Test row of the score_pembahasan breakdown (FR-S5-19).
@@ -431,9 +465,12 @@ type ExamLeaderboardEntry struct {
 
 // AdminResultRow is one row of the school-scoped results list (FR-SCHOOL-08-07).
 // SessionID is the opaque identifier for drill-down to the detail endpoint.
+// SchoolName is resolved from the student's linked school, falling back to
+// their free-text unlisted_school_name when school_id is NULL.
 type AdminResultRow struct {
 	SessionID   uuid.UUID  `json:"session_id"`
 	StudentName string     `json:"student_name"`
+	SchoolName  *string    `json:"school_name"`
 	Username    *string    `json:"username"`
 	Score       *float64   `json:"score"`
 	SubmittedAt *time.Time `json:"submitted_at"`

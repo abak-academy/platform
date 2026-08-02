@@ -15,6 +15,9 @@ export interface ExamCardData {
   mode: string;
   platform: string;
   checkInCode: string;
+  tenantName?: string;
+  tenantLogoUrl?: string;
+  footerNote?: string;
 }
 
 const stroke = {
@@ -239,6 +242,7 @@ function DetailRow({
 }
 
 export function ExamCardPrintable(props: ExamCardData) {
+  const tenantName = props.tenantName || "Abak Academy";
   return (
     <div className={styles.card}>
       {/* Header */}
@@ -253,10 +257,17 @@ export function ExamCardPrintable(props: ExamCardData) {
           <div className={styles.seal}>{Icons.cap}</div>
         </div>
         <div className={styles.brand}>
-          <div className={styles.mark}>{AbakMarkFull}</div>
+          <div className={styles.mark}>
+            {props.tenantLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={props.tenantLogoUrl} alt={tenantName} />
+            ) : (
+              AbakMarkFull
+            )}
+          </div>
           <div className={styles.titles}>
             <h1>KARTU PESERTA UJIAN</h1>
-            <div className={styles.sub}>Abak Academy · Exam Participant Card</div>
+            <div className={styles.sub}>{tenantName} · Exam Participant Card</div>
             <div className={styles.note}>Bawa kartu ini saat mengikuti ujian</div>
           </div>
         </div>
@@ -346,6 +357,7 @@ export function ExamCardPrintable(props: ExamCardData) {
           <li>Dilarang membuka tab atau aplikasi lain saat ujian.</li>
           <li>Siapkan perangkat, koneksi internet stabil, dan kartu ini.</li>
           <li>Pelanggaran dapat berakibat diskualifikasi.</li>
+          {props.footerNote ? <li>{props.footerNote}</li> : null}
         </ul>
       </section>
 

@@ -333,6 +333,24 @@ func (s *Service) presignReadURL(ctx context.Context, bucket, key string, ttl ti
 	return u.String(), nil
 }
 
+// presignInternalReadURL signs a time-limited GET against s.storage — the
+// endpoint the API server itself talks to (ObjectStorageEndpoint) — rather
+// than presignStorage()'s browser-facing ObjectStoragePublicEndpoint. Only
+// for URLs embedded in server-rendered HTML that Gotenberg's headless
+// Chromium fetches from inside the same docker network (the card print
+// route's photo/logo <img> src): that consumer can resolve the internal
+// "minio:9000" but, unlike a real browser on the host, not "localhost:9000"
+// (see local dev's object_storage_public_endpoint). In prod/staging
+// ObjectStoragePublicEndpoint is unset, so presignStorage() already returns
+// s.storage and this is identical to presignReadURL.
+func (s *Service) presignInternalReadURL(ctx context.Context, bucket, key string, ttl time.Duration) (string, error) {
+	u, err := s.storage.PresignedGetObject(ctx, bucket, key, ttl, url.Values{})
+	if err != nil {
+		return "", err
+	}
+	return u.String(), nil
+}
+
 // OpenAvatar streams a stored upload for the read-proxy endpoint. Only the
 // avatars/, product/ and question/ prefixes are served: certificates, payment
 // proofs and private PII (including student-bulk imports) live in the same

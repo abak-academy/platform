@@ -1,7 +1,31 @@
 # Backlog: consolidate certificate rendering into one implementation
 
-**Raised:** 2026-07-26 · **Status:** ▶ **CHOSEN AS NEXT WORK, 2026-07-30** (was: accepted as tech debt,
-deliberately not scheduled)
+**Raised:** 2026-07-26 · **Status:** ✅ **DONE 2026-08-01 — built on `feat/e3-result-certificate-flow`,
+folded into E3.** (Was: ⏸ postponed 2026-07-31 behind E3/E4/E5. Before that: ▶ chosen as next work
+2026-07-30, and originally accepted as tech debt.)
+
+> **The postponement was reversed the same day**, once it became clear that issue
+> [#55](https://github.com/abak-academy/platform/issues/55) and this consolidation are the *same*
+> change: #55 is not a caching bug but an authorization-lifetime bug, so any consolidation that kept
+> a generation-time cache would have inherited it.
+>
+> **What shipped, against the design below:**
+> - The **frontend owns the markup**. Gotenberg's Chromium fetches a Next.js **server-component**
+>   print route (`/documents/certificate`, `/documents/card`) with a short-lived single-use minted
+>   token; the route resolves every value from the API. The server stays the sole author of the data.
+> - `certificate_html.go`, `card_html.go`, the embedded `fonts/` directory, `pdffonts.go` and
+>   `fonts_parity_test.go` are **deleted** — the font duplication this doc was written about is gone.
+>   Net **−2676 lines**.
+> - The gate this doc says a real fix needs now exists: `certificate_printroute_gate_test.go` renders
+>   through the real print route and was **mutation-verified** (a 30 mm field shift turns it red).
+> - Scope grew to the **exam card**, which had the same split and was the more visible case.
+>
+> **Two things the doc predicted correctly.** The new auth surface was real (the print token), and the
+> API now depends on the `web` container for PDF generation — mitigated by the existing rule that a
+> document failure degrades to a `null` URL rather than failing the result view.
+>
+> Everything below is the original analysis, kept as the record of why this was done. It is
+> **history, not open work.**
 
 > **Why now, in the user's words:** *"sangat tidak enak melihat kita maintain 2 source html dan di
 > generate di backend."* That is this document's premise, and it is the right reason — the duplication is

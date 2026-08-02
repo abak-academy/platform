@@ -208,7 +208,7 @@ func newQuestionHandlerEnv(t *testing.T) *questionHandlerTestEnv {
 			t.Fatalf("new pool: %v", err)
 		}
 		repo := repository.New(pool)
-		svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, nil, nil)
+		svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, nil, nil, nil)
 		questionDBEnv = &questionHandlerTestEnv{svc: svc, repo: repo}
 	})
 	if questionDBEnv == nil {

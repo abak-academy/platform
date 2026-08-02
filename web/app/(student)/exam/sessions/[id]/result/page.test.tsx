@@ -433,6 +433,43 @@ describe("SessionResultPage", () => {
     ).toBeInTheDocument();
   });
 
+  // ── Configured end screen (FR-38/FR-39) ────────────────────────────────
+
+  it("renders the end screen image and promo when both are set (FR-38)", () => {
+    resultState = {
+      data: {
+        state: "hidden",
+        end_screen_image_url: "https://cdn.example.com/end-screen.png",
+        end_screen_promo_text: "Thanks for taking the exam! See you next time.",
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    const img = screen.getByTestId("end-screen-image") as HTMLImageElement;
+    expect(img.src).toBe("https://cdn.example.com/end-screen.png");
+    expect(
+      screen.getByText("Thanks for taking the exam! See you next time.")
+    ).toBeInTheDocument();
+    // The plain result screen must not also render.
+    expect(screen.queryByText("Hasil belum dipublikasikan.")).not.toBeInTheDocument();
+  });
+
+  it("renders the existing plain result screen when neither end-screen field is set (FR-39)", () => {
+    resultState = {
+      data: { state: "hidden" },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    expect(screen.getByText("Hasil belum dipublikasikan.")).toBeInTheDocument();
+    expect(screen.queryByTestId("end-screen-image")).not.toBeInTheDocument();
+  });
+
   it("renders a true_false pembahasan row without crashing on the new shape", () => {
     resultState = {
       data: {

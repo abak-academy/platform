@@ -45,12 +45,21 @@ vi.mock("@/components/admin/CertificateDesignTab", () => ({
   ),
 }));
 
+// ExamModal's end-screen section uses ImageUploadInput, which calls
+// usePresignAdminImageUpload (a real useMutation) — mock it so rendering the
+// modal doesn't need a QueryClient.
+vi.mock("@/lib/hooks/admin-uploads", () => ({
+  usePresignAdminImageUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
 beforeEach(() => {
   mockRole = undefined;
+  mockSetCertificateEnabled.mockClear();
 });
 
 const mockReplaceTests = vi.fn();
 const mockGradeEssay = vi.fn();
+const mockSetCertificateEnabled = vi.fn().mockResolvedValue({});
 
 // PR review P2: these 5 hooks back the tabs school-scoped admins never see
 // (tests/grading/leaderboard/analytics). Spy on them so we can assert they're
@@ -127,6 +136,7 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   useReplaceExamTests: () => ({ mutateAsync: mockReplaceTests, isPending: false }),
   useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSetCertificateEnabled: () => ({ mutateAsync: mockSetCertificateEnabled, isPending: false }),
   useGradingSessions: (...args: unknown[]) => {
     useGradingSessionsSpy(...args);
     return gradingSessionsState;
@@ -167,6 +177,7 @@ const sampleExam: ExamDetail = {
   allow_leaderboard: false,
   randomize: false,
   status: "published",
+  certificate_enabled: true,
   tests: [],
 };
 
@@ -248,6 +259,30 @@ describe("ExamPackageDetailPage — overview tab", () => {
     await waitFor(() => {
       expect(screen.getByText(/tidak terbatas/i)).toBeInTheDocument();
     });
+  });
+
+  it("FR-44: shows the draft explanation when the exam status is draft", async () => {
+    examState.data = { ...sampleExamWithExtendedFields, status: "draft" };
+
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/tidak terlihat oleh siswa dan dapat diubah bebas/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("FR-44: does not show the draft explanation when the exam status is published", async () => {
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("UTBK")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText(/tidak terlihat oleh siswa dan dapat diubah bebas/i),
+    ).not.toBeInTheDocument();
   });
 
   it("opens the edit modal when the overview edit button is clicked", async () => {
@@ -821,5 +856,100 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     fireEvent.click(screen.getByRole("button", { name: /^pendaftaran$/i }));
 
     expect(screen.queryByTestId("exam-registrations-tab")).not.toBeInTheDocument();
+  });
+});
+
+describe("ExamPackageDetailPage — certificate enablement (FR-8/FR-11/FR-12)", () => {
+  beforeEach(() => {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });
+  });
+
+  it("FR-8: the Certificate tab is absent when certificate_enabled is false", async () => {
+    examState = {
+      data: { ...sampleExam, certificate_enabled: false },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("button", { name: /^sertifikat$/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("certificate-design-tab")).not.toBeInTheDocument();
+  });
+
+  it("FR-8/FR-11: the Certificate tab is present when certificate_enabled is true", async () => {
+    examState = {
+      data: { ...sampleExam, certificate_enabled: true },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^sertifikat$/i })).toBeInTheDocument();
+    });
+  });
+
+  it("FR-11: the enable action issues the enable request and nothing else", async () => {
+    examState = {
+      data: { ...sampleExam, certificate_enabled: false },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^aktifkan sertifikat$/i }));
+
+    await waitFor(() => {
+      expect(mockSetCertificateEnabled).toHaveBeenCalledTimes(1);
+    });
+    expect(mockSetCertificateEnabled).toHaveBeenCalledWith(true);
+    expect(mockReplaceTests).not.toHaveBeenCalled();
+    expect(mockGradeEssay).not.toHaveBeenCalled();
+  });
+
+  it("FR-12: the disable control warns the saved design is kept, then issues the disable request", async () => {
+    examState = {
+      data: { ...sampleExam, certificate_enabled: true },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^nonaktifkan sertifikat$/i }));
+
+    expect(
+      screen.getByText(/desain sertifikat yang sudah tersimpan tidak akan dihapus/i),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^ya, nonaktifkan$/i }));
+
+    await waitFor(() => {
+      expect(mockSetCertificateEnabled).toHaveBeenCalledTimes(1);
+    });
+    expect(mockSetCertificateEnabled).toHaveBeenCalledWith(false);
   });
 });

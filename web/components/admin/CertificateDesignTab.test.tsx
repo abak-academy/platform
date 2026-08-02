@@ -5,12 +5,14 @@ import type { CertificateDesign, ExamDetail } from "@/lib/types";
 
 const update = vi.fn();
 const presign = vi.fn();
+const serializeCertificateTemplate = vi.fn();
 let design: CertificateDesign;
 
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useCertificateDesign: () => ({ data: design, isLoading: false, isError: false }),
   useUpdateCertificateDesign: () => ({ mutateAsync: update, isPending: false }),
   usePresignCertificateAsset: () => ({ mutateAsync: presign }),
+  serializeCertificateTemplate: (...args: unknown[]) => serializeCertificateTemplate(...args),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -31,6 +33,7 @@ describe("CertificateDesignTab", () => {
   beforeEach(() => {
     update.mockReset().mockResolvedValue({});
     presign.mockReset();
+    serializeCertificateTemplate.mockReset().mockResolvedValue("<html></html>");
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
     URL.createObjectURL = vi.fn(() => "blob:asset");
     design = {
