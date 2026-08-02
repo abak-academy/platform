@@ -38,10 +38,24 @@ WHERE oi.order_id = o.id
   AND oi.qty > 1
   AND o.status = 'cart';
 
+-- The promo on these carts was validated against the inflated subtotal, so its
+-- discount cannot be carried across the correction: a percentage discount would
+-- stay sized for a subtotal that no longer exists, and a fixed discount larger
+-- than the corrected subtotal drives total negative — a figure checkout would
+-- hand straight to the payment gateway.
+--
+-- Detach it instead of trying to re-derive it in SQL: promo validity (window,
+-- max_uses, min_order_amount, max_discount_amount) lives in ValidatePromo, and
+-- a second implementation here would be the authority on money in two places.
+-- These are carts, not paid orders, so the buyer simply re-applies the code
+-- against the real subtotal. used_count is untouched because it is only
+-- incremented at checkout, which these carts have not reached.
 UPDATE orders o
-SET subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = o.id), 0),
-    total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = o.id), 0) - o.discount + o.shipping_cost,
-    updated_at = now()
+SET subtotal      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = o.id), 0),
+    discount      = 0,
+    promo_code_id = NULL,
+    total         = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = o.id), 0) + o.shipping_cost,
+    updated_at    = now()
 WHERE o.id IN (
     SELECT order_id FROM digital_qty_overcharge_report WHERE order_status = 'cart'
 );
