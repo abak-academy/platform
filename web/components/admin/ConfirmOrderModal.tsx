@@ -12,7 +12,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { fileUrl } from "@/lib/api";
 import { usePresignUpload } from "@/lib/hooks/students";
 
 export interface ConfirmOrderModalProps {
@@ -35,9 +34,18 @@ export function ConfirmOrderModal({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const presign = usePresignUpload();
   const [proofKey, setProofKey] = useState("");
+  // Previewed from the local File, not from storage: payment_proof is not
+  // served by the public /files/* proxy, so a key-based URL would 404.
+  const [previewUrl, setPreviewUrl] = useState("");
 
   useEffect(() => {
-    if (open) setProofKey("");
+    if (open) {
+      setProofKey("");
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return "";
+      });
+    }
   }, [open]);
 
   async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
@@ -62,6 +70,10 @@ export function ConfirmOrderModal({
       }
 
       setProofKey(presigned.key);
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(file);
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unggah bukti gagal");
     } finally {
@@ -75,7 +87,6 @@ export function ConfirmOrderModal({
   }
 
   const uploading = presign.isPending;
-  const previewUrl = fileUrl(proofKey);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

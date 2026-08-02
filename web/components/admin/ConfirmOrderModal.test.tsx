@@ -107,4 +107,40 @@ describe("ConfirmOrderModal", () => {
 
     vi.unstubAllGlobals();
   });
+
+  // payment_proof is not served by the public /files/* proxy, so a key-based
+  // preview URL would 404. The preview must come from the local File.
+  it("previews the uploaded proof locally, never through a key-based URL", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+    const createObjectURL = vi.fn(() => "blob:local-preview");
+    global.URL.createObjectURL = createObjectURL;
+    global.URL.revokeObjectURL = vi.fn();
+
+    render(
+      <ConfirmOrderModal
+        open
+        onOpenChange={vi.fn()}
+        orderNumber="ORD-1"
+        onConfirm={vi.fn()}
+        isPending={false}
+      />
+    );
+
+    const fileInput = document.querySelector(
+      'input[data-testid="confirm-order-proof-input"]'
+    ) as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["x"], "kwitansi.jpg", { type: "image/jpeg" })] },
+    });
+
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+
+    // Radix portals the dialog, so read document.body — the render container
+    // is empty and would satisfy any negative assertion.
+    const link = screen.getByRole("link", { name: /lihat bukti/i }) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("blob:local-preview");
+    expect(document.body.innerHTML).not.toContain("payment_proof/admin-1/proof.jpg");
+
+    vi.unstubAllGlobals();
+  });
 });
