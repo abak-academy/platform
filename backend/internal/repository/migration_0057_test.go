@@ -72,23 +72,28 @@ func TestMigration0057_DigitalQtyBackfill(t *testing.T) {
 
 	applyMigrationFile(t, pool, "0057_digital_qty_backfill.up.sql")
 
-	// Both rows are reported, with the overcharge derived from what was charged.
-	var reported int
+	// No report table is created: the migration only destroys cart rows, and a
+	// cart was never charged, so there is no evidence there worth freezing.
+	var reportExists bool
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM digital_qty_overcharge_report WHERE order_id IN ($1, $2)`,
-		cartID, paidID,
-	).Scan(&reported))
-	require.Equal(t, 2, reported, "both the cart and the paid order must be reported")
+		`SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'digital_qty_overcharge_report')`,
+	).Scan(&reportExists))
+	require.False(t, reportExists, "the backfill must not leave a permanent report table behind")
 
-	var cartOvercharge, paidOvercharge float64
+	// The overcharged buyers stay listable afterwards, because paid rows are
+	// left intact — this query is the deliverable, not a table.
+	var listedID uuid.UUID
+	var listedOvercharge float64
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT overcharge FROM digital_qty_overcharge_report WHERE order_id = $1`, cartID,
-	).Scan(&cartOvercharge))
-	require.InDelta(t, 200000, cartOvercharge, 0.01, "cart overcharge = unit_price * (qty - 1)")
-	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT overcharge FROM digital_qty_overcharge_report WHERE order_id = $1`, paidID,
-	).Scan(&paidOvercharge))
-	require.InDelta(t, 100000, paidOvercharge, 0.01, "paid overcharge = unit_price * (qty - 1)")
+		`SELECT o.id, oi.unit_price * (oi.qty - 1) AS overcharge
+		 FROM order_item oi
+		 JOIN orders o ON o.id = oi.order_id
+		 WHERE oi.product_type IN ('exam', 'course')
+		   AND oi.qty > 1
+		   AND o.status <> 'cart'`,
+	).Scan(&listedID, &listedOvercharge))
+	require.Equal(t, paidID, listedID, "the paid order must still be findable after the migration")
+	require.InDelta(t, 100000, listedOvercharge, 0.01, "overcharge = unit_price * (qty - 1)")
 
 	// The cart is corrected and its money recomputed coherently.
 	var qty int
