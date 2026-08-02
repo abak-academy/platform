@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestMigration0056_DigitalQtyBackfill proves FR-17: the report is written
+// TestMigration0057_DigitalQtyBackfill proves FR-17: the report is written
 // before anything is corrected, the corrective UPDATE touches only carts, and
 // a corrected cart never keeps a discount that was sized against the inflated
 // subtotal.
@@ -18,7 +18,7 @@ import (
 // subtotal to 100000, so carrying the discount forward would compute
 // 100000 - 150000 = -50000 — a negative total on a live cart that checkout
 // would hand to the payment gateway.
-func TestMigration0056_DigitalQtyBackfill(t *testing.T) {
+func TestMigration0057_DigitalQtyBackfill(t *testing.T) {
 	ctx := context.Background()
 	pool := newMigration0025Pool(t)
 
@@ -27,7 +27,7 @@ func TestMigration0056_DigitalQtyBackfill(t *testing.T) {
 	var studentID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO users (email, role, name) VALUES ($1, $2, $3) RETURNING id`,
-		"migration-0056@test.local", "student", "Migration 0056 Test",
+		"migration-0057@test.local", "student", "Migration 0057 Test",
 	).Scan(&studentID))
 
 	var examProductID uuid.UUID
@@ -37,7 +37,7 @@ func TestMigration0056_DigitalQtyBackfill(t *testing.T) {
 
 	var promoID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO promo_code (code) VALUES ('MIGRATION-0056') RETURNING id`,
+		`INSERT INTO promo_code (code) VALUES ('MIGRATION-0057') RETURNING id`,
 	).Scan(&promoID))
 
 	// A cart carrying the overcharge AND a promo sized against it.
@@ -70,7 +70,7 @@ func TestMigration0056_DigitalQtyBackfill(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	applyMigrationFile(t, pool, "0056_digital_qty_backfill.up.sql")
+	applyMigrationFile(t, pool, "0057_digital_qty_backfill.up.sql")
 
 	// Both rows are reported, with the overcharge derived from what was charged.
 	var reported int
