@@ -1203,12 +1203,12 @@ func (s *Service) AdminGetExamRoster(ctx context.Context, examID uuid.UUID, scho
 }
 
 // GetExamCard returns a freshly presigned URL for the exam card PDF, generating
-// it once via Gotenberg through the print route and caching the object key
-// thereafter (FR-28, FR-30): mint a card print token → RenderURL(card print
-// route) → object-store put → card_key persisted → fresh presigned GET. A
-// registration with a CardKey already set is presigned straight away, so a
-// repeated download never re-renders — and the API is never the data-transfer
-// path for the PDF bytes themselves.
+// it once via Gotenberg and caching the object key thereafter (async redesign
+// 2026-08-02): GetCardPrintData → substitute into the static build-time
+// template → RenderHTML → object-store put → card_key persisted → fresh
+// presigned GET. A registration with a CardKey already set is presigned
+// straight away, so a repeated download never re-renders — and the API is
+// never the data-transfer path for the PDF bytes themselves.
 func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (string, string, error) {
 	detail, err := s.GetExamRegistration(ctx, regID, studentID)
 	if err != nil {

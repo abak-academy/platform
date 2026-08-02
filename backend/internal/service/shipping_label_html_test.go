@@ -35,14 +35,6 @@ func (f *fakeLabelRenderer) RenderHTML(_ context.Context, html []byte) ([]byte, 
 	return f.pdf, nil
 }
 
-func (f *fakeLabelRenderer) RenderURL(_ context.Context, _ string) ([]byte, error) {
-	f.calls++
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.pdf, nil
-}
-
 func labelTestOrder(trackingNumber string) model.Order {
 	addr, _ := json.Marshal(map[string]string{
 		"penerima": "Budi Test",
