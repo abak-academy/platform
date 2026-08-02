@@ -1159,6 +1159,117 @@ func TestAdminUpdateExamCertificateDesign_OmittedLayout_Rejected(t *testing.T) {
 	}
 }
 
+// certLayoutWithStudentNameBody carries one real field (student_name),
+// which normalizeCertificateLayout defaults to Content "{{student_name}}" —
+// used by the template_html tests below to exercise a layout that actually
+// declares a token, unlike validCertLayoutBody's plain "title" field.
+func certLayoutWithStudentNameBody() map[string]any {
+	return map[string]any{
+		"page":       map[string]any{"width_mm": 297, "height_mm": 210},
+		"background": map[string]any{"kind": "builtin", "ref": "classic"},
+		"fields": []map[string]any{
+			{"id": "student_name", "x_mm": 48.5, "y_mm": 100, "w_mm": 200, "align": "center", "visible": true},
+		},
+	}
+}
+
+// TestAdminUpdateExamCertificateDesign_TemplateHTMLTokenNotInLayout_Rejected
+// is Finding 4's exact scenario (2026-08 review): a template_html carrying a
+// {{score}} spot on a layout that declares no score field must be rejected
+// — otherwise the stored template could bypass certificateLayoutAllowed's
+// result gate, which only ever inspects the layout.
+func TestAdminUpdateExamCertificateDesign_TemplateHTMLTokenNotInLayout_Rejected(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Template Token")
+
+	examID := seedExam(t, env.pool, "Design Template Token Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{"template": "classic", "layout": validCertLayoutBody(), "template_html": "<div>{{score}}</div>"},
+	)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "validation_failed" {
+		t.Errorf("code: want validation_failed, got %v", resp["code"])
+	}
+
+	var persisted *string
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_template_html FROM exam WHERE id = $1`, examID,
+	).Scan(&persisted); err != nil {
+		t.Fatalf("query certificate_template_html: %v", err)
+	}
+	if persisted != nil {
+		t.Fatalf("rejected template_html must not be persisted, got %q", *persisted)
+	}
+}
+
+// TestAdminUpdateExamCertificateDesign_TemplateHTMLExternalResource_Rejected
+// proves the same PUT rejects a template referencing an external resource —
+// every asset must come from backend-controlled storage.
+func TestAdminUpdateExamCertificateDesign_TemplateHTMLExternalResource_Rejected(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Template External")
+
+	examID := seedExam(t, env.pool, "Design Template External Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{"template": "classic", "layout": validCertLayoutBody(), "template_html": `<img src="https://evil.example/x.png"/>`},
+	)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAdminUpdateExamCertificateDesign_ValidTemplateHTML_PersistsSanitized
+// proves a legitimate template_html — declared tokens only, no external
+// resources — is accepted, sanitized (script stripped, style preserved,
+// doctype prepended), and persisted to certificate_template_html.
+func TestAdminUpdateExamCertificateDesign_ValidTemplateHTML_PersistsSanitized(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Template Valid")
+
+	examID := seedExam(t, env.pool, "Design Template Valid Exam", false, "hidden", "classic")
+
+	templateHTML := `<html><head><style>@page{size:297mm 210mm;margin:0}</style></head>` +
+		`<body><script>alert(1)</script><div>{{student_name}}</div></body></html>`
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{"template": "classic", "layout": certLayoutWithStudentNameBody(), "template_html": templateHTML},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var persisted *string
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_template_html FROM exam WHERE id = $1`, examID,
+	).Scan(&persisted); err != nil {
+		t.Fatalf("query certificate_template_html: %v", err)
+	}
+	if persisted == nil {
+		t.Fatal("certificate_template_html was not persisted")
+	}
+	if !strings.HasPrefix(*persisted, "<!DOCTYPE html>") {
+		t.Errorf("persisted template missing leading doctype: %q", *persisted)
+	}
+	if !strings.Contains(*persisted, "@page{size:297mm 210mm;margin:0}") {
+		t.Errorf("persisted template lost load-bearing <style> content: %q", *persisted)
+	}
+	if strings.Contains(*persisted, "<script") {
+		t.Errorf("persisted template still carries <script>: %q", *persisted)
+	}
+	if !strings.Contains(*persisted, "{{student_name}}") {
+		t.Errorf("persisted template lost the declared {{student_name}} token: %q", *persisted)
+	}
+}
+
 func TestAdminUpdateExamCertificateDesign_UnknownExam_Returns404(t *testing.T) {
 	env := newTestEnvWithStore(t)
 	admin := seedUser(t, env.pool, "admin_exam", "Admin Design PUT 404")

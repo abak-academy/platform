@@ -1049,6 +1049,18 @@ func (h *Handler) AdminUpdateExamCertificateDesign(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 
+	// The layout alone is not the security boundary: a template can carry a
+	// {{token}} the layout never declared (e.g. a hardcoded {{score}} on a
+	// layout with no score field), which would bypass certificateLayoutAllowed's
+	// result gate entirely since that gate only ever inspects the layout
+	// (Finding 4, 2026-08 review). Constrains templateHTML's tokens to the
+	// layout's own declared set, rejects any external resource reference, and
+	// sanitizes the document before it's ever persisted.
+	sanitizedTemplateHTML, err := service.ValidateCertificateTemplateHTML(req.TemplateHTML, req.Layout)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
 	raw, err := service.MarshalCertificateDesign(req.Template, req.BackgroundKey, req.Layout)
 	if err != nil {
 		return badRequest(c, "invalid layout")
@@ -1056,8 +1068,8 @@ func (h *Handler) AdminUpdateExamCertificateDesign(c echo.Context) error {
 
 	overlay := existing.Exam
 	overlay.CertificateDesign = raw
-	if req.TemplateHTML != "" {
-		overlay.CertificateTemplateHTML = &req.TemplateHTML
+	if sanitizedTemplateHTML != "" {
+		overlay.CertificateTemplateHTML = &sanitizedTemplateHTML
 	}
 
 	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)

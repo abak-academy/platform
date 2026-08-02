@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/microcosm-cc/bluemonday"
+
 	"akademi-bimbel/internal/model"
 )
 
@@ -457,4 +459,142 @@ func defaultLayout(template string) Layout {
 			},
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Certificate template HTML validation (2026-08 review, Finding 4)
+//
+// ValidateLayout validates the structured Layout an admin saves, but the
+// FE-authored template_html the same PUT carries is a separate free-form
+// document — nothing previously checked that its {{token}} spots were a
+// subset of what the layout actually declares, or that it referenced no
+// external resource. That let a template bake in a token (e.g. {{score}})
+// the layout never used, which certificateLayoutAllowed's result gate (only
+// ever inspects the layout) would then never catch.
+// ---------------------------------------------------------------------------
+
+// certificateTemplateDocumentPolicy sits beside questionBodyPolicy
+// (exam.go) but serves a different surface: a certificate template is a
+// whole self-contained HTML document (html/head/style/body, embedded
+// base64 @font-face data), not a fragment of inline rich text.
+// questionBodyPolicy's allowlist would gut a certificate's <style> block
+// entirely, so this is a second bluemonday policy shaped for the document
+// it actually sanitizes — still bluemonday, still allowlist-only, not a
+// hand-rolled parser.
+//
+// AllowUnsafe is required for <style> tag content to survive at all —
+// verified against bluemonday v1.0.27's sanitize.go: script/style start,
+// end, and self-closing tokens hit a hard `continue` (dropping the tag
+// itself) whenever !p.allowUnsafe, regardless of AllowElements. It does NOT
+// relax filtering on <script>: that element is never added to AllowElements
+// below, so it (and its text content, via bluemonday's default
+// setOfElementsToSkipContent) is still stripped entirely, tag and all.
+var certificateTemplateDocumentPolicy = func() *bluemonday.Policy {
+	p := bluemonday.NewPolicy()
+	p.AllowElements("html", "head", "meta", "style", "body", "div", "span", "p", "img",
+		"table", "thead", "tbody", "tr", "td", "th", "b", "i", "u", "strong", "em", "br")
+	p.AllowAttrs("class", "style").Globally()
+	p.AllowAttrs("charset").OnElements("meta")
+	p.AllowAttrs("src", "alt").OnElements("img")
+	p.AllowAttrs("colspan", "rowspan").OnElements("td", "th")
+	p.AllowUnsafe(true)
+	return p
+}()
+
+// certificateExternalResourcePattern matches an external resource reference
+// in an FE-authored certificate template: an http(s):// or protocol-relative
+// "//" URL immediately following a src=/href= attribute assignment or a CSS
+// url(...). Anchored right after the assignment/paren so a data: URI —
+// which can coincidentally contain "//" deep in its base64 payload — never
+// false-positives; every legitimate asset (fonts, background, field images)
+// must come from backend-controlled storage via a {{certificate_*}} token or
+// a data: URI, never a literal external URL.
+var certificateExternalResourcePattern = regexp.MustCompile(`(?i)(?:src|href)\s*=\s*["']?\s*(?:https?:)?//|url\(\s*["']?\s*(?:https?:)?//`)
+
+func certificateTemplateHasExternalResource(html string) bool {
+	return certificateExternalResourcePattern.MatchString(html)
+}
+
+// sanitizeCertificateTemplateHTML strips everything outside
+// certificateTemplateDocumentPolicy's allowlist and re-prepends
+// "<!DOCTYPE html>" — bluemonday drops any doctype token unconditionally (it
+// has no safe parsing path for the token's content), which would push
+// Gotenberg's Chromium into quirks mode for a document whose layout depends
+// entirely on absolute mm-based positioning.
+func sanitizeCertificateTemplateHTML(html string) string {
+	return "<!DOCTYPE html>\n" + certificateTemplateDocumentPolicy.Sanitize(html)
+}
+
+// certificateImplicitTokens are worker-injected at generation time
+// (GenerateCertificatePDF, certificate.go) — legitimate and never
+// attacker-controlled, so they're always allowed in a template regardless of
+// what the layout's field Content strings spell out literally:
+// certificate_background_url for the resolved background image, and
+// certificate_asset_<fieldID> for each image field carrying an asset key.
+func certificateImplicitTokens(layout Layout) map[string]bool {
+	allowed := map[string]bool{"certificate_background_url": true}
+	for _, field := range normalizeCertificateLayout(layout).Fields {
+		if field.Kind == "image" && field.AssetKey != nil {
+			allowed["certificate_asset_"+field.ID] = true
+		}
+	}
+	return allowed
+}
+
+// ValidateCertificateTemplateHTML enforces the security boundary a validated
+// Layout alone doesn't: every {{token}} spot in the FE-authored templateHTML
+// must be one the layout actually declares (plus the implicit worker-injected
+// image tokens), and the document may reference no external resource. Returns
+// the sanitized HTML to persist, or a rejection wrapped in ErrValidation.
+func ValidateCertificateTemplateHTML(templateHTML string, layout Layout) (string, error) {
+	if templateHTML == "" {
+		return "", nil
+	}
+	sanitized := sanitizeCertificateTemplateHTML(templateHTML)
+
+	allowed := certificateImplicitTokens(layout)
+	for _, field := range normalizeCertificateLayout(layout).Fields {
+		for _, token := range certificateTokens(field.Content) {
+			allowed[token] = true
+		}
+	}
+	for _, token := range certificateTokens(sanitized) {
+		if !allowed[token] {
+			return "", fmt.Errorf("%w: certificate template token not declared by the layout: {{%s}}", ErrValidation, token)
+		}
+	}
+	if certificateTemplateHasExternalResource(sanitized) {
+		return "", fmt.Errorf("%w: certificate template references an external resource", ErrValidation)
+	}
+	return sanitized, nil
+}
+
+// certificateSensitiveTokens are the score/rank-derived {{tokens}} that make
+// a certificate subject to the #55 result gate (FR-1..FR-6).
+var certificateSensitiveTokens = []string{"score", "max_score", "score_percent", "rank", "percentile"}
+
+// certificateIsSensitive decides whether an exam's certificate carries
+// score/rank data and must therefore be gated by result_config. It scans
+// both the validated layout AND the persisted template HTML: the layout
+// alone is not the whole security boundary (Finding 4, 2026-08 review) — a
+// template can carry a {{score}} token the layout never declared, whether
+// from a bug or a direct DB write bypassing ValidateCertificateTemplateHTML,
+// so the gate must still catch it even when the layout looks clean.
+func certificateIsSensitive(exam model.Exam, layout Layout) bool {
+	if layoutUsesToken(layout, certificateSensitiveTokens...) {
+		return true
+	}
+	if exam.CertificateTemplateHTML == nil {
+		return false
+	}
+	sensitive := make(map[string]bool, len(certificateSensitiveTokens))
+	for _, t := range certificateSensitiveTokens {
+		sensitive[t] = true
+	}
+	for _, token := range certificateTokens(*exam.CertificateTemplateHTML) {
+		if sensitive[token] {
+			return true
+		}
+	}
+	return false
 }

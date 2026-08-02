@@ -225,7 +225,7 @@ func certificateSessionValues(sess *model.ExamSession, questions []model.Questio
 }
 
 func certificateLayoutAllowed(exam model.Exam, sess *model.ExamSession, layout Layout, questions []model.QuestionWithOptions, answers []model.ExamSessionAnswer) bool {
-	if !layoutUsesToken(layout, "score", "max_score", "score_percent", "rank", "percentile") {
+	if !certificateIsSensitive(exam, layout) {
 		return true
 	}
 	_, gated := resultGate(exam, sess.Status == "submitted", isFullyGraded(questions, answers))
@@ -392,7 +392,11 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 		return nil, err
 	}
 
-	sensitive := layoutUsesToken(layout, "score", "max_score", "score_percent", "rank", "percentile")
+	// certificateIsSensitive also scans the persisted template HTML, not just
+	// the layout (Finding 4, 2026-08 review) — a template can carry a
+	// {{score}} token the layout never declared, and this short-circuit is
+	// what decides whether certificateLayoutAllowed even runs below.
+	sensitive := certificateIsSensitive(*exam, layout)
 	if sensitive {
 		tests, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
 		if err != nil {
