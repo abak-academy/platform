@@ -6,6 +6,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -23,6 +24,11 @@ import { useFetchPaymentProofURL } from "@/lib/hooks/admin-orders";
 export interface OrderDetailModalProps {
   order: Order | null;
   onOpenChange: (open: boolean) => void;
+  // Omitted when the action is not allowed for this order — the caller owns
+  // that rule so the list row and this footer can never disagree.
+  onShip?: () => void;
+  onRefund?: () => void;
+  isRefunding?: boolean;
 }
 
 function formatDateTime(iso: string | undefined, lang: string): string | null {
@@ -35,7 +41,13 @@ function formatDateTime(iso: string | undefined, lang: string): string | null {
   }).format(d);
 }
 
-export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps) {
+export function OrderDetailModal({
+  order,
+  onOpenChange,
+  onShip,
+  onRefund,
+  isRefunding,
+}: OrderDetailModalProps) {
   const { t, lang } = useTranslation();
   const [isDownloadingLabel, setIsDownloadingLabel] = useState(false);
   const fetchProofURL = useFetchPaymentProofURL();
@@ -239,6 +251,22 @@ export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps)
             </dl>
           </Section>
         </div>
+
+        {(onShip || onRefund) && (
+          <DialogFooter className="shrink-0 flex-wrap border-t px-6 py-4">
+            {onRefund && (
+              <Button
+                variant="destructive"
+                onClick={onRefund}
+                disabled={isRefunding}
+                className="sm:mr-auto"
+              >
+                {t("action_refund")}
+              </Button>
+            )}
+            {onShip && <Button onClick={onShip}>{t("action_ship")}</Button>}
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

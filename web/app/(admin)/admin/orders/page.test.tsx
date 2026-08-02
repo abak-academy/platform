@@ -201,7 +201,7 @@ describe("OrdersPage", () => {
     fireEvent.click(within(row!).getByRole("button", { name: /^kirim$/i }));
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: /booking otomatis/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /pesan kurir/i }));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith("o2");
@@ -220,7 +220,7 @@ describe("OrdersPage", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByLabelText(/no\. resi/i)).toBeNull();
-    expect(within(dialog).getByRole("button", { name: /booking otomatis/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /pesan kurir/i })).toBeInTheDocument();
   });
 
   it("ships an order with a manually entered tracking number after choosing manual entry", async () => {
@@ -233,7 +233,7 @@ describe("OrdersPage", () => {
     fireEvent.click(within(row!).getByRole("button", { name: /^kirim$/i }));
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: /input resi manual/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /masukkan nomor resi/i }));
 
     expect(within(dialog).getByLabelText(/no\. resi/i)).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText(/no\. resi/i), {
@@ -255,7 +255,7 @@ describe("OrdersPage", () => {
     fireEvent.click(within(row!).getByRole("button", { name: /^kirim$/i }));
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: /input resi manual/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /masukkan nomor resi/i }));
 
     expect(within(dialog).getByRole("button", { name: /^kirim$/i })).toBeDisabled();
   });
@@ -273,7 +273,7 @@ describe("OrdersPage", () => {
     fireEvent.click(within(row!).getByRole("button", { name: /^kirim$/i }));
 
     const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: /booking otomatis/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /pesan kurir/i }));
 
     await waitFor(() => {
       expect(within(dialog).getByText("order has no persisted courier code")).toBeInTheDocument();

@@ -156,9 +156,10 @@ export default function OrdersPage() {
     }
   }
 
-  // No window.confirm here: a refund needs a transfer receipt, not a yes/no.
-  // The modal also states plainly that money and stock are not returned
-  // automatically — see issue #72.
+  // No window.confirm: a refund needs a transfer receipt, not a yes/no, so
+  // both entry points hand off to RefundOrderModal the same way the detail
+  // view already hands off to ShipOrderModal. The modal also states plainly
+  // that money and stock are not returned automatically — see issue #72.
   async function handleRefundSubmit(id: string, refundProofUrl: string) {
     setRefundError(null);
     try {
@@ -336,7 +337,34 @@ export default function OrdersPage() {
         </div>
       )}
 
-      <OrderDetailModal order={detailOrder} onOpenChange={() => setDetailOrder(null)} />
+      <OrderDetailModal
+        order={detailOrder}
+        onOpenChange={() => setDetailOrder(null)}
+        onShip={
+          detailOrder && actionAllowed(detailOrder.status, "ship") && hasPhysicalItem(detailOrder)
+            ? () => {
+                const order = detailOrder;
+                setDetailOrder(null);
+                setShipError(null);
+                setShippingOrder(order);
+              }
+            : undefined
+        }
+        onRefund={
+          detailOrder && actionAllowed(detailOrder.status, "refund")
+            ? () => {
+                // Same hand-off as onShip above: detailOrder is a snapshot that
+                // could not show the new status anyway, and the refund cannot
+                // proceed until a transfer receipt has been uploaded.
+                const order = detailOrder;
+                setDetailOrder(null);
+                setRefundError(null);
+                setRefundingOrder(order);
+              }
+            : undefined
+        }
+        isRefunding={refund.isPending}
+      />
 
       {confirmingOrder && (
         <ConfirmOrderModal

@@ -58,7 +58,10 @@ export function ShipOrderModal({
         <DialogHeader>
           <DialogTitle>{t("orders_ship_title")}</DialogTitle>
           <DialogDescription>
-            {t("orders_ship_subtitle").replace("{order}", orderNumber)}
+            {t(manualMode ? "orders_ship_subtitle" : "orders_ship_choice_subtitle").replace(
+              "{order}",
+              orderNumber,
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -72,18 +75,13 @@ export function ShipOrderModal({
         )}
 
         {!manualMode && (
-          <DialogFooter className="sm:justify-between">
-            <Button type="button" variant="ghost" onClick={() => setManualMode(true)} disabled={isPending}>
+          <DialogFooter className="flex-wrap sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => setManualMode(true)} disabled={isPending}>
               {t("orders_ship_manual_choice")}
             </Button>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-                {t("cancel")}
-              </Button>
-              <Button type="button" onClick={onBook} disabled={isPending}>
-                {isPending ? t("orders_ship_pending") : t("orders_ship_book_biteship")}
-              </Button>
-            </div>
+            <Button type="button" onClick={onBook} disabled={isPending}>
+              {isPending ? t("orders_ship_booking_pending") : t("orders_ship_book_courier")}
+            </Button>
           </DialogFooter>
         )}
 
