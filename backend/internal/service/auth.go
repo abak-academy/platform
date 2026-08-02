@@ -24,7 +24,7 @@ type UserRepository interface {
 	GetUserByID(ctx context.Context, id string) (*model.User, error)
 	GetUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]model.User, error)
 	UpdatePasswordHash(ctx context.Context, userID, hash string) error
-	UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) error
+	UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, applySchool bool, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) error
 	UpdateUserPhoto(ctx context.Context, userID, photoURL string) error
 	ListSchools(ctx context.Context) ([]*model.School, error)
 	ActivateUser(ctx context.Context, userID string) (bool, error)

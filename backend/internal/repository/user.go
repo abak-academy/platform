@@ -135,9 +135,12 @@ func (r *Repository) ActivateUser(ctx context.Context, userID string) (bool, err
 	return tag.RowsAffected() == 1, err
 }
 
-// UpdateUserProfile patches the editable profile fields. nil args leave the
-// column unchanged via COALESCE. Email normalization is the caller's job.
-func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) error {
+// UpdateUserProfile patches the editable profile fields. nil args leave most
+// columns unchanged via COALESCE. school_id/unlisted_school_name are the
+// exception: COALESCE can never write NULL into them, so applySchool gates
+// them explicitly — false leaves both untouched, true writes schoolID/
+// unlistedSchoolName verbatim (including NULL when the pointer is nil).
+func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, applySchool bool, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users
 		SET name = COALESCE($1, name),
@@ -147,16 +150,16 @@ func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name,
 		    alamat_domisili = COALESCE($5, alamat_domisili),
 		    target_exam = COALESCE($6, target_exam),
 		    grade = COALESCE($7, grade),
-		    school_id = COALESCE($8, school_id),
-		    unlisted_school_name = COALESCE($9, unlisted_school_name),
-		    jenjang = COALESCE($10, jenjang),
-		    provinsi_id = COALESCE($11, provinsi_id),
-		    kota_id = COALESCE($12, kota_id),
-		    kecamatan_id = COALESCE($13, kecamatan_id),
-		    kode_pos = COALESCE($14, kode_pos),
+		    school_id = CASE WHEN $8 THEN $9::uuid ELSE school_id END,
+		    unlisted_school_name = CASE WHEN $8 THEN $10 ELSE unlisted_school_name END,
+		    jenjang = COALESCE($11, jenjang),
+		    provinsi_id = COALESCE($12, provinsi_id),
+		    kota_id = COALESCE($13, kota_id),
+		    kecamatan_id = COALESCE($14, kecamatan_id),
+		    kode_pos = COALESCE($15, kode_pos),
 		    updated_at = now()
-		WHERE id = $15`,
-		name, email, username, phone, address, targetExam, grade, schoolID, unlistedSchoolName, jenjang, provinsiID, kotaID, kecamatanID, kodePos, userID,
+		WHERE id = $16`,
+		name, email, username, phone, address, targetExam, grade, applySchool, schoolID, unlistedSchoolName, jenjang, provinsiID, kotaID, kecamatanID, kodePos, userID,
 	)
 	return err
 }

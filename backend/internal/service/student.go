@@ -195,9 +195,14 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 		return nil, ErrUserNotFound
 	}
 
+	var trimmedSchoolID *string
 	if schoolID != nil {
-		if _, err := uuid.Parse(*schoolID); err != nil {
-			return nil, ErrInvalidUUID
+		t := strings.TrimSpace(*schoolID)
+		trimmedSchoolID = &t
+		if t != "" {
+			if _, err := uuid.Parse(t); err != nil {
+				return nil, ErrInvalidUUID
+			}
 		}
 	}
 
@@ -213,13 +218,37 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 		normalizedEmail = &e
 	}
 
-	// Resolve the school_id to use for jenjang validation: use the
-	// newly-submitted value if provided, otherwise the user's existing one.
+	// Resolve one of three intents from the (schoolID, unlistedSchoolName)
+	// pair: listed (non-empty school_id), unlisted (empty school_id and/or a
+	// non-empty unlisted name), or absent (neither field mentioned — leave
+	// the school pair untouched and keep the existing-school jenjang
+	// fallback). applySchool tells the repository whether to touch the pair
+	// at all, since COALESCE can't express "clear this column".
+	var trimmedUnlistedName *string
+	if unlistedSchoolName != nil {
+		t := strings.TrimSpace(*unlistedSchoolName)
+		trimmedUnlistedName = &t
+	}
+
+	listed := trimmedSchoolID != nil && *trimmedSchoolID != ""
+	unlisted := (trimmedSchoolID != nil && *trimmedSchoolID == "") ||
+		(trimmedUnlistedName != nil && *trimmedUnlistedName != "")
+
+	var applySchool bool
+	var repoSchoolID, repoUnlistedName *string
 	var resolveSchoolID string
-	if schoolID != nil {
-		resolveSchoolID = *schoolID
-	} else if user.SchoolID != nil {
-		resolveSchoolID = *user.SchoolID
+	switch {
+	case listed:
+		applySchool = true
+		repoSchoolID = trimmedSchoolID
+		resolveSchoolID = *trimmedSchoolID
+	case unlisted:
+		applySchool = true
+		repoUnlistedName = trimmedUnlistedName
+	default:
+		if user.SchoolID != nil {
+			resolveSchoolID = *user.SchoolID
+		}
 	}
 
 	// Validate jenjang against school_types when a school is resolvable.
@@ -275,7 +304,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 		}
 	}
 
-	if err := s.repo.UpdateUserProfile(ctx, userID, name, normalizedEmail, username, phone, address, targetExam, grade, schoolID, unlistedSchoolName, jenjang, provinsiID, kotaID, kecamatanID, kodePos); err != nil {
+	if err := s.repo.UpdateUserProfile(ctx, userID, name, normalizedEmail, username, phone, address, targetExam, grade, applySchool, repoSchoolID, repoUnlistedName, jenjang, provinsiID, kotaID, kecamatanID, kodePos); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return nil, ErrEmailTaken

@@ -497,6 +497,140 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 	})
 }
 
+// TestUpdateProfile_SchoolPairClearing covers FB-14 / FR-9..FR-13: the
+// (school_id, unlisted_school_name) pair must be clearable, and switching
+// between a listed and unlisted school must resolve jenjang against the
+// right school.
+func TestUpdateProfile_SchoolPairClearing(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	t.Run("empty school_id is not ErrInvalidUUID (FR-9)", func(t *testing.T) {
+		userID := createTestStudentNoSchool(t, svc)
+		empty := ""
+		_, err := svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil, // name, email, username, phone, address, targetExam, grade
+			&empty,     // schoolID
+			nil, nil,   // unlistedSchoolName, jenjang
+			nil, nil, nil, nil, // provinsiID, kotaID, kecamatanID, kodePos
+		)
+		if errors.Is(err, ErrInvalidUUID) {
+			t.Errorf("empty school_id: want no ErrInvalidUUID, got %v", err)
+		} else if err != nil {
+			t.Fatalf("UpdateProfile (empty school_id): %v", err)
+		}
+	})
+
+	t.Run("non-uuid school_id still returns ErrInvalidUUID (FR-9)", func(t *testing.T) {
+		userID := createTestStudentNoSchool(t, svc)
+		bad := "abc"
+		_, err := svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil,
+			&bad,
+			nil, nil,
+			nil, nil, nil, nil,
+		)
+		if !errors.Is(err, ErrInvalidUUID) {
+			t.Errorf("want ErrInvalidUUID, got %v", err)
+		}
+	})
+
+	t.Run("listed SMA school switching to unlisted school with jenjang SMK succeeds (FR-13)", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		userID := createTestStudentWithSchool(t, svc, schoolID, "sma")
+
+		emptySchoolID := ""
+		unlistedName := "My Unlisted School " + uniqueSuffix()
+		newJenjang := "smk"
+		updated, err := svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil,
+			&emptySchoolID,
+			&unlistedName, &newJenjang,
+			nil, nil, nil, nil,
+		)
+		if err != nil {
+			t.Fatalf("UpdateProfile (listed -> unlisted, FR-13): %v", err)
+		}
+		if updated.SchoolID != nil {
+			t.Errorf("SchoolID: want nil, got %v", *updated.SchoolID)
+		}
+		if updated.UnlistedSchoolName == nil || *updated.UnlistedSchoolName != unlistedName {
+			t.Errorf("UnlistedSchoolName: want %q, got %v", unlistedName, updated.UnlistedSchoolName)
+		}
+		if updated.Jenjang == nil || *updated.Jenjang != newJenjang {
+			t.Errorf("Jenjang: want %s, got %v", newJenjang, updated.Jenjang)
+		}
+
+		// DB-backed assertion — this is the one a service-level mock cannot
+		// catch, because a mock repo doesn't reproduce COALESCE($8, school_id).
+		var dbSchoolID, dbUnlistedName *string
+		if err := repo.Pool().QueryRow(ctx,
+			`SELECT school_id, unlisted_school_name FROM users WHERE id = $1`, userID,
+		).Scan(&dbSchoolID, &dbUnlistedName); err != nil {
+			t.Fatalf("query users row: %v", err)
+		}
+		if dbSchoolID != nil {
+			t.Errorf("db school_id: want NULL, got %v", *dbSchoolID)
+		}
+		if dbUnlistedName == nil || *dbUnlistedName != unlistedName {
+			t.Errorf("db unlisted_school_name: want %q, got %v", unlistedName, dbUnlistedName)
+		}
+
+		// Switch back to a listed school: unlisted_school_name must clear.
+		newSchoolID := seedSchoolWithJenjang(t, svc, repo, []string{"smk"})
+		updated2, err := svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil,
+			&newSchoolID,
+			nil, nil,
+			nil, nil, nil, nil,
+		)
+		if err != nil {
+			t.Fatalf("UpdateProfile (unlisted -> listed): %v", err)
+		}
+		if updated2.SchoolID == nil || *updated2.SchoolID != newSchoolID {
+			t.Errorf("SchoolID: want %s, got %v", newSchoolID, updated2.SchoolID)
+		}
+		if updated2.UnlistedSchoolName != nil {
+			t.Errorf("UnlistedSchoolName: want nil, got %v", *updated2.UnlistedSchoolName)
+		}
+
+		var dbUnlistedName2 *string
+		if err := repo.Pool().QueryRow(ctx,
+			`SELECT unlisted_school_name FROM users WHERE id = $1`, userID,
+		).Scan(&dbUnlistedName2); err != nil {
+			t.Fatalf("query users row: %v", err)
+		}
+		if dbUnlistedName2 != nil {
+			t.Errorf("db unlisted_school_name: want NULL, got %v", *dbUnlistedName2)
+		}
+	})
+
+	t.Run("neither field mentioned leaves school pair untouched (FR-12)", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		userID := createTestStudentWithSchool(t, svc, schoolID, "sma")
+
+		newName := "Renamed Student " + uniqueSuffix()
+		updated, err := svc.UpdateProfile(ctx, userID,
+			&newName, nil, nil, nil, nil, nil, nil,
+			nil,
+			nil, nil,
+			nil, nil, nil, nil,
+		)
+		if err != nil {
+			t.Fatalf("UpdateProfile (name only, FR-12): %v", err)
+		}
+		if updated.Name != newName {
+			t.Errorf("Name: want %s, got %s", newName, updated.Name)
+		}
+		if updated.SchoolID == nil || *updated.SchoolID != schoolID {
+			t.Errorf("SchoolID: want unchanged %s, got %v", schoolID, updated.SchoolID)
+		}
+		if updated.UnlistedSchoolName != nil {
+			t.Errorf("UnlistedSchoolName: want unchanged nil, got %v", *updated.UnlistedSchoolName)
+		}
+	})
+}
+
 // createTestStudentWithSchool registers a student under a given school via the
 // backend so they have a real school_id in the profile, ready for UpdateProfile.
 func createTestStudentWithSchool(t *testing.T, svc *Service, schoolID, jenjang string) string {
