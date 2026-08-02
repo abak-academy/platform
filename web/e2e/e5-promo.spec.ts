@@ -79,6 +79,17 @@ async function mintCartWithItem(
     data: { product_id: productId, qty: 1 },
   });
   expect(itemRes.ok(), "adding the item to the cart should succeed").toBeTruthy();
+
+  // POST /orders returns the student's existing open cart, so a promo attached
+  // by an earlier test is still on it — and the active-promo list is hidden
+  // while one is applied, which silently breaks the FR-14 case. Clear it with
+  // the tri-state remove ("" = remove) so every test starts promo-free.
+  const clearRes = await request.patch(`${API_BASE}/orders/${cart.id}`, {
+    headers: { Authorization: `Bearer ${studentToken}` },
+    data: { promo_code: "" },
+  });
+  expect(clearRes.ok(), "clearing any carried-over promo should succeed").toBeTruthy();
+
   return cart.id;
 }
 
@@ -172,7 +183,14 @@ test.describe("B-1 — promo survives the address and courier patches", () => {
     // Select a courier — a second, unrelated patch. Before B-1, this is
     // exactly the patch that wiped promo_code_id because PatchCart never
     // seeded it from the carried-forward order.
-    const courierToggle = page.getByRole("button", { expanded: false });
+    // Saving the address already kicks off the rate fetch (handleSaveAddress
+    // calls handleCheckShipping), so "Cek Ongkir" is disabled and then replaced
+    // by the picker — clicking it races the swap. Wait for the picker instead.
+    //
+    // Name the toggle explicitly. A bare getByRole("button", { expanded: false })
+    // also matches the Next.js Dev Tools button, so it is a strict-mode
+    // violation against any dev server — this spec could never have passed.
+    const courierToggle = page.getByRole("button", { name: "Pilih jasa pengiriman" });
     await expect(courierToggle).toBeVisible({ timeout: 15000 });
     await courierToggle.click();
     await page.getByRole("radio").first().click();
