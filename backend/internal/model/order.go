@@ -31,6 +31,7 @@ type Order struct {
 	GatewayRef         string               `json:"gateway_ref"`
 	PaymentMethod      string               `json:"payment_method"`
 	PaymentProofURL    *string              `json:"payment_proof_url"`
+	RefundProofURL     *string              `json:"refund_proof_url"`
 	PaymentExpiresAt   *time.Time           `json:"payment_expires_at"`
 	PaidAt             *time.Time           `json:"paid_at"`
 	InvoiceURL         string               `json:"invoice_url"`

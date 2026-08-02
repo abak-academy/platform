@@ -56,6 +56,17 @@ func (h *Handler) AdminGetPaymentProof(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"url": url})
 }
 
+// AdminGetRefundProof mints a short-lived link to an order's refund transfer
+// receipt. Like payment proofs, refund_proof is absent from the public file
+// proxy's allowlist, so this route is the only way to read one.
+func (h *Handler) AdminGetRefundProof(c echo.Context) error {
+	url, err := h.svc.PresignRefundProofURL(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"url": url})
+}
+
 func (h *Handler) AdminConfirmOrder(c echo.Context) error {
 	actorID, ok := actorFromClaims(c)
 	if !ok {
@@ -90,14 +101,21 @@ func (h *Handler) AdminConfirmOrder(c echo.Context) error {
 // validPaymentProofKey enforces invariant 6 (FR-25/FR-26): a confirmed order
 // must never exist without its evidence, and the evidence key must resolve
 // inside the payment_proof/ upload prefix with no path-traversal segment.
-func validPaymentProofKey(key string) bool {
+func validPaymentProofKey(key string) bool { return validProofKey(key, "payment_proof") }
+
+// validRefundProofKey applies the same rule to the manual transfer receipt that
+// evidences a refund — the money is moved by a human, so this key is the only
+// record the system gets that it happened.
+func validRefundProofKey(key string) bool { return validProofKey(key, "refund_proof") }
+
+func validProofKey(key, prefix string) bool {
 	if key == "" {
 		return false
 	}
 	if strings.Contains(key, "..") {
 		return false
 	}
-	return strings.HasPrefix(key, "payment_proof/")
+	return strings.HasPrefix(key, prefix+"/")
 }
 
 func (h *Handler) AdminShipOrder(c echo.Context) error {
@@ -170,7 +188,17 @@ func (h *Handler) AdminRefundOrder(c echo.Context) error {
 	}
 	orderID := c.Param("id")
 
-	err := h.svc.AdminRefundOrder(c.Request().Context(), actorID, orderID)
+	var req struct {
+		RefundProofURL string `json:"refund_proof_url"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if !validRefundProofKey(req.RefundProofURL) {
+		return badRequest(c, "refund_proof_url is required and must be a refund_proof/ upload key")
+	}
+
+	err := h.svc.AdminRefundOrder(c.Request().Context(), actorID, orderID, req.RefundProofURL)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

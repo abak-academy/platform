@@ -82,6 +82,13 @@ export function useFetchPaymentProofURL() {
   });
 }
 
+export function useFetchRefundProofURL() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      authFetch<{ url: string }>(`/admin/orders/${encodeURIComponent(id)}/refund-proof`),
+  });
+}
+
 export function useShipOrder() {
   const qc = useQueryClient();
   return useMutation({
@@ -109,12 +116,15 @@ export function useShipOrderManual() {
   });
 }
 
+// The refund itself is a manual bank transfer — the backend rejects the call
+// without a receipt, so the key is required here rather than optional.
 export function useRefundOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: ({ id, refundProofUrl }: { id: string; refundProofUrl: string }) =>
       authFetch<{ message: string }>(`/admin/orders/${encodeURIComponent(id)}/refund`, {
         method: "POST",
+        body: JSON.stringify({ refund_proof_url: refundProofUrl }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminOrdersKeys.all });

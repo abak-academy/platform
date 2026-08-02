@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { OrderDetailModal } from "@/components/admin/OrderDetailModal";
 import { ShipOrderModal } from "@/components/admin/ShipOrderModal";
 import { ConfirmOrderModal } from "@/components/admin/ConfirmOrderModal";
+import { RefundOrderModal } from "@/components/admin/RefundOrderModal";
 import { formatRupiah } from "@/lib/format";
 import type { Order, OrderStatus, AdminOrderFilterStatus } from "@/lib/types";
 
@@ -79,6 +80,8 @@ export default function OrdersPage() {
   const [shipError, setShipError] = useState<string | null>(null);
   const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [refundingOrder, setRefundingOrder] = useState<Order | null>(null);
+  const [refundError, setRefundError] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!orders) return [];
@@ -153,13 +156,17 @@ export default function OrdersPage() {
     }
   }
 
-  async function handleRefund(id: string) {
-    if (!window.confirm(t("orders_refund_prompt"))) return;
+  // No window.confirm here: a refund needs a transfer receipt, not a yes/no.
+  // The modal also states plainly that money and stock are not returned
+  // automatically — see issue #72.
+  async function handleRefundSubmit(id: string, refundProofUrl: string) {
+    setRefundError(null);
     try {
-      await refund.mutateAsync(id);
+      await refund.mutateAsync({ id, refundProofUrl });
+      setRefundingOrder(null);
       toast.success(t("orders_refunded"));
     } catch (e) {
-      toast.error(errorMessage(e));
+      setRefundError(errorMessage(e));
     }
   }
 
@@ -294,7 +301,10 @@ export default function OrdersPage() {
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => handleRefund(order.id)}
+                          onClick={() => {
+                            setRefundError(null);
+                            setRefundingOrder(order);
+                          }}
                           disabled={refund.isPending}
                         >
                           {t("action_refund")}
@@ -339,6 +349,20 @@ export default function OrdersPage() {
           onConfirm={(paymentProofUrl) => handleConfirmSubmit(confirmingOrder.id, paymentProofUrl)}
           isPending={confirm.isPending}
           error={confirmError}
+        />
+      )}
+
+      {refundingOrder && (
+        <RefundOrderModal
+          open
+          onOpenChange={() => {
+            setRefundingOrder(null);
+            setRefundError(null);
+          }}
+          orderNumber={orderNumber(refundingOrder)}
+          onRefund={(refundProofUrl) => handleRefundSubmit(refundingOrder.id, refundProofUrl)}
+          isPending={refund.isPending}
+          error={refundError}
         />
       )}
 

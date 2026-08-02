@@ -1275,6 +1275,25 @@ func (s *Service) PresignPaymentProofURL(ctx context.Context, orderID string) (s
 	return s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *order.PaymentProofURL, paymentProofURLTTL)
 }
 
+// PresignRefundProofURL is the refund-side twin of PresignPaymentProofURL. Kept
+// as a separate method rather than taking a caller-supplied kind, so the key
+// always comes from a fixed field on the order and the endpoint can never be
+// turned into an arbitrary-object reader.
+func (s *Service) PresignRefundProofURL(ctx context.Context, orderID string) (string, error) {
+	id, err := parseUUID(orderID)
+	if err != nil {
+		return "", err
+	}
+	order, err := s.storeRepo.GetOrderByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if order.RefundProofURL == nil || *order.RefundProofURL == "" {
+		return "", ErrUploadNotFound
+	}
+	return s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *order.RefundProofURL, paymentProofURLTTL)
+}
+
 // markOrderPaidTx flips order to "paid", emits the OrderPaid outbox event,
 // and writes an audit row, all inside tx. AdminConfirmOrder and
 // AdminReconcileOrder are the only two callers — invariant 5 requires exactly
@@ -1431,9 +1450,32 @@ func (s *Service) AdminCompleteOrder(ctx context.Context, orderID string) error 
 	return nil
 }
 
-func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID string) error {
+// refundableStatuses bounds AdminRefundOrder. The admin UI already hides the
+// action elsewhere, but the API enforced nothing — a direct call could "refund"
+// a cart, an unpaid order, or one already refunded, each of which revokes
+// enrollments and clears tracking for money that was never taken.
+var refundableStatuses = map[string]bool{
+	"paid":       true,
+	"processing": true,
+	"shipped":    true,
+	"completed":  true,
+}
+
+// AdminRefundOrder records a refund that a human performed by bank transfer.
+// It does NOT move money: PaymentClient has no refund method, so nothing
+// reaches the gateway, stock is not restored and no OrderRefunded event is
+// emitted — see issue #72 for the real flow. What this does guarantee is that
+// the record is honest: the status only moves from a status where money was
+// actually taken, and the transfer receipt is stored with it.
+func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID, refundProofURL string) error {
 	id, err := parseUUID(orderID)
 	if err != nil {
+		return err
+	}
+
+	// Same reasoning as the confirm path: only storage can say whether a
+	// well-formed key names a real upload.
+	if err := s.requireStoredObject(ctx, refundProofURL); err != nil {
 		return err
 	}
 
@@ -1443,6 +1485,9 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID string)
 	}
 	if order.ID.String() == "" {
 		return ErrOrderNotFound
+	}
+	if !refundableStatuses[order.Status] {
+		return ErrOrderNotRefundable
 	}
 
 	tx, err := s.storeRepo.BeginTx(ctx)
@@ -1461,10 +1506,14 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID string)
 	if err := s.storeRepo.ClearOrderTracking(ctx, tx, id); err != nil {
 		return err
 	}
+	if err := s.storeRepo.SetOrderRefundProof(ctx, tx, id, refundProofURL); err != nil {
+		return err
+	}
 
 	actor := &actorID
 	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, actor, "order", id.String(), "order.refund", map[string]any{
-		"manual": true,
+		"manual":           true,
+		"refund_proof_url": refundProofURL,
 	}); err != nil {
 		return err
 	}

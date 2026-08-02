@@ -385,6 +385,7 @@ var uploadPrefixAllowlist = map[string]bool{
 	"product":       true,
 	"question":      true,
 	"payment_proof": true,
+	"refund_proof":  true,
 }
 
 // proxyReadPrefixAllowlist gates OpenAvatar — what the UNAUTHENTICATED

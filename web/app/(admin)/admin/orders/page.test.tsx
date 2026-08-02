@@ -50,6 +50,11 @@ vi.mock("@/components/admin/ConfirmOrderModal", () => ({
     open ? <button onClick={() => onConfirm("payment_proof/admin-1/proof.jpg")}>Confirm-Stub</button> : null,
 }));
 
+vi.mock("@/components/admin/RefundOrderModal", () => ({
+  RefundOrderModal: ({ open, onRefund }: { open: boolean; onRefund: (key: string) => void }) =>
+    open ? <button onClick={() => onRefund("refund_proof/admin-1/trf.jpg")}>Refund-Stub</button> : null,
+}));
+
 const sampleOrders: Order[] = [
   {
     id: "o1",
@@ -396,23 +401,37 @@ describe("OrdersPage", () => {
     expect(within(row!).queryByRole("button", { name: /selesai/i })).not.toBeInTheDocument();
   });
 
-  it("refunds an order after confirmation", async () => {
-    mockMutateAsync.mockResolvedValueOnce({ message: "order refunded" });
-    vi.stubGlobal("confirm", () => true);
+  // A refund is a manual bank transfer, so the action opens a modal demanding
+  // the receipt rather than a yes/no confirm — the backend rejects the call
+  // without one, and a window.confirm could never supply it.
+  it("opens the refund modal instead of a confirm dialog, and warns that money is not returned automatically", async () => {
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirmSpy);
 
     render(<OrdersPage />);
 
     await waitFor(() => expect(screen.getByText(/Kursus B/)).toBeInTheDocument());
 
     const row = screen.getByText(/Kursus B/).closest("tr");
-    const refundButton = within(row!).getByRole("button", { name: /refund/i });
-    fireEvent.click(refundButton);
+    fireEvent.click(within(row!).getByRole("button", { name: /refund/i }));
+
+    // The old flow fired the mutation straight from a confirm(); the new one
+    // cannot, because it has no receipt yet.
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+
+    // The modal opens instead; the receipt it collects is what finally sends
+    // the mutation.
+    const stub = await screen.findByRole("button", { name: "Refund-Stub" });
+    fireEvent.click(stub);
 
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith("o3");
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        id: "o3",
+        refundProofUrl: "refund_proof/admin-1/trf.jpg",
+      });
       expect(toast.success).toHaveBeenCalledWith("Pesanan direfund.");
     });
-
   });
 
   it("filters rows by status chips", async () => {

@@ -47,7 +47,7 @@ const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost,
 	checked_out_at, completed_at, cancelled_at, cancellation_reason,
 	created_at, updated_at, is_estimate,
 	biteship_order_id, shipment_status, waybill_source, courier_code, courier_service_code,
-	payment_proof_url`
+	payment_proof_url, refund_proof_url`
 
 func scanOrder(row interface {
 	Scan(dest ...any) error
@@ -64,7 +64,7 @@ func scanOrder(row interface {
 		&order.CreatedAt, &order.UpdatedAt, &order.IsEstimate,
 		&order.BiteshipOrderID, &order.ShipmentStatus, &order.WaybillSource,
 		&order.CourierCode, &order.CourierServiceCode,
-		&order.PaymentProofURL,
+		&order.PaymentProofURL, &order.RefundProofURL,
 	)
 	if err != nil {
 		return err
@@ -469,6 +469,18 @@ func (r *Repository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID uuid
 func (r *Repository) SetOrderManualPayment(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, proofURL string) error {
 	_, err := tx.Exec(ctx,
 		`UPDATE orders SET payment_method = 'manual', payment_proof_url = $1, updated_at = now() WHERE id = $2`,
+		proofURL, orderID,
+	)
+	return err
+}
+
+// SetOrderRefundProof records the manual transfer receipt for a refund inside
+// the caller's transaction, alongside the status flip, enrollment revocation
+// and audit row AdminRefundOrder writes in the same tx. The money itself is
+// moved by a human — this is the only evidence the system ever gets.
+func (r *Repository) SetOrderRefundProof(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, proofURL string) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE orders SET refund_proof_url = $1, updated_at = now() WHERE id = $2`,
 		proofURL, orderID,
 	)
 	return err

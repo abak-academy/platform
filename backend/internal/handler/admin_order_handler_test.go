@@ -567,6 +567,90 @@ func TestAdminListOrders_InvalidCursor_Returns400(t *testing.T) {
 	}
 }
 
+func newRefundRequestCtx(t *testing.T, orderID string, body []byte) (echo.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	c, rec := newShipRequestCtx(t, http.MethodPost, "/api/v1/admin/orders/"+orderID+"/refund", "id", orderID, body)
+	c.Set("claims", &infra.Claims{Sub: uuid.New().String(), Role: "super_admin"})
+	return c, rec
+}
+
+// Refunding does not move money — PaymentClient has no refund method, so a
+// human transfers it and this receipt is the only evidence the system gets.
+// The same rule as manual confirmation therefore applies: no evidence, no
+// record. See issue #72 for the real refund flow.
+func TestAdminRefundOrder_RejectsMissingOrInvalidProof(t *testing.T) {
+	fake := &fakeShipHandlerLogistics{}
+	h, svc, repo := newShipHandlerTestService(t, fake)
+	orderID := createConfirmableOrderForHandler(t, svc, repo)
+
+	cases := []struct {
+		name string
+		body []byte
+	}{
+		{"no body at all", nil},
+		{"empty proof key", []byte(`{"refund_proof_url":""}`)},
+		{"proof key outside refund_proof/ prefix", []byte(`{"refund_proof_url":"product/abc/x.jpg"}`)},
+		{"proof key contains ..", []byte(`{"refund_proof_url":"refund_proof/../../etc/passwd"}`)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, rec := newRefundRequestCtx(t, orderID.String(), tc.body)
+			if err := h.AdminRefundOrder(c); err != nil {
+				t.Fatalf("AdminRefundOrder: %v", err)
+			}
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+
+			got, err := repo.GetOrderByID(context.Background(), orderID)
+			if err != nil {
+				t.Fatalf("GetOrderByID: %v", err)
+			}
+			if got.Status == "cancelled" {
+				t.Errorf("order must not be cancelled when the refund was rejected")
+			}
+		})
+	}
+}
+
+// The admin UI only offers Refund for paid/processing/shipped/completed, but
+// the API enforced nothing — a direct call could revoke enrollments and clear
+// tracking on an order whose money was never taken.
+func TestAdminRefundOrder_RejectsNonRefundableStatus(t *testing.T) {
+	fake := &fakeShipHandlerLogistics{}
+	h, svc, repo := newShipHandlerTestService(t, fake)
+	orderID := createConfirmableOrderForHandler(t, svc, repo)
+
+	// createConfirmableOrderForHandler leaves the order in payment_pending —
+	// money has not arrived, so there is nothing to refund.
+	c, rec := newRefundRequestCtx(t, orderID.String(), []byte(`{"refund_proof_url":"refund_proof/admin-1/trf.jpg"}`))
+	if err := h.AdminRefundOrder(c); err != nil {
+		t.Fatalf("AdminRefundOrder: %v", err)
+	}
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("want 409 for a payment_pending order, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var apiErr struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &apiErr); err != nil {
+		t.Fatalf("body is not JSON: %v; body=%s", err, rec.Body.String())
+	}
+	if apiErr.Code != "order_not_refundable" {
+		t.Errorf("code: want %q, got %q", "order_not_refundable", apiErr.Code)
+	}
+
+	got, err := repo.GetOrderByID(context.Background(), orderID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.Status != "payment_pending" {
+		t.Errorf("want status untouched (payment_pending), got %q", got.Status)
+	}
+}
+
 func TestAdminConfirmOrder_RejectsMissingOrInvalidProof(t *testing.T) {
 	fake := &fakeShipHandlerLogistics{}
 	h, svc, repo := newShipHandlerTestService(t, fake)

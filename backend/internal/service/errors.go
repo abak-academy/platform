@@ -218,6 +218,10 @@ var (
 	// ErrOrderNotShippable and ErrNoCarrierCode gate AdminShipOrder /
 	// AdminShipOrderManual (shipping_order.go) before any Biteship call is made.
 	ErrOrderNotShippable = errors.New("order not in shippable status")
+
+	// ErrOrderNotRefundable gates AdminRefundOrder: a refund may only be
+	// recorded against a status where money was actually taken. Maps to 422.
+	ErrOrderNotRefundable = errors.New("order not in refundable status")
 	ErrNoCarrierCode     = errors.New("order has no persisted courier code")
 )
 
