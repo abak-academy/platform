@@ -142,6 +142,16 @@ describe("SchoolBulkImportModal", () => {
     expect(exampleCells[3]).toContain("|");
     expect(exampleCells[3]).not.toContain(",");
 
+    // FR-31: the whole file, byte for byte. The identical literal is
+    // frontendSchoolBulkTemplateCSV in
+    // backend/internal/service/school_bulk_test.go, where it is fed through the
+    // real ParseSchoolBulkCSV — changing the template here without changing it
+    // there fails that test.
+    expect(lastDownloadedCSV).toBe(
+      "name,code,npsn,school_types,alamat\n" +
+        "SMAN 1 Jakarta,SMAN1JKT,20100001,sma|smk,Jl. Sudirman No. 1\n",
+    );
+
     expect(presignMutateAsync).not.toHaveBeenCalled();
     expect(putFile).not.toHaveBeenCalled();
     expect(enqueueMutateAsync).not.toHaveBeenCalled();

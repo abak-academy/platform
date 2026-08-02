@@ -225,3 +225,43 @@ func TestBuildSchoolBulkResultCSV(t *testing.T) {
 		t.Errorf("want neutralised name, got %q", records[2][0])
 	}
 }
+
+// frontendSchoolBulkTemplateCSV is the exact byte sequence the "download
+// template" button hands the admin. Copied verbatim from
+// web/components/admin/SchoolBulkImportModal.tsx (TEMPLATE_HEADER +
+// TEMPLATE_EXAMPLE_ROW, joined with "\n" and newline-terminated by
+// buildTemplateCSV). That file's matching test asserts the same literal and
+// names this constant, so a divergence fails on one side or the other.
+const frontendSchoolBulkTemplateCSV = "name,code,npsn,school_types,alamat\n" +
+	"SMAN 1 Jakarta,SMAN1JKT,20100001,sma|smk,Jl. Sudirman No. 1\n"
+
+// TestFrontendTemplateParsesUnmodified is FR-31: the template as downloaded and
+// re-uploaded untouched must parse cleanly — never a header error, never a
+// parse error.
+func TestFrontendTemplateParsesUnmodified(t *testing.T) {
+	rows, err := ParseSchoolBulkCSV([]byte(frontendSchoolBulkTemplateCSV))
+	if err != nil {
+		t.Fatalf("the frontend template must parse: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want 1 example row, got %d", len(rows))
+	}
+	r := rows[0]
+	if r.Name != "SMAN 1 Jakarta" || r.Code != "SMAN1JKT" {
+		t.Errorf("unexpected example row: %+v", r)
+	}
+	if r.NPSN == nil || *r.NPSN != "20100001" {
+		t.Errorf("want npsn 20100001, got %v", r.NPSN)
+	}
+	if r.Alamat == nil || *r.Alamat != "Jl. Sudirman No. 1" {
+		t.Errorf("want alamat, got %v", r.Alamat)
+	}
+	// §D-4: the pipe encoding must survive as two distinct school types, not
+	// one cell containing a literal "sma|smk".
+	if len(r.SchoolTypes) != 2 {
+		t.Fatalf("want 2 school types from the pipe-encoded cell, got %d (%v)", len(r.SchoolTypes), r.SchoolTypes)
+	}
+	if r.SchoolTypes[0] != "sma" || r.SchoolTypes[1] != "smk" {
+		t.Errorf("want [sma smk], got %v", r.SchoolTypes)
+	}
+}
