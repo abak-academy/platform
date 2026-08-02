@@ -242,16 +242,19 @@ func TestAdminSearchGrantStudents_SuperAdmin_ReturnsCrossSchoolResults(t *testin
 	schoolA := seedSchoolForSearch(t, env.pool, "SMA A", "sma_a", []string{"sma", "sma_ipas"})
 	schoolB := seedSchoolForSearch(t, env.pool, "SMA B", "sma_b", []string{"sma", "sma_ips"})
 
-	// Seed students across both schools.
-	seedStudentForSearch(t, env.pool, "Alice", "alic0012", schoolA, "sma", 10)
-	seedStudentForSearch(t, env.pool, "Bob", "bob_7890", schoolA, "sma", 11)
-	seedStudentForSearch(t, env.pool, "Charlie", "char3456", schoolB, "sma", 10)
-	seedStudentForSearch(t, env.pool, "Diana", "diana7890", schoolB, "sma", 12)
+	// Seed students across both schools. The shared suffix scopes the
+	// count assertions below, which would otherwise see rows seeded by any
+	// other test sharing this container.
+	const xsuffix = "xsch01"
+	seedStudentForSearch(t, env.pool, "Alice "+xsuffix, "alic0012", schoolA, "sma", 10)
+	seedStudentForSearch(t, env.pool, "Bob "+xsuffix, "bob_7890", schoolA, "sma", 11)
+	seedStudentForSearch(t, env.pool, "Charlie "+xsuffix, "char3456", schoolB, "sma", 10)
+	seedStudentForSearch(t, env.pool, "Diana "+xsuffix, "diana7890", schoolB, "sma", 12)
 
 	superToken := mintSearchSuperAdminToken(t, env, "super1")
 
 	t.Run("no filters returns students from all schools", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q="+xsuffix, nil)
 		req.Header.Set("Authorization", "Bearer "+superToken)
 		rec := httptest.NewRecorder()
 		env.e.ServeHTTP(rec, req)
@@ -349,7 +352,7 @@ func TestAdminSearchGrantStudents_SuperAdmin_ReturnsCrossSchoolResults(t *testin
 	})
 
 	t.Run("grade filter narrows results", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?grade=10", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?grade=10&q="+xsuffix, nil)
 		req.Header.Set("Authorization", "Bearer "+superToken)
 		rec := httptest.NewRecorder()
 		env.e.ServeHTTP(rec, req)
