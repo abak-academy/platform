@@ -735,6 +735,28 @@ describe("CartPage with Shipping", () => {
     });
   });
 
+  // The phone reached the order's shipping_address but was omitted from the
+  // profile payload, so ticking "make this my primary address" saved every
+  // field except the phone — silently, because nothing errored.
+  it("carries the phone number to the profile, not only to the order", async () => {
+    const user = userEvent.setup();
+    const updateProfileMutate = vi.fn();
+    mockProfileWithoutPostalCode();
+    mockUseUpdateProfile.mockReturnValue({ mutate: updateProfileMutate, isPending: false, isError: false });
+
+    renderWithQueryClient(<CartPage />);
+    await user.type(await screen.findByLabelText("Postal Code"), "15310");
+
+    expect(screen.getByRole("checkbox", { name: /primary address/i })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Save address" }));
+
+    await waitFor(() => {
+      expect(updateProfileMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ phone: "081200000000" })
+      );
+    });
+  });
+
   it("leaves the primary box unticked when the profile already holds an address", async () => {
     mockUseCart.mockReturnValue({
       data: {

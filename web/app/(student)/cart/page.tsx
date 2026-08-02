@@ -109,6 +109,7 @@ export default function CartPage() {
       if (saveAsPrimary) {
         updateProfile.mutate({
           address: shippingAddress.alamat,
+          phone: shippingAddress.telepon,
           provinsi_id: shippingAddress.provinsi_id,
           kota_id: shippingAddress.kota_id,
           kecamatan_id: shippingAddress.kecamatan_id,
