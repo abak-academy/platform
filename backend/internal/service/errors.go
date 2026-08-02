@@ -244,6 +244,14 @@ var (
 	ErrInvalidGradeFormat   = errors.New("invalid grade, expected an integer")
 )
 
+// --- from school_bulk.go ---
+var (
+	// ErrMissingSchoolCSVHeader is distinct from ErrMissingCSVHeader (whose
+	// message names name/jenjang/school) because the school-bulk header set is
+	// name/code and that message would mislead here.
+	ErrMissingSchoolCSVHeader = errors.New("csv missing required name/code header")
+)
+
 // --- from system_config.go ---
 var (
 	// ErrConfigEncryption is returned when AES-256-GCM encryption or decryption
