@@ -10,8 +10,6 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 // normalizeGender maps the API's male/female wire values to the DB's
@@ -213,7 +211,7 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 		return nil, fmt.Errorf("generate temp password: %w", err)
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(tempPass), 12)
+	hash, err := hashPassword(tempPass)
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +372,7 @@ func (s *Service) ReissueStudentCredentials(ctx context.Context, schoolID, targe
 		return nil, fmt.Errorf("generate temp password: %w", err)
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(tempPass), 12)
+	hash, err := hashPassword(tempPass)
 	if err != nil {
 		return nil, err
 	}

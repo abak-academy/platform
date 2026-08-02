@@ -8,8 +8,6 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 // adminRoles is the set of valid admin roles assignable via system endpoints.
@@ -128,7 +126,7 @@ func (s *Service) CreateAdminAccount(ctx context.Context, actorID, email, name, 
 		return nil, ErrSchoolNotAllowed
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
+	hash, err := hashPassword(password)
 	if err != nil {
 		return nil, err
 	}

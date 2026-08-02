@@ -53,7 +53,7 @@ func TestTempPasswordIsBcryptable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("genTempPassword: %v", err)
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(p), 12)
+	hash, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.MinCost)
 	if err != nil {
 		t.Fatalf("bcrypt: %v", err)
 	}

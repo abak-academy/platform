@@ -834,7 +834,7 @@ func TestResetPassword_RevokesAllSessions(t *testing.T) {
 
 // mustHashStd hashes outside a *testing.T context (used in closures/seed).
 func mustHashStd(pw string) string {
-	h, err := bcrypt.GenerateFromPassword([]byte(pw), 12)
+	h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.MinCost)
 	if err != nil {
 		panic(err)
 	}

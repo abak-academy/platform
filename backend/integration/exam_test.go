@@ -87,37 +87,84 @@ func TestExam_AdminCreateTest_returns_201_and_test(t *testing.T) {
 	assert.Equal(t, float64(60), out["duration_minutes"])
 }
 
-func TestExam_AdminCreateTest_returns_400_on_missing_title(t *testing.T) {
+// TestExam_AdminValidation_rejects merges eleven single-case tests that each stood up
+// their own Postgres+Redis to assert one 4xx. The rules themselves are covered as pure
+// functions by service.TestValidateQuestion_*/TestValidateTest_*; what only an
+// integration test can show is that ErrValidation reaches the client as 422
+// validation_failed — so every case is kept, sharing one env instead of eleven.
+func TestExam_AdminValidation_rejects(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
 
-	// service-layer validateTest rejects blank title via ErrValidation → 422
-	body := map[string]any{
-		"title":            "   ",
-		"subject":          "math",
-		"topic":            "algebra",
-		"duration_minutes": 60,
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests", body, token)
-	assert.True(t, resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity,
-		"want 400 or 422, got %d body=%v", resp.StatusCode, out)
-}
+	t.Run("create test", func(t *testing.T) {
+		cases := []struct {
+			name string
+			body map[string]any
+		}{
+			{"blank title", map[string]any{"title": "   ", "subject": "math", "topic": "algebra", "duration_minutes": 60}},
+			{"zero duration", map[string]any{"title": "X", "subject": "math", "topic": "algebra", "duration_minutes": 0}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests", tc.body, token)
+				assert.True(t, resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity,
+					"want 400 or 422, got %d body=%v", resp.StatusCode, out)
+			})
+		}
+	})
 
-func TestExam_AdminCreateTest_returns_400_on_zero_duration(t *testing.T) {
-	env := newTestEnv(t)
-	adminID := seedUser(t, env, "admin_exam", "active", false)
-	token := authToken(t, env, adminID, "admin_exam")
-
-	body := map[string]any{
-		"title":            "X",
-		"subject":          "math",
-		"topic":            "algebra",
-		"duration_minutes": 0,
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests", body, token)
-	assert.True(t, resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity,
-		"want 400 or 422, got %d body=%v", resp.StatusCode, out)
+	t.Run("create question", func(t *testing.T) {
+		cases := []struct {
+			name string
+			body map[string]any
+		}{
+			{"mcq with two correct", map[string]any{
+				"format": "mcq", "body": "2+2", "sort_order": 1,
+				"options": []map[string]any{
+					{"key": "a", "text": "4", "is_correct": true, "sort_order": 1},
+					{"key": "b", "text": "5", "is_correct": true, "sort_order": 2},
+				}}},
+			{"mcq with zero correct", map[string]any{
+				"format": "mcq", "body": "pick one", "sort_order": 1,
+				"options": []map[string]any{
+					{"key": "a", "text": "1", "is_correct": false, "sort_order": 1},
+					{"key": "b", "text": "2", "is_correct": false, "sort_order": 2},
+				}}},
+			{"mcq with only one option", map[string]any{
+				"format": "mcq", "body": "pick one", "sort_order": 1,
+				"options": []map[string]any{
+					{"key": "a", "text": "1", "is_correct": true, "sort_order": 1},
+				}}},
+			{"multi_answer with zero correct", map[string]any{
+				"format": "multi_answer", "body": "pick any", "sort_order": 1,
+				"options": []map[string]any{
+					{"key": "a", "text": "x", "is_correct": false, "sort_order": 1},
+					{"key": "b", "text": "y", "is_correct": false, "sort_order": 2},
+				}}},
+			{"short without correct answer", map[string]any{
+				"format": "short", "body": "capital of France", "sort_order": 1}},
+			{"fill_blank without correct answer", map[string]any{
+				"format": "fill_blank", "body": "2 + 2 = ___", "sort_order": 1}},
+			{"essay with options", map[string]any{
+				"format": "essay", "body": "explain", "sort_order": 1,
+				"options": []map[string]any{
+					{"key": "a", "text": "nope", "is_correct": false, "sort_order": 1},
+				}}},
+			{"point_correct below 1", map[string]any{
+				"format": "essay", "body": "explain gravity", "sort_order": 1, "point_correct": 0}},
+			{"negative point_wrong", map[string]any{
+				"format": "essay", "body": "explain gravity", "sort_order": 1, "point_wrong": -1}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", tc.body, token)
+				assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+				assert.Equal(t, "validation_failed", out["code"])
+			})
+		}
+	})
 }
 
 func TestExam_AdminListTests_returns_data_and_cursor(t *testing.T) {
@@ -280,81 +327,6 @@ func TestExam_AdminCreateQuestion_mcq_with_one_correct_returns_201(t *testing.T)
 	assert.Len(t, options, 2)
 }
 
-func TestExam_AdminCreateQuestion_mcq_with_two_correct_returns_422(t *testing.T) {
-	env := newTestEnv(t)
-	adminID := seedUser(t, env, "admin_exam", "active", false)
-	token := authToken(t, env, adminID, "admin_exam")
-
-	testID := seedTest(t, env, "X", "math", "algebra", 60)
-	body := map[string]any{
-		"format":     "mcq",
-		"body":       "2+2",
-		"sort_order": 1,
-		"options": []map[string]any{
-			{"key": "a", "text": "4", "is_correct": true, "sort_order": 1},
-			{"key": "b", "text": "5", "is_correct": true, "sort_order": 2},
-		},
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
-}
-
-func TestExam_AdminCreateQuestion_short_with_no_correct_answer_returns_422(t *testing.T) {
-	env := newTestEnv(t)
-	adminID := seedUser(t, env, "admin_exam", "active", false)
-	token := authToken(t, env, adminID, "admin_exam")
-
-	testID := seedTest(t, env, "X", "math", "algebra", 60)
-	body := map[string]any{
-		"format":     "short",
-		"body":       "capital of France",
-		"sort_order": 1,
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
-}
-
-func TestExam_AdminCreateQuestion_mcq_with_zero_correct_returns_422(t *testing.T) {
-	env := newTestEnv(t)
-	adminID := seedUser(t, env, "admin_exam", "active", false)
-	token := authToken(t, env, adminID, "admin_exam")
-
-	testID := seedTest(t, env, "X", "math", "algebra", 60)
-	body := map[string]any{
-		"format":     "mcq",
-		"body":       "pick one",
-		"sort_order": 1,
-		"options": []map[string]any{
-			{"key": "a", "text": "1", "is_correct": false, "sort_order": 1},
-			{"key": "b", "text": "2", "is_correct": false, "sort_order": 2},
-		},
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
-}
-
-func TestExam_AdminCreateQuestion_mcq_with_only_one_option_returns_422(t *testing.T) {
-	env := newTestEnv(t)
-	adminID := seedUser(t, env, "admin_exam", "active", false)
-	token := authToken(t, env, adminID, "admin_exam")
-
-	testID := seedTest(t, env, "X", "math", "algebra", 60)
-	body := map[string]any{
-		"format":     "mcq",
-		"body":       "pick one",
-		"sort_order": 1,
-		"options": []map[string]any{
-			{"key": "a", "text": "1", "is_correct": true, "sort_order": 1},
-		},
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
-}
-
 func TestExam_AdminCreateQuestion_multi_answer_with_two_correct_returns_201(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
@@ -376,26 +348,6 @@ func TestExam_AdminCreateQuestion_multi_answer_with_two_correct_returns_201(t *t
 	assert.Equal(t, "multi_answer", q["format"])
 	options := out["options"].([]any)
 	assert.Len(t, options, 2)
-}
-
-func TestExam_AdminCreateQuestion_multi_answer_with_zero_correct_returns_422(t *testing.T) {
-	env := newTestEnv(t)
-	adminID := seedUser(t, env, "admin_exam", "active", false)
-	token := authToken(t, env, adminID, "admin_exam")
-
-	testID := seedTest(t, env, "X", "math", "algebra", 60)
-	body := map[string]any{
-		"format":     "multi_answer",
-		"body":       "pick any",
-		"sort_order": 1,
-		"options": []map[string]any{
-			{"key": "a", "text": "x", "is_correct": false, "sort_order": 1},
-			{"key": "b", "text": "y", "is_correct": false, "sort_order": 2},
-		},
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
 }
 
 func TestExam_AdminCreateQuestion_short_with_correct_answer_returns_201(t *testing.T) {
@@ -434,41 +386,6 @@ func TestExam_AdminCreateQuestion_fill_blank_with_correct_answer_returns_201(t *
 	q := out["question"].(map[string]any)
 	assert.Equal(t, "fill_blank", q["format"])
 	assert.Equal(t, "4", q["correct_answer"])
-}
-
-func TestExam_AdminCreateQuestion_fill_blank_without_correct_answer_returns_422(t *testing.T) {
-	env := newTestEnv(t)
-	adminID := seedUser(t, env, "admin_exam", "active", false)
-	token := authToken(t, env, adminID, "admin_exam")
-
-	testID := seedTest(t, env, "X", "math", "algebra", 60)
-	body := map[string]any{
-		"format":     "fill_blank",
-		"body":       "2 + 2 = ___",
-		"sort_order": 1,
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
-}
-
-func TestExam_AdminCreateQuestion_essay_with_options_returns_422(t *testing.T) {
-	env := newTestEnv(t)
-	adminID := seedUser(t, env, "admin_exam", "active", false)
-	token := authToken(t, env, adminID, "admin_exam")
-
-	testID := seedTest(t, env, "X", "math", "algebra", 60)
-	body := map[string]any{
-		"format":     "essay",
-		"body":       "explain",
-		"sort_order": 1,
-		"options": []map[string]any{
-			{"key": "a", "text": "nope", "is_correct": false, "sort_order": 1},
-		},
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
 }
 
 func TestExam_AdminPatchQuestion_nonexistent_id_returns_404(t *testing.T) {
@@ -552,40 +469,6 @@ func TestExam_AdminCreateQuestion_defaults_points_when_omitted(t *testing.T) {
 	q := out["question"].(map[string]any)
 	assert.Equal(t, float64(1), q["point_correct"])
 	assert.Equal(t, float64(0), q["point_wrong"])
-}
-
-func TestExam_AdminCreateQuestion_point_correct_below_1_returns_422(t *testing.T) {
-	env := newTestEnv(t)
-	adminID := seedUser(t, env, "admin_exam", "active", false)
-	token := authToken(t, env, adminID, "admin_exam")
-
-	testID := seedTest(t, env, "X", "math", "algebra", 60)
-	body := map[string]any{
-		"format":        "essay",
-		"body":          "explain gravity",
-		"sort_order":    1,
-		"point_correct": 0,
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
-}
-
-func TestExam_AdminCreateQuestion_negative_point_wrong_returns_422(t *testing.T) {
-	env := newTestEnv(t)
-	adminID := seedUser(t, env, "admin_exam", "active", false)
-	token := authToken(t, env, adminID, "admin_exam")
-
-	testID := seedTest(t, env, "X", "math", "algebra", 60)
-	body := map[string]any{
-		"format":      "essay",
-		"body":        "explain gravity",
-		"sort_order":  1,
-		"point_wrong": -1,
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
 }
 
 // FR-16/FR-18: fractional point_correct is accepted end to end (handler no longer

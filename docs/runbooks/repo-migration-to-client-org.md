@@ -46,7 +46,7 @@ its name is blocked.
 
 **Secrets and variables: currently none exist.** `gh secret list` and `gh variable list` both return
 empty, so there is nothing to re-create today. `secrets.MIDTRANS_CLIENT_KEY` is referenced by the
-`images` job but has never been set — harmless, because the storefront fetches the Midtrans client key
+`images-web` job but has never been set — harmless, because the storefront fetches the Midtrans client key
 from the API at runtime and only falls back to the build arg. The go-live slots
 (`vars.PROD_GOOGLE_CLIENT_ID`, `secrets.MIDTRANS_CLIENT_KEY_PROD`, and the two `vars.GCP_*`) are still
 empty and get created in the new org, not migrated.
@@ -98,7 +98,7 @@ echo "<PAT>" | docker login ghcr.io -u <github-username> --password-stdin
 
 ## 3 — Rebuild and redeploy staging
 
-- [ ] Push any commit to `main` in the new org (or re-run the pipeline) so `images` publishes under the
+- [ ] Push any commit to `main` in the new org (or re-run the pipeline) so the image jobs publish under the
       new path. Confirm the run is green and note the commit SHA.
 - [ ] On the staging VM, set `IMAGE_TAG` to that SHA, then:
 
@@ -132,7 +132,7 @@ gcloud iam workload-identity-pools providers create-oidc github-oidc --location=
 - [ ] Fill the remaining go-live slots in the new org: `vars.PROD_GOOGLE_CLIENT_ID` and
       `secrets.MIDTRANS_CLIENT_KEY_PROD`.
 
-Note that `images-prod` will go green as soon as WIF works, even with those slots empty — the build
+Note that `images-web-prod` will go green as soon as WIF works, even with those slots empty — the build
 defaults them to empty strings rather than failing. An empty `NEXT_PUBLIC_GOOGLE_CLIENT_ID` has **no
 runtime fallback**, so Google sign-in is dead in that image. Green here does not mean deployable.
 

@@ -485,7 +485,23 @@ func TestAdminResults_ExplainAnalyze(t *testing.T) {
 		JOIN users u ON u.id = s.student_id AND u.school_id = $1 AND u.role = 'student'
 		WHERE s.exam_id = $2 AND s.status = 'submitted'`
 
-	rows, err := pool.Query(ctx, `EXPLAIN ANALYZE `+query, schoolID, examID)
+	// enable_seqscan=off because the planner is *right* to seq-scan a table this small:
+	// once real statistics exist it sees one page and picks the cheaper plan. This test
+	// used to pass only because a private container had never been ANALYZEd, so Postgres
+	// assumed the table was large. What it means to assert is that the index covers this
+	// predicate and the planner can use it — which is what discouraging seq scan shows,
+	// at any table size.
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire conn: %v", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `SET enable_seqscan = off`); err != nil {
+		t.Fatalf("disable seqscan: %v", err)
+	}
+	defer func() { _, _ = conn.Exec(ctx, `SET enable_seqscan = on`) }()
+
+	rows, err := conn.Query(ctx, `EXPLAIN ANALYZE `+query, schoolID, examID)
 	if err != nil {
 		t.Fatalf("EXPLAIN ANALYZE: %v", err)
 	}
@@ -506,13 +522,10 @@ func TestAdminResults_ExplainAnalyze(t *testing.T) {
 	plan := strings.Join(planLines, "\n")
 	t.Logf("EXPLAIN ANALYZE plan:\n%s", plan)
 
-	// Sequential scan on exam_session would indicate the index is not being used.
-	if strings.Contains(plan, "Seq Scan on exam_session") {
-		t.Errorf("query plan uses Seq Scan on exam_session — idx_examsession_monitor (exam_id, status) should be used:\n%s", plan)
-	}
-
-	// The plan should reference the index.
-	if !strings.Contains(plan, "idx_examsession_monitor") && !strings.Contains(plan, "Index Scan") {
-		t.Errorf("expected idx_examsession_monitor or Index Scan in plan, got:\n%s", plan)
+	// Name the index, and only that index. The previous "... || Index Scan" escape hatch
+	// accepted any index at all — including the primary key — so the assertion survived
+	// a query whose predicate idx_examsession_monitor cannot serve.
+	if !strings.Contains(plan, "idx_examsession_monitor") {
+		t.Errorf("expected idx_examsession_monitor in the plan for (exam_id, status), got:\n%s", plan)
 	}
 }

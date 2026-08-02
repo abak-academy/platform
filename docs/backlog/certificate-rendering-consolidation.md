@@ -115,7 +115,7 @@ interface is already declared in `pdf_generator.go`; nothing injects it.
 - The shims in `certificate_test.go` (3 fake methods) and whatever `exam_result_test.go` needs for the
   certificate path — **only** what this rewrite touches.
 - Keep the **`render-gate` CI job** working throughout. It is a real job
-  (`.github/workflows/pipeline.yml:19` → `deploy/pipeline/backend-render-gate.sh`) and the `images` job
+  (`.github/workflows/pipeline.yml:19` → `deploy/pipeline/backend-render-gate.sh`) and every image job
   `needs:` it, so breaking it blocks every image build.
 
 ### Explicitly NOT in scope here

@@ -24,7 +24,7 @@ func insertBankQuestion(t *testing.T, pool *pgxpool.Pool, body string) uuid.UUID
 // FR-3: the bank list orders newest question_number first, identically across
 // repeated calls.
 func TestListBankQuestions_OrdersByQuestionNumberDescending(t *testing.T) {
-	pool := newGradingTestPool(t)
+	pool := newPristineTestPool(t)
 	r := New(pool)
 	ctx := context.Background()
 
@@ -56,7 +56,7 @@ func TestListBankQuestions_OrdersByQuestionNumberDescending(t *testing.T) {
 // question_number order — the cursor predicate must key off question_number,
 // not id, or this silently drops/duplicates rows.
 func TestListBankQuestions_CursorWalksToEnd(t *testing.T) {
-	pool := newGradingTestPool(t)
+	pool := newPristineTestPool(t)
 	r := New(pool)
 	ctx := context.Background()
 

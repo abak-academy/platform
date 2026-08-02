@@ -56,7 +56,7 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (p
 		return "", ErrEmailTaken
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
+	hash, err := hashPassword(password)
 	if err != nil {
 		return "", err
 	}
@@ -320,7 +320,7 @@ func (s *Service) ResetPassword(ctx context.Context, token, otp, newPassword str
 		return ErrWeakPassword
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), 12)
+	hash, err := hashPassword(newPassword)
 	if err != nil {
 		return err
 	}
@@ -361,7 +361,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 	if newPassword == currentPassword {
 		return ErrWeakPassword
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), 12)
+	hash, err := hashPassword(newPassword)
 	if err != nil {
 		return err
 	}
