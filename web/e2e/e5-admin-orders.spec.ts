@@ -48,7 +48,18 @@ async function checkoutToPaymentPending(
     headers: { Authorization: `Bearer ${studentToken}` },
   });
   expect(cartRes.ok(), "minting the cart should succeed").toBeTruthy();
-  const cart = (await cartRes.json()) as { id: string };
+  const cart = (await cartRes.json()) as { id: string; items?: Array<{ id: string }> };
+
+  // POST /orders returns the student's existing open cart, not a fresh one.
+  // Anything another spec left in it comes along — and a leftover physical item
+  // makes this checkout demand a shipping selection the digital-only flow never
+  // makes. Empty it so the cart contains exactly what this test puts there.
+  for (const leftover of cart.items ?? []) {
+    const del = await request.delete(`${API_BASE}/orders/${cart.id}/items/${leftover.id}`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    expect(del.ok(), "clearing a leftover cart item should succeed").toBeTruthy();
+  }
 
   const itemRes = await request.post(`${API_BASE}/orders/${cart.id}/items`, {
     headers: { Authorization: `Bearer ${studentToken}` },
@@ -83,12 +94,17 @@ async function checkoutToPaymentPending(
 
 test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name", () => {
   test("upload a proof, confirm manually, reopen and see the mark and the proof", async ({ page, context, request }) => {
-    await loginRealAdmin(context, request);
+    // The student session is only needed for the API setup below, but both
+    // helpers seed the SAME localStorage key — so the last login wins in the
+    // browser. Do the student work first, then re-seed admin, or /admin/orders
+    // redirects to the student dashboard and the row is never found.
     const studentToken = await loginRealStudent(context, request);
 
     const product = await findPricedCourseProduct(request);
     const orderId = await checkoutToPaymentPending(request, studentToken, product.id);
     const orderNumber = `#${orderId.slice(-8)}`;
+
+    await loginRealAdmin(context, request);
 
     await page.goto("/admin/orders");
 
@@ -127,18 +143,33 @@ test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name"
     await expect(page.getByText("Pesanan dikonfirmasi.")).toBeVisible({ timeout: 10000 });
     await expect(confirmDialog).toBeHidden();
 
-    // Reopen the order detail and check the manual-confirm mark + proof link.
+    // Reopen the order detail and check the manual-confirm mark + proof access.
     await orderRow.click();
     const detailDialog = page.getByRole("dialog").filter({ hasText: orderNumber });
     await expect(detailDialog).toBeVisible();
     await expect(detailDialog.getByText("Dikonfirmasi manual")).toBeVisible();
 
-    const proofLink = detailDialog.getByRole("link", { name: "Lihat bukti" });
-    await expect(proofLink).toBeVisible();
-    const href = await proofLink.getAttribute("href");
-    expect(href, "the proof link must carry the object key as an href").toBeTruthy();
+    // Deliberately a button, not an <a href>: payment_proof is no longer served
+    // by the unauthenticated /files/* proxy, so the object key must not be
+    // rendered into the page at all. The URL is minted per click, behind
+    // orders:write, and expires.
+    const proofButton = detailDialog.getByRole("button", { name: "Lihat bukti" });
+    await expect(proofButton).toBeVisible();
+    await expect(detailDialog.getByRole("link", { name: "Lihat bukti" })).toHaveCount(0);
+    expect(
+      await detailDialog.innerHTML(),
+      "the proof object key must never reach the DOM"
+    ).not.toContain("payment_proof/");
 
-    const proofFileRes = await request.get(href!);
+    // Clicking opens the minted URL in a new tab; assert it actually resolves.
+    const [proofTab] = await Promise.all([
+      context.waitForEvent("page"),
+      proofButton.click(),
+    ]);
+    const proofURL = proofTab.url();
+    expect(proofURL, "the minted proof URL must be a presigned storage link").toContain("payment_proof/");
+    const proofFileRes = await request.get(proofURL);
     expect(proofFileRes.ok(), "the payment proof must be reachable from the detail view").toBeTruthy();
+    await proofTab.close();
   });
 });
