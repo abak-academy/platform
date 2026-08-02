@@ -4,29 +4,45 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 : "${REGISTRY:?e.g. ghcr.io/panca1093/bimbel-abak-academy}"
 : "${TAG:?commit SHA — never 'latest'}"
-: "${TARGET_ENV:?staging|prod}"
-: "${NEXT_PUBLIC_API_BASE_URL:?inlined into the web bundle at build time}"
 
-NEXT_PUBLIC_MIDTRANS_SNAP_URL="${NEXT_PUBLIC_MIDTRANS_SNAP_URL:-https://app.sandbox.midtrans.com/snap/snap.js}"
-NEXT_PUBLIC_MIDTRANS_CLIENT_KEY="${NEXT_PUBLIC_MIDTRANS_CLIENT_KEY:-}"
-NEXT_PUBLIC_GOOGLE_CLIENT_ID="${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}"
+# api/worker are byte-identical across environments; web is not. Splitting them lets CI
+# build the pair once and push it to both registries, and build the two webs in parallel.
+COMPONENTS="${COMPONENTS:-api worker web}"
 
 # build-artifact.sh emits GOARCH=amd64, so the images must be amd64 or the binary will not execute.
 PLATFORM=linux/amd64
 
-docker build --platform "$PLATFORM" -f deploy/images/Dockerfile.api    -t "${REGISTRY}/api:${TAG}"    backend
-docker build --platform "$PLATFORM" -f deploy/images/Dockerfile.worker -t "${REGISTRY}/worker:${TAG}" backend
+built=()
 
-# web is not promotable between environments: NEXT_PUBLIC_* is inlined into the client bundle here.
-docker build --platform "$PLATFORM" -f web/Dockerfile \
-  --build-arg "NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}" \
-  --build-arg "NEXT_PUBLIC_MIDTRANS_SNAP_URL=${NEXT_PUBLIC_MIDTRANS_SNAP_URL}" \
-  --build-arg "NEXT_PUBLIC_MIDTRANS_CLIENT_KEY=${NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}" \
-  --build-arg "NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}" \
-  -t "${REGISTRY}/web:${TARGET_ENV}-${TAG}" web
+for component in $COMPONENTS; do
+  case "$component" in
+    api|worker)
+      docker build --platform "$PLATFORM" \
+        -f "deploy/images/Dockerfile.${component}" \
+        -t "${REGISTRY}/${component}:${TAG}" backend
+      built+=("${REGISTRY}/${component}:${TAG}")
+      ;;
+    web)
+      : "${TARGET_ENV:?staging|prod}"
+      : "${NEXT_PUBLIC_API_BASE_URL:?inlined into the web bundle at build time}"
+      # web is not promotable between environments: NEXT_PUBLIC_* is inlined into the client bundle here.
+      docker build --platform "$PLATFORM" -f web/Dockerfile \
+        --build-arg "NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}" \
+        --build-arg "NEXT_PUBLIC_MIDTRANS_SNAP_URL=${NEXT_PUBLIC_MIDTRANS_SNAP_URL:-https://app.sandbox.midtrans.com/snap/snap.js}" \
+        --build-arg "NEXT_PUBLIC_MIDTRANS_CLIENT_KEY=${NEXT_PUBLIC_MIDTRANS_CLIENT_KEY:-}" \
+        --build-arg "NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}" \
+        -t "${REGISTRY}/web:${TARGET_ENV}-${TAG}" web
+      built+=("${REGISTRY}/web:${TARGET_ENV}-${TAG}")
+      ;;
+    *)
+      echo "unknown component: ${component}" >&2
+      exit 1
+      ;;
+  esac
+done
 
 if [[ "${PUSH:-0}" == "1" ]]; then
-  docker push "${REGISTRY}/api:${TAG}"
-  docker push "${REGISTRY}/worker:${TAG}"
-  docker push "${REGISTRY}/web:${TARGET_ENV}-${TAG}"
+  for image in "${built[@]}"; do
+    docker push "$image"
+  done
 fi
