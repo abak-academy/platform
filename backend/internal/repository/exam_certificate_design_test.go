@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -24,12 +25,20 @@ func TestAllocateCertificateNumber(t *testing.T) {
 	testID := insertGradingTest(t, pool)
 	examID := insertGradingExam(t, pool, testID)
 
+	// Take the number from the sequence rather than pinning a literal: a literal is
+	// both already-taken (uq_exam_exam_number) and never handed back (UPDATE does not
+	// advance the sequence, so the DEFAULT reissues it later). Either way it is a
+	// duplicate-key waiting for whichever test runs at the wrong moment.
 	scheduledAt := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
-	_, err := pool.Exec(ctx,
-		`UPDATE exam SET exam_number = 42, scheduled_at = $1 WHERE id = $2`,
+	var examNumber int
+	require.NoError(t, pool.QueryRow(ctx,
+		`UPDATE exam SET exam_number = nextval('exam_number_seq'), scheduled_at = $1
+		WHERE id = $2 RETURNING exam_number`,
 		scheduledAt, examID,
-	)
-	require.NoError(t, err)
+	).Scan(&examNumber))
+
+	wantA := fmt.Sprintf("ABK/2026/%04d/%06d", examNumber, 5)
+	wantB := fmt.Sprintf("ABK/2026/%04d/%06d", examNumber, 9)
 
 	sessionA := insertCertNumSession(t, pool, studentA, examID, 5)
 	sessionB := insertCertNumSession(t, pool, studentB, examID, 9)
@@ -37,7 +46,7 @@ func TestAllocateCertificateNumber(t *testing.T) {
 	t.Run("first call composes ABK/YYYY/exam_number/participant_number", func(t *testing.T) {
 		number, err := repo.AllocateCertificateNumber(ctx, sessionA)
 		require.NoError(t, err)
-		require.Equal(t, "ABK/2026/0042/000005", number)
+		require.Equal(t, wantA, number)
 
 		sess, err := repo.GetExamSessionByID(ctx, sessionA)
 		require.NoError(t, err)
@@ -64,7 +73,7 @@ func TestAllocateCertificateNumber(t *testing.T) {
 		numberB, err := repo.AllocateCertificateNumber(ctx, sessionB)
 		require.NoError(t, err)
 		require.NotEqual(t, numberA, numberB)
-		require.Equal(t, "ABK/2026/0042/000009", numberB)
+		require.Equal(t, wantB, numberB)
 	})
 
 	t.Run("unknown session returns ErrNotFound", func(t *testing.T) {
