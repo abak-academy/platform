@@ -18,7 +18,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { Order } from "@/lib/types";
 import { hasPhysicalItems } from "@/lib/shipping";
 import { downloadShippingLabel } from "@/lib/hooks/shipping-label";
-import { fileUrl } from "@/lib/api";
+import { useFetchPaymentProofURL } from "@/lib/hooks/admin-orders";
 
 export interface OrderDetailModalProps {
   order: Order | null;
@@ -38,6 +38,7 @@ function formatDateTime(iso: string | undefined, lang: string): string | null {
 export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps) {
   const { t, lang } = useTranslation();
   const [isDownloadingLabel, setIsDownloadingLabel] = useState(false);
+  const fetchProofURL = useFetchPaymentProofURL();
   if (!order) return null;
 
   const items = order.items ?? [];
@@ -202,14 +203,18 @@ export function OrderDetailModal({ order, onOpenChange }: OrderDetailModalProps)
                   <span className="flex items-center justify-end gap-2">
                     <Badge className="bg-green-100 text-green-800 border-green-200">Dikonfirmasi manual</Badge>
                     {order.payment_proof_url && (
-                      <a
-                        href={fileUrl(order.payment_proof_url)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-primary underline"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          fetchProofURL.mutate(order.id, {
+                            onSuccess: ({ url }) => window.open(url, "_blank", "noreferrer"),
+                          })
+                        }
+                        disabled={fetchProofURL.isPending}
+                        className="text-xs text-primary underline disabled:opacity-50"
                       >
-                        Lihat bukti
-                      </a>
+                        {fetchProofURL.isPending ? "Membuka…" : "Lihat bukti"}
+                      </button>
                     )}
                   </span>
                 </Field>

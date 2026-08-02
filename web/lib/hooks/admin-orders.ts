@@ -71,6 +71,17 @@ export function useConfirmOrder() {
   });
 }
 
+// Payment proofs are not served by the unauthenticated /files/* proxy — a bank
+// transfer receipt must not be readable by anyone holding the key. The backend
+// mints a short-lived link per request for an already-authorised admin, so the
+// URL is fetched at click time rather than rendered into the page.
+export function useFetchPaymentProofURL() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      authFetch<{ url: string }>(`/admin/orders/${encodeURIComponent(id)}/payment-proof`),
+  });
+}
+
 export function useShipOrder() {
   const qc = useQueryClient();
   return useMutation({

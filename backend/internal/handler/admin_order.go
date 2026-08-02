@@ -44,6 +44,18 @@ func (h *Handler) AdminGetOrder(c echo.Context) error {
 	return c.JSON(http.StatusOK, order)
 }
 
+// AdminGetPaymentProof mints a short-lived link to an order's payment proof.
+// Proofs are deliberately absent from the unauthenticated /files/* proxy's
+// allowlist, so this route — already behind orders:write — is the only way to
+// read one.
+func (h *Handler) AdminGetPaymentProof(c echo.Context) error {
+	url, err := h.svc.PresignPaymentProofURL(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"url": url})
+}
+
 func (h *Handler) AdminConfirmOrder(c echo.Context) error {
 	actorID, ok := actorFromClaims(c)
 	if !ok {

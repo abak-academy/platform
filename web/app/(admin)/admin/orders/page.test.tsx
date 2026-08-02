@@ -31,6 +31,7 @@ vi.mock("@/lib/hooks/admin-orders", () => ({
   useCompleteOrder: () => completeState,
   useRefundOrder: () => refundState,
   useReconcileOrder: () => reconcileState,
+  useFetchPaymentProofURL: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("sonner", () => ({

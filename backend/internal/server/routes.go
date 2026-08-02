@@ -167,6 +167,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminOrders.Use(handler.RBACMiddleware("orders:write"))
 	adminOrders.GET("", h.AdminListOrders)
 	adminOrders.GET("/:id", h.AdminGetOrder)
+	adminOrders.GET("/:id/payment-proof", h.AdminGetPaymentProof)
 	adminOrders.POST("/:id/confirm", h.AdminConfirmOrder)
 	adminOrders.POST("/:id/ship", h.AdminShipOrder)
 	adminOrders.POST("/:id/ship-manual", h.AdminShipOrderManual)

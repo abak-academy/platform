@@ -1,6 +1,17 @@
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { OrderDetailModal } from "./OrderDetailModal";
+
+// The proof link mints its short-lived URL through a react-query mutation
+// rather than rendering a /files/* href, so the modal now needs a client.
+function render(ui: ReactElement) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return rtlRender(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
 
 const physicalOrder = {
   id: "o1",
@@ -94,18 +105,22 @@ describe("OrderDetailModal", () => {
     expect(screen.queryByText(/^\.\.\./)).toBeNull();
   });
 
-  // FR-31: an order manually confirmed shows the mark, and the proof image
-  // opens from the detail view.
-  it("shows the Dikonfirmasi manual mark and a reachable proof link when payment_method is manual", () => {
+  // FR-31: an order manually confirmed shows the mark and the proof opens from
+  // the detail view — but never as a bare /files/* href. The object key must
+  // not be rendered into the page at all; the link is minted on demand, so the
+  // control is a button and the raw key never appears in the DOM.
+  it("shows the Dikonfirmasi manual mark and opens the proof without exposing the object key", () => {
     const manual = {
       ...physicalOrder,
       payment_method: "manual",
       payment_proof_url: "payment_proof/admin-1/proof.jpg",
     };
-    render(<OrderDetailModal order={manual} onOpenChange={vi.fn()} />);
+    const { container } = render(<OrderDetailModal order={manual} onOpenChange={vi.fn()} />);
     expect(screen.getByText("Dikonfirmasi manual")).toBeTruthy();
-    const link = screen.getByRole("link", { name: "Lihat bukti" }) as HTMLAnchorElement;
-    expect(link.href).toContain("payment_proof/admin-1/proof.jpg");
+
+    expect(screen.getByRole("button", { name: "Lihat bukti" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Lihat bukti" })).toBeNull();
+    expect(container.innerHTML).not.toContain("payment_proof/admin-1/proof.jpg");
   });
 
   it("hides the manual-confirm mark for a non-manual payment_method", () => {

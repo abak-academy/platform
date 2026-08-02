@@ -1249,6 +1249,32 @@ func (s *Service) AdminGetOrder(ctx context.Context, orderID string) (model.Orde
 	return orders[0], nil
 }
 
+// paymentProofURLTTL bounds how long a minted payment-proof link stays usable.
+// A proof is a bank transfer receipt, so unlike an avatar it is never served
+// from the unauthenticated /files/* proxy — the link is minted per request for
+// an already-authorised admin and expires, which is what makes a leaked URL
+// survivable.
+const paymentProofURLTTL = 15 * time.Minute
+
+// PresignPaymentProofURL mints a short-lived read URL for an order's payment
+// proof. The caller is gated on orders:write at the route; this resolves the
+// key from the order rather than trusting one supplied by the client, so an
+// admin cannot use it to read an arbitrary object out of the bucket.
+func (s *Service) PresignPaymentProofURL(ctx context.Context, orderID string) (string, error) {
+	id, err := parseUUID(orderID)
+	if err != nil {
+		return "", err
+	}
+	order, err := s.storeRepo.GetOrderByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if order.PaymentProofURL == nil || *order.PaymentProofURL == "" {
+		return "", ErrUploadNotFound
+	}
+	return s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *order.PaymentProofURL, paymentProofURLTTL)
+}
+
 // markOrderPaidTx flips order to "paid", emits the OrderPaid outbox event,
 // and writes an audit row, all inside tx. AdminConfirmOrder and
 // AdminReconcileOrder are the only two callers — invariant 5 requires exactly
@@ -1283,6 +1309,14 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key, 
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
 		return nil
+	}
+
+	// The handler validates the shape of the key; only storage can answer
+	// whether it names a real upload. Without this an authorised caller could
+	// invent a well-formed key and mark an order paid with no evidence behind
+	// it, which is exactly what invariant 6 exists to prevent.
+	if err := s.requireStoredObject(ctx, paymentProofURL); err != nil {
+		return err
 	}
 
 	order, err := s.storeRepo.GetOrderByID(ctx, id)
