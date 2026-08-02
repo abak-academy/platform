@@ -999,7 +999,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 				Qty:         item.Qty,
 			})
 		}
-		if err := s.storeRepo.InsertOutboxEvent(ctx, tx, oID, "OrderPaid", payload); err != nil {
+		if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "order", oID, "OrderPaid", payload); err != nil {
 			return CheckoutResult{}, err
 		}
 		// Promo usage settles inside the same transaction as the order it belongs
@@ -1238,7 +1238,7 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key s
 		})
 	}
 
-	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, id, "OrderPaid", payload); err != nil {
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "order", id, "OrderPaid", payload); err != nil {
 		return err
 	}
 
@@ -1509,7 +1509,7 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		})
 	}
 
-	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, orderID, "OrderPaid", outboxPayload); err != nil {
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "order", orderID, "OrderPaid", outboxPayload); err != nil {
 		return err
 	}
 

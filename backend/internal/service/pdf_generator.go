@@ -15,7 +15,6 @@ import (
 // certificate/card generation can be unit-tested without a real Gotenberg.
 type pdfGenerator interface {
 	RenderHTML(ctx context.Context, html []byte) ([]byte, error)
-	RenderURL(ctx context.Context, url string) ([]byte, error)
 }
 
 // PDFGenerator is the exported name for pdfGenerator, used by callers outside
@@ -86,36 +85,6 @@ func (r *gotenbergPDFGenerator) RenderHTML(ctx context.Context, html []byte) ([]
 	}
 
 	return r.post(ctx, "/forms/chromium/convert/html", w.FormDataContentType(), &body)
-}
-
-func (r *gotenbergPDFGenerator) RenderURL(ctx context.Context, url string) ([]byte, error) {
-	var body bytes.Buffer
-	w := multipart.NewWriter(&body)
-
-	if err := w.WriteField("url", url); err != nil {
-		return nil, fmt.Errorf("gotenberg: write url field: %w", err)
-	}
-	// The certificate/card print routes signal a failed render (missing,
-	// invalid, expired or already-redeemed token; a print-data error) with a
-	// non-2xx status rather than a 200-with-empty-body — a 200 was
-	// indistinguishable from success here and got cached as a permanent blank
-	// PDF (NFR-R1). This is Gotenberg's own documented default for the main
-	// URL, made explicit so the behavior doesn't depend on it.
-	if err := w.WriteField("failOnHttpStatusCodes", "[499,599]"); err != nil {
-		return nil, fmt.Errorf("gotenberg: write failOnHttpStatusCodes field: %w", err)
-	}
-
-	for k, v := range pageOptionFields {
-		if err := w.WriteField(k, v); err != nil {
-			return nil, fmt.Errorf("gotenberg: write field %s: %w", k, err)
-		}
-	}
-
-	if err := w.Close(); err != nil {
-		return nil, fmt.Errorf("gotenberg: close multipart writer: %w", err)
-	}
-
-	return r.post(ctx, "/forms/chromium/convert/url", w.FormDataContentType(), &body)
 }
 
 func (r *gotenbergPDFGenerator) post(ctx context.Context, route, contentType string, body *bytes.Buffer) ([]byte, error) {

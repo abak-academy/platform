@@ -67,7 +67,7 @@ func main() {
 
 	sweeperInterval := 5 * time.Minute
 	announcementPollInterval := 5 * time.Minute
-	w := worker.New(pool, rdb, repo, cfg.WorkerPollInterval, sweeperInterval, announcementPollInterval, svc, repo, objectStore, svc, cfg.WorkerPollInterval, cfg.ObjectStoragePrivateBucketName)
+	w := worker.New(pool, rdb, repo, cfg.WorkerPollInterval, sweeperInterval, announcementPollInterval, svc, repo, objectStore, svc, cfg.WorkerPollInterval, cfg.ObjectStoragePrivateBucketName, svc)
 	logger.Info("worker started", "poll_interval", cfg.WorkerPollInterval.String(), "sweeper_interval", sweeperInterval.String(), "announcement_poll_interval", announcementPollInterval.String())
 	w.Run(ctx)
 	logger.Info("worker stopped")

@@ -10,7 +10,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -66,32 +65,16 @@ func (c *gateQueryCounter) reset() {
 	c.mu.Unlock()
 }
 
-// gateFakeRenderer is Task 1's PDFGenerator seam, injected so this test never
-// talks to a real Gotenberg. Its call count is also the proof that a cache hit
-// never regenerates (NFR-P2). htmlCalls/urlCalls/lastURL let Task 13's tests
-// distinguish RenderHTML from RenderURL — resolveCertificateURL must only
-// ever call the latter (FR-27).
+// gateFakeRenderer is the PDFGenerator seam, injected so this test never
+// talks to a real Gotenberg. Its call count is the proof that a cache hit
+// never regenerates (NFR-P2) — resolveCertificateURL is read-only and must
+// never call the renderer at all (async redesign 2026-08-02).
 type gateFakeRenderer struct {
-	calls     int
-	htmlCalls int
-	urlCalls  int
-	lastURL   string
-	urlErr    error
+	calls int
 }
 
 func (r *gateFakeRenderer) RenderHTML(context.Context, []byte) ([]byte, error) {
 	r.calls++
-	r.htmlCalls++
-	return []byte("%PDF-1.4"), nil
-}
-
-func (r *gateFakeRenderer) RenderURL(_ context.Context, url string) ([]byte, error) {
-	r.calls++
-	r.urlCalls++
-	r.lastURL = url
-	if r.urlErr != nil {
-		return nil, r.urlErr
-	}
 	return []byte("%PDF-1.4"), nil
 }
 
@@ -165,7 +148,6 @@ func gateTestService(t *testing.T, pool *pgxpool.Pool, renderer PDFGenerator) *S
 	cfg := &config.Config{
 		ObjectStorageBucketName: "test-bucket",
 		ObjectStorageRegion:     "us-east-1",
-		WebInternalURL:          "http://web-internal.test:3000",
 	}
 	return NewWithStore(
 		store, store, rdb, nil,
@@ -227,7 +209,7 @@ func TestResolveCertificateURL_CachedGate(t *testing.T) {
 		exam := &model.Exam{Title: "Gate Exam", ResultConfig: "hidden", CertificateDesign: certDesignJSON("modern"), CertificateEnabled: true}
 		sess := gateCachedSession()
 
-		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Student")
+		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil)
 		if err != nil {
 			t.Fatalf("resolveCertificateURL: %v", err)
 		}
@@ -245,7 +227,7 @@ func TestResolveCertificateURL_CachedGate(t *testing.T) {
 		exam := &model.Exam{Title: "Gate Exam", ResultConfig: "score_only", CertificateDesign: certDesignJSON("modern"), CertificateEnabled: true}
 		sess := gateCachedSession()
 
-		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Student")
+		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil)
 		if err != nil {
 			t.Fatalf("resolveCertificateURL: %v", err)
 		}
@@ -262,7 +244,7 @@ func TestResolveCertificateURL_CachedGate(t *testing.T) {
 		exam := &model.Exam{Title: "Gate Exam", ResultConfig: "hidden", CertificateDesign: certDesignJSON("classic"), CertificateEnabled: true}
 		sess := gateCachedSession()
 
-		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Student")
+		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil)
 		if err != nil {
 			t.Fatalf("resolveCertificateURL: %v", err)
 		}
@@ -279,7 +261,7 @@ func TestResolveCertificateURL_CachedGate(t *testing.T) {
 		exam := &model.Exam{Title: "Disabled Cert Exam", ResultConfig: "score_only", CertificateDesign: certDesignJSON("classic"), CertificateEnabled: false}
 		sess := freshUncachedSession()
 
-		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Student")
+		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil)
 		if err != nil {
 			t.Fatalf("resolveCertificateURL: %v", err)
 		}
@@ -296,7 +278,7 @@ func TestResolveCertificateURL_CachedGate(t *testing.T) {
 		exam := &model.Exam{Title: "Disabled Cert Exam", ResultConfig: "score_only", CertificateDesign: certDesignJSON("classic"), CertificateEnabled: false}
 		sess := gateCachedSession()
 
-		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Student")
+		url, err := svc.resolveCertificateURL(ctx, exam, sess, nil)
 		if err != nil {
 			t.Fatalf("resolveCertificateURL: %v", err)
 		}
@@ -306,63 +288,32 @@ func TestResolveCertificateURL_CachedGate(t *testing.T) {
 	})
 }
 
-// TestRenderCertificateThroughPrintRoute_UsesRenderURLNotRenderHTML is Task
-// 13's core assertion for FR-27, at the unit level: renderCertificateThroughPrintRoute
-// (called by resolveCertificateURL's needsRegeneration branch) must mint a
-// print token and ask the renderer to fetch the certificate print route on
-// the configured internal web origin — never build HTML in Go and call
-// RenderHTML. Called directly rather than through resolveCertificateURL so
-// this doesn't need a real object-store upload to succeed (gateTestService's
-// MinIO client has no valid credentials against the local dev MinIO — see
-// its doc comment).
-func TestRenderCertificateThroughPrintRoute_UsesRenderURLNotRenderHTML(t *testing.T) {
+// TestResolveCertificateURL_NeverRenders proves the read path never
+// generates (async redesign 2026-08-02, superseding this file's old
+// TestRenderCertificateThroughPrintRoute_* tests, which exercised
+// renderCertificateThroughPrintRoute/RenderURL — both deleted along with the
+// print-token/print-route architecture). An uncached session (no
+// certificate_key) must resolve to nil without ever calling the renderer;
+// GenerateCertificatePDF (called only by the worker, off the
+// CertificateNeeded outbox event) is the only place a certificate is ever
+// generated.
+func TestResolveCertificateURL_NeverRenders(t *testing.T) {
 	pool, _ := gateTestPool(t)
 	renderer := &gateFakeRenderer{}
 	svc := gateTestService(t, pool, renderer)
 	ctx := context.Background()
-	sessionID := uuid.New()
 
-	pdf, err := svc.renderCertificateThroughPrintRoute(ctx, sessionID)
+	exam := &model.Exam{Title: "Never Renders Exam", ResultConfig: "score_only", CertificateDesign: certDesignJSON("classic"), CertificateEnabled: true}
+	sess := freshUncachedSession()
+
+	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil)
 	if err != nil {
-		t.Fatalf("renderCertificateThroughPrintRoute: %v", err)
+		t.Fatalf("resolveCertificateURL: %v", err)
 	}
-	if string(pdf) != "%PDF-1.4" {
-		t.Errorf("pdf = %q, want the fake renderer's fixed bytes", pdf)
+	if url != nil {
+		t.Fatalf("certificate_url = %q, want nil — an uncached session has nothing to presign yet", *url)
 	}
-	if renderer.htmlCalls != 0 {
-		t.Errorf("RenderHTML calls = %d, want 0 — no certificate HTML may be built in Go (FR-27)", renderer.htmlCalls)
-	}
-	if renderer.urlCalls != 1 {
-		t.Fatalf("RenderURL calls = %d, want 1", renderer.urlCalls)
-	}
-	wantPrefix := "http://web-internal.test:3000/documents/certificate?token="
-	if !strings.HasPrefix(renderer.lastURL, wantPrefix) {
-		t.Errorf("rendered url = %q, want prefix %q (the configured internal web origin)", renderer.lastURL, wantPrefix)
-	}
-	if !strings.Contains(renderer.lastURL, "&id="+sessionID.String()) {
-		t.Errorf("rendered url = %q, want it to carry id=%s", renderer.lastURL, sessionID.String())
-	}
-}
-
-// TestRenderCertificateThroughPrintRoute_RenderURLFailure_PropagatesError is
-// the unit-level companion to NFR-R1: a RenderURL failure (standing in for a
-// stopped/erroring web container) must propagate as a plain error out of
-// renderCertificateThroughPrintRoute rather than being swallowed — it's
-// exam_result.go's caller (GetSessionResult) that turns this into a logged
-// error and a null certificate_url, proven end-to-end at the handler layer in
-// TestStudentGetSessionResult_CertificateRenderURLFailure_DegradesToNullCertificateURL.
-func TestRenderCertificateThroughPrintRoute_RenderURLFailure_PropagatesError(t *testing.T) {
-	pool, _ := gateTestPool(t)
-	wantErr := errors.New("simulated web container failure")
-	renderer := &gateFakeRenderer{urlErr: wantErr}
-	svc := gateTestService(t, pool, renderer)
-	ctx := context.Background()
-
-	_, err := svc.renderCertificateThroughPrintRoute(ctx, uuid.New())
-	if err == nil {
-		t.Fatal("renderCertificateThroughPrintRoute: want an error when RenderURL fails, got nil")
-	}
-	if !errors.Is(err, wantErr) {
-		t.Errorf("renderCertificateThroughPrintRoute error = %v, want it to wrap %v", err, wantErr)
+	if renderer.calls != 0 {
+		t.Errorf("PDF renderer calls = %d, want 0 — the read path must never generate", renderer.calls)
 	}
 }

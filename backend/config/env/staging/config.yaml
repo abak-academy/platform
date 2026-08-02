@@ -21,4 +21,3 @@ object_storage_bucket_name: "abak_std"
 object_storage_private_bucket_name: "abak_std"
 
 gotenberg_url: "http://gotenberg:3000"
-web_internal_url: "http://web:3000"

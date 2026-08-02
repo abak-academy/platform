@@ -915,26 +915,26 @@ func (h *Handler) AdminGetExamAnalytics(c echo.Context) error {
 	return c.JSON(http.StatusOK, analytics)
 }
 
-// AdminGetExamCertificatePreview streams a preview certificate PDF. It is a POST
-// (not GET) because the optional JSON body carrying an unsaved layout lets the
-// editor preview a change before saving it — a body a real browser can send,
-// unlike a GET body which only some HTTP clients support; when absent, the
-// exam's saved (or default) layout is used.
+// AdminGetExamCertificatePreview streams a preview certificate PDF (async
+// redesign 2026-08-02). The FE has already serialized the (possibly unsaved)
+// layout to self-contained HTML with placeholder preview values baked in
+// (web/app/api/admin/certificate-template + the editor's own preview
+// values) — this handler is a thin pass-through to Gotenberg, never a stored
+// PDF.
 func (h *Handler) AdminGetExamCertificatePreview(c echo.Context) error {
 	examID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return badRequest(c, "invalid id")
 	}
-	template := c.QueryParam("template")
 
 	var body struct {
-		Layout *service.Layout `json:"layout"`
+		HTML string `json:"html"`
 	}
 	if err := c.Bind(&body); err != nil {
 		return badRequest(c, "invalid request body")
 	}
 
-	pdf, err := h.svc.GetCertificatePreviewWithLayout(c.Request().Context(), examID, template, body.Layout)
+	pdf, err := h.svc.GetCertificatePreviewPDF(c.Request().Context(), examID, body.HTML)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -943,12 +943,17 @@ func (h *Handler) AdminGetExamCertificatePreview(c echo.Context) error {
 }
 
 // certificateDesignRequest is the PUT body for AdminUpdateExamCertificateDesign:
-// the full certificate design triplet (FR-17/FR-18/FR-26-29), replaced wholesale
-// — unlike AdminUpdateExam's PATCH, there is no partial-overlay semantics here.
+// the full certificate design, replaced wholesale — unlike AdminUpdateExam's
+// PATCH, there is no partial-overlay semantics here. TemplateHTML is the FE's
+// self-contained serialization of Layout (web/app/api/admin/certificate-template,
+// async redesign 2026-08-02) — the worker substitutes verified DB values into
+// its {{token}} spots at generation time; nothing here is ever trusted as a
+// finished document on its own.
 type certificateDesignRequest struct {
 	Template      string         `json:"template"`
 	BackgroundKey *string        `json:"background_key"`
 	Layout        service.Layout `json:"layout"`
+	TemplateHTML  string         `json:"template_html"`
 }
 
 // AdminGetExamCertificateDesign returns the admin editor's read model: template,
@@ -1051,6 +1056,9 @@ func (h *Handler) AdminUpdateExamCertificateDesign(c echo.Context) error {
 
 	overlay := existing.Exam
 	overlay.CertificateDesign = raw
+	if req.TemplateHTML != "" {
+		overlay.CertificateTemplateHTML = &req.TemplateHTML
+	}
 
 	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)
 	if err != nil {

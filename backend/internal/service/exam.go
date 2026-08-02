@@ -1012,7 +1012,7 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 		bgURL = &signed
 	}
 
-	assetURLs, err := s.certificateImageAssetURLs(ctx, normalizedLayout)
+	assetURLs, err := s.certificateImageAssetURLs(ctx, normalizedLayout, s.presignReadURL)
 	if err != nil {
 		return nil, err
 	}
@@ -1039,20 +1039,6 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 		Presets:       presets,
 		AssetURLs:     assetURLs,
 	}, nil
-}
-
-// GetCertificatePreviewWithLayout previews a certificate like GetCertificatePreview,
-// but lets the editor supply an unsaved layout so an admin can see a change before
-// saving it (still through the Task 5 render engine, FR-4). A nil override delegates
-// to GetCertificatePreview unchanged.
-func (s *Service) GetCertificatePreviewWithLayout(ctx context.Context, examID uuid.UUID, templateOverride string, layoutOverride *Layout) ([]byte, error) {
-	if layoutOverride == nil {
-		return s.GetCertificatePreview(ctx, examID, templateOverride)
-	}
-	if err := ValidateLayout(*layoutOverride); err != nil {
-		return nil, err
-	}
-	return s.renderCertificatePreviewPDF(ctx, examID, templateOverride, layoutOverride)
 }
 
 func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testIDs []uuid.UUID) error {
@@ -1243,7 +1229,11 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (str
 		return "", "", fmt.Errorf("%w: invalid registration id", ErrValidation)
 	}
 
-	pdf, err := s.renderCardThroughPrintRoute(ctx, regUUID)
+	data, err := s.GetCardPrintData(ctx, regID)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve card print data: %w", err)
+	}
+	pdf, err := generateExamCardPDF(ctx, s.renderer, data)
 	if err != nil {
 		return "", "", fmt.Errorf("generate card pdf: %w", err)
 	}
@@ -1260,26 +1250,6 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (str
 		return "", "", err
 	}
 	return signed, filename, nil
-}
-
-// cardPrintRouteURL builds the internal URL Gotenberg's headless Chromium
-// fetches to render an exam card (FR-28): the print token is the only
-// credential, and regID is the same grey-area exposure certificatePrintRouteURL
-// already accepts for its subject id — no other value ever appears in the
-// query string (NFR-S5).
-func cardPrintRouteURL(webInternalURL, token, regID string) string {
-	return webInternalURL + "/documents/card?token=" + url.QueryEscape(token) + "&id=" + url.QueryEscape(regID)
-}
-
-// renderCardThroughPrintRoute mints a single-use print token scoped to regID
-// and asks Gotenberg to render the exam card print route on the internal web
-// origin (FR-28) — no card HTML is built in Go.
-func (s *Service) renderCardThroughPrintRoute(ctx context.Context, regID uuid.UUID) ([]byte, error) {
-	token, err := s.MintPrintToken(ctx, PrintTokenKindCard, regID.String())
-	if err != nil {
-		return nil, fmt.Errorf("mint card print token: %w", err)
-	}
-	return s.renderer.RenderURL(ctx, cardPrintRouteURL(s.cfg.WebInternalURL, token, regID.String()))
 }
 
 // CardPrintData is the full set of server-authored values the exam card
@@ -1327,10 +1297,11 @@ func cardFooterNote(reg *model.RegistrationDetail) string {
 	return "Akses bebas pada waktu yang ditentukan."
 }
 
-// GetCardPrintData computes the print-data response for the exam card print
-// route (FR-20, FR-21): the ONLY input is regID, which the handler has
-// already verified came from a redeemed print token — no student id is
-// available or needed here, unlike GetExamCard's JWT-authenticated path.
+// GetCardPrintData resolves every server-authored value the exam card
+// displays, keyed by regID alone — GetExamCard (JWT-authenticated) calls
+// this directly to build the card's substitution values; it is no longer
+// reached through a print token (async redesign 2026-08-02 removed the
+// print-data HTTP surface entirely).
 func (s *Service) GetCardPrintData(ctx context.Context, regID string) (*CardPrintData, error) {
 	rid, err := uuid.Parse(regID)
 	if err != nil {

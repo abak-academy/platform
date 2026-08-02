@@ -33,4 +33,3 @@ gotenberg_url: "http://gotenberg:3000"
 
 # Internal origin Gotenberg uses to fetch print routes (certificates, cards).
 # Deploy-topology, not a secret; points at the web service, not the public host.
-web_internal_url: "http://web:3000"

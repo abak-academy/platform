@@ -158,7 +158,6 @@ func newTestEnvWithStore(t *testing.T) *testEnvWithStore {
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 168 * time.Hour,
 		OTPTTL:          5 * time.Minute,
-		WebInternalURL:  "http://web-internal.test:3000",
 	})
 }
 
@@ -184,7 +183,6 @@ func newTestEnvWithStoreAndStorage(t *testing.T) *testEnvWithStore {
 		OTPTTL:                  5 * time.Minute,
 		ObjectStorageBucketName: "test-bucket",
 		ObjectStorageRegion:     "us-east-1",
-		WebInternalURL:          "http://web-internal.test:3000",
 	})
 }
 
@@ -695,6 +693,11 @@ func TestAdminGetExamCertificatePreview_StudentToken_Returns403(t *testing.T) {
 	}
 }
 
+// TestAdminGetExamCertificatePreview_ValidToken_Returns200PDF covers the
+// async redesign's preview contract (2026-08-02): the FE has already
+// serialized the (possibly unsaved) design to self-contained HTML with its
+// own live-preview values baked in — the handler is a thin pass-through to
+// Gotenberg.
 func TestAdminGetExamCertificatePreview_ValidToken_Returns200PDF(t *testing.T) {
 	env := newTestEnvWithStore(t)
 	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert Preview")
@@ -702,7 +705,9 @@ func TestAdminGetExamCertificatePreview_ValidToken_Returns200PDF(t *testing.T) {
 	examID := seedExam(t, env.pool, "Certificate Test Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token)
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview", token,
+		map[string]any{"html": "<html><body>preview</body></html>"},
+	)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -719,14 +724,16 @@ func TestAdminGetExamCertificatePreview_ValidToken_Returns200PDF(t *testing.T) {
 	}
 }
 
-func TestAdminGetExamCertificatePreview_InvalidTemplate_Returns422(t *testing.T) {
+// TestAdminGetExamCertificatePreview_EmptyHTML_Returns422 proves the handler
+// refuses to spend a Gotenberg round trip on an empty body.
+func TestAdminGetExamCertificatePreview_EmptyHTML_Returns422(t *testing.T) {
 	env := newTestEnvWithStore(t)
 	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert 422")
 
 	examID := seedExam(t, env.pool, "Cert 422 Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=invalid-template-key", token)
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview", token, map[string]any{})
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -742,7 +749,9 @@ func TestAdminGetExamCertificatePreview_UnknownExam_Returns404(t *testing.T) {
 	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert 404")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-0000000000aa/certificate-preview", token)
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-0000000000aa/certificate-preview", token,
+		map[string]any{"html": "<html></html>"},
+	)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -753,79 +762,27 @@ func TestAdminGetExamCertificatePreview_UnknownExam_Returns404(t *testing.T) {
 	}
 }
 
-// TestAdminGetExamCertificatePreview_WithUnsavedLayout_RendersOverride proves
-// the editor can preview a change before saving: an optional body layout still
-// renders through the same engine as real generation.
-func TestAdminGetExamCertificatePreview_WithUnsavedLayout_RendersOverride(t *testing.T) {
+// TestAdminGetExamCertificatePreview_CallsRenderHTMLWithPostedBody proves the
+// async redesign's preview path (2026-08-02): the handler posts the FE's
+// html verbatim to Gotenberg's HTML route — never RenderURL (which no longer
+// exists at all) and never a second Go-side render engine.
+func TestAdminGetExamCertificatePreview_CallsRenderHTMLWithPostedBody(t *testing.T) {
 	env := newTestEnvWithStore(t)
-	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview Override")
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview Render HTML")
 
-	examID := seedExam(t, env.pool, "Preview Override Exam", false, "hidden", "classic")
+	examID := seedExam(t, env.pool, "Preview Render HTML Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
-		map[string]any{"layout": validCertLayoutBody()},
-	)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	if !bytes.HasPrefix(rec.Body.Bytes(), []byte("%PDF")) {
-		t.Errorf("expected a PDF body, got %q", string(rec.Body.Bytes()[:min(len(rec.Body.Bytes()), 10)]))
-	}
-}
-
-func TestAdminGetExamCertificatePreview_WithInvalidUnsavedLayout_Returns422(t *testing.T) {
-	env := newTestEnvWithStore(t)
-	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview Bad Override")
-
-	examID := seedExam(t, env.pool, "Preview Bad Override Exam", false, "hidden", "classic")
-
-	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
-		map[string]any{"layout": invalidCertLayoutBody()},
-	)
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
-	}
-}
-
-// TestAdminGetExamCertificatePreview_RendersThroughPrintRoute_NotRenderHTML is
-// Task 13's core assertion for FR-27/FR-29: a preview must mint a print token
-// and ask Gotenberg to fetch the certificate print route on the configured
-// internal web origin — never build HTML in Go and post it to Gotenberg's
-// HTML route. The unsaved layout override must travel in the minted token's
-// payload, not the URL (NFR-S5): the posted "url" carries only token+id.
-func TestAdminGetExamCertificatePreview_RendersThroughPrintRoute_NotRenderHTML(t *testing.T) {
-	env := newTestEnvWithStore(t)
-	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview Print Route")
-
-	examID := seedExam(t, env.pool, "Preview Print Route Exam", false, "hidden", "classic")
-
-	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
-		map[string]any{"layout": validCertLayoutBody()},
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview", token,
+		map[string]any{"html": "<html><body>marker-content</body></html>"},
 	)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	htmlCalls, urlCalls, lastURL := env.gotenberg.snapshot()
-	if htmlCalls != 0 {
-		t.Errorf("Gotenberg HTML route calls = %d, want 0 — no certificate HTML may be built in Go (FR-27)", htmlCalls)
-	}
-	if urlCalls != 1 {
-		t.Fatalf("Gotenberg URL route calls = %d, want 1", urlCalls)
-	}
-	wantPrefix := "http://web-internal.test:3000/documents/certificate?token="
-	if !strings.HasPrefix(lastURL, wantPrefix) {
-		t.Errorf("rendered url = %q, want prefix %q (the configured internal web origin)", lastURL, wantPrefix)
-	}
-	if !strings.Contains(lastURL, "&id="+examID.String()) {
-		t.Errorf("rendered url = %q, want it to carry id=%s", lastURL, examID.String())
-	}
-	// NFR-S5: the unsaved layout override must never appear in the URL itself.
-	if strings.Contains(lastURL, "x_mm") || strings.Contains(lastURL, "title") {
-		t.Errorf("rendered url = %q, must not leak the layout override — it belongs in the token payload only", lastURL)
+	htmlCalls, _, _ := env.gotenberg.snapshot()
+	if htmlCalls != 1 {
+		t.Fatalf("Gotenberg HTML route calls = %d, want 1", htmlCalls)
 	}
 }
 
@@ -841,7 +798,9 @@ func TestAdminGetExamCertificatePreview_NoObjectStoreWrite(t *testing.T) {
 	examID := seedExam(t, env.pool, "Preview No Store Write Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := postRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token)
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview", token,
+		map[string]any{"html": "<html><body>preview</body></html>"},
+	)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200 (which is only reachable if no object-store write was attempted against a nil storage client), got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -1428,29 +1387,21 @@ func TestStudentGetSessionResult_DisabledCertificate_ReturnsNullCertificateURL(t
 	}
 }
 
-// TestStudentGetSessionResult_CertificateRenderURLFailure_DegradesToNullCertificateURL
-// proves NFR-R1 end to end through the real result endpoint after Task 13's
-// switch to RenderURL: a stopped/erroring web container must degrade to a
-// logged error and a null certificate_url, never a 5xx. The exam here has
-// certificate_enabled=true and no cached certificate, so GetSessionResult must
-// attempt a fresh render (unlike the disabled-certificate test above, which
-// never reaches the renderer at all).
-func TestStudentGetSessionResult_CertificateRenderURLFailure_DegradesToNullCertificateURL(t *testing.T) {
-	failing := newFailingURLGotenbergServer(t)
-	env := newTestEnvWithStoreCfg(t, nil, &config.Config{
-		JWTSecret:       "test-secret",
-		AccessTokenTTL:  15 * time.Minute,
-		RefreshTokenTTL: 168 * time.Hour,
-		OTPTTL:          5 * time.Minute,
-		GotenbergURL:    failing.URL,
-		WebInternalURL:  "http://web-internal.test:3000",
-	})
-	student := seedUser(t, env.pool, "student", "Student RenderURL Failure")
+// TestStudentGetSessionResult_NoCachedCertificate_DegradesToNullCertificateURL
+// proves the async redesign's core read-path invariant (2026-08-02,
+// superseding this file's old RenderURL-failure test): a submitted,
+// certificate-enabled session with nothing generated yet (no
+// CertificateNeeded outbox worker runs in this handler-only test) returns a
+// null certificate_url and never a 5xx — GetSessionResult never renders, so
+// there is no failure mode here to simulate anymore.
+func TestStudentGetSessionResult_NoCachedCertificate_DegradesToNullCertificateURL(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	student := seedUser(t, env.pool, "student", "Student No Cached Cert")
 
 	testID := seedTest(t, env.pool)
 	qID := seedMCQuestion(t, env.pool, testID, "2+2", 1, 1)
 
-	examID := seedExam(t, env.pool, "RenderURL Failure Exam", false, "score_only", "classic")
+	examID := seedExam(t, env.pool, "No Cached Cert Exam", false, "score_only", "classic")
 	seedExamTest(t, env.pool, examID, testID, 1)
 
 	regID := seedRegistration(t, env.pool, student, examID)
@@ -1461,7 +1412,7 @@ func TestStudentGetSessionResult_CertificateRenderURLFailure_DegradesToNullCerti
 	token := mintTokenForEnv(t, env, student.String(), service.RoleStudent)
 	rec := getRequest(t, env.e, "/api/v1/exam/sessions/"+sessionID.String()+"/result", token)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200 even though the certificate render failed (NFR-R1), got %d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
 
 	body := rec.Body.Bytes()
@@ -1473,31 +1424,8 @@ func TestStudentGetSessionResult_CertificateRenderURLFailure_DegradesToNullCerti
 		t.Fatalf("decode response: %v", err)
 	}
 	if certURL := resp["certificate_url"]; certURL != nil {
-		t.Errorf("certificate_url: want null when the certificate render fails, got %v", certURL)
+		t.Errorf("certificate_url: want null when nothing has been generated yet, got %v", certURL)
 	}
-}
-
-// newFailingURLGotenbergServer answers the HTML route like a normal
-// Gotenberg, but always 500s the URL route — standing in for NFR-R1's "a
-// stopped, restarting or erroring web container" scenario, since a failed
-// RenderURL is exactly what a real Gotenberg would report when the web
-// container it's asked to fetch from is down.
-func newFailingURLGotenbergServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/forms/chromium/convert/url":
-			http.Error(w, "simulated web container failure", http.StatusInternalServerError)
-		case "/forms/chromium/convert/html":
-			w.Header().Set("Content-Type", "application/pdf")
-			w.WriteHeader(http.StatusOK)
-			w.Write(fakePDFBytes)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(srv.Close)
-	return srv
 }
 
 // ---------------------------------------------------------------------------

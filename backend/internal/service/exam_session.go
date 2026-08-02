@@ -817,6 +817,15 @@ func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID string
 		return SubmitResult{}, ErrAlreadySubmitted
 	}
 
+	// Enqueue certificate generation in the same transaction as the submit
+	// (async redesign 2026-08-02): the worker (GenerateCertificatePDF) decides
+	// on its own whether this session is actually ready — a score-bearing
+	// layout awaiting grading no-ops here and gets a second chance from
+	// GradeEssayAnswer's own enqueue once grading completes.
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "exam_session", sessID, "CertificateNeeded", CertificateNeededPayload{SessionID: sessID}); err != nil {
+		return SubmitResult{}, err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return SubmitResult{}, err
 	}
@@ -962,6 +971,11 @@ func (s *Service) ForceSubmitSession(ctx context.Context, sessionID string) (Sub
 	}
 	if rows == 0 {
 		return SubmitResult{}, ErrAlreadySubmitted
+	}
+
+	// See SubmitSession's identical enqueue for why this is unconditional.
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "exam_session", sessID, "CertificateNeeded", CertificateNeededPayload{SessionID: sessID}); err != nil {
+		return SubmitResult{}, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
