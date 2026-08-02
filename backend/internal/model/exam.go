@@ -152,6 +152,13 @@ type Exam struct {
 	// enable/disable action, never through the general exam PATCH, so toggling
 	// it never touches CertificateDesign or CertificateDesignUpdatedAt.
 	CertificateEnabled bool `json:"certificate_enabled"`
+	// CertificateTemplateHTML is the FE-serialized self-contained HTML for this
+	// exam's certificate design, carrying {{token}} placeholders for every
+	// verified value (score, student_name, certificate_number, image URLs...).
+	// Nil until an admin has saved a design (migration 0056). The worker
+	// substitutes it at generation time; nothing here is ever trusted as a
+	// finished document on its own.
+	CertificateTemplateHTML *string `json:"certificate_template_html,omitempty"`
 	// ExamNumber is a global human-friendly serial (FR-23) assigned from exam_number_seq,
 	// distinct from the exam UUID. Non-nil after create; nil only pre-migration/pre-backfill.
 	ExamNumber *int `json:"exam_number"`

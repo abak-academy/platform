@@ -302,8 +302,8 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 27 {
-		t.Fatalf("scanExam passed %d destinations, want 27", got)
+	if got := len(rec.dests); got != 28 {
+		t.Fatalf("scanExam passed %d destinations, want 28", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -349,10 +349,13 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Errorf("dest[24] = %T, want *bool (certificate_enabled)", rec.dests[24])
 	}
 	if _, ok := rec.dests[25].(**string); !ok {
-		t.Errorf("dest[25] = %T, want **string (end_screen_image_url, nullable pointer field)", rec.dests[25])
+		t.Errorf("dest[25] = %T, want **string (certificate_template_html, nullable pointer field)", rec.dests[25])
 	}
 	if _, ok := rec.dests[26].(**string); !ok {
-		t.Errorf("dest[26] = %T, want **string (end_screen_promo_text, nullable pointer field)", rec.dests[26])
+		t.Errorf("dest[26] = %T, want **string (end_screen_image_url, nullable pointer field)", rec.dests[26])
+	}
+	if _, ok := rec.dests[27].(**string); !ok {
+		t.Errorf("dest[27] = %T, want **string (end_screen_promo_text, nullable pointer field)", rec.dests[27])
 	}
 }
 
