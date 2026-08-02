@@ -26,6 +26,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"akademi-bimbel/config"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
@@ -67,6 +68,12 @@ func renderGateService(t *testing.T) *Service {
 	t.Cleanup(pool.Close)
 	if err := pool.Ping(ctx); err != nil {
 		t.Fatalf("compose postgres not reachable at %s: %v — is deploy/compose/local.yml up?", renderGatePostgresDSN(), err)
+	}
+	// This gate no longer starts the `api` container (nothing here needs it),
+	// which used to apply migrations on boot — run them here instead so the
+	// gate is self-sufficient against a bare compose postgres.
+	if err := infra.RunMigrations(ctx, renderGatePostgresDSN()); err != nil {
+		t.Fatalf("run migrations: %v", err)
 	}
 
 	storage, err := minio.New(renderGateMinioEndpoint(), &minio.Options{
@@ -140,7 +147,7 @@ func renderGateSeedSubmittedSession(t *testing.T, svc *Service, examTitle, stude
 
 	var regID uuid.UUID
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO exam_registration (student_id, exam_id, token, status) VALUES ($1, $2, $3, 'registered') RETURNING id`,
+		`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number) VALUES ($1, $2, $3, 'registered', 1) RETURNING id`,
 		studentID, exam.ID, "TOKEN"+uuid.NewString(),
 	).Scan(&regID); err != nil {
 		t.Fatalf("insert registration: %v", err)
