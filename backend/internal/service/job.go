@@ -24,14 +24,23 @@ type PrivateUploadURL struct {
 // bucket is provisioned out of band and gets no public-read policy, unlike the
 // avatar bucket in GeneratePresignedUploadURL.
 func (s *Service) GeneratePresignedPrivateUploadURL(ctx context.Context, schoolID, filename, contentType string) (*PrivateUploadURL, error) {
+	return s.presignPrivatePut(ctx, fmt.Sprintf("student-bulk/%s/%s-%s", schoolID, uuid.New().String(), filename))
+}
+
+// GeneratePresignedSchoolBulkUploadURL signs a PUT for a school-bulk CSV. The
+// key carries no school segment (spec §D-5): schools are a global registry and
+// the uploader is always super_admin, so there is no boundary to encode.
+func (s *Service) GeneratePresignedSchoolBulkUploadURL(ctx context.Context, filename, contentType string) (*PrivateUploadURL, error) {
+	return s.presignPrivatePut(ctx, fmt.Sprintf("school-bulk/%s-%s", uuid.New().String(), filename))
+}
+
+func (s *Service) presignPrivatePut(ctx context.Context, key string) (*PrivateUploadURL, error) {
 	if s.storage == nil {
 		return nil, ErrStorageNotConfigured
 	}
 
 	// The private bucket is created at provisioning time, not per-request.
-	bucket := s.cfg.ObjectStoragePrivateBucketName
-	key := fmt.Sprintf("student-bulk/%s/%s-%s", schoolID, uuid.New().String(), filename)
-	presigned, err := s.presignStorage().PresignedPutObject(ctx, bucket, key, 15*time.Minute)
+	presigned, err := s.presignStorage().PresignedPutObject(ctx, s.cfg.ObjectStoragePrivateBucketName, key, 15*time.Minute)
 	if err != nil {
 		return nil, err
 	}
@@ -87,6 +96,44 @@ func (s *Service) enqueueStudentBulkJobFromData(ctx context.Context, schoolID, c
 	}
 
 	job := &model.Job{Type: "student_bulk", InputURL: &fileKey, CreatedBy: createdBy}
+	if err := s.storeRepo.CreateJob(ctx, job); err != nil {
+		return "", err
+	}
+	return job.ID, nil
+}
+
+// EnqueueSchoolBulkJob validates that fileKey lives under the school-bulk
+// prefix and exists in the private bucket, downloads it, then delegates to
+// enqueueSchoolBulkJobFromData. There is no per-school prefix to check —
+// schools are a global registry and the caller is always super_admin.
+func (s *Service) EnqueueSchoolBulkJob(ctx context.Context, createdBy, fileKey string) (string, error) {
+	if !strings.HasPrefix(fileKey, "school-bulk/") {
+		return "", ErrUploadNotFound
+	}
+
+	if _, err := s.storage.StatObject(ctx, s.cfg.ObjectStoragePrivateBucketName, fileKey, minio.StatObjectOptions{}); err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return "", ErrUploadNotFound
+		}
+		return "", err
+	}
+
+	data, err := s.fetchPrivateObject(ctx, fileKey)
+	if err != nil {
+		return "", err
+	}
+
+	return s.enqueueSchoolBulkJobFromData(ctx, createdBy, fileKey, data)
+}
+
+// enqueueSchoolBulkJobFromData validates the CSV eagerly so a bad header is a
+// 4xx at enqueue time rather than a job that fails minutes later.
+func (s *Service) enqueueSchoolBulkJobFromData(ctx context.Context, createdBy, fileKey string, data []byte) (string, error) {
+	if _, err := ParseSchoolBulkCSV(data); err != nil {
+		return "", err
+	}
+
+	job := &model.Job{Type: "school_bulk", InputURL: &fileKey, CreatedBy: createdBy}
 	if err := s.storeRepo.CreateJob(ctx, job); err != nil {
 		return "", err
 	}

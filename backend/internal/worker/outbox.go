@@ -53,13 +53,13 @@ type Worker struct {
 	dispatcher               announcementDispatcher
 	jobRepo                  jobRepository
 	objectStore              objectStore
-	svc                      studentBulkProcessor
+	svc                      bulkProcessor
 	jobPollInterval          time.Duration
 	privateBucket            string
 	certGen                  certificateGenerator
 }
 
-func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval, sweeperInterval, announcementPollInterval time.Duration, dispatcher announcementDispatcher, jobRepo jobRepository, objectStore objectStore, svc studentBulkProcessor, jobPollInterval time.Duration, privateBucket string, certGen certificateGenerator) *Worker {
+func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval, sweeperInterval, announcementPollInterval time.Duration, dispatcher announcementDispatcher, jobRepo jobRepository, objectStore objectStore, svc bulkProcessor, jobPollInterval time.Duration, privateBucket string, certGen certificateGenerator) *Worker {
 	return &Worker{
 		pool:                     pool,
 		rdb:                      rdb,
