@@ -208,7 +208,7 @@ func (f *fakeRepo) seed(u *model.User) {
 func strptr(s string) *string { return &s }
 
 func mustHash(pw string) string {
-	h, err := bcrypt.GenerateFromPassword([]byte(pw), 12)
+	h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.MinCost)
 	if err != nil {
 		panic(err)
 	}
