@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"testing"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -19,20 +18,3 @@ var _ interface {
 	MarkAnnouncementSent(context.Context, string, time.Time, int) error
 	ListActiveUserEmails(context.Context, string) ([]string, error)
 } = (*Repository)(nil)
-
-func TestAnnouncementMethodsExist(t *testing.T) {
-	r := &Repository{}
-	ctx := context.Background()
-
-	// Function pointer checks verify method signatures at compile time.
-	_ = r.CreateAnnouncement
-	_ = r.GetAnnouncementByID
-	_ = r.ListAnnouncements
-	_ = r.UpdateAnnouncement
-	_ = r.DeleteAnnouncement
-	_ = r.ClaimDueAnnouncements
-	_ = r.MarkAnnouncementSent
-	_ = r.ListActiveUserEmails
-
-	_ = ctx
-}
