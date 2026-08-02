@@ -33,6 +33,16 @@ describe("ShipOrderModal", () => {
     ).toBeInTheDocument();
   });
 
+  it("offers exactly the two shipping paths — no Cancel competing with them", () => {
+    renderModal();
+
+    const footer = document.querySelector('[data-slot="dialog-footer"]')!;
+    expect([...footer.querySelectorAll("button")].map((b) => b.textContent?.trim())).toEqual([
+      t(lang, "orders_ship_manual_choice"),
+      t(lang, "orders_ship_book_courier"),
+    ]);
+  });
+
   it("asks for the tracking number once the manual step is open", async () => {
     renderModal();
 

@@ -79,14 +79,9 @@ export function ShipOrderModal({
             <Button type="button" variant="outline" onClick={() => setManualMode(true)} disabled={isPending}>
               {t("orders_ship_manual_choice")}
             </Button>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-                {t("cancel")}
-              </Button>
-              <Button type="button" onClick={onBook} disabled={isPending}>
-                {isPending ? t("orders_ship_pending") : t("orders_ship_book_biteship")}
-              </Button>
-            </div>
+            <Button type="button" onClick={onBook} disabled={isPending}>
+              {isPending ? t("orders_ship_booking_pending") : t("orders_ship_book_courier")}
+            </Button>
           </DialogFooter>
         )}
 
