@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { OrderDetailModal } from "./OrderDetailModal";
 
 const physicalOrder = {
@@ -14,6 +15,49 @@ const physicalOrder = {
   student_id: "s1",
   items: [{ id: "i1", order_id: "o1", product_id: "p1", product_type: "book", name: "Buku", unit_price: 1, qty: 1, jumlah: 1 }],
 } as any;
+
+describe("OrderDetailModal actions", () => {
+  it("renders no action footer when the caller allows neither action", () => {
+    render(<OrderDetailModal order={physicalOrder} onOpenChange={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Kirim" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Refund" })).toBeNull();
+  });
+
+  it("renders only the action the caller allowed", () => {
+    render(<OrderDetailModal order={physicalOrder} onOpenChange={vi.fn()} onRefund={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Refund" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Kirim" })).toBeNull();
+  });
+
+  it("invokes the caller's handlers", async () => {
+    const onShip = vi.fn();
+    const onRefund = vi.fn();
+    render(
+      <OrderDetailModal
+        order={physicalOrder}
+        onOpenChange={vi.fn()}
+        onShip={onShip}
+        onRefund={onRefund}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Kirim" }));
+    await userEvent.click(screen.getByRole("button", { name: "Refund" }));
+    expect(onShip).toHaveBeenCalledOnce();
+    expect(onRefund).toHaveBeenCalledOnce();
+  });
+
+  it("disables refund while a refund is in flight", () => {
+    render(
+      <OrderDetailModal
+        order={physicalOrder}
+        onOpenChange={vi.fn()}
+        onRefund={vi.fn()}
+        isRefunding
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Refund" })).toBeDisabled();
+  });
+});
 
 describe("OrderDetailModal", () => {
   // The old check inferred the badge from selected_courier; both cases below

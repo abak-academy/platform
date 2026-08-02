@@ -148,13 +148,15 @@ export default function OrdersPage() {
     }
   }
 
-  async function handleRefund(id: string) {
-    if (!window.confirm(t("orders_refund_prompt"))) return;
+  async function handleRefund(id: string): Promise<boolean> {
+    if (!window.confirm(t("orders_refund_prompt"))) return false;
     try {
       await refund.mutateAsync(id);
       toast.success(t("orders_refunded"));
+      return true;
     } catch (e) {
       toast.error(errorMessage(e));
+      return false;
     }
   }
 
@@ -315,7 +317,30 @@ export default function OrdersPage() {
         </div>
       )}
 
-      <OrderDetailModal order={detailOrder} onOpenChange={() => setDetailOrder(null)} />
+      <OrderDetailModal
+        order={detailOrder}
+        onOpenChange={() => setDetailOrder(null)}
+        onShip={
+          detailOrder && actionAllowed(detailOrder.status, "ship") && hasPhysicalItem(detailOrder)
+            ? () => {
+                const order = detailOrder;
+                setDetailOrder(null);
+                setShipError(null);
+                setShippingOrder(order);
+              }
+            : undefined
+        }
+        onRefund={
+          detailOrder && actionAllowed(detailOrder.status, "refund")
+            ? async () => {
+                // detailOrder is a snapshot, so it cannot show the new status —
+                // close rather than leave a stale badge on screen.
+                if (await handleRefund(detailOrder.id)) setDetailOrder(null);
+              }
+            : undefined
+        }
+        isRefunding={refund.isPending}
+      />
 
       {shippingOrder && (
         <ShipOrderModal
