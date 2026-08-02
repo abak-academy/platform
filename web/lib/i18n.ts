@@ -1267,6 +1267,22 @@ export const DICT = {
     bulk_register_no_file: "Pilih file terlebih dahulu.",
     bulk_register_enqueue_failed: "Gagal memulai proses.",
     bulk_register_put_failed: "Gagal mengunggah file.",
+
+    // Bulk school-import modal (super_admin Schools page)
+    bulk_school_title: "Impor Sekolah Massal",
+    bulk_school_subtitle: "Unggah CSV untuk membuat banyak sekolah sekaligus.",
+    bulk_school_download_template: "Unduh Template",
+    bulk_school_choose_file: "Pilih file CSV",
+    bulk_school_upload: "Unggah",
+    bulk_school_uploading: "Mengunggah…",
+    bulk_school_progress: "Memproses… {pct}%",
+    bulk_school_success: "Selesai.",
+    bulk_school_download_result: "Unduh Hasil",
+    bulk_school_failed: "Gagal memproses",
+    bulk_school_no_file: "Pilih file terlebih dahulu.",
+    bulk_school_enqueue_failed: "Gagal memulai proses.",
+    bulk_school_put_failed: "Gagal mengunggah file.",
+    bulk_school_import_button: "Impor Massal",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -2529,6 +2545,22 @@ export const DICT = {
     bulk_register_no_file: "Please select a file first.",
     bulk_register_enqueue_failed: "Failed to start processing.",
     bulk_register_put_failed: "Failed to upload file.",
+
+    // Bulk school-import modal (super_admin Schools page)
+    bulk_school_title: "Bulk School Import",
+    bulk_school_subtitle: "Upload a CSV to create many schools at once.",
+    bulk_school_download_template: "Download Template",
+    bulk_school_choose_file: "Choose CSV file",
+    bulk_school_upload: "Upload",
+    bulk_school_uploading: "Uploading…",
+    bulk_school_progress: "Processing… {pct}%",
+    bulk_school_success: "Done.",
+    bulk_school_download_result: "Download Result",
+    bulk_school_failed: "Processing failed",
+    bulk_school_no_file: "Please select a file first.",
+    bulk_school_enqueue_failed: "Failed to start processing.",
+    bulk_school_put_failed: "Failed to upload file.",
+    bulk_school_import_button: "Bulk Import",
   },
 };
 
