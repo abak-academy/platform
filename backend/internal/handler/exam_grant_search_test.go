@@ -326,6 +326,13 @@ func TestAdminSearchGrantStudents_SuperAdmin_ReturnsCrossSchoolResults(t *testin
 	})
 
 	t.Run("q filter searches name", func(t *testing.T) {
+		// q="Ali" (unscoped by xsuffix, unlike the other subtests here) is
+		// deliberate: it exercises partial-name search. That means it cannot
+		// assert an absolute count without risking the same pollution hazard
+		// fixed in f407f32 — any other row sharing this container with "ali"
+		// in its name would inflate it under -shuffle=on. Instead, assert on
+		// the specific seeded row's presence and that every match is a real
+		// substring match.
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q=Ali", nil)
 		req.Header.Set("Authorization", "Bearer "+superToken)
 		rec := httptest.NewRecorder()
@@ -342,12 +349,21 @@ func TestAdminSearchGrantStudents_SuperAdmin_ReturnsCrossSchoolResults(t *testin
 		if !ok {
 			t.Fatal("data is not an array")
 		}
-		if len(data) != 1 {
-			t.Fatalf("want 1 student matching 'Ali', got %d", len(data))
+		if len(data) < 1 {
+			t.Fatalf("want at least 1 student matching 'Ali', got %d", len(data))
 		}
-		name := data[0].(map[string]any)["name"].(string)
-		if !strings.Contains(name, "Ali") {
-			t.Errorf("expected name containing 'Ali', got %s", name)
+		foundSeeded := false
+		for _, item := range data {
+			name := item.(map[string]any)["name"].(string)
+			if !strings.Contains(strings.ToLower(name), "ali") {
+				t.Errorf("expected name containing 'ali' (case-insensitive), got %s", name)
+			}
+			if name == "Alice "+xsuffix {
+				foundSeeded = true
+			}
+		}
+		if !foundSeeded {
+			t.Errorf("expected seeded student %q among matches, got %v", "Alice "+xsuffix, data)
 		}
 	})
 
