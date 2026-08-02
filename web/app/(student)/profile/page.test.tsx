@@ -409,6 +409,75 @@ describe("ProfilePage — new optional biodata fields (FR-FE-24..27)", () => {
     expect(payload.kode_pos).toBe("12130");
   });
 
+  it("signals the unlisted-school intent with school_id: \"\" and the typed name (FB-14)", async () => {
+    renderPage();
+    enterEditMode();
+
+    const schoolTrigger = screen.getByLabelText(/sekolah/i);
+    fireEvent.click(schoolTrigger);
+    fireEvent.click(
+      screen.getByRole("option", { name: /tidak ada di daftar|not on the list/i })
+    );
+
+    const unlistedInput = await screen.findByLabelText(
+      /tulis nama sekolah|type your school name/i
+    );
+    fireEvent.change(unlistedInput, { target: { value: "SMA Maju Bersama" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan perubahan|save changes/i }));
+
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalled();
+    });
+    const payload = mutateMock.mock.calls[0][0];
+    expect(payload.school_id).toBe("");
+    expect(payload.unlisted_school_name).toBe("SMA Maju Bersama");
+  });
+
+  it("signals the listed-school intent with unlisted_school_name: \"\" (FB-14)", async () => {
+    renderPage();
+    enterEditMode();
+
+    const schoolTrigger = screen.getByLabelText(/sekolah/i);
+    fireEvent.click(schoolTrigger);
+    fireEvent.click(screen.getByRole("option", { name: "SMAN 2 Bandung" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan perubahan|save changes/i }));
+
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalled();
+    });
+    const payload = mutateMock.mock.calls[0][0];
+    expect(payload.school_id).toBe("s2");
+    expect(payload.unlisted_school_name).toBe("");
+  });
+
+  it("omits both school_id and unlisted_school_name when neither is selected and only name changes (FR-12)", async () => {
+    profileState = {
+      ...profileState,
+      data: {
+        ...(profileState.data as object),
+        school_id: null,
+        unlisted_school_name: null,
+      },
+    };
+    renderPage();
+    enterEditMode();
+
+    fireEvent.change(screen.getByLabelText(/nama/i, { selector: "input" }), {
+      target: { value: "Budi Santoso Jr" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan perubahan|save changes/i }));
+
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalled();
+    });
+    const payload = mutateMock.mock.calls[0][0];
+    expect(payload).not.toHaveProperty("school_id");
+    expect(payload).not.toHaveProperty("unlisted_school_name");
+  });
+
   it("surfaces the server's incomplete_address error when only provinsi_id is submitted", async () => {
     mutateMock.mockImplementation((_payload, opts) => {
       opts?.onError?.(Object.assign(new Error("incomplete address"), { code: "incomplete_address" }));

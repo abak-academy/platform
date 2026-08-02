@@ -407,9 +407,11 @@ export default function ProfilePage() {
       grade: gradeNum,
     };
     if (isUnlistedSchool) {
-      payload.unlisted_school_name = unlistedSchoolName.trim() || undefined;
+      payload.school_id = "";
+      payload.unlisted_school_name = unlistedSchoolName.trim();
     } else if (schoolId) {
       payload.school_id = schoolId;
+      payload.unlisted_school_name = "";
     }
     if (jenjang) payload.jenjang = jenjang;
     if (provinsiId) payload.provinsi_id = provinsiId;
