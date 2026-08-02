@@ -798,6 +798,12 @@ export interface CertificateDesignInput {
   template: string;
   background_key: string | null;
   layout: CertificateLayout;
+  // FE-serialized self-contained HTML with {{token}} placeholders (async
+  // redesign 2026-08-02), produced by POSTing layout to
+  // /api/admin/certificate-template — the worker substitutes verified DB
+  // values into it at generation time. Empty only means "not yet computed
+  // for this save", never a deliberate clear.
+  template_html?: string;
 }
 
 // ── Session engine types (FR26) ──────────────────────────────────────────
