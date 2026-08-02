@@ -352,16 +352,16 @@ func (s *Service) presignInternalReadURL(ctx context.Context, bucket, key string
 }
 
 // OpenAvatar streams a stored upload for the read-proxy endpoint. Only the
-// avatars/, product/ and question/ prefixes are served: certificates and
-// private PII (including student-bulk imports) live in the same bucket but
-// are reached exclusively through presigned URLs, so they can never be
-// fetched through this unauthenticated proxy.
+// avatars/, product/ and question/ prefixes are served: certificates, payment
+// proofs and private PII (including student-bulk imports) live in the same
+// bucket but are reached exclusively through presigned URLs, so they can never
+// be fetched through this unauthenticated proxy.
 func (s *Service) OpenAvatar(ctx context.Context, key string) (io.ReadCloser, string, error) {
 	if s.storage == nil {
 		return nil, "", ErrStorageNotConfigured
 	}
 	prefix, _, ok := strings.Cut(key, "/")
-	if !ok || !uploadPrefixAllowlist[prefix] || strings.Contains(key, "..") {
+	if !ok || !proxyReadPrefixAllowlist[prefix] || strings.Contains(key, "..") {
 		return nil, "", ErrUploadNotFound
 	}
 	obj, err := s.storage.GetObject(ctx, s.cfg.ObjectStorageBucketName, key, minio.GetObjectOptions{})
@@ -377,10 +377,42 @@ func (s *Service) OpenAvatar(ctx context.Context, key string) (io.ReadCloser, st
 	return obj, info.ContentType, nil
 }
 
+// requireStoredObject verifies that a key names an object that actually exists
+// in the bucket. A shape check cannot do this: "payment_proof/<uuid>/x.jpg" is
+// well-formed whether or not anything was ever uploaded to it.
+//
+// Storage (and cfg) are nil only in unit tests that never exercise uploads; in
+// every deployed configuration both are set, so the check is live wherever a
+// real caller could reach it.
+func (s *Service) requireStoredObject(ctx context.Context, key string) error {
+	if s.storage == nil || s.cfg == nil {
+		return nil
+	}
+	if _, err := s.storage.StatObject(ctx, s.cfg.ObjectStorageBucketName, key, minio.StatObjectOptions{}); err != nil {
+		return ErrUploadNotFound
+	}
+	return nil
+}
+
 // uploadPrefixAllowlist gates GeneratePresignedUploadURL's caller-supplied
-// prefix and OpenAvatar's read-proxy in tandem — widen one without the other
-// and either signing or reading a newly-uploaded object breaks.
+// prefix — what may be WRITTEN. It is deliberately not the same set as
+// proxyReadPrefixAllowlist: a prefix can be uploadable without being world
+// readable, and payment_proof is exactly that case.
 var uploadPrefixAllowlist = map[string]bool{
+	"avatars":       true,
+	"product":       true,
+	"question":      true,
+	"payment_proof": true,
+	"refund_proof":  true,
+}
+
+// proxyReadPrefixAllowlist gates OpenAvatar — what the UNAUTHENTICATED
+// GET /files/* proxy may serve. Adding a prefix here publishes every object
+// under it to anyone holding the key, forever and unrevocably. Payment proofs
+// are bank transfer receipts (account numbers, names, amounts), so they are
+// signable for upload but read only through a short-lived presigned URL minted
+// for an authorised admin — see PresignPaymentProofURL.
+var proxyReadPrefixAllowlist = map[string]bool{
 	"avatars":  true,
 	"product":  true,
 	"question": true,

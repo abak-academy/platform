@@ -459,7 +459,11 @@ describe("ProductModal", () => {
     const file = new File(["x"], "img.png", { type: "image/png" });
     fireEvent.change(screen.getByLabelText(/gambar/i), { target: { files: [file] } });
 
-    await waitFor(() => expect(mockPresign).toHaveBeenCalled());
+    // Wait for the upload to be APPLIED, not merely started: presign is
+    // followed by a second await (the PUT) before setImageUrl runs, so waiting
+    // on "presign was called" lets Simpan fire while imageUrl is still empty —
+    // onSubmit then commits once, without image_url, and never fires again.
+    await waitFor(() => expect(screen.getByAltText("Pratinjau gambar")).toBeInTheDocument());
     expect(mockPresign).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "product" })
     );
@@ -513,6 +517,108 @@ describe("ProductModal", () => {
       expect(mockOnSubmit).toHaveBeenCalledWith(
         expect.objectContaining({ name: "Buku IPA v2", image_url: "avatars/u/old.png" })
       );
+    });
+  });
+
+  // --- digital product image (exam/course) ---
+
+  it("shows the image picker but not the stock input when type is exam", () => {
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
+
+    expect(screen.getByLabelText(/gambar/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/stok/i)).not.toBeInTheDocument();
+  });
+
+  it("includes image_url but excludes stock and weight_grams in create payload for exam type", async () => {
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Paket Ujian Bergambar" } });
+    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "150000" } });
+
+    const utbkCheckbox = screen.getByText("UTBK 2026").closest("label")!.querySelector("input[type=checkbox]")!;
+    fireEvent.click(utbkCheckbox);
+
+    const file = new File(["x"], "img.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText(/gambar/i), { target: { files: [file] } });
+    // Wait for the upload to be APPLIED, not merely started: presign is
+    // followed by a second await (the PUT) before setImageUrl runs, so waiting
+    // on "presign was called" lets Simpan fire while imageUrl is still empty —
+    // onSubmit then commits once, without image_url, and never fires again.
+    await waitFor(() => expect(screen.getByAltText("Pratinjau gambar")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Paket Ujian Bergambar",
+          type: "exam",
+          image_url: "avatars/u/img.png",
+        })
+      );
+      const payload = mockOnSubmit.mock.calls[0][0];
+      expect(payload).not.toHaveProperty("stock");
+      expect(payload).not.toHaveProperty("weight_grams");
+    });
+  });
+
+  it("includes image_url in update payload for an existing course product", async () => {
+    const product: Product = {
+      id: "p1",
+      type: "course",
+      name: "Kursus IPA",
+      price: 150000,
+      status: "published",
+      course_ids: ["c1"],
+    };
+
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        product={product}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    const file = new File(["x"], "cover.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText(/gambar/i), { target: { files: [file] } });
+    // Wait for the upload to be APPLIED, not merely started: presign is
+    // followed by a second await (the PUT) before setImageUrl runs, so waiting
+    // on "presign was called" lets Simpan fire while imageUrl is still empty —
+    // onSubmit then commits once, without image_url, and never fires again.
+    await waitFor(() => expect(screen.getByAltText("Pratinjau gambar")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Kursus IPA",
+          image_url: "avatars/u/img.png",
+        })
+      );
+      const payload = mockOnSubmit.mock.calls[0][0];
+      expect(payload).not.toHaveProperty("stock");
+      expect(payload).not.toHaveProperty("weight_grams");
     });
   });
 

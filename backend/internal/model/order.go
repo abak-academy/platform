@@ -10,6 +10,7 @@ import (
 type Order struct {
 	ID                 uuid.UUID            `json:"id"`
 	StudentID          uuid.UUID            `json:"student_id"`
+	StudentName        string               `json:"student_name"`
 	Status             string               `json:"status"`
 	Subtotal           float64              `json:"subtotal"`
 	Discount           float64              `json:"discount"`
@@ -29,6 +30,8 @@ type Order struct {
 	CourierServiceCode *string              `json:"courier_service_code"`
 	GatewayRef         string               `json:"gateway_ref"`
 	PaymentMethod      string               `json:"payment_method"`
+	PaymentProofURL    *string              `json:"payment_proof_url"`
+	RefundProofURL     *string              `json:"refund_proof_url"`
 	PaymentExpiresAt   *time.Time           `json:"payment_expires_at"`
 	PaidAt             *time.Time           `json:"paid_at"`
 	InvoiceURL         string               `json:"invoice_url"`

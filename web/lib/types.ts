@@ -220,6 +220,8 @@ export interface OrderShipmentEvent {
 export interface Order {
   id: string;
   student_id: string;
+  /** Resolved server-side (FR-33/FR-35); fallback text when the student row is missing. */
+  student_name?: string;
   status: OrderStatus;
   subtotal: number;
   discount: number;
@@ -240,6 +242,7 @@ export interface Order {
   shipment_events?: OrderShipmentEvent[];
   gateway_ref?: string;
   payment_method?: string;
+  payment_proof_url?: string | null;
   payment_expires_at?: string;
   paid_at?: string;
   invoice_url?: string;
@@ -352,6 +355,8 @@ export interface PromoCode {
   used_count: number;
   expires_at?: string;
   created_at?: string;
+  /** FR-13: shown to authenticated students via GET /promo-codes/active when true. */
+  is_public?: boolean;
 }
 
 export interface AdminCreatePromoCodeInput {
@@ -362,11 +367,25 @@ export interface AdminCreatePromoCodeInput {
   min_order_amount?: number;
   max_uses?: number;
   expires_at?: string;
+  is_public?: boolean;
 }
 
 export interface AdminUpdatePromoCodeInput {
   max_uses?: number;
   expires_at?: string;
+  is_public?: boolean;
+}
+
+// GET /promo-codes/active wire shape (FR-11) — deliberately omits id,
+// used_count, and max_uses; see backend/internal/handler/order.go
+// activePublicPromoDTO.
+export interface ActivePromoCode {
+  code: string;
+  discount_percent: number | null;
+  discount_amount: number | null;
+  min_order_amount: number | null;
+  max_discount_amount: number | null;
+  expires_at: string | null;
 }
 
 export interface RevenueByTypeItem {

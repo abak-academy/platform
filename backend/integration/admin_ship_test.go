@@ -1,7 +1,9 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -74,12 +76,19 @@ func checkoutAt(t *testing.T, baseURL, orderID, token, idempKey string) *http.Re
 
 // adminConfirmAt issues POST /admin/orders/:id/confirm with an Idempotency-Key
 // against an arbitrary base URL, for the same reason as checkoutAt above.
+// FR-25/FR-26 require a payment_proof_url under payment_proof/, so this sends
+// a fixture key rather than an empty body.
 func adminConfirmAt(t *testing.T, baseURL, orderID, token, idempKey string) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, baseURL+"/api/v1/admin/orders/"+orderID+"/confirm", nil)
+	var buf bytes.Buffer
+	require.NoError(t, json.NewEncoder(&buf).Encode(map[string]string{
+		"payment_proof_url": "payment_proof/int-test/" + idempKey + ".jpg",
+	}))
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/api/v1/admin/orders/"+orderID+"/confirm", &buf)
 	require.NoError(t, err)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Idempotency-Key", idempKey)
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	return resp

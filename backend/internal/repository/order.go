@@ -46,7 +46,8 @@ const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost,
 	gateway_ref, payment_method, payment_expires_at, paid_at, invoice_url,
 	checked_out_at, completed_at, cancelled_at, cancellation_reason,
 	created_at, updated_at, is_estimate,
-	biteship_order_id, shipment_status, waybill_source, courier_code, courier_service_code`
+	biteship_order_id, shipment_status, waybill_source, courier_code, courier_service_code,
+	payment_proof_url, refund_proof_url`
 
 func scanOrder(row interface {
 	Scan(dest ...any) error
@@ -63,6 +64,7 @@ func scanOrder(row interface {
 		&order.CreatedAt, &order.UpdatedAt, &order.IsEstimate,
 		&order.BiteshipOrderID, &order.ShipmentStatus, &order.WaybillSource,
 		&order.CourierCode, &order.CourierServiceCode,
+		&order.PaymentProofURL, &order.RefundProofURL,
 	)
 	if err != nil {
 		return err
@@ -232,6 +234,35 @@ func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Orde
 	return order, nil
 }
 
+// GetUserNamesByIDs resolves display names for a batch of student ids in a
+// single query, keyed by id string. Ids missing from the returned map (e.g. a
+// deleted student row) are the caller's responsibility to fall back on.
+// ids is []string, not []uuid.UUID — pgx's exec mode under PgBouncer breaks
+// on []uuid.UUID array parameters, and that only surfaces in a deployed
+// environment, never against a local test database.
+func (r *Repository) GetUserNamesByIDs(ctx context.Context, ids []string) (map[string]string, error) {
+	names := make(map[string]string, len(ids))
+	if len(ids) == 0 {
+		return names, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, name FROM users WHERE id = ANY($1::uuid[])`,
+		ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		names[id] = name
+	}
+	return names, rows.Err()
+}
+
 func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]model.Order, string, error) {
 	if filter.Limit == 0 {
 		filter.Limit = 10
@@ -263,6 +294,9 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		query += ` AND status != 'cart'`
 	}
 	if filter.Cursor != "" {
+		if _, err := uuid.Parse(filter.Cursor); err != nil {
+			return nil, "", ErrInvalidCursor
+		}
 		query += fmt.Sprintf(` AND id > $%d`, argNum)
 		args = append(args, filter.Cursor)
 		argNum++
@@ -425,6 +459,42 @@ func (r *Repository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID uuid
 	} else {
 		_, err = r.pool.Exec(ctx, q, status, reason, orderID)
 	}
+	return err
+}
+
+// SetOrderManualPayment writes the manual-confirmation payment projection
+// (payment_method = 'manual' plus the proof object key) inside the caller's
+// transaction, alongside the status flip and audit row AdminConfirmOrder
+// writes in the same tx — invariant 6 requires all three to commit together.
+func (r *Repository) SetOrderManualPayment(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, proofURL string) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE orders SET payment_method = 'manual', payment_proof_url = $1, updated_at = now() WHERE id = $2`,
+		proofURL, orderID,
+	)
+	return err
+}
+
+// SetOrderRefundProof records the manual transfer receipt for a refund inside
+// the caller's transaction, alongside the status flip, enrollment revocation
+// and audit row AdminRefundOrder writes in the same tx. The money itself is
+// moved by a human — this is the only evidence the system ever gets.
+func (r *Repository) SetOrderRefundProof(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, proofURL string) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE orders SET refund_proof_url = $1, updated_at = now() WHERE id = $2`,
+		proofURL, orderID,
+	)
+	return err
+}
+
+// SetOrderPaymentMethod writes the gateway-reported payment_type onto the
+// order's payment_method projection inside the caller's transaction. Callers
+// must only invoke this when method is non-empty — an empty value must never
+// overwrite a payment_method already on the row (FR-29).
+func (r *Repository) SetOrderPaymentMethod(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, method string) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE orders SET payment_method = $1, updated_at = now() WHERE id = $2`,
+		method, orderID,
+	)
 	return err
 }
 

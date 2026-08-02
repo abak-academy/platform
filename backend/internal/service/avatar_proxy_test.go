@@ -32,6 +32,23 @@ func newOfflineStorageService(t *testing.T) *Service {
 	return &Service{storage: client, cfg: &config.Config{ObjectStorageBucketName: "bucket"}}
 }
 
+// A payment proof key is well-formed whether or not anything was ever uploaded
+// to it, so the handler's shape check cannot establish that evidence exists —
+// only storage can. requireStoredObject must therefore fail closed: if storage
+// cannot vouch for the key, the caller does not get to mark an order paid.
+//
+// The offline client makes every StatObject fail, which is the point: this pins
+// the fail-closed direction. It does not exercise the accept path, which needs
+// a live bucket.
+func TestRequireStoredObject_FailsClosedWhenStorageCannotVouch(t *testing.T) {
+	s := newOfflineStorageService(t)
+
+	fabricated := "payment_proof/00000000-0000-0000-0000-000000000000/never-uploaded.jpg"
+	if err := s.requireStoredObject(context.Background(), fabricated); !errors.Is(err, ErrUploadNotFound) {
+		t.Errorf("requireStoredObject(%q): want ErrUploadNotFound, got %v", fabricated, err)
+	}
+}
+
 // The avatar read-proxy is unauthenticated, and avatars share one bucket with
 // certificates and private student PII. OpenAvatar must therefore refuse any key
 // outside the allowlisted prefixes (and reject path traversal) before it ever
@@ -44,6 +61,11 @@ func TestOpenAvatar_RejectsNonAvatarKeys(t *testing.T) {
 		"cards/00000000-0000-0000-0000-000000000000.pdf",
 		"student-bulk/school-1/import.csv",
 		"avatars/../certificates/leak.pdf",
+		// A payment proof is a bank transfer receipt — account numbers, names
+		// and amounts. It is signable for upload but must never be reachable
+		// through this unauthenticated proxy; admins read it via a short-lived
+		// presigned URL instead.
+		"payment_proof/00000000-0000-0000-0000-000000000000/receipt.jpg",
 		"random-key",
 		"",
 	}

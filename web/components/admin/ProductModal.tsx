@@ -170,7 +170,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         available_until: fromLocalInput(availableUntil),
         ...(showStock ? { stock: Number(stock) } : {}),
         ...(showStock && weight !== "" ? { weight_grams: Number(weight) } : {}),
-        ...(showStock && imageUrl !== "" ? { image_url: imageUrl } : {}),
+        ...(imageUrl !== "" ? { image_url: imageUrl } : {}),
         specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
         ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
         ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
@@ -187,7 +187,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       ...(availableUntil ? { available_until: fromLocalInput(availableUntil) } : {}),
       ...(showStock ? { stock: Number(stock) } : {}),
       ...(showStock && weight !== "" ? { weight_grams: Number(weight) } : {}),
-      ...(showStock && imageUrl !== "" ? { image_url: imageUrl } : {}),
+      ...(imageUrl !== "" ? { image_url: imageUrl } : {}),
       specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
       ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
       ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
@@ -304,30 +304,32 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                     <p className="text-xs text-muted-foreground">Dipakai untuk menghitung ongkir.</p>
                   </div>
                 </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="product-image">Gambar produk</Label>
-                  <div className="flex items-center gap-3">
-                    {imageUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={fileUrl(imageUrl)}
-                        alt="Pratinjau gambar"
-                        className="h-16 w-16 shrink-0 rounded-md border border-input object-cover"
-                      />
-                    )}
-                    <Input
-                      id="product-image"
-                      type="file"
-                      accept="image/*"
-                      ref={imageInputRef}
-                      onChange={handleImageSelect}
-                      disabled={isPending || imageUploading}
-                    />
-                  </div>
-                </div>
               </Section>
             )}
+
+            <Section title="Gambar produk">
+              <div className="grid gap-2">
+                <Label htmlFor="product-image">Gambar produk</Label>
+                <div className="flex items-center gap-3">
+                  {imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={fileUrl(imageUrl)}
+                      alt="Pratinjau gambar"
+                      className="h-16 w-16 shrink-0 rounded-md border border-input object-cover"
+                    />
+                  )}
+                  <Input
+                    id="product-image"
+                    type="file"
+                    accept="image/*"
+                    ref={imageInputRef}
+                    onChange={handleImageSelect}
+                    disabled={isPending || imageUploading}
+                  />
+                </div>
+              </div>
+            </Section>
 
             {showCourses && (
               <Section title="Kursus terkait">

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
@@ -222,8 +223,14 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_carrier_code", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotShippable):
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_shippable", Message: err.Error()}
+	case errors.Is(err, service.ErrOrderNotRefundable):
+		status, apiErr = http.StatusConflict, APIError{Code: "order_not_refundable", Message: err.Error()}
 	case errors.Is(err, service.ErrNoTrackingNumber):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_tracking_number", Message: err.Error()}
+	case errors.Is(err, service.ErrMissingGatewayRef):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "missing_gateway_ref", Message: err.Error()}
+	case errors.Is(err, repository.ErrInvalidCursor):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_cursor", Message: err.Error()}
 	default:
 		slog.Error("unhandled service error", "method", c.Request().Method, "uri", c.Request().RequestURI, "err", err)
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}

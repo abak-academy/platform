@@ -28,6 +28,7 @@ func (h *Handler) AdminCreatePromoCode(c echo.Context) error {
 		MinOrderAmount    *float64   `json:"min_order_amount"`
 		MaxUses           *int       `json:"max_uses"`
 		ExpiresAt         *time.Time `json:"expires_at"`
+		IsPublic          bool       `json:"is_public"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -44,6 +45,7 @@ func (h *Handler) AdminCreatePromoCode(c echo.Context) error {
 		MinOrderAmount:    req.MinOrderAmount,
 		MaxUses:           req.MaxUses,
 		ExpiresAt:         req.ExpiresAt,
+		IsPublic:          req.IsPublic,
 	}
 
 	created, err := h.svc.AdminCreatePromoCode(c.Request().Context(), promo)
@@ -60,12 +62,13 @@ func (h *Handler) AdminUpdatePromoCode(c echo.Context) error {
 	var req struct {
 		MaxUses   *int       `json:"max_uses"`
 		ExpiresAt *time.Time `json:"expires_at"`
+		IsPublic  bool       `json:"is_public"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
 
-	err := h.svc.AdminUpdatePromoCode(c.Request().Context(), id, req.MaxUses, req.ExpiresAt)
+	err := h.svc.AdminUpdatePromoCode(c.Request().Context(), id, req.MaxUses, req.ExpiresAt, req.IsPublic)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

@@ -20,6 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OrderDetailModal } from "@/components/admin/OrderDetailModal";
 import { ShipOrderModal } from "@/components/admin/ShipOrderModal";
+import { ConfirmOrderModal } from "@/components/admin/ConfirmOrderModal";
+import { RefundOrderModal } from "@/components/admin/RefundOrderModal";
 import { formatRupiah } from "@/lib/format";
 import type { Order, OrderStatus, AdminOrderFilterStatus } from "@/lib/types";
 
@@ -30,7 +32,7 @@ function orderNumber(order: Order): string {
 }
 
 function buyerLabel(order: Order): string {
-  return `...${order.student_id.slice(-12)}`;
+  return order.student_name?.trim() || order.student_id;
 }
 
 function productSummary(order: Order): string {
@@ -76,6 +78,10 @@ export default function OrdersPage() {
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
   const [shippingOrder, setShippingOrder] = useState<Order | null>(null);
   const [shipError, setShipError] = useState<string | null>(null);
+  const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [refundingOrder, setRefundingOrder] = useState<Order | null>(null);
+  const [refundError, setRefundError] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!orders) return [];
@@ -107,12 +113,14 @@ export default function OrdersPage() {
     return t("error_generic");
   }
 
-  async function handleConfirm(id: string) {
+  async function handleConfirmSubmit(id: string, paymentProofUrl: string) {
+    setConfirmError(null);
     try {
-      await confirm.mutateAsync(id);
+      await confirm.mutateAsync({ id, paymentProofUrl });
+      setConfirmingOrder(null);
       toast.success(t("orders_confirm"));
     } catch (e) {
-      toast.error(errorMessage(e));
+      setConfirmError(errorMessage(e));
     }
   }
 
@@ -148,15 +156,18 @@ export default function OrdersPage() {
     }
   }
 
-  async function handleRefund(id: string): Promise<boolean> {
-    if (!window.confirm(t("orders_refund_prompt"))) return false;
+  // No window.confirm: a refund needs a transfer receipt, not a yes/no, so
+  // both entry points hand off to RefundOrderModal the same way the detail
+  // view already hands off to ShipOrderModal. The modal also states plainly
+  // that money and stock are not returned automatically — see issue #72.
+  async function handleRefundSubmit(id: string, refundProofUrl: string) {
+    setRefundError(null);
     try {
-      await refund.mutateAsync(id);
+      await refund.mutateAsync({ id, refundProofUrl });
+      setRefundingOrder(null);
       toast.success(t("orders_refunded"));
-      return true;
     } catch (e) {
-      toast.error(errorMessage(e));
-      return false;
+      setRefundError(errorMessage(e));
     }
   }
 
@@ -234,7 +245,10 @@ export default function OrdersPage() {
                   className="cursor-pointer border-t transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
                 >
                   <td className="px-4 py-3 font-mono font-medium">{orderNumber(order)}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{buyerLabel(order)}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium">{buyerLabel(order)}</div>
+                    <div className="font-mono text-[10px] text-muted-foreground">{order.student_id}</div>
+                  </td>
                   <td className="px-4 py-3 max-w-xs truncate">{productSummary(order)}</td>
                   <td className="px-4 py-3">{formatRupiah(order.total)}</td>
                   <td className="px-4 py-3">
@@ -252,7 +266,10 @@ export default function OrdersPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleConfirm(order.id)}
+                          onClick={() => {
+                            setConfirmError(null);
+                            setConfirmingOrder(order);
+                          }}
                           disabled={confirm.isPending}
                         >
                           {t("action_confirm")}
@@ -285,7 +302,10 @@ export default function OrdersPage() {
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => handleRefund(order.id)}
+                          onClick={() => {
+                            setRefundError(null);
+                            setRefundingOrder(order);
+                          }}
                           disabled={refund.isPending}
                         >
                           {t("action_refund")}
@@ -332,15 +352,47 @@ export default function OrdersPage() {
         }
         onRefund={
           detailOrder && actionAllowed(detailOrder.status, "refund")
-            ? async () => {
-                // detailOrder is a snapshot, so it cannot show the new status —
-                // close rather than leave a stale badge on screen.
-                if (await handleRefund(detailOrder.id)) setDetailOrder(null);
+            ? () => {
+                // Same hand-off as onShip above: detailOrder is a snapshot that
+                // could not show the new status anyway, and the refund cannot
+                // proceed until a transfer receipt has been uploaded.
+                const order = detailOrder;
+                setDetailOrder(null);
+                setRefundError(null);
+                setRefundingOrder(order);
               }
             : undefined
         }
         isRefunding={refund.isPending}
       />
+
+      {confirmingOrder && (
+        <ConfirmOrderModal
+          open
+          onOpenChange={() => {
+            setConfirmingOrder(null);
+            setConfirmError(null);
+          }}
+          orderNumber={orderNumber(confirmingOrder)}
+          onConfirm={(paymentProofUrl) => handleConfirmSubmit(confirmingOrder.id, paymentProofUrl)}
+          isPending={confirm.isPending}
+          error={confirmError}
+        />
+      )}
+
+      {refundingOrder && (
+        <RefundOrderModal
+          open
+          onOpenChange={() => {
+            setRefundingOrder(null);
+            setRefundError(null);
+          }}
+          orderNumber={orderNumber(refundingOrder)}
+          onRefund={(refundProofUrl) => handleRefundSubmit(refundingOrder.id, refundProofUrl)}
+          isPending={refund.isPending}
+          error={refundError}
+        />
+      )}
 
       {shippingOrder && (
         <ShipOrderModal

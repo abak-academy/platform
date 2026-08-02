@@ -1,21 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export interface PromoInputProps {
   onValidate: (code: string) => void;
+  onClear: () => void;
   isValidating?: boolean;
+  // Applied state and the discount amount both come from the order, not from
+  // the validate call — the order is what the buyer is actually charged.
+  applied?: boolean;
   discount?: number;
-  finalTotal?: number;
   error?: string;
+  // Set by the parent when a listed promo (FR-14) is picked, so the buyer
+  // sees the code land in the box before it applies. Not a controlled value —
+  // the buyer can still overtype it, this just seeds the field.
+  selectedCode?: string;
 }
 
-export function PromoInput({ onValidate, isValidating, discount, finalTotal, error }: PromoInputProps) {
+export function PromoInput({ onValidate, onClear, isValidating, applied, discount, error, selectedCode }: PromoInputProps) {
   const [code, setCode] = useState("");
-  const applied = typeof discount === "number" && discount > 0;
+
+  useEffect(() => {
+    if (selectedCode) setCode(selectedCode);
+  }, [selectedCode]);
 
   return (
     <div className="mt-4">
@@ -53,7 +63,13 @@ export function PromoInput({ onValidate, isValidating, discount, finalTotal, err
         <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-success">
           <CheckCircle2 className="size-3.5" />
           Promo diterapkan −{discount && discount > 0 ? discount.toLocaleString("id-ID") : 0}
-          {typeof finalTotal === "number" && <span className="font-normal text-ink-500">· total {finalTotal.toLocaleString("id-ID")}</span>}
+          <button
+            type="button"
+            onClick={onClear}
+            className="font-normal text-ink-500 underline hover:text-ink-700"
+          >
+            Hapus
+          </button>
         </div>
       )}
       {!applied && error && <p className="mt-2 text-xs font-medium text-danger">{error}</p>}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -718,7 +719,13 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		ShippingAddress: patch.ShippingAddress,
 		SelectedCourier: order.SelectedCourier,
 		SelectedService: order.SelectedService,
-		IsEstimate:      order.IsEstimate,
+		// Seeded for the same reason as PromoCodeID: the UPDATE writes these
+		// columns unconditionally, so a patch that does not mention the courier
+		// would null them and AdminShipOrder would then fail on ErrNoCarrierCode.
+		CourierCode:        order.CourierCode,
+		CourierServiceCode: order.CourierServiceCode,
+		IsEstimate:         order.IsEstimate,
+		PromoCodeID:        order.PromoCodeID,
 		Discount:        order.Discount,
 		ShippingCost:    order.ShippingCost,
 		Total:           order.Total,
@@ -775,7 +782,16 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		}
 	}
 
-	if patch.PromoCode != nil && *patch.PromoCode != "" {
+	// JSON null and an absent key are indistinguishable once decoded into *string,
+	// so both are treated as "keep" here; "" is the only remove sentinel.
+	switch {
+	case patch.PromoCode == nil:
+		repoPatch.Total = order.Subtotal - repoPatch.Discount + repoPatch.ShippingCost
+	case *patch.PromoCode == "":
+		repoPatch.PromoCodeID = nil
+		repoPatch.Discount = 0
+		repoPatch.Total = order.Subtotal - repoPatch.Discount + repoPatch.ShippingCost
+	default:
 		validation, err := s.ValidatePromo(ctx, *patch.PromoCode, order.Subtotal, repoPatch.ShippingCost)
 		if err != nil {
 			return err
@@ -783,8 +799,6 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		repoPatch.PromoCodeID = &validation.PromoID
 		repoPatch.Discount = validation.Discount
 		repoPatch.Total = validation.Total
-	} else {
-		repoPatch.Total = order.Subtotal - repoPatch.Discount + repoPatch.ShippingCost
 	}
 
 	return s.storeRepo.PatchCart(ctx, oID, repoPatch)
@@ -904,8 +918,18 @@ type MidtransNotification struct {
 	GrossAmount       string `json:"gross_amount"`
 	StatusCode        string `json:"status_code"`
 	SignatureKey      string `json:"signature_key"`
+	PaymentType       string `json:"payment_type"`
 }
 
+// Checkout deliberately commits the pre-gateway transaction (order status,
+// promo redemption) before calling s.payment.CreatePayment. CreatePayment is
+// a network call to an external gateway and must not hold a DB transaction
+// open for its duration; keeping it outside the tx also means a gateway
+// failure never rolls back work that already happened (e.g. stock deduction).
+// The cost of the split is that a gateway failure leaves a durable
+// payment_pending order whose promo has already been counted — RetryPayment
+// is the documented recovery path for that order, and it does not re-count
+// the promo, so the redemption is not lost or duplicated on retry.
 func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
@@ -942,6 +966,16 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	for _, item := range order.Items {
 		if isPhysicalType(item.ProductType) && order.ShippingCost <= 0 {
 			return CheckoutResult{}, ErrShippingRequired
+		}
+	}
+
+	// Re-validate qty at checkout: a row that predates the AddItem/UpdateItemQty
+	// guards can still carry qty > 1 on a digital line, and the qty stepper is
+	// hidden for digital items so the buyer cannot self-correct it. Catching it
+	// here — before BeginTx — stops the wrong price from ever reaching payment.
+	for _, item := range order.Items {
+		if err := ValidateItemQty(item.ProductType, item.Qty); err != nil {
+			return CheckoutResult{}, err
 		}
 	}
 
@@ -1026,6 +1060,18 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{Free: true}, nil
 	}
 
+	// Promo usage settles in the same pre-gateway transaction as the order,
+	// same as the zero-total path above: counting it after CreatePayment
+	// returns would lose the increment on every gateway failure, and an
+	// under-counted promo lets max_uses admit redemptions past its limit.
+	// This means an abandoned or failed checkout still burns a redemption —
+	// accepted trade-off (over-counting a ceiling is the safe direction).
+	if order.PromoCodeID != nil {
+		if err := s.storeRepo.IncrementPromoUsesTx(ctx, tx, *order.PromoCodeID); err != nil {
+			return CheckoutResult{}, err
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return CheckoutResult{}, err
 	}
@@ -1039,12 +1085,6 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 
 	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.GatewayRef, paymentResp.ExpiresAt); err != nil {
 		return CheckoutResult{}, err
-	}
-
-	if order.PromoCodeID != nil {
-		if err := s.storeRepo.IncrementPromoUses(ctx, *order.PromoCodeID); err != nil {
-			return CheckoutResult{}, err
-		}
 	}
 
 	result := CheckoutResult{
@@ -1186,9 +1226,55 @@ func parseUUID(s string) (uuid.UUID, error) {
 
 // Admin order methods
 
+// fallbackStudentName is shown in admin views when an order's student row is
+// missing (e.g. a deleted account) so the row still renders instead of erroring.
+const fallbackStudentName = "Siswa tidak ditemukan"
+
+// attachStudentNames populates StudentName on every order via one batched call
+// to resolve, regardless of len(orders) — FR-35 requires this cost one query
+// for the whole page, not one per order. resolve is s.storeRepo.GetUserNamesByIDs
+// in production and a counting fake in tests.
+func attachStudentNames(ctx context.Context, orders []model.Order, resolve func(context.Context, []string) (map[string]string, error)) error {
+	if len(orders) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(orders))
+	ids := make([]string, 0, len(orders))
+	for _, o := range orders {
+		sid := o.StudentID.String()
+		if _, ok := seen[sid]; ok {
+			continue
+		}
+		seen[sid] = struct{}{}
+		ids = append(ids, sid)
+	}
+	names, err := resolve(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for i := range orders {
+		if name, ok := names[orders[i].StudentID.String()]; ok && name != "" {
+			orders[i].StudentName = name
+		} else {
+			orders[i].StudentName = fallbackStudentName
+		}
+	}
+	return nil
+}
+
+// AdminListOrders and AdminGetOrder are the only two places StudentName is
+// populated — the admin-facing paths. Student-facing paths (ListStudentOrders,
+// GetStudentOrder) leave it as the zero value.
 func (s *Service) AdminListOrders(ctx context.Context, filter repository.OrderFilter) ([]model.Order, string, error) {
 	filter.ExcludeCart = true
-	return s.storeRepo.ListOrders(ctx, filter)
+	orders, cursor, err := s.storeRepo.ListOrders(ctx, filter)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := attachStudentNames(ctx, orders, s.storeRepo.GetUserNamesByIDs); err != nil {
+		return nil, "", err
+	}
+	return orders, cursor, nil
 }
 
 func (s *Service) AdminGetOrder(ctx context.Context, orderID string) (model.Order, error) {
@@ -1196,10 +1282,89 @@ func (s *Service) AdminGetOrder(ctx context.Context, orderID string) (model.Orde
 	if err != nil {
 		return model.Order{}, err
 	}
-	return s.storeRepo.GetOrderByID(ctx, id)
+	order, err := s.storeRepo.GetOrderByID(ctx, id)
+	if err != nil {
+		return model.Order{}, err
+	}
+	orders := []model.Order{order}
+	if err := attachStudentNames(ctx, orders, s.storeRepo.GetUserNamesByIDs); err != nil {
+		return model.Order{}, err
+	}
+	return orders[0], nil
 }
 
-func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key string) error {
+// paymentProofURLTTL bounds how long a minted payment-proof link stays usable.
+// A proof is a bank transfer receipt, so unlike an avatar it is never served
+// from the unauthenticated /files/* proxy — the link is minted per request for
+// an already-authorised admin and expires, which is what makes a leaked URL
+// survivable.
+const paymentProofURLTTL = 15 * time.Minute
+
+// PresignPaymentProofURL mints a short-lived read URL for an order's payment
+// proof. The caller is gated on orders:write at the route; this resolves the
+// key from the order rather than trusting one supplied by the client, so an
+// admin cannot use it to read an arbitrary object out of the bucket.
+func (s *Service) PresignPaymentProofURL(ctx context.Context, orderID string) (string, error) {
+	id, err := parseUUID(orderID)
+	if err != nil {
+		return "", err
+	}
+	order, err := s.storeRepo.GetOrderByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if order.PaymentProofURL == nil || *order.PaymentProofURL == "" {
+		return "", ErrUploadNotFound
+	}
+	return s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *order.PaymentProofURL, paymentProofURLTTL)
+}
+
+// PresignRefundProofURL is the refund-side twin of PresignPaymentProofURL. Kept
+// as a separate method rather than taking a caller-supplied kind, so the key
+// always comes from a fixed field on the order and the endpoint can never be
+// turned into an arbitrary-object reader.
+func (s *Service) PresignRefundProofURL(ctx context.Context, orderID string) (string, error) {
+	id, err := parseUUID(orderID)
+	if err != nil {
+		return "", err
+	}
+	order, err := s.storeRepo.GetOrderByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if order.RefundProofURL == nil || *order.RefundProofURL == "" {
+		return "", ErrUploadNotFound
+	}
+	return s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *order.RefundProofURL, paymentProofURLTTL)
+}
+
+// markOrderPaidTx flips order to "paid", emits the OrderPaid outbox event,
+// and writes an audit row, all inside tx. AdminConfirmOrder and
+// AdminReconcileOrder are the only two callers — invariant 5 requires exactly
+// one fulfilment path regardless of how an order gets paid.
+func (s *Service) markOrderPaidTx(ctx context.Context, tx pgx.Tx, order model.Order, actorID *string, action string, meta map[string]any) error {
+	if err := s.storeRepo.SetOrderStatus(ctx, tx, order.ID, "paid", ""); err != nil {
+		return err
+	}
+
+	payload := OrderPaidPayload{OrderID: order.ID.String()}
+	for _, item := range order.Items {
+		payload.Items = append(payload.Items, OrderPaidPayloadItem{
+			ProductID:   item.ProductID.String(),
+			ProductType: item.ProductType,
+			Qty:         item.Qty,
+		})
+	}
+	// The aggregate type is explicit as of #69 — orders are no longer the only
+	// thing the outbox carries.
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "order", order.ID, "OrderPaid", payload); err != nil {
+		return err
+	}
+
+	return s.storeRepo.InsertAuditLogMeta(ctx, tx, actorID, "order", order.ID.String(), action, meta)
+}
+
+func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key, paymentProofURL string) error {
 	id, err := parseUUID(orderID)
 	if err != nil {
 		return err
@@ -1209,6 +1374,14 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key s
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
 		return nil
+	}
+
+	// The handler validates the shape of the key; only storage can answer
+	// whether it names a real upload. Without this an authorised caller could
+	// invent a well-formed key and mark an order paid with no evidence behind
+	// it, which is exactly what invariant 6 exists to prevent.
+	if err := s.requireStoredObject(ctx, paymentProofURL); err != nil {
+		return err
 	}
 
 	order, err := s.storeRepo.GetOrderByID(ctx, id)
@@ -1225,28 +1398,21 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key s
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.SetOrderStatus(ctx, tx, id, "paid", ""); err != nil {
+	// Manual settlement — a human asserting payment arrived, with proof, without
+	// gateway confirmation. The proof write, status flip and audit row all share
+	// this tx (invariant 6): a confirmed order can never exist without its
+	// evidence, so markOrderPaidTx's audit insert failing must roll back the
+	// proof write too.
+	if err := s.storeRepo.SetOrderManualPayment(ctx, tx, order.ID, paymentProofURL); err != nil {
 		return err
 	}
-
-	payload := OrderPaidPayload{OrderID: id.String()}
-	for _, item := range order.Items {
-		payload.Items = append(payload.Items, OrderPaidPayloadItem{
-			ProductID:   item.ProductID.String(),
-			ProductType: item.ProductType,
-			Qty:         item.Qty,
-		})
-	}
-
-	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "order", id, "OrderPaid", payload); err != nil {
-		return err
-	}
-
-	// Manual settlement — a human asserting payment arrived without gateway proof.
-	// Record who/when in the same tx as the status flip so they commit atomically.
+	// The OrderPaid insert that used to sit here moved into markOrderPaidTx
+	// below, which reconcile now shares (invariant 5: exactly one fulfilment
+	// path). Re-adding it here would emit the event twice.
 	actor := &actorID
-	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, actor, "order", id.String(), "order.confirm", map[string]any{
-		"manual": true,
+	if err := s.markOrderPaidTx(ctx, tx, order, actor, "order.confirm", map[string]any{
+		"manual":            true,
+		"payment_proof_url": paymentProofURL,
 	}); err != nil {
 		return err
 	}
@@ -1333,9 +1499,32 @@ func (s *Service) AdminCompleteOrder(ctx context.Context, orderID string) error 
 	return nil
 }
 
-func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID string) error {
+// refundableStatuses bounds AdminRefundOrder. The admin UI already hides the
+// action elsewhere, but the API enforced nothing — a direct call could "refund"
+// a cart, an unpaid order, or one already refunded, each of which revokes
+// enrollments and clears tracking for money that was never taken.
+var refundableStatuses = map[string]bool{
+	"paid":       true,
+	"processing": true,
+	"shipped":    true,
+	"completed":  true,
+}
+
+// AdminRefundOrder records a refund that a human performed by bank transfer.
+// It does NOT move money: PaymentClient has no refund method, so nothing
+// reaches the gateway, stock is not restored and no OrderRefunded event is
+// emitted — see issue #72 for the real flow. What this does guarantee is that
+// the record is honest: the status only moves from a status where money was
+// actually taken, and the transfer receipt is stored with it.
+func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID, refundProofURL string) error {
 	id, err := parseUUID(orderID)
 	if err != nil {
+		return err
+	}
+
+	// Same reasoning as the confirm path: only storage can say whether a
+	// well-formed key names a real upload.
+	if err := s.requireStoredObject(ctx, refundProofURL); err != nil {
 		return err
 	}
 
@@ -1345,6 +1534,9 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID string)
 	}
 	if order.ID.String() == "" {
 		return ErrOrderNotFound
+	}
+	if !refundableStatuses[order.Status] {
+		return ErrOrderNotRefundable
 	}
 
 	tx, err := s.storeRepo.BeginTx(ctx)
@@ -1363,10 +1555,14 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID string)
 	if err := s.storeRepo.ClearOrderTracking(ctx, tx, id); err != nil {
 		return err
 	}
+	if err := s.storeRepo.SetOrderRefundProof(ctx, tx, id, refundProofURL); err != nil {
+		return err
+	}
 
 	actor := &actorID
 	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, actor, "order", id.String(), "order.refund", map[string]any{
-		"manual": true,
+		"manual":           true,
+		"refund_proof_url": refundProofURL,
 	}); err != nil {
 		return err
 	}
@@ -1378,7 +1574,7 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID string)
 	return nil
 }
 
-func (s *Service) AdminReconcileOrder(ctx context.Context, orderID, key string) error {
+func (s *Service) AdminReconcileOrder(ctx context.Context, actorID, orderID, key string) error {
 	id, err := parseUUID(orderID)
 	if err != nil {
 		return err
@@ -1390,13 +1586,40 @@ func (s *Service) AdminReconcileOrder(ctx context.Context, orderID, key string) 
 		return nil
 	}
 
-	status, err := s.payment.QueryStatus(ctx, "")
+	order, err := s.storeRepo.GetOrderByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if order.ID.String() == "" {
+		return ErrOrderNotFound
+	}
+	// Invariant 7: querying the gateway without a gateway_ref asks about no
+	// particular order, so its answer is never grounds to flip this order to
+	// paid. Refuse before the gateway is ever called.
+	if order.GatewayRef == "" {
+		return ErrMissingGatewayRef
+	}
+
+	status, err := s.payment.QueryStatus(ctx, order.GatewayRef)
 	if err != nil {
 		return err
 	}
 
 	if status.Paid {
-		if err := s.storeRepo.SetOrderStatus(ctx, nil, id, "paid", ""); err != nil {
+		tx, err := s.storeRepo.BeginTx(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+
+		actor := &actorID
+		if err := s.markOrderPaidTx(ctx, tx, order, actor, "order.reconcile", map[string]any{
+			"gateway_ref": order.GatewayRef,
+		}); err != nil {
+			return err
+		}
+
+		if err := tx.Commit(ctx); err != nil {
 			return err
 		}
 	}
@@ -1418,12 +1641,18 @@ func (s *Service) AdminCreatePromoCode(ctx context.Context, p model.PromoCode) (
 	return s.storeRepo.CreatePromoCode(ctx, p)
 }
 
-func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time) error {
+func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time, isPublic bool) error {
 	pID, err := parseUUID(id)
 	if err != nil {
 		return err
 	}
-	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt)
+	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt, isPublic)
+}
+
+// ListActivePublicPromos returns is_public promo codes that are still valid
+// per ValidatePromo's rules, for display to authenticated students. FR-9/FR-10.
+func (s *Service) ListActivePublicPromos(ctx context.Context) ([]model.PromoCode, error) {
+	return s.storeRepo.ListActivePublicPromos(ctx)
 }
 
 func (s *Service) AdminDeletePromoCode(ctx context.Context, id string) error {
@@ -1498,6 +1727,14 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 
 	if err := s.storeRepo.SetOrderStatus(ctx, tx, orderID, "paid", ""); err != nil {
 		return err
+	}
+
+	// FR-29: only write payment_method when the gateway names one — an absent
+	// payment_type must never blank out a value already on the row.
+	if notif.PaymentType != "" {
+		if err := s.storeRepo.SetOrderPaymentMethod(ctx, tx, orderID, notif.PaymentType); err != nil {
+			return err
+		}
 	}
 
 	outboxPayload := OrderPaidPayload{OrderID: orderID.String()}

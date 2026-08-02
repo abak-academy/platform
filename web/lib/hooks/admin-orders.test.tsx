@@ -83,7 +83,7 @@ describe("admin-orders hooks", () => {
     expect(result.current.data).toEqual(sampleOrder);
   });
 
-  it("useConfirmOrder posts to /admin/orders/:id/confirm with idempotency key", async () => {
+  it("useConfirmOrder posts to /admin/orders/:id/confirm with idempotency key and the proof key", async () => {
     mockAuthFetch.mockResolvedValueOnce({ message: "order confirmed" });
 
     const { wrapper, queryClient } = wrapperFactory();
@@ -91,7 +91,7 @@ describe("admin-orders hooks", () => {
     const { result } = renderHook(() => useConfirmOrder(), { wrapper });
 
     await act(async () => {
-      await result.current.mutateAsync("o1");
+      await result.current.mutateAsync({ id: "o1", paymentProofUrl: "payment_proof/admin1/proof.jpg" });
     });
 
     expect(mockAuthFetch).toHaveBeenCalledWith(
@@ -99,6 +99,7 @@ describe("admin-orders hooks", () => {
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ "Idempotency-Key": expect.any(String) }),
+        body: JSON.stringify({ payment_proof_url: "payment_proof/admin1/proof.jpg" }),
       })
     );
     expect(spy).toHaveBeenCalledWith({ queryKey: adminOrdersKeys.all });
@@ -152,7 +153,9 @@ describe("admin-orders hooks", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: adminOrdersKeys.all });
   });
 
-  it("useRefundOrder posts to /admin/orders/:id/refund", async () => {
+  // The refund is a manual bank transfer, so the receipt travels with the
+  // request — the backend rejects the call without one.
+  it("useRefundOrder posts to /admin/orders/:id/refund with the transfer receipt", async () => {
     mockAuthFetch.mockResolvedValueOnce({ message: "order refunded" });
 
     const { wrapper, queryClient } = wrapperFactory();
@@ -160,10 +163,13 @@ describe("admin-orders hooks", () => {
     const { result } = renderHook(() => useRefundOrder(), { wrapper });
 
     await act(async () => {
-      await result.current.mutateAsync("o1");
+      await result.current.mutateAsync({ id: "o1", refundProofUrl: "refund_proof/admin-1/trf.jpg" });
     });
 
-    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders/o1/refund", { method: "POST" });
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders/o1/refund", {
+      method: "POST",
+      body: JSON.stringify({ refund_proof_url: "refund_proof/admin-1/trf.jpg" }),
+    });
     expect(spy).toHaveBeenCalledWith({ queryKey: adminOrdersKeys.all });
   });
 

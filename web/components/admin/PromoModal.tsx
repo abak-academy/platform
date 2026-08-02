@@ -45,6 +45,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
   const [minOrderAmount, setMinOrderAmount] = useState("");
   const [maxUses, setMaxUses] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [isPublic, setIsPublic] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -61,6 +62,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       setMinOrderAmount(promo.min_order_amount != null ? String(promo.min_order_amount) : "");
       setMaxUses(promo.max_uses != null ? String(promo.max_uses) : "");
       setExpiresAt(dateInputValue(promo.expires_at));
+      setIsPublic(Boolean(promo.is_public));
     } else {
       setCode("");
       setDiscountType("percent");
@@ -69,6 +71,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       setMinOrderAmount("");
       setMaxUses("");
       setExpiresAt("");
+      setIsPublic(false);
     }
   }, [open, promo]);
 
@@ -83,9 +86,12 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
     if (!canSubmit || isPending) return;
 
     if (isEdit) {
+      // is_public is a plain bool on the wire (not a pointer), so an omitted
+      // key would reset it to false server-side — it must always be sent.
       const input: AdminUpdatePromoCodeInput = {
         ...(maxUses !== "" ? { max_uses: Number(maxUses) } : {}),
         ...(expiresAt ? { expires_at: expiryIso(expiresAt) } : {}),
+        is_public: isPublic,
       };
       onSubmit(input);
       return;
@@ -96,6 +102,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       ...(maxUses !== "" ? { max_uses: Number(maxUses) } : {}),
       ...(minOrderAmount !== "" ? { min_order_amount: Number(minOrderAmount) } : {}),
       ...(expiresAt ? { expires_at: expiryIso(expiresAt) } : {}),
+      is_public: isPublic,
     };
 
     if (discountType === "percent") {
@@ -220,6 +227,17 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
                 />
               </div>
             </div>
+
+            <label htmlFor="promo-is-public" className="flex items-center gap-2 text-sm text-ink-900">
+              <input
+                id="promo-is-public"
+                type="checkbox"
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+                disabled={isPending}
+              />
+              Tampilkan di checkout
+            </label>
           </div>
 
           <DialogFooter>

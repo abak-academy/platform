@@ -371,6 +371,55 @@ func TestGeneratePresignUploadURL_KindProduct_AdminAllowed(t *testing.T) {
 	}
 }
 
+// TestGeneratePresignUploadURL_KindPaymentProof_StudentForbidden covers half
+// of FR-32: a role without orders:write (a plain student) must get 403 for
+// kind=payment_proof, the same way kind=product is gated on uploads:write.
+func TestGeneratePresignUploadURL_KindPaymentProof_StudentForbidden(t *testing.T) {
+	env := newStorageBackedTestEnv(t)
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	uploads := v1.Group("/uploads")
+	uploads.Use(handler.JWTMiddleware(env.svc, env.signer))
+	uploads.GET("/presign", h.GeneratePresignUploadURL)
+
+	token := loginForPresignTest(t, env, "kind-paymentproof-student")
+
+	rec := getWithToken(t, env.e, "/api/v1/uploads/presign?filename=proof.jpg&kind=payment_proof", token)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403 for student minting payment_proof upload, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if _, ok := resp["key"]; ok {
+		t.Errorf("want no key for forbidden payment_proof upload, got %v", resp)
+	}
+}
+
+// TestGeneratePresignUploadURL_KindPaymentProof_AdminStoreAllowed covers the
+// other half of FR-32: admin_store holds orders:* (which covers orders:write)
+// and must get a presigned key under the payment_proof/ prefix.
+func TestGeneratePresignUploadURL_KindPaymentProof_AdminStoreAllowed(t *testing.T) {
+	env := newStorageBackedTestEnv(t)
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	uploads := v1.Group("/uploads")
+	uploads.Use(handler.JWTMiddleware(env.svc, env.signer))
+	uploads.GET("/presign", h.GeneratePresignUploadURL)
+
+	token := loginForPresignTest(t, env, "kind-paymentproof-admin", service.RoleAdminStore)
+
+	rec := getWithToken(t, env.e, "/api/v1/uploads/presign?filename=proof.jpg&kind=payment_proof", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for admin_store, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	key, _ := resp["key"].(string)
+	if !strings.HasPrefix(key, "payment_proof/") {
+		t.Errorf("want key under payment_proof/, got %q", key)
+	}
+}
+
 // loginForPresignTest seeds a user (student by default; pass a role to override)
 // and logs in, returning an access token.
 func loginForPresignTest(t *testing.T, env *testEnv, idSuffix string, role ...string) string {

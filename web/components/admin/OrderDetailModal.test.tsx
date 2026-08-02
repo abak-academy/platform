@@ -1,7 +1,18 @@
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { OrderDetailModal } from "./OrderDetailModal";
+
+// The proof link mints its short-lived URL through a react-query mutation
+// rather than rendering a /files/* href, so the modal now needs a client.
+function render(ui: ReactElement) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return rtlRender(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
 
 const physicalOrder = {
   id: "o1",
@@ -127,5 +138,39 @@ describe("OrderDetailModal", () => {
     const noEvents = { ...physicalOrder, tracking_number: "JP1234567", shipment_events: [] };
     render(<OrderDetailModal order={noEvents} onOpenChange={vi.fn()} />);
     expect(screen.queryByText("Riwayat Pengiriman")).toBeNull();
+  });
+
+  // FR-33: buyer name is primary, student_id stays visible as secondary detail
+  // — no truncated-UUID label ("...<last12chars>") anywhere in the output.
+  it("renders the buyer's name with student_id as secondary detail, never a truncated-UUID label", () => {
+    const withName = { ...physicalOrder, student_id: "11111111-2222-3333-4444-555555555555", student_name: "Rina Ujian" };
+    render(<OrderDetailModal order={withName} onOpenChange={vi.fn()} />);
+    expect(screen.getByText("Rina Ujian")).toBeTruthy();
+    expect(screen.getByText("11111111-2222-3333-4444-555555555555")).toBeTruthy();
+    expect(screen.queryByText(/^\.\.\./)).toBeNull();
+  });
+
+  // FR-31: an order manually confirmed shows the mark and the proof opens from
+  // the detail view — but never as a bare /files/* href. The object key must
+  // not be rendered into the page at all; the link is minted on demand, so the
+  // control is a button and the raw key never appears in the DOM.
+  it("shows the Dikonfirmasi manual mark and opens the proof without exposing the object key", () => {
+    const manual = {
+      ...physicalOrder,
+      payment_method: "manual",
+      payment_proof_url: "payment_proof/admin-1/proof.jpg",
+    };
+    const { container } = render(<OrderDetailModal order={manual} onOpenChange={vi.fn()} />);
+    expect(screen.getByText("Dikonfirmasi manual")).toBeTruthy();
+
+    expect(screen.getByRole("button", { name: "Lihat bukti" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Lihat bukti" })).toBeNull();
+    expect(container.innerHTML).not.toContain("payment_proof/admin-1/proof.jpg");
+  });
+
+  it("hides the manual-confirm mark for a non-manual payment_method", () => {
+    const gateway = { ...physicalOrder, payment_method: "gopay" };
+    render(<OrderDetailModal order={gateway} onOpenChange={vi.fn()} />);
+    expect(screen.queryByText("Dikonfirmasi manual")).toBeNull();
   });
 });

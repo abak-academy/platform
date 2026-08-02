@@ -199,3 +199,32 @@ and have no better owner.
 - Refund semantics per product type — undefined since the API review (open item #5) and still
   undefined. Not opened here.
 - **F-3** and **F-4** are recorded in §6 but are **not** part of this epic's acceptance.
+
+## Verification log 2026-08-01
+
+Driven in a real browser against the shared local stack (dev `api-1` + `web-1` Docker containers on
+this branch, port 3000/8080). `web-1`'s image was built 2026-08-01 11:52 WIB from this branch and was
+confirmed (via `docker exec … grep` for "Spesifikasi Produk" / "Cek Ongkir" / "dibeli 1×" inside
+`/app/.next`) to already contain the strings under test, so it was reused in place of `npm run dev` —
+stopping the shared `web-1` container to free port 3000 was blocked by the session's own permission
+guard (shared infra, another implementer's session depends on it) and was not forced. No `web/.next`
+was created and no docker container was touched. Logged in as a freshly-registered throwaway student
+(`sf-verify-e5-task5@example.test`, synthetic — not real PII) since no student fixture existed;
+OTP read from `docker logs akademi-bimbel-api-1` (`[noop-otp]` line). Test cart items removed after
+each check. Four other implementers were committing to this same branch/worktree throughout the
+session, so `HEAD` moved during the run (observed range `0c6d441`..`cf263dc`); shas below are the
+commit at the moment each check was performed.
+
+| # | Surface | URL | Viewport | Commit | Verdict |
+|---|---|---|---|---|---|
+| 1 | FB-15 (address block vs Cek Ongkir) | `/cart` | 1280×720 desktop; ~585×1267 and ~462×844 (mobile-preset / 390px requested — the Browser-pane tool reported `window.innerWidth` as 585/462 instead, a tool-side DPR quirk, noted so the number isn't taken as exact) | `0c6d441`–`cf263dc` | **Not reproduced.** Checked both the open (unsaved) address-edit form and the collapsed saved-address summary. Zero overlaps found between any visible `<label>` and any visible `<button>` (`getBoundingClientRect()` intersection test run over every label/button pair at each width) — labels/inputs sit at a stable `left:129` with no button ever entering that rectangle. Closes as **F-5 (no CD)** per the brief's pre-agreed disposition: production runs `4d69591`, current `main` already carries PR #54's fix. |
+| 2 | `/cart` physical | `/cart` | 1280×720 | `cf263dc` | **Confirmed.** Saved address renders collapsed with **Ubah**; courier list renders under "Pilihan Pengiriman". Selected courier (Tiki · Same Day Service, Rp60.000) survived (a) reopening the address edit form without saving, and (b) a full page reload — Ringkasan Pesanan still showed Ongkos kirim Rp60.000 / Total Rp70.000 after reload, confirming the per-order override is server-persisted, not just client state. Flat-rate fallback forced with an unroutable postcode (`99999`): banner "Kami tidak menemukan tarif kurir…" appeared and the fallback option rendered as "Ongkir Flat · Standar" carrying the badge **"Estimasi — bukan tarif kurir"** — the estimate badge is present. |
+| 3 | `/cart` digital | `/cart`, `/catalog/af0d4721-cebc-425d-9aff-516b9cd2297c` | 1280×720 | `cf263dc` | **Confirmed.** The digital item ("Tryout TIK", an exam product) shows no qty stepper in the cart — only a delete icon — and "Produk digital dibeli 1× per akun." renders inline. Same text/no-stepper behavior also holds on the product detail page itself. |
+| 4 | `/catalog` | `/catalog` | 1280×720 (also tried 1280×450 and mobile widths to force scroll) | `cf263dc` | **Partially confirmed / data-limited.** The category rail's computed `position` is `sticky` (verified via `getComputedStyle`, active above the Tailwind `md` breakpoint at this viewport) — but visual scroll-independence could not be confirmed because the local catalog has only 4 products total (3 Buku + 1 Ujian), not enough content to scroll the grid past the rail at any width tried. **Merchandise and Medali tabs both list zero products** — confirmed as a data gap, not a display bug: `GET /api/v1/products?type=merchandise` and `?type=medal` both return `{"data":[],"next_cursor":""}` from the API itself. The "Merchandise and Medali tabs list products" acceptance bullet is **not confirmable in this environment** without seeding products of those types. |
+| 5 | `/catalog/[id]` | `/catalog/065c269a-cd92-4dc0-a609-8d4b0943a731`, `.../8b6abc7b-b1cc-4652-988a-e41e6117e062`, `.../9e5f440f-9d17-45eb-9aee-9a87e1e5963c` | 1280×720 | `cf263dc` | **Confirmed.** "Spesifikasi Produk" renders on all 3 book products checked, with 6, 6, and 5 populated rows respectively (field sets differ per product — e.g. one has no "Jumlah Halaman" row, another no "Jenis Edisi" row). No row with a blank value was observed on any of the three; rows are conditionally omitted, not rendered empty. |
+
+**Incidental finding, out of scope for this task, not fixed:** the phone number typed into the `/cart`
+shipping address form is silently **not** persisted when the address is saved as the default
+(`GET /students/profile` returned `"phone": null"` after save, while name, address, province, city,
+kecamatan, and postal code all round-tripped correctly). Distinct from FB-15 — flagging for a future
+task, not filed as a fix here.

@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShoppingCart, X } from "lucide-react";
-import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart } from "@/lib/hooks/orders";
+import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart, useActivePromoCodes } from "@/lib/hooks/orders";
 import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
@@ -30,6 +30,9 @@ export default function CartPage() {
   const shippingRates = useShippingRates();
   const patchCart = usePatchCart();
   const updateProfile = useUpdateProfile();
+  // FR-14: additive next to the manual input. isError/data undefined just
+  // means the list renders nothing — manual entry must keep working either way.
+  const { data: activePromos } = useActivePromoCodes();
 
   const [shippingAddress, setShippingAddress] = useState<ShippingAddressFormState>({
     penerima: "",
@@ -41,6 +44,8 @@ export default function CartPage() {
     kode_pos: "",
   });
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
+  const [promoError, setPromoError] = useState<string | undefined>(undefined);
+  const [selectedPromoCode, setSelectedPromoCode] = useState<string | undefined>(undefined);
   // The form closes when the buyer closes it, never because it looks full.
   // Deriving this from "every field is non-empty" swapped the form out on the
   // first character of the last field — which is how a one-character postcode
@@ -72,6 +77,9 @@ export default function CartPage() {
   // Saving is what closes the form. The address goes onto the order here rather
   // than riding along with the courier choice, so abandoning the cart before
   // picking one no longer throws the address away.
+  //
+  // Deliberately no promo_code here (FR-5): the promo is attached by its own
+  // patch when the buyer presses "Pakai", not re-sent from every cart mutation.
   const handleSaveAddress = useCallback(
     (saveAsPrimary: boolean) => {
       if (!cart) return;
@@ -101,6 +109,7 @@ export default function CartPage() {
       if (saveAsPrimary) {
         updateProfile.mutate({
           address: shippingAddress.alamat,
+          phone: shippingAddress.telepon,
           provinsi_id: shippingAddress.provinsi_id,
           kota_id: shippingAddress.kota_id,
           kecamatan_id: shippingAddress.kecamatan_id,
@@ -128,6 +137,12 @@ export default function CartPage() {
   // The rate and the note are stored by the same PATCH, so both have to be sent
   // whichever one the buyer changed — sending only the note would clear the
   // courier the backend already has.
+  //
+  // Deliberately no promo_code here either (FR-5): this fires on every courier
+  // click, and re-sending the code would re-run ValidatePromo each time — a
+  // promo that becomes exhausted between apply and checkout would then block
+  // courier selection entirely. Omitting it is safe because the backend keeps
+  // whatever promo the order already carries when the key is absent.
   const persistShipping = useCallback(
     (rate: { courier: string; service: string; price: number }, note: string) => {
       if (!cart) return;
@@ -173,6 +188,60 @@ export default function CartPage() {
   const handleNoteBlur = useCallback(() => {
     if (selectedRate) persistShipping(selectedRate, courierNote);
   }, [selectedRate, courierNote, persistShipping]);
+
+  // The dedicated promo patch (FR-5): client-side validation first, then the
+  // code is only attached to the order once that succeeds. The displayed
+  // discount always comes back from cart.discount after invalidation, never
+  // from this validation response.
+  const handleApplyPromo = useCallback(
+    (code: string) => {
+      if (!cart) return;
+      setPromoError(undefined);
+      validatePromo.mutate(
+        { code, orderId: cart.id, subtotal },
+        {
+          onSuccess: () => {
+            patchCart.mutate(
+              {
+                orderId: cart.id,
+                promo_code: code,
+                province_id: shippingAddress.provinsi_id,
+                city_id: shippingAddress.kota_id,
+                district_id: shippingAddress.kecamatan_id,
+                kode_pos: shippingAddress.kode_pos || null,
+              },
+              { onError: () => setPromoError(t("cart_promo_invalid")) }
+            );
+          },
+          onError: () => setPromoError(t("cart_promo_invalid")),
+        }
+      );
+    },
+    [cart, subtotal, shippingAddress, validatePromo, patchCart, t]
+  );
+
+  // FR-14: selecting a listed promo goes through the exact same apply path as
+  // typing it in and pressing "Pakai" — no second apply mechanism.
+  const handleSelectListedPromo = useCallback(
+    (code: string) => {
+      setSelectedPromoCode(code);
+      handleApplyPromo(code);
+    },
+    [handleApplyPromo]
+  );
+
+  const handleClearPromo = useCallback(() => {
+    if (!cart) return;
+    setPromoError(undefined);
+    patchCart.mutate({
+      orderId: cart.id,
+      promo_code: "",
+      province_id: shippingAddress.provinsi_id,
+      city_id: shippingAddress.kota_id,
+      district_id: shippingAddress.kecamatan_id,
+      kode_pos: shippingAddress.kode_pos || null,
+    });
+  }, [cart, shippingAddress, patchCart]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
@@ -306,12 +375,31 @@ export default function CartPage() {
               <h2 className="font-serif text-lg font-semibold text-ink-900">{t("cart_order_summary")}</h2>
 
               <PromoInput
-                onValidate={(code) => validatePromo.mutate({ code, orderId: cart?.id, subtotal })}
+                onValidate={handleApplyPromo}
+                onClear={handleClearPromo}
                 isValidating={validatePromo.isPending}
-                discount={validatePromo.data?.discount}
-                finalTotal={validatePromo.data?.final_total}
-                error={validatePromo.isError ? t("cart_promo_invalid") : undefined}
+                applied={Boolean(cart?.promo_code_id)}
+                discount={discount}
+                error={promoError}
+                selectedCode={selectedPromoCode}
               />
+
+              {!cart?.promo_code_id && activePromos && activePromos.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {activePromos.map((promo) => (
+                    <button
+                      key={promo.code}
+                      type="button"
+                      onClick={() => handleSelectListedPromo(promo.code)}
+                      disabled={validatePromo.isPending || patchCart.isPending}
+                      className="rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-ink-700 transition-colors hover:border-brand-500 hover:text-brand-600 disabled:opacity-50"
+                    >
+                      {promo.code}
+                      {promo.discount_percent != null && ` -${promo.discount_percent}%`}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="mt-4 space-y-2 border-t border-line pt-4 text-sm">
                 <Row label={t("cart_subtotal")} value={formatRupiah(subtotal)} />

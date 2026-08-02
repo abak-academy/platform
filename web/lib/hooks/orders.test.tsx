@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useShippingRates, usePatchCart, ordersKeys } from "./orders";
-import type { CourierRate } from "@/lib/types";
+import { useShippingRates, usePatchCart, useActivePromoCodes, ordersKeys } from "./orders";
+import type { ActivePromoCode, CourierRate } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 
@@ -200,6 +200,49 @@ describe("orders hooks", () => {
           promo_code: "SAVE10",
         }),
       });
+    });
+  });
+
+  // FR-14. Fixture derived from the real GET /promo-codes/active response
+  // captured by TestListActivePublicPromos_Authenticated_TrimmedDTO in
+  // backend/internal/handler/promo_active_handler_test.go (Task 10, commit
+  // 97cc636) — see that test's "captured GET /promo-codes/active response"
+  // log line for the exact key set (code/discount_percent/discount_amount/
+  // min_order_amount/max_discount_amount/expires_at, no id/used_count/max_uses).
+  describe("useActivePromoCodes", () => {
+    const capturedResponse: { data: ActivePromoCode[] } = {
+      data: [
+        {
+          code: "TRIMMED-150405.000000",
+          discount_percent: 15,
+          discount_amount: null,
+          min_order_amount: 50000,
+          max_discount_amount: 20000,
+          expires_at: null,
+        },
+      ],
+    };
+
+    it("fetches GET /promo-codes/active and returns the trimmed list", async () => {
+      mockAuthFetch.mockResolvedValueOnce(capturedResponse);
+
+      const { wrapper } = wrapperFactory();
+      const { result } = renderHook(() => useActivePromoCodes(), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(mockAuthFetch).toHaveBeenCalledWith("/promo-codes/active");
+      expect(result.current.data).toEqual(capturedResponse.data);
+    });
+
+    it("returns an empty array when the response has no data", async () => {
+      mockAuthFetch.mockResolvedValueOnce({});
+
+      const { wrapper } = wrapperFactory();
+      const { result } = renderHook(() => useActivePromoCodes(), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.data).toEqual([]);
     });
   });
 });

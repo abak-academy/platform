@@ -59,14 +59,33 @@ export function useAdminOrder(id: string) {
 export function useConfirmOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: ({ id, paymentProofUrl }: { id: string; paymentProofUrl: string }) =>
       authFetch<{ message: string }>(`/admin/orders/${encodeURIComponent(id)}/confirm`, {
         method: "POST",
         headers: { "Idempotency-Key": idempotencyKey() },
+        body: JSON.stringify({ payment_proof_url: paymentProofUrl }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminOrdersKeys.all });
     },
+  });
+}
+
+// Payment proofs are not served by the unauthenticated /files/* proxy — a bank
+// transfer receipt must not be readable by anyone holding the key. The backend
+// mints a short-lived link per request for an already-authorised admin, so the
+// URL is fetched at click time rather than rendered into the page.
+export function useFetchPaymentProofURL() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      authFetch<{ url: string }>(`/admin/orders/${encodeURIComponent(id)}/payment-proof`),
+  });
+}
+
+export function useFetchRefundProofURL() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      authFetch<{ url: string }>(`/admin/orders/${encodeURIComponent(id)}/refund-proof`),
   });
 }
 
@@ -97,12 +116,15 @@ export function useShipOrderManual() {
   });
 }
 
+// The refund itself is a manual bank transfer — the backend rejects the call
+// without a receipt, so the key is required here rather than optional.
 export function useRefundOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: ({ id, refundProofUrl }: { id: string; refundProofUrl: string }) =>
       authFetch<{ message: string }>(`/admin/orders/${encodeURIComponent(id)}/refund`, {
         method: "POST",
+        body: JSON.stringify({ refund_proof_url: refundProofUrl }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminOrdersKeys.all });

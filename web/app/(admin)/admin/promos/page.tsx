@@ -14,6 +14,7 @@ import { useTranslation } from "@/lib/i18n";
 import { PromoModal } from "@/components/admin/PromoModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { formatRupiah } from "@/lib/format";
 import type { PromoCode, AdminCreatePromoCodeInput, AdminUpdatePromoCodeInput } from "@/lib/types";
 
@@ -132,6 +133,7 @@ export default function PromosPage() {
                 <th className="px-4 py-3 text-left font-medium">{t("th_discount")}</th>
                 <th className="px-4 py-3 text-left font-medium">{t("th_usage")}</th>
                 <th className="px-4 py-3 text-left font-medium">{t("th_expiry")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_public")}</th>
                 <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
               </tr>
             </thead>
@@ -142,6 +144,15 @@ export default function PromosPage() {
                   <td className="px-4 py-3">{discountLabel(promo)}</td>
                   <td className="px-4 py-3">{usageText(promo)}</td>
                   <td className="px-4 py-3">{expiryText(promo.expires_at)}</td>
+                  <td className="px-4 py-3">
+                    {promo.is_public ? (
+                      <Badge variant="outline" className="border-transparent bg-success-bg text-success">
+                        {t("th_public")}
+                      </Badge>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button size="sm" variant="outline" onClick={() => openEdit(promo)}>
@@ -161,7 +172,7 @@ export default function PromosPage() {
               ))}
               {(promos?.length ?? 0) === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                     {t("empty_promos")}
                   </td>
                 </tr>

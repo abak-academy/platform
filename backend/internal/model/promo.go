@@ -17,4 +17,5 @@ type PromoCode struct {
 	UsedCount         int        `json:"used_count"`
 	ExpiresAt         *time.Time `json:"expires_at"`
 	CreatedAt         time.Time  `json:"created_at"`
+	IsPublic          bool       `json:"is_public"`
 }

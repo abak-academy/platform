@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
@@ -273,5 +274,41 @@ func (h *Handler) ValidatePromo(c echo.Context) error {
 		"code":        validation.Code,
 		"discount":    validation.Discount,
 		"final_total": validation.Total,
+	})
+}
+
+// activePublicPromoDTO is the trimmed wire shape for the active-promo
+// listing (FR-11): no id, used_count, or max_uses — remaining quota is not
+// the buyer's business and publishing it invites racing a nearly-exhausted
+// code.
+type activePublicPromoDTO struct {
+	Code              string     `json:"code"`
+	DiscountPercent   *float64   `json:"discount_percent"`
+	DiscountAmount    *float64   `json:"discount_amount"`
+	MinOrderAmount    *float64   `json:"min_order_amount"`
+	MaxDiscountAmount *float64   `json:"max_discount_amount"`
+	ExpiresAt         *time.Time `json:"expires_at"`
+}
+
+func (h *Handler) ListActivePublicPromos(c echo.Context) error {
+	promos, err := h.svc.ListActivePublicPromos(c.Request().Context())
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	data := make([]activePublicPromoDTO, 0, len(promos))
+	for _, p := range promos {
+		data = append(data, activePublicPromoDTO{
+			Code:              p.Code,
+			DiscountPercent:   p.DiscountPercent,
+			DiscountAmount:    p.DiscountAmount,
+			MinOrderAmount:    p.MinOrderAmount,
+			MaxDiscountAmount: p.MaxDiscountAmount,
+			ExpiresAt:         p.ExpiresAt,
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data": data,
 	})
 }
