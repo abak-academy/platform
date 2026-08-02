@@ -535,9 +535,11 @@ export const DICT = {
     auth_or_divider: "atau",
 
     /* Auth — login */
-    login_eyebrow: "Selamat datang kembali",
-    login_title: "Masuk ke Akun Kamu 👋",
-    login_subtitle: "Masukkan email/username dan kata sandi untuk melanjutkan.",
+    login_title: "Welcome to Abak Academy Hub",
+    login_lede: "Big goals start here.",
+    login_subtitle: "Enter competitions, take courses, get your books and merchandise, and join our edu-trips & events.",
+    login_lede_local: "Prestasi besar dimulai dari sini.",
+    login_subtitle_local: "Daftar lomba, ikut les dan kursus, beli buku dan merchandise, sampai gabung edutrip dan event edukasi.",
     login_identifier_label: "Email atau Username",
     login_identifier_placeholder: "email atau username",
     login_password_label: "Kata Sandi",
@@ -1793,9 +1795,11 @@ export const DICT = {
     auth_or_divider: "or",
 
     /* Auth — login */
-    login_eyebrow: "Welcome back",
-    login_title: "Sign in to Your Account 👋",
-    login_subtitle: "Enter your email/username and password to continue.",
+    login_title: "Welcome to Abak Academy Hub",
+    login_lede: "Big goals start here.",
+    login_subtitle: "Enter competitions, take courses, get your books and merchandise, and join our edu-trips & events.",
+    login_lede_local: "Prestasi besar dimulai dari sini.",
+    login_subtitle_local: "Daftar lomba, ikut les dan kursus, beli buku dan merchandise, sampai gabung edutrip dan event edukasi.",
     login_identifier_label: "Email or Username",
     login_identifier_placeholder: "email or username",
     login_password_label: "Password",

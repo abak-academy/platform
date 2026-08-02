@@ -2,14 +2,23 @@ import { cn } from "@/lib/utils";
 
 type Mode = "login" | "register" | "otp";
 
-const headings: Record<Mode, string> = {
-  login: "Raih Prestasi\nTerbaikmu Bersama\nAbak Academy",
+// Login's headline is one unbroken line by design: the three pillars carry full
+// white and the connectives recede, so the line reads as what the Hub is rather
+// than as a sentence about it.
+const headings: Record<Mode, React.ReactNode> = {
+  login: (
+    <>
+      <span className="text-white/55">One Platform for </span>Learning
+      <span className="text-white/55">, </span>Competition
+      <span className="text-white/55"> &amp; </span>Growth
+    </>
+  ),
   register: "Mulai Perjalanan\nBelajarmu Bersama\nAbak Academy",
   otp: "Satu Langkah Lagi\nMenuju Akun\nAbak Academy",
 };
 
 const subs: Record<Mode, string> = {
-  login: "Platform bimbel & persiapan olimpiade untuk pelajar Indonesia.",
+  login: "Satu Platform untuk Belajar, Berkompetisi, dan Bertumbuh",
   register: "Daftar sekarang dan akses ribuan soal, kursus, dan ujian simulasi.",
   otp: "Verifikasi identitasmu untuk menjaga keamanan akun.",
 };
@@ -117,27 +126,35 @@ export function BrandPanel({ mode, className }: { mode: Mode; className?: string
   return (
     <div
       className={cn(
-        "relative hidden flex-col overflow-hidden bg-[linear-gradient(148deg,#1A1060_0%,#3D4DDB_28%,#7C4DDB_55%,#1E978A_82%,#17C9AA_100%)] px-[52px] pb-10 pt-11 lg:flex lg:basis-[52%]",
+        "relative hidden flex-col overflow-hidden bg-[linear-gradient(148deg,#1A1060_0%,#3D4DDB_28%,#7C4DDB_55%,#1E978A_82%,#17C9AA_100%)] px-[clamp(32px,3.4vw,52px)] pb-10 pt-11 lg:flex lg:basis-[52%]",
         className
       )}
     >
       <div className="pointer-events-none absolute -right-[90px] -top-[90px] h-[340px] w-[340px] rounded-full bg-white/4" />
       <div className="pointer-events-none -left-[70px] -bottom-[110px] absolute h-[300px] w-[300px] rounded-full bg-white/4" />
 
-      <div className="z-[1] flex items-center gap-[10px]">
-        <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-white/15 text-white">
-          <AbakLogo size={24} />
+      <div className="z-[1] flex items-center gap-3">
+        <div className="flex h-14 w-14 items-center justify-center rounded-[14px] bg-white/15 text-white">
+          <AbakLogo size={34} />
         </div>
-        <span className="font-serif text-[18px] font-extrabold tracking-[-0.01em] text-white">
+        <span className="font-serif text-[22px] font-extrabold tracking-[-0.01em] text-white">
           abak{" "}
-          <span className="text-[13px] font-bold uppercase tracking-[0.08em] text-[#D99A2B]">
+          <span className="text-[15px] font-bold uppercase tracking-[0.08em] text-[#D99A2B]">
             academy
           </span>
         </span>
       </div>
 
       <div className="z-[1] mt-11">
-        <h1 className="whitespace-pre-line font-serif text-[30px] font-bold leading-[1.28] tracking-[-0.01em] text-white">
+        <h1
+          className={cn(
+            "font-serif font-bold text-white",
+            mode === "login"
+              ? // Fluid so the single line survives every desktop width.
+                "whitespace-nowrap text-[clamp(17px,1.85vw,36px)] leading-[1.2] tracking-[-0.02em]"
+              : "whitespace-pre-line text-[30px] leading-[1.28] tracking-[-0.01em]"
+          )}
+        >
           {headings[mode]}
         </h1>
         <p className="mt-[14px] text-[13.5px] leading-[1.65] text-white/68">{subs[mode]}</p>

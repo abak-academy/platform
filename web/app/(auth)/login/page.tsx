@@ -48,14 +48,20 @@ export default function LoginPage() {
   return (
     <div className="w-full max-w-[372px]">
       <div className="mb-7">
-        <div className="mb-2 text-[11.5px] font-bold uppercase tracking-[0.06em] text-success">
-          {t("login_eyebrow")}
-        </div>
-        <h2 className="font-serif text-[27px] font-bold leading-tight tracking-[-0.01em] text-ink-900">
+        <h2 className="font-serif text-[27px] font-bold leading-tight tracking-[-0.01em] text-ink-900 [text-wrap:balance]">
           {t("login_title")}
         </h2>
-        <p className="mt-2 text-[13.5px] leading-[1.55] text-ink-500">
+        {/* Body copy sits at ink-600: ink-500/400 render below the 4.5:1 AA floor
+            on this surface, so each pair is separated by size, not by contrast. */}
+        <p className="mt-3 text-[14.5px] font-semibold leading-[1.4] text-ink-900">
+          {t("login_lede")}
+        </p>
+        <p className="mt-1 text-[13.5px] leading-[1.55] text-ink-600">
           {t("login_subtitle")}
+        </p>
+        <p className="mt-3 text-[12.5px] leading-[1.55] text-ink-600">
+          <span className="font-semibold">{t("login_lede_local")}</span>{" "}
+          {t("login_subtitle_local")}
         </p>
       </div>
 
