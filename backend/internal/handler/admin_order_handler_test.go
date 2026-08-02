@@ -536,6 +536,37 @@ func newConfirmRequestCtx(t *testing.T, orderID string, body []byte) (echo.Conte
 // payment_proof_url must be rejected with 400 before the order is ever
 // touched — invariant 6 says a confirmed order can never exist without its
 // evidence.
+// TestAdminListOrders_InvalidCursor_Returns400 mirrors the product-list fix:
+// ListOrders appended the raw cursor into `AND id > $n` against a uuid column,
+// so a non-UUID reached Postgres and surfaced as a 500 with a driver error
+// string in the body.
+func TestAdminListOrders_InvalidCursor_Returns400(t *testing.T) {
+	fake := &fakeShipHandlerLogistics{}
+	h, _, _ := newShipHandlerTestService(t, fake)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/orders?cursor=not-a-uuid", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.AdminListOrders(c); err != nil {
+		t.Fatalf("AdminListOrders: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var apiErr struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &apiErr); err != nil {
+		t.Fatalf("response body is not JSON (raw driver error?): %v; body=%s", err, rec.Body.String())
+	}
+	if apiErr.Code != "invalid_cursor" {
+		t.Errorf("code: want %q, got %q", "invalid_cursor", apiErr.Code)
+	}
+}
+
 func TestAdminConfirmOrder_RejectsMissingOrInvalidProof(t *testing.T) {
 	fake := &fakeShipHandlerLogistics{}
 	h, svc, repo := newShipHandlerTestService(t, fake)

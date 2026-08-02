@@ -294,6 +294,9 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		query += ` AND status != 'cart'`
 	}
 	if filter.Cursor != "" {
+		if _, err := uuid.Parse(filter.Cursor); err != nil {
+			return nil, "", ErrInvalidCursor
+		}
 		query += fmt.Sprintf(` AND id > $%d`, argNum)
 		args = append(args, filter.Cursor)
 		argNum++
