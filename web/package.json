@@ -10,7 +10,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:e2e": "playwright test",
-    "build:card-template": "tsx scripts/build-card-template.mjs"
+    "build:card-template": "tsx scripts/build-card-template.mjs",
+    "build:brand-assets": "tsx scripts/build-brand-assets.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",

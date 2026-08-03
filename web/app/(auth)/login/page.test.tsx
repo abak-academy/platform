@@ -20,6 +20,7 @@ vi.mock("@/components/auth/GoogleSignInButton", () => ({
   GoogleSignInButton: ({ text }: { text: string }) => (
     <div data-testid="google-sign-in" data-text={text} />
   ),
+  googleSignInAvailable: true,
 }));
 
 describe("LoginPage", () => {
@@ -29,13 +30,30 @@ describe("LoginPage", () => {
     sessionStorage.clear();
   });
 
-  it("renders the Google sign-in button above the password form", () => {
+  // Google moved below the credential form (client, 2026-08-03): most sign-ins
+  // are email/password, and leading with Google pushed the form down.
+  it("renders the Google sign-in button below the password form", () => {
     const { container } = render(<LoginPage />);
     const form = container.querySelector("form");
 
     expect(screen.getByTestId("google-sign-in")).toHaveAttribute("data-text", "signin_with");
     expect(screen.getByTestId("google-sign-in").compareDocumentPosition(form!))
-      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      .toBe(Node.DOCUMENT_POSITION_PRECEDING);
+  });
+
+  it("hides the or-divider along with the button when Google sign-in is unconfigured", async () => {
+    vi.resetModules();
+    vi.doMock("@/components/auth/GoogleSignInButton", () => ({
+      GoogleSignInButton: () => null,
+      googleSignInAvailable: false,
+    }));
+    const { default: PageWithoutGoogle } = await import("./page");
+
+    render(<PageWithoutGoogle />);
+
+    expect(screen.queryByTestId("google-sign-in")).toBeNull();
+    expect(screen.queryByText("atau")).toBeNull();
+    vi.doUnmock("@/components/auth/GoogleSignInButton");
   });
 
   it("stores the pending token and navigates to /otp on verification_pending", async () => {
