@@ -635,6 +635,14 @@ export default function ProfilePage() {
                     hint={t("email_locked")}
                     isLoading={isLoading}
                   />
+                  <Field
+                    id="dob"
+                    type="date"
+                    label={t("students_field_dob")}
+                    value={dob}
+                    onChange={editMode ? setDob : undefined}
+                    isLoading={isLoading}
+                  />
                 </div>
               </ProfileSection>
 
@@ -720,23 +728,6 @@ export default function ProfilePage() {
                           ))}
                         </SelectContent>
                       </Select>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="dob" className="text-xs font-semibold text-ink-600">
-                      {t("students_field_dob")}
-                    </Label>
-                    {isLoading ? (
-                      <Skeleton className="h-11 w-full rounded-md" />
-                    ) : (
-                      <Input
-                        id="dob"
-                        type="date"
-                        value={dob}
-                        onChange={(e) => setDob(e.target.value)}
-                        disabled={!editMode}
-                        className={PROFILE_INPUT_CLASS}
-                      />
                     )}
                   </div>
                   <div className="flex flex-col gap-1.5">
