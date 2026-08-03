@@ -165,23 +165,11 @@ export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
           {jobData && (
             <section className="md-card-outlined space-y-3 p-4">
               {isTerminalSuccess && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="size-5 text-success" />
-                    <h4 className="text-sm font-semibold text-ink-900">
-                      {t("bulk_register_success")}
-                    </h4>
-                  </div>
-                  {jobData.result_url && (
-                    <a
-                      href={jobData.result_url}
-                      className="inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"
-                      download="bulk_register_result.csv"
-                    >
-                      <Download className="size-4" />
-                      {t("bulk_register_download_result")}
-                    </a>
-                  )}
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="size-5 text-success" />
+                  <h4 className="text-sm font-semibold text-ink-900">
+                    {t("bulk_register_success")}
+                  </h4>
                 </div>
               )}
 
@@ -209,6 +197,19 @@ export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
                   </h4>
                   {jobData.error && <p className="text-sm text-danger">{jobData.error}</p>}
                 </div>
+              )}
+
+              {/* An all-rows-failed job still uploads a per-row report — that is
+                  precisely when the operator needs to read it. */}
+              {(isTerminalSuccess || isTerminalFailed) && jobData.result_url && (
+                <a
+                  href={jobData.result_url}
+                  className="inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"
+                  download="bulk_register_result.csv"
+                >
+                  <Download className="size-4" />
+                  {t("bulk_register_download_result")}
+                </a>
               )}
             </section>
           )}
