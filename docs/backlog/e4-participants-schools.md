@@ -79,9 +79,18 @@ Additionally, the Registrations tab is `<UnderMaintenance>` for `admin_exam` and
 )}
 ```
 
-**Decide this deliberately.** Giving `admin_exam` the tab is a role-reach change, and F-2b (the RBAC
-pass) says that review should be scoped before roles are widened. Either make the case here in
-writing, or leave the gate and say so.
+**Decision (2026-08-02): the gate stays.** `admin_exam` keeps `<UnderMaintenance>` on the
+Registrations tab; the code above is unchanged by this epic.
+
+Giving `admin_exam` the tab is a role-reach change, and role reach is a change to the capability
+map rather than to one screen. F-2b reviews that map as a unit — precisely so that roles are not
+widened one tab at a time, in whichever epic happens to have the file open. A bug-fix epic is the
+wrong instrument for granting a capability, and the argument for granting it here ("the exam admin
+owns the exam, so they should see its registrants") is a reasonable one that deserves to be weighed
+against the rest of the map rather than settled in passing.
+
+**Revisit under F-2b.** Nothing about this decision is a judgement that the tab should stay hidden
+forever — only that this is not the epic that opens it.
 
 ---
 
@@ -106,7 +115,8 @@ importer.
   (Cause B is genuinely closed, not masked).
 - School bulk upload accepts the downloaded template unmodified and reports failed rows.
 - The exported failure report is inert for a school named `=cmd|…`.
-- The Registrations-tab role decision is recorded in this doc, whichever way it goes.
+- ~~The Registrations-tab role decision is recorded in this doc, whichever way it goes.~~
+  ✅ Recorded in §3 on 2026-08-02 — the gate stays, revisit under F-2b.
 
 ## Out of scope
 

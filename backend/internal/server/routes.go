@@ -208,6 +208,8 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminSchools.POST("", h.AdminCreateSchool)
 	adminSchools.PUT("/:id", h.AdminUpdateSchool)
 	adminSchools.PATCH("/:id", h.AdminChangeSchoolStatus)
+	adminSchools.POST("/bulk/presign", h.AdminPresignSchoolBulkUpload)
+	adminSchools.POST("/bulk", h.AdminBulkImportSchools)
 
 	// Admin student routes (row-scoped via JWT schoolID)
 	adminStudents := admin.Group("/students")

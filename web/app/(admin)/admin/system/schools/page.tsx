@@ -9,8 +9,10 @@ import {
   Edit,
   Lock,
   Search,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,11 +35,13 @@ import {
 import { cn } from "@/lib/utils";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatCard } from "@/components/admin/StatCard";
+import { SchoolBulkImportModal } from "@/components/admin/SchoolBulkImportModal";
 import {
   useAdminSchools,
   useCreateSchool,
   useUpdateSchool,
   useChangeSchoolStatus,
+  adminSchoolsKeys,
 } from "@/lib/hooks/admin-schools";
 import type { School } from "@/lib/types";
 
@@ -70,7 +74,9 @@ export default function SystemSchoolsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
   const [createOpen, setCreateOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<School | null>(null);
+  const queryClient = useQueryClient();
   const [createForm, setCreateForm] = useState<SchoolForm>({ ...EMPTY_FORM });
   const [editForm, setEditForm] = useState<SchoolForm>({ ...EMPTY_FORM });
 
@@ -250,10 +256,16 @@ export default function SystemSchoolsPage() {
         title={t("schools_title")}
         description={t("schools_subtitle")}
         actions={
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1 size-4" />
-            {t("create")}
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
+              <Upload className="mr-1 size-4" />
+              {t("bulk_school_import_button")}
+            </Button>
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1 size-4" />
+              {t("create")}
+            </Button>
+          </div>
         }
       />
 
@@ -433,6 +445,14 @@ export default function SystemSchoolsPage() {
           </Button>
         </div>
       )}
+
+      <SchoolBulkImportModal
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        onImportSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: adminSchoolsKeys.all });
+        }}
+      />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">

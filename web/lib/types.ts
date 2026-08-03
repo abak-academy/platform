@@ -64,8 +64,8 @@ export interface AdminStudent {
 }
 
 export interface CrossSchoolStudent extends AdminStudent {
-  school_id: string;
-  school_name: string;
+  school_id: string | null;
+  school_name: string | null;
 }
 
 export interface StudentRegistrationInput {

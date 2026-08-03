@@ -216,6 +216,25 @@ func seedStudentForSearch(t *testing.T, pool *pgxpool.Pool, name, username, scho
 	}
 }
 
+// seedNullSchoolStudentForSearch inserts a student with school_id IS NULL and
+// a free-text unlisted_school_name, as a self-registering user with no listed
+// school produces (FB-12).
+func seedNullSchoolStudentForSearch(t *testing.T, pool *pgxpool.Pool, name, username, unlistedName, jenjang string, grade int) string {
+	t.Helper()
+	ctx := context.Background()
+	var id string
+	err := pool.QueryRow(ctx,
+		`INSERT INTO users (name, username, role, school_id, unlisted_school_name, status, jenjang, grade, otp_enabled)
+		 VALUES ($1, $2, 'student', NULL, $3, 'active', $4, $5, false)
+		 RETURNING id`,
+		name, username, unlistedName, jenjang, grade,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert null-school student %s: %v", name, err)
+	}
+	return id
+}
+
 func TestAdminSearchGrantStudents_SuperAdmin_ReturnsCrossSchoolResults(t *testing.T) {
 	env := newSearchGrantDBEnv(t)
 
@@ -223,16 +242,19 @@ func TestAdminSearchGrantStudents_SuperAdmin_ReturnsCrossSchoolResults(t *testin
 	schoolA := seedSchoolForSearch(t, env.pool, "SMA A", "sma_a", []string{"sma", "sma_ipas"})
 	schoolB := seedSchoolForSearch(t, env.pool, "SMA B", "sma_b", []string{"sma", "sma_ips"})
 
-	// Seed students across both schools.
-	seedStudentForSearch(t, env.pool, "Alice", "alic0012", schoolA, "sma", 10)
-	seedStudentForSearch(t, env.pool, "Bob", "bob_7890", schoolA, "sma", 11)
-	seedStudentForSearch(t, env.pool, "Charlie", "char3456", schoolB, "sma", 10)
-	seedStudentForSearch(t, env.pool, "Diana", "diana7890", schoolB, "sma", 12)
+	// Seed students across both schools. The shared suffix scopes the
+	// count assertions below, which would otherwise see rows seeded by any
+	// other test sharing this container.
+	const xsuffix = "xsch01"
+	seedStudentForSearch(t, env.pool, "Alice "+xsuffix, "alic0012", schoolA, "sma", 10)
+	seedStudentForSearch(t, env.pool, "Bob "+xsuffix, "bob_7890", schoolA, "sma", 11)
+	seedStudentForSearch(t, env.pool, "Charlie "+xsuffix, "char3456", schoolB, "sma", 10)
+	seedStudentForSearch(t, env.pool, "Diana "+xsuffix, "diana7890", schoolB, "sma", 12)
 
 	superToken := mintSearchSuperAdminToken(t, env, "super1")
 
 	t.Run("no filters returns students from all schools", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q="+xsuffix, nil)
 		req.Header.Set("Authorization", "Bearer "+superToken)
 		rec := httptest.NewRecorder()
 		env.e.ServeHTTP(rec, req)
@@ -304,6 +326,13 @@ func TestAdminSearchGrantStudents_SuperAdmin_ReturnsCrossSchoolResults(t *testin
 	})
 
 	t.Run("q filter searches name", func(t *testing.T) {
+		// q="Ali" (unscoped by xsuffix, unlike the other subtests here) is
+		// deliberate: it exercises partial-name search. That means it cannot
+		// assert an absolute count without risking the same pollution hazard
+		// fixed in f407f32 — any other row sharing this container with "ali"
+		// in its name would inflate it under -shuffle=on. Instead, assert on
+		// the specific seeded row's presence and that every match is a real
+		// substring match.
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q=Ali", nil)
 		req.Header.Set("Authorization", "Bearer "+superToken)
 		rec := httptest.NewRecorder()
@@ -320,17 +349,26 @@ func TestAdminSearchGrantStudents_SuperAdmin_ReturnsCrossSchoolResults(t *testin
 		if !ok {
 			t.Fatal("data is not an array")
 		}
-		if len(data) != 1 {
-			t.Fatalf("want 1 student matching 'Ali', got %d", len(data))
+		if len(data) < 1 {
+			t.Fatalf("want at least 1 student matching 'Ali', got %d", len(data))
 		}
-		name := data[0].(map[string]any)["name"].(string)
-		if !strings.Contains(name, "Ali") {
-			t.Errorf("expected name containing 'Ali', got %s", name)
+		foundSeeded := false
+		for _, item := range data {
+			name := item.(map[string]any)["name"].(string)
+			if !strings.Contains(strings.ToLower(name), "ali") {
+				t.Errorf("expected name containing 'ali' (case-insensitive), got %s", name)
+			}
+			if name == "Alice "+xsuffix {
+				foundSeeded = true
+			}
+		}
+		if !foundSeeded {
+			t.Errorf("expected seeded student %q among matches, got %v", "Alice "+xsuffix, data)
 		}
 	})
 
 	t.Run("grade filter narrows results", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?grade=10", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?grade=10&q="+xsuffix, nil)
 		req.Header.Set("Authorization", "Bearer "+superToken)
 		rec := httptest.NewRecorder()
 		env.e.ServeHTTP(rec, req)
@@ -385,6 +423,176 @@ func TestAdminSearchGrantStudents_SuperAdmin_ReturnsCrossSchoolResults(t *testin
 		nextCursor, ok := resp["next_cursor"].(string)
 		if !ok || nextCursor == "" {
 			t.Error("expected non-empty next_cursor when results exceed limit")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// FB-12: a student with no school is a first-class participant.
+// ---------------------------------------------------------------------------
+
+func TestAdminSearchGrantStudents_NullSchoolStudent(t *testing.T) {
+	env := newSearchGrantDBEnv(t)
+	superToken := mintSearchSuperAdminToken(t, env, "super-fb12")
+
+	schoolC := seedSchoolForSearch(t, env.pool, "SMA FB12", "sma_fb12", []string{"sma"})
+	suffix := "fb12qz"
+	unlistedName := "Sekolah Belum Terdaftar " + suffix
+	nullID := seedNullSchoolStudentForSearch(t, env.pool, "NullSchool "+suffix, "ns_"+suffix, unlistedName, "sma", 10)
+	seedStudentForSearch(t, env.pool, "Schooled "+suffix, "sc_"+suffix, schoolC, "sma", 10)
+
+	t.Run("null-school student JSON has null school_id/school_name and the unlisted name (NFR-3: raw body)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q="+suffix, nil)
+		req.Header.Set("Authorization", "Bearer "+superToken)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		body := rec.Body.String()
+		wantFragment := `"school_id":null,"school_name":null,"unlisted_school_name":"` + unlistedName + `"`
+		if !strings.Contains(body, wantFragment) {
+			t.Errorf("raw response body missing expected fragment %q; body=%s", wantFragment, body)
+		}
+
+		var resp map[string]any
+		if err := json.NewDecoder(strings.NewReader(body)).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		data, ok := resp["data"].([]any)
+		if !ok {
+			t.Fatal("data is not an array")
+		}
+
+		var foundNull, foundSchooled bool
+		for _, item := range data {
+			row := item.(map[string]any)
+			if row["id"] == nullID {
+				foundNull = true
+				if row["school_id"] != nil {
+					t.Errorf("null-school student school_id: want nil, got %v", row["school_id"])
+				}
+				if row["school_name"] != nil {
+					t.Errorf("null-school student school_name: want nil, got %v", row["school_name"])
+				}
+				if row["unlisted_school_name"] != unlistedName {
+					t.Errorf("unlisted_school_name: want %s, got %v", unlistedName, row["unlisted_school_name"])
+				}
+				continue
+			}
+			if name, _ := row["name"].(string); strings.Contains(name, "Schooled "+suffix) {
+				foundSchooled = true
+				if row["school_id"] == nil || row["school_name"] == nil {
+					t.Errorf("schooled student should have non-null school_id/school_name, got %v/%v", row["school_id"], row["school_name"])
+				}
+				if row["unlisted_school_name"] != nil {
+					t.Errorf("schooled student unlisted_school_name: want nil, got %v", row["unlisted_school_name"])
+				}
+			}
+		}
+		if !foundNull {
+			t.Fatal("null-school student not found in results")
+		}
+		if !foundSchooled {
+			t.Fatal("schooled student not found in results")
+		}
+	})
+
+	t.Run("school_id=none returns only null-school rows", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q="+suffix+"&school_id=none", nil)
+		req.Header.Set("Authorization", "Bearer "+superToken)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		data, ok := resp["data"].([]any)
+		if !ok {
+			t.Fatal("data is not an array")
+		}
+		if len(data) != 1 {
+			t.Fatalf("want 1 null-school student, got %d", len(data))
+		}
+		row := data[0].(map[string]any)
+		if row["id"] != nullID {
+			t.Errorf("id: want %s, got %v", nullID, row["id"])
+		}
+		if row["school_id"] != nil {
+			t.Errorf("school_id: want nil, got %v", row["school_id"])
+		}
+	})
+
+	t.Run("school_id=<uuid> is unchanged behaviour", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q="+suffix+"&school_id="+schoolC, nil)
+		req.Header.Set("Authorization", "Bearer "+superToken)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		data, ok := resp["data"].([]any)
+		if !ok {
+			t.Fatal("data is not an array")
+		}
+		if len(data) != 1 {
+			t.Fatalf("want 1 student scoped to school_id, got %d", len(data))
+		}
+		row := data[0].(map[string]any)
+		if row["school_id"] != schoolC {
+			t.Errorf("school_id: want %s, got %v", schoolC, row["school_id"])
+		}
+	})
+
+	t.Run("school_id=garbage still returns 400", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?school_id=garbage", nil)
+		req.Header.Set("Authorization", "Bearer "+superToken)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("NoSchool combined with q and grade still filters correctly", func(t *testing.T) {
+		// A second null-school student with a different grade must be excluded
+		// by the grade filter even though both share NoSchool=true and the q match.
+		seedNullSchoolStudentForSearch(t, env.pool, "NullSchoolOtherGrade "+suffix, "nsg_"+suffix, "Some Other School "+suffix, "sma", 12)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exam-grants/students/search?q="+suffix+"&school_id=none&grade=10", nil)
+		req.Header.Set("Authorization", "Bearer "+superToken)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		data, ok := resp["data"].([]any)
+		if !ok {
+			t.Fatal("data is not an array")
+		}
+		if len(data) != 1 {
+			t.Fatalf("want 1 null-school grade-10 student, got %d", len(data))
+		}
+		row := data[0].(map[string]any)
+		if row["id"] != nullID {
+			t.Errorf("id: want %s, got %v", nullID, row["id"])
 		}
 	})
 }

@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import SystemSchoolsPage from "./page";
 import type { School } from "@/lib/types";
+
+function renderPage(ui: React.ReactNode) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
 
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
@@ -24,6 +30,19 @@ vi.mock("@/lib/hooks/admin-schools", () => ({
   useCreateSchool: () => createState,
   useUpdateSchool: () => updateState,
   useChangeSchoolStatus: () => changeStatusState,
+  adminSchoolsKeys: { all: ["admin", "schools"] },
+}));
+
+// SchoolBulkImportModal is always mounted (Dialog just stays closed) — its
+// hooks need mocking here too, same as BulkImportModal on the students page.
+vi.mock("@/lib/hooks/admin-schools-bulk", () => ({
+  usePresignSchoolBulkUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  putFileToPresignedURL: vi.fn(),
+  useEnqueueSchoolBulkImport: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
+vi.mock("@/lib/hooks/jobs", () => ({
+  useJobStatus: () => ({ data: null, isLoading: false, isError: false, error: null }),
 }));
 
 vi.mock("sonner", () => ({
@@ -87,7 +106,7 @@ describe("SystemSchoolsPage", () => {
       refetch: vi.fn(),
     };
 
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Memuat…")).toBeInTheDocument();
@@ -103,7 +122,7 @@ describe("SystemSchoolsPage", () => {
       refetch: vi.fn(),
     };
 
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => {
       expect(screen.getByText(/gagal memuat data/i)).toBeInTheDocument();
@@ -111,7 +130,7 @@ describe("SystemSchoolsPage", () => {
   });
 
   it("renders the schools table with school data", async () => {
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument();
@@ -126,7 +145,7 @@ describe("SystemSchoolsPage", () => {
   });
 
   it("shows stat cards with total, active, and student counts", async () => {
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("2")).toBeInTheDocument();
@@ -136,7 +155,7 @@ describe("SystemSchoolsPage", () => {
   });
 
   it("renders filter chips", async () => {
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument();
@@ -154,7 +173,7 @@ describe("SystemSchoolsPage", () => {
       code: "SMAN3JKT",
     });
 
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
@@ -180,7 +199,7 @@ describe("SystemSchoolsPage", () => {
   });
 
   it("validates required fields before create", async () => {
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
@@ -199,7 +218,7 @@ describe("SystemSchoolsPage", () => {
   it("surfaces an API error as error toast on create failure", async () => {
     mockMutateAsync.mockRejectedValueOnce(new Error("gagal simpan"));
 
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
@@ -227,7 +246,7 @@ describe("SystemSchoolsPage", () => {
       refetch: vi.fn(),
     };
 
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Muat lebih banyak")).toBeInTheDocument();
@@ -237,7 +256,7 @@ describe("SystemSchoolsPage", () => {
   it("opens edit dialog and calls update mutation with only changed fields", async () => {
     mockMutateAsync.mockResolvedValueOnce({ id: "s1", name: "SMAN 1 Jakarta Baru" });
 
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
@@ -266,7 +285,7 @@ describe("SystemSchoolsPage", () => {
   it("toggles a school's status from the row menu", async () => {
     mockMutateAsync.mockResolvedValueOnce({ status: "deactivated" });
 
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
@@ -287,7 +306,7 @@ describe("SystemSchoolsPage", () => {
   });
 
   it("always keeps the school code input editable (Task 32 removed the student-count lock)", async () => {
-    render(<SystemSchoolsPage />);
+    renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
