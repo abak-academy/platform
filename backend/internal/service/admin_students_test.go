@@ -123,7 +123,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 	t.Run("happy path: username format, temp password once, bcrypt hash persisted", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma", "smp"})
 		jenjang := "sma"
-				resp, err := svc.RegisterStudent(ctx, schoolID, "Budi Santoso", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		resp, err := svc.RegisterStudent(ctx, schoolID, "Budi Santoso", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
@@ -163,7 +163,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 
 	t.Run("missing name returns ErrMissingField", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
-				_, err := svc.RegisterStudent(ctx, schoolID, "", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, schoolID, "", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrMissingField) {
 			t.Errorf("want ErrMissingField, got %v", err)
 		}
@@ -171,14 +171,14 @@ func TestRegisterStudent_Integration(t *testing.T) {
 
 	t.Run("missing jenjang returns ErrMissingField", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
-				_, err := svc.RegisterStudent(ctx, schoolID, "Some Name", "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, schoolID, "Some Name", "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrMissingField) {
 			t.Errorf("want ErrMissingField, got %v", err)
 		}
 	})
 
 	t.Run("nonexistent school returns ErrSchoolNotFound", func(t *testing.T) {
-				_, err := svc.RegisterStudent(ctx, "00000000-0000-0000-0000-000000000000", "Some Name", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, "00000000-0000-0000-0000-000000000000", "Some Name", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolNotFound) {
 			t.Errorf("want ErrSchoolNotFound, got %v", err)
 		}
@@ -186,7 +186,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 
 	t.Run("jenjang not in school_types returns ErrInvalidJenjang", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"smp", "sd"})
-				_, err := svc.RegisterStudent(ctx, schoolID, "Budi", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, schoolID, "Budi", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrInvalidJenjang) {
 			t.Errorf("want ErrInvalidJenjang, got %v", err)
 		}
@@ -197,7 +197,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		if _, err := svc.ChangeSchoolStatus(ctx, schoolID, "deactivated"); err != nil {
 			t.Fatalf("ChangeSchoolStatus: %v", err)
 		}
-				_, err := svc.RegisterStudent(ctx, schoolID, "Blocked Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, schoolID, "Blocked Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolDeactivated) {
 			t.Errorf("want ErrSchoolDeactivated, got %v", err)
 		}
@@ -215,7 +215,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 
 	t.Run("registration succeeds without address fields", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
-				resp, err := svc.RegisterStudent(ctx, schoolID, "Ali", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		resp, err := svc.RegisterStudent(ctx, schoolID, "Ali", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("RegisterStudent without address: %v", err)
 		}
@@ -278,7 +278,7 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 	schoolA := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 	schoolB := seedSchoolWithJenjang(t, svc, repo, []string{"smp"})
 
-		reg, err := svc.RegisterStudent(ctx, schoolA, "Row Scoped Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	reg, err := svc.RegisterStudent(ctx, schoolA, "Row Scoped Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 		userID := createTestStudentWithSchool(t, svc, schoolID, "sma")
 
 		jenjang := "smp"
-		updated, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil, nil, &jenjang, nil, nil, nil, nil)
+		updated, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil /* dob */, nil, nil, &jenjang, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("UpdateProfile (valid jenjang): %v", err)
 		}
@@ -395,7 +395,7 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 		userID := createTestStudentWithSchool(t, svc, schoolID, "sd")
 
 		jenjang := "sma" // sma is NOT in school_types {smp, sd}
-		_, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil, nil, &jenjang, nil, nil, nil, nil)
+		_, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil /* dob */, nil, nil, &jenjang, nil, nil, nil, nil)
 		if !errors.Is(err, ErrInvalidJenjang) {
 			t.Errorf("want ErrInvalidJenjang, got %v", err)
 		}
@@ -406,7 +406,7 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 		userID := createTestStudentNoSchool(t, svc)
 
 		jenjang := "sma"
-		updated, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil, nil, &jenjang, nil, nil, nil, nil)
+		updated, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil /* dob */, nil, nil, &jenjang, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("UpdateProfile (no school): %v", err)
 		}
@@ -421,7 +421,7 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 
 		provinsiID := "11"
 		// Only provinsiID set, no kotaID/kecamatanID -> incomplete
-		_, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &provinsiID, nil, nil, nil)
+		_, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil /* dob */, nil, nil, nil, &provinsiID, nil, nil, nil)
 		if !errors.Is(err, ErrIncompleteAddress) {
 			t.Errorf("want ErrIncompleteAddress, got %v", err)
 		}
@@ -431,12 +431,12 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 		userID := createTestStudentWithSchool(t, svc, schoolID, "sma")
 
-		provinsiID := "11"      // ACEH
-		kotaID := "1171"        // KOTA BANDA ACEH (provinsi 11)
+		provinsiID := "11"       // ACEH
+		kotaID := "1171"         // KOTA BANDA ACEH (provinsi 11)
 		kecamatanID := "1171010" // MEURAXA (kota 1171)
 		kodePos := "12345"
 
-		updated, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &provinsiID, &kotaID, &kecamatanID, &kodePos)
+		updated, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil /* dob */, nil, nil, nil, &provinsiID, &kotaID, &kecamatanID, &kodePos)
 		if err != nil {
 			t.Fatalf("UpdateProfile (valid address): %v", err)
 		}
@@ -462,7 +462,7 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 		kotaID := "1171"
 		kecamatanID := "1171010"
 
-		_, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &provinsiID, &kotaID, &kecamatanID, nil)
+		_, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil /* dob */, nil, nil, nil, &provinsiID, &kotaID, &kecamatanID, nil)
 		if !errors.Is(err, ErrInvalidProvinsi) {
 			t.Errorf("want ErrInvalidProvinsi, got %v", err)
 		}
@@ -472,11 +472,11 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 		userID := createTestStudentWithSchool(t, svc, schoolID, "sma")
 
-		provinsiID := "11"   // ACEH
-		kotaID := "3273"     // KOTA BANDUNG (provinsi 32, not 11)
+		provinsiID := "11" // ACEH
+		kotaID := "3273"   // KOTA BANDUNG (provinsi 32, not 11)
 		kecamatanID := "1171010"
 
-		_, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &provinsiID, &kotaID, &kecamatanID, nil)
+		_, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil /* dob */, nil, nil, nil, &provinsiID, &kotaID, &kecamatanID, nil)
 		if !errors.Is(err, ErrInvalidKota) {
 			t.Errorf("want ErrInvalidKota, got %v", err)
 		}
@@ -487,7 +487,7 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 		userID := createTestStudentWithSchool(t, svc, schoolID, "sma")
 
 		// All address fields nil (kodePos also nil)
-		updated, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		updated, err := svc.UpdateProfile(ctx, userID, nil, nil, nil, nil, nil, nil, nil, nil /* dob */, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("UpdateProfile (no address fields): %v", err)
 		}
@@ -510,8 +510,9 @@ func TestUpdateProfile_SchoolPairClearing(t *testing.T) {
 		empty := ""
 		_, err := svc.UpdateProfile(ctx, userID,
 			nil, nil, nil, nil, nil, nil, nil, // name, email, username, phone, address, targetExam, grade
-			&empty,     // schoolID
-			nil, nil,   // unlistedSchoolName, jenjang
+			nil,      // dob
+			&empty,   // schoolID
+			nil, nil, // unlistedSchoolName, jenjang
 			nil, nil, nil, nil, // provinsiID, kotaID, kecamatanID, kodePos
 		)
 		if errors.Is(err, ErrInvalidUUID) {
@@ -526,6 +527,7 @@ func TestUpdateProfile_SchoolPairClearing(t *testing.T) {
 		bad := "abc"
 		_, err := svc.UpdateProfile(ctx, userID,
 			nil, nil, nil, nil, nil, nil, nil,
+			nil, // dob
 			&bad,
 			nil, nil,
 			nil, nil, nil, nil,
@@ -544,6 +546,7 @@ func TestUpdateProfile_SchoolPairClearing(t *testing.T) {
 		newJenjang := "smk"
 		updated, err := svc.UpdateProfile(ctx, userID,
 			nil, nil, nil, nil, nil, nil, nil,
+			nil, // dob
 			&emptySchoolID,
 			&unlistedName, &newJenjang,
 			nil, nil, nil, nil,
@@ -580,6 +583,7 @@ func TestUpdateProfile_SchoolPairClearing(t *testing.T) {
 		newSchoolID := seedSchoolWithJenjang(t, svc, repo, []string{"smk"})
 		updated2, err := svc.UpdateProfile(ctx, userID,
 			nil, nil, nil, nil, nil, nil, nil,
+			nil, // dob
 			&newSchoolID,
 			nil, nil,
 			nil, nil, nil, nil,
@@ -612,6 +616,7 @@ func TestUpdateProfile_SchoolPairClearing(t *testing.T) {
 		newName := "Renamed Student " + uniqueSuffix()
 		updated, err := svc.UpdateProfile(ctx, userID,
 			&newName, nil, nil, nil, nil, nil, nil,
+			nil, // dob
 			nil,
 			nil, nil,
 			nil, nil, nil, nil,

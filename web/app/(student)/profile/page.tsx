@@ -287,6 +287,7 @@ export default function ProfilePage() {
   const [address, setAddress] = useState("");
   const [targetExam, setTargetExam] = useState("");
   const [grade, setGrade] = useState<string>("");
+  const [dob, setDob] = useState("");
   const [schoolId, setSchoolId] = useState<string>("");
   const [unlistedSchoolName, setUnlistedSchoolName] = useState("");
   const [jenjang, setJenjang] = useState("");
@@ -338,6 +339,7 @@ export default function ProfilePage() {
     setPhone(profile.phone ?? "");
     setAddress(profile.alamat_domisili ?? "");
     setTargetExam(profile.target_exam ?? "");
+    setDob(profile.dob ? profile.dob.slice(0, 10) : "");
     setGrade(profile.grade != null ? String(profile.grade) : "");
     // Map a stored unlisted_school_name back to the synthetic value so the
     // school selector opens on the free-text input.
@@ -371,6 +373,7 @@ export default function ProfilePage() {
       setPhone(profile.phone ?? "");
       setAddress(profile.alamat_domisili ?? "");
       setTargetExam(profile.target_exam ?? "");
+    setDob(profile.dob ? profile.dob.slice(0, 10) : "");
       setGrade(profile.grade != null ? String(profile.grade) : "");
       if (profile.unlisted_school_name) {
         setSchoolId(UNLISTED_SCHOOL_VALUE);
@@ -413,6 +416,7 @@ export default function ProfilePage() {
       payload.school_id = schoolId;
       payload.unlisted_school_name = "";
     }
+    if (dob) payload.dob = dob;
     if (jenjang) payload.jenjang = jenjang;
     if (provinsiId) payload.provinsi_id = provinsiId;
     if (kotaId) payload.kota_id = kotaId;
@@ -716,6 +720,23 @@ export default function ProfilePage() {
                           ))}
                         </SelectContent>
                       </Select>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="dob" className="text-xs font-semibold text-ink-600">
+                      {t("students_field_dob")}
+                    </Label>
+                    {isLoading ? (
+                      <Skeleton className="h-11 w-full rounded-md" />
+                    ) : (
+                      <Input
+                        id="dob"
+                        type="date"
+                        value={dob}
+                        onChange={(e) => setDob(e.target.value)}
+                        disabled={!editMode}
+                        className={PROFILE_INPUT_CLASS}
+                      />
                     )}
                   </div>
                   <div className="flex flex-col gap-1.5">

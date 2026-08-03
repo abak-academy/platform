@@ -506,3 +506,81 @@ func doPatchJSON(t *testing.T, e *echo.Echo, path string, body any, token string
 	e.ServeHTTP(rec, req)
 	return rec
 }
+
+// The catalog gates exam registration on a student having a date of birth, but
+// until now nothing in the self-service profile path could set one — only the
+// admin registration endpoint accepted `dob`, so a student who hit that banner
+// had no way to clear it themselves.
+func TestStudentUpdateProfile_PersistsDOB(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:           "u-dob",
+		Email:        strptr("dob@example.com"),
+		PasswordHash: mustHash("password123"),
+		Name:         "DOB User",
+		Role:         service.RoleStudent,
+		Status:       "active",
+	})
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	students := v1.Group("/students")
+	students.Use(handler.JWTMiddleware(env.svc, env.signer))
+	students.PATCH("/profile", h.StudentUpdateProfile)
+
+	loginRec := postJSON(t, env.e, "/api/v1/auth/login", map[string]string{
+		"identifier": "dob@example.com",
+		"password":   "password123",
+	})
+	var loginResp map[string]any
+	json.NewDecoder(loginRec.Body).Decode(&loginResp)
+	token, _ := loginResp["access_token"].(string)
+
+	rec := doPatchJSON(t, env.e, "/api/v1/students/profile", map[string]string{"dob": "2008-03-17"}, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	stored := env.repo.byID["u-dob"]
+	if stored.DOB == nil {
+		t.Fatal("dob was not persisted — the profile page still cannot clear the catalog's biodata gate")
+	}
+	if got := stored.DOB.Format("2006-01-02"); got != "2008-03-17" {
+		t.Fatalf("dob = %q, want 2008-03-17", got)
+	}
+
+	var body map[string]any
+	json.NewDecoder(rec.Body).Decode(&body)
+	if body["dob"] == nil {
+		t.Fatal("response omitted dob, so the form cannot show what it just saved")
+	}
+}
+
+func TestStudentUpdateProfile_RejectsMalformedDOB(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:           "u-dob-bad",
+		Email:        strptr("dobbad@example.com"),
+		PasswordHash: mustHash("password123"),
+		Name:         "DOB Bad",
+		Role:         service.RoleStudent,
+		Status:       "active",
+	})
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	students := v1.Group("/students")
+	students.Use(handler.JWTMiddleware(env.svc, env.signer))
+	students.PATCH("/profile", h.StudentUpdateProfile)
+
+	loginRec := postJSON(t, env.e, "/api/v1/auth/login", map[string]string{
+		"identifier": "dobbad@example.com",
+		"password":   "password123",
+	})
+	var loginResp map[string]any
+	json.NewDecoder(loginRec.Body).Decode(&loginResp)
+	token, _ := loginResp["access_token"].(string)
+
+	rec := doPatchJSON(t, env.e, "/api/v1/students/profile", map[string]string{"dob": "17-03-2008"}, token)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for a non-ISO date, got %d", rec.Code)
+	}
+}

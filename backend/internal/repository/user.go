@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"strings"
+	"time"
 
 	"akademi-bimbel/internal/model"
 
@@ -140,7 +141,7 @@ func (r *Repository) ActivateUser(ctx context.Context, userID string) (bool, err
 // exception: COALESCE can never write NULL into them, so applySchool gates
 // them explicitly — false leaves both untouched, true writes schoolID/
 // unlistedSchoolName verbatim (including NULL when the pointer is nil).
-func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, applySchool bool, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) error {
+func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, dob *time.Time, applySchool bool, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users
 		SET name = COALESCE($1, name),
@@ -150,16 +151,17 @@ func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name,
 		    alamat_domisili = COALESCE($5, alamat_domisili),
 		    target_exam = COALESCE($6, target_exam),
 		    grade = COALESCE($7, grade),
-		    school_id = CASE WHEN $8 THEN $9::uuid ELSE school_id END,
-		    unlisted_school_name = CASE WHEN $8 THEN $10 ELSE unlisted_school_name END,
-		    jenjang = COALESCE($11, jenjang),
-		    provinsi_id = COALESCE($12, provinsi_id),
-		    kota_id = COALESCE($13, kota_id),
-		    kecamatan_id = COALESCE($14, kecamatan_id),
-		    kode_pos = COALESCE($15, kode_pos),
+		    dob = COALESCE($8, dob),
+		    school_id = CASE WHEN $9 THEN $10::uuid ELSE school_id END,
+		    unlisted_school_name = CASE WHEN $9 THEN $11 ELSE unlisted_school_name END,
+		    jenjang = COALESCE($12, jenjang),
+		    provinsi_id = COALESCE($13, provinsi_id),
+		    kota_id = COALESCE($14, kota_id),
+		    kecamatan_id = COALESCE($15, kecamatan_id),
+		    kode_pos = COALESCE($16, kode_pos),
 		    updated_at = now()
-		WHERE id = $16`,
-		name, email, username, phone, address, targetExam, grade, applySchool, schoolID, unlistedSchoolName, jenjang, provinsiID, kotaID, kecamatanID, kodePos, userID,
+		WHERE id = $17`,
+		name, email, username, phone, address, targetExam, grade, dob, applySchool, schoolID, unlistedSchoolName, jenjang, provinsiID, kotaID, kecamatanID, kodePos, userID,
 	)
 	return err
 }

@@ -368,6 +368,36 @@ describe("ProfilePage — new optional biodata fields (FR-FE-24..27)", () => {
     expect(payload).not.toHaveProperty("kode_pos");
   });
 
+  // The catalog blocks exam registration until a student has a date of birth,
+  // and until now the profile page had no field for one — the banner was
+  // impossible to clear without an admin. See the catalog biodata gate.
+  it("submits the date of birth so the catalog's biodata gate can be cleared", async () => {
+    renderPage();
+    enterEditMode();
+
+    fireEvent.change(screen.getByLabelText(/tanggal lahir|date of birth/i), {
+      target: { value: "2008-03-17" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /simpan perubahan|save changes/i }));
+
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalled();
+    });
+    expect(mutateMock.mock.calls[0][0]).toMatchObject({ dob: "2008-03-17" });
+  });
+
+  it("omits dob from the payload when it was never filled in", async () => {
+    renderPage();
+    enterEditMode();
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan perubahan|save changes/i }));
+
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalled();
+    });
+    expect(mutateMock.mock.calls[0][0]).not.toHaveProperty("dob");
+  });
+
   it("submits a valid jenjang + full province/city/kecamatan triple in the PATCH payload", async () => {
     renderPage();
     enterEditMode();

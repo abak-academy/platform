@@ -87,7 +87,7 @@ func (f *fakeUserRepo) UpdatePasswordHash(_ context.Context, userID, hash string
 	return nil
 }
 
-func (f *fakeUserRepo) UpdateUserProfile(_ context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, applySchool bool, schoolID *string, unlistedSchoolName *string, jenjang, provinsiID, kotaID, kecamatanID, kodePos *string) error {
+func (f *fakeUserRepo) UpdateUserProfile(_ context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, dob *time.Time, applySchool bool, schoolID *string, unlistedSchoolName *string, jenjang, provinsiID, kotaID, kecamatanID, kodePos *string) error {
 	u, ok := f.byID[userID]
 	if !ok {
 		return errors.New("not found")

@@ -2,6 +2,8 @@ package handler
 
 import (
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -100,6 +102,7 @@ func (h *Handler) StudentUpdateProfile(c echo.Context) error {
 		Address            *string `json:"address"`
 		TargetExam         *string `json:"target_exam"`
 		Grade              *int    `json:"grade"`
+		DOB                *string `json:"dob"`
 		SchoolID           *string `json:"school_id"`
 		UnlistedSchoolName *string `json:"unlisted_school_name"`
 		Jenjang            *string `json:"jenjang"`
@@ -111,6 +114,17 @@ func (h *Handler) StudentUpdateProfile(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
+	// Same wire shape the admin registration path already accepts, so a date
+	// entered on the profile page and one entered by an admin parse identically.
+	var dob *time.Time
+	if req.DOB != nil && strings.TrimSpace(*req.DOB) != "" {
+		parsed, err := time.Parse("2006-01-02", strings.TrimSpace(*req.DOB))
+		if err != nil {
+			return badRequest(c, "invalid dob format, expected YYYY-MM-DD")
+		}
+		dob = &parsed
+	}
+
 	user, err := h.svc.UpdateProfile(
 		c.Request().Context(),
 		claims.Sub,
@@ -121,6 +135,7 @@ func (h *Handler) StudentUpdateProfile(c echo.Context) error {
 		req.Address,
 		req.TargetExam,
 		req.Grade,
+		dob,
 		req.SchoolID,
 		req.UnlistedSchoolName,
 		req.Jenjang,
