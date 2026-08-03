@@ -47,7 +47,10 @@ src = src.replace(
 // markup instead of hand-transcribed duplicates.
 src += "\nexport { AbakMarkFull, PhotoPlaceholder };\n";
 
-const tmpPath = path.join(__dirname, ".exam-card-printable.generated.tsx");
+// Beside the component, not in scripts/, so its relative imports (the shared
+// brand mark) resolve from the same directory the original sits in. Only the
+// CSS-module import is rewritten above; everything else must resolve for real.
+const tmpPath = path.join(__dirname, "../components/exam/.exam-card-printable.generated.tsx");
 fs.writeFileSync(tmpPath, src);
 
 try {

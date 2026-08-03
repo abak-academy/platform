@@ -6,7 +6,7 @@ import { User, Lock, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 
 import { useLogin } from "@/lib/hooks/auth";
 import { redirectForRole } from "@/lib/auth-redirect";
-import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { GoogleSignInButton, googleSignInAvailable } from "@/components/auth/GoogleSignInButton";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,16 +63,6 @@ export default function LoginPage() {
           <span className="font-semibold">{t("login_lede_local")}</span>{" "}
           {t("login_subtitle_local")}
         </p>
-      </div>
-
-      <div className="mb-5">
-        <GoogleSignInButton text="signin_with" />
-      </div>
-
-      <div className="mb-5 flex items-center gap-3">
-        <div className="h-px flex-1 bg-line" />
-        <span className="text-xs font-medium text-ink-400">{t("auth_or_divider")}</span>
-        <div className="h-px flex-1 bg-line" />
       </div>
 
       <form onSubmit={onSubmit} noValidate>
@@ -161,6 +151,17 @@ export default function LoginPage() {
           {t("login_sign_up_link")}
         </button>
       </p>
+
+      {googleSignInAvailable && (
+        <>
+          <div className="mt-6 mb-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-line" />
+            <span className="text-xs font-medium text-ink-400">{t("auth_or_divider")}</span>
+            <div className="h-px flex-1 bg-line" />
+          </div>
+          <GoogleSignInButton text="signin_with" />
+        </>
+      )}
     </div>
   );
 }

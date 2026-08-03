@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { AbakLogo } from "@/components/brand/AbakLogo";
 
 type Mode = "login" | "register" | "otp";
 
@@ -22,26 +23,6 @@ const subs: Record<Mode, string> = {
   register: "Daftar sekarang dan akses ribuan soal, kursus, dan ujian simulasi.",
   otp: "Verifikasi identitasmu untuk menjaga keamanan akun.",
 };
-
-function AbakLogo({ size = 24 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 120 120"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-label="abak academy"
-    >
-      <circle cx="44" cy="34" r="15" fill="currentColor" />
-      <path d="M22 104 Q22 64 44 64 Q66 64 66 104 Z" fill="currentColor" />
-      <path d="M62 104 Q62 78 80 78 Q98 78 98 104 Z" fill="#1E978A" />
-      <path d="M80 44 L96 51 L80 58 L64 51 Z" fill="#D99A2B" />
-      <circle cx="80" cy="62" r="11" fill="#1E978A" />
-      <rect x="79" y="44" width="2.5" height="9" fill="#D99A2B" />
-    </svg>
-  );
-}
 
 function StudentIllustration() {
   return (
@@ -134,12 +115,12 @@ export function BrandPanel({ mode, className }: { mode: Mode; className?: string
       <div className="pointer-events-none -left-[70px] -bottom-[110px] absolute h-[300px] w-[300px] rounded-full bg-white/4" />
 
       <div className="z-[1] flex items-center gap-3">
-        <div className="flex h-14 w-14 items-center justify-center rounded-[14px] bg-white/15 text-white">
-          <AbakLogo size={34} />
+        <div className="flex h-[72px] w-[72px] items-center justify-center rounded-[18px] bg-white/15 text-white">
+          <AbakLogo size={44} />
         </div>
-        <span className="font-serif text-[22px] font-extrabold tracking-[-0.01em] text-white">
+        <span className="font-serif text-[27px] font-extrabold tracking-[-0.01em] text-white">
           abak{" "}
-          <span className="text-[15px] font-bold uppercase tracking-[0.08em] text-[#D99A2B]">
+          <span className="text-[18px] font-bold uppercase tracking-[0.08em] text-[#D99A2B]">
             academy
           </span>
         </span>

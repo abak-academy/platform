@@ -29,6 +29,11 @@ interface Props {
   text?: "signin_with" | "signup_with";
 }
 
+/** False when NEXT_PUBLIC_GOOGLE_CLIENT_ID is unset, in which case the button
+ *  renders nothing — callers must gate their own divider on this, or it sits on
+ *  the page separating nothing. The value is inlined at build time. */
+export const googleSignInAvailable = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
+
 export function GoogleSignInButton({ text }: Props) {
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
   const containerRef = useRef<HTMLDivElement>(null);
