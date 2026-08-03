@@ -325,6 +325,54 @@ describe("SchoolBulkImportModal", () => {
     });
   });
 
+  // The worker marks a job "failed" when every row fails, but it still uploads
+  // and stores the per-row report — which is exactly when the operator needs it.
+  it("shows the download link on a failed job that still produced a result URL", async () => {
+    presignMutateAsync.mockResolvedValueOnce({
+      url: "http://minio.local/k?sig=xyz",
+      method: "PUT",
+      key: "k2",
+    });
+    enqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-allfail" });
+    putFile.mockResolvedValueOnce(undefined);
+
+    const { rerender } = render(
+      <SchoolBulkImportModal open={true} onOpenChange={vi.fn()} />,
+      { wrapper: wrapperFactory() },
+    );
+
+    const fileInput = screen.getByLabelText(/choose_file|file/i) as HTMLInputElement;
+    const file = new File(["x"], "x.csv", { type: "text/csv" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    const submitBtn = screen.getByRole("button", { name: /upload|import|submit|start/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => expect(enqueueMutateAsync).toHaveBeenCalled());
+
+    jobStatusState.data = {
+      id: "job-allfail",
+      type: "school_bulk",
+      status: "failed",
+      progress: 100,
+      result_url: "http://minio.local/allfail.csv?sig=def",
+      error: "school_bulk job job-allfail: all 3 rows failed",
+      created_at: "2026-08-02T00:00:00Z",
+      updated_at: "2026-08-02T00:02:00Z",
+    };
+    pollTick++;
+    rerender(<SchoolBulkImportModal open={true} onOpenChange={vi.fn()} />);
+
+    await waitFor(() => {
+      const link = screen.getByRole("link");
+      expect((link as HTMLAnchorElement).href).toBe(
+        "http://minio.local/allfail.csv?sig=def",
+      );
+    });
+    // The generic failure message must still be shown alongside the report.
+    expect(screen.getByText(/all 3 rows failed/)).toBeInTheDocument();
+  });
+
   it("calls onImportSuccess exactly once when the job reaches succeeded", async () => {
     presignMutateAsync.mockResolvedValueOnce({
       url: "http://minio.local/k?sig=xyz",
