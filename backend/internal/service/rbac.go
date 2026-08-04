@@ -13,7 +13,11 @@ const (
 var roleCapabilities = map[string][]string{
 	RoleStudent:     {},
 	RoleAdminExam:   {"questions:*", "tests:*", "products(exam):*", "sessions:*", "uploads:write"},
-	RoleAdminStore:  {"products(book|course):write", "sections:*", "orders:*", "promos:*", "revenue:read", "notifications:*", "uploads:write"},
+	// No revenue:read — store admins fulfil orders; revenue reporting is
+	// super_admin's. Per-order totals stay visible to them on the orders page,
+	// because confirming a manual transfer means matching the receipt to the
+	// amount. The restriction is on aggregates.
+	RoleAdminStore:  {"products(book|course):write", "sections:*", "orders:*", "promos:*", "notifications:*", "uploads:write"},
 	RoleAdminSchool: {"students:*", "results:read", "bulk-exam-orders:write", "products(exam):read"},
 	RoleSuperAdmin:  {"*", "schools:write"},
 }

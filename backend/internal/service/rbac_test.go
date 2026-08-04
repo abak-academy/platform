@@ -9,7 +9,7 @@ func TestCapabilities_knownRoles(t *testing.T) {
 	}{
 		{RoleStudent, 0},
 		{RoleAdminExam, 5},
-		{RoleAdminStore, 7},
+		{RoleAdminStore, 6},
 		{RoleAdminSchool, 3},
 		{RoleSuperAdmin, 1},
 	}
@@ -110,5 +110,20 @@ func TestCapabilities_SuperAdminCount(t *testing.T) {
 	caps := Capabilities(RoleSuperAdmin)
 	if len(caps) < 2 {
 		t.Errorf("Capabilities(super_admin): want at least 2 capabilities (has * and schools:write), got %d", len(caps))
+	}
+}
+
+// admin_store fulfils orders but must not read revenue aggregates. Per-order
+// amounts stay visible elsewhere — confirming a bank transfer means matching
+// the receipt against the figure — so the restriction is on aggregates only.
+func TestHasCapability_adminStoreCannotReadRevenue(t *testing.T) {
+	if HasCapability(RoleAdminStore, "revenue:read") {
+		t.Error("HasCapability(admin_store, revenue:read): want false")
+	}
+	if !HasCapability(RoleSuperAdmin, "revenue:read") {
+		t.Error("HasCapability(super_admin, revenue:read): want true")
+	}
+	if !HasCapability(RoleAdminStore, "orders:write") {
+		t.Error("HasCapability(admin_store, orders:write): want true — fulfilment is untouched")
 	}
 }
