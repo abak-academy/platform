@@ -173,9 +173,13 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
         </div>
       </td>
 
-      <td className="hidden px-4 py-3 md:table-cell">
-        <div className="font-medium">{buyerLabel(order)}</div>
-        <div className="font-mono text-[10px] text-ink-600">{order.student_id}</div>
+      {/* max-w + truncate: student_id is a raw UUID and wrapped to three lines,
+          which made every row in the table a different height. */}
+      <td className="hidden max-w-[14rem] px-4 py-3 md:table-cell">
+        <div className="truncate font-medium">{buyerLabel(order)}</div>
+        <div className="truncate font-mono text-[10px] text-ink-600" title={order.student_id}>
+          {order.student_id}
+        </div>
       </td>
 
       <td className="hidden max-w-xs px-4 py-3 md:table-cell">
