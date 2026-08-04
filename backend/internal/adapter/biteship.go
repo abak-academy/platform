@@ -450,7 +450,6 @@ func parseBiteshipOrderResponse(body []byte) (service.Shipment, error) {
 		WaybillID:         orderResp.Courier.WaybillID,
 		Status:            orderResp.Status,
 		CourierDriverName: orderResp.Courier.DriverName,
-		TrackingURL:       orderResp.Courier.Link,
 		StatusUpdatedAt:   statusUpdatedAtFromHistory(orderResp.Status, orderResp.Courier.History),
 	}, nil
 }
@@ -517,7 +516,6 @@ type biteshipOrderResponse struct {
 	Courier     struct {
 		WaybillID  string                        `json:"waybill_id"`
 		DriverName string                        `json:"driver_name"`
-		Link       string                        `json:"link"`
 		History    []biteshipCourierHistoryEntry `json:"history"`
 	} `json:"courier"`
 }

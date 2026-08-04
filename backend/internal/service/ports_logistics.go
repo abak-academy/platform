@@ -79,10 +79,6 @@ type Shipment struct {
 	// adapter had nothing parseable — callers must fall back to something
 	// deterministic per order, never time.Now() (FR-C-13).
 	StatusUpdatedAt time.Time
-
-	// TrackingURL is courier.link — Biteship's public tracking page for this
-	// shipment. Empty until the courier issues one.
-	TrackingURL string
 }
 
 // ErrShipmentAlreadyBooked is the sentinel callers check with errors.Is.

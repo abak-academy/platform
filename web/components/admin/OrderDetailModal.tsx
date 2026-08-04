@@ -247,19 +247,6 @@ export function OrderDetailModal({
                     )}
                   </Field>
                 )}
-                {order.tracking_url && (
-                  <Field label={t("shipment_track_link")}>
-                    <a
-                      data-testid="shipment-track-link"
-                      href={order.tracking_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline"
-                    >
-                      {t("shipment_track_link")}
-                    </a>
-                  </Field>
-                )}
                 {shipped && <Field label={t("status_shipped")}>{shipped}</Field>}
                 <ShipmentTimeline events={order.shipment_events} />
               </dl>

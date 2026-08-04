@@ -53,7 +53,7 @@ const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost,
 	checked_out_at, completed_at, cancelled_at, cancellation_reason,
 	created_at, updated_at, is_estimate,
 	biteship_order_id, shipment_status, waybill_source, courier_code, courier_service_code,
-	payment_proof_url, refund_proof_url, tracking_url`
+	payment_proof_url, refund_proof_url`
 
 func scanOrder(row interface {
 	Scan(dest ...any) error
@@ -70,7 +70,7 @@ func scanOrder(row interface {
 		&order.CreatedAt, &order.UpdatedAt, &order.IsEstimate,
 		&order.BiteshipOrderID, &order.ShipmentStatus, &order.WaybillSource,
 		&order.CourierCode, &order.CourierServiceCode,
-		&order.PaymentProofURL, &order.RefundProofURL, &order.TrackingURL,
+		&order.PaymentProofURL, &order.RefundProofURL,
 	)
 	if err != nil {
 		return err
@@ -589,15 +589,6 @@ func (r *Repository) SetTrackingNumber(ctx context.Context, orderID uuid.UUID, t
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders SET tracking_number = $1, updated_at = now() WHERE id = $2`,
 		trackingNumber, orderID,
-	)
-	return err
-}
-
-// SetTrackingURL stores the courier's public tracking page for an order.
-func (r *Repository) SetTrackingURL(ctx context.Context, orderID uuid.UUID, trackingURL string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE orders SET tracking_url = $1, updated_at = now() WHERE id = $2`,
-		trackingURL, orderID,
 	)
 	return err
 }

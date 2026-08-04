@@ -111,14 +111,6 @@ func (s *Service) syncShipmentFromBiteship(ctx context.Context, order model.Orde
 		}
 	}
 
-	// Same guard as the waybill, for the same reason: most events carry no
-	// link, and writing an empty one would wipe a good tracking page.
-	if shipment.TrackingURL != "" {
-		if err := s.storeRepo.SetTrackingURL(ctx, order.ID, shipment.TrackingURL); err != nil {
-			return err
-		}
-	}
-
 	// occurredAt must be deterministic per order so a replay lands on the same
 	// order_shipment_events row (FR-C-13) — time.Now() here reproduces the
 	// exact bug this fixes: every retry gets a fresh value and the

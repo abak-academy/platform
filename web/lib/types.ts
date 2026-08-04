@@ -238,7 +238,6 @@ export interface Order {
   shipped_at?: string;
   biteship_order_id?: string | null;
   shipment_status?: string | null;
-  tracking_url?: string | null;
   waybill_source?: "biteship" | "manual" | null;
   courier_code?: string | null;
   courier_service_code?: string | null;
