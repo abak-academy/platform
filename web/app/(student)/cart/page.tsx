@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShoppingCart, X } from "lucide-react";
 import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart, useActivePromoCodes } from "@/lib/hooks/orders";
 import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
+import { useCitiesByProvince, useDistrictsByCity, useProvinces } from "@/lib/hooks/regions";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import type { OrderItem } from "@/lib/types";
 import { CartLineItem } from "@/components/cart/CartLineItem";
-import { PromoInput } from "@/components/cart/PromoInput";
+import { PromoSheet } from "@/components/cart/PromoSheet";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
 import { ShippingAddressForm, type ShippingAddressFormState } from "@/components/cart/ShippingAddressForm";
 import { ShippingAddressSummary, isAddressComplete } from "@/components/cart/ShippingAddressSummary";
@@ -45,13 +46,17 @@ export default function CartPage() {
   });
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
   const [promoError, setPromoError] = useState<string | undefined>(undefined);
-  const [selectedPromoCode, setSelectedPromoCode] = useState<string | undefined>(undefined);
-  // The form closes when the buyer closes it, never because it looks full.
-  // Deriving this from "every field is non-empty" swapped the form out on the
-  // first character of the last field — which is how a one-character postcode
-  // got saved.
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | undefined>(undefined);
+  // Once open, the form closes when the buyer closes it, never because it looks
+  // full. Deriving this from "every field is non-empty" swapped the form out on
+  // the first character of the last field — which is how a one-character
+  // postcode got saved. The *initial* value is a different question, settled by
+  // the seeding effect below: an address already on file opens collapsed.
   const [addressFormOpen, setAddressFormOpen] = useState(true);
   const [courierNote, setCourierNote] = useState("");
+  // The postcode the current rates were quoted for. Rates belong to a
+  // destination, so saving a different one has to drop them.
+  const [ratedPostalCode, setRatedPostalCode] = useState<string | null>(null);
 
   const items: OrderItem[] = cart?.items ?? [];
   const subtotal = cart?.subtotal ?? items.reduce((s, it) => s + it.jumlah, 0);
@@ -66,8 +71,73 @@ export default function CartPage() {
     setShippingAddress(state);
   }, []);
 
+  // An address the buyer already completed — on this order or on their profile —
+  // is not a form to fill in again. Seed it once and open collapsed, so the
+  // default path to payment is read-and-continue rather than retype. The order's
+  // own address wins: it is the one this delivery was aimed at.
+  const addressSeeded = useRef(false);
+
+  useEffect(() => {
+    if (addressSeeded.current) return;
+
+    const saved = cart?.shipping_address;
+    const seed: ShippingAddressFormState | null = saved?.alamat
+      ? {
+          penerima: saved.penerima ?? "",
+          telepon: saved.telepon ?? "",
+          alamat: saved.alamat ?? "",
+          provinsi_id: saved.provinsi_id ?? "",
+          kota_id: saved.kota_id ?? "",
+          kecamatan_id: saved.kecamatan_id ?? "",
+          kode_pos: saved.kode_pos ?? "",
+          provinsi: saved.provinsi,
+          kota: saved.kota,
+          kecamatan: saved.kecamatan,
+        }
+      : profile?.alamat_domisili
+        ? {
+            penerima: profile.name ?? "",
+            telepon: profile.phone ?? "",
+            alamat: profile.alamat_domisili ?? "",
+            provinsi_id: profile.provinsi_id ?? "",
+            kota_id: profile.kota_id ?? "",
+            kecamatan_id: profile.kecamatan_id ?? "",
+            kode_pos: profile.kode_pos ?? "",
+          }
+        : null;
+
+    if (!seed) return;
+    addressSeeded.current = true;
+    setShippingAddress(seed);
+    if (isAddressComplete(seed)) setAddressFormOpen(false);
+  }, [cart, profile]);
+
+  // Region names for the order's address snapshot. The form fills these in while
+  // it is mounted, but a buyer whose address was already complete never opens
+  // it — so they are resolved here too, or the snapshot ships with bare IDs.
+  const { data: provinces } = useProvinces();
+  const { data: cities } = useCitiesByProvince(shippingAddress.provinsi_id || null);
+  const { data: districts } = useDistrictsByCity(shippingAddress.kota_id || null);
+
+  const addressSnapshot = useMemo(
+    () => ({
+      penerima: shippingAddress.penerima,
+      telepon: shippingAddress.telepon,
+      alamat: shippingAddress.alamat,
+      kode_pos: shippingAddress.kode_pos,
+      provinsi_id: shippingAddress.provinsi_id,
+      kota_id: shippingAddress.kota_id,
+      kecamatan_id: shippingAddress.kecamatan_id,
+      provinsi: shippingAddress.provinsi ?? provinces?.find((p) => p.id === shippingAddress.provinsi_id)?.name,
+      kota: shippingAddress.kota ?? cities?.find((c) => c.id === shippingAddress.kota_id)?.name,
+      kecamatan: shippingAddress.kecamatan ?? districts?.find((d) => d.id === shippingAddress.kecamatan_id)?.name,
+    }),
+    [shippingAddress, provinces, cities, districts]
+  );
+
   const handleCheckShipping = useCallback(() => {
     if (!shippingAddress.provinsi_id || !shippingAddress.kota_id || !shippingAddress.kecamatan_id || !shippingAddress.kode_pos) return;
+    setRatedPostalCode(shippingAddress.kode_pos);
     shippingRates.mutate({
       destination_postal_code: shippingAddress.kode_pos,
       weight_grams: totalPhysicalWeight,
@@ -77,6 +147,10 @@ export default function CartPage() {
   // Saving is what closes the form. The address goes onto the order here rather
   // than riding along with the courier choice, so abandoning the cart before
   // picking one no longer throws the address away.
+  //
+  // Saving does not price the delivery. Two actions that cost different things —
+  // one writes the address, one calls the courier API — were on one button, so a
+  // buyer correcting a typo silently re-quoted every courier.
   //
   // Deliberately no promo_code here (FR-5): the promo is attached by its own
   // patch when the buyer presses "Pakai", not re-sent from every cart mutation.
@@ -90,18 +164,7 @@ export default function CartPage() {
         city_id: shippingAddress.kota_id,
         district_id: shippingAddress.kecamatan_id,
         kode_pos: shippingAddress.kode_pos,
-        shipping_address: {
-          penerima: shippingAddress.penerima,
-          telepon: shippingAddress.telepon,
-          alamat: shippingAddress.alamat,
-          kode_pos: shippingAddress.kode_pos,
-          provinsi_id: shippingAddress.provinsi_id,
-          kota_id: shippingAddress.kota_id,
-          kecamatan_id: shippingAddress.kecamatan_id,
-          provinsi: shippingAddress.provinsi,
-          kota: shippingAddress.kota,
-          kecamatan: shippingAddress.kecamatan,
-        },
+        shipping_address: addressSnapshot,
       });
 
       // Only on request: a buyer shipping one order to someone else must not
@@ -117,10 +180,17 @@ export default function CartPage() {
         });
       }
 
+      // Rates quoted for the old destination are not rates for this one, and a
+      // courier picked against them would be priced wrong at checkout.
+      if (ratedPostalCode && ratedPostalCode !== shippingAddress.kode_pos) {
+        shippingRates.reset();
+        setRatedPostalCode(null);
+        setSelectedRateKey(null);
+      }
+
       setAddressFormOpen(false);
-      handleCheckShipping();
     },
-    [cart, shippingAddress, patchCart, updateProfile, handleCheckShipping]
+    [cart, shippingAddress, addressSnapshot, patchCart, updateProfile, ratedPostalCode, shippingRates]
   );
 
   // "Primary" is the profile's own address, compared field by field — no column
@@ -155,22 +225,10 @@ export default function CartPage() {
         city_id: shippingAddress.kota_id,
         district_id: shippingAddress.kecamatan_id,
         kode_pos: shippingAddress.kode_pos,
-        shipping_address: {
-          penerima: shippingAddress.penerima,
-          telepon: shippingAddress.telepon,
-          alamat: shippingAddress.alamat,
-          kode_pos: shippingAddress.kode_pos,
-          provinsi_id: shippingAddress.provinsi_id,
-          kota_id: shippingAddress.kota_id,
-          kecamatan_id: shippingAddress.kecamatan_id,
-          provinsi: shippingAddress.provinsi,
-          kota: shippingAddress.kota,
-          kecamatan: shippingAddress.kecamatan,
-          catatan: note.trim() || undefined,
-        },
+        shipping_address: { ...addressSnapshot, catatan: note.trim() || undefined },
       });
     },
-    [cart, shippingAddress, patchCart]
+    [cart, shippingAddress, addressSnapshot, patchCart]
   );
 
   const handleSelectCourier = useCallback(
@@ -210,7 +268,12 @@ export default function CartPage() {
                 district_id: shippingAddress.kecamatan_id,
                 kode_pos: shippingAddress.kode_pos || null,
               },
-              { onError: () => setPromoError(t("cart_promo_invalid")) }
+              {
+                // Only named once the order actually carries it — the summary
+                // must never show a code the buyer is not being charged under.
+                onSuccess: () => setAppliedPromoCode(code),
+                onError: () => setPromoError(t("cart_promo_invalid")),
+              }
             );
           },
           onError: () => setPromoError(t("cart_promo_invalid")),
@@ -220,19 +283,10 @@ export default function CartPage() {
     [cart, subtotal, shippingAddress, validatePromo, patchCart, t]
   );
 
-  // FR-14: selecting a listed promo goes through the exact same apply path as
-  // typing it in and pressing "Pakai" — no second apply mechanism.
-  const handleSelectListedPromo = useCallback(
-    (code: string) => {
-      setSelectedPromoCode(code);
-      handleApplyPromo(code);
-    },
-    [handleApplyPromo]
-  );
-
   const handleClearPromo = useCallback(() => {
     if (!cart) return;
     setPromoError(undefined);
+    setAppliedPromoCode(undefined);
     patchCart.mutate({
       orderId: cart.id,
       promo_code: "",
@@ -374,32 +428,19 @@ export default function CartPage() {
             <Card className="p-5">
               <h2 className="font-serif text-lg font-semibold text-ink-900">{t("cart_order_summary")}</h2>
 
-              <PromoInput
-                onValidate={handleApplyPromo}
-                onClear={handleClearPromo}
-                isValidating={validatePromo.isPending}
+              {/* One row, not a wall of codes: the offers live behind it and
+                  the manual code box lives with them. */}
+              <PromoSheet
+                promos={activePromos ?? []}
+                subtotal={subtotal}
                 applied={Boolean(cart?.promo_code_id)}
+                appliedCode={appliedPromoCode}
                 discount={discount}
+                isApplying={validatePromo.isPending || patchCart.isPending}
                 error={promoError}
-                selectedCode={selectedPromoCode}
+                onApply={handleApplyPromo}
+                onClear={handleClearPromo}
               />
-
-              {!cart?.promo_code_id && activePromos && activePromos.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {activePromos.map((promo) => (
-                    <button
-                      key={promo.code}
-                      type="button"
-                      onClick={() => handleSelectListedPromo(promo.code)}
-                      disabled={validatePromo.isPending || patchCart.isPending}
-                      className="rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-ink-700 transition-colors hover:border-brand-500 hover:text-brand-600 disabled:opacity-50"
-                    >
-                      {promo.code}
-                      {promo.discount_percent != null && ` -${promo.discount_percent}%`}
-                    </button>
-                  ))}
-                </div>
-              )}
 
               <div className="mt-4 space-y-2 border-t border-line pt-4 text-sm">
                 <Row label={t("cart_subtotal")} value={formatRupiah(subtotal)} />

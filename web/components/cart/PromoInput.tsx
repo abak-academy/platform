@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CheckCircle2, Loader2, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,23 +14,16 @@ export interface PromoInputProps {
   applied?: boolean;
   discount?: number;
   error?: string;
-  // Set by the parent when a listed promo (FR-14) is picked, so the buyer
-  // sees the code land in the box before it applies. Not a controlled value —
-  // the buyer can still overtype it, this just seeds the field.
-  selectedCode?: string;
+  label?: string;
 }
 
-export function PromoInput({ onValidate, onClear, isValidating, applied, discount, error, selectedCode }: PromoInputProps) {
+export function PromoInput({ onValidate, onClear, isValidating, applied, discount, error, label }: PromoInputProps) {
   const [code, setCode] = useState("");
-
-  useEffect(() => {
-    if (selectedCode) setCode(selectedCode);
-  }, [selectedCode]);
 
   return (
     <div className="mt-4">
-      <label htmlFor="promo-code" className="mb-2 block text-xs font-semibold uppercase tracking-wide text-ink-500">
-        Kode Promo
+      <label htmlFor="promo-code" className="mb-2 block text-xs font-semibold uppercase tracking-wide text-ink-600">
+        {label ?? "Kode Promo"}
       </label>
       <div className="flex gap-2">
         <div className="relative flex-1">

@@ -77,6 +77,23 @@ vi.mock("@/lib/i18n", () => ({
         cart_shipping_error: "Unable to calculate",
         update: "Update",
         checkout_process: "Process",
+        cart_address_change: "Change address",
+        promo_sheet_trigger: "Use a promo",
+        promo_sheet_trigger_count: "{n} ready",
+        promo_sheet_title: "Promos",
+        promo_sheet_manual_label: "Have a promo code?",
+        promo_sheet_use: "Use",
+        promo_sheet_applied: "Applied",
+        promo_sheet_eligible: "Ready to use",
+        promo_sheet_ineligible: "Not eligible yet",
+        promo_sheet_empty: "No promos for this cart yet.",
+        promo_off: "Off",
+        promo_no_minimum: "No minimum spend",
+        promo_min_spend: "Min. spend {v}",
+        promo_shortfall: "Add {v} more to use this promo",
+        promo_applied_saving: "You save {v}",
+        promo_change: "Change",
+        promo_remove: "Remove promo",
       };
       return dict[key] || key;
     },
@@ -193,6 +210,7 @@ describe("CartPage with Shipping", () => {
 
     mockUseShippingRates.mockReturnValue({
       mutate: vi.fn(),
+      reset: vi.fn(),
       isPending: false,
       data: undefined,
       isError: false,
@@ -672,7 +690,7 @@ describe("CartPage with Shipping", () => {
     // the address.
     await user.click(screen.getByRole("button", { name: "Save address" }));
 
-    const edit = await screen.findByRole("button", { name: "cart_address_change" });
+    const edit = await screen.findByRole("button", { name: "Change address" });
     await user.click(edit);
 
     // Remounting the form over the address it had itself emitted used to close a
@@ -724,7 +742,7 @@ describe("CartPage with Shipping", () => {
     // Reopening offers again — the profile still has no address to lose, so the
     // box comes back ticked rather than remembering a decision about a profile
     // state that has not changed.
-    await user.click(screen.getByRole("button", { name: "cart_address_change" }));
+    await user.click(screen.getByRole("button", { name: "Change address" }));
     expect(screen.getByRole("checkbox", { name: /primary address/i })).toBeChecked();
     await user.click(screen.getByRole("button", { name: "Save address" }));
 
@@ -758,6 +776,7 @@ describe("CartPage with Shipping", () => {
   });
 
   it("leaves the primary box unticked when the profile already holds an address", async () => {
+    const user = userEvent.setup();
     mockUseCart.mockReturnValue({
       data: {
         id: "o1", student_id: "s1", status: "cart", subtotal: 100000,
@@ -782,29 +801,18 @@ describe("CartPage with Shipping", () => {
 
     renderWithQueryClient(<CartPage />);
 
+    // The profile address is complete, so the page opens on the summary and the
+    // buyer has to ask for the form before the box exists at all.
+    await user.click(await screen.findByRole("button", { name: "Change address" }));
+
     await waitFor(() => {
       expect(screen.getByRole("checkbox", { name: /primary address/i })).not.toBeChecked();
     });
   });
 
-  it("marks the summary as the primary address only when it matches the profile", async () => {
-    const user = userEvent.setup();
-    mockProfileWithoutPostalCode();
-
-    renderWithQueryClient(<CartPage />);
-
-    // The profile carries no postal code, so "15310" makes this address differ
-    // from the saved one.
-    await user.type(await screen.findByLabelText("Postal Code"), "15310");
-    await user.click(screen.getByRole("button", { name: "Save address" }));
-
-    expect(await screen.findByRole("button", { name: "cart_address_change" })).toBeInTheDocument();
-    expect(screen.queryByText("Primary")).toBeNull();
-  });
-
-  it("marks the summary as primary when the address is the profile's own", async () => {
-    const user = userEvent.setup();
-
+  // 1a: an address already on file — on this order or on the profile — is not a
+  // form to fill in again.
+  it("opens on the address summary, not the form, when a complete address is already on file", async () => {
     mockUseCart.mockReturnValue({
       data: {
         id: "o1", student_id: "s1", status: "cart", subtotal: 100000,
@@ -827,8 +835,118 @@ describe("CartPage with Shipping", () => {
 
     renderWithQueryClient(<CartPage />);
 
-    await user.click(await screen.findByRole("button", { name: "Save address" }));
+    expect(await screen.findByRole("button", { name: "Change address" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Postal Code")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save address" })).toBeNull();
+  });
 
+  // The order's own address is the one this delivery was aimed at, so it wins
+  // over whatever the profile happens to hold.
+  it("prefers the order's saved address over the profile's", async () => {
+    mockUseCart.mockReturnValue({
+      data: {
+        id: "o1", student_id: "s1", status: "cart", subtotal: 100000,
+        discount: 0, shipping_cost: 0, total: 100000, items: [physicalItem],
+        shipping_address: {
+          penerima: "Sabian Isaac",
+          telepon: "082113092527",
+          alamat: "Jl. Kencana Selatan 2 No. 56",
+          provinsi_id: "prov1", kota_id: "city1", kecamatan_id: "dist1", kode_pos: "17151",
+        },
+      } as unknown as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    mockUseProfile.mockReturnValue({
+      data: {
+        id: "user1", name: "Budi Test", phone: "081200000000",
+        alamat_domisili: "Jl. Contoh No. 1",
+        provinsi_id: "prov1", kota_id: "city1", kecamatan_id: "dist1", kode_pos: "40123",
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithQueryClient(<CartPage />);
+
+    expect(await screen.findByText("Sabian Isaac")).toBeInTheDocument();
+    expect(screen.queryByText(/Jl. Contoh No. 1/)).toBeNull();
+  });
+
+  // 1b: saving an address and pricing the delivery are two different costs on
+  // two different buttons. Save must not reach the courier API.
+  it("does not fetch shipping rates when the address is saved", async () => {
+    const user = userEvent.setup();
+    const shippingRatesMutate = vi.fn();
+    mockProfileWithoutPostalCode();
+    mockUseShippingRates.mockReturnValue({
+      mutate: shippingRatesMutate,
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      data: undefined,
+    });
+
+    renderWithQueryClient(<CartPage />);
+
+    await user.type(await screen.findByLabelText("Postal Code"), "15310");
+    await user.click(screen.getByRole("button", { name: "Save address" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Change address" })).toBeInTheDocument();
+    });
+    expect(shippingRatesMutate).not.toHaveBeenCalled();
+
+    // The dedicated control is what calls the courier.
+    await user.click(screen.getByRole("button", { name: "Check shipping cost" }));
+    await waitFor(() => {
+      expect(shippingRatesMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ destination_postal_code: "15310" })
+      );
+    });
+  });
+
+  it("marks the summary as the primary address only when it matches the profile", async () => {
+    const user = userEvent.setup();
+    mockProfileWithoutPostalCode();
+
+    renderWithQueryClient(<CartPage />);
+
+    // The profile carries no postal code, so "15310" makes this address differ
+    // from the saved one.
+    await user.type(await screen.findByLabelText("Postal Code"), "15310");
+    await user.click(screen.getByRole("button", { name: "Save address" }));
+
+    expect(await screen.findByRole("button", { name: "Change address" })).toBeInTheDocument();
+    expect(screen.queryByText("Primary")).toBeNull();
+  });
+
+  it("marks the summary as primary when the address is the profile's own", async () => {
+    mockUseCart.mockReturnValue({
+      data: {
+        id: "o1", student_id: "s1", status: "cart", subtotal: 100000,
+        discount: 0, shipping_cost: 0, total: 100000, items: [physicalItem],
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    mockUseProfile.mockReturnValue({
+      data: {
+        id: "user1", name: "Budi Test", phone: "081200000000",
+        alamat_domisili: "Jl. Contoh No. 1",
+        provinsi_id: "prov1", kota_id: "city1", kecamatan_id: "dist1", kode_pos: "40123",
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithQueryClient(<CartPage />);
+
+    // Seeded straight from the profile, so the badge is there without a save.
     expect(await screen.findByText("Primary")).toBeInTheDocument();
   });
 
@@ -836,6 +954,14 @@ describe("CartPage with Shipping", () => {
   // separate from the address/courier patches, and the displayed discount is
   // always the server's, never an optimistic client value.
   describe("promo apply/clear", () => {
+    // The promo controls live behind the sheet now — every apply path starts by
+    // opening it, whether the buyer types a code or picks a listed voucher.
+    // Matched loosely because the trigger's name absorbs the "N ready" badge
+    // whenever the cart qualifies for something.
+    const openPromoSheet = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(await screen.findByRole("button", { name: /Use a promo/ }));
+    };
+
     const digitalOnlyCart = (overrides: Partial<Order> = {}): Order =>
       ({
         id: "o1",
@@ -866,6 +992,7 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
+      await openPromoSheet(user);
       await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "HEMAT10");
       await user.click(screen.getByRole("button", { name: "Pakai" }));
 
@@ -915,7 +1042,9 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      await user.click(await screen.findByRole("button", { name: "Hapus" }));
+      // Applied state is read off the order, so the summary row offers the
+      // removal directly — no sheet to open first.
+      await user.click(await screen.findByRole("button", { name: "Remove promo" }));
 
       await waitFor(() => {
         expect(patchCartMutate).toHaveBeenCalledWith(expect.objectContaining({ promo_code: "" }));
@@ -938,6 +1067,7 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
+      await openPromoSheet(user);
       await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "EXPIRED");
       await user.click(screen.getByRole("button", { name: "Pakai" }));
 
@@ -985,7 +1115,10 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      await user.click(await screen.findByRole("button", { name: /HEMAT10/i }));
+      await openPromoSheet(user);
+      // The voucher card carries the code and its own apply control.
+      expect(screen.getByText("HEMAT10")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Use" }));
 
       await waitFor(() => {
         expect(validatePromoMutate).toHaveBeenCalledWith(
@@ -1001,12 +1134,11 @@ describe("CartPage with Shipping", () => {
       expect(body).toHaveProperty("orderId", "o1");
 
       // The manual apply path issues the identical shape — proving the listed
-      // promo did not invent a second mechanism. The input already holds the
-      // selected code (selectedCode filled it), so pressing "Pakai" again
-      // re-runs the exact same handler with the same argument.
-      expect(screen.getByPlaceholderText("Masukkan kode promo")).toHaveValue("HEMAT10");
+      // voucher did not invent a second mechanism.
       patchCartMutate.mockClear();
       validatePromoMutate.mockClear();
+      await openPromoSheet(user);
+      await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "HEMAT10");
       await user.click(screen.getByRole("button", { name: "Pakai" }));
 
       await waitFor(() => {
@@ -1014,6 +1146,50 @@ describe("CartPage with Shipping", () => {
       });
       const [manualBody] = patchCartMutate.mock.calls[0];
       expect(manualBody).toEqual(body);
+    });
+
+    // A voucher the cart cannot afford yet stays visible with its shortfall
+    // spelled out — Shopee shows the offer rather than hiding it — but it
+    // carries no control, so there is no way to reach the validate call.
+    it("lists a promo below its minimum spend as ineligible, with no way to apply it", async () => {
+      const user = userEvent.setup();
+      const validatePromoMutate = vi.fn();
+
+      mockUseCart.mockReturnValue({ data: digitalOnlyCart(), isLoading: false, isError: false, refetch: vi.fn() });
+      mockUseValidatePromo.mockReturnValue({
+        mutate: validatePromoMutate,
+        isPending: false,
+        data: undefined,
+        isError: false,
+      });
+      mockUsePatchCart.mockReturnValue({ mutate: vi.fn(), isPending: false, isError: false });
+      mockUseActivePromoCodes.mockReturnValue({
+        data: [
+          {
+            code: "BIGSPEND",
+            discount_percent: null,
+            discount_amount: 50000,
+            // The cart subtotal is 100000.
+            min_order_amount: 250000,
+            max_discount_amount: null,
+            expires_at: null,
+          },
+        ],
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithQueryClient(<CartPage />);
+
+      await openPromoSheet(user);
+      expect(screen.getByText("Not eligible yet")).toBeInTheDocument();
+      expect(screen.queryByText("Ready to use")).toBeNull();
+      expect(screen.getByText("BIGSPEND")).toBeInTheDocument();
+      // Rp250.000 minimum against a Rp100.000 cart.
+      expect(screen.getByText("Add Rp150.000 more to use this promo")).toBeInTheDocument();
+
+      expect(screen.queryByRole("button", { name: "Use" })).toBeNull();
+      expect(validatePromoMutate).not.toHaveBeenCalled();
     });
 
     // FR-14 is additive: an empty list and a failing list request must both
@@ -1037,6 +1213,8 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
+      await openPromoSheet(user);
+      expect(screen.getByText("No promos for this cart yet.")).toBeInTheDocument();
       await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "MANUAL5");
       await user.click(screen.getByRole("button", { name: "Pakai" }));
 
@@ -1071,6 +1249,7 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
+      await openPromoSheet(user);
       await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "MANUAL5");
       await user.click(screen.getByRole("button", { name: "Pakai" }));
 

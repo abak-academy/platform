@@ -40,6 +40,9 @@
   --color-violet-bg:  #efe9fb;
   --color-gold:       #b08612;
   --color-gold-bg:    #f8f1dd;
+  /* --color-gold is 2.97:1 on --color-gold-bg — under AA for anything small.
+     Use this for gold text on a gold field. */
+  --color-gold-700:   #6f5209;
 
   /* ---- Radius ---- */
   --r-sm: 9px;
@@ -140,6 +143,8 @@ html[data-theme="dark"] {
   --color-violet-bg:  rgba(124, 77, 219, .30);
   --color-gold:       #ddc46e;
   --color-gold-bg:    rgba(176, 134, 18, .28);
+  /* On a dark field the light gold is already 5.9:1 — it is the readable one here. */
+  --color-gold-700:   #ddc46e;
 }
 
 /* shadcn semantic-token bridge: map shadcn --primary/--background/etc. to
