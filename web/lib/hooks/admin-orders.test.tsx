@@ -4,14 +4,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   useAdminOrders,
   useAdminOrder,
+  useAdminOrderSummary,
   useConfirmOrder,
   useShipOrder,
   useShipOrderManual,
   useRefundOrder,
   useReconcileOrder,
   adminOrdersKeys,
+  ORDERS_PAGE_SIZE,
 } from "./admin-orders";
-import type { Order } from "@/lib/types";
+import type { Order, OrderSummary } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 
@@ -50,25 +52,130 @@ describe("admin-orders hooks", () => {
     mockAuthFetch.mockReset();
   });
 
-  it("useAdminOrders fetches GET /admin/orders and returns data", async () => {
+  it("useAdminOrders fetches GET /admin/orders and returns the first page", async () => {
     mockAuthFetch.mockResolvedValueOnce({ data: [sampleOrder] });
 
     const { wrapper } = wrapperFactory();
-    const { result } = renderHook(() => useAdminOrders(), { wrapper });
+    const { result } = renderHook(() => useAdminOrders({ status: "all" }), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders");
-    expect(result.current.data).toEqual([sampleOrder]);
+    expect(mockAuthFetch).toHaveBeenCalledWith(`/admin/orders?limit=${ORDERS_PAGE_SIZE}`);
+    expect(result.current.data?.pages[0].data).toEqual([sampleOrder]);
   });
 
   it("useAdminOrders maps status filter to backend enum", async () => {
     mockAuthFetch.mockResolvedValueOnce({ data: [] });
 
     const { wrapper } = wrapperFactory();
-    renderHook(() => useAdminOrders("pending"), { wrapper });
+    renderHook(() => useAdminOrders({ status: "pending" }), { wrapper });
 
-    await waitFor(() => expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders?status=payment_pending"));
+    await waitFor(() =>
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `/admin/orders?status=payment_pending&limit=${ORDERS_PAGE_SIZE}`
+      )
+    );
+  });
+
+  it("useAdminOrders sends status, q, from and to together", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(
+      () => useAdminOrders({ status: "paid", q: "budi santoso", from: "2026-07-01", to: "2026-07-31" }),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(mockAuthFetch).toHaveBeenCalledTimes(1));
+    const params = new URLSearchParams(mockAuthFetch.mock.calls[0][0].split("?")[1]);
+    expect(params.get("status")).toBe("paid");
+    expect(params.get("q")).toBe("budi santoso");
+    expect(params.get("from")).toBe("2026-07-01");
+    expect(params.get("to")).toBe("2026-07-31");
+  });
+
+  // shipment_failed filters on shipment_status, not status — the order itself
+  // is still "shipped", so no status param may be sent alongside it.
+  it("useAdminOrders sends shipment=failed and no status for the shipment_failed filter", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(() => useAdminOrders({ status: "shipment_failed" }), { wrapper });
+
+    await waitFor(() => expect(mockAuthFetch).toHaveBeenCalledTimes(1));
+    const params = new URLSearchParams(mockAuthFetch.mock.calls[0][0].split("?")[1]);
+    expect(params.get("shipment")).toBe("failed");
+    expect(params.get("status")).toBeNull();
+  });
+
+  it("useAdminOrders pages forward with cursor and stops when next_cursor is empty", async () => {
+    mockAuthFetch
+      .mockResolvedValueOnce({ data: [sampleOrder], next_cursor: "cur-2" })
+      .mockResolvedValueOnce({ data: [{ ...sampleOrder, id: "o2" }], next_cursor: "" });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useAdminOrders({ status: "all" }), { wrapper });
+
+    await waitFor(() => expect(result.current.hasNextPage).toBe(true));
+
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+
+    await waitFor(() => expect(result.current.hasNextPage).toBe(false));
+    expect(mockAuthFetch).toHaveBeenLastCalledWith(
+      `/admin/orders?limit=${ORDERS_PAGE_SIZE}&cursor=cur-2`
+    );
+    expect(result.current.data?.pages).toHaveLength(2);
+  });
+
+  it("useAdminOrders refetches when q changes", async () => {
+    mockAuthFetch.mockResolvedValue({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    const { result, rerender } = renderHook(
+      ({ q }: { q: string }) => useAdminOrders({ status: "all", q }),
+      { wrapper, initialProps: { q: "budi" } }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+
+    rerender({ q: "siti" });
+
+    await waitFor(() => expect(mockAuthFetch).toHaveBeenCalledTimes(2));
+    expect(mockAuthFetch.mock.calls[1][0]).toContain("q=siti");
+  });
+
+  it("useAdminOrderSummary fetches GET /admin/orders/summary with the same filters", async () => {
+    const summary: OrderSummary = {
+      buckets: {
+        needs_confirm: 3,
+        ready_to_ship: 1,
+        shipment_failed: 0,
+        in_transit: 2,
+        created_this_month: 9,
+        completed_this_month: 4,
+        total: 12,
+      },
+      top_products: [
+        { product_id: "p1", name: "Buku A", product_type: "book", qty_sold: 7, order_count: 5 },
+      ],
+    };
+    mockAuthFetch.mockResolvedValueOnce(summary);
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(
+      () => useAdminOrderSummary({ status: "all", q: "buku", from: "2026-07-01", to: "2026-07-31" }),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/admin/orders/summary?q=buku&from=2026-07-01&to=2026-07-31"
+    );
+    expect(result.current.data).toEqual(summary);
   });
 
   it("useAdminOrder fetches GET /admin/orders/:id", async () => {
