@@ -17,7 +17,7 @@ import {
 } from "@/lib/hooks/admin-orders";
 import { useTranslation } from "@/lib/i18n";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
-import { isShipmentFailure } from "@/lib/shipment-status";
+import { isShipmentFailure, shipmentStatusLabel } from "@/lib/shipment-status";
 import { CancelShipmentModal } from "@/components/admin/CancelShipmentModal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -70,7 +70,7 @@ function actionAllowed(status: OrderStatus, action: "confirm" | "ship" | "comple
 }
 
 export default function OrdersPage() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [filter, setFilter] = useState<AdminOrderFilterStatus>("all");
   const { data: orders, isLoading, isError, error } = useAdminOrders(filter);
   const confirm = useConfirmOrder();
@@ -108,6 +108,23 @@ export default function OrdersPage() {
       case "shipment_failed": return t("shipment_failed_badge");
     }
   };
+
+  // The courier's own status, as opposed to shippingBadge above, which only
+  // says whether we handed the parcel over. A dead shipment is coloured here
+  // too: the badge catches the eye when scanning, this says what happened.
+  function shipmentStatusCell(order: Order) {
+    if (!hasPhysicalItem(order) || !order.shipment_status) {
+      return <span data-testid="row-shipment-status" className="text-xs text-muted-foreground">—</span>;
+    }
+    return (
+      <span
+        data-testid="row-shipment-status"
+        className={isShipmentFailure(order.shipment_status) ? "text-destructive" : undefined}
+      >
+        {shipmentStatusLabel(order.shipment_status, lang)}
+      </span>
+    );
+  }
 
   function shippingBadge(order: Order) {
     if (!hasPhysicalItem(order)) return null;
@@ -269,6 +286,7 @@ export default function OrdersPage() {
                 <th className="px-4 py-3 text-left font-medium">{t("th_total")}</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-left font-medium">Pengiriman</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_shipment_status")}</th>
                 <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
               </tr>
             </thead>
@@ -301,6 +319,7 @@ export default function OrdersPage() {
                   <td className="px-4 py-3">
                     {hasPhysicalItem(order) ? shippingBadge(order) : <span className="text-xs text-muted-foreground">—</span>}
                   </td>
+                  <td className="px-4 py-3">{shipmentStatusCell(order)}</td>
                   <td className="px-4 py-3 text-right">
                     <div
                       className="flex items-center justify-end gap-2"
@@ -371,7 +390,7 @@ export default function OrdersPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                     {t("empty_orders")}
                   </td>
                 </tr>
