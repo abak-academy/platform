@@ -37,6 +37,10 @@ func (bookingLogisticsClient) CreateOrder(context.Context, service.CreateShipmen
 	}, nil
 }
 
+func (bookingLogisticsClient) CancelOrder(context.Context, string, string) error {
+	return service.ErrShippingUnavailable
+}
+
 func (bookingLogisticsClient) GetOrder(context.Context, string) (service.Shipment, error) {
 	return service.Shipment{}, service.ErrShippingUnavailable
 }
