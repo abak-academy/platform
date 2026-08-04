@@ -263,6 +263,10 @@ func (stubLogisticsClient) CreateOrder(context.Context, service.CreateShipmentRe
 	return service.Shipment{}, service.ErrShippingUnavailable
 }
 
+func (stubLogisticsClient) TrackWaybill(context.Context, string, string) (service.WaybillTracking, error) {
+	return service.WaybillTracking{}, service.ErrShippingUnavailable
+}
+
 func (stubLogisticsClient) CancelOrder(context.Context, string, string) error {
 	return service.ErrShippingUnavailable
 }

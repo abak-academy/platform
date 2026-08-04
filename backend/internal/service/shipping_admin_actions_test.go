@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 // TestAdminRefreshShipment_LandsTheRefetchedStatus covers the manual pull an
@@ -154,5 +155,99 @@ func TestAdminCancelShipment_FailureLeavesTheOrderUntouched(t *testing.T) {
 	}
 	if got.ShipmentStatus != nil {
 		t.Errorf("want shipment_status untouched, got %v", *got.ShipmentStatus)
+	}
+}
+
+// TestGetOrderTracking_PrefersTheCourierScanLog proves the dialog shows the
+// carrier's own checkpoints when they are available, newest first.
+func TestGetOrderTracking_PrefersTheCourierScanLog(t *testing.T) {
+	early := time.Date(2026, 8, 2, 9, 0, 0, 0, time.UTC)
+	late := time.Date(2026, 8, 3, 17, 30, 0, 0, time.UTC)
+	fake := &fakeShipWebhookLogistics{
+		trackFn: func(ctx context.Context, waybillID, courierCode string) (WaybillTracking, error) {
+			return WaybillTracking{
+				Status: "delivered",
+				History: []TrackingEntry{
+					{Status: "picked", OccurredAt: early, Note: "Diambil dari gudang"},
+					{Status: "delivered", OccurredAt: late, Note: "Diterima Budi"},
+				},
+			}, nil
+		},
+	}
+	svc, repo := newShippingWebhookTestService(t, fake)
+	orderID := seedShippedOrder(t, svc, repo, "biteship-tracking-view")
+	ctx := context.Background()
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE orders SET courier_code = 'jne', selected_courier = 'JNE' WHERE id = $1`, orderID); err != nil {
+		t.Fatalf("seed courier code: %v", err)
+	}
+
+	view, err := svc.GetOrderTracking(ctx, orderID.String())
+	if err != nil {
+		t.Fatalf("GetOrderTracking: %v", err)
+	}
+	if view.Source != "courier" {
+		t.Errorf("source = %q, want courier", view.Source)
+	}
+	if view.Status != "delivered" {
+		t.Errorf("status = %q, want delivered", view.Status)
+	}
+	if len(view.History) != 2 || view.History[0].Status != "delivered" {
+		t.Fatalf("want newest checkpoint first, got %+v", view.History)
+	}
+	if view.Waybill != "WB-1" {
+		t.Errorf("waybill = %q, want the order's resi", view.Waybill)
+	}
+}
+
+// When the carrier cannot answer, the parcel is still describable from the
+// events the webhook recorded — degrading is better than an empty dialog, but
+// it must be labelled so nobody reads a thin history as the carrier's.
+func TestGetOrderTracking_FallsBackToStoredEventsAndSaysSo(t *testing.T) {
+	fake := &fakeShipWebhookLogistics{
+		trackFn: func(ctx context.Context, waybillID, courierCode string) (WaybillTracking, error) {
+			return WaybillTracking{}, errors.New("courier unreachable")
+		},
+		getOrderFn: func(ctx context.Context, biteshipOrderID string) (Shipment, error) {
+			return Shipment{BiteshipOrderID: biteshipOrderID, Status: "in_transit", WaybillID: "WB-1"}, nil
+		},
+	}
+	svc, repo := newShippingWebhookTestService(t, fake)
+	seedWebhookSecret(t, repo, "correct-secret")
+	orderID := seedShippedOrder(t, svc, repo, "biteship-tracking-fallback")
+	ctx := context.Background()
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE orders SET courier_code = 'jne' WHERE id = $1`, orderID); err != nil {
+		t.Fatalf("seed courier code: %v", err)
+	}
+	if err := svc.HandleShippingWebhook(ctx, shipWebhookBody(t, "biteship-tracking-fallback"), "correct-secret"); err != nil {
+		t.Fatalf("seed an event: %v", err)
+	}
+
+	view, err := svc.GetOrderTracking(ctx, orderID.String())
+	if err != nil {
+		t.Fatalf("GetOrderTracking: %v", err)
+	}
+	if view.Source != "local" {
+		t.Errorf("source = %q, want local", view.Source)
+	}
+	if len(view.History) == 0 {
+		t.Error("want the stored events rather than an empty dialog")
+	}
+}
+
+// An order with no resi has nothing to track, and saying so is better than
+// opening an empty dialog.
+func TestGetOrderTracking_RefusesAnOrderWithNoWaybill(t *testing.T) {
+	fake := &fakeShipWebhookLogistics{}
+	svc, repo := newShippingWebhookTestService(t, fake)
+	ctx := context.Background()
+	orderID := seedShippedOrder(t, svc, repo, "biteship-tracking-nowaybill")
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET tracking_number = '' WHERE id = $1`, orderID); err != nil {
+		t.Fatalf("clear tracking number: %v", err)
+	}
+
+	if _, err := svc.GetOrderTracking(ctx, orderID.String()); !errors.Is(err, ErrNoTrackingNumber) {
+		t.Fatalf("want ErrNoTrackingNumber, got %v", err)
 	}
 }

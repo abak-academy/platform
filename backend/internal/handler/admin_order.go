@@ -211,6 +211,15 @@ func (h *Handler) AdminCancelShipment(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"message": "shipment cancelled"})
 }
 
+// AdminGetOrderTracking returns the parcel's journey for the tracking dialog.
+func (h *Handler) AdminGetOrderTracking(c echo.Context) error {
+	view, err := h.svc.GetOrderTracking(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, view)
+}
+
 func (h *Handler) AdminCompleteOrder(c echo.Context) error {
 	orderID := c.Param("id")
 

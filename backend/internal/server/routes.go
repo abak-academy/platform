@@ -172,6 +172,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminOrders.POST("/:id/confirm", h.AdminConfirmOrder)
 	adminOrders.POST("/:id/ship", h.AdminShipOrder)
 	adminOrders.POST("/:id/ship-manual", h.AdminShipOrderManual)
+	adminOrders.GET("/:id/tracking", h.AdminGetOrderTracking)
 	adminOrders.POST("/:id/shipment/refresh", h.AdminRefreshShipment)
 	adminOrders.POST("/:id/shipment/cancel", h.AdminCancelShipment)
 	adminOrders.GET("/:id/label", h.AdminGetShippingLabel)

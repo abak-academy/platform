@@ -32,6 +32,7 @@ export interface OrderDetailModalProps {
   isRefunding?: boolean;
   // Both only meaningful for an order booked through Biteship; the caller
   // owns that rule, the same way it owns onShip/onRefund.
+  onTrack?: () => void;
   onRefreshShipment?: () => void;
   onCancelShipment?: () => void;
   isRefreshingShipment?: boolean;
@@ -53,6 +54,7 @@ export function OrderDetailModal({
   onShip,
   onRefund,
   isRefunding,
+  onTrack,
   onRefreshShipment,
   onCancelShipment,
   isRefreshingShipment,
@@ -137,6 +139,11 @@ export function OrderDetailModal({
               action={
                 order.tracking_number ? (
                   <div className="flex flex-wrap items-center gap-2">
+                    {onTrack && (
+                      <Button variant="outline" size="sm" data-testid="shipment-track" onClick={onTrack}>
+                        {t("shipment_track_button")}
+                      </Button>
+                    )}
                     {onRefreshShipment && (
                       <Button
                         variant="outline"

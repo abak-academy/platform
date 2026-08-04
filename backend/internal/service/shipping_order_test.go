@@ -40,6 +40,10 @@ func (f *fakeShipLogistics) CreateOrder(ctx context.Context, req CreateShipmentR
 	return Shipment{}, errors.New("fakeShipLogistics: CreateOrder not stubbed")
 }
 
+func (f *fakeShipLogistics) TrackWaybill(context.Context, string, string) (WaybillTracking, error) {
+	return WaybillTracking{}, ErrShippingUnavailable
+}
+
 func (f *fakeShipLogistics) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {
 	return nil
 }

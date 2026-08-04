@@ -113,6 +113,11 @@ type LogisticsClient interface {
 
 	// CancelOrder cancels a booked pickup. reason is forwarded to the carrier.
 	CancelOrder(ctx context.Context, biteshipOrderID, reason string) error
+
+	// TrackWaybill asks the carrier for a waybill's scan log. Works for any
+	// waybill, including one we did not book — that is the only way an order
+	// shipped through the manual-resi escape hatch can be tracked at all.
+	TrackWaybill(ctx context.Context, waybillID, courierCode string) (WaybillTracking, error)
 }
 
 type NoopLogisticsClient struct{}
@@ -138,4 +143,15 @@ func (n *NoopLogisticsClient) GetOrder(ctx context.Context, biteshipOrderID stri
 
 func (n *NoopLogisticsClient) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {
 	return ErrShippingUnavailable
+}
+
+func (n *NoopLogisticsClient) TrackWaybill(ctx context.Context, waybillID, courierCode string) (WaybillTracking, error) {
+	return WaybillTracking{}, ErrShippingUnavailable
+}
+
+// WaybillTracking is a carrier scan log, as returned by the track-any-waybill
+// endpoint.
+type WaybillTracking struct {
+	Status  string
+	History []TrackingEntry
 }

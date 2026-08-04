@@ -1195,3 +1195,21 @@ export interface JobStatus {
   created_at: string;
   updated_at: string;
 }
+
+export interface OrderTrackingEntry {
+  status: string;
+  note?: string;
+  occurred_at: string;
+  driver_name?: string;
+}
+
+export interface OrderTracking {
+  waybill: string;
+  courier: string;
+  service: string;
+  status: string;
+  // "courier" when the carrier's own scan log answered, "local" when it did
+  // not and this fell back to the events our webhook recorded.
+  source: "courier" | "local";
+  history: OrderTrackingEntry[];
+}

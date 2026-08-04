@@ -23,6 +23,7 @@ type fakeShipWebhookLogistics struct {
 	getOrderCalls int
 	getOrderFn    func(ctx context.Context, biteshipOrderID string) (Shipment, error)
 
+	trackFn      func(ctx context.Context, waybillID, courierCode string) (WaybillTracking, error)
 	cancelCalls  int
 	cancelledID  string
 	cancelReason string
@@ -37,6 +38,13 @@ func (f *fakeShipWebhookLogistics) GetRates(ctx context.Context, req ShippingQuo
 
 func (f *fakeShipWebhookLogistics) CreateOrder(ctx context.Context, req CreateShipmentRequest) (Shipment, error) {
 	return Shipment{}, errors.New("fakeShipWebhookLogistics: CreateOrder not stubbed")
+}
+
+func (f *fakeShipWebhookLogistics) TrackWaybill(ctx context.Context, waybillID, courierCode string) (WaybillTracking, error) {
+	if f.trackFn != nil {
+		return f.trackFn(ctx, waybillID, courierCode)
+	}
+	return WaybillTracking{}, ErrShippingUnavailable
 }
 
 func (f *fakeShipWebhookLogistics) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {

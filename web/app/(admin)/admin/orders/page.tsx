@@ -14,11 +14,13 @@ import {
   useReconcileOrder,
   useRefreshShipment,
   useCancelShipment,
+  useOrderTracking,
 } from "@/lib/hooks/admin-orders";
 import { useTranslation } from "@/lib/i18n";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { isShipmentFailure, shipmentStatusLabel } from "@/lib/shipment-status";
 import { CancelShipmentModal } from "@/components/admin/CancelShipmentModal";
+import { TrackingModal } from "@/components/admin/TrackingModal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -81,6 +83,8 @@ export default function OrdersPage() {
   const reconcile = useReconcileOrder();
   const refreshShipment = useRefreshShipment();
   const cancelShipment = useCancelShipment();
+  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
+  const tracking = useOrderTracking(trackingOrderId);
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
   const [shippingOrder, setShippingOrder] = useState<Order | null>(null);
   const [cancellingShipment, setCancellingShipment] = useState<Order | null>(null);
@@ -413,6 +417,9 @@ export default function OrdersPage() {
               }
             : undefined
         }
+        onTrack={
+          detailOrder?.tracking_number ? () => setTrackingOrderId(detailOrder.id) : undefined
+        }
         onRefreshShipment={
           detailOrder?.biteship_order_id
             ? () => handleRefreshShipment(detailOrder.id)
@@ -472,6 +479,16 @@ export default function OrdersPage() {
           error={refundError}
         />
       )}
+
+      <TrackingModal
+        open={Boolean(trackingOrderId)}
+        onOpenChange={(o) => {
+          if (!o) setTrackingOrderId(null);
+        }}
+        tracking={tracking.data}
+        isLoading={tracking.isLoading}
+        error={tracking.isError ? t("shipment_track_failed") : null}
+      />
 
       {cancellingShipment && (
         <CancelShipmentModal

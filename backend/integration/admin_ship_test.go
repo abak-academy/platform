@@ -37,6 +37,10 @@ func (bookingLogisticsClient) CreateOrder(context.Context, service.CreateShipmen
 	}, nil
 }
 
+func (bookingLogisticsClient) TrackWaybill(context.Context, string, string) (service.WaybillTracking, error) {
+	return service.WaybillTracking{}, service.ErrShippingUnavailable
+}
+
 func (bookingLogisticsClient) CancelOrder(context.Context, string, string) error {
 	return service.ErrShippingUnavailable
 }

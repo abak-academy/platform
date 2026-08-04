@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { Order, AdminOrderFilterStatus } from "@/lib/types";
+import type { Order, AdminOrderFilterStatus, OrderTracking } from "@/lib/types";
 
 export const adminOrdersKeys = {
   all: ["admin", "orders"] as const,
@@ -208,5 +208,17 @@ export function useCompleteOrder() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminOrdersKeys.all });
     },
+  });
+}
+
+export function useOrderTracking(orderId: string | null) {
+  return useQuery({
+    queryKey: [...adminOrdersKeys.all, "tracking", orderId],
+    queryFn: () =>
+      authFetch<OrderTracking>(`/admin/orders/${encodeURIComponent(orderId!)}/tracking`),
+    enabled: Boolean(orderId),
+    // The courier's scan log is the point of opening this; a cached one from
+    // an earlier visit would answer the wrong question.
+    staleTime: 0,
   });
 }

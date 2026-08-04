@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"time"
@@ -310,6 +311,72 @@ func (c *BiteshipClient) CancelOrder(ctx context.Context, biteshipOrderID, reaso
 		return classifyBiteshipOrderError(resp.StatusCode, respBody)
 	}
 	return nil
+}
+
+// TrackWaybill calls GET /v1/trackings/:waybill_id/couriers/:courier_code —
+// Biteship's track-any-waybill endpoint, which answers for a waybill we never
+// booked.
+//
+// TODO: uncertain — the response shape is unverified. Biteship's docs page for
+// this endpoint renders client-side and returns nothing to a fetch, and the
+// unofficial SDKs expose only the method signature, not the struct. The
+// parsing below accepts the field names their order endpoints already use
+// (history[].status/note/updated_at) and treats anything it cannot read as an
+// empty log, so a wrong guess degrades to the stored events rather than
+// showing a broken timeline. Confirm against a real response before relying
+// on it.
+func (c *BiteshipClient) TrackWaybill(ctx context.Context, waybillID, courierCode string) (service.WaybillTracking, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.baseURL+"/v1/trackings/"+url.PathEscape(waybillID)+"/couriers/"+url.PathEscape(courierCode), nil)
+	if err != nil {
+		return service.WaybillTracking{}, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	httpReq.Header.Set("authorization", c.apiKey)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return service.WaybillTracking{}, fmt.Errorf("failed to call Biteship API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return service.WaybillTracking{}, fmt.Errorf("failed to read Biteship response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return service.WaybillTracking{}, classifyBiteshipOrderError(resp.StatusCode, respBody)
+	}
+
+	return parseBiteshipTracking(respBody)
+}
+
+func parseBiteshipTracking(body []byte) (service.WaybillTracking, error) {
+	var resp biteshipTrackingResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return service.WaybillTracking{}, fmt.Errorf("failed to parse Biteship tracking response: %w", err)
+	}
+
+	out := service.WaybillTracking{Status: resp.Status}
+	for _, h := range resp.History {
+		// A checkpoint with no timestamp cannot be placed on a timeline, and
+		// showing it at the zero time would date it to year 1.
+		if h.UpdatedAt.Time.IsZero() {
+			continue
+		}
+		out.History = append(out.History, service.TrackingEntry{
+			Status:     h.Status,
+			Note:       h.Note,
+			OccurredAt: h.UpdatedAt.Time,
+		})
+	}
+	return out, nil
+}
+
+// biteshipTrackingResponse reuses the courier-history shape the order
+// endpoints already return, which is the only shape we have actually seen.
+type biteshipTrackingResponse struct {
+	Status  string                        `json:"status"`
+	History []biteshipCourierHistoryEntry `json:"history"`
 }
 
 // buildBiteshipOrderRequest maps CreateShipmentRequest onto Biteship's
