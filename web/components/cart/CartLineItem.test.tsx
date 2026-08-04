@@ -34,4 +34,25 @@ describe("CartLineItem", () => {
     );
     expect(screen.getByLabelText("Tambah jumlah")).toBeTruthy();
   });
+
+  // An exam in the cart was labelled "Buku": the badge map covered three of the
+  // five product types and a `?? book` fallback turned every miss into a
+  // confident wrong answer. Every type is asserted here so the next one added
+  // cannot slip through the same gap.
+  it.each([
+    ["book", "Buku"],
+    ["course", "Kursus"],
+    ["exam", "Ujian"],
+    ["merchandise", "Merchandise"],
+    ["medal", "Medali"],
+  ])("labels a %s line item as %s", (productType, label) => {
+    render(
+      <CartLineItem
+        item={{ ...base, product_type: productType } as any}
+        onRemove={() => {}}
+        onQtyChange={() => {}}
+      />,
+    );
+    expect(screen.getByText(label)).toBeTruthy();
+  });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { Book, Minus, Plus, PlayCircle, Trash2, Trophy } from "lucide-react";
+import { Award, Book, ClipboardList, Minus, Package, PlayCircle, Plus, Trash2 } from "lucide-react";
 import type { OrderItem, ProductType } from "@/lib/types";
 import { formatRupiah } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -9,11 +9,26 @@ import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 import { isDigitalType } from "@/lib/shipping";
 
-const TYPE_META: Record<string, { label: string; tone: string; bg: string; Icon: typeof Book }> = {
-  book: { label: "Buku", tone: "text-warn", bg: "bg-warn-bg", Icon: Book },
-  course: { label: "Kursus", tone: "text-success", bg: "bg-success-bg", Icon: PlayCircle },
-  package: { label: "Kompetisi", tone: "text-violet", bg: "bg-violet-bg", Icon: Trophy },
+// Keyed by ProductType, not by string: the compiler now refuses an incomplete
+// map. It used to be Record<string, …> holding only book, course and a
+// "package" type that does not exist — so exam, merchandise and medal all
+// missed the lookup and a `?? book` default shipped them to checkout labelled
+// "Buku". Mirrors the map in catalog/[id] and ProductCard.
+const TYPE_META: Record<
+  ProductType,
+  { labelKey: string; tone: string; bg: string; Icon: typeof Book }
+> = {
+  book: { labelKey: "product_type_book", tone: "text-warn", bg: "bg-warn-bg", Icon: Book },
+  course: { labelKey: "product_type_course", tone: "text-success", bg: "bg-success-bg", Icon: PlayCircle },
+  exam: { labelKey: "product_type_exam", tone: "text-info", bg: "bg-info-bg", Icon: ClipboardList },
+  merchandise: { labelKey: "product_type_merchandise", tone: "text-warn", bg: "bg-warn-bg", Icon: Package },
+  medal: { labelKey: "product_type_medal", tone: "text-warn", bg: "bg-warn-bg", Icon: Award },
 };
+
+// OrderItem carries product_type as a plain string, so an unrecognised one has
+// to land somewhere. It shows its own name in neutral chrome — a lookup miss
+// must never again resolve to a confident wrong type.
+const UNKNOWN_META = { labelKey: "", tone: "text-ink-600", bg: "bg-line-2", Icon: Package };
 
 export interface CartLineItemProps {
   item: OrderItem;
@@ -28,8 +43,9 @@ export interface CartLineItemProps {
 
 export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQty, flat }: CartLineItemProps) {
   const { t } = useTranslation();
-  const meta = TYPE_META[item.product_type] ?? TYPE_META.book;
+  const meta = TYPE_META[item.product_type as ProductType] ?? UNKNOWN_META;
   const { Icon } = meta;
+  const label = meta.labelKey ? t(meta.labelKey as any) : item.product_type;
   const lineTotal = item.jumlah ?? item.unit_price * item.qty;
   const busy = removing || updatingQty;
   const isDigital = isDigitalType(item.product_type as ProductType);
@@ -54,7 +70,7 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
           <div className="flex flex-col gap-1">
             <span className="text-[15px] font-semibold leading-snug text-ink-900">{item.name}</span>
             <Badge variant="outline" className={cn("w-fit border-transparent", meta.bg, meta.tone)}>
-              {meta.label}
+              {label}
             </Badge>
           </div>
           <Button
