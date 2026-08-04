@@ -1669,6 +1669,22 @@ func (s *Service) AdminGetRevenue(ctx context.Context, from, to time.Time) (map[
 	return s.storeRepo.GetRevenue(ctx, from, to)
 }
 
+// AdminOrderBuckets counts what needs attention. Which shipment_status spellings
+// count as a failure is a domain question, so it is answered here rather than in
+// the repository — the same call ListOrders' ?shipment=failed filter makes.
+func (s *Service) AdminOrderBuckets(
+	ctx context.Context, filter repository.OrderFilter, monthStart, monthEnd time.Time,
+) (repository.OrderBucketCounts, error) {
+	filter.ExcludeCart = true
+	return s.storeRepo.CountOrdersByBucket(ctx, filter, ShipmentFailureStatusValues(), monthStart, monthEnd)
+}
+
+func (s *Service) AdminTopProducts(
+	ctx context.Context, from, to time.Time, orderBy string, limit int,
+) ([]repository.TopProduct, error) {
+	return s.storeRepo.TopProducts(ctx, from, to, orderBy, limit)
+}
+
 // Payment webhook handler
 
 func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, signature, key string) error {
