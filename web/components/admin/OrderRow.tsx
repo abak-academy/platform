@@ -31,6 +31,12 @@ export interface OrderRowMenuAction {
   label: string;
   onClick: () => void;
   destructive?: boolean;
+  /**
+   * These actions were row buttons that greyed out while their mutation was in
+   * flight. Refund and refresh-shipment have no server-side idempotency guard,
+   * so losing that would make a double-click a second refund.
+   */
+  disabled?: boolean;
 }
 
 export interface OrderRowPrimaryAction {
@@ -212,6 +218,7 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
                   <DropdownMenuItem
                     key={action.label}
                     variant={action.destructive ? "destructive" : "default"}
+                    disabled={action.disabled}
                     onSelect={action.onClick}
                   >
                     {action.label}
