@@ -2,26 +2,49 @@ package handler
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
 
-func (h *Handler) AdminListOrders(c echo.Context) error {
-	cursor := c.QueryParam("cursor")
-	status := c.QueryParam("status")
-	productType := c.QueryParam("type")
-	limit := 20
+// OrderSummaryProduct is the money-free projection of repository.TopProduct.
+// It exists so that the summary endpoint — which admin_store may call, and which
+// must never carry revenue — cannot leak an amount by accident. Hiding the field
+// in the UI would still ship the bytes; there is no field here to ship.
+type OrderSummaryProduct struct {
+	ProductID   string `json:"product_id"`
+	Name        string `json:"name"`
+	ProductType string `json:"product_type"`
+	QtySold     int    `json:"qty_sold"`
+	OrderCount  int    `json:"order_count"`
+}
 
+type OrderSummaryResponse struct {
+	Buckets     repository.OrderBucketCounts `json:"buckets"`
+	TopProducts []OrderSummaryProduct        `json:"top_products"`
+}
+
+func (h *Handler) AdminListOrders(c echo.Context) error {
 	filter := repository.OrderFilter{
-		Status:      status,
-		ProductType: productType,
-		Cursor:      cursor,
-		Limit:       limit,
+		Status:      c.QueryParam("status"),
+		ProductType: c.QueryParam("type"),
+		Cursor:      c.QueryParam("cursor"),
+		Search:      strings.TrimSpace(c.QueryParam("q")),
+		Limit:       parseLimit(c.QueryParam("limit"), 20, 100),
 	}
+
+	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	filter.CreatedFrom, filter.CreatedTo = from, to
+
 	// ?shipment=failed is the admin's only way to find parcels that died:
 	// orders.status is never walked back by the webhook (FR-C-15), so a
 	// courier-not-found order still reads "shipped" in every other view.
@@ -38,6 +61,98 @@ func (h *Handler) AdminListOrders(c echo.Context) error {
 		"data":        orders,
 		"next_cursor": nextCursor,
 	})
+}
+
+// AdminOrdersSummary returns counts and quantity-ranked products. Deliberately
+// no money: see OrderSummaryProduct.
+func (h *Handler) AdminOrdersSummary(c echo.Context) error {
+	filter := repository.OrderFilter{
+		Status: c.QueryParam("status"),
+		Search: strings.TrimSpace(c.QueryParam("q")),
+	}
+	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	filter.CreatedFrom, filter.CreatedTo = from, to
+	if c.QueryParam("shipment") == "failed" {
+		filter.ShipmentStatusIn = service.ShipmentFailureStatusValues()
+	}
+
+	// Month-to-date is computed in Jakarta time: an order placed at 08:00 WIB on
+	// the 1st belongs to this month, and UTC would put it in the last one.
+	now := time.Now().In(jakarta)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, jakarta)
+	monthEnd := monthStart.AddDate(0, 1, 0)
+
+	buckets, err := h.svc.AdminOrderBuckets(c.Request().Context(), filter, monthStart, monthEnd)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	products, err := h.svc.AdminTopProducts(c.Request().Context(), monthStart, monthEnd, "qty", 5)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	rows := make([]OrderSummaryProduct, 0, len(products))
+	for _, p := range products {
+		rows = append(rows, OrderSummaryProduct{
+			ProductID:   p.ProductID.String(),
+			Name:        p.Name,
+			ProductType: p.ProductType,
+			QtySold:     p.QtySold,
+			OrderCount:  p.OrderCount,
+		})
+	}
+
+	return c.JSON(http.StatusOK, OrderSummaryResponse{Buckets: buckets, TopProducts: rows})
+}
+
+var jakarta = func() *time.Location {
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		return time.FixedZone("WIB", 7*60*60)
+	}
+	return loc
+}()
+
+func parseLimit(raw string, def, max int) int {
+	if raw == "" {
+		return def
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return def
+	}
+	if n > max {
+		return max
+	}
+	return n
+}
+
+// parseDayRange reads YYYY-MM-DD bounds and returns a half-open [from, to)
+// window: `to` is advanced a day so the caller's last day is included whole,
+// without the double-counting an inclusive upper bound causes on adjacent
+// periods.
+func parseDayRange(fromStr, toStr string) (*time.Time, *time.Time, error) {
+	var from, to *time.Time
+	if fromStr != "" {
+		v, err := time.ParseInLocation("2006-01-02", fromStr, jakarta)
+		if err != nil {
+			return nil, nil, errors.New("invalid from date format (use YYYY-MM-DD)")
+		}
+		from = &v
+	}
+	if toStr != "" {
+		v, err := time.ParseInLocation("2006-01-02", toStr, jakarta)
+		if err != nil {
+			return nil, nil, errors.New("invalid to date format (use YYYY-MM-DD)")
+		}
+		next := v.AddDate(0, 0, 1)
+		to = &next
+	}
+	return from, to, nil
 }
 
 func (h *Handler) AdminGetOrder(c echo.Context) error {

@@ -43,6 +43,18 @@ func (h *Handler) AdminGetRevenue(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 
+	products, err := h.svc.AdminTopProducts(c.Request().Context(), from, to, "revenue", 10)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	revenue["top_products"] = products
+
+	// Echoed back so the page can state the period it is actually showing. It
+	// previously rendered this default 30-day window with no period at all,
+	// which read as an all-time figure.
+	revenue["from"] = from.Format("2006-01-02")
+	revenue["to"] = to.Format("2006-01-02")
+
 	return c.JSON(http.StatusOK, revenue)
 }
 

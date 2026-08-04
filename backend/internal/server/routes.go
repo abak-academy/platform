@@ -166,6 +166,8 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminOrders := admin.Group("/orders")
 	adminOrders.Use(handler.RBACMiddleware("orders:write"))
 	adminOrders.GET("", h.AdminListOrders)
+	// Registered before /:id so "summary" is never read as an order id.
+	adminOrders.GET("/summary", h.AdminOrdersSummary)
 	adminOrders.GET("/:id", h.AdminGetOrder)
 	adminOrders.GET("/:id/payment-proof", h.AdminGetPaymentProof)
 	adminOrders.GET("/:id/refund-proof", h.AdminGetRefundProof)
