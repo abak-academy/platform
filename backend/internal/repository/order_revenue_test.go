@@ -14,6 +14,20 @@ import (
 	"akademi-bimbel/internal/infra"
 )
 
+// One Postgres container is shared by every test in the reporting suite
+// (order_revenue_test, order_cursor_test, order_search_test,
+// order_reporting_test), so seeded orders accumulate and `go test -shuffle=on`
+// can run these in any order.
+//
+// GetRevenue and TopProducts aggregate over a date range with no per-student
+// filter, so any test asserting an exact total must own its period outright.
+// Reserved windows — take a free one rather than reusing:
+//
+//	2024-06/07  GetRevenue half-open boundary (seeds an order ON `to`)
+//	2026-01     bucket counts          2026-02  top products (revenue order)
+//	2026-03/04  date-range filter      2026-04  search
+//	2026-05     cursor paging          2026-07  GetRevenue fan-out
+//	2026-09     top products (qty order)        2026-11  bucket search filter
 var (
 	reportingPool     *pgxpool.Pool
 	reportingPoolOnce sync.Once
@@ -169,8 +183,12 @@ func TestGetRevenue_rangeIsHalfOpen(t *testing.T) {
 	student := seedStudent(t, pool, "Boundary Buyer")
 	book := seedProduct(t, pool, "Buku Batas", "book", 50000)
 
-	from := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	to := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	// 2024, not 2026: this test seeds an order exactly ON `to`, which by
+	// definition lands in the following period. Under -shuffle that order was
+	// landing inside TestGetRevenue_doesNotFanOutAcrossItems' July 2026 window
+	// and inflating its total. See the reservation table at the top of the file.
+	from := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC)
 
 	seedOrder(t, pool, student, "paid", from, 50000, 0, 0, 50000,
 		[]seedItem{{book, "Buku Batas", "book", 50000, 1}})
