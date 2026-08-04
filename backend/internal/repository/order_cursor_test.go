@@ -20,7 +20,7 @@ func TestOrderCursor_roundTrip(t *testing.T) {
 }
 
 func TestOrderCursor_rejectsGarbage(t *testing.T) {
-	for _, bad := range []string{"", "nope", uuid.NewString(), "2026-08-04T09:30:15Z", "x_y"} {
+	for _, bad := range []string{"", "nope", uuid.NewString(), "2026-08-04T09:30:15Z", "x,y"} {
 		_, _, err := DecodeOrderCursor(bad)
 		require.ErrorIs(t, err, ErrInvalidCursor, "input %q", bad)
 	}
