@@ -37,10 +37,26 @@ describe("admin-revenue hooks", () => {
   it("useAdminRevenue fetches GET /admin/revenue and returns data", async () => {
     const revenue: AdminRevenue = {
       total: 1_500_000,
+      product_revenue: 1_400_000,
+      shipping_total: 150_000,
+      discount_total: 50_000,
+      order_count: 6,
       by_type: {
         book: { total: 500_000, count: 5 },
         course: { total: 1_000_000, count: 2 },
       },
+      top_products: [
+        {
+          product_id: "p1",
+          name: "Buku Latihan TKA",
+          product_type: "book",
+          qty_sold: 5,
+          order_count: 5,
+          product_revenue: 500_000,
+        },
+      ],
+      from: "2026-07-01",
+      to: "2026-07-31",
     };
     mockAuthFetch.mockResolvedValueOnce(revenue);
 
