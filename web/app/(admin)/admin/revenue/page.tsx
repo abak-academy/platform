@@ -3,9 +3,11 @@
 import { useTranslation } from "@/lib/i18n";
 import { BarChart3 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { NoAccess } from "@/components/admin/NoAccess";
 import { StatCard } from "@/components/admin/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminRevenue } from "@/lib/hooks/admin-revenue";
+import { useHasCapability } from "@/lib/hooks/use-capability";
 import { formatRupiah } from "@/lib/format";
 import type { AdminRevenue, RevenueByTypeItem } from "@/lib/types";
 
@@ -34,6 +36,7 @@ function maxTypeTotal(revenue?: AdminRevenue): number {
 export default function RevenuePage() {
   const { t } = useTranslation();
   const { data: revenue, isLoading, isError, error } = useAdminRevenue();
+  const canReadRevenue = useHasCapability("revenue:read");
 
   const entries = typeEntries(revenue);
   const max = maxTypeTotal(revenue);
@@ -42,6 +45,8 @@ export default function RevenuePage() {
     if (error instanceof Error) return error.message;
     return t("error_generic");
   }
+
+  if (!canReadRevenue) return <NoAccess />;
 
   return (
     <div className="space-y-6 fade-in">

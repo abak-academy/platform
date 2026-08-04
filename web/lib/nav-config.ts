@@ -100,7 +100,6 @@ export const CONTENT_MANAGER_NAV: RoleNavConfig = [
       { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library },
       { labelKey: "admin_nav_orders", href: "/admin/orders", icon: Receipt },
       { labelKey: "promos", href: "/admin/promos", icon: Tag },
-      { labelKey: "revenue", href: "/admin/revenue", icon: BarChart3 },
       { labelKey: "notifications", href: "/admin/notifications", icon: Bell },
     ],
   },
