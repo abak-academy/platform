@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +29,95 @@ type OrderFilter struct {
 	// holds whatever Biteship sent, unnormalised, so deciding which spellings
 	// count is a domain question and stays in the service.
 	ShipmentStatusIn []string
+
+	// Search matches an order-number suffix (the UI shows the last 8 characters
+	// of the uuid) or a buyer-name substring. Buyer name has to be matched here
+	// rather than after the query: student_name is not a column on orders, it is
+	// hydrated per page by attachStudentNames, so filtering afterwards would
+	// filter an already-paginated page.
+	Search string
+
+	// Half-open [CreatedFrom, CreatedTo) on created_at. Never inclusive at both
+	// ends — adjacent periods would double-count a boundary order.
+	CreatedFrom *time.Time
+	CreatedTo   *time.Time
+}
+
+// orderFilterPredicateFrom builds the WHERE fragment shared by ListOrders and
+// CountOrdersByBucket, numbering placeholders from startArg and returning the
+// next free number. One builder is what stops the counts and the rows from
+// describing different sets. Cursor, ORDER BY and LIMIT stay with ListOrders —
+// they are paging concerns, and counting does not page.
+func orderFilterPredicateFrom(filter OrderFilter, startArg int) (string, []interface{}, int) {
+	query := ""
+	args := []interface{}{}
+	argNum := startArg
+
+	if filter.StudentID != nil {
+		query += fmt.Sprintf(` AND student_id = $%d`, argNum)
+		args = append(args, *filter.StudentID)
+		argNum++
+	}
+	if filter.Status != "" {
+		query += fmt.Sprintf(` AND status = $%d`, argNum)
+		args = append(args, filter.Status)
+		argNum++
+	}
+	if filter.ProductType != "" {
+		query += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM order_item WHERE order_item.order_id = orders.id AND product_type = $%d)`, argNum)
+		args = append(args, filter.ProductType)
+		argNum++
+	}
+	if filter.ExcludeCart {
+		query += ` AND status != 'cart'`
+	}
+	if len(filter.ShipmentStatusIn) > 0 {
+		query += fmt.Sprintf(` AND shipment_status = ANY($%d)`, argNum)
+		args = append(args, filter.ShipmentStatusIn)
+		argNum++
+	}
+	if filter.Search != "" {
+		q := strings.TrimSpace(filter.Search)
+		if isAllDigits(q) {
+			// Digits are an order number. Matching them against names too would
+			// drag in any student whose name happens to contain the digits.
+			query += fmt.Sprintf(` AND id::text LIKE '%%' || $%d`, argNum)
+			args = append(args, q)
+			argNum++
+		} else {
+			query += fmt.Sprintf(`
+				AND (id::text LIKE '%%' || $%d
+				     OR EXISTS (SELECT 1 FROM users u
+				                 WHERE u.id = orders.student_id
+				                   AND u.name ILIKE '%%' || $%d || '%%'))`, argNum, argNum+1)
+			args = append(args, q, q)
+			argNum += 2
+		}
+	}
+	if filter.CreatedFrom != nil {
+		query += fmt.Sprintf(` AND created_at >= $%d`, argNum)
+		args = append(args, *filter.CreatedFrom)
+		argNum++
+	}
+	if filter.CreatedTo != nil {
+		query += fmt.Sprintf(` AND created_at < $%d`, argNum)
+		args = append(args, *filter.CreatedTo)
+		argNum++
+	}
+
+	return query, args, argNum
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 type OrderPatch struct {
@@ -278,32 +368,9 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 	}
 
 	query := `SELECT ` + orderColumns + ` FROM orders WHERE 1=1`
-	args := []interface{}{}
-	argNum := 1
+	where, args, argNum := orderFilterPredicateFrom(filter, 1)
+	query += where
 
-	if filter.StudentID != nil {
-		query += fmt.Sprintf(` AND student_id = $%d`, argNum)
-		args = append(args, *filter.StudentID)
-		argNum++
-	}
-	if filter.Status != "" {
-		query += fmt.Sprintf(` AND status = $%d`, argNum)
-		args = append(args, filter.Status)
-		argNum++
-	}
-	if filter.ProductType != "" {
-		query += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM order_item WHERE order_item.order_id = orders.id AND product_type = $%d)`, argNum)
-		args = append(args, filter.ProductType)
-		argNum++
-	}
-	if filter.ExcludeCart {
-		query += ` AND status != 'cart'`
-	}
-	if len(filter.ShipmentStatusIn) > 0 {
-		query += fmt.Sprintf(` AND shipment_status = ANY($%d)`, argNum)
-		args = append(args, filter.ShipmentStatusIn)
-		argNum++
-	}
 	if filter.Cursor != "" {
 		curAt, curID, err := DecodeOrderCursor(filter.Cursor)
 		if err != nil {
