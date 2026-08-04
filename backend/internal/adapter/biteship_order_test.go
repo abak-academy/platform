@@ -570,3 +570,42 @@ func TestBuildBiteshipOrderRequest_PartialScheduleFallsBackToNow(t *testing.T) {
 		}
 	}
 }
+
+// TestBiteshipClient_CancelOrder_SendsCancellationReasonCode pins the wire body
+// against the real contract. The first version of CancelOrder sent
+// {"reason": "..."} — read off an unofficial SDK's *function signature* rather
+// than a payload — which Biteship rejects. Fake-based service tests could
+// never have caught that; only asserting the bytes can.
+func TestBiteshipClient_CancelOrder_SendsCancellationReasonCode(t *testing.T) {
+	var gotBody map[string]any
+	var gotPath, gotMethod string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true,"status":"cancelled"}`))
+	}))
+	defer ts.Close()
+
+	c := NewBiteshipClient(nil, "test-key", ts.URL, ts.Client())
+	if err := c.CancelOrder(t.Context(), "biteship-order-1", "salah alamat"); err != nil {
+		t.Fatalf("CancelOrder: %v", err)
+	}
+
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/v1/orders/biteship-order-1/cancel" {
+		t.Errorf("path = %s", gotPath)
+	}
+	if gotBody["cancellation_reason_code"] != "others" {
+		t.Errorf("cancellation_reason_code = %v, want others", gotBody["cancellation_reason_code"])
+	}
+	if gotBody["cancellation_reason"] != "salah alamat" {
+		t.Errorf("cancellation_reason = %v", gotBody["cancellation_reason"])
+	}
+	if _, stale := gotBody["reason"]; stale {
+		t.Error(`the old "reason" key must not be sent — Biteship rejects it`)
+	}
+}

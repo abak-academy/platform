@@ -92,11 +92,10 @@ describe("ShipOrderModal scheduled pickup", () => {
     expect(onBook).toHaveBeenCalledWith({ deliveryDate: "2026-08-10", deliveryTime: "13:00" });
   });
 
-  // Half a schedule is worse than none: Biteship rejects delivery_type
-  // "scheduled" without both fields, and the admin would see the whole ship
-  // action fail over a box they left blank.
-  it("falls back to an immediate pickup when only the date is filled", async () => {
-    const onBook = vi.fn();
+});
+
+describe("ShipOrderModal incomplete schedule", () => {
+  function renderModal(onBook = vi.fn()) {
     render(
       <ShipOrderModal
         open
@@ -107,10 +106,34 @@ describe("ShipOrderModal scheduled pickup", () => {
         isPending={false}
       />,
     );
+    return onBook;
+  }
+
+  // Previously this silently booked an immediate pickup — turning a form the
+  // admin had not finished into a courier dispatched today.
+  it("will not book while the schedule is half filled", async () => {
+    renderModal();
     await userEvent.click(screen.getByTestId("ship-schedule-toggle"));
     fireEvent.change(screen.getByLabelText("Tanggal jemput"), { target: { value: "2026-08-10" } });
-    await userEvent.click(screen.getByRole("button", { name: "Pesan kurir" }));
 
+    expect(screen.getByRole("button", { name: "Pesan kurir" })).toBeDisabled();
+  });
+
+  it("books once both halves are given", async () => {
+    const onBook = renderModal();
+    await userEvent.click(screen.getByTestId("ship-schedule-toggle"));
+    fireEvent.change(screen.getByLabelText("Tanggal jemput"), { target: { value: "2026-08-10" } });
+    fireEvent.change(screen.getByLabelText("Jam jemput"), { target: { value: "13:00" } });
+
+    const book = screen.getByRole("button", { name: "Pesan kurir" });
+    expect(book).not.toBeDisabled();
+    await userEvent.click(book);
+    expect(onBook).toHaveBeenCalledWith({ deliveryDate: "2026-08-10", deliveryTime: "13:00" });
+  });
+
+  it("still books immediately when scheduling was never asked for", async () => {
+    const onBook = renderModal();
+    await userEvent.click(screen.getByRole("button", { name: "Pesan kurir" }));
     expect(onBook).toHaveBeenCalledWith(undefined);
   });
 });

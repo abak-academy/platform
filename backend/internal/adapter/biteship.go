@@ -269,14 +269,20 @@ func (c *BiteshipClient) GetOrder(ctx context.Context, biteshipOrderID string) (
 
 // CancelOrder cancels a booked pickup via POST /v1/orders/:id/cancel.
 //
-// TODO: uncertain — the request body's field name is unverified. Biteship's
-// own docs page for this endpoint renders client-side and returns no content
-// to a fetch, and the changelog documents only the method and path. Two
-// independent unofficial SDKs (Go toel-app/biteship, a Laravel client) both
-// send "reason", which is what this sends. If a live cancel is rejected as a
-// validation error, try "cancellation_reason" before looking anywhere else.
+// The body carries cancellation_reason_code plus free text under
+// cancellation_reason. "others" is the code that permits arbitrary text; the
+// enum's other values are Biteship's own fixed reasons, which an admin typing
+// a sentence is not choosing between.
+//
+// This originally sent {"reason": ...}, taken from an unofficial SDK's
+// function signature — a signature is not a payload, and Biteship rejects it.
+// TestBiteshipClient_CancelOrder_SendsCancellationReasonCode asserts the bytes
+// so a fake can never green-light the wrong shape again.
 func (c *BiteshipClient) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {
-	body, err := json.Marshal(map[string]string{"reason": reason})
+	body, err := json.Marshal(map[string]string{
+		"cancellation_reason_code": "others",
+		"cancellation_reason":      reason,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal Biteship cancel request: %w", err)
 	}

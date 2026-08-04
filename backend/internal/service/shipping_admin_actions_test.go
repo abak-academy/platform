@@ -251,3 +251,33 @@ func TestGetOrderTracking_RefusesAnOrderWithNoWaybill(t *testing.T) {
 		t.Fatalf("want ErrNoTrackingNumber, got %v", err)
 	}
 }
+
+// TestAdminShipOrder_RefusesAHalfFilledSchedule covers the case a review
+// caught: an admin who ticks "schedule pickup" and fills only one of the two
+// fields has expressed an intent to schedule. Quietly booking an immediate
+// pickup instead dispatches a courier today for a parcel meant to go later —
+// a real carrier action nobody asked for. Refusing is the smaller harm.
+func TestAdminShipOrder_RefusesAHalfFilledSchedule(t *testing.T) {
+	for _, tc := range []struct{ date, time string }{
+		{date: "2026-08-10"},
+		{time: "13:00"},
+	} {
+		fake := &fakeShipLogistics{}
+		svc, repo := newShipOrderTestService(t, fake)
+		ctx := context.Background()
+		orderID := createShippableOrder(t, svc, repo, "paid", true)
+
+		err := svc.AdminShipOrder(ctx, orderID.String(), tc.date, tc.time)
+		if !errors.Is(err, ErrIncompleteSchedule) {
+			t.Fatalf("date=%q time=%q: want ErrIncompleteSchedule, got %v", tc.date, tc.time, err)
+		}
+
+		got, gerr := repo.GetOrderByID(ctx, orderID)
+		if gerr != nil {
+			t.Fatalf("GetOrderByID: %v", gerr)
+		}
+		if got.Status == "shipped" {
+			t.Error("a refused schedule must not have booked anything")
+		}
+	}
+}

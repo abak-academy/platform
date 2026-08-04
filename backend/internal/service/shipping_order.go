@@ -60,6 +60,14 @@ func shipmentItemsFromOrder(items []model.OrderItem) []ShipmentItem {
 // deliveryDate/deliveryTime are optional; both empty books an immediate
 // pickup, which is what every booking did before scheduling existed.
 func (s *Service) AdminShipOrder(ctx context.Context, orderID, deliveryDate, deliveryTime string) error {
+	// A half-filled schedule is refused rather than quietly downgraded to an
+	// immediate pickup. Booking "now" for an admin who asked for a date
+	// dispatches a courier today against a parcel meant to go later — a real
+	// carrier action nobody requested, and far worse than an error message.
+	if (deliveryDate == "") != (deliveryTime == "") {
+		return ErrIncompleteSchedule
+	}
+
 	id, err := parseUUID(orderID)
 	if err != nil {
 		return err

@@ -51,6 +51,10 @@ export function ShipOrderModal({
   }, [open]);
 
   const canSubmitManual = trackingNumber.trim() !== "";
+  // Half a schedule is not a schedule. Booking would otherwise fall back to an
+  // immediate pickup, turning an unfinished form into a courier dispatched
+  // today for a parcel the admin meant to send later.
+  const scheduleIncomplete = scheduling && !(deliveryDate && deliveryTime);
 
   function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -117,7 +121,9 @@ export function ShipOrderModal({
                     />
                   </div>
                   <p className="col-span-2 text-xs text-muted-foreground">
-                    {t("orders_ship_schedule_hint")}
+                    {scheduleIncomplete
+                      ? t("orders_ship_schedule_incomplete")
+                      : t("orders_ship_schedule_hint")}
                   </p>
                 </div>
               )}
@@ -130,13 +136,9 @@ export function ShipOrderModal({
               <Button
                 type="button"
                 onClick={() =>
-                  onBook(
-                    scheduling && deliveryDate && deliveryTime
-                      ? { deliveryDate, deliveryTime }
-                      : undefined,
-                  )
+                  onBook(scheduling ? { deliveryDate, deliveryTime } : undefined)
                 }
-                disabled={isPending}
+                disabled={isPending || scheduleIncomplete}
               >
                 {isPending ? t("orders_ship_booking_pending") : t("orders_ship_book_courier")}
               </Button>

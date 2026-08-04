@@ -7,6 +7,7 @@ var (
 	// same message across certificate/exam/job/student, so callers can match it
 	// with errors.Is instead of comparing strings.
 	ErrStorageNotConfigured = errors.New("storage not configured")
+	ErrIncompleteSchedule   = errors.New("delivery_date and delivery_time must be given together")
 
 	ErrAlreadyAttempted     = errors.New("already attempted")
 	ErrExamNotStarted       = errors.New("exam not started")
@@ -230,7 +231,7 @@ var (
 	// ErrOrderNotRefundable gates AdminRefundOrder: a refund may only be
 	// recorded against a status where money was actually taken. Maps to 422.
 	ErrOrderNotRefundable = errors.New("order not in refundable status")
-	ErrNoCarrierCode     = errors.New("order has no persisted courier code")
+	ErrNoCarrierCode      = errors.New("order has no persisted courier code")
 )
 
 // --- from student_bulk.go ---
