@@ -302,3 +302,52 @@ func TestHandleShippingWebhook_UnknownBiteshipOrderIDNotFound(t *testing.T) {
 		t.Errorf("want 0 GetOrder calls for an unknown order id, got %d", fake.getOrderCalls)
 	}
 }
+
+// TestHandleShippingWebhook_InstallProbeEmptyBodyAccepted covers Biteship's
+// webhook installation handshake: it POSTs an empty body and refuses to
+// install a webhook whose URL does not answer 2xx ("Webhook URL doesn't
+// respond with ok response... accepting empty request body"). An empty body
+// names no order and changes no state, so it is answered as a no-op.
+func TestHandleShippingWebhook_InstallProbeEmptyBodyAccepted(t *testing.T) {
+	fake := &fakeShipWebhookLogistics{}
+	svc, repo := newShippingWebhookTestService(t, fake)
+	seedWebhookSecret(t, repo, "correct-secret")
+	orderID := seedShippedOrder(t, svc, repo, "biteship-install-probe")
+	ctx := context.Background()
+
+	for _, payload := range [][]byte{{}, []byte("  \n")} {
+		if err := svc.HandleShippingWebhook(ctx, payload, "correct-secret"); err != nil {
+			t.Fatalf("payload %q: want install probe accepted, got %v", payload, err)
+		}
+	}
+
+	if fake.getOrderCalls != 0 {
+		t.Errorf("want 0 GetOrder calls for an install probe, got %d", fake.getOrderCalls)
+	}
+	got, gerr := repo.GetOrderByID(ctx, orderID)
+	if gerr != nil {
+		t.Fatalf("GetOrderByID: %v", gerr)
+	}
+	if got.ShipmentStatus != nil {
+		t.Errorf("want shipment_status untouched, got %v", *got.ShipmentStatus)
+	}
+}
+
+// TestHandleShippingWebhook_EmptyBodyStillNeedsValidSignature keeps the
+// install-probe carve-out *behind* the signature check. It passes before the
+// carve-out exists too — its job is to fail if anyone later moves that check
+// ahead of verification, turning an unauthenticated empty body into a free
+// 200 (the fail-open shape of 841cd84).
+func TestHandleShippingWebhook_EmptyBodyStillNeedsValidSignature(t *testing.T) {
+	fake := &fakeShipWebhookLogistics{}
+	svc, repo := newShippingWebhookTestService(t, fake)
+	seedWebhookSecret(t, repo, "correct-secret")
+	ctx := context.Background()
+
+	for _, header := range []string{"", "totally-wrong-signature"} {
+		err := svc.HandleShippingWebhook(ctx, []byte{}, header)
+		if !errors.Is(err, ErrInvalidSignature) {
+			t.Fatalf("header %q: want ErrInvalidSignature, got %v", header, err)
+		}
+	}
+}

@@ -300,3 +300,26 @@ func encryptOrFail(t *testing.T, plaintext string) string {
 	}
 	return encrypted
 }
+
+// TestShippingWebhookAcceptsInstallProbe is the HTTP-boundary half of the
+// installation handshake. Biteship validates the URL by POSTing an empty body
+// and will not install a webhook that answers anything but 2xx; before the
+// carve-out this returned 500 ("parse shipping webhook payload: unexpected
+// end of JSON input"), which is how the install failed in staging.
+func TestShippingWebhookAcceptsInstallProbe(t *testing.T) {
+	e, repo := newWebhookSignatureTestEnv(t)
+
+	if err := repo.UpsertSystemConfig(context.Background(), "biteship_webhook_secret", encryptOrFail(t, "correct-secret"), true); err != nil {
+		t.Fatalf("seed webhook secret: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks/shipping", bytes.NewReader(nil))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Biteship-Signature", "correct-secret")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}

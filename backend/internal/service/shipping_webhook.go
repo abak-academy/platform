@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -55,6 +56,15 @@ func (s *Service) HandleShippingWebhook(ctx context.Context, payload []byte, sig
 	}
 	if secret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(signature)) != 1 {
 		return ErrInvalidSignature
+	}
+
+	// Biteship validates the URL when the webhook is installed by POSTing an
+	// empty body, and refuses to install one that answers anything but 2xx.
+	// An empty body names no order and changes no state, so it is answered as
+	// a no-op — deliberately *after* the signature check above, so this never
+	// becomes an unauthenticated 200.
+	if len(bytes.TrimSpace(payload)) == 0 {
+		return nil
 	}
 
 	var ping biteshipWebhookPayload
