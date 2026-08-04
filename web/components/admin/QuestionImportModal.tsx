@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Info } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -98,6 +98,17 @@ export function QuestionImportModal({ open, onOpenChange, onSuccess }: QuestionI
           <Download className="mr-2 size-4" />
           {t("questions_download_template")}
         </Button>
+
+        {/* The unsupported pair is the load-bearing half: an admin who authors
+            True/False or Fill-in-the-blanks in a spreadsheet gets no error until
+            the upload rejects it, and nothing on screen says why. */}
+        <div className="space-y-1.5 rounded-md border border-line bg-surface-2 p-3 text-xs leading-relaxed text-ink-600">
+          <p>{t("questions_import_supported")}</p>
+          <p className="flex gap-1.5 text-ink-700">
+            <Info className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span>{t("questions_import_unsupported")}</span>
+          </p>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="grid gap-2">

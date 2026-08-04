@@ -25,6 +25,12 @@ vi.mock("@/lib/hooks/admin-bank-questions", () => ({
 
 const i18nTemplates: Record<string, string> = {
   import_questions_title: "Import Question CSV",
+  // Kept byte-identical to lib/i18n.ts — this file mocks the whole module, so a
+  // drift here would let the component ship copy no test ever reads.
+  questions_import_supported:
+    "The template has one example row per importable format: Multiple choice, Multiple answer, and Essay.",
+  questions_import_unsupported:
+    "True/False and Fill in the blanks cannot be bulk imported yet — their answers are stored separately from the question row. Create those in the question editor.",
   import_choose_file: "Choose CSV file",
   import_submit: "Import",
   import_success: "{n} questions imported.",
@@ -84,6 +90,30 @@ describe("QuestionImportModal", () => {
     );
     expect(screen.getByLabelText(/Choose CSV file/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Import/i })).toBeInTheDocument();
+  });
+
+  // The mock dictionary above duplicates real copy, so it can silently drift and
+  // let the component ship strings no test actually reads. Compare against the
+  // real module rather than trusting the copies.
+  it("keeps the mocked import-notice copy in sync with lib/i18n", async () => {
+    const actual = await vi.importActual<typeof import("@/lib/i18n")>("@/lib/i18n");
+    for (const key of ["questions_import_supported", "questions_import_unsupported"] as const) {
+      expect(i18nTemplates[key]).toBe(actual.DICT.en[key]);
+    }
+  });
+
+  // true_false and multi_blank have no CSV column for their child rows, so an
+  // admin authoring them in a spreadsheet gets no feedback until the upload
+  // rejects the file. The modal has to say so before they start.
+  it("names the formats that cannot be bulk imported", () => {
+    renderWithClient(
+      <QuestionImportModal open={true} onOpenChange={mockOnOpenChange} onSuccess={mockOnSuccess} />,
+    );
+    expect(screen.getByText(/cannot be bulk imported yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/True\/False and Fill in the blanks/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Multiple choice, Multiple answer, and Essay/i),
+    ).toBeInTheDocument();
   });
 
   it("disables submit until a file is selected", () => {

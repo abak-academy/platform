@@ -102,12 +102,12 @@ func TestProcessQuestionImportRows_mixedRowsWithTopicResolution(t *testing.T) {
 
 	csvRows := []QuestionImportRow{
 		{
-			Format:       "mcq",
-			Body:         "2+2",
-			Subject:      mathTopic.Subject,
-			Topic:        mathTopic.Name,
-			PointCorrect: 2,
-			PointWrong:   0,
+			Format:        "mcq",
+			Body:          "2+2",
+			Subject:       mathTopic.Subject,
+			Topic:         mathTopic.Name,
+			PointCorrect:  2,
+			PointWrong:    0,
 			CorrectAnswer: strPtr("a"),
 			Options: []model.QuestionOption{
 				{Key: "a", Text: "4", IsCorrect: true, SortOrder: 1},
@@ -123,21 +123,21 @@ func TestProcessQuestionImportRows_mixedRowsWithTopicResolution(t *testing.T) {
 			PointWrong:   0,
 		},
 		{
-			Format:       "mcq",
-			Body:         "bad: no options",
-			Subject:      mathTopic.Subject,
-			Topic:        mathTopic.Name,
-			PointCorrect: 1,
-			PointWrong:   0,
+			Format:        "mcq",
+			Body:          "bad: no options",
+			Subject:       mathTopic.Subject,
+			Topic:         mathTopic.Name,
+			PointCorrect:  1,
+			PointWrong:    0,
 			CorrectAnswer: strPtr("a"),
 		},
 		{
-			Format:       "mcq",
-			Body:         "unknown topic",
-			Subject:      "Missing",
-			Topic:        "Missing",
-			PointCorrect: 1,
-			PointWrong:   0,
+			Format:        "mcq",
+			Body:          "unknown topic",
+			Subject:       "Missing",
+			Topic:         "Missing",
+			PointCorrect:  1,
+			PointWrong:    0,
 			CorrectAnswer: strPtr("a"),
 			Options: []model.QuestionOption{
 				{Key: "a", Text: "x", IsCorrect: true, SortOrder: 1},
@@ -260,8 +260,32 @@ func TestBuildQuestionImportTemplate_roundTripsThroughParser(t *testing.T) {
 
 	rows, err := ParseQuestionImportCSV(data)
 	require.NoError(t, err)
-	require.Len(t, rows, 1)
-	assert.Empty(t, rows[0].Error)
+	require.Len(t, rows, 3, "one example row per format the CSV can express")
+	assert.Equal(t, []string{"mcq", "multi_answer", "essay"}, []string{rows[0].Format, rows[1].Format, rows[2].Format})
+	for i, row := range rows {
+		assert.Empty(t, row.Error, "row %d", i)
+	}
+}
+
+// true_false and multi_blank keep their answers in child tables (statements /
+// blanks) that QuestionImportRow has no column for, so shipping an example row
+// for either would hand the admin a template that fails on import. Guard the
+// absence so adding one without the columns is caught here.
+func TestBuildQuestionImportTemplate_omitsFormatsTheCSVCannotExpress(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	data, err := svc.BuildQuestionImportTemplate(ctx)
+	require.NoError(t, err)
+
+	rows, err := ParseQuestionImportCSV(data)
+	require.NoError(t, err)
+	for _, row := range rows {
+		assert.NotEqual(t, "true_false", row.Format, "true_false needs a statements column first")
+		assert.NotEqual(t, "multi_blank", row.Format, "multi_blank needs a blanks column first")
+		assert.NotEqual(t, "short", row.Format, "short is retired from the editor")
+		assert.NotEqual(t, "fill_blank", row.Format, "fill_blank is retired from the editor")
+	}
 }
 
 // FR-12: with a real exam_topic present, the downloaded template must import
@@ -280,14 +304,21 @@ func TestBuildQuestionImportTemplate_importsUneditedWithExistingTopic(t *testing
 
 	result, err := svc.ImportQuestionsFromCSV(ctx, data)
 	require.NoError(t, err)
-	assert.Equal(t, 1, result.Inserted)
-	require.Len(t, result.Rows, 1)
-	assert.Equal(t, "inserted", result.Rows[0].Status)
-	assert.Empty(t, result.Rows[0].Error)
+	// Every shipped example must import, not just the first: the template is the
+	// only documentation of what each format's columns look like, so a row that
+	// fails here is a row that teaches the admin something untrue.
+	assert.Equal(t, 3, result.Inserted)
+	require.Len(t, result.Rows, 3)
+	for i, row := range result.Rows {
+		assert.Equal(t, "inserted", row.Status, "row %d: %s", i, row.Error)
+		assert.Empty(t, row.Error, "row %d", i)
+	}
 
 	t.Cleanup(func() {
-		if result.Rows[0].QuestionID != nil {
-			_ = repo.DeleteQuestion(ctx, *result.Rows[0].QuestionID)
+		for _, row := range result.Rows {
+			if row.QuestionID != nil {
+				_ = repo.DeleteQuestion(ctx, *row.QuestionID)
+			}
 		}
 	})
 }
@@ -303,12 +334,12 @@ func TestProcessQuestionImportRows_sanitizesScriptPayloadInBody(t *testing.T) {
 
 	csvRows := []QuestionImportRow{
 		{
-			Format:       "mcq",
-			Body:         `<script>alert(1)</script>What is 2+2?`,
-			Subject:      mathTopic.Subject,
-			Topic:        mathTopic.Name,
-			PointCorrect: 2,
-			PointWrong:   0,
+			Format:        "mcq",
+			Body:          `<script>alert(1)</script>What is 2+2?`,
+			Subject:       mathTopic.Subject,
+			Topic:         mathTopic.Name,
+			PointCorrect:  2,
+			PointWrong:    0,
 			CorrectAnswer: strPtr("a"),
 			Options: []model.QuestionOption{
 				{Key: "a", Text: "4", IsCorrect: true, SortOrder: 1},
