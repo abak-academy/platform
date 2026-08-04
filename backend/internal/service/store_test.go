@@ -535,6 +535,10 @@ func (r *recordingLogisticsClient) CreateOrder(_ context.Context, _ CreateShipme
 	return Shipment{}, ErrShippingUnavailable
 }
 
+func (r *recordingLogisticsClient) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {
+	return nil
+}
+
 func (r *recordingLogisticsClient) GetOrder(_ context.Context, _ string) (Shipment, error) {
 	return Shipment{}, ErrShippingUnavailable
 }

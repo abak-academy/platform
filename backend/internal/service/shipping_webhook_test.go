@@ -22,6 +22,11 @@ const shipWebhookTestHexKey = "b86f5b43fed1f62de1e965486f8e9a6e7dc96e64eab3e955d
 type fakeShipWebhookLogistics struct {
 	getOrderCalls int
 	getOrderFn    func(ctx context.Context, biteshipOrderID string) (Shipment, error)
+
+	cancelCalls  int
+	cancelledID  string
+	cancelReason string
+	cancelErr    error
 }
 
 var _ LogisticsClient = (*fakeShipWebhookLogistics)(nil)
@@ -32,6 +37,13 @@ func (f *fakeShipWebhookLogistics) GetRates(ctx context.Context, req ShippingQuo
 
 func (f *fakeShipWebhookLogistics) CreateOrder(ctx context.Context, req CreateShipmentRequest) (Shipment, error) {
 	return Shipment{}, errors.New("fakeShipWebhookLogistics: CreateOrder not stubbed")
+}
+
+func (f *fakeShipWebhookLogistics) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {
+	f.cancelCalls++
+	f.cancelledID = biteshipOrderID
+	f.cancelReason = reason
+	return f.cancelErr
 }
 
 func (f *fakeShipWebhookLogistics) GetOrder(ctx context.Context, biteshipOrderID string) (Shipment, error) {
@@ -408,5 +420,72 @@ func TestHandleShippingWebhook_EmptyWaybillLeavesTrackingNumberIntact(t *testing
 	}
 	if got.TrackingNumber != "WB-1" {
 		t.Fatalf("want seeded tracking_number WB-1 untouched, got %q", got.TrackingNumber)
+	}
+}
+
+// TestHandleShippingWebhook_TrackingURLLandsOnOrder covers courier.link: the
+// public tracking page Biteship returns on every re-fetch and that we used to
+// discard, leaving a student nothing but a bare resi to search for by hand.
+func TestHandleShippingWebhook_TrackingURLLandsOnOrder(t *testing.T) {
+	fake := &fakeShipWebhookLogistics{
+		getOrderFn: func(ctx context.Context, biteshipOrderID string) (Shipment, error) {
+			return Shipment{
+				BiteshipOrderID: biteshipOrderID,
+				Status:          "in_transit",
+				WaybillID:       "WB-1",
+				TrackingURL:     "https://biteship.com/track/abc123",
+			}, nil
+		},
+	}
+	svc, repo := newShippingWebhookTestService(t, fake)
+	seedWebhookSecret(t, repo, "correct-secret")
+	orderID := seedShippedOrder(t, svc, repo, "biteship-tracking-url")
+	ctx := context.Background()
+
+	body := shipWebhookBody(t, "biteship-tracking-url")
+	if err := svc.HandleShippingWebhook(ctx, body, "correct-secret"); err != nil {
+		t.Fatalf("HandleShippingWebhook: %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.TrackingURL == nil || *got.TrackingURL != "https://biteship.com/track/abc123" {
+		t.Fatalf("want the tracking url persisted, got %v", got.TrackingURL)
+	}
+}
+
+// Same guard as the waybill: an event that carries no link must not wipe one
+// we already have.
+func TestHandleShippingWebhook_EmptyTrackingURLLeavesTheStoredOneIntact(t *testing.T) {
+	link := "https://biteship.com/track/keepme"
+	fake := &fakeShipWebhookLogistics{
+		getOrderFn: func(ctx context.Context, biteshipOrderID string) (Shipment, error) {
+			return Shipment{BiteshipOrderID: biteshipOrderID, Status: "delivered", TrackingURL: link}, nil
+		},
+	}
+	svc, repo := newShippingWebhookTestService(t, fake)
+	seedWebhookSecret(t, repo, "correct-secret")
+	orderID := seedShippedOrder(t, svc, repo, "biteship-tracking-url-keep")
+	ctx := context.Background()
+
+	if err := svc.HandleShippingWebhook(ctx, shipWebhookBody(t, "biteship-tracking-url-keep"), "correct-secret"); err != nil {
+		t.Fatalf("first delivery: %v", err)
+	}
+
+	fake.getOrderFn = func(ctx context.Context, biteshipOrderID string) (Shipment, error) {
+		return Shipment{BiteshipOrderID: biteshipOrderID, Status: "returned"}, nil
+	}
+	if err := svc.HandleShippingWebhook(ctx, shipWebhookBody(t, "biteship-tracking-url-keep"), "correct-secret"); err != nil {
+		t.Fatalf("second delivery: %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.TrackingURL == nil || *got.TrackingURL != link {
+		t.Fatalf("want the stored tracking url untouched, got %v", got.TrackingURL)
 	}
 }

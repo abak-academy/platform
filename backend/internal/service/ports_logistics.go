@@ -59,6 +59,12 @@ type CreateShipmentRequest struct {
 	CourierCode string
 	ServiceCode string
 
+	// DeliveryDate/DeliveryTime schedule the pickup. Both empty means "now",
+	// which is what every booking did before this was plumbed through.
+	// Biteship's formats: date "2026-08-10", time "13:00".
+	DeliveryDate string
+	DeliveryTime string
+
 	Items []ShipmentItem
 }
 
@@ -73,6 +79,10 @@ type Shipment struct {
 	// adapter had nothing parseable — callers must fall back to something
 	// deterministic per order, never time.Now() (FR-C-13).
 	StatusUpdatedAt time.Time
+
+	// TrackingURL is courier.link — Biteship's public tracking page for this
+	// shipment. Empty until the courier issues one.
+	TrackingURL string
 }
 
 // ErrShipmentAlreadyBooked is the sentinel callers check with errors.Is.
@@ -100,6 +110,9 @@ type LogisticsClient interface {
 	GetRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error)
 	CreateOrder(ctx context.Context, req CreateShipmentRequest) (Shipment, error)
 	GetOrder(ctx context.Context, biteshipOrderID string) (Shipment, error)
+
+	// CancelOrder cancels a booked pickup. reason is forwarded to the carrier.
+	CancelOrder(ctx context.Context, biteshipOrderID, reason string) error
 }
 
 type NoopLogisticsClient struct{}
@@ -121,4 +134,8 @@ func (n *NoopLogisticsClient) CreateOrder(ctx context.Context, req CreateShipmen
 
 func (n *NoopLogisticsClient) GetOrder(ctx context.Context, biteshipOrderID string) (Shipment, error) {
 	return Shipment{}, ErrShippingUnavailable
+}
+
+func (n *NoopLogisticsClient) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {
+	return ErrShippingUnavailable
 }

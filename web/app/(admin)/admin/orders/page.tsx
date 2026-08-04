@@ -12,10 +12,13 @@ import {
   useCompleteOrder,
   useRefundOrder,
   useReconcileOrder,
+  useRefreshShipment,
+  useCancelShipment,
 } from "@/lib/hooks/admin-orders";
 import { useTranslation } from "@/lib/i18n";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { isShipmentFailure } from "@/lib/shipment-status";
+import { CancelShipmentModal } from "@/components/admin/CancelShipmentModal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -76,8 +79,12 @@ export default function OrdersPage() {
   const complete = useCompleteOrder();
   const refund = useRefundOrder();
   const reconcile = useReconcileOrder();
+  const refreshShipment = useRefreshShipment();
+  const cancelShipment = useCancelShipment();
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
   const [shippingOrder, setShippingOrder] = useState<Order | null>(null);
+  const [cancellingShipment, setCancellingShipment] = useState<Order | null>(null);
+  const [cancelShipmentError, setCancelShipmentError] = useState<string | null>(null);
   const [shipError, setShipError] = useState<string | null>(null);
   const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
@@ -138,14 +145,37 @@ export default function OrdersPage() {
     }
   }
 
-  async function handleShipBook(id: string) {
+  async function handleShipBook(
+    id: string,
+    schedule?: { deliveryDate: string; deliveryTime: string },
+  ) {
     setShipError(null);
     try {
-      await ship.mutateAsync(id);
+      await ship.mutateAsync(schedule ? { id, ...schedule } : id);
       setShippingOrder(null);
       toast.success(t("orders_shipped"));
     } catch (e) {
       setShipError(errorMessage(e));
+    }
+  }
+
+  async function handleRefreshShipment(id: string) {
+    try {
+      await refreshShipment.mutateAsync(id);
+      toast.success(t("shipment_refreshed"));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
+  async function handleCancelShipment(id: string, reason: string) {
+    setCancelShipmentError(null);
+    try {
+      await cancelShipment.mutateAsync({ id, reason });
+      setCancellingShipment(null);
+      toast.success(t("shipment_cancelled"));
+    } catch (e) {
+      setCancelShipmentError(errorMessage(e));
     }
   }
 
@@ -364,6 +394,22 @@ export default function OrdersPage() {
               }
             : undefined
         }
+        onRefreshShipment={
+          detailOrder?.biteship_order_id
+            ? () => handleRefreshShipment(detailOrder.id)
+            : undefined
+        }
+        isRefreshingShipment={refreshShipment.isPending}
+        onCancelShipment={
+          detailOrder?.biteship_order_id
+            ? () => {
+                const order = detailOrder;
+                setDetailOrder(null);
+                setCancelShipmentError(null);
+                setCancellingShipment(order);
+              }
+            : undefined
+        }
         onRefund={
           detailOrder && actionAllowed(detailOrder.status, "refund")
             ? () => {
@@ -408,6 +454,19 @@ export default function OrdersPage() {
         />
       )}
 
+      {cancellingShipment && (
+        <CancelShipmentModal
+          open
+          onOpenChange={(o) => {
+            if (!o) setCancellingShipment(null);
+          }}
+          orderNumber={orderNumber(cancellingShipment)}
+          onCancelShipment={(reason) => handleCancelShipment(cancellingShipment.id, reason)}
+          isPending={cancelShipment.isPending}
+          error={cancelShipmentError}
+        />
+      )}
+
       {shippingOrder && (
         <ShipOrderModal
           open
@@ -416,7 +475,7 @@ export default function OrdersPage() {
             setShipError(null);
           }}
           orderNumber={orderNumber(shippingOrder)}
-          onBook={() => handleShipBook(shippingOrder.id)}
+          onBook={(schedule) => handleShipBook(shippingOrder.id, schedule)}
           onSubmitManual={(trackingNumber) => handleShipManual(shippingOrder.id, trackingNumber)}
           isPending={ship.isPending || shipManual.isPending}
           error={shipError}

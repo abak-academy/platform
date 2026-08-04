@@ -128,7 +128,15 @@ func validProofKey(key, prefix string) bool {
 func (h *Handler) AdminShipOrder(c echo.Context) error {
 	orderID := c.Param("id")
 
-	err := h.svc.AdminShipOrder(c.Request().Context(), orderID)
+	// Both optional: an empty body still books an immediate pickup, so the
+	// existing call shape keeps working unchanged.
+	var req struct {
+		DeliveryDate string `json:"delivery_date"`
+		DeliveryTime string `json:"delivery_time"`
+	}
+	_ = c.Bind(&req)
+
+	err := h.svc.AdminShipOrder(c.Request().Context(), orderID, req.DeliveryDate, req.DeliveryTime)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -173,6 +181,34 @@ func (h *Handler) AdminShipOrderManual(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "order shipped",
 	})
+}
+
+// AdminRefreshShipment pulls an order's state from Biteship on demand — the
+// manual fallback for a webhook that never arrived.
+func (h *Handler) AdminRefreshShipment(c echo.Context) error {
+	if err := h.svc.AdminRefreshShipment(c.Request().Context(), c.Param("id")); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"message": "shipment refreshed"})
+}
+
+// AdminCancelShipment cancels the courier booking. It does not refund and does
+// not move orders.status — see issue #72 for refund semantics.
+func (h *Handler) AdminCancelShipment(c echo.Context) error {
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if strings.TrimSpace(req.Reason) == "" {
+		return badRequest(c, "reason is required")
+	}
+
+	if err := h.svc.AdminCancelShipment(c.Request().Context(), c.Param("id"), req.Reason); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"message": "shipment cancelled"})
 }
 
 func (h *Handler) AdminCompleteOrder(c echo.Context) error {

@@ -94,13 +94,60 @@ export function useFetchRefundProofURL() {
   });
 }
 
+export interface ShipOrderVars {
+  id: string;
+  // Both optional and sent together or not at all — a half-filled schedule
+  // books an immediate pickup rather than failing the whole action.
+  deliveryDate?: string;
+  deliveryTime?: string;
+}
+
 export function useShipOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      authFetch<{ message: string }>(`/admin/orders/${encodeURIComponent(id)}/ship`, {
+    mutationFn: (vars: string | ShipOrderVars) => {
+      const { id, deliveryDate, deliveryTime } =
+        typeof vars === "string" ? ({ id: vars } as ShipOrderVars) : vars;
+      const path = `/admin/orders/${encodeURIComponent(id)}/ship`;
+      // No schedule means no body at all, exactly as before scheduling
+      // existed — an immediate pickup is the unchanged default path and
+      // should look identical on the wire.
+      if (!deliveryDate || !deliveryTime) {
+        return authFetch<{ message: string }>(path, { method: "POST" });
+      }
+      return authFetch<{ message: string }>(path, {
         method: "POST",
-      }),
+        body: JSON.stringify({ delivery_date: deliveryDate, delivery_time: deliveryTime }),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminOrdersKeys.all });
+    },
+  });
+}
+
+export function useRefreshShipment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      authFetch<{ message: string }>(
+        `/admin/orders/${encodeURIComponent(id)}/shipment/refresh`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminOrdersKeys.all });
+    },
+  });
+}
+
+export function useCancelShipment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      authFetch<{ message: string }>(
+        `/admin/orders/${encodeURIComponent(id)}/shipment/cancel`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminOrdersKeys.all });
     },

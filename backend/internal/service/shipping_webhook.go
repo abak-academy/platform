@@ -83,7 +83,16 @@ func (s *Service) HandleShippingWebhook(ctx context.Context, payload []byte, sig
 		return ErrOrderNotFound
 	}
 
-	shipment, err := s.logisticsClient().GetOrder(ctx, ping.OrderID)
+	return s.syncShipmentFromBiteship(ctx, order, ping.OrderID)
+}
+
+// syncShipmentFromBiteship re-fetches an order's authoritative state from
+// Biteship and lands it. Shared by the webhook, the admin refresh button and
+// the cancel action so all three converge on identical rows — an admin who
+// presses refresh must not end up with a different record than the webhook
+// would have written.
+func (s *Service) syncShipmentFromBiteship(ctx context.Context, order model.Order, biteshipOrderID string) error {
+	shipment, err := s.logisticsClient().GetOrder(ctx, biteshipOrderID)
 	if err != nil {
 		return fmt.Errorf("re-fetch shipment status: %w", err)
 	}
@@ -102,6 +111,14 @@ func (s *Service) HandleShippingWebhook(ctx context.Context, payload []byte, sig
 		}
 	}
 
+	// Same guard as the waybill, for the same reason: most events carry no
+	// link, and writing an empty one would wipe a good tracking page.
+	if shipment.TrackingURL != "" {
+		if err := s.storeRepo.SetTrackingURL(ctx, order.ID, shipment.TrackingURL); err != nil {
+			return err
+		}
+	}
+
 	// occurredAt must be deterministic per order so a replay lands on the same
 	// order_shipment_events row (FR-C-13) — time.Now() here reproduces the
 	// exact bug this fixes: every retry gets a fresh value and the
@@ -109,6 +126,8 @@ func (s *Service) HandleShippingWebhook(ctx context.Context, payload []byte, sig
 	// is stable once set and is the only way an order gets a biteship_order_id
 	// to be looked up by in the first place; order.CreatedAt is the
 	// belt-and-braces fallback if it's somehow unset.
+	//
+	// It is also what makes the refresh button safe to press repeatedly.
 	occurredAt := shipment.StatusUpdatedAt
 	if occurredAt.IsZero() {
 		if order.ShippedAt != nil {

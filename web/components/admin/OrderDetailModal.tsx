@@ -30,6 +30,11 @@ export interface OrderDetailModalProps {
   onShip?: () => void;
   onRefund?: () => void;
   isRefunding?: boolean;
+  // Both only meaningful for an order booked through Biteship; the caller
+  // owns that rule, the same way it owns onShip/onRefund.
+  onRefreshShipment?: () => void;
+  onCancelShipment?: () => void;
+  isRefreshingShipment?: boolean;
 }
 
 function formatDateTime(iso: string | undefined, lang: string): string | null {
@@ -48,6 +53,9 @@ export function OrderDetailModal({
   onShip,
   onRefund,
   isRefunding,
+  onRefreshShipment,
+  onCancelShipment,
+  isRefreshingShipment,
 }: OrderDetailModalProps) {
   const { t, lang } = useTranslation();
   const [isDownloadingLabel, setIsDownloadingLabel] = useState(false);
@@ -128,14 +136,37 @@ export function OrderDetailModal({
               title={t("order_shipping_heading")}
               action={
                 order.tracking_number ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isDownloadingLabel}
-                    onClick={handlePrintLabel}
-                  >
-                    {t("order_print_label")}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {onRefreshShipment && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        data-testid="shipment-refresh"
+                        disabled={isRefreshingShipment}
+                        onClick={onRefreshShipment}
+                      >
+                        {t("shipment_refresh")}
+                      </Button>
+                    )}
+                    {onCancelShipment && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        data-testid="shipment-cancel"
+                        onClick={onCancelShipment}
+                      >
+                        {t("shipment_cancel")}
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isDownloadingLabel}
+                      onClick={handlePrintLabel}
+                    >
+                      {t("order_print_label")}
+                    </Button>
+                  </div>
                 ) : undefined
               }
             >
@@ -207,6 +238,19 @@ export function OrderDetailModal({
                         {t("shipment_failed_badge")}
                       </span>
                     )}
+                  </Field>
+                )}
+                {order.tracking_url && (
+                  <Field label={t("shipment_track_link")}>
+                    <a
+                      data-testid="shipment-track-link"
+                      href={order.tracking_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      {t("shipment_track_link")}
+                    </a>
                   </Field>
                 )}
                 {shipped && <Field label={t("status_shipped")}>{shipped}</Field>}

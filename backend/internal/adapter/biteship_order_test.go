@@ -526,3 +526,47 @@ func TestNoopLogisticsClient_CreateOrderAndGetOrder(t *testing.T) {
 		t.Fatalf("expected errors.Is(err, service.ErrShippingUnavailable), got: %v", err)
 	}
 }
+
+// TestBuildBiteshipOrderRequest_ScheduledPickup covers delivery_type, which was
+// hardcoded to "now" — the only pickup mode the product could ever ask for.
+func TestBuildBiteshipOrderRequest_ScheduledPickup(t *testing.T) {
+	got := buildBiteshipOrderRequest(service.CreateShipmentRequest{
+		ReferenceID:  "order-1",
+		CourierCode:  "jne",
+		ServiceCode:  "reg",
+		DeliveryDate: "2026-08-10",
+		DeliveryTime: "13:00",
+	})
+
+	if got.DeliveryType != "scheduled" {
+		t.Errorf("delivery_type = %q, want scheduled", got.DeliveryType)
+	}
+	if got.DeliveryDate != "2026-08-10" || got.DeliveryTime != "13:00" {
+		t.Errorf("schedule not forwarded: %q %q", got.DeliveryDate, got.DeliveryTime)
+	}
+}
+
+func TestBuildBiteshipOrderRequest_DefaultsToNow(t *testing.T) {
+	got := buildBiteshipOrderRequest(service.CreateShipmentRequest{ReferenceID: "order-1"})
+	if got.DeliveryType != "now" {
+		t.Errorf("delivery_type = %q, want now", got.DeliveryType)
+	}
+	if got.DeliveryDate != "" || got.DeliveryTime != "" {
+		t.Error("an unscheduled booking must not carry a delivery date or time")
+	}
+}
+
+// A half-filled schedule is the dangerous case: sending delivery_type
+// "scheduled" without both fields would have Biteship reject the booking, and
+// the admin would see the whole ship action fail for a field they left blank.
+func TestBuildBiteshipOrderRequest_PartialScheduleFallsBackToNow(t *testing.T) {
+	for _, tc := range []service.CreateShipmentRequest{
+		{ReferenceID: "o", DeliveryDate: "2026-08-10"},
+		{ReferenceID: "o", DeliveryTime: "13:00"},
+	} {
+		got := buildBiteshipOrderRequest(tc)
+		if got.DeliveryType != "now" {
+			t.Errorf("delivery_type = %q for %+v, want now", got.DeliveryType, tc)
+		}
+	}
+}

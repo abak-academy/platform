@@ -57,7 +57,9 @@ func shipmentItemsFromOrder(items []model.OrderItem) []ShipmentItem {
 // of booking a second pickup, so a retry converges on the same end state. Any
 // other failure leaves the order untouched and returns the real reason —
 // there is no silent fall-back to manual entry.
-func (s *Service) AdminShipOrder(ctx context.Context, orderID string) error {
+// deliveryDate/deliveryTime are optional; both empty books an immediate
+// pickup, which is what every booking did before scheduling existed.
+func (s *Service) AdminShipOrder(ctx context.Context, orderID, deliveryDate, deliveryTime string) error {
 	id, err := parseUUID(orderID)
 	if err != nil {
 		return err
@@ -110,6 +112,9 @@ func (s *Service) AdminShipOrder(ctx context.Context, orderID string) error {
 
 		CourierCode: *order.CourierCode,
 		ServiceCode: *order.CourierServiceCode,
+
+		DeliveryDate: deliveryDate,
+		DeliveryTime: deliveryTime,
 
 		Items: shipmentItemsFromOrder(order.Items),
 	}

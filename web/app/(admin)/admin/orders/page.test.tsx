@@ -21,6 +21,8 @@ let shipManualState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPend
 let completeState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let refundState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let reconcileState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+let refreshShipmentState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+let cancelShipmentState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 
 vi.mock("@/lib/hooks/admin-orders", () => ({
   useAdminOrders: () => ordersState,
@@ -31,6 +33,8 @@ vi.mock("@/lib/hooks/admin-orders", () => ({
   useCompleteOrder: () => completeState,
   useRefundOrder: () => refundState,
   useReconcileOrder: () => reconcileState,
+  useRefreshShipment: () => refreshShipmentState,
+  useCancelShipment: () => cancelShipmentState,
   useFetchPaymentProofURL: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 

@@ -266,6 +266,52 @@ func (c *BiteshipClient) GetOrder(ctx context.Context, biteshipOrderID string) (
 	return parseBiteshipOrderResponse(respBody)
 }
 
+// CancelOrder cancels a booked pickup via POST /v1/orders/:id/cancel.
+//
+// TODO: uncertain — the request body's field name is unverified. Biteship's
+// own docs page for this endpoint renders client-side and returns no content
+// to a fetch, and the changelog documents only the method and path. Two
+// independent unofficial SDKs (Go toel-app/biteship, a Laravel client) both
+// send "reason", which is what this sends. If a live cancel is rejected as a
+// validation error, try "cancellation_reason" before looking anywhere else.
+func (c *BiteshipClient) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {
+	body, err := json.Marshal(map[string]string{"reason": reason})
+	if err != nil {
+		return fmt.Errorf("failed to marshal Biteship cancel request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+"/v1/orders/"+biteshipOrderID+"/cancel", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	httpReq.Header.Set("authorization", c.apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to call Biteship API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read Biteship response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return classifyBiteshipOrderError(resp.StatusCode, respBody)
+	}
+
+	// Same trap as CreateOrder: Biteship has been seen answering 2xx with
+	// "success": false, so a status code alone is not proof it worked.
+	var errProbe biteshipOrderErrorResponse
+	if jsonErr := json.Unmarshal(respBody, &errProbe); jsonErr == nil && !errProbe.Success && errProbe.Code != 0 {
+		return classifyBiteshipOrderError(resp.StatusCode, respBody)
+	}
+	return nil
+}
+
 // buildBiteshipOrderRequest maps CreateShipmentRequest onto Biteship's
 // POST /v1/orders body. courier_company/courier_type take Biteship's codes
 // (e.g. "jne"/"reg"), not the display names orders.selected_courier persists.
@@ -279,7 +325,7 @@ func buildBiteshipOrderRequest(req service.CreateShipmentRequest) biteshipOrderR
 			Weight:   it.WeightGrams,
 		})
 	}
-	return biteshipOrderRequest{
+	out := biteshipOrderRequest{
 		ReferenceID:             req.ReferenceID,
 		ShipperContactName:      req.OriginContactName,
 		ShipperContactPhone:     req.OriginContactPhone,
@@ -296,6 +342,17 @@ func buildBiteshipOrderRequest(req service.CreateShipmentRequest) biteshipOrderR
 		DeliveryType:            "now",
 		Items:                   items,
 	}
+
+	// "scheduled" is only meaningful with both a date and a time; sending the
+	// type without them would have Biteship reject the booking, so an
+	// incomplete schedule falls back to an immediate pickup rather than
+	// failing the whole ship action.
+	if req.DeliveryDate != "" && req.DeliveryTime != "" {
+		out.DeliveryType = "scheduled"
+		out.DeliveryDate = req.DeliveryDate
+		out.DeliveryTime = req.DeliveryTime
+	}
+	return out
 }
 
 // classifyBiteshipOrderError turns a non-2xx (or success:false) /v1/orders
@@ -326,6 +383,7 @@ func parseBiteshipOrderResponse(body []byte) (service.Shipment, error) {
 		WaybillID:         orderResp.Courier.WaybillID,
 		Status:            orderResp.Status,
 		CourierDriverName: orderResp.Courier.DriverName,
+		TrackingURL:       orderResp.Courier.Link,
 		StatusUpdatedAt:   statusUpdatedAtFromHistory(orderResp.Status, orderResp.Courier.History),
 	}, nil
 }
@@ -367,6 +425,8 @@ type biteshipOrderRequest struct {
 	CourierCompany string `json:"courier_company"`
 	CourierType    string `json:"courier_type"`
 	DeliveryType   string `json:"delivery_type"`
+	DeliveryDate   string `json:"delivery_date,omitempty"`
+	DeliveryTime   string `json:"delivery_time,omitempty"`
 
 	Items []biteshipOrderItem `json:"items"`
 }
@@ -390,6 +450,7 @@ type biteshipOrderResponse struct {
 	Courier     struct {
 		WaybillID  string                        `json:"waybill_id"`
 		DriverName string                        `json:"driver_name"`
+		Link       string                        `json:"link"`
 		History    []biteshipCourierHistoryEntry `json:"history"`
 	} `json:"courier"`
 }

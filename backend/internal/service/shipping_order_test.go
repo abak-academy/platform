@@ -40,6 +40,10 @@ func (f *fakeShipLogistics) CreateOrder(ctx context.Context, req CreateShipmentR
 	return Shipment{}, errors.New("fakeShipLogistics: CreateOrder not stubbed")
 }
 
+func (f *fakeShipLogistics) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {
+	return nil
+}
+
 func (f *fakeShipLogistics) GetOrder(ctx context.Context, biteshipOrderID string) (Shipment, error) {
 	f.getOrderCalls++
 	if f.getOrderFn != nil {
@@ -129,7 +133,7 @@ func TestAdminShipOrder_HappyPath(t *testing.T) {
 	orderID := createShippableOrder(t, svc, repo, "paid", true)
 	ctx := context.Background()
 
-	if err := svc.AdminShipOrder(ctx, orderID.String()); err != nil {
+	if err := svc.AdminShipOrder(ctx, orderID.String(), "", ""); err != nil {
 		t.Fatalf("AdminShipOrder: %v", err)
 	}
 	if fake.createOrderCalls != 1 {
@@ -179,7 +183,7 @@ func TestAdminShipOrder_DuplicateBookingRetryConverges(t *testing.T) {
 	orderID := createShippableOrder(t, svc, repo, "paid", true)
 	ctx := context.Background()
 
-	if err := svc.AdminShipOrder(ctx, orderID.String()); err != nil {
+	if err := svc.AdminShipOrder(ctx, orderID.String(), "", ""); err != nil {
 		t.Fatalf("first AdminShipOrder: %v", err)
 	}
 	first, err := repo.GetOrderByID(ctx, orderID)
@@ -187,7 +191,7 @@ func TestAdminShipOrder_DuplicateBookingRetryConverges(t *testing.T) {
 		t.Fatalf("GetOrderByID after first attempt: %v", err)
 	}
 
-	err = svc.AdminShipOrder(ctx, orderID.String())
+	err = svc.AdminShipOrder(ctx, orderID.String(), "", "")
 	if !errors.Is(err, ErrOrderNotShippable) {
 		t.Fatalf("second AdminShipOrder: want ErrOrderNotShippable, got %v", err)
 	}
@@ -224,7 +228,7 @@ func TestAdminShipOrder_GenericBookingFailureLeavesOrderUntouched(t *testing.T) 
 	orderID := createShippableOrder(t, svc, repo, "paid", true)
 	ctx := context.Background()
 
-	err := svc.AdminShipOrder(ctx, orderID.String())
+	err := svc.AdminShipOrder(ctx, orderID.String(), "", "")
 	if err == nil {
 		t.Fatal("want error, got nil")
 	}
@@ -252,7 +256,7 @@ func TestAdminShipOrder_NoCourierCodeRefusedBeforeClientCall(t *testing.T) {
 	svc, repo := newShipOrderTestService(t, fake)
 	orderID := createShippableOrder(t, svc, repo, "paid", false)
 
-	err := svc.AdminShipOrder(context.Background(), orderID.String())
+	err := svc.AdminShipOrder(context.Background(), orderID.String(), "", "")
 	if !errors.Is(err, ErrNoCarrierCode) {
 		t.Fatalf("want ErrNoCarrierCode, got %v", err)
 	}
@@ -276,7 +280,7 @@ func TestAdminShipOrder_EmptyExistingIDRefusesRatherThanGetOrderEmpty(t *testing
 	orderID := createShippableOrder(t, svc, repo, "paid", true)
 	ctx := context.Background()
 
-	err := svc.AdminShipOrder(ctx, orderID.String())
+	err := svc.AdminShipOrder(ctx, orderID.String(), "", "")
 	if err == nil {
 		t.Fatal("want error, got nil")
 	}

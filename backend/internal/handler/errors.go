@@ -221,6 +221,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_qty", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidQty):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_qty", Message: err.Error()}
+	case errors.Is(err, service.ErrNoBiteshipBooking):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_biteship_booking", Message: err.Error()}
 	case errors.Is(err, service.ErrNoCarrierCode):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_carrier_code", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotShippable):

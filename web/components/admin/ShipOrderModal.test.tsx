@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ShipOrderModal } from "./ShipOrderModal";
 import { t } from "@/lib/i18n";
@@ -52,5 +52,65 @@ describe("ShipOrderModal", () => {
     expect(
       screen.getByText(t(lang, "orders_ship_subtitle").replace("{order}", "#5d00bcc4")),
     ).toBeInTheDocument();
+  });
+});
+
+describe("ShipOrderModal scheduled pickup", () => {
+  it("books immediately when no schedule is entered", async () => {
+    const onBook = vi.fn();
+    render(
+      <ShipOrderModal
+        open
+        onOpenChange={vi.fn()}
+        orderNumber="#123"
+        onBook={onBook}
+        onSubmitManual={vi.fn()}
+        isPending={false}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Pesan kurir" }));
+    expect(onBook).toHaveBeenCalledWith(undefined);
+  });
+
+  it("passes the schedule when both date and time are given", async () => {
+    const onBook = vi.fn();
+    render(
+      <ShipOrderModal
+        open
+        onOpenChange={vi.fn()}
+        orderNumber="#123"
+        onBook={onBook}
+        onSubmitManual={vi.fn()}
+        isPending={false}
+      />,
+    );
+    await userEvent.click(screen.getByTestId("ship-schedule-toggle"));
+    fireEvent.change(screen.getByLabelText("Tanggal jemput"), { target: { value: "2026-08-10" } });
+    fireEvent.change(screen.getByLabelText("Jam jemput"), { target: { value: "13:00" } });
+    await userEvent.click(screen.getByRole("button", { name: "Pesan kurir" }));
+
+    expect(onBook).toHaveBeenCalledWith({ deliveryDate: "2026-08-10", deliveryTime: "13:00" });
+  });
+
+  // Half a schedule is worse than none: Biteship rejects delivery_type
+  // "scheduled" without both fields, and the admin would see the whole ship
+  // action fail over a box they left blank.
+  it("falls back to an immediate pickup when only the date is filled", async () => {
+    const onBook = vi.fn();
+    render(
+      <ShipOrderModal
+        open
+        onOpenChange={vi.fn()}
+        orderNumber="#123"
+        onBook={onBook}
+        onSubmitManual={vi.fn()}
+        isPending={false}
+      />,
+    );
+    await userEvent.click(screen.getByTestId("ship-schedule-toggle"));
+    fireEvent.change(screen.getByLabelText("Tanggal jemput"), { target: { value: "2026-08-10" } });
+    await userEvent.click(screen.getByRole("button", { name: "Pesan kurir" }));
+
+    expect(onBook).toHaveBeenCalledWith(undefined);
   });
 });

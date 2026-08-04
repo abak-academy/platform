@@ -133,6 +133,10 @@ func (f *fakeShipHandlerLogistics) CreateOrder(ctx context.Context, req service.
 	return service.Shipment{BiteshipOrderID: "biteship-handler-test", WaybillID: "WB-HANDLER-TEST", Status: "confirmed"}, nil
 }
 
+func (f *fakeShipHandlerLogistics) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {
+	return nil
+}
+
 func (f *fakeShipHandlerLogistics) GetOrder(ctx context.Context, biteshipOrderID string) (service.Shipment, error) {
 	f.getOrderCalls++
 	return service.Shipment{}, service.ErrShippingUnavailable
