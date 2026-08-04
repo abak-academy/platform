@@ -703,42 +703,73 @@ func (r *Repository) ClearOrderTracking(ctx context.Context, tx pgx.Tx, orderID 
 	return err
 }
 
+// GetRevenue reports money for orders created in [from, to).
+//
+// Two aggregations, deliberately kept apart: `total` is what buyers were
+// actually charged (orders.total, counted once per order), while by_type and
+// product_revenue sum ITEM lines. They differ by shipping and discount, which
+// live on the order. Summing orders.total once per joined item row is what
+// inflated this report before — a three-item order counted its total
+// three times, and landed the whole of it in every product type it touched.
 func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[string]interface{}, error) {
+	var (
+		total      float64
+		shipping   float64
+		discount   float64
+		orderCount int
+	)
+	err := r.pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(total), 0), COALESCE(SUM(shipping_cost), 0),
+		       COALESCE(SUM(discount), 0), COUNT(*)
+		  FROM orders
+		 WHERE status IN ('paid', 'processing', 'completed')
+		   AND created_at >= $1 AND created_at < $2
+	`, from, to).Scan(&total, &shipping, &discount, &orderCount)
+	if err != nil {
+		return nil, err
+	}
+
 	rows, err := r.pool.Query(ctx, `
-		SELECT COALESCE(SUM(o.total), 0) as total, oi.product_type, COUNT(*) as count
-		FROM orders o
-		JOIN order_item oi ON o.id = oi.order_id
-		WHERE o.status IN ('paid', 'processing', 'completed')
-		  AND o.created_at BETWEEN $1 AND $2
-		GROUP BY oi.product_type
+		SELECT oi.product_type,
+		       COALESCE(SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0),
+		       COUNT(DISTINCT o.id)
+		  FROM orders o
+		  JOIN order_item oi ON oi.order_id = o.id
+		 WHERE o.status IN ('paid', 'processing', 'completed')
+		   AND o.created_at >= $1 AND o.created_at < $2
+		 GROUP BY oi.product_type
 	`, from, to)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := map[string]interface{}{
-		"total":   0.0,
-		"by_type": map[string]interface{}{},
-	}
-	var grandTotal float64
 	byType := map[string]interface{}{}
+	var productRevenue float64
 
 	for rows.Next() {
-		var total float64
 		var productType string
+		var typeTotal float64
 		var count int
-		if err := rows.Scan(&total, &productType, &count); err != nil {
+		if err := rows.Scan(&productType, &typeTotal, &count); err != nil {
 			return nil, err
 		}
-		grandTotal += total
+		productRevenue += typeTotal
 		byType[productType] = map[string]interface{}{
-			"total": total,
+			"total": typeTotal,
 			"count": count,
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
-	result["total"] = grandTotal
-	result["by_type"] = byType
-	return result, rows.Err()
+	return map[string]interface{}{
+		"total":           total,
+		"product_revenue": productRevenue,
+		"shipping_total":  shipping,
+		"discount_total":  discount,
+		"order_count":     orderCount,
+		"by_type":         byType,
+	}, nil
 }
