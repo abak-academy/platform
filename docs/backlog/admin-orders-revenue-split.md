@@ -1,8 +1,19 @@
-# Admin orders redesign + super_admin / admin_store revenue split
+# Admin orders redesign + revenue role split
 
-**Date:** 2026-08-04
-**Status:** approved design, not yet planned
-**Surfaces:** `/admin/orders`, `/admin/store`, `/admin/revenue`, `/admin`
+| | |
+|---|---|
+| **Raised** | 2026-08-04 |
+| **Status** | ▶ design approved, implementation plan next |
+| **Objective** | The orders page answers both jobs it is opened for — clear the backlog, find one order — and `admin_store` loses revenue while keeping everything fulfilment needs. |
+| **Surfaces** | `/admin/orders`, `/admin/store`, `/admin/revenue`, `/admin` |
+| **Defects fixed** | D1 revenue inflated by a join fan-out · D2 order-list cursor keyset does not match its sort · D3 dashboard counters capped at 20 |
+| **Depends on** | — |
+| **Verified against** | `main` @ `a1e6c3b`, 2026-08-04 |
+
+Design agreed with the client on 2026-08-04. Layout chosen from three options
+(consolidated table over triage-strip and row-cards). The role split is folded in
+here rather than split out, at the client's request, because the order summary
+the store dashboard needs is the same query the orders page needs.
 
 ---
 
