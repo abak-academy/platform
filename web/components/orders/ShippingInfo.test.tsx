@@ -49,10 +49,12 @@ describe("ShippingInfo", () => {
     expect(screen.queryByText("Estimasi — bukan tarif kurir")).toBeNull();
   });
 
-  it("shows shipment_status alongside the resi", () => {
+  it("shows shipment_status alongside the resi, translated", () => {
     const withStatus = { ...physicalOrder, shipment_status: "delivered" };
     render(<ShippingInfo order={withStatus} />);
-    expect(screen.getByText("delivered")).toBeTruthy();
+    expect(screen.getByText("Diterima")).toBeTruthy();
+    // A buyer reading their own order page should never meet the raw code.
+    expect(screen.queryByText("delivered")).toBeNull();
   });
 
   // A buyer has no use for "we typed this in by hand"; only an admin does.
@@ -70,7 +72,7 @@ describe("ShippingInfo", () => {
         {
           id: "e1",
           order_id: "o1",
-          status: "confirmed",
+          status: "Pesanan dikonfirmasi",
           occurred_at: "2026-07-20T01:00:00Z",
           created_at: "2026-07-20T01:00:05Z",
         },
@@ -78,7 +80,7 @@ describe("ShippingInfo", () => {
     };
     render(<ShippingInfo order={withEvents} />);
     expect(screen.getByText("Riwayat Pengiriman")).toBeTruthy();
-    expect(screen.getByTestId("shipment-event-status").textContent).toBe("confirmed");
+    expect(screen.getByTestId("shipment-event-status").textContent).toBe("Pesanan dikonfirmasi");
   });
 
   it("renders no timeline heading when there are no shipment events", () => {

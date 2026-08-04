@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -131,9 +132,25 @@ func TestShippingLabelRendersThroughGotenberg(t *testing.T) {
 	}
 
 	renderer := newGotenbergPDFGenerator(url, http.DefaultClient)
-	order := labelTestOrder("JNE1234567890")
 
-	pdf, err := renderShippingLabel(context.Background(), renderer, order, labelTestSenderConfig())
+	// The full order with deliberately long addresses and a long product
+	// name: overflow and wrapping are precisely what a unit test cannot see,
+	// so the document under visual inspection has to be the awkward one, not
+	// the tidy one.
+	order := labelTestOrderFull("JNE1234567890")
+	addr, _ := json.Marshal(map[string]string{
+		"penerima": "Nur Aisyah Rahmawati Puspitaningrum",
+		"telepon":  "081200000000",
+		"alamat":   "Perumahan Griya Asri Permai Blok C-12 No. 45, RT 007 RW 003, Kelurahan Sukamaju Baru, Kecamatan Tapos, Depok, Jawa Barat",
+		"kode_pos": "16455",
+	})
+	order.ShippingAddress = addr
+
+	cfg := labelTestSenderConfig()
+	cfg["app_address"] = "Komplek Perkantoran Sentra Niaga Blok B No. 8, Jl. Raya Serpong KM 7, Kelurahan Pakulonan, Kecamatan Serpong Utara, Tangerang Selatan, Banten"
+	cfg["app_contact_email"] = "halo@abakacademy.id"
+
+	pdf, err := renderShippingLabel(context.Background(), renderer, order, cfg)
 	if err != nil {
 		t.Fatalf("renderShippingLabel: %v", err)
 	}
@@ -152,5 +169,134 @@ func TestShippingLabelRendersThroughGotenberg(t *testing.T) {
 			t.Fatalf("write %s: %v", out, err)
 		}
 		t.Logf("wrote %s (%d bytes) — OPEN IT AND LOOK", out, len(pdf))
+	}
+}
+
+// labelTestOrderFull is labelTestOrder plus everything the redesigned slip
+// prints: courier, service, ongkir, and a mix of a physical and a digital
+// item. Modelled on Biteship's own label, which is what this document was
+// asked to look like.
+func labelTestOrderFull(trackingNumber string) model.Order {
+	order := labelTestOrder(trackingNumber)
+	order.SelectedCourier = "TIKI"
+	order.SelectedService = "Reguler"
+	order.ShippingCost = 9000
+	order.Items = []model.OrderItem{
+		{Name: "Kumpulan Soal Fisika SMA", ProductType: "book", Qty: 2, WeightGrams: 500},
+		{Name: "Try Out Nasional 2026", ProductType: "exam", Qty: 1},
+	}
+	return order
+}
+
+// TestRenderShippingLabel_CarriesOrderContentsAndOwnBranding covers the
+// redesign: the slip must carry what a packer actually needs — items, weight,
+// the order reference, courier and ongkir — and must be branded as ours, with
+// no Biteship platform copy left anywhere on it.
+func TestRenderShippingLabel_CarriesOrderContentsAndOwnBranding(t *testing.T) {
+	fake := &fakeLabelRenderer{pdf: []byte("%PDF-fake-label")}
+	// Waybill deliberately carries no courier name, so asserting on "TIKI"
+	// proves the courier field renders rather than matching the resi.
+	order := labelTestOrderFull("0099887766123")
+
+	if _, err := renderShippingLabel(context.Background(), fake, order, labelTestSenderConfig()); err != nil {
+		t.Fatalf("renderShippingLabel: %v", err)
+	}
+	html := string(fake.lastHTML)
+
+	for _, want := range []string{
+		"Kumpulan Soal Fisika SMA", // item name
+		"2x",                       // quantity
+		"1 kg",                     // 2 x 500 g
+		"TIKI",                     // courier
+		"Reguler",                  // service
+		"Rp 9.000",                 // ongkir, Indonesian thousands separator
+		order.ID.String(),          // order reference
+		"Akademi Bimbel Test",      // our own brand, from app_name
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("rendered html is missing %q", want)
+		}
+	}
+
+	if strings.Contains(html, "Biteship") || strings.Contains(html, "biteship") {
+		t.Error("no Biteship platform copy may remain on our own packing slip")
+	}
+	// Matched without the "+xml" part on purpose: html/template escapes the
+	// plus to &#43; inside the attribute. The browser decodes it back before
+	// loading, so the image is fine — but the literal bytes are not there.
+	// That the mark actually renders is proven by the Gotenberg test below,
+	// not here.
+	if !strings.Contains(html, `class="head-logo" src="data:image/svg`) {
+		t.Error("the Abak mark is not embedded as an inline SVG data URI")
+	}
+	if got := strings.Count(html, "data:image/png;base64,"); got != 2 {
+		t.Errorf("want 2 barcodes (waybill + order reference), got %d", got)
+	}
+}
+
+// TestRenderShippingLabel_ListsPhysicalItemsOnly keeps digital products off a
+// document whose only job is to tell a packer what goes in the box.
+func TestRenderShippingLabel_ListsPhysicalItemsOnly(t *testing.T) {
+	fake := &fakeLabelRenderer{pdf: []byte("%PDF-fake-label")}
+	// Waybill deliberately carries no courier name, so asserting on "TIKI"
+	// proves the courier field renders rather than matching the resi.
+	order := labelTestOrderFull("0099887766123")
+
+	if _, err := renderShippingLabel(context.Background(), fake, order, labelTestSenderConfig()); err != nil {
+		t.Fatalf("renderShippingLabel: %v", err)
+	}
+
+	if strings.Contains(string(fake.lastHTML), "Try Out Nasional 2026") {
+		t.Error("a digital item must not appear on the packing slip")
+	}
+}
+
+// TestRenderShippingLabel_CapsItemListToStayOnOnePage guards a defect found by
+// rendering, not by reading: 12 items pushed the document onto a second page
+// and left page one with no footer at all — on a 100x150mm sticker. The list
+// is capped, and what is dropped is stated rather than silently truncated.
+func TestRenderShippingLabel_CapsItemListToStayOnOnePage(t *testing.T) {
+	fake := &fakeLabelRenderer{pdf: []byte("%PDF-fake-label")}
+	order := labelTestOrderFull("0099887766123")
+	order.Items = nil
+	for i := 1; i <= 12; i++ {
+		order.Items = append(order.Items, model.OrderItem{
+			Name: fmt.Sprintf("Buku Latihan Nomor %d", i), ProductType: "book", Qty: 1, WeightGrams: 100,
+		})
+	}
+
+	if _, err := renderShippingLabel(context.Background(), fake, order, labelTestSenderConfig()); err != nil {
+		t.Fatalf("renderShippingLabel: %v", err)
+	}
+	html := string(fake.lastHTML)
+
+	if got := strings.Count(html, "<li>"); got != labelMaxPrintedItems {
+		t.Errorf("want %d printed item lines, got %d", labelMaxPrintedItems, got)
+	}
+	if !strings.Contains(html, "7 barang lainnya") {
+		t.Error("the dropped items must be stated on the slip, not silently omitted")
+	}
+	if strings.Contains(html, "Buku Latihan Nomor 12") {
+		t.Error("item 12 is past the cap and must not be printed")
+	}
+}
+
+// TestRenderShippingLabel_DoesNotRepeatPostalAlreadyInAddress covers the
+// duplicate seen on the live slip: app_address already ends with the postal
+// code, and the template printed app_kode_pos underneath it as well.
+func TestRenderShippingLabel_DoesNotRepeatPostalAlreadyInAddress(t *testing.T) {
+	fake := &fakeLabelRenderer{pdf: []byte("%PDF-fake-label")}
+	order := labelTestOrderFull("0099887766123")
+
+	cfg := labelTestSenderConfig()
+	cfg["app_address"] = "Jl. Kantor No. 2, Serpong, Tangerang Selatan, Banten 54321"
+	cfg["app_kode_pos"] = "54321"
+
+	if _, err := renderShippingLabel(context.Background(), fake, order, cfg); err != nil {
+		t.Fatalf("renderShippingLabel: %v", err)
+	}
+
+	if got := strings.Count(string(fake.lastHTML), "54321"); got != 1 {
+		t.Errorf("want the sender postal code printed exactly once, got %d", got)
 	}
 }

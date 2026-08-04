@@ -526,3 +526,86 @@ func TestNoopLogisticsClient_CreateOrderAndGetOrder(t *testing.T) {
 		t.Fatalf("expected errors.Is(err, service.ErrShippingUnavailable), got: %v", err)
 	}
 }
+
+// TestBuildBiteshipOrderRequest_ScheduledPickup covers delivery_type, which was
+// hardcoded to "now" — the only pickup mode the product could ever ask for.
+func TestBuildBiteshipOrderRequest_ScheduledPickup(t *testing.T) {
+	got := buildBiteshipOrderRequest(service.CreateShipmentRequest{
+		ReferenceID:  "order-1",
+		CourierCode:  "jne",
+		ServiceCode:  "reg",
+		DeliveryDate: "2026-08-10",
+		DeliveryTime: "13:00",
+	})
+
+	if got.DeliveryType != "scheduled" {
+		t.Errorf("delivery_type = %q, want scheduled", got.DeliveryType)
+	}
+	if got.DeliveryDate != "2026-08-10" || got.DeliveryTime != "13:00" {
+		t.Errorf("schedule not forwarded: %q %q", got.DeliveryDate, got.DeliveryTime)
+	}
+}
+
+func TestBuildBiteshipOrderRequest_DefaultsToNow(t *testing.T) {
+	got := buildBiteshipOrderRequest(service.CreateShipmentRequest{ReferenceID: "order-1"})
+	if got.DeliveryType != "now" {
+		t.Errorf("delivery_type = %q, want now", got.DeliveryType)
+	}
+	if got.DeliveryDate != "" || got.DeliveryTime != "" {
+		t.Error("an unscheduled booking must not carry a delivery date or time")
+	}
+}
+
+// A half-filled schedule is the dangerous case: sending delivery_type
+// "scheduled" without both fields would have Biteship reject the booking, and
+// the admin would see the whole ship action fail for a field they left blank.
+func TestBuildBiteshipOrderRequest_PartialScheduleFallsBackToNow(t *testing.T) {
+	for _, tc := range []service.CreateShipmentRequest{
+		{ReferenceID: "o", DeliveryDate: "2026-08-10"},
+		{ReferenceID: "o", DeliveryTime: "13:00"},
+	} {
+		got := buildBiteshipOrderRequest(tc)
+		if got.DeliveryType != "now" {
+			t.Errorf("delivery_type = %q for %+v, want now", got.DeliveryType, tc)
+		}
+	}
+}
+
+// TestBiteshipClient_CancelOrder_SendsCancellationReasonCode pins the wire body
+// against the real contract. The first version of CancelOrder sent
+// {"reason": "..."} — read off an unofficial SDK's *function signature* rather
+// than a payload — which Biteship rejects. Fake-based service tests could
+// never have caught that; only asserting the bytes can.
+func TestBiteshipClient_CancelOrder_SendsCancellationReasonCode(t *testing.T) {
+	var gotBody map[string]any
+	var gotPath, gotMethod string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true,"status":"cancelled"}`))
+	}))
+	defer ts.Close()
+
+	c := NewBiteshipClient(nil, "test-key", ts.URL, ts.Client())
+	if err := c.CancelOrder(t.Context(), "biteship-order-1", "salah alamat"); err != nil {
+		t.Fatalf("CancelOrder: %v", err)
+	}
+
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/v1/orders/biteship-order-1/cancel" {
+		t.Errorf("path = %s", gotPath)
+	}
+	if gotBody["cancellation_reason_code"] != "others" {
+		t.Errorf("cancellation_reason_code = %v, want others", gotBody["cancellation_reason_code"])
+	}
+	if gotBody["cancellation_reason"] != "salah alamat" {
+		t.Errorf("cancellation_reason = %v", gotBody["cancellation_reason"])
+	}
+	if _, stale := gotBody["reason"]; stale {
+		t.Error(`the old "reason" key must not be sent — Biteship rejects it`)
+	}
+}

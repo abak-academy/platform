@@ -59,6 +59,12 @@ type CreateShipmentRequest struct {
 	CourierCode string
 	ServiceCode string
 
+	// DeliveryDate/DeliveryTime schedule the pickup. Both empty means "now",
+	// which is what every booking did before this was plumbed through.
+	// Biteship's formats: date "2026-08-10", time "13:00".
+	DeliveryDate string
+	DeliveryTime string
+
 	Items []ShipmentItem
 }
 
@@ -100,6 +106,14 @@ type LogisticsClient interface {
 	GetRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error)
 	CreateOrder(ctx context.Context, req CreateShipmentRequest) (Shipment, error)
 	GetOrder(ctx context.Context, biteshipOrderID string) (Shipment, error)
+
+	// CancelOrder cancels a booked pickup. reason is forwarded to the carrier.
+	CancelOrder(ctx context.Context, biteshipOrderID, reason string) error
+
+	// TrackWaybill asks the carrier for a waybill's scan log. Works for any
+	// waybill, including one we did not book — that is the only way an order
+	// shipped through the manual-resi escape hatch can be tracked at all.
+	TrackWaybill(ctx context.Context, waybillID, courierCode string) (WaybillTracking, error)
 }
 
 type NoopLogisticsClient struct{}
@@ -121,4 +135,19 @@ func (n *NoopLogisticsClient) CreateOrder(ctx context.Context, req CreateShipmen
 
 func (n *NoopLogisticsClient) GetOrder(ctx context.Context, biteshipOrderID string) (Shipment, error) {
 	return Shipment{}, ErrShippingUnavailable
+}
+
+func (n *NoopLogisticsClient) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {
+	return ErrShippingUnavailable
+}
+
+func (n *NoopLogisticsClient) TrackWaybill(ctx context.Context, waybillID, courierCode string) (WaybillTracking, error) {
+	return WaybillTracking{}, ErrShippingUnavailable
+}
+
+// WaybillTracking is a carrier scan log, as returned by the track-any-waybill
+// endpoint.
+type WaybillTracking struct {
+	Status  string
+	History []TrackingEntry
 }

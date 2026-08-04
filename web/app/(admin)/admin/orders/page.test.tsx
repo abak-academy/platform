@@ -21,6 +21,8 @@ let shipManualState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPend
 let completeState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let refundState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let reconcileState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+let refreshShipmentState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+let cancelShipmentState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 
 vi.mock("@/lib/hooks/admin-orders", () => ({
   useAdminOrders: () => ordersState,
@@ -31,6 +33,9 @@ vi.mock("@/lib/hooks/admin-orders", () => ({
   useCompleteOrder: () => completeState,
   useRefundOrder: () => refundState,
   useReconcileOrder: () => reconcileState,
+  useOrderTracking: () => ({ data: null, isLoading: false, isError: false }),
+  useRefreshShipment: () => refreshShipmentState,
+  useCancelShipment: () => cancelShipmentState,
   useFetchPaymentProofURL: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
@@ -468,5 +473,85 @@ describe("OrdersPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/gagal memuat/i)).toBeInTheDocument();
     });
+  });
+});
+
+describe("OrdersPage failed shipments", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ordersState = {
+      data: [
+        {
+          ...sampleOrders[0],
+          id: "00000000-0000-0000-0000-0000deadbeef",
+          status: "shipped",
+          tracking_number: "JP999",
+          shipment_status: "courierNotFound",
+        } as Order,
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+  });
+
+  // The row still says "shipped" — the webhook never walks orders.status back
+  // (FR-C-15) — so without this badge the listing gives an admin no reason to
+  // ever open the order whose parcel is dead.
+  it("badges a dead shipment in the listing instead of a plain Dikirim", async () => {
+    render(<OrdersPage />);
+    expect(await screen.findByTestId("row-shipment-failed")).toBeTruthy();
+  });
+
+  it("offers a filter for failed shipments", async () => {
+    render(<OrdersPage />);
+    expect(await screen.findByRole("button", { name: "Pengiriman bermasalah" })).toBeTruthy();
+  });
+});
+
+describe("OrdersPage shipment status column", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function renderWithStatus(shipment_status: string | null) {
+    ordersState = {
+      data: [
+        {
+          ...sampleOrders[0],
+          id: "00000000-0000-0000-0000-00000000c01a",
+          status: "shipped",
+          tracking_number: "JP777",
+          shipment_status,
+        } as Order,
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<OrdersPage />);
+  }
+
+  it("shows the courier status in the listing, translated", async () => {
+    renderWithStatus("in_transit");
+    expect((await screen.findByTestId("row-shipment-status")).textContent).toBe(
+      "Dalam perjalanan",
+    );
+  });
+
+  it("reads the camelCase spelling the same way", async () => {
+    renderWithStatus("droppingOff");
+    expect((await screen.findByTestId("row-shipment-status")).textContent).toBe(
+      "Menuju alamat penerima",
+    );
+  });
+
+  // An order booked but not yet acknowledged by Biteship has no status at all;
+  // an em dash says "nothing yet" without pretending it failed.
+  it("shows a placeholder when no status has arrived yet", async () => {
+    renderWithStatus(null);
+    expect((await screen.findByTestId("row-shipment-status")).textContent).toBe("—");
   });
 });

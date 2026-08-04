@@ -12,9 +12,15 @@ import {
   useCompleteOrder,
   useRefundOrder,
   useReconcileOrder,
+  useRefreshShipment,
+  useCancelShipment,
+  useOrderTracking,
 } from "@/lib/hooks/admin-orders";
 import { useTranslation } from "@/lib/i18n";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
+import { isShipmentFailure, shipmentStatusLabel } from "@/lib/shipment-status";
+import { CancelShipmentModal } from "@/components/admin/CancelShipmentModal";
+import { TrackingModal } from "@/components/admin/TrackingModal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,7 +31,7 @@ import { RefundOrderModal } from "@/components/admin/RefundOrderModal";
 import { formatRupiah } from "@/lib/format";
 import type { Order, OrderStatus, AdminOrderFilterStatus } from "@/lib/types";
 
-const FILTER_OPTIONS: AdminOrderFilterStatus[] = ["all", "pending", "paid", "processing", "shipped", "failed", "refunded"];
+const FILTER_OPTIONS: AdminOrderFilterStatus[] = ["all", "pending", "paid", "processing", "shipped", "shipment_failed", "failed", "refunded"];
 
 function orderNumber(order: Order): string {
   return `#${order.id.slice(-8)}`;
@@ -66,7 +72,7 @@ function actionAllowed(status: OrderStatus, action: "confirm" | "ship" | "comple
 }
 
 export default function OrdersPage() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [filter, setFilter] = useState<AdminOrderFilterStatus>("all");
   const { data: orders, isLoading, isError, error } = useAdminOrders(filter);
   const confirm = useConfirmOrder();
@@ -75,8 +81,14 @@ export default function OrdersPage() {
   const complete = useCompleteOrder();
   const refund = useRefundOrder();
   const reconcile = useReconcileOrder();
+  const refreshShipment = useRefreshShipment();
+  const cancelShipment = useCancelShipment();
+  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
+  const tracking = useOrderTracking(trackingOrderId);
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
   const [shippingOrder, setShippingOrder] = useState<Order | null>(null);
+  const [cancellingShipment, setCancellingShipment] = useState<Order | null>(null);
+  const [cancelShipmentError, setCancelShipmentError] = useState<string | null>(null);
   const [shipError, setShipError] = useState<string | null>(null);
   const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
@@ -97,11 +109,41 @@ export default function OrdersPage() {
       case "shipped": return "Dikirim";
       case "failed": return t("filter_failed");
       case "refunded": return t("filter_refunded");
+      case "shipment_failed": return t("shipment_failed_badge");
     }
   };
 
+  // The courier's own status, as opposed to shippingBadge above, which only
+  // says whether we handed the parcel over. A dead shipment is coloured here
+  // too: the badge catches the eye when scanning, this says what happened.
+  function shipmentStatusCell(order: Order) {
+    if (!hasPhysicalItem(order) || !order.shipment_status) {
+      return <span data-testid="row-shipment-status" className="text-xs text-muted-foreground">—</span>;
+    }
+    return (
+      <span
+        data-testid="row-shipment-status"
+        className={isShipmentFailure(order.shipment_status) ? "text-destructive" : undefined}
+      >
+        {shipmentStatusLabel(order.shipment_status, lang)}
+      </span>
+    );
+  }
+
   function shippingBadge(order: Order) {
     if (!hasPhysicalItem(order)) return null;
+    // Checked before isShipped: a courier-not-found order satisfies both, and
+    // showing it as a plain green "Dikirim" is exactly the failure to surface.
+    if (isShipmentFailure(order.shipment_status)) {
+      return (
+        <Badge
+          data-testid="row-shipment-failed"
+          className="border-destructive/20 bg-destructive/10 text-destructive"
+        >
+          {t("shipment_failed_badge")}
+        </Badge>
+      );
+    }
     if (isShipped(order)) {
       return <Badge className="bg-green-100 text-green-800 border-green-200">{t("status_shipped")}</Badge>;
     }
@@ -124,14 +166,37 @@ export default function OrdersPage() {
     }
   }
 
-  async function handleShipBook(id: string) {
+  async function handleShipBook(
+    id: string,
+    schedule?: { deliveryDate: string; deliveryTime: string },
+  ) {
     setShipError(null);
     try {
-      await ship.mutateAsync(id);
+      await ship.mutateAsync(schedule ? { id, ...schedule } : id);
       setShippingOrder(null);
       toast.success(t("orders_shipped"));
     } catch (e) {
       setShipError(errorMessage(e));
+    }
+  }
+
+  async function handleRefreshShipment(id: string) {
+    try {
+      await refreshShipment.mutateAsync(id);
+      toast.success(t("shipment_refreshed"));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
+  async function handleCancelShipment(id: string, reason: string) {
+    setCancelShipmentError(null);
+    try {
+      await cancelShipment.mutateAsync({ id, reason });
+      setCancellingShipment(null);
+      toast.success(t("shipment_cancelled"));
+    } catch (e) {
+      setCancelShipmentError(errorMessage(e));
     }
   }
 
@@ -225,6 +290,7 @@ export default function OrdersPage() {
                 <th className="px-4 py-3 text-left font-medium">{t("th_total")}</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-left font-medium">Pengiriman</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_shipment_status")}</th>
                 <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
               </tr>
             </thead>
@@ -257,6 +323,7 @@ export default function OrdersPage() {
                   <td className="px-4 py-3">
                     {hasPhysicalItem(order) ? shippingBadge(order) : <span className="text-xs text-muted-foreground">—</span>}
                   </td>
+                  <td className="px-4 py-3">{shipmentStatusCell(order)}</td>
                   <td className="px-4 py-3 text-right">
                     <div
                       className="flex items-center justify-end gap-2"
@@ -327,7 +394,7 @@ export default function OrdersPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                     {t("empty_orders")}
                   </td>
                 </tr>
@@ -347,6 +414,25 @@ export default function OrdersPage() {
                 setDetailOrder(null);
                 setShipError(null);
                 setShippingOrder(order);
+              }
+            : undefined
+        }
+        onTrack={
+          detailOrder?.tracking_number ? () => setTrackingOrderId(detailOrder.id) : undefined
+        }
+        onRefreshShipment={
+          detailOrder?.biteship_order_id
+            ? () => handleRefreshShipment(detailOrder.id)
+            : undefined
+        }
+        isRefreshingShipment={refreshShipment.isPending}
+        onCancelShipment={
+          detailOrder?.biteship_order_id
+            ? () => {
+                const order = detailOrder;
+                setDetailOrder(null);
+                setCancelShipmentError(null);
+                setCancellingShipment(order);
               }
             : undefined
         }
@@ -394,6 +480,29 @@ export default function OrdersPage() {
         />
       )}
 
+      <TrackingModal
+        open={Boolean(trackingOrderId)}
+        onOpenChange={(o) => {
+          if (!o) setTrackingOrderId(null);
+        }}
+        tracking={tracking.data}
+        isLoading={tracking.isLoading}
+        error={tracking.isError ? t("shipment_track_failed") : null}
+      />
+
+      {cancellingShipment && (
+        <CancelShipmentModal
+          open
+          onOpenChange={(o) => {
+            if (!o) setCancellingShipment(null);
+          }}
+          orderNumber={orderNumber(cancellingShipment)}
+          onCancelShipment={(reason) => handleCancelShipment(cancellingShipment.id, reason)}
+          isPending={cancelShipment.isPending}
+          error={cancelShipmentError}
+        />
+      )}
+
       {shippingOrder && (
         <ShipOrderModal
           open
@@ -402,7 +511,7 @@ export default function OrdersPage() {
             setShipError(null);
           }}
           orderNumber={orderNumber(shippingOrder)}
-          onBook={() => handleShipBook(shippingOrder.id)}
+          onBook={(schedule) => handleShipBook(shippingOrder.id, schedule)}
           onSubmitManual={(trackingNumber) => handleShipManual(shippingOrder.id, trackingNumber)}
           isPending={ship.isPending || shipManual.isPending}
           error={shipError}

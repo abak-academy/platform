@@ -115,6 +115,35 @@ body {
   }
 }
 
+/* Order & shipment timelines: the journey draws itself, top to bottom, the
+   direction the parcel actually moved. One sequence on load — no looping
+   effects, which on a page a student refreshes to check on their parcel would
+   read as noise rather than progress. */
+@keyframes tlRailGrow {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+@keyframes tlStepIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes tlDotIn {
+  from { opacity: 0; transform: scale(.4); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.tl-step { animation: tlStepIn .32s cubic-bezier(.2,.7,.3,1) both; }
+.tl-dot  { animation: tlDotIn .28s cubic-bezier(.34,1.4,.64,1) both; }
+.tl-rail { transform-origin: top; animation: tlRailGrow .34s ease-out both; }
+
+/* The step the parcel is on right now. A ring rather than a pulse: the page
+   is read, not watched, and a loop competes with the text beside it. */
+.tl-current { box-shadow: 0 0 0 4px color-mix(in oklab, currentColor 18%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-step, .tl-dot, .tl-rail { animation: none; }
+}
+
 /* Dark mode — softer navy palette, higher text contrast */
 html[data-theme="dark"] {
   --color-paper:     #161225;

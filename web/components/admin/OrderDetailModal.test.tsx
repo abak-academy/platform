@@ -131,7 +131,7 @@ describe("OrderDetailModal", () => {
     };
     render(<OrderDetailModal order={withEvents} onOpenChange={vi.fn()} />);
     const statuses = screen.getAllByTestId("shipment-event-status").map((el) => el.textContent);
-    expect(statuses).toEqual(["delivered", "confirmed"]);
+    expect(statuses).toEqual(["Diterima", "Pesanan dikonfirmasi"]);
   });
 
   it("renders no timeline heading for an order with no shipment events", () => {
@@ -172,5 +172,48 @@ describe("OrderDetailModal", () => {
     const gateway = { ...physicalOrder, payment_method: "gopay" };
     render(<OrderDetailModal order={gateway} onOpenChange={vi.fn()} />);
     expect(screen.queryByText("Dikonfirmasi manual")).toBeNull();
+  });
+});
+
+describe("OrderDetailModal shipment status", () => {
+  it("translates the shipment status instead of showing the raw Biteship code", () => {
+    const order = {
+      ...physicalOrder,
+      status: "shipped",
+      tracking_number: "JP1234567",
+      shipment_status: "dropping_off",
+    };
+    render(<OrderDetailModal order={order} onOpenChange={vi.fn()} />);
+
+    expect(screen.getByTestId("order-shipment-status").textContent).toBe(
+      "Menuju alamat penerima",
+    );
+  });
+
+  // The order still reads "Dikirim" everywhere else — orders.status is never
+  // walked back by the webhook (FR-C-15) — so this badge is the only thing
+  // telling an admin the parcel is dead.
+  it("badges a shipment that failed", () => {
+    const order = {
+      ...physicalOrder,
+      status: "shipped",
+      tracking_number: "JP1234567",
+      shipment_status: "courier_not_found",
+    };
+    render(<OrderDetailModal order={order} onOpenChange={vi.fn()} />);
+
+    expect(screen.getByTestId("order-shipment-failed-badge")).toBeTruthy();
+  });
+
+  it("does not badge a shipment that is merely in flight", () => {
+    const order = {
+      ...physicalOrder,
+      status: "shipped",
+      tracking_number: "JP1234567",
+      shipment_status: "in_transit",
+    };
+    render(<OrderDetailModal order={order} onOpenChange={vi.fn()} />);
+
+    expect(screen.queryByTestId("order-shipment-failed-badge")).toBeNull();
   });
 });

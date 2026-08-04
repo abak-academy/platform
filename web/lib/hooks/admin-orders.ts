@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { Order, AdminOrderFilterStatus } from "@/lib/types";
+import type { Order, AdminOrderFilterStatus, OrderTracking } from "@/lib/types";
 
 export const adminOrdersKeys = {
   all: ["admin", "orders"] as const,
@@ -13,7 +13,7 @@ export const adminOrdersKeys = {
   detail: (id: string) => [...adminOrdersKeys.all, "detail", id] as const,
 };
 
-const FILTER_STATUS_MAP: Record<Exclude<AdminOrderFilterStatus, "all">, Order["status"]> = {
+const FILTER_STATUS_MAP: Record<Exclude<AdminOrderFilterStatus, "all" | "shipment_failed">, Order["status"]> = {
   pending: "payment_pending",
   paid: "paid",
   processing: "processing",
@@ -23,7 +23,7 @@ const FILTER_STATUS_MAP: Record<Exclude<AdminOrderFilterStatus, "all">, Order["s
 };
 
 function statusQueryParam(status?: AdminOrderFilterStatus): string | undefined {
-  if (!status || status === "all") return undefined;
+  if (!status || status === "all" || status === "shipment_failed") return undefined;
   return FILTER_STATUS_MAP[status];
 }
 
@@ -39,6 +39,11 @@ export function useAdminOrders(status?: AdminOrderFilterStatus) {
       const statusParam = statusQueryParam(status);
       if (statusParam) {
         params.set("status", statusParam);
+      }
+      // Filtered on shipment_status, not status — a dead parcel is still a
+      // "shipped" order as far as orders.status is concerned.
+      if (status === "shipment_failed") {
+        params.set("shipment", "failed");
       }
       const query = params.toString();
       const path = query ? `/admin/orders?${query}` : "/admin/orders";
@@ -89,13 +94,60 @@ export function useFetchRefundProofURL() {
   });
 }
 
+export interface ShipOrderVars {
+  id: string;
+  // Both optional and sent together or not at all — a half-filled schedule
+  // books an immediate pickup rather than failing the whole action.
+  deliveryDate?: string;
+  deliveryTime?: string;
+}
+
 export function useShipOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      authFetch<{ message: string }>(`/admin/orders/${encodeURIComponent(id)}/ship`, {
+    mutationFn: (vars: string | ShipOrderVars) => {
+      const { id, deliveryDate, deliveryTime } =
+        typeof vars === "string" ? ({ id: vars } as ShipOrderVars) : vars;
+      const path = `/admin/orders/${encodeURIComponent(id)}/ship`;
+      // No schedule means no body at all, exactly as before scheduling
+      // existed — an immediate pickup is the unchanged default path and
+      // should look identical on the wire.
+      if (!deliveryDate || !deliveryTime) {
+        return authFetch<{ message: string }>(path, { method: "POST" });
+      }
+      return authFetch<{ message: string }>(path, {
         method: "POST",
-      }),
+        body: JSON.stringify({ delivery_date: deliveryDate, delivery_time: deliveryTime }),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminOrdersKeys.all });
+    },
+  });
+}
+
+export function useRefreshShipment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      authFetch<{ message: string }>(
+        `/admin/orders/${encodeURIComponent(id)}/shipment/refresh`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminOrdersKeys.all });
+    },
+  });
+}
+
+export function useCancelShipment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      authFetch<{ message: string }>(
+        `/admin/orders/${encodeURIComponent(id)}/shipment/cancel`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminOrdersKeys.all });
     },
@@ -156,5 +208,17 @@ export function useCompleteOrder() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminOrdersKeys.all });
     },
+  });
+}
+
+export function useOrderTracking(orderId: string | null) {
+  return useQuery({
+    queryKey: [...adminOrdersKeys.all, "tracking", orderId],
+    queryFn: () =>
+      authFetch<OrderTracking>(`/admin/orders/${encodeURIComponent(orderId!)}/tracking`),
+    enabled: Boolean(orderId),
+    // The courier's scan log is the point of opening this; a cached one from
+    // an earlier visit would answer the wrong question.
+    staleTime: 0,
   });
 }

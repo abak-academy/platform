@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ShipOrderModal } from "./ShipOrderModal";
 import { t } from "@/lib/i18n";
@@ -52,5 +52,88 @@ describe("ShipOrderModal", () => {
     expect(
       screen.getByText(t(lang, "orders_ship_subtitle").replace("{order}", "#5d00bcc4")),
     ).toBeInTheDocument();
+  });
+});
+
+describe("ShipOrderModal scheduled pickup", () => {
+  it("books immediately when no schedule is entered", async () => {
+    const onBook = vi.fn();
+    render(
+      <ShipOrderModal
+        open
+        onOpenChange={vi.fn()}
+        orderNumber="#123"
+        onBook={onBook}
+        onSubmitManual={vi.fn()}
+        isPending={false}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Pesan kurir" }));
+    expect(onBook).toHaveBeenCalledWith(undefined);
+  });
+
+  it("passes the schedule when both date and time are given", async () => {
+    const onBook = vi.fn();
+    render(
+      <ShipOrderModal
+        open
+        onOpenChange={vi.fn()}
+        orderNumber="#123"
+        onBook={onBook}
+        onSubmitManual={vi.fn()}
+        isPending={false}
+      />,
+    );
+    await userEvent.click(screen.getByTestId("ship-schedule-toggle"));
+    fireEvent.change(screen.getByLabelText("Tanggal jemput"), { target: { value: "2026-08-10" } });
+    fireEvent.change(screen.getByLabelText("Jam jemput"), { target: { value: "13:00" } });
+    await userEvent.click(screen.getByRole("button", { name: "Pesan kurir" }));
+
+    expect(onBook).toHaveBeenCalledWith({ deliveryDate: "2026-08-10", deliveryTime: "13:00" });
+  });
+
+});
+
+describe("ShipOrderModal incomplete schedule", () => {
+  function renderModal(onBook = vi.fn()) {
+    render(
+      <ShipOrderModal
+        open
+        onOpenChange={vi.fn()}
+        orderNumber="#123"
+        onBook={onBook}
+        onSubmitManual={vi.fn()}
+        isPending={false}
+      />,
+    );
+    return onBook;
+  }
+
+  // Previously this silently booked an immediate pickup — turning a form the
+  // admin had not finished into a courier dispatched today.
+  it("will not book while the schedule is half filled", async () => {
+    renderModal();
+    await userEvent.click(screen.getByTestId("ship-schedule-toggle"));
+    fireEvent.change(screen.getByLabelText("Tanggal jemput"), { target: { value: "2026-08-10" } });
+
+    expect(screen.getByRole("button", { name: "Pesan kurir" })).toBeDisabled();
+  });
+
+  it("books once both halves are given", async () => {
+    const onBook = renderModal();
+    await userEvent.click(screen.getByTestId("ship-schedule-toggle"));
+    fireEvent.change(screen.getByLabelText("Tanggal jemput"), { target: { value: "2026-08-10" } });
+    fireEvent.change(screen.getByLabelText("Jam jemput"), { target: { value: "13:00" } });
+
+    const book = screen.getByRole("button", { name: "Pesan kurir" });
+    expect(book).not.toBeDisabled();
+    await userEvent.click(book);
+    expect(onBook).toHaveBeenCalledWith({ deliveryDate: "2026-08-10", deliveryTime: "13:00" });
+  });
+
+  it("still books immediately when scheduling was never asked for", async () => {
+    const onBook = renderModal();
+    await userEvent.click(screen.getByRole("button", { name: "Pesan kurir" }));
+    expect(onBook).toHaveBeenCalledWith(undefined);
   });
 });

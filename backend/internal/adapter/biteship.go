@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"time"
@@ -266,6 +267,124 @@ func (c *BiteshipClient) GetOrder(ctx context.Context, biteshipOrderID string) (
 	return parseBiteshipOrderResponse(respBody)
 }
 
+// CancelOrder cancels a booked pickup via POST /v1/orders/:id/cancel.
+//
+// The body carries cancellation_reason_code plus free text under
+// cancellation_reason. "others" is the code that permits arbitrary text; the
+// enum's other values are Biteship's own fixed reasons, which an admin typing
+// a sentence is not choosing between.
+//
+// This originally sent {"reason": ...}, taken from an unofficial SDK's
+// function signature — a signature is not a payload, and Biteship rejects it.
+// TestBiteshipClient_CancelOrder_SendsCancellationReasonCode asserts the bytes
+// so a fake can never green-light the wrong shape again.
+func (c *BiteshipClient) CancelOrder(ctx context.Context, biteshipOrderID, reason string) error {
+	body, err := json.Marshal(map[string]string{
+		"cancellation_reason_code": "others",
+		"cancellation_reason":      reason,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal Biteship cancel request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+"/v1/orders/"+biteshipOrderID+"/cancel", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	httpReq.Header.Set("authorization", c.apiKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to call Biteship API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read Biteship response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return classifyBiteshipOrderError(resp.StatusCode, respBody)
+	}
+
+	// Same trap as CreateOrder: Biteship has been seen answering 2xx with
+	// "success": false, so a status code alone is not proof it worked.
+	var errProbe biteshipOrderErrorResponse
+	if jsonErr := json.Unmarshal(respBody, &errProbe); jsonErr == nil && !errProbe.Success && errProbe.Code != 0 {
+		return classifyBiteshipOrderError(resp.StatusCode, respBody)
+	}
+	return nil
+}
+
+// TrackWaybill calls GET /v1/trackings/:waybill_id/couriers/:courier_code —
+// Biteship's track-any-waybill endpoint, which answers for a waybill we never
+// booked.
+//
+// TODO: uncertain — the response shape is unverified. Biteship's docs page for
+// this endpoint renders client-side and returns nothing to a fetch, and the
+// unofficial SDKs expose only the method signature, not the struct. The
+// parsing below accepts the field names their order endpoints already use
+// (history[].status/note/updated_at) and treats anything it cannot read as an
+// empty log, so a wrong guess degrades to the stored events rather than
+// showing a broken timeline. Confirm against a real response before relying
+// on it.
+func (c *BiteshipClient) TrackWaybill(ctx context.Context, waybillID, courierCode string) (service.WaybillTracking, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.baseURL+"/v1/trackings/"+url.PathEscape(waybillID)+"/couriers/"+url.PathEscape(courierCode), nil)
+	if err != nil {
+		return service.WaybillTracking{}, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	httpReq.Header.Set("authorization", c.apiKey)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return service.WaybillTracking{}, fmt.Errorf("failed to call Biteship API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return service.WaybillTracking{}, fmt.Errorf("failed to read Biteship response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return service.WaybillTracking{}, classifyBiteshipOrderError(resp.StatusCode, respBody)
+	}
+
+	return parseBiteshipTracking(respBody)
+}
+
+func parseBiteshipTracking(body []byte) (service.WaybillTracking, error) {
+	var resp biteshipTrackingResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return service.WaybillTracking{}, fmt.Errorf("failed to parse Biteship tracking response: %w", err)
+	}
+
+	out := service.WaybillTracking{Status: resp.Status}
+	for _, h := range resp.History {
+		// A checkpoint with no timestamp cannot be placed on a timeline, and
+		// showing it at the zero time would date it to year 1.
+		if h.UpdatedAt.Time.IsZero() {
+			continue
+		}
+		out.History = append(out.History, service.TrackingEntry{
+			Status:     h.Status,
+			Note:       h.Note,
+			OccurredAt: h.UpdatedAt.Time,
+		})
+	}
+	return out, nil
+}
+
+// biteshipTrackingResponse reuses the courier-history shape the order
+// endpoints already return, which is the only shape we have actually seen.
+type biteshipTrackingResponse struct {
+	Status  string                        `json:"status"`
+	History []biteshipCourierHistoryEntry `json:"history"`
+}
+
 // buildBiteshipOrderRequest maps CreateShipmentRequest onto Biteship's
 // POST /v1/orders body. courier_company/courier_type take Biteship's codes
 // (e.g. "jne"/"reg"), not the display names orders.selected_courier persists.
@@ -279,7 +398,7 @@ func buildBiteshipOrderRequest(req service.CreateShipmentRequest) biteshipOrderR
 			Weight:   it.WeightGrams,
 		})
 	}
-	return biteshipOrderRequest{
+	out := biteshipOrderRequest{
 		ReferenceID:             req.ReferenceID,
 		ShipperContactName:      req.OriginContactName,
 		ShipperContactPhone:     req.OriginContactPhone,
@@ -296,6 +415,17 @@ func buildBiteshipOrderRequest(req service.CreateShipmentRequest) biteshipOrderR
 		DeliveryType:            "now",
 		Items:                   items,
 	}
+
+	// "scheduled" is only meaningful with both a date and a time; sending the
+	// type without them would have Biteship reject the booking, so an
+	// incomplete schedule falls back to an immediate pickup rather than
+	// failing the whole ship action.
+	if req.DeliveryDate != "" && req.DeliveryTime != "" {
+		out.DeliveryType = "scheduled"
+		out.DeliveryDate = req.DeliveryDate
+		out.DeliveryTime = req.DeliveryTime
+	}
+	return out
 }
 
 // classifyBiteshipOrderError turns a non-2xx (or success:false) /v1/orders
@@ -367,6 +497,8 @@ type biteshipOrderRequest struct {
 	CourierCompany string `json:"courier_company"`
 	CourierType    string `json:"courier_type"`
 	DeliveryType   string `json:"delivery_type"`
+	DeliveryDate   string `json:"delivery_date,omitempty"`
+	DeliveryTime   string `json:"delivery_time,omitempty"`
 
 	Items []biteshipOrderItem `json:"items"`
 }

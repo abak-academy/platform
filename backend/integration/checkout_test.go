@@ -129,6 +129,14 @@ func (twoServiceLogisticsClient) CreateOrder(context.Context, service.CreateShip
 	return service.Shipment{}, service.ErrShippingUnavailable
 }
 
+func (twoServiceLogisticsClient) TrackWaybill(context.Context, string, string) (service.WaybillTracking, error) {
+	return service.WaybillTracking{}, service.ErrShippingUnavailable
+}
+
+func (twoServiceLogisticsClient) CancelOrder(context.Context, string, string) error {
+	return service.ErrShippingUnavailable
+}
+
 func (twoServiceLogisticsClient) GetOrder(context.Context, string) (service.Shipment, error) {
 	return service.Shipment{}, service.ErrShippingUnavailable
 }
