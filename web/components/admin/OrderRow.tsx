@@ -98,9 +98,9 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
       return (
         <span
           data-testid="row-shipment-status"
-          className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-destructive"
+          className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold text-destructive"
         >
-          <PackageX className="size-3" aria-hidden />
+          <PackageX className="size-3.5" aria-hidden />
           {courierLabel}
         </span>
       );
@@ -119,21 +119,21 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
               e.stopPropagation();
               onTrack?.();
             }}
-            className="group/track mt-1 inline-flex items-center gap-1 rounded-sm text-[11px] font-semibold text-brand-700 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            className="group/track mt-2 inline-flex items-center gap-1.5 rounded-sm text-[13px] font-semibold text-brand-700 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
           >
             <Package
-              className="size-3 transition-transform duration-150 group-hover/track:translate-x-0.5 motion-reduce:transition-none"
+              className="size-3.5 transition-transform duration-150 group-hover/track:translate-x-0.5 motion-reduce:transition-none"
               aria-hidden
             />
             {line}
           </button>
-          <div className="font-mono text-[10px] text-ink-600">{order.tracking_number}</div>
+          <div className="mt-1 font-mono text-xs text-ink-600">{order.tracking_number}</div>
         </>
       );
     }
 
     return (
-      <span data-testid="row-shipment-status" className="mt-1 block text-[11px] text-ink-600">
+      <span data-testid="row-shipment-status" className="mt-2 block text-[13px] text-ink-600">
         {courierLabel ?? "—"}
       </span>
     );
@@ -144,20 +144,20 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
       onClick={onOpen}
       className="cursor-pointer border-t align-top transition-colors hover:bg-brand-50/70"
     >
-      <td className="px-4 py-3">
+      <td className="px-4 py-4">
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onOpen();
           }}
-          className="rounded-sm font-mono font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          className="rounded-sm font-mono text-[15px] font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
         >
           <span className="sr-only">{t("orders_detail_open")} </span>
           {orderNumber(order)}
         </button>
         {hasCreatedAt && (
-          <div className="mt-0.5 text-[11px] text-ink-600">
+          <div className="mt-1 text-[13px] text-ink-600">
             {dateFormatter.format(createdAt)} ·{" "}
             <span
               data-testid="row-age"
@@ -167,33 +167,31 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
             </span>
           </div>
         )}
-        <div className="mt-1 space-y-0.5 text-[11px] text-ink-600 md:hidden">
+        <div className="mt-1.5 space-y-0.5 text-[13px] text-ink-600 md:hidden">
           <div>{buyerLabel(order)}</div>
           <div className="tabular-nums">{formatRupiah(order.total)}</div>
         </div>
       </td>
 
-      {/* max-w + truncate: student_id is a raw UUID and wrapped to three lines,
-          which made every row in the table a different height. */}
-      <td className="hidden max-w-[14rem] px-4 py-3 md:table-cell">
-        <div className="truncate font-medium">{buyerLabel(order)}</div>
-        <div className="truncate font-mono text-[10px] text-ink-600" title={order.student_id}>
-          {order.student_id}
-        </div>
+      {/* No student_id: it is a raw UUID, it meant nothing to anyone reading the
+          table, and it wrapped. The order number identifies the order; the
+          detail view still carries the buyer's id. */}
+      <td className="hidden max-w-[16rem] px-4 py-4 md:table-cell">
+        <div className="truncate text-[15px] font-medium">{buyerLabel(order)}</div>
       </td>
 
-      <td className="hidden max-w-xs px-4 py-3 md:table-cell">
-        <div className="truncate">{items[0]?.name ?? "—"}</div>
+      <td className="hidden max-w-xs px-4 py-4 md:table-cell">
+        <div className="truncate text-[15px]">{items[0]?.name ?? "—"}</div>
         {extraItems > 0 && (
-          <div className="mt-0.5 text-[11px] text-ink-600">+{extraItems} lainnya</div>
+          <div className="mt-1 text-[13px] text-ink-600">+{extraItems} lainnya</div>
         )}
       </td>
 
-      <td className="hidden px-4 py-3 text-right tabular-nums whitespace-nowrap md:table-cell">
+      <td className="hidden px-4 py-4 text-right text-[15px] tabular-nums whitespace-nowrap md:table-cell">
         {formatRupiah(order.total)}
       </td>
 
-      <td className="px-4 py-3">
+      <td className="px-4 py-4">
         <OrderStatusBadge status={order.status} />
         {courierSubLine()}
       </td>

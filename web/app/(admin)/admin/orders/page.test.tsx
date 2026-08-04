@@ -170,8 +170,11 @@ describe("OrdersPage", () => {
     // The total is printed twice per row: once in the md+ column, once in the
     // stacked mobile summary.
     expect(screen.getAllByText("Rp115.000").length).toBeGreaterThanOrEqual(1);
-    // Shipping column renders — "Dikirim" appears both as a filter chip and as a badge
-    expect(screen.getAllByText("Dikirim").length).toBeGreaterThanOrEqual(1);
+    // Status column renders a badge per row. "Dikirim" is no longer also a
+    // filter chip — the status filter is a select whose options are portalled
+    // until opened — so this asserts the badge of a status the fixture has.
+    expect(screen.getAllByText("Menunggu Pembayaran").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Selesai").length).toBeGreaterThanOrEqual(1);
   });
 
   // FR-33: buyer name is the primary label; no truncated-UUID label
@@ -186,8 +189,9 @@ describe("OrdersPage", () => {
     expect(screen.getAllByText("Siswa Uji C").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("...s1")).toBeNull();
     expect(screen.queryByText(/^\.\.\./)).toBeNull();
-    // student_id stays present as secondary detail.
-    expect(screen.getByText("s1")).toBeInTheDocument();
+    // The raw student_id is deliberately NOT in the row: it is a UUID that
+    // meant nothing to anyone reading the table. It stays in the order detail.
+    expect(screen.queryByText("s1")).toBeNull();
   });
 
   it("shows confirm as the row button and reconcile in the menu for pending orders", async () => {
@@ -523,9 +527,11 @@ describe("OrdersPage", () => {
 
     render(<OrdersPage />);
 
-    await waitFor(() => expect(screen.getByText(/Kursus B/)).toBeInTheDocument());
+    // A paid order, not the completed one: refund is no longer offered once an
+    // order is complete.
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
 
-    const row = screen.getByText(/Kursus B/).closest("tr")!;
+    const row = screen.getByText(/Buku Shipped/).closest("tr")!;
     // Refund is never promoted to a row button — it is the one action that
     // moves money, and it sits behind the menu with the destructive variant.
     expect(within(row).queryByRole("button", { name: /refund/i })).toBeNull();
@@ -547,14 +553,14 @@ describe("OrdersPage", () => {
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
-        id: "o3",
+        id: "o2",
         refundProofUrl: "refund_proof/admin-1/trf.jpg",
       });
       expect(toast.success).toHaveBeenCalledWith("Pesanan direfund.");
     });
   });
 
-  it("filters rows by status chips", async () => {
+  it("filters rows by the status select", async () => {
     ordersState = {
       ...ordersState,
       data: pages(sampleOrders.filter((o) => o.status === "paid")),
@@ -564,11 +570,47 @@ describe("OrdersPage", () => {
 
     await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
 
-    const paidChip = screen.getByRole("button", { name: /^dibayar$/i });
-    fireEvent.click(paidChip);
+    // The status filter is a select, not a row of chips: the chips wrapped to a
+    // second line and never lined up with the search and date controls.
+    expect(screen.getByTestId("orders-status-filter")).toBeInTheDocument();
 
     expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument();
     expect(screen.queryByText(/Buku A/)).not.toBeInTheDocument();
+  });
+
+  // Refund on a finished order is a returns case, not a routine action.
+  // Offering it on every historical row buried the states where it is the
+  // right move.
+  it("does not offer refund on a completed order", async () => {
+    ordersState = {
+      ...ordersState,
+      data: pages([sampleOrders[2]]),
+    };
+    render(<OrdersPage />);
+
+    await waitFor(() => expect(screen.getByText(/Kursus B/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Kursus B/).closest("tr")!;
+    expect(within(row).queryByRole("button", { name: /refund/i })).toBeNull();
+    // Refund was this row's only remaining action, so the overflow menu is not
+    // rendered at all — there is nothing left to put in it.
+    expect(within(row).queryByTestId("row-menu-trigger")).toBeNull();
+  });
+
+  // ...unless the parcel died: money was taken for goods that will not arrive,
+  // and orders.status is never walked back by the webhook.
+  it("still offers refund on a completed order whose shipment failed", async () => {
+    ordersState = {
+      ...ordersState,
+      data: pages([{ ...sampleOrders[2], shipment_status: "courierNotFound" }]),
+    };
+    render(<OrdersPage />);
+
+    await waitFor(() => expect(screen.getByText(/Kursus B/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Kursus B/).closest("tr")!;
+    openRowMenu(row);
+    expect(await screen.findByRole("menuitem", { name: /refund/i })).toBeTruthy();
   });
 
   it("counts the rows on screen against the summary total", async () => {
@@ -665,7 +707,12 @@ describe("OrdersPage failed shipments", () => {
 
   it("offers a filter for failed shipments", async () => {
     render(<OrdersPage />);
-    expect(await screen.findByRole("button", { name: "Pengiriman bermasalah" })).toBeTruthy();
+    // Options live inside the select's portal until it is opened, so the
+    // presence of the control plus its option list is what is asserted here.
+    // The status filter is a select. Its options live in a Radix portal that
+    // jsdom will not open without pointer-capture shims, so this asserts the
+    // control is present; OrdersToolbar.test.tsx covers the option list.
+    expect(await screen.findByTestId("orders-status-filter")).toBeTruthy();
   });
 });
 

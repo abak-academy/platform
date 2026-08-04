@@ -3,6 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
 import type { AdminOrderFilterStatus, AdminOrderQuery, OrderBucketCounts } from "@/lib/types";
 
@@ -25,7 +32,7 @@ export interface OrdersToolbarProps {
   counts?: OrderBucketCounts;
 }
 
-/** Only the buckets the API actually counts — the rest of the chips stay bare rather than guess. */
+/** Only the buckets the API actually counts — the rest stay bare rather than guess. */
 function chipCount(
   status: AdminOrderFilterStatus,
   counts: OrderBucketCounts | undefined,
@@ -91,7 +98,11 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-end gap-3">
+      {/* One inline row. The status chips wrapped to a second line and the
+          stacked date labels made that group taller than everything beside it,
+          so nothing lined up. Status is a select now; the dash carries the
+          "range" meaning the date labels were carrying. */}
+      <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-56 flex-1">
           <Search
             className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-600"
@@ -107,59 +118,55 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
           />
         </div>
 
-        <div className="flex items-end gap-2">
-          <div className="space-y-1">
-            <label
-              htmlFor="orders-date-from"
-              className="block text-[11px] font-medium tracking-wide text-ink-600 uppercase"
-            >
-              {t("orders_date_from")}
-            </label>
-            <Input
-              id="orders-date-from"
-              type="date"
-              value={value.from ?? ""}
-              onChange={(e) => onChange({ ...value, from: e.target.value || undefined })}
-              className="w-auto"
-            />
-          </div>
-          <div className="space-y-1">
-            <label
-              htmlFor="orders-date-to"
-              className="block text-[11px] font-medium tracking-wide text-ink-600 uppercase"
-            >
-              {t("orders_date_to")}
-            </label>
-            <Input
-              id="orders-date-to"
-              type="date"
-              value={value.to ?? ""}
-              onChange={(e) => onChange({ ...value, to: e.target.value || undefined })}
-              className="w-auto"
-            />
-          </div>
-        </div>
-      </div>
+        <Select
+          value={value.status}
+          onValueChange={(v) => onChange({ ...value, status: v as AdminOrderFilterStatus })}
+        >
+          <SelectTrigger className="w-56" aria-label={t("th_status")} data-testid="orders-status-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FILTER_OPTIONS.map((f) => {
+              const count = chipCount(f, counts);
+              return (
+                <SelectItem key={f} value={f}>
+                  <span className="flex w-full items-center justify-between gap-4">
+                    <span>{filterLabel(f)}</span>
+                    {count !== undefined && (
+                      <span className="tabular-nums text-ink-600">{count}</span>
+                    )}
+                  </span>
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
 
-      <div className="flex flex-wrap gap-2">
-        {FILTER_OPTIONS.map((f) => {
-          const count = chipCount(f, counts);
-          const active = value.status === f;
-          return (
-            <button
-              key={f}
-              type="button"
-              aria-pressed={active}
-              className={active ? "md-btn-filled" : "md-btn-outlined"}
-              onClick={() => onChange({ ...value, status: f })}
-            >
-              {filterLabel(f)}
-              {count !== undefined && (
-                <span className="ml-1.5 tabular-nums opacity-70">{count}</span>
-              )}
-            </button>
-          );
-        })}
+        <div className="flex items-center gap-2">
+          <label htmlFor="orders-date-from" className="sr-only">
+            {t("orders_date_from")}
+          </label>
+          <Input
+            id="orders-date-from"
+            type="date"
+            value={value.from ?? ""}
+            onChange={(e) => onChange({ ...value, from: e.target.value || undefined })}
+            className="w-auto"
+          />
+          <span aria-hidden className="text-ink-600">
+            –
+          </span>
+          <label htmlFor="orders-date-to" className="sr-only">
+            {t("orders_date_to")}
+          </label>
+          <Input
+            id="orders-date-to"
+            type="date"
+            value={value.to ?? ""}
+            onChange={(e) => onChange({ ...value, to: e.target.value || undefined })}
+            className="w-auto"
+          />
+        </div>
       </div>
     </div>
   );

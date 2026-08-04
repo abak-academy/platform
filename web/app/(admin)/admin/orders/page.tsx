@@ -18,6 +18,7 @@ import {
   useOrderTracking,
 } from "@/lib/hooks/admin-orders";
 import { useTranslation } from "@/lib/i18n";
+import { isShipmentFailure } from "@/lib/shipment-status";
 import { CancelShipmentModal } from "@/components/admin/CancelShipmentModal";
 import { TrackingModal } from "@/components/admin/TrackingModal";
 import { Button } from "@/components/ui/button";
@@ -54,11 +55,22 @@ function actionAllowed(status: OrderStatus, action: "confirm" | "ship" | "comple
       return status === "paid" || status === "processing";
     case "complete":
       return status === "shipped" || status === "processing";
+    // Not `completed`: the order is finished and the goods are with the buyer,
+    // so a refund there is a returns case, not a routine order action. Offering
+    // it on every historical row buried the states where it is actually the
+    // right move. A dead shipment re-opens it — see refundAllowed below.
     case "refund":
-      return status === "paid" || status === "processing" || status === "shipped" || status === "completed";
+      return status === "paid" || status === "processing" || status === "shipped";
     case "reconcile":
       return status === "payment_pending";
   }
+}
+
+// A parcel the courier never accepted is money taken for goods that will not
+// arrive, whatever orders.status says — the webhook never walks the status
+// back. That is the one case where a completed order still deserves a refund.
+function refundAllowed(order: Order): boolean {
+  return actionAllowed(order.status, "refund") || isShipmentFailure(order.shipment_status);
 }
 
 export default function OrdersPage() {
@@ -255,7 +267,7 @@ export default function OrdersPage() {
         onClick: () => handleReconcile(order.id),
       });
     }
-    if (actionAllowed(order.status, "refund")) {
+    if (refundAllowed(order)) {
       actions.push({
         label: t("action_refund"),
         destructive: true,
@@ -298,12 +310,12 @@ export default function OrdersPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">{t("orders")}</th>
-                  <th className="hidden px-4 py-3 text-left font-medium md:table-cell">{t("th_buyer")}</th>
-                  <th className="hidden px-4 py-3 text-left font-medium md:table-cell">{t("th_product")}</th>
-                  <th className="hidden px-4 py-3 text-right font-medium md:table-cell">{t("th_total")}</th>
-                  <th className="px-4 py-3 text-left font-medium">{t("th_status")}</th>
-                  <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
+                  <th className="px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase">{t("orders")}</th>
+                  <th className="hidden px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase md:table-cell">{t("th_buyer")}</th>
+                  <th className="hidden px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase md:table-cell">{t("th_product")}</th>
+                  <th className="hidden px-4 py-3.5 text-right text-[13px] font-semibold tracking-wide text-ink-600 uppercase md:table-cell">{t("th_total")}</th>
+                  <th className="px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase">{t("th_status")}</th>
+                  <th className="px-4 py-3.5 text-right text-[13px] font-semibold tracking-wide text-ink-600 uppercase">{t("th_actions")}</th>
                 </tr>
               </thead>
               <tbody>

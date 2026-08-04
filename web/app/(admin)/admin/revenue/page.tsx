@@ -160,37 +160,34 @@ export default function RevenuePage() {
             })}
           </div>
 
-          <div className="flex items-end gap-2">
-            <div className="space-y-1">
-              <label
-                htmlFor="revenue-date-from"
-                className="block text-[11px] font-medium tracking-wide text-ink-600 uppercase"
-              >
-                {t("orders_date_from")}
-              </label>
-              <Input
-                id="revenue-date-from"
-                type="date"
-                value={custom.from ?? ""}
-                onChange={(e) => pickCustom({ ...custom, from: e.target.value || undefined })}
-                className="w-auto"
-              />
-            </div>
-            <div className="space-y-1">
-              <label
-                htmlFor="revenue-date-to"
-                className="block text-[11px] font-medium tracking-wide text-ink-600 uppercase"
-              >
-                {t("orders_date_to")}
-              </label>
-              <Input
-                id="revenue-date-to"
-                type="date"
-                value={custom.to ?? ""}
-                onChange={(e) => pickCustom({ ...custom, to: e.target.value || undefined })}
-                className="w-auto"
-              />
-            </div>
+          {/* One inline row, same baseline as the presets. Stacked uppercase
+              labels made this group taller than the chips beside it, so the
+              two never lined up. The dash carries the "range" meaning the
+              labels were carrying. */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="revenue-date-from" className="sr-only">
+              {t("orders_date_from")}
+            </label>
+            <Input
+              id="revenue-date-from"
+              type="date"
+              value={custom.from ?? ""}
+              onChange={(e) => pickCustom({ ...custom, from: e.target.value || undefined })}
+              className="w-auto"
+            />
+            <span aria-hidden className="text-ink-600">
+              –
+            </span>
+            <label htmlFor="revenue-date-to" className="sr-only">
+              {t("orders_date_to")}
+            </label>
+            <Input
+              id="revenue-date-to"
+              type="date"
+              value={custom.to ?? ""}
+              onChange={(e) => pickCustom({ ...custom, to: e.target.value || undefined })}
+              className="w-auto"
+            />
           </div>
         </div>
 
@@ -277,7 +274,10 @@ export default function RevenuePage() {
 
           <div className="md-card-outlined" data-testid="revenue-reconciliation">
             <h3 className="text-title-medium mb-4">{t("revenue_reconciliation_title")}</h3>
-            <dl className="max-w-sm space-y-2 text-sm">
+            {/* Full width, values flush right — it reads as a receipt against
+                the Top products table above it, whose revenue column lands on
+                the same edge. */}
+            <dl className="space-y-2.5 text-[15px]">
               <div className="flex items-baseline justify-between gap-6">
                 <dt>{t("revenue_product_revenue")}</dt>
                 <dd className="tabular-nums">{formatRupiah(revenue.product_revenue)}</dd>
@@ -290,7 +290,7 @@ export default function RevenuePage() {
                 <dt>{t("revenue_discount_total")}</dt>
                 <dd className="tabular-nums">− {formatRupiah(revenue.discount_total)}</dd>
               </div>
-              <div className="flex items-baseline justify-between gap-6 border-t border-[var(--md-sys-color-outline-variant)] pt-2 font-semibold">
+              <div className="flex items-baseline justify-between gap-6 border-t border-[var(--md-sys-color-outline-variant)] pt-3 text-base font-semibold">
                 <dt>{t("revenue_total")}</dt>
                 <dd className="tabular-nums">{formatRupiah(revenue.total)}</dd>
               </div>
