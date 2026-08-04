@@ -17,7 +17,9 @@ export const adminOrdersKeys = {
   // The whole query object is part of the key, so any filter change starts a
   // fresh page 1 rather than appending to the previous filter's pages.
   list: (query: AdminOrderQuery) => [...adminOrdersKeys.all, "list", query] as const,
-  summary: (query: AdminOrderQuery) => [...adminOrdersKeys.all, "summary", query] as const,
+  // Keyed without status on purpose — see useAdminOrderSummary.
+  summary: (scope: { q?: string; from?: string; to?: string }) =>
+    [...adminOrdersKeys.all, "summary", scope] as const,
   detail: (id: string) => [...adminOrdersKeys.all, "detail", id] as const,
 };
 
@@ -78,13 +80,26 @@ export function useAdminOrders(query: AdminOrderQuery) {
   });
 }
 
+// Scoped to the search and date range, never to the status.
+//
+// The buckets ARE the per-status breakdown, and the toolbar renders a chip
+// count from each. Passing the selected status through would filter the counts
+// by the very chip they label: pick "Perlu konfirmasi" and every other chip
+// drops to zero. Search and dates do narrow them, so the numbers still describe
+// the rows on screen.
 export function useAdminOrderSummary(query: AdminOrderQuery) {
+  const scope = { q: query.q, from: query.from, to: query.to };
   return useQuery({
-    queryKey: adminOrdersKeys.summary(query),
+    queryKey: adminOrdersKeys.summary(scope),
     queryFn: () => {
-      const params = orderQueryParams(query).toString();
-      const path = params ? `/admin/orders/summary?${params}` : "/admin/orders/summary";
-      return authFetch<OrderSummary>(path);
+      const params = new URLSearchParams();
+      if (scope.q) params.set("q", scope.q);
+      if (scope.from) params.set("from", scope.from);
+      if (scope.to) params.set("to", scope.to);
+      const qs = params.toString();
+      return authFetch<OrderSummary>(
+        qs ? `/admin/orders/summary?${qs}` : "/admin/orders/summary",
+      );
     },
   });
 }

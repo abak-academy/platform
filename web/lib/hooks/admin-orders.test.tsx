@@ -178,6 +178,31 @@ describe("admin-orders hooks", () => {
     expect(result.current.data).toEqual(summary);
   });
 
+  // The buckets are the per-status breakdown the toolbar chips are labelled
+  // with. Filtering them by the selected status would zero every chip except
+  // the active one, so status must never reach this endpoint.
+  it("useAdminOrderSummary never sends status or shipment, whatever is selected", async () => {
+    mockAuthFetch.mockResolvedValue({
+      buckets: {
+        needs_confirm: 0, ready_to_ship: 0, shipment_failed: 0, in_transit: 0,
+        created_this_month: 0, completed_this_month: 0, total: 0,
+      },
+      top_products: [],
+    });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(
+      () => useAdminOrderSummary({ status: "shipment_failed", q: "rani" }),
+      { wrapper }
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const path = mockAuthFetch.mock.calls.at(-1)?.[0] as string;
+    expect(path).toContain("q=rani");
+    expect(path).not.toContain("status=");
+    expect(path).not.toContain("shipment=");
+  });
+
   it("useAdminOrder fetches GET /admin/orders/:id", async () => {
     mockAuthFetch.mockResolvedValueOnce(sampleOrder);
 
