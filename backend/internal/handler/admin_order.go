@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
 
@@ -20,6 +21,12 @@ func (h *Handler) AdminListOrders(c echo.Context) error {
 		ProductType: productType,
 		Cursor:      cursor,
 		Limit:       limit,
+	}
+	// ?shipment=failed is the admin's only way to find parcels that died:
+	// orders.status is never walked back by the webhook (FR-C-15), so a
+	// courier-not-found order still reads "shipped" in every other view.
+	if c.QueryParam("shipment") == "failed" {
+		filter.ShipmentStatusIn = service.ShipmentFailureStatusValues()
 	}
 
 	orders, nextCursor, err := h.svc.AdminListOrders(c.Request().Context(), filter)

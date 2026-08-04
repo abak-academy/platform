@@ -13,7 +13,7 @@ export const adminOrdersKeys = {
   detail: (id: string) => [...adminOrdersKeys.all, "detail", id] as const,
 };
 
-const FILTER_STATUS_MAP: Record<Exclude<AdminOrderFilterStatus, "all">, Order["status"]> = {
+const FILTER_STATUS_MAP: Record<Exclude<AdminOrderFilterStatus, "all" | "shipment_failed">, Order["status"]> = {
   pending: "payment_pending",
   paid: "paid",
   processing: "processing",
@@ -23,7 +23,7 @@ const FILTER_STATUS_MAP: Record<Exclude<AdminOrderFilterStatus, "all">, Order["s
 };
 
 function statusQueryParam(status?: AdminOrderFilterStatus): string | undefined {
-  if (!status || status === "all") return undefined;
+  if (!status || status === "all" || status === "shipment_failed") return undefined;
   return FILTER_STATUS_MAP[status];
 }
 
@@ -39,6 +39,11 @@ export function useAdminOrders(status?: AdminOrderFilterStatus) {
       const statusParam = statusQueryParam(status);
       if (statusParam) {
         params.set("status", statusParam);
+      }
+      // Filtered on shipment_status, not status — a dead parcel is still a
+      // "shipped" order as far as orders.status is concerned.
+      if (status === "shipment_failed") {
+        params.set("shipment", "failed");
       }
       const query = params.toString();
       const path = query ? `/admin/orders?${query}` : "/admin/orders";

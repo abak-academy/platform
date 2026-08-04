@@ -12,7 +12,9 @@ export type OrderStatus =
   | "payment_expired"
   | "cancelled";
 
-export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "refunded";
+// "failed" is a *payment* failure (payment_expired); "shipment_failed" is a
+// courier failure. They are different columns and must not be conflated.
+export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "refunded" | "shipment_failed";
 
 export interface School {
   id: string;

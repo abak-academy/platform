@@ -2,6 +2,7 @@
 
 import type { OrderShipmentEvent } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
+import { shipmentStatusLabel } from "@/lib/shipment-status";
 
 export interface ShipmentTimelineProps {
   events?: OrderShipmentEvent[] | null;
@@ -35,7 +36,7 @@ export function ShipmentTimeline({ events }: ShipmentTimelineProps) {
         {sorted.map((ev) => (
           <li key={ev.id} className="flex items-start justify-between gap-3">
             <span data-testid="shipment-event-status" className="text-ink-900">
-              {ev.status}
+              {shipmentStatusLabel(ev.status, lang)}
             </span>
             <span className="text-ink-500">{formatOccurredAt(ev.occurred_at, lang)}</span>
           </li>

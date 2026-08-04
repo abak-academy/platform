@@ -31,7 +31,9 @@ describe("ShipmentTimeline", () => {
   it("renders three events newest-first by occurred_at, not insertion order", () => {
     render(<ShipmentTimeline events={events} />);
     const rendered = screen.getAllByTestId("shipment-event-status").map((el) => el.textContent);
-    expect(rendered).toEqual(["picked_up", "delivered", "confirmed"]);
+    // "picked_up" is not one of Biteship's statuses — the real one is "picked"
+    // — so it stays raw here, which also covers the unknown-status fallback.
+    expect(rendered).toEqual(["picked_up", "Diterima", "Pesanan dikonfirmasi"]);
   });
 
   it("renders no timeline block at all — heading absent — when there are no events", () => {

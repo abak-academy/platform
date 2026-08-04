@@ -15,6 +15,7 @@ import {
 } from "@/lib/hooks/admin-orders";
 import { useTranslation } from "@/lib/i18n";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
+import { isShipmentFailure } from "@/lib/shipment-status";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,7 +26,7 @@ import { RefundOrderModal } from "@/components/admin/RefundOrderModal";
 import { formatRupiah } from "@/lib/format";
 import type { Order, OrderStatus, AdminOrderFilterStatus } from "@/lib/types";
 
-const FILTER_OPTIONS: AdminOrderFilterStatus[] = ["all", "pending", "paid", "processing", "shipped", "failed", "refunded"];
+const FILTER_OPTIONS: AdminOrderFilterStatus[] = ["all", "pending", "paid", "processing", "shipped", "shipment_failed", "failed", "refunded"];
 
 function orderNumber(order: Order): string {
   return `#${order.id.slice(-8)}`;
@@ -97,11 +98,24 @@ export default function OrdersPage() {
       case "shipped": return "Dikirim";
       case "failed": return t("filter_failed");
       case "refunded": return t("filter_refunded");
+      case "shipment_failed": return t("shipment_failed_badge");
     }
   };
 
   function shippingBadge(order: Order) {
     if (!hasPhysicalItem(order)) return null;
+    // Checked before isShipped: a courier-not-found order satisfies both, and
+    // showing it as a plain green "Dikirim" is exactly the failure to surface.
+    if (isShipmentFailure(order.shipment_status)) {
+      return (
+        <Badge
+          data-testid="row-shipment-failed"
+          className="border-destructive/20 bg-destructive/10 text-destructive"
+        >
+          {t("shipment_failed_badge")}
+        </Badge>
+      );
+    }
     if (isShipped(order)) {
       return <Badge className="bg-green-100 text-green-800 border-green-200">{t("status_shipped")}</Badge>;
     }

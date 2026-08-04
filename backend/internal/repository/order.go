@@ -22,6 +22,12 @@ type OrderFilter struct {
 	ExcludeCart bool
 	Cursor      string
 	Limit       int
+
+	// ShipmentStatusIn matches orders.shipment_status against an explicit set.
+	// The caller supplies every spelling it wants matched — shipment_status
+	// holds whatever Biteship sent, unnormalised, so deciding which spellings
+	// count is a domain question and stays in the service.
+	ShipmentStatusIn []string
 }
 
 type OrderPatch struct {
@@ -292,6 +298,11 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 	}
 	if filter.ExcludeCart {
 		query += ` AND status != 'cart'`
+	}
+	if len(filter.ShipmentStatusIn) > 0 {
+		query += fmt.Sprintf(` AND shipment_status = ANY($%d)`, argNum)
+		args = append(args, filter.ShipmentStatusIn)
+		argNum++
 	}
 	if filter.Cursor != "" {
 		if _, err := uuid.Parse(filter.Cursor); err != nil {

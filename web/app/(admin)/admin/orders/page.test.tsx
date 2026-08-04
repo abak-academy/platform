@@ -470,3 +470,37 @@ describe("OrdersPage", () => {
     });
   });
 });
+
+describe("OrdersPage failed shipments", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ordersState = {
+      data: [
+        {
+          ...sampleOrders[0],
+          id: "00000000-0000-0000-0000-0000deadbeef",
+          status: "shipped",
+          tracking_number: "JP999",
+          shipment_status: "courierNotFound",
+        } as Order,
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+  });
+
+  // The row still says "shipped" — the webhook never walks orders.status back
+  // (FR-C-15) — so without this badge the listing gives an admin no reason to
+  // ever open the order whose parcel is dead.
+  it("badges a dead shipment in the listing instead of a plain Dikirim", async () => {
+    render(<OrdersPage />);
+    expect(await screen.findByTestId("row-shipment-failed")).toBeTruthy();
+  });
+
+  it("offers a filter for failed shipments", async () => {
+    render(<OrdersPage />);
+    expect(await screen.findByRole("button", { name: "Pengiriman bermasalah" })).toBeTruthy();
+  });
+});

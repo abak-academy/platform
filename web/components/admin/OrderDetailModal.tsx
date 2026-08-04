@@ -18,6 +18,7 @@ import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { Order } from "@/lib/types";
 import { hasPhysicalItems } from "@/lib/shipping";
+import { isShipmentFailure, shipmentStatusLabel } from "@/lib/shipment-status";
 import { downloadShippingLabel } from "@/lib/hooks/shipping-label";
 import { useFetchPaymentProofURL } from "@/lib/hooks/admin-orders";
 
@@ -193,7 +194,19 @@ export function OrderDetailModal({
                 </Field>
                 {order.tracking_number && (
                   <Field label={t("order_shipment_status")}>
-                    <span>{order.shipment_status ?? t("order_shipment_status_unknown")}</span>
+                    <span data-testid="order-shipment-status">
+                      {order.shipment_status
+                        ? shipmentStatusLabel(order.shipment_status, lang)
+                        : t("order_shipment_status_unknown")}
+                    </span>
+                    {isShipmentFailure(order.shipment_status) && (
+                      <span
+                        data-testid="order-shipment-failed-badge"
+                        className="ml-2 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
+                      >
+                        {t("shipment_failed_badge")}
+                      </span>
+                    )}
                   </Field>
                 )}
                 {shipped && <Field label={t("status_shipped")}>{shipped}</Field>}
