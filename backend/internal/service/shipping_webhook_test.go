@@ -351,3 +351,62 @@ func TestHandleShippingWebhook_EmptyBodyStillNeedsValidSignature(t *testing.T) {
 		}
 	}
 }
+
+// TestHandleShippingWebhook_LateWaybillReplacesPlaceholderOnOrder covers the
+// order.waybill_id event: couriers routinely issue the real resi after the
+// booking is confirmed, so the waybill written at booking time is not final.
+// Admin, the student's order page and the packing slip all read
+// orders.tracking_number — recording the new number only on the event row
+// leaves all three showing a stale resi with no error anywhere.
+func TestHandleShippingWebhook_LateWaybillReplacesPlaceholderOnOrder(t *testing.T) {
+	fake := &fakeShipWebhookLogistics{
+		getOrderFn: func(ctx context.Context, biteshipOrderID string) (Shipment, error) {
+			return Shipment{BiteshipOrderID: biteshipOrderID, Status: "allocated", WaybillID: "JP1234567890"}, nil
+		},
+	}
+	svc, repo := newShippingWebhookTestService(t, fake)
+	seedWebhookSecret(t, repo, "correct-secret")
+	orderID := seedShippedOrder(t, svc, repo, "biteship-late-waybill") // seeded tracking_number: WB-1
+	ctx := context.Background()
+
+	body := shipWebhookBody(t, "biteship-late-waybill")
+	if err := svc.HandleShippingWebhook(ctx, body, "correct-secret"); err != nil {
+		t.Fatalf("HandleShippingWebhook: %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.TrackingNumber != "JP1234567890" {
+		t.Fatalf("want orders.tracking_number JP1234567890, got %q", got.TrackingNumber)
+	}
+}
+
+// TestHandleShippingWebhook_EmptyWaybillLeavesTrackingNumberIntact is the
+// other half: most events carry status only. Writing the re-fetched waybill
+// unconditionally would blank a perfectly good resi on every status change.
+func TestHandleShippingWebhook_EmptyWaybillLeavesTrackingNumberIntact(t *testing.T) {
+	fake := &fakeShipWebhookLogistics{
+		getOrderFn: func(ctx context.Context, biteshipOrderID string) (Shipment, error) {
+			return Shipment{BiteshipOrderID: biteshipOrderID, Status: "delivered"}, nil
+		},
+	}
+	svc, repo := newShippingWebhookTestService(t, fake)
+	seedWebhookSecret(t, repo, "correct-secret")
+	orderID := seedShippedOrder(t, svc, repo, "biteship-status-only")
+	ctx := context.Background()
+
+	body := shipWebhookBody(t, "biteship-status-only")
+	if err := svc.HandleShippingWebhook(ctx, body, "correct-secret"); err != nil {
+		t.Fatalf("HandleShippingWebhook: %v", err)
+	}
+
+	got, err := repo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		t.Fatalf("GetOrderByID: %v", err)
+	}
+	if got.TrackingNumber != "WB-1" {
+		t.Fatalf("want seeded tracking_number WB-1 untouched, got %q", got.TrackingNumber)
+	}
+}

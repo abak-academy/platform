@@ -92,6 +92,16 @@ func (s *Service) HandleShippingWebhook(ctx context.Context, payload []byte, sig
 		return err
 	}
 
+	// Guarded rather than unconditional: most events carry status only, and
+	// writing an empty re-fetched waybill would blank a good resi on every
+	// status change. Kept out of the SQL so the rule is visible and testable
+	// here instead of hiding in a COALESCE.
+	if shipment.WaybillID != "" {
+		if err := s.storeRepo.SetTrackingNumber(ctx, order.ID, shipment.WaybillID); err != nil {
+			return err
+		}
+	}
+
 	// occurredAt must be deterministic per order so a replay lands on the same
 	// order_shipment_events row (FR-C-13) — time.Now() here reproduces the
 	// exact bug this fixes: every retry gets a fresh value and the

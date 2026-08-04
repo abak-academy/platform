@@ -570,6 +570,18 @@ func (r *Repository) SetShipmentStatus(ctx context.Context, orderID uuid.UUID, s
 	return err
 }
 
+// SetTrackingNumber replaces the waybill on the order row itself. Couriers
+// can issue the real resi after the booking is confirmed (Biteship's
+// order.waybill_id event), and admin, the student order page and the packing
+// slip all read this column — never order_shipment_events.
+func (r *Repository) SetTrackingNumber(ctx context.Context, orderID uuid.UUID, trackingNumber string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE orders SET tracking_number = $1, updated_at = now() WHERE id = $2`,
+		trackingNumber, orderID,
+	)
+	return err
+}
+
 func (r *Repository) SetPaymentRef(ctx context.Context, orderID uuid.UUID, ref string, expiresAt time.Time) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders SET gateway_ref = $1, payment_expires_at = $2, checked_out_at = now(), updated_at = now() WHERE id = $3`,
