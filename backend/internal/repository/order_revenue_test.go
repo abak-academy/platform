@@ -108,9 +108,11 @@ func seedOrder(
 	).Scan(&orderID))
 
 	for _, it := range items {
+		// weight_grams is nullable in the schema but OrderItem.WeightGrams is a
+		// plain int, so fetchItems cannot scan a NULL back out.
 		_, err := pool.Exec(ctx,
-			`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, 0)`,
 			orderID, it.productID, it.ptype, it.name, it.unitPrice, it.qty,
 			it.unitPrice*float64(it.qty),
 		)

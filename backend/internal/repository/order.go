@@ -305,15 +305,16 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		argNum++
 	}
 	if filter.Cursor != "" {
-		if _, err := uuid.Parse(filter.Cursor); err != nil {
-			return nil, "", ErrInvalidCursor
+		curAt, curID, err := DecodeOrderCursor(filter.Cursor)
+		if err != nil {
+			return nil, "", err
 		}
-		query += fmt.Sprintf(` AND id > $%d`, argNum)
-		args = append(args, filter.Cursor)
-		argNum++
+		query += fmt.Sprintf(` AND (created_at, id) < ($%d, $%d)`, argNum, argNum+1)
+		args = append(args, curAt, curID)
+		argNum += 2
 	}
 
-	query += fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d`, argNum)
+	query += fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT $%d`, argNum)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -324,6 +325,7 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 
 	orders := []model.Order{}
 	nextCursor := ""
+	hasMore := false
 
 	for rows.Next() {
 		order := model.Order{}
@@ -333,12 +335,21 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		if len(orders) < filter.Limit {
 			orders = append(orders, order)
 		} else {
-			nextCursor = order.ID.String()
+			// One row beyond the page proves there is a next page, but it must
+			// not become the cursor: the predicate is strictly less-than, so
+			// pointing at this row would skip it. The cursor is the last row we
+			// actually returned.
+			hasMore = true
 		}
 	}
 
 	if err = rows.Err(); err != nil {
 		return nil, "", err
+	}
+
+	if hasMore && len(orders) > 0 {
+		last := orders[len(orders)-1]
+		nextCursor = EncodeOrderCursor(last.CreatedAt, last.ID)
 	}
 
 	for i := range orders {
