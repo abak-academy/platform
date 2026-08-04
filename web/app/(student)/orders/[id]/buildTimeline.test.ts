@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildTimeline } from "./page";
+import { buildTimeline } from "./timeline";
 import type { Order } from "@/lib/types";
 
 // The label lookup is not what is under test here; identity keeps the
