@@ -30,7 +30,12 @@
   /* ---- Status ---- */
   --color-info:       #2563d8;
   --color-info-bg:    #e7eefb;
-  --color-warn:       #c2680a;
+  /* Was #c2680a, which was under AA on every light background it is used on —
+     3.98:1 on surface, 3.66:1 on paper, 3.56:1 on its own warn-bg. Darkened
+     rather than paired with a warn-700, because the failure was not specific
+     to the badge: every `text-warn` in light mode was failing. Dark mode's
+     #e8a558 already clears 4.77:1 and is left alone. */
+  --color-warn:       #a2560a;
   --color-warn-bg:    #fbf1e2;
   --color-danger:     #d33a2e;
   --color-danger-bg:  #fbeae8;
