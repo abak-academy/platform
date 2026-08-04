@@ -49,10 +49,12 @@ describe("ShippingInfo", () => {
     expect(screen.queryByText("Estimasi — bukan tarif kurir")).toBeNull();
   });
 
-  it("shows shipment_status alongside the resi", () => {
+  it("shows shipment_status alongside the resi, translated", () => {
     const withStatus = { ...physicalOrder, shipment_status: "delivered" };
     render(<ShippingInfo order={withStatus} />);
-    expect(screen.getByText("delivered")).toBeTruthy();
+    expect(screen.getByText("Diterima")).toBeTruthy();
+    // A buyer reading their own order page should never meet the raw code.
+    expect(screen.queryByText("delivered")).toBeNull();
   });
 
   // A buyer has no use for "we typed this in by hand"; only an admin does.

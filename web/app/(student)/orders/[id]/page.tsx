@@ -57,7 +57,7 @@ interface TimelineStep {
   cancelled?: boolean;
 }
 
-function buildTimeline(o: Order, t: (key: any) => string): TimelineStep[] {
+export function buildTimeline(o: Order, t: (key: any) => string): TimelineStep[] {
   const cancelled = o.status === "cancelled";
   return [
     {
@@ -97,7 +97,10 @@ function buildTimeline(o: Order, t: (key: any) => string): TimelineStep[] {
       reached: cancelled,
       cancelled,
     },
-  ].filter((s) => s.reached || s.key === "completed" || s.key === "cancelled");
+    // Only what actually happened. The old filter always kept completed and
+    // cancelled, so a finished order still listed "Order cancelled" in grey —
+    // a step that can never be reached now, presented as though pending.
+  ].filter((s) => s.reached);
 }
 
 function OrderItems({ items, t }: { items: OrderItem[]; t: (key: any) => string }) {
@@ -142,19 +145,25 @@ function Timeline({ steps }: { steps: TimelineStep[] }) {
           : s.reached
             ? "text-success bg-success-bg"
             : "text-ink-400 bg-line-2";
+        // The sequence runs in the order the order moved, so the eye arrives
+        // at the newest step last — where the parcel is now.
+        const delay = `${i * 90}ms`;
         return (
-          <li key={s.key} className="relative">
+          <li key={s.key} className="tl-step relative" style={{ animationDelay: delay }}>
             {!isLast && (
               <span
-                className="absolute left-[7px] top-4 h-[calc(100%+0.5rem)] w-px bg-line"
+                className="tl-rail absolute -left-[17px] top-4 h-[calc(100%+2px)] w-px bg-line"
+                style={{ animationDelay: delay }}
                 aria-hidden
               />
             )}
             <span
               className={cn(
-                "absolute -left-6 top-0.5 flex size-3.5 items-center justify-center rounded-full",
+                "tl-dot absolute -left-6 top-0.5 flex size-3.5 items-center justify-center rounded-full",
+                isLast && !s.cancelled && "tl-current",
                 dotClass,
               )}
+              style={{ animationDelay: delay }}
             >
               <Icon className="size-3.5" strokeWidth={2.5} />
             </span>
@@ -276,7 +285,7 @@ export default function OrderDetailPage({
   const timeline = buildTimeline(order, t);
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 md:px-6 md:py-10">
+    <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-10">
       <Button asChild variant="ghost" size="sm" className="mb-4">
         <Link href="/orders">
           <ArrowLeft className="size-4" />
@@ -289,7 +298,7 @@ export default function OrderDetailPage({
           <div className="flex items-center gap-2">
             <Receipt className="size-5 text-ink-400" />
             <h1 className="font-serif text-2xl font-bold text-ink-900 md:text-3xl">
-              {t("order_title").replace("{id}", `#${order.id.slice(-8)}`)}
+              {t("order_title").replace("{id}", order.id.slice(-8))}
             </h1>
           </div>
           <span className="text-xs text-ink-500">{t("order_created_at").replace("{date}", formatDate(order.created_at))}</span>
@@ -321,7 +330,7 @@ export default function OrderDetailPage({
         </Card>
       )}
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_320px] md:gap-8">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_380px] md:gap-8">
         <div className="flex flex-col gap-6">
           <section>
             <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">{t("order_items_section")}</h2>
@@ -377,13 +386,13 @@ export default function OrderDetailPage({
 
 function DetailSkeleton() {
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 md:px-6 md:py-10">
+    <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-10">
       <Skeleton className="mb-4 h-8 w-28" />
       <div className="mb-6 flex items-center gap-3">
         <Skeleton className="h-7 w-40" />
         <Skeleton className="h-6 w-28" />
       </div>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_320px] md:gap-8">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_380px] md:gap-8">
         <div className="flex flex-col gap-6">
           <Skeleton className="h-40 w-full rounded-lg" />
           <Skeleton className="h-48 w-full rounded-lg" />

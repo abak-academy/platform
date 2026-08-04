@@ -5,13 +5,14 @@ import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import { hasPhysicalItems } from "@/lib/shipping";
 import { ShipmentTimeline } from "@/components/orders/ShipmentTimeline";
+import { shipmentStatusLabel } from "@/lib/shipment-status";
 
 export interface ShippingInfoProps {
   order: Order;
 }
 
 export function ShippingInfo({ order }: ShippingInfoProps) {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   const hasPhysical = hasPhysicalItems(order.items ?? []);
   if (!hasPhysical) return null;
@@ -63,7 +64,9 @@ export function ShippingInfo({ order }: ShippingInfoProps) {
           <div className="flex items-start justify-between gap-3">
             <dt className="text-ink-500">{t("order_shipment_status")}</dt>
             <dd className="text-right text-ink-900">
-              {order.shipment_status ?? t("order_shipment_status_unknown")}
+              {order.shipment_status
+                ? shipmentStatusLabel(order.shipment_status, lang)
+                : t("order_shipment_status_unknown")}
             </dd>
           </div>
         )}
