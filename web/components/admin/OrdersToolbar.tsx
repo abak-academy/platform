@@ -26,6 +26,8 @@ const FILTER_OPTIONS: AdminOrderFilterStatus[] = [
 
 const SEARCH_DEBOUNCE_MS = 300;
 
+type DateMode = "single" | "range";
+
 export interface OrdersToolbarProps {
   value: AdminOrderQuery;
   onChange: (q: AdminOrderQuery) => void;
@@ -57,6 +59,29 @@ function chipCount(
 export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
   const { t } = useTranslation();
   const [search, setSearch] = useState(value.q ?? "");
+
+  // Single day is the common lookup ("what came in on the 2nd"), so it is the
+  // default. A range is still one click away, and an inbound value that spans
+  // two dates opens in range mode rather than silently collapsing.
+  const [dateMode, setDateMode] = useState<DateMode>(
+    value.from && value.to && value.from !== value.to ? "range" : "single",
+  );
+
+  // One day is expressed as from === to. The API's upper bound is exclusive
+  // (it advances `to` by a day), so that is exactly one calendar day.
+  function setSingleDate(next: string) {
+    const day = next || undefined;
+    onChange({ ...value, from: day, to: day });
+  }
+
+  function switchMode(next: DateMode) {
+    setDateMode(next);
+    if (next === "single") {
+      // Collapse to the start date: an open-ended range has no single day, and
+      // leaving `to` behind would keep filtering a span the input cannot show.
+      onChange({ ...value, to: value.from });
+    }
+  }
 
   // The debounce must not restart when the parent re-renders with a new
   // onChange identity, so the effect reads both through a ref.
@@ -143,29 +168,63 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
         </Select>
 
         <div className="flex items-center gap-2">
-          <label htmlFor="orders-date-from" className="sr-only">
-            {t("orders_date_from")}
-          </label>
-          <Input
-            id="orders-date-from"
-            type="date"
-            value={value.from ?? ""}
-            onChange={(e) => onChange({ ...value, from: e.target.value || undefined })}
-            className="w-auto"
-          />
-          <span aria-hidden className="text-ink-600">
-            –
-          </span>
-          <label htmlFor="orders-date-to" className="sr-only">
-            {t("orders_date_to")}
-          </label>
-          <Input
-            id="orders-date-to"
-            type="date"
-            value={value.to ?? ""}
-            onChange={(e) => onChange({ ...value, to: e.target.value || undefined })}
-            className="w-auto"
-          />
+          <div className="flex items-center gap-1" role="group" aria-label={t("orders_date_single")}>
+            {(["single", "range"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={dateMode === m}
+                data-testid={`orders-date-mode-${m}`}
+                onClick={() => switchMode(m)}
+                className={`md-chip cursor-pointer text-[13px] transition-colors ${
+                  dateMode === m ? "md-chip-primary ring-1 ring-[var(--md-sys-color-primary)]" : ""
+                }`}
+              >
+                {t(m === "single" ? "orders_date_mode_single" : "orders_date_mode_range")}
+              </button>
+            ))}
+          </div>
+
+          {dateMode === "single" ? (
+            <>
+              <label htmlFor="orders-date-single" className="sr-only">
+                {t("orders_date_single")}
+              </label>
+              <Input
+                id="orders-date-single"
+                type="date"
+                value={value.from ?? ""}
+                onChange={(e) => setSingleDate(e.target.value)}
+                className="w-auto"
+              />
+            </>
+          ) : (
+            <>
+              <label htmlFor="orders-date-from" className="sr-only">
+                {t("orders_date_from")}
+              </label>
+              <Input
+                id="orders-date-from"
+                type="date"
+                value={value.from ?? ""}
+                onChange={(e) => onChange({ ...value, from: e.target.value || undefined })}
+                className="w-auto"
+              />
+              <span aria-hidden className="text-ink-600">
+                –
+              </span>
+              <label htmlFor="orders-date-to" className="sr-only">
+                {t("orders_date_to")}
+              </label>
+              <Input
+                id="orders-date-to"
+                type="date"
+                value={value.to ?? ""}
+                onChange={(e) => onChange({ ...value, to: e.target.value || undefined })}
+                className="w-auto"
+              />
+            </>
+          )}
         </div>
       </div>
     </div>
