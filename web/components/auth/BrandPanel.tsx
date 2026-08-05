@@ -24,68 +24,45 @@ const subs: Record<Mode, string> = {
   otp: "Verifikasi identitasmu untuk menjaga keamanan akun.",
 };
 
-function StudentIllustration() {
+// Dissolves the photo's top and side edges into the panel. Two masks intersect
+// rather than stack: a single gradient can only feather one axis.
+const PHOTO_FEATHER = [
+  "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,.35) 26%, #000 58%, #000 93%, transparent 100%)",
+  "linear-gradient(to right, transparent 0%, #000 12%, #000 88%, transparent 100%)",
+].join(", ");
+
+// `multiply` casts the panel's hue into the photo's shadows without rotating the
+// photo's own hues — a duotone (mix-blend-mode: color) erases the merah-putih.
+const PHOTO_TINT =
+  "linear-gradient(148deg,#2A1E7A 0%,#4A5AE8 30%,#8A5CE8 58%,#2AA396 84%,#25D4B6 100%)";
+const PHOTO_LIFT = "linear-gradient(148deg,#3D4DDB,#7C4DDB 55%,#17C9AA)";
+
+function BrandPhoto() {
   return (
-    <svg
-      viewBox="0 0 360 300"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="w-full max-w-[360px] [filter:drop-shadow(0_20px_40px_rgba(0,0,0,0.2))]"
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-0 isolate h-[62%] overflow-hidden"
+      style={{
+        WebkitMaskImage: PHOTO_FEATHER,
+        WebkitMaskComposite: "source-in",
+        maskImage: PHOTO_FEATHER,
+        maskComposite: "intersect",
+      }}
     >
-      <circle cx="180" cy="165" r="130" fill="rgba(255,255,255,0.05)" />
-      <circle cx="180" cy="165" r="88" fill="rgba(255,255,255,0.05)" />
-      <rect x="55" y="215" width="250" height="12" rx="6" fill="rgba(255,255,255,0.22)" />
-      <rect x="95" y="227" width="11" height="38" rx="4" fill="rgba(255,255,255,0.13)" />
-      <rect x="254" y="227" width="11" height="38" rx="4" fill="rgba(255,255,255,0.13)" />
-      <rect x="95" y="200" width="170" height="15" rx="4" fill="rgba(255,255,255,0.28)" />
-      <rect x="95" y="196" width="170" height="4" rx="2" fill="rgba(255,255,255,0.18)" />
-      <rect x="103" y="116" width="154" height="82" rx="9" fill="rgba(30,33,60,0.55)" />
-      <rect x="109" y="121" width="142" height="72" rx="6" fill="rgba(255,255,255,0.10)" />
-      <rect x="109" y="121" width="142" height="72" rx="6" fill="url(#screenGlow)" opacity="0.6" />
-      <rect x="118" y="129" width="50" height="4" rx="2" fill="rgba(255,255,255,0.45)" />
-      <rect x="118" y="137" width="36" height="3" rx="1.5" fill="rgba(255,255,255,0.25)" />
-      <rect x="178" y="140" width="9" height="22" rx="2" fill="rgba(110,124,238,0.8)" />
-      <rect x="190" y="132" width="9" height="30" rx="2" fill="#9CA6F6" />
-      <rect x="202" y="136" width="9" height="26" rx="2" fill="rgba(110,124,238,0.7)" />
-      <rect x="214" y="128" width="9" height="34" rx="2" fill="#C4CAFB" />
-      <rect x="226" y="133" width="9" height="29" rx="2" fill="rgba(110,124,238,0.6)" />
-      <rect x="174" y="162" width="66" height="2" rx="1" fill="rgba(255,255,255,0.2)" />
-      <circle cx="180" cy="74" r="27" fill="#FDDCB5" />
-      <path d="M153 67 Q160 42 180 43 Q200 42 207 67 Q194 53 180 55 Q166 53 153 67Z" fill="#2D1B00" />
-      <ellipse cx="153" cy="74" rx="5" ry="7" fill="#F5C99A" />
-      <ellipse cx="207" cy="74" rx="5" ry="7" fill="#F5C99A" />
-      <circle cx="172" cy="72" r="3.5" fill="#2D1B00" />
-      <circle cx="188" cy="72" r="3.5" fill="#2D1B00" />
-      <circle cx="173" cy="71" r="1" fill="white" />
-      <circle cx="189" cy="71" r="1" fill="white" />
-      <path d="M174 80 Q180 85 186 80" stroke="#C4846B" strokeWidth="1.8" strokeLinecap="round" fill="none" />
-      <rect x="154" y="99" width="52" height="54" rx="14" fill="#3D4DDB" />
-      <path d="M174 99 L180 110 L186 99Z" fill="rgba(255,255,255,0.35)" />
-      <path d="M154 112 Q128 130 118 158 Q115 168 126 168 Q134 168 137 158 L154 130Z" fill="#3D4DDB" />
-      <path d="M206 112 Q232 130 242 158 Q245 168 234 168 Q226 168 223 158 L206 130Z" fill="#3D4DDB" />
-      <ellipse cx="122" cy="200" rx="15" ry="9" fill="#FDDCB5" />
-      <ellipse cx="238" cy="200" rx="15" ry="9" fill="#FDDCB5" />
-      <rect x="272" y="52" width="68" height="36" rx="10" fill="rgba(255,255,255,0.18)" />
-      <text x="283" y="75" fontSize="18">🏆</text>
-      <text x="306" y="68" fontSize="10" fill="rgba(255,255,255,0.9)" fontWeight="700">Top</text>
-      <text x="305" y="80" fontSize="10" fill="rgba(255,255,255,0.6)">Rank</text>
-      <rect x="20" y="88" width="68" height="36" rx="10" fill="rgba(255,255,255,0.18)" />
-      <text x="30" y="111" fontSize="18">📚</text>
-      <text x="53" y="104" fontSize="10" fill="rgba(255,255,255,0.9)" fontWeight="700">5+</text>
-      <text x="50" y="116" fontSize="10" fill="rgba(255,255,255,0.6)">Mapel</text>
-      <circle cx="76" cy="46" r="4" fill="rgba(255,255,255,0.5)" />
-      <circle cx="91" cy="35" r="2.5" fill="rgba(255,255,255,0.35)" />
-      <circle cx="275" cy="108" r="3" fill="rgba(255,255,255,0.5)" />
-      <circle cx="292" cy="122" r="2" fill="rgba(255,255,255,0.3)" />
-      <circle cx="44" cy="142" r="2.5" fill="rgba(255,255,255,0.4)" />
-      <circle cx="315" cy="58" r="2" fill="rgba(255,255,255,0.35)" />
-      <defs>
-        <linearGradient id="screenGlow" x1="109" y1="121" x2="251" y2="193" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#6E7CEE" />
-          <stop offset="1" stopColor="#3D4DDB" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-    </svg>
+      <img
+        src="/auth/hero-award.webp"
+        alt=""
+        className="h-full w-full object-cover [filter:saturate(.78)_contrast(1.09)_brightness(.84)]"
+      />
+      <div
+        className="absolute inset-0 opacity-[.58] mix-blend-multiply"
+        style={{ backgroundImage: PHOTO_TINT }}
+      />
+      <div
+        className="absolute inset-0 opacity-20 mix-blend-screen"
+        style={{ backgroundImage: PHOTO_LIFT }}
+      />
+    </div>
   );
 }
 
@@ -114,6 +91,10 @@ export function BrandPanel({ mode, className }: { mode: Mode; className?: string
       <div className="pointer-events-none absolute -right-[90px] -top-[90px] h-[340px] w-[340px] rounded-full bg-white/4" />
       <div className="pointer-events-none -left-[70px] -bottom-[110px] absolute h-[300px] w-[300px] rounded-full bg-white/4" />
 
+      <BrandPhoto />
+      {/* keeps the stat cards legible wherever the photo happens to be bright */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[23%] bg-[linear-gradient(to_top,rgba(14,12,58,.66),rgba(14,12,58,0))]" />
+
       <div className="z-[1] flex items-center gap-3">
         <div className="flex h-[72px] w-[72px] items-center justify-center rounded-[18px] bg-white/15 text-white">
           <AbakLogo size={44} />
@@ -141,9 +122,7 @@ export function BrandPanel({ mode, className }: { mode: Mode; className?: string
         <p className="mt-[14px] text-[13.5px] leading-[1.65] text-white/68">{subs[mode]}</p>
       </div>
 
-      <div className="z-[1] flex flex-1 items-center justify-center py-5">
-        <StudentIllustration />
-      </div>
+      <div className="z-[1] flex-1" />
 
       <div className="z-[1] flex gap-[10px]">
         <AuthStatCard emoji="🎓" value="20.000+" label="Siswa terdaftar" />
