@@ -10,32 +10,23 @@ import (
 )
 
 func (h *Handler) AdminGetRevenue(c echo.Context) error {
-	fromStr := c.QueryParam("from")
-	toStr := c.QueryParam("to")
-
-	var from, to time.Time
-	var err error
-
-	if fromStr != "" {
-		from, err = time.Parse("2006-01-02", fromStr)
-		if err != nil {
-			return badRequest(c, "invalid from date format (use YYYY-MM-DD)")
-		}
+	// Shares parseDayRange with the order list: dates are read in Asia/Jakarta
+	// and `to` is advanced a day, because the revenue queries are half-open on
+	// created_at. Parsed as bare UTC midnight, picking 5 Aug excluded every
+	// order placed on 5 Aug.
+	fromParam, toParam, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
+	if err != nil {
+		return badRequest(c, err.Error())
 	}
 
-	if toStr != "" {
-		to, err = time.Parse("2006-01-02", toStr)
-		if err != nil {
-			return badRequest(c, "invalid to date format (use YYYY-MM-DD)")
-		}
+	now := time.Now().In(jakarta)
+	from := now.AddDate(0, 0, -30)
+	if fromParam != nil {
+		from = *fromParam
 	}
-
-	now := time.Now().UTC()
-	if from.IsZero() {
-		from = now.AddDate(0, 0, -30)
-	}
-	if to.IsZero() {
-		to = now
+	to := now
+	if toParam != nil {
+		to = *toParam
 	}
 
 	revenue, err := h.svc.AdminGetRevenue(c.Request().Context(), from, to)
@@ -52,8 +43,14 @@ func (h *Handler) AdminGetRevenue(c echo.Context) error {
 	// Echoed back so the page can state the period it is actually showing. It
 	// previously rendered this default 30-day window with no period at all,
 	// which read as an all-time figure.
+	// `to` is exclusive, so echo back the last day actually included — otherwise
+	// the page's period label reads one day later than the data.
 	revenue["from"] = from.Format("2006-01-02")
-	revenue["to"] = to.Format("2006-01-02")
+	if toParam != nil {
+		revenue["to"] = toParam.AddDate(0, 0, -1).Format("2006-01-02")
+	} else {
+		revenue["to"] = now.Format("2006-01-02")
+	}
 
 	return c.JSON(http.StatusOK, revenue)
 }

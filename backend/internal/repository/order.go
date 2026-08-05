@@ -838,7 +838,7 @@ func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[st
 		SELECT COALESCE(SUM(total), 0), COALESCE(SUM(shipping_cost), 0),
 		       COALESCE(SUM(discount), 0), COUNT(*)
 		  FROM orders
-		 WHERE status IN ('paid', 'processing', 'completed')
+		 WHERE status IN ('paid', 'processing', 'shipped', 'completed')
 		   AND created_at >= $1 AND created_at < $2
 	`, from, to).Scan(&total, &shipping, &discount, &orderCount)
 	if err != nil {
@@ -851,7 +851,7 @@ func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[st
 		       COUNT(DISTINCT o.id)
 		  FROM orders o
 		  JOIN order_item oi ON oi.order_id = o.id
-		 WHERE o.status IN ('paid', 'processing', 'completed')
+		 WHERE o.status IN ('paid', 'processing', 'shipped', 'completed')
 		   AND o.created_at >= $1 AND o.created_at < $2
 		 GROUP BY oi.product_type
 	`, from, to)

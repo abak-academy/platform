@@ -28,6 +28,7 @@ import (
 //	2026-03/04  date-range filter      2026-04  search
 //	2026-05     cursor paging          2026-07  GetRevenue fan-out
 //	2026-09     top products (qty order)        2026-11  bucket search filter
+//	2025-05     shipped orders count as revenue
 var (
 	reportingPool     *pgxpool.Pool
 	reportingPoolOnce sync.Once
@@ -200,4 +201,36 @@ func TestGetRevenue_rangeIsHalfOpen(t *testing.T) {
 
 	require.Equal(t, 50000.0, got["total"], "`from` included, `to` excluded")
 	require.Equal(t, 1, got["order_count"])
+}
+
+// A paid parcel in transit is money already taken. Leaving `shipped` out of the
+// status set made an order vanish from revenue, order count, by-type totals and
+// top products for the whole delivery window, then reappear on completion.
+func TestGetRevenue_countsShippedOrders(t *testing.T) {
+	pool := newReportingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	student := seedStudent(t, pool, "In Transit Buyer")
+	book := seedProduct(t, pool, "Buku Jalan", "book", 80000)
+	at := time.Date(2025, 5, 10, 8, 0, 0, 0, time.UTC)
+
+	seedOrder(t, pool, student, "shipped", at, 80000, 0, 20000, 100000,
+		[]seedItem{{book, "Buku Jalan", "book", 80000, 1}})
+
+	from := time.Date(2025, 5, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	got, err := repo.GetRevenue(ctx, from, to)
+	require.NoError(t, err)
+	require.Equal(t, 100000.0, got["total"], "an in-transit order is still revenue")
+	require.Equal(t, 1, got["order_count"])
+
+	byType := got["by_type"].(map[string]interface{})
+	require.Contains(t, byType, "book")
+
+	top, err := repo.TopProducts(ctx, from, to, "revenue", 10)
+	require.NoError(t, err)
+	require.Len(t, top, 1, "top products must use the same status set as revenue")
+	require.Equal(t, 80000.0, top[0].ProductRevenue)
 }

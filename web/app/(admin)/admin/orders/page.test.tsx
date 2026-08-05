@@ -560,6 +560,24 @@ describe("OrdersPage", () => {
     });
   });
 
+  it("adopts ?status= from the URL so the dashboard can deep link", async () => {
+    window.history.replaceState({}, "", "/admin/orders?status=shipment_failed");
+    render(<OrdersPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Pengiriman bermasalah/),
+    );
+    window.history.replaceState({}, "", "/admin/orders");
+  });
+
+  it("ignores an unknown ?status= rather than sending it to the API", async () => {
+    window.history.replaceState({}, "", "/admin/orders?status=bogus");
+    render(<OrdersPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Semua/),
+    );
+    window.history.replaceState({}, "", "/admin/orders");
+  });
+
   it("filters rows by the status select", async () => {
     ordersState = {
       ...ordersState,

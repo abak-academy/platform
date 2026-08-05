@@ -135,3 +135,33 @@ func TestCountOrdersByBucket_honoursTheSearchFilter(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, got.NeedsConfirm, "search narrows the counts too")
 }
+
+// "Siap kirim" must mean a parcel exists. The orders page gates its Ship action
+// on a physical item, so counting digital-only orders here promised work the
+// row could not offer.
+func TestCountOrdersByBucket_readyToShipRequiresAPhysicalItem(t *testing.T) {
+	pool := newReportingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	student := seedStudent(t, pool, "Mixed Cart Buyer")
+	book := seedProduct(t, pool, "Buku Fisik", "book", 10000)
+	course := seedProduct(t, pool, "Kursus Digital", "course", 10000)
+	at := time.Date(2025, 8, 12, 8, 0, 0, 0, time.UTC)
+
+	seedOrder(t, pool, student, "paid", at, 10000, 0, 0, 10000,
+		[]seedItem{{book, "Buku Fisik", "book", 10000, 1}})
+	seedOrder(t, pool, student, "paid", at, 10000, 0, 0, 10000,
+		[]seedItem{{course, "Kursus Digital", "course", 10000, 1}})
+
+	monthStart := time.Date(2025, 8, 1, 0, 0, 0, 0, time.UTC)
+	monthEnd := time.Date(2025, 9, 1, 0, 0, 0, 0, time.UTC)
+
+	got, err := repo.CountOrdersByBucket(ctx,
+		OrderFilter{StudentID: &student, ExcludeCart: true},
+		[]string{"courierNotFound"}, monthStart, monthEnd)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, got.ReadyToShip, "only the order with a physical item")
+	require.Equal(t, 2, got.Total, "both orders still exist")
+}

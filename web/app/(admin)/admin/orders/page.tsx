@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Receipt } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -37,7 +37,13 @@ import { OrdersToolbar } from "@/components/admin/OrdersToolbar";
 import { ShipOrderModal } from "@/components/admin/ShipOrderModal";
 import { ConfirmOrderModal } from "@/components/admin/ConfirmOrderModal";
 import { RefundOrderModal } from "@/components/admin/RefundOrderModal";
-import type { Order, OrderStatus, AdminOrderQuery } from "@/lib/types";
+import type { Order, OrderStatus, AdminOrderQuery, AdminOrderFilterStatus } from "@/lib/types";
+
+// Mirrors AdminOrderFilterStatus. An unknown ?status= falls back to "all"
+// rather than sending a value the API would reject.
+const ORDER_FILTER_STATUSES: AdminOrderFilterStatus[] = [
+  "all", "pending", "paid", "processing", "shipped", "failed", "refunded", "shipment_failed",
+];
 
 function orderNumber(order: Order): string {
   return `#${order.id.slice(-8)}`;
@@ -76,6 +82,18 @@ function refundAllowed(order: Order): boolean {
 export default function OrdersPage() {
   const { t } = useTranslation();
   const [query, setQuery] = useState<AdminOrderQuery>({ status: "all" });
+
+  // Read ?status= once on mount so the store dashboard's queue cards can deep
+  // link into their own queue. Deliberately an effect rather than a lazy
+  // useState initializer: this is a client component but Next still renders it
+  // on the server, where the URL is not available, and seeding from
+  // window.location during render would be a hydration mismatch.
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("status");
+    if (raw && ORDER_FILTER_STATUSES.includes(raw as AdminOrderFilterStatus)) {
+      setQuery((q) => ({ ...q, status: raw as AdminOrderFilterStatus }));
+    }
+  }, []);
   const {
     data,
     isLoading,

@@ -29,10 +29,13 @@ function BandLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function QueueCardLink({ children }: { children: React.ReactNode }) {
+// Each queue card opens its own queue. All three pointing at the unfiltered
+// list made them a count with nowhere to go — the whole point of the band is
+// that clicking a number shows you the work behind it.
+function QueueCardLink({ status, children }: { status: string; children: React.ReactNode }) {
   return (
     <Link
-      href="/admin/orders"
+      href={`/admin/orders?status=${status}`}
       className="block rounded-[20px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
       style={{ outlineColor: "var(--md-sys-color-primary)" }}
     >
@@ -68,7 +71,7 @@ export default function StoreDashboardPage() {
             </>
           ) : (
             <>
-              <QueueCardLink>
+              <QueueCardLink status="pending">
                 <StatCard
                   label={t("store_stat_needs_confirm")}
                   value={String(buckets?.needs_confirm ?? 0)}
@@ -76,7 +79,7 @@ export default function StoreDashboardPage() {
                   icon={Clock}
                 />
               </QueueCardLink>
-              <QueueCardLink>
+              <QueueCardLink status="paid">
                 <StatCard
                   label={t("store_stat_ready_to_ship")}
                   value={String(buckets?.ready_to_ship ?? 0)}
@@ -84,7 +87,7 @@ export default function StoreDashboardPage() {
                   icon={PackageCheck}
                 />
               </QueueCardLink>
-              <QueueCardLink>
+              <QueueCardLink status="shipment_failed">
                 <StatCard
                   label={t("store_stat_shipment_failed")}
                   value={String(buckets?.shipment_failed ?? 0)}

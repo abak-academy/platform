@@ -48,10 +48,17 @@ func (r *Repository) CountOrdersByBucket(
 	// COALESCE around the ANY test because shipment_status is nullable, and
 	// `NULL = ANY(...)` is NULL — a shipped parcel with no courier status yet
 	// would otherwise fall out of both the failed and the in-transit bucket.
+	//
+	// ready_to_ship also requires a physical item: the orders page gates its Ship
+	// action on one, so counting digital-only orders here would promise work no
+	// row could actually offer.
 	q := `
 		SELECT
 		  COUNT(*) FILTER (WHERE status = 'payment_pending'),
-		  COUNT(*) FILTER (WHERE status IN ('paid','processing')),
+		  COUNT(*) FILTER (WHERE status IN ('paid','processing')
+		                     AND EXISTS (SELECT 1 FROM order_item oi
+		                                  WHERE oi.order_id = orders.id
+		                                    AND oi.product_type IN ('book','merchandise','medal'))),
 		  COUNT(*) FILTER (WHERE COALESCE(shipment_status = ANY($1), false)),
 		  COUNT(*) FILTER (WHERE status = 'shipped'
 		                     AND NOT COALESCE(shipment_status = ANY($1), false)),
@@ -101,7 +108,7 @@ func (r *Repository) TopProducts(
 		       COALESCE(SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0) AS product_revenue
 		  FROM orders o
 		  JOIN order_item oi ON oi.order_id = o.id
-		 WHERE o.status IN ('paid', 'processing', 'completed')
+		 WHERE o.status IN ('paid', 'processing', 'shipped', 'completed')
 		   AND o.created_at >= $1 AND o.created_at < $2
 		 GROUP BY oi.product_id
 		 ORDER BY `+sortCol+` DESC

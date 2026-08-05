@@ -81,4 +81,20 @@ describe("StoreDashboardPage", () => {
 
     expect(screen.queryByText("Perlu konfirmasi")).toBeNull();
   });
+
+  // Each queue card must open its own queue; all three pointing at the
+  // unfiltered list made them a count with nowhere to go.
+  it("deep links each queue card to its matching filter", () => {
+    render(<StoreDashboardPage />);
+    const hrefs = Array.from(document.querySelectorAll('a[href^="/admin/orders"]')).map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(hrefs).toEqual(
+      expect.arrayContaining([
+        "/admin/orders?status=pending",
+        "/admin/orders?status=paid",
+        "/admin/orders?status=shipment_failed",
+      ]),
+    );
+  });
 });
