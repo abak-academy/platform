@@ -8,7 +8,9 @@ import { useMe } from "@/lib/hooks/auth";
 import { useAdminAuditLog } from "@/lib/hooks/admin-audit";
 import { useAdminRevenue } from "@/lib/hooks/admin-revenue";
 import { useSchools } from "@/lib/hooks/students";
+import { useHasCapability } from "@/lib/hooks/use-capability";
 import { adminHomeForRole } from "@/lib/auth-redirect";
+import { NoAccess } from "@/components/admin/NoAccess";
 import { StatCard } from "@/components/admin/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRupiah } from "@/lib/format";
@@ -54,6 +56,7 @@ export default function AdminIndexPage() {
   const { data: auditEntries = [], isLoading: auditLoading, isError: auditError, refetch: refetchAudit } = useAdminAuditLog();
   const { data: revenue, isLoading: revenueLoading } = useAdminRevenue();
   const { data: schools, isLoading: schoolsLoading } = useSchools();
+  const canReadRevenue = useHasCapability("revenue:read");
 
   useEffect(() => {
     if (!role) return;
@@ -61,6 +64,7 @@ export default function AdminIndexPage() {
   }, [role, router]);
 
   if (role !== "super_admin") return null;
+  if (!canReadRevenue) return <NoAccess />;
 
   const schoolCount = schools?.length ?? null;
   const schoolCountStr = schoolCount !== null ? String(schoolCount) : "—";

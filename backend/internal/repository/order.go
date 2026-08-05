@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +29,95 @@ type OrderFilter struct {
 	// holds whatever Biteship sent, unnormalised, so deciding which spellings
 	// count is a domain question and stays in the service.
 	ShipmentStatusIn []string
+
+	// Search matches an order-number suffix (the UI shows the last 8 characters
+	// of the uuid) or a buyer-name substring. Buyer name has to be matched here
+	// rather than after the query: student_name is not a column on orders, it is
+	// hydrated per page by attachStudentNames, so filtering afterwards would
+	// filter an already-paginated page.
+	Search string
+
+	// Half-open [CreatedFrom, CreatedTo) on created_at. Never inclusive at both
+	// ends — adjacent periods would double-count a boundary order.
+	CreatedFrom *time.Time
+	CreatedTo   *time.Time
+}
+
+// orderFilterPredicateFrom builds the WHERE fragment shared by ListOrders and
+// CountOrdersByBucket, numbering placeholders from startArg and returning the
+// next free number. One builder is what stops the counts and the rows from
+// describing different sets. Cursor, ORDER BY and LIMIT stay with ListOrders —
+// they are paging concerns, and counting does not page.
+func orderFilterPredicateFrom(filter OrderFilter, startArg int) (string, []interface{}, int) {
+	query := ""
+	args := []interface{}{}
+	argNum := startArg
+
+	if filter.StudentID != nil {
+		query += fmt.Sprintf(` AND student_id = $%d`, argNum)
+		args = append(args, *filter.StudentID)
+		argNum++
+	}
+	if filter.Status != "" {
+		query += fmt.Sprintf(` AND status = $%d`, argNum)
+		args = append(args, filter.Status)
+		argNum++
+	}
+	if filter.ProductType != "" {
+		query += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM order_item WHERE order_item.order_id = orders.id AND product_type = $%d)`, argNum)
+		args = append(args, filter.ProductType)
+		argNum++
+	}
+	if filter.ExcludeCart {
+		query += ` AND status != 'cart'`
+	}
+	if len(filter.ShipmentStatusIn) > 0 {
+		query += fmt.Sprintf(` AND shipment_status = ANY($%d)`, argNum)
+		args = append(args, filter.ShipmentStatusIn)
+		argNum++
+	}
+	if filter.Search != "" {
+		q := strings.TrimSpace(filter.Search)
+		if isAllDigits(q) {
+			// Digits are an order number. Matching them against names too would
+			// drag in any student whose name happens to contain the digits.
+			query += fmt.Sprintf(` AND id::text LIKE '%%' || $%d`, argNum)
+			args = append(args, q)
+			argNum++
+		} else {
+			query += fmt.Sprintf(`
+				AND (id::text LIKE '%%' || $%d
+				     OR EXISTS (SELECT 1 FROM users u
+				                 WHERE u.id = orders.student_id
+				                   AND u.name ILIKE '%%' || $%d || '%%'))`, argNum, argNum+1)
+			args = append(args, q, q)
+			argNum += 2
+		}
+	}
+	if filter.CreatedFrom != nil {
+		query += fmt.Sprintf(` AND created_at >= $%d`, argNum)
+		args = append(args, *filter.CreatedFrom)
+		argNum++
+	}
+	if filter.CreatedTo != nil {
+		query += fmt.Sprintf(` AND created_at < $%d`, argNum)
+		args = append(args, *filter.CreatedTo)
+		argNum++
+	}
+
+	return query, args, argNum
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 type OrderPatch struct {
@@ -246,6 +336,44 @@ func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Orde
 // ids is []string, not []uuid.UUID — pgx's exec mode under PgBouncer breaks
 // on []uuid.UUID array parameters, and that only surfaces in a deployed
 // environment, never against a local test database.
+// Buyer is what the admin order list shows beneath the order: who bought it,
+// and enough context to recognise them. The student id used to sit there and
+// meant nothing to anyone reading the table.
+type Buyer struct {
+	Name   string
+	School string
+	Grade  *int
+}
+
+// GetBuyersByIDs resolves a batch of buyers in one query. LEFT JOIN, because a
+// buyer with no school must still resolve — an INNER JOIN would drop them and
+// their orders would render the "student not found" fallback name.
+func (r *Repository) GetBuyersByIDs(ctx context.Context, ids []string) (map[string]Buyer, error) {
+	buyers := make(map[string]Buyer, len(ids))
+	if len(ids) == 0 {
+		return buyers, nil
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT u.id, u.name, COALESCE(s.name, ''), u.grade
+		  FROM users u
+		  LEFT JOIN school s ON s.id = u.school_id
+		 WHERE u.id = ANY($1::uuid[])
+	`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var b Buyer
+		if err := rows.Scan(&id, &b.Name, &b.School, &b.Grade); err != nil {
+			return nil, err
+		}
+		buyers[id] = b
+	}
+	return buyers, rows.Err()
+}
+
 func (r *Repository) GetUserNamesByIDs(ctx context.Context, ids []string) (map[string]string, error) {
 	names := make(map[string]string, len(ids))
 	if len(ids) == 0 {
@@ -278,42 +406,20 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 	}
 
 	query := `SELECT ` + orderColumns + ` FROM orders WHERE 1=1`
-	args := []interface{}{}
-	argNum := 1
+	where, args, argNum := orderFilterPredicateFrom(filter, 1)
+	query += where
 
-	if filter.StudentID != nil {
-		query += fmt.Sprintf(` AND student_id = $%d`, argNum)
-		args = append(args, *filter.StudentID)
-		argNum++
-	}
-	if filter.Status != "" {
-		query += fmt.Sprintf(` AND status = $%d`, argNum)
-		args = append(args, filter.Status)
-		argNum++
-	}
-	if filter.ProductType != "" {
-		query += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM order_item WHERE order_item.order_id = orders.id AND product_type = $%d)`, argNum)
-		args = append(args, filter.ProductType)
-		argNum++
-	}
-	if filter.ExcludeCart {
-		query += ` AND status != 'cart'`
-	}
-	if len(filter.ShipmentStatusIn) > 0 {
-		query += fmt.Sprintf(` AND shipment_status = ANY($%d)`, argNum)
-		args = append(args, filter.ShipmentStatusIn)
-		argNum++
-	}
 	if filter.Cursor != "" {
-		if _, err := uuid.Parse(filter.Cursor); err != nil {
-			return nil, "", ErrInvalidCursor
+		curAt, curID, err := DecodeOrderCursor(filter.Cursor)
+		if err != nil {
+			return nil, "", err
 		}
-		query += fmt.Sprintf(` AND id > $%d`, argNum)
-		args = append(args, filter.Cursor)
-		argNum++
+		query += fmt.Sprintf(` AND (created_at, id) < ($%d, $%d)`, argNum, argNum+1)
+		args = append(args, curAt, curID)
+		argNum += 2
 	}
 
-	query += fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d`, argNum)
+	query += fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT $%d`, argNum)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -324,6 +430,7 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 
 	orders := []model.Order{}
 	nextCursor := ""
+	hasMore := false
 
 	for rows.Next() {
 		order := model.Order{}
@@ -333,12 +440,21 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		if len(orders) < filter.Limit {
 			orders = append(orders, order)
 		} else {
-			nextCursor = order.ID.String()
+			// One row beyond the page proves there is a next page, but it must
+			// not become the cursor: the predicate is strictly less-than, so
+			// pointing at this row would skip it. The cursor is the last row we
+			// actually returned.
+			hasMore = true
 		}
 	}
 
 	if err = rows.Err(); err != nil {
 		return nil, "", err
+	}
+
+	if hasMore && len(orders) > 0 {
+		last := orders[len(orders)-1]
+		nextCursor = EncodeOrderCursor(last.CreatedAt, last.ID)
 	}
 
 	for i := range orders {
@@ -703,42 +819,73 @@ func (r *Repository) ClearOrderTracking(ctx context.Context, tx pgx.Tx, orderID 
 	return err
 }
 
+// GetRevenue reports money for orders created in [from, to).
+//
+// Two aggregations, deliberately kept apart: `total` is what buyers were
+// actually charged (orders.total, counted once per order), while by_type and
+// product_revenue sum ITEM lines. They differ by shipping and discount, which
+// live on the order. Summing orders.total once per joined item row is what
+// inflated this report before — a three-item order counted its total
+// three times, and landed the whole of it in every product type it touched.
 func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[string]interface{}, error) {
+	var (
+		total      float64
+		shipping   float64
+		discount   float64
+		orderCount int
+	)
+	err := r.pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(total), 0), COALESCE(SUM(shipping_cost), 0),
+		       COALESCE(SUM(discount), 0), COUNT(*)
+		  FROM orders
+		 WHERE status IN ('paid', 'processing', 'shipped', 'completed')
+		   AND created_at >= $1 AND created_at < $2
+	`, from, to).Scan(&total, &shipping, &discount, &orderCount)
+	if err != nil {
+		return nil, err
+	}
+
 	rows, err := r.pool.Query(ctx, `
-		SELECT COALESCE(SUM(o.total), 0) as total, oi.product_type, COUNT(*) as count
-		FROM orders o
-		JOIN order_item oi ON o.id = oi.order_id
-		WHERE o.status IN ('paid', 'processing', 'completed')
-		  AND o.created_at BETWEEN $1 AND $2
-		GROUP BY oi.product_type
+		SELECT oi.product_type,
+		       COALESCE(SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0),
+		       COUNT(DISTINCT o.id)
+		  FROM orders o
+		  JOIN order_item oi ON oi.order_id = o.id
+		 WHERE o.status IN ('paid', 'processing', 'shipped', 'completed')
+		   AND o.created_at >= $1 AND o.created_at < $2
+		 GROUP BY oi.product_type
 	`, from, to)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := map[string]interface{}{
-		"total":   0.0,
-		"by_type": map[string]interface{}{},
-	}
-	var grandTotal float64
 	byType := map[string]interface{}{}
+	var productRevenue float64
 
 	for rows.Next() {
-		var total float64
 		var productType string
+		var typeTotal float64
 		var count int
-		if err := rows.Scan(&total, &productType, &count); err != nil {
+		if err := rows.Scan(&productType, &typeTotal, &count); err != nil {
 			return nil, err
 		}
-		grandTotal += total
+		productRevenue += typeTotal
 		byType[productType] = map[string]interface{}{
-			"total": total,
+			"total": typeTotal,
 			"count": count,
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
-	result["total"] = grandTotal
-	result["by_type"] = byType
-	return result, rows.Err()
+	return map[string]interface{}{
+		"total":           total,
+		"product_revenue": productRevenue,
+		"shipping_total":  shipping,
+		"discount_total":  discount,
+		"order_count":     orderCount,
+		"by_type":         byType,
+	}, nil
 }

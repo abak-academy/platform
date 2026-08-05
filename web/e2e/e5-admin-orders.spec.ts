@@ -108,14 +108,25 @@ test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name"
 
     await page.goto("/admin/orders");
 
-    const orderRow = page.getByRole("button", { name: new RegExp(`Lihat detail pesanan ${orderNumber}`) });
+    // The row is a <tr>, not a button: it used to carry role="button" while
+    // containing buttons, which lied to screen readers. The accessible name
+    // moved onto the order number inside it, so the row is located by role=row
+    // and the open control is addressed separately.
+    const orderRow = page.getByRole("row").filter({ hasText: orderNumber });
     await expect(orderRow).toBeVisible({ timeout: 15000 });
+
+    const openDetail = orderRow.getByRole("button", {
+      name: new RegExp(`Lihat detail pesanan ${orderNumber}`),
+    });
+    await expect(openDetail).toBeVisible();
 
     // FR-33: the buyer's name is the primary label in the list row, and the
     // student_id (a UUID, not the old "...<last12chars>" label) is present too.
     const rowText = (await orderRow.innerText()) ?? "";
     expect(rowText).not.toMatch(/^\.\.\./m);
 
+    // Confirm is the primary action for a payment_pending order, so it stays a
+    // button in the row rather than moving into the overflow menu.
     await orderRow.getByRole("button", { name: "Konfirmasi" }).click();
 
     const confirmDialog = page.getByRole("dialog", { name: "Konfirmasi Pembayaran Manual" });
@@ -144,7 +155,7 @@ test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name"
     await expect(confirmDialog).toBeHidden();
 
     // Reopen the order detail and check the manual-confirm mark + proof access.
-    await orderRow.click();
+    await openDetail.click();
     const detailDialog = page.getByRole("dialog").filter({ hasText: orderNumber });
     await expect(detailDialog).toBeVisible();
     await expect(detailDialog.getByText("Dikonfirmasi manual")).toBeVisible();

@@ -2,18 +2,32 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import { toast } from "sonner";
 import OrdersPage from "./page";
-import type { Order } from "@/lib/types";
+import type { Order, OrderSummary } from "@/lib/types";
 
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
+const mockFetchNextPage = vi.fn();
+
+interface OrdersResultPage {
+  data: Order[];
+  next_cursor: string;
+}
+
+function pages(orders: Order[]): { pages: OrdersResultPage[] } {
+  return { pages: [{ data: orders, next_cursor: "" }] };
+}
 
 let ordersState = {
-  data: null as Order[] | null,
+  data: pages([]) as { pages: OrdersResultPage[] } | undefined,
   isLoading: true,
   isError: false,
   error: null as Error | null,
-  refetch: vi.fn(),
+  hasNextPage: false,
+  isFetchingNextPage: false,
+  fetchNextPage: mockFetchNextPage,
 };
+
+let summaryState = { data: undefined as OrderSummary | undefined, isLoading: false };
 
 let confirmState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let shipState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
@@ -26,6 +40,7 @@ let cancelShipmentState = { mutate: mockMutate, mutateAsync: mockMutateAsync, is
 
 vi.mock("@/lib/hooks/admin-orders", () => ({
   useAdminOrders: () => ordersState,
+  useAdminOrderSummary: () => summaryState,
   useAdminOrder: () => ({}),
   useConfirmOrder: () => confirmState,
   useShipOrder: () => shipState,
@@ -109,16 +124,29 @@ const sampleOrders: Order[] = [
   },
 ];
 
+/** The row's last cell — the only place a primary action button may appear. */
+function actionCell(row: HTMLElement): HTMLElement {
+  const cells = within(row).getAllByRole("cell");
+  return cells[cells.length - 1] as HTMLElement;
+}
+
+function openRowMenu(row: HTMLElement) {
+  fireEvent.pointerDown(within(row).getByTestId("row-menu-trigger"), { button: 0 });
+}
+
 describe("OrdersPage", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     ordersState = {
-      data: sampleOrders,
+      data: pages(sampleOrders),
       isLoading: false,
       isError: false,
       error: null,
-      refetch: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: mockFetchNextPage,
     };
+    summaryState = { data: undefined, isLoading: false };
     confirmState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     shipState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     shipManualState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
@@ -127,6 +155,7 @@ describe("OrdersPage", () => {
     reconcileState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     mockMutate.mockReset();
     mockMutateAsync.mockReset();
+    mockFetchNextPage.mockReset();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
   });
@@ -138,9 +167,14 @@ describe("OrdersPage", () => {
       expect(screen.getByText(/Buku A/)).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Rp115.000")).toBeInTheDocument();
-    // Shipping column renders — "Dikirim" appears both as a filter chip and as a badge
-    expect(screen.getAllByText("Dikirim").length).toBeGreaterThanOrEqual(1);
+    // The total is printed twice per row: once in the md+ column, once in the
+    // stacked mobile summary.
+    expect(screen.getAllByText("Rp115.000").length).toBeGreaterThanOrEqual(1);
+    // Status column renders a badge per row. "Dikirim" is no longer also a
+    // filter chip — the status filter is a select whose options are portalled
+    // until opened — so this asserts the badge of a status the fixture has.
+    expect(screen.getAllByText("Menunggu Pembayaran").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Selesai").length).toBeGreaterThanOrEqual(1);
   });
 
   // FR-33: buyer name is the primary label; no truncated-UUID label
@@ -150,16 +184,17 @@ describe("OrdersPage", () => {
 
     await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
 
-    expect(screen.getByText("Siswa Uji A")).toBeInTheDocument();
-    expect(screen.getByText("Siswa Uji B")).toBeInTheDocument();
-    expect(screen.getByText("Siswa Uji C")).toBeInTheDocument();
+    expect(screen.getAllByText("Siswa Uji A").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Siswa Uji B").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Siswa Uji C").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("...s1")).toBeNull();
     expect(screen.queryByText(/^\.\.\./)).toBeNull();
-    // student_id stays present as secondary detail.
-    expect(screen.getByText("s1")).toBeInTheDocument();
+    // The raw student_id is deliberately NOT in the row: it is a UUID that
+    // meant nothing to anyone reading the table. It stays in the order detail.
+    expect(screen.queryByText("s1")).toBeNull();
   });
 
-  it("shows confirm and reconcile actions for pending orders", async () => {
+  it("shows confirm as the row button and reconcile in the menu for pending orders", async () => {
     render(<OrdersPage />);
 
     await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
@@ -167,9 +202,26 @@ describe("OrdersPage", () => {
     const row = screen.getByText(/Buku A/).closest("tr");
     expect(row).toBeTruthy();
     expect(within(row!).queryByRole("button", { name: /konfirmasi/i })).toBeInTheDocument();
-    expect(within(row!).queryByRole("button", { name: /rekonsiliasi/i })).toBeInTheDocument();
+    expect(within(row!).queryByRole("button", { name: /rekonsiliasi/i })).not.toBeInTheDocument();
     expect(within(row!).queryByRole("button", { name: /kirim/i })).not.toBeInTheDocument();
     expect(within(row!).queryByRole("button", { name: /refund/i })).not.toBeInTheDocument();
+
+    openRowMenu(row!);
+    expect(await screen.findByRole("menuitem", { name: /rekonsiliasi/i })).toBeInTheDocument();
+  });
+
+  // Only one action is promoted to a button; anything else would put the admin
+  // back in front of the button wall this row replaced.
+  it("gives a payment_pending row exactly one primary button beside its menu", async () => {
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Buku A/).closest("tr")!;
+    const buttons = within(actionCell(row)).getAllByRole("button");
+
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0].textContent).toMatch(/konfirmasi/i);
+    expect(buttons[1]).toHaveAttribute("data-testid", "row-menu-trigger");
   });
 
   it("confirms an order after uploading a proof and shows success toast", async () => {
@@ -191,6 +243,18 @@ describe("OrdersPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith({ id: "o1", paymentProofUrl: "payment_proof/admin-1/proof.jpg" });
       expect(toast.success).toHaveBeenCalledWith("Pesanan dikonfirmasi.");
     });
+  });
+
+  it("reconciles an order from the row menu", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ message: "order reconciled" });
+
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
+
+    openRowMenu(screen.getByText(/Buku A/).closest("tr")!);
+    fireEvent.click(await screen.findByRole("menuitem", { name: /rekonsiliasi/i }));
+
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith("o1"));
   });
 
   // The tracking number used to be collected with window.prompt, which cannot be
@@ -320,7 +384,7 @@ describe("OrdersPage", () => {
   it("omits the region line on an order that predates the snapshot", async () => {
     ordersState = {
       ...ordersState,
-      data: [
+      data: pages([
         {
           ...sampleOrders[1],
           shipping_address: {
@@ -332,7 +396,7 @@ describe("OrdersPage", () => {
             kode_pos: "17151",
           },
         },
-      ],
+      ]),
     };
 
     render(<OrdersPage />);
@@ -359,7 +423,8 @@ describe("OrdersPage", () => {
 
   it("requires a merchandise order to ship before it can complete", async () => {
     ordersState = {
-      data: [{
+      ...ordersState,
+      data: pages([{
         id: "o-merch",
         student_id: "s-merch",
         status: "processing",
@@ -368,11 +433,7 @@ describe("OrdersPage", () => {
         shipping_cost: 15000,
         total: 90000,
         items: [{ id: "i-merch", order_id: "o-merch", product_id: "p-merch", product_type: "merchandise", name: "Kaos Akademi", unit_price: 75000, qty: 1, jumlah: 75000 }],
-      }],
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
+      }]),
     };
 
     const { rerender } = render(<OrdersPage />);
@@ -384,26 +445,77 @@ describe("OrdersPage", () => {
 
     ordersState = {
       ...ordersState,
-      data: [{ ...ordersState.data![0], status: "shipped", tracking_number: "JNE-MERCH-1" }],
+      data: pages([{ ...ordersState.data!.pages[0].data[0], status: "shipped", tracking_number: "JNE-MERCH-1" }]),
     };
     rerender(<OrdersPage />);
 
     row = screen.getByText("Kaos Akademi").closest("tr");
-    expect(within(row!).queryByRole("button", { name: /kirim/i })).not.toBeInTheDocument();
+    expect(within(row!).queryByRole("button", { name: /^kirim$/i })).not.toBeInTheDocument();
     expect(within(row!).getByRole("button", { name: /selesai/i })).toBeInTheDocument();
   });
 
   it("requires a medal order to ship before it can complete", async () => {
     ordersState = {
-      data: [{ id: "o-medal", student_id: "s-medal", status: "processing", subtotal: 75000, discount: 0, shipping_cost: 15000, total: 90000,
-        items: [{ id: "i-medal", order_id: "o-medal", product_id: "p-medal", product_type: "medal", name: "Medali Emas", unit_price: 75000, qty: 1, jumlah: 75000 }] }],
-      isLoading: false, isError: false, error: null, refetch: vi.fn(),
+      ...ordersState,
+      data: pages([{ id: "o-medal", student_id: "s-medal", status: "processing", subtotal: 75000, discount: 0, shipping_cost: 15000, total: 90000,
+        items: [{ id: "i-medal", order_id: "o-medal", product_id: "p-medal", product_type: "medal", name: "Medali Emas", unit_price: 75000, qty: 1, jumlah: 75000 }] }]),
     };
     render(<OrdersPage />);
     await waitFor(() => expect(screen.getByText("Medali Emas")).toBeInTheDocument());
     const row = screen.getByText("Medali Emas").closest("tr");
     expect(within(row!).getByRole("button", { name: /kirim/i })).toBeInTheDocument();
     expect(within(row!).queryByRole("button", { name: /selesai/i })).not.toBeInTheDocument();
+  });
+
+  // Completing is irreversible, so it asks first — but in a dialog, not a
+  // window.confirm the page cannot style, translate or test.
+  it("completes an order only after the confirm dialog is accepted", async () => {
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirmSpy);
+    mockMutateAsync.mockResolvedValueOnce({ message: "order completed" });
+
+    ordersState = {
+      ...ordersState,
+      data: pages([{ ...sampleOrders[2], status: "processing" }]),
+    };
+
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Kursus B/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Kursus B/).closest("tr");
+    fireEvent.click(within(row!).getByRole("button", { name: /selesai/i }));
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Tandai pesanan selesai?")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: /^selesai$/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith("o3");
+      expect(toast.success).toHaveBeenCalledWith("Pesanan selesai");
+    });
+  });
+
+  it("does not complete an order when the confirm dialog is dismissed", async () => {
+    ordersState = {
+      ...ordersState,
+      data: pages([{ ...sampleOrders[2], status: "processing" }]),
+    };
+
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Kursus B/)).toBeInTheDocument());
+
+    fireEvent.click(
+      within(screen.getByText(/Kursus B/).closest("tr")!).getByRole("button", { name: /selesai/i }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^batal$/i }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
   // A refund is a manual bank transfer, so the action opens a modal demanding
@@ -415,10 +527,19 @@ describe("OrdersPage", () => {
 
     render(<OrdersPage />);
 
-    await waitFor(() => expect(screen.getByText(/Kursus B/)).toBeInTheDocument());
+    // A paid order, not the completed one: refund is no longer offered once an
+    // order is complete.
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
 
-    const row = screen.getByText(/Kursus B/).closest("tr");
-    fireEvent.click(within(row!).getByRole("button", { name: /refund/i }));
+    const row = screen.getByText(/Buku Shipped/).closest("tr")!;
+    // Refund is never promoted to a row button — it is the one action that
+    // moves money, and it sits behind the menu with the destructive variant.
+    expect(within(row).queryByRole("button", { name: /refund/i })).toBeNull();
+
+    openRowMenu(row);
+    const item = await screen.findByRole("menuitem", { name: /refund/i });
+    expect(item).toHaveAttribute("data-variant", "destructive");
+    fireEvent.click(item);
 
     // The old flow fired the mutation straight from a confirm(); the new one
     // cannot, because it has no receipt yet.
@@ -432,40 +553,131 @@ describe("OrdersPage", () => {
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
-        id: "o3",
+        id: "o2",
         refundProofUrl: "refund_proof/admin-1/trf.jpg",
       });
       expect(toast.success).toHaveBeenCalledWith("Pesanan direfund.");
     });
   });
 
-  it("filters rows by status chips", async () => {
+  it("adopts ?status= from the URL so the dashboard can deep link", async () => {
+    window.history.replaceState({}, "", "/admin/orders?status=shipment_failed");
+    render(<OrdersPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Pengiriman bermasalah/),
+    );
+    window.history.replaceState({}, "", "/admin/orders");
+  });
+
+  it("ignores an unknown ?status= rather than sending it to the API", async () => {
+    window.history.replaceState({}, "", "/admin/orders?status=bogus");
+    render(<OrdersPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Semua/),
+    );
+    window.history.replaceState({}, "", "/admin/orders");
+  });
+
+  it("filters rows by the status select", async () => {
     ordersState = {
-      data: sampleOrders.filter((o) => o.status === "paid"),
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
+      ...ordersState,
+      data: pages(sampleOrders.filter((o) => o.status === "paid")),
     };
 
     render(<OrdersPage />);
 
     await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
 
-    const paidChip = screen.getByRole("button", { name: /^dibayar$/i });
-    fireEvent.click(paidChip);
+    // The status filter is a select, not a row of chips: the chips wrapped to a
+    // second line and never lined up with the search and date controls.
+    expect(screen.getByTestId("orders-status-filter")).toBeInTheDocument();
 
     expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument();
     expect(screen.queryByText(/Buku A/)).not.toBeInTheDocument();
   });
 
+  // Refund on a finished order is a returns case, not a routine action.
+  // Offering it on every historical row buried the states where it is the
+  // right move.
+  it("does not offer refund on a completed order", async () => {
+    ordersState = {
+      ...ordersState,
+      data: pages([sampleOrders[2]]),
+    };
+    render(<OrdersPage />);
+
+    await waitFor(() => expect(screen.getByText(/Kursus B/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Kursus B/).closest("tr")!;
+    expect(within(row).queryByRole("button", { name: /refund/i })).toBeNull();
+    // Refund was this row's only remaining action, so the overflow menu is not
+    // rendered at all — there is nothing left to put in it.
+    expect(within(row).queryByTestId("row-menu-trigger")).toBeNull();
+  });
+
+  // ...unless the parcel died: money was taken for goods that will not arrive,
+  // and orders.status is never walked back by the webhook.
+  it("still offers refund on a completed order whose shipment failed", async () => {
+    ordersState = {
+      ...ordersState,
+      data: pages([{ ...sampleOrders[2], shipment_status: "courierNotFound" }]),
+    };
+    render(<OrdersPage />);
+
+    await waitFor(() => expect(screen.getByText(/Kursus B/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Kursus B/).closest("tr")!;
+    openRowMenu(row);
+    expect(await screen.findByRole("menuitem", { name: /refund/i })).toBeTruthy();
+  });
+
+  it("counts the rows on screen against the summary total", async () => {
+    summaryState = {
+      data: {
+        buckets: {
+          needs_confirm: 1,
+          ready_to_ship: 1,
+          shipment_failed: 0,
+          in_transit: 0,
+          created_this_month: 3,
+          completed_this_month: 1,
+          total: 42,
+        },
+        top_products: [],
+      },
+      isLoading: false,
+    };
+
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
+
+    expect(screen.getByText("Menampilkan 3 dari 42")).toBeInTheDocument();
+  });
+
+  it("asks for the next page when load more is clicked", async () => {
+    ordersState = { ...ordersState, hasNextPage: true };
+
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /muat lebih banyak/i }));
+
+    expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides load more when there is no next page", async () => {
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
+
+    expect(screen.queryByRole("button", { name: /muat lebih banyak/i })).toBeNull();
+  });
+
   it("surfaces an API error as inline error text", async () => {
     ordersState = {
-      data: null,
-      isLoading: false,
+      ...ordersState,
+      data: undefined,
       isError: true,
       error: new Error("gagal memuat"),
-      refetch: vi.fn(),
     };
 
     render(<OrdersPage />);
@@ -479,8 +691,9 @@ describe("OrdersPage", () => {
 describe("OrdersPage failed shipments", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    summaryState = { data: undefined, isLoading: false };
     ordersState = {
-      data: [
+      data: pages([
         {
           ...sampleOrders[0],
           id: "00000000-0000-0000-0000-0000deadbeef",
@@ -488,62 +701,76 @@ describe("OrdersPage failed shipments", () => {
           tracking_number: "JP999",
           shipment_status: "courierNotFound",
         } as Order,
-      ],
+      ]),
       isLoading: false,
       isError: false,
       error: null,
-      refetch: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: mockFetchNextPage,
     };
   });
 
   // The row still says "shipped" — the webhook never walks orders.status back
-  // (FR-C-15) — so without this badge the listing gives an admin no reason to
-  // ever open the order whose parcel is dead.
-  it("badges a dead shipment in the listing instead of a plain Dikirim", async () => {
+  // (FR-C-15) — so without this the listing gives an admin no reason to ever
+  // open the order whose parcel is dead.
+  it("marks a dead shipment in the listing instead of a plain Dikirim", async () => {
     render(<OrdersPage />);
-    expect(await screen.findByTestId("row-shipment-failed")).toBeTruthy();
+
+    const status = await screen.findByTestId("row-shipment-status");
+    expect(status).toHaveClass("text-destructive");
+    // A dead parcel has no waybill worth querying, so the track affordance goes.
+    expect(screen.queryByTestId("row-track-button")).toBeNull();
   });
 
   it("offers a filter for failed shipments", async () => {
     render(<OrdersPage />);
-    expect(await screen.findByRole("button", { name: "Pengiriman bermasalah" })).toBeTruthy();
+    // Options live inside the select's portal until it is opened, so the
+    // presence of the control plus its option list is what is asserted here.
+    // The status filter is a select. Its options live in a Radix portal that
+    // jsdom will not open without pointer-capture shims, so this asserts the
+    // control is present; OrdersToolbar.test.tsx covers the option list.
+    expect(await screen.findByTestId("orders-status-filter")).toBeTruthy();
   });
 });
 
-describe("OrdersPage shipment status column", () => {
+describe("OrdersPage shipment status", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    summaryState = { data: undefined, isLoading: false };
   });
 
-  function renderWithStatus(shipment_status: string | null) {
+  function renderWithStatus(shipment_status: string | null, tracking_number?: string) {
     ordersState = {
-      data: [
+      data: pages([
         {
           ...sampleOrders[0],
           id: "00000000-0000-0000-0000-00000000c01a",
           status: "shipped",
-          tracking_number: "JP777",
+          tracking_number,
           shipment_status,
         } as Order,
-      ],
+      ]),
       isLoading: false,
       isError: false,
       error: null,
-      refetch: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: mockFetchNextPage,
     };
     render(<OrdersPage />);
   }
 
   it("shows the courier status in the listing, translated", async () => {
-    renderWithStatus("in_transit");
-    expect((await screen.findByTestId("row-shipment-status")).textContent).toBe(
+    renderWithStatus("in_transit", "JP777");
+    expect((await screen.findByTestId("row-track-button")).textContent).toContain(
       "Dalam perjalanan",
     );
   });
 
   it("reads the camelCase spelling the same way", async () => {
-    renderWithStatus("droppingOff");
-    expect((await screen.findByTestId("row-shipment-status")).textContent).toBe(
+    renderWithStatus("droppingOff", "JP777");
+    expect((await screen.findByTestId("row-track-button")).textContent).toContain(
       "Menuju alamat penerima",
     );
   });

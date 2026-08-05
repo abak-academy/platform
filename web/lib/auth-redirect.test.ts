@@ -39,7 +39,11 @@ describe("adminHomeForRole", () => {
     expect(adminHomeForRole("admin_school")).toBe("/admin/school/students");
   });
 
+  // The store summary is now the first non-/admin item in super_admin's nav.
+  // In practice super_admin never takes this path — admin/page.tsx only calls
+  // adminHomeForRole for other roles — but the helper's contract is "first live
+  // admin item", and that item changed.
   it("sends super_admin to first live admin item", () => {
-    expect(adminHomeForRole("super_admin")).toBe("/admin/products");
+    expect(adminHomeForRole("super_admin")).toBe("/admin/store");
   });
 });

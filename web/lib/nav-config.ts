@@ -19,6 +19,7 @@ import {
   Building,
   Settings,
   ShieldCheck,
+  Store,
 } from "lucide-react";
 
 export type UserRole =
@@ -100,7 +101,6 @@ export const CONTENT_MANAGER_NAV: RoleNavConfig = [
       { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library },
       { labelKey: "admin_nav_orders", href: "/admin/orders", icon: Receipt },
       { labelKey: "promos", href: "/admin/promos", icon: Tag },
-      { labelKey: "revenue", href: "/admin/revenue", icon: BarChart3 },
       { labelKey: "notifications", href: "/admin/notifications", icon: Bell },
     ],
   },
@@ -123,10 +123,13 @@ export const ADMIN_SCHOOL_NAV: RoleNavConfig = [
   },
 ];
 
-// Store items for super admin — same as CONTENT_MANAGER_NAV but without the store dashboard.
+// Store items for super admin. The store dashboard is included: it is the order
+// summary, and super_admin is meant to see everything a store admin sees plus
+// revenue. Leaving it out left super_admin with no route to the summary at all.
 const SUPER_ADMIN_STORE_ITEMS: NavGroup = {
   titleKey: "nav_group_store",
   items: [
+    { labelKey: "nav_store_summary", href: "/admin/store", icon: Store, exact: true },
     { labelKey: "admin_nav_products", href: "/admin/products", icon: Package },
     { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library },
     { labelKey: "admin_nav_orders", href: "/admin/orders", icon: Receipt },

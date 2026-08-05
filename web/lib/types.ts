@@ -224,6 +224,8 @@ export interface Order {
   student_id: string;
   /** Resolved server-side (FR-33/FR-35); fallback text when the student row is missing. */
   student_name?: string;
+  student_school?: string;
+  student_grade?: number | null;
   status: OrderStatus;
   subtotal: number;
   discount: number;
@@ -397,7 +399,50 @@ export interface RevenueByTypeItem {
 
 export interface AdminRevenue {
   total: number;
+  product_revenue: number;
+  shipping_total: number;
+  discount_total: number;
+  order_count: number;
   by_type: Record<string, RevenueByTypeItem>;
+  top_products: TopProductWithRevenue[];
+  from: string;
+  to: string;
+}
+
+// No revenue field by design — the store dashboard renders TopProduct only, so
+// money cannot leak into a page that is not revenue-scoped.
+export interface TopProduct {
+  product_id: string;
+  name: string;
+  product_type: string;
+  qty_sold: number;
+  order_count: number;
+}
+
+export interface TopProductWithRevenue extends TopProduct {
+  product_revenue: number;
+}
+
+export interface OrderBucketCounts {
+  needs_confirm: number;
+  ready_to_ship: number;
+  shipment_failed: number;
+  in_transit: number;
+  created_this_month: number;
+  completed_this_month: number;
+  total: number;
+}
+
+export interface OrderSummary {
+  buckets: OrderBucketCounts;
+  top_products: TopProduct[];
+}
+
+export interface AdminOrderQuery {
+  status: AdminOrderFilterStatus;
+  q?: string;
+  from?: string;
+  to?: string;
 }
 
 export interface PromoValidation {

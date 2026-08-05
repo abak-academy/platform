@@ -1,15 +1,25 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { Order, AdminOrderFilterStatus, OrderTracking } from "@/lib/types";
+import type {
+  Order,
+  AdminOrderFilterStatus,
+  AdminOrderQuery,
+  OrderSummary,
+  OrderTracking,
+} from "@/lib/types";
+
+export const ORDERS_PAGE_SIZE = 20;
 
 export const adminOrdersKeys = {
   all: ["admin", "orders"] as const,
-  list: (status?: AdminOrderFilterStatus) =>
-    status && status !== "all"
-      ? ([...adminOrdersKeys.all, "list", status] as const)
-      : ([...adminOrdersKeys.all, "list"] as const),
+  // The whole query object is part of the key, so any filter change starts a
+  // fresh page 1 rather than appending to the previous filter's pages.
+  list: (query: AdminOrderQuery) => [...adminOrdersKeys.all, "list", query] as const,
+  // Keyed without status on purpose — see useAdminOrderSummary.
+  summary: (scope: { q?: string; from?: string; to?: string }) =>
+    [...adminOrdersKeys.all, "summary", scope] as const,
   detail: (id: string) => [...adminOrdersKeys.all, "detail", id] as const,
 };
 
@@ -27,28 +37,69 @@ function statusQueryParam(status?: AdminOrderFilterStatus): string | undefined {
   return FILTER_STATUS_MAP[status];
 }
 
+function orderQueryParams(query: AdminOrderQuery): URLSearchParams {
+  const params = new URLSearchParams();
+  const statusParam = statusQueryParam(query.status);
+  if (statusParam) {
+    params.set("status", statusParam);
+  }
+  // Filtered on shipment_status, not status — a dead parcel is still a
+  // "shipped" order as far as orders.status is concerned.
+  if (query.status === "shipment_failed") {
+    params.set("shipment", "failed");
+  }
+  if (query.q) {
+    params.set("q", query.q);
+  }
+  if (query.from) {
+    params.set("from", query.from);
+  }
+  if (query.to) {
+    params.set("to", query.to);
+  }
+  return params;
+}
+
 function idempotencyKey(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
-export function useAdminOrders(status?: AdminOrderFilterStatus) {
+export function useAdminOrders(query: AdminOrderQuery) {
+  return useInfiniteQuery({
+    queryKey: adminOrdersKeys.list(query),
+    initialPageParam: "",
+    queryFn: ({ pageParam }) => {
+      const params = orderQueryParams(query);
+      params.set("limit", String(ORDERS_PAGE_SIZE));
+      if (pageParam) {
+        params.set("cursor", pageParam);
+      }
+      return authFetch<{ data: Order[]; next_cursor?: string }>(`/admin/orders?${params.toString()}`);
+    },
+    getNextPageParam: (last) => last.next_cursor || undefined,
+  });
+}
+
+// Scoped to the search and date range, never to the status.
+//
+// The buckets ARE the per-status breakdown, and the toolbar renders a chip
+// count from each. Passing the selected status through would filter the counts
+// by the very chip they label: pick "Perlu konfirmasi" and every other chip
+// drops to zero. Search and dates do narrow them, so the numbers still describe
+// the rows on screen.
+export function useAdminOrderSummary(query: AdminOrderQuery) {
+  const scope = { q: query.q, from: query.from, to: query.to };
   return useQuery({
-    queryKey: adminOrdersKeys.list(status),
-    queryFn: async () => {
+    queryKey: adminOrdersKeys.summary(scope),
+    queryFn: () => {
       const params = new URLSearchParams();
-      const statusParam = statusQueryParam(status);
-      if (statusParam) {
-        params.set("status", statusParam);
-      }
-      // Filtered on shipment_status, not status — a dead parcel is still a
-      // "shipped" order as far as orders.status is concerned.
-      if (status === "shipment_failed") {
-        params.set("shipment", "failed");
-      }
-      const query = params.toString();
-      const path = query ? `/admin/orders?${query}` : "/admin/orders";
-      const res = await authFetch<{ data: Order[]; next_cursor?: string }>(path);
-      return res.data ?? [];
+      if (scope.q) params.set("q", scope.q);
+      if (scope.from) params.set("from", scope.from);
+      if (scope.to) params.set("to", scope.to);
+      const qs = params.toString();
+      return authFetch<OrderSummary>(
+        qs ? `/admin/orders/summary?${qs}` : "/admin/orders/summary",
+      );
     },
   });
 }

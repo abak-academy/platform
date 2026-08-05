@@ -1230,11 +1230,16 @@ func parseUUID(s string) (uuid.UUID, error) {
 // missing (e.g. a deleted account) so the row still renders instead of erroring.
 const fallbackStudentName = "Siswa tidak ditemukan"
 
-// attachStudentNames populates StudentName on every order via one batched call
-// to resolve, regardless of len(orders) — FR-35 requires this cost one query
-// for the whole page, not one per order. resolve is s.storeRepo.GetUserNamesByIDs
-// in production and a counting fake in tests.
-func attachStudentNames(ctx context.Context, orders []model.Order, resolve func(context.Context, []string) (map[string]string, error)) error {
+// attachStudentNames populates StudentName, StudentSchool and StudentGrade on
+// every order via one batched call to resolve, regardless of len(orders) —
+// FR-35 requires this cost one query for the whole page, not one per order.
+// resolve is s.storeRepo.GetBuyersByIDs in production and a counting fake in
+// tests.
+//
+// School and grade ride along in the same lookup because the orders table shows
+// them beneath the buyer's name; fetching them separately would reintroduce the
+// per-row query FR-35 exists to prevent.
+func attachStudentNames(ctx context.Context, orders []model.Order, resolve func(context.Context, []string) (map[string]repository.Buyer, error)) error {
 	if len(orders) == 0 {
 		return nil
 	}
@@ -1248,16 +1253,19 @@ func attachStudentNames(ctx context.Context, orders []model.Order, resolve func(
 		seen[sid] = struct{}{}
 		ids = append(ids, sid)
 	}
-	names, err := resolve(ctx, ids)
+	buyers, err := resolve(ctx, ids)
 	if err != nil {
 		return err
 	}
 	for i := range orders {
-		if name, ok := names[orders[i].StudentID.String()]; ok && name != "" {
-			orders[i].StudentName = name
+		b, ok := buyers[orders[i].StudentID.String()]
+		if ok && b.Name != "" {
+			orders[i].StudentName = b.Name
 		} else {
 			orders[i].StudentName = fallbackStudentName
 		}
+		orders[i].StudentSchool = b.School
+		orders[i].StudentGrade = b.Grade
 	}
 	return nil
 }
@@ -1271,7 +1279,7 @@ func (s *Service) AdminListOrders(ctx context.Context, filter repository.OrderFi
 	if err != nil {
 		return nil, "", err
 	}
-	if err := attachStudentNames(ctx, orders, s.storeRepo.GetUserNamesByIDs); err != nil {
+	if err := attachStudentNames(ctx, orders, s.storeRepo.GetBuyersByIDs); err != nil {
 		return nil, "", err
 	}
 	return orders, cursor, nil
@@ -1287,7 +1295,7 @@ func (s *Service) AdminGetOrder(ctx context.Context, orderID string) (model.Orde
 		return model.Order{}, err
 	}
 	orders := []model.Order{order}
-	if err := attachStudentNames(ctx, orders, s.storeRepo.GetUserNamesByIDs); err != nil {
+	if err := attachStudentNames(ctx, orders, s.storeRepo.GetBuyersByIDs); err != nil {
 		return model.Order{}, err
 	}
 	return orders[0], nil
@@ -1667,6 +1675,22 @@ func (s *Service) AdminDeletePromoCode(ctx context.Context, id string) error {
 
 func (s *Service) AdminGetRevenue(ctx context.Context, from, to time.Time) (map[string]interface{}, error) {
 	return s.storeRepo.GetRevenue(ctx, from, to)
+}
+
+// AdminOrderBuckets counts what needs attention. Which shipment_status spellings
+// count as a failure is a domain question, so it is answered here rather than in
+// the repository — the same call ListOrders' ?shipment=failed filter makes.
+func (s *Service) AdminOrderBuckets(
+	ctx context.Context, filter repository.OrderFilter, monthStart, monthEnd time.Time,
+) (repository.OrderBucketCounts, error) {
+	filter.ExcludeCart = true
+	return s.storeRepo.CountOrdersByBucket(ctx, filter, ShipmentFailureStatusValues(), monthStart, monthEnd)
+}
+
+func (s *Service) AdminTopProducts(
+	ctx context.Context, from, to time.Time, orderBy string, limit int,
+) ([]repository.TopProduct, error) {
+	return s.storeRepo.TopProducts(ctx, from, to, orderBy, limit)
 }
 
 // Payment webhook handler
