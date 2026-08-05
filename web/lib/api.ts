@@ -69,8 +69,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
 async function tryRefresh(): Promise<string | null> {
   const { useAuthStore } = await import("@/stores/auth");
-  const { refreshToken } = useAuthStore.getState();
-  if (!refreshToken) return null;
+  const { refreshToken, user } = useAuthStore.getState();
+  // A stored session with no user is not renewable: nothing downstream can tell
+  // who it belongs to, so the guards fall open. Refusing to refresh it lets the
+  // 401 below clear the session instead of sliding it forward indefinitely.
+  if (!refreshToken || !user) return null;
   try {
     const res = await fetch(`${API_BASE}/auth/refresh`, {
       method: "POST",
@@ -79,9 +82,7 @@ async function tryRefresh(): Promise<string | null> {
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { access_token: string; refresh_token: string };
-    const { useAuthStore: store } = await import("@/stores/auth");
-    const user = store.getState().user!;
-    store.getState().setSession(data.access_token, data.refresh_token, user);
+    useAuthStore.getState().setSession(data.access_token, data.refresh_token, user);
     return data.access_token;
   } catch {
     return null;

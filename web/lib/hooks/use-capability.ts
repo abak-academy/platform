@@ -24,15 +24,16 @@ export function hasCapability(role: string | undefined, required: string): boole
   );
 }
 
-export interface ResolvedAdminRole {
+export interface ResolvedRole {
   role: UserRole | undefined;
   hydrated: boolean;
   meIsError: boolean;
 }
 
-// Single resolver for the admin nav and the route guards — if they disagree
-// about who you are, the sidebar shows a link the page then refuses to open.
-export function useResolvedAdminRole(): ResolvedAdminRole {
+// Single resolver for the nav and every route guard, student shell included —
+// if they disagree about who you are, the sidebar shows a link the page then
+// refuses to open, or a staff token renders inside the student shell.
+export function useResolvedRole(): ResolvedRole {
   const token = useAuthStore((s) => s.token);
   const storeUser = useAuthStore((s) => s.user);
   const [hydrated, setHydrated] = useState(false);
@@ -53,6 +54,6 @@ export function useResolvedAdminRole(): ResolvedAdminRole {
 }
 
 export function useHasCapability(required: string): boolean {
-  const { role } = useResolvedAdminRole();
+  const { role } = useResolvedRole();
   return hasCapability(role, required);
 }

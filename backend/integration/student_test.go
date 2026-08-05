@@ -118,6 +118,35 @@ func TestStudentProfile(t *testing.T) {
 	assert.NotEmpty(t, email)
 }
 
+// Staff tokens used to pass here: the group was JWT-only, so a super_admin got
+// their own record back and the web app rendered them inside the student shell.
+func TestStudentRoutes_RejectStaffTokens(t *testing.T) {
+	env := newTestEnv(t)
+
+	for _, role := range []string{"super_admin", "admin_exam", "admin_school", "admin_store"} {
+		t.Run(role, func(t *testing.T) {
+			staff := seedUser(t, env, role, "active", false)
+			token := authToken(t, env, staff, role)
+
+			for _, call := range []struct {
+				method string
+				path   string
+				body   map[string]any
+			}{
+				{http.MethodGet, "/api/v1/students/dashboard", nil},
+				{http.MethodGet, "/api/v1/students/profile", nil},
+				{http.MethodPatch, "/api/v1/students/profile", map[string]any{"name": "Staff"}},
+				{http.MethodPatch, "/api/v1/students/photo", map[string]any{"photo_url": "avatars/x.png"}},
+			} {
+				resp := env.doJSON(t, call.method, call.path, call.body, token)
+				body := decodeBody(t, resp)
+				assert.Equal(t, http.StatusForbidden, resp.StatusCode, "%s %s body: %v", call.method, call.path, body)
+				assert.Equal(t, "forbidden", body["code"], "%s %s", call.method, call.path)
+			}
+		})
+	}
+}
+
 func TestStudentUpdateProfile(t *testing.T) {
 	env := newTestEnv(t)
 

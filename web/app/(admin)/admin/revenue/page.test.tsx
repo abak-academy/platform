@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import RevenuePage from "./page";
 import type { AdminRevenue } from "@/lib/types";
-import type { ResolvedAdminRole } from "@/lib/hooks/use-capability";
+import type { ResolvedRole } from "@/lib/hooks/use-capability";
 
 let revenueState = {
   data: null as AdminRevenue | null,
@@ -12,7 +12,7 @@ let revenueState = {
   error: null as Error | null,
 };
 
-let roleState: ResolvedAdminRole = {
+let roleState: ResolvedRole = {
   role: "super_admin",
   hydrated: true,
   meIsError: false,
@@ -24,7 +24,7 @@ vi.mock("@/lib/hooks/admin-revenue", () => ({
 
 vi.mock("@/lib/hooks/use-capability", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/hooks/use-capability")>()),
-  useResolvedAdminRole: () => roleState,
+  useResolvedRole: () => roleState,
 }));
 
 function renderPage() {

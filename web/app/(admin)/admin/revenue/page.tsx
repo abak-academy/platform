@@ -10,7 +10,7 @@ import { TopProductsTable } from "@/components/admin/TopProductsTable";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminRevenue, type RevenueRange } from "@/lib/hooks/admin-revenue";
-import { hasCapability, useResolvedAdminRole } from "@/lib/hooks/use-capability";
+import { hasCapability, useResolvedRole } from "@/lib/hooks/use-capability";
 import { formatRupiah } from "@/lib/format";
 import type { AdminRevenue, RevenueByTypeItem } from "@/lib/types";
 
@@ -85,7 +85,7 @@ export default function RevenuePage() {
 
   // The role is undefined for one render while the auth store rehydrates, so
   // falling straight through to NoAccess flashes it at every admin on load.
-  const { role, hydrated } = useResolvedAdminRole();
+  const { role, hydrated } = useResolvedRole();
   const canReadRevenue = hasCapability(role, "revenue:read");
 
   const formatDate = useMemo(() => {
