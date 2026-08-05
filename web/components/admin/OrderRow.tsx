@@ -61,6 +61,13 @@ function buyerLabel(order: Order): string {
   return order.student_name?.trim() || order.student_id;
 }
 
+/** "SMAN 3 Bogor · Kelas 12" — whichever parts exist, never a stray separator. */
+function buyerContextLabel(order: Order): string {
+  return [order.student_school?.trim(), order.student_grade ? `Kelas ${order.student_grade}` : ""]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function ageLabel(ms: number): string {
   if (ms < 3_600_000) return "<1 jam";
   if (ms < DAY_MS) return `${Math.floor(ms / 3_600_000)} jam`;
@@ -85,6 +92,7 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
 
   const items = order.items ?? [];
   const extraItems = Math.max(0, items.length - 1);
+  const buyerContext = buyerContextLabel(order);
 
   const failedShipment = isShipmentFailure(order.shipment_status);
   const courierLabel = order.shipment_status
@@ -98,7 +106,7 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
       return (
         <span
           data-testid="row-shipment-status"
-          className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold text-destructive"
+          className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-destructive"
         >
           <PackageX className="size-3.5" aria-hidden />
           {courierLabel}
@@ -119,7 +127,7 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
               e.stopPropagation();
               onTrack?.();
             }}
-            className="group/track mt-2 inline-flex items-center gap-1.5 rounded-sm text-[13px] font-semibold text-brand-700 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            className="group/track inline-flex items-center gap-1.5 rounded-sm text-[13px] font-semibold text-brand-700 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
           >
             <Package
               className="size-3.5 transition-transform duration-150 group-hover/track:translate-x-0.5 motion-reduce:transition-none"
@@ -127,13 +135,13 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
             />
             {line}
           </button>
-          <div className="mt-1 font-mono text-xs text-ink-600">{order.tracking_number}</div>
+          <div className="font-mono text-xs text-ink-600">{order.tracking_number}</div>
         </>
       );
     }
 
     return (
-      <span data-testid="row-shipment-status" className="mt-2 block text-[13px] text-ink-600">
+      <span data-testid="row-shipment-status" className="block text-[13px] text-ink-600">
         {courierLabel ?? "—"}
       </span>
     );
@@ -173,11 +181,17 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
         </div>
       </td>
 
-      {/* No student_id: it is a raw UUID, it meant nothing to anyone reading the
-          table, and it wrapped. The order number identifies the order; the
-          detail view still carries the buyer's id. */}
+      {/* School and grade, not student_id. The id was a raw UUID that meant
+          nothing to anyone reading the table; this is what actually tells two
+          buyers of the same name apart. Either may be missing, so the line
+          collapses rather than printing a stray separator. */}
       <td className="hidden max-w-[16rem] px-4 py-4 md:table-cell">
         <div className="truncate text-[15px] font-medium">{buyerLabel(order)}</div>
+        {buyerContext && (
+          <div className="mt-1 truncate text-[13px] text-ink-600" title={buyerContext}>
+            {buyerContext}
+          </div>
+        )}
       </td>
 
       <td className="hidden max-w-xs px-4 py-4 md:table-cell">
@@ -191,9 +205,14 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
         {formatRupiah(order.total)}
       </td>
 
+      {/* A column, not inline flow. The badge and the courier line are both
+          inline-level, so they ran together on one line; the mockup stacks the
+          courier state beneath the order state. */}
       <td className="px-4 py-4">
-        <OrderStatusBadge status={order.status} />
-        {courierSubLine()}
+        <div className="flex flex-col items-start gap-1.5">
+          <OrderStatusBadge status={order.status} />
+          {courierSubLine()}
+        </div>
       </td>
 
       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>

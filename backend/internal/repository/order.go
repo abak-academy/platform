@@ -336,6 +336,44 @@ func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Orde
 // ids is []string, not []uuid.UUID — pgx's exec mode under PgBouncer breaks
 // on []uuid.UUID array parameters, and that only surfaces in a deployed
 // environment, never against a local test database.
+// Buyer is what the admin order list shows beneath the order: who bought it,
+// and enough context to recognise them. The student id used to sit there and
+// meant nothing to anyone reading the table.
+type Buyer struct {
+	Name   string
+	School string
+	Grade  *int
+}
+
+// GetBuyersByIDs resolves a batch of buyers in one query. LEFT JOIN, because a
+// buyer with no school must still resolve — an INNER JOIN would drop them and
+// their orders would render the "student not found" fallback name.
+func (r *Repository) GetBuyersByIDs(ctx context.Context, ids []string) (map[string]Buyer, error) {
+	buyers := make(map[string]Buyer, len(ids))
+	if len(ids) == 0 {
+		return buyers, nil
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT u.id, u.name, COALESCE(s.name, ''), u.grade
+		  FROM users u
+		  LEFT JOIN school s ON s.id = u.school_id
+		 WHERE u.id = ANY($1::uuid[])
+	`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var b Buyer
+		if err := rows.Scan(&id, &b.Name, &b.School, &b.Grade); err != nil {
+			return nil, err
+		}
+		buyers[id] = b
+	}
+	return buyers, rows.Err()
+}
+
 func (r *Repository) GetUserNamesByIDs(ctx context.Context, ids []string) (map[string]string, error) {
 	names := make(map[string]string, len(ids))
 	if len(ids) == 0 {

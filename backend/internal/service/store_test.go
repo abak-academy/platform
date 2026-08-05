@@ -3195,7 +3195,7 @@ func TestHandlePaymentWebhook_PaymentTypeAbsent_DoesNotOverwriteExistingPaymentM
 // TestAttachStudentNames_OneCallRegardlessOfOrderCount covers FR-35: N orders
 // (here 3, over only 2 distinct students) must cost exactly one call to the
 // resolver — the batching contract AdminListOrders/AdminGetOrder rely on by
-// wiring resolve to s.storeRepo.GetUserNamesByIDs. Asserting on the call
+// wiring resolve to s.storeRepo.GetBuyersByIDs. Asserting on the call
 // count, not wall-clock time, is what actually proves batching happened.
 func TestAttachStudentNames_OneCallRegardlessOfOrderCount(t *testing.T) {
 	ctx := context.Background()
@@ -3208,13 +3208,14 @@ func TestAttachStudentNames_OneCallRegardlessOfOrderCount(t *testing.T) {
 	}
 
 	calls := 0
-	resolve := func(_ context.Context, ids []string) (map[string]string, error) {
+	grade := 11
+	resolve := func(_ context.Context, ids []string) (map[string]repository.Buyer, error) {
 		calls++
-		names := make(map[string]string, len(ids))
+		buyers := make(map[string]repository.Buyer, len(ids))
 		for _, id := range ids {
-			names[id] = "Name-" + id
+			buyers[id] = repository.Buyer{Name: "Name-" + id, School: "SMAN " + id, Grade: &grade}
 		}
-		return names, nil
+		return buyers, nil
 	}
 
 	if err := attachStudentNames(ctx, orders, resolve); err != nil {
@@ -3228,6 +3229,14 @@ func TestAttachStudentNames_OneCallRegardlessOfOrderCount(t *testing.T) {
 		if o.StudentName != want {
 			t.Errorf("order %s: want student_name %q, got %q", o.ID, want, o.StudentName)
 		}
+		// School and grade ride the same batched lookup — the orders table
+		// shows them under the buyer's name.
+		if o.StudentSchool != "SMAN "+o.StudentID.String() {
+			t.Errorf("order %s: want student_school, got %q", o.ID, o.StudentSchool)
+		}
+		if o.StudentGrade == nil || *o.StudentGrade != 11 {
+			t.Errorf("order %s: want student_grade 11, got %v", o.ID, o.StudentGrade)
+		}
 	}
 }
 
@@ -3239,8 +3248,8 @@ func TestAttachStudentNames_MissingStudentRow_FallsBackWithoutError(t *testing.T
 	missingStudent := uuid.New()
 	orders := []model.Order{{ID: uuid.New(), StudentID: missingStudent}}
 
-	resolve := func(_ context.Context, _ []string) (map[string]string, error) {
-		return map[string]string{}, nil
+	resolve := func(_ context.Context, _ []string) (map[string]repository.Buyer, error) {
+		return map[string]repository.Buyer{}, nil
 	}
 
 	if err := attachStudentNames(ctx, orders, resolve); err != nil {
@@ -3248,6 +3257,10 @@ func TestAttachStudentNames_MissingStudentRow_FallsBackWithoutError(t *testing.T
 	}
 	if orders[0].StudentName != fallbackStudentName {
 		t.Errorf("want fallback student_name %q, got %q", fallbackStudentName, orders[0].StudentName)
+	}
+	if orders[0].StudentSchool != "" || orders[0].StudentGrade != nil {
+		t.Errorf("a missing student row must leave school/grade empty, got %q/%v",
+			orders[0].StudentSchool, orders[0].StudentGrade)
 	}
 }
 

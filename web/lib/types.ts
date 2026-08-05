@@ -224,6 +224,8 @@ export interface Order {
   student_id: string;
   /** Resolved server-side (FR-33/FR-35); fallback text when the student row is missing. */
   student_name?: string;
+  student_school?: string;
+  student_grade?: number | null;
   status: OrderStatus;
   subtotal: number;
   discount: number;

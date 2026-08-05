@@ -121,6 +121,36 @@ describe("OrderRow courier sub-line", () => {
   });
 });
 
+describe("OrderRow buyer context", () => {
+  it("shows school and grade beneath the buyer's name", () => {
+    renderRow({ order: makeOrder({ student_school: "SMAN 3 Bogor", student_grade: 12 }) });
+    expect(screen.getByText("SMAN 3 Bogor \u00b7 Kelas 12")).toBeInTheDocument();
+  });
+
+  it("shows only what exists, with no stray separator", () => {
+    renderRow({ order: makeOrder({ student_school: "SMAN 3 Bogor", student_grade: null }) });
+    expect(screen.getByText("SMAN 3 Bogor")).toBeInTheDocument();
+    expect(screen.queryByText(/Kelas/)).toBeNull();
+  });
+
+  it("renders no second line at all when the buyer has neither", () => {
+    renderRow({ order: makeOrder({ student_school: "", student_grade: null }) });
+    expect(document.body.textContent).not.toMatch(/Kelas/);
+  });
+
+  // The raw student_id used to sit here and meant nothing to anyone reading it.
+  it("never prints the raw student_id", () => {
+    renderRow({
+      order: makeOrder({
+        student_id: "a1ae019e-4228-496a-b89b-4af9044e3f5e",
+        student_name: "Rani Puspita",
+        student_school: "SMAN 3 Bogor",
+      }),
+    });
+    expect(document.body.textContent).not.toContain("a1ae019e-4228-496a-b89b-4af9044e3f5e");
+  });
+});
+
 describe("OrderRow age staleness", () => {
   it(`reddens the age of a payment_pending order older than ${STALE_AFTER_DAYS} days`, () => {
     renderRow({
