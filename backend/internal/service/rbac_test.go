@@ -127,3 +127,45 @@ func TestHasCapability_adminStoreCannotReadRevenue(t *testing.T) {
 		t.Error("HasCapability(admin_store, orders:write): want true — fulfilment is untouched")
 	}
 }
+
+// TestAdminExamCapabilities pins the admin_exam capability list. Its TypeScript
+// counterpart is web/lib/hooks/use-capability.test.ts, which asserts the same
+// literal strings. The two suites share no definition — this only makes a
+// divergence between the two languages fail loudly.
+func TestAdminExamCapabilities(t *testing.T) {
+	want := []string{
+		"questions:*",
+		"tests:*",
+		"products(exam):*",
+		"products(course):*",
+		"sections:*",
+		"sessions:*",
+		"uploads:write",
+	}
+	got := Capabilities(RoleAdminExam)
+	if len(got) != len(want) {
+		t.Fatalf("admin_exam caps = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("cap[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestAdminExamRetainsExamReadCapability guards the collapse that looks tidy and
+// is not: HasCapability matches exact strings and ":*" prefixes only, so a
+// merged "products(exam|course):*" entry would stop matching this and lock the
+// exam admin out of the /admin/exams read group (routes.go:293).
+func TestAdminExamRetainsExamReadCapability(t *testing.T) {
+	for _, required := range []string{"products(exam):read", "products(exam):write", "products(course):write"} {
+		if !HasCapability(RoleAdminExam, required) {
+			t.Errorf("HasCapability(admin_exam, %q) = false, want true", required)
+		}
+	}
+	for _, required := range []string{"orders:write", "revenue:read", "schools:write"} {
+		if HasCapability(RoleAdminExam, required) {
+			t.Errorf("HasCapability(admin_exam, %q) = true, want false", required)
+		}
+	}
+}

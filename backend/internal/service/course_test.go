@@ -261,7 +261,7 @@ type shimCourseService struct {
 // --- Course CRUD shim ---
 
 func (s *shimCourseService) CreateCourse(ctx context.Context, title, level, subject, instructorName, role string) (model.Course, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Course{}, ErrForbidden
 	}
 	c := model.Course{
@@ -278,7 +278,7 @@ func (s *shimCourseService) ListCourses(ctx context.Context, role string) ([]mod
 }
 
 func (s *shimCourseService) UpdateCourse(ctx context.Context, id, title, level, subject, instructorName, role string) (model.Course, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Course{}, ErrForbidden
 	}
 	courseID, err := uuid.Parse(id)
@@ -323,7 +323,7 @@ func (s *shimCourseService) ListSections(ctx context.Context, courseID string) (
 }
 
 func (s *shimCourseService) CreateSection(ctx context.Context, courseID string, title string, role string) (model.Section, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Section{}, ErrForbidden
 	}
 
@@ -347,7 +347,7 @@ func (s *shimCourseService) CreateSection(ctx context.Context, courseID string, 
 }
 
 func (s *shimCourseService) UpdateSection(ctx context.Context, courseID, sectionID string, title string, role string) (model.Section, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Section{}, ErrForbidden
 	}
 
@@ -360,7 +360,7 @@ func (s *shimCourseService) UpdateSection(ctx context.Context, courseID, section
 }
 
 func (s *shimCourseService) DeleteSection(ctx context.Context, courseID, sectionID string, role string) error {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return ErrForbidden
 	}
 
@@ -373,7 +373,7 @@ func (s *shimCourseService) DeleteSection(ctx context.Context, courseID, section
 }
 
 func (s *shimCourseService) ReorderSections(ctx context.Context, courseID string, orderedIDs []string, role string) error {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return ErrForbidden
 	}
 
@@ -397,7 +397,7 @@ func (s *shimCourseService) ReorderSections(ctx context.Context, courseID string
 // --- Lesson shim (keyed by course_id) ---
 
 func (s *shimCourseService) CreateLesson(ctx context.Context, courseID, sectionID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Lesson{}, ErrForbidden
 	}
 
@@ -423,7 +423,7 @@ func (s *shimCourseService) CreateLesson(ctx context.Context, courseID, sectionI
 }
 
 func (s *shimCourseService) UpdateLesson(ctx context.Context, courseID, sectionID, lessonID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Lesson{}, ErrForbidden
 	}
 
@@ -441,7 +441,7 @@ func (s *shimCourseService) UpdateLesson(ctx context.Context, courseID, sectionI
 }
 
 func (s *shimCourseService) DeleteLesson(ctx context.Context, courseID, sectionID, lessonID string, role string) error {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return ErrForbidden
 	}
 
@@ -454,7 +454,7 @@ func (s *shimCourseService) DeleteLesson(ctx context.Context, courseID, sectionI
 }
 
 func (s *shimCourseService) ReorderLessons(ctx context.Context, courseID, sectionID string, orderedIDs []string, role string) error {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return ErrForbidden
 	}
 
@@ -566,7 +566,7 @@ func (s *shimGetDeleteCourse) GetCourse(ctx context.Context, id string) (model.C
 }
 
 func (s *shimGetDeleteCourse) DeleteCourse(ctx context.Context, id, role string) error {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return ErrForbidden
 	}
 	cID, err := uuid.Parse(id)
@@ -663,23 +663,29 @@ func TestCreateCourse_SuperAdminCanCreate(t *testing.T) {
 }
 
 // Test: CreateCourse rejects non-store role
-func TestCreateCourse_RejectsNonStoreRole(t *testing.T) {
+func TestCreateCourse_RoleGate(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeCourseRepo()
 	svc := &shimCourseService{fake: fake}
 
-	_, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleAdminExam)
+	// admin_school is still rejected.
+	_, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleAdminSchool)
 	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("want ErrForbidden for non-store role, got %v", err)
+		t.Errorf("want ErrForbidden for admin_school, got %v", err)
 	}
 
-	// admin_store should succeed
-	course, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleAdminStore)
+	// admin_exam now authors courses.
+	course, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleAdminExam)
 	if err != nil {
-		t.Fatalf("admin_store CreateCourse: %v", err)
+		t.Fatalf("admin_exam CreateCourse: %v", err)
 	}
 	if course.Title != "Math" {
 		t.Errorf("want title Math, got %s", course.Title)
+	}
+
+	// admin_store is unaffected.
+	if _, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleAdminStore); err != nil {
+		t.Fatalf("admin_store CreateCourse: %v", err)
 	}
 }
 
@@ -688,7 +694,7 @@ func TestCreateCourse_RejectsNonStoreRole(t *testing.T) {
 // Postgres; the shim-based test here was tautological and did not cover title).
 
 // Test: UpdateCourse rejects non-store role
-func TestUpdateCourse_RejectsNonStoreRole(t *testing.T) {
+func TestUpdateCourse_RoleGate(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeCourseRepo()
 	svc := &shimCourseService{fake: fake}
@@ -698,14 +704,14 @@ func TestUpdateCourse_RejectsNonStoreRole(t *testing.T) {
 		t.Fatalf("CreateCourse: %v", err)
 	}
 
-	_, err = svc.UpdateCourse(ctx, course.ID.String(), "Updated", "advanced", "science", "Mr. B", RoleAdminExam)
+	_, err = svc.UpdateCourse(ctx, course.ID.String(), "Updated", "advanced", "science", "Mr. B", RoleAdminSchool)
 	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("want ErrForbidden for non-store role, got %v", err)
+		t.Errorf("want ErrForbidden for admin_school, got %v", err)
 	}
 
-	updated, err := svc.UpdateCourse(ctx, course.ID.String(), "Updated", "advanced", "science", "Mr. B", RoleAdminStore)
+	updated, err := svc.UpdateCourse(ctx, course.ID.String(), "Updated", "advanced", "science", "Mr. B", RoleAdminExam)
 	if err != nil {
-		t.Fatalf("UpdateCourse: %v", err)
+		t.Fatalf("admin_exam UpdateCourse: %v", err)
 	}
 	if updated.Title != "Updated" {
 		t.Errorf("want title Updated, got %s", updated.Title)
@@ -1197,9 +1203,9 @@ func TestDeleteCourse_RBACAndDelete(t *testing.T) {
 		t.Fatalf("CreateCourse: %v", err)
 	}
 
-	// Non-store role is rejected
-	if err := gdSvc.DeleteCourse(ctx, course.ID.String(), RoleAdminExam); !errors.Is(err, ErrForbidden) {
-		t.Errorf("want ErrForbidden for admin_exam, got %v", err)
+	// admin_school is still rejected.
+	if err := gdSvc.DeleteCourse(ctx, course.ID.String(), RoleAdminSchool); !errors.Is(err, ErrForbidden) {
+		t.Errorf("want ErrForbidden for admin_school, got %v", err)
 	}
 
 	// Admin store can delete
@@ -1345,5 +1351,22 @@ func TestCourseProgress_ReturnsCompletedTotalPct(t *testing.T) {
 	// 3/4 = 75.00
 	if pct != 75.0 {
 		t.Errorf("want pct=75.0, got %v", pct)
+	}
+}
+
+func TestCanAuthorCourses(t *testing.T) {
+	want := map[string]bool{
+		RoleSuperAdmin:  true,
+		RoleAdminStore:  true,
+		RoleAdminExam:   true,
+		RoleAdminSchool: false,
+		RoleStudent:     false,
+		"":              false,
+		"nonsense":      false,
+	}
+	for role, expected := range want {
+		if got := canAuthorCourses(role); got != expected {
+			t.Errorf("canAuthorCourses(%q) = %v, want %v", role, got, expected)
+		}
 	}
 }

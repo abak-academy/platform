@@ -391,36 +391,35 @@ func TestListProducts_AdminStoreExamReturnsEmpty(t *testing.T) {
 
 func TestCreateProduct_TypeRBAC(t *testing.T) {
 	ctx := context.Background()
-	fake := newFakeStoreRepo()
-	svc := newShim(fake)
 
-	// admin_store creating exam type → ok (FR-STORE-ADM-03: admin_store edits
-	// price/visibility/promo eligibility on exam-type products; it just can't
-	// touch exam content, which stays gated under RoleAdminExam / /admin/exams)
-	_, err := svc.CreateProduct(ctx, model.Product{Type: "exam", Name: "Exam 1"}, RoleAdminStore)
-	if err != nil {
-		t.Errorf("admin_store creating exam should be allowed, got %v", err)
+	allTypes := []string{"book", "merchandise", "medal", "course", "exam"}
+
+	// want[role] = set of types that role may create.
+	want := map[string]map[string]bool{
+		RoleSuperAdmin:  {"book": true, "merchandise": true, "medal": true, "course": true, "exam": true},
+		RoleAdminStore:  {"book": true, "merchandise": true, "medal": true, "course": true, "exam": true},
+		RoleAdminExam:   {"course": true, "exam": true},
+		RoleAdminSchool: {},
+		RoleStudent:     {},
 	}
 
-	// admin_exam creating book type → ErrForbidden
-	_, err = svc.CreateProduct(ctx, model.Product{Type: "book", Name: "Book 1"}, RoleAdminExam)
-	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("want ErrForbidden for admin_exam creating book, got %v", err)
-	}
-
-	// admin_store creating book → ok
-	p, err := svc.CreateProduct(ctx, model.Product{Type: "book", Name: "Book 1"}, RoleAdminStore)
-	if err != nil {
-		t.Fatalf("admin_store creating book: %v", err)
-	}
-	if p.ID == "" {
-		t.Error("want non-empty ID")
-	}
-
-	// super_admin creating any type → ok
-	_, err = svc.CreateProduct(ctx, model.Product{Type: "exam", Name: "Exam 1"}, RoleSuperAdmin)
-	if err != nil {
-		t.Fatalf("super_admin creating exam: %v", err)
+	for role, allowed := range want {
+		for _, pt := range allTypes {
+			t.Run(role+"/"+pt, func(t *testing.T) {
+				fake := newFakeStoreRepo()
+				svc := newShim(fake)
+				_, err := svc.CreateProduct(ctx, model.Product{Type: pt, Name: "P"}, role)
+				if allowed[pt] {
+					if err != nil {
+						t.Errorf("%s creating %s: want nil, got %v", role, pt, err)
+					}
+					return
+				}
+				if !errors.Is(err, ErrForbidden) {
+					t.Errorf("%s creating %s: want ErrForbidden, got %v", role, pt, err)
+				}
+			})
+		}
 	}
 }
 
@@ -2105,16 +2104,23 @@ func TestCreateProductWithCourses_RBAC(t *testing.T) {
 	fake := newFakeStoreRepo()
 	svc := newShim(fake)
 
-	// admin_exam creating course → ErrForbidden
-	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, nil, RoleAdminExam)
+	// admin_school creating course → ErrForbidden
+	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, nil, RoleAdminSchool)
 	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("want ErrForbidden for admin_exam creating course, got %v", err)
+		t.Errorf("want ErrForbidden for admin_school creating course, got %v", err)
 	}
 
-	// admin_store creating course with links → ok
 	course, _ := fake.CreateCourse(ctx, model.Course{
 		Title: "Math", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
 	})
+
+	// admin_exam creating course with links → ok
+	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, []string{course.ID.String()}, RoleAdminExam)
+	if err != nil {
+		t.Fatalf("admin_exam creating course: %v", err)
+	}
+
+	// admin_store creating course with links → ok
 	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, []string{course.ID.String()}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("admin_store creating course: %v", err)

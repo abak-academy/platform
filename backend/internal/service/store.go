@@ -1803,7 +1803,10 @@ func checkTypeRBAC(role, productType string) error {
 		}
 		return ErrForbidden
 	case RoleAdminExam:
-		if productType == "exam" {
+		// The exam admin owns the whole digital catalogue — exam products and
+		// the courses behind them. Physical types stay with admin_store because
+		// they carry stock, weight and shipping, which is fulfilment work.
+		if productType == "exam" || productType == "course" {
 			return nil
 		}
 		return ErrForbidden
