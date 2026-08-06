@@ -18,6 +18,8 @@ import { usePresignUpload } from "@/lib/hooks/students";
 import { fileUrl } from "@/lib/api";
 import { ProductSpecsEditor } from "@/components/admin/ProductSpecsEditor";
 import type { Product, ProductType, ProductStatus, ProductSpec, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
+import { useResolvedAdminRole } from "@/lib/hooks/use-capability";
+import { writableProductTypes } from "@/lib/product-types";
 
 interface ProductModalProps {
   open: boolean;
@@ -30,7 +32,6 @@ interface ProductModalProps {
 const SELECT_CLASS =
   "h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50";
 
-const PRODUCT_TYPES: ProductType[] = ["book", "course", "exam", "merchandise", "medal"];
 const PRODUCT_STATUSES: ProductStatus[] = ["draft", "published", "hidden", "archived"];
 
 const TYPE_LABELS: Record<ProductType, string> = {
@@ -64,6 +65,8 @@ function fromLocalInput(v: string): string | null {
 
 export function ProductModal({ open, onOpenChange, product, onSubmit, isPending }: ProductModalProps) {
   const isEdit = Boolean(product);
+  const { role } = useResolvedAdminRole();
+  const productTypes = writableProductTypes(role);
   const [name, setName] = useState("");
   const [type, setType] = useState<ProductType | "">("");
   const [price, setPrice] = useState("");
@@ -233,7 +236,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                     className={SELECT_CLASS}
                   >
                     <option value="" disabled>Pilih jenis</option>
-                    {PRODUCT_TYPES.map((t) => (
+                    {productTypes.map((t) => (
                       <option key={t} value={t}>
                         {TYPE_LABELS[t]}
                       </option>
