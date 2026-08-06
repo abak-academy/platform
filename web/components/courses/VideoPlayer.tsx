@@ -108,6 +108,11 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
   const [loaded, setLoaded] = useState(0);
 
   useEffect(() => {
+    // A lesson switch (no `key` at the call site, so this is a live-instance
+    // prop change, not a remount) must give the new video a fresh attempt at
+    // the real player — otherwise one bad video_url pins every later lesson
+    // in the session to the shield-less fallback. forceFallback still wins.
+    setFallback(Boolean(forceFallback));
     if (!id || forceFallback) return;
     let cancelled = false;
 

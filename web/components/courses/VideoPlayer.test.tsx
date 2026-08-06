@@ -15,7 +15,7 @@ class FakePlayer {
 
   constructor(
     el: HTMLElement,
-    public opts: { events?: { onReady?: () => void } },
+    public opts: { events?: { onReady?: () => void; onError?: () => void } },
   ) {
     this.wasConnectedAtConstruction = el.isConnected;
     FakePlayer.instances.push(this);
@@ -42,6 +42,10 @@ class FakePlayer {
   destroy() {
     this.destroyed = true;
     this.iframeEl.remove();
+  }
+  /** Simulates a real YT.Player error event (private/deleted video, region block, etc). */
+  triggerError() {
+    this.opts.events?.onError?.();
   }
 }
 
@@ -149,5 +153,34 @@ describe("VideoPlayer", () => {
       expect(retryContainer.querySelector('[data-testid="video-shield"]')).not.toBeNull();
     });
     expect(FakePlayer.instances).toHaveLength(1);
+  });
+
+  it("resets fallback for the next lesson after a real onError, and destroys the player before falling back", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    const { rerender, container } = render(
+      <VideoPlayer videoRef="videoBad" title="Pelajaran 1" />,
+    );
+
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+    const bad = FakePlayer.instances[0];
+
+    bad.triggerError();
+
+    // onError must destroy the player itself — nothing else will, since
+    // setFallback alone doesn't change [id, forceFallback], so the effect's
+    // own cleanup never runs for this transition.
+    expect(bad.destroyed).toBe(true);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="video-shield"]')).toBeNull();
+    });
+
+    // Same live instance, no `key` — a different lesson must get a fresh
+    // attempt at the real player, not inherit the previous lesson's fallback.
+    rerender(<VideoPlayer videoRef="videoGood" title="Pelajaran 2" />);
+
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(2));
+    expect(container.querySelector('[data-testid="video-shield"]')).not.toBeNull();
   });
 });
