@@ -96,4 +96,13 @@ describe("AreaLineChart", () => {
       expect(c.getAttribute("cy") ?? "").not.toContain("NaN");
     });
   });
+
+  it("exposes both series, not just the area, in the sr-only summary", () => {
+    const { container } = render(<AreaLineChart {...base} />);
+    const summary = container.querySelector(".sr-only")?.textContent ?? "";
+    expect(summary).toContain(base.area.label);
+    expect(summary).toContain(base.line.label);
+    expect(summary).toContain(String(base.area.values[0]));
+    expect(summary).toContain(String(base.line.values[0]));
+  });
 });

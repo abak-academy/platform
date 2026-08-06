@@ -133,7 +133,11 @@ export function AreaLineChart({ labels, area, line, height = H, emptyLabel }: Ar
         </span>
       </div>
 
-      <div className="sr-only">{labels.map((l, i) => `${l}: ${area.values[i]}`).join(", ")}</div>
+      <div className="sr-only">
+        {Array.from({ length: Math.min(labels.length, area.values.length, line.values.length) }, (_, i) =>
+          `${labels[i]}: ${area.label} ${area.values[i]}, ${line.label} ${line.values[i]}`
+        ).join(", ")}
+      </div>
     </div>
   );
 }
