@@ -2,11 +2,28 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// This file shares the newGradingTestPool container (exam_grading_test.go)
+// with 14+ other test files; rows are never reset between tests. Reserved
+// windows, in Asia/Jakarta — take a free one rather than reusing one below.
+// Follows the precedent set by newReportingTestPool's ledger in
+// order_revenue_test.go.
+//
+//	2026-07-01 .. 2026-07-06  FillsEmptyDays               (day bucket, order on 07-03)
+//	2026-08-01 .. 2026-08-03  BucketsInJakarta              (day bucket, order on 08-02)
+//	2026-07-10 .. 2026-07-11  CountsOrderTotalOncePerOrder
+//	2026-07-15 .. 2026-07-16  CountsDistinctStudents
+//	2026-07-01 .. 2026-07-29  WeekBucket                    (structural only — bucket count and
+//	                                                          first-bucket date; tolerant of other
+//	                                                          tests' data landing in this range)
+//	2026-09-01 .. 2026-09-02  DateSerializesInJakartaOffset (asserts only the JSON "date" shape,
+//	                                                          seeds and reads no order/student data)
 
 // seedDashboardStudent inserts a student user with an explicit created_at,
 // following the style of insertNullSchoolStudent (admin_students_test.go).
@@ -261,6 +278,9 @@ func TestDashboardSeriesWeekBucket(t *testing.T) {
 	pool := newGradingTestPool(t)
 	r := New(pool)
 
+	// 1 Jul 2026 is a Wednesday. Weeks anchor to `from`, not to the ISO
+	// Monday — date_trunc('week', ...) would instead produce a short first
+	// bucket (29 Jun–1 Jul, only 3 days) and mislabel it 29 Jun.
 	jkt, _ := time.LoadLocation("Asia/Jakarta")
 	from := time.Date(2026, 7, 1, 0, 0, 0, 0, jkt)
 	to := time.Date(2026, 7, 29, 0, 0, 0, 0, jkt) // 4 weeks
@@ -270,7 +290,51 @@ func TestDashboardSeriesWeekBucket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DashboardSeries: %v", err)
 	}
-	if len(pts) < 4 || len(pts) > 5 {
-		t.Errorf("got %d week points, want 4 or 5", len(pts))
+	if len(pts) != 4 {
+		t.Fatalf("got %d week points, want exactly 4 (each a full 7 days, anchored to `from`)", len(pts))
+	}
+	if !pts[0].Date.Equal(from) {
+		t.Errorf("first bucket = %v, want %v (anchored to `from`, not the preceding Monday)", pts[0].Date, from)
+	}
+}
+
+// SeriesPoint.Date is scanned from a timezone-naive Postgres timestamp
+// holding Jakarta wall-clock values; a bare pgx Scan leaves it with a UTC
+// Location, so the default JSON encoding would emit a "...Z" suffix — a
+// false claim that midnight Jakarta is midnight UTC. Task 3 serializes
+// []SeriesPoint straight to JSON and the frontend does date arithmetic on
+// it, so an incorrect offset here reproduces the "wrong day" bug one layer
+// up, at serialization instead of at bucketing.
+func TestDashboardSeriesDateSerializesInJakartaOffset(t *testing.T) {
+	pool := newGradingTestPool(t)
+	r := New(pool)
+
+	jkt, _ := time.LoadLocation("Asia/Jakarta")
+	from := time.Date(2026, 9, 1, 0, 0, 0, 0, jkt)
+	to := time.Date(2026, 9, 2, 0, 0, 0, 0, jkt)
+
+	pts, err := r.DashboardSeries(context.Background(), from, to, "day",
+		[]string{"book", "merchandise", "medal"})
+	if err != nil {
+		t.Fatalf("DashboardSeries: %v", err)
+	}
+	if len(pts) != 1 {
+		t.Fatalf("got %d points, want 1", len(pts))
+	}
+
+	raw, err := json.Marshal(pts[0])
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	var decoded struct {
+		Date string `json:"date"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	const want = "2026-09-01T00:00:00+07:00"
+	if decoded.Date != want {
+		t.Errorf("serialized date = %q, want %q (Jakarta offset, not a false UTC Z)", decoded.Date, want)
 	}
 }

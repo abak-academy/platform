@@ -21,12 +21,28 @@ type SeriesPoint struct {
 // revenue report uses (GetRevenue, order.go); kept in sync deliberately.
 const paidStatusList = `('paid', 'processing', 'shipped', 'completed')`
 
+// jakarta is loaded once; every DashboardSeries call reuses it.
+var jakarta = func() *time.Location {
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		// Asia/Jakarta ships with every Go tzdata build; this would mean a
+		// broken runtime environment, not a request-time condition.
+		panic(fmt.Sprintf("load Asia/Jakarta location: %v", err))
+	}
+	return loc
+}()
+
 // DashboardSeries returns one point per bucket across [from, to), with empty
 // buckets present and zero-valued.
 //
 // Bucketing runs in Asia/Jakarta: the timestamps are shifted into the zone
-// before date_trunc, because an order placed 08:00 WIB belongs to that day and
+// before bucketing, because an order placed 08:00 WIB belongs to that day and
 // UTC puts a 02:00 WIB order on the day before.
+//
+// Buckets are anchored to `from`, not to the calendar (ISO week/month). A
+// week bucket starting 1 Jul covers 1–7 Jul, 8–14 Jul, and so on, regardless
+// of what day of the week `from` falls on — date_trunc('week', ...) would
+// instead snap to the preceding Monday and produce a short first bucket.
 //
 // Revenue and the digital/physical split are deliberately two separate
 // aggregations. `revenue` sums orders.total once per order; the split sums item
@@ -35,54 +51,65 @@ const paidStatusList = `('paid', 'processing', 'shipped', 'completed')`
 func (r *Repository) DashboardSeries(
 	ctx context.Context, from, to time.Time, bucket string, physicalTypes []string,
 ) ([]SeriesPoint, error) {
-	unit, err := bucketUnit(bucket)
+	bucketSeconds, err := bucketUnit(bucket)
 	if err != nil {
 		return nil, err
 	}
 
 	query := fmt.Sprintf(`
-WITH spine AS (
-    SELECT generate_series(
-        date_trunc('%[1]s', $1::timestamptz AT TIME ZONE 'Asia/Jakarta'),
-        date_trunc('%[1]s', ($2::timestamptz - interval '1 microsecond') AT TIME ZONE 'Asia/Jakarta'),
-        interval '1 %[1]s'
-    ) AS b
+WITH params AS (
+    SELECT
+        ($1::timestamptz AT TIME ZONE 'Asia/Jakarta')                              AS anchor,
+        (($2::timestamptz - interval '1 microsecond') AT TIME ZONE 'Asia/Jakarta') AS to_local
+),
+spine AS (
+    SELECT generate_series(params.anchor, params.to_local, interval '%[1]d seconds') AS b
+      FROM params
 ),
 ord AS (
-    SELECT date_trunc('%[1]s', created_at AT TIME ZONE 'Asia/Jakarta') AS b,
-           SUM(total)                  AS revenue,
-           COUNT(*)                    AS order_count,
-           COUNT(DISTINCT student_id)  AS buying_students
-      FROM orders
-     WHERE status IN %[2]s
-       AND created_at >= $1 AND created_at < $2
+    SELECT params.anchor
+             + floor(extract(epoch FROM ((o.created_at AT TIME ZONE 'Asia/Jakarta') - params.anchor)) / %[1]d)
+               * interval '%[1]d seconds' AS b,
+           SUM(o.total)                 AS revenue,
+           COUNT(*)                     AS order_count,
+           COUNT(DISTINCT o.student_id) AS buying_students
+      FROM orders o CROSS JOIN params
+     WHERE o.status IN %[2]s
+       AND o.created_at >= $1 AND o.created_at < $2
      GROUP BY 1
 ),
 split AS (
-    SELECT date_trunc('%[1]s', o.created_at AT TIME ZONE 'Asia/Jakarta') AS b,
+    SELECT params.anchor
+             + floor(extract(epoch FROM ((o.created_at AT TIME ZONE 'Asia/Jakarta') - params.anchor)) / %[1]d)
+               * interval '%[1]d seconds' AS b,
            SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty))
              FILTER (WHERE oi.product_type = ANY($3::text[]))     AS physical,
            SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty))
              FILTER (WHERE NOT (oi.product_type = ANY($3::text[]))) AS digital
       FROM orders o
       JOIN order_item oi ON oi.order_id = o.id
+      CROSS JOIN params
      WHERE o.status IN %[2]s
        AND o.created_at >= $1 AND o.created_at < $2
      GROUP BY 1
 ),
 newstud AS (
-    SELECT date_trunc('%[1]s', created_at AT TIME ZONE 'Asia/Jakarta') AS b,
+    SELECT params.anchor
+             + floor(extract(epoch FROM ((u.created_at AT TIME ZONE 'Asia/Jakarta') - params.anchor)) / %[1]d)
+               * interval '%[1]d seconds' AS b,
            COUNT(*) AS n
-      FROM users
-     WHERE role = 'student'
-       AND created_at >= $1 AND created_at < $2
+      FROM users u CROSS JOIN params
+     WHERE u.role = 'student'
+       AND u.created_at >= $1 AND u.created_at < $2
      GROUP BY 1
 ),
 examstud AS (
-    SELECT date_trunc('%[1]s', started_at AT TIME ZONE 'Asia/Jakarta') AS b,
-           COUNT(DISTINCT student_id) AS n
-      FROM exam_session
-     WHERE started_at >= $1 AND started_at < $2
+    SELECT params.anchor
+             + floor(extract(epoch FROM ((e.started_at AT TIME ZONE 'Asia/Jakarta') - params.anchor)) / %[1]d)
+               * interval '%[1]d seconds' AS b,
+           COUNT(DISTINCT e.student_id) AS n
+      FROM exam_session e CROSS JOIN params
+     WHERE e.started_at >= $1 AND e.started_at < $2
      GROUP BY 1
 )
 SELECT s.b,
@@ -96,7 +123,7 @@ SELECT s.b,
   LEFT JOIN newstud  ON newstud.b = s.b
   LEFT JOIN examstud ON examstud.b = s.b
  ORDER BY s.b
-`, unit, paidStatusList)
+`, bucketSeconds, paidStatusList)
 
 	rows, err := r.pool.Query(ctx, query, from, to, physicalTypes)
 	if err != nil {
@@ -114,20 +141,31 @@ SELECT s.b,
 		); err != nil {
 			return nil, err
 		}
+		// b comes back as a timezone-naive Postgres timestamp holding Jakarta
+		// wall-clock values; pgx scans it with a UTC Location, which would
+		// serialize as a false "...Z" instant. Re-anchor the same wall-clock
+		// numbers to Asia/Jakarta so the JSON offset is honest.
+		p.Date = time.Date(
+			p.Date.Year(), p.Date.Month(), p.Date.Day(),
+			p.Date.Hour(), p.Date.Minute(), p.Date.Second(), p.Date.Nanosecond(),
+			jakarta,
+		)
 		out = append(out, p)
 	}
 	return out, rows.Err()
 }
 
-// bucketUnit whitelists the interpolated unit. It is concatenated into SQL, so
-// it must never come straight from a caller-supplied bucket parameter.
-func bucketUnit(bucket string) (string, error) {
+// bucketUnit whitelists the caller-supplied bucket and returns its length in
+// seconds. The result is interpolated into generated SQL as a literal, so
+// bucket must never reach the query un-validated — this switch is the only
+// gate.
+func bucketUnit(bucket string) (int, error) {
 	switch bucket {
 	case "day":
-		return "day", nil
+		return 86400, nil
 	case "week":
-		return "week", nil
+		return 7 * 86400, nil
 	default:
-		return "", fmt.Errorf("unsupported bucket %q", bucket)
+		return 0, fmt.Errorf("unsupported bucket %q", bucket)
 	}
 }
