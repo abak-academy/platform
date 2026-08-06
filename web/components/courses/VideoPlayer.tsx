@@ -76,6 +76,12 @@ function loadYoutubeApi(): Promise<void> {
     script.async = true;
     script.onerror = () => reject(new Error("youtube iframe_api failed to load"));
     document.head.appendChild(script);
+  }).catch((err) => {
+    // A transient failure (flaky network, ad blocker) must not be cached
+    // forever — reset so the next mount gets a fresh attempt instead of
+    // permanently falling back to the shield-less embed.
+    apiPromise = null;
+    throw err;
   });
   return apiPromise;
 }
@@ -110,7 +116,15 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
         if (cancelled || !mountEl.current) return;
         const w = window as unknown as YTGlobal;
         if (!w.YT?.Player) throw new Error("YT.Player missing after ready");
-        player.current = new w.YT.Player(mountEl.current, {
+        // YT.Player REPLACES the element it's given with its own <iframe> —
+        // it does not mount inside it, and destroy() does not restore what
+        // was there. mountEl.current is React's node and must never be
+        // handed to YT directly, or the second video on this instance gets
+        // constructed against an already-detached div. Give YT a throwaway
+        // child instead, rebuilt fresh on every id change.
+        const mountNode = document.createElement("div");
+        mountEl.current.appendChild(mountNode);
+        player.current = new w.YT.Player(mountNode, {
           videoId: id,
           playerVars: {
             enablejsapi: 1,
@@ -136,7 +150,11 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
               setDuration(player.current?.getDuration() ?? 0);
             },
             onError: () => {
-              if (!cancelled) setFallback(true);
+              if (cancelled) return;
+              player.current?.destroy();
+              player.current = null;
+              if (mountEl.current) mountEl.current.innerHTML = "";
+              setFallback(true);
             },
           },
         });
@@ -149,6 +167,7 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
       cancelled = true;
       player.current?.destroy();
       player.current = null;
+      if (mountEl.current) mountEl.current.innerHTML = "";
     };
   }, [id, forceFallback]);
 
