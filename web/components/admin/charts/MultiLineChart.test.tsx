@@ -134,4 +134,35 @@ describe("MultiLineChart", () => {
     const summary = container.querySelector(".sr-only")?.textContent ?? "";
     expect(summary).not.toContain("undefined");
   });
+
+  // The brief's "scales all series on one axis" test above is vacuous: with
+  // series[0]=[1,2,3] and series[2]=[7,8,9], series 2 sits higher than series
+  // 0 under BOTH shared scaling (max=9) and independent per-series scaling
+  // (each series' own max), so it can't tell the two schemes apart. This test
+  // uses a fixture where they diverge: under independent scaling both series
+  // would hit their own max and render at the same y (≈0); only shared
+  // scaling separates them. Do not "simplify" this back to the vacuous shape.
+  it("keeps a low-value series visibly below a high-value one under the shared scale", () => {
+    const { container } = render(
+      <MultiLineChart
+        labels={["1 Jul", "2 Jul"]}
+        series={[
+          { values: [9, 9], color: "#1A5CFF", label: "Tinggi" },
+          { values: [1, 1], color: "#F5A623", label: "Rendah" },
+        ]}
+        emptyLabel="Belum ada data"
+      />
+    );
+    const paths = Array.from(container.querySelectorAll("path"));
+    const highY = parseFloat(paths[0].getAttribute("d")!.split(",")[1]);
+    const lowY = parseFloat(paths[1].getAttribute("d")!.split(",")[1]);
+
+    // Shared scale (max=9): high series sits at the top (y≈0), low series
+    // sits near the baseline (y≈88.9 for height=100). Independent scaling
+    // would instead put both at y≈0 (each hitting its own max) — a diff of
+    // ≈0 rather than the wide separation asserted below.
+    expect(highY).toBeCloseTo(0, 1);
+    expect(lowY).toBeCloseTo(88.89, 1);
+    expect(Math.abs(lowY - highY)).toBeGreaterThan(50);
+  });
 });
