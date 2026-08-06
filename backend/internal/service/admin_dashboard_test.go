@@ -1,8 +1,11 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestPhysicalTypeValuesMatchIsPhysicalType(t *testing.T) {
@@ -72,5 +75,130 @@ func TestResolveBucketDefaultsByRangeLength(t *testing.T) {
 	}
 	if got := resolveBucket("day", from, from.AddDate(0, 0, 90)); got != "day" {
 		t.Errorf("explicit bucket must win, got %q", got)
+	}
+}
+
+// TestAdminDashboardCountsOrderRevenueOncePerOrder exercises the full
+// AdminDashboard pipeline (not just DashboardSeries, which dashboard_series_test.go
+// already covers at the repository level) against a real, seeded order with two
+// line items. This repo shipped the PR #80 fan-out bug once already — joining
+// order_item and summing orders.total counts the order once per line item — so
+// an aggregation this central needs more than an empty-database smoke test.
+//
+// 2030 is untouched by every other test in this package: the real-DB container
+// (newRealDBService) is shared and rows are never reset between tests.
+func TestAdminDashboardCountsOrderRevenueOncePerOrder(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	pool := repo.Pool()
+	ctx := context.Background()
+
+	jkt, _ := time.LoadLocation("Asia/Jakarta")
+	day := time.Date(2030, 1, 15, 10, 0, 0, 0, jkt)
+	from := time.Date(2030, 1, 15, 0, 0, 0, 0, jkt)
+	to := time.Date(2030, 1, 16, 0, 0, 0, 0, jkt)
+
+	var studentID string
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO users (name, username, role, status, jenjang, grade, otp_enabled, created_at)
+		 VALUES ($1, $2, 'student', 'active', 'sma', 10, false, $3) RETURNING id`,
+		"Dashboard Pipeline Student "+uuid.NewString()[:12], "dashpipe_"+uuid.NewString()[:12], day,
+	).Scan(&studentID); err != nil {
+		t.Fatalf("seed student: %v", err)
+	}
+
+	var physicalProductID, digitalProductID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO product (name, type, price, status) VALUES ($1, 'book', 60000, 'published') RETURNING id`,
+		"Dashboard Pipeline Book "+uuid.NewString()[:12],
+	).Scan(&physicalProductID); err != nil {
+		t.Fatalf("seed physical product: %v", err)
+	}
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO product (name, type, price, status) VALUES ($1, 'course', 40000, 'published') RETURNING id`,
+		"Dashboard Pipeline Course "+uuid.NewString()[:12],
+	).Scan(&digitalProductID); err != nil {
+		t.Fatalf("seed digital product: %v", err)
+	}
+
+	// The order is charged once for 100000 (60000 book + 40000 course); the
+	// fan-out bug would report this as 200000 (counted once per line item).
+	const orderTotal = 100000.0
+	var orderID string
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO orders (student_id, status, subtotal, total, created_at)
+		 VALUES ($1, 'paid', $2, $2, $3) RETURNING id`,
+		studentID, orderTotal, day,
+	).Scan(&orderID); err != nil {
+		t.Fatalf("seed order: %v", err)
+	}
+	// weight_grams is set explicitly (0 is fine for both — the digital item has
+	// none and the physical one isn't shipped in this test): AdminListOrders'
+	// unfiltered ORDER BY created_at DESC picks up every order in the shared
+	// real-DB fixture, this test's future-dated order included, and
+	// fetchItems scans weight_grams into a plain int — a NULL there crashes an
+	// unrelated test elsewhere in the package.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams)
+		 VALUES ($1, $2, 'book', 'Dashboard Pipeline Book', 60000, 1, 60000, 0)`,
+		orderID, physicalProductID,
+	); err != nil {
+		t.Fatalf("seed physical item: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams)
+		 VALUES ($1, $2, 'course', 'Dashboard Pipeline Course', 40000, 1, 40000, 0)`,
+		orderID, digitalProductID,
+	); err != nil {
+		t.Fatalf("seed digital item: %v", err)
+	}
+
+	resp, err := svc.AdminDashboard(ctx, from, to, "day")
+	if err != nil {
+		t.Fatalf("AdminDashboard: %v", err)
+	}
+
+	if resp.KPI["revenue"].Value != orderTotal {
+		t.Errorf("kpi.revenue.value = %v, want %v exactly once (PR #80 fan-out regression)", resp.KPI["revenue"].Value, orderTotal)
+	}
+
+	var seriesRevenue, seriesDigital, seriesPhysical float64
+	for _, p := range resp.Series {
+		seriesRevenue += p.Revenue
+		seriesDigital += p.RevenueDigital
+		seriesPhysical += p.RevenuePhysical
+	}
+	if seriesRevenue != resp.KPI["revenue"].Value {
+		t.Errorf("sum(series.revenue) = %v, want %v (kpi.revenue.value)", seriesRevenue, resp.KPI["revenue"].Value)
+	}
+	if seriesPhysical != 60000 {
+		t.Errorf("sum(series.revenue_physical) = %v, want 60000 (the book line)", seriesPhysical)
+	}
+	if seriesDigital != 40000 {
+		t.Errorf("sum(series.revenue_digital) = %v, want 40000 (the course line)", seriesDigital)
+	}
+
+	byProduct := map[string]DashboardTopProduct{}
+	for _, p := range resp.TopProducts {
+		byProduct[p.ProductID] = p
+	}
+	bookTop, ok := byProduct[physicalProductID.String()]
+	if !ok {
+		t.Fatalf("top_products missing the book line item: %+v", resp.TopProducts)
+	}
+	if bookTop.ProductRevenue != 60000 || bookTop.QtySold != 1 {
+		t.Errorf("book top product = revenue %v qty %v, want 60000/1", bookTop.ProductRevenue, bookTop.QtySold)
+	}
+	if !bookTop.IsPhysical {
+		t.Errorf("book top product IsPhysical = false, want true")
+	}
+	courseTop, ok := byProduct[digitalProductID.String()]
+	if !ok {
+		t.Fatalf("top_products missing the course line item: %+v", resp.TopProducts)
+	}
+	if courseTop.ProductRevenue != 40000 || courseTop.QtySold != 1 {
+		t.Errorf("course top product = revenue %v qty %v, want 40000/1", courseTop.ProductRevenue, courseTop.QtySold)
+	}
+	if courseTop.IsPhysical {
+		t.Errorf("course top product IsPhysical = true, want false")
 	}
 }

@@ -143,3 +143,38 @@ func TestAdminDashboardEchoesRequestedPeriod(t *testing.T) {
 		t.Errorf("period = %s..%s, want 2026-07-01..2026-07-31", body.Period.From, body.Period.To)
 	}
 }
+
+// TestAdminDashboardDefaultPeriodEndsToday pins the no-params path, which is
+// the common case: presetRange("30d") on the frontend sends neither `from`
+// nor `to`. The handler must derive a midnight-aligned default `to` the way
+// parseDayRange would for an explicit "today", not pass time.Now() straight
+// through — otherwise the echoed period.to reads one day behind the data the
+// query actually covers.
+func TestAdminDashboardDefaultPeriodEndsToday(t *testing.T) {
+	env := newAdminDashboardTestEnv(t)
+	token := env.tokenFor(t, service.RoleSuperAdmin)
+
+	rec := getWithToken(t, env.e, "/api/v1/admin/dashboard", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Period struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+		} `json:"period"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	jkt, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		t.Fatalf("load Asia/Jakarta: %v", err)
+	}
+	wantTo := time.Now().In(jkt).Format("2006-01-02")
+	if body.Period.To != wantTo {
+		t.Errorf("period.to = %q, want today (%q) in Asia/Jakarta", body.Period.To, wantTo)
+	}
+}

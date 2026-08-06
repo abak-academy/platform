@@ -25,12 +25,17 @@ func (h *Handler) AdminDashboard(c echo.Context) error {
 		return badRequest(c, "bucket must be day or week")
 	}
 
+	// Default window mirrors parseDayRange's own convention: a midnight-aligned
+	// `to` advanced one day, so an unparameterized request (the frontend's
+	// default 30-day preset) includes all of today, not everything up to the
+	// instant the request happened to land.
 	now := time.Now().In(jakarta)
-	from := now.AddDate(0, 0, -30)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, jakarta)
+	from := today.AddDate(0, 0, -30)
 	if fromParam != nil {
 		from = *fromParam
 	}
-	to := now
+	to := today.AddDate(0, 0, 1)
 	if toParam != nil {
 		to = *toParam
 	}
