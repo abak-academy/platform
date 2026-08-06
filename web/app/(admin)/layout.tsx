@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth";
-import { useResolvedAdminRole } from "@/lib/hooks/use-capability";
+import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { AppShell } from "@/components/shell/AppShell";
 import { ADMIN_ROLES } from "@/lib/nav-config";
 import "./admin-theme.css";
@@ -15,7 +15,7 @@ export default function AdminLayout({
 }) {
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
-  const { role: effectiveRole, hydrated, meIsError } = useResolvedAdminRole();
+  const { role: effectiveRole, hydrated, meIsError } = useResolvedRole();
 
   useEffect(() => {
     if (!hydrated) return;

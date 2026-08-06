@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth";
 import { useProfile } from "@/lib/hooks/students";
+import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { isProfileComplete } from "@/lib/profile";
 import { AppShell } from "@/components/shell/AppShell";
 import { ADMIN_ROLES } from "@/lib/nav-config";
-import type { UserRole } from "@/lib/nav-config";
 
 const SNAP_SRC =
   process.env.NEXT_PUBLIC_MIDTRANS_SNAP_URL ??
@@ -21,11 +21,13 @@ export default function StudentLayout({
   children: React.ReactNode;
 }) {
   const token = useAuthStore((s) => s.token);
-  const user = useAuthStore((s) => s.user);
   const router = useRouter();
-  const [hydrated, setHydrated] = useState(false);
 
-  const role = user?.role as UserRole | undefined;
+  // Server truth, not the persisted user object: a stored session that lost its
+  // user (an old persisted blob, a hand-edited localStorage) left `role`
+  // undefined, and the admin redirect below short-circuited into a no-op — a
+  // super_admin token then rendered the whole student shell.
+  const { role, hydrated, meIsError } = useResolvedRole();
 
   // Durable Google-only completeness gate — re-evaluated each session from DB-truth.
   const {
@@ -43,19 +45,19 @@ export default function StudentLayout({
     profileLoading || profileError || (profileFetching && profile?.auth_provider === "google");
 
   useEffect(() => {
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
     if (!hydrated) return;
     if (!token) {
+      router.replace("/login");
+      return;
+    }
+    if (meIsError) {
       router.replace("/login");
       return;
     }
     if (role && ADMIN_ROLES.includes(role)) {
       router.replace("/admin");
     }
-  }, [hydrated, token, role, router]);
+  }, [hydrated, token, meIsError, role, router]);
 
   // Google-only gate: incomplete Google students go to /complete-profile.
   // Password students with NULL school_id are never redirected.
@@ -104,8 +106,10 @@ export default function StudentLayout({
     };
   }, [hydrated, token]);
 
-  // Show loading while profile resolves (gate needs it) or during no-token/admin checks.
-  if (!hydrated || !token || (role && ADMIN_ROLES.includes(role)) || profilePending) {
+  // Show loading while profile resolves (gate needs it) or during no-token/admin
+  // checks. An unresolved role holds the shell back too — rendering it would put
+  // an unidentified session inside the student UI.
+  if (!hydrated || !token || !role || ADMIN_ROLES.includes(role) || profilePending) {
     return (
       <div className="flex min-h-screen items-center justify-center text-ink-500">
         Memuat…
