@@ -326,8 +326,8 @@ click-shield`.
 
 ## 9. Open
 
-- `nav_group_catalog` needs an Indonesian label. "Katalog" unless the client
-  prefers otherwise.
+- ~~`nav_group_catalog` needs an Indonesian label.~~ **Resolved 2026-08-06:**
+  "Katalog" (id) / "Catalog" (en).
 - `admin_store`'s `products(book|course):write` capability string has never
   matched anything (`HasCapability` cannot read the pipe). It is inert rather
   than harmful — `checkTypeRBAC` is what actually gates `admin_store` — so it is
