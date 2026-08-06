@@ -289,3 +289,18 @@ html[data-theme="dark"] .admin-shell {
   transform-origin: 0 0;
   animation: chart-wipe 1.15s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
+
+/* Grow-up for StackedBarChart's rects. transform-box: fill-box makes
+   transform-origin resolve against the rect's own geometry (its bounding
+   box) rather than the SVG viewport's origin — without it, "bottom" is
+   ambiguous/inconsistent across browsers for SVG shapes. */
+@keyframes chart-grow {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+
+.chart-grow {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: chart-grow 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
