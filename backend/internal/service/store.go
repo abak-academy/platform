@@ -78,17 +78,28 @@ type PromoValidation struct {
 	Total    float64
 }
 
-func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFilter, role string) ([]model.Product, string, error) {
+// productListFilterForRole narrows a product list filter to what role may see.
+// It is a free function so the policy is unit-testable without a repository —
+// s.storeRepo is a concrete type and cannot be faked.
+func productListFilterForRole(filter repository.ProductFilter, role string) repository.ProductFilter {
 	switch role {
 	case RoleSuperAdmin:
 		// no filter restrictions
 	case RoleAdminStore:
 		// no filter restrictions — manages book, course, exam
-	default: // student, admin_exam, or ""
+	case RoleAdminExam:
+		// no filter restrictions — authors exam and course products, which
+		// AdminCreateProduct creates as "draft"; hiding drafts here would make
+		// every product this role creates invisible to it.
+	default: // student or ""
 		filter.VisibleOnly = true
 		filter.Status = "published"
 	}
-	return s.storeRepo.ListProducts(ctx, filter)
+	return filter
+}
+
+func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFilter, role string) ([]model.Product, string, error) {
+	return s.storeRepo.ListProducts(ctx, productListFilterForRole(filter, role))
 }
 
 func (s *Service) GetProduct(ctx context.Context, id string, role string) (model.Product, error) {

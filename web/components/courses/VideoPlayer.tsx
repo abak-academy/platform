@@ -44,7 +44,6 @@ interface YTPlayer {
   getCurrentTime(): number;
   getDuration(): number;
   getVideoLoadedFraction(): number;
-  setVolume(volume: number): void;
   mute(): void;
   unMute(): void;
   destroy(): void;
@@ -93,6 +92,26 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** In-app 16:9 notice card. Carries no YouTube iframe, so it cannot leak out. */
+function PlayerNotice({ title, message }: { title?: string; message: string }) {
+  return (
+    <div
+      className="overflow-hidden rounded-lg border border-line bg-ink-900"
+      style={{ aspectRatio: "16 / 9" }}
+    >
+      <div className="flex size-full flex-col items-center justify-center gap-3 text-ink-400">
+        <PlayCircle size={48} strokeWidth={1.5} />
+        <div className="text-center">
+          <p className="text-sm font-medium text-ink-300">
+            {title ? `${title}` : "Video pelajaran"}
+          </p>
+          <p className="mt-1 text-xs text-ink-500">{message}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps) {
   const id = toYoutubeId(videoRef);
 
@@ -101,6 +120,7 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
   const player = useRef<YTPlayer | null>(null);
 
   const [fallback, setFallback] = useState(Boolean(forceFallback));
+  const [unplayable, setUnplayable] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [position, setPosition] = useState(0);
@@ -113,6 +133,7 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
     // the real player — otherwise one bad video_url pins every later lesson
     // in the session to the shield-less fallback. forceFallback still wins.
     setFallback(Boolean(forceFallback));
+    setUnplayable(false);
     if (!id || forceFallback) return;
     let cancelled = false;
 
@@ -131,6 +152,10 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
         mountEl.current.appendChild(mountNode);
         player.current = new w.YT.Player(mountNode, {
           videoId: id,
+          // Without these the IFrame API writes its 640x390 default onto the
+          // generated iframe, which the responsive 16:9 wrapper then crops.
+          width: "100%",
+          height: "100%",
           playerVars: {
             enablejsapi: 1,
             controls: 0,
@@ -154,12 +179,17 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
               setPlaying(e.data === 1);
               setDuration(player.current?.getDuration() ?? 0);
             },
+            // A per-video failure (embedding disabled, deleted, region-locked)
+            // must NOT reach the shield-less fallback: YouTube's own error
+            // screen carries a live "Watch on YouTube" link, which is the exact
+            // leak this player exists to close. D7 covers the API failing to
+            // load, not one bad video_url.
             onError: () => {
               if (cancelled) return;
               player.current?.destroy();
               player.current = null;
               if (mountEl.current) mountEl.current.innerHTML = "";
-              setFallback(true);
+              setUnplayable(true);
             },
           },
         });
@@ -215,22 +245,19 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
 
   if (!id) {
     return (
-      <div
-        className="overflow-hidden rounded-lg border border-line bg-ink-900"
-        style={{ aspectRatio: "16 / 9" }}
-      >
-        <div className="flex size-full flex-col items-center justify-center gap-3 text-ink-400">
-          <PlayCircle size={48} strokeWidth={1.5} />
-          <div className="text-center">
-            <p className="text-sm font-medium text-ink-300">
-              {title ? `${title}` : "Video pelajaran"}
-            </p>
-            <p className="mt-1 text-xs text-ink-500">
-              Video belum tersedia. Hubungi admin untuk informasi lebih lanjut.
-            </p>
-          </div>
-        </div>
-      </div>
+      <PlayerNotice
+        title={title}
+        message="Video belum tersedia. Hubungi admin untuk informasi lebih lanjut."
+      />
+    );
+  }
+
+  if (unplayable) {
+    return (
+      <PlayerNotice
+        title={title}
+        message="Video tidak dapat diputar. Hubungi admin untuk informasi lebih lanjut."
+      />
     );
   }
 
@@ -257,7 +284,15 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
       className="relative overflow-hidden rounded-lg border border-line bg-ink-900"
       style={{ aspectRatio: "16 / 9" }}
     >
-      <div ref={mountEl} className="block size-full" />
+      {/* The IFrame API writes width/height ATTRIBUTES on the iframe it
+          generates. Author CSS outranks presentational attributes, so this
+          child rule is what actually sizes it — the width/height player
+          options above are the belt to this pair of braces. */}
+      <div
+        ref={mountEl}
+        data-testid="video-mount"
+        className="block size-full [&>iframe]:block [&>iframe]:size-full [&>iframe]:border-0"
+      />
 
       {/* Absorbs every pointer event so YouTube's title bar and logo never
           render, let alone become clickable. Must have no gaps. */}

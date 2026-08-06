@@ -213,11 +213,6 @@ func (s *shimService) ListProducts(ctx context.Context, filter repository.Produc
 		if filter.Type == "exam" {
 			return nil, "", nil
 		}
-	case RoleAdminExam:
-		if filter.Type != "" && filter.Type != "exam" {
-			return nil, "", nil
-		}
-		filter.Type = "exam"
 	default:
 		filter.VisibleOnly = true
 		filter.Status = "published"
@@ -386,6 +381,33 @@ func TestListProducts_AdminStoreExamReturnsEmpty(t *testing.T) {
 	}
 	if len(products) != 0 {
 		t.Errorf("admin_store should not see exam products, got %d", len(products))
+	}
+}
+
+// Drives the PRODUCTION policy (productListFilterForRole) against the fake repo
+// rather than shimService, whose ListProducts encodes rules production does not
+// have. admin_exam creates products through AdminCreateProduct, which hardcodes
+// status "draft" — so a draft-hiding filter makes its own products unreachable.
+func TestListProducts_AdminExamSeesDrafts_StudentDoesNot(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	fake.seedProduct(model.Product{ID: "p1", Type: "course", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p2", Type: "course", Status: "published"})
+
+	forExam, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{}, RoleAdminExam))
+	if err != nil {
+		t.Fatalf("ListProducts(admin_exam): %v", err)
+	}
+	if len(forExam) != 2 {
+		t.Errorf("admin_exam must see its own draft products: want 2, got %d", len(forExam))
+	}
+
+	forStudent, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{}, RoleStudent))
+	if err != nil {
+		t.Fatalf("ListProducts(student): %v", err)
+	}
+	if len(forStudent) != 1 || forStudent[0].ID != "p2" {
+		t.Errorf("student must still see only published products, got %+v", forStudent)
 	}
 }
 

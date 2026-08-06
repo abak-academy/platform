@@ -15,7 +15,11 @@ class FakePlayer {
 
   constructor(
     el: HTMLElement,
-    public opts: { events?: { onReady?: () => void; onError?: () => void } },
+    public opts: {
+      width?: string | number;
+      height?: string | number;
+      events?: { onReady?: () => void; onError?: () => void };
+    },
   ) {
     this.wasConnectedAtConstruction = el.isConnected;
     FakePlayer.instances.push(this);
@@ -36,7 +40,6 @@ class FakePlayer {
   getVideoLoadedFraction() {
     return 0;
   }
-  setVolume() {}
   mute() {}
   unMute() {}
   destroy() {
@@ -92,13 +95,67 @@ describe("VideoPlayer", () => {
     expect(screen.getByRole("slider", { name: /posisi|progress/i })).toBeInTheDocument();
   });
 
-  it("falls back to a plain embed when the IFrame API fails to load", async () => {
+  // This exercises the forceFallback TEST SEAM only — it does not simulate a
+  // load failure. The real failure path is covered by "recovers on a later
+  // mount after the YouTube API script fails to load once" below.
+  it("renders the shield-less plain embed when the forceFallback seam is set", async () => {
     const { container } = render(
       <VideoPlayer videoRef="abc123" title="L1" forceFallback />,
     );
     const iframe = container.querySelector("iframe");
     expect(iframe).not.toBeNull();
     expect(container.querySelector('[data-testid="video-shield"]')).toBeNull();
+  });
+
+  it("constructs the player with fill-the-wrapper sizing options", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    render(<VideoPlayer videoRef="abc123" title="L1" />);
+
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+    // Without these the IFrame API stamps its 640x390 default on the iframe.
+    expect(FakePlayer.instances[0].opts.width).toBe("100%");
+    expect(FakePlayer.instances[0].opts.height).toBe("100%");
+  });
+
+  it("gives the mount host a fill-the-wrapper style contract for the injected iframe", () => {
+    // jsdom has no layout, so this pins the CSS contract rather than the pixels:
+    // the API writes width/height ATTRIBUTES, which author CSS outranks.
+    const { container } = render(<VideoPlayer videoRef="abc123" title="L1" />);
+    const mount = container.querySelector('[data-testid="video-mount"]');
+    expect(mount).not.toBeNull();
+    expect(mount!.className).toContain("size-full");
+    expect(mount!.className).toContain("[&>iframe]:size-full");
+  });
+
+  it("shows an in-app error card with no YouTube iframe when a video errors, and recovers on the next lesson", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    const { rerender, container } = render(
+      <VideoPlayer videoRef="videoBlocked" title="Pelajaran 1" />,
+    );
+
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+    FakePlayer.instances[0].triggerError();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Video tidak dapat diputar/i)).toBeInTheDocument();
+    });
+
+    // The shield-less fallback embed would put YouTube's own error screen —
+    // and its live "Watch on YouTube" link — back on the page.
+    const srcs = Array.from(container.querySelectorAll("iframe")).map(
+      (f) => f.getAttribute("src") ?? "",
+    );
+    expect(srcs.some((s) => s.includes("youtube-nocookie.com") || s.includes("youtube.com"))).toBe(
+      false,
+    );
+
+    rerender(<VideoPlayer videoRef="videoGood" title="Pelajaran 2" />);
+
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(2));
+    expect(container.querySelector('[data-testid="video-shield"]')).not.toBeNull();
+    expect(screen.queryByText(/Video tidak dapat diputar/i)).toBeNull();
   });
 
   it("rebuilds the player against a fresh, still-attached node when videoRef changes on a live instance", async () => {
@@ -155,7 +212,7 @@ describe("VideoPlayer", () => {
     expect(FakePlayer.instances).toHaveLength(1);
   });
 
-  it("resets fallback for the next lesson after a real onError, and destroys the player before falling back", async () => {
+  it("resets the error state for the next lesson after a real onError, and destroys the player first", async () => {
     vi.stubGlobal("YT", { Player: FakePlayer });
 
     const { rerender, container } = render(
@@ -167,8 +224,8 @@ describe("VideoPlayer", () => {
 
     bad.triggerError();
 
-    // onError must destroy the player itself — nothing else will, since
-    // setFallback alone doesn't change [id, forceFallback], so the effect's
+    // onError must destroy the player itself — nothing else will, since the
+    // state flip alone doesn't change [id, forceFallback], so the effect's
     // own cleanup never runs for this transition.
     expect(bad.destroyed).toBe(true);
 
