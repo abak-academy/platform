@@ -641,6 +641,8 @@ export const DICT = {
 
     /* Auth — login */
     login_title: "Welcome to Abak Academy Hub",
+    admin_login_title: "Masuk Admin",
+    admin_login_lede: "Masuk dengan akun admin Anda.",
     login_lede: "Big goals start here.",
     login_subtitle: "Enter competitions, take courses, get your books and merchandise, and join our edu-trips & events.",
     login_lede_local: "Prestasi besar dimulai dari sini.",
@@ -2024,6 +2026,8 @@ export const DICT = {
 
     /* Auth — login */
     login_title: "Welcome to Abak Academy Hub",
+    admin_login_title: "Admin Sign In",
+    admin_login_lede: "Sign in with your admin credentials.",
     login_lede: "Big goals start here.",
     login_subtitle: "Enter competitions, take courses, get your books and merchandise, and join our edu-trips & events.",
     login_lede_local: "Prestasi besar dimulai dari sini.",
