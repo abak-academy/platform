@@ -47,7 +47,13 @@ func (h *Handler) AdminListCourses(c echo.Context) error {
 	}
 	cursor := c.QueryParam("cursor")
 
-	courses, nextCursor, err := h.svc.ListCourses(c.Request().Context(), limit, cursor)
+	claims, _ := c.Get("claims").(*infra.Claims)
+	role := ""
+	if claims != nil {
+		role = claims.Role
+	}
+
+	courses, nextCursor, err := h.svc.ListCourses(c.Request().Context(), limit, cursor, role)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -66,7 +72,12 @@ func parseInt(s string) (int, error) {
 
 func (h *Handler) AdminGetCourse(c echo.Context) error {
 	courseID := c.Param("id")
-	course, sectionCount, lessonCount, err := h.svc.GetCourse(c.Request().Context(), courseID)
+	claims, _ := c.Get("claims").(*infra.Claims)
+	role := ""
+	if claims != nil {
+		role = claims.Role
+	}
+	course, sectionCount, lessonCount, err := h.svc.GetCourse(c.Request().Context(), courseID, role)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -126,7 +137,12 @@ func (h *Handler) AdminUpdateCourse(c echo.Context) error {
 
 func (h *Handler) AdminListSections(c echo.Context) error {
 	courseID := c.Param("id")
-	sections, err := h.svc.ListSections(c.Request().Context(), courseID)
+	claims, _ := c.Get("claims").(*infra.Claims)
+	role := ""
+	if claims != nil {
+		role = claims.Role
+	}
+	sections, err := h.svc.ListSections(c.Request().Context(), courseID, role)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
