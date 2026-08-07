@@ -15,7 +15,7 @@ import { useHasCapability } from "@/lib/hooks/use-capability";
 import { adminHomeForRole } from "@/lib/auth-redirect";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { StatCard } from "@/components/admin/StatCard";
-import { PeriodBar, presetRange, type PeriodPreset, type PeriodRange } from "@/components/admin/PeriodBar";
+import { PeriodBar, type PeriodPreset, type PeriodRange } from "@/components/admin/PeriodBar";
 import { AreaLineChart } from "@/components/admin/charts/AreaLineChart";
 import { MultiLineChart } from "@/components/admin/charts/MultiLineChart";
 import { StackedBarChart } from "@/components/admin/charts/StackedBarChart";
@@ -200,7 +200,7 @@ export default function AdminIndexPage() {
   }
 
   const { data: auditEntries = [], isLoading: auditLoading, isError: auditError, refetch: refetchAudit } = useAdminAuditLog();
-  const { data: dashboard, isLoading: dashboardLoading } = useAdminDashboard(resolvedRange);
+  const { data: dashboard, isLoading: dashboardLoading, isError: dashboardError, refetch: refetchDashboard } = useAdminDashboard(resolvedRange);
   const canReadRevenue = useHasCapability("revenue:read");
 
   useEffect(() => {
@@ -261,13 +261,28 @@ export default function AdminIndexPage() {
         />
       </div>
 
+      {dashboardError ? (
+        <div className="md-card-outlined mb-8">
+          <div className="py-12 text-center text-ink-500">
+            <p className="mb-4">{t("dash_load_failed")}</p>
+            <button
+              type="button"
+              className="md-btn-tonal"
+              onClick={() => refetchDashboard()}
+            >
+              {t("admin_home_reload")}
+            </button>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* KPI row */}
       {dashboardLoading ? (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4 mb-8">
           {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4 mb-8">
+        <div data-testid="kpi-row" className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4 mb-8">
           <KpiCard
             icon={DollarSign}
             label={t("admin_home_kpi_revenue")}
@@ -301,7 +316,8 @@ export default function AdminIndexPage() {
         <Skeleton className="h-40 w-full mb-8" />
       ) : (
         <div className="md-card-outlined mb-8">
-          <h3 className="text-title-medium mb-4" title={t("admin_home_chart_revenue_sub")}>{t("admin_home_chart_revenue_title")}</h3>
+          <h3 className="text-title-medium">{t("admin_home_chart_revenue_title")}</h3>
+          <p className="text-body mb-4">{t("admin_home_chart_revenue_sub")}</p>
           <AreaLineChart
             labels={labels}
             area={{ values: d.series.map((p) => p.revenue), color: CHART_BLUE, label: t("admin_home_series_revenue") }}
@@ -320,7 +336,8 @@ export default function AdminIndexPage() {
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-8">
           <div className="md-card-outlined">
-            <h3 className="text-title-medium mb-4" title={t("admin_home_chart_students_sub")}>{t("admin_home_chart_students_title")}</h3>
+            <h3 className="text-title-medium">{t("admin_home_chart_students_title")}</h3>
+            <p className="text-body mb-4">{t("admin_home_chart_students_sub")}</p>
             <MultiLineChart
               labels={labels}
               series={[
@@ -332,7 +349,8 @@ export default function AdminIndexPage() {
             />
           </div>
           <div className="md-card-outlined">
-            <h3 className="text-title-medium mb-4" title={t("admin_home_chart_mix_sub")}>{t("admin_home_chart_mix_title")}</h3>
+            <h3 className="text-title-medium">{t("admin_home_chart_mix_title")}</h3>
+            <p className="text-body mb-4">{t("admin_home_chart_mix_sub")}</p>
             <StackedBarChart
               labels={labels}
               bottom={{ values: d.series.map((p) => p.revenue_digital), color: CHART_BLUE, label: t("admin_home_series_digital") }}
@@ -442,6 +460,8 @@ export default function AdminIndexPage() {
             )}
           </div>
         </div>
+      )}
+      </>
       )}
 
       {/* Content grid */}

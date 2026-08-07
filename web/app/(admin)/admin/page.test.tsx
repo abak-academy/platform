@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import AdminIndexPage from "./page";
 
 // The page renders the real chart components, and their usePrefersReducedMotion
@@ -77,7 +77,8 @@ let dashboardState: {
   data: Record<string, unknown> | null;
   isLoading: boolean;
   isError: boolean;
-} = { data: null, isLoading: false, isError: false };
+  refetch: ReturnType<typeof vi.fn>;
+} = { data: null, isLoading: false, isError: false, refetch: vi.fn() };
 
 vi.mock("@/lib/hooks/admin-dashboard", () => ({
   useAdminDashboard: () => dashboardState,
@@ -125,7 +126,7 @@ describe("AdminIndexPage — reworked dashboard", () => {
     authStore = { token: "t", user: { role: "super_admin", name: "Super Admin" } };
     meState = { data: null, isError: false, isLoading: false };
     auditState = { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-    dashboardState = { data: sample, isLoading: false, isError: false };
+    dashboardState = { data: sample, isLoading: false, isError: false, refetch: vi.fn() };
   });
 
   it("no longer renders the dead exam-session card", () => {
@@ -146,7 +147,11 @@ describe("AdminIndexPage — reworked dashboard", () => {
 
   it("renders no delta when prev is absent", () => {
     render(<AdminIndexPage />);
-    const newStudents = screen.getByText(/siswa baru/i).closest("div")!;
+    // Scoped to the KPI row, not the whole page: the students chart's own
+    // subtitle ("Siswa baru, ikut ujian, dan belanja") also contains "siswa
+    // baru" as a substring, so an unscoped query would find two matches.
+    const kpiRow = within(screen.getByTestId("kpi-row"));
+    const newStudents = kpiRow.getByText(/siswa baru/i).closest("div")!;
     expect(newStudents.textContent).not.toMatch(/%/);
   });
 
@@ -188,8 +193,24 @@ describe("AdminIndexPage — reworked dashboard", () => {
   });
 
   it("shows skeletons while loading", () => {
-    dashboardState = { data: null, isLoading: true, isError: false };
+    dashboardState = { data: null, isLoading: true, isError: false, refetch: vi.fn() };
     const { container } = render(<AdminIndexPage />);
     expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
+  });
+
+  it("shows a failure message and no zeroed KPI values when the dashboard fails to load", () => {
+    dashboardState = { data: null, isLoading: false, isError: true, refetch: vi.fn() };
+    render(<AdminIndexPage />);
+    expect(screen.getByText("Gagal memuat dashboard.")).toBeInTheDocument();
+    expect(screen.queryByTestId("kpi-row")).toBeNull();
+    expect(screen.queryByText("Rp0")).toBeNull();
+  });
+
+  it("retries the dashboard query when the reload button is clicked on failure", () => {
+    const refetch = vi.fn();
+    dashboardState = { data: null, isLoading: false, isError: true, refetch };
+    render(<AdminIndexPage />);
+    fireEvent.click(screen.getByRole("button", { name: /muat ulang/i }));
+    expect(refetch).toHaveBeenCalled();
   });
 });

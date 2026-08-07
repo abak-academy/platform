@@ -84,7 +84,6 @@ export function StackedBarChart({
                 width={barW}
                 height={bH}
                 fill={bottom.color}
-                opacity="0.85"
               />
               <rect
                 className={cls}
@@ -94,7 +93,6 @@ export function StackedBarChart({
                 width={barW}
                 height={tH}
                 fill={top.color}
-                opacity="0.85"
               />
             </g>
           );
