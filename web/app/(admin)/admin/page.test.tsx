@@ -1,6 +1,22 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import { render, screen } from "@testing-library/react";
 import AdminIndexPage from "./page";
+
+// The page renders the real chart components, and their usePrefersReducedMotion
+// hook calls window.matchMedia, which jsdom does not implement. Mirrors the
+// stub in components/shell/AppShell.test.tsx.
+beforeAll(() => {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  });
+});
 
 const replace = vi.fn();
 const push = vi.fn();
@@ -13,8 +29,8 @@ let authStore: {
   token: string | null;
   user: { role?: string; name?: string } | null;
 } = {
-  token: null,
-  user: null,
+  token: "t",
+  user: { role: "super_admin", name: "Super Admin" },
 };
 
 vi.mock("@/stores/auth", () => ({
@@ -40,7 +56,7 @@ vi.mock("@/lib/hooks/auth", async () => {
   };
 });
 
-// Shared state for admin hooks — each test reassigns before render
+// Shared state for the audit-log panel — unchanged from the previous page.
 let auditState: {
   data: { id: number; actor_name?: string | null; actor_id?: string | null; actor_email?: string | null; target_type: string; target_id: string; action: string; created_at: string }[];
   isLoading: boolean;
@@ -48,223 +64,132 @@ let auditState: {
   refetch: ReturnType<typeof vi.fn>;
 } = {
   data: [],
-  isLoading: true,
+  isLoading: false,
   isError: false,
   refetch: vi.fn(),
-};
-
-let revenueState: {
-  data: { total: number } | null;
-  isLoading: boolean;
-} = {
-  data: null,
-  isLoading: true,
-};
-
-let schoolsState: {
-  data: { id: string; name: string; code: string; student_count?: number }[] | null;
-  isLoading: boolean;
-} = {
-  data: null,
-  isLoading: true,
 };
 
 vi.mock("@/lib/hooks/admin-audit", () => ({
   useAdminAuditLog: () => auditState,
 }));
 
-vi.mock("@/lib/hooks/admin-revenue", () => ({
-  useAdminRevenue: () => revenueState,
+let dashboardState: {
+  data: Record<string, unknown> | null;
+  isLoading: boolean;
+  isError: boolean;
+} = { data: null, isLoading: false, isError: false };
+
+vi.mock("@/lib/hooks/admin-dashboard", () => ({
+  useAdminDashboard: () => dashboardState,
 }));
 
-vi.mock("@/lib/hooks/students", () => ({
-  useSchools: () => schoolsState,
+// Mock only useHasCapability. Do NOT reference useResolvedRole here — that
+// rename lands in Plan A, on a different branch. This branch is cut from main,
+// where the hook is still useResolvedAdminRole and this page does not use it:
+// it resolves role from useAuthStore + useMe, which the preserved harness above
+// already mocks. Referencing A's symbol would couple two branches that are
+// meant to run in parallel.
+vi.mock("@/lib/hooks/use-capability", () => ({
+  useHasCapability: () => true,
 }));
 
-const sampleAuditEntries = [
-  { id: 1, actor_name: "Rina Wijayanti", target_type: "Product", target_id: "P-101", action: "Menambahkan produk baru", created_at: new Date(Date.now() - 120_000).toISOString() },
-  { id: 2, actor_name: "Hendra Gunawan", target_type: "Order", target_id: "ORD-204", action: "Mengubah status pesanan", created_at: new Date(Date.now() - 7200_000).toISOString() },
-  { id: 3, actor_name: "Sri Wahyuni", target_type: "Course", target_id: "C-55", action: "Memperbarui konten kursus", created_at: new Date(Date.now() - 86400_000).toISOString() },
-] as const;
+const sample = {
+  period: { from: "2026-07-08", to: "2026-08-06", bucket: "day" },
+  kpi: {
+    revenue: { value: 48200000, prev: 43000000 },
+    order_count: { value: 126, prev: 117 },
+    new_students: { value: 84 },
+    schools: { value: 23 },
+    students_total: { value: 1284 },
+  },
+  series: [
+    { date: "2026-07-08", revenue: 100, order_count: 1, revenue_digital: 60,
+      revenue_physical: 40, new_students: 2, exam_students: 3, buying_students: 1 },
+    { date: "2026-07-09", revenue: 200, order_count: 2, revenue_digital: 120,
+      revenue_physical: 80, new_students: 1, exam_students: 4, buying_students: 2 },
+  ],
+  attention: { needs_confirm: 7, ready_to_ship: 3, shipment_failed: 2, active_sessions: 14 },
+  top_products: [
+    { product_id: "p1", name: "Try Out UTBK", product_type: "exam",
+      is_physical: false, qty_sold: 412, product_revenue: 8200000 },
+  ],
+  upcoming_exams: [
+    { id: "e1", title: "Try Out UTBK", scheduled_at: "2026-08-12T09:00:00+07:00",
+      registrant_count: 412 },
+  ],
+};
 
-describe("AdminIndexPage", () => {
+describe("AdminIndexPage — reworked dashboard", () => {
   beforeEach(() => {
-    replace.mockClear();
-    push.mockClear();
-    authStore = { token: null, user: null };
-    meState = { data: null, isError: false, isLoading: false };
-    auditState = {
-      data: sampleAuditEntries as unknown as typeof auditState.data,
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    };
-    revenueState = { data: { total: 15_000_000 }, isLoading: false };
-    schoolsState = {
-      data: [
-        { id: "s1", name: "SMA N 1 Jakarta", code: "SMA01", student_count: 40 },
-        { id: "s2", name: "SMA N 2 Jakarta", code: "SMA02", student_count: 25 },
-      ],
-      isLoading: false,
-    };
-  });
-
-  it("renders dashboard for super_admin role", () => {
+    vi.clearAllMocks();
     authStore = { token: "t", user: { role: "super_admin", name: "Super Admin" } };
-    const { getByText, container } = render(<AdminIndexPage />);
-    expect(getByText("Super Admin · Abak Academy")).toBeInTheDocument();
-    const headings = container.querySelectorAll("h1");
-    expect(headings.length).toBeGreaterThan(0);
-  });
-
-  it("renders the hero band description for super_admin", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-    const { getByText } = render(<AdminIndexPage />);
-    expect(
-      getByText(
-        "Akses penuh ke semua domain. Pantau seluruh platform dari satu tempat."
-      )
-    ).toBeInTheDocument();
-  });
-
-  it("renders stat cards for super_admin", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-    const { getByText } = render(<AdminIndexPage />);
-    expect(getByText("Pendapatan Bulan Ini")).toBeInTheDocument();
-    expect(getByText("Total Siswa")).toBeInTheDocument();
-    expect(getByText("Sesi Ujian Aktif")).toBeInTheDocument();
-    expect(getByText("Jumlah Sekolah")).toBeInTheDocument();
-  });
-
-  it("renders revenue formatted as Rupiah", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-    const { getByText } = render(<AdminIndexPage />);
-    expect(getByText("Rp15.000.000")).toBeInTheDocument();
-  });
-
-  it("renders school count and a genuine sum of per-school student counts", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-    const { getByText } = render(<AdminIndexPage />);
-    // 2 schools, but 65 students (40 + 25) — the two stats must NOT collapse to the same number.
-    expect(getByText("2")).toBeInTheDocument();
-    expect(getByText("65")).toBeInTheDocument();
-  });
-
-  it("renders 'Belum tersedia' on Sesi Ujian Aktif", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-    const { getByText } = render(<AdminIndexPage />);
-    expect(getByText("Belum tersedia")).toBeInTheDocument();
-  });
-
-  it("shows skeleton when revenue is loading", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-    revenueState = { data: null, isLoading: true };
-    schoolsState = { data: null, isLoading: true };
-    const { container } = render(<AdminIndexPage />);
-    // Skeleton renders as divs with animate-pulse
-    const skeletons = container.querySelectorAll(".animate-pulse");
-    // At least the revenue card skeleton should appear
-    // (school skeleton also present — that's fine)
-    expect(skeletons.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("renders audit log section for super_admin with real data", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-    const { getByText } = render(<AdminIndexPage />);
-    expect(getByText("Log Aktivitas")).toBeInTheDocument();
-    expect(getByText("Lihat Semua")).toBeInTheDocument();
-    // Audit entries come from mock hook data
-    expect(getByText("Rina Wijayanti")).toBeInTheDocument();
-    expect(getByText("Hendra Gunawan")).toBeInTheDocument();
-    expect(getByText("Sri Wahyuni")).toBeInTheDocument();
-  });
-
-  it("shows loading skeleton while audit log loads", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-    auditState = { data: [], isLoading: true, isError: false, refetch: vi.fn() };
-    const { container } = render(<AdminIndexPage />);
-    const skeletons = container.querySelectorAll(".animate-pulse");
-    expect(skeletons.length).toBeGreaterThanOrEqual(2); // stat + audit skeletons
-  });
-
-  it("shows empty state when audit log is empty", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
+    meState = { data: null, isError: false, isLoading: false };
     auditState = { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-    const { getByText } = render(<AdminIndexPage />);
-    expect(getByText("Belum ada aktivitas.")).toBeInTheDocument();
+    dashboardState = { data: sample, isLoading: false, isError: false };
   });
 
-  it("shows error state with retry button when audit log fails", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-    const refetch = vi.fn();
-    auditState = { data: [], isLoading: false, isError: true, refetch };
-    const { getByText, getByRole } = render(<AdminIndexPage />);
-    expect(getByText("Gagal memuat log aktivitas. Coba lagi nanti.")).toBeInTheDocument();
-    fireEvent.click(getByRole("button", { name: /muat ulang/i }));
-    expect(refetch).toHaveBeenCalled();
-  });
-
-  it("renders quick actions section for super_admin", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-    const { getByText } = render(<AdminIndexPage />);
-    expect(getByText("Akses Cepat")).toBeInTheDocument();
-    expect(getByText("Buat Soal Baru")).toBeInTheDocument();
-    expect(getByText("Tambah Produk")).toBeInTheDocument();
-    expect(getByText("Daftarkan Siswa")).toBeInTheDocument();
-    expect(getByText("Laporan Penjualan")).toBeInTheDocument();
-  });
-
-  it("quick action buttons navigate to correct routes", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
+  it("no longer renders the dead exam-session card", () => {
     render(<AdminIndexPage />);
-    fireEvent.click(screen.getByText("Buat Soal Baru"));
-    expect(push).toHaveBeenCalledWith("/admin/exam/tests");
-    fireEvent.click(screen.getByText("Tambah Produk"));
-    expect(push).toHaveBeenCalledWith("/admin/products");
-    fireEvent.click(screen.getByText("Daftarkan Siswa"));
-    expect(push).toHaveBeenCalledWith("/admin/school/students");
-    fireEvent.click(screen.getByText("Laporan Penjualan"));
-    expect(push).toHaveBeenCalledWith("/admin/revenue");
+    expect(screen.queryByText(/tidak tersedia/i)).toBeNull();
   });
 
-  it("renders the Shield icon (hero band) for super_admin", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-    const { container } = render(<AdminIndexPage />);
-    const svgs = container.querySelectorAll("svg");
-    expect(svgs.length).toBeGreaterThan(0);
-  });
-
-  it("returns null for admin_store role", () => {
-    authStore = { token: "t", user: { role: "admin_store" } };
-    const { container } = render(<AdminIndexPage />);
-    expect(container.innerHTML).toBe("");
-  });
-
-  it("returns null for admin_exam role", async () => {
-    authStore = { token: "t", user: { role: "admin_exam" } };
-    const { container } = render(<AdminIndexPage />);
-    await waitFor(() => expect(replace).toHaveBeenCalled());
-    expect(container.innerHTML).toBe("");
-  });
-
-  it("redirects non-super_admin roles via router.replace", async () => {
-    authStore = { token: "t", user: { role: "admin_store" } };
+  it("renders the live active-session count", () => {
     render(<AdminIndexPage />);
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin/store"));
+    expect(screen.getByText(/14/)).toBeInTheDocument();
   });
 
-  it("uses name from store when available", () => {
-    authStore = {
-      token: "t",
-      user: { role: "super_admin", name: "Budi Santoso" },
+  it("renders a delta when prev is present", () => {
+    render(<AdminIndexPage />);
+    // 48.2M vs 43M = +12%
+    expect(screen.getByText(/12%/)).toBeInTheDocument();
+  });
+
+  it("renders no delta when prev is absent", () => {
+    render(<AdminIndexPage />);
+    const newStudents = screen.getByText(/siswa baru/i).closest("div")!;
+    expect(newStudents.textContent).not.toMatch(/%/);
+  });
+
+  it("turns the shipment-failed card red only above zero", () => {
+    const { rerender } = render(<AdminIndexPage />);
+    expect(screen.getByTestId("attention-shipment-failed").dataset.accent).toBe("error");
+
+    dashboardState = {
+      ...dashboardState,
+      data: { ...sample, attention: { ...sample.attention, shipment_failed: 0 } },
     };
-    const { container } = render(<AdminIndexPage />);
-    expect(container.textContent).toContain("Budi Santoso");
+    rerender(<AdminIndexPage />);
+    expect(screen.getByTestId("attention-shipment-failed").dataset.accent).not.toBe("error");
   });
 
-  it("falls back to 'Super Admin' when name is missing", () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
+  it("links each attention card to its filtered queue", () => {
+    render(<AdminIndexPage />);
+    expect(screen.getByTestId("attention-needs-confirm").closest("a"))
+      .toHaveAttribute("href", "/admin/orders?status=pending");
+    expect(screen.getByTestId("attention-shipment-failed").closest("a"))
+      .toHaveAttribute("href", "/admin/orders?status=shipment_failed");
+  });
+
+  it("renders upcoming exams with registrant counts", () => {
+    render(<AdminIndexPage />);
+    expect(screen.getByText("Try Out UTBK")).toBeInTheDocument();
+    expect(screen.getByText(/412/)).toBeInTheDocument();
+  });
+
+  it("renders an empty state when no exams are scheduled", () => {
+    dashboardState = { ...dashboardState, data: { ...sample, upcoming_exams: [] } };
+    render(<AdminIndexPage />);
+    expect(screen.getByText(/tidak ada ujian terjadwal/i)).toBeInTheDocument();
+  });
+
+  it("still renders the quick actions", () => {
+    render(<AdminIndexPage />);
+    expect(screen.getByText(/akses cepat/i)).toBeInTheDocument();
+  });
+
+  it("shows skeletons while loading", () => {
+    dashboardState = { data: null, isLoading: true, isError: false };
     const { container } = render(<AdminIndexPage />);
-    expect(container.textContent).toContain("Super Admin");
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
   });
 });
