@@ -17,8 +17,12 @@ type SeriesPoint struct {
 	BuyingStudents  int       `json:"buying_students"`
 }
 
-// paidStatuses are the order states that count as money earned. Same list the
-// revenue report uses (GetRevenue, order.go); kept in sync deliberately.
+// paidStatusList is the order states that count as money earned. This is the
+// single definition: GetRevenue and TopProducts (order.go, order_reporting.go)
+// both interpolate it too, rather than keeping their own copies — a status
+// added to one and not the others used to be able to make /admin/revenue and
+// /admin report different numbers for the same window with nothing failing.
+// See TestPaidStatusListsAgree in order_revenue_test.go.
 const paidStatusList = `('paid', 'processing', 'shipped', 'completed')`
 
 // jakarta is loaded once; every DashboardSeries call reuses it.
