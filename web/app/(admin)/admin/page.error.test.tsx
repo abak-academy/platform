@@ -43,8 +43,13 @@ describe("AdminIndexPage — real fetch failure (visible tab)", () => {
   it("shows the failure message and never renders fabricated zeros", async () => {
     render(<AdminIndexPage />, { wrapper });
 
+    // Match the dashboard's exact string, not /gagal memuat/i — the audit
+    // panel's failure copy ("Gagal memuat log aktivitas. Coba lagi nanti.")
+    // also matches that regex, and once both queries have rejected getByText
+    // throws on the ambiguity. Whether both had settled by this point was
+    // timing-dependent, so the loose matcher passed locally and failed in CI.
     await waitFor(() => {
-      expect(screen.getByText(/gagal memuat/i)).toBeInTheDocument();
+      expect(screen.getByText("Gagal memuat dashboard.")).toBeInTheDocument();
     });
 
     // The zeroed fallback must not reach the screen alongside or instead of it.
