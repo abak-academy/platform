@@ -83,6 +83,18 @@ class FakePlayer {
   }
 }
 
+/**
+ * The gate is disabled until onReady lands. FakePlayer pushes itself in its
+ * constructor, so waiting on `instances.length` observes the *call* and can win
+ * the race against React flushing setReady — the click then hits a disabled
+ * button and silently does nothing. Wait on the enabled state, which is the
+ * effect that actually matters.
+ */
+async function clickGate() {
+  await waitFor(() => expect(screen.getByTestId("video-gate")).toBeEnabled());
+  fireEvent.click(screen.getByTestId("video-gate"));
+}
+
 describe("VideoPlayer", () => {
   beforeEach(async () => {
     // loadYoutubeApi() caches a module-level promise across every mount on
@@ -318,7 +330,7 @@ describe("VideoPlayer", () => {
     await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
     const p = FakePlayer.instances[0];
 
-    fireEvent.click(screen.getByTestId("video-gate"));
+    await clickGate();
     expect(p.played).toBe(true);
 
     // Buffering, then the request falls back to unstarted — nothing is playing,
@@ -342,7 +354,7 @@ describe("VideoPlayer", () => {
     await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
     const p = FakePlayer.instances[0];
 
-    fireEvent.click(screen.getByTestId("video-gate"));
+    await clickGate();
     await act(async () => p.emitState(1));
     expect(screen.queryByTestId("video-gate")).toBeNull();
 
@@ -361,7 +373,7 @@ describe("VideoPlayer", () => {
     await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
     const p = FakePlayer.instances[0];
 
-    fireEvent.click(screen.getByTestId("video-gate"));
+    await clickGate();
     await act(async () => p.emitState(1));
     await act(async () => p.emitState(2));
 
@@ -375,7 +387,7 @@ describe("VideoPlayer", () => {
 
     const { rerender } = render(<VideoPlayer videoRef="lessonOne" title="Pelajaran 1" />);
     await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
-    fireEvent.click(screen.getByTestId("video-gate"));
+    await clickGate();
     await act(async () => FakePlayer.instances[0].emitState(1));
     expect(screen.queryByTestId("video-gate")).toBeNull();
 
