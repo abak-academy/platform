@@ -18,14 +18,21 @@ class FakePlayer {
     public opts: {
       width?: string | number;
       height?: string | number;
-      events?: { onReady?: () => void; onError?: () => void };
+      events?: {
+        onReady?: (e: { target: FakePlayer }) => void;
+        onError?: (e: { target: FakePlayer }) => void;
+      };
     },
   ) {
     this.wasConnectedAtConstruction = el.isConnected;
     FakePlayer.instances.push(this);
     this.iframeEl = document.createElement("iframe");
     el.replaceWith(this.iframeEl);
-    opts.events?.onReady?.();
+    // Fired from inside the constructor, and carrying `target`, exactly as the
+    // real API does. Both halves matter: the timing is what makes a handler
+    // reading the instance back off a ref see null, and `target` is the only
+    // reference available that early.
+    opts.events?.onReady?.({ target: this });
   }
 
   playVideo() {}
@@ -59,7 +66,7 @@ class FakePlayer {
   }
   /** Simulates a real YT.Player error event (private/deleted video, region block, etc). */
   triggerError() {
-    this.opts.events?.onError?.();
+    this.opts.events?.onError?.({ target: this });
   }
 }
 
@@ -252,6 +259,21 @@ describe("VideoPlayer", () => {
     expect(container.querySelector('[data-testid="video-shield"]')).not.toBeNull();
   });
 
+  // onReady fires from inside the YT.Player constructor, so a handler reading
+  // the instance back off the ref sees null and stores 0 — which collapses the
+  // scrubber's max={Math.max(duration, 1)} to 1 and clamps every seek.
+  it("reads duration from onReady even when it fires during construction", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    render(<VideoPlayer videoRef="abc123" title="L1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+
+    // FakePlayer.getDuration() returns 100 and calls onReady synchronously.
+    await waitFor(() =>
+      expect(screen.getByRole("slider", { name: /posisi/i })).toHaveAttribute("max", "100"),
+    );
+  });
+
   it("drives the player's volume from the volume slider", async () => {
     vi.stubGlobal("YT", { Player: FakePlayer });
 
@@ -311,14 +333,11 @@ describe("VideoPlayer", () => {
     const volumeSlider = screen.getByRole("slider", { name: /volume/i });
     fireEvent.change(volumeSlider, { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: /bisukan/i }));
-    // Kept inside the scrubber's max: onReady runs from inside the YT.Player
-    // constructor, before player.current is assigned, so duration is still 0
-    // here and max collapses to 1. A larger value would silently clamp.
     fireEvent.change(screen.getByRole("slider", { name: /posisi/i }), {
-      target: { value: "1" },
+      target: { value: "42" },
     });
 
-    expect(screen.getByRole("slider", { name: /posisi/i })).toHaveValue("1");
+    expect(screen.getByRole("slider", { name: /posisi/i })).toHaveValue("42");
 
     rerender(<VideoPlayer videoRef="lessonTwo" title="Pelajaran 2" />);
     await waitFor(() => expect(FakePlayer.instances).toHaveLength(2));

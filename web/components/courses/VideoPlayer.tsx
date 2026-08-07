@@ -163,6 +163,10 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
         // child instead, rebuilt fresh on every id change.
         const mountNode = document.createElement("div");
         mountEl.current.appendChild(mountNode);
+        // Handlers below take the player from `e.target`, never from
+        // player.current: onReady can fire from inside this constructor, when
+        // the ref is still null and a `const` local would still be in its
+        // temporal dead zone. e.target is the instance the API hands back.
         player.current = new w.YT.Player(mountNode, {
           videoId: id,
           // Without these the IFrame API writes its 640x390 default onto the
@@ -182,24 +186,27 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
           },
           host: "https://www.youtube-nocookie.com",
           events: {
-            onReady: () => {
+            onReady: (e: { target: YTPlayer }) => {
               if (cancelled) return;
-              setDuration(player.current?.getDuration() ?? 0);
+              setDuration(e.target.getDuration());
             },
             // YT.PlayerState.PLAYING === 1
-            onStateChange: (e: { data: number }) => {
+            onStateChange: (e: { data: number; target: YTPlayer }) => {
               if (cancelled) return;
               setPlaying(e.data === 1);
-              setDuration(player.current?.getDuration() ?? 0);
+              setDuration(e.target.getDuration());
             },
             // A per-video failure (embedding disabled, deleted, region-locked)
             // must NOT reach the shield-less fallback: YouTube's own error
             // screen carries a live "Watch on YouTube" link, which is the exact
             // leak this player exists to close. D7 covers the API failing to
             // load, not one bad video_url.
-            onError: () => {
+            onError: (e: { target: YTPlayer }) => {
               if (cancelled) return;
-              player.current?.destroy();
+              // e.target, not player.current — an error raised during
+              // construction would otherwise leave the iframe alive and
+              // YouTube's "Watch on YouTube" link with it.
+              e.target.destroy();
               player.current = null;
               if (mountEl.current) mountEl.current.innerHTML = "";
               setUnplayable(true);
