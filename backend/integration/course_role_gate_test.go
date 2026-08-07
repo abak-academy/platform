@@ -16,13 +16,13 @@ func TestListCourses_RoleGate_RealService(t *testing.T) {
 	env := newTestEnv(t)
 	ctx := context.Background()
 
-	forbiddenRoles := []string{service.RoleStudent, service.RoleAdminSchool}
+	forbiddenRoles := []string{service.RoleStudent, service.RoleAdminSchool, service.RoleAdminExam}
 	for _, role := range forbiddenRoles {
 		_, _, err := env.svc.ListCourses(ctx, 20, "", role)
 		require.ErrorIs(t, err, service.ErrForbidden, "role %s should be forbidden", role)
 	}
 
-	allowedRoles := []string{service.RoleAdminExam, service.RoleAdminStore, service.RoleSuperAdmin}
+	allowedRoles := []string{service.RoleAdminStore, service.RoleSuperAdmin}
 	for _, role := range allowedRoles {
 		_, _, err := env.svc.ListCourses(ctx, 20, "", role)
 		require.NoError(t, err, "role %s should be allowed", role)
@@ -35,13 +35,13 @@ func TestGetCourse_RoleGate_RealService(t *testing.T) {
 	ctx := context.Background()
 	courseID := seedCourse(t, env, "Math")
 
-	forbiddenRoles := []string{service.RoleStudent, service.RoleAdminSchool}
+	forbiddenRoles := []string{service.RoleStudent, service.RoleAdminSchool, service.RoleAdminExam}
 	for _, role := range forbiddenRoles {
 		_, _, _, err := env.svc.GetCourse(ctx, courseID, role)
 		require.ErrorIs(t, err, service.ErrForbidden, "role %s should be forbidden", role)
 	}
 
-	allowedRoles := []string{service.RoleAdminExam, service.RoleAdminStore, service.RoleSuperAdmin}
+	allowedRoles := []string{service.RoleAdminStore, service.RoleSuperAdmin}
 	for _, role := range allowedRoles {
 		_, _, _, err := env.svc.GetCourse(ctx, courseID, role)
 		require.NoError(t, err, "role %s should be allowed", role)
@@ -56,13 +56,13 @@ func TestListSections_RoleGate_RealService(t *testing.T) {
 	courseID := seedCourse(t, env, "Math")
 	seedSection(t, env, courseID)
 
-	forbiddenRoles := []string{service.RoleStudent, service.RoleAdminSchool}
+	forbiddenRoles := []string{service.RoleStudent, service.RoleAdminSchool, service.RoleAdminExam}
 	for _, role := range forbiddenRoles {
 		_, err := env.svc.ListSections(ctx, courseID, role)
 		require.ErrorIs(t, err, service.ErrForbidden, "role %s should be forbidden", role)
 	}
 
-	allowedRoles := []string{service.RoleAdminExam, service.RoleAdminStore, service.RoleSuperAdmin}
+	allowedRoles := []string{service.RoleAdminStore, service.RoleSuperAdmin}
 	for _, role := range allowedRoles {
 		_, err := env.svc.ListSections(ctx, courseID, role)
 		require.NoError(t, err, "role %s should be allowed", role)

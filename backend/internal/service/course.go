@@ -28,10 +28,9 @@ func (s *Service) CreateCourse(ctx context.Context, title, level, subject, instr
 	return s.storeRepo.CreateCourse(ctx, c)
 }
 
-// canReadCourses allows the admin roles that need to browse the course catalogue
-// read access, which is broader than canAuthorCourses' write guard above.
+// canReadCourses mirrors the same two-role write boundary used throughout this file.
 func canReadCourses(role string) bool {
-	return role == RoleAdminExam || role == RoleAdminStore || role == RoleSuperAdmin
+	return role == RoleAdminStore || role == RoleSuperAdmin
 }
 
 func (s *Service) ListCourses(ctx context.Context, limit int, cursor string, role string) ([]model.Course, string, error) {
