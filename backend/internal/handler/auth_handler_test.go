@@ -433,10 +433,10 @@ func TestGoogleLoginHandler_ResponseIncludesProfileGateFields(t *testing.T) {
 	}
 }
 
-// TestGoogleLoginHandler_NonStudentEmail_409 covers FR-2's wire contract: an
+// TestGoogleLoginHandler_NonStudentEmail_403 covers FR-2's wire contract: an
 // existing non-student email gets 403 with code=google_not_student, not just
 // a service-level sentinel error.
-func TestGoogleLoginHandler_NonStudentEmail_409(t *testing.T) {
+func TestGoogleLoginHandler_NonStudentEmail_403(t *testing.T) {
 	tokenInfo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"aud":            "handler-google-client",
