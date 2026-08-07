@@ -18,8 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRupiah } from "@/lib/format";
 import type { Product, ProductType, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
-
-const FILTER_TYPES: (ProductType | "all")[] = ["all", "book", "course", "exam", "merchandise", "medal"];
+import { useResolvedRole } from "@/lib/hooks/use-capability";
+import { writableProductTypes } from "@/lib/product-types";
 
 function typeBadgeClass(type: ProductType): string {
   switch (type) {
@@ -58,6 +58,12 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const { data: products, isLoading, isError, error } = useAdminProducts();
+  const { role } = useResolvedRole();
+  const writableTypes = useMemo(() => writableProductTypes(role), [role]);
+  const filterTypes = useMemo<(ProductType | "all")[]>(
+    () => ["all", ...writableTypes],
+    [writableTypes],
+  );
   const create = useCreateProduct();
   const update = useUpdateProduct();
   const publish = usePublishProduct();
@@ -65,9 +71,10 @@ export default function ProductsPage() {
 
   const filtered = useMemo(() => {
     if (!products) return [];
-    if (filter === "all") return products;
-    return products.filter((p) => p.type === filter);
-  }, [products, filter]);
+    const visible = products.filter((p) => writableTypes.includes(p.type));
+    if (filter === "all") return visible;
+    return visible.filter((p) => p.type === filter);
+  }, [products, filter, writableTypes]);
 
   function openCreate() {
     setEditingProduct(null);
@@ -160,7 +167,7 @@ export default function ProductsPage() {
       />
 
       <div className="flex flex-wrap gap-2">
-        {FILTER_TYPES.map((ft) => (
+        {filterTypes.map((ft) => (
           <button
             key={ft}
             className={filter === ft ? "md-btn-filled" : "md-btn-outlined"}

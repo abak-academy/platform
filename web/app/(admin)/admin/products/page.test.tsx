@@ -47,6 +47,12 @@ vi.mock("sonner", () => ({
   },
 }));
 
+let mockRole = "admin_store";
+
+vi.mock("@/lib/hooks/use-capability", () => ({
+  useResolvedRole: () => ({ role: mockRole, hydrated: true, meIsError: false }),
+}));
+
 const sampleProducts: Product[] = [
   { id: "p1", type: "book", name: "Buku Matematika", price: 75000, stock: 12, status: "published" },
   { id: "p2", type: "course", name: "Kursus Fisika", price: 150000, status: "draft" },
@@ -55,6 +61,7 @@ const sampleProducts: Product[] = [
 
 describe("ProductsPage", () => {
   beforeEach(() => {
+    mockRole = "admin_store";
     productsState = {
       data: sampleProducts,
       isLoading: false,
@@ -201,6 +208,40 @@ describe("ProductsPage", () => {
     });
 
     vi.unstubAllGlobals();
+  });
+
+  it("shows an exam admin only the digital products", async () => {
+    mockRole = "admin_exam";
+    render(<ProductsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Kursus Fisika")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Paket UTBK")).toBeInTheDocument();
+    expect(screen.queryByText("Buku Matematika")).not.toBeInTheDocument();
+  });
+
+  it("offers an exam admin only the digital filter tabs", async () => {
+    mockRole = "admin_exam";
+    render(<ProductsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Kursus" })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Ujian" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Buku" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Merchandise" })).not.toBeInTheDocument();
+  });
+
+  it("shows a store admin every product", async () => {
+    mockRole = "admin_store";
+    render(<ProductsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Buku Matematika")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Kursus Fisika")).toBeInTheDocument();
+    expect(screen.getByText("Paket UTBK")).toBeInTheDocument();
   });
 
   it("surfaces an API error as inline error text", async () => {

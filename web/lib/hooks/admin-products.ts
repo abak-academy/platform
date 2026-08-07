@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import type { Product, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 
@@ -9,14 +10,38 @@ export const adminProductsKeys = {
   list: () => [...adminProductsKeys.all, "list"] as const,
 };
 
+// The list endpoint pages at 20 rows and hands back a cursor. Requesting only
+// the first page dropped everything past row 20 with no way to reach it, and
+// because the product table orders by a random uuid primary key the 20 that did
+// arrive were an arbitrary subset, not the newest.
+//
+// Every page is pulled here rather than behind a "load more" button because the
+// products page narrows by type in the browser: filtering a partial list would
+// quietly under-report, and a role could see an empty page while owning rows
+// further down.
 export function useAdminProducts() {
-  return useQuery({
+  const query = useInfiniteQuery({
     queryKey: adminProductsKeys.list(),
-    queryFn: async () => {
-      const res = await authFetch<{ data: Product[]; next_cursor?: string }>("/admin/products");
-      return res.data ?? [];
+    initialPageParam: "",
+    queryFn: async ({ pageParam }) => {
+      const path = pageParam
+        ? `/admin/products?cursor=${encodeURIComponent(pageParam)}`
+        : "/admin/products";
+      return authFetch<{ data: Product[]; next_cursor?: string }>(path);
     },
+    // The server omits the cursor on the final page, which is what ends this.
+    getNextPageParam: (last) => last.next_cursor || undefined,
   });
+
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  return {
+    ...query,
+    data: query.data?.pages.flatMap((page) => page.data ?? []),
+  };
 }
 
 export function useCreateProduct() {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -52,6 +53,9 @@ const productAvailabilityFilter = ` AND (available_from IS NULL OR available_fro
 
 type ProductFilter struct {
 	Type       string
+	// Types is a role-scoped allowlist applied in SQL. nil means unrestricted;
+	// a non-nil empty slice means the role may see no type at all.
+	Types      []string
 	Status     string
 	VisibleOnly bool // true = only published + not hidden
 	Cursor     string
@@ -137,6 +141,21 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 		query += fmt.Sprintf(` AND type = $%d`, argIdx)
 		args = append(args, filter.Type)
 		argIdx++
+	}
+	// Applied here, in the WHERE clause, so the role's type boundary is enforced
+	// before LIMIT picks a page — filtering after the fact would let a page of
+	// physical rows crowd out the course/exam rows the role is entitled to.
+	if filter.Types != nil {
+		if len(filter.Types) == 0 {
+			return []model.Product{}, "", nil
+		}
+		placeholders := make([]string, len(filter.Types))
+		for i, t := range filter.Types {
+			placeholders[i] = fmt.Sprintf("$%d", argIdx)
+			args = append(args, t)
+			argIdx++
+		}
+		query += ` AND type IN (` + strings.Join(placeholders, ", ") + `)`
 	}
 	if filter.Status != "" {
 		query += fmt.Sprintf(` AND status = $%d`, argIdx)
