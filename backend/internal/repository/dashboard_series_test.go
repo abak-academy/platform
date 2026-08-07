@@ -24,6 +24,7 @@ import (
 //	                                                          tests' data landing in this range)
 //	2026-09-01 .. 2026-09-02  DateSerializesInJakartaOffset (asserts only the JSON "date" shape,
 //	                                                          seeds and reads no order/student data)
+//	2026-10-05 .. 2026-10-05  EmptyWindowMarshalsToEmptyArray (from == to, single point, no seed data)
 
 // seedDashboardStudent inserts a student user with an explicit created_at,
 // following the style of insertNullSchoolStudent (admin_students_test.go).
@@ -336,5 +337,37 @@ func TestDashboardSeriesDateSerializesInJakartaOffset(t *testing.T) {
 	const want = "2026-09-01T00:00:00+07:00"
 	if decoded.Date != want {
 		t.Errorf("serialized date = %q, want %q (Jakarta offset, not a false UTC Z)", decoded.Date, want)
+	}
+}
+
+// from == to means to_local (to minus 1 microsecond) falls before anchor
+// (from), so generate_series produces zero rows — the window a custom period
+// picker with no from/to bounds can trivially produce. `var out []SeriesPoint`
+// stays nil in that case, and encoding/json marshals a nil slice as `null`,
+// not `[]`; the frontend's DashboardSeriesPoint[] type isn't nullable, so
+// `d.series.map(...)` throws before any JSX renders and the whole /admin page
+// goes blank.
+//
+// A length check on the Go value can't catch this: nil and an empty slice
+// both report len() == 0. Only the marshaled bytes tell them apart.
+func TestDashboardSeriesEmptyWindowMarshalsToEmptyArray(t *testing.T) {
+	pool := newGradingTestPool(t)
+	r := New(pool)
+
+	jkt, _ := time.LoadLocation("Asia/Jakarta")
+	at := time.Date(2026, 10, 5, 0, 0, 0, 0, jkt)
+
+	pts, err := r.DashboardSeries(context.Background(), at, at, "day",
+		[]string{"book", "merchandise", "medal"})
+	if err != nil {
+		t.Fatalf("DashboardSeries: %v", err)
+	}
+
+	raw, err := json.Marshal(pts)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if string(raw) != "[]" {
+		t.Errorf("marshaled series = %s, want [] (a nil slice marshals as null)", raw)
 	}
 }

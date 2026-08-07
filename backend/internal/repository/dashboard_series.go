@@ -131,7 +131,11 @@ SELECT s.b,
 	}
 	defer rows.Close()
 
-	var out []SeriesPoint
+	// An empty (not nil) slice is the contract: encoding/json marshals a nil
+	// slice as `null`, and the frontend's DashboardSeriesPoint[] type isn't
+	// nullable — from >= to (generate_series produces no rows) would otherwise
+	// serialize `series: null` and crash the page on `d.series.map`.
+	out := make([]SeriesPoint, 0)
 	for rows.Next() {
 		var p SeriesPoint
 		if err := rows.Scan(

@@ -93,12 +93,14 @@ export function PeriodBar({ preset, range, onChange, resolvedFrom, resolvedTo }:
           <Input
             type="date"
             value={range.from ?? ""}
+            max={range.to}
             onChange={(e) => onChange("custom", { ...range, from: e.target.value })}
             className="w-auto"
           />
           <Input
             type="date"
             value={range.to ?? ""}
+            min={range.from}
             onChange={(e) => onChange("custom", { ...range, to: e.target.value })}
             className="w-auto"
           />

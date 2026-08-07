@@ -51,4 +51,16 @@ describe("PeriodBar", () => {
     render(<PeriodBar preset="custom" range={{}} onChange={vi.fn()} />);
     expect(screen.getAllByDisplayValue("").length).toBeGreaterThanOrEqual(2);
   });
+
+  // Nothing on the server rejected from >= to until this fix; the date
+  // inputs bounding each other is the first line of defense against a
+  // super admin picking an inverted or empty custom range at all.
+  it("bounds each date input by the other, so an inverted range can't be entered", () => {
+    const { container } = render(
+      <PeriodBar preset="custom" range={{ from: "2026-08-01", to: "2026-08-10" }} onChange={vi.fn()} />
+    );
+    const inputs = container.querySelectorAll('input[type="date"]');
+    expect(inputs[0].getAttribute("max")).toBe("2026-08-10");
+    expect(inputs[1].getAttribute("min")).toBe("2026-08-01");
+  });
 });

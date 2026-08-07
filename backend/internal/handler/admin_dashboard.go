@@ -40,6 +40,13 @@ func (h *Handler) AdminDashboard(c echo.Context) error {
 		to = *toParam
 	}
 
+	// parseDayRange never compares from/to itself, and an inverted or empty
+	// window (from >= to) makes generate_series produce zero rows — every
+	// aggregate silently comes back empty instead of failing loudly.
+	if !from.Before(to) {
+		return badRequest(c, "from must be before to")
+	}
+
 	resp, err := h.svc.AdminDashboard(c.Request().Context(), from, to, bucket)
 	if err != nil {
 		return mapServiceError(c, err)

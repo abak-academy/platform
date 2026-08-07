@@ -108,6 +108,24 @@ func TestAdminDashboardRejectsBadDate(t *testing.T) {
 	}
 }
 
+// TestAdminDashboardRejectsInvertedRange pins the fix for the crash where an
+// inverted or empty custom period (nothing in PeriodBar stopped a super
+// admin from typing `to` before `from`) made generate_series produce zero
+// rows, series came back `null`, and the whole /admin page went blank on
+// `d.series.map`. parseDayRange advances `to` by one day, so from=2026-08-06
+// / to=2026-08-05 becomes an equal, not just inverted, pair after parsing —
+// the boundary this rejects, not only strict inversion.
+func TestAdminDashboardRejectsInvertedRange(t *testing.T) {
+	env := newAdminDashboardTestEnv(t)
+	token := env.tokenFor(t, service.RoleSuperAdmin)
+
+	rec := getWithToken(t, env.e, "/api/v1/admin/dashboard?from=2026-08-06&to=2026-08-05", token)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("got %d, want 400", rec.Code)
+	}
+}
+
 func TestAdminDashboardRejectsUnknownBucket(t *testing.T) {
 	env := newAdminDashboardTestEnv(t)
 	token := env.tokenFor(t, service.RoleSuperAdmin)
