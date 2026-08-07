@@ -33,7 +33,7 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs font-semibold text-ink-500">{label}</span>
+      <span className="text-xs font-semibold text-ink-600">{label}</span>
       {isLoading ? (
         <Skeleton className="h-5 w-32" />
       ) : (
@@ -159,7 +159,7 @@ export default function AdminProfilePage() {
           />
         </div>
 
-        <p className="mt-4 text-xs text-ink-400">{t("admin_profile_edit_hint")}</p>
+        <p className="mt-4 text-xs text-ink-600">{t("admin_profile_edit_hint")}</p>
       </Card>
 
       <Card className="rounded-2xl border-0 p-6 shadow-md">
