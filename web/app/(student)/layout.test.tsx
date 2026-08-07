@@ -25,6 +25,12 @@ let authStore = {
   user: null as { role?: string } | null,
 };
 
+let roleState = {
+  role: undefined as string | undefined,
+  hydrated: true,
+  meIsError: false,
+};
+
 let profileState = {
   data: undefined as
     | { auth_provider: "google" | "password"; school_id?: string; grade?: number }
@@ -42,10 +48,15 @@ vi.mock("@/lib/hooks/students", () => ({
   useProfile: () => profileState,
 }));
 
+vi.mock("@/lib/hooks/use-capability", () => ({
+  useResolvedRole: () => roleState,
+}));
+
 describe("StudentLayout", () => {
   beforeEach(() => {
     replace.mockClear();
     authStore = { token: null, user: null };
+    roleState = { role: undefined, hydrated: true, meIsError: false };
     profileState = {
       data: undefined,
       isLoading: false,
@@ -61,6 +72,7 @@ describe("StudentLayout", () => {
 
   it("renders the shell for student role", async () => {
     authStore = { token: "t", user: { role: "student" } };
+    roleState = { role: "student", hydrated: true, meIsError: false };
     const { getByTestId } = render(<StudentLayout>protected</StudentLayout>);
     await waitFor(() => expect(getByTestId("shell")).toBeInTheDocument());
     expect(getByTestId("shell")).toHaveAttribute("data-role", "student");
@@ -68,12 +80,46 @@ describe("StudentLayout", () => {
 
   it("redirects to /admin when the role is an admin role", async () => {
     authStore = { token: "t", user: { role: "admin_store" } };
+    roleState = { role: "admin_store", hydrated: true, meIsError: false };
     render(<StudentLayout>protected</StudentLayout>);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin"));
   });
 
+  // The reported bug: a persisted session held a valid super_admin token but no
+  // user, so the store's role was undefined and the admin redirect never fired.
+  // The role now comes from /auth/me, so the redirect happens anyway.
+  it("redirects to /admin on a server-resolved admin role the store never had", async () => {
+    authStore = { token: "t", user: null };
+    roleState = { role: "super_admin", hydrated: true, meIsError: false };
+
+    const { queryByTestId } = render(<StudentLayout>protected</StudentLayout>);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin"));
+    expect(queryByTestId("shell")).not.toBeInTheDocument();
+  });
+
+  it("holds the shell back while the role is still resolving", async () => {
+    authStore = { token: "t", user: null };
+    roleState = { role: undefined, hydrated: true, meIsError: false };
+
+    const { queryByTestId } = render(<StudentLayout>protected</StudentLayout>);
+
+    await waitFor(() => expect(queryByTestId("shell")).not.toBeInTheDocument());
+    expect(replace).not.toHaveBeenCalledWith("/admin");
+  });
+
+  it("redirects to /login when the server will not confirm the identity", async () => {
+    authStore = { token: "t", user: null };
+    roleState = { role: undefined, hydrated: true, meIsError: true };
+
+    render(<StudentLayout>protected</StudentLayout>);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+  });
+
   it("redirects an incomplete Google student to /complete-profile", async () => {
     authStore = { token: "t", user: { role: "student" } };
+    roleState = { role: "student", hydrated: true, meIsError: false };
     profileState.data = { auth_provider: "google" };
 
     const { queryByTestId } = render(<StudentLayout>protected</StudentLayout>);
@@ -84,6 +130,7 @@ describe("StudentLayout", () => {
 
   it("renders the shell for a complete Google student", async () => {
     authStore = { token: "t", user: { role: "student" } };
+    roleState = { role: "student", hydrated: true, meIsError: false };
     profileState.data = {
       auth_provider: "google",
       school_id: "school-db",
@@ -98,6 +145,7 @@ describe("StudentLayout", () => {
 
   it("renders the shell for an incomplete password student", async () => {
     authStore = { token: "t", user: { role: "student" } };
+    roleState = { role: "student", hydrated: true, meIsError: false };
     profileState.data = { auth_provider: "password" };
 
     const { getByTestId } = render(<StudentLayout>protected</StudentLayout>);
@@ -108,6 +156,7 @@ describe("StudentLayout", () => {
 
   it("does not trust cached profile data while DB truth is refetching", async () => {
     authStore = { token: "t", user: { role: "student" } };
+    roleState = { role: "student", hydrated: true, meIsError: false };
     profileState = {
       data: { auth_provider: "google" },
       isLoading: false,
@@ -123,6 +172,7 @@ describe("StudentLayout", () => {
 
   it("keeps a password student's page mounted while the profile refetches", async () => {
     authStore = { token: "t", user: { role: "student" } };
+    roleState = { role: "student", hydrated: true, meIsError: false };
     profileState = {
       data: { auth_provider: "password" },
       isLoading: false,

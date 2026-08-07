@@ -119,6 +119,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Student profile routes
 	students := v1.Group("/students")
 	students.Use(handler.JWTMiddleware(svc, jwtSigner))
+	students.Use(handler.StudentOnlyMiddleware())
 	students.GET("/dashboard", h.StudentDashboard)
 	students.GET("/profile", h.StudentProfile)
 	students.PATCH("/profile", h.StudentUpdateProfile)
