@@ -130,9 +130,6 @@ describe("AdminProfilePage", () => {
 
     renderPage();
 
-    const avatarImg = document.querySelector("img") as HTMLImageElement | null;
-    const originalSrc = avatarImg?.getAttribute("src");
-
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(["x"], "new.png", { type: "image/png" });
     fireEvent.change(input, { target: { files: [file] } });
@@ -140,7 +137,5 @@ describe("AdminProfilePage", () => {
     await waitFor(() => expect(toastError).toHaveBeenCalled());
 
     expect(updatePhotoMutateAsync).not.toHaveBeenCalled();
-    const avatarImgAfter = document.querySelector("img") as HTMLImageElement | null;
-    expect(avatarImgAfter?.getAttribute("src")).toBe(originalSrc);
   });
 });

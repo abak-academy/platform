@@ -14,6 +14,10 @@ vi.mock("@/lib/hooks/auth", () => ({
   useLogin: () => ({ mutateAsync: mutateAsyncMock, isPending: false }),
 }));
 
+vi.mock("@/components/auth/GoogleSignInButton", () => ({
+  GoogleSignInButton: () => <div data-testid="google-sign-in" />,
+}));
+
 describe("AdminLoginPage", () => {
   beforeEach(() => {
     pushMock.mockClear();

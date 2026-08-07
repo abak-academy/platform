@@ -433,6 +433,49 @@ func TestGoogleLoginHandler_ResponseIncludesProfileGateFields(t *testing.T) {
 	}
 }
 
+// TestGoogleLoginHandler_NonStudentEmail_409 covers FR-2's wire contract: an
+// existing non-student email gets 403 with code=google_not_student, not just
+// a service-level sentinel error.
+func TestGoogleLoginHandler_NonStudentEmail_409(t *testing.T) {
+	tokenInfo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"aud":            "handler-google-client",
+			"email":          "admin-not-student@example.com",
+			"email_verified": "true",
+			"name":           "Admin Person",
+		})
+	}))
+	t.Cleanup(tokenInfo.Close)
+
+	originalTransport := http.DefaultClient.Transport
+	http.DefaultClient.Transport = googleTokenInfoTransport{fakeURL: tokenInfo.URL}
+	t.Cleanup(func() { http.DefaultClient.Transport = originalTransport })
+
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:           "admin-user",
+		Email:        strptr("admin-not-student@example.com"),
+		Role:         service.RoleAdminStore,
+		Status:       "active",
+		AuthProvider: "password",
+	})
+
+	rec := postJSON(t, env.e, "/api/v1/auth/google", map[string]string{
+		"id_token": "google-id-token",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["code"] != "google_not_student" {
+		t.Errorf("code: want google_not_student, got %v", resp["code"])
+	}
+}
+
 func TestVerifyOTPHandler_HappyPath(t *testing.T) {
 	env := newTestEnv(t)
 
