@@ -349,7 +349,7 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
   if (fallback) {
     return (
       <div
-        className="overflow-hidden rounded-lg border border-line bg-ink-900"
+        className="overflow-hidden rounded-lg border border-line bg-black"
         style={{ aspectRatio: "16 / 9" }}
       >
         <iframe
@@ -366,7 +366,7 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
   return (
     <div
       ref={wrapperEl}
-      className="relative overflow-hidden rounded-lg border border-line bg-ink-900"
+      className="relative overflow-hidden rounded-lg border border-line bg-black"
       style={{ aspectRatio: "16 / 9" }}
     >
       {/* The IFrame API writes width/height ATTRIBUTES on the iframe it
