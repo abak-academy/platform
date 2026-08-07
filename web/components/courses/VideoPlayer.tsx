@@ -128,6 +128,12 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
   const [duration, setDuration] = useState(0);
   const [loaded, setLoaded] = useState(0);
   const [volume, setVolume] = useState(100);
+  const [ready, setReady] = useState(false);
+  // YouTube only auto-hides its chrome while the video is playing. Verified in a
+  // browser 2026-08-07: before the first play it renders the video title, the
+  // channel, its logos and a "Watch on YouTube" button straight through the
+  // shield, which is transparent. This gate covers that window.
+  const [started, setStarted] = useState(false);
 
   useEffect(() => {
     // A lesson switch (no `key` at the call site, so this is a live-instance
@@ -147,6 +153,8 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
     setLoaded(0);
     setMuted(false);
     setVolume(100);
+    setReady(false);
+    setStarted(false);
     if (!id || forceFallback) return;
     let cancelled = false;
 
@@ -189,6 +197,7 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
             onReady: (e: { target: YTPlayer }) => {
               if (cancelled) return;
               setDuration(e.target.getDuration());
+              setReady(true);
             },
             // YT.PlayerState.PLAYING === 1
             onStateChange: (e: { data: number; target: YTPlayer }) => {
@@ -280,6 +289,13 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
     [muted],
   );
 
+  const startPlayback = useCallback(() => {
+    const p = player.current;
+    if (!p) return;
+    p.playVideo();
+    setStarted(true);
+  }, []);
+
   const seek = useCallback((next: number) => {
     player.current?.seekTo(next, true);
     setPosition(next);
@@ -342,13 +358,37 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
         className="block size-full [&>iframe]:block [&>iframe]:size-full [&>iframe]:border-0"
       />
 
-      {/* Absorbs every pointer event so YouTube's title bar and logo never
-          render, let alone become clickable. Must have no gaps. */}
+      {/* Absorbs every pointer event, so nothing YouTube draws is reachable.
+          Must have no gaps. It is transparent, so it stops the click but not the
+          pixels — the gate below is what hides them before playback starts. */}
       <div
         data-testid="video-shield"
         className="absolute inset-0 z-10"
         onContextMenu={(e) => e.preventDefault()}
       />
+
+      {/* Opaque until the first play. Sits above the control bar too: while the
+          video has never started there is no position to scrub and no state to
+          mute, so the only meaningful action is to begin. Its label avoids
+          "Putar" — the control bar's play/pause toggle owns that name, and two
+          buttons answering to it is ambiguous to a screen reader. */}
+      {!started && (
+        <button
+          type="button"
+          data-testid="video-gate"
+          onClick={startPlayback}
+          disabled={!ready}
+          aria-label={title ? `Mulai video: ${title}` : "Mulai video"}
+          // bg-black, not bg-ink-900: the ink scale inverts under
+          // html[data-theme="dark"] (ink-900 becomes #eeeffc), which would turn
+          // this panel white and hide the white icon on it. A video surface is
+          // dark in both themes.
+          className="absolute inset-0 z-30 flex size-full flex-col items-center justify-center gap-3 bg-black text-white disabled:cursor-progress"
+        >
+          <PlayCircle size={56} strokeWidth={1.5} className="text-white" />
+          {title && <span className="px-6 text-center text-sm font-medium">{title}</span>}
+        </button>
+      )}
 
       <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-3 bg-gradient-to-t from-ink-900/90 to-transparent px-3 pb-2 pt-6">
         <button

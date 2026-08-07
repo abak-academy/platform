@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 let VideoPlayer: (typeof import("./VideoPlayer"))["VideoPlayer"];
 
@@ -35,7 +35,10 @@ class FakePlayer {
     opts.events?.onReady?.({ target: this });
   }
 
-  playVideo() {}
+  played = false;
+  playVideo() {
+    this.played = true;
+  }
   pauseVideo() {}
   seekTo() {}
   getCurrentTime() {
@@ -272,6 +275,80 @@ describe("VideoPlayer", () => {
     await waitFor(() =>
       expect(screen.getByRole("slider", { name: /posisi/i })).toHaveAttribute("max", "100"),
     );
+  });
+
+  // Measured in a real browser 2026-08-07: the shield's background is
+  // rgba(0,0,0,0), so before the first play YouTube draws its title, channel,
+  // logos and a "Watch on YouTube" button straight through it. Clicks were
+  // blocked at every one of 2306 sampled points — this covers the pixels.
+  it("covers the player with an opaque gate until the first play", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    render(<VideoPlayer videoRef="abc123" title="Pelajaran 1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+
+    const gate = screen.getByTestId("video-gate");
+    // Opaque and theme-independent. bg-ink-900 would not do: the ink scale
+    // inverts under html[data-theme="dark"], turning the panel white.
+    expect(gate.className).toContain("bg-black");
+    expect(gate.className).not.toContain("bg-ink-900");
+    expect(gate.className).toContain("inset-0");
+    // Above the shield (z-10) and the control bar (z-20).
+    expect(gate.className).toContain("z-30");
+  });
+
+  it("starts playback and reveals the player when the gate is clicked", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    render(<VideoPlayer videoRef="abc123" title="Pelajaran 1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+    const p = FakePlayer.instances[0];
+
+    fireEvent.click(screen.getByTestId("video-gate"));
+
+    expect(p.played).toBe(true);
+    expect(screen.queryByTestId("video-gate")).toBeNull();
+  });
+
+  // The gate belongs to the lesson, not the session: the next lesson starts
+  // paused on its own iframe, showing its own title through the shield.
+  it("restores the gate when the lesson changes", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    const { rerender } = render(<VideoPlayer videoRef="lessonOne" title="Pelajaran 1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+    fireEvent.click(screen.getByTestId("video-gate"));
+    expect(screen.queryByTestId("video-gate")).toBeNull();
+
+    rerender(<VideoPlayer videoRef="lessonTwo" title="Pelajaran 2" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(2));
+
+    expect(screen.getByTestId("video-gate")).toBeInTheDocument();
+  });
+
+  // A click landing before onReady would dismiss the gate over a player that
+  // never starts, leaving the user on YouTube's paused chrome — the exact state
+  // the gate exists to prevent.
+  it("does not let the gate be used before the player is ready", async () => {
+    let release: (() => void) | undefined;
+    class SlowPlayer extends FakePlayer {
+      constructor(el: HTMLElement, opts: ConstructorParameters<typeof FakePlayer>[1]) {
+        const events = opts.events;
+        super(el, { ...opts, events: {} });
+        release = () => events?.onReady?.({ target: this });
+      }
+    }
+    vi.stubGlobal("YT", { Player: SlowPlayer });
+
+    render(<VideoPlayer videoRef="abc123" title="Pelajaran 1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+
+    expect(screen.getByTestId("video-gate")).toBeDisabled();
+
+    await act(async () => {
+      release?.();
+    });
+    expect(screen.getByTestId("video-gate")).toBeEnabled();
   });
 
   // Fullscreening the iframe would hand the whole viewport to YouTube's own
