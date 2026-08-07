@@ -53,7 +53,10 @@ export function StackedBarChart({
   const bottomSum = bottom.values.reduce((a, b) => a + b, 0);
   const topSum = top.values.reduce((a, b) => a + b, 0);
   const grand = bottomSum + topSum;
-  const pct = (v: number) => (grand > 0 ? Math.round((v / grand) * 100) : 0);
+  // topPct is the complement of bottomPct, not its own independent rounding —
+  // rounding both shares away from zero can otherwise land on 34% + 67% = 101%.
+  const bottomPct = grand > 0 ? Math.round((bottomSum / grand) * 100) : 0;
+  const topPct = grand > 0 ? 100 - bottomPct : 0;
 
   const summaryCount = Math.min(labels.length, bottom.values.length, top.values.length);
 
@@ -105,14 +108,14 @@ export function StackedBarChart({
             className="inline-block h-[3px] w-[10px] rounded-sm align-middle mr-1"
             style={{ backgroundColor: bottom.color }}
           />
-          {bottom.label} {pct(bottomSum)}%
+          {bottom.label} {bottomPct}%
         </span>
         <span>
           <span
             className="inline-block h-[3px] w-[10px] rounded-sm align-middle mr-1"
             style={{ backgroundColor: top.color }}
           />
-          {top.label} {pct(topSum)}%
+          {top.label} {topPct}%
         </span>
       </div>
 

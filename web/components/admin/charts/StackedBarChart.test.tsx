@@ -54,6 +54,22 @@ describe("StackedBarChart", () => {
     expect(screen.getByText("Fisik 33%")).toBeInTheDocument();
   });
 
+  // 67/200 = 33.5%, 133/200 = 66.5% — rounding each independently (both
+  // halves round away from zero) gives 34% + 67% = 101%. The second
+  // percentage must be the complement of the first, not its own rounding.
+  it("keeps the two legend percentages summing to 100 at a rounding boundary", () => {
+    render(
+      <StackedBarChart
+        {...base}
+        labels={["1 Jul"]}
+        bottom={{ ...base.bottom, values: [67] }}
+        top={{ ...base.top, values: [133] }}
+      />
+    );
+    expect(screen.getByText("Digital 34%")).toBeInTheDocument();
+    expect(screen.getByText("Fisik 66%")).toBeInTheDocument();
+  });
+
   it("shows an empty state on an all-zero series", () => {
     render(
       <StackedBarChart
