@@ -45,6 +45,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusForbidden, APIError{Code: "verification_pending", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidToken):
 		status, apiErr = http.StatusUnauthorized, APIError{Code: "invalid_google_token", Message: "invalid or expired Google token"}
+	case errors.Is(err, service.ErrGoogleNotStudent):
+		status, apiErr = http.StatusForbidden, APIError{Code: "google_not_student", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidUUID):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrWeakPassword):
@@ -101,6 +103,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusForbidden, APIError{Code: "cannot_deactivate_self", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidAdminRole):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrGoogleAccountNoPassword):
+		status, apiErr = http.StatusConflict, APIError{Code: "account_has_no_password", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidRoleFilter):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidStatusFilter):

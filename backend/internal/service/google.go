@@ -50,6 +50,8 @@ func (s *Service) GoogleLogin(ctx context.Context, idToken string) (accessToken 
 			return "", "", err
 		}
 		user = newUser
+	} else if user.Role != RoleStudent {
+		return "", "", ErrGoogleNotStudent
 	} else if user.Status != "active" {
 		return "", "", ErrAccountDeactivated
 	}

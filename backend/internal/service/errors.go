@@ -53,12 +53,17 @@ var (
 var (
 	ErrCannotDeactivateSelf = errors.New("cannot deactivate your own account")
 	ErrInvalidAdminRole     = errors.New("role must be an admin role")
-	ErrInvalidRoleFilter    = errors.New("invalid role filter")
-	ErrInvalidStatusFilter  = errors.New("invalid status filter")
-	ErrAccountNoEmail       = errors.New("account has no email for reset")
-	ErrMissingField         = errors.New("missing required field")
-	ErrSchoolRequired       = errors.New("school_id is required for admin_school role")
-	ErrSchoolNotAllowed     = errors.New("school_id must be empty for this role")
+	// ErrGoogleAccountNoPassword is returned when promoting/moving an account
+	// that signs in via Google and has never set a password — doing so would
+	// leave the account with neither door open (spec FR-9). Indonesian,
+	// user-facing copy per spec C-4.
+	ErrGoogleAccountNoPassword = errors.New("akun ini masuk menggunakan Google dan belum memiliki kata sandi. Super admin harus mengatur kata sandi melalui aksi reset password terlebih dahulu.")
+	ErrInvalidRoleFilter       = errors.New("invalid role filter")
+	ErrInvalidStatusFilter     = errors.New("invalid status filter")
+	ErrAccountNoEmail          = errors.New("account has no email for reset")
+	ErrMissingField            = errors.New("missing required field")
+	ErrSchoolRequired          = errors.New("school_id is required for admin_school role")
+	ErrSchoolNotAllowed        = errors.New("school_id must be empty for this role")
 )
 
 // --- from announcement.go ---
@@ -91,6 +96,11 @@ var (
 	ErrUserNotFound        = errors.New("user not found")
 	ErrInvalidResetToken   = errors.New("invalid reset token")
 	ErrAccountDeactivated  = errors.New("account deactivated")
+	// ErrGoogleNotStudent is returned when a Google identity matching an
+	// existing non-student account tries to sign in via /auth/google — Google
+	// sign-in is student-only (spec FR-2/FR-3). Indonesian, user-facing copy
+	// per spec C-4; deliberately does not name the role it holds.
+	ErrGoogleNotStudent    = errors.New("akun ini bukan akun siswa. Silakan masuk melalui /admin/login.")
 	ErrWeakPassword        = errors.New("password too weak")
 	ErrInvalidToken        = errors.New("invalid token")
 	ErrInvalidUUID         = errors.New("invalid uuid")
