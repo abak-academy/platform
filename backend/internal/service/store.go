@@ -78,6 +78,27 @@ type PromoValidation struct {
 	Total    float64
 }
 
+// adminExamProductTypes is the read-side mirror of checkTypeRBAC's admin_exam
+// arm. Keep the two in step: a type writable but not readable strands a product
+// the moment it is created.
+var adminExamProductTypes = []string{"course", "exam"}
+
+// narrowToAllowedTypes intersects a caller-requested type with the role's
+// allowlist. A request naming a type outside the allowlist yields a non-nil
+// empty slice — no rows — rather than being ignored, which would widen the
+// query back to every type.
+func narrowToAllowedTypes(allowed []string, requested string) []string {
+	if requested == "" {
+		return allowed
+	}
+	for _, t := range allowed {
+		if t == requested {
+			return []string{requested}
+		}
+	}
+	return []string{}
+}
+
 // productListFilterForRole narrows a product list filter to what role may see.
 // It is a free function so the policy is unit-testable without a repository —
 // s.storeRepo is a concrete type and cannot be faked.
@@ -88,9 +109,13 @@ func productListFilterForRole(filter repository.ProductFilter, role string) repo
 	case RoleAdminStore:
 		// no filter restrictions — manages book, course, exam
 	case RoleAdminExam:
-		// no filter restrictions — authors exam and course products, which
-		// AdminCreateProduct creates as "draft"; hiding drafts here would make
-		// every product this role creates invisible to it.
+		// Read boundary mirrors checkTypeRBAC's admin_exam arm: this role owns
+		// the digital catalogue only, so physical inventory — including its
+		// drafts — must not come back here. Status is deliberately left alone;
+		// AdminCreateProduct writes "draft", and hiding drafts would make every
+		// product this role creates invisible to it.
+		filter.Types = narrowToAllowedTypes(adminExamProductTypes, filter.Type)
+		filter.Type = ""
 	default: // student or ""
 		filter.VisibleOnly = true
 		filter.Status = "published"

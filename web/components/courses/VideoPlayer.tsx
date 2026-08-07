@@ -46,6 +46,7 @@ interface YTPlayer {
   getVideoLoadedFraction(): number;
   mute(): void;
   unMute(): void;
+  setVolume(volume: number): void;
   destroy(): void;
 }
 
@@ -126,6 +127,7 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [loaded, setLoaded] = useState(0);
+  const [volume, setVolume] = useState(100);
 
   useEffect(() => {
     // A lesson switch (no `key` at the call site, so this is a live-instance
@@ -134,6 +136,17 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
     // in the session to the shield-less fallback. forceFallback still wins.
     setFallback(Boolean(forceFallback));
     setUnplayable(false);
+    // Every control below is bound to the player instance destroyed on cleanup.
+    // A fresh YT.Player starts paused at 0s, unmuted, at full volume, so any
+    // value kept from the previous lesson would describe a player that no
+    // longer exists — a stale scrubber position, or a mute button whose icon
+    // is the inverse of what the new video is actually doing.
+    setPlaying(false);
+    setPosition(0);
+    setDuration(0);
+    setLoaded(0);
+    setMuted(false);
+    setVolume(100);
     if (!id || forceFallback) return;
     let cancelled = false;
 
@@ -227,10 +240,38 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
   const toggleMute = useCallback(() => {
     const p = player.current;
     if (!p) return;
-    if (muted) p.unMute();
-    else p.mute();
+    if (muted) {
+      p.unMute();
+      // Unmuting a slider parked at zero would stay silent and read as a broken
+      // button, so give it an audible level back.
+      if (volume === 0) {
+        p.setVolume(100);
+        setVolume(100);
+      }
+    } else {
+      p.mute();
+    }
     setMuted(!muted);
-  }, [muted]);
+  }, [muted, volume]);
+
+  const changeVolume = useCallback(
+    (next: number) => {
+      const p = player.current;
+      if (!p) return;
+      p.setVolume(next);
+      setVolume(next);
+      // Moving the slider is an explicit audio intent: off zero must unmute, and
+      // dragging to zero is how you mute without going for the button.
+      if (next === 0 && !muted) {
+        p.mute();
+        setMuted(true);
+      } else if (next > 0 && muted) {
+        p.unMute();
+        setMuted(false);
+      }
+    },
+    [muted],
+  );
 
   const seek = useCallback((next: number) => {
     player.current?.seekTo(next, true);
@@ -345,6 +386,17 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
         >
           {muted ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
         </button>
+
+        <input
+          type="range"
+          aria-label="Volume"
+          min={0}
+          max={100}
+          step={1}
+          value={muted ? 0 : volume}
+          onChange={(e) => changeVolume(Number(e.target.value))}
+          className="w-16 shrink-0 accent-brand-600"
+        />
 
         <button
           type="button"

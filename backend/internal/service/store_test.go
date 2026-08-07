@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -37,6 +38,9 @@ func (f *fakeStoreRepo) ListProducts(_ context.Context, filter repository.Produc
 	var out []model.Product
 	for _, p := range f.products {
 		if filter.Type != "" && p.Type != filter.Type {
+			continue
+		}
+		if filter.Types != nil && !slices.Contains(filter.Types, p.Type) {
 			continue
 		}
 		if filter.Status != "" && p.Status != filter.Status {
@@ -408,6 +412,84 @@ func TestListProducts_AdminExamSeesDrafts_StudentDoesNot(t *testing.T) {
 	}
 	if len(forStudent) != 1 || forStudent[0].ID != "p2" {
 		t.Errorf("student must still see only published products, got %+v", forStudent)
+	}
+}
+
+// The read boundary must mirror checkTypeRBAC: admin_exam writes only course
+// and exam, so listing must not hand it physical inventory — draft or hidden
+// rows included, which no client-side filter would ever have suppressed.
+func TestListProducts_AdminExamNeverSeesPhysicalTypes(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	fake.seedProduct(model.Product{ID: "p1", Type: "book", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p2", Type: "book", Status: "hidden"})
+	fake.seedProduct(model.Product{ID: "p3", Type: "merchandise", Status: "published"})
+	fake.seedProduct(model.Product{ID: "p4", Type: "course", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p5", Type: "exam", Status: "published"})
+
+	got, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{}, RoleAdminExam))
+	if err != nil {
+		t.Fatalf("ListProducts(admin_exam): %v", err)
+	}
+	for _, p := range got {
+		if p.Type != "course" && p.Type != "exam" {
+			t.Errorf("admin_exam must not see %s product %s", p.Type, p.ID)
+		}
+	}
+	if len(got) != 2 {
+		t.Errorf("want the 2 digital products, got %d: %+v", len(got), got)
+	}
+}
+
+// A caller-supplied ?type= outside the allowlist must return nothing. Ignoring
+// it would widen the query back to every type, which is the bug in reverse.
+func TestListProducts_AdminExamExplicitPhysicalTypeReturnsEmpty(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	fake.seedProduct(model.Product{ID: "p1", Type: "book", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p2", Type: "course", Status: "draft"})
+
+	got, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{Type: "book"}, RoleAdminExam))
+	if err != nil {
+		t.Fatalf("ListProducts(admin_exam, type=book): %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("admin_exam asking for books must get nothing, got %+v", got)
+	}
+}
+
+// An allowed ?type= must still narrow, not be swallowed by the allowlist.
+func TestListProducts_AdminExamExplicitDigitalTypeStillNarrows(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	fake.seedProduct(model.Product{ID: "p1", Type: "course", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p2", Type: "exam", Status: "draft"})
+
+	got, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{Type: "exam"}, RoleAdminExam))
+	if err != nil {
+		t.Fatalf("ListProducts(admin_exam, type=exam): %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "p2" {
+		t.Errorf("want only the exam product, got %+v", got)
+	}
+}
+
+// The type boundary is admin_exam's alone — narrowing it must not leak into the
+// roles that legitimately manage physical stock.
+func TestListProducts_StoreRolesKeepPhysicalTypes(t *testing.T) {
+	ctx := context.Background()
+	for _, role := range []string{RoleSuperAdmin, RoleAdminStore} {
+		fake := newFakeStoreRepo()
+		fake.seedProduct(model.Product{ID: "p1", Type: "book", Status: "draft"})
+		fake.seedProduct(model.Product{ID: "p2", Type: "course", Status: "draft"})
+
+		got, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{}, role))
+		if err != nil {
+			t.Fatalf("ListProducts(%s): %v", role, err)
+		}
+		if len(got) != 2 {
+			t.Errorf("%s must still see physical products: want 2, got %d", role, len(got))
+		}
 	}
 }
 

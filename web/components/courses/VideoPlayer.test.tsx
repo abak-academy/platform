@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 let VideoPlayer: (typeof import("./VideoPlayer"))["VideoPlayer"];
 
@@ -40,8 +40,19 @@ class FakePlayer {
   getVideoLoadedFraction() {
     return 0;
   }
-  mute() {}
-  unMute() {}
+  // Audio state is recorded, not swallowed: a stub that accepts mute/setVolume
+  // and forgets them lets a control that never reaches the player still pass.
+  muted = false;
+  volume = 100;
+  mute() {
+    this.muted = true;
+  }
+  unMute() {
+    this.muted = false;
+  }
+  setVolume(v: number) {
+    this.volume = v;
+  }
   destroy() {
     this.destroyed = true;
     this.iframeEl.remove();
@@ -239,5 +250,83 @@ describe("VideoPlayer", () => {
 
     await waitFor(() => expect(FakePlayer.instances).toHaveLength(2));
     expect(container.querySelector('[data-testid="video-shield"]')).not.toBeNull();
+  });
+
+  it("drives the player's volume from the volume slider", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    render(<VideoPlayer videoRef="abc123" title="L1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+
+    const slider = screen.getByRole("slider", { name: /volume/i });
+    fireEvent.change(slider, { target: { value: "40" } });
+
+    // Asserted on the player, not the input: mute/unMute alone cannot express
+    // an intermediate level, which is the gap this control closes.
+    expect(FakePlayer.instances[0].volume).toBe(40);
+    expect(slider).toHaveValue("40");
+  });
+
+  it("mutes at zero volume and unmutes when raised again", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    render(<VideoPlayer videoRef="abc123" title="L1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+    const p = FakePlayer.instances[0];
+    const slider = screen.getByRole("slider", { name: /volume/i });
+
+    fireEvent.change(slider, { target: { value: "0" } });
+    expect(p.muted).toBe(true);
+    expect(screen.getByRole("button", { name: /bunyikan/i })).toBeInTheDocument();
+
+    fireEvent.change(slider, { target: { value: "55" } });
+    expect(p.muted).toBe(false);
+    expect(p.volume).toBe(55);
+  });
+
+  it("gives an audible level back when unmuting a slider left at zero", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    render(<VideoPlayer videoRef="abc123" title="L1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+    const p = FakePlayer.instances[0];
+
+    fireEvent.change(screen.getByRole("slider", { name: /volume/i }), {
+      target: { value: "0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /bunyikan/i }));
+
+    expect(p.muted).toBe(false);
+    expect(p.volume).toBeGreaterThan(0);
+  });
+
+  // Every control is bound to the instance destroyed on a lesson switch, so any
+  // value carried over describes a player that no longer exists.
+  it("resets per-video control state when the lesson changes", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    const { rerender } = render(<VideoPlayer videoRef="lessonOne" title="Pelajaran 1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+
+    const volumeSlider = screen.getByRole("slider", { name: /volume/i });
+    fireEvent.change(volumeSlider, { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: /bisukan/i }));
+    // Kept inside the scrubber's max: onReady runs from inside the YT.Player
+    // constructor, before player.current is assigned, so duration is still 0
+    // here and max collapses to 1. A larger value would silently clamp.
+    fireEvent.change(screen.getByRole("slider", { name: /posisi/i }), {
+      target: { value: "1" },
+    });
+
+    expect(screen.getByRole("slider", { name: /posisi/i })).toHaveValue("1");
+
+    rerender(<VideoPlayer videoRef="lessonTwo" title="Pelajaran 2" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(2));
+
+    expect(screen.getByRole("slider", { name: /posisi/i })).toHaveValue("0");
+    expect(screen.getByRole("slider", { name: /volume/i })).toHaveValue("100");
+    // A stale mute flag would leave this button showing "unmute" over a player
+    // that is in fact audible.
+    expect(screen.getByRole("button", { name: /bisukan/i })).toBeInTheDocument();
   });
 });
