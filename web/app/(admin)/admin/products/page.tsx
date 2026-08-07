@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRupiah } from "@/lib/format";
 import type { Product, ProductType, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
-import { useResolvedAdminRole } from "@/lib/hooks/use-capability";
+import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { writableProductTypes } from "@/lib/product-types";
 
 function typeBadgeClass(type: ProductType): string {
@@ -58,7 +58,7 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const { data: products, isLoading, isError, error } = useAdminProducts();
-  const { role } = useResolvedAdminRole();
+  const { role } = useResolvedRole();
   const writableTypes = useMemo(() => writableProductTypes(role), [role]);
   const filterTypes = useMemo<(ProductType | "all")[]>(
     () => ["all", ...writableTypes],

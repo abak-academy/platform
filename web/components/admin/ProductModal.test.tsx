@@ -36,7 +36,7 @@ vi.mock("@/lib/hooks/students", () => ({
 let mockRole = "admin_store";
 
 vi.mock("@/lib/hooks/use-capability", () => ({
-  useResolvedAdminRole: () => ({ role: mockRole, hydrated: true, meIsError: false }),
+  useResolvedRole: () => ({ role: mockRole, hydrated: true, meIsError: false }),
 }));
 
 describe("ProductModal", () => {

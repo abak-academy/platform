@@ -18,7 +18,7 @@ import { usePresignUpload } from "@/lib/hooks/students";
 import { fileUrl } from "@/lib/api";
 import { ProductSpecsEditor } from "@/components/admin/ProductSpecsEditor";
 import type { Product, ProductType, ProductStatus, ProductSpec, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
-import { useResolvedAdminRole } from "@/lib/hooks/use-capability";
+import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { writableProductTypes } from "@/lib/product-types";
 
 interface ProductModalProps {
@@ -65,7 +65,7 @@ function fromLocalInput(v: string): string | null {
 
 export function ProductModal({ open, onOpenChange, product, onSubmit, isPending }: ProductModalProps) {
   const isEdit = Boolean(product);
-  const { role } = useResolvedAdminRole();
+  const { role } = useResolvedRole();
   const productTypes = writableProductTypes(role);
   const [name, setName] = useState("");
   const [type, setType] = useState<ProductType | "">("");

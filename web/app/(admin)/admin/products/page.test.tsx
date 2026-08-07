@@ -50,7 +50,7 @@ vi.mock("sonner", () => ({
 let mockRole = "admin_store";
 
 vi.mock("@/lib/hooks/use-capability", () => ({
-  useResolvedAdminRole: () => ({ role: mockRole, hydrated: true, meIsError: false }),
+  useResolvedRole: () => ({ role: mockRole, hydrated: true, meIsError: false }),
 }));
 
 const sampleProducts: Product[] = [
