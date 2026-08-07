@@ -259,6 +259,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	auth.POST("/password/reset", h.ResetPassword)
 	auth.PATCH("/password/change", h.ChangePassword, handler.JWTMiddleware(svc, signer))
 	auth.GET("/me", h.Me, handler.JWTMiddleware(svc, signer))
+	auth.PATCH("/photo", h.UpdatePhoto, handler.JWTMiddleware(svc, signer))
 
 	admin := v1.Group("/admin")
 	admin.Use(handler.JWTMiddleware(svc, signer))
@@ -666,5 +667,209 @@ func TestRegisterHandler_ResendOnPendingEmail(t *testing.T) {
 	}
 	if resp["pending_token"] == firstToken {
 		t.Error("want a fresh pending_token on resend, got same as first")
+	}
+}
+
+// loginToken logs identifier/password in against env and returns the access
+// token, failing the test on any error along the way.
+func loginToken(t *testing.T, env *testEnv, identifier, password string) string {
+	t.Helper()
+	rec := postJSON(t, env.e, "/api/v1/auth/login", map[string]string{
+		"identifier": identifier,
+		"password":   password,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login %s: want 200, got %d body=%s", identifier, rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	token, _ := resp["access_token"].(string)
+	if token == "" {
+		t.Fatalf("login %s: want non-empty access_token", identifier)
+	}
+	return token
+}
+
+// TestMeHandler_PhotoURL covers FR-13: GET /auth/me gains photo_url (empty
+// string when NULL) while every field already present keeps its name, type
+// and value — asserted as a full key set, not just the new key.
+func TestMeHandler_PhotoURL(t *testing.T) {
+	env := newTestEnv(t)
+
+	t.Run("NULL photo_url returns empty string and full key set", func(t *testing.T) {
+		email := "nophoto@example.com"
+		env.repo.seed(&model.User{
+			ID:           "u-nophoto",
+			Email:        &email,
+			PasswordHash: mustHash("password123"),
+			Role:         service.RoleStudent,
+			Status:       "active",
+		})
+		token := loginToken(t, env, email, "password123")
+
+		rec := getWithToken(t, env.e, "/api/v1/auth/me", token)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp map[string]any
+		json.NewDecoder(rec.Body).Decode(&resp)
+		if resp["photo_url"] != "" {
+			t.Errorf("want empty photo_url for NULL, got %v", resp["photo_url"])
+		}
+		for _, key := range []string{"id", "email", "username", "name", "role", "school_id", "auth_provider", "status", "photo_url"} {
+			if _, ok := resp[key]; !ok {
+				t.Errorf("want key %q in /auth/me response, missing", key)
+			}
+		}
+	})
+
+	t.Run("set photo_url is returned verbatim", func(t *testing.T) {
+		email := "withphoto@example.com"
+		photo := "avatars/u-withphoto/photo.png"
+		env.repo.seed(&model.User{
+			ID:           "u-withphoto",
+			Email:        &email,
+			PasswordHash: mustHash("password123"),
+			Role:         service.RoleStudent,
+			Status:       "active",
+			PhotoURL:     &photo,
+		})
+		token := loginToken(t, env, email, "password123")
+
+		rec := getWithToken(t, env.e, "/api/v1/auth/me", token)
+		var resp map[string]any
+		json.NewDecoder(rec.Body).Decode(&resp)
+		if resp["photo_url"] != photo {
+			t.Errorf("want photo_url=%s, got %v", photo, resp["photo_url"])
+		}
+	})
+}
+
+// TestLoginHandler_ResponseIncludesPhotoURL covers FR-14: the login
+// response's user object carries photo_url.
+func TestLoginHandler_ResponseIncludesPhotoURL(t *testing.T) {
+	env := newTestEnv(t)
+	email := "photouser@example.com"
+	photo := "avatars/u1/photo.png"
+	env.repo.seed(&model.User{
+		ID:           "u1",
+		Email:        &email,
+		PasswordHash: mustHash("password123"),
+		Role:         service.RoleStudent,
+		Status:       "active",
+		PhotoURL:     &photo,
+	})
+
+	rec := postJSON(t, env.e, "/api/v1/auth/login", map[string]string{
+		"identifier": email,
+		"password":   "password123",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	user, _ := resp["user"].(map[string]any)
+	if user == nil {
+		t.Fatal("want user in response")
+	}
+	if user["photo_url"] != photo {
+		t.Errorf("user.photo_url: want %s, got %v", photo, user["photo_url"])
+	}
+}
+
+// TestUpdateOwnPhoto_Success covers FR-15: any authenticated role, including
+// admin_store, can PATCH /auth/photo with a valid avatar key.
+func TestUpdateOwnPhoto_Success(t *testing.T) {
+	env := newTestEnv(t)
+	email := "store-admin@example.com"
+	env.repo.seed(&model.User{
+		ID:           "u-store",
+		Email:        &email,
+		PasswordHash: mustHash("password123"),
+		Role:         service.RoleAdminStore,
+		Status:       "active",
+	})
+	token := loginToken(t, env, email, "password123")
+
+	rec := doPatchJSON(t, env.e, "/api/v1/auth/photo", map[string]string{
+		"photo_url": "avatars/u-store/new.png",
+	}, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestUpdateOwnPhoto_InvalidURL covers FR-16: a photo_url that does not
+// resolve to an uploaded avatar key is rejected with 422 validation_failed.
+func TestUpdateOwnPhoto_InvalidURL(t *testing.T) {
+	env := newTestEnv(t)
+	email := "store-admin2@example.com"
+	env.repo.seed(&model.User{
+		ID:           "u-store2",
+		Email:        &email,
+		PasswordHash: mustHash("password123"),
+		Role:         service.RoleAdminStore,
+		Status:       "active",
+	})
+	token := loginToken(t, env, email, "password123")
+
+	rec := doPatchJSON(t, env.e, "/api/v1/auth/photo", map[string]string{
+		"photo_url": "https://evil.example.com/x.png",
+	}, token)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "validation_failed" {
+		t.Errorf("want code=validation_failed, got %v", resp["code"])
+	}
+}
+
+// TestStudentsPhoto_RoleGate covers FR-17: PATCH /students/photo is
+// unaffected by the new /auth/photo route — it still succeeds for a student
+// token and still 403s for an admin token via StudentOnlyMiddleware.
+func TestStudentsPhoto_RoleGate(t *testing.T) {
+	env := newTestEnv(t)
+	h := handler.New(env.svc)
+	v1 := env.e.Group("/api/v1")
+	students := v1.Group("/students")
+	students.Use(handler.JWTMiddleware(env.svc, env.signer))
+	students.Use(handler.StudentOnlyMiddleware())
+	students.PATCH("/photo", h.UpdatePhoto)
+
+	studentEmail := "student-photo@example.com"
+	env.repo.seed(&model.User{
+		ID:           "u-student",
+		Email:        &studentEmail,
+		PasswordHash: mustHash("password123"),
+		Role:         service.RoleStudent,
+		Status:       "active",
+	})
+	adminEmail := "admin-photo@example.com"
+	env.repo.seed(&model.User{
+		ID:           "u-admin",
+		Email:        &adminEmail,
+		PasswordHash: mustHash("password123"),
+		Role:         service.RoleAdminStore,
+		Status:       "active",
+	})
+
+	studentToken := loginToken(t, env, studentEmail, "password123")
+	adminToken := loginToken(t, env, adminEmail, "password123")
+
+	rec := doPatchJSON(t, env.e, "/api/v1/students/photo", map[string]string{
+		"photo_url": "avatars/u-student/photo.png",
+	}, studentToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for student, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = doPatchJSON(t, env.e, "/api/v1/students/photo", map[string]string{
+		"photo_url": "avatars/u-admin/photo.png",
+	}, adminToken)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403 for admin, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }

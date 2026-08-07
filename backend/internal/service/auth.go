@@ -332,19 +332,40 @@ func (s *Service) ResetPassword(ctx context.Context, token, otp, newPassword str
 	return nil
 }
 
-func (s *Service) revokeAllSessions(ctx context.Context, userID string) {
+// revokeAllSessions kills every session for userID. With exceptJTI supplied,
+// the matching access jti is spared and stays a member of
+// user_access_sessions:<uid> (removed jtis are SRem'd individually, not
+// deleted via a wholesale Del on the index set) — otherwise a later
+// ResetPassword/AdminResetAccountPassword would fail to find and kill the
+// surviving session. Refresh tokens have no link back to an access jti
+// (mintSession stores them in separate, unpaired sets), so every refresh
+// token is always revoked, the caller's included (FR-31).
+func (s *Service) revokeAllSessions(ctx context.Context, userID string, exceptJTI ...string) {
+	var keep string
+	if len(exceptJTI) > 0 {
+		keep = exceptJTI[0]
+	}
+
 	jtis, _ := s.rdb.SMembers(ctx, "user_access_sessions:"+userID).Result()
 	for _, jti := range jtis {
+		if jti == keep {
+			continue
+		}
 		s.rdb.Del(ctx, "session:access:"+jti)
+		s.rdb.SRem(ctx, "user_access_sessions:"+userID, jti)
 	}
+	if keep == "" {
+		s.rdb.Del(ctx, "user_access_sessions:"+userID)
+	}
+
 	refreshTokens, _ := s.rdb.SMembers(ctx, "user_refresh_sessions:"+userID).Result()
 	for _, rt := range refreshTokens {
 		s.rdb.Del(ctx, "session:refresh:"+rt)
 	}
-	s.rdb.Del(ctx, "user_access_sessions:"+userID, "user_refresh_sessions:"+userID)
+	s.rdb.Del(ctx, "user_refresh_sessions:"+userID)
 }
 
-func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error {
+func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, newPassword, callerJTI string) error {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return err
@@ -365,7 +386,11 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 	if err != nil {
 		return err
 	}
-	return s.repo.UpdatePasswordHash(ctx, userID, string(hash))
+	if err := s.repo.UpdatePasswordHash(ctx, userID, string(hash)); err != nil {
+		return err
+	}
+	s.revokeAllSessions(ctx, userID, callerJTI)
+	return nil
 }
 
 func (s *Service) SessionActive(ctx context.Context, jti string) bool {
