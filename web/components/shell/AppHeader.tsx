@@ -16,6 +16,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useCartStore } from "@/stores/cart";
 import { useUIStore, type Lang } from "@/stores/ui";
 import { useLogout } from "@/lib/hooks/auth";
+import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { fileUrl } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { roleLabelKey, ADMIN_ROLES } from "@/lib/nav-config";
@@ -51,6 +52,10 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
 
   const cartCount = useCartStore((s) => s.count);
   const isStudent = !ADMIN_ROLES.includes(user?.role as UserRole);
+  const { role: resolvedRole } = useResolvedRole();
+  const profileHref = ADMIN_ROLES.includes(resolvedRole as UserRole)
+    ? "/admin/profile"
+    : "/profile";
 
   const initial = (user?.name ?? user?.email ?? user?.username ?? "A")
     .trim()
@@ -188,7 +193,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/profile" className="flex items-center">
+              <Link href={profileHref} className="flex items-center">
                 <UserCircle className="size-4" />
                 <span className="ml-2">{t("nav_profile")}</span>
               </Link>
