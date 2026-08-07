@@ -450,6 +450,29 @@ describe("VideoPlayer", () => {
     delete (HTMLElement.prototype as Partial<HTMLElement>).requestFullscreen;
   });
 
+  // The ink scale inverts under html[data-theme="dark"] — ink-900 goes from
+  // #15183a to #eeeffc. Any video chrome carrying white controls has to opt out
+  // of it, or the scrim turns light and the controls on it vanish.
+  it("keeps the video chrome dark in both themes", () => {
+    const { container } = render(<VideoPlayer videoRef="abc123" title="L1" />);
+    const bar = container.querySelector('[data-testid="video-shield"]')!
+      .parentElement!.querySelector(".bg-gradient-to-t")!;
+
+    expect(bar.className).toContain("from-black/90");
+    expect(bar.className).not.toContain("ink-900");
+  });
+
+  // The notice card stands in for the video, so it inverts the same way. On
+  // ink-900 its title measured 2.92:1 in dark mode, against AA's 4.5.
+  it("keeps the notice card dark in both themes", () => {
+    const { container } = render(<VideoPlayer title="L1" />);
+    const card = container.firstElementChild!;
+
+    expect(card.className).toContain("bg-black");
+    expect(card.className).not.toContain("ink-900");
+    expect(container.innerHTML).not.toContain("ink-300");
+  });
+
   it("drives the player's volume from the volume slider", async () => {
     vi.stubGlobal("YT", { Player: FakePlayer });
 

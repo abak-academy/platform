@@ -101,16 +101,21 @@ function formatTime(seconds: number): string {
 function PlayerNotice({ title, message }: { title?: string; message: string }) {
   return (
     <div
-      className="overflow-hidden rounded-lg border border-line bg-ink-900"
+      className="overflow-hidden rounded-lg border border-line bg-black"
       style={{ aspectRatio: "16 / 9" }}
     >
-      <div className="flex size-full flex-col items-center justify-center gap-3 text-ink-400">
+      {/* Same reason as the gate and the control scrim: this card stands in for
+          the video, and the ink scale inverts under html[data-theme="dark"].
+          On ink-900 the title measured 2.92:1 in dark mode, under AA's 4.5.
+          (text-ink-300 was also dead — the scale has no 300 step — so the title
+          was only legible by inheriting its container's colour.) */}
+      <div className="flex size-full flex-col items-center justify-center gap-3 text-white/70">
         <PlayCircle size={48} strokeWidth={1.5} />
         <div className="text-center">
-          <p className="text-sm font-medium text-ink-300">
+          <p className="text-sm font-medium text-white">
             {title ? `${title}` : "Video pelajaran"}
           </p>
-          <p className="mt-1 text-xs text-ink-500">{message}</p>
+          <p className="mt-1 text-xs text-white/70">{message}</p>
         </div>
       </div>
     </div>
@@ -406,7 +411,12 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
         </button>
       )}
 
-      <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-3 bg-gradient-to-t from-ink-900/90 to-transparent px-3 pb-2 pt-6">
+      {/* from-black, not from-ink-900: this scrim exists so the white controls
+          read over bright video, but the ink scale inverts under
+          html[data-theme="dark"] (ink-900 becomes #eeeffc) — which turned the
+          scrim light and the white controls on it invisible. Video chrome is
+          dark in both themes. */}
+      <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-3 bg-gradient-to-t from-black/90 to-transparent px-3 pb-2 pt-6">
         <button
           type="button"
           onClick={togglePlay}
