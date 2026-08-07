@@ -199,8 +199,29 @@ export default function AdminIndexPage() {
     }
   }
 
-  const { data: auditEntries = [], isLoading: auditLoading, isError: auditError, refetch: refetchAudit } = useAdminAuditLog();
-  const { data: dashboard, isLoading: dashboardLoading, isError: dashboardError, refetch: refetchDashboard } = useAdminDashboard(resolvedRange);
+  const {
+    data: auditEntries = [],
+    isLoading: auditLoading,
+    isError: auditIsError,
+    isPaused: auditIsPaused,
+    refetch: refetchAudit,
+  } = useAdminAuditLog();
+  // TanStack Query pauses a scheduled retry while document.visibilityState is
+  // "hidden" (tab backgrounded during the retry delay) and only resumes on the
+  // next visibilitychange — until then fetchStatus sits at "paused" with
+  // isLoading and isError both false and data still undefined, so the plain
+  // isError flag never fires and the page below would render fabricated zeros
+  // instead of dash_load_failed. Folding in isPaused (only when we have
+  // nothing to show yet) catches that stuck state too.
+  const auditError = auditIsError || (auditIsPaused && auditEntries.length === 0);
+  const {
+    data: dashboard,
+    isLoading: dashboardLoading,
+    isError: dashboardIsError,
+    isPaused: dashboardIsPaused,
+    refetch: refetchDashboard,
+  } = useAdminDashboard(resolvedRange);
+  const dashboardError = dashboardIsError || (dashboardIsPaused && !dashboard);
   const canReadRevenue = useHasCapability("revenue:read");
 
   useEffect(() => {
