@@ -274,6 +274,34 @@ describe("VideoPlayer", () => {
     );
   });
 
+  // Fullscreening the iframe would hand the whole viewport to YouTube's own
+  // chrome and undo the shield entirely — the one action that can defeat it
+  // without touching a line of the shield's own code.
+  it("fullscreens the wrapper, never the iframe", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+    const targets: string[] = [];
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      writable: true,
+      value: function (this: HTMLElement) {
+        targets.push(this.tagName + ":" + (this.getAttribute("data-testid") ?? this.className));
+        return Promise.resolve();
+      },
+    });
+
+    render(<VideoPlayer videoRef="abc123" title="L1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("button", { name: /layar penuh/i }));
+
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).not.toContain("IFRAME");
+    // The wrapper is the positioned ancestor the shield is inset-0 against.
+    expect(targets[0]).toContain("relative");
+
+    delete (HTMLElement.prototype as Partial<HTMLElement>).requestFullscreen;
+  });
+
   it("drives the player's volume from the volume slider", async () => {
     vi.stubGlobal("YT", { Player: FakePlayer });
 
