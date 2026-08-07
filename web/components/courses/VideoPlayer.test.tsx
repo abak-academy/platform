@@ -21,6 +21,7 @@ class FakePlayer {
       events?: {
         onReady?: (e: { target: FakePlayer }) => void;
         onError?: (e: { target: FakePlayer }) => void;
+        onStateChange?: (e: { data: number; target: FakePlayer }) => void;
       };
     },
   ) {
@@ -70,6 +71,15 @@ class FakePlayer {
   /** Simulates a real YT.Player error event (private/deleted video, region block, etc). */
   triggerError() {
     this.opts.events?.onError?.({ target: this });
+  }
+
+  /**
+   * Emits a YT.PlayerState transition. playVideo() deliberately does NOT emit
+   * PLAYING on its own — a real player can sit in BUFFERING or have the request
+   * refused by autoplay policy, and the gate has to survive both.
+   */
+  emitState(data: number) {
+    this.opts.events?.onStateChange?.({ data, target: this });
   }
 }
 
@@ -297,7 +307,11 @@ describe("VideoPlayer", () => {
     expect(gate.className).toContain("z-30");
   });
 
-  it("starts playback and reveals the player when the gate is clicked", async () => {
+  // playVideo() is a request, not a guarantee. Lowering the gate on the click
+  // uncovers YouTube's paused chrome whenever the request stalls in BUFFERING or
+  // is refused outright — observed in a real browser as -1 → 3 → -1 with
+  // currentTime still 0 under autoplay policy.
+  it("keeps the gate up until the player actually reports PLAYING", async () => {
     vi.stubGlobal("YT", { Player: FakePlayer });
 
     render(<VideoPlayer videoRef="abc123" title="Pelajaran 1" />);
@@ -305,8 +319,52 @@ describe("VideoPlayer", () => {
     const p = FakePlayer.instances[0];
 
     fireEvent.click(screen.getByTestId("video-gate"));
-
     expect(p.played).toBe(true);
+
+    // Buffering, then the request falls back to unstarted — nothing is playing,
+    // so the gate must still be covering the player.
+    await act(async () => p.emitState(3));
+    expect(screen.getByTestId("video-gate")).toBeInTheDocument();
+    await act(async () => p.emitState(-1));
+    expect(screen.getByTestId("video-gate")).toBeInTheDocument();
+
+    await act(async () => p.emitState(1));
+    expect(screen.queryByTestId("video-gate")).toBeNull();
+  });
+
+  // Verified in a real browser: the end screen carries the video title, the
+  // Google/YouTube logos and a "Video lainnya" card linking to another video —
+  // a bigger leak than the pre-play state the gate was built for.
+  it("restores the gate when the video ends", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    render(<VideoPlayer videoRef="abc123" title="Pelajaran 1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+    const p = FakePlayer.instances[0];
+
+    fireEvent.click(screen.getByTestId("video-gate"));
+    await act(async () => p.emitState(1));
+    expect(screen.queryByTestId("video-gate")).toBeNull();
+
+    await act(async () => p.emitState(0));
+    expect(screen.getByTestId("video-gate")).toBeInTheDocument();
+  });
+
+  // Deliberate, and measured rather than assumed: with the shield swallowing
+  // every pointer event YouTube never receives the mousemove that re-shows its
+  // chrome, so a paused frame stays clean. Re-covering it would hide the exact
+  // frame a student paused to read.
+  it("leaves the paused frame visible", async () => {
+    vi.stubGlobal("YT", { Player: FakePlayer });
+
+    render(<VideoPlayer videoRef="abc123" title="Pelajaran 1" />);
+    await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
+    const p = FakePlayer.instances[0];
+
+    fireEvent.click(screen.getByTestId("video-gate"));
+    await act(async () => p.emitState(1));
+    await act(async () => p.emitState(2));
+
     expect(screen.queryByTestId("video-gate")).toBeNull();
   });
 
@@ -318,6 +376,7 @@ describe("VideoPlayer", () => {
     const { rerender } = render(<VideoPlayer videoRef="lessonOne" title="Pelajaran 1" />);
     await waitFor(() => expect(FakePlayer.instances).toHaveLength(1));
     fireEvent.click(screen.getByTestId("video-gate"));
+    await act(async () => FakePlayer.instances[0].emitState(1));
     expect(screen.queryByTestId("video-gate")).toBeNull();
 
     rerender(<VideoPlayer videoRef="lessonTwo" title="Pelajaran 2" />);

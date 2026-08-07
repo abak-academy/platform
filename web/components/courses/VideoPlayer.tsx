@@ -55,6 +55,10 @@ type YTGlobal = {
   onYouTubeIframeAPIReady?: () => void;
 };
 
+// YT.PlayerState members we act on.
+const YT_ENDED = 0;
+const YT_PLAYING = 1;
+
 // One script tag per page, shared by every player instance on it.
 let apiPromise: Promise<void> | null = null;
 
@@ -199,11 +203,21 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
               setDuration(e.target.getDuration());
               setReady(true);
             },
-            // YT.PlayerState.PLAYING === 1
             onStateChange: (e: { data: number; target: YTPlayer }) => {
               if (cancelled) return;
-              setPlaying(e.data === 1);
+              setPlaying(e.data === YT_PLAYING);
               setDuration(e.target.getDuration());
+              // The gate follows the player's real state, never the click.
+              // Measured in a browser 2026-08-07/08: chrome is visible while
+              // unstarted or buffering, hidden while playing, and back in force
+              // on ENDED — the end screen carries the title, the logos and a
+              // "Video lainnya" card linking to another video.
+              if (e.data === YT_PLAYING) setStarted(true);
+              else if (e.data === YT_ENDED) setStarted(false);
+              // PAUSED is deliberately absent: with the shield swallowing every
+              // pointer event YouTube never gets the mousemove that would
+              // re-show its chrome, so a paused frame stays clean — verified.
+              // Re-covering it would hide the very frame a student paused to read.
             },
             // A per-video failure (embedding disabled, deleted, region-locked)
             // must NOT reach the shield-less fallback: YouTube's own error
@@ -289,11 +303,13 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
     [muted],
   );
 
+  // Deliberately does not lower the gate — onStateChange does that, and only on
+  // PLAYING. playVideo() is a request, not a guarantee: it can sit in BUFFERING,
+  // or be refused outright by autoplay policy (observed in a real browser as
+  // -1 → 3 → -1 with currentTime still 0). Lowering the gate here would uncover
+  // YouTube's paused chrome in exactly those cases.
   const startPlayback = useCallback(() => {
-    const p = player.current;
-    if (!p) return;
-    p.playVideo();
-    setStarted(true);
+    player.current?.playVideo();
   }, []);
 
   const seek = useCallback((next: number) => {
