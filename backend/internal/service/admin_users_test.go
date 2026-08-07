@@ -254,6 +254,104 @@ func TestChangeAccountRole_SchoolBinding_Integration(t *testing.T) {
 	})
 }
 
+// TestChangeAccountRole_GoogleAccountGuard covers FR-9/FR-10/FR-11: a Google
+// identity with no password must not be promotable into an account that
+// neither the password door nor the Google-non-student door can open.
+func TestChangeAccountRole_GoogleAccountGuard(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	seedGoogleAdmin := func(t *testing.T, passwordHash string) string {
+		t.Helper()
+		email := "goog-acc-" + uniqueSuffix() + "@test.com"
+		u := &model.User{
+			Email:        &email,
+			Name:         "Google Admin",
+			PasswordHash: passwordHash,
+			Role:         RoleAdminStore,
+			Status:       "active",
+			AuthProvider: "google",
+		}
+		if err := repo.CreateUser(ctx, u); err != nil {
+			t.Fatalf("CreateUser: %v", err)
+		}
+		return u.ID
+	}
+
+	t.Run("google account with no password is refused, role and audit untouched", func(t *testing.T) {
+		actorID := uuid.NewString()
+		targetID := seedGoogleAdmin(t, "")
+
+		err := svc.ChangeAccountRole(ctx, actorID, targetID, RoleSuperAdmin, nil)
+		if !errors.Is(err, ErrGoogleAccountNoPassword) {
+			t.Fatalf("want ErrGoogleAccountNoPassword, got %v", err)
+		}
+
+		u, err := repo.GetAdminUserByID(ctx, targetID)
+		if err != nil {
+			t.Fatalf("GetAdminUserByID: %v", err)
+		}
+		if u.Role != RoleAdminStore {
+			t.Errorf("Role: want unchanged admin_store, got %q", u.Role)
+		}
+
+		rows, _, err := repo.ListAuditLog(ctx, repository.AuditLogFilter{ActorID: actorID})
+		if err != nil {
+			t.Fatalf("ListAuditLog: %v", err)
+		}
+		for _, r := range rows {
+			if r.Action == "account.role_change" {
+				t.Errorf("want no account.role_change audit row, found one: %+v", r)
+			}
+		}
+	})
+
+	t.Run("google account with a password promotes normally", func(t *testing.T) {
+		actorID := uuid.NewString()
+		targetID := seedGoogleAdmin(t, mustHashStd("somepassword"))
+
+		if err := svc.ChangeAccountRole(ctx, actorID, targetID, RoleSuperAdmin, nil); err != nil {
+			t.Fatalf("ChangeAccountRole: %v", err)
+		}
+
+		u, err := repo.GetAdminUserByID(ctx, targetID)
+		if err != nil {
+			t.Fatalf("GetAdminUserByID: %v", err)
+		}
+		if u.Role != RoleSuperAdmin {
+			t.Errorf("Role: want super_admin, got %q", u.Role)
+		}
+	})
+
+	t.Run("password provider account is unaffected by the guard", func(t *testing.T) {
+		actorID := uuid.NewString()
+		email := "pw-acc-" + uniqueSuffix() + "@test.com"
+		u := &model.User{
+			Email:        &email,
+			Name:         "Password Admin",
+			PasswordHash: "",
+			Role:         RoleAdminStore,
+			Status:       "active",
+			AuthProvider: "password",
+		}
+		if err := repo.CreateUser(ctx, u); err != nil {
+			t.Fatalf("CreateUser: %v", err)
+		}
+
+		if err := svc.ChangeAccountRole(ctx, actorID, u.ID, RoleSuperAdmin, nil); err != nil {
+			t.Fatalf("ChangeAccountRole: %v", err)
+		}
+
+		got, err := repo.GetAdminUserByID(ctx, u.ID)
+		if err != nil {
+			t.Fatalf("GetAdminUserByID: %v", err)
+		}
+		if got.Role != RoleSuperAdmin {
+			t.Errorf("Role: want super_admin, got %q", got.Role)
+		}
+	})
+}
+
 func TestChangeAccountStatus_ReactivatesDeactivatedAccount(t *testing.T) {
 	_, repo := newRealDBService(t)
 	mr, err := miniredis.Run()

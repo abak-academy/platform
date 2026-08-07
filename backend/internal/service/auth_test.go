@@ -830,6 +830,136 @@ func TestResetPassword_RevokesAllSessions(t *testing.T) {
 	}
 }
 
+// TestChangePassword_RevokesOtherSessionsKeepsCaller covers FR-29..FR-30 and
+// FR-33: a successful password change kills every OTHER session for the
+// user, keeps the caller's own session alive, and does so by removing
+// revoked jtis individually from user_access_sessions:<uid> rather than
+// deleting the index set wholesale. Runs for both a student and an admin
+// role (FR-33: no role gates this behaviour).
+func TestChangePassword_RevokesOtherSessionsKeepsCaller(t *testing.T) {
+	ctx := context.Background()
+	signer := infra.NewJWTSigner("test-secret", 15*time.Minute)
+
+	for _, role := range []string{RoleStudent, "admin_store"} {
+		t.Run(role, func(t *testing.T) {
+			repo := newFakeUserRepo()
+			repo.seed(&model.User{
+				ID:           "u1",
+				Email:        strptr("user@example.com"),
+				PasswordHash: mustHashStd("oldpassword"),
+				Role:         role,
+				Status:       "active",
+			})
+			svc, mr := newTestService(t, repo)
+
+			accessA, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword")
+			if err != nil {
+				t.Fatalf("login A: %v", err)
+			}
+			claimsA, err := signer.ParseAccess(accessA)
+			if err != nil {
+				t.Fatalf("parse A: %v", err)
+			}
+			jtiA := claimsA.ID
+
+			accessB, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword")
+			if err != nil {
+				t.Fatalf("login B: %v", err)
+			}
+			claimsB, err := signer.ParseAccess(accessB)
+			if err != nil {
+				t.Fatalf("parse B: %v", err)
+			}
+			jtiB := claimsB.ID
+
+			if err := svc.ChangePassword(ctx, "u1", "oldpassword", "brandnewpass", jtiA); err != nil {
+				t.Fatalf("ChangePassword: %v", err)
+			}
+
+			// Assertion 1: the other session is dead.
+			if svc.SessionActive(ctx, jtiB) {
+				t.Error("want jtiB session dead after password change")
+			}
+			// Assertion 2: the caller survives.
+			if !svc.SessionActive(ctx, jtiA) {
+				t.Error("want jtiA (caller) session to survive")
+			}
+			// Assertion 3: the index set was not deleted wholesale — jtiA is
+			// still a member, jtiB is not. Checked directly against
+			// miniredis, not via SessionActive, since that's the assertion
+			// a Del-the-set bug would still pass.
+			members, err := mr.SMembers("user_access_sessions:u1")
+			if err != nil {
+				t.Fatalf("SMembers: %v", err)
+			}
+			foundA, foundB := false, false
+			for _, m := range members {
+				if m == jtiA {
+					foundA = true
+				}
+				if m == jtiB {
+					foundB = true
+				}
+			}
+			if !foundA {
+				t.Error("want jtiA still a member of user_access_sessions index")
+			}
+			if foundB {
+				t.Error("want jtiB removed from user_access_sessions index")
+			}
+		})
+	}
+}
+
+// TestChangePassword_FailedChangeRevokesNothing covers FR-32: a failed
+// change (wrong current_password) revokes no session and writes no new hash.
+func TestChangePassword_FailedChangeRevokesNothing(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{
+		ID:           "u1",
+		Email:        strptr("user@example.com"),
+		PasswordHash: mustHashStd("oldpassword"),
+		Role:         RoleStudent,
+		Status:       "active",
+	})
+	svc, _ := newTestService(t, repo)
+	signer := infra.NewJWTSigner("test-secret", 15*time.Minute)
+
+	accessA, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword")
+	if err != nil {
+		t.Fatalf("login A: %v", err)
+	}
+	claimsA, err := signer.ParseAccess(accessA)
+	if err != nil {
+		t.Fatalf("parse A: %v", err)
+	}
+	accessB, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword")
+	if err != nil {
+		t.Fatalf("login B: %v", err)
+	}
+	claimsB, err := signer.ParseAccess(accessB)
+	if err != nil {
+		t.Fatalf("parse B: %v", err)
+	}
+
+	err = svc.ChangePassword(ctx, "u1", "wrongpassword", "brandnewpass", claimsA.ID)
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("want ErrInvalidCredentials, got %v", err)
+	}
+
+	if !svc.SessionActive(ctx, claimsA.ID) {
+		t.Error("failed change must not revoke the caller's session")
+	}
+	if !svc.SessionActive(ctx, claimsB.ID) {
+		t.Error("failed change must not revoke the other session")
+	}
+	u, _ := repo.GetUserByID(ctx, "u1")
+	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte("oldpassword")) != nil {
+		t.Error("failed change must not alter the password hash")
+	}
+}
+
 // mustHashStd hashes outside a *testing.T context (used in closures/seed).
 func mustHashStd(pw string) string {
 	h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.MinCost)

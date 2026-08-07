@@ -250,7 +250,7 @@ func (h *Handler) ChangePassword(c echo.Context) error {
 	if req.CurrentPassword == "" || req.NewPassword == "" {
 		return badRequest(c, "current_password and new_password are required")
 	}
-	if err := h.svc.ChangePassword(c.Request().Context(), claims.Sub, req.CurrentPassword, req.NewPassword); err != nil {
+	if err := h.svc.ChangePassword(c.Request().Context(), claims.Sub, req.CurrentPassword, req.NewPassword, claims.ID); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"message": "password changed"})
@@ -271,6 +271,7 @@ func (h *Handler) Me(c echo.Context) error {
 		"school_id":     user.SchoolID,
 		"auth_provider": user.AuthProvider,
 		"status":        user.Status,
+		"photo_url":     derefStr(user.PhotoURL),
 	})
 }
 
@@ -284,6 +285,7 @@ func userPayload(user *model.User) map[string]any {
 		"auth_provider": user.AuthProvider,
 		"school_id":     user.SchoolID,
 		"grade":         user.Grade,
+		"photo_url":     derefStr(user.PhotoURL),
 	}
 }
 

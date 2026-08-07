@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,9 +10,12 @@ import (
 
 	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 )
@@ -362,5 +366,46 @@ func TestAdminChangeAccountRole_MissingSchoolID_400(t *testing.T) {
 	// Service returns ErrSchoolRequired (school_id required for admin_school) → 400
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400 for missing school_id, got %d", rec.Code)
+	}
+}
+
+// TestAdminChangeAccountRole_GoogleAccountNoPassword_WireContract covers FR-9's
+// wire contract end to end: a Google-provider account with no password must
+// get 409 with code=account_has_no_password over real HTTP, not just the
+// service-level sentinel (see TestChangeAccountRole_GoogleAccountGuard in
+// internal/service/admin_users_test.go for the sentinel-level coverage).
+func TestAdminChangeAccountRole_GoogleAccountNoPassword_WireContract(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	store := repository.New(env.pool)
+	ctx := context.Background()
+
+	email := "goog-wire-" + uuid.NewString() + "@test.com"
+	target := &model.User{
+		Email:        &email,
+		Name:         "Google Admin Wire",
+		PasswordHash: "",
+		Role:         service.RoleAdminStore,
+		Status:       "active",
+		AuthProvider: "google",
+	}
+	if err := store.CreateUser(ctx, target); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	token := mintTokenForEnv(t, env, uuid.NewString(), service.RoleSuperAdmin)
+
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/system/accounts/"+target.ID+"/role", token, map[string]string{
+		"role": "super_admin",
+	})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("want 409, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["code"] != "account_has_no_password" {
+		t.Errorf("code: want account_has_no_password, got %v", resp["code"])
 	}
 }
