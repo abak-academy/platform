@@ -330,6 +330,13 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminSystem.GET("/audit", h.AdminListAuditLog)
 	adminSystem.GET("/config", h.AdminGetSystemConfig)
 	adminSystem.PUT("/config", h.AdminUpdateSystemConfig)
+
+	// Super-admin dashboard — one request for the whole page. revenue:read is
+	// the same capability the page checks client-side, which keeps admin_store
+	// out per the 2026-08-04 revenue split.
+	adminDashboard := admin.Group("/dashboard")
+	adminDashboard.Use(handler.RBACMiddleware("revenue:read"))
+	adminDashboard.GET("", h.AdminDashboard)
 }
 
 // RegisterRoutesForTest is the same as registerRoutes but exported for handler tests.

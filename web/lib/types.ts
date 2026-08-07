@@ -1257,3 +1257,67 @@ export interface OrderTracking {
   source: "courier" | "local";
   history: OrderTrackingEntry[];
 }
+
+// prev is absent (not zero) when the previous window had no data — see
+// makeKPI in admin_dashboard.go. Callers must presence-check before reading it.
+export interface DashboardKPI {
+  value: number;
+  prev?: number;
+}
+
+// date is an RFC3339 offset string anchored to Asia/Jakarta (e.g.
+// "2026-07-03T00:00:00+07:00"), not a bare "YYYY-MM-DD" — SeriesPoint.Date
+// is a time.Time in dashboard_series.go, not a date-only column.
+export interface DashboardSeriesPoint {
+  date: string;
+  revenue: number;
+  order_count: number;
+  revenue_digital: number;
+  revenue_physical: number;
+  new_students: number;
+  exam_students: number;
+  buying_students: number;
+}
+
+export interface DashboardTopProduct {
+  product_id: string;
+  name: string;
+  product_type: string;
+  is_physical: boolean;
+  qty_sold: number;
+  product_revenue: number;
+}
+
+// scheduled_at is likewise an RFC3339 offset string (time.Time re-anchored to
+// Asia/Jakarta in dashboard_counts.go), and id is a uuid.UUID, which
+// encoding/json marshals as its canonical dashed string form.
+export interface DashboardUpcomingExam {
+  id: string;
+  title: string;
+  scheduled_at: string;
+  registrant_count: number;
+}
+
+// AdminDashboard mirrors service.DashboardResponse (admin_dashboard.go). The
+// Go `kpi` field is a map[string]KPI, but AdminDashboard (service code) only
+// ever populates these five keys, so this fixed shape matches what the
+// handler actually emits today.
+export interface AdminDashboard {
+  period: { from: string; to: string; bucket: "day" | "week" };
+  kpi: {
+    revenue: DashboardKPI;
+    order_count: DashboardKPI;
+    new_students: DashboardKPI;
+    schools: DashboardKPI;
+    students_total: DashboardKPI;
+  };
+  series: DashboardSeriesPoint[];
+  attention: {
+    needs_confirm: number;
+    ready_to_ship: number;
+    shipment_failed: number;
+    active_sessions: number;
+  };
+  top_products: DashboardTopProduct[];
+  upcoming_exams: DashboardUpcomingExam[];
+}
