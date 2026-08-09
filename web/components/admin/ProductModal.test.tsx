@@ -33,8 +33,15 @@ vi.mock("@/lib/hooks/students", () => ({
   usePresignUpload: () => ({ mutateAsync: mockPresign }),
 }));
 
+let mockRole = "admin_store";
+
+vi.mock("@/lib/hooks/use-capability", () => ({
+  useResolvedRole: () => ({ role: mockRole, hydrated: true, meIsError: false }),
+}));
+
 describe("ProductModal", () => {
   beforeEach(() => {
+    mockRole = "admin_store";
     mockOnSubmit.mockReset();
     mockOnOpenChange.mockReset();
     coursesState = { data: sampleCourses };

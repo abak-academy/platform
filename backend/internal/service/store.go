@@ -78,17 +78,53 @@ type PromoValidation struct {
 	Total    float64
 }
 
-func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFilter, role string) ([]model.Product, string, error) {
+// adminExamProductTypes is the read-side mirror of checkTypeRBAC's admin_exam
+// arm. Keep the two in step: a type writable but not readable strands a product
+// the moment it is created.
+var adminExamProductTypes = []string{"course", "exam"}
+
+// narrowToAllowedTypes intersects a caller-requested type with the role's
+// allowlist. A request naming a type outside the allowlist yields a non-nil
+// empty slice — no rows — rather than being ignored, which would widen the
+// query back to every type.
+func narrowToAllowedTypes(allowed []string, requested string) []string {
+	if requested == "" {
+		return allowed
+	}
+	for _, t := range allowed {
+		if t == requested {
+			return []string{requested}
+		}
+	}
+	return []string{}
+}
+
+// productListFilterForRole narrows a product list filter to what role may see.
+// It is a free function so the policy is unit-testable without a repository —
+// s.storeRepo is a concrete type and cannot be faked.
+func productListFilterForRole(filter repository.ProductFilter, role string) repository.ProductFilter {
 	switch role {
 	case RoleSuperAdmin:
 		// no filter restrictions
 	case RoleAdminStore:
 		// no filter restrictions — manages book, course, exam
-	default: // student, admin_exam, or ""
+	case RoleAdminExam:
+		// Read boundary mirrors checkTypeRBAC's admin_exam arm: this role owns
+		// the digital catalogue only, so physical inventory — including its
+		// drafts — must not come back here. Status is deliberately left alone;
+		// AdminCreateProduct writes "draft", and hiding drafts would make every
+		// product this role creates invisible to it.
+		filter.Types = narrowToAllowedTypes(adminExamProductTypes, filter.Type)
+		filter.Type = ""
+	default: // student or ""
 		filter.VisibleOnly = true
 		filter.Status = "published"
 	}
-	return s.storeRepo.ListProducts(ctx, filter)
+	return filter
+}
+
+func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFilter, role string) ([]model.Product, string, error) {
+	return s.storeRepo.ListProducts(ctx, productListFilterForRole(filter, role))
 }
 
 func (s *Service) GetProduct(ctx context.Context, id string, role string) (model.Product, error) {
@@ -1803,7 +1839,10 @@ func checkTypeRBAC(role, productType string) error {
 		}
 		return ErrForbidden
 	case RoleAdminExam:
-		if productType == "exam" {
+		// The exam admin owns the whole digital catalogue — exam products and
+		// the courses behind them. Physical types stay with admin_store because
+		// they carry stock, weight and shipping, which is fulfilment work.
+		if productType == "exam" || productType == "course" {
 			return nil
 		}
 		return ErrForbidden

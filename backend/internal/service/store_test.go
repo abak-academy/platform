@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -37,6 +38,9 @@ func (f *fakeStoreRepo) ListProducts(_ context.Context, filter repository.Produc
 	var out []model.Product
 	for _, p := range f.products {
 		if filter.Type != "" && p.Type != filter.Type {
+			continue
+		}
+		if filter.Types != nil && !slices.Contains(filter.Types, p.Type) {
 			continue
 		}
 		if filter.Status != "" && p.Status != filter.Status {
@@ -213,11 +217,6 @@ func (s *shimService) ListProducts(ctx context.Context, filter repository.Produc
 		if filter.Type == "exam" {
 			return nil, "", nil
 		}
-	case RoleAdminExam:
-		if filter.Type != "" && filter.Type != "exam" {
-			return nil, "", nil
-		}
-		filter.Type = "exam"
 	default:
 		filter.VisibleOnly = true
 		filter.Status = "published"
@@ -389,38 +388,142 @@ func TestListProducts_AdminStoreExamReturnsEmpty(t *testing.T) {
 	}
 }
 
-func TestCreateProduct_TypeRBAC(t *testing.T) {
+// Drives the PRODUCTION policy (productListFilterForRole) against the fake repo
+// rather than shimService, whose ListProducts encodes rules production does not
+// have. admin_exam creates products through AdminCreateProduct, which hardcodes
+// status "draft" — so a draft-hiding filter makes its own products unreachable.
+func TestListProducts_AdminExamSeesDrafts_StudentDoesNot(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()
-	svc := newShim(fake)
+	fake.seedProduct(model.Product{ID: "p1", Type: "course", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p2", Type: "course", Status: "published"})
 
-	// admin_store creating exam type → ok (FR-STORE-ADM-03: admin_store edits
-	// price/visibility/promo eligibility on exam-type products; it just can't
-	// touch exam content, which stays gated under RoleAdminExam / /admin/exams)
-	_, err := svc.CreateProduct(ctx, model.Product{Type: "exam", Name: "Exam 1"}, RoleAdminStore)
+	forExam, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{}, RoleAdminExam))
 	if err != nil {
-		t.Errorf("admin_store creating exam should be allowed, got %v", err)
+		t.Fatalf("ListProducts(admin_exam): %v", err)
+	}
+	if len(forExam) != 2 {
+		t.Errorf("admin_exam must see its own draft products: want 2, got %d", len(forExam))
 	}
 
-	// admin_exam creating book type → ErrForbidden
-	_, err = svc.CreateProduct(ctx, model.Product{Type: "book", Name: "Book 1"}, RoleAdminExam)
-	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("want ErrForbidden for admin_exam creating book, got %v", err)
-	}
-
-	// admin_store creating book → ok
-	p, err := svc.CreateProduct(ctx, model.Product{Type: "book", Name: "Book 1"}, RoleAdminStore)
+	forStudent, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{}, RoleStudent))
 	if err != nil {
-		t.Fatalf("admin_store creating book: %v", err)
+		t.Fatalf("ListProducts(student): %v", err)
 	}
-	if p.ID == "" {
-		t.Error("want non-empty ID")
+	if len(forStudent) != 1 || forStudent[0].ID != "p2" {
+		t.Errorf("student must still see only published products, got %+v", forStudent)
+	}
+}
+
+// The read boundary must mirror checkTypeRBAC: admin_exam writes only course
+// and exam, so listing must not hand it physical inventory — draft or hidden
+// rows included, which no client-side filter would ever have suppressed.
+func TestListProducts_AdminExamNeverSeesPhysicalTypes(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	fake.seedProduct(model.Product{ID: "p1", Type: "book", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p2", Type: "book", Status: "hidden"})
+	fake.seedProduct(model.Product{ID: "p3", Type: "merchandise", Status: "published"})
+	fake.seedProduct(model.Product{ID: "p4", Type: "course", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p5", Type: "exam", Status: "published"})
+
+	got, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{}, RoleAdminExam))
+	if err != nil {
+		t.Fatalf("ListProducts(admin_exam): %v", err)
+	}
+	for _, p := range got {
+		if p.Type != "course" && p.Type != "exam" {
+			t.Errorf("admin_exam must not see %s product %s", p.Type, p.ID)
+		}
+	}
+	if len(got) != 2 {
+		t.Errorf("want the 2 digital products, got %d: %+v", len(got), got)
+	}
+}
+
+// A caller-supplied ?type= outside the allowlist must return nothing. Ignoring
+// it would widen the query back to every type, which is the bug in reverse.
+func TestListProducts_AdminExamExplicitPhysicalTypeReturnsEmpty(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	fake.seedProduct(model.Product{ID: "p1", Type: "book", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p2", Type: "course", Status: "draft"})
+
+	got, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{Type: "book"}, RoleAdminExam))
+	if err != nil {
+		t.Fatalf("ListProducts(admin_exam, type=book): %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("admin_exam asking for books must get nothing, got %+v", got)
+	}
+}
+
+// An allowed ?type= must still narrow, not be swallowed by the allowlist.
+func TestListProducts_AdminExamExplicitDigitalTypeStillNarrows(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	fake.seedProduct(model.Product{ID: "p1", Type: "course", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p2", Type: "exam", Status: "draft"})
+
+	got, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{Type: "exam"}, RoleAdminExam))
+	if err != nil {
+		t.Fatalf("ListProducts(admin_exam, type=exam): %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "p2" {
+		t.Errorf("want only the exam product, got %+v", got)
+	}
+}
+
+// The type boundary is admin_exam's alone — narrowing it must not leak into the
+// roles that legitimately manage physical stock.
+func TestListProducts_StoreRolesKeepPhysicalTypes(t *testing.T) {
+	ctx := context.Background()
+	for _, role := range []string{RoleSuperAdmin, RoleAdminStore} {
+		fake := newFakeStoreRepo()
+		fake.seedProduct(model.Product{ID: "p1", Type: "book", Status: "draft"})
+		fake.seedProduct(model.Product{ID: "p2", Type: "course", Status: "draft"})
+
+		got, _, err := fake.ListProducts(ctx, productListFilterForRole(repository.ProductFilter{}, role))
+		if err != nil {
+			t.Fatalf("ListProducts(%s): %v", role, err)
+		}
+		if len(got) != 2 {
+			t.Errorf("%s must still see physical products: want 2, got %d", role, len(got))
+		}
+	}
+}
+
+func TestCreateProduct_TypeRBAC(t *testing.T) {
+	ctx := context.Background()
+
+	allTypes := []string{"book", "merchandise", "medal", "course", "exam"}
+
+	// want[role] = set of types that role may create.
+	want := map[string]map[string]bool{
+		RoleSuperAdmin:  {"book": true, "merchandise": true, "medal": true, "course": true, "exam": true},
+		RoleAdminStore:  {"book": true, "merchandise": true, "medal": true, "course": true, "exam": true},
+		RoleAdminExam:   {"course": true, "exam": true},
+		RoleAdminSchool: {},
+		RoleStudent:     {},
 	}
 
-	// super_admin creating any type → ok
-	_, err = svc.CreateProduct(ctx, model.Product{Type: "exam", Name: "Exam 1"}, RoleSuperAdmin)
-	if err != nil {
-		t.Fatalf("super_admin creating exam: %v", err)
+	for role, allowed := range want {
+		for _, pt := range allTypes {
+			t.Run(role+"/"+pt, func(t *testing.T) {
+				fake := newFakeStoreRepo()
+				svc := newShim(fake)
+				_, err := svc.CreateProduct(ctx, model.Product{Type: pt, Name: "P"}, role)
+				if allowed[pt] {
+					if err != nil {
+						t.Errorf("%s creating %s: want nil, got %v", role, pt, err)
+					}
+					return
+				}
+				if !errors.Is(err, ErrForbidden) {
+					t.Errorf("%s creating %s: want ErrForbidden, got %v", role, pt, err)
+				}
+			})
+		}
 	}
 }
 
@@ -2105,16 +2208,23 @@ func TestCreateProductWithCourses_RBAC(t *testing.T) {
 	fake := newFakeStoreRepo()
 	svc := newShim(fake)
 
-	// admin_exam creating course → ErrForbidden
-	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, nil, RoleAdminExam)
+	// admin_school creating course → ErrForbidden
+	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, nil, RoleAdminSchool)
 	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("want ErrForbidden for admin_exam creating course, got %v", err)
+		t.Errorf("want ErrForbidden for admin_school creating course, got %v", err)
 	}
 
-	// admin_store creating course with links → ok
 	course, _ := fake.CreateCourse(ctx, model.Course{
 		Title: "Math", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
 	})
+
+	// admin_exam creating course with links → ok
+	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, []string{course.ID.String()}, RoleAdminExam)
+	if err != nil {
+		t.Fatalf("admin_exam creating course: %v", err)
+	}
+
+	// admin_store creating course with links → ok
 	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, []string{course.ID.String()}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("admin_store creating course: %v", err)

@@ -56,6 +56,48 @@ describe("admin-products hooks", () => {
     expect(result.current.data).toEqual(products);
   });
 
+  // The endpoint pages at 20. Reading only page 1 stranded every later row, and
+  // since the table orders by a random uuid the visible 20 were an arbitrary
+  // subset — so "it looks fine" was never evidence of completeness.
+  it("useAdminProducts follows next_cursor until the list is exhausted", async () => {
+    const page1: Product[] = Array.from({ length: 20 }, (_, i) => ({
+      id: `p${i}`,
+      type: "book" as const,
+      name: `Buku ${i}`,
+      price: 10000,
+      stock: 5,
+      status: "published" as const,
+    }));
+    const page2: Product[] = [
+      { id: "p20", type: "course", name: "Kursus terakhir", price: 50000, status: "draft" },
+    ];
+    mockAuthFetch
+      .mockResolvedValueOnce({ data: page1, next_cursor: "p19" })
+      .mockResolvedValueOnce({ data: page2, next_cursor: "" });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useAdminProducts(), { wrapper });
+
+    await waitFor(() => expect(result.current.data).toHaveLength(21));
+
+    expect(mockAuthFetch).toHaveBeenNthCalledWith(1, "/admin/products");
+    expect(mockAuthFetch).toHaveBeenNthCalledWith(2, "/admin/products?cursor=p19");
+    // The row that used to be unreachable.
+    expect(result.current.data?.some((p) => p.id === "p20")).toBe(true);
+  });
+
+  it("useAdminProducts stops after one request when there is no next_cursor", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: "" });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useAdminProducts(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    // An always-truthy cursor check here would loop forever against a live API.
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("useCreateProduct posts to /admin/products and invalidates list", async () => {
     const product: Product = { id: "p2", type: "course", name: "Kursus A", price: 50000, status: "draft" };
     mockAuthFetch.mockResolvedValueOnce(product);
