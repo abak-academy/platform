@@ -70,7 +70,10 @@ func orderFilterPredicateFrom(filter OrderFilter, startArg int) (string, []inter
 			AND EXISTS (SELECT 1 FROM order_item oi
 			             WHERE oi.order_id = orders.id
 			               AND oi.product_type IN ('book','merchandise','medal'))`
-	} else if filter.Status != "" {
+		// "all" is the frontend's sentinel for its own "All" filter tab, not a
+		// real status value — treated as no filter here so it can't be
+		// forwarded as a literal that matches zero rows.
+	} else if filter.Status != "" && filter.Status != "all" {
 		query += fmt.Sprintf(` AND status = $%d`, argNum)
 		args = append(args, filter.Status)
 		argNum++
@@ -203,7 +206,7 @@ func scanOrder(row interface {
 
 func (r *Repository) fetchItems(ctx context.Context, orderID uuid.UUID) ([]model.OrderItem, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams, fulfilled_at, created_at
+		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, COALESCE(weight_grams, 0), fulfilled_at, created_at
 		 FROM order_item
 		 WHERE order_id = $1
 		 ORDER BY created_at`,
@@ -757,7 +760,7 @@ func (r *Repository) GetExpiredPaymentOrders(ctx context.Context, limit int) ([]
 
 func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
 	rows, err := tx.Query(ctx,
-		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams, fulfilled_at, created_at
+		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, COALESCE(weight_grams, 0), fulfilled_at, created_at
 		 FROM order_item WHERE order_id = $1`,
 		orderID,
 	)

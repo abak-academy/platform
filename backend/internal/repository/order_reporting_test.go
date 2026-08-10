@@ -209,3 +209,60 @@ func TestListOrders_readyToShipMatchesTheBucketDefinition(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, len(gotIDs), counts.ReadyToShip, "the link's rows must match the card's count")
 }
+
+// The orders page's "All" tab and the store dashboard both use "all" as a
+// legitimate AdminOrderFilterStatus value. If it reaches the predicate builder
+// as a literal `status = 'all'`, it matches zero rows instead of every row.
+func TestCountOrdersByBucket_StatusAllMeansNoFilter(t *testing.T) {
+	pool := newReportingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	student := seedStudent(t, pool, "Status All Buyer")
+	book := seedProduct(t, pool, "Buku Status All", "book", 10000)
+	at := time.Date(2026, 6, 10, 8, 0, 0, 0, time.UTC)
+
+	seedOrder(t, pool, student, "paid", at, 10000, 0, 0, 10000,
+		[]seedItem{{book, "Buku Status All", "book", 10000, 1}})
+	seedOrder(t, pool, student, "payment_pending", at, 10000, 0, 0, 10000,
+		[]seedItem{{book, "Buku Status All", "book", 10000, 1}})
+
+	monthStart := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	monthEnd := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+
+	noFilter, err := repo.CountOrdersByBucket(ctx,
+		OrderFilter{StudentID: &student, ExcludeCart: true},
+		[]string{"courierNotFound"}, monthStart, monthEnd)
+	require.NoError(t, err)
+
+	allFilter, err := repo.CountOrdersByBucket(ctx,
+		OrderFilter{StudentID: &student, ExcludeCart: true, Status: "all"},
+		[]string{"courierNotFound"}, monthStart, monthEnd)
+	require.NoError(t, err)
+
+	require.Equal(t, noFilter, allFilter, "status=all must count the same rows as no status filter")
+	require.Equal(t, 2, allFilter.Total, "both orders must be counted, not zero")
+}
+
+// Same sentinel, the list side. AdminListOrders passes ?status= straight
+// through to the same OrderFilter, so ListOrders must treat "all" identically.
+func TestListOrders_StatusAllMeansNoFilter(t *testing.T) {
+	pool := newReportingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	student := seedStudent(t, pool, "Status All List Buyer")
+	book := seedProduct(t, pool, "Buku Status All List", "book", 10000)
+	at := time.Date(2026, 6, 11, 8, 0, 0, 0, time.UTC)
+
+	seedOrder(t, pool, student, "paid", at, 10000, 0, 0, 10000,
+		[]seedItem{{book, "Buku Status All List", "book", 10000, 1}})
+
+	noFilter, _, err := repo.ListOrders(ctx, OrderFilter{StudentID: &student, Limit: 10})
+	require.NoError(t, err)
+	allFilter, _, err := repo.ListOrders(ctx, OrderFilter{StudentID: &student, Status: "all", Limit: 10})
+	require.NoError(t, err)
+
+	require.Len(t, noFilter, 1)
+	require.Len(t, allFilter, 1, "status=all must return the row, not filter it out")
+}
