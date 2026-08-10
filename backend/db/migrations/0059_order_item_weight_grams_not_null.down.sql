@@ -1,0 +1,2 @@
+ALTER TABLE order_item ALTER COLUMN weight_grams DROP NOT NULL;
+ALTER TABLE order_item ALTER COLUMN weight_grams DROP DEFAULT;
