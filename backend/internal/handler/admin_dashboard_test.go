@@ -234,3 +234,42 @@ func TestAdminDashboardDefaultPeriodSpansThirtyDays(t *testing.T) {
 		t.Errorf("default window spans %d days, want 30 (from=%s to=%s)", gotDays, body.Period.From, body.Period.To)
 	}
 }
+
+// TestRevenueAndDashboardAgreeOnDefaultWindow pins the two endpoints to the
+// same default period. /admin/revenue used a bare now-30d..now instant window
+// while /admin/dashboard used a midnight-aligned today-29..today+1, so the two
+// pages reported different totals under the same "30 hari" label. Nothing else
+// enforces that they stay in step — a change to either default silently
+// reintroduces the disagreement.
+func TestRevenueAndDashboardAgreeOnDefaultWindow(t *testing.T) {
+	env := newAdminDashboardTestEnv(t)
+	token := env.tokenFor(t, service.RoleSuperAdmin)
+
+	period := func(path, fromKey, toKey string) (string, string) {
+		t.Helper()
+		rec := getWithToken(t, env.e, path, token)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: got %d: %s", path, rec.Code, rec.Body.String())
+		}
+		var raw map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+			t.Fatalf("%s: decode: %v", path, err)
+		}
+		if fromKey == "period" {
+			p, ok := raw["period"].(map[string]any)
+			if !ok {
+				t.Fatalf("%s: no period object", path)
+			}
+			return p["from"].(string), p["to"].(string)
+		}
+		return raw[fromKey].(string), raw[toKey].(string)
+	}
+
+	dashFrom, dashTo := period("/api/v1/admin/dashboard", "period", "")
+	revFrom, revTo := period("/api/v1/admin/revenue", "from", "to")
+
+	if dashFrom != revFrom || dashTo != revTo {
+		t.Errorf("default windows disagree: dashboard %s..%s, revenue %s..%s",
+			dashFrom, dashTo, revFrom, revTo)
+	}
+}

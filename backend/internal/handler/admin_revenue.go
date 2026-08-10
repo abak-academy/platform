@@ -19,12 +19,18 @@ func (h *Handler) AdminGetRevenue(c echo.Context) error {
 		return badRequest(c, err.Error())
 	}
 
+	// Midnight-aligned and exclusive, matching GET /admin/dashboard. This was
+	// a bare now-30d..now instant window, so "30 hari" meant the last 720
+	// hours and today counted only up to the moment the request landed — the
+	// two pages reported different totals for the same preset label. `to` is
+	// today+1 exclusive, so a window of exactly 30 days starts at today-29.
 	now := time.Now().In(jakarta)
-	from := now.AddDate(0, 0, -30)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, jakarta)
+	from := today.AddDate(0, 0, -29)
 	if fromParam != nil {
 		from = *fromParam
 	}
-	to := now
+	to := today.AddDate(0, 0, 1)
 	if toParam != nil {
 		to = *toParam
 	}
@@ -45,12 +51,10 @@ func (h *Handler) AdminGetRevenue(c echo.Context) error {
 	// which read as an all-time figure.
 	// `to` is exclusive, so echo back the last day actually included — otherwise
 	// the page's period label reads one day later than the data.
+	// `to` is exclusive in both branches now, so one expression covers them —
+	// it no longer needs to special-case a default that was a bare instant.
 	revenue["from"] = from.Format("2006-01-02")
-	if toParam != nil {
-		revenue["to"] = toParam.AddDate(0, 0, -1).Format("2006-01-02")
-	} else {
-		revenue["to"] = now.Format("2006-01-02")
-	}
+	revenue["to"] = to.AddDate(0, 0, -1).Format("2006-01-02")
 
 	return c.JSON(http.StatusOK, revenue)
 }
