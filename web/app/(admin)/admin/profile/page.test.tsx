@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AdminProfilePage from "./page";
 import type { User } from "@/lib/types";
@@ -84,6 +84,22 @@ describe("AdminProfilePage", () => {
     expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
     expect(screen.getByText("Store Manager")).toBeInTheDocument();
     expect(screen.getByText("budi@abak.id")).toBeInTheDocument();
+  });
+
+  it("reports the sign-in method as password, naming the Google origin for a migrated account", () => {
+    renderPage();
+    expect(screen.getByText("Kata sandi")).toBeInTheDocument();
+
+    cleanup();
+    meState.data.auth_provider = "google";
+    renderPage();
+
+    // Google sign-in is student-only, so an admin's usable method is the password
+    // even when the account was originally created through Google.
+    expect(
+      screen.getByText("Kata sandi (akun dibuat via Google)"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Google")).not.toBeInTheDocument();
   });
 
   it("renders ChangePasswordForm", () => {

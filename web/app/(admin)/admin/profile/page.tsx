@@ -53,9 +53,11 @@ export default function AdminProfilePage() {
 
   const roleKey = roleLabelKey(me?.role);
   const roleLabel = roleKey ? t(roleKey) : "—";
+  // Google sign-in is student-only, so an admin's usable method is always the
+  // password — naming the Google origin keeps that honest for migrated accounts.
   const signInMethodLabel =
     me?.auth_provider === "google"
-      ? t("admin_profile_signin_google")
+      ? t("admin_profile_signin_password_google_origin")
       : t("admin_profile_signin_password");
 
   async function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
