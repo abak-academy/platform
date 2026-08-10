@@ -23,6 +23,10 @@ const PRESETS = [
 
 type Preset = (typeof PRESETS)[number]["id"];
 
+// KNOWN BUG (out of this PR's scope, separate ticket): UTC-based, not
+// Asia/Jakarta, and off by one day for an N-day window against an exclusive
+// `to`. web/components/admin/PeriodBar.tsx fixed the same pair — see its
+// jakartaDateString/isoDaysAgo before assuming this copy agrees with it.
 function isoDaysAgo(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);

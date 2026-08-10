@@ -196,3 +196,41 @@ func TestAdminDashboardDefaultPeriodEndsToday(t *testing.T) {
 		t.Errorf("period.to = %q, want today (%q) in Asia/Jakarta", body.Period.To, wantTo)
 	}
 }
+
+// TestAdminDashboardDefaultPeriodSpansThirtyDays pins the off-by-one where the
+// default window was today-30..today+1 (exclusive) — 31 days — while the UI
+// preset is labelled "30 hari". period.to names the last included day, so an
+// exact 30-day span is period.to - period.from == 29 days.
+func TestAdminDashboardDefaultPeriodSpansThirtyDays(t *testing.T) {
+	env := newAdminDashboardTestEnv(t)
+	token := env.tokenFor(t, service.RoleSuperAdmin)
+
+	rec := getWithToken(t, env.e, "/api/v1/admin/dashboard", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Period struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+		} `json:"period"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	from, err := time.Parse("2006-01-02", body.Period.From)
+	if err != nil {
+		t.Fatalf("parse period.from: %v", err)
+	}
+	to, err := time.Parse("2006-01-02", body.Period.To)
+	if err != nil {
+		t.Fatalf("parse period.to: %v", err)
+	}
+
+	gotDays := int(to.Sub(from).Hours()/24) + 1
+	if gotDays != 30 {
+		t.Errorf("default window spans %d days, want 30 (from=%s to=%s)", gotDays, body.Period.From, body.Period.To)
+	}
+}

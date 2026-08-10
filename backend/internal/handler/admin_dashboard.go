@@ -29,9 +29,12 @@ func (h *Handler) AdminDashboard(c echo.Context) error {
 	// `to` advanced one day, so an unparameterized request (the frontend's
 	// default 30-day preset) includes all of today, not everything up to the
 	// instant the request happened to land.
+	//
+	// `to` is today+1 (exclusive), so a window of exactly 30 days must start at
+	// today-29, not today-30 — the latter yields 31 days.
 	now := time.Now().In(jakarta)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, jakarta)
-	from := today.AddDate(0, 0, -30)
+	from := today.AddDate(0, 0, -29)
 	if fromParam != nil {
 		from = *fromParam
 	}
