@@ -1106,10 +1106,9 @@ func TestCheckTypeRBAC_admin_exam_blocks_book(t *testing.T) {
 	}
 }
 
-func TestCheckTypeRBAC_admin_exam_blocks_course(t *testing.T) {
-	err := checkTypeRBAC(RoleAdminExam, "course")
-	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("admin_exam on course type should return ErrForbidden, got %v", err)
+func TestCheckTypeRBAC_admin_exam_allows_course(t *testing.T) {
+	if err := checkTypeRBAC(RoleAdminExam, "course"); err != nil {
+		t.Errorf("admin_exam on course type should be allowed, got %v", err)
 	}
 }
 

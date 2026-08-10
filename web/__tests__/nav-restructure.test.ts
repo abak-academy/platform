@@ -63,12 +63,18 @@ describe("FR-FE-16: ADMIN_EXAM_NAV and ADMIN_SCHOOL_NAV use nav_group_exam title
   });
 });
 
-describe("FR-FE-16: admin_exam sees only exam items under Exam", () => {
+describe("FR-FE-16: admin_exam sees exam items under Exam and catalog items under Katalog", () => {
   const examNav = NAV_CONFIG["admin_exam"];
   const examItems = examNav[0].items;
 
-  it("has exactly one nav group", () => {
-    expect(examNav).toHaveLength(1);
+  it("has two nav groups: Exam and Katalog", () => {
+    expect(examNav).toHaveLength(2);
+  });
+
+  it("second group is Katalog with products and courses links", () => {
+    expect(examNav[1].titleKey).toBe("nav_group_catalog");
+    const hrefs = examNav[1].items.map((i) => i.href);
+    expect(hrefs).toEqual(["/admin/products", "/admin/courses"]);
   });
 
   it("contains only exam items (tests, packages, question_bank, session_monitor)", () => {

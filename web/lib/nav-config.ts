@@ -111,6 +111,13 @@ export const ADMIN_EXAM_NAV: RoleNavConfig = [
     titleKey: "nav_group_exam",
     items: EXAM_NAV_ITEMS,
   },
+  {
+    titleKey: "nav_group_catalog",
+    items: [
+      { labelKey: "admin_nav_products", href: "/admin/products", icon: Package },
+      { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library },
+    ],
+  },
 ];
 
 export const ADMIN_SCHOOL_NAV: RoleNavConfig = [

@@ -12,10 +12,17 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
+// canAuthorCourses gates every course, section and lesson write. It is one
+// function rather than eleven inline comparisons because the eleventh method
+// is how a role check goes missing.
+func canAuthorCourses(role string) bool {
+	return role == RoleAdminExam || role == RoleAdminStore || role == RoleSuperAdmin
+}
+
 // --- Course CRUD ---
 
 func (s *Service) CreateCourse(ctx context.Context, title, level, subject, instructorName, role string) (model.Course, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Course{}, ErrForbidden
 	}
 
@@ -28,20 +35,15 @@ func (s *Service) CreateCourse(ctx context.Context, title, level, subject, instr
 	return s.storeRepo.CreateCourse(ctx, c)
 }
 
-// canReadCourses mirrors the same two-role write boundary used throughout this file.
-func canReadCourses(role string) bool {
-	return role == RoleAdminStore || role == RoleSuperAdmin
-}
-
 func (s *Service) ListCourses(ctx context.Context, limit int, cursor string, role string) ([]model.Course, string, error) {
-	if !canReadCourses(role) {
+	if !canAuthorCourses(role) {
 		return nil, "", ErrForbidden
 	}
 	return s.storeRepo.ListCourses(ctx, limit, cursor)
 }
 
 func (s *Service) GetCourse(ctx context.Context, id string, role string) (model.Course, int, int, error) {
-	if !canReadCourses(role) {
+	if !canAuthorCourses(role) {
 		return model.Course{}, 0, 0, ErrForbidden
 	}
 	cID, err := parseUUID(id)
@@ -67,7 +69,7 @@ func (s *Service) GetCourse(ctx context.Context, id string, role string) (model.
 }
 
 func (s *Service) DeleteCourse(ctx context.Context, id, role string) error {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return ErrForbidden
 	}
 	cID, err := parseUUID(id)
@@ -85,7 +87,7 @@ func (s *Service) DeleteCourse(ctx context.Context, id, role string) error {
 }
 
 func (s *Service) UpdateCourse(ctx context.Context, id, title, level, subject, instructorName, role string) (model.Course, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Course{}, ErrForbidden
 	}
 
@@ -129,7 +131,7 @@ func (s *Service) UpdateCourse(ctx context.Context, id, title, level, subject, i
 // --- Section CRUD (re-keyed to course_id) ---
 
 func (s *Service) ListSections(ctx context.Context, courseID string, role string) ([]model.Section, error) {
-	if !canReadCourses(role) {
+	if !canAuthorCourses(role) {
 		return nil, ErrForbidden
 	}
 	cID, err := parseUUID(courseID)
@@ -140,7 +142,7 @@ func (s *Service) ListSections(ctx context.Context, courseID string, role string
 }
 
 func (s *Service) CreateSection(ctx context.Context, courseID string, title string, role string) (model.Section, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Section{}, ErrForbidden
 	}
 
@@ -164,7 +166,7 @@ func (s *Service) CreateSection(ctx context.Context, courseID string, title stri
 }
 
 func (s *Service) UpdateSection(ctx context.Context, courseID, sectionID string, title string, role string) (model.Section, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Section{}, ErrForbidden
 	}
 
@@ -177,7 +179,7 @@ func (s *Service) UpdateSection(ctx context.Context, courseID, sectionID string,
 }
 
 func (s *Service) DeleteSection(ctx context.Context, courseID, sectionID string, role string) error {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return ErrForbidden
 	}
 
@@ -190,7 +192,7 @@ func (s *Service) DeleteSection(ctx context.Context, courseID, sectionID string,
 }
 
 func (s *Service) ReorderSections(ctx context.Context, courseID string, orderedIDs []string, role string) error {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return ErrForbidden
 	}
 
@@ -214,7 +216,7 @@ func (s *Service) ReorderSections(ctx context.Context, courseID string, orderedI
 // --- Lesson CRUD (re-keyed to course_id, unchanged child of section) ---
 
 func (s *Service) CreateLesson(ctx context.Context, courseID, sectionID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Lesson{}, ErrForbidden
 	}
 
@@ -240,7 +242,7 @@ func (s *Service) CreateLesson(ctx context.Context, courseID, sectionID string, 
 }
 
 func (s *Service) UpdateLesson(ctx context.Context, courseID, sectionID, lessonID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return model.Lesson{}, ErrForbidden
 	}
 
@@ -258,7 +260,7 @@ func (s *Service) UpdateLesson(ctx context.Context, courseID, sectionID, lessonI
 }
 
 func (s *Service) DeleteLesson(ctx context.Context, courseID, sectionID, lessonID string, role string) error {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return ErrForbidden
 	}
 
@@ -271,7 +273,7 @@ func (s *Service) DeleteLesson(ctx context.Context, courseID, sectionID, lessonI
 }
 
 func (s *Service) ReorderLessons(ctx context.Context, courseID, sectionID string, orderedIDs []string, role string) error {
-	if role != RoleAdminStore && role != RoleSuperAdmin {
+	if !canAuthorCourses(role) {
 		return ErrForbidden
 	}
 
