@@ -42,7 +42,7 @@ import type { Order, OrderStatus, AdminOrderQuery, AdminOrderFilterStatus } from
 // Mirrors AdminOrderFilterStatus. An unknown ?status= falls back to "all"
 // rather than sending a value the API would reject.
 const ORDER_FILTER_STATUSES: AdminOrderFilterStatus[] = [
-  "all", "pending", "paid", "processing", "shipped", "failed", "refunded", "shipment_failed",
+  "all", "pending", "paid", "processing", "shipped", "failed", "refunded", "shipment_failed", "ready_to_ship",
 ];
 
 function orderNumber(order: Order): string {

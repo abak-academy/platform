@@ -23,7 +23,10 @@ export const adminOrdersKeys = {
   detail: (id: string) => [...adminOrdersKeys.all, "detail", id] as const,
 };
 
-const FILTER_STATUS_MAP: Record<Exclude<AdminOrderFilterStatus, "all" | "shipment_failed">, Order["status"]> = {
+const FILTER_STATUS_MAP: Record<
+  Exclude<AdminOrderFilterStatus, "all" | "shipment_failed" | "ready_to_ship">,
+  Order["status"]
+> = {
   pending: "payment_pending",
   paid: "paid",
   processing: "processing",
@@ -34,6 +37,9 @@ const FILTER_STATUS_MAP: Record<Exclude<AdminOrderFilterStatus, "all" | "shipmen
 
 function statusQueryParam(status?: AdminOrderFilterStatus): string | undefined {
   if (!status || status === "all" || status === "shipment_failed") return undefined;
+  // Synthetic value, not an orders.status — sent through as-is; the backend
+  // maps it to the ready_to_ship predicate (see OrderFilter.ReadyToShip).
+  if (status === "ready_to_ship") return "ready_to_ship";
   return FILTER_STATUS_MAP[status];
 }
 

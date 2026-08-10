@@ -16,6 +16,7 @@ import type { AdminOrderFilterStatus, AdminOrderQuery, OrderBucketCounts } from 
 const FILTER_OPTIONS: AdminOrderFilterStatus[] = [
   "all",
   "pending",
+  "ready_to_ship",
   "paid",
   "processing",
   "shipped",
@@ -45,7 +46,7 @@ function chipCount(
       return counts.total;
     case "pending":
       return counts.needs_confirm;
-    case "paid":
+    case "ready_to_ship":
       return counts.ready_to_ship;
     case "shipped":
       return counts.in_transit;
@@ -118,6 +119,9 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
         return t("filter_refunded");
       case "shipment_failed":
         return t("shipment_failed_badge");
+      case "ready_to_ship":
+        // Reuses the dashboard/store card's label — same bucket, same wording.
+        return t("admin_home_ready_to_ship");
     }
   };
 

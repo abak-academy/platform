@@ -24,6 +24,13 @@ type OrderFilter struct {
 	Cursor      string
 	Limit       int
 
+	// ReadyToShip filters to exactly the set CountOrdersByBucket's ready_to_ship
+	// bucket counts (order_reporting.go): status IN ('paid','processing') with at
+	// least one physical item. Keep the two predicates in sync. Takes precedence
+	// over Status — the "ready_to_ship" queue is a synthetic filter value with no
+	// single matching orders.status.
+	ReadyToShip bool
+
 	// ShipmentStatusIn matches orders.shipment_status against an explicit set.
 	// The caller supplies every spelling it wants matched — shipment_status
 	// holds whatever Biteship sent, unnormalised, so deciding which spellings
@@ -58,7 +65,12 @@ func orderFilterPredicateFrom(filter OrderFilter, startArg int) (string, []inter
 		args = append(args, *filter.StudentID)
 		argNum++
 	}
-	if filter.Status != "" {
+	if filter.ReadyToShip {
+		query += ` AND status IN ('paid','processing')
+			AND EXISTS (SELECT 1 FROM order_item oi
+			             WHERE oi.order_id = orders.id
+			               AND oi.product_type IN ('book','merchandise','medal'))`
+	} else if filter.Status != "" {
 		query += fmt.Sprintf(` AND status = $%d`, argNum)
 		args = append(args, filter.Status)
 		argNum++

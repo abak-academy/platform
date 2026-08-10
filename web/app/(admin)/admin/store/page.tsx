@@ -79,7 +79,7 @@ export default function StoreDashboardPage() {
                   icon={Clock}
                 />
               </QueueCardLink>
-              <QueueCardLink status="paid">
+              <QueueCardLink status="ready_to_ship">
                 <StatCard
                   label={t("store_stat_ready_to_ship")}
                   value={String(buckets?.ready_to_ship ?? 0)}

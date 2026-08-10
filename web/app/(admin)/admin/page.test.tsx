@@ -175,6 +175,15 @@ describe("AdminIndexPage — reworked dashboard", () => {
       .toHaveAttribute("href", "/admin/orders?status=shipment_failed");
   });
 
+  // The card's count is attention.ready_to_ship — the ready_to_ship bucket
+  // (paid + processing, physical item only). ?status=paid alone is a bigger,
+  // wrong set — see admin_order.go's OrderFilter.ReadyToShip.
+  it("links the ready-to-ship card to the ready_to_ship filter, not status=paid", () => {
+    render(<AdminIndexPage />);
+    expect(screen.getByTestId("attention-ready-to-ship").closest("a"))
+      .toHaveAttribute("href", "/admin/orders?status=ready_to_ship");
+  });
+
   it("renders upcoming exams with registrant counts", () => {
     render(<AdminIndexPage />);
     expect(screen.getByText("Try Out UTBK")).toBeInTheDocument();

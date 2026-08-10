@@ -94,6 +94,21 @@ describe("admin-orders hooks", () => {
     expect(params.get("to")).toBe("2026-07-31");
   });
 
+  // ready_to_ship is synthetic — no orders.status value matches it — so it must
+  // pass through as the literal string, not through FILTER_STATUS_MAP.
+  it("useAdminOrders sends ready_to_ship straight through as status", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(() => useAdminOrders({ status: "ready_to_ship" }), { wrapper });
+
+    await waitFor(() =>
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `/admin/orders?status=ready_to_ship&limit=${ORDERS_PAGE_SIZE}`
+      )
+    );
+  });
+
   // shipment_failed filters on shipment_status, not status — the order itself
   // is still "shipped", so no status param may be sent alongside it.
   it("useAdminOrders sends shipment=failed and no status for the shipment_failed filter", async () => {

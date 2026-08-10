@@ -401,7 +401,7 @@ export default function AdminIndexPage() {
             />
             <AttentionCard
               testId="attention-ready-to-ship"
-              href="/admin/orders?status=paid"
+              href="/admin/orders?status=ready_to_ship"
               accent="tertiary"
               label={t("admin_home_ready_to_ship")}
               value={d.attention.ready_to_ship}

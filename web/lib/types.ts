@@ -14,7 +14,10 @@ export type OrderStatus =
 
 // "failed" is a *payment* failure (payment_expired); "shipment_failed" is a
 // courier failure. They are different columns and must not be conflated.
-export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "refunded" | "shipment_failed";
+//
+// "ready_to_ship" is synthetic: it names the ready_to_ship bucket (paid or
+// processing, with a physical item), not a single orders.status value.
+export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "refunded" | "shipment_failed" | "ready_to_ship";
 
 export interface School {
   id: string;

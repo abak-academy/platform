@@ -32,11 +32,18 @@ type OrderSummaryResponse struct {
 
 func (h *Handler) AdminListOrders(c echo.Context) error {
 	filter := repository.OrderFilter{
-		Status:      c.QueryParam("status"),
 		ProductType: c.QueryParam("type"),
 		Cursor:      c.QueryParam("cursor"),
 		Search:      strings.TrimSpace(c.QueryParam("q")),
 		Limit:       parseLimit(c.QueryParam("limit"), 20, 100),
+	}
+	// "ready_to_ship" is a synthetic status: it names CountOrdersByBucket's
+	// ready_to_ship bucket (paid/processing + a physical item), not a single
+	// orders.status value — see OrderFilter.ReadyToShip.
+	if status := c.QueryParam("status"); status == "ready_to_ship" {
+		filter.ReadyToShip = true
+	} else {
+		filter.Status = status
 	}
 
 	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
@@ -67,8 +74,12 @@ func (h *Handler) AdminListOrders(c echo.Context) error {
 // no money: see OrderSummaryProduct.
 func (h *Handler) AdminOrdersSummary(c echo.Context) error {
 	filter := repository.OrderFilter{
-		Status: c.QueryParam("status"),
 		Search: strings.TrimSpace(c.QueryParam("q")),
+	}
+	if status := c.QueryParam("status"); status == "ready_to_ship" {
+		filter.ReadyToShip = true
+	} else {
+		filter.Status = status
 	}
 	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
 	if err != nil {

@@ -92,9 +92,18 @@ describe("StoreDashboardPage", () => {
     expect(hrefs).toEqual(
       expect.arrayContaining([
         "/admin/orders?status=pending",
-        "/admin/orders?status=paid",
+        "/admin/orders?status=ready_to_ship",
         "/admin/orders?status=shipment_failed",
       ]),
     );
+  });
+
+  // The card reads buckets.ready_to_ship (paid + processing, physical item
+  // only); status=paid alone is a bigger, wrong set. See admin_order.go's
+  // OrderFilter.ReadyToShip.
+  it("links the ready-to-ship card to the ready_to_ship filter, not status=paid", () => {
+    render(<StoreDashboardPage />);
+    expect(document.querySelector('a[href="/admin/orders?status=paid"]')).toBeNull();
+    expect(document.querySelector('a[href="/admin/orders?status=ready_to_ship"]')).not.toBeNull();
   });
 });
