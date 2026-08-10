@@ -91,7 +91,7 @@ describe("AdminProfilePage", () => {
     expect(screen.getByText("Kata sandi")).toBeInTheDocument();
 
     cleanup();
-    meState.data.auth_provider = "google";
+    meState = { data: { ...baseUser(), auth_provider: "google" }, isLoading: false };
     renderPage();
 
     // Google sign-in is student-only, so an admin's usable method is the password
