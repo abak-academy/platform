@@ -14,13 +14,33 @@ type UpcomingExam struct {
 	RegistrantCount int       `json:"registrant_count"`
 }
 
-// CountActiveExamSessions counts in-progress sessions across every exam. The
-// session monitor is per-exam (it requires an exam_id), which is why the
-// dashboard had no global number to show and hardcoded a dash.
+// CountActiveExamSessions counts in-progress sessions across every exam whose
+// deadline has not yet passed. status alone is not enough: nothing flips it
+// when a student disconnects and never submits, so a stale in_progress row
+// would otherwise inflate this indefinitely.
+//
+// The deadline mirrors computeRemainingSeconds in internal/service/exam_session.go:
+// started_at + exam.duration_minutes, pushed forward only when extended_until
+// is later. A NULL duration_minutes means the exam has no timer (the per_test
+// path), so such sessions never expire here. This is a whole-session
+// approximation for the dashboard — it does not model per-section deadlines
+// (computeSectionRemaining) or grace_window_minutes the way the session
+// monitor's deriveStatus does; a coarser cut is the right granularity for a
+// single count tile.
 func (r *Repository) CountActiveExamSessions(ctx context.Context) (int, error) {
 	var n int
-	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM exam_session WHERE status = 'in_progress'`,
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		  FROM exam_session es
+		  JOIN exam e ON e.id = es.exam_id
+		 WHERE es.status = 'in_progress'
+		   AND (
+		     e.duration_minutes IS NULL
+		     OR now() < GREATEST(
+		         es.started_at + (e.duration_minutes * interval '1 minute'),
+		         es.extended_until
+		       )
+		   )`,
 	).Scan(&n)
 	return n, err
 }

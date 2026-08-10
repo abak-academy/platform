@@ -121,6 +121,104 @@ func seedCountsExamSessionWithStatus(t *testing.T, r *Repository, studentID stri
 	return sessionID
 }
 
+// seedCountsExamWithDuration inserts an exam with an explicit duration_minutes
+// (nil leaves it NULL — "no timer", the per_test path).
+func seedCountsExamWithDuration(t *testing.T, r *Repository, title string, durationMinutes *int) string {
+	t.Helper()
+	var id string
+	err := r.pool.QueryRow(context.Background(),
+		`INSERT INTO exam (title, duration_minutes) VALUES ($1, $2) RETURNING id`,
+		title, durationMinutes,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("seed exam with duration: %v", err)
+	}
+	return id
+}
+
+// seedCountsExamSessionForExam mirrors seedCountsExamSessionWithStatus but
+// takes an explicit examID (so the caller controls duration_minutes) and an
+// optional extended_until, needed to exercise CountActiveExamSessions' deadline.
+func seedCountsExamSessionForExam(
+	t *testing.T, r *Repository, studentID, examID string, startedAt time.Time, status string, extendedUntil *time.Time,
+) string {
+	t.Helper()
+	ctx := context.Background()
+
+	var regID string
+	err := r.pool.QueryRow(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3) RETURNING id`,
+		studentID, examID, uuid.NewString(),
+	).Scan(&regID)
+	if err != nil {
+		t.Fatalf("seed exam_registration: %v", err)
+	}
+
+	var sessionID string
+	err = r.pool.QueryRow(ctx,
+		`INSERT INTO exam_session (registration_id, student_id, exam_id, started_at, status, extended_until)
+		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		regID, studentID, examID, startedAt, status, extendedUntil,
+	).Scan(&sessionID)
+	if err != nil {
+		t.Fatalf("seed exam_session: %v", err)
+	}
+	return sessionID
+}
+
+// TestCountActiveExamSessionsExcludesExpiredDeadline pins the fix for a
+// disconnected student's session staying in_progress forever: only the
+// deadline, not the stored status, decides whether it still counts.
+//
+//	timedExpired     started_at+duration in the past, no extension  -> excluded
+//	timedLive        started_at+duration in the future              -> counted
+//	timedExtended    nominal deadline passed, extended_until later  -> counted
+//	timedShortExt    nominal deadline in the future, extended_until
+//	                 EARLIER — must not shorten the deadline         -> counted
+//	untimedStale     duration_minutes IS NULL, started long ago     -> counted
+func TestCountActiveExamSessionsExcludesExpiredDeadline(t *testing.T) {
+	pool := newGradingTestPool(t)
+	r := New(pool)
+	ctx := context.Background()
+
+	sixty := 60
+	examTimed := seedCountsExamWithDuration(t, r, "Timed Exam", &sixty)
+	examUntimed := seedCountsExamWithDuration(t, r, "Untimed Exam", nil)
+
+	before, err := r.CountActiveExamSessions(ctx)
+	if err != nil {
+		t.Fatalf("baseline: %v", err)
+	}
+
+	expiredStart := time.Now().Add(-3 * time.Hour)
+	s1 := seedDashboardStudent(t, r, expiredStart)
+	seedCountsExamSessionForExam(t, r, s1, examTimed, expiredStart, "in_progress", nil)
+
+	liveStart := time.Now().Add(-5 * time.Minute)
+	s2 := seedDashboardStudent(t, r, liveStart)
+	seedCountsExamSessionForExam(t, r, s2, examTimed, liveStart, "in_progress", nil)
+
+	extendedLater := time.Now().Add(1 * time.Hour)
+	s3 := seedDashboardStudent(t, r, expiredStart)
+	seedCountsExamSessionForExam(t, r, s3, examTimed, expiredStart, "in_progress", &extendedLater)
+
+	extendedEarlier := time.Now().Add(-2 * time.Hour)
+	s4 := seedDashboardStudent(t, r, liveStart)
+	seedCountsExamSessionForExam(t, r, s4, examTimed, liveStart, "in_progress", &extendedEarlier)
+
+	staleStart := time.Now().Add(-10 * time.Hour)
+	s5 := seedDashboardStudent(t, r, staleStart)
+	seedCountsExamSessionForExam(t, r, s5, examUntimed, staleStart, "in_progress", nil)
+
+	after, err := r.CountActiveExamSessions(ctx)
+	if err != nil {
+		t.Fatalf("CountActiveExamSessions: %v", err)
+	}
+	if after-before != 4 {
+		t.Errorf("delta = %d, want 4 (live, extended-later, extended-earlier-ignored, untimed-stale)", after-before)
+	}
+}
+
 func TestCountActiveExamSessionsCountsOnlyInProgress(t *testing.T) {
 	pool := newGradingTestPool(t)
 	r := New(pool)
