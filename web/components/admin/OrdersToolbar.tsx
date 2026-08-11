@@ -28,7 +28,7 @@ const FILTER_OPTIONS: FilterOption[] = [
   "shipped",
   "shipment_failed",
   "failed",
-  "refunded",
+  "cancelled",
 ];
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -139,8 +139,8 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
         return t("filter_shipped");
       case "failed":
         return t("filter_failed");
-      case "refunded":
-        return t("filter_refunded");
+      case "cancelled":
+        return t("filter_cancelled");
       case "shipment_failed":
         return t("shipment_failed_badge");
       case "ready_to_ship":

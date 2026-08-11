@@ -14,7 +14,7 @@ export type OrderStatus =
 
 // "failed" here is a *payment* failure (payment_expired) — a real
 // orders.status value, unlike the two queue values below.
-export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "refunded";
+export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "cancelled";
 
 // AdminOrderQueue names a derived bucket that spans more than one
 // orders.status value (or a different column entirely), so it cannot live in

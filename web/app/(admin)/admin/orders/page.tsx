@@ -42,7 +42,7 @@ import type { Order, OrderStatus, AdminOrderQuery, AdminOrderFilterStatus, Admin
 // Mirrors AdminOrderFilterStatus. An unknown ?status= falls back to "all"
 // rather than sending a value the API would reject.
 const ORDER_FILTER_STATUSES: AdminOrderFilterStatus[] = [
-  "all", "pending", "paid", "processing", "shipped", "failed", "refunded",
+  "all", "pending", "paid", "processing", "shipped", "failed", "cancelled",
 ];
 
 // Mirrors AdminOrderQueue. Also doubles as the backward-compat list: prod has
@@ -106,6 +106,12 @@ export default function OrdersPage() {
     // queue values too.
     if (rawStatus && ORDER_QUEUES.includes(rawStatus as AdminOrderQueue)) {
       setQuery((q) => ({ ...q, status: "all", queue: rawStatus as AdminOrderQueue }));
+      return;
+    }
+    // Legacy link: the tab that filters `cancelled` was labelled and keyed
+    // "refunded" until it was renamed to match what it actually returns.
+    if (rawStatus === "refunded") {
+      setQuery((q) => ({ ...q, status: "cancelled" }));
       return;
     }
     if (rawStatus && ORDER_FILTER_STATUSES.includes(rawStatus as AdminOrderFilterStatus)) {

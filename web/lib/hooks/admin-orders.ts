@@ -32,7 +32,7 @@ const FILTER_STATUS_MAP: Record<
   processing: "processing",
   shipped: "shipped",
   failed: "payment_expired",
-  refunded: "cancelled",
+  cancelled: "cancelled",
 };
 
 function statusQueryParam(status?: AdminOrderFilterStatus): string | undefined {

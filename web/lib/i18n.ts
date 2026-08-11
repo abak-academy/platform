@@ -568,7 +568,7 @@ export const DICT = {
     filter_pending: "Menunggu",
     filter_paid: "Dibayar",
     filter_failed: "Gagal",
-    filter_refunded: "Refund",
+    filter_cancelled: "Dibatalkan",
 
     // Admin — courses
     courses_page_title: "Manajemen Kursus",
@@ -1984,7 +1984,7 @@ export const DICT = {
     filter_pending: "Pending",
     filter_paid: "Paid",
     filter_failed: "Failed",
-    filter_refunded: "Refunded",
+    filter_cancelled: "Cancelled",
 
     // Admin — courses
     courses_page_title: "Course Management",

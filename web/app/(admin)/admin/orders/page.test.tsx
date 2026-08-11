@@ -607,6 +607,30 @@ describe("OrdersPage", () => {
     window.history.replaceState({}, "", "/admin/orders");
   });
 
+  // The tab filtering `cancelled` was keyed "refunded" until it was renamed to
+  // match what it returns — the refund action writes status=cancelled with a
+  // cancellation_reason, and nothing filtered on that reason, so the tab always
+  // showed every cancelled order. Prod has shipped ?status=refunded links.
+  it("maps a legacy ?status=refunded URL onto the cancelled filter", async () => {
+    window.history.replaceState({}, "", "/admin/orders?status=refunded");
+    render(<OrdersPage />);
+    await waitFor(() => {
+      const lastCall = mockUseAdminOrders.mock.calls.at(-1)?.[0];
+      expect(lastCall).toEqual(expect.objectContaining({ status: "cancelled" }));
+    });
+    window.history.replaceState({}, "", "/admin/orders");
+  });
+
+  it("accepts ?status=cancelled and sends it through", async () => {
+    window.history.replaceState({}, "", "/admin/orders?status=cancelled");
+    render(<OrdersPage />);
+    await waitFor(() => {
+      const lastCall = mockUseAdminOrders.mock.calls.at(-1)?.[0];
+      expect(lastCall).toEqual(expect.objectContaining({ status: "cancelled" }));
+    });
+    window.history.replaceState({}, "", "/admin/orders");
+  });
+
   it("ignores an unknown ?status= rather than sending it to the API", async () => {
     window.history.replaceState({}, "", "/admin/orders?status=bogus");
     render(<OrdersPage />);
