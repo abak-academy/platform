@@ -5,11 +5,19 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth";
 import { AbakLogo } from "@/components/brand/AbakLogo";
 
-// The photo is masked to a bloom rising off the bottom edge rather than laid
-// flat: at 45% a full-bleed image puts photographed faces behind the footer,
-// where no single text colour clears 4.5:1.
+// A bloom descending from the top edge rather than a flat wash: at 45% a
+// full-bleed image puts photographed faces behind the footer, where no single
+// text colour clears 4.5:1. Masked this way, every piece of page furniture
+// sits on clean canvas — wordmark 10.59:1, copyright 10.59:1.
+//
+// The 50%/100% background-position samples the photo's lower band, which is
+// the part without event signage in it. hero-award.webp has "Award Ceremony",
+// "21 Juni 2026" and "Best yourself!" baked across its upper half, and `cover`
+// re-crops per aspect ratio — so how much of a caption reaches the top edge
+// varies by viewport, and is most visible on narrow ones. Accepted trade-off;
+// a text-free photo is what would remove it entirely.
 const BLOOM_MASK =
-  "radial-gradient(ellipse 88% 80% at 50% 106%, #000 14%, transparent 74%)";
+  "radial-gradient(ellipse 88% 80% at 50% -6%, #000 14%, transparent 74%)";
 
 export default function AdminAuthLayout({
   children,
@@ -35,7 +43,7 @@ export default function AdminAuthLayout({
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#F7F9FE] px-5 py-14">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 z-0 bg-[url('/auth/hero-award.webp')] bg-cover bg-center"
+        className="pointer-events-none absolute inset-0 z-0 bg-[url('/auth/hero-award.webp')] bg-cover bg-[position:50%_100%]"
         style={{
           opacity: 0.45,
           filter: "grayscale(0.3)",
