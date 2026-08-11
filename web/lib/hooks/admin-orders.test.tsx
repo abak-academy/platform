@@ -94,32 +94,45 @@ describe("admin-orders hooks", () => {
     expect(params.get("to")).toBe("2026-07-31");
   });
 
-  // ready_to_ship is synthetic — no orders.status value matches it — so it must
-  // pass through as the literal string, not through FILTER_STATUS_MAP.
-  it("useAdminOrders sends ready_to_ship straight through as status", async () => {
+  // ready_to_ship is a queue, not a status — it must reach the API as
+  // ?queue=ready_to_ship, never through FILTER_STATUS_MAP.
+  it("useAdminOrders sends ?queue=ready_to_ship and no status", async () => {
     mockAuthFetch.mockResolvedValueOnce({ data: [] });
 
     const { wrapper } = wrapperFactory();
-    renderHook(() => useAdminOrders({ status: "ready_to_ship" }), { wrapper });
-
-    await waitFor(() =>
-      expect(mockAuthFetch).toHaveBeenCalledWith(
-        `/admin/orders?status=ready_to_ship&limit=${ORDERS_PAGE_SIZE}`
-      )
-    );
-  });
-
-  // shipment_failed filters on shipment_status, not status — the order itself
-  // is still "shipped", so no status param may be sent alongside it.
-  it("useAdminOrders sends shipment=failed and no status for the shipment_failed filter", async () => {
-    mockAuthFetch.mockResolvedValueOnce({ data: [] });
-
-    const { wrapper } = wrapperFactory();
-    renderHook(() => useAdminOrders({ status: "shipment_failed" }), { wrapper });
+    renderHook(() => useAdminOrders({ status: "all", queue: "ready_to_ship" }), { wrapper });
 
     await waitFor(() => expect(mockAuthFetch).toHaveBeenCalledTimes(1));
     const params = new URLSearchParams(mockAuthFetch.mock.calls[0][0].split("?")[1]);
-    expect(params.get("shipment")).toBe("failed");
+    expect(params.get("queue")).toBe("ready_to_ship");
+    expect(params.get("status")).toBeNull();
+  });
+
+  // shipment_failed filters on shipment_status, not status — the order itself
+  // is still "shipped", so no status param may be sent alongside the queue.
+  it("useAdminOrders sends ?queue=shipment_failed and no status", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(() => useAdminOrders({ status: "all", queue: "shipment_failed" }), { wrapper });
+
+    await waitFor(() => expect(mockAuthFetch).toHaveBeenCalledTimes(1));
+    const params = new URLSearchParams(mockAuthFetch.mock.calls[0][0].split("?")[1]);
+    expect(params.get("queue")).toBe("shipment_failed");
+    expect(params.get("status")).toBeNull();
+  });
+
+  // queue takes precedence: a caller that leaves a stale non-"all" status set
+  // alongside a queue must still not leak it onto the wire.
+  it("useAdminOrders drops status entirely when queue is set, even if status is not 'all'", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(() => useAdminOrders({ status: "paid", queue: "ready_to_ship" }), { wrapper });
+
+    await waitFor(() => expect(mockAuthFetch).toHaveBeenCalledTimes(1));
+    const params = new URLSearchParams(mockAuthFetch.mock.calls[0][0].split("?")[1]);
+    expect(params.get("queue")).toBe("ready_to_ship");
     expect(params.get("status")).toBeNull();
   });
 
@@ -194,9 +207,9 @@ describe("admin-orders hooks", () => {
   });
 
   // The buckets are the per-status breakdown the toolbar chips are labelled
-  // with. Filtering them by the selected status would zero every chip except
-  // the active one, so status must never reach this endpoint.
-  it("useAdminOrderSummary never sends status or shipment, whatever is selected", async () => {
+  // with. Filtering them by the selected status/queue would zero every chip
+  // except the active one, so neither may reach this endpoint.
+  it("useAdminOrderSummary never sends status or queue, whatever is selected", async () => {
     mockAuthFetch.mockResolvedValue({
       buckets: {
         needs_confirm: 0, ready_to_ship: 0, shipment_failed: 0, in_transit: 0,
@@ -207,7 +220,7 @@ describe("admin-orders hooks", () => {
 
     const { wrapper } = wrapperFactory();
     const { result } = renderHook(
-      () => useAdminOrderSummary({ status: "shipment_failed", q: "rani" }),
+      () => useAdminOrderSummary({ status: "all", queue: "shipment_failed", q: "rani" }),
       { wrapper }
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -215,7 +228,7 @@ describe("admin-orders hooks", () => {
     const path = mockAuthFetch.mock.calls.at(-1)?.[0] as string;
     expect(path).toContain("q=rani");
     expect(path).not.toContain("status=");
-    expect(path).not.toContain("shipment=");
+    expect(path).not.toContain("queue=");
   });
 
   it("useAdminOrder fetches GET /admin/orders/:id", async () => {

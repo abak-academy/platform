@@ -75,8 +75,46 @@ describe("OrdersToolbar status filter", () => {
     fireEvent.click(screen.getByRole("option", { name: /Menunggu/ }));
 
     await waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ status: "pending" })),
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", queue: undefined })),
     );
+  });
+
+  // ready_to_ship and shipment_failed are queues, not statuses — picking one
+  // must set queue and reset status to "all", not send a status value the API
+  // no longer accepts.
+  it("emits queue (and resets status to all) when a queue chip is chosen", async () => {
+    const onChange = vi.fn();
+    renderToolbar({ status: "all" }, onChange);
+    await openStatusMenu();
+
+    fireEvent.click(screen.getByRole("option", { name: /Pengiriman bermasalah/ }));
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "all", queue: "shipment_failed" }),
+      ),
+    );
+  });
+
+  // Selecting back out of a queue must drop it — otherwise a stale queue
+  // would keep overriding the newly chosen status downstream in the hook.
+  it("clears queue when a real status is chosen afterwards", async () => {
+    const onChange = vi.fn();
+    renderToolbar({ status: "all", queue: "shipment_failed" }, onChange);
+    await openStatusMenu();
+
+    fireEvent.click(screen.getByRole("option", { name: /Dibayar/ }));
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "paid", queue: undefined }),
+      ),
+    );
+  });
+
+  it("shows the queue-selected filter as the trigger's selected value", async () => {
+    renderToolbar({ status: "all", queue: "ready_to_ship" });
+    expect(screen.getByTestId("orders-status-filter")).toHaveTextContent("Siap kirim");
   });
 });
 

@@ -167,7 +167,7 @@ func TestCountOrdersByBucket_readyToShipRequiresAPhysicalItem(t *testing.T) {
 	require.Equal(t, 2, got.Total, "both orders still exist")
 }
 
-// The "ready to ship" queue card links to ?status=ready_to_ship, which must
+// The "ready to ship" queue card links to ?queue=ready_to_ship, which must
 // return exactly the rows CountOrdersByBucket's ready_to_ship bucket counts —
 // not the bigger status=paid set the card used to link to. Scoped by
 // StudentID, so this test does not need a reserved date window.

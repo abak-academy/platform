@@ -401,7 +401,7 @@ export default function AdminIndexPage() {
             />
             <AttentionCard
               testId="attention-ready-to-ship"
-              href="/admin/orders?status=ready_to_ship"
+              href="/admin/orders?queue=ready_to_ship"
               accent="tertiary"
               label={t("admin_home_ready_to_ship")}
               value={d.attention.ready_to_ship}
@@ -409,7 +409,7 @@ export default function AdminIndexPage() {
             />
             <AttentionCard
               testId="attention-shipment-failed"
-              href="/admin/orders?status=shipment_failed"
+              href="/admin/orders?queue=shipment_failed"
               accent={d.attention.shipment_failed > 0 ? "error" : "secondary"}
               label={t("admin_home_shipment_failed")}
               value={d.attention.shipment_failed}

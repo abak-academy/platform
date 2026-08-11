@@ -1679,7 +1679,7 @@ func (s *Service) AdminGetRevenue(ctx context.Context, from, to time.Time) (map[
 
 // AdminOrderBuckets counts what needs attention. Which shipment_status spellings
 // count as a failure is a domain question, so it is answered here rather than in
-// the repository — the same call ListOrders' ?shipment=failed filter makes.
+// the repository — the same call ListOrders' ?queue=shipment_failed makes.
 func (s *Service) AdminOrderBuckets(
 	ctx context.Context, filter repository.OrderFilter, monthStart, monthEnd time.Time,
 ) (repository.OrderBucketCounts, error) {

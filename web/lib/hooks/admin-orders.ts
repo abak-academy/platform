@@ -24,7 +24,7 @@ export const adminOrdersKeys = {
 };
 
 const FILTER_STATUS_MAP: Record<
-  Exclude<AdminOrderFilterStatus, "all" | "shipment_failed" | "ready_to_ship">,
+  Exclude<AdminOrderFilterStatus, "all">,
   Order["status"]
 > = {
   pending: "payment_pending",
@@ -36,23 +36,20 @@ const FILTER_STATUS_MAP: Record<
 };
 
 function statusQueryParam(status?: AdminOrderFilterStatus): string | undefined {
-  if (!status || status === "all" || status === "shipment_failed") return undefined;
-  // Synthetic value, not an orders.status — sent through as-is; the backend
-  // maps it to the ready_to_ship predicate (see OrderFilter.ReadyToShip).
-  if (status === "ready_to_ship") return "ready_to_ship";
+  if (!status || status === "all") return undefined;
   return FILTER_STATUS_MAP[status];
 }
 
 function orderQueryParams(query: AdminOrderQuery): URLSearchParams {
   const params = new URLSearchParams();
-  const statusParam = statusQueryParam(query.status);
-  if (statusParam) {
-    params.set("status", statusParam);
-  }
-  // Filtered on shipment_status, not status — a dead parcel is still a
-  // "shipped" order as far as orders.status is concerned.
-  if (query.status === "shipment_failed") {
-    params.set("shipment", "failed");
+  // Mutually exclusive: a queue is its own filter, not another status value.
+  if (query.queue) {
+    params.set("queue", query.queue);
+  } else {
+    const statusParam = statusQueryParam(query.status);
+    if (statusParam) {
+      params.set("status", statusParam);
+    }
   }
   if (query.q) {
     params.set("q", query.q);

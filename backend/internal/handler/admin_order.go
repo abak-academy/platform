@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,18 +33,14 @@ type OrderSummaryResponse struct {
 
 func (h *Handler) AdminListOrders(c echo.Context) error {
 	filter := repository.OrderFilter{
+		Status:      c.QueryParam("status"),
 		ProductType: c.QueryParam("type"),
 		Cursor:      c.QueryParam("cursor"),
 		Search:      strings.TrimSpace(c.QueryParam("q")),
 		Limit:       parseLimit(c.QueryParam("limit"), 20, 100),
 	}
-	// "ready_to_ship" is a synthetic status: it names CountOrdersByBucket's
-	// ready_to_ship bucket (paid/processing + a physical item), not a single
-	// orders.status value — see OrderFilter.ReadyToShip.
-	if status := c.QueryParam("status"); status == "ready_to_ship" {
-		filter.ReadyToShip = true
-	} else {
-		filter.Status = status
+	if err := applyOrderQueue(&filter, c.QueryParam("queue")); err != nil {
+		return badRequest(c, err.Error())
 	}
 
 	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
@@ -51,13 +48,6 @@ func (h *Handler) AdminListOrders(c echo.Context) error {
 		return badRequest(c, err.Error())
 	}
 	filter.CreatedFrom, filter.CreatedTo = from, to
-
-	// ?shipment=failed is the admin's only way to find parcels that died:
-	// orders.status is never walked back by the webhook (FR-C-15), so a
-	// courier-not-found order still reads "shipped" in every other view.
-	if c.QueryParam("shipment") == "failed" {
-		filter.ShipmentStatusIn = service.ShipmentFailureStatusValues()
-	}
 
 	orders, nextCursor, err := h.svc.AdminListOrders(c.Request().Context(), filter)
 	if err != nil {
@@ -74,21 +64,17 @@ func (h *Handler) AdminListOrders(c echo.Context) error {
 // no money: see OrderSummaryProduct.
 func (h *Handler) AdminOrdersSummary(c echo.Context) error {
 	filter := repository.OrderFilter{
+		Status: c.QueryParam("status"),
 		Search: strings.TrimSpace(c.QueryParam("q")),
 	}
-	if status := c.QueryParam("status"); status == "ready_to_ship" {
-		filter.ReadyToShip = true
-	} else {
-		filter.Status = status
+	if err := applyOrderQueue(&filter, c.QueryParam("queue")); err != nil {
+		return badRequest(c, err.Error())
 	}
 	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
 	if err != nil {
 		return badRequest(c, err.Error())
 	}
 	filter.CreatedFrom, filter.CreatedTo = from, to
-	if c.QueryParam("shipment") == "failed" {
-		filter.ShipmentStatusIn = service.ShipmentFailureStatusValues()
-	}
 
 	// Month-to-date is computed in Jakarta time: an order placed at 08:00 WIB on
 	// the 1st belongs to this month, and UTC would put it in the last one.
@@ -127,6 +113,26 @@ var jakarta = func() *time.Location {
 	}
 	return loc
 }()
+
+// applyOrderQueue maps ?queue= onto the two OrderFilter fields that have no
+// single matching orders.status value — see repository.OrderFilter.
+// ReadyToShip/ShipmentStatusIn. An empty queue leaves Status (already read
+// from ?status=) to do the filtering, unchanged. Anything else unrecognised
+// is a typo in the URL, not a request for "no filter", so it is rejected
+// rather than silently ignored.
+func applyOrderQueue(filter *repository.OrderFilter, queue string) error {
+	switch queue {
+	case "":
+		return nil
+	case "ready_to_ship":
+		filter.ReadyToShip = true
+	case "shipment_failed":
+		filter.ShipmentStatusIn = service.ShipmentFailureStatusValues()
+	default:
+		return fmt.Errorf("unknown queue %q", queue)
+	}
+	return nil
+}
 
 func parseLimit(raw string, def, max int) int {
 	if raw == "" {

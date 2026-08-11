@@ -172,16 +172,16 @@ describe("AdminIndexPage — reworked dashboard", () => {
     expect(screen.getByTestId("attention-needs-confirm").closest("a"))
       .toHaveAttribute("href", "/admin/orders?status=pending");
     expect(screen.getByTestId("attention-shipment-failed").closest("a"))
-      .toHaveAttribute("href", "/admin/orders?status=shipment_failed");
+      .toHaveAttribute("href", "/admin/orders?queue=shipment_failed");
   });
 
   // The card's count is attention.ready_to_ship — the ready_to_ship bucket
   // (paid + processing, physical item only). ?status=paid alone is a bigger,
   // wrong set — see admin_order.go's OrderFilter.ReadyToShip.
-  it("links the ready-to-ship card to the ready_to_ship filter, not status=paid", () => {
+  it("links the ready-to-ship card to the ready_to_ship queue, not status=paid", () => {
     render(<AdminIndexPage />);
     expect(screen.getByTestId("attention-ready-to-ship").closest("a"))
-      .toHaveAttribute("href", "/admin/orders?status=ready_to_ship");
+      .toHaveAttribute("href", "/admin/orders?queue=ready_to_ship");
   });
 
   it("renders upcoming exams with registrant counts", () => {

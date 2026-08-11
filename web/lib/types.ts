@@ -12,12 +12,17 @@ export type OrderStatus =
   | "payment_expired"
   | "cancelled";
 
-// "failed" is a *payment* failure (payment_expired); "shipment_failed" is a
-// courier failure. They are different columns and must not be conflated.
-//
-// "ready_to_ship" is synthetic: it names the ready_to_ship bucket (paid or
-// processing, with a physical item), not a single orders.status value.
-export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "refunded" | "shipment_failed" | "ready_to_ship";
+// "failed" here is a *payment* failure (payment_expired) — a real
+// orders.status value, unlike the two queue values below.
+export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "refunded";
+
+// AdminOrderQueue names a derived bucket that spans more than one
+// orders.status value (or a different column entirely), so it cannot live in
+// AdminOrderFilterStatus alongside real statuses:
+// - "ready_to_ship": status IN ('paid','processing') with a physical item.
+// - "shipment_failed": a courier failure — orders.shipment_status, not
+//   orders.status; a dead parcel can still read "shipped".
+export type AdminOrderQueue = "ready_to_ship" | "shipment_failed";
 
 export interface School {
   id: string;
@@ -443,6 +448,9 @@ export interface OrderSummary {
 
 export interface AdminOrderQuery {
   status: AdminOrderFilterStatus;
+  // Mutually exclusive with status: a queue is its own filter dimension, not
+  // another status value to combine with one.
+  queue?: AdminOrderQueue;
   q?: string;
   from?: string;
   to?: string;
