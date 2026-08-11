@@ -28,15 +28,16 @@ function firstOfThisMonth(): string {
   return jakartaDateString(new Date()).slice(0, 7) + "-01";
 }
 
-// 30d sends nothing on purpose: the server default is already now-30d..now, so
-// an explicit range would only add a client/server "today" mismatch.
+// 30d sends nothing on purpose: the server's own default is the same
+// today-29..today+1 window, so an explicit range would only add a client/server
+// "today" mismatch.
 //
 // `to` on the server is exclusive (today+1), so an N-day window ending today
 // must start at today-(N-1) — hence days-1 below, not days.
 //
-// web/app/(admin)/admin/revenue/page.tsx has a byte-identical (but unfixed —
-// separate ticket, out of this PR's scope) copy of isoDaysAgo/firstOfThisMonth:
-// UTC-based and off by one day. Keep that in mind before assuming the two agree.
+// web/app/(admin)/admin/revenue/page.tsx carries the same helpers and was
+// corrected alongside these, so the two pages resolve a given preset to the
+// same window. Change one and you must change the other.
 export function presetRange(preset: PeriodPreset): PeriodRange {
   switch (preset) {
     case "7d":

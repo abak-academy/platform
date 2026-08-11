@@ -29,18 +29,49 @@ type UpcomingExam struct {
 // single count tile.
 func (r *Repository) CountActiveExamSessions(ctx context.Context) (int, error) {
 	var n int
+	// Mirrors deriveStatus/effectiveDeadline in service/exam_session.go, which
+	// are authoritative — nothing ever writes an "overdue" status, so counting
+	// stored status alone reports disconnected sessions as active forever.
+	//
+	// Three rules, all of them load-bearing:
+	//   - a session with an ACTIVE section uses that section's own clock and
+	//     ignores the exam-level one entirely (FR-20). Without this a
+	//     section-timed exam whose exam-level duration_minutes is NULL counts
+	//     forever, which is the bug this query exists to prevent.
+	//   - the exam-level path adds grace_window_minutes; a session still inside
+	//     its grace window is in_progress, not overdue.
+	//   - duration must be > 0, not merely non-NULL: effectiveDeadline treats 0
+	//     as "no deadline" and leaves the session active.
+	//
+	// GREATEST ignores NULL operands and yields NULL only when every operand is
+	// NULL, so "no deadline at all" falls through to COALESCE(..., true) —
+	// matching effectiveDeadline returning a zero time and deriveStatus then
+	// reporting in_progress.
 	err := r.pool.QueryRow(ctx, `
 		SELECT COUNT(*)
 		  FROM exam_session es
 		  JOIN exam e ON e.id = es.exam_id
+		  LEFT JOIN exam_session_section ss
+		         ON ss.session_id = es.id AND ss.status = 'active'
 		 WHERE es.status = 'in_progress'
-		   AND (
-		     e.duration_minutes IS NULL
-		     OR now() < GREATEST(
-		         es.started_at + (e.duration_minutes * interval '1 minute'),
-		         es.extended_until
-		       )
-		   )`,
+		   AND CASE
+		         WHEN ss.started_at IS NOT NULL THEN
+		           COALESCE(now() < GREATEST(
+		             CASE WHEN ss.duration_minutes > 0
+		                  THEN ss.started_at + ss.duration_minutes * interval '1 minute'
+		             END,
+		             ss.extended_until
+		           ), true)
+		         ELSE
+		           COALESCE(now() < GREATEST(
+		             CASE WHEN e.duration_minutes > 0
+		                  THEN es.started_at
+		                     + e.duration_minutes * interval '1 minute'
+		                     + COALESCE(e.grace_window_minutes, 0) * interval '1 minute'
+		             END,
+		             es.extended_until
+		           ), true)
+		       END`,
 	).Scan(&n)
 	return n, err
 }

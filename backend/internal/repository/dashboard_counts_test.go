@@ -366,3 +366,107 @@ func TestCountStudentsAndSchoolsExcludesDeleted(t *testing.T) {
 		t.Errorf("schools delta = %d, want 1", afterSchools-beforeSchools)
 	}
 }
+
+// seedCountsExamTimed inserts an exam with explicit duration/grace so the
+// exam-level deadline branch can be exercised. A nil duration leaves the
+// column NULL, which effectiveDeadline treats as "no deadline".
+func seedCountsExamTimed(t *testing.T, r *Repository, durationMinutes, graceMinutes *int) string {
+	t.Helper()
+	var id string
+	err := r.pool.QueryRow(context.Background(),
+		`INSERT INTO exam (title, duration_minutes, grace_window_minutes)
+		 VALUES ($1, $2, $3) RETURNING id`,
+		"Timed "+uuid.NewString()[:8], durationMinutes, graceMinutes,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("seed timed exam: %v", err)
+	}
+	return id
+}
+
+// seedCountsActiveSection attaches an active section to a session. The section
+// carries its own clock, which deriveStatus uses in preference to the exam's.
+func seedCountsActiveSection(t *testing.T, r *Repository, sessionID string, startedAt time.Time, durationMinutes int) {
+	t.Helper()
+	var testID string
+	err := r.pool.QueryRow(context.Background(),
+		`INSERT INTO test (title, subject, topic, duration_minutes)
+		 VALUES ($1, 'Umum', 'Umum', $2) RETURNING id`,
+		"Section "+uuid.NewString()[:8], durationMinutes,
+	).Scan(&testID)
+	if err != nil {
+		t.Fatalf("seed test: %v", err)
+	}
+	_, err = r.pool.Exec(context.Background(),
+		`INSERT INTO exam_session_section (session_id, test_id, sort_order, duration_minutes, status, started_at)
+		 VALUES ($1, $2, 1, $3, 'active', $4)`,
+		sessionID, testID, durationMinutes, startedAt,
+	)
+	if err != nil {
+		t.Fatalf("seed active section: %v", err)
+	}
+}
+
+func intPtr(n int) *int { return &n }
+
+// TestCountActiveExamSessionsHonoursGraceWindow pins the exam-level branch to
+// effectiveDeadline, which adds grace_window_minutes before a session is
+// overdue. Counting started_at+duration alone drops sessions that the monitor
+// still reports as in_progress.
+func TestCountActiveExamSessionsHonoursGraceWindow(t *testing.T) {
+	pool := newGradingTestPool(t)
+	r := New(pool)
+	ctx := context.Background()
+
+	before, err := r.CountActiveExamSessions(ctx)
+	if err != nil {
+		t.Fatalf("baseline: %v", err)
+	}
+
+	// Started 70 minutes ago on a 60-minute exam with a 30-minute grace: past
+	// the raw duration, still inside grace, so still active.
+	examID := seedCountsExamTimed(t, r, intPtr(60), intPtr(30))
+	student := seedDashboardStudent(t, r, time.Now())
+	seedCountsExamSessionForExam(t, r, student, examID, time.Now().Add(-70*time.Minute), "in_progress", nil)
+
+	after, err := r.CountActiveExamSessions(ctx)
+	if err != nil {
+		t.Fatalf("CountActiveExamSessions: %v", err)
+	}
+	if after-before != 1 {
+		t.Errorf("delta = %d, want 1 — a session inside its grace window is still active", after-before)
+	}
+}
+
+// TestCountActiveExamSessionsUsesActiveSectionDeadline pins the FR-20 branch.
+// A section-timed exam can leave exam.duration_minutes NULL, so without the
+// section's own clock such a session counts as active forever — the exact
+// runaway this query exists to prevent.
+func TestCountActiveExamSessionsUsesActiveSectionDeadline(t *testing.T) {
+	pool := newGradingTestPool(t)
+	r := New(pool)
+	ctx := context.Background()
+
+	before, err := r.CountActiveExamSessions(ctx)
+	if err != nil {
+		t.Fatalf("baseline: %v", err)
+	}
+
+	examID := seedCountsExamTimed(t, r, nil, nil) // no exam-level deadline
+
+	expired := seedDashboardStudent(t, r, time.Now())
+	expiredSession := seedCountsExamSessionForExam(t, r, expired, examID, time.Now().Add(-3*time.Hour), "in_progress", nil)
+	seedCountsActiveSection(t, r, expiredSession, time.Now().Add(-2*time.Hour), 30) // ended 90m ago
+
+	live := seedDashboardStudent(t, r, time.Now())
+	liveSession := seedCountsExamSessionForExam(t, r, live, examID, time.Now().Add(-10*time.Minute), "in_progress", nil)
+	seedCountsActiveSection(t, r, liveSession, time.Now().Add(-5*time.Minute), 60) // 55m left
+
+	after, err := r.CountActiveExamSessions(ctx)
+	if err != nil {
+		t.Fatalf("CountActiveExamSessions: %v", err)
+	}
+	if after-before != 1 {
+		t.Errorf("delta = %d, want 1 — the expired section must not count even though the exam has no deadline", after-before)
+	}
+}
