@@ -12,9 +12,17 @@ export type OrderStatus =
   | "payment_expired"
   | "cancelled";
 
-// "failed" is a *payment* failure (payment_expired); "shipment_failed" is a
-// courier failure. They are different columns and must not be conflated.
-export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "refunded" | "shipment_failed";
+// "failed" here is a *payment* failure (payment_expired) — a real
+// orders.status value, unlike the two queue values below.
+export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "cancelled";
+
+// AdminOrderQueue names a derived bucket that spans more than one
+// orders.status value (or a different column entirely), so it cannot live in
+// AdminOrderFilterStatus alongside real statuses:
+// - "ready_to_ship": status IN ('paid','processing') with a physical item.
+// - "shipment_failed": a courier failure — orders.shipment_status, not
+//   orders.status; a dead parcel can still read "shipped".
+export type AdminOrderQueue = "ready_to_ship" | "shipment_failed";
 
 export interface School {
   id: string;
@@ -440,6 +448,9 @@ export interface OrderSummary {
 
 export interface AdminOrderQuery {
   status: AdminOrderFilterStatus;
+  // Mutually exclusive with status: a queue is its own filter dimension, not
+  // another status value to combine with one.
+  queue?: AdminOrderQueue;
   q?: string;
   from?: string;
   to?: string;
@@ -1256,4 +1267,68 @@ export interface OrderTracking {
   // not and this fell back to the events our webhook recorded.
   source: "courier" | "local";
   history: OrderTrackingEntry[];
+}
+
+// prev is absent (not zero) when the previous window had no data — see
+// makeKPI in admin_dashboard.go. Callers must presence-check before reading it.
+export interface DashboardKPI {
+  value: number;
+  prev?: number;
+}
+
+// date is an RFC3339 offset string anchored to Asia/Jakarta (e.g.
+// "2026-07-03T00:00:00+07:00"), not a bare "YYYY-MM-DD" — SeriesPoint.Date
+// is a time.Time in dashboard_series.go, not a date-only column.
+export interface DashboardSeriesPoint {
+  date: string;
+  revenue: number;
+  order_count: number;
+  revenue_digital: number;
+  revenue_physical: number;
+  new_students: number;
+  exam_students: number;
+  buying_students: number;
+}
+
+export interface DashboardTopProduct {
+  product_id: string;
+  name: string;
+  product_type: string;
+  is_physical: boolean;
+  qty_sold: number;
+  product_revenue: number;
+}
+
+// scheduled_at is likewise an RFC3339 offset string (time.Time re-anchored to
+// Asia/Jakarta in dashboard_counts.go), and id is a uuid.UUID, which
+// encoding/json marshals as its canonical dashed string form.
+export interface DashboardUpcomingExam {
+  id: string;
+  title: string;
+  scheduled_at: string;
+  registrant_count: number;
+}
+
+// AdminDashboard mirrors service.DashboardResponse (admin_dashboard.go). The
+// Go `kpi` field is a map[string]KPI, but AdminDashboard (service code) only
+// ever populates these five keys, so this fixed shape matches what the
+// handler actually emits today.
+export interface AdminDashboard {
+  period: { from: string; to: string; bucket: "day" | "week" };
+  kpi: {
+    revenue: DashboardKPI;
+    order_count: DashboardKPI;
+    new_students: DashboardKPI;
+    schools: DashboardKPI;
+    students_total: DashboardKPI;
+  };
+  series: DashboardSeriesPoint[];
+  attention: {
+    needs_confirm: number;
+    ready_to_ship: number;
+    shipment_failed: number;
+    active_sessions: number;
+  };
+  top_products: DashboardTopProduct[];
+  upcoming_exams: DashboardUpcomingExam[];
 }

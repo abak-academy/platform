@@ -37,13 +37,19 @@ import { OrdersToolbar } from "@/components/admin/OrdersToolbar";
 import { ShipOrderModal } from "@/components/admin/ShipOrderModal";
 import { ConfirmOrderModal } from "@/components/admin/ConfirmOrderModal";
 import { RefundOrderModal } from "@/components/admin/RefundOrderModal";
-import type { Order, OrderStatus, AdminOrderQuery, AdminOrderFilterStatus } from "@/lib/types";
+import type { Order, OrderStatus, AdminOrderQuery, AdminOrderFilterStatus, AdminOrderQueue } from "@/lib/types";
 
 // Mirrors AdminOrderFilterStatus. An unknown ?status= falls back to "all"
 // rather than sending a value the API would reject.
 const ORDER_FILTER_STATUSES: AdminOrderFilterStatus[] = [
-  "all", "pending", "paid", "processing", "shipped", "failed", "refunded", "shipment_failed",
+  "all", "pending", "paid", "processing", "shipped", "failed", "cancelled",
 ];
+
+// Mirrors AdminOrderQueue. Also doubles as the backward-compat list: prod has
+// shipped `?status=ready_to_ship` / `?status=shipment_failed` links since
+// before the queue split, so a legacy ?status= carrying one of these is
+// treated as the equivalent ?queue= rather than breaking the bookmark.
+const ORDER_QUEUES: AdminOrderQueue[] = ["ready_to_ship", "shipment_failed"];
 
 function orderNumber(order: Order): string {
   return `#${order.id.slice(-8)}`;
@@ -83,15 +89,33 @@ export default function OrdersPage() {
   const { t } = useTranslation();
   const [query, setQuery] = useState<AdminOrderQuery>({ status: "all" });
 
-  // Read ?status= once on mount so the store dashboard's queue cards can deep
-  // link into their own queue. Deliberately an effect rather than a lazy
-  // useState initializer: this is a client component but Next still renders it
-  // on the server, where the URL is not available, and seeding from
-  // window.location during render would be a hydration mismatch.
+  // Read ?queue=/?status= once on mount so the store dashboard's queue cards
+  // can deep link into their own queue. Deliberately an effect rather than a
+  // lazy useState initializer: this is a client component but Next still
+  // renders it on the server, where the URL is not available, and seeding
+  // from window.location during render would be a hydration mismatch.
   useEffect(() => {
-    const raw = new URLSearchParams(window.location.search).get("status");
-    if (raw && ORDER_FILTER_STATUSES.includes(raw as AdminOrderFilterStatus)) {
-      setQuery((q) => ({ ...q, status: raw as AdminOrderFilterStatus }));
+    const params = new URLSearchParams(window.location.search);
+    const rawQueue = params.get("queue");
+    if (rawQueue && ORDER_QUEUES.includes(rawQueue as AdminOrderQueue)) {
+      setQuery((q) => ({ ...q, status: "all", queue: rawQueue as AdminOrderQueue }));
+      return;
+    }
+    const rawStatus = params.get("status");
+    // Legacy link: pre-split builds/bookmarks used ?status= for the two
+    // queue values too.
+    if (rawStatus && ORDER_QUEUES.includes(rawStatus as AdminOrderQueue)) {
+      setQuery((q) => ({ ...q, status: "all", queue: rawStatus as AdminOrderQueue }));
+      return;
+    }
+    // Legacy link: the tab that filters `cancelled` was labelled and keyed
+    // "refunded" until it was renamed to match what it actually returns.
+    if (rawStatus === "refunded") {
+      setQuery((q) => ({ ...q, status: "cancelled" }));
+      return;
+    }
+    if (rawStatus && ORDER_FILTER_STATUSES.includes(rawStatus as AdminOrderFilterStatus)) {
+      setQuery((q) => ({ ...q, status: rawStatus as AdminOrderFilterStatus }));
     }
   }, []);
   const {

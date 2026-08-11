@@ -23,23 +23,32 @@ const PRESETS = [
 
 type Preset = (typeof PRESETS)[number]["id"];
 
+// The server buckets in Asia/Jakarta, and Indonesia spans three zones
+// (WIB/WITA/WIT), so a Bali or Papua admin's browser-local date is the wrong
+// answer here just as UTC is. Only an explicit timezone is safe. en-CA formats
+// as YYYY-MM-DD directly. Mirrors jakartaDateString in
+// web/components/admin/PeriodBar.tsx — keep the two in step.
+function jakartaDateString(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(d);
+}
+
+// Jakarta has no DST, so a calendar day is always exactly 86400000ms.
 function isoDaysAgo(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return jakartaDateString(new Date(Date.now() - days * 86400000));
 }
 
 function firstOfThisMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  return jakartaDateString(new Date()).slice(0, 7) + "-01";
 }
 
 // 30d sends nothing on purpose: the server default is already now-30d..now, so
 // an explicit range would only add a client/server "today" mismatch.
 function presetRange(preset: Preset): RevenueRange {
   switch (preset) {
+    // `to` on the server is exclusive (today+1), so an N-day window ending
+    // today starts at today-(N-1) — days-1, not days. today-7 spanned 8.
     case "7d":
-      return { from: isoDaysAgo(7) };
+      return { from: isoDaysAgo(6) };
     case "this_month":
       return { from: firstOfThisMonth() };
     case "all":

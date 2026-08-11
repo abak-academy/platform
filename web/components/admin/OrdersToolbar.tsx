@@ -11,17 +11,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
-import type { AdminOrderFilterStatus, AdminOrderQuery, OrderBucketCounts } from "@/lib/types";
+import type { AdminOrderFilterStatus, AdminOrderQueue, AdminOrderQuery, OrderBucketCounts } from "@/lib/types";
 
-const FILTER_OPTIONS: AdminOrderFilterStatus[] = [
+// One flat dropdown mixing real statuses and queues — the admin picks a
+// filter, not a filter *kind*. The two concepts stay split in the query
+// object underneath (value.status vs value.queue); this list is just what's
+// offered on screen.
+type FilterOption = AdminOrderFilterStatus | AdminOrderQueue;
+
+const FILTER_OPTIONS: FilterOption[] = [
   "all",
   "pending",
+  "ready_to_ship",
   "paid",
   "processing",
   "shipped",
   "shipment_failed",
   "failed",
-  "refunded",
+  "cancelled",
 ];
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -36,7 +43,7 @@ export interface OrdersToolbarProps {
 
 /** Only the buckets the API actually counts — the rest stay bare rather than guess. */
 function chipCount(
-  status: AdminOrderFilterStatus,
+  status: FilterOption,
   counts: OrderBucketCounts | undefined,
 ): number | undefined {
   if (!counts) return undefined;
@@ -45,7 +52,7 @@ function chipCount(
       return counts.total;
     case "pending":
       return counts.needs_confirm;
-    case "paid":
+    case "ready_to_ship":
       return counts.ready_to_ship;
     case "shipped":
       return counts.in_transit;
@@ -54,6 +61,12 @@ function chipCount(
     default:
       return undefined;
   }
+}
+
+const QUEUE_VALUES: AdminOrderQueue[] = ["ready_to_ship", "shipment_failed"];
+
+function isQueueOption(option: FilterOption): option is AdminOrderQueue {
+  return (QUEUE_VALUES as string[]).includes(option);
 }
 
 export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
@@ -100,7 +113,19 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
     return () => clearTimeout(id);
   }, [search]);
 
-  const filterLabel = (f: AdminOrderFilterStatus): string => {
+  // The selected option is whichever dimension is currently set — the two
+  // are mutually exclusive on the query, but the dropdown only shows one.
+  const selected: FilterOption = value.queue ?? value.status;
+
+  function selectFilter(next: FilterOption) {
+    if (isQueueOption(next)) {
+      onChange({ ...value, status: "all", queue: next });
+    } else {
+      onChange({ ...value, status: next, queue: undefined });
+    }
+  }
+
+  const filterLabel = (f: FilterOption): string => {
     switch (f) {
       case "all":
         return t("tab_all");
@@ -114,10 +139,13 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
         return t("filter_shipped");
       case "failed":
         return t("filter_failed");
-      case "refunded":
-        return t("filter_refunded");
+      case "cancelled":
+        return t("filter_cancelled");
       case "shipment_failed":
         return t("shipment_failed_badge");
+      case "ready_to_ship":
+        // Reuses the dashboard/store card's label — same bucket, same wording.
+        return t("admin_home_ready_to_ship");
     }
   };
 
@@ -144,8 +172,8 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
         </div>
 
         <Select
-          value={value.status}
-          onValueChange={(v) => onChange({ ...value, status: v as AdminOrderFilterStatus })}
+          value={selected}
+          onValueChange={(v) => selectFilter(v as FilterOption)}
         >
           <SelectTrigger className="w-56" aria-label={t("th_status")} data-testid="orders-status-filter">
             <SelectValue />

@@ -575,6 +575,180 @@ func TestAdminListOrders_InvalidCursor_Returns400(t *testing.T) {
 	}
 }
 
+// newAdminOrdersGetCtx builds a GET echo.Context against the given path
+// (query string included), no route params.
+func newAdminOrdersGetCtx(rawURL string) (echo.Context, *httptest.ResponseRecorder) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, rawURL, nil)
+	rec := httptest.NewRecorder()
+	return e.NewContext(req, rec), rec
+}
+
+// orderIDListResponse decodes just enough of AdminListOrders' body to check
+// which orders came back.
+type orderIDListResponse struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
+// TestAdminListOrders_QueueReadyToShip_MatchesTheBucketCount is the HTTP
+// sibling of order_reporting_test.go's
+// TestListOrders_readyToShipMatchesTheBucketDefinition — same claim (the
+// ready_to_ship queue's rows must equal the ready_to_ship bucket count), but
+// reached through AdminListOrders'/AdminOrdersSummary's ?queue=ready_to_ship
+// param instead of OrderFilter.ReadyToShip directly. Scoped by the order's own
+// id suffix (like the UI's own order-number search) rather than a date
+// window, since the handler has no StudentID query param to isolate by.
+func TestAdminListOrders_QueueReadyToShip_MatchesTheBucketCount(t *testing.T) {
+	fake := &fakeShipHandlerLogistics{}
+	h, svc, repo := newShipHandlerTestService(t, fake)
+
+	physicalOrderID := createShippableOrderForHandler(t, svc, repo, "paid", true)
+	q := physicalOrderID.String()[24:]
+
+	listCtx, listRec := newAdminOrdersGetCtx("/api/v1/admin/orders?queue=ready_to_ship&q=" + q)
+	if err := h.AdminListOrders(listCtx); err != nil {
+		t.Fatalf("AdminListOrders: %v", err)
+	}
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+	var listBody orderIDListResponse
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listBody); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(listBody.Data) != 1 || listBody.Data[0].ID != physicalOrderID.String() {
+		t.Fatalf("want exactly the physical paid order, got %+v", listBody.Data)
+	}
+
+	sumCtx, sumRec := newAdminOrdersGetCtx("/api/v1/admin/orders/summary?q=" + q)
+	if err := h.AdminOrdersSummary(sumCtx); err != nil {
+		t.Fatalf("AdminOrdersSummary: %v", err)
+	}
+	if sumRec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", sumRec.Code, sumRec.Body.String())
+	}
+	var sumBody struct {
+		Buckets struct {
+			ReadyToShip int `json:"ready_to_ship"`
+		} `json:"buckets"`
+	}
+	if err := json.Unmarshal(sumRec.Body.Bytes(), &sumBody); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if sumBody.Buckets.ReadyToShip != len(listBody.Data) {
+		t.Errorf("the queue's row count (%d) must equal the bucket's ready_to_ship count, got %d",
+			len(listBody.Data), sumBody.Buckets.ReadyToShip)
+	}
+}
+
+// TestAdminListOrders_QueueShipmentFailed_MatchesShipmentStatus proves
+// ?queue=shipment_failed reaches the same OrderFilter.ShipmentStatusIn
+// predicate the pre-refactor ?shipment=failed param used — same rows, new
+// name — and that it does not also match the ready_to_ship queue for the
+// same (already-shipped) order.
+func TestAdminListOrders_QueueShipmentFailed_MatchesShipmentStatus(t *testing.T) {
+	fake := &fakeShipHandlerLogistics{}
+	h, svc, repo := newShipHandlerTestService(t, fake)
+
+	orderID := createShippableOrderForHandler(t, svc, repo, "shipped", true)
+	if _, err := repo.Pool().Exec(context.Background(),
+		`UPDATE orders SET shipment_status = 'courierNotFound' WHERE id = $1`, orderID,
+	); err != nil {
+		t.Fatalf("seed shipment_status: %v", err)
+	}
+	q := orderID.String()[24:]
+
+	failedCtx, failedRec := newAdminOrdersGetCtx("/api/v1/admin/orders?queue=shipment_failed&q=" + q)
+	if err := h.AdminListOrders(failedCtx); err != nil {
+		t.Fatalf("AdminListOrders: %v", err)
+	}
+	if failedRec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", failedRec.Code, failedRec.Body.String())
+	}
+	var failedBody orderIDListResponse
+	if err := json.Unmarshal(failedRec.Body.Bytes(), &failedBody); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(failedBody.Data) != 1 || failedBody.Data[0].ID != orderID.String() {
+		t.Fatalf("want exactly the order with the failed shipment, got %+v", failedBody.Data)
+	}
+
+	rtsCtx, rtsRec := newAdminOrdersGetCtx("/api/v1/admin/orders?queue=ready_to_ship&q=" + q)
+	if err := h.AdminListOrders(rtsCtx); err != nil {
+		t.Fatalf("AdminListOrders: %v", err)
+	}
+	var rtsBody orderIDListResponse
+	if err := json.Unmarshal(rtsRec.Body.Bytes(), &rtsBody); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(rtsBody.Data) != 0 {
+		t.Errorf("a shipped order must not appear in ready_to_ship, got %+v", rtsBody.Data)
+	}
+}
+
+// TestAdminListOrders_UnknownQueue_Returns400 proves a typo'd ?queue= is
+// rejected rather than silently ignored (which would fall through to "no
+// filter" and return every order).
+func TestAdminListOrders_UnknownQueue_Returns400(t *testing.T) {
+	fake := &fakeShipHandlerLogistics{}
+	h, _, _ := newShipHandlerTestService(t, fake)
+
+	c, rec := newAdminOrdersGetCtx("/api/v1/admin/orders?queue=nonsense")
+	if err := h.AdminListOrders(c); err != nil {
+		t.Fatalf("AdminListOrders: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAdminOrdersSummary_UnknownQueue_Returns400 is the summary endpoint's
+// sibling of TestAdminListOrders_UnknownQueue_Returns400 — both handlers read
+// ?queue=, so both must reject an unrecognised value.
+func TestAdminOrdersSummary_UnknownQueue_Returns400(t *testing.T) {
+	fake := &fakeShipHandlerLogistics{}
+	h, _, _ := newShipHandlerTestService(t, fake)
+
+	c, rec := newAdminOrdersGetCtx("/api/v1/admin/orders/summary?queue=nonsense")
+	if err := h.AdminOrdersSummary(c); err != nil {
+		t.Fatalf("AdminOrdersSummary: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAdminListOrders_LegacyStatusReadyToShip_MatchesNothing proves the
+// queue/status split: ?status=ready_to_ship used to be sniffed into
+// OrderFilter.ReadyToShip (matching the whole paid/processing+physical
+// bucket). After the refactor only ?queue=ready_to_ship does that — a bare
+// ?status=ready_to_ship must now hit the literal `status = 'ready_to_ship'`
+// comparison and match nothing, not silently keep returning the bucket.
+func TestAdminListOrders_LegacyStatusReadyToShip_MatchesNothing(t *testing.T) {
+	fake := &fakeShipHandlerLogistics{}
+	h, svc, repo := newShipHandlerTestService(t, fake)
+
+	orderID := createShippableOrderForHandler(t, svc, repo, "paid", true)
+	q := orderID.String()[24:]
+
+	c, rec := newAdminOrdersGetCtx("/api/v1/admin/orders?status=ready_to_ship&q=" + q)
+	if err := h.AdminListOrders(c); err != nil {
+		t.Fatalf("AdminListOrders: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body orderIDListResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Data) != 0 {
+		t.Fatalf("?status=ready_to_ship is not a real status and must match nothing, got %+v", body.Data)
+	}
+}
+
 func newRefundRequestCtx(t *testing.T, orderID string, body []byte) (echo.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	c, rec := newShipRequestCtx(t, http.MethodPost, "/api/v1/admin/orders/"+orderID+"/refund", "id", orderID, body)

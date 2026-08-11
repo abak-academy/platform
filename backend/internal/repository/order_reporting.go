@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -99,7 +100,7 @@ func (r *Repository) TopProducts(
 		limit = 10
 	}
 
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
 		SELECT oi.product_id,
 		       MAX(oi.name)         AS name,
 		       MAX(oi.product_type) AS product_type,
@@ -108,12 +109,12 @@ func (r *Repository) TopProducts(
 		       COALESCE(SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0) AS product_revenue
 		  FROM orders o
 		  JOIN order_item oi ON oi.order_id = o.id
-		 WHERE o.status IN ('paid', 'processing', 'shipped', 'completed')
+		 WHERE o.status IN %s
 		   AND o.created_at >= $1 AND o.created_at < $2
 		 GROUP BY oi.product_id
-		 ORDER BY `+sortCol+` DESC
+		 ORDER BY %s DESC
 		 LIMIT $3
-	`, from, to, limit)
+	`, paidStatusList, sortCol), from, to, limit)
 	if err != nil {
 		return nil, err
 	}

@@ -24,6 +24,13 @@ type OrderFilter struct {
 	Cursor      string
 	Limit       int
 
+	// ReadyToShip filters to exactly the set CountOrdersByBucket's ready_to_ship
+	// bucket counts (order_reporting.go): status IN ('paid','processing') with at
+	// least one physical item. Keep the two predicates in sync. Takes precedence
+	// over Status — the "ready_to_ship" queue is a synthetic filter value with no
+	// single matching orders.status.
+	ReadyToShip bool
+
 	// ShipmentStatusIn matches orders.shipment_status against an explicit set.
 	// The caller supplies every spelling it wants matched — shipment_status
 	// holds whatever Biteship sent, unnormalised, so deciding which spellings
@@ -58,7 +65,15 @@ func orderFilterPredicateFrom(filter OrderFilter, startArg int) (string, []inter
 		args = append(args, *filter.StudentID)
 		argNum++
 	}
-	if filter.Status != "" {
+	if filter.ReadyToShip {
+		query += ` AND status IN ('paid','processing')
+			AND EXISTS (SELECT 1 FROM order_item oi
+			             WHERE oi.order_id = orders.id
+			               AND oi.product_type IN ('book','merchandise','medal'))`
+		// "all" is the frontend's sentinel for its own "All" filter tab, not a
+		// real status value — treated as no filter here so it can't be
+		// forwarded as a literal that matches zero rows.
+	} else if filter.Status != "" && filter.Status != "all" {
 		query += fmt.Sprintf(` AND status = $%d`, argNum)
 		args = append(args, filter.Status)
 		argNum++
@@ -191,7 +206,7 @@ func scanOrder(row interface {
 
 func (r *Repository) fetchItems(ctx context.Context, orderID uuid.UUID) ([]model.OrderItem, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams, fulfilled_at, created_at
+		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, COALESCE(weight_grams, 0), fulfilled_at, created_at
 		 FROM order_item
 		 WHERE order_id = $1
 		 ORDER BY created_at`,
@@ -745,7 +760,7 @@ func (r *Repository) GetExpiredPaymentOrders(ctx context.Context, limit int) ([]
 
 func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
 	rows, err := tx.Query(ctx,
-		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams, fulfilled_at, created_at
+		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, COALESCE(weight_grams, 0), fulfilled_at, created_at
 		 FROM order_item WHERE order_id = $1`,
 		orderID,
 	)
@@ -834,27 +849,27 @@ func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[st
 		discount   float64
 		orderCount int
 	)
-	err := r.pool.QueryRow(ctx, `
+	err := r.pool.QueryRow(ctx, fmt.Sprintf(`
 		SELECT COALESCE(SUM(total), 0), COALESCE(SUM(shipping_cost), 0),
 		       COALESCE(SUM(discount), 0), COUNT(*)
 		  FROM orders
-		 WHERE status IN ('paid', 'processing', 'shipped', 'completed')
+		 WHERE status IN %s
 		   AND created_at >= $1 AND created_at < $2
-	`, from, to).Scan(&total, &shipping, &discount, &orderCount)
+	`, paidStatusList), from, to).Scan(&total, &shipping, &discount, &orderCount)
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
 		SELECT oi.product_type,
 		       COALESCE(SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0),
 		       COUNT(DISTINCT o.id)
 		  FROM orders o
 		  JOIN order_item oi ON oi.order_id = o.id
-		 WHERE o.status IN ('paid', 'processing', 'shipped', 'completed')
+		 WHERE o.status IN %s
 		   AND o.created_at >= $1 AND o.created_at < $2
 		 GROUP BY oi.product_type
-	`, from, to)
+	`, paidStatusList), from, to)
 	if err != nil {
 		return nil, err
 	}

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import { toast } from "sonner";
 import OrdersPage from "./page";
-import type { Order, OrderSummary } from "@/lib/types";
+import type { Order, OrderSummary, AdminOrderQuery } from "@/lib/types";
 
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
@@ -38,9 +38,14 @@ let reconcileState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPendi
 let refreshShipmentState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let cancelShipmentState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 
+// Spies rather than plain stubs so the legacy-?status= mapping test below can
+// assert on the query object the page actually built, not just what renders.
+const mockUseAdminOrders = vi.fn((_query?: AdminOrderQuery) => ordersState);
+const mockUseAdminOrderSummary = vi.fn((_query?: AdminOrderQuery) => summaryState);
+
 vi.mock("@/lib/hooks/admin-orders", () => ({
-  useAdminOrders: () => ordersState,
-  useAdminOrderSummary: () => summaryState,
+  useAdminOrders: (query: AdminOrderQuery) => mockUseAdminOrders(query),
+  useAdminOrderSummary: (query: AdminOrderQuery) => mockUseAdminOrderSummary(query),
   useAdminOrder: () => ({}),
   useConfirmOrder: () => confirmState,
   useShipOrder: () => shipState,
@@ -156,6 +161,8 @@ describe("OrdersPage", () => {
     mockMutate.mockReset();
     mockMutateAsync.mockReset();
     mockFetchNextPage.mockReset();
+    mockUseAdminOrders.mockClear();
+    mockUseAdminOrderSummary.mockClear();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
   });
@@ -560,12 +567,67 @@ describe("OrdersPage", () => {
     });
   });
 
-  it("adopts ?status= from the URL so the dashboard can deep link", async () => {
+  it("adopts ?queue= from the URL so the dashboard can deep link", async () => {
+    window.history.replaceState({}, "", "/admin/orders?queue=shipment_failed");
+    render(<OrdersPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Pengiriman bermasalah/),
+    );
+    await waitFor(() => {
+      const lastCall = mockUseAdminOrders.mock.calls.at(-1)?.[0];
+      expect(lastCall).toEqual(expect.objectContaining({ status: "all", queue: "shipment_failed" }));
+    });
+    window.history.replaceState({}, "", "/admin/orders");
+  });
+
+  // Production has shipped ?status=ready_to_ship / ?status=shipment_failed
+  // links since before the queue split — a bookmark or an old cached bundle
+  // may still land here. The page must map the legacy status value onto the
+  // new queue param rather than send a ?status= the API now rejects as a typo.
+  it("maps a legacy ?status=shipment_failed URL onto the shipment-failed queue, not status", async () => {
     window.history.replaceState({}, "", "/admin/orders?status=shipment_failed");
     render(<OrdersPage />);
     await waitFor(() =>
       expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Pengiriman bermasalah/),
     );
+    await waitFor(() => {
+      const lastCall = mockUseAdminOrders.mock.calls.at(-1)?.[0];
+      expect(lastCall).toEqual(expect.objectContaining({ status: "all", queue: "shipment_failed" }));
+    });
+    window.history.replaceState({}, "", "/admin/orders");
+  });
+
+  it("maps a legacy ?status=ready_to_ship URL onto the ready-to-ship queue, not status", async () => {
+    window.history.replaceState({}, "", "/admin/orders?status=ready_to_ship");
+    render(<OrdersPage />);
+    await waitFor(() => {
+      const lastCall = mockUseAdminOrders.mock.calls.at(-1)?.[0];
+      expect(lastCall).toEqual(expect.objectContaining({ status: "all", queue: "ready_to_ship" }));
+    });
+    window.history.replaceState({}, "", "/admin/orders");
+  });
+
+  // The tab filtering `cancelled` was keyed "refunded" until it was renamed to
+  // match what it returns — the refund action writes status=cancelled with a
+  // cancellation_reason, and nothing filtered on that reason, so the tab always
+  // showed every cancelled order. Prod has shipped ?status=refunded links.
+  it("maps a legacy ?status=refunded URL onto the cancelled filter", async () => {
+    window.history.replaceState({}, "", "/admin/orders?status=refunded");
+    render(<OrdersPage />);
+    await waitFor(() => {
+      const lastCall = mockUseAdminOrders.mock.calls.at(-1)?.[0];
+      expect(lastCall).toEqual(expect.objectContaining({ status: "cancelled" }));
+    });
+    window.history.replaceState({}, "", "/admin/orders");
+  });
+
+  it("accepts ?status=cancelled and sends it through", async () => {
+    window.history.replaceState({}, "", "/admin/orders?status=cancelled");
+    render(<OrdersPage />);
+    await waitFor(() => {
+      const lastCall = mockUseAdminOrders.mock.calls.at(-1)?.[0];
+      expect(lastCall).toEqual(expect.objectContaining({ status: "cancelled" }));
+    });
     window.history.replaceState({}, "", "/admin/orders");
   });
 

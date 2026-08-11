@@ -32,10 +32,23 @@ function BandLabel({ children }: { children: React.ReactNode }) {
 // Each queue card opens its own queue. All three pointing at the unfiltered
 // list made them a count with nowhere to go — the whole point of the band is
 // that clicking a number shows you the work behind it.
-function QueueCardLink({ status, children }: { status: string; children: React.ReactNode }) {
+//
+// "status" is a real orders.status value (e.g. "pending"); "queue" is one of
+// the two synthetic buckets that has no single matching status — see
+// AdminOrderQueue.
+function QueueCardLink({
+  status,
+  queue,
+  children,
+}: {
+  status?: string;
+  queue?: string;
+  children: React.ReactNode;
+}) {
+  const param = queue ? `queue=${queue}` : `status=${status}`;
   return (
     <Link
-      href={`/admin/orders?status=${status}`}
+      href={`/admin/orders?${param}`}
       className="block rounded-[20px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
       style={{ outlineColor: "var(--md-sys-color-primary)" }}
     >
@@ -79,7 +92,7 @@ export default function StoreDashboardPage() {
                   icon={Clock}
                 />
               </QueueCardLink>
-              <QueueCardLink status="paid">
+              <QueueCardLink queue="ready_to_ship">
                 <StatCard
                   label={t("store_stat_ready_to_ship")}
                   value={String(buckets?.ready_to_ship ?? 0)}
@@ -87,7 +100,7 @@ export default function StoreDashboardPage() {
                   icon={PackageCheck}
                 />
               </QueueCardLink>
-              <QueueCardLink status="shipment_failed">
+              <QueueCardLink queue="shipment_failed">
                 <StatCard
                   label={t("store_stat_shipment_failed")}
                   value={String(buckets?.shipment_failed ?? 0)}

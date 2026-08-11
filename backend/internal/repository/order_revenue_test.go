@@ -29,6 +29,9 @@ import (
 //	2026-05     cursor paging          2026-07  GetRevenue fan-out
 //	2026-09     top products (qty order)        2026-11  bucket search filter
 //	2025-05     shipped orders count as revenue
+//	2025-08     ready-to-ship physical item requirement
+//	2026-06     status=all sentinel (bucket counts + list)
+//	2026-10     paid status list agreement (GetRevenue/TopProducts/DashboardSeries)
 var (
 	reportingPool     *pgxpool.Pool
 	reportingPoolOnce sync.Once
