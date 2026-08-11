@@ -35,11 +35,17 @@ func (s *Service) CreateCourse(ctx context.Context, title, level, subject, instr
 	return s.storeRepo.CreateCourse(ctx, c)
 }
 
-func (s *Service) ListCourses(ctx context.Context, limit int, cursor string) ([]model.Course, string, error) {
+func (s *Service) ListCourses(ctx context.Context, limit int, cursor string, role string) ([]model.Course, string, error) {
+	if !canAuthorCourses(role) {
+		return nil, "", ErrForbidden
+	}
 	return s.storeRepo.ListCourses(ctx, limit, cursor)
 }
 
-func (s *Service) GetCourse(ctx context.Context, id string) (model.Course, int, int, error) {
+func (s *Service) GetCourse(ctx context.Context, id string, role string) (model.Course, int, int, error) {
+	if !canAuthorCourses(role) {
+		return model.Course{}, 0, 0, ErrForbidden
+	}
 	cID, err := parseUUID(id)
 	if err != nil {
 		return model.Course{}, 0, 0, err
@@ -124,7 +130,10 @@ func (s *Service) UpdateCourse(ctx context.Context, id, title, level, subject, i
 
 // --- Section CRUD (re-keyed to course_id) ---
 
-func (s *Service) ListSections(ctx context.Context, courseID string) ([]model.Section, error) {
+func (s *Service) ListSections(ctx context.Context, courseID string, role string) ([]model.Section, error) {
+	if !canAuthorCourses(role) {
+		return nil, ErrForbidden
+	}
 	cID, err := parseUUID(courseID)
 	if err != nil {
 		return nil, err

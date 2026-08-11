@@ -184,6 +184,9 @@ func (s *Service) ChangeAccountRole(ctx context.Context, actorID, targetID, newR
 	if user == nil {
 		return ErrUserNotFound
 	}
+	if user.AuthProvider == "google" && user.PasswordHash == "" {
+		return ErrGoogleAccountNoPassword
+	}
 
 	if newRole == RoleAdminSchool {
 		if schoolID == nil || *schoolID == "" {
