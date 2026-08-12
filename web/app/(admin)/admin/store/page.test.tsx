@@ -159,9 +159,16 @@ describe("admin_store dashboard", () => {
 
   it("renders no aggregate revenue figure anywhere", () => {
     const { container } = render(<StoreDashboardPage />);
-    expect(screen.queryByTestId("store-revenue-aggregate")).toBeNull();
     expect(container.textContent).not.toMatch(/pendapatan/i);
     expect(container.textContent).not.toMatch(/Rp\s?[\d.]{4,}/);
+  });
+
+  it("offers no route into the revenue report", () => {
+    const { container } = render(<StoreDashboardPage />);
+
+    expect(container.querySelector('a[href="/admin/revenue"]')).toBeNull();
+    expect(container.querySelector('a[href="/admin/orders"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin/products"]')).not.toBeNull();
   });
 
   it("renders the greeting hero and tile-shaped quick actions", () => {

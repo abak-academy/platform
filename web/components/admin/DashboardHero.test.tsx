@@ -19,4 +19,11 @@ describe("DashboardHero", () => {
     );
     expect(container.firstChild).toHaveStyle({ color: "#FFFFFF" });
   });
+
+  it("keeps its mb-8 margin when className is omitted", () => {
+    const { container } = render(
+      <DashboardHero icon={Shield} badge="b" name="n" subtitle="s" />,
+    );
+    expect(container.firstChild).toHaveClass("mb-8");
+  });
 });

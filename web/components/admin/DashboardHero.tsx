@@ -10,6 +10,7 @@ interface DashboardHeroProps {
   name: string;
   subtitle: string;
   gradient?: string;
+  className?: string;
 }
 
 // Literal hex, not MD3 variables: keeps one brand gradient in both palettes.
@@ -19,10 +20,11 @@ export function DashboardHero({
   name,
   subtitle,
   gradient = DEFAULT_GRADIENT,
+  className = "mb-8",
 }: DashboardHeroProps) {
   return (
     <div
-      className="mb-8 rounded-[20px] px-8 py-7"
+      className={`${className} rounded-[20px] px-8 py-7`}
       style={{ background: gradient, color: "#FFFFFF", boxShadow: "0 4px 24px rgba(26,92,255,0.28)" }}
     >
       <div className="flex items-center gap-6">

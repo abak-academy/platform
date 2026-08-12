@@ -96,7 +96,7 @@ export default function StoreDashboardPage() {
 
   return (
     <div className="space-y-8 fade-in">
-      <DashboardHero icon={Store} badge={t("store_home_badge")} name={name} subtitle={t("store_subtitle")} />
+      <DashboardHero icon={Store} badge={t("store_home_badge")} name={name} subtitle={t("store_subtitle")} className="" />
 
       {/* Work queue — the only band allowed to turn red, and only on real work. */}
       <section>

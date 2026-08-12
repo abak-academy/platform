@@ -793,7 +793,6 @@ export const DICT = {
     school_action_reports: "Lihat Laporan",
 
     /* Admin — store dashboard */
-    store_title: "Dashboard Toko",
     store_subtitle: "Ringkasan aktivitas toko dan pesanan masuk.",
     store_home_badge: "Admin Toko · Abak Academy",
     store_home_default_name: "Admin Toko",
@@ -2277,7 +2276,6 @@ export const DICT = {
     school_action_reports: "View Reports",
 
     /* Admin — store dashboard */
-    store_title: "Store Dashboard",
     store_subtitle: "Overview of store activity and incoming orders.",
     store_home_badge: "Store Admin · Abak Academy",
     store_home_default_name: "Store Admin",
