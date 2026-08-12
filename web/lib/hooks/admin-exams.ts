@@ -122,6 +122,21 @@ export function useSetCertificateEnabled(id: string) {
   });
 }
 
+export function useSetCardEnabled(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      authFetch<ExamDetail>(`/admin/exams/${encodeURIComponent(id)}/card-enabled`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminExamsKeys.lists() });
+      qc.invalidateQueries({ queryKey: adminExamsKeys.detail(id) });
+    },
+  });
+}
+
 export function useCertificateDesign(examId: string | undefined) {
   return useQuery({
     queryKey: adminExamsKeys.certificateDesign(examId ?? ""),

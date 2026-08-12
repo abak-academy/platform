@@ -870,6 +870,8 @@ export const DICT = {
     config_general_logo_url: "URL Logo",
     config_general_contact_email: "Email kontak",
     config_general_contact_phone: "Telepon kontak",
+    config_general_help_url: "Pusat bantuan (URL)",
+    config_general_social_handle: "Akun media sosial",
     config_feature_selfreg_label: "Registrasi mandiri siswa",
     config_feature_selfreg_desc: "Izinkan siswa mendaftar langsung dari halaman publik.",
     config_feature_otp_label: "OTP wajib saat login",
@@ -1139,6 +1141,20 @@ export const DICT = {
     exam_packages_modal_check_in_window: "Jendela Check-in (menit)",
     exam_packages_modal_grace_window: "Jendela Toleransi (menit)",
     exam_packages_modal_max_attempts: "Maks. Percobaan",
+    exam_packages_modal_section_card: "Kartu Peserta",
+    exam_packages_modal_card_notes_hint:
+      "Poin \"Perhatian\" yang dicetak di kartu peserta ujian ini. Maksimal 5 poin, 55 karakter per poin agar muat satu baris. Catatan check-in ditambahkan otomatis di akhir.",
+    exam_packages_modal_card_notes_empty:
+      "Belum ada poin — kartu akan memakai teks bawaan.",
+    exam_packages_modal_card_note_label: "Poin",
+    exam_packages_modal_card_note_add: "+ Tambah poin",
+    exam_packages_modal_card_note_remove: "Hapus poin",
+    exam_card_enabled_label: "Kartu peserta",
+    exam_card_enabled_hint:
+      "Saat aktif, peserta dapat mengunduh kartu ujian ini.",
+    exam_card_enabled_on: "Aktif",
+    exam_card_enabled_off: "Nonaktif",
+    exam_card_enabled_saved: "Pengaturan kartu peserta disimpan.",
     exam_packages_modal_section_end_screen: "Layar Akhir Ujian",
     exam_packages_modal_end_screen_hint:
       "Ditampilkan ke siswa setelah mengumpulkan ujian ini, menggantikan layar hasil biasa. Kosongkan keduanya untuk memakai layar hasil biasa.",
@@ -2298,6 +2314,8 @@ export const DICT = {
     config_general_logo_url: "Logo URL",
     config_general_contact_email: "Contact email",
     config_general_contact_phone: "Contact phone",
+    config_general_help_url: "Help center (URL)",
+    config_general_social_handle: "Social handle",
     config_feature_selfreg_label: "Student self-registration",
     config_feature_selfreg_desc: "Allow students to register directly from the public page.",
     config_feature_otp_label: "OTP required on login",
@@ -2567,6 +2585,20 @@ export const DICT = {
     exam_packages_modal_check_in_window: "Check-in Window (minutes)",
     exam_packages_modal_grace_window: "Grace Window (minutes)",
     exam_packages_modal_max_attempts: "Max Attempts",
+    exam_packages_modal_section_card: "Participant Card",
+    exam_packages_modal_card_notes_hint:
+      "The \"Perhatian\" bullets printed on this exam's participant card. Up to 5 bullets, 55 characters each so they fit on one line. The check-in note is appended automatically.",
+    exam_packages_modal_card_notes_empty:
+      "No bullets yet — the card will use the built-in defaults.",
+    exam_packages_modal_card_note_label: "Bullet",
+    exam_packages_modal_card_note_add: "+ Add bullet",
+    exam_packages_modal_card_note_remove: "Remove bullet",
+    exam_card_enabled_label: "Participant card",
+    exam_card_enabled_hint:
+      "When on, participants can download this exam's card.",
+    exam_card_enabled_on: "On",
+    exam_card_enabled_off: "Off",
+    exam_card_enabled_saved: "Participant card setting saved.",
     exam_packages_modal_section_end_screen: "End Screen",
     exam_packages_modal_end_screen_hint:
       "Shown to students after they submit this exam, replacing the plain result screen. Leave both empty to keep the plain result screen.",

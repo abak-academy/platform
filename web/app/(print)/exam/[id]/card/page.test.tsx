@@ -51,6 +51,14 @@ const registration: RegistrationDetail = {
   participant_no: "260601-0001-000005",
   subject: "Matematika",
   platform: "exam.abakacademy.id",
+  footer_note: "Harap check-in dalam waktu 15 menit sebelum ujian.",
+  tenant_name: "Abak Academy",
+  contact: {
+    phone: "0800-1111-2222",
+    email: "halo@abakacademy.id",
+    help_url: "bantuan.abakacademy.id",
+    social_handle: "@abakacademy",
+  },
   exam: {
     id: "e-1",
     title: "Ujian Simulasi UTBK",
@@ -61,6 +69,8 @@ const registration: RegistrationDetail = {
     timer_mode: "fixed",
     duration_minutes: 90,
     result_config: "full",
+    card_enabled: true,
+    card_notes: [],
   },
 };
 

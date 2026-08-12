@@ -34,6 +34,8 @@ var configKeyCatalog = map[string]configKeyDef{
 	"app_district_id":                {group: "app", valueType: "string"},
 	"app_kode_pos":                   {group: "app", valueType: "string"},
 	"exam_platform":                  {group: "app", valueType: "string"},
+	"app_help_url":                   {group: "app", valueType: "string"},
+	"app_social_handle":              {group: "app", valueType: "string"},
 	"notify_on_purchase_admin_store": {group: "notification", valueType: "bool"},
 	"notify_on_purchase_admin_exam":  {group: "notification", valueType: "bool"},
 	"midtrans_server_key":            {group: "payment", valueType: "string", secret: true},
@@ -243,8 +245,34 @@ func (s *Service) GetSystemConfig(ctx context.Context) (map[string]string, error
 // UpdateSystemConfig upserts the provided config keys. It validates keys
 // against the catalog, encrypts secret values, skips "***" sentinels, writes
 // a single audit row, and returns the full masked config map.
+// cardConfigKeys are the system_config values printed on the participant card.
+// A cached card PDF is reused, never re-rendered, so changing one of these has
+// to invalidate the cache or the edit never reaches a student who already
+// downloaded a card.
+var cardConfigKeys = []string{
+	"app_name", "app_logo_url", "app_contact_phone",
+	"app_contact_email", "app_help_url", "app_social_handle",
+}
+
+// cardConfigChanged reports whether this submission actually changes a
+// card-visible value. changedKeys cannot answer that — the config page PUTs
+// every key on every save, so it always lists all of them.
+func cardConfigChanged(before map[string]string, values map[string]string) bool {
+	for _, k := range cardConfigKeys {
+		if v, ok := values[k]; ok && v != before[k] {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) UpdateSystemConfig(ctx context.Context, actorID string, values map[string]string) (map[string]string, error) {
 	if err := validateConfigKeys(values); err != nil {
+		return nil, err
+	}
+
+	before, err := s.GetSystemConfig(ctx)
+	if err != nil {
 		return nil, err
 	}
 
@@ -252,10 +280,17 @@ func (s *Service) UpdateSystemConfig(ctx context.Context, actorID string, values
 	if err != nil {
 		return nil, err
 	}
+	invalidateCards := cardConfigChanged(before, values)
 
 	for key, val := range processed {
 		def := configKeyCatalog[key]
 		if err := s.storeRepo.UpsertSystemConfig(ctx, key, val, def.secret); err != nil {
+			return nil, err
+		}
+	}
+
+	if invalidateCards {
+		if err := s.storeRepo.ClearAllRegistrationCards(ctx); err != nil {
 			return nil, err
 		}
 	}

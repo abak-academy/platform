@@ -749,6 +749,8 @@ export interface Exam {
   result_config?: string;
   result_release_at?: string | null;
   certificate_enabled?: boolean;
+  card_enabled?: boolean;
+  card_notes?: string[];
   certificate_template?: string;
   certificate_background_key?: string | null;
   certificate_layout?: CertificateLayout | null;
@@ -803,6 +805,7 @@ export interface CreateExamPayload {
   check_in_window_minutes?: number | null;
   grace_window_minutes?: number | null;
   max_attempts?: number | null;
+  card_notes?: string[];
 }
 
 export interface UpdateExamPayload {
@@ -823,6 +826,7 @@ export interface UpdateExamPayload {
   max_attempts?: number | null;
   end_screen_image_url?: string | null;
   end_screen_promo_text?: string | null;
+  card_notes?: string[];
 }
 
 // ── Certificate design (admin editor, FR-17/18/25) ───────────────────────
@@ -1077,6 +1081,14 @@ export interface RegistrationDetail {
   participant_no: string;
   subject: string;
   platform: string;
+  footer_note: string;
+  tenant_name: string;
+  contact: {
+    phone: string;
+    email: string;
+    help_url: string;
+    social_handle: string;
+  };
   exam: {
     id: string;
     title: string;
@@ -1087,6 +1099,8 @@ export interface RegistrationDetail {
     timer_mode: string;
     duration_minutes: number | null;
     result_config: string;
+    card_enabled: boolean;
+    card_notes: string[];
   };
 }
 

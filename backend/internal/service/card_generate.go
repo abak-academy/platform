@@ -5,6 +5,8 @@ import (
 	_ "embed"
 	"encoding/base64"
 	"fmt"
+	"html"
+	"strings"
 )
 
 // examCardTemplateHTML is the exam card's self-contained {{token}} HTML
@@ -57,6 +59,11 @@ func buildExamCardHTML(data *CardPrintData) string {
 		photoURL = svgDataURI(examCardPhotoFallback)
 	}
 
+	helpText := data.HelpURL
+	if helpText == "" {
+		helpText = data.ContactEmail
+	}
+
 	values := map[FieldID]string{
 		"participant_no":  data.ParticipantNo,
 		"student_name":    data.StudentName,
@@ -67,9 +74,41 @@ func buildExamCardHTML(data *CardPrintData) string {
 		"tenant_name":     tenantName,
 		"tenant_logo_url": tenantLogoURL,
 		"photo_url":       photoURL,
-		"footer_note":     data.FooterNote,
+		"contact_phone":   dashIfEmpty(data.ContactPhone),
+		"help_url":        dashIfEmpty(helpText),
+		"social_handle":   data.SocialHandle,
+		// notes_html is markup, but substituteTemplateTokens escapes every value
+		// it substitutes (and blanks any token missing from this map). Stand a
+		// sentinel in its place and splice the <li> list in afterwards; the note
+		// text is escaped by cardNotesHTML, only its tags are not.
+		"notes_html": cardNotesSentinel,
 	}
-	return substituteTemplateTokens(examCardTemplateHTML, values)
+	out := substituteTemplateTokens(examCardTemplateHTML, values)
+	return strings.ReplaceAll(out, cardNotesSentinel, cardNotesHTML(data.Notes, data.FooterNote))
+}
+
+// cardNotesSentinel survives HTML escaping unchanged (no <, >, &, or quotes).
+const cardNotesSentinel = "CARD_NOTES_SLOT_7f3a2b"
+
+func dashIfEmpty(v string) string {
+	if v == "" {
+		return "-"
+	}
+	return v
+}
+
+// cardNotesHTML fills the template's single {{notes_html}} slot with the whole
+// Perhatian list — the admin's notes followed by the generated check-in
+// bullet. Escaped, since notes are admin-authored free text.
+func cardNotesHTML(notes []string, footerNote string) string {
+	var b strings.Builder
+	for _, n := range notes {
+		b.WriteString("<li>" + html.EscapeString(n) + "</li>")
+	}
+	if footerNote != "" {
+		b.WriteString("<li>" + html.EscapeString(footerNote) + "</li>")
+	}
+	return b.String()
 }
 
 // generateExamCardPDF computes the exam card's print-data (GetCardPrintData,

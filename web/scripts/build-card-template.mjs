@@ -22,7 +22,8 @@
 // substitutes at generation time (same contract as the certificate
 // template): participant_no, student_name, school, exam_title,
 // exam_schedule, check_in_code, tenant_name, tenant_logo_url, photo_url,
-// footer_note. grade/dob/subject/time_range/duration/mode/platform are not
+// contact_phone, help_url, social_handle, and notes_html (the whole Perhatian
+// <li> list, since it is variable-length). grade/dob/subject/time_range/duration/mode/platform are not
 // part of CardPrintData today (see web/lib/server/print-api.ts's historical
 // comment) and render as the same literal "—" the old print route used.
 import fs from "node:fs";
@@ -58,6 +59,7 @@ try {
   const { ExamCardPrintable, AbakMarkFull, PhotoPlaceholder } = mod;
 
   const DASH = "—";
+  const NOTES_SENTINEL = "__CARD_NOTES__";
   const props = {
     fullName: "{{student_name}}",
     participantNumber: "{{participant_no}}",
@@ -75,10 +77,21 @@ try {
     checkInCode: "{{check_in_code}}",
     tenantName: "{{tenant_name}}",
     tenantLogoUrl: "{{tenant_logo_url}}",
-    footerNote: "{{footer_note}}",
+    contactPhone: "{{contact_phone}}",
+    helpUrl: "{{help_url}}",
+    socialHandle: "{{social_handle}}",
+    // The Perhatian block is a variable-length list, so it cannot be one
+    // per-value token. Render a single sentinel <li> and swap the whole
+    // element for {{notes_html}}; Go emits every <li> (notes + the generated
+    // check-in bullet) into that slot.
+    notes: [NOTES_SENTINEL],
   };
 
-  const markup = renderToStaticMarkup(React.createElement(ExamCardPrintable, props));
+  let markup = renderToStaticMarkup(React.createElement(ExamCardPrintable, props));
+  if (!markup.includes(`<li>${NOTES_SENTINEL}</li>`)) {
+    throw new Error("notes sentinel not found in rendered markup — did the Perhatian block change?");
+  }
+  markup = markup.replace(`<li>${NOTES_SENTINEL}</li>`, "{{notes_html}}");
   const css = fs.readFileSync(cssPath, "utf8");
 
   // ExamCardPrintable.module.css only sets fonts via next/font CSS vars

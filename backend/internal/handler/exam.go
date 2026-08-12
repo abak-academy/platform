@@ -971,6 +971,29 @@ func (h *Handler) AdminGetExamCertificateDesign(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+// cardEnabledRequest is the PATCH body for AdminSetExamCardEnabled.
+type cardEnabledRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// AdminSetExamCardEnabled toggles an exam's card_enabled flag via its own
+// dedicated action, so enabling or disabling never touches card_notes.
+func (h *Handler) AdminSetExamCardEnabled(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	var req cardEnabledRequest
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	exam, err := h.svc.SetExamCardEnabled(c.Request().Context(), id, req.Enabled)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, exam)
+}
+
 // certificateEnabledRequest is the PATCH body for AdminSetExamCertificateEnabled.
 type certificateEnabledRequest struct {
 	Enabled bool `json:"enabled"`

@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/lib/i18n";
 import { toast } from "sonner";
+import { ApiError } from "@/lib/api";
 import { useCreateExam, useUpdateExam } from "@/lib/hooks/admin-exams";
 import type { ExamListItem, CreateExamPayload, UpdateExamPayload, ExamResultConfig } from "@/lib/types";
 
@@ -25,6 +26,11 @@ interface ExamModalProps {
 }
 
 type TimerMode = "overall" | "per_test";
+
+// Mirrors maxCardNotes/maxCardNoteLen in backend/internal/service/exam.go; a
+// longer note wraps and pushes the card's Perhatian block over the barcode.
+const MAX_CARD_NOTES = 5;
+const MAX_CARD_NOTE_LEN = 55;
 
 function scheduledAtInputValue(iso?: string | null): string {
   if (!iso) return "";
@@ -87,6 +93,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const [maxAttempts, setMaxAttempts] = useState("");
   const [endScreenImageUrl, setEndScreenImageUrl] = useState("");
   const [endScreenPromoText, setEndScreenPromoText] = useState("");
+  const [cardNotes, setCardNotes] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -108,6 +115,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setMaxAttempts(inputValueFromNumber(exam.max_attempts));
       setEndScreenImageUrl(exam.end_screen_image_url ?? "");
       setEndScreenPromoText(exam.end_screen_promo_text ?? "");
+      setCardNotes(exam.card_notes ?? []);
     } else {
       setTitle("");
       setScheduledAt("");
@@ -126,6 +134,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setMaxAttempts("");
       setEndScreenImageUrl("");
       setEndScreenPromoText("");
+      setCardNotes([]);
     }
   }, [open, exam]);
 
@@ -176,6 +185,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
             timerMode === "overall" && duration !== "" ? Number(duration) : null,
           end_screen_image_url: endScreenImageUrl.trim() || null,
           end_screen_promo_text: endScreenPromoText.trim() || null,
+          card_notes: cardNotes.map((n) => n.trim()).filter(Boolean),
         };
         const saved = await update.mutateAsync(payload);
         onSaved?.(saved);
@@ -189,8 +199,8 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
         onSaved?.(result as ExamListItem);
       }
       onClose();
-    } catch {
-      toast.error(t("error_generic"));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("error_generic"));
     }
   }
 
@@ -457,6 +467,56 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                 </div>
               </div>
             </div>
+
+            {isEdit && (
+              <div className="grid gap-3">
+                <SectionHeading>{t("exam_packages_modal_section_card")}</SectionHeading>
+                <p className="text-xs text-ink-400">
+                  {t("exam_packages_modal_card_notes_hint")}
+                </p>
+                {cardNotes.length === 0 ? (
+                  <p className="text-xs text-ink-500">
+                    {t("exam_packages_modal_card_notes_empty")}
+                  </p>
+                ) : null}
+                {cardNotes.map((note, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input
+                      aria-label={t("exam_packages_modal_card_note_label") + " " + (i + 1)}
+                      value={note}
+                      maxLength={MAX_CARD_NOTE_LEN}
+                      onChange={(e) =>
+                        setCardNotes((prev) =>
+                          prev.map((v, j) => (j === i ? e.target.value : v)),
+                        )
+                      }
+                      disabled={isPending}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-full px-3"
+                      aria-label={t("exam_packages_modal_card_note_remove")}
+                      onClick={() => setCardNotes((prev) => prev.filter((_, j) => j !== i))}
+                      disabled={isPending}
+                    >
+                      ×
+                    </Button>
+                  </div>
+                ))}
+                <div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-full"
+                    onClick={() => setCardNotes((prev) => [...prev, ""])}
+                    disabled={isPending || cardNotes.length >= MAX_CARD_NOTES}
+                  >
+                    {t("exam_packages_modal_card_note_add")}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {isEdit && (
               <div className="grid gap-3">

@@ -447,6 +447,15 @@ func setExamCertificateEnabled(t *testing.T, pool *pgxpool.Pool, examID uuid.UUI
 	}
 }
 
+func setExamCardEnabled(t *testing.T, pool *pgxpool.Pool, examID uuid.UUID, enabled bool) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE exam SET card_enabled = $1 WHERE id = $2`, enabled, examID,
+	); err != nil {
+		t.Fatalf("set card_enabled: %v", err)
+	}
+}
+
 func seedExamTest(t *testing.T, pool *pgxpool.Pool, examID, testID uuid.UUID, sortOrder int) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(),

@@ -144,6 +144,9 @@ var (
 	// disabled for an exam (certificate_enabled = false); the admin design
 	// editor is unreachable until an admin explicitly enables it (FB-8/FR-9).
 	ErrCertificateDisabled = errors.New("certificate disabled for this exam")
+	// ErrCardDisabled is returned when the participant card is disabled for an
+	// exam (card_enabled = false).
+	ErrCardDisabled = errors.New("card disabled for this exam")
 )
 
 // --- from exam_grant.go ---

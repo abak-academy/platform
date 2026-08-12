@@ -57,6 +57,14 @@ const sampleWithCheckin: RegistrationDetail = {
   participant_no: "260715-000001",
   subject: "TPS — Penalaran Umum",
   platform: "exam.abakacademy.id",
+  footer_note: "Harap check-in dalam waktu 30 menit sebelum ujian.",
+  tenant_name: "Abak Academy",
+  contact: {
+    phone: "0800-1111-2222",
+    email: "halo@abakacademy.id",
+    help_url: "bantuan.abakacademy.id",
+    social_handle: "@abakacademy",
+  },
   exam: {
     id: "e-1",
     title: "Try Out UTBK Nasional",
@@ -67,6 +75,8 @@ const sampleWithCheckin: RegistrationDetail = {
     timer_mode: "overall",
     duration_minutes: 120,
     result_config: "{}",
+    card_enabled: true,
+    card_notes: [],
   },
 };
 
@@ -140,6 +150,25 @@ describe("ExamDetailPage", () => {
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/exam/reg-1/card");
     });
+  });
+
+  it("hides the card button when the exam has card_enabled=false", async () => {
+    registrationState = {
+      ...registrationState,
+      data: {
+        ...sampleWithCheckin,
+        exam: { ...sampleWithCheckin.exam, card_enabled: false },
+      },
+    };
+
+    render(<ExamDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Try Out UTBK Nasional")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: /unduh kartu peserta/i })
+    ).not.toBeInTheDocument();
   });
 
   it("renders check-in section when requires_checkin=true (FR12)", async () => {
