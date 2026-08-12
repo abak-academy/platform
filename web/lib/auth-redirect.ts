@@ -1,13 +1,19 @@
-import { ADMIN_ROLES, NAV_CONFIG, type UserRole } from "./nav-config";
+import { ADMIN_ROLES, type UserRole } from "./nav-config";
 
 export function redirectForRole(role?: string | null): string {
   if (ADMIN_ROLES.includes(role as UserRole)) return "/admin";
   return "/";
 }
 
+// Explicit per role, not a nav scan — the scan is how admin_exam ended up on /admin/exam/tests.
+const ADMIN_HOME: Record<UserRole, string> = {
+  student: "/",
+  admin_store: "/admin/store",
+  admin_exam: "/admin/exam",
+  admin_school: "/admin/school",
+  super_admin: "/admin",
+};
+
 export function adminHomeForRole(role: UserRole): string {
-  if (role === "admin_store") return "/admin/store";
-  const items = NAV_CONFIG[role]?.flatMap((group) => group.items) ?? [];
-  const first = items.find((item) => item.href !== "/admin");
-  return first?.href ?? "/admin/products";
+  return ADMIN_HOME[role] ?? "/admin/products";
 }
