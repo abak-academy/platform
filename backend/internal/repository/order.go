@@ -177,7 +177,7 @@ const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost,
 	gateway_ref, payment_method, payment_expires_at, paid_at, invoice_url,
 	checked_out_at, completed_at, cancelled_at, cancellation_reason,
 	created_at, updated_at, is_estimate,
-	biteship_order_id, shipment_status, waybill_source, courier_code, courier_service_code,
+	biteship_order_id, shipment_status, shipment_attempt, waybill_source, courier_code, courier_service_code,
 	payment_proof_url, refund_proof_url`
 
 func scanOrder(row interface {
@@ -193,7 +193,7 @@ func scanOrder(row interface {
 		&gatewayRef, &paymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &invoiceURL,
 		&order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &cancellationReason,
 		&order.CreatedAt, &order.UpdatedAt, &order.IsEstimate,
-		&order.BiteshipOrderID, &order.ShipmentStatus, &order.WaybillSource,
+		&order.BiteshipOrderID, &order.ShipmentStatus, &order.ShipmentAttempt, &order.WaybillSource,
 		&order.CourierCode, &order.CourierServiceCode,
 		&order.PaymentProofURL, &order.RefundProofURL,
 	)
@@ -673,12 +673,19 @@ func (r *Repository) SetShipped(ctx context.Context, orderID uuid.UUID, tracking
 // SetShippedBiteship moves an order to shipped via the Biteship booking
 // path (FR-C-6): tracking_number and biteship_order_id come from Biteship's
 // response, waybill_source is stamped 'biteship'.
-func (r *Repository) SetShippedBiteship(ctx context.Context, orderID uuid.UUID, trackingNumber, biteshipOrderID string) error {
+//
+// attempt is the booking attempt this row now represents, so a re-book after a
+// dead shipment persists the number its reference_id was built from.
+// shipment_status is reset to NULL because it still describes the PREVIOUS
+// booking: leaving 'cancelled' there would keep the order in the failed queue
+// and keep offering "re-ship" for a parcel that is already on its way.
+func (r *Repository) SetShippedBiteship(ctx context.Context, orderID uuid.UUID, trackingNumber, biteshipOrderID string, attempt int) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders SET status = 'shipped', tracking_number = $1, biteship_order_id = $2,
-		     waybill_source = 'biteship', shipped_at = now(), updated_at = now()
-		 WHERE id = $3`,
-		trackingNumber, biteshipOrderID, orderID,
+		     waybill_source = 'biteship', shipment_status = NULL, shipment_attempt = $3,
+		     shipped_at = now(), updated_at = now()
+		 WHERE id = $4`,
+		trackingNumber, biteshipOrderID, attempt, orderID,
 	)
 	return err
 }
@@ -686,10 +693,16 @@ func (r *Repository) SetShippedBiteship(ctx context.Context, orderID uuid.UUID, 
 // SetShippedManual moves an order to shipped via the manual-resi escape
 // hatch (FR-C-9): no Biteship call is made, waybill_source is stamped
 // 'manual'.
+//
+// biteship_order_id and shipment_status are cleared for the same reason
+// SetShippedBiteship resets them — after a dead booking they name a shipment
+// that is no longer this order's. Leaving biteship_order_id behind would also
+// let a late webhook for the cancelled booking write over the manual resi.
 func (r *Repository) SetShippedManual(ctx context.Context, orderID uuid.UUID, trackingNumber string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders SET status = 'shipped', tracking_number = $1,
-		     waybill_source = 'manual', shipped_at = now(), updated_at = now()
+		     waybill_source = 'manual', biteship_order_id = NULL, shipment_status = NULL,
+		     shipped_at = now(), updated_at = now()
 		 WHERE id = $2`,
 		trackingNumber, orderID,
 	)

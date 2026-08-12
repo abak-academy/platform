@@ -85,6 +85,15 @@ function refundAllowed(order: Order): boolean {
   return actionAllowed(order.status, "refund") || isShipmentFailure(order.shipment_status);
 }
 
+// A cancelled or rejected booking leaves orders.status at "shipped" — the
+// webhook never walks it back — so the status alone says the parcel is on its
+// way when nothing is. Gating Ship on status left those orders with no exit but
+// a refund. Same escape hatch as refundAllowed, and it mirrors the backend's
+// shippable().
+function shipAllowed(order: Order): boolean {
+  return actionAllowed(order.status, "ship") || isShipmentFailure(order.shipment_status);
+}
+
 export default function OrdersPage() {
   const { t } = useTranslation();
   const [query, setQuery] = useState<AdminOrderQuery>({ status: "all" });
@@ -260,7 +269,7 @@ export default function OrdersPage() {
         disabled: confirm.isPending,
       };
     }
-    if (actionAllowed(order.status, "ship") && hasPhysicalItem(order)) {
+    if (shipAllowed(order) && hasPhysicalItem(order)) {
       return {
         label: t("action_ship"),
         onClick: () => {
@@ -405,7 +414,7 @@ export default function OrdersPage() {
         order={detailOrder}
         onOpenChange={() => setDetailOrder(null)}
         onShip={
-          detailOrder && actionAllowed(detailOrder.status, "ship") && hasPhysicalItem(detailOrder)
+          detailOrder && shipAllowed(detailOrder) && hasPhysicalItem(detailOrder)
             ? () => {
                 const order = detailOrder;
                 setDetailOrder(null);

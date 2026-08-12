@@ -27,6 +27,7 @@ type Order struct {
 	ShippedAt          *time.Time           `json:"shipped_at"`
 	BiteshipOrderID    *string              `json:"biteship_order_id"`
 	ShipmentStatus     *string              `json:"shipment_status"`
+	ShipmentAttempt    int                  `json:"shipment_attempt"`
 	WaybillSource      *string              `json:"waybill_source"`
 	CourierCode        *string              `json:"courier_code"`
 	CourierServiceCode *string              `json:"courier_service_code"`

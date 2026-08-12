@@ -693,6 +693,37 @@ describe("OrdersPage", () => {
     expect(await screen.findByRole("menuitem", { name: /refund/i })).toBeTruthy();
   });
 
+  // A cancelled booking leaves orders.status at "shipped", so gating Ship on
+  // status alone left a dead parcel with no exit but a refund. This is the row
+  // that had no way to reach another courier.
+  it("offers ship again on a shipped order whose booking was cancelled", async () => {
+    ordersState = {
+      ...ordersState,
+      data: pages([{ ...sampleOrders[1], status: "shipped", shipment_status: "cancelled" }]),
+    };
+    render(<OrdersPage />);
+
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Buku Shipped/).closest("tr")!;
+    expect(within(row).getByRole("button", { name: /kirim|ship/i })).toBeTruthy();
+  });
+
+  // The other half: a parcel actually in transit must not offer Ship, or an
+  // admin dispatches a second courier for goods already on the way.
+  it("does not offer ship again while the shipment is alive", async () => {
+    ordersState = {
+      ...ordersState,
+      data: pages([{ ...sampleOrders[1], status: "shipped", shipment_status: "in_transit" }]),
+    };
+    render(<OrdersPage />);
+
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Buku Shipped/).closest("tr")!;
+    expect(within(row).queryByRole("button", { name: /kirim|ship/i })).toBeNull();
+  });
+
   it("counts the rows on screen against the summary total", async () => {
     summaryState = {
       data: {

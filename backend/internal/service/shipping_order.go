@@ -34,6 +34,57 @@ func parseShipmentDestination(raw json.RawMessage) (shipmentDestination, error) 
 	return dest, nil
 }
 
+// shippable answers whether a courier can be booked for this order now.
+//
+// The obvious half is an order that has not shipped yet. The second half is an
+// order whose booking died: AdminCancelShipment and the webhook both leave
+// orders.status at 'shipped' on purpose (FR-C-15 — the status is never walked
+// back), so a cancelled or rejected parcel reads as shipped forever while
+// nothing is actually on its way. Gating on status alone left the manual
+// escape hatch closed too, which meant a dead shipment had no exit but a
+// refund. shipment_status is the only thing that can tell them apart — the
+// same signal refundAllowed already uses on the frontend.
+func shippable(order model.Order) bool {
+	if order.Status == "paid" || order.Status == "processing" {
+		return true
+	}
+	return order.Status == "shipped" && isShipmentFailureStatus(order.ShipmentStatus)
+}
+
+// bookingReference is the reference_id sent to Biteship.
+//
+// Biteship requires it to be unique across all orders and rejects a reuse with
+// 40002060, echoing the conflicting booking back — so re-booking under the
+// bare order uuid returns the DEAD shipment through the already-booked path
+// and writes its resi back as if it were live. Attempt 1 keeps the bare uuid
+// so every booking already live at Biteship still resolves; each re-book gets
+// its own suffix.
+func bookingReference(orderID string, attempt int) string {
+	if attempt <= 1 {
+		return orderID
+	}
+	return fmt.Sprintf("%s-%d", orderID, attempt)
+}
+
+// nextBookingAttempt is the attempt this booking will be. An order that has
+// never been booked stays at its current number; one that carries a previous
+// Biteship booking is re-booking and needs a fresh reference.
+//
+// Deliberately not persisted before the call: if a re-book times out after
+// Biteship actually created the shipment, the retry computes the SAME number,
+// dedupes on reference_id and adopts the real booking instead of dispatching a
+// second courier.
+func nextBookingAttempt(order model.Order) int {
+	attempt := order.ShipmentAttempt
+	if attempt < 1 {
+		attempt = 1
+	}
+	if order.BiteshipOrderID != nil && *order.BiteshipOrderID != "" {
+		attempt++
+	}
+	return attempt
+}
+
 func shipmentItemsFromOrder(items []model.OrderItem) []ShipmentItem {
 	var out []ShipmentItem
 	for _, item := range items {
@@ -80,7 +131,7 @@ func (s *Service) AdminShipOrder(ctx context.Context, orderID, deliveryDate, del
 	if order.ID.String() == "" {
 		return ErrOrderNotFound
 	}
-	if order.Status != "paid" && order.Status != "processing" {
+	if !shippable(order) {
 		return ErrOrderNotShippable
 	}
 	if order.CourierCode == nil || *order.CourierCode == "" ||
@@ -105,8 +156,10 @@ func (s *Service) AdminShipOrder(ctx context.Context, orderID, deliveryDate, del
 		return errors.New("sender configuration incomplete: set app_name, app_contact_phone, app_address, app_kode_pos")
 	}
 
+	attempt := nextBookingAttempt(order)
+
 	req := CreateShipmentRequest{
-		ReferenceID: order.ID.String(),
+		ReferenceID: bookingReference(order.ID.String(), attempt),
 
 		OriginContactName:  senderName,
 		OriginContactPhone: senderPhone,
@@ -149,7 +202,7 @@ func (s *Service) AdminShipOrder(ctx context.Context, orderID, deliveryDate, del
 		}
 	}
 
-	return s.storeRepo.SetShippedBiteship(ctx, id, shipment.WaybillID, shipment.BiteshipOrderID)
+	return s.storeRepo.SetShippedBiteship(ctx, id, shipment.WaybillID, shipment.BiteshipOrderID, attempt)
 }
 
 // AdminShipOrderManual is the escape hatch (FR-C-9) for couriers or
@@ -169,7 +222,7 @@ func (s *Service) AdminShipOrderManual(ctx context.Context, orderID, trackingNum
 	if order.ID.String() == "" {
 		return ErrOrderNotFound
 	}
-	if order.Status != "paid" && order.Status != "processing" {
+	if !shippable(order) {
 		return ErrOrderNotShippable
 	}
 

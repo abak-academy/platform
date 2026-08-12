@@ -133,7 +133,7 @@ func seedShippedOrderForSigTest(t *testing.T, svc *service.Service, repo *reposi
 	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
-	if err := repo.SetShippedBiteship(ctx, order.ID, "WB-SIGTEST-1", biteshipOrderID); err != nil {
+	if err := repo.SetShippedBiteship(ctx, order.ID, "WB-SIGTEST-1", biteshipOrderID, 1); err != nil {
 		t.Fatalf("seed shipped order: %v", err)
 	}
 	return order.ID
