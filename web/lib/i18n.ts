@@ -795,14 +795,21 @@ export const DICT = {
     /* Admin — store dashboard */
     store_title: "Dashboard Toko",
     store_subtitle: "Ringkasan aktivitas toko dan pesanan masuk.",
+    store_home_badge: "Admin Toko · Abak Academy",
+    store_home_default_name: "Admin Toko",
     store_stat_pending: "Menunggu Konfirmasi",
     store_stat_pending_trend: "Pesanan butuh aksi",
     store_stat_processing: "Sedang Diproses",
     store_stat_processing_trend: "Siap dikirim",
     store_stat_revenue_30d: "Pendapatan 30 Hari",
     store_stat_revenue_30d_trend: "Periode berjalan",
+    store_promos: "Promo",
+    store_promos_active: "Promo aktif",
+    store_promos_expiring: "Segera berakhir",
     store_action_manage_products: "Kelola Produk",
     store_action_view_orders: "Lihat Pesanan",
+    store_action_new_promo: "Buat Promo",
+    store_action_announce: "Kirim Pengumuman",
     store_action_revenue_report: "Laporan Pendapatan",
 
     /* Under-maintenance stubs */
@@ -2272,14 +2279,21 @@ export const DICT = {
     /* Admin — store dashboard */
     store_title: "Store Dashboard",
     store_subtitle: "Overview of store activity and incoming orders.",
+    store_home_badge: "Store Admin · Abak Academy",
+    store_home_default_name: "Store Admin",
     store_stat_pending: "Awaiting Confirmation",
     store_stat_pending_trend: "Orders need action",
     store_stat_processing: "Processing",
     store_stat_processing_trend: "Ready to ship",
     store_stat_revenue_30d: "Revenue (30 Days)",
     store_stat_revenue_30d_trend: "Current period",
+    store_promos: "Promos",
+    store_promos_active: "Active promos",
+    store_promos_expiring: "Expiring soon",
     store_action_manage_products: "Manage Products",
     store_action_view_orders: "View Orders",
+    store_action_new_promo: "New Promo",
+    store_action_announce: "Send Announcement",
     store_action_revenue_report: "Revenue Report",
 
     /* Under-maintenance stubs */
