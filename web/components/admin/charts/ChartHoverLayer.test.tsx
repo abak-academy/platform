@@ -45,10 +45,30 @@ describe("ChartHoverLayer", () => {
     expect(screen.queryAllByTestId("chart-marker")).toHaveLength(0);
   });
 
-  it("clamps the tooltip inward at the edges so it cannot hang off the card", () => {
-    // The guide rule stays honest at 0%; only the box is pulled in.
+  it("side-anchors the tooltip to the left edge instead of centring it off-card", () => {
     render(<ChartHoverLayer index={0} count={5} mode="point" title="1 Agu" rows={ROWS} />);
     expect(screen.getByTestId("chart-guide")).toHaveStyle({ left: "0%" });
-    expect(screen.getByTestId("chart-tooltip")).toHaveStyle({ left: "12%" });
+    const tip = screen.getByTestId("chart-tooltip");
+    expect(tip).toHaveStyle({ left: "0px" });
+    expect(tip.style.right).toBe("");
+  });
+
+  it("side-anchors the tooltip to the right edge instead of centring it off-card", () => {
+    render(<ChartHoverLayer index={4} count={5} mode="point" title="5 Agu" rows={ROWS} />);
+    const tip = screen.getByTestId("chart-tooltip");
+    expect(tip).toHaveStyle({ right: "0px" });
+    expect(tip.style.left).toBe("");
+  });
+
+  it("keeps the tooltip centred over the data point away from the edges", () => {
+    render(<ChartHoverLayer index={2} count={5} mode="point" title="3 Agu" rows={ROWS} />);
+    const tip = screen.getByTestId("chart-tooltip");
+    expect(tip).toHaveStyle({ left: "50%" });
+    expect(tip.style.right).toBe("");
+  });
+
+  it("bounds the tooltip width so a wide row set cannot push it off-card", () => {
+    render(<ChartHoverLayer index={2} count={5} mode="point" title="3 Agu" rows={ROWS} />);
+    expect(screen.getByTestId("chart-tooltip").style.maxWidth).toBeTruthy();
   });
 });

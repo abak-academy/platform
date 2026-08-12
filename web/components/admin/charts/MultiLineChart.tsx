@@ -49,8 +49,8 @@ export function MultiLineChart({ labels, series, height = H, emptyLabel }: Multi
       <div
         ref={hover.containerRef}
         data-testid="chart-hover-area"
-        className="relative outline-none"
-        style={{ height }}
+        className="relative outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        style={{ height, outlineColor: "var(--md-sys-color-primary)" }}
         role="group"
         aria-label={t("chart_keyboard_hint")}
         {...hover.hoverProps}

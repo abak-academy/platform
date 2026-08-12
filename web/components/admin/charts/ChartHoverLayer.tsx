@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { xPercentFor, type HoverIndexMode } from "./chart-utils";
 
 export interface HoverRow {
@@ -20,7 +21,15 @@ interface ChartHoverLayerProps {
 // HTML layer, not SVG: every chart sets preserveAspectRatio="none", so SVG circles become ellipses on the stretched viewBox.
 export function ChartHoverLayer({ index, count, mode, title, rows }: ChartHoverLayerProps) {
   const xPct = xPercentFor(index, count, mode);
-  const boxPct = Math.min(88, Math.max(12, xPct));
+  const EDGE_PCT = 12;
+
+  // Side-anchoring at the edges needs no width measurement; a centred percent clamp only pulls the box's centre inward, not its edge.
+  const boxStyle: CSSProperties =
+    xPct <= EDGE_PCT
+      ? { left: 0, maxWidth: "min(16rem, 60%)", transform: "translateY(8px)" }
+      : xPct >= 100 - EDGE_PCT
+        ? { right: 0, maxWidth: "min(16rem, 60%)", transform: "translateY(8px)" }
+        : { left: `${xPct}%`, maxWidth: "min(16rem, 60%)", transform: "translate(-50%, 8px)" };
 
   return (
     <div className="pointer-events-none absolute inset-0">
@@ -66,13 +75,13 @@ export function ChartHoverLayer({ index, count, mode, title, rows }: ChartHoverL
         data-testid="chart-tooltip"
         role="status"
         className="chart-tooltip absolute top-0 z-10 rounded-[10px] px-3 py-2"
-        style={{ left: `${boxPct}%`, transform: "translate(-50%, 8px)" }}
+        style={boxStyle}
       >
         <div className="text-label" style={{ fontWeight: 600 }}>
           {title}
         </div>
         {rows.map((row) => (
-          <div key={row.label} className="text-label flex items-center gap-2 whitespace-nowrap">
+          <div key={row.label} className="text-label flex items-center gap-2">
             <span
               className="inline-block size-[8px] shrink-0 rounded-full"
               style={{ backgroundColor: row.color }}
