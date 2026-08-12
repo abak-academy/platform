@@ -339,6 +339,12 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminDashboard := admin.Group("/dashboard")
 	adminDashboard.Use(handler.RBACMiddleware("revenue:read"))
 	adminDashboard.GET("", h.AdminDashboard)
+
+	// Sibling group, not a sub-route of adminDashboard — a sub-route would
+	// inherit revenue:read and lock out admin_exam, the role this is for.
+	adminExamDashboard := admin.Group("/dashboard")
+	adminExamDashboard.Use(handler.RBACMiddleware("sessions:read"))
+	adminExamDashboard.GET("/exam", h.AdminExamDashboard)
 }
 
 // RegisterRoutesForTest is the same as registerRoutes but exported for handler tests.
