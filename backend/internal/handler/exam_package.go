@@ -125,6 +125,10 @@ type examPatchRequest struct {
 	// image or promo, not just add one.
 	EndScreenImageURL  Nullable[string] `json:"end_screen_image_url"`
 	EndScreenPromoText Nullable[string] `json:"end_screen_promo_text"`
+	// CardNotes is a plain *[]string, not Nullable: encoding/json already
+	// distinguishes absent (nil pointer — preserve) from an explicit []
+	// (pointer to an empty slice — clear back to the built-in defaults).
+	CardNotes *[]string `json:"card_notes"`
 }
 
 // applyNullable overlays a Nullable[T] PATCH field onto a *T model field: absent
@@ -202,6 +206,9 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	}
 	applyNullable(req.EndScreenImageURL, &overlay.EndScreenImageURL)
 	applyNullable(req.EndScreenPromoText, &overlay.EndScreenPromoText)
+	if req.CardNotes != nil {
+		overlay.CardNotes = *req.CardNotes
+	}
 
 	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)
 	if err != nil {

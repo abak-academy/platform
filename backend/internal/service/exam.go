@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -943,6 +944,9 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 		}
 	}
 	templateChanged := !stringPtrEqual(existing.CertificateTemplateHTML, m.CertificateTemplateHTML)
+	// A cached card PDF is only reused, never re-rendered, so edited notes would
+	// otherwise never reach a student who already downloaded one.
+	notesChanged := !slices.Equal(existing.CardNotes, m.CardNotes)
 	m.ID = id
 	m.CreatedAt = existing.CreatedAt
 	// C3/FR-14: bump on a change to either half of what the worker renders —
@@ -980,6 +984,11 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 	// affect just gets a harmless no-op.
 	if designChanged || templateChanged {
 		if err := s.enqueueCertificateNeededForSubmittedSessionsTx(ctx, tx, id); err != nil {
+			return model.Exam{}, err
+		}
+	}
+	if notesChanged {
+		if err := s.storeRepo.ClearRegistrationCardsByExamTx(ctx, tx, id); err != nil {
 			return model.Exam{}, err
 		}
 	}

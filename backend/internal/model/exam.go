@@ -360,7 +360,7 @@ type RegistrationDetail struct {
 		HelpURL      string `json:"help_url"`
 		SocialHandle string `json:"social_handle"`
 	} `json:"contact"`
-	Exam     struct {
+	Exam struct {
 		ID                   uuid.UUID  `json:"id"`
 		Title                string     `json:"title"`
 		ScheduledAt          *time.Time `json:"scheduled_at"`

@@ -1450,6 +1450,23 @@ func updateExam(ctx context.Context, q execer, id uuid.UUID, e *model.Exam) erro
 	return nil
 }
 
+// ClearRegistrationCardsByExamTx drops the cached card PDF key for one exam's
+// registrations, so the next download re-renders. The object key is
+// deterministic (cards/<regID>.pdf), so a regenerated card overwrites rather
+// than orphaning the old one.
+func (r *Repository) ClearRegistrationCardsByExamTx(ctx context.Context, tx pgx.Tx, examID uuid.UUID) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE exam_registration SET card_key = NULL WHERE exam_id = $1 AND card_key IS NOT NULL`, examID)
+	return err
+}
+
+// ClearAllRegistrationCards is the same invalidation for a system_config change,
+// which affects every card rather than one exam's.
+func (r *Repository) ClearAllRegistrationCards(ctx context.Context) error {
+	_, err := r.pool.Exec(ctx, `UPDATE exam_registration SET card_key = NULL WHERE card_key IS NOT NULL`)
+	return err
+}
+
 // SetExamCardEnabled flips card_enabled in isolation, never card_notes, so
 // toggling the card off and back on preserves the admin's notes.
 func (r *Repository) SetExamCardEnabled(ctx context.Context, id uuid.UUID, enabled bool) error {
