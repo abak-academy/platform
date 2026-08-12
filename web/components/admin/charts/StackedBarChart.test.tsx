@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { StackedBarChart } from "./StackedBarChart";
 
 let reduced = false;
@@ -122,5 +122,28 @@ describe("StackedBarChart", () => {
       expect(r.getAttribute("width") ?? "").not.toContain("NaN");
       expect(r.getAttribute("height") ?? "").not.toContain("NaN");
     });
+  });
+});
+
+describe("StackedBarChart hover", () => {
+  const props = {
+    labels: ["1 Agu", "2 Agu"],
+    bottom: { values: [100, 200], color: "#2F6FED", label: "Digital", format: (v: number) => `Rp${v}` },
+    top: { values: [50, 60], color: "#D6409F", label: "Fisik", format: (v: number) => `Rp${v}` },
+    emptyLabel: "kosong",
+  };
+
+  it("highlights a bar slot and shows both segments", () => {
+    render(<StackedBarChart {...props} />);
+    const plot = screen.getByTestId("chart-hover-area");
+
+    fireEvent.keyDown(plot, { key: "ArrowRight" });
+
+    const tip = screen.getByTestId("chart-tooltip");
+    expect(tip).toHaveTextContent("1 Agu");
+    expect(tip).toHaveTextContent("Rp100");
+    expect(tip).toHaveTextContent("Rp50");
+    // A stacked bar has no single point to pin a dot to.
+    expect(screen.queryAllByTestId("chart-marker")).toHaveLength(0);
   });
 });

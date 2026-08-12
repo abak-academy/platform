@@ -1,6 +1,8 @@
 "use client";
 
-import { niceMax, usePrefersReducedMotion } from "./chart-utils";
+import { niceMax, useChartHover, usePrefersReducedMotion } from "./chart-utils";
+import { ChartHoverLayer } from "./ChartHoverLayer";
+import { useTranslation } from "@/lib/i18n";
 
 const W = 300;
 const H = 100;
@@ -10,6 +12,7 @@ interface Segment {
   values: number[];
   color: string;
   label: string;
+  format?: (value: number) => string;
 }
 
 interface StackedBarChartProps {
@@ -30,6 +33,9 @@ export function StackedBarChart({
   const reduced = usePrefersReducedMotion();
 
   const count = Math.max(bottom.values.length, top.values.length);
+  const hover = useChartHover(count, "band");
+  const { t } = useTranslation();
+
   const totals = Array.from({ length: count }, (_, i) => (bottom.values[i] ?? 0) + (top.values[i] ?? 0));
   const hasData = totals.some((v) => v !== 0);
 
@@ -62,45 +68,76 @@ export function StackedBarChart({
 
   return (
     <div>
-      <svg
-        viewBox={`0 0 ${W} ${height}`}
-        preserveAspectRatio="none"
-        style={{ width: "100%", height }}
-        role="img"
-        aria-label={`${bottom.label}, ${top.label}`}
+      <div
+        ref={hover.containerRef}
+        data-testid="chart-hover-area"
+        className="relative outline-none"
+        style={{ height }}
+        role="group"
+        aria-label={t("chart_keyboard_hint")}
+        {...hover.hoverProps}
       >
-        {Array.from({ length: count }, (_, i) => {
-          const b = bottom.values[i] ?? 0;
-          const t = top.values[i] ?? 0;
-          const bH = (b / max) * height;
-          const tH = (t / max) * height;
-          const x = i * slot + (slot - barW) / 2;
-          const cls = reduced ? "" : "chart-grow";
-          const delay = reduced ? undefined : { animationDelay: `${i * 0.06}s` };
-          return (
-            <g key={i}>
-              <rect
-                className={cls}
-                style={delay}
-                x={x}
-                y={height - bH}
-                width={barW}
-                height={bH}
-                fill={bottom.color}
-              />
-              <rect
-                className={cls}
-                style={delay}
-                x={x}
-                y={height - bH - tH}
-                width={barW}
-                height={tH}
-                fill={top.color}
-              />
-            </g>
-          );
-        })}
-      </svg>
+        <svg
+          viewBox={`0 0 ${W} ${height}`}
+          preserveAspectRatio="none"
+          style={{ width: "100%", height }}
+          role="img"
+          aria-label={`${bottom.label}, ${top.label}`}
+        >
+          {Array.from({ length: count }, (_, i) => {
+            const b = bottom.values[i] ?? 0;
+            const t = top.values[i] ?? 0;
+            const bH = (b / max) * height;
+            const tH = (t / max) * height;
+            const x = i * slot + (slot - barW) / 2;
+            const cls = reduced ? "" : "chart-grow";
+            const delay = reduced ? undefined : { animationDelay: `${i * 0.06}s` };
+            return (
+              <g key={i}>
+                <rect
+                  className={cls}
+                  style={delay}
+                  x={x}
+                  y={height - bH}
+                  width={barW}
+                  height={bH}
+                  fill={bottom.color}
+                />
+                <rect
+                  className={cls}
+                  style={delay}
+                  x={x}
+                  y={height - bH - tH}
+                  width={barW}
+                  height={tH}
+                  fill={top.color}
+                />
+              </g>
+            );
+          })}
+        </svg>
+
+        {hover.index !== null ? (
+          <ChartHoverLayer
+            index={hover.index}
+            count={count}
+            mode="band"
+            title={labels[hover.index] ?? ""}
+            rows={[
+              {
+                label: bottom.label,
+                color: bottom.color,
+                value: (bottom.format ?? String)(bottom.values[hover.index] ?? 0),
+              },
+              {
+                label: top.label,
+                color: top.color,
+                value: (top.format ?? String)(top.values[hover.index] ?? 0),
+              },
+            ]}
+          />
+        ) : null}
+      </div>
 
       <div className="text-label color-on-surface-variant mt-2 flex flex-wrap gap-3">
         <span>

@@ -341,7 +341,7 @@ export default function AdminIndexPage() {
           <p className="text-body mb-4">{t("admin_home_chart_revenue_sub")}</p>
           <AreaLineChart
             labels={labels}
-            area={{ values: d.series.map((p) => p.revenue), color: CHART_BLUE, label: t("admin_home_series_revenue") }}
+            area={{ values: d.series.map((p) => p.revenue), color: CHART_BLUE, label: t("admin_home_series_revenue"), format: formatRupiah }}
             line={{ values: d.series.map((p) => p.order_count), color: CHART_ORANGE, label: t("admin_home_series_orders") }}
             emptyLabel={t("admin_home_chart_empty")}
           />
@@ -374,8 +374,8 @@ export default function AdminIndexPage() {
             <p className="text-body mb-4">{t("admin_home_chart_mix_sub")}</p>
             <StackedBarChart
               labels={labels}
-              bottom={{ values: d.series.map((p) => p.revenue_digital), color: CHART_BLUE, label: t("admin_home_series_digital") }}
-              top={{ values: d.series.map((p) => p.revenue_physical), color: CHART_MAGENTA, label: t("admin_home_series_physical") }}
+              bottom={{ values: d.series.map((p) => p.revenue_digital), color: CHART_BLUE, label: t("admin_home_series_digital"), format: formatRupiah }}
+              top={{ values: d.series.map((p) => p.revenue_physical), color: CHART_MAGENTA, label: t("admin_home_series_physical"), format: formatRupiah }}
               emptyLabel={t("admin_home_chart_empty")}
             />
           </div>
