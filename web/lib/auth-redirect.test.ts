@@ -1,6 +1,30 @@
 import { describe, it, expect } from "vitest";
 import { adminHomeForRole, redirectForRole } from "./auth-redirect";
-import { ADMIN_ROLES, NAV_CONFIG } from "./nav-config";
+import { ADMIN_ROLES, NAV_CONFIG, type UserRole } from "./nav-config";
+
+describe("redirectForRole", () => {
+  it("returns '/' for student", () => {
+    expect(redirectForRole("student")).toBe("/");
+  });
+
+  it("returns '/admin' for every admin role", () => {
+    const adminRoles: UserRole[] = [
+      "admin_store",
+      "admin_exam",
+      "admin_school",
+      "super_admin",
+    ];
+    for (const role of adminRoles) {
+      expect(redirectForRole(role)).toBe("/admin");
+    }
+  });
+
+  it("defaults to '/' for unknown or missing role", () => {
+    expect(redirectForRole("unknown")).toBe("/");
+    expect(redirectForRole(undefined)).toBe("/");
+    expect(redirectForRole(null)).toBe("/");
+  });
+});
 
 describe("adminHomeForRole", () => {
   it("sends every admin role to its own dashboard, not to a work list", () => {
@@ -11,6 +35,7 @@ describe("adminHomeForRole", () => {
 
   it("leaves super_admin on /admin", () => {
     expect(redirectForRole("super_admin")).toBe("/admin");
+    expect(adminHomeForRole("super_admin")).toBe("/admin");
   });
 });
 
