@@ -345,6 +345,10 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamDashboard := admin.Group("/dashboard")
 	adminExamDashboard.Use(handler.RBACMiddleware("sessions:read"))
 	adminExamDashboard.GET("/exam", h.AdminExamDashboard)
+
+	adminSchoolDashboard := admin.Group("/dashboard")
+	adminSchoolDashboard.Use(handler.RBACMiddleware("students:read"))
+	adminSchoolDashboard.GET("/school", h.AdminSchoolDashboard)
 }
 
 // RegisterRoutesForTest is the same as registerRoutes but exported for handler tests.

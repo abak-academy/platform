@@ -13,3 +13,20 @@ func (h *Handler) AdminExamDashboard(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, resp)
 }
+
+func (h *Handler) AdminSchoolDashboard(c echo.Context) error {
+	claims := ClaimsFromContext(c)
+	schoolID, err := h.resolveSchoolScopeOptional(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	resp, err := h.svc.SchoolDashboard(c.Request().Context(), schoolID, claims.Sub, claims.Role)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
