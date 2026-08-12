@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 export interface Point {
   x: number;
@@ -66,4 +66,92 @@ export function usePrefersReducedMotion(): boolean {
   }, []);
 
   return reduced;
+}
+
+export type HoverIndexMode = "point" | "band";
+
+/**
+ * Maps a 0..1 horizontal fraction of the plot to a data index. "point" charts
+ * place index 0 at x=0 and the last index at x=width (nearest wins, matching
+ * buildPath's xAt); "band" charts give every index an equal-width slot.
+ */
+export function indexFromFraction(
+  fraction: number,
+  count: number,
+  mode: HoverIndexMode,
+): number | null {
+  if (count <= 0) return null;
+  const raw =
+    mode === "band" ? Math.floor(fraction * count) : Math.round(fraction * (count - 1));
+  return Math.min(count - 1, Math.max(0, raw));
+}
+
+/** Horizontal centre of a data index, as a percentage of the plot width. */
+export function xPercentFor(index: number, count: number, mode: HoverIndexMode): number {
+  if (count <= 0) return 0;
+  if (mode === "band") return ((index + 0.5) / count) * 100;
+  if (count === 1) return 0;
+  return (index / (count - 1)) * 100;
+}
+
+export interface ChartHover {
+  index: number | null;
+  containerRef: RefObject<HTMLDivElement | null>;
+  hoverProps: {
+    tabIndex: number;
+    onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
+    onPointerLeave: () => void;
+    onBlur: () => void;
+    onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  };
+}
+
+/**
+ * Pointer and keyboard selection of a data index. Percentages, not viewBox
+ * units: every chart sets preserveAspectRatio="none", so viewBox coordinates
+ * do not survive the stretch to the card's real width.
+ */
+export function useChartHover(count: number, mode: HoverIndexMode): ChartHover {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [index, setIndex] = useState<number | null>(null);
+
+  // A period change swaps the series under a held selection; index 27 of the
+  // old 30 buckets is meaningless against the new 7.
+  useEffect(() => {
+    setIndex(null);
+  }, [count]);
+
+  return {
+    index,
+    containerRef,
+    hoverProps: {
+      tabIndex: 0,
+      onPointerMove: (e) => {
+        const el = containerRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        // jsdom reports a zero-size rect for every element. Dividing by it
+        // yields NaN, which Math.max/min collapse to 0 — a pointer test would
+        // then pass by landing on index 0 for the wrong reason.
+        if (rect.width <= 0) return;
+        const next = indexFromFraction((e.clientX - rect.left) / rect.width, count, mode);
+        if (next !== null) setIndex(next);
+      },
+      onPointerLeave: () => setIndex(null),
+      onBlur: () => setIndex(null),
+      onKeyDown: (e) => {
+        if (e.key === "Escape") {
+          setIndex(null);
+          return;
+        }
+        const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+        if (step === 0) return;
+        e.preventDefault();
+        setIndex((cur) => {
+          const from = cur ?? (step > 0 ? -1 : count);
+          return Math.min(count - 1, Math.max(0, from + step));
+        });
+      },
+    },
+  };
 }
