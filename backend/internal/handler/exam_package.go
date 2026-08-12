@@ -105,6 +105,7 @@ func (h *Handler) AdminListExamRegistrations(c echo.Context) error {
 type examPatchRequest struct {
 	Title                string              `json:"title"`
 	ScheduledAt          Nullable[time.Time] `json:"scheduled_at"`
+	ScheduledEndAt       Nullable[time.Time] `json:"scheduled_end_at"`
 	TimerMode            string              `json:"timer_mode"`
 	DurationMinutes      Nullable[int]       `json:"duration_minutes"`
 	ResultConfig         string              `json:"result_config"`
@@ -162,6 +163,7 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 		overlay.Title = req.Title
 	}
 	applyNullable(req.ScheduledAt, &overlay.ScheduledAt)
+	applyNullable(req.ScheduledEndAt, &overlay.ScheduledEndAt)
 	if req.TimerMode != "" {
 		overlay.TimerMode = req.TimerMode
 	}

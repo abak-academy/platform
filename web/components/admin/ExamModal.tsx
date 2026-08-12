@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/lib/i18n";
 import { toast } from "sonner";
+import { ApiError } from "@/lib/api";
 import { useCreateExam, useUpdateExam } from "@/lib/hooks/admin-exams";
 import type { ExamListItem, CreateExamPayload, UpdateExamPayload, ExamResultConfig } from "@/lib/types";
 
@@ -189,8 +190,8 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
         onSaved?.(result as ExamListItem);
       }
       onClose();
-    } catch {
-      toast.error(t("error_generic"));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("error_generic"));
     }
   }
 
