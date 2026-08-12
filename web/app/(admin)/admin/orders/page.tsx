@@ -88,10 +88,18 @@ function refundAllowed(order: Order): boolean {
 // A cancelled or rejected booking leaves orders.status at "shipped" — the
 // webhook never walks it back — so the status alone says the parcel is on its
 // way when nothing is. Gating Ship on status left those orders with no exit but
-// a refund. Same escape hatch as refundAllowed, and it mirrors the backend's
-// shippable().
+// a refund.
+//
+// Mirrors the backend's shippable() exactly, including the `=== "shipped"`
+// clause. refundAllowed re-opens on a failed shipment from ANY status, and
+// copying that shape here would offer Ship on a completed or cancelled order
+// with a dead parcel — states the backend refuses with order_not_shippable, so
+// the button would be there and never work.
 function shipAllowed(order: Order): boolean {
-  return actionAllowed(order.status, "ship") || isShipmentFailure(order.shipment_status);
+  return (
+    actionAllowed(order.status, "ship") ||
+    (order.status === "shipped" && isShipmentFailure(order.shipment_status))
+  );
 }
 
 export default function OrdersPage() {

@@ -887,7 +887,7 @@ func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[st
 	err := r.pool.QueryRow(ctx, fmt.Sprintf(`
 		WITH %s
 		SELECT COALESCE(SUM(sign * total), 0), COALESCE(SUM(sign * shipping_cost), 0),
-		       COALESCE(SUM(sign * discount), 0), COALESCE(SUM(sign), 0)
+		       COALESCE(SUM(sign * discount), 0), COUNT(*) FILTER (WHERE sign = 1)
 		  FROM revenue_event
 		 WHERE at >= $1 AND at < $2
 	`, revenueEventCTE), from, to).Scan(&total, &shipping, &discount, &orderCount)
@@ -900,7 +900,6 @@ func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[st
 		SELECT oi.product_type,
 		       COALESCE(SUM(e.sign * COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0),
 		       COUNT(DISTINCT e.id) FILTER (WHERE e.sign = 1)
-		         - COUNT(DISTINCT e.id) FILTER (WHERE e.sign = -1)
 		  FROM revenue_event e
 		  JOIN order_item oi ON oi.order_id = e.id
 		 WHERE e.at >= $1 AND e.at < $2

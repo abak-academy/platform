@@ -36,6 +36,7 @@ import (
 //	2025-03     placed-at null fallback 2025-04  placed-at keyset paging
 //	2025-06     revenue ignores unpaid  2024-02/03  revenue recognises on paid_at
 //	2025-09/10  refund debits the refund period    2025-11  refund debits item lines
+//	2025-12     refund period average order value
 var (
 	reportingPool     *pgxpool.Pool
 	reportingPoolOnce sync.Once

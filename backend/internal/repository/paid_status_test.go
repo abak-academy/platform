@@ -190,12 +190,47 @@ func TestGetRevenue_refundDebitsTheRefundPeriodNotTheSalePeriod(t *testing.T) {
 	refunded, err := repo.GetRevenue(ctx, oct, nov)
 	require.NoError(t, err)
 	require.Equal(t, -60000.0, refunded["total"].(float64), "October gave it back")
-	require.Equal(t, -1, refunded["order_count"].(int))
+	// Counts are a tally of sales, not a balance. A signed count would make
+	// this -1, and the revenue page's total/order_count would then divide
+	// -60000 by -1 and render a POSITIVE 60000 average order value for a month
+	// that only refunded. Zero sales over negative revenue keeps the sign.
+	require.Equal(t, 0, refunded["order_count"].(int), "no sale happened in October")
 
 	allTime, err := repo.GetRevenue(ctx, sept, nov)
 	require.NoError(t, err)
 	require.Equal(t, 0.0, allTime["total"].(float64), "the ledger nets to zero")
-	require.Equal(t, 0, allTime["order_count"].(int))
+	require.Equal(t, 1, allTime["order_count"].(int), "one sale happened, and it was refunded")
+}
+
+// The arithmetic the revenue page performs on these two numbers has to survive
+// a refund. average order value = total / order_count must never come back
+// positive for a period that only gave money back.
+func TestGetRevenue_refundPeriodCannotFakeAPositiveAverage(t *testing.T) {
+	pool := newReportingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	student := seedStudent(t, pool, "Rata-rata Refund")
+	book := seedProduct(t, pool, "Buku Rata-rata", "book", 75000)
+
+	dec := time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	id := seedOrder(t, pool, student, "completed", dec.Add(24*time.Hour),
+		75000, 0, 0, 75000, []seedItem{{book, "Buku Rata-rata", "book", 75000, 1}})
+	markPaid(t, pool, id, dec.Add(24*time.Hour))
+	refund(t, pool, id, dec.Add(240*time.Hour))
+
+	// Sale and refund both land in December, so the month nets to zero on
+	// every axis and the average is 0/1, not 0/0 or a sign-flipped number.
+	got, err := repo.GetRevenue(ctx, dec, jan)
+	require.NoError(t, err)
+	total := got["total"].(float64)
+	count := got["order_count"].(int)
+	require.Equal(t, 0.0, total)
+	require.Equal(t, 1, count)
+	require.GreaterOrEqual(t, count, 0, "an order count must never go negative")
+	require.Equal(t, 0.0, total/float64(count))
 }
 
 // The item-line reports have to debit the refund too, or the by-type breakdown
@@ -231,14 +266,16 @@ func TestRefundDebitsItemLineReportsToo(t *testing.T) {
 	byType := revenue["by_type"].(map[string]interface{})
 	bookBucket := byType["book"].(map[string]interface{})
 	require.Equal(t, 50000.0, bookBucket["total"], "by_type debits the returned lines")
-	require.Equal(t, 1, bookBucket["count"], "one net order, not two")
+	// Two sales landed in this window; one of them was also refunded in it.
+	// The money nets, the tally does not — see revenueEventCTE.
+	require.Equal(t, 2, bookBucket["count"], "two sales happened, whatever became of them")
 
 	products, err := repo.TopProducts(ctx, from, to, "revenue", 50)
 	require.NoError(t, err)
 	require.Len(t, products, 1)
 	require.Equal(t, 50000.0, products[0].ProductRevenue)
 	require.Equal(t, 2, products[0].QtySold, "4 sold minus 2 returned")
-	require.Equal(t, 1, products[0].OrderCount)
+	require.Equal(t, 2, products[0].OrderCount)
 
 	series, err := repo.DashboardSeries(ctx, from, to, "day", []string{"book", "merchandise", "medal"})
 	require.NoError(t, err)
@@ -251,5 +288,5 @@ func TestRefundDebitsItemLineReportsToo(t *testing.T) {
 	}
 	require.Equal(t, 50000.0, seriesRevenue)
 	require.Equal(t, 50000.0, seriesSplit)
-	require.Equal(t, 1, seriesOrders)
+	require.Equal(t, 2, seriesOrders, "the series tallies sales the same way GetRevenue does")
 }

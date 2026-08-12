@@ -113,8 +113,7 @@ func (r *Repository) TopProducts(
 		       MAX(oi.name)         AS name,
 		       MAX(oi.product_type) AS product_type,
 		       SUM(e.sign * oi.qty) AS qty_sold,
-		       COUNT(DISTINCT e.id) FILTER (WHERE e.sign = 1)
-		         - COUNT(DISTINCT e.id) FILTER (WHERE e.sign = -1) AS order_count,
+		       COUNT(DISTINCT e.id) FILTER (WHERE e.sign = 1) AS order_count,
 		       COALESCE(SUM(e.sign * COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0) AS product_revenue
 		  FROM revenue_event e
 		  JOIN order_item oi ON oi.order_id = e.id

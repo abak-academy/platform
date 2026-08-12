@@ -37,6 +37,15 @@ type SeriesPoint struct {
 // refunded in August is +total in July and -total in August, so all-time
 // revenue is unchanged while both months tell the truth about themselves.
 //
+// Amounts are signed; COUNTS ARE NOT. "How many orders" is a tally of events
+// that happened, not a balance, and signing it breaks arithmetic built on top:
+// a refund-only period would report order_count = -1, and the revenue page's
+// total/order_count would divide a negative by a negative and render a
+// POSITIVE average order value for a period that only gave money back. Every
+// count therefore filters to sign = 1 — the sales recognised in the period —
+// so a negative revenue divided by a positive count stays negative and reads
+// as what it is.
+//
 // The refund arm matches cancellation_reason explicitly rather than status
 // alone. Today they are equivalent — AdminRefundOrder is the only writer of
 // status='cancelled', and unpaid orders expire to payment_expired instead —
@@ -104,8 +113,8 @@ ord AS (
     SELECT params.anchor
              + floor(extract(epoch FROM ((e.at AT TIME ZONE 'Asia/Jakarta') - params.anchor)) / %[1]d)
                * interval '%[1]d seconds' AS b,
-           SUM(e.sign * e.total) AS revenue,
-           SUM(e.sign)           AS order_count,
+           SUM(e.sign * e.total)           AS revenue,
+           COUNT(*) FILTER (WHERE e.sign = 1) AS order_count,
            -- Buying students counts people, and a refund does not un-buy a
            -- person: only the +1 events feed it. Signing it would let one
            -- refund erase an unrelated buyer from the same bucket.

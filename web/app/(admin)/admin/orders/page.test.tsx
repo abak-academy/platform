@@ -709,6 +709,22 @@ describe("OrdersPage", () => {
     expect(within(row).getByRole("button", { name: /kirim|ship/i })).toBeTruthy();
   });
 
+  // A completed order with a dead parcel still gets Refund (see refundAllowed)
+  // but must NOT get Ship: the backend's shippable() only re-opens shipping
+  // from "shipped", so the button would render and always fail.
+  it("does not offer ship on a completed physical order whose shipment failed", async () => {
+    ordersState = {
+      ...ordersState,
+      data: pages([{ ...sampleOrders[1], status: "completed", shipment_status: "cancelled" }]),
+    };
+    render(<OrdersPage />);
+
+    await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
+
+    const row = screen.getByText(/Buku Shipped/).closest("tr")!;
+    expect(within(row).queryByRole("button", { name: /kirim|ship/i })).toBeNull();
+  });
+
   // The other half: a parcel actually in transit must not offer Ship, or an
   // admin dispatches a second courier for goods already on the way.
   it("does not offer ship again while the shipment is alive", async () => {
