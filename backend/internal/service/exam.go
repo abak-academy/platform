@@ -820,6 +820,14 @@ func validateExam(e model.Exam) error {
 	if e.MaxAttempts != nil && *e.MaxAttempts < 0 {
 		return fmt.Errorf("%w: max_attempts cannot be negative", ErrValidation)
 	}
+	if len(e.CardNotes) > maxCardNotes {
+		return fmt.Errorf("%w: card_notes cannot exceed %d entries", ErrValidation, maxCardNotes)
+	}
+	for _, n := range e.CardNotes {
+		if len([]rune(n)) > maxCardNoteLen {
+			return fmt.Errorf("%w: each card note must be %d characters or fewer", ErrValidation, maxCardNoteLen)
+		}
+	}
 	if e.ScheduledEndAt != nil {
 		if e.ScheduledAt == nil {
 			return fmt.Errorf("%w: scheduled_end_at requires scheduled_at", ErrValidation)
@@ -870,7 +878,32 @@ func formatParticipantNo(prefix time.Time, examNumber, participantNumber int) st
 // exam is a separate step: attach it to a Product via the generic Product flow
 // (POST/PATCH /admin/products with exam_ids), mirroring how course-type products
 // attach existing Courses.
+// maxCardNotes/maxCardNoteLen keep the Perhatian block to the three rows the
+// fixed-height card allows: the card is a flex column with overflow:hidden, so
+// a note that wraps to a second line pushes the block up over the barcode.
+// Verified against a real Gotenberg render — 5 notes plus the appended
+// check-in bullet fill the same three rows the built-in defaults do, and 55
+// characters is the widest that still fits the narrower right-hand column on
+// one line. The UI enforces the same numbers but a PATCH can bypass it.
+const (
+	maxCardNotes   = 5
+	maxCardNoteLen = 55
+)
+
+// normalizeCardNotes drops blank entries and trims the rest, so an admin
+// deleting a row never persists an empty bullet.
+func normalizeCardNotes(notes []string) []string {
+	out := make([]string, 0, len(notes))
+	for _, n := range notes {
+		if t := strings.TrimSpace(n); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, error) {
+	m.CardNotes = normalizeCardNotes(m.CardNotes)
 	if m.ResultConfig == "" {
 		m.ResultConfig = "hidden"
 	}
@@ -890,6 +923,7 @@ func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, err
 }
 
 func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (model.Exam, error) {
+	m.CardNotes = normalizeCardNotes(m.CardNotes)
 	commonFields := m
 	commonFields.CertificateDesign = nil
 	if err := validateExam(commonFields); err != nil {
@@ -981,6 +1015,20 @@ func (s *Service) enqueueCertificateNeededForSubmittedSessionsTx(ctx context.Con
 // certificate_enabled column, so certificate_design and
 // certificate_design_updated_at are byte-for-byte unchanged across a
 // disable/re-enable round trip.
+func (s *Service) SetExamCardEnabled(ctx context.Context, id uuid.UUID, enabled bool) (model.Exam, error) {
+	if err := s.storeRepo.SetExamCardEnabled(ctx, id, enabled); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Exam{}, ErrExamNotFound
+		}
+		return model.Exam{}, err
+	}
+	exam, err := s.storeRepo.GetExamByID(ctx, id)
+	if err != nil {
+		return model.Exam{}, err
+	}
+	return *exam, nil
+}
+
 func (s *Service) SetExamCertificateEnabled(ctx context.Context, id uuid.UUID, enabled bool) (model.Exam, error) {
 	exam, err := s.storeRepo.GetExamByID(ctx, id)
 	if err != nil {
@@ -1238,7 +1286,14 @@ func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID stri
 			if v := cfg["exam_platform"]; v != "" {
 				detail.Platform = v
 			}
+			detail.TenantName = cfg["app_name"]
+			detail.Contact.Phone = cfg["app_contact_phone"]
+			detail.Contact.Email = cfg["app_contact_email"]
+			detail.Contact.HelpURL = cfg["app_help_url"]
+			detail.Contact.SocialHandle = cfg["app_social_handle"]
 		}
+		detail.FooterNote = cardFooterNote(detail)
+		detail.Exam.CardNotes = resolveCardNotes(detail.Exam.CardNotes)
 	}
 	return detail, err
 }
@@ -1289,6 +1344,9 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (str
 	detail, err := s.GetExamRegistration(ctx, regID, studentID)
 	if err != nil {
 		return "", "", err
+	}
+	if !detail.Exam.CardEnabled {
+		return "", "", ErrCardDisabled
 	}
 	filename := "kartu-peserta-" + detail.Token + ".pdf"
 
@@ -1346,6 +1404,29 @@ type CardPrintData struct {
 	TenantLogoURL string `json:"tenant_logo_url,omitempty"`
 	PhotoURL      string `json:"photo_url,omitempty"`
 	FooterNote    string `json:"footer_note"`
+	// Notes are the exam's "Perhatian" bullets; FooterNote is appended after them.
+	Notes []string `json:"notes"`
+	// Contact block, all from system_config.
+	ContactPhone string `json:"contact_phone"`
+	ContactEmail string `json:"contact_email"`
+	HelpURL      string `json:"help_url"`
+	SocialHandle string `json:"social_handle"`
+}
+
+// defaultCardNotes is the copy the card carried before notes were admin-authored;
+// an exam that has never had notes set still prints these.
+var defaultCardNotes = []string{
+	"Datang 30 menit sebelum ujian dimulai.",
+	"Dilarang membuka tab atau aplikasi lain saat ujian.",
+	"Siapkan perangkat, koneksi internet stabil, dan kartu ini.",
+	"Pelanggaran dapat berakibat diskualifikasi.",
+}
+
+func resolveCardNotes(notes []string) []string {
+	if len(notes) == 0 {
+		return defaultCardNotes
+	}
+	return notes
 }
 
 // cardScheduleText preserves the pre-existing schedule formatting: Asia/Jakarta,
@@ -1408,9 +1489,14 @@ func (s *Service) GetCardPrintData(ctx context.Context, regID string) (*CardPrin
 	}
 
 	tenantName, tenantLogoURL := "", ""
+	contactPhone, contactEmail, helpURL, socialHandle := "", "", "", ""
 	if cfg, cErr := s.GetSystemConfig(ctx); cErr == nil {
 		tenantName = cfg["app_name"]
 		tenantLogoURL = s.resolveCardLogoURL(ctx, cfg["app_logo_url"])
+		contactPhone = cfg["app_contact_phone"]
+		contactEmail = cfg["app_contact_email"]
+		helpURL = cfg["app_help_url"]
+		socialHandle = cfg["app_social_handle"]
 	}
 
 	participantNo := ""
@@ -1440,6 +1526,11 @@ func (s *Service) GetCardPrintData(ctx context.Context, regID string) (*CardPrin
 		TenantLogoURL: tenantLogoURL,
 		PhotoURL:      photoURL,
 		FooterNote:    cardFooterNote(detail),
+		Notes:         resolveCardNotes(detail.Exam.CardNotes),
+		ContactPhone:  contactPhone,
+		ContactEmail:  contactEmail,
+		HelpURL:       helpURL,
+		SocialHandle:  socialHandle,
 	}, nil
 }
 

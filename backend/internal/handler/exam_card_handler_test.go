@@ -67,6 +67,7 @@ func TestStudentGetExamCard_CachedCard_RedirectsToPresignedURL(t *testing.T) {
 	env := newTestEnvWithStoreAndStorage(t)
 	owner := seedUser(t, env.pool, "student", "Cached Card Owner")
 	examID := seedExam(t, env.pool, "Cached Card Exam", false, "hidden", "classic")
+	setExamCardEnabled(t, env.pool, examID, true)
 	regID := seedRegistration(t, env.pool, owner, examID)
 
 	const cardKey = "cards/cached-card.pdf"
@@ -96,5 +97,36 @@ func TestStudentGetExamCard_CachedCard_RedirectsToPresignedURL(t *testing.T) {
 	}
 	if rec.Body.Len() > 0 && strings.Contains(rec.Body.String(), "%PDF-") {
 		t.Error("the API must not stream the PDF bytes; it must redirect")
+	}
+}
+
+// TestStudentGetExamCard_CardDisabled_Returns404 covers the card_enabled gate:
+// a card that an admin has not enabled is not served even when a rendered PDF
+// is already cached under card_key.
+func TestStudentGetExamCard_CardDisabled_Returns404(t *testing.T) {
+	env := newTestEnvWithStoreAndStorage(t)
+	owner := seedUser(t, env.pool, "student", "Disabled Card Owner")
+	examID := seedExam(t, env.pool, "Disabled Card Exam", false, "hidden", "classic")
+	setExamCardEnabled(t, env.pool, examID, false)
+	regID := seedRegistration(t, env.pool, owner, examID)
+
+	if _, err := env.pool.Exec(context.Background(),
+		`UPDATE exam_registration SET card_key = $1 WHERE id = $2`, "cards/disabled.pdf", regID,
+	); err != nil {
+		t.Fatalf("set card_key: %v", err)
+	}
+
+	token := mintTokenForEnv(t, env, owner.String(), service.RoleStudent)
+	rec := getRequest(t, env.e, "/api/v1/exam/registrations/"+regID.String()+"/card", token)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 when the card is disabled, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["code"] != "card_disabled" {
+		t.Errorf("code: want card_disabled, got %v", resp["code"])
 	}
 }

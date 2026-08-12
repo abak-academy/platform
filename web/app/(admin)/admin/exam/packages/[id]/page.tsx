@@ -32,6 +32,7 @@ import {
   useReplaceExamTests,
   useSessionEssays,
   useSetCertificateEnabled,
+  useSetCardEnabled,
 } from "@/lib/hooks/admin-exams";
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { useTranslation } from "@/lib/i18n";
@@ -95,6 +96,7 @@ export default function ExamPackageDetailPage() {
   const { data, isLoading, isError, error, refetch } = useExam(id);
   const replaceTests = useReplaceExamTests(id);
   const setCertificateEnabled = useSetCertificateEnabled(id);
+  const setCardEnabled = useSetCardEnabled(id);
 
   const visibleTabs = (isSchoolScoped ? SCHOOL_SCOPED_TABS : TAB_ORDER).filter(
     (key) => key !== "certificate" || data?.certificate_enabled,
@@ -443,6 +445,38 @@ export default function ExamPackageDetailPage() {
                 />
                 <OverviewRow label="Status" value={data.status ?? "—"} />
               </dl>
+
+              {!isSchoolScoped && (
+                <div className="rounded-lg border p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{t("exam_card_enabled_label")}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {t("exam_card_enabled_hint")}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant={data.card_enabled ? "outline" : "default"}
+                      size="sm"
+                      className="rounded-full"
+                      disabled={setCardEnabled.isPending}
+                      onClick={async () => {
+                        try {
+                          await setCardEnabled.mutateAsync(!data.card_enabled);
+                          toast.success(t("exam_card_enabled_saved"));
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : t("error_generic"));
+                        }
+                      }}
+                    >
+                      {data.card_enabled
+                        ? t("exam_card_enabled_on")
+                        : t("exam_card_enabled_off")}
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {!isSchoolScoped && (
                 <div className="rounded-lg border p-4">

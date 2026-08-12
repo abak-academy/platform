@@ -243,12 +243,14 @@ export default function ExamDetailPage() {
             </dd>
           </div>
         </dl>
-        <div>
-          <Button type="button" size="sm" onClick={handleDownload}>
-            <Download className="size-4" />
-            {t("competition_detail_download_card")}
-          </Button>
-        </div>
+        {exam.card_enabled && (
+          <div>
+            <Button type="button" size="sm" onClick={handleDownload}>
+              <Download className="size-4" />
+              {t("competition_detail_download_card")}
+            </Button>
+          </div>
+        )}
       </Card>
 
       {exam.requires_checkin && (

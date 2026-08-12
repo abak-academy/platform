@@ -159,6 +159,14 @@ type Exam struct {
 	// substitutes it at generation time; nothing here is ever trusted as a
 	// finished document on its own.
 	CertificateTemplateHTML *string `json:"certificate_template_html,omitempty"`
+	// CardEnabled gates the participant card for this exam; DEFAULT false, so new
+	// exams are opt-in. Mutated only via the dedicated enable/disable action,
+	// never through the general exam PATCH.
+	CardEnabled bool `json:"card_enabled"`
+	// CardNotes are the admin-authored "Perhatian" bullets printed on the card.
+	// Empty falls back to the built-in defaults; the generated check-in bullet is
+	// always appended after these.
+	CardNotes []string `json:"card_notes"`
 	// ExamNumber is a global human-friendly serial (FR-23) assigned from exam_number_seq,
 	// distinct from the exam UUID. Non-nil after create; nil only pre-migration/pre-backfill.
 	ExamNumber *int `json:"exam_number"`
@@ -340,6 +348,18 @@ type RegistrationDetail struct {
 	// exam platform (Platform/Ruang on the card).
 	Subject  string `json:"subject"`
 	Platform string `json:"platform"`
+	// FooterNote and Contact are the card's generated check-in bullet and its
+	// system-config-sourced footer bar, supplied here so the on-screen card
+	// renders exactly what the generated PDF does — a student cannot read
+	// system_config directly.
+	FooterNote string `json:"footer_note"`
+	TenantName string `json:"tenant_name"`
+	Contact    struct {
+		Phone        string `json:"phone"`
+		Email        string `json:"email"`
+		HelpURL      string `json:"help_url"`
+		SocialHandle string `json:"social_handle"`
+	} `json:"contact"`
 	Exam     struct {
 		ID                   uuid.UUID  `json:"id"`
 		Title                string     `json:"title"`
@@ -351,7 +371,9 @@ type RegistrationDetail struct {
 		DurationMinutes      *int       `json:"duration_minutes"`
 		ResultConfig         string     `json:"result_config"`
 		// ExamNumber is joined in for the participant-number display format (FR-24, Task 5).
-		ExamNumber *int `json:"exam_number"`
+		ExamNumber  *int     `json:"exam_number"`
+		CardEnabled bool     `json:"card_enabled"`
+		CardNotes   []string `json:"card_notes"`
 	} `json:"exam"`
 }
 

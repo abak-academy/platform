@@ -55,11 +55,13 @@ vi.mock("@/lib/hooks/admin-uploads", () => ({
 beforeEach(() => {
   mockRole = undefined;
   mockSetCertificateEnabled.mockClear();
+  mockSetCardEnabled.mockClear();
 });
 
 const mockReplaceTests = vi.fn();
 const mockGradeEssay = vi.fn();
 const mockSetCertificateEnabled = vi.fn().mockResolvedValue({});
+const mockSetCardEnabled = vi.fn().mockResolvedValue({});
 
 // PR review P2: these 5 hooks back the tabs school-scoped admins never see
 // (tests/grading/leaderboard/analytics). Spy on them so we can assert they're
@@ -137,6 +139,7 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSetCertificateEnabled: () => ({ mutateAsync: mockSetCertificateEnabled, isPending: false }),
+  useSetCardEnabled: () => ({ mutateAsync: mockSetCardEnabled, isPending: false }),
   useGradingSessions: (...args: unknown[]) => {
     useGradingSessionsSpy(...args);
     return gradingSessionsState;

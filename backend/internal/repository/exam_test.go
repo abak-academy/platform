@@ -302,8 +302,8 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 28 {
-		t.Fatalf("scanExam passed %d destinations, want 28", got)
+	if got := len(rec.dests); got != 30 {
+		t.Fatalf("scanExam passed %d destinations, want 30", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {

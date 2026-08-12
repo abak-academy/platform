@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -1126,7 +1127,29 @@ type ExamFilter struct {
 	Limit  int
 }
 
+// decodeCardNotes turns the card_notes jsonb column into []string. pgx would
+// otherwise treat a []string destination as a Postgres text[], not jsonb.
+func decodeCardNotes(raw []byte, dst *[]string) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	return json.Unmarshal(raw, dst)
+}
+
+// encodeCardNotes renders []string for the card_notes jsonb column, never NULL.
+func encodeCardNotes(notes []string) []byte {
+	if notes == nil {
+		notes = []string{}
+	}
+	raw, err := json.Marshal(notes)
+	if err != nil {
+		return []byte("[]")
+	}
+	return raw
+}
+
 func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
+	var cardNotes []byte
 	err := row.Scan(
 		&e.ID, &e.Title, &e.IsFree, &e.ScheduledAt, &e.ScheduledEndAt,
 		&e.RequiresCheckin, &e.AllowLeaderboard, &e.CDNBundle,
@@ -1137,17 +1160,19 @@ func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 		&e.Mode, &e.CertificateDesign, &e.CertificateDesignUpdatedAt,
 		&e.ExamNumber, &e.CertificateEnabled, &e.CertificateTemplateHTML,
 		&e.EndScreenImageURL, &e.EndScreenPromoText,
+		&e.CardEnabled, &cardNotes,
 	)
 	if err != nil {
 		return err
 	}
-	return nil
+	return decodeCardNotes(cardNotes, &e.CardNotes)
 }
 
 // scanExamListItem scans an Exam plus the trailing has_published_product column
 // added by ListExams's query.
 func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.ExamListItem) error {
-	return row.Scan(
+	var cardNotes []byte
+	err := row.Scan(
 		&item.ID, &item.Title, &item.IsFree, &item.ScheduledAt, &item.ScheduledEndAt,
 		&item.RequiresCheckin, &item.AllowLeaderboard, &item.CDNBundle,
 		&item.BundleURL, &item.BundleGeneratedAt,
@@ -1157,8 +1182,13 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.Exam
 		&item.Mode, &item.CertificateDesign, &item.CertificateDesignUpdatedAt,
 		&item.ExamNumber, &item.CertificateEnabled, &item.CertificateTemplateHTML,
 		&item.EndScreenImageURL, &item.EndScreenPromoText,
+		&item.CardEnabled, &cardNotes,
 		&item.HasPublishedProduct,
 	)
+	if err != nil {
+		return err
+	}
+	return decodeCardNotes(cardNotes, &item.CardNotes)
 }
 
 // CreateExam inserts a standalone exam row — no product is created or linked here.
@@ -1174,15 +1204,15 @@ func (r *Repository) CreateExam(ctx context.Context, e *model.Exam) error {
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
 			status, mode,
-			certificate_design, certificate_design_updated_at)
+			certificate_design, certificate_design_updated_at, card_notes)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-			COALESCE(NULLIF($19, ''), 'standard'), $20, $21)
+			COALESCE(NULLIF($19, ''), 'standard'), $20, $21, $22)
 		RETURNING id, created_at, mode, exam_number`,
 		e.Title, e.IsFree, e.ScheduledAt, e.ScheduledEndAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt, e.CheckInWindowMinutes, e.GraceWindowMinutes,
 		e.MaxAttempts, e.TimerMode, e.DurationMinutes, e.Randomize, e.ResultConfig, e.ResultReleaseAt,
 		e.Status, e.Mode,
-		e.CertificateDesign, e.CertificateDesignUpdatedAt,
+		e.CertificateDesign, e.CertificateDesignUpdatedAt, encodeCardNotes(e.CardNotes),
 	).Scan(&e.ID, &e.CreatedAt, &e.Mode, &e.ExamNumber)
 }
 
@@ -1194,7 +1224,7 @@ func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
 			status, created_at, mode,
 			certificate_design, certificate_design_updated_at, exam_number, certificate_enabled, certificate_template_html,
-			end_screen_image_url, end_screen_promo_text
+			end_screen_image_url, end_screen_promo_text, card_enabled, card_notes
 		FROM exam
 		WHERE id = $1`,
 		id,
@@ -1217,7 +1247,7 @@ func (r *Repository) GetExamsByProductID(ctx context.Context, productID uuid.UUI
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.mode,
 			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled, e.certificate_template_html,
-		e.end_screen_image_url, e.end_screen_promo_text
+		e.end_screen_image_url, e.end_screen_promo_text, e.card_enabled, e.card_notes
 		FROM exam e
 		JOIN product_exam pe ON pe.exam_id = e.id
 		WHERE pe.product_id = $1
@@ -1253,7 +1283,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 		e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 		e.status, e.created_at, e.mode,
 		e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled, e.certificate_template_html,
-		e.end_screen_image_url, e.end_screen_promo_text,
+		e.end_screen_image_url, e.end_screen_promo_text, e.card_enabled, e.card_notes,
 		EXISTS (
 			SELECT 1 FROM product_exam pe
 			JOIN product p ON p.id = pe.product_id
@@ -1310,7 +1340,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.mode,
 			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled, e.certificate_template_html,
-		e.end_screen_image_url, e.end_screen_promo_text
+		e.end_screen_image_url, e.end_screen_promo_text, e.card_enabled, e.card_notes
 		FROM exam e
 		WHERE e.id = $1`,
 		id,
@@ -1400,8 +1430,8 @@ func updateExam(ctx context.Context, q execer, id uuid.UUID, e *model.Exam) erro
 			mode = COALESCE(NULLIF($19, ''), mode),
 			certificate_design = $20, certificate_design_updated_at = $21,
 			end_screen_image_url = $22, end_screen_promo_text = $23,
-			certificate_template_html = $24
-		WHERE id = $25`,
+			certificate_template_html = $24, card_notes = $25
+		WHERE id = $26`,
 		e.Title, e.IsFree, e.ScheduledAt, e.ScheduledEndAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt,
 		e.CheckInWindowMinutes, e.GraceWindowMinutes, e.MaxAttempts,
@@ -1409,8 +1439,21 @@ func updateExam(ctx context.Context, q execer, id uuid.UUID, e *model.Exam) erro
 		e.ResultConfig, e.ResultReleaseAt, e.Status, e.Mode,
 		e.CertificateDesign, e.CertificateDesignUpdatedAt,
 		e.EndScreenImageURL, e.EndScreenPromoText,
-		e.CertificateTemplateHTML, id,
+		e.CertificateTemplateHTML, encodeCardNotes(e.CardNotes), id,
 	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetExamCardEnabled flips card_enabled in isolation, never card_notes, so
+// toggling the card off and back on preserves the admin's notes.
+func (r *Repository) SetExamCardEnabled(ctx context.Context, id uuid.UUID, enabled bool) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE exam SET card_enabled = $1 WHERE id = $2`, enabled, id)
 	if err != nil {
 		return err
 	}
@@ -1582,11 +1625,13 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 	var detail model.RegistrationDetail
 	var cardKey *string
 	var checkedInAt *time.Time
+	var cardNotesRaw []byte
 	err := r.pool.QueryRow(ctx,
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
 			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at, reg.participant_number,
 			e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.check_in_window_minutes,
 			e.timer_mode, e.duration_minutes, e.result_config, e.exam_number,
+			e.card_enabled, e.card_notes,
 			COALESCE((
 				SELECT string_agg(DISTINCT t.subject, ', ')
 				FROM exam_test et JOIN test t ON t.id = et.test_id
@@ -1601,7 +1646,8 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
 		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
 		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
-		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber, &detail.Subject,
+		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber,
+		&detail.Exam.CardEnabled, &cardNotesRaw, &detail.Subject,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -1615,6 +1661,9 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 	if checkedInAt != nil {
 		detail.CheckedInAt = checkedInAt
 	}
+	if err := decodeCardNotes(cardNotesRaw, &detail.Exam.CardNotes); err != nil {
+		return nil, err
+	}
 	return &detail, nil
 }
 
@@ -1627,11 +1676,13 @@ func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUI
 	var detail model.RegistrationDetail
 	var cardKey *string
 	var checkedInAt *time.Time
+	var cardNotesRaw []byte
 	err := r.pool.QueryRow(ctx,
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
 			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at, reg.participant_number,
 			e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.check_in_window_minutes,
 			e.timer_mode, e.duration_minutes, e.result_config, e.exam_number,
+			e.card_enabled, e.card_notes,
 			COALESCE((
 				SELECT string_agg(DISTINCT t.subject, ', ')
 				FROM exam_test et JOIN test t ON t.id = et.test_id
@@ -1646,7 +1697,8 @@ func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUI
 		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
 		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
 		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
-		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber, &detail.Subject,
+		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber,
+		&detail.Exam.CardEnabled, &cardNotesRaw, &detail.Subject,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -1659,6 +1711,9 @@ func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUI
 	}
 	if checkedInAt != nil {
 		detail.CheckedInAt = checkedInAt
+	}
+	if err := decodeCardNotes(cardNotesRaw, &detail.Exam.CardNotes); err != nil {
+		return nil, err
 	}
 	return &detail, nil
 }
