@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import StoreDashboardPage from "./page";
-import type { OrderSummary } from "@/lib/types";
+import type { OrderSummary, PromoCode } from "@/lib/types";
 
 const sampleSummary: OrderSummary = {
   buckets: {
@@ -28,9 +28,62 @@ vi.mock("@/lib/hooks/admin-orders", () => ({
   useAdminOrderSummary: () => summaryState,
 }));
 
-describe("StoreDashboardPage", () => {
+const PROMOS: PromoCode[] = [
+  { id: "p1", code: "HEMAT10", used_count: 3, max_uses: 100, expires_at: null },
+  { id: "p2", code: "KILAT", used_count: 1, max_uses: 50, expires_at: "2026-08-15T00:00:00+07:00" },
+  { id: "p3", code: "LAMA", used_count: 9, max_uses: 10, expires_at: "2026-08-01T00:00:00+07:00" },
+  { id: "p4", code: "HABIS", used_count: 20, max_uses: 20, expires_at: null },
+];
+
+let promoState = {
+  data: PROMOS as PromoCode[],
+};
+
+vi.mock("@/lib/hooks/admin-promos", () => ({
+  useAdminPromoCodes: () => promoState,
+}));
+
+let authStore: {
+  token: string | null;
+  user: { role?: string; name?: string } | null;
+} = {
+  token: "t",
+  user: { role: "admin_store", name: "Siti" },
+};
+
+vi.mock("@/stores/auth", () => ({
+  useAuthStore: (selector: (s: typeof authStore) => unknown) => selector(authStore),
+}));
+
+let meState: {
+  data: { role?: string; name?: string } | null;
+  isError: boolean;
+  isLoading: boolean;
+} = { data: null, isError: false, isLoading: false };
+
+vi.mock("@/lib/hooks/auth", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/hooks/auth")>(
+    "@/lib/hooks/auth"
+  );
+  return {
+    ...actual,
+    useMe: ({ enabled }: { enabled?: boolean }) =>
+      enabled
+        ? meState
+        : { data: null, isError: false, isLoading: false },
+  };
+});
+
+describe("admin_store dashboard", () => {
   beforeEach(() => {
+    vi.setSystemTime(new Date("2026-08-12T00:00:00+07:00"));
     summaryState = { data: sampleSummary, isLoading: false };
+    promoState = { data: PROMOS };
+    authStore = { token: "t", user: { role: "admin_store", name: "Siti" } };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("renders the queue counts and the month volume", () => {
@@ -58,28 +111,19 @@ describe("StoreDashboardPage", () => {
     expect(screen.getByText("Medali Juara")).toBeInTheDocument();
   });
 
-  // admin_store must never see revenue aggregates. Asserted against the rendered
-  // text rather than the props, because what leaks is what a user can read.
-  it("prints no rupiah figure anywhere on the page", () => {
-    const { container } = render(<StoreDashboardPage />);
-
-    expect(container.textContent).not.toMatch(/Rp\s?[\d.]/);
-  });
-
-  it("offers no route into the revenue report", () => {
-    const { container } = render(<StoreDashboardPage />);
-
-    expect(container.querySelector('a[href="/admin/revenue"]')).toBeNull();
-    expect(container.querySelector('a[href="/admin/orders"]')).not.toBeNull();
-    expect(container.querySelector('a[href="/admin/products"]')).not.toBeNull();
-  });
-
   it("shows skeletons while the summary loads", () => {
     summaryState = { data: null, isLoading: true };
 
     render(<StoreDashboardPage />);
 
     expect(screen.queryByText("Perlu konfirmasi")).toBeNull();
+  });
+
+  it("keeps the three queue cards deep-linking to their filtered lists", () => {
+    render(<StoreDashboardPage />);
+    expect(screen.getByRole("link", { name: /perlu konfirmasi/i })).toHaveAttribute(
+      "href", "/admin/orders?status=pending",
+    );
   });
 
   // Each queue card must open its own queue; all three pointing at the
@@ -105,5 +149,56 @@ describe("StoreDashboardPage", () => {
     render(<StoreDashboardPage />);
     expect(document.querySelector('a[href="/admin/orders?status=paid"]')).toBeNull();
     expect(document.querySelector('a[href="/admin/orders?queue=ready_to_ship"]')).not.toBeNull();
+  });
+
+  it("counts active and expiring-soon promos, ignoring expired and exhausted ones", () => {
+    render(<StoreDashboardPage />);
+    expect(screen.getByTestId("store-promos-active")).toHaveTextContent("2");
+    expect(screen.getByTestId("store-promos-expiring")).toHaveTextContent("1");
+  });
+
+  it("counts an unlimited promo (max_uses: null) as active, not expiring", () => {
+    promoState = {
+      data: [{ id: "u1", code: "UNLIMITED", used_count: 500, max_uses: null, expires_at: null }],
+    };
+    render(<StoreDashboardPage />);
+    expect(screen.getByTestId("store-promos-active")).toHaveTextContent("1");
+    expect(screen.getByTestId("store-promos-expiring")).toHaveTextContent("0");
+  });
+
+  it("counts a promo with a finite max_uses and no expiry as active, not expiring", () => {
+    promoState = {
+      data: [{ id: "f1", code: "FINITE", used_count: 3, max_uses: 100, expires_at: null }],
+    };
+    render(<StoreDashboardPage />);
+    expect(screen.getByTestId("store-promos-active")).toHaveTextContent("1");
+    expect(screen.getByTestId("store-promos-expiring")).toHaveTextContent("0");
+  });
+
+  it("renders no aggregate revenue figure anywhere", () => {
+    const { container } = render(<StoreDashboardPage />);
+    expect(container.textContent).not.toMatch(/pendapatan/i);
+    expect(container.textContent).not.toMatch(/Rp\s?[\d.]{4,}/);
+  });
+
+  it("offers no route into the revenue report", () => {
+    const { container } = render(<StoreDashboardPage />);
+
+    expect(container.querySelector('a[href="/admin/revenue"]')).toBeNull();
+    expect(container.querySelector('a[href="/admin/orders"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin/products"]')).not.toBeNull();
+  });
+
+  it("renders the greeting hero and tile-shaped quick actions", () => {
+    render(<StoreDashboardPage />);
+    expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /kelola produk/i })).toHaveAttribute("href", "/admin/products");
+    expect(screen.getByRole("link", { name: /buat promo/i })).toHaveAttribute("href", "/admin/promos");
+  });
+
+  it("refuses a role without orders capability", () => {
+    authStore = { token: "t", user: { role: "admin_school", name: "Budi" } };
+    render(<StoreDashboardPage />);
+    expect(screen.getByTestId("no-access")).toBeTruthy();
   });
 });

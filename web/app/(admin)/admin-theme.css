@@ -304,3 +304,10 @@ html[data-theme="dark"] .admin-shell {
   transform-origin: bottom;
   animation: chart-grow 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
 }
+
+.chart-tooltip {
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  box-shadow: var(--md-sys-elevation-1);
+}

@@ -13,6 +13,7 @@ import (
 	"akademi-bimbel/internal/service"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 )
@@ -50,11 +51,18 @@ func newAdminDashboardTestEnv(t *testing.T) *adminDashboardTestEnv {
 }
 
 // tokenFor mints a valid access token for role and seeds its session in Redis
-// so JWTMiddleware's SessionActive check passes.
+// so JWTMiddleware's SessionActive check passes. sub is a real UUID because
+// AdminSchoolDashboard passes it straight into a query against a uuid column;
+// admin_school also gets a SchoolID, since resolveSchoolScope 403s without one.
 func (env *adminDashboardTestEnv) tokenFor(t *testing.T, role string) string {
 	t.Helper()
-	sub := "dashboard-test-" + role
-	tok, jti, err := env.signer.SignAccess(sub, role, nil, []string{})
+	sub := uuid.NewString()
+	var schoolID *string
+	if role == service.RoleAdminSchool {
+		sid := uuid.NewString()
+		schoolID = &sid
+	}
+	tok, jti, err := env.signer.SignAccess(sub, role, schoolID, []string{})
 	if err != nil {
 		t.Fatalf("SignAccess: %v", err)
 	}

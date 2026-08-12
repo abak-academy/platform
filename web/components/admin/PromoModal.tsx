@@ -24,7 +24,7 @@ interface PromoModalProps {
   isPending: boolean;
 }
 
-function dateInputValue(iso?: string): string {
+function dateInputValue(iso?: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";

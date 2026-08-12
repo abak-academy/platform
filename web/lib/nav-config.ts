@@ -109,7 +109,10 @@ export const CONTENT_MANAGER_NAV: RoleNavConfig = [
 export const ADMIN_EXAM_NAV: RoleNavConfig = [
   {
     titleKey: "nav_group_exam",
-    items: EXAM_NAV_ITEMS,
+    items: [
+      { labelKey: "nav_dashboard", href: "/admin/exam", icon: LayoutDashboard, exact: true },
+      ...EXAM_NAV_ITEMS,
+    ],
   },
   {
     titleKey: "nav_group_catalog",
@@ -124,6 +127,7 @@ export const ADMIN_SCHOOL_NAV: RoleNavConfig = [
   {
     titleKey: "nav_group_exam",
     items: [
+      { labelKey: "nav_dashboard", href: "/admin/school", icon: LayoutDashboard, exact: true },
       ...SCHOOL_NAV_ITEMS,
       { labelKey: "packages", href: "/admin/exam/packages", icon: Calendar },
     ],

@@ -10,13 +10,23 @@ import {
   AlertTriangle,
   ShoppingBag,
   CheckCircle2,
+  Tag,
+  Bell,
 } from "lucide-react";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { useAuthStore } from "@/stores/auth";
+import { useMe } from "@/lib/hooks/auth";
+import { useHasCapability } from "@/lib/hooks/use-capability";
+import { NoAccess } from "@/components/admin/NoAccess";
+import { DashboardHero } from "@/components/admin/DashboardHero";
+import { MonitorCard } from "@/components/admin/MonitorCard";
+import { QuickActionTiles, type QuickAction } from "@/components/admin/QuickActionTiles";
 import { StatCard } from "@/components/admin/StatCard";
 import { TopProductsTable } from "@/components/admin/TopProductsTable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminOrderSummary } from "@/lib/hooks/admin-orders";
+import { useAdminPromoCodes } from "@/lib/hooks/admin-promos";
 import { useTranslation } from "@/lib/i18n";
+import type { UserRole } from "@/lib/nav-config";
 
 function BandLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -59,18 +69,41 @@ function QueueCardLink({
 
 export default function StoreDashboardPage() {
   const { t } = useTranslation();
+  const user = useAuthStore((s) => s.user);
+  const storeRole = user?.role as UserRole | undefined;
+  const me = useMe({ enabled: !storeRole });
+  const name = user?.name ?? me.data?.name ?? t("store_home_default_name");
+  const canRead = useHasCapability("orders:read");
   const { data: summary, isLoading } = useAdminOrderSummary({ status: "all" });
+  const { data: promos = [] } = useAdminPromoCodes();
 
   const buckets = summary?.buckets;
 
-  const quickActions = [
+  // admin_store holds no revenue:read capability (2026-08-04 split) — this page must never surface an aggregate figure.
+  const now = Date.now();
+  const weekAway = now + 7 * 24 * 60 * 60 * 1000;
+  const activePromos = promos.filter((p) => {
+    const notExpired = !p.expires_at || new Date(p.expires_at).getTime() > now;
+    // The server sends null, not undefined, for an absent limit/expiry — loose equality catches both.
+    const hasUsesLeft = p.max_uses == null || p.used_count < p.max_uses;
+    return notExpired && hasUsesLeft;
+  });
+  const expiringPromos = activePromos.filter(
+    (p) => p.expires_at != null && new Date(p.expires_at).getTime() <= weekAway,
+  );
+
+  const quickActions: QuickAction[] = [
     { icon: Package, label: t("store_action_manage_products"), href: "/admin/products" },
     { icon: Receipt, label: t("store_action_view_orders"), href: "/admin/orders" },
+    { icon: Tag, label: t("store_action_new_promo"), href: "/admin/promos" },
+    { icon: Bell, label: t("store_action_announce"), href: "/admin/notifications" },
   ];
+
+  if (!canRead) return <NoAccess />;
 
   return (
     <div className="space-y-8 fade-in">
-      <AdminPageHeader icon={Store} title={t("store_title")} description={t("store_subtitle")} />
+      <DashboardHero icon={Store} badge={t("store_home_badge")} name={name} subtitle={t("store_subtitle")} className="" />
 
       {/* Work queue — the only band allowed to turn red, and only on real work. */}
       <section>
@@ -140,6 +173,27 @@ export default function StoreDashboardPage() {
         </div>
       </section>
 
+      <section>
+        <BandLabel>{t("store_promos")}</BandLabel>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <MonitorCard
+            testId="store-promos-active"
+            href="/admin/promos"
+            label={t("store_promos_active")}
+            value={activePromos.length}
+            icon={Tag}
+          />
+          <MonitorCard
+            testId="store-promos-expiring"
+            href="/admin/promos"
+            label={t("store_promos_expiring")}
+            value={expiringPromos.length}
+            accent={expiringPromos.length > 0 ? "tertiary" : "secondary"}
+            icon={Clock}
+          />
+        </div>
+      </section>
+
       <div className="md-card-outlined">
         <h3 className="text-title-medium mb-4">{t("store_top_products")}</h3>
         {isLoading ? (
@@ -149,29 +203,7 @@ export default function StoreDashboardPage() {
         )}
       </div>
 
-      <div className="md-card-outlined">
-        <h3 className="text-title-large mb-6">{t("admin_home_quick_actions")}</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {quickActions.map((action) => (
-            <Link
-              key={action.href}
-              href={action.href}
-              className="flex items-center gap-3 p-4 rounded-[12px] border border-line hover:bg-surface-container transition-colors"
-            >
-              <div
-                className="flex size-10 items-center justify-center rounded-[10px]"
-                style={{
-                  backgroundColor: "var(--md-sys-color-primary-container)",
-                  color: "var(--md-sys-color-primary)",
-                }}
-              >
-                <action.icon size={20} />
-              </div>
-              <span className="text-body font-medium">{action.label}</span>
-            </Link>
-          ))}
-        </div>
-      </div>
+      <QuickActionTiles title={t("admin_home_quick_actions")} actions={quickActions} />
     </div>
   );
 }

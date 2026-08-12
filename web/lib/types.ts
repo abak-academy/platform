@@ -363,9 +363,9 @@ export interface PromoCode {
   discount_amount?: number;
   min_order_amount?: number;
   max_discount_amount?: number;
-  max_uses?: number;
+  max_uses?: number | null;
   used_count: number;
-  expires_at?: string;
+  expires_at?: string | null;
   created_at?: string;
   /** FR-13: shown to authenticated students via GET /promo-codes/active when true. */
   is_public?: boolean;
@@ -1345,4 +1345,44 @@ export interface AdminDashboard {
   };
   top_products: DashboardTopProduct[];
   upcoming_exams: DashboardUpcomingExam[];
+}
+
+export interface ExamDashboardViolation {
+  session_id: string;
+  exam_id: string;
+  exam_title: string;
+  student_name: string;
+  violation_type: string;
+  occurred_at: string;
+}
+
+export interface ExamDashboard {
+  active_sessions: number;
+  upcoming_exams: DashboardUpcomingExam[];
+  counts: { questions: number; tests: number; exams: number; courses: number };
+  recent_violations: ExamDashboardViolation[];
+}
+
+export interface SchoolDashboardResult {
+  session_id: string;
+  student_name: string;
+  exam_title: string;
+  // null while a submitted session isn't graded yet — render blank, never 0.
+  score: number | null;
+  submitted_at: string;
+}
+
+export interface SchoolDashboardBulkOrder {
+  id: string;
+  status: string;
+  total: number;
+  participant_count: number;
+  placed_at: string;
+}
+
+export interface SchoolDashboard {
+  counts: { students: number; new_students_month: number };
+  orderable_exam_count: number;
+  latest_bulk_order: SchoolDashboardBulkOrder | null;
+  recent_results: SchoolDashboardResult[];
 }

@@ -15,6 +15,8 @@ import { useHasCapability } from "@/lib/hooks/use-capability";
 import { adminHomeForRole } from "@/lib/auth-redirect";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { StatCard } from "@/components/admin/StatCard";
+import { DashboardHero } from "@/components/admin/DashboardHero";
+import { QuickActionTiles, type QuickAction } from "@/components/admin/QuickActionTiles";
 import { PeriodBar, type PeriodPreset, type PeriodRange } from "@/components/admin/PeriodBar";
 import { AreaLineChart } from "@/components/admin/charts/AreaLineChart";
 import { MultiLineChart } from "@/components/admin/charts/MultiLineChart";
@@ -174,11 +176,11 @@ export default function AdminIndexPage() {
   const name = user?.name ?? me.data?.name ?? t("admin_home_default_name");
   const formatRelativeTime = useFormatRelativeTime();
 
-  const quickActions = [
-    { icon: Clipboard, label: t("admin_action_create_question"), route: "/admin/exam/tests" },
-    { icon: Store, label: t("admin_action_add_product"), route: "/admin/products" },
-    { icon: UserPlus, label: t("admin_action_register_student"), route: "/admin/school/students" },
-    { icon: BarChart3, label: t("admin_action_sales_report"), route: "/admin/revenue" },
+  const quickActions: QuickAction[] = [
+    { icon: Clipboard, label: t("admin_action_create_question"), href: "/admin/exam/tests" },
+    { icon: Store, label: t("admin_action_add_product"), href: "/admin/products" },
+    { icon: UserPlus, label: t("admin_action_register_student"), href: "/admin/school/students" },
+    { icon: BarChart3, label: t("admin_action_sales_report"), href: "/admin/revenue" },
   ];
 
   const [preset, setPreset] = useState<PeriodPreset>("30d");
@@ -237,39 +239,12 @@ export default function AdminIndexPage() {
 
   return (
     <div className="fade-in">
-      {/* Hero band */}
-      <div
-        className="mb-8 rounded-[20px] px-8 py-7"
-        style={{
-          background: "linear-gradient(135deg, #1A5CFF 0%, #0A3DBF 55%, #005B8E 100%)",
-          color: "#FFFFFF",
-          boxShadow: "0 4px 24px rgba(26,92,255,0.28)",
-        }}
-      >
-        <div className="flex items-center gap-6">
-          <div
-            className="flex size-[72px] shrink-0 items-center justify-center rounded-[24px]"
-            style={{
-              backgroundColor: "rgba(255,255,255,0.18)",
-              backdropFilter: "blur(8px)",
-            }}
-          >
-            <Shield size={36} color="#FFFFFF" />
-          </div>
-          <div>
-            <div
-              className="text-label"
-              style={{ letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.75 }}
-            >
-              {t("admin_home_badge")}
-            </div>
-            <h1 className="text-headline" style={{ color: "#FFFFFF" }}>{name}</h1>
-            <p className="text-body" style={{ marginTop: "4px", opacity: 0.85 }}>
-              {t("admin_home_subtitle")}
-            </p>
-          </div>
-        </div>
-      </div>
+      <DashboardHero
+        icon={Shield}
+        badge={t("admin_home_badge")}
+        name={name}
+        subtitle={t("admin_home_subtitle")}
+      />
 
       {/* Period bar */}
       <div className="mb-8">
@@ -341,7 +316,7 @@ export default function AdminIndexPage() {
           <p className="text-body mb-4">{t("admin_home_chart_revenue_sub")}</p>
           <AreaLineChart
             labels={labels}
-            area={{ values: d.series.map((p) => p.revenue), color: CHART_BLUE, label: t("admin_home_series_revenue") }}
+            area={{ values: d.series.map((p) => p.revenue), color: CHART_BLUE, label: t("admin_home_series_revenue"), format: formatRupiah }}
             line={{ values: d.series.map((p) => p.order_count), color: CHART_ORANGE, label: t("admin_home_series_orders") }}
             emptyLabel={t("admin_home_chart_empty")}
           />
@@ -374,8 +349,8 @@ export default function AdminIndexPage() {
             <p className="text-body mb-4">{t("admin_home_chart_mix_sub")}</p>
             <StackedBarChart
               labels={labels}
-              bottom={{ values: d.series.map((p) => p.revenue_digital), color: CHART_BLUE, label: t("admin_home_series_digital") }}
-              top={{ values: d.series.map((p) => p.revenue_physical), color: CHART_MAGENTA, label: t("admin_home_series_physical") }}
+              bottom={{ values: d.series.map((p) => p.revenue_digital), color: CHART_BLUE, label: t("admin_home_series_digital"), format: formatRupiah }}
+              top={{ values: d.series.map((p) => p.revenue_physical), color: CHART_MAGENTA, label: t("admin_home_series_physical"), format: formatRupiah }}
               emptyLabel={t("admin_home_chart_empty")}
             />
           </div>
@@ -555,37 +530,7 @@ export default function AdminIndexPage() {
           )}
         </div>
 
-        {/* Akses Cepat */}
-        <div className="md-card-outlined">
-          <h3 className="text-title-large mb-6">{t("admin_home_quick_actions")}</h3>
-          <div className="grid grid-cols-2 gap-3">
-            {quickActions.map((action, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => router.push(action.route)}
-                className="flex flex-col items-center gap-2 p-4 rounded-[12px] border-none text-center transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
-                style={{
-                  backgroundColor: "var(--md-sys-color-surface-container-high)",
-                  cursor: "pointer",
-                }}
-              >
-                <div
-                  className="flex size-10 items-center justify-center rounded-[10px]"
-                  style={{
-                    backgroundColor: "var(--md-sys-color-primary-container)",
-                    color: "var(--md-sys-color-primary)",
-                  }}
-                >
-                  <action.icon size={20} />
-                </div>
-                <span className="text-label" style={{ fontWeight: 500 }}>
-                  {action.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+        <QuickActionTiles title={t("admin_home_quick_actions")} actions={quickActions} />
       </div>
     </div>
   );
