@@ -177,4 +177,10 @@ describe("admin_store dashboard", () => {
     expect(screen.getByRole("link", { name: /kelola produk/i })).toHaveAttribute("href", "/admin/products");
     expect(screen.getByRole("link", { name: /buat promo/i })).toHaveAttribute("href", "/admin/promos");
   });
+
+  it("refuses a role without orders capability", () => {
+    authStore = { token: "t", user: { role: "admin_school", name: "Budi" } };
+    render(<StoreDashboardPage />);
+    expect(screen.getByTestId("no-access")).toBeTruthy();
+  });
 });

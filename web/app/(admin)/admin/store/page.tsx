@@ -15,7 +15,10 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
+import { useHasCapability } from "@/lib/hooks/use-capability";
+import { NoAccess } from "@/components/admin/NoAccess";
 import { DashboardHero } from "@/components/admin/DashboardHero";
+import { MonitorCard } from "@/components/admin/MonitorCard";
 import { QuickActionTiles, type QuickAction } from "@/components/admin/QuickActionTiles";
 import { StatCard } from "@/components/admin/StatCard";
 import { TopProductsTable } from "@/components/admin/TopProductsTable";
@@ -70,6 +73,7 @@ export default function StoreDashboardPage() {
   const storeRole = user?.role as UserRole | undefined;
   const me = useMe({ enabled: !storeRole });
   const name = user?.name ?? me.data?.name ?? t("store_home_default_name");
+  const canRead = useHasCapability("orders:read");
   const { data: summary, isLoading } = useAdminOrderSummary({ status: "all" });
   const { data: promos = [] } = useAdminPromoCodes();
 
@@ -93,6 +97,8 @@ export default function StoreDashboardPage() {
     { icon: Tag, label: t("store_action_new_promo"), href: "/admin/promos" },
     { icon: Bell, label: t("store_action_announce"), href: "/admin/notifications" },
   ];
+
+  if (!canRead) return <NoAccess />;
 
   return (
     <div className="space-y-8 fade-in">
@@ -169,21 +175,21 @@ export default function StoreDashboardPage() {
       <section>
         <BandLabel>{t("store_promos")}</BandLabel>
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          <Link href="/admin/promos" className="block rounded-[20px]">
-            <div data-testid="store-promos-active">
-              <StatCard label={t("store_promos_active")} value={String(activePromos.length)} accent="primary" icon={Tag} />
-            </div>
-          </Link>
-          <Link href="/admin/promos" className="block rounded-[20px]">
-            <div data-testid="store-promos-expiring">
-              <StatCard
-                label={t("store_promos_expiring")}
-                value={String(expiringPromos.length)}
-                accent={expiringPromos.length > 0 ? "tertiary" : "secondary"}
-                icon={Clock}
-              />
-            </div>
-          </Link>
+          <MonitorCard
+            testId="store-promos-active"
+            href="/admin/promos"
+            label={t("store_promos_active")}
+            value={activePromos.length}
+            icon={Tag}
+          />
+          <MonitorCard
+            testId="store-promos-expiring"
+            href="/admin/promos"
+            label={t("store_promos_expiring")}
+            value={expiringPromos.length}
+            accent={expiringPromos.length > 0 ? "tertiary" : "secondary"}
+            icon={Clock}
+          />
         </div>
       </section>
 
