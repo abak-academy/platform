@@ -18,18 +18,21 @@ interface ChartHoverLayerProps {
   rows: HoverRow[];
 }
 
+export const MAX_W_PCT = 44;
+// EDGE_PCT = half the max width, so a centred tooltip can never overflow.
+export const EDGE_PCT = MAX_W_PCT / 2;
+const maxWidth = `min(16rem, ${MAX_W_PCT}%)`;
+
 // HTML layer, not SVG: every chart sets preserveAspectRatio="none", so SVG circles become ellipses on the stretched viewBox.
 export function ChartHoverLayer({ index, count, mode, title, rows }: ChartHoverLayerProps) {
   const xPct = xPercentFor(index, count, mode);
-  const EDGE_PCT = 12;
 
-  // Side-anchoring at the edges needs no width measurement; a centred percent clamp only pulls the box's centre inward, not its edge.
   const boxStyle: CSSProperties =
     xPct <= EDGE_PCT
-      ? { left: 0, maxWidth: "min(16rem, 60%)", transform: "translateY(8px)" }
+      ? { left: 0, maxWidth, transform: "translateY(8px)" }
       : xPct >= 100 - EDGE_PCT
-        ? { right: 0, maxWidth: "min(16rem, 60%)", transform: "translateY(8px)" }
-        : { left: `${xPct}%`, maxWidth: "min(16rem, 60%)", transform: "translate(-50%, 8px)" };
+        ? { right: 0, maxWidth, transform: "translateY(8px)" }
+        : { left: `${xPct}%`, maxWidth, transform: "translate(-50%, 8px)" };
 
   return (
     <div className="pointer-events-none absolute inset-0">

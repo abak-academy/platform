@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { ChartHoverLayer } from "./ChartHoverLayer";
+import { ChartHoverLayer, MAX_W_PCT, EDGE_PCT } from "./ChartHoverLayer";
 
 const ROWS = [
   { label: "Pendapatan", color: "#2F6FED", value: "Rp1.500.000", yFraction: 0.25 },
@@ -70,5 +70,55 @@ describe("ChartHoverLayer", () => {
   it("bounds the tooltip width so a wide row set cannot push it off-card", () => {
     render(<ChartHoverLayer index={2} count={5} mode="point" title="3 Agu" rows={ROWS} />);
     expect(screen.getByTestId("chart-tooltip").style.maxWidth).toBeTruthy();
+  });
+
+  it("keeps EDGE_PCT and the max tooltip width mathematically coupled so a centred box cannot overflow", () => {
+    expect(EDGE_PCT * 2).toBeLessThanOrEqual(MAX_W_PCT);
+  });
+
+  describe("band-mode edge anchoring", () => {
+    const bars = [
+      { label: "Digital", color: "#2F6FED", value: "Rp1.000" },
+      { label: "Fisik", color: "#D6409F", value: "Rp500" },
+    ];
+
+    it("keeps a count-2 band's first and last buckets centred — both fit inside the max width", () => {
+      const { unmount } = render(<ChartHoverLayer index={0} count={2} mode="band" title="1" rows={bars} />);
+      let tip = screen.getByTestId("chart-tooltip");
+      expect(parseFloat(tip.style.left)).toBeCloseTo(25, 5);
+      expect(tip.style.right).toBe("");
+      unmount();
+
+      render(<ChartHoverLayer index={1} count={2} mode="band" title="2" rows={bars} />);
+      tip = screen.getByTestId("chart-tooltip");
+      expect(parseFloat(tip.style.left)).toBeCloseTo(75, 5);
+      expect(tip.style.right).toBe("");
+    });
+
+    it("side-anchors a count-3 band's first and last buckets", () => {
+      const { unmount } = render(<ChartHoverLayer index={0} count={3} mode="band" title="1" rows={bars} />);
+      let tip = screen.getByTestId("chart-tooltip");
+      expect(tip).toHaveStyle({ left: "0px" });
+      expect(tip.style.right).toBe("");
+      unmount();
+
+      render(<ChartHoverLayer index={2} count={3} mode="band" title="3" rows={bars} />);
+      tip = screen.getByTestId("chart-tooltip");
+      expect(tip).toHaveStyle({ right: "0px" });
+      expect(tip.style.left).toBe("");
+    });
+
+    it("side-anchors a count-4 band's first and last buckets", () => {
+      const { unmount } = render(<ChartHoverLayer index={0} count={4} mode="band" title="1" rows={bars} />);
+      let tip = screen.getByTestId("chart-tooltip");
+      expect(tip).toHaveStyle({ left: "0px" });
+      expect(tip.style.right).toBe("");
+      unmount();
+
+      render(<ChartHoverLayer index={3} count={4} mode="band" title="4" rows={bars} />);
+      tip = screen.getByTestId("chart-tooltip");
+      expect(tip).toHaveStyle({ right: "0px" });
+      expect(tip.style.left).toBe("");
+    });
   });
 });
