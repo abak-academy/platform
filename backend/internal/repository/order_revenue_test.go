@@ -32,6 +32,11 @@ import (
 //	2025-08     ready-to-ship physical item requirement
 //	2026-06     status=all sentinel (bucket counts + list)
 //	2026-10     paid status list agreement (GetRevenue/TopProducts/DashboardSeries)
+//	2025-01     placed-at sort          2025-02  placed-at date filter
+//	2025-03     placed-at null fallback 2025-04  placed-at keyset paging
+//	2025-06     revenue ignores unpaid  2024-02/03  revenue recognises on paid_at
+//	2025-09/10  refund debits the refund period    2025-11  refund debits item lines
+//	2025-12     refund period average order value
 var (
 	reportingPool     *pgxpool.Pool
 	reportingPoolOnce sync.Once
@@ -118,11 +123,20 @@ func seedOrder(
 		completedAt = &createdAt
 	}
 
+	// Mirrors SetOrderStatus: reaching any of these states means the order went
+	// through 'paid', which stamps paid_at. Revenue is recognised off that
+	// column, so a fixture without it is a shape production cannot produce.
+	var paidAt *time.Time
+	switch status {
+	case "paid", "processing", "shipped", "completed":
+		paidAt = &createdAt
+	}
+
 	var orderID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total, created_at, completed_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-		studentID, status, subtotal, discount, shipping, total, createdAt, completedAt,
+		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total, created_at, completed_at, paid_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		studentID, status, subtotal, discount, shipping, total, createdAt, completedAt, paidAt,
 	).Scan(&orderID))
 
 	for _, it := range items {

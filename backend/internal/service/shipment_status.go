@@ -52,3 +52,20 @@ func ShipmentFailureStatusValues() []string {
 	}
 	return out
 }
+
+// isShipmentFailureStatus matches one stored shipment_status against the
+// failure set, in either spelling. Built from ShipmentFailureStatusValues so a
+// status added to the list is matched here without a second edit — the same
+// reason the repository filter reads from it rather than its own literal.
+// A nil or empty status is not a failure: it means nothing has been reported.
+func isShipmentFailureStatus(status *string) bool {
+	if status == nil || *status == "" {
+		return false
+	}
+	for _, s := range ShipmentFailureStatusValues() {
+		if s == *status {
+			return true
+		}
+	}
+	return false
+}

@@ -44,10 +44,30 @@ type OrderFilter struct {
 	// filter an already-paginated page.
 	Search string
 
-	// Half-open [CreatedFrom, CreatedTo) on created_at. Never inclusive at both
-	// ends — adjacent periods would double-count a boundary order.
+	// Half-open [CreatedFrom, CreatedTo) on placedAtExpr, not on created_at —
+	// see that constant. Never inclusive at both ends: adjacent periods would
+	// double-count a boundary order.
 	CreatedFrom *time.Time
 	CreatedTo   *time.Time
+}
+
+// placedAtExpr is when the order was placed. created_at is stamped by MintCart,
+// which inserts the row at cart creation, and a cart is a per-student singleton
+// that can sit idle for weeks — so it dates an order to a day the buyer never
+// saw and orders the list in a sequence no admin can explain. checked_out_at is
+// the real placement instant, nullable only because migration 0009 added it
+// without a backfill.
+//
+// It is a bare expression rather than a column: no index covers it today, but
+// none covered created_at either, so this sorts no worse than it did.
+const placedAtExpr = `COALESCE(checked_out_at, created_at)`
+
+// placedAt is placedAtExpr evaluated in Go, for the keyset cursor.
+func placedAt(o model.Order) time.Time {
+	if o.CheckedOutAt != nil {
+		return *o.CheckedOutAt
+	}
+	return o.CreatedAt
 }
 
 // orderFilterPredicateFrom builds the WHERE fragment shared by ListOrders and
@@ -110,12 +130,12 @@ func orderFilterPredicateFrom(filter OrderFilter, startArg int) (string, []inter
 		}
 	}
 	if filter.CreatedFrom != nil {
-		query += fmt.Sprintf(` AND created_at >= $%d`, argNum)
+		query += fmt.Sprintf(` AND %s >= $%d`, placedAtExpr, argNum)
 		args = append(args, *filter.CreatedFrom)
 		argNum++
 	}
 	if filter.CreatedTo != nil {
-		query += fmt.Sprintf(` AND created_at < $%d`, argNum)
+		query += fmt.Sprintf(` AND %s < $%d`, placedAtExpr, argNum)
 		args = append(args, *filter.CreatedTo)
 		argNum++
 	}
@@ -157,7 +177,7 @@ const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost,
 	gateway_ref, payment_method, payment_expires_at, paid_at, invoice_url,
 	checked_out_at, completed_at, cancelled_at, cancellation_reason,
 	created_at, updated_at, is_estimate,
-	biteship_order_id, shipment_status, waybill_source, courier_code, courier_service_code,
+	biteship_order_id, shipment_status, shipment_attempt, waybill_source, courier_code, courier_service_code,
 	payment_proof_url, refund_proof_url`
 
 func scanOrder(row interface {
@@ -173,7 +193,7 @@ func scanOrder(row interface {
 		&gatewayRef, &paymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &invoiceURL,
 		&order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &cancellationReason,
 		&order.CreatedAt, &order.UpdatedAt, &order.IsEstimate,
-		&order.BiteshipOrderID, &order.ShipmentStatus, &order.WaybillSource,
+		&order.BiteshipOrderID, &order.ShipmentStatus, &order.ShipmentAttempt, &order.WaybillSource,
 		&order.CourierCode, &order.CourierServiceCode,
 		&order.PaymentProofURL, &order.RefundProofURL,
 	)
@@ -429,12 +449,12 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		if err != nil {
 			return nil, "", err
 		}
-		query += fmt.Sprintf(` AND (created_at, id) < ($%d, $%d)`, argNum, argNum+1)
+		query += fmt.Sprintf(` AND (%s, id) < ($%d, $%d)`, placedAtExpr, argNum, argNum+1)
 		args = append(args, curAt, curID)
 		argNum += 2
 	}
 
-	query += fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT $%d`, argNum)
+	query += fmt.Sprintf(` ORDER BY %s DESC, id DESC LIMIT $%d`, placedAtExpr, argNum)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -469,7 +489,9 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 
 	if hasMore && len(orders) > 0 {
 		last := orders[len(orders)-1]
-		nextCursor = EncodeOrderCursor(last.CreatedAt, last.ID)
+		// Must be the same value placedAtExpr sorted on, or the next page skips
+		// and repeats rows wherever the two timestamps disagree.
+		nextCursor = EncodeOrderCursor(placedAt(last), last.ID)
 	}
 
 	for i := range orders {
@@ -651,12 +673,19 @@ func (r *Repository) SetShipped(ctx context.Context, orderID uuid.UUID, tracking
 // SetShippedBiteship moves an order to shipped via the Biteship booking
 // path (FR-C-6): tracking_number and biteship_order_id come from Biteship's
 // response, waybill_source is stamped 'biteship'.
-func (r *Repository) SetShippedBiteship(ctx context.Context, orderID uuid.UUID, trackingNumber, biteshipOrderID string) error {
+//
+// attempt is the booking attempt this row now represents, so a re-book after a
+// dead shipment persists the number its reference_id was built from.
+// shipment_status is reset to NULL because it still describes the PREVIOUS
+// booking: leaving 'cancelled' there would keep the order in the failed queue
+// and keep offering "re-ship" for a parcel that is already on its way.
+func (r *Repository) SetShippedBiteship(ctx context.Context, orderID uuid.UUID, trackingNumber, biteshipOrderID string, attempt int) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders SET status = 'shipped', tracking_number = $1, biteship_order_id = $2,
-		     waybill_source = 'biteship', shipped_at = now(), updated_at = now()
-		 WHERE id = $3`,
-		trackingNumber, biteshipOrderID, orderID,
+		     waybill_source = 'biteship', shipment_status = NULL, shipment_attempt = $3,
+		     shipped_at = now(), updated_at = now()
+		 WHERE id = $4`,
+		trackingNumber, biteshipOrderID, attempt, orderID,
 	)
 	return err
 }
@@ -664,10 +693,16 @@ func (r *Repository) SetShippedBiteship(ctx context.Context, orderID uuid.UUID, 
 // SetShippedManual moves an order to shipped via the manual-resi escape
 // hatch (FR-C-9): no Biteship call is made, waybill_source is stamped
 // 'manual'.
+//
+// biteship_order_id and shipment_status are cleared for the same reason
+// SetShippedBiteship resets them — after a dead booking they name a shipment
+// that is no longer this order's. Leaving biteship_order_id behind would also
+// let a late webhook for the cancelled booking write over the manual resi.
 func (r *Repository) SetShippedManual(ctx context.Context, orderID uuid.UUID, trackingNumber string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders SET status = 'shipped', tracking_number = $1,
-		     waybill_source = 'manual', shipped_at = now(), updated_at = now()
+		     waybill_source = 'manual', biteship_order_id = NULL, shipment_status = NULL,
+		     shipped_at = now(), updated_at = now()
 		 WHERE id = $2`,
 		trackingNumber, orderID,
 	)
@@ -850,26 +885,26 @@ func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[st
 		orderCount int
 	)
 	err := r.pool.QueryRow(ctx, fmt.Sprintf(`
-		SELECT COALESCE(SUM(total), 0), COALESCE(SUM(shipping_cost), 0),
-		       COALESCE(SUM(discount), 0), COUNT(*)
-		  FROM orders
-		 WHERE status IN %s
-		   AND created_at >= $1 AND created_at < $2
-	`, paidStatusList), from, to).Scan(&total, &shipping, &discount, &orderCount)
+		WITH %s
+		SELECT COALESCE(SUM(sign * total), 0), COALESCE(SUM(sign * shipping_cost), 0),
+		       COALESCE(SUM(sign * discount), 0), COUNT(*) FILTER (WHERE sign = 1)
+		  FROM revenue_event
+		 WHERE at >= $1 AND at < $2
+	`, revenueEventCTE), from, to).Scan(&total, &shipping, &discount, &orderCount)
 	if err != nil {
 		return nil, err
 	}
 
 	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
+		WITH %s
 		SELECT oi.product_type,
-		       COALESCE(SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0),
-		       COUNT(DISTINCT o.id)
-		  FROM orders o
-		  JOIN order_item oi ON oi.order_id = o.id
-		 WHERE o.status IN %s
-		   AND o.created_at >= $1 AND o.created_at < $2
+		       COALESCE(SUM(e.sign * COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0),
+		       COUNT(DISTINCT e.id) FILTER (WHERE e.sign = 1)
+		  FROM revenue_event e
+		  JOIN order_item oi ON oi.order_id = e.id
+		 WHERE e.at >= $1 AND e.at < $2
 		 GROUP BY oi.product_type
-	`, paidStatusList), from, to)
+	`, revenueEventCTE), from, to)
 	if err != nil {
 		return nil, err
 	}

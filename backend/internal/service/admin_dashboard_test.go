@@ -125,8 +125,10 @@ func TestAdminDashboardCountsOrderRevenueOncePerOrder(t *testing.T) {
 	const orderTotal = 100000.0
 	var orderID string
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO orders (student_id, status, subtotal, total, created_at)
-		 VALUES ($1, 'paid', $2, $2, $3) RETURNING id`,
+		// paid_at, not just status='paid': revenue is recognised off the money
+		// timestamp (revenueEventCTE), so a fixture without it earns nothing.
+		`INSERT INTO orders (student_id, status, subtotal, total, created_at, paid_at)
+		 VALUES ($1, 'paid', $2, $2, $3, $3) RETURNING id`,
 		studentID, orderTotal, day,
 	).Scan(&orderID); err != nil {
 		t.Fatalf("seed order: %v", err)

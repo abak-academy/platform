@@ -66,7 +66,7 @@ func seedShipmentTestOrder(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 
 // Compile-time check: *Repository must implement all new shipment methods.
 var _ interface {
-	SetShippedBiteship(context.Context, uuid.UUID, string, string) error
+	SetShippedBiteship(context.Context, uuid.UUID, string, string, int) error
 	SetShippedManual(context.Context, uuid.UUID, string) error
 	GetOrderByBiteshipOrderID(context.Context, string) (model.Order, error)
 	SetShipmentStatus(context.Context, uuid.UUID, string) error
@@ -81,7 +81,7 @@ func TestSetShippedBiteship(t *testing.T) {
 
 	orderID := seedShipmentTestOrder(t, pool)
 
-	require.NoError(t, repo.SetShippedBiteship(ctx, orderID, "WB-BITESHIP-1", "biteship-order-xyz"))
+	require.NoError(t, repo.SetShippedBiteship(ctx, orderID, "WB-BITESHIP-1", "biteship-order-xyz", 1))
 
 	order, err := repo.GetOrderByID(ctx, orderID)
 	require.NoError(t, err)
@@ -118,7 +118,7 @@ func TestGetOrderByBiteshipOrderID(t *testing.T) {
 	ctx := context.Background()
 
 	orderID := seedShipmentTestOrder(t, pool)
-	require.NoError(t, repo.SetShippedBiteship(ctx, orderID, "WB-1", "biteship-lookup-id"))
+	require.NoError(t, repo.SetShippedBiteship(ctx, orderID, "WB-1", "biteship-lookup-id", 1))
 
 	found, err := repo.GetOrderByBiteshipOrderID(ctx, "biteship-lookup-id")
 	require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestSetShipmentStatus_doesNotAdvanceOrderStatus(t *testing.T) {
 	ctx := context.Background()
 
 	orderID := seedShipmentTestOrder(t, pool)
-	require.NoError(t, repo.SetShippedBiteship(ctx, orderID, "WB-1", "biteship-status-id"))
+	require.NoError(t, repo.SetShippedBiteship(ctx, orderID, "WB-1", "biteship-status-id", 1))
 
 	require.NoError(t, repo.SetShipmentStatus(ctx, orderID, "delivered"))
 

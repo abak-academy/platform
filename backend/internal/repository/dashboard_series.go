@@ -17,13 +17,52 @@ type SeriesPoint struct {
 	BuyingStudents  int       `json:"buying_students"`
 }
 
-// paidStatusList is the order states that count as money earned. This is the
-// single definition: GetRevenue and TopProducts (order.go, order_reporting.go)
-// both interpolate it too, rather than keeping their own copies — a status
-// added to one and not the others used to be able to make /admin/revenue and
-// /admin report different numbers for the same window with nothing failing.
-// See TestPaidStatusListsAgree in order_revenue_test.go.
-const paidStatusList = `('paid', 'processing', 'shipped', 'completed')`
+// revenueEventCTE is the money ledger every revenue report reads. It replaces
+// the old `status IN ('paid','processing','shipped','completed')` filter, which
+// asked "is this order in a state where money was taken" — a question about the
+// order's state *now*, used to answer a question about a *period*.
+//
+// One row per money movement, signed: +1 when the order was paid, -1 when a
+// refund was issued. Reports aggregate SUM(sign * amount) over the event
+// timestamp, which gets three things right that the status filter could not:
+//
+//   - money lands in the period it arrived (paid_at), not the period the cart
+//     happened to be minted (created_at — see placedAtExpr);
+//   - a refund reduces the period it was ISSUED, instead of retroactively
+//     rewriting a period that was already closed and reported;
+//   - an order with no paid_at contributes nothing, so money that was never
+//     taken can never be recognised.
+//
+// Net-zero is the property that makes it a ledger: an order paid in July and
+// refunded in August is +total in July and -total in August, so all-time
+// revenue is unchanged while both months tell the truth about themselves.
+//
+// Amounts are signed; COUNTS ARE NOT. "How many orders" is a tally of events
+// that happened, not a balance, and signing it breaks arithmetic built on top:
+// a refund-only period would report order_count = -1, and the revenue page's
+// total/order_count would divide a negative by a negative and render a
+// POSITIVE average order value for a period that only gave money back. Every
+// count therefore filters to sign = 1 — the sales recognised in the period —
+// so a negative revenue divided by a positive count stays negative and reads
+// as what it is.
+//
+// The refund arm matches cancellation_reason explicitly rather than status
+// alone. Today they are equivalent — AdminRefundOrder is the only writer of
+// status='cancelled', and unpaid orders expire to payment_expired instead —
+// but a future cancel path must not silently become a negative revenue event.
+const revenueEventCTE = `
+revenue_event AS (
+    SELECT id, student_id, total, subtotal, discount, shipping_cost,
+           paid_at AS at, 1 AS sign
+      FROM orders
+     WHERE paid_at IS NOT NULL
+    UNION ALL
+    SELECT id, student_id, total, subtotal, discount, shipping_cost,
+           cancelled_at AS at, -1 AS sign
+      FROM orders
+     WHERE cancellation_reason = 'refunded'
+       AND cancelled_at IS NOT NULL
+)`
 
 // jakarta is loaded once; every DashboardSeries call reuses it.
 var jakarta = func() *time.Location {
@@ -69,32 +108,33 @@ WITH params AS (
 spine AS (
     SELECT generate_series(params.anchor, params.to_local, interval '%[1]d seconds') AS b
       FROM params
-),
+),%[2]s,
 ord AS (
     SELECT params.anchor
-             + floor(extract(epoch FROM ((o.created_at AT TIME ZONE 'Asia/Jakarta') - params.anchor)) / %[1]d)
+             + floor(extract(epoch FROM ((e.at AT TIME ZONE 'Asia/Jakarta') - params.anchor)) / %[1]d)
                * interval '%[1]d seconds' AS b,
-           SUM(o.total)                 AS revenue,
-           COUNT(*)                     AS order_count,
-           COUNT(DISTINCT o.student_id) AS buying_students
-      FROM orders o CROSS JOIN params
-     WHERE o.status IN %[2]s
-       AND o.created_at >= $1 AND o.created_at < $2
+           SUM(e.sign * e.total)           AS revenue,
+           COUNT(*) FILTER (WHERE e.sign = 1) AS order_count,
+           -- Buying students counts people, and a refund does not un-buy a
+           -- person: only the +1 events feed it. Signing it would let one
+           -- refund erase an unrelated buyer from the same bucket.
+           COUNT(DISTINCT e.student_id) FILTER (WHERE e.sign = 1) AS buying_students
+      FROM revenue_event e CROSS JOIN params
+     WHERE e.at >= $1 AND e.at < $2
      GROUP BY 1
 ),
 split AS (
     SELECT params.anchor
-             + floor(extract(epoch FROM ((o.created_at AT TIME ZONE 'Asia/Jakarta') - params.anchor)) / %[1]d)
+             + floor(extract(epoch FROM ((e.at AT TIME ZONE 'Asia/Jakarta') - params.anchor)) / %[1]d)
                * interval '%[1]d seconds' AS b,
-           SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty))
+           SUM(e.sign * COALESCE(oi.jumlah, oi.unit_price * oi.qty))
              FILTER (WHERE oi.product_type = ANY($3::text[]))     AS physical,
-           SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty))
+           SUM(e.sign * COALESCE(oi.jumlah, oi.unit_price * oi.qty))
              FILTER (WHERE NOT (oi.product_type = ANY($3::text[]))) AS digital
-      FROM orders o
-      JOIN order_item oi ON oi.order_id = o.id
+      FROM revenue_event e
+      JOIN order_item oi ON oi.order_id = e.id
       CROSS JOIN params
-     WHERE o.status IN %[2]s
-       AND o.created_at >= $1 AND o.created_at < $2
+     WHERE e.at >= $1 AND e.at < $2
      GROUP BY 1
 ),
 newstud AS (
@@ -127,7 +167,7 @@ SELECT s.b,
   LEFT JOIN newstud  ON newstud.b = s.b
   LEFT JOIN examstud ON examstud.b = s.b
  ORDER BY s.b
-`, bucketSeconds, paidStatusList)
+`, bucketSeconds, revenueEventCTE)
 
 	rows, err := r.pool.Query(ctx, query, from, to, physicalTypes)
 	if err != nil {

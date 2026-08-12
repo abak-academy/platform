@@ -113,7 +113,7 @@ func seedShippedOrder(t *testing.T, svc *Service, repo *repository.Repository, b
 		t.Fatalf("AddItem: %v", err)
 	}
 
-	if err := repo.SetShippedBiteship(ctx, order.ID, "WB-1", biteshipOrderID); err != nil {
+	if err := repo.SetShippedBiteship(ctx, order.ID, "WB-1", biteshipOrderID, 1); err != nil {
 		t.Fatalf("seed shipped order: %v", err)
 	}
 	return order.ID
