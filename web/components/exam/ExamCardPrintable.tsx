@@ -19,7 +19,21 @@ export interface ExamCardData {
   tenantName?: string;
   tenantLogoUrl?: string;
   footerNote?: string;
+  notes?: string[];
+  contactPhone?: string;
+  contactEmail?: string;
+  helpUrl?: string;
+  socialHandle?: string;
 }
+
+// Printed when an exam has no admin-authored notes. Mirrored by
+// defaultCardNotes in backend/internal/service/exam.go.
+export const DEFAULT_CARD_NOTES = [
+  "Datang 30 menit sebelum ujian dimulai.",
+  "Dilarang membuka tab atau aplikasi lain saat ujian.",
+  "Siapkan perangkat, koneksi internet stabil, dan kartu ini.",
+  "Pelanggaran dapat berakibat diskualifikasi.",
+];
 
 const stroke = {
   fill: "none",
@@ -345,10 +359,9 @@ export function ExamCardPrintable(props: ExamCardData) {
           <b>Perhatian</b>
         </div>
         <ul>
-          <li>Datang 30 menit sebelum ujian dimulai.</li>
-          <li>Dilarang membuka tab atau aplikasi lain saat ujian.</li>
-          <li>Siapkan perangkat, koneksi internet stabil, dan kartu ini.</li>
-          <li>Pelanggaran dapat berakibat diskualifikasi.</li>
+          {(props.notes?.length ? props.notes : DEFAULT_CARD_NOTES).map((note, i) => (
+            <li key={i}>{note}</li>
+          ))}
           {props.footerNote ? <li>{props.footerNote}</li> : null}
         </ul>
       </section>
@@ -359,7 +372,7 @@ export function ExamCardPrintable(props: ExamCardData) {
           <span className={styles.fic}>{Icons.phone}</span>
           <div className={styles.ft}>
             <div className={styles.t1}>Butuh Bantuan?</div>
-            <div className={styles.t2}>0812-3456-7890</div>
+            <div className={styles.t2}>{props.contactPhone || "-"}</div>
           </div>
         </div>
         <span className={styles.sep} />
@@ -367,14 +380,14 @@ export function ExamCardPrintable(props: ExamCardData) {
           <span className={styles.fic}>{Icons.globe}</span>
           <div className={styles.ft}>
             <div className={styles.t1}>Pusat Bantuan</div>
-            <div className={styles.t2}>help.abakacademy.id</div>
+            <div className={styles.t2}>{props.helpUrl || props.contactEmail || "-"}</div>
           </div>
         </div>
         <div className={styles.socials}>
           <span className={styles.s}>{Icons.instagram}</span>
           <span className={styles.s}>{Icons.youtube}</span>
           <span className={styles.s}>{Icons.x}</span>
-          <span className={styles.handle}>@abakacademy</span>
+          <span className={styles.handle}>{props.socialHandle || ""}</span>
         </div>
       </footer>
     </div>

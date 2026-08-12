@@ -79,6 +79,8 @@ const INITIAL_APP = {
   app_logo_url: "",
   app_contact_email: "",
   app_contact_phone: "",
+  app_help_url: "",
+  app_social_handle: "",
   app_province_id: "",
   app_city_id: "",
   app_district_id: "",
@@ -123,6 +125,8 @@ export default function SystemConfigPage() {
         app_logo_url: config.app_logo_url ?? "",
         app_contact_email: config.app_contact_email ?? "",
         app_contact_phone: config.app_contact_phone ?? "",
+        app_help_url: config.app_help_url ?? "",
+        app_social_handle: config.app_social_handle ?? "",
         app_province_id: config.app_province_id ?? "",
         app_city_id: config.app_city_id ?? "",
         app_district_id: config.app_district_id ?? "",
@@ -284,6 +288,30 @@ export default function SystemConfigPage() {
                         setAppFields((f) => ({
                           ...f,
                           app_contact_phone: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>{t("config_general_help_url")}</Label>
+                    <Input
+                      value={appFields.app_help_url}
+                      onChange={(e) =>
+                        setAppFields((f) => ({
+                          ...f,
+                          app_help_url: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>{t("config_general_social_handle")}</Label>
+                    <Input
+                      value={appFields.app_social_handle}
+                      onChange={(e) =>
+                        setAppFields((f) => ({
+                          ...f,
+                          app_social_handle: e.target.value,
                         }))
                       }
                     />

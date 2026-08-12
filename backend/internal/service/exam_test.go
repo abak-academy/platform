@@ -3120,3 +3120,80 @@ func TestAdminGetExamRoster_OrdersByParticipantNumber_NilSafeForMissingNumbers(t
 	assert.Nil(t, rows[1].ParticipantNumber)
 	assert.Empty(t, rows[1].ParticipantNo, "nil-safe: missing participant_number must not render a bogus number")
 }
+
+func TestValidateExam_rejects_too_many_card_notes(t *testing.T) {
+	notes := make([]string, maxCardNotes+1)
+	for i := range notes {
+		notes[i] = "ok"
+	}
+	err := validateExam(model.Exam{Title: "Finals", CardNotes: notes})
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("over-cap card_notes should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "card_notes cannot exceed") {
+		t.Errorf("msg should mention the entry cap, got %q", err.Error())
+	}
+}
+
+func TestValidateExam_accepts_card_notes_at_the_cap(t *testing.T) {
+	notes := make([]string, maxCardNotes)
+	for i := range notes {
+		notes[i] = strings.Repeat("a", maxCardNoteLen)
+	}
+	if err := validateExam(model.Exam{Title: "Finals", CardNotes: notes}); err != nil {
+		t.Errorf("exactly %d notes of %d chars must be accepted, got %v", maxCardNotes, maxCardNoteLen, err)
+	}
+}
+
+// Length is counted in runes: the card's column budget is characters, and a
+// byte count would reject accented copy that renders on one line.
+func TestValidateExam_rejects_overlong_card_note_by_runes(t *testing.T) {
+	err := validateExam(model.Exam{
+		Title:     "Finals",
+		CardNotes: []string{strings.Repeat("é", maxCardNoteLen+1)},
+	})
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("overlong note should return ErrValidation, got %v", err)
+	}
+
+	if err := validateExam(model.Exam{
+		Title:     "Finals",
+		CardNotes: []string{strings.Repeat("é", maxCardNoteLen)},
+	}); err != nil {
+		t.Errorf("%d multi-byte runes must fit the rune cap, got %v", maxCardNoteLen, err)
+	}
+}
+
+func TestNormalizeCardNotes_drops_blanks_and_trims(t *testing.T) {
+	got := normalizeCardNotes([]string{"  Bawa kartu.  ", "", "   ", "Datang awal."})
+	want := []string{"Bawa kartu.", "Datang awal."}
+	if len(got) != len(want) {
+		t.Fatalf("got %d notes %q, want %d", len(got), got, len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("note %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestResolveCardNotes_falls_back_to_defaults(t *testing.T) {
+	if got := resolveCardNotes(nil); len(got) != len(defaultCardNotes) {
+		t.Errorf("nil notes should fall back to the defaults, got %q", got)
+	}
+	if got := resolveCardNotes([]string{"custom"}); len(got) != 1 || got[0] != "custom" {
+		t.Errorf("authored notes must win over the defaults, got %q", got)
+	}
+}
+
+// cardNotesHTML output is spliced past substituteTemplateTokens' escaping, so
+// it must escape the note text itself.
+func TestCardNotesHTML_escapes_note_text(t *testing.T) {
+	got := cardNotesHTML([]string{`<script>x</script>`}, `<b>note</b>`)
+	if strings.Contains(got, "<script>") || strings.Contains(got, "<b>") {
+		t.Errorf("note text must be escaped, got %q", got)
+	}
+	if strings.Count(got, "<li>") != 2 {
+		t.Errorf("want one <li> per note plus the footer note, got %q", got)
+	}
+}

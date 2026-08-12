@@ -184,6 +184,13 @@ export default function ExamCardPrintPage() {
         mode="Online (CBT)"
         platform={reg.platform || DASH}
         checkInCode={reg.token || DASH}
+        tenantName={reg.tenant_name || undefined}
+        footerNote={reg.footer_note}
+        notes={exam.card_notes}
+        contactPhone={reg.contact?.phone}
+        contactEmail={reg.contact?.email}
+        helpUrl={reg.contact?.help_url}
+        socialHandle={reg.contact?.social_handle}
       />
     </div>
   );

@@ -476,4 +476,43 @@ describe("ExamModal", () => {
       );
     });
   });
+
+  it("sends the edited card notes, dropping blank rows", async () => {
+    mockUpdateExam.mockResolvedValue({ id: "exam-1" });
+
+    render(
+      <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /tambah poin/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /tambah poin/i }));
+    fireEvent.click(screen.getByRole("button", { name: /tambah poin/i }));
+    fireEvent.input(screen.getByLabelText("Poin 1"), {
+      target: { value: "  Bawa kartu identitas.  " },
+    });
+    // Poin 2 stays blank and must not reach the payload.
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateExam).toHaveBeenCalledWith(
+        expect.objectContaining({ card_notes: ["Bawa kartu identitas."] }),
+      );
+    });
+  });
+
+  it("stops offering new bullets at the five-note cap", async () => {
+    render(
+      <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
+    );
+
+    const addButton = await screen.findByRole("button", { name: /tambah poin/i });
+    for (let i = 0; i < 5; i++) fireEvent.click(addButton);
+
+    expect(screen.getByLabelText("Poin 5")).toBeInTheDocument();
+    expect(addButton).toBeDisabled();
+  });
 });
