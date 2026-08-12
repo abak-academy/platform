@@ -25,8 +25,8 @@ describe("ChartHoverLayer", () => {
   });
 
   it("puts the point-mode guide rule at the data index, not the slot centre", () => {
-    render(<ChartHoverLayer index={2} count={5} mode="point" title="3 Agu" rows={ROWS} />);
-    expect(screen.getByTestId("chart-guide")).toHaveStyle({ left: "50%" });
+    render(<ChartHoverLayer index={1} count={5} mode="point" title="3 Agu" rows={ROWS} />);
+    expect(screen.getByTestId("chart-guide")).toHaveStyle({ left: "25%" });
   });
 
   it("draws one marker dot per series that supplies a yFraction", () => {

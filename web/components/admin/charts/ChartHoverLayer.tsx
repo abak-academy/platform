@@ -17,6 +17,7 @@ interface ChartHoverLayerProps {
   rows: HoverRow[];
 }
 
+// HTML layer, not SVG: every chart sets preserveAspectRatio="none", so SVG circles become ellipses on the stretched viewBox.
 export function ChartHoverLayer({ index, count, mode, title, rows }: ChartHoverLayerProps) {
   const xPct = xPercentFor(index, count, mode);
   const boxPct = Math.min(88, Math.max(12, xPct));
