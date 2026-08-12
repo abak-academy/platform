@@ -197,6 +197,41 @@ describe("OrderRow age staleness", () => {
   });
 });
 
+describe("OrderRow placed date", () => {
+  // created_at is stamped by MintCart, so a cart that sat for days carries a
+  // date the buyer never saw. The detail modal and the student timeline both
+  // read checked_out_at as the moment the order was placed; the row must agree.
+  it("dates the row by checkout, not by when the cart was minted", () => {
+    renderRow({
+      order: makeOrder({
+        created_at: "2026-08-04T02:39:00Z",
+        checked_out_at: "2026-08-12T07:23:00Z",
+      }),
+    });
+
+    expect(document.body.textContent).toContain("12 Agu");
+    expect(document.body.textContent).not.toContain("4 Agu");
+  });
+
+  it("ages the row from checkout, not from when the cart was minted", () => {
+    renderRow({
+      order: makeOrder({
+        status: "payment_pending",
+        created_at: daysAgo(STALE_AFTER_DAYS + 3),
+        checked_out_at: daysAgo(0.5),
+      }),
+    });
+
+    expect(screen.getByTestId("row-age")).not.toHaveClass("text-destructive");
+  });
+
+  it("falls back to created_at when the order predates checked_out_at", () => {
+    renderRow({ order: makeOrder({ created_at: "2026-08-04T02:39:00Z" }) });
+
+    expect(document.body.textContent).toContain("4 Agu");
+  });
+});
+
 describe("OrderRow actions", () => {
   it("opens the order from the order-number button, not from a row that claims to be one", () => {
     const { onOpen } = renderRow();

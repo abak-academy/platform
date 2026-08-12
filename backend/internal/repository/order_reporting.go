@@ -37,6 +37,11 @@ type TopProduct struct {
 // month figures deliberately ignore the filters: they are the store dashboard's
 // fixed month-to-date tiles and must not move when someone types in the orders
 // search box.
+//
+// CreatedThisMonth is the "Pesanan masuk" tile — orders received, paid or not —
+// so it keys on placedAtExpr and deliberately NOT on the revenueEventCTE ledger
+// the money reports use. An unpaid order still arrived and still needs someone
+// to look at it.
 func (r *Repository) CountOrdersByBucket(
 	ctx context.Context, filter OrderFilter, failureStatuses []string,
 	monthStart, monthEnd time.Time,
@@ -63,7 +68,7 @@ func (r *Repository) CountOrdersByBucket(
 		  COUNT(*) FILTER (WHERE COALESCE(shipment_status = ANY($1), false)),
 		  COUNT(*) FILTER (WHERE status = 'shipped'
 		                     AND NOT COALESCE(shipment_status = ANY($1), false)),
-		  COUNT(*) FILTER (WHERE created_at >= $2 AND created_at < $3),
+		  COUNT(*) FILTER (WHERE ` + placedAtExpr + ` >= $2 AND ` + placedAtExpr + ` < $3),
 		  COUNT(*) FILTER (WHERE completed_at >= $2 AND completed_at < $3),
 		  COUNT(*)
 		FROM orders
@@ -78,10 +83,12 @@ func (r *Repository) CountOrdersByBucket(
 	return out, err
 }
 
-// TopProducts ranks products over [from, to) using the same status set as the
-// revenue report, so the bars and the table cannot disagree. Money sums from the
-// item line and orders are counted distinctly — quantity sold and order count
-// are different questions.
+// TopProducts ranks products over [from, to) off the same revenueEventCTE
+// ledger as the revenue report, so the bars and the table cannot disagree.
+// Money sums from the item line and orders are counted distinctly — quantity
+// sold and order count are different questions. A refund subtracts the item
+// lines it returned, so a product refunded more than it sold in a window can
+// legitimately rank negative.
 //
 // orderBy is interpolated into the SQL, so it is an allowlist, not a passthrough.
 func (r *Repository) TopProducts(
@@ -101,20 +108,21 @@ func (r *Repository) TopProducts(
 	}
 
 	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
+		WITH %s
 		SELECT oi.product_id,
 		       MAX(oi.name)         AS name,
 		       MAX(oi.product_type) AS product_type,
-		       SUM(oi.qty)          AS qty_sold,
-		       COUNT(DISTINCT o.id) AS order_count,
-		       COALESCE(SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0) AS product_revenue
-		  FROM orders o
-		  JOIN order_item oi ON oi.order_id = o.id
-		 WHERE o.status IN %s
-		   AND o.created_at >= $1 AND o.created_at < $2
+		       SUM(e.sign * oi.qty) AS qty_sold,
+		       COUNT(DISTINCT e.id) FILTER (WHERE e.sign = 1)
+		         - COUNT(DISTINCT e.id) FILTER (WHERE e.sign = -1) AS order_count,
+		       COALESCE(SUM(e.sign * COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0) AS product_revenue
+		  FROM revenue_event e
+		  JOIN order_item oi ON oi.order_id = e.id
+		 WHERE e.at >= $1 AND e.at < $2
 		 GROUP BY oi.product_id
 		 ORDER BY %s DESC
 		 LIMIT $3
-	`, paidStatusList, sortCol), from, to, limit)
+	`, revenueEventCTE, sortCol), from, to, limit)
 	if err != nil {
 		return nil, err
 	}

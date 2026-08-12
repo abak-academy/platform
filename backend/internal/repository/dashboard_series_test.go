@@ -52,8 +52,10 @@ func seedPaidOrder(t *testing.T, r *Repository, createdAt time.Time, total float
 	studentID := seedDashboardStudent(t, r, createdAt)
 	var orderID string
 	err := r.pool.QueryRow(context.Background(),
-		`INSERT INTO orders (student_id, status, subtotal, total, created_at)
-		 VALUES ($1, 'paid', $2, $2, $3) RETURNING id`,
+		// paid_at, not just status='paid': revenue is recognised off the money
+		// timestamp (revenueEventCTE), so a fixture without it earns nothing.
+		`INSERT INTO orders (student_id, status, subtotal, total, created_at, paid_at)
+		 VALUES ($1, 'paid', $2, $2, $3, $3) RETURNING id`,
 		studentID, total, createdAt,
 	).Scan(&orderID)
 	if err != nil {
@@ -81,8 +83,10 @@ func seedPaidOrderWithItems(t *testing.T, r *Repository, createdAt time.Time, to
 
 	var orderID string
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO orders (student_id, status, subtotal, total, created_at)
-		 VALUES ($1, 'paid', $2, $2, $3) RETURNING id`,
+		// paid_at, not just status='paid': revenue is recognised off the money
+		// timestamp (revenueEventCTE), so a fixture without it earns nothing.
+		`INSERT INTO orders (student_id, status, subtotal, total, created_at, paid_at)
+		 VALUES ($1, 'paid', $2, $2, $3, $3) RETURNING id`,
 		studentID, total, createdAt,
 	).Scan(&orderID)
 	if err != nil {

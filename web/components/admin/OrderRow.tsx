@@ -85,10 +85,14 @@ function isStale(order: Order, ageMs: number): boolean {
 export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }: OrderRowProps) {
   const { t, lang } = useTranslation();
 
-  const createdAt = order.created_at ? Date.parse(order.created_at) : NaN;
-  const ageMs = Number.isNaN(createdAt) ? 0 : Math.max(0, Date.now() - createdAt);
-  const hasCreatedAt = !Number.isNaN(createdAt);
-  const stale = hasCreatedAt && isStale(order, ageMs);
+  // created_at is stamped by MintCart, so a cart that sat idle for days carries
+  // a date the buyer never saw. checked_out_at is when the order was placed —
+  // null only on orders predating migration 0009.
+  const placedIso = order.checked_out_at ?? order.created_at;
+  const placedAt = placedIso ? Date.parse(placedIso) : NaN;
+  const ageMs = Number.isNaN(placedAt) ? 0 : Math.max(0, Date.now() - placedAt);
+  const hasPlacedAt = !Number.isNaN(placedAt);
+  const stale = hasPlacedAt && isStale(order, ageMs);
 
   const items = order.items ?? [];
   const extraItems = Math.max(0, items.length - 1);
@@ -164,9 +168,9 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
           <span className="sr-only">{t("orders_detail_open")} </span>
           {orderNumber(order)}
         </button>
-        {hasCreatedAt && (
+        {hasPlacedAt && (
           <div className="mt-1 text-[13px] text-ink-600">
-            {dateFormatter.format(createdAt)} ·{" "}
+            {dateFormatter.format(placedAt)} ·{" "}
             <span
               data-testid="row-age"
               className={cn(stale && "font-semibold text-destructive")}

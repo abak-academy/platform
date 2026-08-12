@@ -44,10 +44,30 @@ type OrderFilter struct {
 	// filter an already-paginated page.
 	Search string
 
-	// Half-open [CreatedFrom, CreatedTo) on created_at. Never inclusive at both
-	// ends — adjacent periods would double-count a boundary order.
+	// Half-open [CreatedFrom, CreatedTo) on placedAtExpr, not on created_at —
+	// see that constant. Never inclusive at both ends: adjacent periods would
+	// double-count a boundary order.
 	CreatedFrom *time.Time
 	CreatedTo   *time.Time
+}
+
+// placedAtExpr is when the order was placed. created_at is stamped by MintCart,
+// which inserts the row at cart creation, and a cart is a per-student singleton
+// that can sit idle for weeks — so it dates an order to a day the buyer never
+// saw and orders the list in a sequence no admin can explain. checked_out_at is
+// the real placement instant, nullable only because migration 0009 added it
+// without a backfill.
+//
+// It is a bare expression rather than a column: no index covers it today, but
+// none covered created_at either, so this sorts no worse than it did.
+const placedAtExpr = `COALESCE(checked_out_at, created_at)`
+
+// placedAt is placedAtExpr evaluated in Go, for the keyset cursor.
+func placedAt(o model.Order) time.Time {
+	if o.CheckedOutAt != nil {
+		return *o.CheckedOutAt
+	}
+	return o.CreatedAt
 }
 
 // orderFilterPredicateFrom builds the WHERE fragment shared by ListOrders and
@@ -110,12 +130,12 @@ func orderFilterPredicateFrom(filter OrderFilter, startArg int) (string, []inter
 		}
 	}
 	if filter.CreatedFrom != nil {
-		query += fmt.Sprintf(` AND created_at >= $%d`, argNum)
+		query += fmt.Sprintf(` AND %s >= $%d`, placedAtExpr, argNum)
 		args = append(args, *filter.CreatedFrom)
 		argNum++
 	}
 	if filter.CreatedTo != nil {
-		query += fmt.Sprintf(` AND created_at < $%d`, argNum)
+		query += fmt.Sprintf(` AND %s < $%d`, placedAtExpr, argNum)
 		args = append(args, *filter.CreatedTo)
 		argNum++
 	}
@@ -429,12 +449,12 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		if err != nil {
 			return nil, "", err
 		}
-		query += fmt.Sprintf(` AND (created_at, id) < ($%d, $%d)`, argNum, argNum+1)
+		query += fmt.Sprintf(` AND (%s, id) < ($%d, $%d)`, placedAtExpr, argNum, argNum+1)
 		args = append(args, curAt, curID)
 		argNum += 2
 	}
 
-	query += fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT $%d`, argNum)
+	query += fmt.Sprintf(` ORDER BY %s DESC, id DESC LIMIT $%d`, placedAtExpr, argNum)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -469,7 +489,9 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 
 	if hasMore && len(orders) > 0 {
 		last := orders[len(orders)-1]
-		nextCursor = EncodeOrderCursor(last.CreatedAt, last.ID)
+		// Must be the same value placedAtExpr sorted on, or the next page skips
+		// and repeats rows wherever the two timestamps disagree.
+		nextCursor = EncodeOrderCursor(placedAt(last), last.ID)
 	}
 
 	for i := range orders {
@@ -850,26 +872,27 @@ func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[st
 		orderCount int
 	)
 	err := r.pool.QueryRow(ctx, fmt.Sprintf(`
-		SELECT COALESCE(SUM(total), 0), COALESCE(SUM(shipping_cost), 0),
-		       COALESCE(SUM(discount), 0), COUNT(*)
-		  FROM orders
-		 WHERE status IN %s
-		   AND created_at >= $1 AND created_at < $2
-	`, paidStatusList), from, to).Scan(&total, &shipping, &discount, &orderCount)
+		WITH %s
+		SELECT COALESCE(SUM(sign * total), 0), COALESCE(SUM(sign * shipping_cost), 0),
+		       COALESCE(SUM(sign * discount), 0), COALESCE(SUM(sign), 0)
+		  FROM revenue_event
+		 WHERE at >= $1 AND at < $2
+	`, revenueEventCTE), from, to).Scan(&total, &shipping, &discount, &orderCount)
 	if err != nil {
 		return nil, err
 	}
 
 	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
+		WITH %s
 		SELECT oi.product_type,
-		       COALESCE(SUM(COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0),
-		       COUNT(DISTINCT o.id)
-		  FROM orders o
-		  JOIN order_item oi ON oi.order_id = o.id
-		 WHERE o.status IN %s
-		   AND o.created_at >= $1 AND o.created_at < $2
+		       COALESCE(SUM(e.sign * COALESCE(oi.jumlah, oi.unit_price * oi.qty)), 0),
+		       COUNT(DISTINCT e.id) FILTER (WHERE e.sign = 1)
+		         - COUNT(DISTINCT e.id) FILTER (WHERE e.sign = -1)
+		  FROM revenue_event e
+		  JOIN order_item oi ON oi.order_id = e.id
+		 WHERE e.at >= $1 AND e.at < $2
 		 GROUP BY oi.product_type
-	`, paidStatusList), from, to)
+	`, revenueEventCTE), from, to)
 	if err != nil {
 		return nil, err
 	}
