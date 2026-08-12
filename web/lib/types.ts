@@ -1362,3 +1362,27 @@ export interface ExamDashboard {
   counts: { questions: number; tests: number; exams: number; courses: number };
   recent_violations: ExamDashboardViolation[];
 }
+
+export interface SchoolDashboardResult {
+  session_id: string;
+  student_name: string;
+  exam_title: string;
+  // null while a submitted session isn't graded yet — render blank, never 0.
+  score: number | null;
+  submitted_at: string;
+}
+
+export interface SchoolDashboardBulkOrder {
+  id: string;
+  status: string;
+  total: number;
+  participant_count: number;
+  placed_at: string;
+}
+
+export interface SchoolDashboard {
+  counts: { students: number; new_students_month: number };
+  orderable_exam_count: number;
+  latest_bulk_order: SchoolDashboardBulkOrder | null;
+  recent_results: SchoolDashboardResult[];
+}

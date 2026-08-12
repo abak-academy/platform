@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { AdminDashboard, ExamDashboard } from "@/lib/types";
+import type { AdminDashboard, ExamDashboard, SchoolDashboard } from "@/lib/types";
 import type { PeriodRange } from "@/components/admin/PeriodBar";
 
 export function useAdminDashboard(range: PeriodRange) {
@@ -23,5 +23,13 @@ export function useExamDashboard() {
     queryKey: ["admin", "dashboard", "exam"],
     queryFn: () => authFetch<ExamDashboard>("/admin/dashboard/exam"),
     staleTime: 30 * 1000,
+  });
+}
+
+export function useSchoolDashboard() {
+  return useQuery({
+    queryKey: ["admin", "dashboard", "school"],
+    queryFn: () => authFetch<SchoolDashboard>("/admin/dashboard/school"),
+    staleTime: 60 * 1000,
   });
 }
