@@ -29,10 +29,10 @@ vi.mock("@/lib/hooks/admin-orders", () => ({
 }));
 
 const PROMOS: PromoCode[] = [
-  { id: "p1", code: "HEMAT10", used_count: 3, max_uses: 100 },
+  { id: "p1", code: "HEMAT10", used_count: 3, max_uses: 100, expires_at: null },
   { id: "p2", code: "KILAT", used_count: 1, max_uses: 50, expires_at: "2026-08-15T00:00:00+07:00" },
   { id: "p3", code: "LAMA", used_count: 9, max_uses: 10, expires_at: "2026-08-01T00:00:00+07:00" },
-  { id: "p4", code: "HABIS", used_count: 20, max_uses: 20 },
+  { id: "p4", code: "HABIS", used_count: 20, max_uses: 20, expires_at: null },
 ];
 
 let promoState = {
@@ -155,6 +155,24 @@ describe("admin_store dashboard", () => {
     render(<StoreDashboardPage />);
     expect(screen.getByTestId("store-promos-active")).toHaveTextContent("2");
     expect(screen.getByTestId("store-promos-expiring")).toHaveTextContent("1");
+  });
+
+  it("counts an unlimited promo (max_uses: null) as active, not expiring", () => {
+    promoState = {
+      data: [{ id: "u1", code: "UNLIMITED", used_count: 500, max_uses: null, expires_at: null }],
+    };
+    render(<StoreDashboardPage />);
+    expect(screen.getByTestId("store-promos-active")).toHaveTextContent("1");
+    expect(screen.getByTestId("store-promos-expiring")).toHaveTextContent("0");
+  });
+
+  it("counts a promo with a finite max_uses and no expiry as active, not expiring", () => {
+    promoState = {
+      data: [{ id: "f1", code: "FINITE", used_count: 3, max_uses: 100, expires_at: null }],
+    };
+    render(<StoreDashboardPage />);
+    expect(screen.getByTestId("store-promos-active")).toHaveTextContent("1");
+    expect(screen.getByTestId("store-promos-expiring")).toHaveTextContent("0");
   });
 
   it("renders no aggregate revenue figure anywhere", () => {

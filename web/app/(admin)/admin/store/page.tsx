@@ -84,11 +84,12 @@ export default function StoreDashboardPage() {
   const weekAway = now + 7 * 24 * 60 * 60 * 1000;
   const activePromos = promos.filter((p) => {
     const notExpired = !p.expires_at || new Date(p.expires_at).getTime() > now;
-    const hasUsesLeft = p.max_uses === undefined || p.used_count < p.max_uses;
+    // The server sends null, not undefined, for an absent limit/expiry — loose equality catches both.
+    const hasUsesLeft = p.max_uses == null || p.used_count < p.max_uses;
     return notExpired && hasUsesLeft;
   });
   const expiringPromos = activePromos.filter(
-    (p) => p.expires_at !== undefined && new Date(p.expires_at).getTime() <= weekAway,
+    (p) => p.expires_at != null && new Date(p.expires_at).getTime() <= weekAway,
   );
 
   const quickActions: QuickAction[] = [

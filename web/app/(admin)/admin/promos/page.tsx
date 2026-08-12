@@ -29,7 +29,7 @@ function usageText(promo: PromoCode): string {
   return `${promo.used_count} / ${max}`;
 }
 
-function expiryText(iso?: string): string {
+function expiryText(iso?: string | null): string {
   if (!iso) return "No expiry";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;

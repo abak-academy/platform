@@ -363,9 +363,9 @@ export interface PromoCode {
   discount_amount?: number;
   min_order_amount?: number;
   max_discount_amount?: number;
-  max_uses?: number;
+  max_uses?: number | null;
   used_count: number;
-  expires_at?: string;
+  expires_at?: string | null;
   created_at?: string;
   /** FR-13: shown to authenticated students via GET /promo-codes/active when true. */
   is_public?: boolean;
