@@ -1346,3 +1346,19 @@ export interface AdminDashboard {
   top_products: DashboardTopProduct[];
   upcoming_exams: DashboardUpcomingExam[];
 }
+
+export interface ExamDashboardViolation {
+  session_id: string;
+  exam_id: string;
+  exam_title: string;
+  student_name: string;
+  violation_type: string;
+  occurred_at: string;
+}
+
+export interface ExamDashboard {
+  active_sessions: number;
+  upcoming_exams: DashboardUpcomingExam[];
+  counts: { questions: number; tests: number; exams: number; courses: number };
+  recent_violations: ExamDashboardViolation[];
+}

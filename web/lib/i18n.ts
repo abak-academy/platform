@@ -760,6 +760,22 @@ export const DICT = {
     time_hour_suffix: "j lalu",
     time_day_suffix: "h lalu",
 
+    /* Admin — role landing pages (spec C) */
+    exam_home_badge: "Admin Ujian · Abak Academy",
+    exam_home_default_name: "Admin Ujian",
+    exam_home_subtitle: "Pantau sesi berjalan dan kelola bank soal serta kelas.",
+    exam_home_active_sessions: "Sesi berjalan",
+    exam_home_questions: "Soal di bank",
+    exam_home_tests: "Tes",
+    exam_home_exams: "Paket ujian",
+    exam_home_courses: "Kelas",
+    exam_home_violations: "Pelanggaran terbaru",
+    exam_home_violations_empty: "Belum ada pelanggaran tercatat.",
+    exam_action_new_question: "Buat Soal",
+    exam_action_new_test: "Buat Tes",
+    exam_action_new_package: "Buat Paket",
+    exam_action_monitor: "Monitor Sesi",
+
     /* Admin — store dashboard */
     store_title: "Dashboard Toko",
     store_subtitle: "Ringkasan aktivitas toko dan pesanan masuk.",
@@ -2204,6 +2220,22 @@ export const DICT = {
     time_min_suffix: "m ago",
     time_hour_suffix: "h ago",
     time_day_suffix: "d ago",
+
+    /* Admin — role landing pages (spec C) */
+    exam_home_badge: "Exam Admin · Abak Academy",
+    exam_home_default_name: "Exam Admin",
+    exam_home_subtitle: "Watch live sessions and manage the question bank and courses.",
+    exam_home_active_sessions: "Live sessions",
+    exam_home_questions: "Questions in bank",
+    exam_home_tests: "Tests",
+    exam_home_exams: "Exam packages",
+    exam_home_courses: "Courses",
+    exam_home_violations: "Recent violations",
+    exam_home_violations_empty: "No violations recorded yet.",
+    exam_action_new_question: "New Question",
+    exam_action_new_test: "New Test",
+    exam_action_new_package: "New Package",
+    exam_action_monitor: "Session Monitor",
 
     /* Admin — store dashboard */
     store_title: "Store Dashboard",
