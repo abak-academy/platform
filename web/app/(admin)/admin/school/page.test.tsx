@@ -116,7 +116,8 @@ describe("admin_school dashboard", () => {
     };
     render(<SchoolDashboardPage />);
     // A submitted-but-ungraded essay session must not read as a score of 0.
-    expect(screen.getByTestId("school-result-s2")).not.toHaveTextContent("0");
+    expect(screen.getByTestId("school-result-s2")).toHaveTextContent("Belum dinilai");
+    expect(screen.getByTestId("school-result-s2-score")).not.toHaveTextContent("0");
   });
 
   it("shows no orders panel and no session panel — neither is in this role's scope", () => {

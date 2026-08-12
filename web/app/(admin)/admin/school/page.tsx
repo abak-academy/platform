@@ -38,11 +38,6 @@ export default function SchoolDashboardPage() {
       day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta",
     }).format(new Date(iso));
 
-  const formatResultDate = (iso: string) =>
-    new Intl.DateTimeFormat(lang === "en" ? "en-US" : "id-ID", {
-      day: "numeric", month: "short", timeZone: "Asia/Jakarta",
-    }).format(new Date(iso));
-
   return (
     <div className="fade-in">
       <DashboardHero
@@ -124,10 +119,11 @@ export default function SchoolDashboardPage() {
                       <div>
                         <div className="text-body" style={{ fontWeight: 500 }}>{r.student_name}</div>
                         <div className="text-label color-on-surface-variant">
-                          {r.exam_title} · {formatResultDate(r.submitted_at)}
+                          {r.exam_title} · {formatDateTime(r.submitted_at)}
                         </div>
                       </div>
                       <div
+                        data-testid={`school-result-${r.session_id}-score`}
                         className="text-label"
                         style={{ color: r.score === null ? "var(--md-sys-color-outline)" : "var(--md-sys-color-primary)" }}
                       >
