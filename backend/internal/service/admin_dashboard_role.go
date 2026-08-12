@@ -63,7 +63,7 @@ type SchoolDashboardResponse struct {
 }
 
 func (s *Service) SchoolDashboard(
-	ctx context.Context, schoolID, adminID, role string,
+	ctx context.Context, schoolID, role string,
 ) (SchoolDashboardResponse, error) {
 	var out SchoolDashboardResponse
 
@@ -86,7 +86,7 @@ func (s *Service) SchoolDashboard(
 		return out, err
 	}
 
-	latest, err := s.storeRepo.LatestBulkExamOrder(ctx, adminID)
+	latest, err := s.storeRepo.LatestBulkExamOrder(ctx, scope)
 	if err != nil {
 		return out, err
 	}

@@ -24,7 +24,7 @@ func (h *Handler) AdminSchoolDashboard(c echo.Context) error {
 		return err
 	}
 
-	resp, err := h.svc.SchoolDashboard(c.Request().Context(), schoolID, claims.Sub, claims.Role)
+	resp, err := h.svc.SchoolDashboard(c.Request().Context(), schoolID, claims.Role)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

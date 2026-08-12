@@ -152,8 +152,9 @@ func TestLatestBulkExamOrderOrdersByCheckoutNotCreation(t *testing.T) {
 	r := New(pool)
 	ctx := context.Background()
 
+	school := seedCountsSchool(t, r, "School E "+uuid.NewString()[:8])
 	buyer := seedBulkOrderBuyer(t, r)
-	participant := seedDashboardStudent(t, r, time.Now())
+	participant := seedCountsStudentForSchool(t, r, school, time.Now())
 
 	mintA := time.Now().Add(-30 * 24 * time.Hour)
 	checkoutA := time.Now().Add(-1 * time.Hour)
@@ -165,7 +166,7 @@ func TestLatestBulkExamOrderOrdersByCheckoutNotCreation(t *testing.T) {
 	orderB := seedOrderForBuyer(t, r, buyer, "paid", 200000, mintB, &checkoutB)
 	seedOrderParticipant(t, r, orderB, participant)
 
-	latest, err := r.LatestBulkExamOrder(ctx, buyer)
+	latest, err := r.LatestBulkExamOrder(ctx, &school)
 	if err != nil {
 		t.Fatalf("LatestBulkExamOrder: %v", err)
 	}
@@ -183,16 +184,66 @@ func TestLatestBulkExamOrderIgnoresPersonalPurchases(t *testing.T) {
 	r := New(pool)
 	ctx := context.Background()
 
+	school := seedCountsSchool(t, r, "School F "+uuid.NewString()[:8])
 	buyer := seedBulkOrderBuyer(t, r)
 	checkoutAt := time.Now().Add(-1 * time.Hour)
 	seedOrderForBuyer(t, r, buyer, "paid", 50000, time.Now().Add(-2*time.Hour), &checkoutAt)
 
-	latest, err := r.LatestBulkExamOrder(ctx, buyer)
+	latest, err := r.LatestBulkExamOrder(ctx, &school)
 	if err != nil {
 		t.Fatalf("LatestBulkExamOrder: %v", err)
 	}
 	if latest != nil {
 		t.Errorf("LatestBulkExamOrder = %+v, want nil — a personal purchase is not a bulk order", latest)
+	}
+}
+
+func TestLatestBulkExamOrderScopesByParticipantsSchool(t *testing.T) {
+	pool := newGradingTestPool(t)
+	r := New(pool)
+	ctx := context.Background()
+
+	school := seedCountsSchool(t, r, "School G "+uuid.NewString()[:8])
+	staffA := seedBulkOrderBuyer(t, r)
+	seedBulkOrderBuyer(t, r)
+
+	participant := seedCountsStudentForSchool(t, r, school, time.Now())
+	checkoutAt := time.Now().Add(-1 * time.Hour)
+	orderID := seedOrderForBuyer(t, r, staffA, "paid", 100000, time.Now().Add(-2*time.Hour), &checkoutAt)
+	seedOrderParticipant(t, r, orderID, participant)
+
+	latest, err := r.LatestBulkExamOrder(ctx, &school)
+	if err != nil {
+		t.Fatalf("LatestBulkExamOrder: %v", err)
+	}
+	if latest == nil {
+		t.Fatalf("LatestBulkExamOrder = nil, want order %s — staffB's dashboard must still see staffA's order", orderID)
+	}
+	if latest.ID.String() != orderID {
+		t.Errorf("LatestBulkExamOrder = %s, want %s", latest.ID, orderID)
+	}
+}
+
+func TestLatestBulkExamOrderExcludesOtherSchools(t *testing.T) {
+	pool := newGradingTestPool(t)
+	r := New(pool)
+	ctx := context.Background()
+
+	schoolA := seedCountsSchool(t, r, "School H "+uuid.NewString()[:8])
+	schoolB := seedCountsSchool(t, r, "School I "+uuid.NewString()[:8])
+	buyer := seedBulkOrderBuyer(t, r)
+	participantB := seedCountsStudentForSchool(t, r, schoolB, time.Now())
+
+	checkoutAt := time.Now().Add(-1 * time.Hour)
+	orderForB := seedOrderForBuyer(t, r, buyer, "paid", 100000, time.Now().Add(-2*time.Hour), &checkoutAt)
+	seedOrderParticipant(t, r, orderForB, participantB)
+
+	latest, err := r.LatestBulkExamOrder(ctx, &schoolA)
+	if err != nil {
+		t.Fatalf("LatestBulkExamOrder: %v", err)
+	}
+	if latest != nil {
+		t.Errorf("LatestBulkExamOrder = %+v, want nil — school B's order must not leak into school A", latest)
 	}
 }
 

@@ -94,7 +94,7 @@ type LatestBulkOrder struct {
 	PlacedAt         time.Time `json:"placed_at"`
 }
 
-func (r *Repository) LatestBulkExamOrder(ctx context.Context, buyerID string) (*LatestBulkOrder, error) {
+func (r *Repository) LatestBulkExamOrder(ctx context.Context, schoolID *string) (*LatestBulkOrder, error) {
 	var o LatestBulkOrder
 	err := r.pool.QueryRow(ctx, `
 		SELECT o.id,
@@ -103,13 +103,18 @@ func (r *Repository) LatestBulkExamOrder(ctx context.Context, buyerID string) (*
 		       (SELECT COUNT(*) FROM order_participant p WHERE p.order_id = o.id),
 		       COALESCE(o.checked_out_at, o.created_at)
 		  FROM orders o
-		 WHERE o.student_id = $1
-		   AND o.status <> 'cart'
-		   AND EXISTS (SELECT 1 FROM order_participant p WHERE p.order_id = o.id)
-		 -- created_at is cart-mint time, weeks before checkout — use the real date.
+		 WHERE o.status <> 'cart'
+		   -- EXISTS keeps this a scalar test; a top-level JOIN would fan out the order row per participant.
+		   AND EXISTS (
+		         SELECT 1
+		           FROM order_participant p
+		           JOIN users u ON u.id = p.student_id
+		          WHERE p.order_id = o.id
+		            AND ($1::uuid IS NULL OR u.school_id = $1::uuid)
+		       )
 		 ORDER BY COALESCE(o.checked_out_at, o.created_at) DESC
 		 LIMIT 1
-	`, buyerID).Scan(&o.ID, &o.Status, &o.Total, &o.ParticipantCount, &o.PlacedAt)
+	`, schoolID).Scan(&o.ID, &o.Status, &o.Total, &o.ParticipantCount, &o.PlacedAt)
 	if err != nil {
 		if isNotFound(err) {
 			return nil, nil
