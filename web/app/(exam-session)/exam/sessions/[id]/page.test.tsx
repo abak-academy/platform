@@ -2286,9 +2286,10 @@ describe("SessionPage", () => {
       screen.getAllByRole("textbox").filter((tb) => tb.tagName === "INPUT")[0];
     fireEvent.change(textInput(), { target: { value: "fresh-edit" } });
 
-    // A's PATCH acknowledges. In production this invalidates the session
-    // query, and the refetch lands with a snapshot that predates
-    // "fresh-edit".
+    // A's PATCH acknowledges. This test simulates a refetch landing by
+    // pushing a new session object through the mocked hook directly, with a
+    // snapshot that predates "fresh-edit" — hydration must not depend on
+    // whether the save itself ever triggers one.
     await act(async () => {
       const [, opts] = saveAnswersMutate.mock.calls[0];
       opts.onSuccess();

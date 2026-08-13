@@ -93,7 +93,6 @@ export function useReconnectSession(sessionId: string | undefined) {
 }
 
 export function useSaveAnswers(sessionId: string) {
-  const qc = useQueryClient();
   // Serializes PATCH requests for this session so two saves are never in
   // flight together — otherwise an older, slower request can resolve after a
   // newer one and its ack (position, queue clear) stomps the newer save's
@@ -116,9 +115,6 @@ export function useSaveAnswers(sessionId: string) {
         () => undefined,
       );
       return result;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: examKeys.session(sessionId) });
     },
   });
 }
