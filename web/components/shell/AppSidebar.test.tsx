@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import { AppSidebar } from "./AppSidebar";
 
@@ -10,8 +10,14 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard",
 }));
 
+// Runs onSettled the way the real mutation does, so the redirect the component
+// registers actually fires.
+const logoutMutate = vi.fn(
+  (_input: unknown, opts?: { onSettled?: () => void }) => opts?.onSettled?.()
+);
+
 vi.mock("@/lib/hooks/auth", () => ({
-  useLogout: () => ({ mutate: vi.fn() }),
+  useLogout: () => ({ mutate: logoutMutate }),
 }));
 
 vi.mock("@/lib/i18n", () => ({
@@ -100,5 +106,63 @@ describe("AppSidebar — avatar rendering", () => {
     render(<AppSidebar role="student" />);
 
     expect(screen.getByText("A")).toBeInTheDocument();
+  });
+});
+
+describe("AppSidebar — logout destination", () => {
+  beforeEach(() => {
+    replace.mockClear();
+    logoutMutate.mockClear();
+    authStore = { user: null };
+  });
+
+  function clickLogout() {
+    fireEvent.click(screen.getAllByLabelText("logout")[0]);
+  }
+
+  it("sends an admin to the admin login, not the student one", () => {
+    authStore = { user: { name: "Admin", role: "super_admin" } };
+    render(<AppSidebar role="super_admin" />);
+
+    clickLogout();
+
+    expect(logoutMutate).toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith("/admin/login");
+    expect(replace).not.toHaveBeenCalledWith("/login");
+  });
+
+  it("sends every admin role to the admin login", () => {
+    for (const role of ["admin_store", "admin_exam", "admin_school"] as const) {
+      replace.mockClear();
+      authStore = { user: { name: "Admin", role } };
+      const { unmount } = render(<AppSidebar role={role} />);
+
+      clickLogout();
+
+      expect(replace, `${role} landed on the wrong login`).toHaveBeenCalledWith(
+        "/admin/login"
+      );
+      unmount();
+    }
+  });
+
+  it("still sends a student to the student login", () => {
+    authStore = { user: { name: "Budi", role: "student" } };
+    render(<AppSidebar role="student" />);
+
+    clickLogout();
+
+    expect(replace).toHaveBeenCalledWith("/login");
+  });
+
+  // It previously called mutate with no callback at all, leaving the tab where
+  // it was until a route guard happened to bounce it.
+  it("navigates on logout rather than leaving the tab in place", () => {
+    authStore = { user: { name: "Admin", role: "super_admin" } };
+    render(<AppSidebar role="super_admin" />);
+
+    clickLogout();
+
+    expect(replace).toHaveBeenCalledTimes(1);
   });
 });

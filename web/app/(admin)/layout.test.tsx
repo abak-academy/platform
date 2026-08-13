@@ -50,9 +50,10 @@ describe("AdminLayout", () => {
     vi.clearAllTimers();
   });
 
-  it("redirects to /login when there is no token", async () => {
+  it("redirects to the admin login when there is no token", async () => {
     render(<AdminLayout>protected</AdminLayout>);
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin/login"));
+    expect(replace).not.toHaveBeenCalledWith("/login");
   });
 
   it("renders the shell for admin_store role from the store", async () => {
@@ -76,10 +77,11 @@ describe("AdminLayout", () => {
     expect(getByTestId("shell")).toHaveAttribute("data-role", "admin_exam");
   });
 
-  it("redirects to /login when /auth/me fails", async () => {
+  it("redirects to the admin login when /auth/me fails", async () => {
     authStore = { token: "t", user: {} };
     meState = { data: null, isError: true, isLoading: false };
     render(<AdminLayout>protected</AdminLayout>);
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin/login"));
+    expect(replace).not.toHaveBeenCalledWith("/login");
   });
 });

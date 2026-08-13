@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, LogOut } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useLogout } from "@/lib/hooks/auth";
@@ -20,6 +20,7 @@ import {
   type NavItem,
 } from "@/lib/nav-config";
 import { useTranslation, type DICT } from "@/lib/i18n";
+import { loginPathForRole } from "@/lib/auth-redirect";
 import { cn } from "@/lib/utils";
 
 interface AppSidebarProps {
@@ -83,6 +84,7 @@ function RailItemLink({ item, active }: { item: NavItem; active: boolean }) {
 
 export function AppSidebar({ role, collapsed = false }: AppSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useLogout();
   const { t } = useTranslation();
@@ -98,7 +100,14 @@ export function AppSidebar({ role, collapsed = false }: AppSidebarProps) {
   const roleLabel = roleKey ? t(roleKey) : t("account");
 
   function handleLogout() {
-    logout.mutate(undefined);
+    // Without an explicit destination this left the route guard to bounce the
+    // tab, and that guard sent admins to the student login.
+    const loginPath = loginPathForRole(role);
+    logout.mutate(undefined, {
+      onSettled: () => {
+        router.replace(loginPath);
+      },
+    });
   }
 
   function toggleGroup(index: number) {

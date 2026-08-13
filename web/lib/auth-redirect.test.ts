@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { adminHomeForRole, redirectForRole } from "./auth-redirect";
+import { adminHomeForRole, loginPathForRole, redirectForRole } from "./auth-redirect";
 import { ADMIN_ROLES, NAV_CONFIG, type UserRole } from "./nav-config";
 
 describe("redirectForRole", () => {
@@ -36,6 +36,34 @@ describe("adminHomeForRole", () => {
   it("leaves super_admin on /admin", () => {
     expect(redirectForRole("super_admin")).toBe("/admin");
     expect(adminHomeForRole("super_admin")).toBe("/admin");
+  });
+});
+
+describe("loginPathForRole", () => {
+  it("sends every admin role to the admin sign-in page", () => {
+    for (const role of ADMIN_ROLES) {
+      expect(loginPathForRole(role), `${role} landed on the wrong login`).toBe(
+        "/admin/login",
+      );
+    }
+  });
+
+  it("sends a student to the student sign-in page", () => {
+    expect(loginPathForRole("student")).toBe("/login");
+  });
+
+  it("defaults to the student login for an unknown or missing role", () => {
+    expect(loginPathForRole("unknown")).toBe("/login");
+    expect(loginPathForRole(undefined)).toBe("/login");
+    expect(loginPathForRole(null)).toBe("/login");
+  });
+
+  it("points at a login route that actually exists as a page", () => {
+    // Both destinations are real routes: app/(auth)/login and
+    // app/(admin-auth)/admin/login.
+    expect(new Set(ADMIN_ROLES.map(loginPathForRole))).toEqual(
+      new Set(["/admin/login"]),
+    );
   });
 });
 

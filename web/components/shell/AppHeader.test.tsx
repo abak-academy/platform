@@ -5,12 +5,20 @@ import { AppHeader } from "./AppHeader";
 import type { ResolvedRole } from "@/lib/hooks/use-capability";
 import { ADMIN_ROLES } from "@/lib/nav-config";
 
+const replace = vi.fn();
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: vi.fn() }),
+  useRouter: () => ({ replace }),
 }));
 
+// Runs onSettled the way the real mutation does, so the redirect the component
+// registers actually fires.
+const logoutMutate = vi.fn(
+  (_input: unknown, opts?: { onSettled?: () => void }) => opts?.onSettled?.()
+);
+
 vi.mock("@/lib/hooks/auth", () => ({
-  useLogout: () => ({ mutate: vi.fn() }),
+  useLogout: () => ({ mutate: logoutMutate }),
 }));
 
 vi.mock("@/lib/i18n", () => ({
@@ -50,5 +58,37 @@ describe("AppHeader — account dropdown profile link", () => {
     roleState = { role: "student", hydrated: true, meIsError: false };
     const link = await openDropdownAndGetProfileLink();
     expect(link).toHaveAttribute("href", "/profile");
+  });
+});
+
+describe("AppHeader — logout destination", () => {
+  beforeEach(() => {
+    replace.mockClear();
+    logoutMutate.mockClear();
+    roleState = { role: "student", hydrated: true, meIsError: false };
+  });
+
+  async function clickLogout() {
+    render(<AppHeader />);
+    await userEvent.click(screen.getByRole("button", { name: /account/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /logout/i }));
+  }
+
+  it.each(ADMIN_ROLES)("sends %s to the admin login, not the student one", async (role) => {
+    roleState = { role, hydrated: true, meIsError: false };
+
+    await clickLogout();
+
+    expect(logoutMutate).toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith("/admin/login");
+    expect(replace).not.toHaveBeenCalledWith("/login");
+  });
+
+  it("still sends a student to the student login", async () => {
+    roleState = { role: "student", hydrated: true, meIsError: false };
+
+    await clickLogout();
+
+    expect(replace).toHaveBeenCalledWith("/login");
   });
 });

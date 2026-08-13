@@ -17,3 +17,10 @@ const ADMIN_HOME: Record<UserRole, string> = {
 export function adminHomeForRole(role: UserRole): string {
   return ADMIN_HOME[role] ?? "/admin/products";
 }
+
+// Where a session ends. Admins sign in through their own page, so dropping them
+// on the student login after logout stranded them on a form that is not theirs.
+export function loginPathForRole(role?: string | null): string {
+  if (ADMIN_ROLES.includes(role as UserRole)) return "/admin/login";
+  return "/login";
+}
