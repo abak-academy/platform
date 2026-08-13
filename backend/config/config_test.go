@@ -620,6 +620,110 @@ object_storage_secret_key: "sk"
 	}
 }
 
+func TestLoad_dbMaxConnsRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "dev")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
+db_max_conns: 25
+`)
+
+	cfg, err := Load("dev", dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DBMaxConns != 25 {
+		t.Errorf("DBMaxConns: got %d want 25", cfg.DBMaxConns)
+	}
+}
+
+func TestLoad_dbMaxConnsAbsentDefaultsToZero(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "dev")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
+`)
+
+	cfg, err := Load("dev", dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DBMaxConns != 0 {
+		t.Errorf("DBMaxConns: got %d want 0", cfg.DBMaxConns)
+	}
+}
+
+func TestLoad_dbMaxConnsNegativeReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "dev")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
+db_max_conns: -1
+`)
+
+	_, err := Load("dev", dir)
+	if err == nil {
+		t.Fatal("expected error for negative db_max_conns, got nil")
+	}
+	if !contains(err.Error(), "db_max_conns") {
+		t.Errorf("error should name db_max_conns, got: %v", err)
+	}
+}
+
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {

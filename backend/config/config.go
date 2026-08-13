@@ -19,6 +19,7 @@ type Config struct {
 	RedisPassword        string
 	WorkerPollInterval   time.Duration
 	CORSOrigins          []string
+	DBMaxConns           int32
 
 	JWTSecret           string
 	AccessTokenTTL      time.Duration
@@ -59,6 +60,7 @@ type fileConfig struct {
 	RedisAddr                      string   `yaml:"redis_addr"`
 	WorkerPollInterval             string   `yaml:"worker_poll_interval"`
 	CORSOrigins                    []string `yaml:"cors_origins"`
+	DBMaxConns                     int32    `yaml:"db_max_conns"`
 	AccessTokenTTL                 string   `yaml:"access_token_ttl"`
 	RefreshTokenTTL                string   `yaml:"refresh_token_ttl"`
 	OTPTTL                         string   `yaml:"otp_ttl"`
@@ -174,6 +176,10 @@ func validateRequiredSecrets(s fileSecrets) error {
 }
 
 func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
+	if fc.DBMaxConns < 0 {
+		return Config{}, fmt.Errorf("db_max_conns: must not be negative, got %d", fc.DBMaxConns)
+	}
+
 	workerPoll, err := time.ParseDuration(fc.WorkerPollInterval)
 	if err != nil {
 		return Config{}, fmt.Errorf("worker_poll_interval: %w", err)
@@ -202,6 +208,7 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		RedisAddr:          fc.RedisAddr,
 		WorkerPollInterval: workerPoll,
 		CORSOrigins:        fc.CORSOrigins,
+		DBMaxConns:         fc.DBMaxConns,
 
 		AccessTokenTTL:  accessTTL,
 		RefreshTokenTTL: refreshTTL,
