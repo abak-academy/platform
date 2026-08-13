@@ -19,12 +19,14 @@ export default function AdminLayout({
 
   useEffect(() => {
     if (!hydrated) return;
+    // These fire inside /admin, so the visitor is here for the admin app —
+    // send them to its own sign-in rather than the student one.
     if (!token) {
-      router.replace("/login");
+      router.replace("/admin/login");
       return;
     }
     if (meIsError) {
-      router.replace("/login");
+      router.replace("/admin/login");
       return;
     }
     if (effectiveRole && !ADMIN_ROLES.includes(effectiveRole)) {

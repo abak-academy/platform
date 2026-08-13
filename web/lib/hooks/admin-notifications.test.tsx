@@ -61,11 +61,11 @@ describe("admin-notifications hooks", () => {
     });
 
     it("adminNotifsKeys.list() returns default list key", () => {
-      expect(adminNotifsKeys.list()).toEqual(["admin", "notifications", "list"]);
+      expect(adminNotifsKeys.list()).toEqual(["admin", "notifications", "list", "any"]);
     });
 
     it("adminNotifsKeys.list({}) returns list key without filters", () => {
-      expect(adminNotifsKeys.list({})).toEqual(["admin", "notifications", "list"]);
+      expect(adminNotifsKeys.list({})).toEqual(["admin", "notifications", "list", "any"]);
     });
 
     it("adminNotifsKeys.list({unreadOnly:true}) includes unreadOnly", () => {
@@ -73,32 +73,28 @@ describe("admin-notifications hooks", () => {
       expect(key).toEqual(["admin", "notifications", "list", "unread"]);
     });
 
-    it("adminNotifsKeys.list({cursor:'5'}) includes cursor", () => {
-      const key = adminNotifsKeys.list({ cursor: "5" });
-      expect(key).toEqual(["admin", "notifications", "list", "5"]);
-    });
-
-    it("adminNotifsKeys.list({unreadOnly:true,cursor:'3'}) includes both", () => {
-      const key = adminNotifsKeys.list({ unreadOnly: true, cursor: "3" });
-      expect(key).toEqual(["admin", "notifications", "list", "unread", "3"]);
+    it("separates the unread key from the unfiltered one", () => {
+      expect(adminNotifsKeys.list({ unreadOnly: true })).not.toEqual(
+        adminNotifsKeys.list()
+      );
     });
   });
 
   describe("useAdminNotifications", () => {
-    it("fetches GET /admin/notifications and returns data with next_cursor", async () => {
-      const apiResponse = {
+    it("fetches GET /admin/notifications and returns the flattened items", async () => {
+      mockAuthFetch.mockResolvedValueOnce({
         data: [sampleNotification],
         next_cursor: "10",
-      };
-      mockAuthFetch.mockResolvedValueOnce(apiResponse);
+      });
 
       const { wrapper } = wrapperFactory();
       const { result } = renderHook(() => useAdminNotifications(), { wrapper });
 
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
 
       expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications");
-      expect(result.current.data).toEqual(apiResponse);
+      expect(result.current.items).toEqual([sampleNotification]);
+      expect(result.current.hasNextPage).toBe(true);
     });
 
     it("appends unread_only query param when unreadOnly is true", async () => {
@@ -112,28 +108,79 @@ describe("admin-notifications hooks", () => {
       );
     });
 
-    it("appends cursor query param when provided", async () => {
-      mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: "" });
+    it("reports no further page when the server omits the cursor", async () => {
+      mockAuthFetch.mockResolvedValueOnce({ data: [sampleNotification], next_cursor: "" });
 
       const { wrapper } = wrapperFactory();
-      renderHook(() => useAdminNotifications({ cursor: "5" }), { wrapper });
+      const { result } = renderHook(() => useAdminNotifications(), { wrapper });
 
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.hasNextPage).toBe(false);
+    });
+
+    it("sends the cursor, with the filter, when fetching the next page", async () => {
+      const older = { ...sampleNotification, id: "notif-2", student_name: "Siti" };
+      mockAuthFetch
+        .mockResolvedValueOnce({ data: [sampleNotification], next_cursor: "1750_notif-1" })
+        .mockResolvedValueOnce({ data: [older], next_cursor: "" });
+
+      const { wrapper } = wrapperFactory();
+      const { result } = renderHook(() => useAdminNotifications({ unreadOnly: true }), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      await act(async () => {
+        await result.current.fetchNextPage();
+      });
+
+      expect(mockAuthFetch).toHaveBeenLastCalledWith(
+        "/admin/notifications?unread_only=true&cursor=1750_notif-1"
+      );
       await waitFor(() =>
-        expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications?cursor=5")
+        expect(result.current.items).toEqual([sampleNotification, older])
       );
     });
 
-    it("appends both cursor and unread_only query params", async () => {
-      mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: "" });
+    // The feed used to accumulate pages in component state, so re-running the
+    // query after marking a row read appended the same page a second time.
+    it("does not duplicate rows when the query refetches after paging", async () => {
+      const older = { ...sampleNotification, id: "notif-2", student_name: "Siti" };
+      mockAuthFetch
+        .mockResolvedValueOnce({ data: [sampleNotification], next_cursor: "1750_notif-1" })
+        .mockResolvedValueOnce({ data: [older], next_cursor: "" })
+        // Refetch re-runs every page that has been loaded.
+        .mockResolvedValueOnce({ data: [sampleNotification], next_cursor: "1750_notif-1" })
+        .mockResolvedValueOnce({ data: [older], next_cursor: "" });
 
       const { wrapper } = wrapperFactory();
-      renderHook(() => useAdminNotifications({ unreadOnly: true, cursor: "3" }), { wrapper });
+      const { result } = renderHook(() => useAdminNotifications(), { wrapper });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      await act(async () => {
+        await result.current.fetchNextPage();
+      });
+      await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+      await act(async () => {
+        await result.current.refetch();
+      });
 
       await waitFor(() =>
-        expect(mockAuthFetch).toHaveBeenCalledWith(
-          "/admin/notifications?unread_only=true&cursor=3"
-        )
+        expect(result.current.items.map((n) => n.id)).toEqual(["notif-1", "notif-2"])
       );
+      expect(result.current.items).toHaveLength(2);
+    });
+
+    it("tolerates a null data array without crashing", async () => {
+      mockAuthFetch.mockResolvedValueOnce({ data: null, next_cursor: "" });
+
+      const { wrapper } = wrapperFactory();
+      const { result } = renderHook(() => useAdminNotifications(), { wrapper });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.items).toEqual([]);
     });
   });
 

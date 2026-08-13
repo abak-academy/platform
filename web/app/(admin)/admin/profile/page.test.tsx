@@ -102,10 +102,35 @@ describe("AdminProfilePage", () => {
     expect(screen.queryByText("Google")).not.toBeInTheDocument();
   });
 
-  it("renders ChangePasswordForm", () => {
+  it("keeps ChangePasswordForm collapsed until it is asked for", () => {
     renderPage();
 
+    expect(screen.queryByLabelText("Kata sandi lama")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /ubah kata sandi/i })
+    ).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("renders ChangePasswordForm once the change-password toggle is pressed", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /ubah kata sandi/i }));
+
     expect(screen.getByLabelText("Kata sandi lama")).toBeInTheDocument();
+    expect(screen.getByLabelText("Kata sandi baru")).toBeInTheDocument();
+    expect(screen.getByLabelText("Konfirmasi kata sandi baru")).toBeInTheDocument();
+  });
+
+  it("collapses the form again when the toggle is pressed a second time", () => {
+    renderPage();
+
+    const toggle = screen.getByRole("button", { name: /ubah kata sandi/i });
+    fireEvent.click(toggle);
+    expect(screen.getByLabelText("Kata sandi lama")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /batal/i }));
+
+    expect(screen.queryByLabelText("Kata sandi lama")).not.toBeInTheDocument();
   });
 
   it("uploads a photo via presign, PUT, then the /auth/photo mutation, in that order", async () => {

@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { PurchaseNotificationFeed } from "./PurchaseNotificationFeed";
 
 const mockMutate = vi.fn();
+const mockFetchNextPage = vi.fn();
 const mockUseAdminNotifications = vi.fn();
 const mockUseMarkNotificationRead = vi.fn(() => ({
   mutate: mockMutate,
@@ -39,9 +40,14 @@ const sampleNotifRead = {
 
 function buildQueryResult(overrides: Record<string, unknown> = {}) {
   return {
-    data: { data: [sampleNotif, sampleNotifRead], next_cursor: "10" },
-    isSuccess: true,
-    isFetching: false,
+    items: [sampleNotif, sampleNotifRead],
+    isLoading: false,
+    isError: false,
+    error: null,
+    hasNextPage: true,
+    isFetchingNextPage: false,
+    fetchNextPage: mockFetchNextPage,
+    refetch: vi.fn(),
     ...overrides,
   };
 }
@@ -53,97 +59,156 @@ describe("PurchaseNotificationFeed", () => {
 
   it("renders notification list with student names and order ids", () => {
     mockUseAdminNotifications.mockReturnValue(buildQueryResult());
-
     render(<PurchaseNotificationFeed />);
 
     expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
     expect(screen.getByText("Siti Rahma")).toBeInTheDocument();
-    expect(screen.getByText(/ord-1/i)).toBeInTheDocument();
-    expect(screen.getByText(/ord-2/i)).toBeInTheDocument();
+    expect(screen.getByText(/ord-1/)).toBeInTheDocument();
+    expect(screen.getByText(/ord-2/)).toBeInTheDocument();
+  });
+
+  it("renders the full order id rather than a truncated prefix", () => {
+    mockUseAdminNotifications.mockReturnValue(
+      buildQueryResult({
+        items: [{ ...sampleNotif, order_id: "3f2b1c9e-77aa-4d1f-9c33-8b0a5e6d7f21" }],
+      })
+    );
+    render(<PurchaseNotificationFeed />);
+
+    expect(
+      screen.getByText(/3f2b1c9e-77aa-4d1f-9c33-8b0a5e6d7f21/)
+    ).toBeInTheDocument();
   });
 
   it("renders formatted amount for each row", () => {
     mockUseAdminNotifications.mockReturnValue(buildQueryResult());
-
     render(<PurchaseNotificationFeed />);
 
-    const amounts = screen.getAllByText("Rp150.000");
-    expect(amounts).toHaveLength(2);
+    expect(screen.getAllByText("Rp150.000").length).toBe(2);
   });
 
-  it("shows Load More button when next_cursor is present", () => {
-    mockUseAdminNotifications.mockReturnValue(buildQueryResult());
-
-    render(<PurchaseNotificationFeed />);
-
-    expect(screen.getByRole("button", { name: /muat lebih banyak/i })).toBeInTheDocument();
-  });
-
-  it("hides Load More button when next_cursor is empty", () => {
+  // The producer used to multiply by 100 before storing; the row must render the
+  // amount it was given, in rupiah, with no further scaling.
+  it("renders the amount as plain rupiah without rescaling", () => {
     mockUseAdminNotifications.mockReturnValue(
-      buildQueryResult({ data: { data: [sampleNotif], next_cursor: "" } })
+      buildQueryResult({ items: [{ ...sampleNotif, amount: 60000 }] })
     );
-
     render(<PurchaseNotificationFeed />);
 
-    expect(screen.queryByRole("button", { name: /muat lebih banyak/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Rp60.000")).toBeInTheDocument();
+    expect(screen.queryByText("Rp6.000.000")).not.toBeInTheDocument();
   });
 
-  it("shows loading indicator when fetching without data", () => {
-    mockUseAdminNotifications.mockReturnValue(
-      buildQueryResult({ isFetching: true, isSuccess: false, data: undefined })
-    );
-
+  it("shows Load More button when another page is available", () => {
+    mockUseAdminNotifications.mockReturnValue(buildQueryResult({ hasNextPage: true }));
     render(<PurchaseNotificationFeed />);
 
-    expect(screen.getByText("Memuat...")).toBeInTheDocument();
+    expect(screen.getByText("notification_load_more")).toBeInTheDocument();
+  });
+
+  it("hides Load More button when there is no further page", () => {
+    mockUseAdminNotifications.mockReturnValue(buildQueryResult({ hasNextPage: false }));
+    render(<PurchaseNotificationFeed />);
+
+    expect(screen.queryByText("notification_load_more")).not.toBeInTheDocument();
+  });
+
+  // The old feed seeded hasMore=true, so the button rendered over an empty feed
+  // and did nothing when pressed.
+  it("hides Load More button when the feed is empty", () => {
+    mockUseAdminNotifications.mockReturnValue(
+      buildQueryResult({ items: [], hasNextPage: false })
+    );
+    render(<PurchaseNotificationFeed />);
+
+    expect(screen.queryByText("notification_load_more")).not.toBeInTheDocument();
+  });
+
+  it("requests the next page when Load More is pressed", () => {
+    mockUseAdminNotifications.mockReturnValue(buildQueryResult({ hasNextPage: true }));
+    render(<PurchaseNotificationFeed />);
+
+    fireEvent.click(screen.getByText("notification_load_more"));
+    expect(mockFetchNextPage).toHaveBeenCalled();
+  });
+
+  it("shows loading placeholders, not the empty state, while the first page loads", () => {
+    mockUseAdminNotifications.mockReturnValue(
+      buildQueryResult({ items: [], isLoading: true, hasNextPage: false })
+    );
+    const { container } = render(<PurchaseNotificationFeed />);
+
+    expect(screen.queryByText("notification_inbox_empty")).not.toBeInTheDocument();
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
   });
 
   it("shows unread-only toggle and activates on click", () => {
     mockUseAdminNotifications.mockReturnValue(buildQueryResult());
-
     render(<PurchaseNotificationFeed />);
 
-    const toggle = screen.getByRole("button", { name: /notification_unread_only/i });
-    expect(toggle).toBeInTheDocument();
+    const toggle = screen.getByText("notification_unread_only").closest("button")!;
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
 
-    // Click toggle and verify visual state changes
     fireEvent.click(toggle);
 
-    // After click the unreadOnly state should be true, which sets bg-primary class
-    expect(toggle.className).toContain("bg-primary");
+    expect(mockUseAdminNotifications).toHaveBeenLastCalledWith({ unreadOnly: true });
+  });
+
+  it("shows the unread count on the unread filter", () => {
+    mockUseAdminNotifications.mockReturnValue(buildQueryResult());
+    render(<PurchaseNotificationFeed />);
+
+    // One of the two sample rows is unread.
+    expect(screen.getByText("1")).toBeInTheDocument();
   });
 
   it("calls mark-read mutation when an unread notification is clicked", async () => {
     mockUseAdminNotifications.mockReturnValue(buildQueryResult());
-
     render(<PurchaseNotificationFeed />);
 
-    const notifElement = screen.getByText("Budi Santoso");
-    fireEvent.click(notifElement);
+    fireEvent.click(screen.getByText("Budi Santoso"));
 
     await waitFor(() => {
       expect(mockMutate).toHaveBeenCalledWith("notif-1");
     });
   });
 
-  it("shows empty state when no notifications", () => {
-    mockUseAdminNotifications.mockReturnValue(
-      buildQueryResult({ data: { data: [], next_cursor: "" } })
-    );
-
+  it("does not re-mark a notification that is already read", () => {
+    mockUseAdminNotifications.mockReturnValue(buildQueryResult());
     render(<PurchaseNotificationFeed />);
 
-    expect(screen.getByText("Belum ada notifikasi")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Siti Rahma"));
+
+    expect(mockMutate).not.toHaveBeenCalled();
   });
 
-  it("renders empty state without crash when data.data is null", () => {
+  it("shows empty state when no notifications", () => {
     mockUseAdminNotifications.mockReturnValue(
-      buildQueryResult({ data: { data: null, next_cursor: "" } })
+      buildQueryResult({ items: [], hasNextPage: false })
     );
-
     render(<PurchaseNotificationFeed />);
 
-    expect(screen.getByText("Belum ada notifikasi")).toBeInTheDocument();
+    expect(screen.getByText("notification_inbox_empty")).toBeInTheDocument();
+  });
+
+  it("shows a read-specific empty state under the unread filter", () => {
+    mockUseAdminNotifications.mockReturnValue(
+      buildQueryResult({ items: [], hasNextPage: false })
+    );
+    render(<PurchaseNotificationFeed />);
+
+    fireEvent.click(screen.getByText("notification_unread_only").closest("button")!);
+
+    expect(screen.getByText("notification_inbox_empty_unread")).toBeInTheDocument();
+  });
+
+  it("shows an error state when the feed fails to load", () => {
+    mockUseAdminNotifications.mockReturnValue(
+      buildQueryResult({ items: [], isError: true, hasNextPage: false })
+    );
+    render(<PurchaseNotificationFeed />);
+
+    expect(screen.getByText("notification_inbox_failed")).toBeInTheDocument();
+    expect(screen.queryByText("notification_inbox_empty")).not.toBeInTheDocument();
   });
 });

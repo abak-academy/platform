@@ -114,9 +114,14 @@ async function doAuthFetch<T>(
 
   if (!res.ok) {
     if (res.status === 401) {
+      // Read the role before clear() drops it. This eviction also fires when
+      // the logout call itself 401s, and the hard navigation would otherwise
+      // beat the caller's own redirect.
+      const { loginPathForRole } = await import("@/lib/auth-redirect");
+      const loginPath = loginPathForRole(useAuthStore.getState().user?.role);
       useAuthStore.getState().clear();
       if (typeof window !== "undefined") {
-        window.location.href = "/login";
+        window.location.href = loginPath;
       }
     }
     throw await parseError(res);

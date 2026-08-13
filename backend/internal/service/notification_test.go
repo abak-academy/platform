@@ -11,38 +11,52 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func TestPushPurchaseNotification(t *testing.T) {
+func newNotifTestService(t *testing.T) (*Service, *redis.Client, func()) {
+	t.Helper()
 	mr, err := miniredis.Run()
 	if err != nil {
 		t.Fatalf("miniredis setup failed: %v", err)
 	}
-	defer mr.Close()
-
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	return &Service{rdb: rdb}, rdb, func() {
+		rdb.Close()
+		mr.Close()
+	}
+}
 
-	svc := &Service{rdb: rdb}
+func seedNotif(t *testing.T, rdb *redis.Client, n PurchaseNotification) {
+	t.Helper()
+	data, err := json.Marshal(n)
+	if err != nil {
+		t.Fatalf("marshal notification: %v", err)
+	}
+	score := float64(n.CreatedAt.UnixMilli())
+	if err := rdb.ZAdd(context.Background(), purchaseNotifKey, redis.Z{Score: score, Member: string(data)}).Err(); err != nil {
+		t.Fatalf("failed to add notification: %v", err)
+	}
+}
+
+func TestPushPurchaseNotification(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
 	ctx := context.Background()
 
 	orderId := uuid.New()
 	notif := PurchaseNotification{
-		ID:        uuid.New().String(),
-		Type:      "order_confirmed",
-		OrderID:   orderId,
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     orderId,
 		StudentName: "John Doe",
-		Amount:    100000,
-		CreatedAt: time.Now(),
-		Read:      false,
+		Amount:      100000,
+		CreatedAt:   time.Now(),
+		Read:        false,
 	}
 
-	err = svc.PushPurchaseNotification(ctx, RoleAdminStore, notif)
-	if err != nil {
+	if err := svc.PushPurchaseNotification(ctx, notif); err != nil {
 		t.Fatalf("PushPurchaseNotification failed: %v", err)
 	}
 
-	// Verify the notification was added to the sorted set
-	key := "notif:" + RoleAdminStore
-	members, err := rdb.ZRange(ctx, key, 0, -1).Result()
+	members, err := rdb.ZRange(ctx, purchaseNotifKey, 0, -1).Result()
 	if err != nil {
 		t.Fatalf("failed to get sorted set members: %v", err)
 	}
@@ -51,7 +65,6 @@ func TestPushPurchaseNotification(t *testing.T) {
 		t.Fatalf("expected 1 member in sorted set, got %d", len(members))
 	}
 
-	// Verify the member is the JSON-encoded notification
 	var retrieved PurchaseNotification
 	if err := json.Unmarshal([]byte(members[0]), &retrieved); err != nil {
 		t.Fatalf("failed to unmarshal notification: %v", err)
@@ -65,69 +78,130 @@ func TestPushPurchaseNotification(t *testing.T) {
 	}
 }
 
-func TestListNotifications(t *testing.T) {
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("miniredis setup failed: %v", err)
-	}
-	defer mr.Close()
-
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
-
-	svc := &Service{rdb: rdb}
+// The feed is a single shared key, not one per role — a super_admin reading it
+// must see what an order confirmation pushed.
+func TestPushPurchaseNotificationIsVisibleToAnyReader(t *testing.T) {
+	svc, _, cleanup := newNotifTestService(t)
+	defer cleanup()
 	ctx := context.Background()
 
-	// Push multiple notifications with different times
-	role := RoleAdminStore
-	key := "notif:" + role
+	notif := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "John Doe",
+		Amount:      100000,
+		CreatedAt:   time.Now(),
+	}
+	if err := svc.PushPurchaseNotification(ctx, notif); err != nil {
+		t.Fatalf("PushPurchaseNotification failed: %v", err)
+	}
+
+	for _, userID := range []string{"super-admin-user", "store-admin-user"} {
+		got, _, err := svc.ListNotifications(ctx, userID, NotifFilter{Limit: 10})
+		if err != nil {
+			t.Fatalf("ListNotifications(%s) failed: %v", userID, err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("user %s: expected 1 notification, got %d", userID, len(got))
+		}
+		if got[0].ID != notif.ID {
+			t.Errorf("user %s: expected %s, got %s", userID, notif.ID, got[0].ID)
+		}
+	}
+}
+
+func TestPushPurchaseNotificationTrimsToRetention(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
 
 	now := time.Now()
-	notif1 := PurchaseNotification{
-		ID:        uuid.New().String(),
-		Type:      "order_confirmed",
-		OrderID:   uuid.New(),
-		StudentName: "John Doe",
-		Amount:    100000,
-		CreatedAt: now.Add(-2 * time.Second),
-		Read:      false,
-	}
-
-	notif2 := PurchaseNotification{
-		ID:        uuid.New().String(),
-		Type:      "order_paid",
-		OrderID:   uuid.New(),
-		StudentName: "Jane Smith",
-		Amount:    200000,
-		CreatedAt: now.Add(-1 * time.Second),
-		Read:      false,
-	}
-
-	notif3 := PurchaseNotification{
-		ID:        uuid.New().String(),
-		Type:      "order_confirmed",
-		OrderID:   uuid.New(),
-		StudentName: "Bob Jones",
-		Amount:    150000,
-		CreatedAt: now,
-		Read:      false,
-	}
-
-	// Push notifications with calculated scores
-	for _, n := range []PurchaseNotification{notif1, notif2, notif3} {
-		data, _ := json.Marshal(n)
-		score := float64(n.CreatedAt.UnixMilli())
-		if err := rdb.ZAdd(ctx, key, redis.Z{Score: score, Member: string(data)}).Err(); err != nil {
-			t.Fatalf("failed to add notification: %v", err)
+	total := notifRetention + 25
+	var newest, oldest string
+	for i := 0; i < total; i++ {
+		n := PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     uuid.New(),
+			StudentName: "Student",
+			Amount:      1000,
+			CreatedAt:   now.Add(time.Duration(i) * time.Millisecond),
+		}
+		if i == 0 {
+			oldest = n.ID
+		}
+		if i == total-1 {
+			newest = n.ID
+		}
+		if err := svc.PushPurchaseNotification(ctx, n); err != nil {
+			t.Fatalf("push %d failed: %v", i, err)
 		}
 	}
 
-	// Test listing notifications in reverse time order (most recent first)
-	filter := NotifFilter{
-		Limit: 10,
+	card, err := rdb.ZCard(ctx, purchaseNotifKey).Result()
+	if err != nil {
+		t.Fatalf("ZCard failed: %v", err)
+	}
+	if card != int64(notifRetention) {
+		t.Fatalf("expected feed trimmed to %d, got %d", notifRetention, card)
 	}
 
-	notifications, nextCursor, err := svc.ListNotifications(ctx, role, filter)
+	got, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: 1})
+	if err != nil {
+		t.Fatalf("ListNotifications failed: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != newest {
+		t.Errorf("expected newest %s to survive the trim, got %+v", newest, got)
+	}
+
+	all, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: notifMaxLim})
+	if err != nil {
+		t.Fatalf("ListNotifications failed: %v", err)
+	}
+	for _, n := range all {
+		if n.ID == oldest {
+			t.Errorf("oldest notification %s should have been trimmed", oldest)
+		}
+	}
+}
+
+func TestListNotifications(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	now := time.Now()
+	notif1 := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "John Doe",
+		Amount:      100000,
+		CreatedAt:   now.Add(-2 * time.Second),
+	}
+	notif2 := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_paid",
+		OrderID:     uuid.New(),
+		StudentName: "Jane Smith",
+		Amount:      200000,
+		CreatedAt:   now.Add(-1 * time.Second),
+	}
+	notif3 := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "Bob Jones",
+		Amount:      150000,
+		CreatedAt:   now,
+	}
+
+	for _, n := range []PurchaseNotification{notif1, notif2, notif3} {
+		seedNotif(t, rdb, n)
+	}
+
+	notifications, nextCursor, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: 10})
 	if err != nil {
 		t.Fatalf("ListNotifications failed: %v", err)
 	}
@@ -136,7 +210,6 @@ func TestListNotifications(t *testing.T) {
 		t.Fatalf("expected 3 notifications, got %d", len(notifications))
 	}
 
-	// Verify reverse time order (newest first)
 	if notifications[0].ID != notif3.ID {
 		t.Errorf("first notification should be notif3, got %s", notifications[0].ID)
 	}
@@ -153,20 +226,9 @@ func TestListNotifications(t *testing.T) {
 }
 
 func TestListNotificationsWithTypeFilter(t *testing.T) {
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("miniredis setup failed: %v", err)
-	}
-	defer mr.Close()
-
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
-
-	svc := &Service{rdb: rdb}
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
 	ctx := context.Background()
-
-	role := RoleAdminStore
-	key := "notif:" + role
 
 	now := time.Now()
 	notif1 := PurchaseNotification{
@@ -176,9 +238,7 @@ func TestListNotificationsWithTypeFilter(t *testing.T) {
 		StudentName: "John Doe",
 		Amount:      100000,
 		CreatedAt:   now.Add(-1 * time.Second),
-		Read:        false,
 	}
-
 	notif2 := PurchaseNotification{
 		ID:          uuid.New().String(),
 		Type:        "order_paid",
@@ -186,23 +246,12 @@ func TestListNotificationsWithTypeFilter(t *testing.T) {
 		StudentName: "Jane Smith",
 		Amount:      200000,
 		CreatedAt:   now,
-		Read:        false,
 	}
 
-	for _, n := range []PurchaseNotification{notif1, notif2} {
-		data, _ := json.Marshal(n)
-		score := float64(n.CreatedAt.UnixMilli())
-		if err := rdb.ZAdd(ctx, key, redis.Z{Score: score, Member: string(data)}).Err(); err != nil {
-			t.Fatalf("failed to add notification: %v", err)
-		}
-	}
+	seedNotif(t, rdb, notif1)
+	seedNotif(t, rdb, notif2)
 
-	filter := NotifFilter{
-		Type:  "order_confirmed",
-		Limit: 10,
-	}
-
-	notifications, _, err := svc.ListNotifications(ctx, role, filter)
+	notifications, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Type: "order_confirmed", Limit: 10})
 	if err != nil {
 		t.Fatalf("ListNotifications failed: %v", err)
 	}
@@ -216,83 +265,110 @@ func TestListNotificationsWithTypeFilter(t *testing.T) {
 }
 
 func TestMarkNotificationRead(t *testing.T) {
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("miniredis setup failed: %v", err)
-	}
-	defer mr.Close()
-
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
-
-	svc := &Service{rdb: rdb}
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
 	ctx := context.Background()
 
 	notifId := uuid.New().String()
-	role := RoleAdminStore
+	userID := "user-1"
 
-	// Mark notification as read
-	err = svc.MarkNotificationRead(ctx, role, notifId)
-	if err != nil {
+	if err := svc.MarkNotificationRead(ctx, userID, notifId); err != nil {
 		t.Fatalf("MarkNotificationRead failed: %v", err)
 	}
 
-	// Verify the read key was set
-	readKey := "notif_read:" + role + ":" + notifId
-	exists, err := rdb.Exists(ctx, readKey).Result()
+	isMember, err := rdb.SIsMember(ctx, notifReadKey(userID), notifId).Result()
 	if err != nil {
-		t.Fatalf("failed to check read key: %v", err)
+		t.Fatalf("failed to check read set: %v", err)
 	}
-	if exists != 1 {
-		t.Errorf("expected read key to exist, got %d", exists)
+	if !isMember {
+		t.Error("expected notification id in the user's read set")
+	}
+
+	ttl, err := rdb.TTL(ctx, notifReadKey(userID)).Result()
+	if err != nil {
+		t.Fatalf("failed to read TTL: %v", err)
+	}
+	if ttl <= 0 {
+		t.Errorf("expected the read set to carry a TTL, got %v", ttl)
 	}
 }
 
 func TestMarkNotificationReadIdempotent(t *testing.T) {
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("miniredis setup failed: %v", err)
-	}
-	defer mr.Close()
-
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
-
-	svc := &Service{rdb: rdb}
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
 	ctx := context.Background()
 
 	notifId := uuid.New().String()
-	role := RoleAdminStore
+	userID := "user-1"
 
-	// Mark as read first time
-	err = svc.MarkNotificationRead(ctx, role, notifId)
-	if err != nil {
+	if err := svc.MarkNotificationRead(ctx, userID, notifId); err != nil {
 		t.Fatalf("first MarkNotificationRead failed: %v", err)
 	}
-
-	// Mark as read second time (should not error, SET NX returns false)
-	err = svc.MarkNotificationRead(ctx, role, notifId)
-	if err != nil {
+	if err := svc.MarkNotificationRead(ctx, userID, notifId); err != nil {
 		t.Fatalf("second MarkNotificationRead failed: %v", err)
+	}
+
+	card, err := rdb.SCard(ctx, notifReadKey(userID)).Result()
+	if err != nil {
+		t.Fatalf("SCard failed: %v", err)
+	}
+	if card != 1 {
+		t.Errorf("expected 1 member after marking twice, got %d", card)
+	}
+}
+
+// Read state is per user: one admin clearing their inbox must not clear it for
+// everyone else sharing the role.
+func TestMarkNotificationReadIsPerUser(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	notif := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "John Doe",
+		Amount:      100000,
+		CreatedAt:   time.Now(),
+	}
+	seedNotif(t, rdb, notif)
+
+	if err := svc.MarkNotificationRead(ctx, "user-a", notif.ID); err != nil {
+		t.Fatalf("MarkNotificationRead failed: %v", err)
+	}
+
+	forA, _, err := svc.ListNotifications(ctx, "user-a", NotifFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListNotifications(user-a) failed: %v", err)
+	}
+	if len(forA) != 1 || !forA[0].Read {
+		t.Errorf("expected user-a to see the notification as read, got %+v", forA)
+	}
+
+	forB, _, err := svc.ListNotifications(ctx, "user-b", NotifFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListNotifications(user-b) failed: %v", err)
+	}
+	if len(forB) != 1 || forB[0].Read {
+		t.Errorf("expected user-b to still see the notification as unread, got %+v", forB)
+	}
+
+	unreadForB, _, err := svc.ListNotifications(ctx, "user-b", NotifFilter{UnreadOnly: true, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListNotifications(user-b, unread) failed: %v", err)
+	}
+	if len(unreadForB) != 1 {
+		t.Errorf("expected user-b's unread filter to still return the notification, got %d", len(unreadForB))
 	}
 }
 
 func TestListNotificationsUnreadOnlyFilter(t *testing.T) {
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("miniredis setup failed: %v", err)
-	}
-	defer mr.Close()
-
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
-
-	svc := &Service{rdb: rdb}
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
 	ctx := context.Background()
 
-	role := RoleAdminStore
-	key := "notif:" + role
-
+	userID := "user-1"
 	now := time.Now()
 	notif1 := PurchaseNotification{
 		ID:          uuid.New().String(),
@@ -301,9 +377,7 @@ func TestListNotificationsUnreadOnlyFilter(t *testing.T) {
 		StudentName: "John Doe",
 		Amount:      100000,
 		CreatedAt:   now.Add(-1 * time.Second),
-		Read:        false,
 	}
-
 	notif2 := PurchaseNotification{
 		ID:          uuid.New().String(),
 		Type:        "order_paid",
@@ -311,29 +385,16 @@ func TestListNotificationsUnreadOnlyFilter(t *testing.T) {
 		StudentName: "Jane Smith",
 		Amount:      200000,
 		CreatedAt:   now,
-		Read:        false,
 	}
 
-	for _, n := range []PurchaseNotification{notif1, notif2} {
-		data, _ := json.Marshal(n)
-		score := float64(n.CreatedAt.UnixMilli())
-		if err := rdb.ZAdd(ctx, key, redis.Z{Score: score, Member: string(data)}).Err(); err != nil {
-			t.Fatalf("failed to add notification: %v", err)
-		}
-	}
+	seedNotif(t, rdb, notif1)
+	seedNotif(t, rdb, notif2)
 
-	// Mark notif1 as read
-	if err := svc.MarkNotificationRead(ctx, role, notif1.ID); err != nil {
+	if err := svc.MarkNotificationRead(ctx, userID, notif1.ID); err != nil {
 		t.Fatalf("MarkNotificationRead failed: %v", err)
 	}
 
-	// List with unreadOnly=true
-	filter := NotifFilter{
-		UnreadOnly: true,
-		Limit:      10,
-	}
-
-	notifications, _, err := svc.ListNotifications(ctx, role, filter)
+	notifications, _, err := svc.ListNotifications(ctx, userID, NotifFilter{UnreadOnly: true, Limit: 10})
 	if err != nil {
 		t.Fatalf("ListNotifications failed: %v", err)
 	}
@@ -347,22 +408,10 @@ func TestListNotificationsUnreadOnlyFilter(t *testing.T) {
 }
 
 func TestListNotificationsWithPagination(t *testing.T) {
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("miniredis setup failed: %v", err)
-	}
-	defer mr.Close()
-
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
-
-	svc := &Service{rdb: rdb}
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
 	ctx := context.Background()
 
-	role := RoleAdminStore
-	key := "notif:" + role
-
-	// Create 5 notifications
 	now := time.Now()
 	notifs := make([]PurchaseNotification, 5)
 	for i := 0; i < 5; i++ {
@@ -373,18 +422,12 @@ func TestListNotificationsWithPagination(t *testing.T) {
 			StudentName: "Student " + string(rune('0'+i)),
 			Amount:      100000 * int64(i+1),
 			CreatedAt:   now.Add(time.Duration(-i) * time.Second),
-			Read:        false,
 		}
-		data, _ := json.Marshal(notifs[i])
-		score := float64(notifs[i].CreatedAt.UnixMilli())
-		if err := rdb.ZAdd(ctx, key, redis.Z{Score: score, Member: string(data)}).Err(); err != nil {
-			t.Fatalf("failed to add notification: %v", err)
-		}
+		seedNotif(t, rdb, notifs[i])
 	}
 
-	// List first 2 items
 	filter := NotifFilter{Limit: 2}
-	page1, cursor1, err := svc.ListNotifications(ctx, role, filter)
+	page1, cursor1, err := svc.ListNotifications(ctx, "user-1", filter)
 	if err != nil {
 		t.Fatalf("ListNotifications page 1 failed: %v", err)
 	}
@@ -392,23 +435,561 @@ func TestListNotificationsWithPagination(t *testing.T) {
 	if len(page1) != 2 {
 		t.Fatalf("expected 2 notifications on page 1, got %d", len(page1))
 	}
-	// Should be in reverse time order (newest first = notifs[0] then notifs[1])
 	if page1[0].ID != notifs[0].ID {
 		t.Errorf("expected notifs[0] first, got %s", page1[0].ID)
+	}
+	if page1[1].ID != notifs[1].ID {
+		t.Errorf("expected notifs[1] second, got %s", page1[1].ID)
 	}
 
 	if cursor1 == "" {
 		t.Fatalf("expected non-empty cursor for page 2")
 	}
 
-	// List next 2 items with cursor
-	filter2 := NotifFilter{Limit: 2, Cursor: cursor1}
-	page2, _, err := svc.ListNotifications(ctx, role, filter2)
+	page2, cursor2, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: 2, Cursor: cursor1})
 	if err != nil {
 		t.Fatalf("ListNotifications page 2 failed: %v", err)
 	}
 
 	if len(page2) != 2 {
 		t.Fatalf("expected 2 notifications on page 2, got %d", len(page2))
+	}
+	// The old offset cursor could not catch this: page 2 must continue the
+	// sequence rather than repeat or skip items.
+	if page2[0].ID != notifs[2].ID {
+		t.Errorf("expected notifs[2] to open page 2, got %s", page2[0].ID)
+	}
+	if page2[1].ID != notifs[3].ID {
+		t.Errorf("expected notifs[3] to close page 2, got %s", page2[1].ID)
+	}
+
+	page3, cursor3, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: 2, Cursor: cursor2})
+	if err != nil {
+		t.Fatalf("ListNotifications page 3 failed: %v", err)
+	}
+	if len(page3) != 1 {
+		t.Fatalf("expected 1 notification on the final page, got %d", len(page3))
+	}
+	if page3[0].ID != notifs[4].ID {
+		t.Errorf("expected notifs[4] on the final page, got %s", page3[0].ID)
+	}
+	if cursor3 != "" {
+		t.Errorf("expected no cursor past the last item, got %s", cursor3)
+	}
+}
+
+// A page whose tail is filtered out must still hand back a cursor when older
+// matching items exist, instead of silently ending the feed.
+func TestListNotificationsCursorSurvivesFilteredTail(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	userID := "user-1"
+	now := time.Now()
+
+	newestUnread := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "Newest",
+		Amount:      100000,
+		CreatedAt:   now,
+	}
+	seedNotif(t, rdb, newestUnread)
+
+	// A long read run between the two unread items.
+	for i := 0; i < 110; i++ {
+		n := PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     uuid.New(),
+			StudentName: "Read",
+			Amount:      1000,
+			CreatedAt:   now.Add(-time.Duration(i+1) * time.Second),
+		}
+		seedNotif(t, rdb, n)
+		if err := svc.MarkNotificationRead(ctx, userID, n.ID); err != nil {
+			t.Fatalf("MarkNotificationRead failed: %v", err)
+		}
+	}
+
+	oldestUnread := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "Oldest",
+		Amount:      200000,
+		CreatedAt:   now.Add(-time.Duration(200) * time.Second),
+	}
+	seedNotif(t, rdb, oldestUnread)
+
+	page1, cursor, err := svc.ListNotifications(ctx, userID, NotifFilter{UnreadOnly: true, Limit: 1})
+	if err != nil {
+		t.Fatalf("ListNotifications page 1 failed: %v", err)
+	}
+	if len(page1) != 1 || page1[0].ID != newestUnread.ID {
+		t.Fatalf("expected the newest unread on page 1, got %+v", page1)
+	}
+	if cursor == "" {
+		t.Fatal("expected a cursor: an older unread notification exists past the read run")
+	}
+
+	page2, cursor2, err := svc.ListNotifications(ctx, userID, NotifFilter{UnreadOnly: true, Limit: 1, Cursor: cursor})
+	if err != nil {
+		t.Fatalf("ListNotifications page 2 failed: %v", err)
+	}
+	if len(page2) != 1 || page2[0].ID != oldestUnread.ID {
+		t.Fatalf("expected the oldest unread on page 2, got %+v", page2)
+	}
+	if cursor2 != "" {
+		t.Errorf("expected no cursor after the last unread item, got %s", cursor2)
+	}
+}
+
+// Notifications minted in the same millisecond must all be reachable — an
+// exclusive score bound would drop the ties.
+func TestListNotificationsCursorHandlesSameMillisecondTies(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	shared := time.Now().Truncate(time.Millisecond)
+	ids := map[string]bool{}
+	for i := 0; i < 3; i++ {
+		n := PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     uuid.New(),
+			StudentName: "Tie",
+			Amount:      int64(1000 * (i + 1)),
+			CreatedAt:   shared,
+		}
+		ids[n.ID] = false
+		seedNotif(t, rdb, n)
+	}
+
+	cursor := ""
+	for page := 0; page < 3; page++ {
+		got, next, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: 1, Cursor: cursor})
+		if err != nil {
+			t.Fatalf("page %d failed: %v", page, err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("page %d: expected 1 notification, got %d", page, len(got))
+		}
+		seen, known := ids[got[0].ID]
+		if !known {
+			t.Fatalf("page %d returned an unknown id %s", page, got[0].ID)
+		}
+		if seen {
+			t.Fatalf("page %d repeated id %s", page, got[0].ID)
+		}
+		ids[got[0].ID] = true
+		cursor = next
+	}
+
+	for id, seen := range ids {
+		if !seen {
+			t.Errorf("notification %s was never returned across the three pages", id)
+		}
+	}
+	if cursor != "" {
+		t.Errorf("expected no cursor after exhausting the ties, got %s", cursor)
+	}
+}
+
+func TestListNotificationsLimitBounds(t *testing.T) {
+	svc, _, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if _, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: 0}); err != nil {
+		t.Fatalf("zero limit should fall back to the default: %v", err)
+	}
+	if _, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: 5000}); err != nil {
+		t.Fatalf("oversized limit should clamp: %v", err)
+	}
+}
+
+func TestDecodeNotifCursorRejectsGarbage(t *testing.T) {
+	for _, bad := range []string{"", "abc", "_id", "123_", "notanumber_id"} {
+		if _, _, ok := decodeNotifCursor(bad); ok {
+			t.Errorf("expected %q to be rejected", bad)
+		}
+	}
+
+	score, id, ok := decodeNotifCursor("1700000000000_abc-def")
+	if !ok || score != 1700000000000 || id != "abc-def" {
+		t.Errorf("round trip failed: %d %s %v", score, id, ok)
+	}
+}
+
+// A cursor pointing at a notification that has since been trimmed must not
+// resurrect the whole feed as if it were page one.
+func TestListNotificationsStaleCursorReturnsEmpty(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	now := time.Now()
+	seedNotif(t, rdb, PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "Live",
+		Amount:      1000,
+		CreatedAt:   now,
+	})
+
+	stale := encodeNotifCursor(PurchaseNotification{
+		ID:        uuid.New().String(),
+		CreatedAt: now,
+	})
+
+	got, next, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: 10, Cursor: stale})
+	if err != nil {
+		t.Fatalf("ListNotifications failed: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected no items for a stale cursor, got %d", len(got))
+	}
+	if next != "" {
+		t.Errorf("expected no cursor, got %s", next)
+	}
+}
+
+// The feed key moved from notif:<role> to a single shared key. Without the
+// startup merge, everything written before the deploy is stranded.
+func TestMigrateLegacyPurchaseFeed(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	now := time.Now()
+	legacy := make([]PurchaseNotification, 3)
+	for i := range legacy {
+		legacy[i] = PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     uuid.New(),
+			StudentName: "Legacy",
+			Amount:      int64(1000 * (i + 1)),
+			CreatedAt:   now.Add(-time.Duration(i+1) * time.Minute),
+		}
+		data, _ := json.Marshal(legacy[i])
+		if err := rdb.ZAdd(ctx, legacyPurchaseNotifKey, redis.Z{
+			Score:  float64(legacy[i].CreatedAt.UnixMilli()),
+			Member: string(data),
+		}).Err(); err != nil {
+			t.Fatalf("seed legacy: %v", err)
+		}
+	}
+
+	// One notification already written under the new key.
+	fresh := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "Fresh",
+		Amount:      9000,
+		CreatedAt:   now,
+	}
+	seedNotif(t, rdb, fresh)
+
+	before, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: notifMaxLim})
+	if err != nil {
+		t.Fatalf("ListNotifications before migrate failed: %v", err)
+	}
+	if len(before) != 1 {
+		t.Fatalf("expected the legacy feed to be invisible before migrating, got %d", len(before))
+	}
+
+	if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
+		t.Fatalf("MigrateLegacyPurchaseFeed failed: %v", err)
+	}
+
+	got, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: notifMaxLim})
+	if err != nil {
+		t.Fatalf("ListNotifications after migrate failed: %v", err)
+	}
+	if len(got) != 4 {
+		t.Fatalf("expected 4 notifications after migrating, got %d", len(got))
+	}
+
+	// Newest first, so the pre-existing item leads and the legacy run follows in
+	// its original order.
+	want := []string{fresh.ID, legacy[0].ID, legacy[1].ID, legacy[2].ID}
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Errorf("position %d: expected %s, got %s", i, id, got[i].ID)
+		}
+	}
+}
+
+func TestMigrateLegacyPurchaseFeedIsIdempotent(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	notif := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "Legacy",
+		Amount:      1000,
+		CreatedAt:   time.Now(),
+	}
+	data, _ := json.Marshal(notif)
+	if err := rdb.ZAdd(ctx, legacyPurchaseNotifKey, redis.Z{
+		Score:  float64(notif.CreatedAt.UnixMilli()),
+		Member: string(data),
+	}).Err(); err != nil {
+		t.Fatalf("seed legacy: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
+			t.Fatalf("run %d failed: %v", i, err)
+		}
+	}
+
+	card, err := rdb.ZCard(ctx, purchaseNotifKey).Result()
+	if err != nil {
+		t.Fatalf("ZCard failed: %v", err)
+	}
+	if card != 1 {
+		t.Errorf("expected 1 member after three merges, got %d", card)
+	}
+}
+
+// A replica running the old code may still be writing to the legacy key while
+// the deploy rolls, so the merge must not drop a write that lands after it.
+func TestMigrateLegacyPurchaseFeedPicksUpLateLegacyWrites(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	now := time.Now()
+	write := func(n PurchaseNotification) {
+		data, _ := json.Marshal(n)
+		if err := rdb.ZAdd(ctx, legacyPurchaseNotifKey, redis.Z{
+			Score:  float64(n.CreatedAt.UnixMilli()),
+			Member: string(data),
+		}).Err(); err != nil {
+			t.Fatalf("seed legacy: %v", err)
+		}
+	}
+
+	first := PurchaseNotification{
+		ID: uuid.New().String(), Type: "order_confirmed", OrderID: uuid.New(),
+		StudentName: "First", Amount: 1000, CreatedAt: now.Add(-time.Minute),
+	}
+	write(first)
+	if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
+		t.Fatalf("first migrate failed: %v", err)
+	}
+
+	late := PurchaseNotification{
+		ID: uuid.New().String(), Type: "order_confirmed", OrderID: uuid.New(),
+		StudentName: "Late", Amount: 2000, CreatedAt: now,
+	}
+	write(late)
+	if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
+		t.Fatalf("second migrate failed: %v", err)
+	}
+
+	got, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: notifMaxLim})
+	if err != nil {
+		t.Fatalf("ListNotifications failed: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected both legacy writes, got %d", len(got))
+	}
+	if got[0].ID != late.ID || got[1].ID != first.ID {
+		t.Errorf("expected late then first, got %s then %s", got[0].ID, got[1].ID)
+	}
+}
+
+func TestMigrateLegacyPurchaseFeedNoopWithoutLegacyKey(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	notif := PurchaseNotification{
+		ID: uuid.New().String(), Type: "order_confirmed", OrderID: uuid.New(),
+		StudentName: "Fresh", Amount: 1000, CreatedAt: time.Now(),
+	}
+	seedNotif(t, rdb, notif)
+
+	if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
+		t.Fatalf("MigrateLegacyPurchaseFeed failed: %v", err)
+	}
+
+	got, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListNotifications failed: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != notif.ID {
+		t.Errorf("expected the existing feed untouched, got %+v", got)
+	}
+}
+
+// A purchase confirmed while a page is being assembled used to shift every rank
+// below it, so the offset-advanced scan handed the same notification back twice.
+func TestListNotificationsNoDuplicatesWhenFeedGrowsMidScan(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	userID := "user-1"
+	now := time.Now()
+
+	// Deep enough that the old implementation needed more than one batch.
+	for i := 0; i < 250; i++ {
+		n := PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     uuid.New(),
+			StudentName: "Seeded",
+			Amount:      1000,
+			CreatedAt:   now.Add(-time.Duration(i+1) * time.Second),
+		}
+		seedNotif(t, rdb, n)
+		if i%2 == 0 {
+			if err := svc.MarkNotificationRead(ctx, userID, n.ID); err != nil {
+				t.Fatalf("MarkNotificationRead failed: %v", err)
+			}
+		}
+	}
+
+	// Arrives after the read of the feed would have begun.
+	seedNotif(t, rdb, PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "Arrived mid-scan",
+		Amount:      5000,
+		CreatedAt:   now.Add(time.Second),
+	})
+
+	seen := map[string]bool{}
+	cursor := ""
+	for page := 0; page < 20; page++ {
+		got, next, err := svc.ListNotifications(ctx, userID, NotifFilter{
+			UnreadOnly: true, Limit: 10, Cursor: cursor,
+		})
+		if err != nil {
+			t.Fatalf("page %d failed: %v", page, err)
+		}
+		for _, n := range got {
+			if seen[n.ID] {
+				t.Fatalf("page %d returned %s a second time", page, n.ID)
+			}
+			seen[n.ID] = true
+		}
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+
+	// 125 unread from the seed run, plus the one that arrived mid-scan.
+	if len(seen) != 126 {
+		t.Errorf("expected 126 distinct unread notifications, got %d", len(seen))
+	}
+}
+
+// insertOnNthRangeHook simulates a purchase landing while a page is being
+// assembled: it lets the Nth range read return, then writes a newer member, so
+// any subsequent read of the same feed sees every rank below it shifted by one.
+type insertOnNthRangeHook struct {
+	rdb   *redis.Client
+	after int
+	seen  int
+	notif PurchaseNotification
+}
+
+func (h *insertOnNthRangeHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h *insertOnNthRangeHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+
+func (h *insertOnNthRangeHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		err := next(ctx, cmd)
+		if cmd.Name() != "zrevrangebyscore" {
+			return err
+		}
+		h.seen++
+		if h.seen != h.after {
+			return err
+		}
+		data, _ := json.Marshal(h.notif)
+		h.rdb.ZAdd(ctx, purchaseNotifKey, redis.Z{
+			Score:  float64(h.notif.CreatedAt.UnixMilli()),
+			Member: string(data),
+		})
+		return err
+	}
+}
+
+func TestListNotificationsNoDuplicatesWhenFeedGrowsBetweenRangeReads(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	userID := "user-1"
+	now := time.Now()
+
+	// The unread run deliberately straddles rank 99 — the last item of a
+	// 100-wide batch. When an insert shifts the ranks, an offset-advanced scan
+	// re-reads that boundary item, and because it is unread it survives the
+	// filter and reaches the page a second time.
+	for i := 0; i < 300; i++ {
+		n := PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     uuid.New(),
+			StudentName: "Seeded",
+			Amount:      1000,
+			CreatedAt:   now.Add(-time.Duration(i+1) * time.Second),
+		}
+		seedNotif(t, rdb, n)
+		if i < 95 || i > 115 {
+			if err := svc.MarkNotificationRead(ctx, userID, n.ID); err != nil {
+				t.Fatalf("MarkNotificationRead failed: %v", err)
+			}
+		}
+	}
+
+	rdb.AddHook(&insertOnNthRangeHook{
+		rdb:   rdb,
+		after: 1,
+		notif: PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     uuid.New(),
+			StudentName: "Arrived between reads",
+			Amount:      5000,
+			CreatedAt:   now.Add(time.Second),
+		},
+	})
+
+	got, _, err := svc.ListNotifications(ctx, userID, NotifFilter{UnreadOnly: true, Limit: 20})
+	if err != nil {
+		t.Fatalf("ListNotifications failed: %v", err)
+	}
+
+	seen := map[string]bool{}
+	for _, n := range got {
+		if seen[n.ID] {
+			t.Fatalf("notification %s returned twice in one response", n.ID)
+		}
+		seen[n.ID] = true
+	}
+	if len(got) == 0 {
+		t.Fatal("expected a page of unread notifications")
 	}
 }

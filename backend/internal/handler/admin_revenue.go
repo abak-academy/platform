@@ -61,7 +61,7 @@ func (h *Handler) AdminGetRevenue(c echo.Context) error {
 
 func (h *Handler) AdminListNotifications(c echo.Context) error {
 	claims, ok := c.Get("claims").(*infra.Claims)
-	if !ok || claims == nil || claims.Role == "" {
+	if !ok || claims == nil || claims.Sub == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
 
@@ -77,7 +77,7 @@ func (h *Handler) AdminListNotifications(c echo.Context) error {
 		Limit:      limit,
 	}
 
-	notifications, nextCursor, err := h.svc.ListNotifications(c.Request().Context(), claims.Role, filter)
+	notifications, nextCursor, err := h.svc.ListNotifications(c.Request().Context(), claims.Sub, filter)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -90,13 +90,16 @@ func (h *Handler) AdminListNotifications(c echo.Context) error {
 
 func (h *Handler) AdminMarkNotificationRead(c echo.Context) error {
 	claims, ok := c.Get("claims").(*infra.Claims)
-	if !ok || claims == nil || claims.Role == "" {
+	if !ok || claims == nil || claims.Sub == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
 
 	notifID := c.Param("id")
+	if notifID == "" {
+		return c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "missing notification id"})
+	}
 
-	err := h.svc.MarkNotificationRead(c.Request().Context(), claims.Role, notifID)
+	err := h.svc.MarkNotificationRead(c.Request().Context(), claims.Sub, notifID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

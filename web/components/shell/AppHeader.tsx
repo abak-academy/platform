@@ -21,6 +21,7 @@ import { fileUrl } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { roleLabelKey, ADMIN_ROLES } from "@/lib/nav-config";
 import type { UserRole } from "@/lib/nav-config";
+import { loginPathForRole } from "@/lib/auth-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -66,9 +67,11 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const roleLabel = roleKey ? t(roleKey) : t("account");
 
   function handleLogout() {
+    // Resolved before the mutation clears the store, which nulls the role.
+    const loginPath = loginPathForRole(resolvedRole);
     logout.mutate(undefined, {
       onSettled: () => {
-        router.replace("/login");
+        router.replace(loginPath);
       },
     });
   }

@@ -16,7 +16,7 @@ interface FieldErrors {
 
 const MIN_LENGTH = 8;
 
-export function ChangePasswordForm() {
+export function ChangePasswordForm({ onDone }: { onDone?: () => void } = {}) {
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -52,6 +52,7 @@ export function ChangePasswordForm() {
           setConfirm("");
           setErrors({});
           setSubmitted(false);
+          onDone?.();
         },
         onError: (err) => {
           const message =
