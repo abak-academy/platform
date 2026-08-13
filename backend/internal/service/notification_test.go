@@ -498,8 +498,8 @@ func TestListNotificationsCursorSurvivesFilteredTail(t *testing.T) {
 	}
 	seedNotif(t, rdb, newestUnread)
 
-	// A long read run, longer than one scan batch, between the two unread items.
-	for i := 0; i < notifScanBatch+10; i++ {
+	// A long read run between the two unread items.
+	for i := 0; i < 110; i++ {
 		n := PurchaseNotification{
 			ID:          uuid.New().String(),
 			Type:        "order_confirmed",
@@ -520,7 +520,7 @@ func TestListNotificationsCursorSurvivesFilteredTail(t *testing.T) {
 		OrderID:     uuid.New(),
 		StudentName: "Oldest",
 		Amount:      200000,
-		CreatedAt:   now.Add(-time.Duration(notifScanBatch+50) * time.Second),
+		CreatedAt:   now.Add(-time.Duration(200) * time.Second),
 	}
 	seedNotif(t, rdb, oldestUnread)
 
@@ -656,5 +656,340 @@ func TestListNotificationsStaleCursorReturnsEmpty(t *testing.T) {
 	}
 	if next != "" {
 		t.Errorf("expected no cursor, got %s", next)
+	}
+}
+
+// The feed key moved from notif:<role> to a single shared key. Without the
+// startup merge, everything written before the deploy is stranded.
+func TestMigrateLegacyPurchaseFeed(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	now := time.Now()
+	legacy := make([]PurchaseNotification, 3)
+	for i := range legacy {
+		legacy[i] = PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     uuid.New(),
+			StudentName: "Legacy",
+			Amount:      int64(1000 * (i + 1)),
+			CreatedAt:   now.Add(-time.Duration(i+1) * time.Minute),
+		}
+		data, _ := json.Marshal(legacy[i])
+		if err := rdb.ZAdd(ctx, legacyPurchaseNotifKey, redis.Z{
+			Score:  float64(legacy[i].CreatedAt.UnixMilli()),
+			Member: string(data),
+		}).Err(); err != nil {
+			t.Fatalf("seed legacy: %v", err)
+		}
+	}
+
+	// One notification already written under the new key.
+	fresh := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "Fresh",
+		Amount:      9000,
+		CreatedAt:   now,
+	}
+	seedNotif(t, rdb, fresh)
+
+	before, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: notifMaxLim})
+	if err != nil {
+		t.Fatalf("ListNotifications before migrate failed: %v", err)
+	}
+	if len(before) != 1 {
+		t.Fatalf("expected the legacy feed to be invisible before migrating, got %d", len(before))
+	}
+
+	if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
+		t.Fatalf("MigrateLegacyPurchaseFeed failed: %v", err)
+	}
+
+	got, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: notifMaxLim})
+	if err != nil {
+		t.Fatalf("ListNotifications after migrate failed: %v", err)
+	}
+	if len(got) != 4 {
+		t.Fatalf("expected 4 notifications after migrating, got %d", len(got))
+	}
+
+	// Newest first, so the pre-existing item leads and the legacy run follows in
+	// its original order.
+	want := []string{fresh.ID, legacy[0].ID, legacy[1].ID, legacy[2].ID}
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Errorf("position %d: expected %s, got %s", i, id, got[i].ID)
+		}
+	}
+}
+
+func TestMigrateLegacyPurchaseFeedIsIdempotent(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	notif := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "Legacy",
+		Amount:      1000,
+		CreatedAt:   time.Now(),
+	}
+	data, _ := json.Marshal(notif)
+	if err := rdb.ZAdd(ctx, legacyPurchaseNotifKey, redis.Z{
+		Score:  float64(notif.CreatedAt.UnixMilli()),
+		Member: string(data),
+	}).Err(); err != nil {
+		t.Fatalf("seed legacy: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
+			t.Fatalf("run %d failed: %v", i, err)
+		}
+	}
+
+	card, err := rdb.ZCard(ctx, purchaseNotifKey).Result()
+	if err != nil {
+		t.Fatalf("ZCard failed: %v", err)
+	}
+	if card != 1 {
+		t.Errorf("expected 1 member after three merges, got %d", card)
+	}
+}
+
+// A replica running the old code may still be writing to the legacy key while
+// the deploy rolls, so the merge must not drop a write that lands after it.
+func TestMigrateLegacyPurchaseFeedPicksUpLateLegacyWrites(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	now := time.Now()
+	write := func(n PurchaseNotification) {
+		data, _ := json.Marshal(n)
+		if err := rdb.ZAdd(ctx, legacyPurchaseNotifKey, redis.Z{
+			Score:  float64(n.CreatedAt.UnixMilli()),
+			Member: string(data),
+		}).Err(); err != nil {
+			t.Fatalf("seed legacy: %v", err)
+		}
+	}
+
+	first := PurchaseNotification{
+		ID: uuid.New().String(), Type: "order_confirmed", OrderID: uuid.New(),
+		StudentName: "First", Amount: 1000, CreatedAt: now.Add(-time.Minute),
+	}
+	write(first)
+	if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
+		t.Fatalf("first migrate failed: %v", err)
+	}
+
+	late := PurchaseNotification{
+		ID: uuid.New().String(), Type: "order_confirmed", OrderID: uuid.New(),
+		StudentName: "Late", Amount: 2000, CreatedAt: now,
+	}
+	write(late)
+	if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
+		t.Fatalf("second migrate failed: %v", err)
+	}
+
+	got, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: notifMaxLim})
+	if err != nil {
+		t.Fatalf("ListNotifications failed: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected both legacy writes, got %d", len(got))
+	}
+	if got[0].ID != late.ID || got[1].ID != first.ID {
+		t.Errorf("expected late then first, got %s then %s", got[0].ID, got[1].ID)
+	}
+}
+
+func TestMigrateLegacyPurchaseFeedNoopWithoutLegacyKey(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	notif := PurchaseNotification{
+		ID: uuid.New().String(), Type: "order_confirmed", OrderID: uuid.New(),
+		StudentName: "Fresh", Amount: 1000, CreatedAt: time.Now(),
+	}
+	seedNotif(t, rdb, notif)
+
+	if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
+		t.Fatalf("MigrateLegacyPurchaseFeed failed: %v", err)
+	}
+
+	got, _, err := svc.ListNotifications(ctx, "user-1", NotifFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListNotifications failed: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != notif.ID {
+		t.Errorf("expected the existing feed untouched, got %+v", got)
+	}
+}
+
+// A purchase confirmed while a page is being assembled used to shift every rank
+// below it, so the offset-advanced scan handed the same notification back twice.
+func TestListNotificationsNoDuplicatesWhenFeedGrowsMidScan(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	userID := "user-1"
+	now := time.Now()
+
+	// Deep enough that the old implementation needed more than one batch.
+	for i := 0; i < 250; i++ {
+		n := PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     uuid.New(),
+			StudentName: "Seeded",
+			Amount:      1000,
+			CreatedAt:   now.Add(-time.Duration(i+1) * time.Second),
+		}
+		seedNotif(t, rdb, n)
+		if i%2 == 0 {
+			if err := svc.MarkNotificationRead(ctx, userID, n.ID); err != nil {
+				t.Fatalf("MarkNotificationRead failed: %v", err)
+			}
+		}
+	}
+
+	// Arrives after the read of the feed would have begun.
+	seedNotif(t, rdb, PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     uuid.New(),
+		StudentName: "Arrived mid-scan",
+		Amount:      5000,
+		CreatedAt:   now.Add(time.Second),
+	})
+
+	seen := map[string]bool{}
+	cursor := ""
+	for page := 0; page < 20; page++ {
+		got, next, err := svc.ListNotifications(ctx, userID, NotifFilter{
+			UnreadOnly: true, Limit: 10, Cursor: cursor,
+		})
+		if err != nil {
+			t.Fatalf("page %d failed: %v", page, err)
+		}
+		for _, n := range got {
+			if seen[n.ID] {
+				t.Fatalf("page %d returned %s a second time", page, n.ID)
+			}
+			seen[n.ID] = true
+		}
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+
+	// 125 unread from the seed run, plus the one that arrived mid-scan.
+	if len(seen) != 126 {
+		t.Errorf("expected 126 distinct unread notifications, got %d", len(seen))
+	}
+}
+
+// insertOnNthRangeHook simulates a purchase landing while a page is being
+// assembled: it lets the Nth range read return, then writes a newer member, so
+// any subsequent read of the same feed sees every rank below it shifted by one.
+type insertOnNthRangeHook struct {
+	rdb   *redis.Client
+	after int
+	seen  int
+	notif PurchaseNotification
+}
+
+func (h *insertOnNthRangeHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h *insertOnNthRangeHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+
+func (h *insertOnNthRangeHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		err := next(ctx, cmd)
+		if cmd.Name() != "zrevrangebyscore" {
+			return err
+		}
+		h.seen++
+		if h.seen != h.after {
+			return err
+		}
+		data, _ := json.Marshal(h.notif)
+		h.rdb.ZAdd(ctx, purchaseNotifKey, redis.Z{
+			Score:  float64(h.notif.CreatedAt.UnixMilli()),
+			Member: string(data),
+		})
+		return err
+	}
+}
+
+func TestListNotificationsNoDuplicatesWhenFeedGrowsBetweenRangeReads(t *testing.T) {
+	svc, rdb, cleanup := newNotifTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	userID := "user-1"
+	now := time.Now()
+
+	// The unread run deliberately straddles rank 99 — the last item of a
+	// 100-wide batch. When an insert shifts the ranks, an offset-advanced scan
+	// re-reads that boundary item, and because it is unread it survives the
+	// filter and reaches the page a second time.
+	for i := 0; i < 300; i++ {
+		n := PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     uuid.New(),
+			StudentName: "Seeded",
+			Amount:      1000,
+			CreatedAt:   now.Add(-time.Duration(i+1) * time.Second),
+		}
+		seedNotif(t, rdb, n)
+		if i < 95 || i > 115 {
+			if err := svc.MarkNotificationRead(ctx, userID, n.ID); err != nil {
+				t.Fatalf("MarkNotificationRead failed: %v", err)
+			}
+		}
+	}
+
+	rdb.AddHook(&insertOnNthRangeHook{
+		rdb:   rdb,
+		after: 1,
+		notif: PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     uuid.New(),
+			StudentName: "Arrived between reads",
+			Amount:      5000,
+			CreatedAt:   now.Add(time.Second),
+		},
+	})
+
+	got, _, err := svc.ListNotifications(ctx, userID, NotifFilter{UnreadOnly: true, Limit: 20})
+	if err != nil {
+		t.Fatalf("ListNotifications failed: %v", err)
+	}
+
+	seen := map[string]bool{}
+	for _, n := range got {
+		if seen[n.ID] {
+			t.Fatalf("notification %s returned twice in one response", n.ID)
+		}
+		seen[n.ID] = true
+	}
+	if len(got) == 0 {
+		t.Fatal("expected a page of unread notifications")
 	}
 }

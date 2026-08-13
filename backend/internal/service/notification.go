@@ -17,9 +17,12 @@ const (
 	purchaseNotifKey = "notif:purchase"
 	notifReadPrefix  = "notif_read:"
 
+	// The feed this replaced was keyed by role, and only ever written for
+	// admin_store. Merged forward at startup by MigrateLegacyPurchaseFeed.
+	legacyPurchaseNotifKey = "notif:" + RoleAdminStore
+
 	notifRetention  = 500
 	notifReadTTL    = 90 * 24 * time.Hour
-	notifScanBatch  = 100
 	notifDefaultLim = 20
 	notifMaxLim     = 100
 )
@@ -106,58 +109,80 @@ func (s *Service) ListNotifications(ctx context.Context, userID string, filter N
 	}
 	resumed := cursorID == ""
 
-	out := make([]PurchaseNotification, 0, filter.Limit)
-	var offset int64
-
-	for {
-		members, err := s.rdb.ZRevRangeByScore(ctx, purchaseNotifKey, &redis.ZRangeBy{
-			Min:    "-inf",
-			Max:    max,
-			Offset: offset,
-			Count:  notifScanBatch,
-		}).Result()
-		if err != nil {
-			return nil, "", err
-		}
-		if len(members) == 0 {
-			return out, "", nil
-		}
-		offset += int64(len(members))
-
-		for _, member := range members {
-			var notif PurchaseNotification
-			if err := json.Unmarshal([]byte(member), &notif); err != nil {
-				continue
-			}
-
-			if !resumed {
-				if notif.ID == cursorID {
-					resumed = true
-				}
-				continue
-			}
-
-			if filter.Type != "" && notif.Type != filter.Type {
-				continue
-			}
-
-			_, notif.Read = read[notif.ID]
-			if filter.UnreadOnly && notif.Read {
-				continue
-			}
-
-			// A cursor is only handed back once a further *matching* item is in
-			// hand, so filtered-out tails never masquerade as another page.
-			if len(out) == filter.Limit {
-				return out, encodeNotifCursor(out[len(out)-1]), nil
-			}
-			out = append(out, notif)
-		}
-
-		if len(members) < notifScanBatch {
-			return out, "", nil
-		}
+	// One bounded read rather than successive offset batches. Offsets are ranks,
+	// and a purchase confirmed mid-scan shifts every rank below it, which handed
+	// the same notification back twice in one response. Reading the whole
+	// retained window at once makes the page a snapshot; notifRetention is what
+	// keeps that affordable.
+	members, err := s.rdb.ZRevRangeByScore(ctx, purchaseNotifKey, &redis.ZRangeBy{
+		Min:   "-inf",
+		Max:   max,
+		Count: notifRetention,
+	}).Result()
+	if err != nil {
+		return nil, "", err
 	}
+
+	out := make([]PurchaseNotification, 0, filter.Limit)
+
+	for _, member := range members {
+		var notif PurchaseNotification
+		if err := json.Unmarshal([]byte(member), &notif); err != nil {
+			continue
+		}
+
+		if !resumed {
+			if notif.ID == cursorID {
+				resumed = true
+			}
+			continue
+		}
+
+		if filter.Type != "" && notif.Type != filter.Type {
+			continue
+		}
+
+		_, notif.Read = read[notif.ID]
+		if filter.UnreadOnly && notif.Read {
+			continue
+		}
+
+		// A cursor is only handed back once a further *matching* item is in
+		// hand, so filtered-out tails never masquerade as another page.
+		if len(out) == filter.Limit {
+			return out, encodeNotifCursor(out[len(out)-1]), nil
+		}
+		out = append(out, notif)
+	}
+
+	return out, "", nil
+}
+
+// MigrateLegacyPurchaseFeed folds the old role-keyed feed into the shared one.
+// Without it every notification written before this deploy is unreachable: the
+// readers moved to notif:purchase while the data sits under notif:admin_store.
+//
+// Idempotent, and safe to run while an old replica is still writing to the
+// legacy key — the union dedupes by member and keeps the original scores, so a
+// rolling deploy converges rather than losing writes. The legacy key is left in
+// place for that reason.
+func (s *Service) MigrateLegacyPurchaseFeed(ctx context.Context) error {
+	exists, err := s.rdb.Exists(ctx, legacyPurchaseNotifKey).Result()
+	if err != nil {
+		return err
+	}
+	if exists == 0 {
+		return nil
+	}
+
+	if err := s.rdb.ZUnionStore(ctx, purchaseNotifKey, &redis.ZStore{
+		Keys:      []string{purchaseNotifKey, legacyPurchaseNotifKey},
+		Aggregate: "MAX",
+	}).Err(); err != nil {
+		return err
+	}
+
+	return s.rdb.ZRemRangeByRank(ctx, purchaseNotifKey, 0, -(notifRetention + 1)).Err()
 }
 
 func (s *Service) MarkNotificationRead(ctx context.Context, userID, id string) error {

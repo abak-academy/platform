@@ -63,6 +63,10 @@ func main() {
 	storageClient := newStorageClient(cfg)
 	pdfGenerator := service.NewGotenbergPDFGenerator(cfg.GotenbergURL, http.DefaultClient)
 	svc := service.NewWithStore(storeRepo, storeRepo, rdb, jwtSigner, otpProvider, emailProvider, paymentClient, logisticsClient, storageClient, &cfg, pdfGenerator)
+	// Best-effort: an unreachable legacy feed is not worth refusing to boot over.
+	if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
+		logger.Error("migrate legacy purchase notifications", "err", err)
+	}
 	svc.SetReloadPaymentFn(func(ctx context.Context) service.PaymentClient {
 		return adapter.ResolvePaymentClient(ctx, storeRepo, &cfg)
 	})
