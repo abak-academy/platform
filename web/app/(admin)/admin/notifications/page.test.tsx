@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import NotificationsPage from "./page";
 
 vi.mock("@/components/admin/PurchaseNotificationFeed", () => ({
@@ -25,14 +25,36 @@ describe("NotificationsPage", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Notifikasi" })).toBeInTheDocument();
   });
 
-  it("renders the purchase notification feed section", () => {
+  // The page used to stack a second AdminPageHeader from AnnouncementTable
+  // directly beneath its own.
+  it("renders exactly one page heading", () => {
+    render(<NotificationsPage />);
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  it("renders the purchase notification feed section on the default tab", () => {
     render(<NotificationsPage />);
     expect(screen.getByTestId("purchase-feed")).toHaveTextContent("Notifikasi Pembelian");
   });
 
-  it("renders the announcement table section", () => {
+  it("renders the announcement table section once its tab is selected", () => {
     render(<NotificationsPage />);
+
+    expect(screen.queryByTestId("announcement-table")).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Pengumuman" }));
+
     expect(screen.getByTestId("announcement-table")).toBeInTheDocument();
+  });
+
+  it("offers the header create action only on the announcements tab", () => {
+    render(<NotificationsPage />);
+
+    expect(screen.queryAllByRole("button", { name: /buat/i })).toHaveLength(0);
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Pengumuman" }));
+
+    expect(screen.getAllByRole("button", { name: /buat/i }).length).toBeGreaterThan(0);
   });
 
   it("renders the announcement composer", () => {

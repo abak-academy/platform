@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { KeyRound } from "lucide-react";
 import { useMe } from "@/lib/hooks/auth";
 import { usePresignUpload } from "@/lib/hooks/students";
 import { useUpdateOwnPhoto } from "@/lib/hooks/profile";
@@ -50,6 +51,7 @@ export default function AdminProfilePage() {
   const updatePhoto = useUpdateOwnPhoto();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const roleKey = roleLabelKey(me?.role);
   const roleLabel = roleKey ? t(roleKey) : "—";
@@ -165,10 +167,34 @@ export default function AdminProfilePage() {
       </Card>
 
       <Card className="rounded-2xl border-0 p-6 shadow-md">
-        <h2 className="mb-4 text-[15px] font-semibold text-ink-900">
-          {t("admin_profile_security_card")}
-        </h2>
-        <ChangePasswordForm />
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-[15px] font-semibold text-ink-900">
+              {t("admin_profile_security_card")}
+            </h2>
+            <p className="mt-1 text-xs text-ink-600">
+              {t("admin_profile_password_hint")}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setChangingPassword((open) => !open)}
+            aria-expanded={changingPassword}
+            aria-controls={changingPassword ? "change-password-panel" : undefined}
+            className="shrink-0"
+          >
+            <KeyRound className="mr-1 size-4" />
+            {changingPassword ? t("cancel") : t("admin_profile_change_password")}
+          </Button>
+        </div>
+
+        {changingPassword && (
+          <div id="change-password-panel" className="mt-5 border-t border-line pt-5">
+            <ChangePasswordForm onDone={() => setChangingPassword(false)} />
+          </div>
+        )}
       </Card>
     </div>
   );

@@ -15,7 +15,6 @@ import {
 import { type DICT, useTranslation } from "@/lib/i18n";
 
 type DictKey = keyof (typeof DICT)["id"];
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatCard } from "@/components/admin/StatCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -105,27 +104,15 @@ export function AnnouncementTable({ onCreateClick, onEdit }: AnnouncementTablePr
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <div className="p-4 text-center text-ink-600">{t("sys_loading")}</div>
-      </div>
+      <div className="p-4 text-center text-ink-600">{t("sys_loading")}</div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <AdminPageHeader
-        icon={Bell}
-        title={t("notifications")}
-        description="Kelola notifikasi ke siswa."
-        actions={
-          <Button size="sm" onClick={onCreateClick}>
-            <Plus className="mr-1 size-4" />
-            {t("create")}
-          </Button>
-        }
-      />
+    <section className="space-y-4">
+      <p className="text-xs text-ink-600">{t("notification_announcements_description")}</p>
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label={t("tab_all")} value={String(stats.total)} accent="primary" />
         <StatCard label={t("notification_sent")} value={String(stats.sent)} accent="secondary" />
         <StatCard label={t("notification_scheduled")} value={String(stats.scheduled)} accent="tertiary" />
@@ -133,7 +120,7 @@ export function AnnouncementTable({ onCreateClick, onEdit }: AnnouncementTablePr
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v)}>
-        <TabsList className="mb-4">
+        <TabsList>
           <TabsTrigger value="all" className="text-xs">{t("tab_all")}</TabsTrigger>
           <TabsTrigger value="sent" className="text-xs">{t("notification_sent")}</TabsTrigger>
           <TabsTrigger value="scheduled" className="text-xs">{t("notification_scheduled")}</TabsTrigger>
@@ -142,7 +129,27 @@ export function AnnouncementTable({ onCreateClick, onEdit }: AnnouncementTablePr
       </Tabs>
 
       {rows.length === 0 ? (
-        <div className="md-card-outlined p-8 text-center text-ink-500">{t("sys_loading_data")}</div>
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-line bg-surface px-6 py-12 text-center">
+          <span className="flex size-12 items-center justify-center rounded-full bg-surface-2 text-ink-500">
+            <Bell className="size-6" />
+          </span>
+          <p className="text-sm font-medium text-ink-900">
+            {tab === "all"
+              ? t("notification_announcements_empty")
+              : t("notification_announcements_empty_filtered")}
+          </p>
+          {tab === "all" && (
+            <>
+              <p className="max-w-sm text-xs text-ink-600">
+                {t("notification_announcements_empty_hint")}
+              </p>
+              <Button size="sm" className="mt-2" onClick={onCreateClick}>
+                <Plus className="mr-1 size-4" />
+                {t("create")}
+              </Button>
+            </>
+          )}
+        </div>
       ) : (
         <div className="md-card-outlined overflow-hidden">
           <div className="overflow-x-auto">
@@ -153,7 +160,7 @@ export function AnnouncementTable({ onCreateClick, onEdit }: AnnouncementTablePr
                   <th className="px-4 py-3">{t("notification_type")}</th>
                   <th className="px-4 py-3">{t("notification_recipients")}</th>
                   <th className="px-4 py-3">{t("notification_status")}</th>
-                  <th className="px-4 py-3">Waktu</th>
+                  <th className="px-4 py-3">{t("notification_time")}</th>
                   <th className="px-4 py-3">{t("notification_recipients_targeted")}</th>
                   <th className="px-4 py-3 text-right" />
                 </tr>
@@ -251,6 +258,6 @@ export function AnnouncementTable({ onCreateClick, onEdit }: AnnouncementTablePr
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

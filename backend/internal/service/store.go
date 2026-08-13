@@ -1483,11 +1483,11 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key, 
 			Type:        "order_confirmed",
 			OrderID:     order.ID,
 			StudentName: studentName,
-			Amount:      int64(order.Total * 100),
+			Amount:      int64(order.Total),
 			CreatedAt:   time.Now(),
 			Read:        false,
 		}
-		_ = s.PushPurchaseNotification(ctx, RoleAdminStore, notif)
+		_ = s.PushPurchaseNotification(ctx, notif)
 	}
 
 	return nil

@@ -1,18 +1,22 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useAdminNotifications, useMarkNotificationRead } from "@/lib/hooks/admin-notifications";
+import { useCallback, useState } from "react";
+import { Inbox, ShoppingBag } from "lucide-react";
+import {
+  useAdminNotifications,
+  useMarkNotificationRead,
+} from "@/lib/hooks/admin-notifications";
 import { useTranslation } from "@/lib/i18n";
-import type { AdminNotification } from "@/lib/hooks/admin-notifications";
+import { formatRupiah } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
-function formatAmount(amount: number): string {
-  return `Rp${amount.toLocaleString("id-ID")}`;
-}
-
-function formatTimestamp(iso: string): string {
+function fmtDateTime(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString("id-ID", {
-    day: "numeric",
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("id-ID", {
+    day: "2-digit",
     month: "short",
     year: "numeric",
     hour: "2-digit",
@@ -23,116 +27,173 @@ function formatTimestamp(iso: string): string {
 export function PurchaseNotificationFeed() {
   const { t } = useTranslation();
   const [unreadOnly, setUnreadOnly] = useState(false);
-  const [cursor, setCursor] = useState<string | undefined>();
-  const [allItems, setAllItems] = useState<AdminNotification[]>([]);
-  const [hasMore, setHasMore] = useState(true);
 
-  const query = useAdminNotifications({ unreadOnly, cursor });
+  const {
+    items,
+    isLoading,
+    isError,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useAdminNotifications({ unreadOnly });
   const markRead = useMarkNotificationRead();
 
-  useEffect(() => {
-    if (!query.data) return;
-    const items = query.data.data ?? [];
-    if (!cursor) {
-      setAllItems(items);
-    } else {
-      setAllItems((prev) => [...prev, ...items]);
-    }
-    setHasMore(Boolean(query.data.next_cursor));
-  }, [query.data, cursor]);
-
-  const handleToggleUnreadOnly = useCallback(() => {
-    setUnreadOnly((prev) => !prev);
-    setCursor(undefined);
-    setAllItems([]);
-    setHasMore(true);
-  }, []);
-
-  const handleLoadMore = useCallback(() => {
-    if (query.data?.next_cursor) {
-      setCursor(query.data.next_cursor);
-    }
-  }, [query.data]);
+  const unreadCount = items.filter((n) => !n.read).length;
 
   const handleMarkRead = useCallback(
-    (id: string) => {
+    (id: string, alreadyRead: boolean) => {
+      if (alreadyRead) return;
       markRead.mutate(id);
     },
     [markRead]
   );
 
-  if (query.isFetching && !query.data) {
-    return <div className="p-4 text-center color-on-surface-variant">Memuat...</div>;
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-title-medium">{t("notification")}</h2>
-        <button
-          type="button"
-          onClick={handleToggleUnreadOnly}
-          className={`text-label rounded-md px-3 py-1.5 transition-colors ${
-            unreadOnly
-              ? "bg-primary text-on-primary"
-              : "bg-surface-container-high text-on-surface-variant"
-          }`}
-          aria-label={t("notification_unread_only")}
-        >
-          {t("notification_unread_only")}
-        </button>
-      </div>
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-[15px] font-semibold text-ink-900">
+            {t("notification_inbox_title")}
+          </h2>
+          <p className="text-xs text-ink-600">{t("notification_inbox_description")}</p>
+        </div>
 
-      {allItems.length === 0 && !query.isFetching ? (
-        <p className="p-4 text-center color-on-surface-variant text-body-medium">
-          {"Belum ada notifikasi"}
-        </p>
-      ) : (
-        <ul className="divide-y divide-outline-variant">
-          {allItems.map((notif) => (
-            <li
-              key={notif.id}
-              onClick={() => handleMarkRead(notif.id)}
-              className={`flex cursor-pointer items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-surface-container-high ${
-                !notif.read ? "bg-primary-container/20" : ""
-              }`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="truncate text-body-medium font-medium">
-                    {notif.student_name}
-                  </p>
-                  {!notif.read && (
-                    <span className="inline-block size-2 shrink-0 rounded-full bg-primary" />
-                  )}
-                </div>
-                <p className="text-body-small color-on-surface-variant">
-                  {"Pesanan"}: {notif.order_id.slice(0, 8)}...
-                </p>
-                <p className="text-body-small color-on-surface-variant">
-                  {formatTimestamp(notif.created_at)}
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="text-body-medium font-semibold">{formatAmount(notif.amount)}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {hasMore && (
-        <div className="flex justify-center pt-2">
+        <div className="inline-flex rounded-full border border-line bg-surface-2 p-0.5">
           <button
             type="button"
-            onClick={handleLoadMore}
-            disabled={query.isFetching}
-            className="text-label rounded-md bg-surface-container-high px-4 py-2 color-on-surface-variant transition-colors hover:bg-surface-container-highest disabled:opacity-50"
+            onClick={() => setUnreadOnly(false)}
+            aria-pressed={!unreadOnly}
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+              unreadOnly ? "text-ink-600 hover:text-ink-900" : "bg-surface text-ink-900 shadow-sm"
+            )}
           >
-            {query.isFetching ? "Memuat..." : "Muat lebih banyak"}
+            {t("notification_show_all")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setUnreadOnly(true)}
+            aria-pressed={unreadOnly}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+              unreadOnly ? "bg-surface text-ink-900 shadow-sm" : "text-ink-600 hover:text-ink-900"
+            )}
+          >
+            {t("notification_unread_only")}
+            {unreadCount > 0 && (
+              <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white tabular-nums">
+                {unreadCount}
+              </span>
+            )}
           </button>
         </div>
+      </div>
+
+      {isLoading ? (
+        <div className="overflow-hidden rounded-xl border border-line bg-surface divide-y divide-line">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3.5">
+              <Skeleton className="size-9 shrink-0 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-56" />
+              </div>
+              <Skeleton className="h-4 w-20" />
+            </div>
+          ))}
+        </div>
+      ) : isError ? (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+          {t("notification_inbox_failed")}
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-line bg-surface px-6 py-12 text-center">
+          <span className="flex size-12 items-center justify-center rounded-full bg-surface-2 text-ink-500">
+            <Inbox className="size-6" />
+          </span>
+          <p className="text-sm font-medium text-ink-900">
+            {unreadOnly ? t("notification_inbox_empty_unread") : t("notification_inbox_empty")}
+          </p>
+          {!unreadOnly && (
+            <p className="max-w-sm text-xs text-ink-600">{t("notification_inbox_empty_hint")}</p>
+          )}
+        </div>
+      ) : (
+        <>
+          <ul className="overflow-hidden rounded-xl border border-line bg-surface divide-y divide-line">
+            {items.map((notif) => (
+              <li key={notif.id}>
+                <button
+                  type="button"
+                  onClick={() => handleMarkRead(notif.id, notif.read)}
+                  disabled={notif.read}
+                  aria-label={notif.read ? undefined : t("notification_mark_read")}
+                  className={cn(
+                    "flex w-full items-center gap-3 border-l-2 px-4 py-3.5 text-left transition-colors",
+                    notif.read
+                      ? "cursor-default border-l-transparent"
+                      : "border-l-brand-600 bg-brand-50 hover:bg-brand-100"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-9 shrink-0 items-center justify-center rounded-full",
+                      notif.read ? "bg-surface-2 text-ink-500" : "bg-brand-100 text-brand-700"
+                    )}
+                  >
+                    <ShoppingBag className="size-4" />
+                  </span>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "truncate text-sm",
+                          notif.read ? "font-medium text-ink-600" : "font-semibold text-ink-900"
+                        )}
+                      >
+                        {notif.student_name}
+                      </span>
+                      {!notif.read && (
+                        <span className="size-1.5 shrink-0 rounded-full bg-brand-600" />
+                      )}
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-600">
+                      <span className="font-mono text-[11px] text-ink-500">
+                        {t("notification_order_label")} {notif.order_id}
+                      </span>
+                      <span className="text-ink-400">·</span>
+                      <span>{fmtDateTime(notif.created_at)}</span>
+                    </div>
+                  </div>
+
+                  <span
+                    className={cn(
+                      "shrink-0 text-sm tabular-nums",
+                      notif.read ? "font-medium text-ink-600" : "font-semibold text-ink-900"
+                    )}
+                  >
+                    {formatRupiah(notif.amount)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {hasNextPage && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+              >
+                {isFetchingNextPage ? t("notification_loading") : t("notification_load_more")}
+              </Button>
+            </div>
+          )}
+        </>
       )}
-    </div>
+    </section>
   );
 }

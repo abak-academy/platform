@@ -152,13 +152,41 @@ describe("AnnouncementTable", () => {
     expect(screen.queryByTestId("row-actions-sent")).not.toBeInTheDocument();
   });
 
-  it("calls onCreateClick when create button is clicked", () => {
+  // The primary create action now lives on the page header; the table keeps one
+  // only as the empty-state call to action.
+  it("calls onCreateClick from the empty-state create button", () => {
     const onCreateClick = vi.fn();
-    mockData(allAnnouncements);
+    mockData([]);
     render(<AnnouncementTable onCreateClick={onCreateClick} onEdit={vi.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
     expect(onCreateClick).toHaveBeenCalledOnce();
+  });
+
+  it("does not render its own page header", () => {
+    mockData(allAnnouncements);
+    render(<AnnouncementTable onCreateClick={vi.fn()} onEdit={vi.fn()} />);
+
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+  });
+
+  it("shows an empty state rather than a loading message when there are no announcements", () => {
+    mockData([]);
+    render(<AnnouncementTable onCreateClick={vi.fn()} onEdit={vi.fn()} />);
+
+    expect(screen.getByText("notification_announcements_empty")).toBeInTheDocument();
+    expect(screen.queryByText(/sys_loading_data/i)).not.toBeInTheDocument();
+  });
+
+  it("distinguishes an empty filtered tab from an empty feed", () => {
+    mockData(allAnnouncements.filter((a) => a.status === "sent"));
+    render(<AnnouncementTable onCreateClick={vi.fn()} onEdit={vi.fn()} />);
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /notification_draft/i }));
+
+    expect(
+      screen.getByText(/notification_announcements_empty_filtered/i)
+    ).toBeInTheDocument();
   });
 
   it("shows loading state", () => {

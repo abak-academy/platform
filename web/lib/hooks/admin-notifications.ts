@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 
 export interface AdminNotification {
@@ -14,38 +14,53 @@ export interface AdminNotification {
 }
 
 export interface AdminNotificationsResponse {
-  data: AdminNotification[];
-  next_cursor: string;
+  data: AdminNotification[] | null;
+  next_cursor?: string;
 }
 
 export interface AdminNotifsFilters {
   unreadOnly?: boolean;
-  cursor?: string;
 }
 
 export const adminNotifsKeys = {
   all: ["admin", "notifications"] as const,
-  list: (filters?: AdminNotifsFilters) => {
-    const parts: string[] = ["admin", "notifications", "list"];
-    if (filters?.unreadOnly) parts.push("unread");
-    if (filters?.cursor) parts.push(filters.cursor);
-    return parts as unknown as readonly string[];
-  },
+  list: (filters?: AdminNotifsFilters) =>
+    [...adminNotifsKeys.all, "list", filters?.unreadOnly ? "unread" : "any"] as const,
 };
 
-function buildNotifsQuery(filters?: AdminNotifsFilters): string {
+function buildNotifsQuery(cursor: string, filters?: AdminNotifsFilters): string {
   const params = new URLSearchParams();
   if (filters?.unreadOnly) params.set("unread_only", "true");
-  if (filters?.cursor) params.set("cursor", filters.cursor);
+  if (cursor) params.set("cursor", cursor);
   const qs = params.toString();
   return qs ? `/admin/notifications?${qs}` : "/admin/notifications";
 }
 
+// Paging lives in react-query rather than in component state: the feed used to
+// accumulate pages by hand, and marking one row read re-ran the fetch and
+// appended the same page a second time.
 export function useAdminNotifications(filters?: AdminNotifsFilters) {
-  return useQuery({
+  const query = useInfiniteQuery({
     queryKey: adminNotifsKeys.list(filters),
-    queryFn: () => authFetch<AdminNotificationsResponse>(buildNotifsQuery(filters)),
+    initialPageParam: "",
+    queryFn: ({ pageParam }) =>
+      authFetch<AdminNotificationsResponse>(buildNotifsQuery(pageParam, filters)),
+    // The server omits the cursor on the final page, which is what ends this.
+    getNextPageParam: (last) => last.next_cursor || undefined,
   });
+
+  const items = query.data?.pages.flatMap((page) => page.data ?? []) ?? [];
+
+  return {
+    items,
+    isLoading: query.isPending,
+    isError: query.isError,
+    error: query.error,
+    hasNextPage: query.hasNextPage,
+    isFetchingNextPage: query.isFetchingNextPage,
+    fetchNextPage: query.fetchNextPage,
+    refetch: query.refetch,
+  };
 }
 
 export function useMarkNotificationRead() {
