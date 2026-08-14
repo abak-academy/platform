@@ -135,6 +135,7 @@ export default function CartPage() {
 
   const handleCheckShipping = useCallback(() => {
     if (!shippingAddress.provinsi_id || !shippingAddress.kota_id || !shippingAddress.kecamatan_id || !shippingAddress.kode_pos) return;
+    setShippingClearedNotice(false);
     shippingRates.mutate({
       destination_postal_code: shippingAddress.kode_pos,
       weight_grams: totalPhysicalWeight,
@@ -190,15 +191,17 @@ export default function CartPage() {
           priorAddress?.kecamatan_id !== shippingAddress.kecamatan_id ||
           priorAddress?.kode_pos !== shippingAddress.kode_pos);
 
+      const hadShippingToClear = Boolean(shippingRates.data) || selectedRateKey !== null;
+
       if (destinationChanged) {
         shippingRates.reset();
         setSelectedRateKey(null);
       }
-      setShippingClearedNotice(destinationChanged);
+      setShippingClearedNotice(destinationChanged && hadShippingToClear);
 
       setAddressFormOpen(false);
     },
-    [cart, shippingAddress, addressSnapshot, patchCart, updateProfile, shippingRates]
+    [cart, shippingAddress, addressSnapshot, patchCart, updateProfile, shippingRates, selectedRateKey]
   );
 
   // "Primary" is the profile's own address, compared field by field — no column
@@ -242,6 +245,7 @@ export default function CartPage() {
   const handleSelectCourier = useCallback(
     (rate: { courier: string; service: string; price: number }) => {
       setSelectedRateKey(courierRateKey(rate));
+      setShippingClearedNotice(false);
       persistShipping(rate, courierNote);
     },
     [persistShipping, courierNote]

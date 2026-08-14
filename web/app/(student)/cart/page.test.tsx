@@ -1405,5 +1405,55 @@ describe("CartPage with Shipping", () => {
       expect(screen.getByRole("radio", { name: /jne/i })).toBeInTheDocument();
       expect(screen.queryByText("Shipping selection cleared because the address changed")).not.toBeInTheDocument();
     });
+
+    // Review finding: once shown, the notice used to persist through the buyer
+    // re-running the shipping check, still claiming a stale clearing after the
+    // buyer has already moved on and re-quoted.
+    it("clears the shippingClearedNotice once the buyer re-runs the shipping check", async () => {
+      const user = userEvent.setup();
+      mockCartWithPersistedAddress();
+      mockRatesAlreadyPresent();
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.click(await screen.findByRole("button", { name: "Change address" }));
+      const kodePos = screen.getByLabelText("Postal Code");
+      await user.clear(kodePos);
+      await user.type(kodePos, "40999");
+      await user.click(screen.getByRole("button", { name: "Save address" }));
+
+      expect(await screen.findByText("Shipping selection cleared because the address changed")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Check shipping cost" }));
+
+      expect(screen.queryByText("Shipping selection cleared because the address changed")).not.toBeInTheDocument();
+    });
+
+    // Review finding: destinationChanged alone used to drive the notice, even
+    // when there was no rate list and no courier selection to clear.
+    it("does not show the shipping-cleared notice when there was no rate list or selection to clear", async () => {
+      const user = userEvent.setup();
+      mockCartWithPersistedAddress();
+      mockUseCitiesByProvince.mockReturnValue({
+        data: [...mockCities, { id: "city2", name: "Semarang", code: "SM" }],
+        isLoading: false,
+      });
+      // shippingRates stays at the default beforeEach mock: data undefined and
+      // selectedRateKey is never set, so nothing exists client-side to clear.
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.click(await screen.findByRole("button", { name: "Change address" }));
+      fireEvent.click(screen.getByLabelText("City"));
+      fireEvent.click(screen.getByRole("option", { name: "Semarang" }));
+      fireEvent.click(screen.getByLabelText("District"));
+      fireEvent.click(screen.getByRole("option", { name: "Cibadak" }));
+      await user.click(screen.getByRole("button", { name: "Save address" }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Change address" })).toBeInTheDocument();
+      });
+      expect(screen.queryByText("Shipping selection cleared because the address changed")).not.toBeInTheDocument();
+    });
   });
 });
