@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Issue** | not filed |
+| **Issue** | [#92](https://github.com/abak-academy/platform/issues/92) bullet 1 (was #93, folded 2026-08-14) |
 | **Objective** | One `web` image, promotable staging→prod, instead of one build per environment. |
 | **Depends on** | — |
 | **Verified against** | `chore/ci-speedup-bcrypt-and-workflow` @ `541584b`, 2026-08-02 |

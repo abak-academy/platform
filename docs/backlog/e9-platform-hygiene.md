@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Issue** | not filed |
+| **Issue** | [#92](https://github.com/abak-academy/platform/issues/92) |
 | **Objective** | Deploys stop being hand-typed, CI stops burning double, and the dead weight the codebase is still carrying comes out. |
 | **Source IDs** | F-5, D-5, D-7, D-3 (`invoice_url`) + the infra/CI items and the orphaned `school/classes` stub |
 | **Client items** | none |
