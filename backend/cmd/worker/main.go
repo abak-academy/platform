@@ -41,7 +41,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := infra.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := infra.NewPoolWithMaxConns(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
 	if err != nil {
 		logger.Error("connect postgres", "err", err)
 		os.Exit(1)

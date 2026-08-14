@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useSaveAnswers } from "./exam";
+import {
+  useSaveAnswers,
+  useReconnectSession,
+  useSubmitSession,
+  useAdvanceSection,
+} from "./exam";
 
 const mockAuthFetch = vi.fn();
 
@@ -34,6 +39,11 @@ function wrapperFactory() {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),
   };
+}
+
+function isGetCall(call: unknown[]) {
+  const init = call[1] as { method?: string } | undefined;
+  return !init?.method;
 }
 
 describe("useSaveAnswers", () => {
@@ -143,5 +153,112 @@ describe("useSaveAnswers", () => {
       expect(secondDone).toBe(true);
     });
     expect(mockAuthFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Issue #94: a successful autosave used to invalidate examKeys.session(id),
+// which refetches the whole paper (4 + 6T queries via ReconnectSession) on
+// every debounced keystroke. These tests pin the fix at the network level —
+// a mounted useReconnectSession observer sharing the QueryClient is the
+// thing that proves whether a refetch actually fired.
+describe("useSaveAnswers onSuccess and the mounted session query (issue #94)", () => {
+  beforeEach(() => {
+    mockAuthFetch.mockReset();
+  });
+
+  it("a successful save issues exactly one network call (the PATCH) and does not refetch the mounted session query (FR-1)", async () => {
+    mockAuthFetch.mockImplementation(() => Promise.resolve({}));
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(
+      () => ({
+        reconnect: useReconnectSession("session-1"),
+        save: useSaveAnswers("session-1"),
+      }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.reconnect.isSuccess).toBe(true);
+    });
+    mockAuthFetch.mockClear();
+
+    await act(async () => {
+      result.current.save.mutate({
+        answers: [{ question_id: "q1", answer: "a", flagged_for_review: false }],
+        current_position: 0,
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.save.isSuccess).toBe(true);
+    });
+    // Flush any microtask a re-added invalidateQueries would have kicked
+    // off alongside the onSuccess callback.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = mockAuthFetch.mock.calls[0];
+    expect(init).toMatchObject({ method: "PATCH" });
+    expect(url).toContain("/exam/sessions/session-1/answers");
+  });
+
+  it("submit still refetches the mounted session query (FR-3 control)", async () => {
+    mockAuthFetch.mockImplementation(() => Promise.resolve({}));
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(
+      () => ({
+        reconnect: useReconnectSession("session-1"),
+        submit: useSubmitSession("session-1"),
+      }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.reconnect.isSuccess).toBe(true);
+    });
+    mockAuthFetch.mockClear();
+
+    await act(async () => {
+      result.current.submit.mutate();
+    });
+    await waitFor(() => {
+      expect(result.current.submit.isSuccess).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(mockAuthFetch.mock.calls.some(isGetCall)).toBe(true);
+    });
+  });
+
+  it("advance-section still refetches the mounted session query (FR-4 control)", async () => {
+    mockAuthFetch.mockImplementation(() => Promise.resolve({}));
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(
+      () => ({
+        reconnect: useReconnectSession("session-1"),
+        advance: useAdvanceSection("session-1"),
+      }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.reconnect.isSuccess).toBe(true);
+    });
+    mockAuthFetch.mockClear();
+
+    await act(async () => {
+      result.current.advance.mutate("test-1");
+    });
+    await waitFor(() => {
+      expect(result.current.advance.isSuccess).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(mockAuthFetch.mock.calls.some(isGetCall)).toBe(true);
+    });
   });
 });

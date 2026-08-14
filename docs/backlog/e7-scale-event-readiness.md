@@ -64,6 +64,46 @@ SES the event fails at registration, long before any of this matters.
 - Confirmation that the bundle path, not the inline path, served the questions.
 - The stale-bundle alert firing when deliberately provoked.
 
+### Bcrypt verify cost — measured (login is a candidate bottleneck)
+
+Command:
+
+```
+cd backend && go test -run '^$' -bench 'BenchmarkPasswordVerify_ProductionCost' -benchtime 20x ./internal/service/
+```
+
+Verbatim output:
+
+```
+goos: darwin
+goarch: arm64
+pkg: akademi-bimbel/internal/service
+cpu: Apple M3 Pro
+BenchmarkPasswordVerify_ProductionCost-11    	      20	 234357979 ns/op
+PASS
+ok  	akademi-bimbel/internal/service	6.180s
+```
+
+**This was measured on a developer Mac (Apple M3 Pro), not on `e2-standard-2`.** The number above is
+not attributable to production hardware and must not be used for capacity planning as-is. Re-run the
+identical command on `e2-standard-2` before relying on it:
+
+```
+cd backend && go test -run '^$' -bench 'BenchmarkPasswordVerify_ProductionCost' -benchtime 20x ./internal/service/
+```
+
+**Derived arithmetic (from the Mac number above, for scale only).** 234,357,979 ns/op ≈ 0.234s/op →
+~4.27 bcrypt verifies/sec on one core. `vm-app` is 2 vCPU shared across six containers, so even in the
+unrealistic best case where the entire 2 vCPU is dedicated to bcrypt verifies with zero other load,
+that ceiling is ~8.5 verifies/sec. ~1000 students logging in within a few minutes means bcrypt alone
+would need on the order of two minutes of fully-dedicated 2-vCPU time just to clear the queue — and in
+practice that CPU is shared with API request handling and five other containers, so login is a real
+contention point at this headcount, not a rounding error, and the re-run on `e2-standard-2` should
+inform whether it needs its own mitigation (e.g. a login rate limiter or queue) ahead of the event.
+
+**Cost 12 is retained.** This measurement changes no production value; lowering the bcrypt cost is a
+separate security decision, out of scope here.
+
 ---
 
 ## 3. F-6 — Amazon SES *(moved here from E1 on 2026-07-30)*

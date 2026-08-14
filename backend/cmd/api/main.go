@@ -45,7 +45,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	pool, err := infra.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := infra.NewPoolWithMaxConns(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
 	if err != nil {
 		logger.Error("connect postgres", "err", err)
 		os.Exit(1)
