@@ -88,7 +88,7 @@ func LoginRateLimiter() echo.MiddlewareFunc {
 			})
 		},
 		DenyHandler: func(c echo.Context, identifier string, err error) error {
-			c.Response().Header().Set("Retry-After", "60")
+			c.Response().Header().Set("Retry-After", "1")
 			return c.JSON(http.StatusTooManyRequests, map[string]string{
 				"code":    "rate_limited",
 				"message": "too many login attempts",
