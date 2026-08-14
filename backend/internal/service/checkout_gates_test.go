@@ -409,6 +409,41 @@ func TestCheckout_PhysicalItemPricedButNoCourier_ReturnsShippingRequired(t *test
 	}
 }
 
+// TestCheckout_DigitalOnlyCart_NoCourier_Succeeds covers Task 3's Done-when: a
+// cart with only non-physical items and no courier ever selected must not be
+// caught by the shipping-required gate, which is scoped to isPhysicalType.
+func TestCheckout_DigitalOnlyCart_NoCourier_Succeeds(t *testing.T) {
+	svc, repo := newCheckoutTestService(t)
+	ctx := context.Background()
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status)
+		 VALUES ('course', $1, 50000, 0, 'published') RETURNING id`,
+		"Digital Course "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "Digital Only Student", "digitalonly_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "digitalonly-key-"+uniqueSuffix())
+	if err != nil {
+		t.Fatalf("Checkout: want a digital-only cart with no courier to still check out, got %v", err)
+	}
+	if result.GatewayRef == "" {
+		t.Error("want a gateway ref (payment proceeded)")
+	}
+}
+
 // TestCheckout_PhysicalItemWithCourierAndPricedQuote_Succeeds confirms the
 // gate does not over-fire: a physical order that went through PatchCart's
 // live courier selection (non-empty selected_courier, priced shipping_cost)

@@ -100,6 +100,9 @@ describe("LoginPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Terlalu banyak percobaan masuk. Coba lagi sebentar lagi.",
+    );
     expect(screen.queryByText("too many login attempts")).not.toBeInTheDocument();
   });
 });

@@ -61,7 +61,7 @@ func seedPhysicalCartWithCourierQuote(t *testing.T, svc *Service, repo *reposito
 func newDestinationChangeTestService(t *testing.T) (*Service, *repository.Repository) {
 	t.Helper()
 	_, repo := newRealDBService(t)
-	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000, CourierCode: "jne", ServiceCode: "reg"}}
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000, CourierCode: "jne", ServiceCode: "reg", IsEstimate: true}}
 	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, spy, nil, nil, nil)
 	return svc, repo
 }
@@ -192,8 +192,8 @@ func TestPatchCart_IdenticalDestinationPatchPreservesQuote(t *testing.T) {
 	if got.CourierServiceCode == nil || *got.CourierServiceCode != "reg" {
 		t.Errorf("want courier_service_code to survive a no-op destination patch, got %v", got.CourierServiceCode)
 	}
-	if got.IsEstimate {
-		t.Error("want is_estimate to survive a no-op destination patch as false, the seeded quote's value")
+	if !got.IsEstimate {
+		t.Error("want is_estimate to survive a no-op destination patch as true, the seeded quote's value")
 	}
 	if got.ShippingCost != 18000 {
 		t.Errorf("want shipping_cost 18000 to survive a no-op destination patch, got %v", got.ShippingCost)
