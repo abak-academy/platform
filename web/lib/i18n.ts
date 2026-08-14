@@ -685,6 +685,7 @@ export const DICT = {
     login_submit: "Masuk",
     login_submitting: "Masuk...",
     login_failed: "Gagal masuk. Coba lagi.",
+    login_rate_limited: "Terlalu banyak percobaan masuk. Coba lagi sebentar lagi.",
     login_no_account: "Belum punya akun?",
     login_sign_up_link: "Daftar sekarang",
 
@@ -2190,6 +2191,7 @@ export const DICT = {
     login_submit: "Sign in",
     login_submitting: "Signing in...",
     login_failed: "Sign in failed. Try again.",
+    login_rate_limited: "Too many login attempts. Please try again shortly.",
     login_no_account: "Don't have an account yet?",
     login_sign_up_link: "Sign up",
 

@@ -37,6 +37,10 @@ export default function LoginPage() {
         router.push(`/otp?id=${encodeURIComponent(identifier)}`);
         return;
       }
+      if (err instanceof ApiError && err.code === "rate_limited") {
+        setError(t("login_rate_limited"));
+        return;
+      }
       const msg =
         err instanceof ApiError ? err.message : t("login_failed");
       setError(msg);
