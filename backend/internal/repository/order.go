@@ -178,7 +178,7 @@ const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost,
 	checked_out_at, completed_at, cancelled_at, cancellation_reason,
 	created_at, updated_at, is_estimate,
 	biteship_order_id, shipment_status, shipment_attempt, waybill_source, courier_code, courier_service_code,
-	payment_proof_url, refund_proof_url`
+	payment_proof_url, refund_proof_url, province_id, city_id, district_id, kode_pos`
 
 func scanOrder(row interface {
 	Scan(dest ...any) error
@@ -196,6 +196,7 @@ func scanOrder(row interface {
 		&order.BiteshipOrderID, &order.ShipmentStatus, &order.ShipmentAttempt, &order.WaybillSource,
 		&order.CourierCode, &order.CourierServiceCode,
 		&order.PaymentProofURL, &order.RefundProofURL,
+		&order.ProvinceID, &order.CityID, &order.DistrictID, &order.KodePos,
 	)
 	if err != nil {
 		return err

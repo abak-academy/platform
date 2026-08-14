@@ -367,3 +367,101 @@ func TestCheckout_BulkExamOrder_ExemptFromBiodataGate(t *testing.T) {
 		t.Error("want a gateway ref (payment proceeded)")
 	}
 }
+
+// TestCheckout_PhysicalItemPricedButNoCourier_ReturnsShippingRequired covers
+// the case the old gate (order.ShippingCost <= 0 alone) let through: a
+// physical order can carry a positive shipping_cost with no courier ever
+// selected — e.g. a stale/zero-priced quote that predates this fix, or the
+// row directly seeded here — and checkout must still refuse it.
+func TestCheckout_PhysicalItemPricedButNoCourier_ReturnsShippingRequired(t *testing.T) {
+	svc, repo := newCheckoutTestService(t)
+	ctx := context.Background()
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status, weight_grams)
+		 VALUES ('book', $1, 50000, 10, 'published', 500) RETURNING id`,
+		"No Courier Book "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "No Courier Student", "nocourier_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE orders SET shipping_cost = 18000, total = subtotal + 18000 WHERE id = $1`,
+		order.ID,
+	); err != nil {
+		t.Fatalf("seed priced shipping without a courier: %v", err)
+	}
+
+	_, err = svc.Checkout(ctx, studentID, order.ID.String(), "nocourier-key-"+uniqueSuffix())
+	if !errors.Is(err, ErrShippingRequired) {
+		t.Errorf("want ErrShippingRequired, got %v", err)
+	}
+}
+
+// TestCheckout_PhysicalItemWithCourierAndPricedQuote_Succeeds confirms the
+// gate does not over-fire: a physical order that went through PatchCart's
+// live courier selection (non-empty selected_courier, priced shipping_cost)
+// still checks out.
+func TestCheckout_PhysicalItemWithCourierAndPricedQuote_Succeeds(t *testing.T) {
+	_, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000, CourierCode: "jne", ServiceCode: "reg"}}
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, spy, nil, nil, nil)
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status, weight_grams)
+		 VALUES ('book', $1, 50000, 10, 'published', 500) RETURNING id`,
+		"With Courier Book "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "With Courier Student", "withcourier_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	provinceID, cityID, districtID, kodePos := "93", "9301", "930101", "12345"
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{
+		Courier:    "JNE",
+		Service:    "REG",
+		ProvinceID: &provinceID,
+		CityID:     &cityID,
+		DistrictID: &districtID,
+		KodePos:    &kodePos,
+	}); err != nil {
+		t.Fatalf("PatchCart (courier): %v", err)
+	}
+
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "withcourier-key-"+uniqueSuffix())
+	if err != nil {
+		t.Fatalf("Checkout: want a priced courier selection to check out, got %v", err)
+	}
+	if result.GatewayRef == "" {
+		t.Error("want a gateway ref (payment proceeded)")
+	}
+}

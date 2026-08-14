@@ -20,6 +20,10 @@ type Order struct {
 	Total              float64              `json:"total"`
 	PromoCodeID        *uuid.UUID           `json:"promo_code_id"`
 	ShippingAddress    json.RawMessage      `json:"shipping_address"`
+	ProvinceID         *string              `json:"-"`
+	CityID             *string              `json:"-"`
+	DistrictID         *string              `json:"-"`
+	KodePos            *string              `json:"-"`
 	SelectedCourier    string               `json:"selected_courier"`
 	SelectedService    string               `json:"selected_service"`
 	IsEstimate         bool                 `json:"is_estimate"`

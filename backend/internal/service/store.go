@@ -816,6 +816,38 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 			repoPatch.SelectedCourier = patch.Courier
 			repoPatch.SelectedService = patch.Service
 		}
+	} else {
+		// A quote is priced for exactly one (destination, weight) pair. If this
+		// patch is not itself selecting a courier, any real change to the
+		// effective destination — COALESCE(patch, persisted), mirroring the
+		// UPDATE's own COALESCE — voids whatever quote was already on the order.
+		effective := func(patched, persisted *string) *string {
+			if patched != nil {
+				return patched
+			}
+			return persisted
+		}
+		changed := func(patched, persisted *string) bool {
+			eff := effective(patched, persisted)
+			if eff == nil && persisted == nil {
+				return false
+			}
+			if eff == nil || persisted == nil {
+				return true
+			}
+			return *eff != *persisted
+		}
+		if changed(patch.ProvinceID, order.ProvinceID) ||
+			changed(patch.CityID, order.CityID) ||
+			changed(patch.DistrictID, order.DistrictID) ||
+			changed(patch.KodePos, order.KodePos) {
+			repoPatch.SelectedCourier = ""
+			repoPatch.SelectedService = ""
+			repoPatch.CourierCode = nil
+			repoPatch.CourierServiceCode = nil
+			repoPatch.IsEstimate = false
+			repoPatch.ShippingCost = 0
+		}
 	}
 
 	// JSON null and an absent key are indistinguishable once decoded into *string,
@@ -1000,7 +1032,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	}
 
 	for _, item := range order.Items {
-		if isPhysicalType(item.ProductType) && order.ShippingCost <= 0 {
+		if isPhysicalType(item.ProductType) && (order.ShippingCost <= 0 || order.SelectedCourier == "") {
 			return CheckoutResult{}, ErrShippingRequired
 		}
 	}
