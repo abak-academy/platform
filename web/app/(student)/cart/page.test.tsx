@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import CartPage from "./page";
@@ -94,6 +94,7 @@ vi.mock("@/lib/i18n", () => ({
         promo_applied_saving: "You save {v}",
         promo_change: "Change",
         promo_remove: "Remove promo",
+        cart_shipping_address_changed: "Shipping selection cleared because the address changed",
       };
       return dict[key] || key;
     },
@@ -1258,6 +1259,151 @@ describe("CartPage with Shipping", () => {
       });
       const [body] = patchCartMutate.mock.calls[0];
       expect(body).toHaveProperty("promo_code", "MANUAL5");
+    });
+  });
+
+  // #97 FR-12/FR-13: the guard has to compare the persisted `shipping_address`
+  // snapshot, not `ratedPostalCode` (a useState that is null on every mount, so
+  // it silently never ran after a reload), and it has to compare all four
+  // destination fields, not just kode_pos.
+  describe("stale shipping quote guard (#97)", () => {
+    const persistedSnapshot = {
+      penerima: "Sabian Isaac",
+      telepon: "082113092527",
+      alamat: "Jl. Kencana Selatan 2 No. 56",
+      provinsi_id: "prov1",
+      kota_id: "city1",
+      kecamatan_id: "dist1",
+      kode_pos: "17151",
+    };
+
+    function mockCartWithPersistedAddress() {
+      mockUseCart.mockReturnValue({
+        data: {
+          id: "o1", student_id: "s1", status: "cart", subtotal: 100000,
+          discount: 0, shipping_cost: 0, total: 100000, items: [physicalItem],
+          shipping_address: persistedSnapshot,
+        } as unknown as Order,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+    }
+
+    // Reproduces the post-reload state: a fresh mount never called
+    // handleCheckShipping, so `ratedPostalCode` (if it still existed) would be
+    // null — yet a rate list is already present (e.g. quoted moments ago, before
+    // the remount). `reset()` has to actually clear `data` on the next render for
+    // the test to tell a real reset from a no-op, so this mock is stateful rather
+    // than a static mockReturnValue.
+    function mockRatesAlreadyPresent() {
+      let currentData: typeof mockRates | undefined = mockRates;
+      mockUseShippingRates.mockImplementation(() => ({
+        mutate: vi.fn(),
+        reset: vi.fn(() => {
+          currentData = undefined;
+        }),
+        isPending: false,
+        data: currentData,
+        isError: false,
+      }));
+    }
+
+    it("clears the rate list and courier selection on reload when the saved city differs from the persisted snapshot", async () => {
+      const user = userEvent.setup();
+      mockCartWithPersistedAddress();
+      mockRatesAlreadyPresent();
+      mockUseCitiesByProvince.mockReturnValue({
+        data: [...mockCities, { id: "city2", name: "Semarang", code: "SM" }],
+        isLoading: false,
+      });
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.click(await screen.findByRole("button", { name: "Change address" }));
+      // Selecting a different city resets the district in the form; re-picking
+      // the same district leaves exactly one of the four destination fields
+      // changed from the persisted snapshot.
+      fireEvent.click(screen.getByLabelText("City"));
+      fireEvent.click(screen.getByRole("option", { name: "Semarang" }));
+      fireEvent.click(screen.getByLabelText("District"));
+      fireEvent.click(screen.getByRole("option", { name: "Cibadak" }));
+      await user.click(screen.getByRole("button", { name: "Save address" }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole("radio", { name: /jne/i })).toBeNull();
+      });
+      expect(screen.getByText("Check shipping cost")).toBeInTheDocument();
+      expect(screen.getByText("Shipping selection cleared because the address changed")).toBeInTheDocument();
+    });
+
+    it("clears the rate list and courier selection on reload when only the postal code differs", async () => {
+      const user = userEvent.setup();
+      mockCartWithPersistedAddress();
+      mockRatesAlreadyPresent();
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.click(await screen.findByRole("button", { name: "Change address" }));
+      const kodePos = screen.getByLabelText("Postal Code");
+      await user.clear(kodePos);
+      await user.type(kodePos, "40999");
+      await user.click(screen.getByRole("button", { name: "Save address" }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole("radio", { name: /jne/i })).toBeNull();
+      });
+      expect(screen.getByText("Check shipping cost")).toBeInTheDocument();
+      expect(screen.getByText("Shipping selection cleared because the address changed")).toBeInTheDocument();
+    });
+
+    it("clears the rate list and courier selection on reload when only the province differs", async () => {
+      const user = userEvent.setup();
+      mockCartWithPersistedAddress();
+      mockRatesAlreadyPresent();
+      mockUseProvinces.mockReturnValue({
+        data: [...mockProvinces, { id: "prov2", name: "Jawa Tengah", code: "JT" }],
+        isLoading: false,
+      });
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.click(await screen.findByRole("button", { name: "Change address" }));
+      // Switching province resets city/district in the form; re-picking the same
+      // ones leaves only provinsi_id different from the persisted snapshot.
+      fireEvent.click(screen.getByLabelText("Province"));
+      fireEvent.click(screen.getByRole("option", { name: "Jawa Tengah" }));
+      fireEvent.click(screen.getByLabelText("City"));
+      fireEvent.click(screen.getByRole("option", { name: "Bandung" }));
+      fireEvent.click(screen.getByLabelText("District"));
+      fireEvent.click(screen.getByRole("option", { name: "Cibadak" }));
+      await user.click(screen.getByRole("button", { name: "Save address" }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole("radio", { name: /jne/i })).toBeNull();
+      });
+      expect(screen.getByText("Check shipping cost")).toBeInTheDocument();
+      expect(screen.getByText("Shipping selection cleared because the address changed")).toBeInTheDocument();
+    });
+
+    it("leaves the rate list and courier selection intact when the saved address is unchanged (FR-13)", async () => {
+      const user = userEvent.setup();
+      mockCartWithPersistedAddress();
+      mockRatesAlreadyPresent();
+
+      renderWithQueryClient(<CartPage />);
+
+      await user.click(await screen.findByRole("button", { name: "Change address" }));
+      // No field is touched — the form is hydrated straight from the persisted
+      // snapshot — so this save is a no-op edit.
+      await user.click(screen.getByRole("button", { name: "Save address" }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Change address" })).toBeInTheDocument();
+      });
+      await user.click(screen.getByRole("button", { expanded: false }));
+      expect(screen.getByRole("radio", { name: /jne/i })).toBeInTheDocument();
+      expect(screen.queryByText("Shipping selection cleared because the address changed")).not.toBeInTheDocument();
     });
   });
 });

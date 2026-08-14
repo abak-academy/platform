@@ -393,6 +393,8 @@ export const DICT = {
     cart_speed_next_day: "Sampai besok",
     cart_speed_regular: "Beberapa hari",
     cart_shipping_unavailable: "Pengiriman belum tersedia, hubungi admin.",
+    cart_shipping_address_changed:
+      "Pilihan pengiriman dihapus karena alamat berubah. Silakan pilih kurir lagi.",
     select_province: "Pilih Provinsi",
     select_city: "Pilih Kota/Kabupaten",
     select_district: "Pilih Kecamatan",
@@ -1902,6 +1904,8 @@ export const DICT = {
     cart_speed_next_day: "Arrives tomorrow",
     cart_speed_regular: "Takes a few days",
     cart_shipping_unavailable: "Shipping is not available yet, please contact an admin.",
+    cart_shipping_address_changed:
+      "Shipping selection cleared because the address changed. Please choose a courier again.",
     select_province: "Select Province",
     select_city: "Select City / Regency",
     select_district: "Select District",
