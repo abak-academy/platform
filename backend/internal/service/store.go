@@ -869,7 +869,13 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		repoPatch.Total = validation.Total
 	}
 
-	return s.storeRepo.PatchCart(ctx, oID, repoPatch)
+	if err := s.storeRepo.PatchCart(ctx, oID, repoPatch); err != nil {
+		if errors.Is(err, repository.ErrOrderNotEditable) {
+			return ErrOrderNotEditable
+		}
+		return err
+	}
+	return nil
 }
 
 // freeCheckoutSentinel is cached under the checkout idempotency key when a
@@ -1027,20 +1033,45 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	if order.StudentID != sID {
 		return CheckoutResult{}, ErrOrderNotFound
 	}
-	if order.Status != "cart" {
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Address invalidation (PatchCart) and checkout must not decide off two
+	// independent snapshots — status, shipping cost/courier and total are
+	// judged against the row as it stands under this lock, not the
+	// pre-transaction read above. A concurrent PatchCart blocks on the same
+	// row until this transaction ends (PatchCart's own status='cart'
+	// predicate then sees whatever this transaction committed).
+	locked, err := s.storeRepo.GetOrderByIDForUpdateTx(ctx, tx, oID)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
+	if locked.ID.String() == "" {
+		return CheckoutResult{}, ErrOrderNotFound
+	}
+	if locked.StudentID != sID {
+		return CheckoutResult{}, ErrOrderNotFound
+	}
+	if locked.Status != "cart" {
 		return CheckoutResult{}, ErrOrderNotEditable
 	}
 
 	for _, item := range order.Items {
-		if isPhysicalType(item.ProductType) && (order.ShippingCost <= 0 || order.SelectedCourier == "") {
+		if isPhysicalType(item.ProductType) && (locked.ShippingCost <= 0 || locked.SelectedCourier == "") {
 			return CheckoutResult{}, ErrShippingRequired
 		}
 	}
+	locked.Items = order.Items
+	order = locked
 
 	// Re-validate qty at checkout: a row that predates the AddItem/UpdateItemQty
 	// guards can still carry qty > 1 on a digital line, and the qty stepper is
 	// hidden for digital items so the buyer cannot self-correct it. Catching it
-	// here — before BeginTx — stops the wrong price from ever reaching payment.
+	// here — before CheckoutOrder — stops the wrong price from ever reaching payment.
 	for _, item := range order.Items {
 		if err := ValidateItemQty(item.ProductType, item.Qty); err != nil {
 			return CheckoutResult{}, err
@@ -1072,12 +1103,6 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 			}
 		}
 	}
-
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return CheckoutResult{}, err
-	}
-	defer tx.Rollback(ctx)
 
 	if err := s.storeRepo.CheckoutOrder(ctx, tx, oID); err != nil {
 		if errors.Is(err, repository.ErrInsufficientStock) {

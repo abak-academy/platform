@@ -16,6 +16,12 @@ import (
 
 var ErrInsufficientStock = errors.New("insufficient stock")
 
+// ErrOrderNotEditable is returned when a write is scoped to status = 'cart'
+// (PatchCart) and the row no longer matches — either it never existed or it
+// already moved past cart, most often because a concurrent checkout won the
+// race. Callers map it to the service-level sentinel of the same name.
+var ErrOrderNotEditable = errors.New("order not editable")
+
 type OrderFilter struct {
 	StudentID   *uuid.UUID
 	Status      string
@@ -366,6 +372,27 @@ func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Orde
 	return order, nil
 }
 
+// GetOrderByIDForUpdateTx re-reads an order row inside the caller's
+// transaction with FOR UPDATE, so a concurrent PatchCart blocks on this row
+// until the transaction commits or rolls back instead of racing it — same
+// lock precedent as SaveAnswersTx (exam.go) against exam_session. Checkout
+// uses this to validate status/shipping/total against the row as it stands
+// under the lock rather than a pre-transaction snapshot.
+func (r *Repository) GetOrderByIDForUpdateTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (model.Order, error) {
+	order := model.Order{}
+	err := scanOrder(tx.QueryRow(ctx,
+		`SELECT `+orderColumns+` FROM orders WHERE id = $1 FOR UPDATE`,
+		id,
+	), &order)
+	if err != nil {
+		if isNotFound(err) {
+			return model.Order{}, nil
+		}
+		return model.Order{}, err
+	}
+	return order, nil
+}
+
 // GetUserNamesByIDs resolves display names for a batch of student ids in a
 // single query, keyed by id string. Ids missing from the returned map (e.g. a
 // deleted student row) are the caller's responsibility to fall back on.
@@ -589,8 +616,12 @@ func (r *Repository) recalcOrderTotals(ctx context.Context, orderID uuid.UUID) e
 	return err
 }
 
+// PatchCart is scoped to status = 'cart' so a PATCH that lands after a
+// concurrent checkout has moved the order to payment_pending cannot mutate
+// it — see Checkout's locked re-read of the same row for the other half of
+// this invariant.
 func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch OrderPatch) error {
-	_, err := r.pool.Exec(ctx,
+	tag, err := r.pool.Exec(ctx,
 		`UPDATE orders
 		 SET shipping_address = COALESCE($1, shipping_address), selected_courier = $2, selected_service = $3, promo_code_id = $4,
 		     discount = $5, shipping_cost = $6, total = $7,
@@ -598,7 +629,7 @@ func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch Ord
 		     is_estimate = $12,
 		     courier_code = $13, courier_service_code = $14,
 		     updated_at = now()
-		 WHERE id = $15`,
+		 WHERE id = $15 AND status = 'cart'`,
 		patch.ShippingAddress, patch.SelectedCourier, patch.SelectedService, patch.PromoCodeID,
 		patch.Discount, patch.ShippingCost, patch.Total,
 		patch.ProvinceID, patch.CityID, patch.DistrictID, patch.KodePos,
@@ -606,7 +637,13 @@ func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch Ord
 		patch.CourierCode, patch.CourierServiceCode,
 		orderID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrOrderNotEditable
+	}
+	return nil
 }
 
 func (r *Repository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, status, reason string) error {
