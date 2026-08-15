@@ -8,6 +8,7 @@ import { useLogin } from "@/lib/hooks/auth";
 import { redirectForRole } from "@/lib/auth-redirect";
 import { GoogleSignInButton, googleSignInAvailable } from "@/components/auth/GoogleSignInButton";
 import { ApiError } from "@/lib/api";
+import { loginErrorMessage } from "@/lib/auth-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,13 +38,7 @@ export default function LoginPage() {
         router.push(`/otp?id=${encodeURIComponent(identifier)}`);
         return;
       }
-      if (err instanceof ApiError && err.code === "rate_limited") {
-        setError(t("login_rate_limited"));
-        return;
-      }
-      const msg =
-        err instanceof ApiError ? err.message : t("login_failed");
-      setError(msg);
+      setError(loginErrorMessage(err, t));
     }
   };
 
