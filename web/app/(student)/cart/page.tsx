@@ -471,7 +471,10 @@ export default function CartPage() {
                 <span className="font-serif text-2xl font-bold text-success">{formatRupiah(total)}</span>
               </div>
 
-              <SnapCheckout orderId={cart?.id} disabled={hasPhysical && shippingRates.isError} />
+              <SnapCheckout
+                orderId={cart?.id}
+                disabled={(hasPhysical && shippingRates.isError) || patchCart.isPending || removeItem.isPending || updateQty.isPending}
+              />
 
               <p className="mt-3 text-center text-xs text-ink-400">
                 {t("cart_secure_payment")}

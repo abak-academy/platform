@@ -1431,6 +1431,30 @@ describe("CartPage with Shipping", () => {
 
     // Review finding: destinationChanged alone used to drive the notice, even
     // when there was no rate list and no courier selection to clear.
+    it("keeps checkout enabled while no cart mutation is pending", async () => {
+      mockCartWithPersistedAddress();
+      mockRatesAlreadyPresent();
+
+      renderWithQueryClient(<CartPage />);
+
+      const checkoutButton = await screen.findByRole("button", { name: /Bayar di Tab Baru/i });
+      expect(checkoutButton).not.toBeDisabled();
+    });
+
+    // The FE closes the address form immediately but was not disabling
+    // SnapCheckout while patchCart was still in flight — on a slow connection
+    // Save Address and Checkout could overlap.
+    it("disables checkout while a cart mutation (patchCart) is pending", async () => {
+      mockCartWithPersistedAddress();
+      mockRatesAlreadyPresent();
+      mockUsePatchCart.mockReturnValue({ mutate: vi.fn(), isPending: true, isError: false });
+
+      renderWithQueryClient(<CartPage />);
+
+      const checkoutButton = await screen.findByRole("button", { name: /Bayar di Tab Baru/i });
+      expect(checkoutButton).toBeDisabled();
+    });
+
     it("does not show the shipping-cleared notice when there was no rate list or selection to clear", async () => {
       const user = userEvent.setup();
       mockCartWithPersistedAddress();
