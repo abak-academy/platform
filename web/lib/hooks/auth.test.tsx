@@ -113,7 +113,7 @@ describe("useLogin retry on 429 rate_limited", () => {
     vi.resetModules();
   });
 
-  it("retries a rate_limited 429 twice with fixed backoff then resolves", async () => {
+  it("retries a rate_limited 429 twice, waiting up to the jittered base delay, then resolves", async () => {
     const { useLogin } = await freshUseLogin();
     const fetchMock = vi
       .fn()
@@ -121,6 +121,8 @@ describe("useLogin retry on 429 rate_limited", () => {
       .mockResolvedValueOnce(jsonResponse(429, { code: "rate_limited", message: "too many login attempts" }))
       .mockResolvedValueOnce(jsonResponse(200, { access_token: "a", refresh_token: "r", user: { id: "1" } }));
     global.fetch = fetchMock as unknown as typeof fetch;
+    // Stub the jitter source to its maximum so the drawn delay equals the base (1000ms, then 2000ms).
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(1);
 
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     const { result } = renderHook(() => useLogin(), { wrapper: wrapperFor(queryClient) });
@@ -159,6 +161,82 @@ describe("useLogin retry on 429 rate_limited", () => {
 
     expect(resolved).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+    randomSpy.mockRestore();
+  });
+
+  it("never waits longer than the base delay for a retry attempt", async () => {
+    const { useLogin } = await freshUseLogin();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(429, { code: "rate_limited", message: "too many login attempts" }))
+      .mockResolvedValueOnce(jsonResponse(429, { code: "rate_limited", message: "too many login attempts" }))
+      .mockResolvedValueOnce(jsonResponse(200, { access_token: "a", refresh_token: "r", user: { id: "1" } }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    // Mid-range jitter draw: delay is a fraction of the base, never the base itself.
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5);
+
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useLogin(), { wrapper: wrapperFor(queryClient) });
+
+    const promise = result.current.mutateAsync({ identifier: "budi", password: "secret" });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(499);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+      await promise;
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    randomSpy.mockRestore();
+  });
+
+  it("fires retries immediately when the jitter source is stubbed to its minimum", async () => {
+    const { useLogin } = await freshUseLogin();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(429, { code: "rate_limited", message: "too many login attempts" }))
+      .mockResolvedValueOnce(jsonResponse(429, { code: "rate_limited", message: "too many login attempts" }))
+      .mockResolvedValueOnce(jsonResponse(200, { access_token: "a", refresh_token: "r", user: { id: "1" } }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useLogin(), { wrapper: wrapperFor(queryClient) });
+
+    let resolved = false;
+    const promise = result.current
+      .mutateAsync({ identifier: "budi", password: "secret" })
+      .then(() => {
+        resolved = true;
+      });
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(resolved).toBe(true);
+
+    await promise;
+    randomSpy.mockRestore();
   });
 
   it("does not retry a 401 and rejects immediately with a single fetch call", async () => {
@@ -184,6 +262,7 @@ describe("useLogin retry on 429 rate_limited", () => {
       .fn()
       .mockResolvedValue(jsonResponse(429, { code: "rate_limited", message: "too many login attempts" }));
     global.fetch = fetchMock as unknown as typeof fetch;
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(1);
 
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     const { result } = renderHook(() => useLogin(), { wrapper: wrapperFor(queryClient) });
@@ -220,5 +299,6 @@ describe("useLogin retry on 429 rate_limited", () => {
 
     expect(error).toBeInstanceOf(ApiError);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+    randomSpy.mockRestore();
   });
 });

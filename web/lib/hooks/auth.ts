@@ -12,6 +12,12 @@ export interface LoginInput {
 
 const LOGIN_RETRY_DELAYS_MS = [1000, 2000];
 
+// Full jitter (https://aws.amazon.com/blogs/architecture/timeouts-retries-and-backoff-with-jitter/)
+// de-synchronizes a retry herd; it does not raise server throughput.
+function fullJitterDelayMs(baseMs: number) {
+  return Math.random() * baseMs;
+}
+
 export function useLogin() {
   const setSession = useAuthStore((s) => s.setSession);
   return useMutation({
@@ -29,7 +35,9 @@ export function useLogin() {
             err.code === "rate_limited" &&
             attempt < LOGIN_RETRY_DELAYS_MS.length;
           if (!canRetry) throw err;
-          await new Promise((resolve) => setTimeout(resolve, LOGIN_RETRY_DELAYS_MS[attempt]));
+          await new Promise((resolve) =>
+            setTimeout(resolve, fullJitterDelayMs(LOGIN_RETRY_DELAYS_MS[attempt])),
+          );
         }
       }
     },
