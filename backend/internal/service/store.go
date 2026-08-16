@@ -582,7 +582,13 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 		WeightGrams: product.WeightGrams,
 	}
 	clearShipping := isPhysicalType(product.Type)
-	return s.storeRepo.AddItem(ctx, oID, item, clearShipping)
+	if err := s.storeRepo.AddItem(ctx, oID, item, clearShipping); err != nil {
+		if errors.Is(err, repository.ErrOrderNotEditable) {
+			return ErrOrderNotEditable
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) RemoveItem(ctx context.Context, studentID, orderID, itemID string) error {
@@ -618,7 +624,13 @@ func (s *Service) RemoveItem(ctx context.Context, studentID, orderID, itemID str
 		}
 	}
 
-	return s.storeRepo.RemoveItem(ctx, oID, iID, clearShipping)
+	if err := s.storeRepo.RemoveItem(ctx, oID, iID, clearShipping); err != nil {
+		if errors.Is(err, repository.ErrOrderNotEditable) {
+			return ErrOrderNotEditable
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID string, qty int) error {
@@ -659,7 +671,13 @@ func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID 
 		}
 	}
 
-	return s.storeRepo.UpdateItemQty(ctx, oID, iID, qty, clearShipping)
+	if err := s.storeRepo.UpdateItemQty(ctx, oID, iID, qty, clearShipping); err != nil {
+		if errors.Is(err, repository.ErrOrderNotEditable) {
+			return ErrOrderNotEditable
+		}
+		return err
+	}
+	return nil
 }
 
 type CartPatch struct {
@@ -1060,12 +1078,11 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, ErrOrderNotEditable
 	}
 
-	for _, item := range order.Items {
+	for _, item := range locked.Items {
 		if isPhysicalType(item.ProductType) && (locked.ShippingCost <= 0 || locked.SelectedCourier == "") {
 			return CheckoutResult{}, ErrShippingRequired
 		}
 	}
-	locked.Items = order.Items
 	order = locked
 
 	// Re-validate qty at checkout: a row that predates the AddItem/UpdateItemQty

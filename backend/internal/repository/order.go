@@ -257,6 +257,35 @@ func (r *Repository) fetchItems(ctx context.Context, orderID uuid.UUID) ([]model
 	return items, rows.Err()
 }
 
+// fetchItemsTx is fetchItems scoped to the caller's transaction, so a reader
+// holding the orders row lock (GetOrderByIDForUpdateTx) sees order_item as it
+// stands under that lock rather than via a second, unsynchronized connection.
+func (r *Repository) fetchItemsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) ([]model.OrderItem, error) {
+	rows, err := tx.Query(ctx,
+		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, COALESCE(weight_grams, 0), fulfilled_at, created_at
+		 FROM order_item
+		 WHERE order_id = $1
+		 ORDER BY created_at`,
+		orderID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.OrderItem
+	for rows.Next() {
+		item := model.OrderItem{}
+		err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductType,
+			&item.Name, &item.UnitPrice, &item.Qty, &item.Jumlah, &item.WeightGrams, &item.FulfilledAt, &item.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (model.Order, bool, error) {
 	order := model.Order{}
 	err := scanOrder(r.pool.QueryRow(ctx,
@@ -390,6 +419,11 @@ func (r *Repository) GetOrderByIDForUpdateTx(ctx context.Context, tx pgx.Tx, id 
 		}
 		return model.Order{}, err
 	}
+	items, err := r.fetchItemsTx(ctx, tx, id)
+	if err != nil {
+		return model.Order{}, err
+	}
+	order.Items = items
 	return order, nil
 }
 
@@ -533,11 +567,31 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 	return orders, nextCursor, nil
 }
 
+// AddItem, RemoveItem and UpdateItemQty each run inside their own
+// transaction, gated the same way as PatchCart and Checkout: they take the
+// orders row lock (GetOrderByIDForUpdateTx), require status = 'cart', and
+// mutate order_item plus the recalculated totals atomically under that lock.
+// A non-cart order (already moved on by a concurrent checkout) returns
+// ErrOrderNotEditable and leaves order_item untouched.
 func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.OrderItem, clearShipping bool) error {
+	tx, err := r.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	locked, err := r.GetOrderByIDForUpdateTx(ctx, tx, orderID)
+	if err != nil {
+		return err
+	}
+	if locked.Status != "cart" {
+		return ErrOrderNotEditable
+	}
+
 	item.ID = uuid.New()
 	item.OrderID = orderID
 	jumlah := item.UnitPrice * float64(item.Qty)
-	_, err := r.pool.Exec(ctx,
+	_, err = tx.Exec(ctx,
 		`INSERT INTO order_item (id, order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())`,
 		item.ID, item.OrderID, item.ProductID, item.ProductType, item.Name, item.UnitPrice, item.Qty, jumlah, item.WeightGrams,
@@ -546,7 +600,7 @@ func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.
 		return err
 	}
 	if clearShipping {
-		_, err = r.pool.Exec(ctx, `
+		_, err = tx.Exec(ctx, `
 			UPDATE orders SET
 			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
 			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
@@ -555,13 +609,31 @@ func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.
 			  selected_service = '',
 			  updated_at = now()
 			WHERE id = $1`, orderID)
+	} else {
+		err = r.recalcOrderTotalsTx(ctx, tx, orderID)
+	}
+	if err != nil {
 		return err
 	}
-	return r.recalcOrderTotals(ctx, orderID)
+	return tx.Commit(ctx)
 }
 
 func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID, clearShipping bool) error {
-	_, err := r.pool.Exec(ctx,
+	tx, err := r.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	locked, err := r.GetOrderByIDForUpdateTx(ctx, tx, orderID)
+	if err != nil {
+		return err
+	}
+	if locked.Status != "cart" {
+		return ErrOrderNotEditable
+	}
+
+	_, err = tx.Exec(ctx,
 		`DELETE FROM order_item WHERE id = $1 AND order_id = $2`,
 		itemID, orderID,
 	)
@@ -569,7 +641,7 @@ func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID, 
 		return err
 	}
 	if clearShipping {
-		_, err = r.pool.Exec(ctx, `
+		_, err = tx.Exec(ctx, `
 			UPDATE orders SET
 			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
 			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
@@ -578,13 +650,31 @@ func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID, 
 			  selected_service = '',
 			  updated_at = now()
 			WHERE id = $1`, orderID)
+	} else {
+		err = r.recalcOrderTotalsTx(ctx, tx, orderID)
+	}
+	if err != nil {
 		return err
 	}
-	return r.recalcOrderTotals(ctx, orderID)
+	return tx.Commit(ctx)
 }
 
 func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUID, qty int, clearShipping bool) error {
-	_, err := r.pool.Exec(ctx,
+	tx, err := r.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	locked, err := r.GetOrderByIDForUpdateTx(ctx, tx, orderID)
+	if err != nil {
+		return err
+	}
+	if locked.Status != "cart" {
+		return ErrOrderNotEditable
+	}
+
+	_, err = tx.Exec(ctx,
 		`UPDATE order_item SET qty = $1, jumlah = unit_price * $2 WHERE id = $3 AND order_id = $4`,
 		qty, qty, itemID, orderID,
 	)
@@ -592,7 +682,7 @@ func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUI
 		return err
 	}
 	if clearShipping {
-		_, err = r.pool.Exec(ctx, `
+		_, err = tx.Exec(ctx, `
 			UPDATE orders SET
 			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
 			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
@@ -601,13 +691,17 @@ func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUI
 			  selected_service = '',
 			  updated_at = now()
 			WHERE id = $1`, orderID)
+	} else {
+		err = r.recalcOrderTotalsTx(ctx, tx, orderID)
+	}
+	if err != nil {
 		return err
 	}
-	return r.recalcOrderTotals(ctx, orderID)
+	return tx.Commit(ctx)
 }
 
-func (r *Repository) recalcOrderTotals(ctx context.Context, orderID uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `
+func (r *Repository) recalcOrderTotalsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `
 		UPDATE orders SET
 		  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
 		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
