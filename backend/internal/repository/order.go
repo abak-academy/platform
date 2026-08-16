@@ -22,6 +22,21 @@ var ErrInsufficientStock = errors.New("insufficient stock")
 // race. Callers map it to the service-level sentinel of the same name.
 var ErrOrderNotEditable = errors.New("order not editable")
 
+// ErrOrderChanged is returned by PatchCart when the row is still a cart but
+// its updated_at no longer matches OrderPatch.ExpectedUpdatedAt — a
+// concurrent item mutation (AddItem/RemoveItem/UpdateItemQty) committed
+// between the caller's read and this write, so the shipping/total figures
+// the caller computed are stale. Unlike ErrOrderNotEditable this is
+// recoverable: the caller should re-read, recompute (re-quoting the courier
+// if one was selected) and retry.
+var ErrOrderChanged = errors.New("order changed")
+
+// ErrDuplicateDigitalItem is returned by AddItem when the item being
+// inserted is a non-physical product (course, exam) and the locked item set
+// already carries a line for it. Callers map it to the service-level
+// ErrDigitalQtyLimit sentinel.
+var ErrDuplicateDigitalItem = errors.New("duplicate digital item")
+
 type OrderFilter struct {
 	StudentID   *uuid.UUID
 	Status      string
@@ -176,6 +191,13 @@ type OrderPatch struct {
 	KodePos            *string
 	CourierCode        *string
 	CourierServiceCode *string
+
+	// ExpectedUpdatedAt is the updated_at the caller observed when it read
+	// the order and computed this patch. Nil skips the optimistic-concurrency
+	// check entirely (existing callers that don't set it keep today's
+	// behavior); set, the UPDATE only applies if the row's updated_at still
+	// matches — otherwise PatchCart returns ErrOrderChanged.
+	ExpectedUpdatedAt *time.Time
 }
 
 const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost, total,
@@ -588,6 +610,20 @@ func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.
 		return ErrOrderNotEditable
 	}
 
+	// Non-physical (course, exam) products are unique per cart. Service.AddItem
+	// makes the same decision first, from an unlocked read that two concurrent
+	// requests can both pass — this re-check against the row this transaction
+	// has locked is what actually closes that race. Classification is
+	// duplicated from the service rather than imported, same trade-off as
+	// CheckoutOrder's stock-type check below.
+	if item.ProductType != "book" && item.ProductType != "merchandise" && item.ProductType != "medal" {
+		for _, existing := range locked.Items {
+			if existing.ProductID == item.ProductID {
+				return ErrDuplicateDigitalItem
+			}
+		}
+	}
+
 	item.ID = uuid.New()
 	item.OrderID = orderID
 	jumlah := item.UnitPrice * float64(item.Qty)
@@ -723,19 +759,36 @@ func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch Ord
 		     is_estimate = $12,
 		     courier_code = $13, courier_service_code = $14,
 		     updated_at = now()
-		 WHERE id = $15 AND status = 'cart'`,
+		 WHERE id = $15 AND status = 'cart' AND ($16::timestamptz IS NULL OR updated_at = $16)`,
 		patch.ShippingAddress, patch.SelectedCourier, patch.SelectedService, patch.PromoCodeID,
 		patch.Discount, patch.ShippingCost, patch.Total,
 		patch.ProvinceID, patch.CityID, patch.DistrictID, patch.KodePos,
 		patch.IsEstimate,
 		patch.CourierCode, patch.CourierServiceCode,
-		orderID,
+		orderID, patch.ExpectedUpdatedAt,
 	)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrOrderNotEditable
+		if patch.ExpectedUpdatedAt == nil {
+			return ErrOrderNotEditable
+		}
+		// Zero rows with a concurrency token set is ambiguous — the row may
+		// have left cart entirely, or it may still be a cart whose updated_at
+		// just moved. Re-read to tell the two apart: only the first is
+		// unrecoverable.
+		var status string
+		if err := r.pool.QueryRow(ctx, `SELECT status FROM orders WHERE id = $1`, orderID).Scan(&status); err != nil {
+			if isNotFound(err) {
+				return ErrOrderNotEditable
+			}
+			return err
+		}
+		if status != "cart" {
+			return ErrOrderNotEditable
+		}
+		return ErrOrderChanged
 	}
 	return nil
 }
