@@ -54,9 +54,7 @@ export default function CartPage() {
   // the seeding effect below: an address already on file opens collapsed.
   const [addressFormOpen, setAddressFormOpen] = useState(true);
   const [courierNote, setCourierNote] = useState("");
-  // The postcode the current rates were quoted for. Rates belong to a
-  // destination, so saving a different one has to drop them.
-  const [ratedPostalCode, setRatedPostalCode] = useState<string | null>(null);
+  const [shippingClearedNotice, setShippingClearedNotice] = useState(false);
 
   const items: OrderItem[] = cart?.items ?? [];
   const subtotal = cart?.subtotal ?? items.reduce((s, it) => s + it.jumlah, 0);
@@ -137,7 +135,7 @@ export default function CartPage() {
 
   const handleCheckShipping = useCallback(() => {
     if (!shippingAddress.provinsi_id || !shippingAddress.kota_id || !shippingAddress.kecamatan_id || !shippingAddress.kode_pos) return;
-    setRatedPostalCode(shippingAddress.kode_pos);
+    setShippingClearedNotice(false);
     shippingRates.mutate({
       destination_postal_code: shippingAddress.kode_pos,
       weight_grams: totalPhysicalWeight,
@@ -181,16 +179,29 @@ export default function CartPage() {
       }
 
       // Rates quoted for the old destination are not rates for this one, and a
-      // courier picked against them would be priced wrong at checkout.
-      if (ratedPostalCode && ratedPostalCode !== shippingAddress.kode_pos) {
+      // courier picked against them would be priced wrong at checkout. Compared
+      // against the persisted snapshot rather than local rate state, so this
+      // still fires after a reload — ratedPostalCode used to start null on every
+      // mount and silently never ran.
+      const priorAddress = cart.shipping_address;
+      const destinationChanged =
+        Boolean(priorAddress) &&
+        (priorAddress?.provinsi_id !== shippingAddress.provinsi_id ||
+          priorAddress?.kota_id !== shippingAddress.kota_id ||
+          priorAddress?.kecamatan_id !== shippingAddress.kecamatan_id ||
+          priorAddress?.kode_pos !== shippingAddress.kode_pos);
+
+      const hadShippingToClear = Boolean(shippingRates.data) || selectedRateKey !== null;
+
+      if (destinationChanged) {
         shippingRates.reset();
-        setRatedPostalCode(null);
         setSelectedRateKey(null);
       }
+      setShippingClearedNotice(destinationChanged && hadShippingToClear);
 
       setAddressFormOpen(false);
     },
-    [cart, shippingAddress, addressSnapshot, patchCart, updateProfile, ratedPostalCode, shippingRates]
+    [cart, shippingAddress, addressSnapshot, patchCart, updateProfile, shippingRates, selectedRateKey]
   );
 
   // "Primary" is the profile's own address, compared field by field — no column
@@ -234,6 +245,7 @@ export default function CartPage() {
   const handleSelectCourier = useCallback(
     (rate: { courier: string; service: string; price: number }) => {
       setSelectedRateKey(courierRateKey(rate));
+      setShippingClearedNotice(false);
       persistShipping(rate, courierNote);
     },
     [persistShipping, courierNote]
@@ -422,6 +434,12 @@ export default function CartPage() {
                 {t("cart_shipping_unavailable" as any)}
               </div>
             )}
+
+            {hasPhysical && shippingClearedNotice && (
+              <div className="rounded-lg border border-warn/30 bg-warn-bg px-5 py-4 text-sm text-warn">
+                {t("cart_shipping_address_changed" as any)}
+              </div>
+            )}
           </section>
 
           <aside className="lg:sticky lg:top-6">
@@ -453,7 +471,10 @@ export default function CartPage() {
                 <span className="font-serif text-2xl font-bold text-success">{formatRupiah(total)}</span>
               </div>
 
-              <SnapCheckout orderId={cart?.id} disabled={hasPhysical && shippingRates.isError} />
+              <SnapCheckout
+                orderId={cart?.id}
+                disabled={(hasPhysical && shippingRates.isError) || patchCart.isPending || removeItem.isPending || updateQty.isPending}
+              />
 
               <p className="mt-3 text-center text-xs text-ink-400">
                 {t("cart_secure_payment")}

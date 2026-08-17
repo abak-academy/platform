@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { authFetch } from "@/lib/api";
+import { ApiError, authFetch } from "@/lib/api";
 import type { ActivePromoCode, CheckoutResult, CourierRate, Order, PromoValidation } from "@/lib/types";
 
 export const ordersKeys = {
@@ -246,6 +246,14 @@ export function usePatchCart() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ordersKeys.cart() });
+    },
+    // order_changed means the cart was mutated while this patch was being
+    // computed, so the cached copy this form was built from is stale — refetch
+    // it, or the buyer retries against figures the server already rejected.
+    onError: (err) => {
+      if (err instanceof ApiError && err.code === "order_changed") {
+        qc.invalidateQueries({ queryKey: ordersKeys.cart() });
+      }
     },
   });
 }

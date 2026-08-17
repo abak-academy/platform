@@ -7,7 +7,7 @@ import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 
 import { useLogin } from "@/lib/hooks/auth";
 import { redirectForRole } from "@/lib/auth-redirect";
-import { ApiError } from "@/lib/api";
+import { loginErrorMessage } from "@/lib/auth-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/lib/i18n";
@@ -42,8 +42,7 @@ export default function AdminLoginPage() {
       const data = await login.mutateAsync({ identifier, password });
       router.push(redirectForRole(data.user?.role));
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : t("login_failed");
-      setError(msg);
+      setError(loginErrorMessage(err, t));
     }
   };
 

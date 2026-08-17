@@ -227,6 +227,7 @@ var (
 	ErrOutOfStock              = errors.New("product out of stock")
 	ErrInsufficientStock       = errors.New("insufficient stock")
 	ErrOrderNotEditable        = errors.New("order not editable")
+	ErrOrderChanged            = errors.New("order changed during update") // concurrent cart mutation; re-read and re-quote still lost the race
 	ErrOrderNotFound           = errors.New("order not found")
 	ErrMustShipBeforeComplete  = errors.New("order has physical items — must be shipped before completing")
 	ErrInvalidSignature        = errors.New("invalid signature")

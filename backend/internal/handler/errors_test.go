@@ -42,6 +42,7 @@ func TestMapServiceError(t *testing.T) {
 		{name: "out of stock", err: service.ErrOutOfStock, wantStatus: 409, wantCode: "out_of_stock"},
 		{name: "insufficient stock", err: service.ErrInsufficientStock, wantStatus: 409, wantCode: "insufficient_stock"},
 		{name: "order not editable", err: service.ErrOrderNotEditable, wantStatus: 409, wantCode: "order_not_editable"},
+		{name: "order changed", err: service.ErrOrderChanged, wantStatus: 409, wantCode: "order_changed"},
 		{name: "order not found", err: service.ErrOrderNotFound, wantStatus: 404, wantCode: "order_not_found"},
 		{name: "invalid promo", err: service.ErrInvalidPromo, wantStatus: 422, wantCode: "invalid_promo"},
 		{name: "promo min order", err: service.ErrPromoMinOrder, wantStatus: 422, wantCode: "promo_min_order"},

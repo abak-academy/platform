@@ -80,4 +80,29 @@ describe("LoginPage", () => {
     expect(sessionStorage.getItem("abak-pending-token")).toBe("tok-abc");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it("renders the localized rate-limited message instead of the raw backend message", async () => {
+    mutateAsyncMock.mockRejectedValue(
+      new ApiError("rate_limited", "too many login attempts", 429),
+    );
+
+    render(<LoginPage />);
+
+    fireEvent.change(
+      screen.getByLabelText(/email atau username|email or username/i, { selector: "input" }),
+      { target: { value: "budi@example.com" } },
+    );
+    fireEvent.change(screen.getByLabelText(/kata sandi|password/i, { selector: "input" }), {
+      target: { value: "secret123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /masuk|sign in|login/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Terlalu banyak percobaan masuk. Coba lagi sebentar lagi.",
+    );
+    expect(screen.queryByText("too many login attempts")).not.toBeInTheDocument();
+  });
 });

@@ -582,7 +582,16 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 		WeightGrams: product.WeightGrams,
 	}
 	clearShipping := isPhysicalType(product.Type)
-	return s.storeRepo.AddItem(ctx, oID, item, clearShipping)
+	if err := s.storeRepo.AddItem(ctx, oID, item, clearShipping); err != nil {
+		if errors.Is(err, repository.ErrOrderNotEditable) {
+			return ErrOrderNotEditable
+		}
+		if errors.Is(err, repository.ErrDuplicateDigitalItem) {
+			return ErrDigitalQtyLimit
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) RemoveItem(ctx context.Context, studentID, orderID, itemID string) error {
@@ -618,7 +627,13 @@ func (s *Service) RemoveItem(ctx context.Context, studentID, orderID, itemID str
 		}
 	}
 
-	return s.storeRepo.RemoveItem(ctx, oID, iID, clearShipping)
+	if err := s.storeRepo.RemoveItem(ctx, oID, iID, clearShipping); err != nil {
+		if errors.Is(err, repository.ErrOrderNotEditable) {
+			return ErrOrderNotEditable
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID string, qty int) error {
@@ -659,7 +674,13 @@ func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID 
 		}
 	}
 
-	return s.storeRepo.UpdateItemQty(ctx, oID, iID, qty, clearShipping)
+	if err := s.storeRepo.UpdateItemQty(ctx, oID, iID, qty, clearShipping); err != nil {
+		if errors.Is(err, repository.ErrOrderNotEditable) {
+			return ErrOrderNotEditable
+		}
+		return err
+	}
+	return nil
 }
 
 type CartPatch struct {
@@ -723,20 +744,6 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		return err
 	}
 
-	order, err := s.storeRepo.GetOrderByID(ctx, oID)
-	if err != nil {
-		return err
-	}
-	if order.ID.String() == "" {
-		return ErrOrderNotFound
-	}
-	if order.StudentID != sID {
-		return ErrOrderNotFound
-	}
-	if order.Status != "cart" {
-		return ErrOrderNotEditable
-	}
-
 	patch.ProvinceID = nilIfEmpty(patch.ProvinceID)
 	patch.CityID = nilIfEmpty(patch.CityID)
 	patch.DistrictID = nilIfEmpty(patch.DistrictID)
@@ -748,6 +755,57 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		}
 	}
 
+	// The read, shipping quote and total computed below all come from a
+	// lock-free snapshot — the Biteship call inside buildCartPatch must never
+	// happen under a DB lock. Coherence instead comes from optimistic
+	// concurrency: the write is guarded by the order's updated_at as of that
+	// read (ExpectedUpdatedAt), which a concurrent item mutation
+	// (AddItem/RemoveItem/UpdateItemQty) always bumps alongside its own
+	// subtotal/total recompute. A conflict means the snapshot this patch was
+	// built from is stale — re-read, recompute and retry once before giving
+	// up, rather than silently overwriting whatever the item mutation wrote.
+	for attempt := 0; attempt < 2; attempt++ {
+		order, err := s.storeRepo.GetOrderByID(ctx, oID)
+		if err != nil {
+			return err
+		}
+		if order.ID.String() == "" {
+			return ErrOrderNotFound
+		}
+		if order.StudentID != sID {
+			return ErrOrderNotFound
+		}
+		if order.Status != "cart" {
+			return ErrOrderNotEditable
+		}
+
+		repoPatch, err := s.buildCartPatch(ctx, order, patch)
+		if err != nil {
+			return err
+		}
+		repoPatch.ExpectedUpdatedAt = &order.UpdatedAt
+
+		err = s.storeRepo.PatchCart(ctx, oID, repoPatch)
+		if err == nil {
+			return nil
+		}
+		if errors.Is(err, repository.ErrOrderNotEditable) {
+			return ErrOrderNotEditable
+		}
+		if errors.Is(err, repository.ErrOrderChanged) {
+			continue
+		}
+		return err
+	}
+	return ErrOrderChanged
+}
+
+// buildCartPatch computes the repository.OrderPatch for a cart PATCH from a
+// single snapshot of order — including, when the patch selects a courier, a
+// live shipping quote priced against that snapshot's items. Split out of
+// PatchCart so the retry there can call this again against a fresh read
+// after a concurrency conflict, re-quoting rather than reusing stale figures.
+func (s *Service) buildCartPatch(ctx context.Context, order model.Order, patch CartPatch) (repository.OrderPatch, error) {
 	// shipping_cost is never trusted from the client: it is either recomputed
 	// server-side from a live courier quote (below) or carried over unchanged
 	// from the persisted order, never taken from patch.ShippingCost directly.
@@ -785,10 +843,10 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 
 		if hasPhysical {
 			if patch.ProvinceID == nil || patch.CityID == nil || patch.DistrictID == nil || patch.KodePos == nil {
-				return ErrIncompleteAddress
+				return repository.OrderPatch{}, ErrIncompleteAddress
 			}
 			if err := s.validateAddressHierarchy(ctx, *patch.ProvinceID, *patch.CityID, *patch.DistrictID); err != nil {
-				return err
+				return repository.OrderPatch{}, err
 			}
 
 			rates, err := s.GetShippingRates(ctx, ShippingQuoteRequest{
@@ -797,7 +855,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 				ItemValue:             itemValue,
 			})
 			if err != nil {
-				return err
+				return repository.OrderPatch{}, err
 			}
 			matched := false
 			for _, rate := range rates {
@@ -811,10 +869,42 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 				}
 			}
 			if !matched {
-				return ErrInvalidCourierSelection
+				return repository.OrderPatch{}, ErrInvalidCourierSelection
 			}
 			repoPatch.SelectedCourier = patch.Courier
 			repoPatch.SelectedService = patch.Service
+		}
+	} else {
+		// A quote is priced for exactly one (destination, weight) pair. If this
+		// patch is not itself selecting a courier, any real change to the
+		// effective destination — COALESCE(patch, persisted), mirroring the
+		// UPDATE's own COALESCE — voids whatever quote was already on the order.
+		effective := func(patched, persisted *string) *string {
+			if patched != nil {
+				return patched
+			}
+			return persisted
+		}
+		changed := func(patched, persisted *string) bool {
+			eff := effective(patched, persisted)
+			if eff == nil && persisted == nil {
+				return false
+			}
+			if eff == nil || persisted == nil {
+				return true
+			}
+			return *eff != *persisted
+		}
+		if changed(patch.ProvinceID, order.ProvinceID) ||
+			changed(patch.CityID, order.CityID) ||
+			changed(patch.DistrictID, order.DistrictID) ||
+			changed(patch.KodePos, order.KodePos) {
+			repoPatch.SelectedCourier = ""
+			repoPatch.SelectedService = ""
+			repoPatch.CourierCode = nil
+			repoPatch.CourierServiceCode = nil
+			repoPatch.IsEstimate = false
+			repoPatch.ShippingCost = 0
 		}
 	}
 
@@ -830,14 +920,14 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 	default:
 		validation, err := s.ValidatePromo(ctx, *patch.PromoCode, order.Subtotal, repoPatch.ShippingCost)
 		if err != nil {
-			return err
+			return repository.OrderPatch{}, err
 		}
 		repoPatch.PromoCodeID = &validation.PromoID
 		repoPatch.Discount = validation.Discount
 		repoPatch.Total = validation.Total
 	}
 
-	return s.storeRepo.PatchCart(ctx, oID, repoPatch)
+	return repoPatch, nil
 }
 
 // freeCheckoutSentinel is cached under the checkout idempotency key when a
@@ -995,20 +1085,44 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	if order.StudentID != sID {
 		return CheckoutResult{}, ErrOrderNotFound
 	}
-	if order.Status != "cart" {
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Address invalidation (PatchCart) and checkout must not decide off two
+	// independent snapshots — status, shipping cost/courier and total are
+	// judged against the row as it stands under this lock, not the
+	// pre-transaction read above. A concurrent PatchCart blocks on the same
+	// row until this transaction ends (PatchCart's own status='cart'
+	// predicate then sees whatever this transaction committed).
+	locked, err := s.storeRepo.GetOrderByIDForUpdateTx(ctx, tx, oID)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
+	if locked.ID.String() == "" {
+		return CheckoutResult{}, ErrOrderNotFound
+	}
+	if locked.StudentID != sID {
+		return CheckoutResult{}, ErrOrderNotFound
+	}
+	if locked.Status != "cart" {
 		return CheckoutResult{}, ErrOrderNotEditable
 	}
 
-	for _, item := range order.Items {
-		if isPhysicalType(item.ProductType) && order.ShippingCost <= 0 {
+	for _, item := range locked.Items {
+		if isPhysicalType(item.ProductType) && (locked.ShippingCost <= 0 || locked.SelectedCourier == "") {
 			return CheckoutResult{}, ErrShippingRequired
 		}
 	}
+	order = locked
 
 	// Re-validate qty at checkout: a row that predates the AddItem/UpdateItemQty
 	// guards can still carry qty > 1 on a digital line, and the qty stepper is
 	// hidden for digital items so the buyer cannot self-correct it. Catching it
-	// here — before BeginTx — stops the wrong price from ever reaching payment.
+	// here — before CheckoutOrder — stops the wrong price from ever reaching payment.
 	for _, item := range order.Items {
 		if err := ValidateItemQty(item.ProductType, item.Qty); err != nil {
 			return CheckoutResult{}, err
@@ -1040,12 +1154,6 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 			}
 		}
 	}
-
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return CheckoutResult{}, err
-	}
-	defer tx.Rollback(ctx)
 
 	if err := s.storeRepo.CheckoutOrder(ctx, tx, oID); err != nil {
 		if errors.Is(err, repository.ErrInsufficientStock) {

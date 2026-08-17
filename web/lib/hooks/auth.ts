@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch, authFetch } from "@/lib/api";
+import { ApiError, apiFetch, authFetch } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import type { LoginResponse, User } from "@/lib/types";
 
@@ -10,14 +10,37 @@ export interface LoginInput {
   password: string;
 }
 
+const LOGIN_RETRY_DELAYS_MS = [1000, 2000];
+
+// Full jitter (https://aws.amazon.com/blogs/architecture/timeouts-retries-and-backoff-with-jitter/)
+// de-synchronizes a retry herd; it does not raise server throughput.
+function fullJitterDelayMs(baseMs: number) {
+  return Math.random() * baseMs;
+}
+
 export function useLogin() {
   const setSession = useAuthStore((s) => s.setSession);
   return useMutation({
-    mutationFn: (input: LoginInput) =>
-      apiFetch<LoginResponse>(`/auth/login`, {
-        method: "POST",
-        body: JSON.stringify(input),
-      }),
+    mutationFn: async (input: LoginInput) => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await apiFetch<LoginResponse>(`/auth/login`, {
+            method: "POST",
+            body: JSON.stringify(input),
+          });
+        } catch (err) {
+          const canRetry =
+            err instanceof ApiError &&
+            err.status === 429 &&
+            err.code === "rate_limited" &&
+            attempt < LOGIN_RETRY_DELAYS_MS.length;
+          if (!canRetry) throw err;
+          await new Promise((resolve) =>
+            setTimeout(resolve, fullJitterDelayMs(LOGIN_RETRY_DELAYS_MS[attempt])),
+          );
+        }
+      }
+    },
     onSuccess: (data) => {
       if (data.access_token && data.user) {
         setSession(data.access_token, data.refresh_token ?? "", data.user);

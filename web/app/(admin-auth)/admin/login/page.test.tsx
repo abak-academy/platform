@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import AdminLoginPage from "./page";
+import { ApiError } from "@/lib/api";
 
 const pushMock = vi.fn();
 
@@ -79,5 +80,30 @@ describe("AdminLoginPage", () => {
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith("/admin");
     });
+  });
+
+  it("renders the localized rate-limited message instead of the raw backend message", async () => {
+    mutateAsyncMock.mockRejectedValue(
+      new ApiError("rate_limited", "too many login attempts", 429),
+    );
+
+    render(<AdminLoginPage />);
+
+    fireEvent.change(
+      screen.getByLabelText(/email atau username|email or username/i, { selector: "input" }),
+      { target: { value: "admin@example.com" } },
+    );
+    fireEvent.change(screen.getByLabelText(/kata sandi|password/i, { selector: "input" }), {
+      target: { value: "secret123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^masuk$|sign in|login/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Terlalu banyak percobaan masuk. Coba lagi sebentar lagi.",
+    );
+    expect(screen.queryByText("too many login attempts")).not.toBeInTheDocument();
   });
 });

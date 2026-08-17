@@ -393,6 +393,8 @@ export const DICT = {
     cart_speed_next_day: "Sampai besok",
     cart_speed_regular: "Beberapa hari",
     cart_shipping_unavailable: "Pengiriman belum tersedia, hubungi admin.",
+    cart_shipping_address_changed:
+      "Pilihan pengiriman dihapus karena alamat berubah. Silakan pilih kurir lagi.",
     select_province: "Pilih Provinsi",
     select_city: "Pilih Kota/Kabupaten",
     select_district: "Pilih Kecamatan",
@@ -685,6 +687,7 @@ export const DICT = {
     login_submit: "Masuk",
     login_submitting: "Masuk...",
     login_failed: "Gagal masuk. Coba lagi.",
+    login_rate_limited: "Terlalu banyak percobaan masuk. Coba lagi sebentar lagi.",
     login_no_account: "Belum punya akun?",
     login_sign_up_link: "Daftar sekarang",
 
@@ -1901,6 +1904,8 @@ export const DICT = {
     cart_speed_next_day: "Arrives tomorrow",
     cart_speed_regular: "Takes a few days",
     cart_shipping_unavailable: "Shipping is not available yet, please contact an admin.",
+    cart_shipping_address_changed:
+      "Shipping selection cleared because the address changed. Please choose a courier again.",
     select_province: "Select Province",
     select_city: "Select City / Regency",
     select_district: "Select District",
@@ -2190,6 +2195,7 @@ export const DICT = {
     login_submit: "Sign in",
     login_submitting: "Signing in...",
     login_failed: "Sign in failed. Try again.",
+    login_rate_limited: "Too many login attempts. Please try again shortly.",
     login_no_account: "Don't have an account yet?",
     login_sign_up_link: "Sign up",
 
