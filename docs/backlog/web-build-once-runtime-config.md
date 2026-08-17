@@ -2,11 +2,23 @@
 
 | | |
 |---|---|
-| **Issue** | not filed |
+| **Issue** | tracked as §6 of [#92](https://github.com/abak-academy/platform/issues/92) — was #93 (2026-08-13 → 2026-08-14, folded back, not dropped) |
+| **Status** | ⏸️ **Premise suspended 2026-08-17** — see below. The design is not wrong; the problem it solves is currently absent |
 | **Objective** | One `web` image, promotable staging→prod, instead of one build per environment. |
 | **Depends on** | — |
 | **Verified against** | `chore/ci-speedup-bcrypt-and-workflow` @ `541584b`, 2026-08-02 |
 | **Supersedes** | the "revisit later" left open by the 2026-07-10 decision |
+
+> ## ⏸️ Suspended 2026-08-17 — read this before implementing any of it
+>
+> Staging was deleted (VM, disk, 15 snapshots, bucket, IP) and the decision is **prod-only,
+> permanent**. **There is nothing to promote between.** `images-web` now builds an image pinned to
+> `stg.abakacademy.id`, a host with no backend behind it — so the immediate fix is to *delete that
+> job*, not to make its output promotable. That is what #92 §6 asks for.
+>
+> Everything below stays accurate and comes back the day a non-production target exists again —
+> which [#95](https://github.com/abak-academy/platform/issues/95) may well stand up for a load-test
+> run. Keep this doc; do not implement it in the meantime.
 
 ## What happens today
 

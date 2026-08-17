@@ -3,12 +3,27 @@
 | | |
 |---|---|
 | **Issue** | [#62](https://github.com/abak-academy/platform/issues/62) |
-| **Objective** | A 5000-participant exam event runs on the current VM spec without the API serving every question payload itself — and we know where it breaks before the day. |
-| **Source IDs** | NF-4, NF-5, **F-6** + D-3 (bundle columns) |
-| **Client items** | 2 |
-| **Depends on** | E2 — **soft**: the bundle serialises questions, so doing this first means serialising twice. Not a compile block; E7 can start today |
-| **Spec conflict** | NF-5 contradicts the PRD's 10,000 CCU metric — see [`prd-trd-drift.md`](prd-trd-drift.md) |
-| **Verified against** | `main` @ `211b7b1`, 2026-07-29 |
+| **Objective** | An exam assembles its paper **once**, not once per student, so the opening window stops being the binding phase. |
+| **Source IDs** | NF-4 + D-3 (bundle columns) |
+| **Client items** | 0 — NF-5 and F-6 both moved out, see *Restructure* below |
+| **Depends on** | E2 — **soft**: the bundle serialises questions, so doing this first means serialising twice |
+| **Trigger** | ⛔ Do not start before [#95](https://github.com/abak-academy/platform/issues/95) reports. After [#96](https://github.com/abak-academy/platform/pull/96) the running-exam phase uses 2.8% of `default_pool_size` at 5000 — this epic optimises a phase that is no longer binding |
+| **Verified against** | `main` @ `3d0d8a1`, 2026-08-17 |
+
+> ## Restructure — 2026-08-17
+>
+> This epic was written 2026-07-29 as "5000 participants on current VM spec". It has since been
+> overtaken, and today it was cut down to the one job it still uniquely owns. **Nothing was dropped.**
+>
+> | Item | Now owned by | Why |
+> |---|---|---|
+> | **NF-5** — load test to 5000 | [#95](https://github.com/abak-academy/platform/issues/95) | #95 is the same tool at a smaller number and wrote so itself; NF-5 is a parameter bump. The 5000-vs-PRD-10,000 phasing decision goes with it |
+> | **F-6** — Amazon SES | [#103](https://github.com/abak-academy/platform/issues/103) | one blast radius with D-7 (Fazpass removal) and the reset-password UI — see §3 below, kept as the historical record |
+> | Forgot-password UI, `/auth/password/forgot` observability, reset-email rewrite | [#103](https://github.com/abak-academy/platform/issues/103) | client-visible work buried in a scale epic never gets scheduled |
+> | bcrypt login spike | **done** — [#99](https://github.com/abak-academy/platform/pull/99) | work factor 12 → 10. Est. `e2-standard-2` ~470 → ~118 ms/verify; the 5000 login queue from ~30 min to ~7.5 min. Shrinks the window, does not remove it |
+> | `--scale api=N`, `vm-app` vCPU | [#95](https://github.com/abak-academy/platform/issues/95) | operational decisions waiting on a named bottleneck, not code checkboxes |
+>
+> §2 and §3 below are left in place as the design of record. **They are not this epic's work any more.**
 
 ---
 
@@ -44,7 +59,7 @@ work and leaves a bundle format that has to be versioned for no reason.
 
 ---
 
-## 2. NF-5 — load test to 5000 participants
+## 2. NF-5 — load test to 5000 participants — **MOVED to [#95](https://github.com/abak-academy/platform/issues/95) on 2026-08-17**
 
 **The PRD says 10,000.** Both the success metric (*"Exam engine concurrent users (peak load) ≥
 10,000"*) and Phase 4 target it. The client's ask is **5000 on current VM spec as phase 1** — not a
@@ -139,7 +154,7 @@ entropy argument.
 
 ---
 
-## 3. F-6 — Amazon SES *(moved here from E1 on 2026-07-30)*
+## 3. F-6 — Amazon SES — **MOVED to [#103](https://github.com/abak-academy/platform/issues/103) on 2026-08-17** *(had moved here from E1 on 2026-07-30)*
 
 The platform stays on the existing Hostinger SMTP for now. The migration is **deferred, not
 cancelled**, and it moved into this epic because this is the epic that forces it.
@@ -160,17 +175,14 @@ Step-by-step runbook, gotchas and rollback: [`ses-email-migration.md`](ses-email
 
 ## Acceptance
 
-- A registration OTP arrives at an external mailbox with **DKIM and DMARC passing**, and the daily cap
-  demonstrably exceeds the event headcount.
-- A published exam with `cdn_bundle = true` serves `bundle_url` on session start.
-- Editing a question nulls `bundle_generated_at`.
-- A stale bundle falls back inline **and** raises the throttled alert.
-- A documented load-test run at 5000 concurrent, with p95 against the 300ms target and the bottleneck
-  named.
-- The 5000-as-phase-1 decision is written down against the PRD's 10,000 metric.
+- A published exam assembles its paper **once**, not once per student; editing a question invalidates it.
+- A stale or mass-missed cache falls back inline **and** raises the throttled alert.
+- Before/after numbers from #95 showing opening-window assembly actually dropped — measured, not arithmetic.
 
 ## Out of scope
 
-- Reaching 10,000 CCU. Explicitly phase 2 of this work.
-- Hardware changes. The client asked for current VM spec.
+- The load test itself, at any headcount — [#95](https://github.com/abak-academy/platform/issues/95).
+- Anything on the email channel — [#103](https://github.com/abak-academy/platform/issues/103).
+- Hardware changes. The client asked for current VM spec; resizing is a #95 decision.
 - Bundle retention/cleanup job — the TRD calls it optional and the cost is negligible.
+- **Building the CDN variant before the Redis variant is measured.** The columns exist for either.

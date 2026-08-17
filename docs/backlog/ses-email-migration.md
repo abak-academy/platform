@@ -1,10 +1,13 @@
 # Backlog: move transactional email to Amazon SES
 
 **Raised:** 2026-07-30 · **Status:** **deferred 2026-07-30 — staying on Hostinger SMTP for now** ·
-**Epic:** [E7](e7-scale-event-readiness.md) (F-6)
+**Issue:** [#103](https://github.com/abak-academy/platform/issues/103) *(moved out of E7 on 2026-08-17)*
 
-Detail doc for F-6. No GitHub issue of its own — it is scope inside E7 (#62). Originally sat in E1;
-moved out when the decision was taken to keep the current SMTP.
+Detail doc for F-6. It sat in E1, moved to E7 (#62) on 2026-07-30 when the decision was taken to keep
+the current SMTP, and moved again on 2026-08-17 to #103 — which owns the whole email channel: this
+migration, the Fazpass removal (D-7, ex-E9), the forgot-password UI, and the
+`/auth/password/forgot` failure behaviour. They all touch `newNotifyProviders`, `adapter/smtp.go` and
+the same six config/secrets files, so they belong to one issue.
 
 > **Deferring the work does not lift the cap.** 100 emails/day still binds, and it binds at ~100
 > sign-ups in a day — not at 5,000. The one step that cannot be compressed is the AWS sandbox review,
