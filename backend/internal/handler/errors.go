@@ -65,6 +65,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "insufficient_stock", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotEditable):
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_editable", Message: err.Error()}
+	case errors.Is(err, service.ErrOrderChanged):
+		status, apiErr = http.StatusConflict, APIError{Code: "order_changed", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "order_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrTestNotFound):

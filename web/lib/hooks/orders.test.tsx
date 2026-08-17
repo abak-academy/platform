@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useShippingRates, usePatchCart, useActivePromoCodes, ordersKeys } from "./orders";
+import { ApiError } from "@/lib/api";
 import type { ActivePromoCode, CourierRate } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
@@ -165,6 +166,56 @@ describe("orders hooks", () => {
           kode_pos: null,
         }),
       });
+    });
+
+    it("refetches the cart when the server reports an order_changed conflict", async () => {
+      mockAuthFetch.mockRejectedValueOnce(
+        new ApiError("order_changed", "order changed during update", 409),
+      );
+
+      const { wrapper, queryClient } = wrapperFactory();
+      const spy = vi.spyOn(queryClient, "invalidateQueries");
+      const { result } = renderHook(() => usePatchCart(), { wrapper });
+
+      await act(async () => {
+        await result.current
+          .mutateAsync({
+            orderId: "o1",
+            province_id: "p1",
+            city_id: "c1",
+            district_id: "d1",
+            kode_pos: "40123",
+          })
+          .catch(() => undefined);
+      });
+
+      await waitFor(() =>
+        expect(spy).toHaveBeenCalledWith({ queryKey: ordersKeys.cart() }),
+      );
+    });
+
+    it("does not refetch the cart on an unrelated failure", async () => {
+      mockAuthFetch.mockRejectedValueOnce(
+        new ApiError("order_not_editable", "order not editable", 409),
+      );
+
+      const { wrapper, queryClient } = wrapperFactory();
+      const spy = vi.spyOn(queryClient, "invalidateQueries");
+      const { result } = renderHook(() => usePatchCart(), { wrapper });
+
+      await act(async () => {
+        await result.current
+          .mutateAsync({
+            orderId: "o1",
+            province_id: "p1",
+            city_id: "c1",
+            district_id: "d1",
+            kode_pos: "40123",
+          })
+          .catch(() => undefined);
+      });
+
+      expect(spy).not.toHaveBeenCalled();
     });
 
     it("can include optional promo_code field", async () => {
