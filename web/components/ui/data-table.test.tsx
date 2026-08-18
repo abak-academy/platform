@@ -59,6 +59,20 @@ describe("DataTable", () => {
     expect(onRowClick).toHaveBeenCalledWith(rows[1]);
   });
 
+  it("ignores keydown bubbling up from an in-row control", () => {
+    const onRowClick = vi.fn();
+    const inCellColumns: DataTableColumn<Row>[] = [
+      ...columns,
+      { key: "actions", header: "", cell: () => <button>Delete</button> },
+    ];
+    render(
+      <DataTable columns={inCellColumns} rows={rows} rowKey={(r) => r.id} empty="No rows" onRowClick={onRowClick} />
+    );
+    const button = screen.getAllByRole("button", { name: "Delete" })[0];
+    button.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
   it("does not make rows focusable without onRowClick", () => {
     const { container } = render(
       <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" />

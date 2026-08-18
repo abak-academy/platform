@@ -71,6 +71,7 @@ export function DataTable<T>({
                     onKeyDown={
                       clickable
                         ? (e) => {
+                            if (e.target !== e.currentTarget) return;
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
                               onRowClick(row);
