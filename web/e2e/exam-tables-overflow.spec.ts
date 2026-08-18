@@ -1,12 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { seedSession } from "./helpers/session";
 
-/**
- * Real-render proof for FR-13 (horizontal overflow). jsdom has no layout, so
- * vitest cannot see whether a wide table scrolls inside its own wrapper or
- * blows out the page — only a real browser can. Fake session + mocked
- * api/v1 fixtures, following e2e/question-editor.spec.ts; no backend.
- */
+// FR-13: jsdom has no layout, so vitest can't see whether a wide table scrolls
+// inside its own wrapper or blows out the page. Fake session per e2e/question-editor.spec.ts.
 
 const FAKE_ADMIN_USER = {
   id: "e2e-fake-admin-id",

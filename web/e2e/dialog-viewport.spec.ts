@@ -1,15 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { seedSession } from "./helpers/session";
 
-/**
- * Executable proof for FR-24 (spec.md Part D): a DialogContent must never
- * outgrow the viewport. jsdom has no layout (N4), so ProductModal.test.tsx
- * can only assert the `.overflow-y-auto` body scroller exists — the actual
- * "does the dialog's bottom edge stay on screen" claim needs a real render.
- *
- * Follows e2e/question-editor.spec.ts's fake-session pattern: no backend,
- * no E2E_* credentials — seedSession + a page.route("**\/api/v1/**") catch-all.
- */
+// FR-24: jsdom has no layout, so ProductModal.test.tsx can't see whether the
+// dialog's bottom edge stays on screen. Fake session per e2e/question-editor.spec.ts.
 
 const FAKE_ADMIN_USER = {
   id: "e2e-fake-admin-id",
