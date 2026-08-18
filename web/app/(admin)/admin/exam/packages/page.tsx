@@ -59,7 +59,7 @@ export default function ExamPackagesPage() {
       )}
 
       {isError && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
           {error instanceof Error ? error.message : t("error_generic")}
         </div>
       )}

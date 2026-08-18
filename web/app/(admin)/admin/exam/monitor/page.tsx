@@ -203,7 +203,7 @@ export default function ExamMonitorPage() {
     return (
       <div className="space-y-6 fade-in">
         <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
           <p className="flex items-center gap-2 font-medium">
             <AlertTriangle size={16} />
             {monitorErr instanceof Error ? monitorErr.message : t("error_generic")}

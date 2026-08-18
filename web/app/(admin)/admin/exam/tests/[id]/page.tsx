@@ -185,7 +185,7 @@ function QuestionRow({
         variant="ghost"
         onClick={() => onDetach(q.id)}
         aria-label={t("tests_detach_question")}
-        className="text-destructive hover:text-destructive"
+        className="text-danger hover:text-danger"
       >
         <Trash2 className="size-3.5" />
       </Button>
@@ -342,7 +342,7 @@ export default function TestDetailPage() {
       )}
 
       {isError && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
           {errorMessage(error, t("error_generic"))}
         </div>
       )}

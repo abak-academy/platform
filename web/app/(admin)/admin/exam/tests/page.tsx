@@ -93,7 +93,7 @@ export default function TestsPage() {
       )}
 
       {isError && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
           {errorMessage(error)}
         </div>
       )}
@@ -154,7 +154,7 @@ export default function TestsPage() {
                     onClick={() => handleDelete(test.id)}
                     disabled={remove.isPending && deletingId === test.id}
                     aria-label={t("action_delete")}
-                    className="text-destructive hover:text-destructive"
+                    className="text-danger hover:text-danger"
                   >
                     <Trash2 className="mr-1 size-3.5" />
                     {t("action_delete")}

@@ -331,7 +331,7 @@ export default function QuestionBankPage() {
       )}
 
       {bank.isError && !bank.data && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
           {errorMessage(bank.error)}
         </div>
       )}
