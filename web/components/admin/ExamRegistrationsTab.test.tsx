@@ -352,6 +352,21 @@ describe("ExamRegistrationsTab — admin_exam read-only (FR-8/FR-9)", () => {
     expect(screen.queryByText("exam_grant_grant")).not.toBeInTheDocument();
     expect(screen.queryByText("bulk_exam_order_preview")).not.toBeInTheDocument();
   });
+
+  // Positive control: a permitted role at the same initial state, with a
+  // selection seeded through the picker, does render the write controls —
+  // proving the admin_exam absences above are role-gated, not just always-off.
+  it("shows the write controls for a permitted role once participants are picked", () => {
+    authUser = { role: "admin_school", school_id: "school-1" };
+    rosterData = { data: [] };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    expect(screen.getByTestId("participant-add")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("participant-add"));
+    expect(screen.getByText("bulk_exam_order_preview")).toBeInTheDocument();
+  });
 });
 
 describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
