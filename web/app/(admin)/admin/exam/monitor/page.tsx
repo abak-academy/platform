@@ -139,10 +139,10 @@ export default function ExamMonitorPage() {
   // ── Picker section ──
 
   const picker = (
-    <div className="flex items-center gap-3">
-      <label className="text-sm font-medium">{t("monitor_pick_exam")}</label>
+    <div className="flex w-full items-center gap-3 sm:w-auto">
+      <label className="shrink-0 text-sm font-medium">{t("monitor_pick_exam")}</label>
       <Select value={selectedExamId} onValueChange={setSelectedExamId}>
-        <SelectTrigger className="w-72" aria-label={t("monitor_pick_exam")}>
+        <SelectTrigger className="w-full min-w-0 sm:w-72" aria-label={t("monitor_pick_exam")}>
           <SelectValue placeholder={t("monitor_pick_exam")} />
         </SelectTrigger>
         <SelectContent>
@@ -167,13 +167,13 @@ export default function ExamMonitorPage() {
     return (
       <div className="space-y-6 fade-in">
         <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
-        <div className="flex gap-6">
+        <div className="flex flex-col gap-6 lg:flex-row">
           <div className="flex-1 space-y-2">
             {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
           </div>
-          <div className="w-72 space-y-2">
+          <div className="w-full space-y-2 lg:w-72">
             <Skeleton className="h-48 w-full" />
           </div>
         </div>
@@ -345,7 +345,7 @@ export default function ExamMonitorPage() {
         </div>
 
         {/* Violation sidebar */}
-        <div className="w-72 shrink-0">
+        <div className="w-full lg:w-72 lg:shrink-0">
           <div className="rounded-lg border border-line p-4">
             <h3 className="mb-3 text-sm font-semibold">{t("monitor_sidebar_title")}</h3>
             {violations.length === 0 ? (
