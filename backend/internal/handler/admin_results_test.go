@@ -588,6 +588,20 @@ func mintSuperAdminToken(t *testing.T, env *adminResultsDBTestEnv, userID string
 	return tokenString
 }
 
+func mintAdminExamToken(t *testing.T, env *adminResultsDBTestEnv, userID string) string {
+	t.Helper()
+	rdb := redis.NewClient(&redis.Options{Addr: env.mr.Addr()})
+	t.Cleanup(func() { rdb.Close() })
+	tokenString, jti, err := env.signer.SignAccess(userID, service.RoleAdminExam, nil, []string{})
+	if err != nil {
+		t.Fatalf("SignAccess: %v", err)
+	}
+	if err := rdb.Set(context.Background(), "session:access:"+jti, userID, 15*time.Minute).Err(); err != nil {
+		t.Fatalf("redis set session: %v", err)
+	}
+	return tokenString
+}
+
 // ---------------------------------------------------------------------------
 // Integration tests
 // ---------------------------------------------------------------------------
@@ -832,5 +846,131 @@ func TestAdminResults_RoutePrecedence(t *testing.T) {
 	ct := rec.Header().Get("Content-Type")
 	if ct != "text/csv" {
 		t.Errorf("Content-Type: want text/csv, got %q", ct)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// admin_exam: gates FR-1/FR-2 — capability + scope helper, both verified
+// independently (N2). Covers all three results routes.
+// ---------------------------------------------------------------------------
+
+func TestAdminResults_AdminExam_ScopeParamValidation(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+	examID := seedExamWithMCQ(t, env.pool)
+	token := mintAdminExamToken(t, env, "admin-exam-scope-"+uuid.NewString())
+
+	for _, tc := range []struct {
+		name       string
+		path       string
+		wantStatus int
+		wantCode   string
+	}{
+		{"list_malformed", "/api/v1/admin/results?exam_id=" + examID.String() + "&school_id=not-a-uuid", http.StatusBadRequest, "invalid_request"},
+		{"list_nonexistent", "/api/v1/admin/results?exam_id=" + examID.String() + "&school_id=" + uuid.NewString(), http.StatusNotFound, "not_found"},
+		{"detail_malformed", "/api/v1/admin/results/" + uuid.NewString() + "?school_id=not-a-uuid", http.StatusBadRequest, "invalid_request"},
+		{"detail_nonexistent", "/api/v1/admin/results/" + uuid.NewString() + "?school_id=" + uuid.NewString(), http.StatusNotFound, "not_found"},
+		{"export_malformed", "/api/v1/admin/results/export?exam_id=" + examID.String() + "&school_id=not-a-uuid", http.StatusBadRequest, "invalid_request"},
+		{"export_nonexistent", "/api/v1/admin/results/export?exam_id=" + examID.String() + "&school_id=" + uuid.NewString(), http.StatusNotFound, "not_found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := getRequest(t, env.e, tc.path, token)
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("want %d, got %d body=%s", tc.wantStatus, rec.Code, rec.Body.String())
+			}
+			var resp map[string]any
+			json.NewDecoder(rec.Body).Decode(&resp)
+			if resp["code"] != tc.wantCode {
+				t.Errorf("code: want %s, got %v", tc.wantCode, resp["code"])
+			}
+		})
+	}
+}
+
+// TestAdminResult_List_AdminExam_NoSchoolID_ReturnsAllSchools proves gate 2:
+// the RBAC capability alone (FR-1) isn't enough — the scope helper must also
+// admit admin_exam as unscoped, or this would still 403 "missing school scope".
+func TestAdminResult_List_AdminExam_NoSchoolID_ReturnsAllSchools(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	examID := seedExamWithMCQ(t, env.pool)
+	schoolA := seedSchoolNamed(t, env.pool, "Admin Exam All A")
+	schoolB := seedSchoolNamed(t, env.pool, "Admin Exam All B")
+	studentA := seedUserWithSchool(t, env.pool, "student", "Admin Exam Student A", schoolA)
+	studentB := seedUserWithSchool(t, env.pool, "student", "Admin Exam Student B", schoolB)
+	seedSubmittedSession(t, env.pool, studentA, examID)
+	seedSubmittedSession(t, env.pool, studentB, examID)
+
+	token := mintAdminExamToken(t, env, "admin-exam-all-"+uuid.NewString())
+
+	rec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String(), token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for admin_exam without school_id, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	rows, ok := resp["data"].([]any)
+	if !ok {
+		t.Fatalf("data: want array, got %T", resp["data"])
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows (one per school), got %d: %+v", len(rows), rows)
+	}
+	seenSchoolNames := map[string]bool{}
+	for _, raw := range rows {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("row: want object, got %T", raw)
+		}
+		name, _ := row["school_name"].(string)
+		if name == "" {
+			t.Fatalf("row missing school_name: %+v", row)
+		}
+		seenSchoolNames[name] = true
+	}
+	if len(seenSchoolNames) != 2 {
+		t.Errorf("want 2 distinct school_name values, got %v", seenSchoolNames)
+	}
+}
+
+// TestAdminResult_List_AdminExam_ScopedToSchool covers FR-2's ?school_id=
+// narrowing case for admin_exam.
+func TestAdminResult_List_AdminExam_ScopedToSchool(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	examID := seedExamWithMCQ(t, env.pool)
+	schoolA := seedSchool(t, env.pool)
+	schoolB := seedSchool(t, env.pool)
+	studentA := seedUserWithSchool(t, env.pool, "student", "Admin Exam Scoped A", schoolA)
+	studentB := seedUserWithSchool(t, env.pool, "student", "Admin Exam Scoped B", schoolB)
+	seedSubmittedSession(t, env.pool, studentA, examID)
+	seedSubmittedSession(t, env.pool, studentB, examID)
+
+	token := mintAdminExamToken(t, env, "admin-exam-scoped-"+uuid.NewString())
+
+	rec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String()+"&school_id="+schoolA, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	rows, ok := resp["data"].([]any)
+	if !ok {
+		t.Fatalf("data: want array, got %T", resp["data"])
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want 1 row (scoped to school_id param), got %d: %+v", len(rows), rows)
+	}
+	row, ok := rows[0].(map[string]any)
+	if !ok {
+		t.Fatalf("row: want object, got %T", rows[0])
+	}
+	if row["student_name"] != "Admin Exam Scoped A" {
+		t.Errorf("student_name: want Admin Exam Scoped A, got %v", row["student_name"])
 	}
 }
