@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useBankQuestions,
@@ -162,6 +163,99 @@ export default function QuestionBankPage() {
     }
   }
 
+  const columns: DataTableColumn<BankQuestionListItem>[] = [
+    {
+      key: "id",
+      header: "ID",
+      cell: (item) => (
+        <span className="font-mono text-xs text-ink-500">{item.question.question_number ?? "—"}</span>
+      ),
+    },
+    {
+      key: "question",
+      header: t("question"),
+      cell: (item) => stripHtmlToPlainText(item.question.body),
+      className: "max-w-xs truncate",
+    },
+    {
+      key: "used_in",
+      header: t("used_in"),
+      cell: (item) => item.attached_count,
+    },
+    {
+      key: "topic",
+      header: t("topic"),
+      cell: (item) =>
+        item.question.topic ? (
+          <Badge variant="outline" className="border-transparent bg-brand-50 text-brand-700">
+            {item.question.topic}
+          </Badge>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      key: "format",
+      header: t("format"),
+      cell: (item) => (
+        <Badge variant="outline" className={cn("border-transparent", FORMAT_TONE[item.question.format])}>
+          {t(FORMAT_LABELS[item.question.format] as Parameters<typeof t>[0])}
+        </Badge>
+      ),
+    },
+    {
+      key: "difficulty",
+      header: t("difficulty"),
+      cell: (item) => {
+        const difficultyKey = item.question.difficulty
+          ? DIFFICULTY_LABELS[item.question.difficulty]
+          : undefined;
+        return difficultyKey ? (
+          <Badge
+            variant="outline"
+            className={cn(
+              "border-transparent",
+              item.question.difficulty && DIFFICULTY_TONE[item.question.difficulty]
+            )}
+          >
+            {t(difficultyKey)}
+          </Badge>
+        ) : (
+          "—"
+        );
+      },
+    },
+    {
+      key: "points",
+      header: t("points"),
+      cell: (item) => (
+        <>
+          <span className="font-semibold text-info">+{item.question.point_correct}</span>
+          <span className="text-ink-500"> / {item.question.point_wrong}</span>
+        </>
+      ),
+    },
+    {
+      key: "actions",
+      header: t("th_actions"),
+      cell: (item) => (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t("action_delete")}
+          title={item.in_live_exam ? t("question_in_published_exam_reason") : undefined}
+          disabled={item.in_live_exam}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDelete(item);
+          }}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6 fade-in">
       <AdminPageHeader
@@ -217,7 +311,7 @@ export default function QuestionBankPage() {
           </select>
 
           <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -243,147 +337,62 @@ export default function QuestionBankPage() {
       )}
 
       {!bank.isLoading && !bank.isError && (
-        <div className="overflow-x-auto md-card-outlined">
-          <table className="w-full text-sm">
-            <thead className="bg-muted">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">ID</th>
-                <th className="px-4 py-3 text-left font-medium">{t("question")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("used_in")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("topic")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("format")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("difficulty")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("points")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_actions")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((item) => {
-                const { question } = item;
-                const difficultyKey = question.difficulty
-                  ? DIFFICULTY_LABELS[question.difficulty]
-                  : undefined;
-                return (
-                  <tr
-                    key={question.id}
-                    onClick={() => handleRowClick(item)}
-                    className="border-t transition-colors hover:bg-muted/40 cursor-pointer"
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(item) => item.question.id}
+          empty={t("tests_picker_empty")}
+          onRowClick={handleRowClick}
+          data-testid="exam-questions-table"
+          footer={
+            total > PAGE_SIZE ? (
+              <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
+                <span className="text-ink-500">
+                  {t("pagination_summary")
+                    .replace("{page}", String(page))
+                    .replace("{pages}", String(pageCount))
+                    .replace("{total}", String(total))}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                      {question.question_number ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 max-w-xs truncate">{stripHtmlToPlainText(question.body)}</td>
-                    <td className="px-4 py-3">{item.attached_count}</td>
-                    <td className="px-4 py-3">
-                      {question.topic ? (
-                        <Badge variant="outline" className="border-transparent bg-brand-50 text-brand-700">
-                          {question.topic}
-                        </Badge>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge
-                        variant="outline"
-                        className={cn("border-transparent", FORMAT_TONE[question.format])}
-                      >
-                        {t(FORMAT_LABELS[question.format] as Parameters<typeof t>[0])}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      {difficultyKey ? (
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "border-transparent",
-                            question.difficulty && DIFFICULTY_TONE[question.difficulty]
-                          )}
+                    <ChevronLeft className="size-4" />
+                    {t("pagination_prev")}
+                  </Button>
+                  {Array.from({ length: pageCount }, (_, i) => i + 1)
+                    .filter((n) => n === 1 || n === pageCount || Math.abs(n - page) <= 2)
+                    .map((n, idx, arr) => (
+                      <span key={n} className="flex items-center">
+                        {idx > 0 && arr[idx - 1] !== n - 1 && (
+                          <span className="px-1 text-ink-500">…</span>
+                        )}
+                        <Button
+                          variant={n === page ? "default" : "ghost"}
+                          size="sm"
+                          onClick={() => setPage(n)}
                         >
-                          {t(difficultyKey)}
-                        </Badge>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="font-semibold text-info">+{question.point_correct}</span>
-                      <span className="text-muted-foreground"> / {question.point_wrong}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t("action_delete")}
-                        title={item.in_live_exam ? t("question_in_published_exam_reason") : undefined}
-                        disabled={item.in_live_exam}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(item);
-                        }}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                    {t("tests_picker_empty")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          {total > PAGE_SIZE && (
-            <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
-              <span className="text-muted-foreground">
-                {t("pagination_summary")
-                  .replace("{page}", String(page))
-                  .replace("{pages}", String(pageCount))
-                  .replace("{total}", String(total))}
-              </span>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  <ChevronLeft className="size-4" />
-                  {t("pagination_prev")}
-                </Button>
-                {Array.from({ length: pageCount }, (_, i) => i + 1)
-                  .filter((n) => n === 1 || n === pageCount || Math.abs(n - page) <= 2)
-                  .map((n, idx, arr) => (
-                    <span key={n} className="flex items-center">
-                      {idx > 0 && arr[idx - 1] !== n - 1 && (
-                        <span className="px-1 text-muted-foreground">…</span>
-                      )}
-                      <Button
-                        variant={n === page ? "default" : "ghost"}
-                        size="sm"
-                        onClick={() => setPage(n)}
-                      >
-                        {n}
-                      </Button>
-                    </span>
-                  ))}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= pageCount}
-                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                >
-                  {t("pagination_next")}
-                  <ChevronRight className="size-4" />
-                </Button>
+                          {n}
+                        </Button>
+                      </span>
+                    ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= pageCount}
+                    onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                  >
+                    {t("pagination_next")}
+                    <ChevronRight className="size-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            ) : undefined
+          }
+        />
       )}
 
       <QuestionPreview

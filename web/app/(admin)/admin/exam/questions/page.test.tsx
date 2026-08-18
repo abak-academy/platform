@@ -445,6 +445,23 @@ describe("QuestionBankPage", () => {
     vi.unstubAllGlobals();
   });
 
+  it("renders rows through DataTable as keyboard-activatable", async () => {
+    renderWithClient(<QuestionBankPage />);
+
+    await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
+
+    const row = screen.getByText("What is 2+2?").closest("tr") as HTMLElement;
+    expect(row).toHaveAttribute("role", "button");
+    expect(row).toHaveAttribute("tabIndex", "0");
+
+    fireEvent.keyDown(row, { key: "Enter" });
+
+    await waitFor(() => {
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("What is 2+2?")).toBeInTheDocument();
+    });
+  });
+
   it("disables the delete control for a row with in_live_exam true", async () => {
     bankState = {
       data: {
