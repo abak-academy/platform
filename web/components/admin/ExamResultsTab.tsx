@@ -18,12 +18,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import {
   useAdminResults,
   useAdminResultDetail,
   exportAdminResults,
 } from "@/lib/hooks/admin-results";
-import { useAdminSchools } from "@/lib/hooks/admin-schools";
+import { useSchools } from "@/lib/hooks/students";
 import { useAuthStore } from "@/stores/auth";
 import type { AdminResultRow, AdminResultDetail } from "@/lib/types";
 
@@ -40,9 +41,9 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
   const role = useAuthStore((s) => s.user?.role);
-  const isSuperAdmin = role === "super_admin";
+  const canScopeAllSchools = role === "super_admin" || role === "admin_exam";
 
-  const { data: schoolsData } = useAdminSchools();
+  const { data: schoolsData } = useSchools(canScopeAllSchools);
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
 
   const [search, setSearch] = useState("");
@@ -67,7 +68,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
     q: search || undefined,
     cursor: activeCursor,
     limit: 20,
-    ...(isSuperAdmin && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
+    ...(canScopeAllSchools && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
     enabled: Boolean(examId),
   });
 
@@ -89,7 +90,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const detailResult = useAdminResultDetail(
     selectedSessionId,
-    isSuperAdmin ? selectedSchoolId : undefined,
+    canScopeAllSchools ? selectedSchoolId : undefined,
   );
 
   const [exporting, setExporting] = useState(false);
@@ -97,7 +98,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
     if (!examId) return;
     setExporting(true);
     try {
-      await exportAdminResults(examId, isSuperAdmin ? selectedSchoolId : undefined);
+      await exportAdminResults(examId, canScopeAllSchools ? selectedSchoolId : undefined);
     } catch {
       // Export errors handled silently — the CSV download is best-effort
     } finally {
@@ -109,10 +110,41 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
     if (nextCursor) setActiveCursor(nextCursor);
   };
 
+  const resultColumns: DataTableColumn<AdminResultRow>[] = [
+    {
+      key: "name",
+      header: t("th_name"),
+      cell: (row) => <span className="font-medium text-ink-900">{row.student_name}</span>,
+    },
+    {
+      key: "school",
+      header: t("schools_th_school"),
+      cell: (row) => <span className="text-xs text-ink-600">{row.school_name || "-"}</span>,
+    },
+    {
+      key: "score",
+      header: t("school_reports_col_score"),
+      cell: (row) => <span className="text-xs text-ink-600">{row.score}</span>,
+    },
+    {
+      key: "submitted",
+      header: t("school_reports_col_submitted"),
+      cell: (row) => (
+        <span className="text-xs text-ink-600">
+          {new Date(row.submitted_at).toLocaleString(dateLocale, {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })}
+        </span>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        {isSuperAdmin && (
+        {canScopeAllSchools && (
           <div>
             <p className="text-xs text-ink-500">{t("select_school")}</p>
             <Select
@@ -124,7 +156,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL_SCHOOLS_VALUE}>{t("students_all_schools")}</SelectItem>
-                {(schoolsData?.data ?? []).map((s) => (
+                {(schoolsData ?? []).map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.name}
                   </SelectItem>
@@ -152,60 +184,27 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
       ) : query.isError && accumulated.length === 0 ? (
         <div className="py-12 text-center text-ink-500">{t("sys_error_load")}</div>
       ) : (
-        <div className="md-card-outlined">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
-                <tr>
-                  <th className="px-4 py-3">{t("th_name")}</th>
-                  <th className="px-4 py-3">{t("schools_th_school")}</th>
-                  <th className="px-4 py-3">{t("school_reports_col_score")}</th>
-                  <th className="px-4 py-3">{t("school_reports_col_submitted")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {accumulated.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-ink-500">
-                      {t("school_reports_empty")}
-                    </td>
-                  </tr>
-                )}
-                {accumulated.map((row) => (
-                  <tr
-                    key={row.session_id}
-                    className="cursor-pointer group hover:bg-surface-2"
-                    onClick={() => setSelectedSessionId(row.session_id)}
-                  >
-                    <td className="px-4 py-3 font-medium text-ink-900">{row.student_name}</td>
-                    <td className="px-4 py-3 text-xs text-ink-600">{row.school_name || "-"}</td>
-                    <td className="px-4 py-3 text-xs text-ink-600">{row.score}</td>
-                    <td className="px-4 py-3 text-xs text-ink-600">
-                      {new Date(row.submitted_at).toLocaleString(dateLocale, {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {nextCursor && (
-            <div className="border-t border-line px-4 py-3 text-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleLoadMore}
-                disabled={query.isFetching}
-              >
-                {query.isFetching ? t("sys_loading") : t("load_more")}
-              </Button>
-            </div>
-          )}
-        </div>
+        <DataTable
+          columns={resultColumns}
+          rows={accumulated}
+          rowKey={(row) => row.session_id}
+          empty={t("school_reports_empty")}
+          onRowClick={(row) => setSelectedSessionId(row.session_id)}
+          footer={
+            nextCursor && (
+              <div className="border-t border-line px-4 py-3 text-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLoadMore}
+                  disabled={query.isFetching}
+                >
+                  {query.isFetching ? t("sys_loading") : t("sys_load_more")}
+                </Button>
+              </div>
+            )
+          }
+        />
       )}
 
       <Dialog

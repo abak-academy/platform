@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ExamResultsTab } from "./ExamResultsTab";
 import type { AdminResultRow, AdminResultDetail, School } from "@/lib/types";
 
 const mockExport = vi.fn();
+const mockAuthFetch = vi.fn();
 
 let resultsState = {
   data: null as { data: AdminResultRow[]; next_cursor?: string } | null,
@@ -29,13 +31,11 @@ let authStore: {
   user: { role: "admin_school", school_id: "s1" },
 };
 
-let schoolsState = {
-  data: null as { data: School[]; next_cursor?: string } | null,
-  isLoading: false,
-  isError: false,
-};
-
 const mockUseAdminResults = vi.fn();
+
+vi.mock("@/lib/api", () => ({
+  authFetch: (...args: Parameters<typeof mockAuthFetch>) => mockAuthFetch(...args),
+}));
 
 vi.mock("@/lib/hooks/admin-results", () => ({
   // Spread a fresh object each call so query.data changes reference like real
@@ -56,9 +56,10 @@ vi.mock("@/stores/auth", () => ({
   useAuthStore: (selector: (s: typeof authStore) => unknown) => selector(authStore),
 }));
 
-vi.mock("@/lib/hooks/admin-schools", () => ({
-  useAdminSchools: () => schoolsState,
-}));
+const sampleSchools: School[] = [
+  { id: "s1", name: "SMAN 1 Jakarta" },
+  { id: "s2", name: "SMAN 2 Bandung" },
+];
 
 const sampleResultRows: AdminResultRow[] = [
   {
@@ -94,14 +95,18 @@ const scorePembahasanDetail: AdminResultDetail = {
   ],
 };
 
+function renderTab(examId = "exam-1") {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ExamResultsTab examId={examId} />
+    </QueryClientProvider>,
+  );
+}
+
 describe("ExamResultsTab", () => {
   beforeEach(() => {
     authStore = { token: "t", user: { role: "admin_school", school_id: "s1" } };
-    schoolsState = {
-      data: { data: [{ id: "s1", name: "SMAN 1 Jakarta" }, { id: "s2", name: "SMAN 2 Bandung" }], next_cursor: undefined },
-      isLoading: false,
-      isError: false,
-    };
     resultsState = {
       data: { data: sampleResultRows, next_cursor: undefined },
       isLoading: false,
@@ -112,6 +117,8 @@ describe("ExamResultsTab", () => {
     detailState = { data: null, isLoading: false, isFetching: false, isError: false, error: null };
     mockExport.mockReset();
     mockUseAdminResults.mockReset();
+    mockAuthFetch.mockReset();
+    mockAuthFetch.mockResolvedValue(sampleSchools);
   });
 
   afterEach(() => {
@@ -119,7 +126,7 @@ describe("ExamResultsTab", () => {
   });
 
   it("renders rows with student name, per-row school, score and submitted date", async () => {
-    render(<ExamResultsTab examId="exam-1" />);
+    renderTab();
 
     await waitFor(() => {
       expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
@@ -143,7 +150,7 @@ describe("ExamResultsTab", () => {
       error: null,
     };
 
-    render(<ExamResultsTab examId="exam-1" />);
+    renderTab();
 
     const row = await screen.findByText("Budi Santoso");
     fireEvent.click(row);
@@ -154,10 +161,31 @@ describe("ExamResultsTab", () => {
     });
   });
 
+  it("table rows are keyboard-activatable", async () => {
+    detailState = {
+      data: scorePembahasanDetail,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      error: null,
+    };
+
+    renderTab();
+
+    const row = await screen.findByText("Budi Santoso");
+    const rowEl = row.closest('[role="button"]');
+    expect(rowEl).not.toBeNull();
+    fireEvent.keyDown(rowEl!, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Aljabar")).toBeInTheDocument();
+    });
+  });
+
   it("fetches and renders results for super_admin with no school picked (defaults to all schools)", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
 
-    render(<ExamResultsTab examId="exam-1" />);
+    renderTab();
 
     await waitFor(() => {
       expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
@@ -173,7 +201,7 @@ describe("ExamResultsTab", () => {
   it("narrows results by school_id once a super_admin picks one from the optional filter", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
 
-    render(<ExamResultsTab examId="exam-1" />);
+    renderTab();
     await screen.findByText("Budi Santoso");
 
     const selectTrigger = screen.getByRole("combobox");
@@ -188,5 +216,35 @@ describe("ExamResultsTab", () => {
       const lastCall = mockUseAdminResults.mock.calls.at(-1)?.[0];
       expect(lastCall.schoolId).toBe("s2");
     });
+  });
+
+  it("admin_exam sees the dropdown and its requests carry school_id once a school is picked", async () => {
+    authStore = { token: "t", user: { role: "admin_exam" } };
+
+    renderTab();
+    await screen.findByText("Budi Santoso");
+
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    await waitFor(() => expect(mockAuthFetch).toHaveBeenCalledWith("/schools"));
+
+    const selectTrigger = screen.getByRole("combobox");
+    fireEvent.click(selectTrigger);
+    const schoolOption = await screen.findByRole("option", { name: "SMAN 2 Bandung" });
+    fireEvent.click(schoolOption);
+
+    await waitFor(() => {
+      const lastCall = mockUseAdminResults.mock.calls.at(-1)?.[0];
+      expect(lastCall.schoolId).toBe("s2");
+    });
+  });
+
+  it("admin_school sees no dropdown and issues no school-list request", async () => {
+    authStore = { token: "t", user: { role: "admin_school", school_id: "s1" } };
+
+    renderTab();
+    await screen.findByText("Budi Santoso");
+
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(mockAuthFetch).not.toHaveBeenCalledWith("/schools");
   });
 });

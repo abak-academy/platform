@@ -45,10 +45,11 @@ export interface UpdateProfileInput {
   kode_pos?: string;
 }
 
-export function useSchools() {
+export function useSchools(enabled = true) {
   return useQuery({
     queryKey: [...studentsKeys.all, "schools"],
     queryFn: () => authFetch<School[]>(`/schools`),
+    enabled,
   });
 }
 

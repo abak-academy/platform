@@ -67,6 +67,15 @@ describe("useSchools", () => {
 
     expect(result.current.data).toEqual([]);
   });
+
+  it("issues no request when enabled is false", async () => {
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useSchools(false), { wrapper });
+
+    expect(result.current.isPending).toBe(true);
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(mockAuthFetch).not.toHaveBeenCalled();
+  });
 });
 
 describe("useUpdatePhoto", () => {
