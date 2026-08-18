@@ -194,4 +194,3 @@ for (const viewport of VIEWPORTS) {
     await assertTableIsTheScroller(page, "exam-questions-table", viewport.width === 390);
   });
 }
-
