@@ -589,7 +589,7 @@ export default function SchoolStudentsPage() {
       <Dialog open={registerOpen} onOpenChange={(open) => {
         if (!open) handleCloseRegister();
       }}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl">
           {registerResult ? (
             /* Credential panel — one-time display */
             <>

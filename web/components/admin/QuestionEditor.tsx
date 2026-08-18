@@ -882,7 +882,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onCancel(); }}>
-      <DialogContent className="flex flex-col gap-0 p-0 sm:max-w-6xl max-h-[90vh] overflow-hidden">
+      <DialogContent className="flex flex-col gap-0 p-0 sm:max-w-6xl overflow-hidden">
         <DialogHeader className="shrink-0 border-b px-6 py-5">
           <DialogTitle>{isEdit ? t("tests_edit_question") : t("tests_new_question")}</DialogTitle>
           <DialogDescription>{t("tests_editor_hint")}</DialogDescription>

@@ -88,7 +88,7 @@ export function OrderDetailModal({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="shrink-0 border-b px-6 py-5">
           <DialogTitle className="flex items-center gap-3">
             <span className="font-mono">#{order.id.slice(-8)}</span>

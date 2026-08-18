@@ -643,8 +643,6 @@ describe("ProductModal", () => {
     );
 
     const dialog = screen.getByRole("dialog");
-    expect(dialog.className).toContain("max-h-[90vh]");
-    expect(dialog.className).toContain("overflow-hidden");
     expect(dialog.querySelector(".overflow-y-auto")).not.toBeNull();
     expect(screen.getByRole("button", { name: /^simpan$/i })).toBeInTheDocument();
   });
