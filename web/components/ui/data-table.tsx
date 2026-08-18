@@ -65,7 +65,6 @@ export function DataTable<T>({
                   <tr
                     key={rowKey(row)}
                     className={cn(clickable && "cursor-pointer hover:bg-surface-2")}
-                    role={clickable ? "button" : undefined}
                     tabIndex={clickable ? 0 : undefined}
                     onClick={clickable ? () => onRowClick(row) : undefined}
                     onKeyDown={

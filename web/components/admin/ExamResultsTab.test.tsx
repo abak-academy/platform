@@ -173,8 +173,10 @@ describe("ExamResultsTab", () => {
     renderTab();
 
     const row = await screen.findByText("Budi Santoso");
-    const rowEl = row.closest('[role="button"]');
+    const rowEl = row.closest("tr");
     expect(rowEl).not.toBeNull();
+    expect(rowEl).not.toHaveAttribute("role");
+    expect(rowEl).toHaveAttribute("tabIndex", "0");
     fireEvent.keyDown(rowEl!, { key: "Enter" });
 
     await waitFor(() => {

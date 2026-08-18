@@ -451,8 +451,11 @@ describe("QuestionBankPage", () => {
     await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
 
     const row = screen.getByText("What is 2+2?").closest("tr") as HTMLElement;
-    expect(row).toHaveAttribute("role", "button");
+    // The row must stay a row: role="button" would nest the delete control
+    // inside a widget and stop assistive tech exposing it.
+    expect(row).not.toHaveAttribute("role");
     expect(row).toHaveAttribute("tabIndex", "0");
+    expect(within(row).getByRole("button", { name: /action_delete/i })).toBeInTheDocument();
 
     fireEvent.keyDown(row, { key: "Enter" });
 

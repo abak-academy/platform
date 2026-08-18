@@ -38,12 +38,12 @@ describe("DataTable", () => {
     render(
       <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" onRowClick={onRowClick} />
     );
-    // role="button" on the <tr> overrides its implicit "row" role, so the
-    // data rows surface under getAllByRole("button") instead.
-    const dataRows = screen.getAllByRole("button");
+    // The row keeps its implicit "row" role: role="button" would override it and
+    // bury any real control rendered inside a cell.
+    const dataRows = screen.getAllByRole("row").slice(1);
     expect(dataRows).toHaveLength(2);
     for (const row of dataRows) {
-      expect(row).toHaveAttribute("role", "button");
+      expect(row).not.toHaveAttribute("role");
       expect(row).toHaveAttribute("tabIndex", "0");
     }
 
