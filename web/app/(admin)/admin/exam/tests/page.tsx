@@ -100,7 +100,7 @@ export default function TestsPage() {
 
       {!isLoading && !isError && (
         tests.length === 0 ? (
-          <div className="md-card-outlined px-4 py-8 text-center text-muted-foreground">
+          <div className="md-card-outlined px-4 py-8 text-center text-ink-500">
             {t("tests_empty")}
           </div>
         ) : (
@@ -118,11 +118,11 @@ export default function TestsPage() {
                     router.push(`/admin/exam/tests/${test.id}`);
                   }
                 }}
-                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2"
               >
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-ink-900 truncate">{test.title}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-500">
                     <span>{test.subject}</span>
                     <span aria-hidden="true">·</span>
                     <span>{test.topic}</span>
