@@ -8,6 +8,7 @@ import { ParticipantPicker } from "@/components/admin/ParticipantPicker";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { formatRupiah } from "@/lib/format";
 import {
   usePreviewBulkExamOrder,
@@ -98,8 +99,74 @@ function ExamRosterSection({ examId }: { examId: string }) {
     return sortDir === "asc" ? sorted : sorted.reverse();
   }, [data, sortDir]);
 
+  const columns: DataTableColumn<ExamRosterEntry>[] = [
+    {
+      key: "participant_no",
+      header: (
+        <button
+          type="button"
+          className="flex items-center gap-1"
+          onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+        >
+          {t("exam_roster_th_participant_no")}
+          <ArrowUpDown className="size-3.5" />
+        </button>
+      ),
+      cell: (r) => (
+        <span data-testid="roster-participant-no" className="font-medium text-ink-900">
+          {r.participant_no || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "name",
+      header: t("exam_roster_th_name"),
+      cell: (r) => <span className="text-ink-900">{r.student_name}</span>,
+    },
+    {
+      key: "username",
+      header: t("exam_roster_th_username"),
+      cell: (r) => (
+        <span className="text-ink-500">
+          {r.student_username ? `@${r.student_username}` : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: t("exam_roster_th_status"),
+      cell: (r) => r.status,
+    },
+    {
+      key: "checked_in",
+      header: t("exam_roster_th_checked_in"),
+      cell: (r) => (r.checked_in_at ? "✓" : "—"),
+    },
+    {
+      key: "token",
+      header: t("exam_roster_th_token"),
+      cell: (r) => {
+        const revealed = revealedTokens.has(r.registration_id);
+        return (
+          <div className="flex items-center gap-2 font-mono text-xs">
+            <span className="select-all">{revealed ? r.token : "••••••••"}</span>
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              onClick={() => toggleToken(r.registration_id)}
+              aria-label={revealed ? t("exam_roster_hide_token") : t("exam_roster_show_token")}
+            >
+              {revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            </Button>
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
-    <section className="md-card-outlined space-y-3 p-5">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="font-serif text-base font-semibold text-ink-900">
           {t("exam_roster_title")}
@@ -117,85 +184,17 @@ function ExamRosterSection({ examId }: { examId: string }) {
 
       {isError && <p className="text-sm text-danger">{t("exam_roster_load_failed")}</p>}
 
-      {!isError && isLoading && (
-        <p className="text-sm text-ink-500">…</p>
-      )}
+      {!isError && isLoading && <p className="text-sm text-ink-500">…</p>}
 
-      {!isError && !isLoading && rows.length === 0 && (
-        <p className="text-sm text-ink-500">{t("exam_roster_empty")}</p>
+      {!isError && !isLoading && (
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(r) => r.registration_id}
+          empty={t("exam_roster_empty")}
+        />
       )}
-
-      {!isError && !isLoading && rows.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-line text-ink-500">
-                <th className="py-2 pr-3 font-medium">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1"
-                    onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-                  >
-                    {t("exam_roster_th_participant_no")}
-                    <ArrowUpDown className="size-3.5" />
-                  </button>
-                </th>
-                <th className="py-2 pr-3 font-medium">{t("exam_roster_th_name")}</th>
-                <th className="py-2 pr-3 font-medium">{t("exam_roster_th_username")}</th>
-                <th className="py-2 pr-3 font-medium">{t("exam_roster_th_status")}</th>
-                <th className="py-2 pr-3 font-medium">{t("exam_roster_th_checked_in")}</th>
-                <th className="py-2 font-medium">{t("exam_roster_th_token")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const revealed = revealedTokens.has(r.registration_id);
-                return (
-                  <tr key={r.registration_id} className="border-b border-line/50">
-                    <td
-                      data-testid="roster-participant-no"
-                      className="py-2 pr-3 font-medium text-ink-900"
-                    >
-                      {r.participant_no || "—"}
-                    </td>
-                    <td className="py-2 pr-3 text-ink-900">{r.student_name}</td>
-                    <td className="py-2 pr-3 text-ink-500">
-                      {r.student_username ? `@${r.student_username}` : "—"}
-                    </td>
-                    <td className="py-2 pr-3">{r.status}</td>
-                    <td className="py-2 pr-3">{r.checked_in_at ? "✓" : "—"}</td>
-                    <td className="py-2">
-                      <div className="flex items-center gap-2 font-mono text-xs">
-                        <span className="select-all">
-                          {revealed ? r.token : "••••••••"}
-                        </span>
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="ghost"
-                          onClick={() => toggleToken(r.registration_id)}
-                          aria-label={
-                            revealed
-                              ? t("exam_roster_hide_token")
-                              : t("exam_roster_show_token")
-                          }
-                        >
-                          {revealed ? (
-                            <EyeOff className="size-3.5" />
-                          ) : (
-                            <Eye className="size-3.5" />
-                          )}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
+    </div>
   );
 }
 
@@ -206,6 +205,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
   const role = useAuthStore((s) => s.user?.role);
   const schoolId = useAuthStore((s) => s.user?.school_id);
   const isSuperAdmin = role === "super_admin";
+  const isAdminExam = role === "admin_exam";
 
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
@@ -347,103 +347,111 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
     <div className="space-y-6">
       <ExamRosterSection examId={examId} />
 
-      <section>
-        <h3 className="font-serif text-base font-semibold text-ink-900">
-          {t("bulk_exam_order_pick_participants")}
-        </h3>
-        <div className="mt-3">
-          <ParticipantPicker
-            schoolId={isSuperAdmin ? undefined : schoolId}
-            selected={selectedStudentIds}
-            onChange={setSelectedStudentIds}
-          />
+      {isAdminExam ? (
+        <div className="md-card-outlined p-5 text-sm text-ink-600">
+          {t("exam_registrations_manual_notice")}
         </div>
-      </section>
+      ) : (
+        <>
+          <section>
+            <h3 className="font-serif text-base font-semibold text-ink-900">
+              {t("bulk_exam_order_pick_participants")}
+            </h3>
+            <div className="mt-3">
+              <ParticipantPicker
+                schoolId={isSuperAdmin ? undefined : schoolId}
+                selected={selectedStudentIds}
+                onChange={setSelectedStudentIds}
+              />
+            </div>
+          </section>
 
-      {selectedStudentIds.length > 0 && isSuperAdmin && (
-        <div className="space-y-4">
-          <Button size="lg" className="rounded-full" onClick={handleGrant} disabled={grantMutation.isPending}>
-            {grantMutation.isPending ? (
-              <Loader2 className="mr-2 size-4 animate-spin" />
-            ) : null}
-            {grantMutation.isPending ? t("exam_grant_granting") : t("exam_grant_grant")}
-          </Button>
-
-          {grantMutation.isError && (
-            <p className="text-sm text-danger">{t("error_generic")}</p>
-          )}
-        </div>
-      )}
-
-      {selectedStudentIds.length > 0 && !isSuperAdmin && (
-        <div className="space-y-4">
-          <Button size="lg" className="rounded-full" onClick={handlePreview} disabled={previewMutation.isPending}>
-            {previewMutation.isPending ? (
-              <Loader2 className="mr-2 size-4 animate-spin" />
-            ) : null}
-            {t("bulk_exam_order_preview")}
-          </Button>
-
-          {previewMutation.data && (
-            <div className="md-card-outlined space-y-4 p-5">
-              <h4 className="font-serif text-base font-semibold text-ink-900">
-                {t("bulk_exam_order_preview_title")}
-              </h4>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">
-                  {previewMutation.data.net_new_count}{" "}
-                  {t("bulk_exam_order_students_count").replace(
-                    "{n}",
-                    String(previewMutation.data.net_new_count),
-                  )}
-                </Badge>
-              </div>
-
-              {previewMutation.data.excluded.length > 0 && (
-                <div className="max-h-[160px] overflow-y-auto rounded-lg border border-line p-2">
-                  {previewMutation.data.excluded.map((s) => (
-                    <div
-                      key={s.student_id}
-                      className="flex items-center gap-2 px-2 py-1.5 text-sm"
-                    >
-                      <span className="font-medium text-ink-900">{s.name}</span>
-                      <span className="text-ink-500">({s.reason})</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="border-t border-line pt-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-semibold text-ink-900">
-                    {t("bulk_exam_order_total")}
-                  </span>
-                  <span className="font-serif text-lg font-bold text-success">
-                    {formatRupiah(previewMutation.data.total)}
-                  </span>
-                </div>
-              </div>
-
-              <Button
-                size="lg"
-                className="w-full rounded-full"
-                onClick={handleCreateOrder}
-                disabled={createMutation.isPending}
-              >
-                {createMutation.isPending ? (
+          {selectedStudentIds.length > 0 && isSuperAdmin && (
+            <div className="space-y-4">
+              <Button size="lg" className="rounded-full" onClick={handleGrant} disabled={grantMutation.isPending}>
+                {grantMutation.isPending ? (
                   <Loader2 className="mr-2 size-4 animate-spin" />
                 ) : null}
-                {createMutation.isPending
-                  ? t("bulk_exam_order_confirming")
-                  : t("bulk_exam_order_confirm")}
+                {grantMutation.isPending ? t("exam_grant_granting") : t("exam_grant_grant")}
               </Button>
+
+              {grantMutation.isError && (
+                <p className="text-sm text-danger">{t("error_generic")}</p>
+              )}
             </div>
           )}
 
-          {previewMutation.isError && (
-            <p className="text-sm text-danger">{t("bulk_exam_order_preview_failed")}</p>
+          {selectedStudentIds.length > 0 && !isSuperAdmin && (
+            <div className="space-y-4">
+              <Button size="lg" className="rounded-full" onClick={handlePreview} disabled={previewMutation.isPending}>
+                {previewMutation.isPending ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : null}
+                {t("bulk_exam_order_preview")}
+              </Button>
+
+              {previewMutation.data && (
+                <div className="md-card-outlined space-y-4 p-5">
+                  <h4 className="font-serif text-base font-semibold text-ink-900">
+                    {t("bulk_exam_order_preview_title")}
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">
+                      {previewMutation.data.net_new_count}{" "}
+                      {t("bulk_exam_order_students_count").replace(
+                        "{n}",
+                        String(previewMutation.data.net_new_count),
+                      )}
+                    </Badge>
+                  </div>
+
+                  {previewMutation.data.excluded.length > 0 && (
+                    <div className="max-h-[160px] overflow-y-auto rounded-lg border border-line p-2">
+                      {previewMutation.data.excluded.map((s) => (
+                        <div
+                          key={s.student_id}
+                          className="flex items-center gap-2 px-2 py-1.5 text-sm"
+                        >
+                          <span className="font-medium text-ink-900">{s.name}</span>
+                          <span className="text-ink-500">({s.reason})</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="border-t border-line pt-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-semibold text-ink-900">
+                        {t("bulk_exam_order_total")}
+                      </span>
+                      <span className="font-serif text-lg font-bold text-success">
+                        {formatRupiah(previewMutation.data.total)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Button
+                    size="lg"
+                    className="w-full rounded-full"
+                    onClick={handleCreateOrder}
+                    disabled={createMutation.isPending}
+                  >
+                    {createMutation.isPending ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                    ) : null}
+                    {createMutation.isPending
+                      ? t("bulk_exam_order_confirming")
+                      : t("bulk_exam_order_confirm")}
+                  </Button>
+                </div>
+              )}
+
+              {previewMutation.isError && (
+                <p className="text-sm text-danger">{t("bulk_exam_order_preview_failed")}</p>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );

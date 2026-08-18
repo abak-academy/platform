@@ -1480,6 +1480,8 @@ export const DICT = {
     exam_roster_empty: "Belum ada peserta terdaftar.",
     exam_roster_export_csv: "Ekspor CSV",
     exam_roster_load_failed: "Gagal memuat daftar peserta.",
+    exam_registrations_manual_notice:
+      "Pendaftaran peserta secara manual dilakukan oleh Super Admin atau School Operator.",
 
     // Complete-profile unlisted-school fallback
     complete_profile_school_unlisted_label: "Sekolah saya tidak ada di daftar",
@@ -2987,6 +2989,8 @@ export const DICT = {
     exam_roster_empty: "No participants registered yet.",
     exam_roster_export_csv: "Export CSV",
     exam_roster_load_failed: "Failed to load the participant roster.",
+    exam_registrations_manual_notice:
+      "Manual participant registration is handled by Super Admin or School Operator.",
 
     // Complete-profile unlisted-school fallback
     complete_profile_school_unlisted_label: "My school is not on the list",
