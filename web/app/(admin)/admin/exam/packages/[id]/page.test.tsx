@@ -39,6 +39,12 @@ vi.mock("@/components/admin/ExamRegistrationsTab", () => ({
   ),
 }));
 
+vi.mock("@/components/admin/ExamResultsTab", () => ({
+  ExamResultsTab: ({ examId }: { examId: string }) => (
+    <div data-testid="exam-results-tab">{examId}</div>
+  ),
+}));
+
 vi.mock("@/components/admin/CertificateDesignTab", () => ({
   CertificateDesignTab: ({ examId }: { examId: string }) => (
     <div data-testid="certificate-design-tab">{examId}</div>
@@ -341,7 +347,7 @@ describe("ExamPackageDetailPage — grading tab", () => {
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
-  it("shows an empty state when no sessions need grading", async () => {
+  it("shows an empty state when no sessions need grading, via DataTable's single colSpan row", async () => {
     gradingSessionsState = { data: { data: [] }, isLoading: false, isError: false, error: null };
     render(<ExamPackageDetailPage />);
     openGradingTab();
@@ -349,6 +355,8 @@ describe("ExamPackageDetailPage — grading tab", () => {
     await waitFor(() => {
       expect(screen.getByText(/tidak ada sesi yang perlu dinilai/i)).toBeInTheDocument();
     });
+    const emptyCell = screen.getByText(/tidak ada sesi yang perlu dinilai/i).closest("td");
+    expect(emptyCell).toHaveAttribute("colspan", "4");
   });
 
   it("selecting a session shows its essays", async () => {
@@ -541,7 +549,7 @@ describe("ExamPackageDetailPage — leaderboard tab", () => {
     expect(screen.getByText("1")).toBeInTheDocument();
     expect(screen.getByText("81-100")).toBeInTheDocument();
     expect(screen.getByText("4")).toBeInTheDocument();
-    expect(screen.queryByText(/Under Maintenance/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sedang dalam pengembangan/i)).not.toBeInTheDocument();
   });
 
   it("renders a leaderboard table with entries", async () => {
@@ -557,7 +565,7 @@ describe("ExamPackageDetailPage — leaderboard tab", () => {
     expect(screen.getByText("Agus Wijaya")).toBeInTheDocument();
   });
 
-  it("shows empty-state message when no leaderboard rows", async () => {
+  it("shows empty-state message when no leaderboard rows, via DataTable's single colSpan row", async () => {
     leaderboardState = {
       data: { data: [], next_cursor: undefined },
       isLoading: false,
@@ -570,6 +578,8 @@ describe("ExamPackageDetailPage — leaderboard tab", () => {
     await waitFor(() => {
       expect(screen.getByText("Belum ada data peringkat")).toBeInTheDocument();
     });
+    const emptyCell = screen.getByText("Belum ada data peringkat").closest("td");
+    expect(emptyCell).toHaveAttribute("colspan", "3");
   });
 
   it("renders retake rows (same student twice) without duplicate React keys", async () => {
@@ -598,6 +608,36 @@ describe("ExamPackageDetailPage — leaderboard tab", () => {
     );
     errSpy.mockRestore();
     expect(dupKeyWarning).toBe(false);
+  });
+
+  it("renders the load-more control inside the leaderboard DataTable's footer when a next_cursor exists, and omits it otherwise", async () => {
+    leaderboardState = {
+      data: { data: sampleLeaderboardEntries, next_cursor: "cursor-2" },
+      isLoading: false,
+      isFetching: false,
+    };
+
+    const { unmount } = render(<ExamPackageDetailPage />);
+    openLeaderboardTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /muat lebih banyak/i })).toBeInTheDocument();
+    unmount();
+
+    leaderboardState = {
+      data: { data: sampleLeaderboardEntries, next_cursor: undefined },
+      isLoading: false,
+      isFetching: false,
+    };
+    render(<ExamPackageDetailPage />);
+    openLeaderboardTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: /muat lebih banyak/i })).not.toBeInTheDocument();
   });
 });
 
@@ -744,6 +784,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(screen.getByRole("button", { name: /^pendaftaran$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^tes$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^sertifikat$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^hasil$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^penilaian$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Leaderboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
@@ -849,7 +890,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     );
   });
 
-  it("admin_exam (unscoped, non-super_admin) still sees the under-development stub on Registrations", async () => {
+  it("admin_exam sees the Registrations tab content, not UnderMaintenance", async () => {
     mockRole = "admin_exam";
     render(<ExamPackageDetailPage />);
 
@@ -858,7 +899,52 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^pendaftaran$/i }));
 
+    expect(screen.getByTestId("exam-registrations-tab")).toHaveTextContent(
+      `exam-1:${sampleExam.title}`,
+    );
+    expect(screen.queryByText(/sedang dalam pengembangan/i)).not.toBeInTheDocument();
+  });
+
+  it("admin_exam sees the Results tab content, not UnderMaintenance", async () => {
+    mockRole = "admin_exam";
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^hasil$/i }));
+
+    expect(screen.getByTestId("exam-results-tab")).toHaveTextContent("exam-1");
+    expect(screen.queryByText(/sedang dalam pengembangan/i)).not.toBeInTheDocument();
+  });
+
+  it("super_admin still sees the Results tab content, unchanged", async () => {
+    mockRole = "super_admin";
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^hasil$/i }));
+
+    expect(screen.getByTestId("exam-results-tab")).toHaveTextContent("exam-1");
+  });
+
+  it("admin_store sees UnderMaintenance on both Registrations and Results", async () => {
+    mockRole = "admin_store";
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^pendaftaran$/i }));
     expect(screen.queryByTestId("exam-registrations-tab")).not.toBeInTheDocument();
+    expect(screen.getByText(/sedang dalam pengembangan/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^hasil$/i }));
+    expect(screen.queryByTestId("exam-results-tab")).not.toBeInTheDocument();
+    expect(screen.getByText(/sedang dalam pengembangan/i)).toBeInTheDocument();
   });
 });
 
