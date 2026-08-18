@@ -147,12 +147,15 @@ async function pageDoesNotScrollSideways(page: Page): Promise<boolean> {
   );
 }
 
+// A collapsed 0px column satisfies both scroll assertions trivially, so the
+// visible width is asserted first — that is what caught a real regression.
 async function scrollerOverflows(page: Page, testId: string): Promise<boolean> {
   const scroller = page.locator(`[data-testid="${testId}"] .overflow-x-auto`);
   const { scrollWidth, clientWidth } = await scroller.evaluate((el) => ({
     scrollWidth: el.scrollWidth,
     clientWidth: el.clientWidth,
   }));
+  expect(clientWidth).toBeGreaterThan(200);
   return scrollWidth > clientWidth;
 }
 

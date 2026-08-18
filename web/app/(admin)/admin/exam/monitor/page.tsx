@@ -325,7 +325,7 @@ export default function ExamMonitorPage() {
     <div className="space-y-6 fade-in">
       <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
 
-      <div className="flex gap-6">
+      <div className="flex flex-col gap-6 lg:flex-row">
         {/* Main table */}
         <div className="min-w-0 flex-1">
           <DataTable
