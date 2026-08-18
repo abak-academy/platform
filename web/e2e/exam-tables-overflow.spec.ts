@@ -143,16 +143,18 @@ async function pageDoesNotScrollSideways(page: Page): Promise<boolean> {
   );
 }
 
-// A collapsed 0px column satisfies both scroll assertions trivially, so the
-// visible width is asserted first — that is what caught a real regression.
-async function scrollerOverflows(page: Page, testId: string): Promise<boolean> {
+// The wrapper must exist at every viewport, or a "fix" that deletes it passes
+// wherever the table happens to fit. A collapsed 0px column satisfies the
+// overflow comparison trivially, so the visible width is asserted first.
+async function assertTableIsTheScroller(page: Page, testId: string, overflows: boolean) {
   const scroller = page.locator(`[data-testid="${testId}"] .overflow-x-auto`);
+  await expect(scroller).toHaveCount(1);
   const { scrollWidth, clientWidth } = await scroller.evaluate((el) => ({
     scrollWidth: el.scrollWidth,
     clientWidth: el.clientWidth,
   }));
   expect(clientWidth).toBeGreaterThan(200);
-  return scrollWidth > clientWidth;
+  if (overflows) expect(scrollWidth).toBeGreaterThan(clientWidth);
 }
 
 for (const viewport of VIEWPORTS) {
@@ -171,10 +173,7 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByText(MONITOR_ROWS[0].student_name)).toBeVisible();
 
     expect(await pageDoesNotScrollSideways(page)).toBe(true);
-
-    if (viewport.width === 390) {
-      expect(await scrollerOverflows(page, "exam-monitor-table")).toBe(true);
-    }
+    await assertTableIsTheScroller(page, "exam-monitor-table", viewport.width === 390);
   });
 
   test(`exam/questions table overflows inside its wrapper, not the page — ${viewport.width}x${viewport.height}`, async ({
@@ -192,10 +191,7 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByText(String(QUESTION_ROWS[0].question.question_number))).toBeVisible();
 
     expect(await pageDoesNotScrollSideways(page)).toBe(true);
-
-    if (viewport.width === 390) {
-      expect(await scrollerOverflows(page, "exam-questions-table")).toBe(true);
-    }
+    await assertTableIsTheScroller(page, "exam-questions-table", viewport.width === 390);
   });
 }
 

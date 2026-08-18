@@ -974,3 +974,85 @@ func TestAdminResult_List_AdminExam_ScopedToSchool(t *testing.T) {
 		t.Errorf("student_name: want Admin Exam Scoped A, got %v", row["student_name"])
 	}
 }
+
+// FR-1 names three routes; only /admin/results had a 200 case for admin_exam.
+// Export is the bulk-PII path, so it gets its own cross-school proof.
+func TestAdminResult_Export_AdminExam_NoSchoolID_ReturnsAllSchools(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	examID := seedExamWithMCQ(t, env.pool)
+	schoolA := seedSchool(t, env.pool)
+	schoolB := seedSchool(t, env.pool)
+	studentA := seedUserWithSchool(t, env.pool, "student", "Admin Exam Export A", schoolA)
+	studentB := seedUserWithSchool(t, env.pool, "student", "Admin Exam Export B", schoolB)
+	seedSubmittedSession(t, env.pool, studentA, examID)
+	seedSubmittedSession(t, env.pool, studentB, examID)
+
+	token := mintAdminExamToken(t, env, "admin-exam-export-"+uuid.NewString())
+
+	rec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+examID.String(), token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for admin_exam export without school_id, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/csv" {
+		t.Errorf("Content-Type: want text/csv, got %q", ct)
+	}
+
+	records, err := csv.NewReader(bytes.NewReader(rec.Body.Bytes())).ReadAll()
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+	if len(records) != 3 {
+		t.Fatalf("want 3 records (header + one row per school), got %d: %+v", len(records), records)
+	}
+	names := map[string]bool{}
+	for _, row := range records[1:] {
+		names[row[0]] = true
+	}
+	for _, want := range []string{"Admin Exam Export A", "Admin Exam Export B"} {
+		if !names[want] {
+			t.Errorf("CSV missing %s: %+v", want, records)
+		}
+	}
+}
+
+// FR-1's third route. The session id is read back from the list rather than
+// seeded, because seedSubmittedSession does not return one.
+func TestAdminResult_Detail_AdminExam_NoSchoolID_200(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	examID := seedExamWithMCQ(t, env.pool)
+	schoolA := seedSchool(t, env.pool)
+	studentA := seedUserWithSchool(t, env.pool, "student", "Admin Exam Detail A", schoolA)
+	seedSubmittedSession(t, env.pool, studentA, examID)
+
+	token := mintAdminExamToken(t, env, "admin-exam-detail-"+uuid.NewString())
+
+	listRec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String(), token)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list: want 200, got %d body=%s", listRec.Code, listRec.Body.String())
+	}
+	var listResp struct {
+		Data []struct {
+			SessionID string `json:"session_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(listResp.Data) != 1 {
+		t.Fatalf("want 1 seeded row, got %d", len(listResp.Data))
+	}
+
+	rec := getRequest(t, env.e, "/api/v1/admin/results/"+listResp.Data[0].SessionID, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("detail: want 200 for admin_exam without school_id, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var detail map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("decode detail: %v", err)
+	}
+	if detail["student_name"] != "Admin Exam Detail A" {
+		t.Errorf("student_name: want Admin Exam Detail A, got %v", detail["student_name"])
+	}
+}
