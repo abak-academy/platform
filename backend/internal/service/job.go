@@ -64,9 +64,11 @@ func (s *Service) fetchPrivateObject(ctx context.Context, key string) ([]byte, e
 	return io.ReadAll(obj)
 }
 
-// EnqueueStudentBulkJob validates that fileKey belongs to the caller's own
-// school and exists in the private bucket, downloads it, then delegates to
-// enqueueStudentBulkJobFromData.
+// EnqueueStudentBulkJob validates that fileKey lives under
+// student-bulk/{schoolID}/ and exists in the private bucket, then delegates
+// to enqueueStudentBulkJobFromData. For admin_school, schoolID is the JWT
+// school. For super_admin it is the presign folder UUID (not a real school);
+// row school is resolved later from the CSV.
 func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy, fileKey string) (string, error) {
 	if !strings.HasPrefix(fileKey, fmt.Sprintf("student-bulk/%s/", schoolID)) {
 		return "", ErrUploadNotFound

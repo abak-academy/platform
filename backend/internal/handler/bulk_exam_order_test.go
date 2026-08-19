@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -171,5 +172,47 @@ func TestBulkExamOrderRBAC_AdminSchool_CanAccessExamsEndpoint(t *testing.T) {
 	// admin_school holds bulk-exam-orders:write, so the middleware allows it
 	if rec.Code != http.StatusOK {
 		t.Errorf("want 200 for admin_school on GET /exams, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminPreviewBulkOrder_SuperAdmin_StudentIDs_NoSchoolID(t *testing.T) {
+	env := newBulkExamRBACEnv(t)
+	token := mintBulkToken(t, env, "super-preview-1", service.RoleSuperAdmin)
+
+	body := `{"exam_id":"00000000-0000-0000-0000-000000000001","student_ids":["00000000-0000-0000-0000-000000000002"]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/bulk-exam-orders/preview", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+
+	if strings.Contains(rec.Body.String(), "school_id is required") {
+		t.Fatalf("super_admin preview with student_ids must not require school_id: %s", rec.Body.String())
+	}
+	if rec.Code == http.StatusBadRequest {
+		var resp map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+		if resp["message"] == "school_id is required" {
+			t.Fatalf("want no school_id required, got %s", rec.Body.String())
+		}
+	}
+}
+
+func TestAdminPreviewBulkOrder_SuperAdmin_All_NoSchoolID_400(t *testing.T) {
+	env := newBulkExamRBACEnv(t)
+	token := mintBulkToken(t, env, "super-preview-2", service.RoleSuperAdmin)
+
+	body := `{"exam_id":"00000000-0000-0000-0000-000000000001","all":true}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/bulk-exam-orders/preview", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 when all=true without school_id, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "school_id is required") {
+		t.Errorf("want school_id is required for all=true, got %s", rec.Body.String())
 	}
 }

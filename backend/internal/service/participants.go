@@ -53,6 +53,9 @@ func (s *Service) resolveByStudentIDs(ctx context.Context, schoolID string, stud
 			return nil, err
 		}
 		if student == nil {
+			if schoolID == "" {
+				return nil, fmt.Errorf("%w: student %s not found", ErrCrossSchoolStudent, id)
+			}
 			return nil, fmt.Errorf("%w: student %s not found in school %s", ErrCrossSchoolStudent, id, schoolID)
 		}
 		result = append(result, uuid.MustParse(id))
