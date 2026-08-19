@@ -3,12 +3,13 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   useAdminSchools,
+  useSchoolOptions,
   useCreateSchool,
   useUpdateSchool,
   useChangeSchoolStatus,
   adminSchoolsKeys,
 } from "./admin-schools";
-import type { School } from "@/lib/types";
+import type { School, SchoolOption } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 
@@ -43,7 +44,7 @@ describe("admin-schools hooks", () => {
 
   it("useAdminSchools fetches GET /admin/schools and returns paginated response", async () => {
     const schools: School[] = [{ id: "s1", name: "SMAN 1 Jakarta" }];
-    const response = { data: schools, next_cursor: "cursor-abc" };
+    const response = { data: schools, next_cursor: "cursor-abc", total: 1, active: 1, students: 0 };
     mockAuthFetch.mockResolvedValueOnce(response);
 
     const { wrapper } = wrapperFactory();
@@ -56,16 +57,42 @@ describe("admin-schools hooks", () => {
   });
 
   it("useAdminSchools passes cursor and limit as query params", async () => {
-    mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: undefined });
+    mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: undefined, total: 0, active: 0, students: 0 });
 
     const { wrapper } = wrapperFactory();
-    renderHook(() => useAdminSchools("cursor-xyz", 10), { wrapper });
+    renderHook(() => useAdminSchools({ cursor: "cursor-xyz", limit: 10 }), { wrapper });
 
     await waitFor(() =>
       expect(mockAuthFetch).toHaveBeenCalledWith(
         "/admin/schools?cursor=cursor-xyz&limit=10",
       ),
     );
+  });
+
+  it("useAdminSchools passes q and status as query params", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: undefined, total: 0, active: 0, students: 0 });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(() => useAdminSchools({ q: "sman", status: "active" }), { wrapper });
+
+    await waitFor(() =>
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        "/admin/schools?q=sman&status=active",
+      ),
+    );
+  });
+
+  it("useSchoolOptions fetches GET /admin/schools/options", async () => {
+    const options: SchoolOption[] = [{ id: "s1", name: "SMAN 1 Jakarta", code: "SMAN1JKT" }];
+    mockAuthFetch.mockResolvedValueOnce({ data: options });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useSchoolOptions(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/schools/options");
+    expect(result.current.data).toEqual({ data: options });
   });
 
   it("useCreateSchool posts to /admin/schools and invalidates list", async () => {

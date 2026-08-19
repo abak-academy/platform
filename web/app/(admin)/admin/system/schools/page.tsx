@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Plus,
   Building,
@@ -68,10 +68,19 @@ const EMPTY_FORM: SchoolForm = {
   alamat: "",
 };
 
+// Search is sent to the server (q param), so it must be debounced the same
+// way OrdersToolbar debounces order search — otherwise every keystroke fires
+// a new paginated request and resets the accumulated list.
+const SEARCH_DEBOUNCE_MS = 300;
+
 export default function SystemSchoolsPage() {
   const { t, lang } = useTranslation();
   const numberLocale = lang === "en" ? "en-US" : "id-ID";
-  const [search, setSearch] = useState("");
+  // searchInput is the raw input value; debouncedSearch is what actually goes
+  // to the server (q param) and into filterKey below, so pagination doesn't
+  // reset and refetch on every keystroke.
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -80,51 +89,72 @@ export default function SystemSchoolsPage() {
   const [createForm, setCreateForm] = useState<SchoolForm>({ ...EMPTY_FORM });
   const [editForm, setEditForm] = useState<SchoolForm>({ ...EMPTY_FORM });
 
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+
   // Cursor-based pagination
   const [schools, setSchools] = useState<School[]>([]);
   const [fetchCursor, setFetchCursor] = useState<string | undefined>(undefined);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  // Stats mirror the server's filter-aware counts (Service.AdminListSchools),
+  // not schools.length — that would only ever count the rows loaded so far,
+  // which was the "Total ≈ 20" bug reported in
+  // docs/backlog/school-bulk-list-pagination.md. Held in state (rather than
+  // read straight off the query) so it doesn't flash to 0 between pages.
+  const [stats, setStats] = useState({ total: 0, active: 0, students: 0 });
 
-  const { data, isLoading, error } = useAdminSchools(fetchCursor);
+  // q/status are now server-side filters, so a filter change must restart
+  // pagination at page 1 — otherwise "load more" would keep appending pages
+  // fetched under the *previous* filter. Same guard as the students page.
+  const filterKey = `${statusFilter}:${debouncedSearch}`;
+  const pageFilterKeyRef = useRef(filterKey);
+
+  useEffect(() => {
+    if (filterKey !== pageFilterKeyRef.current) {
+      setSchools([]);
+      setFetchCursor(undefined);
+      setNextCursor(undefined);
+      pageFilterKeyRef.current = filterKey;
+    }
+  }, [filterKey]);
+
+  const { data, isLoading, error } = useAdminSchools({
+    q: debouncedSearch || undefined,
+    status: statusFilter === "all" ? undefined : statusFilter,
+    cursor: fetchCursor,
+    limit: 20,
+  });
   const createSchool = useCreateSchool();
   const updateSchool = useUpdateSchool();
   const changeStatus = useChangeSchoolStatus();
 
   useEffect(() => {
-    if (data) {
-      if (fetchCursor === undefined) {
-        setSchools(data.data);
-      } else {
-        setSchools((prev) => [...prev, ...data.data]);
-      }
-      setNextCursor(data.next_cursor);
+    if (!data) return;
+    if (filterKey !== pageFilterKeyRef.current) return;
+
+    if (fetchCursor === undefined) {
+      setSchools(data.data);
+    } else {
+      setSchools((prev) => {
+        const ids = new Set(prev.map((s) => s.id));
+        const fresh = data.data.filter((s) => !ids.has(s.id));
+        return [...prev, ...fresh];
+      });
     }
+    setNextCursor(data.next_cursor);
+    setStats({ total: data.total, active: data.active, students: data.students });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  const rows = useMemo(() => {
-    let filtered = schools;
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((s) => s.status === statusFilter);
-    }
-    if (search.trim() !== "") {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          (s.code ?? "").toLowerCase().includes(q),
-      );
-    }
-    return filtered;
-  }, [search, statusFilter, schools]);
+  const rows = schools;
 
-  const stats = useMemo(
-    () => ({
-      total: schools.length,
-      active: schools.filter((s) => s.status === "active").length,
-      students: schools.reduce((sum, s) => sum + (s.student_count ?? 0), 0),
-    }),
-    [schools],
-  );
+  function resetPagination() {
+    setSchools([]);
+    setFetchCursor(undefined);
+    setNextCursor(undefined);
+  }
 
   const handleCreate = async () => {
     if (!createForm.name || !createForm.code) {
@@ -305,8 +335,8 @@ export default function SystemSchoolsPage() {
         <div className="flex items-center gap-2 lg:ml-auto">
           <Search className="size-4 text-ink-400" />
           <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder={t("schools_search_placeholder")}
             className="h-9 w-[200px] text-xs"
           />
@@ -451,6 +481,11 @@ export default function SystemSchoolsPage() {
         onOpenChange={setBulkOpen}
         onImportSuccess={() => {
           queryClient.invalidateQueries({ queryKey: adminSchoolsKeys.all });
+          // A bulk job can land anywhere in name order, and the page may be
+          // sitting on a "load more"'d cursor or a stale filtered view — reset
+          // to page 1 under the current filters so the new rows are reachable
+          // (docs/backlog/school-bulk-list-pagination.md, root cause #3).
+          resetPagination();
         }}
       />
 

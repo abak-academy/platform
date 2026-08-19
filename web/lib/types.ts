@@ -37,6 +37,18 @@ export interface School {
   updated_at?: string;
 }
 
+// SchoolOption is the minimal shape used to populate school picker
+// dropdowns (GET /admin/schools/options) — active schools only, no
+// student_count. See docs/backlog/school-bulk-list-pagination.md: pickers
+// that called useAdminSchools() with no cursor/limit were silently truncated
+// to the first page (20 schools, alphabetically).
+export interface SchoolOption {
+  id: string;
+  name: string;
+  code: string;
+  school_types?: string[];
+}
+
 export interface AdminSchoolInput {
   name: string;
   code: string;

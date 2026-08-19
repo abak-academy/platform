@@ -38,18 +38,51 @@ func toSchoolResponse(row repository.SchoolAdminRow) SchoolResponse {
 	}
 }
 
-// AdminListSchools returns all schools cursor-paginated, ordered by name.
-func (s *Service) AdminListSchools(ctx context.Context, limit int, cursor string) ([]SchoolResponse, string, error) {
-	rows, nextCursor, err := s.storeRepo.ListSchoolsAdmin(ctx, limit, cursor)
+// AdminListSchoolsParams carries the optional filters accepted by
+// AdminListSchools, mirroring the StudentFilter convention used for the
+// students list.
+type AdminListSchoolsParams struct {
+	Limit  int
+	Cursor string
+	Q      string
+	Status string
+}
+
+// AdminListSchools returns schools cursor-paginated (keyset on name+id, see
+// ListSchoolsAdmin), plus a filter-aware count for the caller's stat cards.
+func (s *Service) AdminListSchools(ctx context.Context, params AdminListSchoolsParams) ([]SchoolResponse, string, repository.SchoolAdminCounts, error) {
+	if params.Status != "" && params.Status != "active" && params.Status != "deactivated" {
+		return nil, "", repository.SchoolAdminCounts{}, fmt.Errorf("%w: %s", ErrInvalidStatusFilter, params.Status)
+	}
+
+	filter := repository.SchoolAdminFilter{
+		Q:      params.Q,
+		Status: params.Status,
+		Cursor: params.Cursor,
+		Limit:  params.Limit,
+	}
+
+	rows, nextCursor, err := s.storeRepo.ListSchoolsAdmin(ctx, filter)
 	if err != nil {
-		return nil, "", err
+		return nil, "", repository.SchoolAdminCounts{}, err
+	}
+
+	counts, err := s.storeRepo.CountSchoolsAdmin(ctx, filter)
+	if err != nil {
+		return nil, "", repository.SchoolAdminCounts{}, err
 	}
 
 	schools := make([]SchoolResponse, len(rows))
 	for i, r := range rows {
 		schools[i] = toSchoolResponse(r)
 	}
-	return schools, nextCursor, nil
+	return schools, nextCursor, counts, nil
+}
+
+// SchoolOptions returns the full active school registry (id/name/code) for
+// picker dropdowns. See ListSchoolOptions for why this is unpaginated.
+func (s *Service) SchoolOptions(ctx context.Context) ([]repository.SchoolOption, error) {
+	return s.storeRepo.ListSchoolOptions(ctx)
 }
 
 // CreateSchool creates a new school with status='active' and student_count=0.

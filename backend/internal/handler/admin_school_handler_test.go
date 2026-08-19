@@ -48,6 +48,23 @@ func TestAdminCreateSchool_MissingCode(t *testing.T) {
 	}
 }
 
+func TestAdminListSchools_InvalidStatusFilter(t *testing.T) {
+	env := newAdminSystemEnv(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/schools?status=pending", nil)
+	rec := httptest.NewRecorder()
+	c := env.e.NewContext(req, rec)
+	setAdminClaims(c, "u1")
+
+	err := env.h.AdminListSchools(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for invalid status filter, got %d", rec.Code)
+	}
+}
+
 func TestAdminChangeSchoolStatus_InvalidStatus(t *testing.T) {
 	env := newAdminSystemEnv(t)
 

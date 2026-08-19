@@ -32,3 +32,25 @@ func DecodeOrderCursor(s string) (time.Time, uuid.UUID, error) {
 	}
 	return at, id, nil
 }
+
+// EncodeNameCursor and DecodeNameCursor carry a "<name>,<uuid>" keyset cursor
+// for lists ordered by a text column plus id tiebreaker (e.g. ListSchoolsAdmin,
+// ORDER BY name ASC, id ASC). Split on the *last* comma rather than the first:
+// a school/user-facing name can legitimately contain a comma, but a UUID
+// never does, so this is unambiguous without needing to escape the name.
+func EncodeNameCursor(name, id string) string {
+	return name + "," + id
+}
+
+func DecodeNameCursor(s string) (string, uuid.UUID, error) {
+	idx := strings.LastIndex(s, ",")
+	if idx < 0 {
+		return "", uuid.Nil, ErrInvalidCursor
+	}
+	name, idStr := s[:idx], s[idx+1:]
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return "", uuid.Nil, ErrInvalidCursor
+	}
+	return name, id, nil
+}

@@ -14,32 +14,75 @@ type SchoolAdminRow struct {
 	StudentCount int `json:"student_count"`
 }
 
-// ListSchoolsAdmin returns all schools cursor-paginated, ordered by name.
-// Cursor is the row ID (AND id > $cursor), independent of the ORDER BY column.
-// Each row carries a computed student_count from the users table.
-func (r *Repository) ListSchoolsAdmin(ctx context.Context, limit int, cursor string) ([]SchoolAdminRow, string, error) {
-	if limit <= 0 {
-		limit = 20
+// SchoolAdminFilter carries optional filters and pagination for
+// ListSchoolsAdmin / CountSchoolsAdmin. The two share buildSchoolFilterSQL so
+// the WHERE clause used to page can never drift from the one used to count.
+type SchoolAdminFilter struct {
+	Q      string // matches name/code/npsn, case-insensitive substring
+	Status string // "active" or "deactivated"; empty means no filter
+	Cursor string
+	Limit  int
+}
+
+// buildSchoolFilterSQL returns the shared WHERE clause (q/status only —
+// no cursor, no LIMIT) plus its args, so ListSchoolsAdmin and
+// CountSchoolsAdmin filter identically. argNum is the next free placeholder.
+func buildSchoolFilterSQL(filter SchoolAdminFilter, argNum int) (string, []any, int) {
+	where := ""
+	args := []any{}
+
+	if filter.Q != "" {
+		where += fmt.Sprintf(` AND (s.name ILIKE $%d OR s.code ILIKE $%d OR s.npsn ILIKE $%d)`, argNum, argNum, argNum)
+		args = append(args, "%"+filter.Q+"%")
+		argNum++
 	}
-	if limit > 100 {
-		limit = 100
+	if filter.Status != "" {
+		where += fmt.Sprintf(` AND s.status = $%d`, argNum)
+		args = append(args, filter.Status)
+		argNum++
+	}
+
+	return where, args, argNum
+}
+
+// ListSchoolsAdmin returns schools cursor-paginated, ordered by name then id.
+// The cursor is the composite (name, id) keyset of the last row on the
+// previous page — not a bare id — so "load more" walks the same ORDER BY
+// the query uses instead of skipping/duplicating rows (see
+// docs/backlog/school-bulk-list-pagination.md). Each row carries a computed
+// student_count from the users table.
+func (r *Repository) ListSchoolsAdmin(ctx context.Context, filter SchoolAdminFilter) ([]SchoolAdminRow, string, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = 20
+	}
+	if filter.Limit > 100 {
+		filter.Limit = 100
 	}
 
 	query := `SELECT s.id, s.name, s.code, s.npsn, s.school_types, s.alamat,
 		s.status, s.created_at, s.updated_at,
 		(SELECT COUNT(*) FROM users WHERE school_id = s.id AND role = 'student' AND status != 'deleted') AS student_count
-		FROM school s`
+		FROM school s WHERE 1=1`
 	args := []any{}
 	argNum := 1
 
-	if cursor != "" {
-		query += fmt.Sprintf(` WHERE s.id > $%d::uuid`, argNum)
-		args = append(args, cursor)
-		argNum++
+	filterWhere, filterArgs, nextArgNum := buildSchoolFilterSQL(filter, argNum)
+	query += filterWhere
+	args = append(args, filterArgs...)
+	argNum = nextArgNum
+
+	if filter.Cursor != "" {
+		cursorName, cursorID, err := DecodeNameCursor(filter.Cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		query += fmt.Sprintf(` AND (s.name, s.id) > ($%d, $%d::uuid)`, argNum, argNum+1)
+		args = append(args, cursorName, cursorID.String())
+		argNum += 2
 	}
 
-	query += fmt.Sprintf(` ORDER BY s.name ASC LIMIT $%d`, argNum)
-	args = append(args, limit+1)
+	query += fmt.Sprintf(` ORDER BY s.name ASC, s.id ASC LIMIT $%d`, argNum)
+	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -48,7 +91,7 @@ func (r *Repository) ListSchoolsAdmin(ctx context.Context, limit int, cursor str
 	defer rows.Close()
 
 	schools := []SchoolAdminRow{}
-	nextCursor := ""
+	hasMore := false
 
 	for rows.Next() {
 		var s SchoolAdminRow
@@ -58,10 +101,14 @@ func (r *Repository) ListSchoolsAdmin(ctx context.Context, limit int, cursor str
 		); err != nil {
 			return nil, "", err
 		}
-		if len(schools) < limit {
+		if len(schools) < filter.Limit {
 			schools = append(schools, s)
 		} else {
-			nextCursor = s.ID
+			// This (limit+1)-th row only proves a next page exists; it must not
+			// become the cursor itself — the predicate is strictly greater-than,
+			// so pointing at this row's own values would skip it. The cursor is
+			// the last row actually returned, below.
+			hasMore = true
 		}
 	}
 
@@ -69,7 +116,78 @@ func (r *Repository) ListSchoolsAdmin(ctx context.Context, limit int, cursor str
 		return nil, "", err
 	}
 
+	nextCursor := ""
+	if hasMore && len(schools) > 0 {
+		last := schools[len(schools)-1]
+		nextCursor = EncodeNameCursor(last.Name, last.ID)
+	}
+
 	return schools, nextCursor, nil
+}
+
+// SchoolAdminCounts summarizes the current filtered school set for the admin
+// list's stat cards, so "Total"/"Active" reflect the full filtered result
+// set in the DB rather than only the rows loaded onto the client so far.
+type SchoolAdminCounts struct {
+	Total    int `json:"total"`
+	Active   int `json:"active"`
+	Students int `json:"students"`
+}
+
+// CountSchoolsAdmin returns total/active/student counts for the same q/status
+// filters ListSchoolsAdmin applies, ignoring cursor and limit.
+func (r *Repository) CountSchoolsAdmin(ctx context.Context, filter SchoolAdminFilter) (SchoolAdminCounts, error) {
+	query := `SELECT COUNT(*),
+		COUNT(*) FILTER (WHERE s.status = 'active'),
+		COALESCE(SUM((SELECT COUNT(*) FROM users WHERE school_id = s.id AND role = 'student' AND status != 'deleted')), 0)
+		FROM school s WHERE 1=1`
+
+	filterWhere, args, _ := buildSchoolFilterSQL(filter, 1)
+	query += filterWhere
+
+	var counts SchoolAdminCounts
+	err := r.pool.QueryRow(ctx, query, args...).Scan(&counts.Total, &counts.Active, &counts.Students)
+	return counts, err
+}
+
+// SchoolOption is the minimal shape used to populate school picker
+// dropdowns — deliberately excludes student_count (a correlated subquery per
+// row) and other fields the pickers never render. SchoolTypes is included
+// because the student-registration picker constrains its jenjang options to
+// the selected school's types; unlike student_count it's a plain column, not
+// a subquery, so it's cheap to carry here.
+type SchoolOption struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Code        string   `json:"code"`
+	SchoolTypes []string `json:"school_types"`
+}
+
+// ListSchoolOptions returns every active school (id, name, code, school_types),
+// ordered by name, for use in picker dropdowns. Unlike ListSchoolsAdmin this
+// is not paginated: pickers need the full active registry to let users select
+// any school, not just the first page (see school-bulk-list-pagination
+// backlog, "picker" gap — GET /admin/schools with no cursor/limit was
+// silently truncating every picker in the app to 20 alphabetically-first
+// schools).
+func (r *Repository) ListSchoolOptions(ctx context.Context) ([]SchoolOption, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, name, code, school_types FROM school WHERE status = 'active' ORDER BY name ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	options := []SchoolOption{}
+	for rows.Next() {
+		var o SchoolOption
+		if err := rows.Scan(&o.ID, &o.Name, &o.Code, &o.SchoolTypes); err != nil {
+			return nil, err
+		}
+		options = append(options, o)
+	}
+	return options, rows.Err()
 }
 
 // GetSchoolByID returns a school by ID. Returns nil, nil when not found.

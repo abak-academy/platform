@@ -52,7 +52,7 @@ import {
   useChangeStudentStatus,
   useReissueStudentCredentials,
 } from "@/lib/hooks/admin-students";
-import { useAdminSchools } from "@/lib/hooks/admin-schools";
+import { useSchoolOptions } from "@/lib/hooks/admin-schools";
 import { useSchools } from "@/lib/hooks/students";
 import { useProvinces, useCitiesByProvince, useDistrictsByCity } from "@/lib/hooks/regions";
 import { useAuthStore } from "@/stores/auth";
@@ -92,7 +92,7 @@ export default function SchoolStudentsPage() {
   // Role-gated school picker (super_admin only)
   const currentRole = useAuthStore((s) => s.user?.role);
   const isSuperAdmin = currentRole === "super_admin";
-  const { data: schoolsData, isLoading: schoolsLoading } = useAdminSchools();
+  const { data: schoolsData, isLoading: schoolsLoading } = useSchoolOptions();
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
 
   // Filters

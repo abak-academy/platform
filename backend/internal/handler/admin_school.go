@@ -4,12 +4,17 @@ import (
 	"net/http"
 	"strconv"
 
+	"akademi-bimbel/internal/service"
+
 	"github.com/labstack/echo/v4"
 )
 
-// AdminListSchools returns the full list of schools with pagination.
+// AdminListSchools returns the full list of schools, cursor-paginated and
+// keyset-ordered by name, with optional q (name/code/npsn) and status filters.
 func (h *Handler) AdminListSchools(c echo.Context) error {
 	cursor := c.QueryParam("cursor")
+	q := c.QueryParam("q")
+	statusFilter := c.QueryParam("status")
 
 	limit := 20
 	if l := c.QueryParam("limit"); l != "" {
@@ -21,7 +26,12 @@ func (h *Handler) AdminListSchools(c echo.Context) error {
 		}
 	}
 
-	schools, nextCursor, err := h.svc.AdminListSchools(c.Request().Context(), limit, cursor)
+	schools, nextCursor, counts, err := h.svc.AdminListSchools(c.Request().Context(), service.AdminListSchoolsParams{
+		Limit:  limit,
+		Cursor: cursor,
+		Q:      q,
+		Status: statusFilter,
+	})
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -29,7 +39,20 @@ func (h *Handler) AdminListSchools(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{
 		"data":        schools,
 		"next_cursor": nextCursor,
+		"total":       counts.Total,
+		"active":      counts.Active,
+		"students":    counts.Students,
 	})
+}
+
+// AdminListSchoolOptions returns every active school (id/name/code) for
+// picker dropdowns, unpaginated — see Service.SchoolOptions.
+func (h *Handler) AdminListSchoolOptions(c echo.Context) error {
+	options, err := h.svc.SchoolOptions(c.Request().Context())
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": options})
 }
 
 // AdminCreateSchool creates a new school.

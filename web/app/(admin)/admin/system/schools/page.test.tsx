@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import SystemSchoolsPage from "./page";
@@ -13,8 +13,16 @@ function renderPage(ui: React.ReactNode) {
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
 
+interface SchoolsListResponse {
+  data: School[];
+  next_cursor?: string;
+  total: number;
+  active: number;
+  students: number;
+}
+
 let schoolsState = {
-  data: null as { data: School[]; next_cursor?: string } | null,
+  data: null as SchoolsListResponse | null,
   isLoading: true,
   isError: false,
   error: null as Error | null,
@@ -25,8 +33,15 @@ let createState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending:
 let updateState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let changeStatusState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 
+// Records every call so tests can assert q/status/cursor are actually sent
+// to the server, not just filtered client-side.
+const useAdminSchoolsCalls: unknown[] = [];
+
 vi.mock("@/lib/hooks/admin-schools", () => ({
-  useAdminSchools: () => schoolsState,
+  useAdminSchools: (params: unknown) => {
+    useAdminSchoolsCalls.push(params);
+    return schoolsState;
+  },
   useCreateSchool: () => createState,
   useUpdateSchool: () => updateState,
   useChangeSchoolStatus: () => changeStatusState,
@@ -35,14 +50,26 @@ vi.mock("@/lib/hooks/admin-schools", () => ({
 
 // SchoolBulkImportModal is always mounted (Dialog just stays closed) — its
 // hooks need mocking here too, same as BulkImportModal on the students page.
+const bulkPresignMutateAsync = vi.fn();
+const bulkEnqueueMutateAsync = vi.fn();
+
 vi.mock("@/lib/hooks/admin-schools-bulk", () => ({
-  usePresignSchoolBulkUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  usePresignSchoolBulkUpload: () => ({ mutateAsync: bulkPresignMutateAsync, isPending: false }),
   putFileToPresignedURL: vi.fn(),
-  useEnqueueSchoolBulkImport: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useEnqueueSchoolBulkImport: () => ({ mutateAsync: bulkEnqueueMutateAsync, isPending: false }),
 }));
 
+// Mutable like SchoolBulkImportModal.test.tsx, so a test can drive a job from
+// enqueued to "succeeded" and assert the page resets its own pagination
+// state (root cause #3 in docs/backlog/school-bulk-list-pagination.md) —
+// not just that React Query was invalidated.
+let jobStatusState: {
+  data: { id: string; type: string; status: string; progress: number; result_url: string | null; error: string | null; created_at: string; updated_at: string } | null;
+} = { data: null };
+
 vi.mock("@/lib/hooks/jobs", () => ({
-  useJobStatus: () => ({ data: null, isLoading: false, isError: false, error: null }),
+  useJobStatus: (jobId: string | null) =>
+    jobId ? jobStatusState : { data: null, isLoading: false, isError: false, error: null },
 }));
 
 vi.mock("sonner", () => ({
@@ -74,9 +101,15 @@ const sampleSchools: School[] = [
   },
 ];
 
-const paginatedResponse = (schools: School[]) => ({
+// total/active/students mirror what CountSchoolsAdmin would return for the
+// full filtered set — deliberately not derived from schools.length, since
+// that was exactly the "Total ≈ 20" bug (client only ever saw loaded rows).
+const paginatedResponse = (schools: School[], next_cursor?: string): SchoolsListResponse => ({
   data: schools,
-  next_cursor: undefined,
+  next_cursor,
+  total: schools.length,
+  active: schools.filter((s) => s.status === "active").length,
+  students: schools.reduce((sum, s) => sum + (s.student_count ?? 0), 0),
 });
 
 describe("SystemSchoolsPage", () => {
@@ -95,6 +128,16 @@ describe("SystemSchoolsPage", () => {
     mockMutateAsync.mockReset();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
+    useAdminSchoolsCalls.length = 0;
+    bulkPresignMutateAsync.mockReset();
+    bulkEnqueueMutateAsync.mockReset();
+    jobStatusState = { data: null };
+  });
+
+  // A prior test throwing before vi.useRealTimers() would otherwise leave
+  // fake timers on and hang every later waitFor() in this file.
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("renders loading state when data is loading and no schools exist", async () => {
@@ -239,7 +282,7 @@ describe("SystemSchoolsPage", () => {
 
   it("renders load more button when next_cursor exists", async () => {
     schoolsState = {
-      data: { data: sampleSchools, next_cursor: "cursor-next" },
+      data: paginatedResponse(sampleSchools, "cursor-next"),
       isLoading: false,
       isError: false,
       error: null,
@@ -338,5 +381,130 @@ describe("SystemSchoolsPage", () => {
 
     dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByDisplayValue("SMAN2JKT")).not.toBeDisabled();
+  });
+
+  it("sends the status filter to the server instead of filtering loaded rows client-side", async () => {
+    renderPage(<SystemSchoolsPage />);
+
+    await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /^aktif$/i }));
+
+    await waitFor(() => {
+      const last = useAdminSchoolsCalls.at(-1) as { status?: string } | undefined;
+      expect(last?.status).toBe("active");
+    });
+  });
+
+  it("debounces search input before sending it as the q param", async () => {
+    vi.useFakeTimers();
+    renderPage(<SystemSchoolsPage />);
+
+    const search = screen.getByPlaceholderText(/cari sekolah|search school/i);
+    fireEvent.change(search, { target: { value: "jakarta" } });
+
+    // Not yet — a keystroke must not immediately trigger a new query.
+    let last = useAdminSchoolsCalls.at(-1) as { q?: string } | undefined;
+    expect(last?.q).toBeUndefined();
+
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+
+    last = useAdminSchoolsCalls.at(-1) as { q?: string } | undefined;
+    expect(last?.q).toBe("jakarta");
+  });
+
+  it("resets the cursor to page 1 when the status filter changes after loading more", async () => {
+    schoolsState = {
+      data: paginatedResponse(sampleSchools, "cursor-next"),
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    renderPage(<SystemSchoolsPage />);
+
+    await waitFor(() => expect(screen.getByText("Muat lebih banyak")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Muat lebih banyak"));
+
+    await waitFor(() => {
+      const last = useAdminSchoolsCalls.at(-1) as { cursor?: string } | undefined;
+      expect(last?.cursor).toBe("cursor-next");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^aktif$/i }));
+
+    await waitFor(() => {
+      const last = useAdminSchoolsCalls.at(-1) as { cursor?: string; status?: string } | undefined;
+      expect(last?.status).toBe("active");
+      expect(last?.cursor).toBeUndefined();
+    });
+  });
+
+  it("resets pagination back to page 1 when a bulk import succeeds, even after loading more", async () => {
+    // Land the page on a "load more"'d page 2 first.
+    schoolsState = {
+      data: paginatedResponse(sampleSchools, "cursor-next"),
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <SystemSchoolsPage />
+      </QueryClientProvider>,
+    );
+    const rerenderPage = () =>
+      rerender(
+        <QueryClientProvider client={qc}>
+          <SystemSchoolsPage />
+        </QueryClientProvider>,
+      );
+
+    await waitFor(() => expect(screen.getByText("Muat lebih banyak")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Muat lebih banyak"));
+    await waitFor(() => {
+      const last = useAdminSchoolsCalls.at(-1) as { cursor?: string } | undefined;
+      expect(last?.cursor).toBe("cursor-next");
+    });
+
+    // Open the bulk import dialog and drive a job to success.
+    bulkPresignMutateAsync.mockResolvedValueOnce({
+      url: "http://minio.local/k?sig=xyz",
+      method: "PUT",
+      key: "school-bulk/k1.csv",
+    });
+    bulkEnqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-1" });
+
+    fireEvent.click(screen.getByRole("button", { name: /bulk_school_import_button|impor massal/i }));
+    const fileInput = await screen.findByLabelText(/choose_file|file|pilih file/i);
+    fireEvent.change(fileInput as HTMLInputElement, {
+      target: { files: [new File(["x"], "schools.csv", { type: "text/csv" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /upload|import|submit|start|unggah/i }));
+
+    await waitFor(() => expect(bulkEnqueueMutateAsync).toHaveBeenCalled());
+
+    jobStatusState = {
+      data: {
+        id: "job-1",
+        type: "school_bulk",
+        status: "succeeded",
+        progress: 100,
+        result_url: null,
+        error: null,
+        created_at: "2026-08-19T00:00:00Z",
+        updated_at: "2026-08-19T00:01:00Z",
+      },
+    };
+    rerenderPage();
+
+    await waitFor(() => {
+      const last = useAdminSchoolsCalls.at(-1) as { cursor?: string } | undefined;
+      expect(last?.cursor).toBeUndefined();
+    });
   });
 });
