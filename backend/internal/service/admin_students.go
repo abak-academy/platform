@@ -264,12 +264,12 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 // CrossSchoolStudentResponse is the response shape for cross-school student
 // search (FR-SEARCH-01). Includes school_name so results are distinguishable.
 type CrossSchoolStudentResponse struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	Username   *string `json:"username"`
-	Email      *string `json:"email"`
-	Status     string  `json:"status"`
-	Grade      *int    `json:"grade"`
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Username *string `json:"username"`
+	Email    *string `json:"email"`
+	Status   string  `json:"status"`
+	Grade    *int    `json:"grade"`
 	// SchoolID/SchoolName are nullable for students with no school on file;
 	// UnlistedSchoolName carries the free-text name they typed instead.
 	SchoolID           *string `json:"school_id"`
@@ -344,8 +344,9 @@ func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilte
 }
 
 // ChangeStudentStatus toggles a student's active/deactivated status.
-// Row-scoping via schoolID + student ID — returns ErrStudentNotFound if
-// the student does not exist or belongs to a different school.
+// Row-scoping via schoolID + student ID when schoolID is set; empty schoolID
+// is id-only (super_admin). Returns ErrStudentNotFound if the student does
+// not exist or belongs to a different school.
 func (s *Service) ChangeStudentStatus(ctx context.Context, schoolID, targetID, newStatus string) error {
 	if newStatus != "active" && newStatus != "deactivated" {
 		return fmt.Errorf("%w: %s", ErrInvalidStatusFilter, newStatus)
@@ -363,6 +364,7 @@ func (s *Service) ChangeStudentStatus(ctx context.Context, schoolID, targetID, n
 
 // ReissueStudentCredentials generates a new temp password, overwrites the
 // stored hash, and returns the plaintext password exactly once.
+// Empty schoolID is id-only (super_admin).
 func (s *Service) ReissueStudentCredentials(ctx context.Context, schoolID, targetID string) (*StudentCredentialsResponse, error) {
 	student, err := s.storeRepo.GetStudentByID(ctx, targetID, schoolID)
 	if err != nil {

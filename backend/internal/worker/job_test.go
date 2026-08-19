@@ -220,6 +220,52 @@ func TestRunStudentBulkJobSucceedsUploadsReportAndFinishesSucceeded(t *testing.T
 	}
 }
 
+func TestRunStudentBulkJob_SuperAdmin_NamespaceFolder_CoLocatesResult(t *testing.T) {
+	ctx := context.Background()
+	folder := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	job := model.Job{ID: "job-ns-1", Type: "student_bulk", CreatedBy: "sa1", InputURL: strPtr("student-bulk/" + folder + "/upload.csv")}
+
+	repo := &fakeJobRepo{
+		getUserByIDFn: func(ctx context.Context, id string) (*model.User, error) {
+			return &model.User{ID: "sa1", SchoolID: nil}, nil
+		},
+	}
+	store := &fakeObjectStore{
+		getObjectBytesFn: func(ctx context.Context, bucket, key string) ([]byte, error) {
+			return []byte(validBulkCSV), nil
+		},
+	}
+	svc := &fakeStudentBulkProcessor{
+		processFn: func(ctx context.Context, schoolBound *string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+			if schoolBound != nil {
+				t.Errorf("super_admin must not bind rows to a school, got %v", schoolBound)
+			}
+			onProgress(100)
+			return []service.StudentBulkResultRow{
+				{Name: "Ali", Status: "success", Username: "ali1", TempPassword: "temp1"},
+			}, 1, nil
+		},
+	}
+
+	w := &Worker{jobRepo: repo, objectStore: store, svc: svc, privateBucket: "private-bucket"}
+	w.runStudentBulkJob(ctx, job)
+
+	wantKey := "student-bulk/" + folder + "/results/job-ns-1.csv"
+	if len(store.putCalls) != 1 {
+		t.Fatalf("expected 1 upload, got %d", len(store.putCalls))
+	}
+	if store.putCalls[0].key != wantKey {
+		t.Errorf("expected upload key %s, got %s", wantKey, store.putCalls[0].key)
+	}
+	if len(repo.finishCalls) != 1 {
+		t.Fatalf("expected 1 FinishJob call, got %d", len(repo.finishCalls))
+	}
+	finish := repo.finishCalls[0]
+	if finish.resultURL == nil || *finish.resultURL != wantKey {
+		t.Errorf("expected resultURL %s, got %v", wantKey, finish.resultURL)
+	}
+}
+
 func TestRunStudentBulkJobZeroSuccessesFinishesFailedButKeepsResultURL(t *testing.T) {
 	ctx := context.Background()
 	job := model.Job{ID: "job-2", Type: "student_bulk", CreatedBy: "u1", InputURL: strPtr("student-bulk/s1/upload.csv")}

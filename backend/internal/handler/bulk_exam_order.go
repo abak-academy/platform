@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
 
 	"github.com/labstack/echo/v4"
@@ -23,6 +24,46 @@ func (h *Handler) AdminListOrderableExams(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"data": products})
 }
 
+type bulkExamOrderBody struct {
+	ExamID     string   `json:"exam_id"`
+	StudentIDs []string `json:"student_ids,omitempty"`
+	Grade      *int     `json:"grade,omitempty"`
+	All        bool     `json:"all,omitempty"`
+}
+
+// bindBulkExamOrderScope decodes the body then resolves school. Explicit
+// student_ids are themselves the scope, so super_admin may omit ?school_id=.
+// grade/all still need a school. handled means the response was already written.
+func (h *Handler) bindBulkExamOrderScope(c echo.Context, claims *infra.Claims) (schoolID string, req bulkExamOrderBody, handled bool, err error) {
+	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
+		return "", req, true, badRequest(c, "invalid request body")
+	}
+	if req.ExamID == "" {
+		return "", req, true, badRequest(c, "exam_id is required")
+	}
+
+	schoolID, err = h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return "", req, true, nil
+	}
+	if err != nil {
+		return "", req, true, mapServiceError(c, err)
+	}
+	// grade/all pick a whole school; explicit student_ids are themselves the scope.
+	if schoolID == "" && len(req.StudentIDs) == 0 {
+		return "", req, true, badRequest(c, "school_id is required")
+	}
+	return schoolID, req, false, nil
+}
+
+func (req bulkExamOrderBody) selector() service.ParticipantSelector {
+	return service.ParticipantSelector{
+		StudentIDs: req.StudentIDs,
+		Grade:      req.Grade,
+		All:        req.All,
+	}
+}
+
 // AdminPreviewBulkOrder returns a preview of the bulk order (FR-BULK-02).
 func (h *Handler) AdminPreviewBulkOrder(c echo.Context) error {
 	claims := ClaimsFromContext(c)
@@ -30,34 +71,12 @@ func (h *Handler) AdminPreviewBulkOrder(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing or invalid token"})
 	}
 
-	schoolID, err := h.resolveSchoolScope(c, claims)
-	if scopeHandled(err) {
-		return nil
-	}
-	if err != nil {
-		return mapServiceError(c, err)
+	schoolID, req, handled, err := h.bindBulkExamOrderScope(c, claims)
+	if handled {
+		return err
 	}
 
-	var req struct {
-		ExamID      string                     `json:"exam_id"`
-		StudentIDs  []string                   `json:"student_ids,omitempty"`
-		Grade       *int                       `json:"grade,omitempty"`
-		All         bool                       `json:"all,omitempty"`
-	}
-	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
-		return badRequest(c, "invalid request body")
-	}
-	if req.ExamID == "" {
-		return badRequest(c, "exam_id is required")
-	}
-
-	selector := service.ParticipantSelector{
-		StudentIDs: req.StudentIDs,
-		Grade:      req.Grade,
-		All:        req.All,
-	}
-
-	preview, err := h.svc.PreviewBulkExamOrder(c.Request().Context(), schoolID, req.ExamID, selector)
+	preview, err := h.svc.PreviewBulkExamOrder(c.Request().Context(), schoolID, req.ExamID, req.selector())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -71,34 +90,12 @@ func (h *Handler) AdminCreateBulkOrder(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing or invalid token"})
 	}
 
-	schoolID, err := h.resolveSchoolScope(c, claims)
-	if scopeHandled(err) {
-		return nil
-	}
-	if err != nil {
-		return mapServiceError(c, err)
+	schoolID, req, handled, err := h.bindBulkExamOrderScope(c, claims)
+	if handled {
+		return err
 	}
 
-	var req struct {
-		ExamID      string                     `json:"exam_id"`
-		StudentIDs  []string                   `json:"student_ids,omitempty"`
-		Grade       *int                       `json:"grade,omitempty"`
-		All         bool                       `json:"all,omitempty"`
-	}
-	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
-		return badRequest(c, "invalid request body")
-	}
-	if req.ExamID == "" {
-		return badRequest(c, "exam_id is required")
-	}
-
-	selector := service.ParticipantSelector{
-		StudentIDs: req.StudentIDs,
-		Grade:      req.Grade,
-		All:        req.All,
-	}
-
-	order, err := h.svc.CreateBulkExamOrder(c.Request().Context(), claims.Sub, schoolID, req.ExamID, selector)
+	order, err := h.svc.CreateBulkExamOrder(c.Request().Context(), claims.Sub, schoolID, req.ExamID, req.selector())
 	if err != nil {
 		return mapServiceError(c, err)
 	}

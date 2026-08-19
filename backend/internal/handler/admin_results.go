@@ -11,7 +11,7 @@ import (
 // AdminListResults returns cursor-paginated school-scoped exam results.
 func (h *Handler) AdminListResults(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScopeOptional(c, claims)
+	schoolID, err := h.resolveSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}
@@ -55,7 +55,7 @@ func (h *Handler) AdminListResults(c echo.Context) error {
 // AdminGetResultDetail returns the full detail of a single school-scoped session result.
 func (h *Handler) AdminGetResultDetail(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScopeOptional(c, claims)
+	schoolID, err := h.resolveSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}
@@ -79,7 +79,7 @@ func (h *Handler) AdminGetResultDetail(c echo.Context) error {
 // AdminExportResults returns a CSV file of school-scoped exam results.
 func (h *Handler) AdminExportResults(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScopeOptional(c, claims)
+	schoolID, err := h.resolveSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}
