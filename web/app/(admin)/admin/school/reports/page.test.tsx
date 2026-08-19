@@ -56,7 +56,7 @@ vi.mock("@/stores/auth", () => ({
 }));
 
 vi.mock("@/lib/hooks/admin-schools", () => ({
-  useAdminSchools: () => schoolsState,
+  useSchoolOptions: () => schoolsState,
 }));
 
 const sampleExamProducts = [

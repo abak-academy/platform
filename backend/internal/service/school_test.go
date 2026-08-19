@@ -17,7 +17,7 @@ func findSchool(t *testing.T, svc *Service, id string) SchoolResponse {
 	ctx := context.Background()
 	cursor := ""
 	for {
-		rows, next, err := svc.AdminListSchools(ctx, 100, cursor)
+		rows, next, _, err := svc.AdminListSchools(ctx, AdminListSchoolsParams{Limit: 100, Cursor: cursor})
 		if err != nil {
 			t.Fatalf("AdminListSchools: %v", err)
 		}
@@ -260,6 +260,86 @@ func TestAdminListSchools_Integration(t *testing.T) {
 	}
 	if found.StudentCount != 2 {
 		t.Errorf("StudentCount: want 2, got %d", found.StudentCount)
+	}
+}
+
+func TestAdminListSchools_QAndStatusFilter_Integration(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	suffix := uniqueSuffix()
+	q := "qfilt_" + suffix
+	active, err := svc.CreateSchool(ctx, "Active "+q, "qa_"+suffix, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool active: %v", err)
+	}
+	deactivated, err := svc.CreateSchool(ctx, "Deactivated "+q, "qd_"+suffix, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool deactivated: %v", err)
+	}
+	if _, err := svc.ChangeSchoolStatus(ctx, deactivated.ID, "deactivated"); err != nil {
+		t.Fatalf("ChangeSchoolStatus: %v", err)
+	}
+
+	rows, _, counts, err := svc.AdminListSchools(ctx, AdminListSchoolsParams{Limit: 100, Q: q})
+	if err != nil {
+		t.Fatalf("AdminListSchools with q: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows matching q=%q, got %d", q, len(rows))
+	}
+	if counts.Total != 2 || counts.Active != 1 {
+		t.Errorf("counts: want total=2 active=1, got %+v", counts)
+	}
+
+	rows, _, _, err = svc.AdminListSchools(ctx, AdminListSchoolsParams{Limit: 100, Q: q, Status: "active"})
+	if err != nil {
+		t.Fatalf("AdminListSchools with status=active: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ID != active.ID {
+		t.Errorf("want only the active school, got %+v", rows)
+	}
+
+	if _, _, _, err := svc.AdminListSchools(ctx, AdminListSchoolsParams{Status: "pending"}); !errors.Is(err, ErrInvalidStatusFilter) {
+		t.Errorf("want ErrInvalidStatusFilter for status=pending, got %v", err)
+	}
+}
+
+func TestSchoolOptions_Integration(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	suffix := uniqueSuffix()
+	active, err := svc.CreateSchool(ctx, "Option Active "+suffix, "oa_"+suffix, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool: %v", err)
+	}
+	deactivated, err := svc.CreateSchool(ctx, "Option Deactivated "+suffix, "od_"+suffix, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool: %v", err)
+	}
+	if _, err := svc.ChangeSchoolStatus(ctx, deactivated.ID, "deactivated"); err != nil {
+		t.Fatalf("ChangeSchoolStatus: %v", err)
+	}
+
+	options, err := svc.SchoolOptions(ctx)
+	if err != nil {
+		t.Fatalf("SchoolOptions: %v", err)
+	}
+	var sawActive, sawDeactivated bool
+	for _, o := range options {
+		if o.ID == active.ID {
+			sawActive = true
+		}
+		if o.ID == deactivated.ID {
+			sawDeactivated = true
+		}
+	}
+	if !sawActive {
+		t.Error("want active school in options")
+	}
+	if sawDeactivated {
+		t.Error("deactivated school should not be in options")
 	}
 }
 

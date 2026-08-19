@@ -23,7 +23,7 @@ import {
   useAdminResultDetail,
   exportAdminResults,
 } from "@/lib/hooks/admin-results";
-import { useAdminSchools } from "@/lib/hooks/admin-schools";
+import { useSchoolOptions } from "@/lib/hooks/admin-schools";
 import { useAuthStore } from "@/stores/auth";
 import type { AdminResultRow, AdminResultDetail } from "@/lib/types";
 
@@ -42,7 +42,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
   const role = useAuthStore((s) => s.user?.role);
   const isSuperAdmin = role === "super_admin";
 
-  const { data: schoolsData } = useAdminSchools();
+  const { data: schoolsData } = useSchoolOptions();
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
 
   const [search, setSearch] = useState("");

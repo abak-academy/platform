@@ -212,6 +212,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminSchools := admin.Group("/schools")
 	adminSchools.Use(handler.RBACMiddleware("schools:write"))
 	adminSchools.GET("", h.AdminListSchools)
+	adminSchools.GET("/options", h.AdminListSchoolOptions)
 	adminSchools.POST("", h.AdminCreateSchool)
 	adminSchools.PUT("/:id", h.AdminUpdateSchool)
 	adminSchools.PATCH("/:id", h.AdminChangeSchoolStatus)
