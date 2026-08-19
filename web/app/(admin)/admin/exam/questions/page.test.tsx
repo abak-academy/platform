@@ -209,13 +209,13 @@ describe("QuestionBankPage", () => {
     });
   });
 
-  it("opens read-only preview on row click", async () => {
+  it("opens read-only preview from the view control", async () => {
     renderWithClient(<QuestionBankPage />);
 
     await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
 
-    const row = screen.getByText("What is 2+2?").closest("tr");
-    fireEvent.click(row!);
+    const row = screen.getByText("What is 2+2?").closest("tr") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /action_view/i }));
 
     await waitFor(() => {
       const dialog = screen.getByRole("dialog");
@@ -256,7 +256,11 @@ describe("QuestionBankPage", () => {
 
     await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByText("What is 2+2?").closest("tr")!);
+    fireEvent.click(
+      within(screen.getByText("What is 2+2?").closest("tr") as HTMLElement).getByRole("button", {
+        name: /action_view/i,
+      })
+    );
 
     await waitFor(() =>
       expect(screen.getByRole("dialog")).toBeInTheDocument()
@@ -445,19 +449,19 @@ describe("QuestionBankPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders rows through DataTable as keyboard-activatable", async () => {
+  it("opens the preview from an explicit labelled control, not the row", async () => {
     renderWithClient(<QuestionBankPage />);
 
     await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
 
     const row = screen.getByText("What is 2+2?").closest("tr") as HTMLElement;
-    // The row must stay a row: role="button" would nest the delete control
-    // inside a widget and stop assistive tech exposing it.
+    // The row itself carries no interactivity; the preview is an explicit,
+    // labelled control so it is announced and reachable like any other button.
     expect(row).not.toHaveAttribute("role");
-    expect(row).toHaveAttribute("tabIndex", "0");
+    expect(row).not.toHaveAttribute("tabIndex");
     expect(within(row).getByRole("button", { name: /action_delete/i })).toBeInTheDocument();
 
-    fireEvent.keyDown(row, { key: "Enter" });
+    fireEvent.click(within(row).getByRole("button", { name: /action_view/i }));
 
     await waitFor(() => {
       const dialog = screen.getByRole("dialog");

@@ -15,7 +15,6 @@ export interface DataTableProps<T> {
   rows: T[];
   rowKey: (row: T) => string;
   empty: React.ReactNode;
-  onRowClick?: (row: T) => void;
   stickyHeader?: boolean;
   footer?: React.ReactNode;
   "data-testid"?: string;
@@ -26,7 +25,6 @@ export function DataTable<T>({
   rows,
   rowKey,
   empty,
-  onRowClick,
   stickyHeader = false,
   footer,
   "data-testid": dataTestId,
@@ -59,41 +57,22 @@ export function DataTable<T>({
                 </td>
               </tr>
             ) : (
-              rows.map((row) => {
-                const clickable = !!onRowClick;
-                return (
-                  <tr
-                    key={rowKey(row)}
-                    className={cn(clickable && "cursor-pointer hover:bg-surface-2")}
-                    tabIndex={clickable ? 0 : undefined}
-                    onClick={clickable ? () => onRowClick(row) : undefined}
-                    onKeyDown={
-                      clickable
-                        ? (e) => {
-                            if (e.target !== e.currentTarget) return;
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              onRowClick(row);
-                            }
-                          }
-                        : undefined
-                    }
-                  >
-                    {columns.map((column) => (
-                      <td
-                        key={column.key}
-                        className={cn(
-                          "px-4 py-3",
-                          column.align === "right" && "text-right",
-                          column.className
-                        )}
-                      >
-                        {column.cell(row)}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })
+              rows.map((row) => (
+                <tr key={rowKey(row)}>
+                  {columns.map((column) => (
+                    <td
+                      key={column.key}
+                      className={cn(
+                        "px-4 py-3",
+                        column.align === "right" && "text-right",
+                        column.className
+                      )}
+                    >
+                      {column.cell(row)}
+                    </td>
+                  ))}
+                </tr>
+              ))
             )}
           </tbody>
         </table>

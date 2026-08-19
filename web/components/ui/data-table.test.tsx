@@ -33,46 +33,30 @@ describe("DataTable", () => {
     expect(cell.getAttribute("colSpan")).toBe(String(columns.length));
   });
 
-  it("makes every row keyboard-accessible when onRowClick is set", () => {
-    const onRowClick = vi.fn();
-    render(
-      <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" onRowClick={onRowClick} />
-    );
-    // The row keeps its implicit "row" role: role="button" would override it and
-    // bury any real control rendered inside a cell.
+  it("renders rows as plain table rows with no row-level interactivity", () => {
+    render(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" />);
     const dataRows = screen.getAllByRole("row").slice(1);
     expect(dataRows).toHaveLength(2);
+    // A focusable row with a non-interactive role tells a screen reader nothing
+    // about the action, so call sites render an explicit control in a cell.
     for (const row of dataRows) {
       expect(row).not.toHaveAttribute("role");
-      expect(row).toHaveAttribute("tabIndex", "0");
+      expect(row).not.toHaveAttribute("tabIndex");
     }
-
-    dataRows[0].click();
-    expect(onRowClick).toHaveBeenCalledWith(rows[0]);
-
-    onRowClick.mockClear();
-    dataRows[1].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
-    expect(onRowClick).toHaveBeenCalledWith(rows[1]);
-
-    onRowClick.mockClear();
-    dataRows[1].dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }));
-    expect(onRowClick).toHaveBeenCalledWith(rows[1]);
   });
 
-  it("ignores keydown bubbling up from an in-row control", () => {
-    const onRowClick = vi.fn();
+  it("exposes an in-cell control as a real button", () => {
+    const onSelect = vi.fn();
     const inCellColumns: DataTableColumn<Row>[] = [
       ...columns,
-      { key: "actions", header: "", cell: () => <button>Delete</button> },
+      { key: "actions", header: "", cell: (r) => <button onClick={() => onSelect(r)}>Open</button> },
     ];
-    render(
-      <DataTable columns={inCellColumns} rows={rows} rowKey={(r) => r.id} empty="No rows" onRowClick={onRowClick} />
-    );
-    const button = screen.getAllByRole("button", { name: "Delete" })[0];
-    button.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
-    expect(onRowClick).not.toHaveBeenCalled();
+    render(<DataTable columns={inCellColumns} rows={rows} rowKey={(r) => r.id} empty="No rows" />);
+    const buttons = screen.getAllByRole("button", { name: "Open" });
+    expect(buttons).toHaveLength(2);
+    buttons[1].click();
+    expect(onSelect).toHaveBeenCalledWith(rows[1]);
   });
-
   it("does not make rows focusable without onRowClick", () => {
     const { container } = render(
       <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" />

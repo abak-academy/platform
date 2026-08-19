@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Library, Plus, Search, Trash2, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Library, Plus, Search, Trash2, Upload } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { QuestionEditor } from "@/components/admin/QuestionEditor";
 import { QuestionPreview } from "@/components/admin/QuestionPreview";
@@ -239,6 +239,15 @@ export default function QuestionBankPage() {
       key: "actions",
       header: t("th_actions"),
       cell: (item) => (
+        <div className="flex items-center justify-end gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t("action_view")}
+          onClick={() => handleRowClick(item)}
+        >
+          <Eye className="size-4" />
+        </Button>
         <Button
           variant="ghost"
           size="icon"
@@ -252,6 +261,7 @@ export default function QuestionBankPage() {
         >
           <Trash2 className="size-4" />
         </Button>
+        </div>
       ),
     },
   ];
@@ -342,7 +352,6 @@ export default function QuestionBankPage() {
           rows={rows}
           rowKey={(item) => item.question.id}
           empty={t("tests_picker_empty")}
-          onRowClick={handleRowClick}
           data-testid="exam-questions-table"
           footer={
             total > PAGE_SIZE ? (

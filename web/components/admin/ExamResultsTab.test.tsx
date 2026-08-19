@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ExamResultsTab } from "./ExamResultsTab";
 import type { AdminResultRow, AdminResultDetail, School } from "@/lib/types";
@@ -141,7 +141,7 @@ describe("ExamResultsTab", () => {
     expect(screen.getByText("92")).toBeInTheDocument();
   });
 
-  it("clicking a row opens the detail dialog with the per-topic breakdown", async () => {
+  it("the view control opens the detail dialog with the per-topic breakdown", async () => {
     detailState = {
       data: scorePembahasanDetail,
       isLoading: false,
@@ -153,7 +153,7 @@ describe("ExamResultsTab", () => {
     renderTab();
 
     const row = await screen.findByText("Budi Santoso");
-    fireEvent.click(row);
+    fireEvent.click(within(row.closest("tr") as HTMLElement).getByRole("button", { name: /lihat/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Aljabar")).toBeInTheDocument();
@@ -161,7 +161,7 @@ describe("ExamResultsTab", () => {
     });
   });
 
-  it("table rows are keyboard-activatable", async () => {
+  it("opens the detail from an explicit labelled control, not the row", async () => {
     detailState = {
       data: scorePembahasanDetail,
       isLoading: false,
@@ -173,11 +173,10 @@ describe("ExamResultsTab", () => {
     renderTab();
 
     const row = await screen.findByText("Budi Santoso");
-    const rowEl = row.closest("tr");
+    const rowEl = row.closest("tr") as HTMLElement;
     expect(rowEl).not.toBeNull();
-    expect(rowEl).not.toHaveAttribute("role");
-    expect(rowEl).toHaveAttribute("tabIndex", "0");
-    fireEvent.keyDown(rowEl!, { key: "Enter" });
+    expect(rowEl).not.toHaveAttribute("tabIndex");
+    fireEvent.click(within(rowEl).getByRole("button", { name: /lihat/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Aljabar")).toBeInTheDocument();

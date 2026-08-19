@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Eye, Loader2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import {
@@ -139,6 +139,21 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
         </span>
       ),
     },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (row) => (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t("action_view")}
+          onClick={() => setSelectedSessionId(row.session_id)}
+        >
+          <Eye className="size-4" />
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -189,7 +204,6 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
           rows={accumulated}
           rowKey={(row) => row.session_id}
           empty={t("school_reports_empty")}
-          onRowClick={(row) => setSelectedSessionId(row.session_id)}
           footer={
             nextCursor && (
               <div className="border-t border-line px-4 py-3 text-center">
