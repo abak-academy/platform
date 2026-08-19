@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAdminStudents } from "@/lib/hooks/admin-students";
-import { useAdminSchools } from "@/lib/hooks/admin-schools";
+import { useSchoolOptions } from "@/lib/hooks/admin-schools";
 import { useSearchStudentsAcrossSchools } from "@/lib/hooks/admin-exam-grants";
 import { cn } from "@/lib/utils";
 import type { AdminStudent } from "@/lib/types";
@@ -304,7 +304,7 @@ function SchoolFacetSelect({
   onValueChange: (v: string) => void;
 }) {
   const { t } = useTranslation();
-  const { data: schoolsData } = useAdminSchools();
+  const { data: schoolsData } = useSchoolOptions();
   const schools = useMemo(() => schoolsData?.data ?? [], [schoolsData]);
 
   return (

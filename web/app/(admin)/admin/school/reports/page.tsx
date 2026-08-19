@@ -31,7 +31,7 @@ import {
   useAdminResultDetail,
   exportAdminResults,
 } from "@/lib/hooks/admin-results";
-import { useAdminSchools } from "@/lib/hooks/admin-schools";
+import { useSchoolOptions } from "@/lib/hooks/admin-schools";
 import { useAuthStore } from "@/stores/auth";
 import { RichContent } from "@/components/admin/RichContent";
 import type { AdminResultRow, AdminResultDetail, ProductType } from "@/lib/types";
@@ -43,7 +43,7 @@ export default function SchoolReportsPage() {
   // Role-gated school picker (super_admin only)
   const currentRole = useAuthStore((s) => s.user?.role);
   const isSuperAdmin = currentRole === "super_admin";
-  const { data: schoolsData, isLoading: schoolsLoading } = useAdminSchools();
+  const { data: schoolsData, isLoading: schoolsLoading } = useSchoolOptions();
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
 
   // Exam picker

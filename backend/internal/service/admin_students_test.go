@@ -370,6 +370,36 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 			t.Error("old temp password should no longer validate against the persisted hash")
 		}
 	})
+
+	t.Run("empty schoolID is id-only (super_admin)", func(t *testing.T) {
+		if err := svc.ChangeStudentStatus(ctx, "", studentID, "deactivated"); err != nil {
+			t.Fatalf("ChangeStudentStatus empty school: %v", err)
+		}
+		if err := svc.ChangeStudentStatus(ctx, "", studentID, "active"); err != nil {
+			t.Fatalf("ChangeStudentStatus restore: %v", err)
+		}
+		creds, err := svc.ReissueStudentCredentials(ctx, "", studentID)
+		if err != nil {
+			t.Fatalf("ReissueStudentCredentials empty school: %v", err)
+		}
+		if creds.TempPassword == "" {
+			t.Fatal("want non-empty temp_password")
+		}
+	})
+
+	t.Run("empty schoolID reissues a student with no school", func(t *testing.T) {
+		noSchoolID := createTestStudentNoSchool(t, svc)
+		creds, err := svc.ReissueStudentCredentials(ctx, "", noSchoolID)
+		if err != nil {
+			t.Fatalf("ReissueStudentCredentials no-school student: %v", err)
+		}
+		if creds.Username == "" || creds.TempPassword == "" {
+			t.Fatalf("want username and temp_password, got %+v", creds)
+		}
+		if err := svc.ChangeStudentStatus(ctx, "", noSchoolID, "deactivated"); err != nil {
+			t.Fatalf("ChangeStudentStatus no-school student: %v", err)
+		}
+	})
 }
 
 func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {

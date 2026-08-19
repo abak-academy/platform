@@ -22,11 +22,16 @@ func scopeHandled(err error) bool {
 }
 
 // resolveSchoolScope resolves the target school ID based on the actor's role.
-// super_admin reads from ?school_id= query param (validated to exist).
+//
+// super_admin reads optional ?school_id=. Omitting it returns "" (not a 400) —
+// "not scoped to any school". Handlers that cannot run without a school must
+// check schoolID == "" themselves. A present school_id is still validated
+// (UUID + exists).
+//
 // Other roles use their JWT school_id (rejecting mismatched query params).
-// On success, returns (schoolID, nil). On a scope error, writes the response
-// and returns ("", errScopeDone). On a system error (e.g. SchoolExists failure)
-// returns ("", err) for the caller to handle via mapServiceError.
+// On a scope error, writes the response and returns ("", errScopeDone).
+// On a system error (e.g. SchoolExists failure) returns ("", err) for
+// mapServiceError.
 func (h *Handler) resolveSchoolScope(c echo.Context, claims *infra.Claims) (string, error) {
 	if claims.Role == "super_admin" {
 		return h.resolveGlobalSchoolParam(c)
@@ -45,16 +50,13 @@ func (h *Handler) resolveSchoolScope(c echo.Context, claims *infra.Claims) (stri
 	return *claims.SchoolID, nil
 }
 
-// resolveGlobalSchoolParam validates the ?school_id= query param for a role
-// allowed to read across every school: empty param is the caller's problem to
-// reject, present param must parse as a UUID and reference an existing school.
-// On success returns (schoolID, nil); on a scope error, writes the response
-// and returns ("", errScopeDone).
+// resolveGlobalSchoolParam reads ?school_id= for a role that may read across
+// every school: empty means "not scoped to any school", a present value must
+// parse as a UUID and reference an existing school.
 func (h *Handler) resolveGlobalSchoolParam(c echo.Context) (string, error) {
 	sid := c.QueryParam("school_id")
 	if sid == "" {
-		c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "school_id is required"})
-		return "", errScopeDone
+		return "", nil
 	}
 	if _, err := uuid.Parse(sid); err != nil {
 		c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "school_id must be a valid UUID"})
@@ -71,24 +73,13 @@ func (h *Handler) resolveGlobalSchoolParam(c echo.Context) (string, error) {
 	return sid, nil
 }
 
-// resolveSchoolScopeOptional is resolveSchoolScope with the school made
-// optional for super_admin and admin_exam: omitting school_id returns ""
-// instead of a 400, meaning "not scoped to any school".
-//
-// Only endpoints that genuinely work without a school may use this — the
-// student roster (registrants are not all school pupils; university students
-// and the general public sign up too), student registration (an operator
-// can confirm the school after the fact), and admin results (list/detail/export
-// default to every school; the repository's filter is optional). Every other
-// caller keeps resolveSchoolScope, where a missing school is a client error.
-//
-// admin_school is unaffected: its scope still rides on the JWT and cannot be
-// widened.
-func (h *Handler) resolveSchoolScopeOptional(c echo.Context, claims *infra.Claims) (string, error) {
-	if claims.Role == "super_admin" || claims.Role == service.RoleAdminExam {
-		if c.QueryParam("school_id") == "" {
-			return "", nil
-		}
+// resolveResultsSchoolScope is resolveSchoolScope with admin_exam also treated
+// as unscoped: it manages the exam catalogue globally and owns no school, so
+// results default to every school. Deliberately narrow — widening
+// resolveSchoolScope itself would also unscope /admin/dashboard/exam, which
+// admin_exam reaches via sessions:read.
+func (h *Handler) resolveResultsSchoolScope(c echo.Context, claims *infra.Claims) (string, error) {
+	if claims.Role == service.RoleAdminExam {
 		return h.resolveGlobalSchoolParam(c)
 	}
 	return h.resolveSchoolScope(c, claims)

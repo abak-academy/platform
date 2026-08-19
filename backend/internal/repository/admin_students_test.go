@@ -100,3 +100,62 @@ func TestSearchStudentsAcrossSchools_NullSchool(t *testing.T) {
 		}
 	})
 }
+
+func TestGetStudentByID_EmptySchoolID(t *testing.T) {
+	pool := newGradingTestPool(t)
+	r := New(pool)
+	ctx := context.Background()
+
+	suffix := uuid.NewString()[:8]
+	schoolID := insertSchoolForAdminStudentsTest(t, r, "School "+suffix, "gs_"+suffix)
+	var withSchool string
+	if err := r.pool.QueryRow(ctx,
+		`INSERT INTO users (name, username, role, school_id, status, jenjang, otp_enabled)
+		 VALUES ($1, $2, 'student', $3, 'active', 'sma', false) RETURNING id`,
+		"Has School "+suffix, "gsu_"+suffix, schoolID,
+	).Scan(&withSchool); err != nil {
+		t.Fatalf("insert schooled student: %v", err)
+	}
+	nullID := insertNullSchoolStudent(t, r, "Null "+suffix, "Unlisted "+suffix)
+
+	t.Run("empty schoolID finds a schooled student", func(t *testing.T) {
+		u, err := r.GetStudentByID(ctx, withSchool, "")
+		if err != nil {
+			t.Fatalf("GetStudentByID: %v", err)
+		}
+		if u == nil || u.ID != withSchool {
+			t.Fatalf("want student %s, got %+v", withSchool, u)
+		}
+	})
+
+	t.Run("empty schoolID finds a null-school student", func(t *testing.T) {
+		u, err := r.GetStudentByID(ctx, nullID, "")
+		if err != nil {
+			t.Fatalf("GetStudentByID: %v", err)
+		}
+		if u == nil || u.ID != nullID {
+			t.Fatalf("want student %s, got %+v", nullID, u)
+		}
+	})
+
+	t.Run("wrong school returns nil", func(t *testing.T) {
+		other := insertSchoolForAdminStudentsTest(t, r, "Other "+suffix, "go_"+suffix)
+		u, err := r.GetStudentByID(ctx, withSchool, other)
+		if err != nil {
+			t.Fatalf("GetStudentByID: %v", err)
+		}
+		if u != nil {
+			t.Errorf("want nil for other school, got %+v", u)
+		}
+	})
+
+	t.Run("owning school finds the student", func(t *testing.T) {
+		u, err := r.GetStudentByID(ctx, withSchool, schoolID)
+		if err != nil {
+			t.Fatalf("GetStudentByID: %v", err)
+		}
+		if u == nil {
+			t.Fatal("want student under owning school")
+		}
+	})
+}

@@ -32,12 +32,12 @@ type StudentRow struct {
 // StudentFilter carries optional filters for ListStudentsBySchool and
 // SearchStudentsAcrossSchools.
 type StudentFilter struct {
-	Status  string
-	Cursor  string
-	Limit   int
-	Q       string
-	Grade   *int    // optional grade filter
-	Jenjang string  // optional jenjang filter
+	Status   string
+	Cursor   string
+	Limit    int
+	Q        string
+	Grade    *int    // optional grade filter
+	Jenjang  string  // optional jenjang filter
 	SchoolID *string // optional school_id filter (cross-school search only)
 	// AllSchools drops the school scope entirely, returning every student
 	// including those with no school on file. It is deliberately an explicit
@@ -160,20 +160,25 @@ func (r *Repository) CreateStudent(ctx context.Context, u *model.User) error {
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 
-// GetStudentByID returns a student by ID scoped to a specific school.
-// Returns nil, nil when not found (including when the student belongs to
-// a different school).
+// GetStudentByID returns a student by ID. When schoolID is non-empty, the
+// row must belong to that school (including NULL-school students, which
+// never match a real school id). When schoolID is empty, any student id
+// matches — used by super_admin acting on a roster that is not school-filtered.
+// Returns nil, nil when not found.
 func (r *Repository) GetStudentByID(ctx context.Context, id, schoolID string) (*model.User, error) {
 	u := &model.User{}
-	err := r.pool.QueryRow(ctx,
-		`SELECT id, email, username, phone, password_hash, role, name,
+	query := `SELECT id, email, username, phone, password_hash, role, name,
 			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
 			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
 			dob, gender, grade, alamat_domisili, target_exam
 		FROM users
-		WHERE id = $1 AND school_id = $2 AND role = 'student' AND status != 'deleted'`,
-		id, schoolID,
-	).Scan(
+		WHERE id = $1 AND role = 'student' AND status != 'deleted'`
+	args := []any{id}
+	if schoolID != "" {
+		query += ` AND school_id = $2`
+		args = append(args, schoolID)
+	}
+	err := r.pool.QueryRow(ctx, query, args...).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
 		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
 		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
@@ -188,15 +193,17 @@ func (r *Repository) GetStudentByID(ctx context.Context, id, schoolID string) (*
 	return u, nil
 }
 
-// UpdateStudentStatus sets the status of a student, scoped to a specific school.
-// Returns the number of rows affected (0 if the student doesn't exist or
-// doesn't belong to the given school).
+// UpdateStudentStatus sets the status of a student. schoolID empty skips the
+// school predicate (super_admin, id-only). Non-empty keeps the school bound.
 func (r *Repository) UpdateStudentStatus(ctx context.Context, id, schoolID, status string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE users SET status = $1, updated_at = now()
-			WHERE id = $2 AND school_id = $3 AND role = 'student' AND status != 'deleted'`,
-		status, id, schoolID,
-	)
+	query := `UPDATE users SET status = $1, updated_at = now()
+			WHERE id = $2 AND role = 'student' AND status != 'deleted'`
+	args := []any{status, id}
+	if schoolID != "" {
+		query += ` AND school_id = $3`
+		args = append(args, schoolID)
+	}
+	_, err := r.pool.Exec(ctx, query, args...)
 	return err
 }
 
@@ -206,10 +213,10 @@ type CrossSchoolStudentRow struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	// Nullable for the same reason as StudentRow.Username — see there.
-	Username   *string   `json:"username"`
-	Email      *string   `json:"email"`
-	Status     string    `json:"status"`
-	Grade      *int      `json:"grade"`
+	Username *string `json:"username"`
+	Email    *string `json:"email"`
+	Status   string  `json:"status"`
+	Grade    *int    `json:"grade"`
 	// SchoolID/SchoolName are nullable: a student can have no school on file,
 	// in which case UnlistedSchoolName carries the free-text name they typed
 	// at registration.
@@ -298,13 +305,16 @@ func (r *Repository) SearchStudentsAcrossSchools(ctx context.Context, filter Stu
 	return students, nextCursor, nil
 }
 
-// ResetStudentPasswordHash overwrites the password hash for a student,
-// scoped to a specific school.
+// ResetStudentPasswordHash overwrites the password hash for a student.
+// schoolID empty skips the school predicate (super_admin, id-only).
 func (r *Repository) ResetStudentPasswordHash(ctx context.Context, id, schoolID, hash string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE users SET password_hash = $1, updated_at = now()
-			WHERE id = $2 AND school_id = $3 AND role = 'student' AND status != 'deleted'`,
-		hash, id, schoolID,
-	)
+	query := `UPDATE users SET password_hash = $1, updated_at = now()
+			WHERE id = $2 AND role = 'student' AND status != 'deleted'`
+	args := []any{hash, id}
+	if schoolID != "" {
+		query += ` AND school_id = $3`
+		args = append(args, schoolID)
+	}
+	_, err := r.pool.Exec(ctx, query, args...)
 	return err
 }
