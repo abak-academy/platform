@@ -10,14 +10,29 @@ import (
 
 // AdminPresignStudentBulkUpload issues a presigned PUT URL to the private
 // bucket for a student-bulk CSV upload.
+//
+// Object keys are student-bulk/{folder-uuid}/{file-uuid}-filename. For
+// admin_school the folder is the JWT school. For super_admin the folder is a
+// random UUID (storage namespace only — not a real school); row school comes
+// from the CSV name column, same as enqueue.
 func (h *Handler) AdminPresignStudentBulkUpload(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
-	if scopeHandled(err) {
-		return nil
-	}
-	if err != nil {
-		return err
+
+	var schoolID string
+	switch claims.Role {
+	case "super_admin":
+		// Folder UUID is not a school id; enqueue UUID-parses the second
+		// path segment for the prefix check only.
+		schoolID = uuid.New().String()
+	default:
+		var err error
+		schoolID, err = h.resolveSchoolScope(c, claims)
+		if scopeHandled(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 	}
 
 	filename := c.QueryParam("filename")
@@ -68,10 +83,10 @@ func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 		return badRequest(c, "file_key is required")
 	}
 
-	// For super_admin, extract schoolID from the fileKey prefix (the presign
-	// endpoint already encoded it into the key). This is only needed for
-	// storage-level validation in EnqueueStudentBulkJob; the actual school
-	// scope is per-row from the CSV.
+	// For super_admin, extract the folder UUID from the fileKey prefix (the
+	// presign endpoint already encoded it). This is only needed for
+	// storage-level validation in EnqueueStudentBulkJob; it is not a school
+	// id. Row school comes from the CSV name column.
 	if claims.Role == "super_admin" {
 		parts := strings.SplitN(req.FileKey, "/", 3)
 		if len(parts) < 3 || parts[0] != "student-bulk" {

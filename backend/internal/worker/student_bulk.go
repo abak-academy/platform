@@ -66,8 +66,9 @@ func (w *Worker) runStudentBulkJob(ctx context.Context, job model.Job) {
 
 	// Derive the result key prefix from the input URL path to keep results
 	// co-located with the source CSV (handles super_admin where the creator
-	// has no SchoolID).
-	// InputURL format: "student-bulk/{schoolID}/uuid-filename"
+	// has no SchoolID). The second segment is a folder UUID — JWT school for
+	// admin_school, random namespace for super_admin — not used as row scope.
+	// InputURL format: "student-bulk/{folder-uuid}/uuid-filename"
 	inputParts := strings.SplitN(*job.InputURL, "/", 3)
 	resultSchoolID := inputParts[1] // schoolID from the key prefix
 	resultKey := fmt.Sprintf("student-bulk/%s/results/%s.csv", resultSchoolID, job.ID)
