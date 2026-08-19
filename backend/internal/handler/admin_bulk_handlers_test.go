@@ -159,6 +159,28 @@ func TestAdminBulkReissueCredentials_NilSchoolID_403(t *testing.T) {
 	}
 }
 
+func TestAdminBulkReissueCredentials_SuperAdmin_NoSchoolID_400(t *testing.T) {
+	env := newAdminSystemEnv(t)
+
+	body := map[string]any{"all": true}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/admin/students/bulk/credentials", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := env.e.NewContext(req, rec)
+	setAdminClaims(c, "sa1")
+
+	if err := env.h.AdminBulkReissueCredentials(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 when super_admin omits school_id on bulk credentials, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "school_id is required") {
+		t.Errorf("want school_id is required from handler, got %s", rec.Body.String())
+	}
+}
+
 func TestAdminBulkReissueCredentials_BothSupplied_400(t *testing.T) {
 	env := newAdminSystemEnv(t)
 

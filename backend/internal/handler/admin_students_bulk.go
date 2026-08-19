@@ -17,22 +17,18 @@ import (
 // from the CSV name column, same as enqueue.
 func (h *Handler) AdminPresignStudentBulkUpload(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-
-	var schoolID string
-	switch claims.Role {
-	case "super_admin":
-		// Folder UUID is not a school id; enqueue UUID-parses the second
-		// path segment for the prefix check only.
+	schoolID, err := h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	// super_admin with no school: folder UUID is a storage namespace, not a
+	// real school. Enqueue UUID-parses the second path segment for the prefix
+	// check only. Row school still comes from the CSV name column.
+	if schoolID == "" {
 		schoolID = uuid.New().String()
-	default:
-		var err error
-		schoolID, err = h.resolveSchoolScope(c, claims)
-		if scopeHandled(err) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
 	}
 
 	filename := c.QueryParam("filename")
@@ -115,6 +111,9 @@ func (h *Handler) AdminBulkReissueCredentials(c echo.Context) error {
 	}
 	if err != nil {
 		return err
+	}
+	if schoolID == "" {
+		return badRequest(c, "school_id is required")
 	}
 
 	var req struct {

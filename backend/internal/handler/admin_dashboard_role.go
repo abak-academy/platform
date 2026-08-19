@@ -16,7 +16,7 @@ func (h *Handler) AdminExamDashboard(c echo.Context) error {
 
 func (h *Handler) AdminSchoolDashboard(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScopeOptional(c, claims)
+	schoolID, err := h.resolveSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}

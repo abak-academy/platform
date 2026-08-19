@@ -549,3 +549,58 @@ func TestAdminRegisterStudent_SuperAdmin_WithoutSchool(t *testing.T) {
 		t.Errorf("school_id should be NULL when no school was given, got %q", *schoolID)
 	}
 }
+
+func TestAdminGetStudentCredentials_SuperAdmin_NoSchoolID_200(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+	schoolID := seedSchoolForStu(t, env.pool)
+	reg, err := env.svc.RegisterStudent(ctx, schoolID, "Cred Super", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+
+	token := mintSuperAdminStuToken(t, env, "00000000-0000-0000-0000-0000000000c1")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students/"+reg.ID+"/credentials", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 without school_id, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "school_id is required") {
+		t.Fatalf("super_admin credentials must not require school_id: %s", rec.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["temp_password"] == nil || resp["temp_password"] == "" {
+		t.Errorf("want temp_password, got %v", resp)
+	}
+}
+
+func TestAdminChangeStudentStatus_SuperAdmin_NoSchoolID_200(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+	schoolID := seedSchoolForStu(t, env.pool)
+	reg, err := env.svc.RegisterStudent(ctx, schoolID, "Status Super", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+
+	token := mintSuperAdminStuToken(t, env, "00000000-0000-0000-0000-0000000000c2")
+	body := `{"status":"deactivated"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/students/"+reg.ID, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 without school_id, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "school_id is required") {
+		t.Fatalf("super_admin status must not require school_id: %s", rec.Body.String())
+	}
+}
