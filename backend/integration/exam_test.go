@@ -1787,9 +1787,9 @@ func TestExam_AdminListTests_q_composes_with_subject(t *testing.T) {
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
 
-	seedTest(t, env, "Aljabar Dasar", "math", "algebra", 60)    // matches both
-	seedTest(t, env, "Aljabar Lanjut", "biology", "cells", 60)  // matches q, not subject
-	seedTest(t, env, "Geometri Dasar", "math", "geometry", 60)  // matches subject, not q
+	seedTest(t, env, "Aljabar Dasar", "math", "algebra", 60)   // matches both
+	seedTest(t, env, "Aljabar Lanjut", "biology", "cells", 60) // matches q, not subject
+	seedTest(t, env, "Geometri Dasar", "math", "geometry", 60) // matches subject, not q
 
 	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests?subject=math&q=Aljabar", nil, token)
 	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)

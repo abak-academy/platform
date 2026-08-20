@@ -778,7 +778,7 @@ export interface Exam {
 
 export interface ExamListItem extends Exam {
   has_published_product?: boolean;
-  // optional: ExamModal.test.tsx literals (outside this task) omit it
+  // optional: ExamDetail extends this, and the detail endpoint never sends it
   registration_count?: number;
 }
 
