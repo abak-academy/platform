@@ -288,6 +288,7 @@ func TestExamRegistrationStruct(t *testing.T) {
 	jsonTag(t, v, "Token", "token")
 	jsonTag(t, v, "CardKey", "card_key")
 	jsonTag(t, v, "CheckedInAt", "checked_in_at")
+	jsonTag(t, v, "DeviceFingerprint", "-")
 	jsonTag(t, v, "AttemptsUsed", "attempts_used")
 	jsonTag(t, v, "Status", "status")
 	jsonTag(t, v, "CreatedAt", "created_at")
@@ -306,6 +307,10 @@ func TestExamRegistrationStruct(t *testing.T) {
 	fieldKind(t, v, "CheckedInAt", reflect.Ptr)
 	if mustField(t, v, "CheckedInAt").Type != reflect.TypeOf((*time.Time)(nil)) {
 		t.Errorf("ExamRegistration.CheckedInAt should be *time.Time, got %s", mustField(t, v, "CheckedInAt").Type)
+	}
+	fieldKind(t, v, "DeviceFingerprint", reflect.Ptr)
+	if mustField(t, v, "DeviceFingerprint").Type.Elem().Kind() != reflect.String {
+		t.Errorf("ExamRegistration.DeviceFingerprint pointer base type should be string")
 	}
 	fieldType(t, v, "CreatedAt", reflect.TypeOf(time.Time{}))
 }
@@ -677,12 +682,12 @@ var typesByName = func() map[string]reflect.Type {
 		reflect.TypeOf((*ExamSession)(nil)).Elem(),
 		reflect.TypeOf((*ExamSessionAnswer)(nil)).Elem(),
 		reflect.TypeOf((*SessionViolationLog)(nil)).Elem(),
-			reflect.TypeOf((*TestDetail)(nil)).Elem(),
-			reflect.TypeOf((*SessionResult)(nil)).Elem(),
-			reflect.TypeOf((*ExamLeaderboardEntry)(nil)).Elem(),
-			reflect.TypeOf((*ScoreBucket)(nil)).Elem(),
-			reflect.TypeOf((*ExamAnalytics)(nil)).Elem(),
-			reflect.TypeOf((*QuestionWithOptions)(nil)).Elem(),
+		reflect.TypeOf((*TestDetail)(nil)).Elem(),
+		reflect.TypeOf((*SessionResult)(nil)).Elem(),
+		reflect.TypeOf((*ExamLeaderboardEntry)(nil)).Elem(),
+		reflect.TypeOf((*ScoreBucket)(nil)).Elem(),
+		reflect.TypeOf((*ExamAnalytics)(nil)).Elem(),
+		reflect.TypeOf((*QuestionWithOptions)(nil)).Elem(),
 	} {
 		m[t.Name()] = t
 	}

@@ -702,7 +702,8 @@ func (h *Handler) StudentReconnectSession(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
 	sessionID := c.Param("id")
-	result, err := h.svc.ReconnectSession(c.Request().Context(), claims.Sub, sessionID)
+	fp := fingerprint(c.RealIP(), c.Request().UserAgent())
+	result, err := h.svc.ReconnectSession(c.Request().Context(), claims.Sub, sessionID, fp)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -724,7 +725,7 @@ func (h *Handler) StudentSaveAnswers(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	if err := h.svc.SaveAnswers(c.Request().Context(), claims.Sub, sessionID, req.Answers, req.CurrentPosition); err != nil {
+	if err := h.svc.SaveAnswers(c.Request().Context(), claims.Sub, sessionID, req.Answers, req.CurrentPosition, fingerprint(c.RealIP(), c.Request().UserAgent())); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
@@ -737,7 +738,8 @@ func (h *Handler) StudentSubmitSession(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
 	sessionID := c.Param("id")
-	result, err := h.svc.SubmitSession(c.Request().Context(), claims.Sub, sessionID)
+	fp := fingerprint(c.RealIP(), c.Request().UserAgent())
+	result, err := h.svc.SubmitSession(c.Request().Context(), claims.Sub, sessionID, fp)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -752,7 +754,8 @@ func (h *Handler) StudentAdvanceSection(c echo.Context) error {
 	}
 	sessionID := c.Param("id")
 	testID := c.Param("testId")
-	result, err := h.svc.AdvanceSection(c.Request().Context(), claims.Sub, sessionID, testID)
+	fp := fingerprint(c.RealIP(), c.Request().UserAgent())
+	result, err := h.svc.AdvanceSection(c.Request().Context(), claims.Sub, sessionID, testID, fp)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -772,7 +775,7 @@ func (h *Handler) StudentLogViolation(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	if err := h.svc.LogViolation(c.Request().Context(), claims.Sub, sessionID, req.ViolationType); err != nil {
+	if err := h.svc.LogViolation(c.Request().Context(), claims.Sub, sessionID, req.ViolationType, fingerprint(c.RealIP(), c.Request().UserAgent())); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})

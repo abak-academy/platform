@@ -1360,6 +1360,8 @@ export const DICT = {
 
     // Exam session — check-in
     exam_checkin_title: "Check-in Ujian",
+    exam_device_mismatch: "Ujian ini terikat ke perangkat check-in. Lanjutkan dari perangkat yang sama.",
+    exam_device_mismatch_title: "Perangkat tidak sesuai",
     token_label: "Token",
     window_closed_early: "Check-in belum dibuka",
     window_closed_late: "Check-in sudah ditutup",
@@ -2875,6 +2877,8 @@ export const DICT = {
 
     // Exam session — check-in
     exam_checkin_title: "Exam Check-in",
+    exam_device_mismatch: "This exam is bound to the device used at check-in. Continue from that device.",
+    exam_device_mismatch_title: "Wrong device",
     token_label: "Token",
     window_closed_early: "Check-in not yet open",
     window_closed_late: "Check-in window has closed",

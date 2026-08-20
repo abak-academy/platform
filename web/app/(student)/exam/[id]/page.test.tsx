@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { act } from "react";
 
 import ExamDetailPage from "./page";
 import type { RegistrationDetail } from "@/lib/types";
+import { ApiError } from "@/lib/api";
 
 const { mockPush } = vi.hoisted(() => ({ mockPush: vi.fn() }));
 
@@ -371,6 +373,23 @@ describe("ExamDetailPage — check-in form (FR27)", () => {
       screen.getByRole("button", { name: /mulai ujian/i })
     ).toBeInTheDocument();
   });
+
+  it("shows device-mismatch copy on check-in error", () => {
+    vi.setSystemTime("2026-07-15T08:45:00Z");
+    render(<ExamDetailPage />);
+
+    fireEvent.change(screen.getByPlaceholderText(/token dari kartu ujian/i), {
+      target: { value: "MYTOKEN" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /check-in/i }));
+
+    const [, options] = checkInMutate.mock.calls[0];
+    options.onError(new ApiError("device_mismatch", "device mismatch", 403));
+
+    expect(toastError).toHaveBeenCalledWith(
+      expect.stringMatching(/terikat ke perangkat check-in/i),
+    );
+  });
 });
 
 // ── Start gate (FR28) ───────────────────────────────────────────────────────
@@ -468,5 +487,29 @@ describe("ExamDetailPage — start gate (FR28)", () => {
     fireEvent.click(screen.getByRole("button", { name: /mulai ujian/i }));
 
     expect(startSessionMutate).toHaveBeenCalledWith("reg-1");
+  });
+
+  it("shows device-mismatch copy when start session is rejected", async () => {
+    registrationState = {
+      ...registrationState,
+      data: {
+        ...sampleWithCheckin,
+        status: "checked_in",
+        checked_in_at: "2026-07-15T08:45:00Z",
+      },
+    };
+    vi.setSystemTime("2026-07-15T09:00:00Z");
+    startSessionMutate.mockRejectedValue(
+      new ApiError("device_mismatch", "device mismatch", 403),
+    );
+
+    render(<ExamDetailPage />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /mulai ujian/i }));
+    });
+
+    expect(toastError).toHaveBeenCalledWith(
+      expect.stringMatching(/terikat ke perangkat check-in/i),
+    );
   });
 });
