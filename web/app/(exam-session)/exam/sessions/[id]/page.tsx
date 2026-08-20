@@ -427,8 +427,14 @@ export default function SessionPage() {
       });
     };
     doSubmit();
+    // `session` and `hasTimer` belong in the deps, not just `remaining <= 0`:
+    // `remaining` starts at 0, so a reconnect that lands an already-expired
+    // session (tab closed past the deadline) leaves that condition unchanged at
+    // `true` and would never re-run this effect — the student would be stranded
+    // on a 00:00 screen with every input and the submit button disabled.
+    // autoSubmittedRef keeps the extra runs from submitting twice.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remaining <= 0]);
+  }, [remaining <= 0, session, hasTimer]);
 
   // Auto-advance when section timer expires (sectioned mode)
   useEffect(() => {

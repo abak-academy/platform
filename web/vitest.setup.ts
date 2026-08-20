@@ -22,11 +22,6 @@ if (typeof document !== "undefined" && !document.execCommand) {
   document.execCommand = vi.fn(() => true);
 }
 
-if (
-  typeof globalThis.localStorage === "undefined" ||
-  typeof globalThis.localStorage.clear !== "function"
-) {
-
 // Node's own experimental global `localStorage` (unconfigured, no
 // --localstorage-file) shadows jsdom's real implementation before vitest's
 // jsdom environment ever copies it onto globalThis — see the KEYS allowlist
