@@ -24,6 +24,7 @@ to know.** Anything else from H1 deliberately does not appear here.
 | 1 | **NF-1** Biteship Level 3 — [E6](e6-shipping-logistics.md) | The PRD listed *"Auto-waybill generation and real-time tracking (logistics Level 2/3)"* under **Explicitly Out of Scope (MVP)**, with only rate calculation (Level 1) in scope. Level 3 reverses that line. **✅ Signed off verbally by the client 2026-07-29. ✅ Written 2026-07-30 (PRD v1.2)** — the out-of-scope bullet is struck through and **FR-STORE-ADM-08a/b/c** and **FR-STORE-05c** added; FR-STORE-ADM-08 and FR-SA-14b amended. |
 | 2 | **NF-5** load test at 5000 — [E7](e7-scale-event-readiness.md) | The PRD success metric and Phase 4 both say **10,000 CCU**. Treating 5000-on-current-spec as phase 1 is a phasing decision. **✅ Written 2026-07-30 (PRD v1.2)** — 5,000 on current VM spec is phase 1, the 10,000 target unchanged as phase 2. |
 | 10 | **FB-26** multi-attempt exams — [H1 §8](h1-live-bugs-2026-07-30.md#8-fb-26--multi-attempt-exams-approved-2026-07-30) | Reverses **FR-COMP-02 (Must)**, which deferred multi-attempt on 2026-07-07 (*"`max_attempts` is stored but not consulted"*), plus two TRD column comments. **✅ Signed off by the client 2026-07-30. ✅ Written 2026-07-30** — FR-COMP-02, the two TRD comments and the two schema.dbml notes all state the `max_attempts IS NULL or 0 = single-attempt` rule. |
+| 12 | **NULL max_attempts = unlimited** — [exam-max-attempts-null-unlimited](exam-max-attempts-null-unlimited.md) | Reverses the FR18 half of entry 10: **`NULL` is unlimited retake**, not a single sitting. **`0` and `1` remain cannot-retake.** No backfill — existing NULL exam rows flip when the code ships. |
 | 11 | **FB-32** audio scope — [H1 §9](h1-live-bugs-2026-07-30.md#9-fb-32--audio-is-per-question-and-per-section-answered-2026-07-30) | The PRD contradicted itself: prose promised audio *"per question"*, **FR-COMP-19a** and **FR-EXAM-05** specified section-level only, **FR-EXAM-01** listed images only. **✅ Resolved by the client 2026-07-30 — both scopes are supported.** FR-EXAM-01 must gain audio; FR-COMP-19a stands. |
 
 ### Amendment status — all closed
@@ -51,6 +52,9 @@ to know.** Anything else from H1 deliberately does not appear here.
 4. **FB-26** (multi-attempt exams) — signed off 2026-07-30, **written 2026-07-30**. FR-COMP-02, the
    TRD's comments on `max_attempts` and `attempts_used`, and the matching `schema.dbml` notes now state
    the `max_attempts IS NULL or 0 = single-attempt` rule.
+5. **NULL = unlimited** — **2026-08-20**, repo-side only until PRD/TRD catch up. See
+   [exam-max-attempts-null-unlimited](exam-max-attempts-null-unlimited.md). `NULL` is unlimited;
+   `0`/`1` stay one sitting. Entry 10’s “NULL or 0 = single-attempt” is stale for NULL.
 
 **`requirements/` is outside any git repository** — `git rev-parse --show-toplevel` fails there — so none
 of these could ride an implementation PR. This ledger is the repo-side record and is what changes with

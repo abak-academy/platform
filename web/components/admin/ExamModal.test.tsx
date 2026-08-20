@@ -261,6 +261,7 @@ describe("ExamModal", () => {
     expect(screen.getByLabelText(/jendela check-in/i)).toHaveAttribute("min", "0");
     expect(screen.getByLabelText(/jendela toleransi/i)).toHaveAttribute("min", "0");
     expect(screen.getByLabelText(/maks\. percobaan/i)).toHaveAttribute("min", "0");
+    expect(screen.getByText(/kosongkan untuk tidak terbatas/i)).toBeInTheDocument();
   });
 
   it("omits empty window and attempts from create payload", async () => {

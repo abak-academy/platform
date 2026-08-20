@@ -1206,6 +1206,9 @@ export const DICT = {
     exam_packages_modal_check_in_window: "Jendela Check-in (menit)",
     exam_packages_modal_grace_window: "Jendela Toleransi (menit)",
     exam_packages_modal_max_attempts: "Maks. Percobaan",
+    exam_packages_modal_max_attempts_hint:
+      "Kosongkan untuk tidak terbatas. 0 atau 1 berarti tidak bisa ulangi.",
+    exam_packages_overview_no_retake: "Tidak bisa ulangi (1)",
     exam_packages_modal_section_card: "Kartu Peserta",
     exam_packages_modal_card_notes_hint:
       "Poin \"Perhatian\" yang dicetak di kartu peserta ujian ini. Maksimal 5 poin, 55 karakter per poin agar muat satu baris. Catatan check-in ditambahkan otomatis di akhir.",
@@ -2718,6 +2721,9 @@ export const DICT = {
     exam_packages_modal_check_in_window: "Check-in Window (minutes)",
     exam_packages_modal_grace_window: "Grace Window (minutes)",
     exam_packages_modal_max_attempts: "Max Attempts",
+    exam_packages_modal_max_attempts_hint:
+      "Leave blank for unlimited. 0 or 1 means cannot retake.",
+    exam_packages_overview_no_retake: "Cannot retake (1)",
     exam_packages_modal_section_card: "Participant Card",
     exam_packages_modal_card_notes_hint:
       "The \"Perhatian\" bullets printed on this exam's participant card. Up to 5 bullets, 55 characters each so they fit on one line. The check-in note is appended automatically.",

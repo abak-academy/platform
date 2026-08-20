@@ -22,8 +22,9 @@ var ErrSortOrderConflict = errors.New("sort order conflict")
 // ErrInvalidCursor — malformed pagination cursor — surfaced for service-layer mapping to 4xx.
 var ErrInvalidCursor = errors.New("invalid pagination cursor")
 
-// ErrNoAttemptsLeft — CreateExamSessionTx's atomic attempts_used guard matched no row —
-// surfaced for service-layer mapping to ErrAlreadyAttempted.
+// ErrNoAttemptsLeft — CreateExamSessionTx's atomic guard matched no row (ceiling
+// exhausted, or an in_progress session already exists). Surfaced for service-layer
+// mapping: resume the live session when one exists, otherwise ErrAlreadyAttempted.
 var ErrNoAttemptsLeft = errors.New("no attempts left")
 
 // ErrNoActiveSection — AdvanceSessionSectionTx's atomic status='active' guard matched no
@@ -1882,17 +1883,44 @@ func (r *Repository) CheckInExamTx(ctx context.Context, tx pgx.Tx, regID uuid.UU
 // optionally stamps checked_in_at when NULL, and inserts an exam_session row.
 // The attempts_used < ceiling predicate is the atomic attempt guard: the service's
 // read-then-act check alone would let two concurrent starts both pass. maxAttempts
-// is the exam's raw max_attempts column value (nil or 0 means single-attempt, FR18);
-// COALESCE(NULLIF($2, 0), 1) resolves the ceiling right here, the sole authority
-// (Invariant 4, NF3) — it is not pre-resolved by the caller.
+// is the exam's raw max_attempts column: nil means unlimited, 0 or 1 means a
+// single sitting (COALESCE(NULLIF($2, 0), 1)), >= 2 is that ceiling. A
+// FOR UPDATE on the registration row plus a live-session count is the
+// one-live-session lock — a second create while a sitting is still open
+// returns ErrNoAttemptsLeft even when the ceiling is unlimited.
 func (r *Repository) CreateExamSessionTx(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration, maxAttempts *int) (model.ExamSession, error) {
-	var attemptsUsed int
+	var lockedID uuid.UUID
 	err := tx.QueryRow(ctx,
+		`SELECT id FROM exam_registration WHERE id = $1 FOR UPDATE`,
+		reg.ID,
+	).Scan(&lockedID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.ExamSession{}, ErrNotFound
+		}
+		return model.ExamSession{}, err
+	}
+
+	var live int
+	err = tx.QueryRow(ctx,
+		`SELECT COUNT(*) FROM exam_session WHERE registration_id = $1 AND status = 'in_progress'`,
+		reg.ID,
+	).Scan(&live)
+	if err != nil {
+		return model.ExamSession{}, err
+	}
+	if live > 0 {
+		return model.ExamSession{}, ErrNoAttemptsLeft
+	}
+
+	var attemptsUsed int
+	err = tx.QueryRow(ctx,
 		`UPDATE exam_registration
 		SET attempts_used = attempts_used + 1,
 		    status = 'in_progress',
 		    checked_in_at = COALESCE(checked_in_at, now())
-		WHERE id = $1 AND attempts_used < COALESCE(NULLIF($2, 0), 1)
+		WHERE id = $1
+		  AND ($2::int IS NULL OR attempts_used < COALESCE(NULLIF($2::int, 0), 1))
 		RETURNING attempts_used`,
 		reg.ID, maxAttempts,
 	).Scan(&attemptsUsed)
@@ -1921,6 +1949,30 @@ func (r *Repository) CreateExamSessionTx(ctx context.Context, tx pgx.Tx, reg mod
 		return model.ExamSession{}, err
 	}
 	return s, nil
+}
+
+// GetInProgressSessionForRegistration returns the student's live session for a
+// registration, if any. When more than one in_progress row exists (legacy data),
+// the highest attempt_number wins. ErrNotFound when none is live.
+func (r *Repository) GetInProgressSessionForRegistration(ctx context.Context, registrationID, studentID uuid.UUID) (*model.ExamSession, error) {
+	var s model.ExamSession
+	err := scanExamSession(r.pool.QueryRow(ctx,
+		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
+			submitted_at, extended_until, admin_submitted, score, certificate_key,
+			certificate_generated_at, certificate_number, last_saved_at, current_position, status, created_at
+		FROM exam_session
+		WHERE registration_id = $1 AND student_id = $2 AND status = 'in_progress'
+		ORDER BY attempt_number DESC
+		LIMIT 1`,
+		registrationID, studentID,
+	), &s)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &s, nil
 }
 
 // GetExamSessionForStudent returns a session scoped to the owning student.

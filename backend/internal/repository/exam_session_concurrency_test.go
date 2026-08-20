@@ -132,11 +132,10 @@ func raceCreateExamSessionTx(t *testing.T, pool *pgxpool.Pool, n int, maxAttempt
 	return successCount, attemptNumbers, nonAttemptErrs
 }
 
-// TestCreateExamSessionTx_ConcurrentStarts_SingleAttempt races n goroutines against
-// one registration with max_attempts=nil (single-attempt, FR18). Exactly one must
-// succeed with attempt_number 1; every other goroutine must get ErrNoAttemptsLeft —
-// the atomic `WHERE attempts_used < ceiling` guard has to serialize the winner even
-// though every goroutine issues its UPDATE inside the same overlapping window.
+// TestCreateExamSessionTx_ConcurrentStarts_OneLiveSession races n goroutines against
+// one registration with max_attempts=nil (unlimited). Exactly one must succeed with
+// attempt_number 1; every other goroutine must get ErrNoAttemptsLeft — the atomic
+// NOT EXISTS in_progress guard serializes the winner.
 func TestCreateExamSessionTx_ConcurrentStarts_SingleAttempt(t *testing.T) {
 	n := 10
 	if maxProcs := runtime.GOMAXPROCS(0); maxProcs < 2 {
@@ -158,8 +157,8 @@ func TestCreateExamSessionTx_ConcurrentStarts_SingleAttempt(t *testing.T) {
 }
 
 // TestCreateExamSessionTx_ConcurrentStarts_MaxAttemptsTwo races n goroutines against
-// one registration with max_attempts=2. Exactly two must succeed, with attempt_number
-// {1,2} and no duplicate — same guard, retested at the wider ceiling.
+// one registration with max_attempts=2. The live-session lock still admits only one
+// winner (attempt_number 1); the rest get ErrNoAttemptsLeft.
 func TestCreateExamSessionTx_ConcurrentStarts_MaxAttemptsTwo(t *testing.T) {
 	n := 10
 	if maxProcs := runtime.GOMAXPROCS(0); maxProcs < 2 {
@@ -172,18 +171,10 @@ func TestCreateExamSessionTx_ConcurrentStarts_MaxAttemptsTwo(t *testing.T) {
 	for _, err := range nonAttemptErrs {
 		t.Errorf("unexpected error: %v", err)
 	}
-	if successCount != 2 {
-		t.Fatalf("successful starts: want 2, got %d (attempt_numbers=%v)", successCount, attemptNumbers)
+	if successCount != 1 {
+		t.Fatalf("successful starts: want 1, got %d (attempt_numbers=%v)", successCount, attemptNumbers)
 	}
-
-	seen := map[int]bool{}
-	for _, a := range attemptNumbers {
-		if seen[a] {
-			t.Errorf("duplicate attempt_number %d among winners: %v", a, attemptNumbers)
-		}
-		seen[a] = true
-	}
-	if !seen[1] || !seen[2] {
-		t.Errorf("attempt_numbers: want {1,2}, got %v", attemptNumbers)
+	if len(attemptNumbers) != 1 || attemptNumbers[0] != 1 {
+		t.Errorf("winner attempt_number: want [1], got %v", attemptNumbers)
 	}
 }

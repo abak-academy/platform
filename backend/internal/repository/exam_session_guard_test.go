@@ -35,11 +35,10 @@ func seedGuardRegistration(t *testing.T, pool *pgxpool.Pool) (model.ExamRegistra
 }
 
 // A second CreateExamSessionTx for the same registration must fail atomically at the
-// SQL layer (WHERE attempts_used < ceiling), not rely on the service's read-then-act
+// SQL layer (NOT EXISTS in_progress), not rely on the service's read-then-act
 // check — two concurrent starts would otherwise both pass the service guard and create
-// two live sessions for a 1-attempt exam. maxAttempts=nil resolves to a ceiling of 1
-// (FR18: NULL/0 means single-attempt) — this is the new threshold the guard is retested
-// against, replacing the old literal attempts_used = 0 predicate.
+// two live sessions. maxAttempts=nil is unlimited, so this rejection is the live-session
+// lock, not the attempt ceiling.
 func TestCreateExamSessionTx_SecondCallRejected(t *testing.T) {
 	pool := newGradingTestPool(t)
 	repo := New(pool)
@@ -82,8 +81,26 @@ func TestCreateExamSessionTx_SecondCallRejected(t *testing.T) {
 // intptr is a small helper for building *int max_attempts arguments in these tests.
 func intptr(n int) *int { return &n }
 
+func markSessionSubmitted(t *testing.T, pool *pgxpool.Pool, sessionID, regID uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx,
+		`UPDATE exam_session SET status = 'submitted', submitted_at = now() WHERE id = $1`,
+		sessionID,
+	); err != nil {
+		t.Fatalf("mark session submitted: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE exam_registration SET status = 'submitted' WHERE id = $1`,
+		regID,
+	); err != nil {
+		t.Fatalf("mark registration submitted: %v", err)
+	}
+}
+
 // TestCreateExamSessionTx_MaxAttemptsTwo asserts FB-26's multi-attempt ceiling: two
-// starts succeed with attempt_number 1 then 2, and a third returns ErrNoAttemptsLeft.
+// starts succeed with attempt_number 1 then 2 after the first sitting is submitted,
+// and a third returns ErrNoAttemptsLeft.
 func TestCreateExamSessionTx_MaxAttemptsTwo(t *testing.T) {
 	pool := newGradingTestPool(t)
 	repo := New(pool)
@@ -106,6 +123,7 @@ func TestCreateExamSessionTx_MaxAttemptsTwo(t *testing.T) {
 	if sess1.AttemptNumber != 1 {
 		t.Errorf("first attempt_number: want 1, got %d", sess1.AttemptNumber)
 	}
+	markSessionSubmitted(t, pool, sess1.ID, reg.ID)
 
 	tx2, err := repo.BeginTx(ctx)
 	if err != nil {
@@ -133,9 +151,79 @@ func TestCreateExamSessionTx_MaxAttemptsTwo(t *testing.T) {
 	}
 }
 
-// TestCreateExamSessionTx_MaxAttemptsNilAndZero asserts FR18: max_attempts IS NULL or
-// = 0 both mean single-attempt — each allows exactly one start before the second is
-// rejected.
+// TestCreateExamSessionTx_MaxAttemptsZero asserts 0 means a single sitting.
+func TestCreateExamSessionTx_MaxAttemptsZero(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	reg, _ := seedGuardRegistration(t, pool)
+
+	tx1, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin tx1: %v", err)
+	}
+	sess, err := repo.CreateExamSessionTx(ctx, tx1, reg, intptr(0))
+	if err != nil {
+		t.Fatalf("first CreateExamSessionTx: %v", err)
+	}
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatalf("commit tx1: %v", err)
+	}
+	markSessionSubmitted(t, pool, sess.ID, reg.ID)
+
+	tx2, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin tx2: %v", err)
+	}
+	defer tx2.Rollback(ctx)
+	_, err = repo.CreateExamSessionTx(ctx, tx2, reg, intptr(0))
+	if !errors.Is(err, ErrNoAttemptsLeft) {
+		t.Fatalf("second CreateExamSessionTx: want ErrNoAttemptsLeft, got %v", err)
+	}
+}
+
+// TestCreateExamSessionTx_MaxAttemptsNilAllowsRetakeAfterSubmit asserts NULL is
+// unlimited: a second start succeeds once the first sitting is submitted.
+func TestCreateExamSessionTx_MaxAttemptsNilAllowsRetakeAfterSubmit(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	reg, _ := seedGuardRegistration(t, pool)
+
+	tx1, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin tx1: %v", err)
+	}
+	sess1, err := repo.CreateExamSessionTx(ctx, tx1, reg, nil)
+	if err != nil {
+		t.Fatalf("first CreateExamSessionTx: %v", err)
+	}
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatalf("commit tx1: %v", err)
+	}
+	markSessionSubmitted(t, pool, sess1.ID, reg.ID)
+
+	tx2, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin tx2: %v", err)
+	}
+	sess2, err := repo.CreateExamSessionTx(ctx, tx2, reg, nil)
+	if err != nil {
+		t.Fatalf("second CreateExamSessionTx: %v", err)
+	}
+	if err := tx2.Commit(ctx); err != nil {
+		t.Fatalf("commit tx2: %v", err)
+	}
+	if sess2.AttemptNumber != 2 {
+		t.Errorf("second attempt_number: want 2, got %d", sess2.AttemptNumber)
+	}
+}
+
+// TestCreateExamSessionTx_SecondStartWhileInProgressRejected covers both
+// unlimited (nil) and single-sitting (0): a second create while the first
+// session is still in_progress matches no row.
 func TestCreateExamSessionTx_MaxAttemptsNilAndZero(t *testing.T) {
 	cases := []struct {
 		name        string
