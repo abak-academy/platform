@@ -46,8 +46,13 @@ If the first single already failed, a row with `email = ''` already exists (earl
 
 1. **Normalize at write.** `normalizeOptionalEmail`: nil / whitespace-only → `nil`, else trim + lowercase. Use in `CreateStudent`, `CreateUser`, `CreateAdminUser`, `UpdateUserProfile`.
 2. **Map unique violation.** `RegisterStudent` maps `23505` to `ErrEmailTaken` → 409 `email_taken`, not 500.
-3. **Migration `0063`.** Backfill `email = ''` (and whitespace) to `NULL`. Recreate `idx_users_email_active` with `btrim(email) <> ''` so blanks never participate even if a client forgets to nil.
-4. **Frontend.** Omit empty optional `email` (and other empty optional strings) from the register JSON. Not sufficient alone.
+3. **Frontend.** Omit empty optional `email` (and other empty optional strings) from the register JSON. Not sufficient alone.
+4. **Do not change `idx_users_email_active`.** Uniqueness on real emails stays as in 0002. Go already stores blanks as `NULL`, so new registers do not occupy the index. Leftover `email = ''` rows (from earlier UI registers) do not block new `NULL` emails; clean them by hand if desired:
+
+```sql
+UPDATE users SET email = NULL
+WHERE email IS NOT NULL AND btrim(email) = '';
+```
 
 Do not require email. Do not only change the React form.
 
@@ -58,7 +63,6 @@ Do not require email. Do not only change the React form.
 - Two single registers with omitted / `""` / whitespace-only email both succeed; persisted `email IS NULL`.
 - Two registers with the same real email return 409 `email_taken`, not 500.
 - Bulk empty email column still creates multiple `NULL` emails.
-- Existing `email = ''` rows are NULL after migration.
 
 ---
 

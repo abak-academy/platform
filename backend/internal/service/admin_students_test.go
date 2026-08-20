@@ -315,18 +315,6 @@ func TestRegisterStudent_Integration(t *testing.T) {
 			t.Errorf("want ErrEmailTaken, got %v", err)
 		}
 	})
-
-	t.Run("raw empty-string emails are excluded from idx_users_email_active", func(t *testing.T) {
-		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
-		insert := `INSERT INTO users (email, username, password_hash, role, name, school_id, status)
-			VALUES ('', $1, '', 'student', $2, $3, 'active')`
-		if _, err := repo.Pool().Exec(ctx, insert, "rawblank_"+uniqueSuffix(), "Raw Blank One", schoolID); err != nil {
-			t.Fatalf("first raw empty email insert: %v", err)
-		}
-		if _, err := repo.Pool().Exec(ctx, insert, "rawblank_"+uniqueSuffix(), "Raw Blank Two", schoolID); err != nil {
-			t.Fatalf("second raw empty email insert should not hit unique index: %v", err)
-		}
-	})
 }
 
 func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
