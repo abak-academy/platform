@@ -494,7 +494,10 @@ func seedExamWithMCQ(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 		t.Fatalf("insert test_question: %v", err)
 	}
 
-	for i, o := range []struct{ key, text string; correct bool }{
+	for i, o := range []struct {
+		key, text string
+		correct   bool
+	}{
 		{"a", "Correct answer", true},
 		{"b", "Wrong answer", false},
 	} {
@@ -846,6 +849,47 @@ func TestAdminResults_RoutePrecedence(t *testing.T) {
 	ct := rec.Header().Get("Content-Type")
 	if ct != "text/csv" {
 		t.Errorf("Content-Type: want text/csv, got %q", ct)
+	}
+}
+
+func TestAdminResults_HiddenFutureRelease_RemainsAdminVisible(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+	schoolID := seedSchool(t, env.pool)
+	adminID := seedUserWithSchool(t, env.pool, "admin_school", "Results Admin", schoolID)
+	studentID := seedUserWithSchool(t, env.pool, "student", "Hidden Result Student", schoolID)
+	examID := seedExamWithMCQ(t, env.pool)
+	if _, err := env.pool.Exec(context.Background(),
+		`UPDATE exam SET result_config = 'hidden', result_release_at = now() + interval '1 day' WHERE id = $1`, examID,
+	); err != nil {
+		t.Fatalf("update exam visibility: %v", err)
+	}
+	seedSubmittedSession(t, env.pool, studentID, examID)
+	token := mintAdminToken(t, env, adminID.String(), schoolID)
+
+	listRec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String(), token)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list: want 200, got %d body=%s", listRec.Code, listRec.Body.String())
+	}
+	var listResp struct {
+		Data []struct {
+			SessionID string `json:"session_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(listResp.Data) != 1 {
+		t.Fatalf("want hidden result visible to admin, got %d rows", len(listResp.Data))
+	}
+
+	detailRec := getRequest(t, env.e, "/api/v1/admin/results/"+listResp.Data[0].SessionID, token)
+	if detailRec.Code != http.StatusOK {
+		t.Fatalf("detail: want 200, got %d body=%s", detailRec.Code, detailRec.Body.String())
+	}
+	exportRec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+examID.String(), token)
+	records, err := csv.NewReader(bytes.NewReader(exportRec.Body.Bytes())).ReadAll()
+	if exportRec.Code != http.StatusOK || err != nil || len(records) != 2 {
+		t.Fatalf("export: want header and result, status=%d records=%d err=%v", exportRec.Code, len(records), err)
 	}
 }
 

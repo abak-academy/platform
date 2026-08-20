@@ -43,9 +43,8 @@ import { stripHtmlToPlainText } from "@/lib/rich-text";
 import { useAuthStore } from "@/stores/auth";
 import type { ExamLeaderboardEntry, GradingEssayItem, GradingSessionItem } from "@/lib/types";
 
-// admin_school gets a scoped view — only the exam summary + the
-// registrations action (bulk order/grant), never the content-management tabs.
-const SCHOOL_SCOPED_TABS: Tab[] = ["overview", "registrations"];
+// admin_school gets scoped operational tabs, never content-management tabs.
+const SCHOOL_SCOPED_TABS: Tab[] = ["overview", "registrations", "results"];
 
 // Price/status/publish for an exam-type product live on the attached Product(s),
 // managed via /admin/products (mirrors Course) — not here.

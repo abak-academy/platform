@@ -14,23 +14,14 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-// ListSchoolResults returns cursor-paginated fully-graded submitted sessions for an
-// exam, scoped to a single school (FR-SCHOOL-08-01..11). Exam-level gates (hidden,
-// locked) return an empty result, not an error (FR-SCHOOL-08-05). Cursor errors are
-// surfaced as 422 via mapCursorErr.
+// ListSchoolResults returns fully graded submissions independent of student result visibility.
 func (s *Service) ListSchoolResults(ctx context.Context, examID uuid.UUID, schoolID, q, cursor string, limit int) ([]model.AdminResultRow, string, error) {
-	exam, err := s.storeRepo.GetExamByID(ctx, examID)
+	_, err := s.storeRepo.GetExamByID(ctx, examID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, "", ErrExamNotFound
 		}
 		return nil, "", err
-	}
-
-	// Exam-level gates only (FR-SCHOOL-08-05): forcing both bools true collapses
-	// the 3-gate check to gates 1 (hidden) and 3 (locked), skipping gate 2 (grading).
-	if _, ok := resultGate(*exam, true, true); ok {
-		return []model.AdminResultRow{}, "", nil
 	}
 
 	if limit <= 0 || limit > 100 {
@@ -80,8 +71,7 @@ func (s *Service) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID
 		qs = append(qs, td.Questions...)
 	}
 
-	// Gate check (FR-SCHOOL-08-13): all three gates map to ErrSessionNotFound.
-	if _, ok := resultGate(*exam, sess.Status == "submitted", isFullyGraded(qs, answers)); ok {
+	if sess.Status != "submitted" || !isFullyGraded(qs, answers) {
 		return model.AdminResultDetail{}, ErrSessionNotFound
 	}
 

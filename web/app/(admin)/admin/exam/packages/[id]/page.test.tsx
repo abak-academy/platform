@@ -772,7 +772,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     };
   });
 
-  it("admin_school sees only Overview and Registrations tabs, no Edit button", async () => {
+  it("admin_school sees Overview, Registrations, and Results tabs only", async () => {
     mockRole = "admin_school";
     render(<ExamPackageDetailPage />);
 
@@ -784,10 +784,13 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(screen.getByRole("button", { name: /^pendaftaran$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^tes$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^sertifikat$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^hasil$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^hasil$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^penilaian$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Leaderboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^hasil$/i }));
+    expect(screen.getByTestId("exam-results-tab")).toHaveTextContent("exam-1");
   });
 
   it("super_admin still sees all seven tabs and the Edit button", async () => {
