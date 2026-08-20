@@ -21,9 +21,26 @@ func (h *Handler) AdminListExams(c echo.Context) error {
 			limit = n
 		}
 	}
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	// registration_count is school-scoped the same way AdminListExamRegistrations
+	// is: admin_school only sees its own school's count, not resolveSchoolScope,
+	// which would 403 admin_exam (whose claims.SchoolID is nil).
+	var schoolFilter *string
+	if claims.Role == "admin_school" {
+		if claims.SchoolID == nil {
+			return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+		}
+		schoolFilter = claims.SchoolID
+	}
 	filter := repository.ExamFilter{
-		Cursor: c.QueryParam("cursor"),
-		Limit:  limit,
+		Cursor:       c.QueryParam("cursor"),
+		Limit:        limit,
+		Q:            c.QueryParam("q"),
+		Status:       c.QueryParam("status"),
+		SchoolFilter: schoolFilter,
 	}
 
 	exams, nextCursor, err := h.svc.ListExams(c.Request().Context(), filter)

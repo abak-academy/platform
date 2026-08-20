@@ -27,6 +27,7 @@ func (h *Handler) AdminListTests(c echo.Context) error {
 	filter := repository.TestFilter{
 		Subject: c.QueryParam("subject"),
 		Topic:   c.QueryParam("topic"),
+		Q:       c.QueryParam("q"),
 		Cursor:  c.QueryParam("cursor"),
 		Limit:   limit,
 	}

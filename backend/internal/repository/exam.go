@@ -117,6 +117,7 @@ func scanQuestionOption(row interface{ Scan(dest ...any) error }, o *model.Quest
 type TestFilter struct {
 	Subject string
 	Topic   string
+	Q       string
 	Cursor  string
 	Limit   int
 }
@@ -233,6 +234,11 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 	if filter.Topic != "" {
 		query += fmt.Sprintf(` AND t.topic = $%d`, argIdx)
 		args = append(args, filter.Topic)
+		argIdx++
+	}
+	if filter.Q != "" {
+		query += fmt.Sprintf(` AND t.title ILIKE '%%' || $%d || '%%'`, argIdx)
+		args = append(args, filter.Q)
 		argIdx++
 	}
 	if filter.Cursor != "" {
@@ -1125,6 +1131,11 @@ func insertQuestionStatements(ctx context.Context, tx pgx.Tx, questionID uuid.UU
 type ExamFilter struct {
 	Cursor string
 	Limit  int
+	Q      string
+	Status string
+	// SchoolFilter scopes the registration_count subquery to one school's
+	// students; nil counts every registration (mirrors GetExamRoster).
+	SchoolFilter *string
 }
 
 // decodeCardNotes turns the card_notes jsonb column into []string. pgx would
@@ -1183,7 +1194,7 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.Exam
 		&item.ExamNumber, &item.CertificateEnabled, &item.CertificateTemplateHTML,
 		&item.EndScreenImageURL, &item.EndScreenPromoText,
 		&item.CardEnabled, &cardNotes,
-		&item.HasPublishedProduct,
+		&item.HasPublishedProduct, &item.RegistrationCount,
 	)
 	if err != nil {
 		return err
@@ -1290,12 +1301,29 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 			WHERE pe.exam_id = e.id AND p.status = 'published'
 			  AND (p.available_from IS NULL OR p.available_from <= now())
 			  AND (p.available_until IS NULL OR p.available_until >= now())
-		) AS has_published_product
+		) AS has_published_product,
+		(
+			SELECT COUNT(*) FROM exam_registration r
+			JOIN users u ON u.id = r.student_id
+			WHERE r.exam_id = e.id AND ($1::uuid IS NULL OR u.school_id = $1)
+		) AS registration_count
 	FROM exam e
 	WHERE 1=1`
-	args := []interface{}{}
-	argIdx := 1
+	// registration_count's placeholder is rendered in the SELECT list, before
+	// WHERE, so it must bind first regardless of which other predicates apply.
+	args := []interface{}{filter.SchoolFilter}
+	argIdx := 2
 
+	if filter.Q != "" {
+		query += fmt.Sprintf(` AND e.title ILIKE '%%' || $%d || '%%'`, argIdx)
+		args = append(args, filter.Q)
+		argIdx++
+	}
+	if filter.Status != "" {
+		query += fmt.Sprintf(` AND e.status = $%d`, argIdx)
+		args = append(args, filter.Status)
+		argIdx++
+	}
 	if filter.Cursor != "" {
 		query += fmt.Sprintf(` AND e.id > $%d`, argIdx)
 		args = append(args, filter.Cursor)
