@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import ExamPackagesPage from "./page";
 
 const push = vi.fn();
@@ -40,6 +40,7 @@ const sampleExams = [
     title: "UTS Matematika",
     scheduled_at: "2026-07-01T08:00:00Z",
     is_free: false,
+    status: "draft",
     product_status: "draft",
     product_price: 50000,
     timer_mode: "overall",
@@ -53,6 +54,7 @@ const sampleExams = [
     title: "UAS IPA",
     scheduled_at: "2026-07-15T09:00:00Z",
     is_free: true,
+    status: "published",
     product_status: "published",
     product_price: 0,
     timer_mode: "per_test",
@@ -87,7 +89,7 @@ describe("ExamPackagesPage", () => {
     expect(push).toHaveBeenCalledWith("/admin/exam/packages/e1");
   });
 
-  it("renders the packages table with exam titles and the create button", async () => {
+  it("renders the package card list with exam titles and the create button", async () => {
     examsState = {
       data: { data: sampleExams },
       isLoading: false,
@@ -103,6 +105,52 @@ describe("ExamPackagesPage", () => {
     });
 
     expect(screen.getByRole("button", { name: /buat ujian/i })).toBeInTheDocument();
+    expect(document.querySelector("table")).not.toBeInTheDocument();
+  });
+
+  it("renders one card row per package with scheduled date, timer mode, and status badge", async () => {
+    examsState = {
+      data: { data: sampleExams },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<ExamPackagesPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
+    });
+
+    const rows = screen.getAllByTestId("package-row");
+    expect(rows).toHaveLength(sampleExams.length);
+
+    const row1 = screen.getByText("UTS Matematika").closest("[data-testid=package-row]") as HTMLElement;
+    expect(within(row1).getByText("overall")).toBeInTheDocument();
+    expect(within(row1).getByText("draft")).toBeInTheDocument();
+    expect(within(row1).getByText(/2026/)).toBeInTheDocument();
+
+    const row2 = screen.getByText("UAS IPA").closest("[data-testid=package-row]") as HTMLElement;
+    expect(within(row2).getByText("published")).toBeInTheDocument();
+  });
+
+  it("navigates to the exam detail page on Enter key press", async () => {
+    examsState = {
+      data: { data: sampleExams },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<ExamPackagesPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
+    });
+
+    const row = screen.getByText("UTS Matematika").closest("[data-testid=package-row]") as HTMLElement;
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(push).toHaveBeenCalledWith("/admin/exam/packages/e1");
   });
 
   it("hides the create button for admin_school (browse-only access to place bulk orders)", async () => {

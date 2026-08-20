@@ -148,7 +148,7 @@ describe("TestDetailPage", () => {
     push.mockReset();
   });
 
-  it("renders the test metadata header", async () => {
+  it("renders the test metadata via AdminPageHeader", async () => {
     renderWithClient(<TestDetailPage />);
 
     await waitFor(() => {

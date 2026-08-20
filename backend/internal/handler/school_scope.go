@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/service"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -33,23 +34,7 @@ func scopeHandled(err error) bool {
 // mapServiceError.
 func (h *Handler) resolveSchoolScope(c echo.Context, claims *infra.Claims) (string, error) {
 	if claims.Role == "super_admin" {
-		sid := c.QueryParam("school_id")
-		if sid == "" {
-			return "", nil
-		}
-		if _, err := uuid.Parse(sid); err != nil {
-			c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "school_id must be a valid UUID"})
-			return "", errScopeDone
-		}
-		exists, err := h.svc.SchoolExists(c.Request().Context(), sid)
-		if err != nil {
-			return "", err
-		}
-		if !exists {
-			c.JSON(http.StatusNotFound, APIError{Code: "not_found", Message: "school not found"})
-			return "", errScopeDone
-		}
-		return sid, nil
+		return h.resolveGlobalSchoolParam(c)
 	}
 
 	if claims.SchoolID == nil {
@@ -63,4 +48,39 @@ func (h *Handler) resolveSchoolScope(c echo.Context, claims *infra.Claims) (stri
 	}
 
 	return *claims.SchoolID, nil
+}
+
+// resolveGlobalSchoolParam reads ?school_id= for a role that may read across
+// every school: empty means "not scoped to any school", a present value must
+// parse as a UUID and reference an existing school.
+func (h *Handler) resolveGlobalSchoolParam(c echo.Context) (string, error) {
+	sid := c.QueryParam("school_id")
+	if sid == "" {
+		return "", nil
+	}
+	if _, err := uuid.Parse(sid); err != nil {
+		c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "school_id must be a valid UUID"})
+		return "", errScopeDone
+	}
+	exists, err := h.svc.SchoolExists(c.Request().Context(), sid)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		c.JSON(http.StatusNotFound, APIError{Code: "not_found", Message: "school not found"})
+		return "", errScopeDone
+	}
+	return sid, nil
+}
+
+// resolveResultsSchoolScope is resolveSchoolScope with admin_exam also treated
+// as unscoped: it manages the exam catalogue globally and owns no school, so
+// results default to every school. Deliberately narrow — widening
+// resolveSchoolScope itself would also unscope /admin/dashboard/exam, which
+// admin_exam reaches via sessions:read.
+func (h *Handler) resolveResultsSchoolScope(c echo.Context, claims *infra.Claims) (string, error) {
+	if claims.Role == service.RoleAdminExam {
+		return h.resolveGlobalSchoolParam(c)
+	}
+	return h.resolveSchoolScope(c, claims)
 }

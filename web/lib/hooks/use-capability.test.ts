@@ -12,6 +12,7 @@ describe("admin_exam capabilities", () => {
     "sections:*",
     "sessions:*",
     "uploads:write",
+    "results:read",
   ])("grants '%s'", (cap) => {
     expect(hasCapability("admin_exam", cap)).toBe(true);
   });

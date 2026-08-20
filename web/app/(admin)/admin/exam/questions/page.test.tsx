@@ -209,13 +209,13 @@ describe("QuestionBankPage", () => {
     });
   });
 
-  it("opens read-only preview on row click", async () => {
+  it("opens read-only preview from the view control", async () => {
     renderWithClient(<QuestionBankPage />);
 
     await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
 
-    const row = screen.getByText("What is 2+2?").closest("tr");
-    fireEvent.click(row!);
+    const row = screen.getByText("What is 2+2?").closest("tr") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /action_view/i }));
 
     await waitFor(() => {
       const dialog = screen.getByRole("dialog");
@@ -256,7 +256,11 @@ describe("QuestionBankPage", () => {
 
     await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByText("What is 2+2?").closest("tr")!);
+    fireEvent.click(
+      within(screen.getByText("What is 2+2?").closest("tr") as HTMLElement).getByRole("button", {
+        name: /action_view/i,
+      })
+    );
 
     await waitFor(() =>
       expect(screen.getByRole("dialog")).toBeInTheDocument()
@@ -443,6 +447,26 @@ describe("QuestionBankPage", () => {
     expect(toast.error).not.toHaveBeenCalledWith("error_generic");
 
     vi.unstubAllGlobals();
+  });
+
+  it("opens the preview from an explicit labelled control, not the row", async () => {
+    renderWithClient(<QuestionBankPage />);
+
+    await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
+
+    const row = screen.getByText("What is 2+2?").closest("tr") as HTMLElement;
+    // The row itself carries no interactivity; the preview is an explicit,
+    // labelled control so it is announced and reachable like any other button.
+    expect(row).not.toHaveAttribute("role");
+    expect(row).not.toHaveAttribute("tabIndex");
+    expect(within(row).getByRole("button", { name: /action_delete/i })).toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole("button", { name: /action_view/i }));
+
+    await waitFor(() => {
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("What is 2+2?")).toBeInTheDocument();
+    });
   });
 
   it("disables the delete control for a row with in_live_exam true", async () => {

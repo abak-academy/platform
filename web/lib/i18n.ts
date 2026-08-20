@@ -504,6 +504,7 @@ export const DICT = {
     changes_saved: "Perubahan disimpan.",
     action_edit: "Edit",
     action_delete: "Hapus",
+    action_view: "Lihat",
     action_publish: "Publikasikan",
     action_confirm: "Konfirmasi",
     action_ship: "Kirim",
@@ -1480,6 +1481,8 @@ export const DICT = {
     exam_roster_empty: "Belum ada peserta terdaftar.",
     exam_roster_export_csv: "Ekspor CSV",
     exam_roster_load_failed: "Gagal memuat daftar peserta.",
+    exam_registrations_manual_notice:
+      "Pendaftaran peserta secara manual dilakukan oleh Super Admin atau School Operator.",
 
     // Complete-profile unlisted-school fallback
     complete_profile_school_unlisted_label: "Sekolah saya tidak ada di daftar",
@@ -2015,6 +2018,7 @@ export const DICT = {
     changes_saved: "Changes saved.",
     action_edit: "Edit",
     action_delete: "Delete",
+    action_view: "View",
     action_publish: "Publish",
     action_confirm: "Confirm",
     action_ship: "Ship",
@@ -2987,6 +2991,8 @@ export const DICT = {
     exam_roster_empty: "No participants registered yet.",
     exam_roster_export_csv: "Export CSV",
     exam_roster_load_failed: "Failed to load the participant roster.",
+    exam_registrations_manual_notice:
+      "Manual participant registration is handled by Super Admin or School Operator.",
 
     // Complete-profile unlisted-school fallback
     complete_profile_school_unlisted_label: "My school is not on the list",

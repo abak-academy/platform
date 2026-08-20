@@ -465,6 +465,16 @@ describe("ExamMonitorPage", () => {
     });
   });
 
+  it("renders rows through DataTable as non-focusable (rows are not clickable)", async () => {
+    render(<ExamMonitorPage />);
+
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    const row = screen.getByText("Budi Santoso").closest("tr") as HTMLElement;
+    expect(row).not.toHaveAttribute("role", "button");
+    expect(row).not.toHaveAttribute("tabIndex");
+  });
+
   it("shows 'No violations yet' when there are no recent violations", async () => {
     monitorState = {
       ...monitorState,

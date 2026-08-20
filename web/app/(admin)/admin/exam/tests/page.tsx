@@ -93,14 +93,14 @@ export default function TestsPage() {
       )}
 
       {isError && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
           {errorMessage(error)}
         </div>
       )}
 
       {!isLoading && !isError && (
         tests.length === 0 ? (
-          <div className="md-card-outlined px-4 py-8 text-center text-muted-foreground">
+          <div className="md-card-outlined px-4 py-8 text-center text-ink-500">
             {t("tests_empty")}
           </div>
         ) : (
@@ -118,11 +118,11 @@ export default function TestsPage() {
                     router.push(`/admin/exam/tests/${test.id}`);
                   }
                 }}
-                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2"
               >
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-ink-900 truncate">{test.title}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-500">
                     <span>{test.subject}</span>
                     <span aria-hidden="true">·</span>
                     <span>{test.topic}</span>
@@ -154,7 +154,7 @@ export default function TestsPage() {
                     onClick={() => handleDelete(test.id)}
                     disabled={remove.isPending && deletingId === test.id}
                     aria-label={t("action_delete")}
-                    className="text-destructive hover:text-destructive"
+                    className="text-danger hover:text-danger"
                   >
                     <Trash2 className="mr-1 size-3.5" />
                     {t("action_delete")}

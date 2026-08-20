@@ -6,6 +6,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  Calendar,
   ListChecks,
   Pencil,
   Plus,
@@ -13,6 +14,7 @@ import {
   Trophy,
   Users,
 } from "lucide-react";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { CertificateDesignTab } from "@/components/admin/CertificateDesignTab";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
@@ -20,6 +22,7 @@ import { ExamResultsTab } from "@/components/admin/ExamResultsTab";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,7 +41,7 @@ import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import { useAuthStore } from "@/stores/auth";
-import type { ExamLeaderboardEntry, GradingEssayItem } from "@/lib/types";
+import type { ExamLeaderboardEntry, GradingEssayItem, GradingSessionItem } from "@/lib/types";
 
 // admin_school gets a scoped view — only the exam summary + the
 // registrations action (bulk order/grant), never the content-management tabs.
@@ -88,6 +91,8 @@ export default function ExamPackageDetailPage() {
   const { t } = useTranslation();
   const role = useAuthStore((s) => s.user?.role);
   const isSchoolScoped = role === "admin_school";
+  const canAccessResultsAndRegistrations =
+    role === "admin_school" || role === "super_admin" || role === "admin_exam";
 
   const [tab, setTab] = useState<Tab>("overview");
   const [editOpen, setEditOpen] = useState(false);
@@ -278,6 +283,34 @@ export default function ExamPackageDetailPage() {
 
   const title = data?.title ?? t("exam_packages_page_title");
 
+  const gradingColumns: DataTableColumn<GradingSessionItem>[] = [
+    { key: "student", header: t("grading_col_student"), className: "font-medium", cell: (session) => session.student_name },
+    { key: "submitted", header: t("grading_col_submitted"), cell: (session) => formatScheduled(session.submitted_at) },
+    { key: "ungraded", header: t("grading_col_ungraded"), cell: (session) => session.ungraded_essay_count },
+    {
+      key: "action",
+      header: "",
+      align: "right",
+      cell: (session) => (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="rounded-full"
+          onClick={() => setSelectedSessionId(session.session_id)}
+        >
+          {t("competition_view_detail")}
+        </Button>
+      ),
+    },
+  ];
+
+  const leaderboardColumns: DataTableColumn<ExamLeaderboardEntry>[] = [
+    { key: "rank", header: t("admin_exam_leaderboard_col_rank"), className: "font-medium", cell: (entry) => `#${entry.rank}` },
+    { key: "student", header: t("admin_exam_leaderboard_col_student"), cell: (entry) => entry.student_name },
+    { key: "score", header: t("admin_exam_leaderboard_col_score"), align: "right", className: "font-medium", cell: (entry) => entry.score },
+  ];
+
   return (
     <div className="space-y-6 fade-in">
       <Link
@@ -288,23 +321,20 @@ export default function ExamPackageDetailPage() {
         {t("exam_packages_page_title")}
       </Link>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-serif text-[27px] font-semibold tracking-tight text-ink-900">
-            {title}
-          </h1>
-          {data && (
-            <p className="mt-1.5 text-sm text-ink-500">
-              {formatMode(data.mode)} · {formatScheduled(data.scheduled_at)}
-            </p>
-          )}
-        </div>
-        {data && (
-          <Badge variant={data.status === "published" ? "default" : "secondary"}>
-            {data.status ?? "draft"}
-          </Badge>
-        )}
-      </div>
+      <AdminPageHeader
+        icon={Calendar}
+        title={title}
+        description={
+          data ? `${formatMode(data.mode)} · ${formatScheduled(data.scheduled_at)}` : undefined
+        }
+        actions={
+          data ? (
+            <Badge variant={data.status === "published" ? "default" : "secondary"}>
+              {data.status ?? "draft"}
+            </Badge>
+          ) : undefined
+        }
+      />
 
       {data && data.status !== "published" && (
         <p className="text-sm text-ink-500">{t("admin_exam_detail_draft_notice")}</p>
@@ -319,7 +349,7 @@ export default function ExamPackageDetailPage() {
       )}
 
       {isError && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
           {errorMessage(error, t("error_generic"))}
         </div>
       )}
@@ -335,7 +365,7 @@ export default function ExamPackageDetailPage() {
                 className={
                   tab === key
                     ? "border-b-2 border-primary px-3 py-2 text-sm font-medium text-primary"
-                    : "px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+                    : "px-3 py-2 text-sm font-medium text-ink-500 hover:text-ink-900"
                 }
               >
                 {t(`admin_exam_detail_tab_${key}` as const)}
@@ -451,7 +481,7 @@ export default function ExamPackageDetailPage() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-sm font-medium">{t("exam_card_enabled_label")}</p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-ink-500">
                         {t("exam_card_enabled_hint")}
                       </p>
                     </div>
@@ -485,7 +515,7 @@ export default function ExamPackageDetailPage() {
                       <p className="text-sm font-medium">
                         {t("admin_exam_detail_certificate_status_label")}
                       </p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-ink-500">
                         {data.certificate_enabled
                           ? t("admin_exam_detail_certificate_enabled_desc")
                           : t("admin_exam_detail_certificate_disabled_desc")}
@@ -516,11 +546,11 @@ export default function ExamPackageDetailPage() {
                   </div>
 
                   {confirmDisableCertificate && (
-                    <div className="mt-3 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm">
+                    <div className="mt-3 rounded-lg border border-danger/20 bg-danger/10 p-4 text-sm">
                       <p className="font-medium">
                         {t("admin_exam_detail_certificate_disable_confirm_title")}
                       </p>
-                      <p className="mt-1 text-muted-foreground">
+                      <p className="mt-1 text-ink-500">
                         {t("admin_exam_detail_certificate_disable_confirm_desc")}
                       </p>
                       <div className="mt-3 flex gap-2">
@@ -558,7 +588,7 @@ export default function ExamPackageDetailPage() {
                   <h3 className="text-title-medium font-semibold">
                     {t("admin_exam_detail_tests_attached")}
                   </h3>
-                  <span className="text-label text-muted-foreground">
+                  <span className="text-label text-ink-500">
                     {attachedIds.length + pendingSections.length}
                   </span>
                 </div>
@@ -589,7 +619,7 @@ export default function ExamPackageDetailPage() {
                   </div>
                 )}
                 {attachedIds.length === 0 && pendingSections.length === 0 ? (
-                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-ink-500">
                     —
                   </div>
                 ) : (
@@ -606,7 +636,7 @@ export default function ExamPackageDetailPage() {
                               #{idx + 1} · {meta?.title ?? testId}
                             </div>
                             {meta && (
-                              <div className="text-label text-muted-foreground">
+                              <div className="text-label text-ink-500">
                                 {meta.subject} · {meta.topic ?? "—"} ·{" "}
                                 {meta.question_count ?? 0} soal ·{" "}
                                 {meta.duration_minutes ?? 0} {t("minutes")}
@@ -630,7 +660,7 @@ export default function ExamPackageDetailPage() {
                 )}
                 {pendingSections.length > 0 && (
                   <div className="mt-3">
-                    <h4 className="text-label mb-2 text-sm font-medium text-muted-foreground">
+                    <h4 className="text-label mb-2 text-sm font-medium text-ink-500">
                       {t("tests_preset_added")}
                     </h4>
                     <ul className="space-y-2">
@@ -643,7 +673,7 @@ export default function ExamPackageDetailPage() {
                             <div className="truncate font-medium">
                               #{attachedIds.length + idx + 1} · {ps.title}
                             </div>
-                            <div className="text-label text-muted-foreground">
+                            <div className="text-label text-ink-500">
                               {ps.subject} · {ps.section_type ? `${ps.section_type} · ` : ""}
                               {ps.duration_minutes} {t("minutes")}
                             </div>
@@ -688,7 +718,7 @@ export default function ExamPackageDetailPage() {
                     ))}
                   </div>
                 ) : availableToAdd.length === 0 ? (
-                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-ink-500">
                     —
                   </div>
                 ) : (
@@ -700,7 +730,7 @@ export default function ExamPackageDetailPage() {
                       >
                         <div className="min-w-0">
                           <div className="truncate font-medium">{test.title}</div>
-                          <div className="text-label text-muted-foreground">
+                          <div className="text-label text-ink-500">
                             {test.subject} · {test.topic} · {test.duration_minutes}{" "}
                             {t("minutes")}
                           </div>
@@ -728,14 +758,14 @@ export default function ExamPackageDetailPage() {
           )}
 
           {tab === "registrations" && (
-            role === "admin_school" || role === "super_admin" ? (
+            canAccessResultsAndRegistrations ? (
               <ExamRegistrationsTab examId={id} examName={data.title} />
             ) : (
               <UnderMaintenance icon={Users} title={t("admin_exam_detail_tab_registrations")} />
             )
           )}
           {tab === "results" && (
-            role === "admin_school" || role === "super_admin" ? (
+            canAccessResultsAndRegistrations ? (
               <ExamResultsTab examId={id} />
             ) : (
               <UnderMaintenance icon={ListChecks} title={t("admin_exam_detail_tab_results")} />
@@ -771,66 +801,18 @@ export default function ExamPackageDetailPage() {
                   )}
 
                   {gradingIsError && (
-                    <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+                    <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
                       {errorMessage(gradingError, t("error_generic"))}
                     </div>
                   )}
 
                   {!gradingLoading && !gradingIsError && (
-                    <div className="overflow-x-auto md-card-outlined">
-                      <table className="w-full text-sm">
-                        <thead className="bg-muted">
-                          <tr>
-                            <th className="px-4 py-3 text-left font-medium">
-                              {t("grading_col_student")}
-                            </th>
-                            <th className="px-4 py-3 text-left font-medium">
-                              {t("grading_col_submitted")}
-                            </th>
-                            <th className="px-4 py-3 text-left font-medium">
-                              {t("grading_col_ungraded")}
-                            </th>
-                            <th className="px-4 py-3 text-right font-medium" />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(gradingResp?.data ?? []).map((session) => (
-                            <tr
-                              key={session.session_id}
-                              className="border-t transition-colors hover:bg-muted/40"
-                            >
-                              <td className="px-4 py-3 font-medium">
-                                {session.student_name}
-                              </td>
-                              <td className="px-4 py-3">
-                                {formatScheduled(session.submitted_at)}
-                              </td>
-                              <td className="px-4 py-3">
-                                {session.ungraded_essay_count}
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="rounded-full"
-                                  onClick={() => setSelectedSessionId(session.session_id)}
-                                >
-                                  {t("competition_view_detail")}
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                          {(gradingResp?.data.length ?? 0) === 0 && (
-                            <tr>
-                              <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                                {t("grading_sessions_empty")}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                    <DataTable<GradingSessionItem>
+                      columns={gradingColumns}
+                      rows={gradingResp?.data ?? []}
+                      rowKey={(session) => session.session_id}
+                      empty={t("grading_sessions_empty")}
+                    />
                   )}
                 </>
               )}
@@ -846,7 +828,7 @@ export default function ExamPackageDetailPage() {
                   )}
 
                   {essaysIsError && (
-                    <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+                    <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
                       {errorMessage(essaysError, t("error_generic"))}
                     </div>
                   )}
@@ -897,7 +879,7 @@ export default function ExamPackageDetailPage() {
                 {analytics && (
                   <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="rounded-lg border p-4">
-                      <div className="text-label text-sm text-muted-foreground">
+                      <div className="text-label text-sm text-ink-500">
                         {t("admin_exam_analytics_average_score")}
                       </div>
                       <div className="mt-1 text-2xl font-bold">
@@ -905,7 +887,7 @@ export default function ExamPackageDetailPage() {
                       </div>
                     </div>
                     <div className="rounded-lg border p-4">
-                      <div className="text-label text-sm text-muted-foreground">
+                      <div className="text-label text-sm text-ink-500">
                         {t("admin_exam_analytics_completion_rate")}
                       </div>
                       <div className="mt-1 text-2xl font-bold">
@@ -913,7 +895,7 @@ export default function ExamPackageDetailPage() {
                       </div>
                     </div>
                     <div className="rounded-lg border p-4">
-                      <div className="mb-2 text-label text-sm text-muted-foreground">
+                      <div className="mb-2 text-label text-sm text-ink-500">
                         {t("admin_exam_analytics_distribution")}
                       </div>
                       <div className="space-y-1">
@@ -932,75 +914,31 @@ export default function ExamPackageDetailPage() {
                 )}
               </div>
 
-              {/* Leaderboard table */}
-              <div className="overflow-x-auto md-card-outlined">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium">
-                        {t("admin_exam_leaderboard_col_rank")}
-                      </th>
-                      <th className="px-4 py-3 text-left font-medium">
-                        {t("admin_exam_leaderboard_col_student")}
-                      </th>
-                      <th className="px-4 py-3 text-right font-medium">
-                        {t("admin_exam_leaderboard_col_score")}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lb.isLoading && lbEntries.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={3}
-                          className="px-4 py-8 text-center text-muted-foreground"
-                        >
-                          {t("sys_loading")}
-                        </td>
-                      </tr>
-                    )}
-                    {!lb.isLoading && lbEntries.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={3}
-                          className="px-4 py-8 text-center text-muted-foreground"
-                        >
-                          {t("admin_exam_leaderboard_empty")}
-                        </td>
-                      </tr>
-                    )}
-                    {lbEntries.map((entry) => (
-                      <tr
-                        key={entry.session_id}
-                        className="border-t transition-colors hover:bg-muted/40"
+              <DataTable<ExamLeaderboardEntry>
+                columns={leaderboardColumns}
+                rows={lbEntries}
+                rowKey={(entry) => entry.session_id}
+                empty={
+                  lb.isLoading && lbEntries.length === 0
+                    ? t("sys_loading")
+                    : t("admin_exam_leaderboard_empty")
+                }
+                footer={
+                  lb.data?.next_cursor ? (
+                    <div className="flex justify-center p-4">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-full"
+                        onClick={handleLoadMore}
+                        disabled={lb.isFetching}
                       >
-                        <td className="px-4 py-3 font-medium">
-                          #{entry.rank}
-                        </td>
-                        <td className="px-4 py-3">{entry.student_name}</td>
-                        <td className="px-4 py-3 text-right font-medium">
-                          {entry.score}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Load more */}
-              {lb.data?.next_cursor && (
-                <div className="flex justify-center">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="rounded-full"
-                    onClick={handleLoadMore}
-                    disabled={lb.isFetching}
-                  >
-                    {lb.isFetching ? t("sys_loading") : t("sys_load_more")}
-                  </Button>
-                </div>
-              )}
+                        {lb.isFetching ? t("sys_loading") : t("sys_load_more")}
+                      </Button>
+                    </div>
+                  ) : undefined
+                }
+              />
             </div>
           )}
         </>
@@ -1022,7 +960,7 @@ export default function ExamPackageDetailPage() {
 function OverviewRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <dt className="text-label text-muted-foreground">{label}</dt>
+      <dt className="text-label text-ink-500">{label}</dt>
       <dd className="text-sm">{value}</dd>
     </div>
   );
@@ -1049,10 +987,10 @@ function GradingEssayCard({
         {stripHtmlToPlainText(essay.body)}
       </div>
       <div className="space-y-1">
-        <div className="text-label text-muted-foreground">
+        <div className="text-label text-ink-500">
           {t("grading_essay_answer_label")}
         </div>
-        <div className="whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-sm">
+        <div className="whitespace-pre-wrap rounded-md border bg-surface-2 p-3 text-sm">
           {essay.answer?.trim() ? essay.answer : t("grading_essay_no_answer")}
         </div>
       </div>
@@ -1070,7 +1008,7 @@ function GradingEssayCard({
             onChange={(e) => onChange({ ...input, score: e.target.value })}
             disabled={saving}
           />
-          <div className="text-label text-muted-foreground">
+          <div className="text-label text-ink-500">
             {t("grading_score_range_hint").replace("{max}", String(essay.point_correct))}
           </div>
         </div>

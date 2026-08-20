@@ -14,6 +14,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import {
   Select,
   SelectContent,
@@ -21,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { SessionMonitorStatus } from "@/lib/types";
+import type { SessionMonitorRow, SessionMonitorStatus } from "@/lib/types";
 
 // ── Status label key map (i18n keys for each derived status) ──
 // Explicit mapping because status "checked_in" has no underscore in its key "st_checkedin"
@@ -138,10 +139,10 @@ export default function ExamMonitorPage() {
   // ── Picker section ──
 
   const picker = (
-    <div className="flex items-center gap-3">
-      <label className="text-sm font-medium">{t("monitor_pick_exam")}</label>
+    <div className="flex w-full items-center gap-3 sm:w-auto">
+      <label className="shrink-0 text-sm font-medium">{t("monitor_pick_exam")}</label>
       <Select value={selectedExamId} onValueChange={setSelectedExamId}>
-        <SelectTrigger className="w-72" aria-label={t("monitor_pick_exam")}>
+        <SelectTrigger className="w-full min-w-0 sm:w-72" aria-label={t("monitor_pick_exam")}>
           <SelectValue placeholder={t("monitor_pick_exam")} />
         </SelectTrigger>
         <SelectContent>
@@ -166,13 +167,13 @@ export default function ExamMonitorPage() {
     return (
       <div className="space-y-6 fade-in">
         <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
-        <div className="flex gap-6">
+        <div className="flex flex-col gap-6 lg:flex-row">
           <div className="flex-1 space-y-2">
             {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
           </div>
-          <div className="w-72 space-y-2">
+          <div className="w-full space-y-2 lg:w-72">
             <Skeleton className="h-48 w-full" />
           </div>
         </div>
@@ -202,7 +203,7 @@ export default function ExamMonitorPage() {
     return (
       <div className="space-y-6 fade-in">
         <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
           <p className="flex items-center gap-2 font-medium">
             <AlertTriangle size={16} />
             {monitorErr instanceof Error ? monitorErr.message : t("error_generic")}
@@ -215,123 +216,136 @@ export default function ExamMonitorPage() {
     );
   }
 
+  // ── Table columns ──
+
+  const columns: DataTableColumn<SessionMonitorRow>[] = [
+    { key: "name", header: t("th_name"), cell: (row) => row.student_name },
+    {
+      key: "school",
+      header: t("school"),
+      cell: (row) => (
+        <span className="text-[var(--md-sys-color-on-surface-variant)]">{row.school_name ?? "—"}</span>
+      ),
+    },
+    {
+      key: "status",
+      header: t("th_status"),
+      cell: (row) => {
+        const badge = STATUS_BADGE[row.status];
+        return (
+          <Badge variant={badge.variant} className={badge.className}>
+            {t(STATUS_LABEL_KEY[row.status] as any)}
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "active_section",
+      header: t("monitor_th_active_section"),
+      className: "text-xs",
+      cell: (row) =>
+        row.active_section_title ? (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-medium">{row.active_section_title}</span>
+            <span className="text-[var(--md-sys-color-on-surface-variant)]">
+              {formatRemaining(row.active_section_remaining_seconds ?? 0)}
+            </span>
+          </div>
+        ) : (
+          <span className="text-[var(--md-sys-color-on-surface-variant)]">—</span>
+        ),
+    },
+    {
+      key: "progress",
+      header: t("monitor_th_progress"),
+      cell: (row) => {
+        const progressPct =
+          row.total_questions > 0 ? Math.round((row.answers_saved / row.total_questions) * 100) : 0;
+        return (
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-20 overflow-hidden rounded-full bg-line">
+              <div
+                className="h-full rounded-full bg-[var(--md-sys-color-primary)] transition-all"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+            <span className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+              {row.answers_saved}/{row.total_questions}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      key: "checked_in",
+      header: t("monitor_th_checked_in"),
+      cell: (row) => (
+        <span className="text-[var(--md-sys-color-on-surface-variant)]">{formatTime(row.checked_in_at)}</span>
+      ),
+    },
+    {
+      key: "last_activity",
+      header: t("monitor_th_last_activity"),
+      cell: (row) => (
+        <span className="text-[var(--md-sys-color-on-surface-variant)]">{formatTime(row.last_saved_at)}</span>
+      ),
+    },
+    {
+      key: "actions",
+      header: t("th_actions"),
+      cell: (row) =>
+        row.status === "overdue" && row.session_id ? (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => handleReopen(row.session_id!)}
+              disabled={reopen.isPending}
+            >
+              <RotateCcw size={12} />
+              {t("monitor_actions_reopen")}
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => handleForceSubmit(row.session_id!)}
+              disabled={forceSubmit.isPending}
+            >
+              <XCircle size={12} />
+              {t("monitor_actions_force_submit")}
+            </Button>
+          </div>
+        ) : null,
+    },
+  ];
+
   // ── Main content ──
 
   return (
     <div className="space-y-6 fade-in">
       <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
 
-      <div className="flex gap-6">
+      <div className="flex flex-col gap-6 lg:flex-row">
         {/* Main table */}
-        <div className="min-w-0 flex-1 overflow-x-auto">
-          {rows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <BarChart className="mb-4 size-12 text-[var(--md-sys-color-on-surface-variant)]" />
-              <p className="text-body-medium text-[var(--md-sys-color-on-surface-variant)]">
-                {t("monitor_empty")}
-              </p>
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-label text-[var(--md-sys-color-on-surface-variant)]">
-                  <th className="pb-2 pr-4 font-medium">{t("th_name")}</th>
-                  <th className="pb-2 pr-4 font-medium">{t("school")}</th>
-                  <th className="pb-2 pr-4 font-medium">{t("th_status")}</th>
-                  <th className="pb-2 pr-4 font-medium">{t("monitor_th_active_section")}</th>
-                  <th className="pb-2 pr-4 font-medium">{t("monitor_th_progress")}</th>
-                  <th className="pb-2 pr-4 font-medium">{t("monitor_th_checked_in")}</th>
-                  <th className="pb-2 pr-4 font-medium">{t("monitor_th_last_activity")}</th>
-                  <th className="pb-2 font-medium">{t("th_actions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const badge = STATUS_BADGE[row.status];
-                  const progressPct =
-                    row.total_questions > 0
-                      ? Math.round((row.answers_saved / row.total_questions) * 100)
-                      : 0;
-
-                  return (
-                    <tr
-                      key={row.registration_id}
-                      className="border-b border-line last:border-b-0"
-                    >
-                      <td className="py-3 pr-4">{row.student_name}</td>
-                      <td className="py-3 pr-4 text-[var(--md-sys-color-on-surface-variant)]">
-                        {row.school_name ?? "—"}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <Badge variant={badge.variant} className={badge.className}>
-                          {t(STATUS_LABEL_KEY[row.status] as any)}
-                        </Badge>
-                      </td>
-                      <td className="py-3 pr-4 text-xs">
-                        {row.active_section_title ? (
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-medium">{row.active_section_title}</span>
-                            <span className="text-[var(--md-sys-color-on-surface-variant)]">
-                              {formatRemaining(row.active_section_remaining_seconds ?? 0)}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-[var(--md-sys-color-on-surface-variant)]">—</span>
-                        )}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 w-20 overflow-hidden rounded-full bg-line">
-                            <div
-                              className="h-full rounded-full bg-[var(--md-sys-color-primary)] transition-all"
-                              style={{ width: `${progressPct}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
-                            {row.answers_saved}/{row.total_questions}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 pr-4 text-[var(--md-sys-color-on-surface-variant)]">
-                        {formatTime(row.checked_in_at)}
-                      </td>
-                      <td className="py-3 pr-4 text-[var(--md-sys-color-on-surface-variant)]">
-                        {formatTime(row.last_saved_at)}
-                      </td>
-                      <td className="py-3">
-                        {row.status === "overdue" && row.session_id ? (
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="outline"
-                              size="xs"
-                              onClick={() => handleReopen(row.session_id!)}
-                              disabled={reopen.isPending}
-                            >
-                              <RotateCcw size={12} />
-                              {t("monitor_actions_reopen")}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="xs"
-                              onClick={() => handleForceSubmit(row.session_id!)}
-                              disabled={forceSubmit.isPending}
-                            >
-                              <XCircle size={12} />
-                              {t("monitor_actions_force_submit")}
-                            </Button>
-                          </div>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+        <div className="min-w-0 flex-1">
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => row.registration_id}
+            data-testid="exam-monitor-table"
+            empty={
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <BarChart className="mb-4 size-12 text-[var(--md-sys-color-on-surface-variant)]" />
+                <p className="text-body-medium text-[var(--md-sys-color-on-surface-variant)]">
+                  {t("monitor_empty")}
+                </p>
+              </div>
+            }
+          />
         </div>
 
         {/* Violation sidebar */}
-        <div className="w-72 shrink-0">
+        <div className="w-full lg:w-72 lg:shrink-0">
           <div className="rounded-lg border border-line p-4">
             <h3 className="mb-3 text-sm font-semibold">{t("monitor_sidebar_title")}</h3>
             {violations.length === 0 ? (

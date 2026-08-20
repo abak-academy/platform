@@ -7,11 +7,13 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
+  ClipboardList,
   Library,
   List,
   Plus,
   Trash2,
 } from "lucide-react";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Button } from "@/components/ui/button";
 import { QuestionEditor } from "@/components/admin/QuestionEditor";
 import { QuestionPickerModal } from "@/components/admin/QuestionPickerModal";
@@ -135,7 +137,7 @@ function QuestionRow({
       data-question-row
       className={`flex items-start gap-3 p-3 ${index < total - 1 ? "border-b" : ""}`}
     >
-      <div className="flex flex-col items-center gap-0.5 pt-0.5 text-muted-foreground">
+      <div className="flex flex-col items-center gap-0.5 pt-0.5 text-ink-500">
         <button
           type="button"
           onClick={() => onReorder(q.id, "up")}
@@ -183,7 +185,7 @@ function QuestionRow({
         variant="ghost"
         onClick={() => onDetach(q.id)}
         aria-label={t("tests_detach_question")}
-        className="text-destructive hover:text-destructive"
+        className="text-danger hover:text-danger"
       >
         <Trash2 className="size-3.5" />
       </Button>
@@ -300,36 +302,36 @@ export default function TestDetailPage() {
           data-testid="tests-back-link"
           onClick={() => router.push("/admin/exam/tests")}
           aria-label={t("tests_page_title")}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-ink-900"
+          className="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-900"
         >
           <ArrowLeft className="size-4" />
           {t("tests_page_title")}
         </button>
       </div>
 
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-headline text-ink-900">
-            {detail ? detail.test.title : t("sys_loading")}
-          </h1>
-          {detail && (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {detail.test.subject} · {detail.test.topic} · {detail.test.duration_minutes} min
-            </p>
-          )}
-        </div>
-        {!isLoading && !isError ? (
-          <Button
-            type="submit"
-            form="test-detail-form"
-            size="lg"
-            disabled={!canSaveTest}
-            className="shadow-md shadow-primary/30"
-          >
-            {update.isPending ? t("saving") : t("save")}
-          </Button>
-        ) : null}
-      </div>
+      <AdminPageHeader
+        icon={ClipboardList}
+        title={detail ? detail.test.title : t("sys_loading")}
+        description={
+          detail
+            ? `${detail.test.subject} · ${detail.test.topic} · ${detail.test.duration_minutes} min`
+            : undefined
+        }
+        actionsAlign="end"
+        actions={
+          !isLoading && !isError ? (
+            <Button
+              type="submit"
+              form="test-detail-form"
+              size="lg"
+              disabled={!canSaveTest}
+              className="shadow-md shadow-primary/30"
+            >
+              {update.isPending ? t("saving") : t("save")}
+            </Button>
+          ) : undefined
+        }
+      />
 
       {isLoading && (
         <div className="space-y-2">
@@ -340,7 +342,7 @@ export default function TestDetailPage() {
       )}
 
       {isError && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
           {errorMessage(error, t("error_generic"))}
         </div>
       )}
@@ -453,7 +455,7 @@ export default function TestDetailPage() {
                 ))}
               </div>
               {form.sectionType === "listening" && (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-ink-500">
                   URL audio wajib diisi untuk sesi Listening.
                 </p>
               )}
@@ -476,7 +478,7 @@ export default function TestDetailPage() {
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-[15px] font-semibold text-ink-900">
                 {t("tests_questions_in_this_test")}{" "}
-                <span className="font-normal text-muted-foreground">· {questions.length}</span>
+                <span className="font-normal text-ink-500">· {questions.length}</span>
               </h3>
               <div className="flex items-center gap-2">
                 <Button
@@ -510,7 +512,7 @@ export default function TestDetailPage() {
 
             <div className="rounded-2xl bg-white shadow-sm ring-1 ring-[var(--md-sys-color-outline-variant)]">
               {questions.length === 0 ? (
-                <div className="px-4 py-10 text-center text-muted-foreground">
+                <div className="px-4 py-10 text-center text-ink-500">
                   <List className="mx-auto size-8" strokeWidth={1.4} />
                   <p className="mt-3 text-sm">{t("tests_questions_empty")}</p>
                   <div className="mt-5 flex items-center justify-center gap-2">

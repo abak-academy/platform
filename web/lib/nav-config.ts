@@ -81,9 +81,9 @@ const STUDENT_NAV: RoleNavConfig = [
 ];
 
 const EXAM_NAV_ITEMS: NavItem[] = [
+  { labelKey: "question_bank", href: "/admin/exam/questions", icon: Library },
   { labelKey: "tests", href: "/admin/exam/tests", icon: ClipboardList },
   { labelKey: "packages", href: "/admin/exam/packages", icon: Calendar },
-  { labelKey: "question_bank", href: "/admin/exam/questions", icon: Library },
   { labelKey: "session_monitor", href: "/admin/exam/monitor", icon: BarChart },
 ];
 
