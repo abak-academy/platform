@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -41,8 +42,14 @@ func (h *Handler) AdminListStudents(c echo.Context) error {
 		}
 	}
 	jenjang := c.QueryParam("jenjang")
+	examID := c.QueryParam("exam_id")
+	if examID != "" {
+		if _, err := uuid.Parse(examID); err != nil {
+			return c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "exam_id must be a valid UUID"})
+		}
+	}
 
-	students, nextCursor, err := h.svc.ListStudents(c.Request().Context(), schoolID, statusFilter, q, limit, cursor, grade, jenjang)
+	students, nextCursor, err := h.svc.ListStudents(c.Request().Context(), schoolID, statusFilter, q, limit, cursor, grade, jenjang, examID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

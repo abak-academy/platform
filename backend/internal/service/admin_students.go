@@ -296,7 +296,11 @@ func toCrossSchoolStudentResponse(row repository.CrossSchoolStudentRow) CrossSch
 // SearchStudentsAcrossSchools searches students across all schools with optional
 // filters. Thin pass-through to the repository with bounded default limit.
 // This is the super_admin cross-school search (FR-SEARCH-01/03).
-func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, schoolID *string, noSchool bool, grade *int, jenjang string, limit int, cursor string) ([]CrossSchoolStudentResponse, string, error) {
+func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, schoolID *string, noSchool bool, grade *int, jenjang string, limit int, cursor string, examIDs ...string) ([]CrossSchoolStudentResponse, string, error) {
+	examID := ""
+	if len(examIDs) > 0 {
+		examID = examIDs[0]
+	}
 	rows, nextCursor, err := s.storeRepo.SearchStudentsAcrossSchools(ctx, repository.StudentFilter{
 		Cursor:   cursor,
 		Limit:    limit,
@@ -305,6 +309,7 @@ func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, sch
 		NoSchool: noSchool,
 		Grade:    grade,
 		Jenjang:  jenjang,
+		ExamID:   examID,
 	})
 	if err != nil {
 		return nil, "", err
@@ -319,7 +324,11 @@ func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, sch
 
 // ListStudents returns cursor-paginated students scoped to the given school.
 // Optional grade and jenjang filters narrow the result set.
-func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilter, q string, limit int, cursor string, grade *int, jenjang string) ([]StudentResponse, string, error) {
+func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilter, q string, limit int, cursor string, grade *int, jenjang string, examIDs ...string) ([]StudentResponse, string, error) {
+	examID := ""
+	if len(examIDs) > 0 {
+		examID = examIDs[0]
+	}
 	rows, nextCursor, err := s.storeRepo.ListStudentsBySchool(ctx, schoolID, repository.StudentFilter{
 		Status:  statusFilter,
 		Cursor:  cursor,
@@ -327,6 +336,7 @@ func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilte
 		Q:       q,
 		Grade:   grade,
 		Jenjang: jenjang,
+		ExamID:  examID,
 		// An empty schoolID reaches here only from the roster endpoint, where
 		// super_admin omitted school_id — list every registrant, including
 		// those with no school on file.

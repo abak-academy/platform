@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"akademi-bimbel/internal/model"
+
+	"github.com/google/uuid"
 )
 
 // StudentRow is the student shape returned in admin school student list
@@ -39,6 +41,7 @@ type StudentFilter struct {
 	Grade    *int    // optional grade filter
 	Jenjang  string  // optional jenjang filter
 	SchoolID *string // optional school_id filter (cross-school search only)
+	ExamID   string
 	// AllSchools drops the school scope entirely, returning every student
 	// including those with no school on file. It is deliberately an explicit
 	// opt-in rather than "empty schoolID means all": the exam-participant and
@@ -70,6 +73,15 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 			WHERE u.role = 'student' AND u.status != 'deleted'`
 	args := []any{}
 	argNum := 1
+	var cursorAt time.Time
+	cursorID := uuid.Nil
+	if filter.Cursor != "" {
+		at, id, err := DecodeOrderCursor(filter.Cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		cursorAt, cursorID = at, id
+	}
 
 	if !filter.AllSchools {
 		query += fmt.Sprintf(` AND u.school_id = $%d`, argNum)
@@ -96,13 +108,19 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 		args = append(args, filter.Jenjang)
 		argNum++
 	}
-	if filter.Cursor != "" {
-		query += fmt.Sprintf(` AND u.id < $%d::uuid`, argNum)
-		args = append(args, filter.Cursor)
+	if filter.ExamID != "" {
+		query += fmt.Sprintf(` AND u.status = 'active'
+			AND NOT EXISTS (SELECT 1 FROM exam_registration er WHERE er.student_id = u.id AND er.exam_id = $%d::uuid)`, argNum)
+		args = append(args, filter.ExamID)
 		argNum++
 	}
+	if filter.Cursor != "" {
+		query += fmt.Sprintf(` AND (u.created_at < $%d OR (u.created_at = $%d AND u.id < $%d::uuid))`, argNum, argNum, argNum+1)
+		args = append(args, cursorAt, cursorID)
+		argNum += 2
+	}
 
-	query += fmt.Sprintf(` ORDER BY u.created_at DESC LIMIT $%d`, argNum)
+	query += fmt.Sprintf(` ORDER BY u.created_at DESC, u.id DESC LIMIT $%d`, argNum)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -120,15 +138,17 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 			&s.SchoolName, &s.UnlistedSchoolName, &s.CreatedAt); err != nil {
 			return nil, "", err
 		}
-		if len(students) < filter.Limit {
-			students = append(students, s)
-		} else {
-			nextCursor = s.ID
-		}
+		students = append(students, s)
 	}
 
 	if err = rows.Err(); err != nil {
 		return nil, "", err
+	}
+
+	if len(students) > filter.Limit {
+		students = students[:filter.Limit]
+		last := students[len(students)-1]
+		nextCursor = EncodeOrderCursor(last.CreatedAt, uuid.MustParse(last.ID))
 	}
 
 	return students, nextCursor, nil
@@ -243,6 +263,15 @@ func (r *Repository) SearchStudentsAcrossSchools(ctx context.Context, filter Stu
 			WHERE u.role = 'student' AND u.status != 'deleted'`
 	args := []any{}
 	argNum := 1
+	var cursorAt time.Time
+	cursorID := uuid.Nil
+	if filter.Cursor != "" {
+		at, id, err := DecodeOrderCursor(filter.Cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		cursorAt, cursorID = at, id
+	}
 
 	if filter.SchoolID != nil {
 		query += fmt.Sprintf(` AND u.school_id = $%d`, argNum)
@@ -267,13 +296,19 @@ func (r *Repository) SearchStudentsAcrossSchools(ctx context.Context, filter Stu
 		args = append(args, filter.Jenjang)
 		argNum++
 	}
-	if filter.Cursor != "" {
-		query += fmt.Sprintf(` AND u.id < $%d::uuid`, argNum)
-		args = append(args, filter.Cursor)
+	if filter.ExamID != "" {
+		query += fmt.Sprintf(` AND u.status = 'active'
+			AND NOT EXISTS (SELECT 1 FROM exam_registration er WHERE er.student_id = u.id AND er.exam_id = $%d::uuid)`, argNum)
+		args = append(args, filter.ExamID)
 		argNum++
 	}
+	if filter.Cursor != "" {
+		query += fmt.Sprintf(` AND (u.created_at < $%d OR (u.created_at = $%d AND u.id < $%d::uuid))`, argNum, argNum, argNum+1)
+		args = append(args, cursorAt, cursorID)
+		argNum += 2
+	}
 
-	query += fmt.Sprintf(` ORDER BY u.created_at DESC LIMIT $%d`, argNum)
+	query += fmt.Sprintf(` ORDER BY u.created_at DESC, u.id DESC LIMIT $%d`, argNum)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -284,22 +319,22 @@ func (r *Repository) SearchStudentsAcrossSchools(ctx context.Context, filter Stu
 
 	students := []CrossSchoolStudentRow{}
 	nextCursor := ""
-	seen := 0
 	for rows.Next() {
 		var s CrossSchoolStudentRow
 		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.Email, &s.Status, &s.Grade, &s.CreatedAt, &s.SchoolID, &s.SchoolName, &s.UnlistedSchoolName); err != nil {
 			return nil, "", err
 		}
-		if seen < filter.Limit {
-			students = append(students, s)
-		} else {
-			nextCursor = s.ID
-		}
-		seen++
+		students = append(students, s)
 	}
 
 	if err = rows.Err(); err != nil {
 		return nil, "", err
+	}
+
+	if len(students) > filter.Limit {
+		students = students[:filter.Limit]
+		last := students[len(students)-1]
+		nextCursor = EncodeOrderCursor(last.CreatedAt, uuid.MustParse(last.ID))
 	}
 
 	return students, nextCursor, nil
