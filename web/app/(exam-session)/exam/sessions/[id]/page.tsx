@@ -59,7 +59,9 @@ function queueEntryKey(entry: {
   answer: string;
   flagged_for_review?: boolean;
 }): string {
-  return `${entry.question_id}${entry.answer}${Boolean(entry.flagged_for_review)}`;
+  // `\0` here is the two-char escape, not a literal NUL — a real 0x00 in
+  // this file makes git/GitHub treat the whole .tsx as binary.
+  return `${entry.question_id}\0${entry.answer}\0${Boolean(entry.flagged_for_review)}`;
 }
 
 export default function SessionPage() {
