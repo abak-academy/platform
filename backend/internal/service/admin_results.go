@@ -35,7 +35,7 @@ func (s *Service) ListSchoolResults(ctx context.Context, examID uuid.UUID, schoo
 	}
 
 	rows, next, err := s.storeRepo.ListSchoolResults(ctx, examID, schoolID, filter)
-	return rows, next, mapCursorErr(err)
+	return rows, next, err
 }
 
 // GetSchoolResultDetail returns the full detail of a single school-scoped session

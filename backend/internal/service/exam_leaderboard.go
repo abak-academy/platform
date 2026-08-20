@@ -15,10 +15,13 @@ import (
 // sessions for an exam (FR-10). No gating — RBAC middleware restricts this to admins.
 func (s *Service) AdminGetLeaderboard(ctx context.Context, examID uuid.UUID, cursor string, limit int) ([]model.ExamLeaderboardEntry, string, error) {
 	entries, next, err := s.storeRepo.ListExamLeaderboard(ctx, examID, cursor, limit)
-	return entries, next, mapCursorErr(err)
+	return entries, next, mapLeaderboardCursorErr(err)
 }
 
-func mapCursorErr(err error) error {
+func mapLeaderboardCursorErr(err error) error {
+	if errors.Is(err, repository.ErrInvalidCursor) {
+		return fmt.Errorf("%w: %v", ErrValidation, err)
+	}
 	return err
 }
 
@@ -71,7 +74,7 @@ func (s *Service) StudentGetSessionLeaderboard(ctx context.Context, studentID, s
 	}
 
 	entries, next, err := s.storeRepo.ListExamLeaderboard(ctx, sess.ExamID, cursor, limit)
-	return entries, next, mapCursorErr(err)
+	return entries, next, mapLeaderboardCursorErr(err)
 }
 
 // GetExamAnalytics computes completion rate, average score, and score distribution
