@@ -1288,6 +1288,14 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	if filter.Limit == 0 {
 		filter.Limit = 20
 	}
+	var cursorID uuid.UUID
+	if filter.Cursor != "" {
+		var err error
+		cursorID, err = uuid.Parse(filter.Cursor)
+		if err != nil {
+			return nil, "", ErrInvalidCursor
+		}
+	}
 
 	query := `SELECT e.id, e.title, e.is_free, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.allow_leaderboard,
 		e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
@@ -1326,7 +1334,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	}
 	if filter.Cursor != "" {
 		query += fmt.Sprintf(` AND e.id > $%d`, argIdx)
-		args = append(args, filter.Cursor)
+		args = append(args, cursorID)
 		argIdx++
 	}
 
@@ -1353,8 +1361,8 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 
 	var nextCursor string
 	if len(items) > filter.Limit {
-		nextCursor = items[filter.Limit].ID.String()
 		items = items[:filter.Limit]
+		nextCursor = items[len(items)-1].ID.String()
 	}
 
 	return items, nextCursor, nil

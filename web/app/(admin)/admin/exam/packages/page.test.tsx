@@ -17,12 +17,14 @@ let examsState = {
   error: null as Error | null,
 };
 
+let examsQuery: ((filter?: Record<string, unknown>) => typeof examsState) | undefined;
+
 const useExamsSpy = vi.fn();
 
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useExams: (...args: unknown[]) => {
     useExamsSpy(...args);
-    return examsState;
+    return examsQuery?.(args[0] as Record<string, unknown> | undefined) ?? examsState;
   },
   useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -77,6 +79,7 @@ describe("ExamPackagesPage", () => {
     push.mockReset();
     mockRole = undefined;
     useExamsSpy.mockClear();
+    examsQuery = undefined;
   });
 
   it("navigates to the exam detail page when a row is clicked", async () => {
@@ -258,7 +261,12 @@ describe("ExamPackagesPage", () => {
       expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
     });
 
-    expect(useExamsSpy).toHaveBeenCalledWith({ q: undefined, status: undefined });
+    expect(useExamsSpy).toHaveBeenCalledWith({
+      cursor: undefined,
+      limit: 20,
+      q: undefined,
+      status: undefined,
+    });
   });
 
   it("selecting draft requests status=draft, and selecting all back never sends the literal string 'all'", async () => {
@@ -277,10 +285,20 @@ describe("ExamPackagesPage", () => {
 
     const select = screen.getByRole("combobox") as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "draft" } });
-    expect(useExamsSpy).toHaveBeenLastCalledWith({ q: undefined, status: "draft" });
+    expect(useExamsSpy).toHaveBeenLastCalledWith({
+      cursor: undefined,
+      limit: 20,
+      q: undefined,
+      status: "draft",
+    });
 
     fireEvent.change(select, { target: { value: "" } });
-    expect(useExamsSpy).toHaveBeenLastCalledWith({ q: undefined, status: undefined });
+    expect(useExamsSpy).toHaveBeenLastCalledWith({
+      cursor: undefined,
+      limit: 20,
+      q: undefined,
+      status: undefined,
+    });
     expect(useExamsSpy.mock.calls.some((call) => call[0]?.status === "all")).toBe(false);
   });
 
@@ -311,7 +329,91 @@ describe("ExamPackagesPage", () => {
       vi.advanceTimersByTime(300);
     });
 
-    expect(useExamsSpy).toHaveBeenLastCalledWith({ q: "matematika", status: undefined });
+    expect(useExamsSpy).toHaveBeenLastCalledWith({
+      cursor: undefined,
+      limit: 20,
+      q: "matematika",
+      status: undefined,
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("loads next_cursor pages and deduplicates exams by id", async () => {
+    const firstPage = {
+      data: { data: sampleExams, next_cursor: "cursor-2" },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    const secondPage = {
+      data: { data: [sampleExams[1], { ...sampleExams[0], id: "e3", title: "Tryout TKA" }] },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    examsQuery = (filter) => filter?.cursor ? secondPage : firstPage;
+
+    render(<ExamPackagesPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Muat lebih" }));
+
+    await waitFor(() => expect(screen.getByText("Tryout TKA")).toBeInTheDocument());
+    expect(screen.getAllByTestId("package-row")).toHaveLength(3);
+    expect(useExamsSpy).toHaveBeenLastCalledWith({
+      cursor: "cursor-2",
+      limit: 20,
+      q: undefined,
+      status: undefined,
+    });
+  });
+
+  it("resets accumulated pages when debounced search or status changes", async () => {
+    const firstPage = {
+      data: { data: sampleExams, next_cursor: "cursor-2" },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    const secondPage = {
+      data: { data: [{ ...sampleExams[0], id: "e3", title: "Tryout TKA" }] },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    const searchPage = {
+      data: { data: [{ ...sampleExams[0], id: "q1", title: "Tryout Fisika" }] },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    const statusPage = {
+      data: { data: [{ ...sampleExams[0], id: "s1", title: "Paket Published" }] },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    examsQuery = (filter) => {
+      if (filter?.status === "published") return statusPage;
+      if (filter?.q === "fisika") return searchPage;
+      return filter?.cursor ? secondPage : firstPage;
+    };
+
+    render(<ExamPackagesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Muat lebih" }));
+    await waitFor(() => expect(screen.getByText("Tryout TKA")).toBeInTheDocument());
+
+    vi.useFakeTimers();
+    fireEvent.change(screen.getByPlaceholderText("Cari…"), { target: { value: "fisika" } });
+    await act(async () => vi.advanceTimersByTime(300));
+    expect(screen.getByText("Tryout Fisika")).toBeInTheDocument();
+    expect(screen.queryByText("Tryout TKA")).not.toBeInTheDocument();
+    expect(screen.queryByText("UTS Matematika")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "published" } });
+    await act(async () => Promise.resolve());
+    expect(screen.getByText("Paket Published")).toBeInTheDocument();
+    expect(screen.queryByText("Tryout Fisika")).not.toBeInTheDocument();
 
     vi.useRealTimers();
   });
