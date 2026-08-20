@@ -164,7 +164,7 @@ func (s *shimSessionService) ListSchoolResults(ctx context.Context, examID uuid.
 
 	f := repository.AdminResultFilter{Q: q, Cursor: cursor, Limit: limit}
 	rows, next, err := s.repo.ListSchoolResults(ctx, examID, schoolID, f)
-	return rows, next, mapCursorErr(err)
+	return rows, next, err
 }
 
 func (s *shimSessionService) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID, schoolID string) (model.AdminResultDetail, error) {
