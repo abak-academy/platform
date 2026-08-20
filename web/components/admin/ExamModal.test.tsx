@@ -18,6 +18,7 @@ vi.mock("@/lib/hooks/admin-uploads", () => ({
 }));
 
 const sampleExam: ExamListItem = {
+  registration_count: 0,
   id: "exam-1",
   title: "UTS Matematika",
   certificate_template: "modern",
@@ -40,6 +41,7 @@ describe("ExamModal", () => {
     mockUpdateExam.mockResolvedValue({ id: "exam-1", title: "UTS Matematika" });
 
     const customExam: ExamListItem = {
+  registration_count: 0,
       ...sampleExam,
       certificate_template: "custom",
       certificate_background_key: "certificates/exam-1/bg.png",
@@ -172,6 +174,7 @@ describe("ExamModal", () => {
 
   it("pre-fills mode from exam data on edit", async () => {
     const examWithMode: ExamListItem = {
+  registration_count: 0,
       ...sampleExam,
       mode: "ielts",
     };
@@ -405,6 +408,7 @@ describe("ExamModal", () => {
 
   it("pre-fills end screen fields from exam data on edit", async () => {
     const examWithEndScreen: ExamListItem = {
+  registration_count: 0,
       ...sampleExam,
       end_screen_image_url: "https://cdn.example.com/end-screen.png",
       end_screen_promo_text: "Thanks for taking the exam!",
