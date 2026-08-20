@@ -71,6 +71,7 @@ let dashboardState: {
   isError: false,
   refetch: vi.fn(),
 };
+const dashboardData = dashboardState.data;
 
 vi.mock("@/lib/hooks/admin-dashboard", () => ({
   useSchoolDashboard: () => dashboardState,
@@ -79,6 +80,7 @@ vi.mock("@/lib/hooks/admin-dashboard", () => ({
 describe("admin_school dashboard", () => {
   beforeEach(() => {
     authStore = { token: "t", user: { role: "admin_school", name: "Siti" } };
+    dashboardState = { data: dashboardData, isLoading: false, isError: false, refetch: vi.fn() };
   });
 
   it("shows the student head-count and this month's intake", () => {
