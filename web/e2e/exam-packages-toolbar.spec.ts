@@ -71,7 +71,9 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByText(PACKAGE_ROWS[0].title)).toBeVisible();
 
     const select = page.locator('select[data-slot="select"]');
-    const search = page.getByPlaceholderText("Cari…");
+    // Two "Cari…" inputs exist: the admin shell's global search is type="search"
+    // (role searchbox); the page's own filter is a plain textbox.
+    const search = page.getByRole("textbox", { name: "Cari…" });
     await expect(select).toBeVisible();
     await expect(search).toBeVisible();
     expect(await select.evaluate((el) => el.clientWidth)).toBeGreaterThan(0);
