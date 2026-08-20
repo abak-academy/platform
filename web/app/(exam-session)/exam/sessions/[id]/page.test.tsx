@@ -568,6 +568,32 @@ describe("SessionPage", () => {
     expect(screen.getByText(/60:00/)).toBeInTheDocument();
   });
 
+  it("reconnecting to a session whose timer already ran out auto-submits instead of freezing at 00:00", async () => {
+    // Student closed the tab mid-sitting and came back after the deadline: the
+    // page mounts in its loading state and the reconnect payload lands with
+    // remaining_seconds already 0. Every input and the manual submit button are
+    // disabled at 00:00, so if the auto-submit does not fire on that landing the
+    // sitting is stuck forever. `remaining` starts at 0, so the arrival of an
+    // expired payload must not be mistaken for "nothing changed".
+    sessionState = { ...sessionState, data: null, isLoading: true };
+    const { rerender } = render(<SessionPage />);
+
+    sessionState = {
+      ...sessionState,
+      isLoading: false,
+      data: {
+        ...sampleSession,
+        remaining_seconds: 0,
+        answers: [{ question_id: "q-mcq", answer: "B" }],
+      },
+    };
+    rerender(<SessionPage />);
+
+    await waitFor(() => {
+      expect(submitSessionMutate).toHaveBeenCalled();
+    });
+  });
+
   it("untimed exam (per_test, null duration) never auto-submits and hides the countdown", async () => {
     sessionState = {
       ...sessionState,
