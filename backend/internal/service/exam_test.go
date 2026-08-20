@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -3119,6 +3120,20 @@ func TestAdminGetExamRoster_OrdersByParticipantNumber_NilSafeForMissingNumbers(t
 	assert.Equal(t, studentNoNo, rows[1].StudentID)
 	assert.Nil(t, rows[1].ParticipantNumber)
 	assert.Empty(t, rows[1].ParticipantNo, "nil-safe: missing participant_number must not render a bogus number")
+}
+
+func TestBuildExamRosterCSV_PreservesColumnsAndNeutralizesFormulaFields(t *testing.T) {
+	username := "@malicious"
+	data := BuildExamRosterCSV([]model.ExamRosterEntry{{
+		ParticipantNo:   "250620-0042-000005",
+		StudentName:     "=HYPERLINK(\"bad\")",
+		StudentUsername: &username,
+		Status:          "registered",
+	}})
+	records, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
+	require.NoError(t, err)
+	require.Equal(t, []string{"No. Peserta", "Nama", "Username", "Status", "Checked In"}, records[0])
+	require.Equal(t, []string{"250620-0042-000005", "'=HYPERLINK(\"bad\")", "'@malicious", "registered", "no"}, records[1])
 }
 
 func TestValidateExam_rejects_too_many_card_notes(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1321,6 +1322,20 @@ func (s *Service) AdminGetExamRoster(ctx context.Context, examID uuid.UUID, scho
 	if err != nil {
 		return nil, err
 	}
+	formatExamRosterRows(rows)
+	return rows, nil
+}
+
+func (s *Service) AdminListExamRoster(ctx context.Context, examID uuid.UUID, schoolFilter *string, filter model.ExamRosterFilter) ([]model.ExamRosterEntry, string, error) {
+	rows, nextCursor, err := s.storeRepo.ListExamRoster(ctx, examID, schoolFilter, filter)
+	if err != nil {
+		return nil, "", err
+	}
+	formatExamRosterRows(rows)
+	return rows, nextCursor, nil
+}
+
+func formatExamRosterRows(rows []model.ExamRosterEntry) {
 	wib, _ := time.LoadLocation("Asia/Jakarta")
 	for i := range rows {
 		if rows[i].ParticipantNumber == nil {
@@ -1339,7 +1354,39 @@ func (s *Service) AdminGetExamRoster(ctx context.Context, examID uuid.UUID, scho
 		}
 		rows[i].ParticipantNo = formatParticipantNo(prefix, examNo, *rows[i].ParticipantNumber)
 	}
-	return rows, nil
+}
+
+func (s *Service) ExportExamRosterCSV(ctx context.Context, examID uuid.UUID, schoolFilter *string) ([]byte, error) {
+	rows, err := s.AdminGetExamRoster(ctx, examID, schoolFilter)
+	if err != nil {
+		return nil, err
+	}
+	return BuildExamRosterCSV(rows), nil
+}
+
+func BuildExamRosterCSV(rows []model.ExamRosterEntry) []byte {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	_ = w.Write([]string{"No. Peserta", "Nama", "Username", "Status", "Checked In"})
+	for _, row := range rows {
+		username := ""
+		if row.StudentUsername != nil {
+			username = *row.StudentUsername
+		}
+		checkedIn := "no"
+		if row.CheckedInAt != nil {
+			checkedIn = "yes"
+		}
+		_ = w.Write([]string{
+			csvSafeField(row.ParticipantNo),
+			csvSafeField(row.StudentName),
+			csvSafeField(username),
+			csvSafeField(row.Status),
+			checkedIn,
+		})
+	}
+	w.Flush()
+	return buf.Bytes()
 }
 
 // GetExamCard returns a freshly presigned URL for the exam card PDF, generating

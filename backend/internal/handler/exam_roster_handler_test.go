@@ -2,8 +2,11 @@ package handler_test
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -199,6 +202,165 @@ func TestAdminListExamRegistrations_SuperAdmin_SeesAllSchools(t *testing.T) {
 	}
 	if data := decodeRosterData(t, rec.Body.Bytes()); len(data) != 2 {
 		t.Fatalf("super_admin must see both schools' students, got %d rows", len(data))
+	}
+}
+
+func TestAdminListExamRegistrations_CursorWalksBothDirections(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	ctx := context.Background()
+	admin := seedUser(t, env.pool, service.RoleSuperAdmin, "Roster Pager Admin")
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleSuperAdmin)
+	examID := seedExam(t, env.pool, "Paged Roster Exam", false, "hidden", "classic")
+
+	wantNumbers := map[string][]float64{
+		"asc":  {1, 2, 3},
+		"desc": {3, 2, 1},
+	}
+	for i := 0; i < 5; i++ {
+		student := seedUser(t, env.pool, service.RoleStudent, "Paged Student")
+		regID := seedRegistration(t, env.pool, student, examID)
+		if i < 3 {
+			if _, err := env.pool.Exec(ctx, `UPDATE exam_registration SET participant_number = $1 WHERE id = $2`, i+1, regID); err != nil {
+				t.Fatalf("set participant number: %v", err)
+			}
+		}
+	}
+
+	for direction, numbered := range wantNumbers {
+		t.Run(direction, func(t *testing.T) {
+			cursor := ""
+			seen := map[string]bool{}
+			var gotNumbers []float64
+			var nilCount int
+			for page := 0; page < 4; page++ {
+				path := "/api/v1/admin/exams/" + examID.String() + "/registrations?limit=2&sort=" + direction
+				if cursor != "" {
+					path += "&cursor=" + url.QueryEscape(cursor)
+				}
+				rec := getRequest(t, env.e, path, token)
+				if rec.Code != http.StatusOK {
+					t.Fatalf("page %d: want 200, got %d body=%s", page, rec.Code, rec.Body.String())
+				}
+				var resp struct {
+					Data       []map[string]any `json:"data"`
+					NextCursor string           `json:"next_cursor"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("decode response: %v", err)
+				}
+				if len(resp.Data) > 2 {
+					t.Fatalf("page %d: got %d rows, want at most 2", page, len(resp.Data))
+				}
+				for _, row := range resp.Data {
+					id := row["registration_id"].(string)
+					if seen[id] {
+						t.Fatalf("registration %s returned twice", id)
+					}
+					seen[id] = true
+					if n, ok := row["participant_number"].(float64); ok {
+						gotNumbers = append(gotNumbers, n)
+					} else {
+						nilCount++
+					}
+				}
+				cursor = resp.NextCursor
+				if cursor == "" {
+					break
+				}
+			}
+			if len(seen) != 5 {
+				t.Fatalf("cursor walk returned %d unique rows, want 5", len(seen))
+			}
+			if nilCount != 2 {
+				t.Fatalf("missing participant numbers: got %d, want 2", nilCount)
+			}
+			if len(gotNumbers) != len(numbered) {
+				t.Fatalf("numbered rows: got %v, want %v", gotNumbers, numbered)
+			}
+			for i := range numbered {
+				if gotNumbers[i] != numbered[i] {
+					t.Fatalf("numbered order: got %v, want %v", gotNumbers, numbered)
+				}
+			}
+		})
+	}
+}
+
+func TestAdminListExamRegistrations_InvalidCursorReturns400(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, service.RoleSuperAdmin, "Roster Cursor Admin")
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleSuperAdmin)
+	examID := seedExam(t, env.pool, "Roster Cursor Exam", false, "hidden", "classic")
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/registrations?limit=20&cursor=broken", token)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var apiErr struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &apiErr); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if apiErr.Code != "invalid_cursor" {
+		t.Fatalf("want invalid_cursor, got %q", apiErr.Code)
+	}
+}
+
+func TestAdminExportExamRegistrations_IsCompleteScopedAndFormulaSafe(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	ctx := context.Background()
+	schoolA := seedSchool(t, env.pool)
+	schoolB := seedSchool(t, env.pool)
+	admin := seedUser(t, env.pool, service.RoleAdminSchool, "Roster Export Admin")
+	token := mintSchoolTokenForEnv(t, env, admin.String(), service.RoleAdminSchool, schoolA)
+	examID := seedExam(t, env.pool, "Roster Export Exam", false, "hidden", "classic")
+
+	for i := 0; i < 23; i++ {
+		name := "Export Student"
+		if i == 0 {
+			name = "=HYPERLINK(\"bad\")"
+		}
+		student := seedUser(t, env.pool, service.RoleStudent, name)
+		if _, err := env.pool.Exec(ctx, `UPDATE users SET school_id = $1 WHERE id = $2`, schoolA, student); err != nil {
+			t.Fatalf("set school: %v", err)
+		}
+		seedRegistration(t, env.pool, student, examID)
+	}
+	other := seedUser(t, env.pool, service.RoleStudent, "Other School Student")
+	if _, err := env.pool.Exec(ctx, `UPDATE users SET school_id = $1 WHERE id = $2`, schoolB, other); err != nil {
+		t.Fatalf("set other school: %v", err)
+	}
+	seedRegistration(t, env.pool, other, examID)
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/registrations/export", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Header().Get("Content-Type"), "text/csv") {
+		t.Fatalf("content type: got %q", rec.Header().Get("Content-Type"))
+	}
+	records, err := csv.NewReader(strings.NewReader(rec.Body.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("parse CSV: %v", err)
+	}
+	if len(records) != 24 {
+		t.Fatalf("CSV rows including header: got %d, want 24", len(records))
+	}
+	if got := records[0]; len(got) != 5 || got[0] != "No. Peserta" || got[1] != "Nama" {
+		t.Fatalf("unexpected header: %v", got)
+	}
+	foundSafe := false
+	for _, row := range records[1:] {
+		if row[1] == "Other School Student" {
+			t.Fatal("export leaked another school's student")
+		}
+		if row[1] == "'=HYPERLINK(\"bad\")" {
+			foundSafe = true
+		}
+	}
+	if !foundSafe {
+		t.Fatal("formula-like student name was not neutralized")
 	}
 }
 
