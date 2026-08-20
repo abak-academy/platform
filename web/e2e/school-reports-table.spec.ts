@@ -86,6 +86,13 @@ async function pageDoesNotScrollSideways(page: Page): Promise<boolean> {
 
 // A collapsed 0px column satisfies the overflow comparison vacuously, so the
 // wrapper's visible width is asserted first.
+//
+// 200 (borrowed from exam-tables-overflow.spec.ts) is too high here: at
+// 390px this page nests one more padded layer than /admin/exam/* does (its
+// own `max-w-6xl px-4` wrapper on top of AppShell's collapsed sidebar rail
+// and `.md-card-outlined` card padding), which legitimately measures 188px
+// wide, not collapsed. 100 still fails a near-0px collapse while clearing
+// that legitimate width.
 async function assertTableIsTheScroller(page: Page, overflows: boolean) {
   const scroller = page.locator('[data-testid="school-reports-table"] .overflow-x-auto');
   await expect(scroller).toHaveCount(1);
@@ -93,7 +100,7 @@ async function assertTableIsTheScroller(page: Page, overflows: boolean) {
     scrollWidth: el.scrollWidth,
     clientWidth: el.clientWidth,
   }));
-  expect(clientWidth).toBeGreaterThan(200);
+  expect(clientWidth).toBeGreaterThan(100);
   if (overflows) expect(scrollWidth).toBeGreaterThan(clientWidth);
 }
 
@@ -145,11 +152,14 @@ test("view control opens the drill-down dialog via keyboard, native <button> sem
   // Tab from the search box (the last focusable control before the table)
   // to prove the control is reachable in natural tab order, not just
   // programmatically focusable.
-  await page.getByPlaceholder(/cari/i).click();
+  // Scoped to <main>: AppHeader also renders a global "Cari…" search input.
+  await page.locator("main").getByPlaceholder(/cari/i).click();
   await page.keyboard.press("Tab");
   await expect(viewButton).toBeFocused();
   await page.keyboard.press("Enter");
 
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByText(RESULT_ROWS[0].student_name, { exact: false })).toBeVisible();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  // Scoped to the dialog: the table row behind it carries the same name.
+  await expect(dialog.getByText(RESULT_ROWS[0].student_name, { exact: false })).toBeVisible();
 });
