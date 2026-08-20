@@ -384,6 +384,47 @@ describe("SchoolReportsPage", () => {
     expect(screen.getByText("Pembahasan")).toBeInTheDocument();
   });
 
+  it("uppercases mcq option keys in pembahasan drill-down", async () => {
+    detailState = {
+      data: {
+        ...scorePembahasanDetail,
+        pembahasan: [
+          {
+            question_id: "q1",
+            body: "Ibu kota?",
+            format: "mcq",
+            your_answer: "b",
+            correct_answer: "a",
+            is_correct: false,
+          },
+        ],
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<SchoolReportsPage />);
+
+    const selectTrigger = screen.getByRole("combobox");
+    fireEvent.click(selectTrigger);
+    const examOption = await screen.findByText("Tryout Matematika");
+    fireEvent.click(examOption);
+
+    await waitFor(() => {
+      expect(screen.getByText("Siti Aisyah")).toBeInTheDocument();
+    });
+    const row = screen.getByText("Siti Aisyah").closest("tr") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /lihat/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Detail Hasil")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Jawaban Anda:\s*B/)).toBeInTheDocument();
+    expect(screen.getByText(/Jawaban Benar:\s*A/)).toBeInTheDocument();
+  });
+
   // ── Drill-down moved to a labelled view control, not the <tr> (6c2b592) ──
   it("opens the drill-down via the row's view control, and the <tr> carries no role/tabindex/click handler", async () => {
     render(<SchoolReportsPage />);

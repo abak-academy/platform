@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RichContent } from "@/components/admin/RichContent";
+import { formatChoiceAnswer } from "@/lib/option-key";
 import type { ResultPembahasanItem } from "@/lib/types";
 
 function formatDate(iso: string): string {
@@ -266,7 +267,7 @@ function PembahasanItem({
         <p>
           <span className="text-ink-500">{t("result_your_answer")}: </span>
           <span className={item.is_correct ? "text-success" : "text-danger"}>
-            {item.your_answer || "—"}
+            {formatChoiceAnswer(item.your_answer, item.format) || "—"}
           </span>
         </p>
         {!item.is_correct && item.correct_answer != null && (
@@ -274,7 +275,9 @@ function PembahasanItem({
             <span className="text-ink-500">
               {t("result_correct_answer")}:{" "}
             </span>
-            <span className="text-success">{item.correct_answer}</span>
+            <span className="text-success">
+              {formatChoiceAnswer(item.correct_answer, item.format)}
+            </span>
           </p>
         )}
         {item.explanation && (

@@ -36,6 +36,7 @@ import {
 import { useSchoolOptions } from "@/lib/hooks/admin-schools";
 import { useAuthStore } from "@/stores/auth";
 import { RichContent } from "@/components/admin/RichContent";
+import { formatChoiceAnswer } from "@/lib/option-key";
 import type { AdminResultRow, AdminResultDetail, ProductType } from "@/lib/types";
 
 export default function SchoolReportsPage() {
@@ -587,10 +588,12 @@ function ResultDetailContent({
                   <RichContent html={p.body} />
                 </p>
                 <p className="mt-1 text-ink-600">
-                  {t("result_your_answer")}: {p.your_answer ?? "—"}
+                  {t("result_your_answer")}:{" "}
+                  {formatChoiceAnswer(p.your_answer, p.format) || "—"}
                 </p>
                 <p className="text-ink-600">
-                  {t("result_correct_answer")}: {p.correct_answer ?? "—"}
+                  {t("result_correct_answer")}:{" "}
+                  {formatChoiceAnswer(p.correct_answer, p.format) || "—"}
                 </p>
                 {p.explanation && (
                   <p className="mt-1 text-ink-500 italic">{p.explanation}</p>
