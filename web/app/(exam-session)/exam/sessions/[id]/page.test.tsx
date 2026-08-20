@@ -143,6 +143,48 @@ const submittedSession: SessionState = {
   remaining_seconds: 0,
 };
 
+const multiTestSession: SessionState = {
+  ...sampleSession,
+  tests: [
+    {
+      id: "test-bahasa",
+      title: "TKA BAHASA INDONESIA SD/MI",
+      subject: "Bahasa Indonesia",
+      questions: [
+        {
+          id: "q-bahasa-1",
+          test_id: "test-bahasa",
+          format: "mcq",
+          body: "Sinonim dari cerdas?",
+          sort_order: 1,
+          options: [
+            { key: "A", text: "Pintar", sort_order: 1 },
+            { key: "B", text: "Lambat", sort_order: 2 },
+          ],
+        },
+      ],
+    },
+    {
+      id: "test-math",
+      title: "Tes Matematika",
+      subject: "Matematika",
+      questions: [
+        {
+          id: "q-math-1",
+          test_id: "test-math",
+          format: "mcq",
+          body: "Berapa 9 - 1?",
+          sort_order: 1,
+          options: [
+            { key: "A", text: "8", sort_order: 1 },
+            { key: "B", text: "7", sort_order: 2 },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 // ── Sectioned session samples ───────────────────────────────────────────────
 
 const sectionedSession: SessionState = {
@@ -926,6 +968,37 @@ describe("SessionPage", () => {
     expect(
       screen.getByTestId("exam-top-bar").querySelector("button")
     ).not.toBeNull();
+  });
+
+  it("updates the top-bar title to the current question's test in a multi-test standard exam", async () => {
+    sessionState = { ...sessionState, data: multiTestSession };
+    render(<SessionPage />);
+
+    document.documentElement.requestFullscreen = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("enter-fullscreen"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sinonim dari cerdas\?/)).toBeInTheDocument();
+    });
+
+    const topBar = screen.getByTestId("exam-top-bar");
+    expect(topBar).toHaveTextContent("TKA BAHASA INDONESIA SD/MI");
+    expect(topBar).not.toHaveTextContent("Tes Matematika");
+
+    fireEvent.click(screen.getByTestId("session-nav-1"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Berapa 9 - 1\?/)).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("exam-top-bar")).toHaveTextContent(
+      "Tes Matematika",
+    );
+    expect(screen.getByTestId("exam-top-bar")).not.toHaveTextContent(
+      "TKA BAHASA INDONESIA SD/MI",
+    );
   });
 
   it("shows distinct mode label and section label in top bar for sectioned mode", async () => {

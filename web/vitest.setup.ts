@@ -30,7 +30,10 @@ if (typeof document !== "undefined" && !document.execCommand) {
 // Net effect: `localStorage` is `undefined` in every jsdom test regardless of
 // this project's own code. Polyfill a minimal in-memory Storage so any code
 // under test that reads/writes localStorage has something real to hit.
-if (typeof globalThis.localStorage === "undefined") {
+if (
+  typeof globalThis.localStorage === "undefined" ||
+  typeof globalThis.localStorage.clear !== "function"
+) {
   class MemoryStorage {
     private store = new Map<string, string>();
     getItem(key: string): string | null {
