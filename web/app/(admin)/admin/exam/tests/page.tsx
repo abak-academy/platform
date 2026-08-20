@@ -1,22 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ClipboardList, Pencil, Trash2 } from "lucide-react";
+import { ClipboardList, Pencil, Search, Trash2 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TestModal } from "@/components/admin/TestModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   useAdminTests,
   useCreateTest,
   useUpdateTest,
   useDeleteTest,
 } from "@/lib/hooks/admin-tests";
+import { useTopics } from "@/lib/hooks/admin-topics";
 import { useTranslation } from "@/lib/i18n";
 import type { Test, AdminCreateTestInput, AdminUpdateTestInput } from "@/lib/types";
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 export default function TestsPage() {
   const { t } = useTranslation();
@@ -25,7 +29,38 @@ export default function TestsPage() {
   const [editingTest, setEditingTest] = useState<Test | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const { data: testsResp, isLoading, isError, error } = useAdminTests();
+  const [subject, setSubject] = useState("");
+  const [topic, setTopic] = useState("");
+  const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    const id = setTimeout(() => setQ(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  const allTopics = useTopics();
+  const topicsForSubject = useTopics(subject || undefined);
+  const topicOptions = topicsForSubject.data?.data ?? [];
+
+  const subjectOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of allTopics.data?.data ?? []) {
+      if (item.subject) set.add(item.subject);
+    }
+    return Array.from(set).sort();
+  }, [allTopics.data]);
+
+  // A topic name that doesn't exist under the newly selected subject must not linger.
+  useEffect(() => {
+    if (topic && !topicOptions.some((opt) => opt.name === topic)) setTopic("");
+  }, [topic, topicsForSubject.data]);
+
+  const { data: testsResp, isLoading, isError, error } = useAdminTests({
+    subject: subject || undefined,
+    topic: topic || undefined,
+    q: q || undefined,
+  });
   const tests = testsResp?.data ?? [];
   const create = useCreateTest();
   const update = useUpdateTest(editingTest?.id ?? "");
@@ -83,6 +118,55 @@ export default function TestsPage() {
         description={t("tests_page_description")}
         actions={<Button onClick={openCreate}>{t("tests_new")}</Button>}
       />
+
+      <div
+        data-testid="exam-tests-toolbar"
+        className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+      >
+        <select
+          data-slot="select"
+          data-testid="tests-subject-filter"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+        >
+          <option value="">{t("tab_all")}</option>
+          {subjectOptions.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <select
+            data-slot="select"
+            data-testid="tests-topic-filter"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            disabled={topicsForSubject.isLoading}
+            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+          >
+            <option value="">{t("all_topics")}</option>
+            {topicOptions.map((opt) => (
+              <option key={opt.id} value={opt.name}>
+                {opt.name}
+              </option>
+            ))}
+          </select>
+
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+            <Input
+              data-testid="tests-search-input"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("search")}
+              className="pl-9"
+            />
+          </div>
+        </div>
+      </div>
 
       {isLoading && (
         <div className="space-y-2">

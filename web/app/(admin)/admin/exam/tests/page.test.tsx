@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import { toast } from "sonner";
 import TestsPage from "./page";
-import type { Test } from "@/lib/types";
+import type { Test, ExamTopic } from "@/lib/types";
+import type { AdminTestsFilters } from "@/lib/hooks/admin-tests";
 
 const push = vi.fn();
 
@@ -24,11 +25,31 @@ let createState = { mutateAsync: mockMutateAsync, isPending: false };
 let updateState = { mutateAsync: mockMutateAsync, isPending: false };
 let deleteState = { mutateAsync: mockMutateAsync, isPending: false };
 
+const mockUseAdminTests = vi.fn((_filters?: AdminTestsFilters) => testsState);
+
 vi.mock("@/lib/hooks/admin-tests", () => ({
-  useAdminTests: () => testsState,
+  useAdminTests: (filters?: AdminTestsFilters) => mockUseAdminTests(filters),
   useCreateTest: () => createState,
   useUpdateTest: () => updateState,
   useDeleteTest: () => deleteState,
+}));
+
+// Deliberately distinct from sampleTests' subject/topic strings below — the
+// toolbar's own <option> text must not collide with row text in getByText queries.
+const sampleTopics: ExamTopic[] = [
+  { id: "topic-1", name: "Optik", subject: "Fisika" },
+  { id: "topic-2", name: "Mekanika", subject: "Fisika" },
+  { id: "topic-3", name: "Stoikiometri", subject: "Kimia" },
+];
+
+// useTopics() (no subject) drives the subject dropdown; useTopics(subject) re-scopes the topic one.
+vi.mock("@/lib/hooks/admin-topics", () => ({
+  useTopics: (subject?: string) => ({
+    data: { data: subject ? sampleTopics.filter((t) => t.subject === subject) : sampleTopics },
+    isLoading: false,
+    isError: false,
+    error: null,
+  }),
 }));
 
 vi.mock("sonner", () => ({
@@ -73,6 +94,7 @@ describe("TestsPage", () => {
     updateState = { mutateAsync: mockMutateAsync, isPending: false };
     deleteState = { mutateAsync: mockMutateAsync, isPending: false };
     mockMutateAsync.mockReset();
+    mockUseAdminTests.mockClear();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
     push.mockReset();
@@ -239,5 +261,58 @@ describe("TestsPage", () => {
     });
 
     vi.unstubAllGlobals();
+  });
+
+  it("fetches with no filters when every control is at its default (FR-16)", async () => {
+    render(<TestsPage />);
+
+    await waitFor(() => expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument());
+
+    expect(mockUseAdminTests).toHaveBeenLastCalledWith({
+      subject: undefined,
+      topic: undefined,
+      q: undefined,
+    });
+  });
+
+  it("sends q only after the debounce, trimmed", async () => {
+    vi.useFakeTimers();
+    render(<TestsPage />);
+    mockUseAdminTests.mockClear();
+
+    fireEvent.change(screen.getByTestId("tests-search-input"), {
+      target: { value: "  aljabar  " },
+    });
+    expect(mockUseAdminTests).not.toHaveBeenCalledWith(
+      expect.objectContaining({ q: "aljabar" })
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(mockUseAdminTests).toHaveBeenLastCalledWith(
+      expect.objectContaining({ q: "aljabar" })
+    );
+
+    vi.useRealTimers();
+  });
+
+  it("re-scopes the topic dropdown to the selected subject and clears a stale topic (FR-13)", async () => {
+    render(<TestsPage />);
+    await waitFor(() => expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument());
+
+    const subjectSelect = screen.getByTestId("tests-subject-filter") as HTMLSelectElement;
+    const topicSelect = screen.getByTestId("tests-topic-filter") as HTMLSelectElement;
+
+    fireEvent.change(subjectSelect, { target: { value: "Kimia" } });
+    fireEvent.change(topicSelect, { target: { value: "Stoikiometri" } });
+    expect(topicSelect.value).toBe("Stoikiometri");
+
+    fireEvent.change(subjectSelect, { target: { value: "Fisika" } });
+
+    expect(topicSelect.value).toBe("");
+    expect(within(topicSelect).queryByText("Stoikiometri")).not.toBeInTheDocument();
+    expect(within(topicSelect).getByText("Mekanika")).toBeInTheDocument();
   });
 });
