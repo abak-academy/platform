@@ -48,6 +48,8 @@ export interface GradeEssayInput {
 export interface AdminExamsFilters {
   cursor?: string;
   limit?: number;
+  q?: string;
+  status?: string;
 }
 
 function buildListPath(filters?: AdminExamsFilters): string {
@@ -55,6 +57,8 @@ function buildListPath(filters?: AdminExamsFilters): string {
   const params = new URLSearchParams();
   if (filters.cursor) params.set("cursor", filters.cursor);
   if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters.q) params.set("q", filters.q);
+  if (filters.status) params.set("status", filters.status);
   const query = params.toString();
   return query ? `/admin/exams?${query}` : "/admin/exams";
 }

@@ -6,6 +6,7 @@ import {
   useSessionEssays,
   useGradeEssay,
   useExamRoster,
+  useExams,
   adminExamsKeys,
 } from "./admin-exams";
 import { examKeys } from "./exam";
@@ -128,6 +129,50 @@ describe("admin-exams grading hooks", () => {
 
     expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams/e1/registrations");
     expect(result.current.data?.data).toEqual(rows);
+  });
+
+  it("useExams() with no argument still requests GET /admin/exams — monitor/ProductModal call sites are unaffected", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useExams(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams");
+  });
+
+  it("useExams({ status }) requests GET /admin/exams?status=<status>", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useExams({ status: "draft" }), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams?status=draft");
+  });
+
+  it("useExams({ q }) requests GET /admin/exams?q=<q>", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useExams({ q: "matematika" }), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams?q=matematika");
+  });
+
+  it("useExams({ q: undefined, status: undefined }) requests /admin/exams with no query string", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useExams({ q: undefined, status: undefined }), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams");
   });
 });
 

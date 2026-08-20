@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import ExamPackagesPage from "./page";
 
 const push = vi.fn();
@@ -17,8 +17,13 @@ let examsState = {
   error: null as Error | null,
 };
 
+const useExamsSpy = vi.fn();
+
 vi.mock("@/lib/hooks/admin-exams", () => ({
-  useExams: () => examsState,
+  useExams: (...args: unknown[]) => {
+    useExamsSpy(...args);
+    return examsState;
+  },
   useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
@@ -48,6 +53,7 @@ const sampleExams = [
     requires_checkin: true,
     allow_leaderboard: true,
     randomize: false,
+    registration_count: 0,
   },
   {
     id: "e2",
@@ -62,6 +68,7 @@ const sampleExams = [
     requires_checkin: false,
     allow_leaderboard: false,
     randomize: true,
+    registration_count: 7,
   },
 ];
 
@@ -69,6 +76,7 @@ describe("ExamPackagesPage", () => {
   beforeEach(() => {
     push.mockReset();
     mockRole = undefined;
+    useExamsSpy.mockClear();
   });
 
   it("navigates to the exam detail page when a row is clicked", async () => {
@@ -213,5 +221,98 @@ describe("ExamPackagesPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/belum ada ujian/i)).toBeInTheDocument();
     });
+  });
+
+  it("renders registration_count for every card, including a zero count", async () => {
+    examsState = {
+      data: { data: sampleExams },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<ExamPackagesPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
+    });
+
+    const row1 = screen.getByText("UTS Matematika").closest("[data-testid=package-row]") as HTMLElement;
+    expect(within(row1).getByText("0 peserta terdaftar")).toBeInTheDocument();
+
+    const row2 = screen.getByText("UAS IPA").closest("[data-testid=package-row]") as HTMLElement;
+    expect(within(row2).getByText("7 peserta terdaftar")).toBeInTheDocument();
+  });
+
+  it("fetches /admin/exams with no query string when every control is at its default", async () => {
+    examsState = {
+      data: { data: sampleExams },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<ExamPackagesPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
+    });
+
+    expect(useExamsSpy).toHaveBeenCalledWith({ q: undefined, status: undefined });
+  });
+
+  it("selecting draft requests status=draft, and selecting all back never sends the literal string 'all'", async () => {
+    examsState = {
+      data: { data: sampleExams },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<ExamPackagesPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
+    });
+
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "draft" } });
+    expect(useExamsSpy).toHaveBeenLastCalledWith({ q: undefined, status: "draft" });
+
+    fireEvent.change(select, { target: { value: "" } });
+    expect(useExamsSpy).toHaveBeenLastCalledWith({ q: undefined, status: undefined });
+    expect(useExamsSpy.mock.calls.some((call) => call[0]?.status === "all")).toBe(false);
+  });
+
+  it("debounces and trims the search box before it reaches the request filters", async () => {
+    vi.useFakeTimers();
+    examsState = {
+      data: { data: sampleExams },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<ExamPackagesPage />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    useExamsSpy.mockClear();
+
+    const search = screen.getByPlaceholderText("Cari…");
+    fireEvent.change(search, { target: { value: "  matematika  " } });
+
+    expect(useExamsSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ q: "matematika" })
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(useExamsSpy).toHaveBeenLastCalledWith({ q: "matematika", status: undefined });
+
+    vi.useRealTimers();
   });
 });
