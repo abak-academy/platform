@@ -8,8 +8,8 @@ import type { CrossSchoolStudent } from "@/lib/types";
 
 export const examGrantKeys = {
   all: ["admin", "examGrants"] as const,
-  search: (q?: string, schoolId?: string, jenjang?: string, grade?: string) =>
-    [...examGrantKeys.all, "search", q ?? "", schoolId ?? "", jenjang ?? "", grade ?? ""] as const,
+  search: (q?: string, schoolId?: string, jenjang?: string, grade?: string, examId?: string, cursor?: string, limit?: number) =>
+    [...examGrantKeys.all, "search", q ?? "", schoolId ?? "", jenjang ?? "", grade ?? "", examId ?? "", cursor ?? "initial", limit ?? 20] as const,
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -19,6 +19,9 @@ export interface SearchStudentsAcrossSchoolsOpts {
   schoolId?: string;
   jenjang?: string;
   grade?: string;
+  examId?: string;
+  cursor?: string;
+  limit?: number;
   enabled?: boolean;
 }
 
@@ -44,9 +47,9 @@ export interface GrantExamAccessResponse {
  * All filter params are optional.
  */
 export function useSearchStudentsAcrossSchools(opts?: SearchStudentsAcrossSchoolsOpts) {
-  const { q, schoolId, jenjang, grade, enabled } = opts ?? {};
+  const { q, schoolId, jenjang, grade, examId, cursor, limit, enabled } = opts ?? {};
   return useQuery({
-    queryKey: examGrantKeys.search(q, schoolId, jenjang, grade),
+    queryKey: examGrantKeys.search(q, schoolId, jenjang, grade, examId, cursor, limit),
     enabled: enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -54,6 +57,9 @@ export function useSearchStudentsAcrossSchools(opts?: SearchStudentsAcrossSchool
       if (schoolId) params.set("school_id", schoolId);
       if (jenjang) params.set("jenjang", jenjang);
       if (grade) params.set("grade", grade);
+      if (examId) params.set("exam_id", examId);
+      if (cursor) params.set("cursor", cursor);
+      if (limit) params.set("limit", String(limit));
       const query = params.toString();
       const path = query ? `/admin/exam-grants/students/search?${query}` : "/admin/exam-grants/students/search";
       return authFetch<{ data: CrossSchoolStudent[]; next_cursor?: string }>(path);

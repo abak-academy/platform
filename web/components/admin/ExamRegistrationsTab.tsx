@@ -359,6 +359,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
             </h3>
             <div className="mt-3">
               <ParticipantPicker
+                examId={examId}
                 schoolId={isSuperAdmin ? undefined : schoolId}
                 selected={selectedStudentIds}
                 onChange={setSelectedStudentIds}

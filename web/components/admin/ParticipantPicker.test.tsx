@@ -35,6 +35,7 @@ const students: CrossSchoolStudent[] = [
 const schools: School[] = [{ id: "sch-1", name: "SMA Negeri 1" }];
 
 const authFetchCalls: string[] = [];
+let studentResponse = (path: string) => ({ data: students });
 
 vi.mock("@/lib/api", () => ({
   authFetch: vi.fn(async (path: string) => {
@@ -42,7 +43,7 @@ vi.mock("@/lib/api", () => ({
     if (path.startsWith("/admin/schools")) {
       return { data: schools };
     }
-    return { data: students };
+    return studentResponse(path);
   }),
 }));
 
@@ -77,10 +78,11 @@ function renderWithClient(ui: React.ReactNode, qc?: QueryClient) {
 describe("ParticipantPicker (cross-school mode)", () => {
   beforeEach(() => {
     authFetchCalls.length = 0;
+    studentResponse = () => ({ data: students });
   });
 
   it("renders school-bearing and no-school rows without leaking null/undefined text", async () => {
-    renderWithClient(<ParticipantPicker selected={[]} onChange={vi.fn()} />);
+    renderWithClient(<ParticipantPicker examId="exam-1" selected={[]} onChange={vi.fn()} />);
 
     expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
@@ -90,7 +92,7 @@ describe("ParticipantPicker (cross-school mode)", () => {
   });
 
   it("offers a no-school facet option and sends school_id=none when selected", async () => {
-    renderWithClient(<ParticipantPicker selected={[]} onChange={vi.fn()} />);
+    renderWithClient(<ParticipantPicker examId="exam-1" selected={[]} onChange={vi.fn()} />);
     await screen.findByText("Ada Lovelace");
 
     expect(screen.getByText("Tanpa sekolah terdaftar")).toBeInTheDocument();
@@ -108,7 +110,7 @@ describe("ParticipantPicker (cross-school mode)", () => {
   it("flips aria-checked and adds a visible selected state when a row is clicked", async () => {
     const onChange = vi.fn();
     const { client } = renderWithClient(
-      <ParticipantPicker selected={[]} onChange={onChange} />,
+      <ParticipantPicker examId="exam-1" selected={[]} onChange={onChange} />,
     );
 
     const row = await screen.findByRole("checkbox", { name: "Ada Lovelace" });
@@ -117,11 +119,74 @@ describe("ParticipantPicker (cross-school mode)", () => {
     fireEvent.click(row);
     expect(onChange).toHaveBeenCalledWith(["s1"]);
 
-    renderWithClient(<ParticipantPicker selected={["s1"]} onChange={onChange} />, client);
+    renderWithClient(<ParticipantPicker examId="exam-1" selected={["s1"]} onChange={onChange} />, client);
 
     const selectedRows = await screen.findAllByRole("checkbox", { name: "Ada Lovelace" });
     const selectedRow = selectedRows[selectedRows.length - 1];
     expect(selectedRow).toHaveAttribute("aria-checked", "true");
     expect(selectedRow.className).toMatch(/border-brand-600/);
+  });
+
+  it("loads and deduplicates 20-row pages while preserving selections across search", async () => {
+    const third = { ...students[0], id: "s3", name: "Citra Dewi", username: "citra" };
+    const fourth = { ...students[0], id: "s4", name: "Dewi Lestari", username: "dewi" };
+    studentResponse = (path) => {
+      if (path.includes("q=dewi")) return { data: [fourth] };
+      if (path.includes("cursor=next-1")) return { data: [students[1], third] };
+      return { data: students, next_cursor: "next-1" };
+    };
+
+    function Harness() {
+      const [selected, setSelected] = React.useState<string[]>([]);
+      return (
+        <>
+          <ParticipantPicker examId="exam-1" selected={selected} onChange={setSelected} />
+          <output data-testid="selected">{selected.join(",")}</output>
+        </>
+      );
+    }
+
+    renderWithClient(<Harness />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Ada Lovelace" }));
+    fireEvent.click(screen.getByText("Muat lebih banyak"));
+
+    expect(await screen.findByText("Citra Dewi")).toBeInTheDocument();
+    expect(screen.getAllByRole("checkbox", { name: "Budi Santoso" })).toHaveLength(1);
+    fireEvent.click(screen.getByText("Pilih semua"));
+    expect(screen.getByTestId("selected")).toHaveTextContent("s1,s2,s3");
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "dewi" } });
+    expect(await screen.findByText("Dewi Lestari", {}, { timeout: 1000 })).toBeInTheDocument();
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+    expect(screen.getByTestId("selected")).toHaveTextContent("s1,s2,s3");
+    expect(authFetchCalls).toContain(
+      "/admin/exam-grants/students/search?q=dewi&exam_id=exam-1&limit=20",
+    );
+  });
+});
+
+describe("ParticipantPicker (school-scoped mode)", () => {
+  beforeEach(() => {
+    authFetchCalls.length = 0;
+    studentResponse = (path) =>
+      path.includes("cursor=next-1")
+        ? { data: [{ ...students[0], id: "s3", name: "Citra Dewi" }] }
+        : { data: students, next_cursor: "next-1" };
+  });
+
+  it("requests exam-scoped 20-row pages and follows next_cursor", async () => {
+    renderWithClient(
+      <ParticipantPicker examId="exam-1" schoolId="school-1" selected={[]} onChange={vi.fn()} />,
+    );
+
+    await screen.findByText("Ada Lovelace");
+    expect(authFetchCalls).toContain(
+      "/admin/students?limit=20&school_id=school-1&exam_id=exam-1",
+    );
+    fireEvent.click(screen.getByText("Muat lebih banyak"));
+    expect(await screen.findByText("Citra Dewi")).toBeInTheDocument();
+    expect(authFetchCalls).toContain(
+      "/admin/students?cursor=next-1&limit=20&school_id=school-1&exam_id=exam-1",
+    );
   });
 });

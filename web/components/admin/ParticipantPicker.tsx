@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, Check, Loader2, X } from "lucide-react";
-import { toast } from "sonner";
-import { useTranslation, type Lang } from "@/lib/i18n";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, Check, Loader2 } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,17 +34,19 @@ function useDebouncedValue(value: string, delay: number): string {
 // ── ParticipantPicker ─────────────────────────────────────────────────────
 
 export interface ParticipantPickerProps {
+  examId: string;
   schoolId?: string;
   selected: string[];
   onChange: (ids: string[]) => void;
 }
 
 export function ParticipantPicker({
+  examId,
   schoolId,
   selected,
   onChange,
 }: ParticipantPickerProps) {
-  const { t, lang } = useTranslation();
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [jenjangFilter, setJenjangFilter] = useState("");
   const [gradeFilter, setGradeFilter] = useState("");
@@ -57,49 +58,52 @@ export function ParticipantPicker({
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
 
-  // Build query input for the hook
+  const filterKey = [examId, schoolId, debouncedSearch, jenjangFilter, gradeFilter, schoolFilter].join("|");
+  const [page, setPage] = useState<{ key: string; cursor?: string }>({ key: filterKey });
+  const cursor = page.key === filterKey ? page.cursor : undefined;
+  const [accumulated, setAccumulated] = useState<{ key: string; data: AdminStudent[] }>({
+    key: filterKey,
+    data: [],
+  });
+
   const queryOpts = {
     q: debouncedSearch || undefined,
     jenjang: jenjangFilter || undefined,
     grade: gradeFilter || undefined,
     schoolId: schoolFilter || undefined,
-    enabled: schoolId ? Boolean(schoolId) : true,
+    examId,
+    cursor,
+    limit: 20,
+    enabled: !schoolId,
   };
 
-  let students: AdminStudent[];
-  let isLoading: boolean;
-  let isError: boolean;
+  const scopedQuery = useAdminStudents({
+    q: debouncedSearch || undefined,
+    schoolId,
+    examId,
+    jenjang: jenjangFilter || undefined,
+    grade: gradeFilter || undefined,
+    cursor,
+    limit: 20,
+    enabled: Boolean(schoolId),
+  });
+  const crossQuery = useSearchStudentsAcrossSchools(queryOpts);
+  const activeQuery = schoolId ? scopedQuery : crossQuery;
+  const students = accumulated.key === filterKey ? accumulated.data : [];
+  const nextCursor = activeQuery.data?.next_cursor;
+  const { isLoading, isError } = activeQuery;
 
-  if (schoolId) {
-    // School-scoped: use existing useAdminStudents with schoolId
-    // We need to call the hook unconditionally, then pass schoolId
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const scopedQuery = useAdminStudents({
-      q: debouncedSearch || undefined,
-      schoolId,
-      enabled: Boolean(schoolId),
+  useEffect(() => {
+    if (!activeQuery.data) return;
+    setAccumulated((current) => {
+      const existing = current.key === filterKey && cursor ? current.data : [];
+      const rows = [...existing, ...activeQuery.data.data];
+      return {
+        key: filterKey,
+        data: [...new Map(rows.map((student) => [student.id, student])).values()],
+      };
     });
-    students = scopedQuery.data?.data ?? [];
-    isLoading = scopedQuery.isLoading;
-    isError = scopedQuery.isError;
-
-    // Client-side filter for jenjang/grade since useAdminStudents doesn't support them as params
-    if (jenjangFilter) {
-      students = students.filter((s) => s.jenjang === jenjangFilter);
-    }
-    if (gradeFilter) {
-      students = students.filter(
-        (s) => String(s.grade ?? "") === gradeFilter,
-      );
-    }
-  } else {
-    // Cross-school: use search-across-schools hook
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const crossQuery = useSearchStudentsAcrossSchools(queryOpts);
-    students = crossQuery.data?.data ?? [];
-    isLoading = crossQuery.isLoading;
-    isError = crossQuery.isError;
-  }
+  }, [activeQuery.data, cursor, filterKey]);
 
   // Unique jenjang/grade values from fetched students
   const facetedJenjang = useMemo(() => {
@@ -289,6 +293,18 @@ export function ParticipantPicker({
             </button>
           );
         })}
+        {nextCursor && !isLoading && (
+          <div className="flex justify-center pt-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setPage({ key: filterKey, cursor: nextCursor })}
+            >
+              {t("sys_load_more")}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

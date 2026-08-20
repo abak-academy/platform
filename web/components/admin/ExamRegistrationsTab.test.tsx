@@ -92,9 +92,10 @@ vi.mock("@/lib/hooks/admin-exam-grants", () => ({
 }));
 
 vi.mock("@/components/admin/ParticipantPicker", () => ({
-  ParticipantPicker: ({ onChange }: { selected: string[]; onChange: (ids: string[]) => void }) => (
+  ParticipantPicker: ({ examId, onChange }: { examId: string; selected: string[]; onChange: (ids: string[]) => void }) => (
     <button
       data-testid="participant-add"
+      data-exam-id={examId}
       onClick={() => onChange(["student-1", "student-2"])}
     >
       pick
@@ -153,6 +154,7 @@ describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam
       wrapper: wrapperFactory(),
     });
     fireEvent.click(screen.getByTestId("participant-add"));
+    expect(screen.getByTestId("participant-add")).toHaveAttribute("data-exam-id", "exam-1");
     expect(screen.queryByText("exam_grant_grant")).not.toBeInTheDocument();
   });
 
