@@ -18,12 +18,7 @@ func (s *Service) AdminGetLeaderboard(ctx context.Context, examID uuid.UUID, cur
 	return entries, next, mapCursorErr(err)
 }
 
-// mapCursorErr surfaces a malformed pagination cursor as a validation error (422)
-// instead of an opaque internal error (500).
 func mapCursorErr(err error) error {
-	if errors.Is(err, repository.ErrInvalidCursor) {
-		return fmt.Errorf("%w: %v", ErrValidation, err)
-	}
 	return err
 }
 

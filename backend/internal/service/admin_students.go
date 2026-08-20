@@ -72,6 +72,7 @@ type StudentResponse struct {
 	Email    *string `json:"email"`
 	Status   string  `json:"status"`
 	Grade    *int    `json:"grade"`
+	Jenjang  string  `json:"jenjang"`
 	// SchoolName is NULL for registrants with no school on file;
 	// UnlistedSchoolName carries what a self-registering user typed when their
 	// school wasn't listed. Both are surfaced so operations can follow up.
@@ -97,6 +98,7 @@ func toStudentResponse(row repository.StudentRow) StudentResponse {
 		Email:              row.Email,
 		Status:             row.Status,
 		Grade:              grade,
+		Jenjang:            row.Jenjang,
 		SchoolName:         row.SchoolName,
 		UnlistedSchoolName: row.UnlistedSchoolName,
 		CreatedAt:          row.CreatedAt.Format(time.RFC3339),
@@ -270,6 +272,7 @@ type CrossSchoolStudentResponse struct {
 	Email    *string `json:"email"`
 	Status   string  `json:"status"`
 	Grade    *int    `json:"grade"`
+	Jenjang  string  `json:"jenjang"`
 	// SchoolID/SchoolName are nullable for students with no school on file;
 	// UnlistedSchoolName carries the free-text name they typed instead.
 	SchoolID           *string `json:"school_id"`
@@ -286,6 +289,7 @@ func toCrossSchoolStudentResponse(row repository.CrossSchoolStudentRow) CrossSch
 		Email:              row.Email,
 		Status:             row.Status,
 		Grade:              row.Grade,
+		Jenjang:            row.Jenjang,
 		SchoolID:           row.SchoolID,
 		SchoolName:         row.SchoolName,
 		UnlistedSchoolName: row.UnlistedSchoolName,

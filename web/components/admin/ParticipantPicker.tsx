@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils";
 import type { AdminStudent } from "@/lib/types";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
 
+const ALL_FILTER_VALUE = "__all__";
+
 // ── Debounce helper ───────────────────────────────────────────────────────
 
 function useDebouncedValue(value: string, delay: number): string {
@@ -107,7 +109,10 @@ export function ParticipantPicker({
 
   // Unique jenjang/grade values from fetched students
   const facetedJenjang = useMemo(() => {
-    const set = new Set(students.map((s) => s.jenjang).filter(Boolean));
+    const set = new Set([
+      ...students.map((s) => s.jenjang).filter(Boolean),
+      ...JENJANG_OPTIONS,
+    ]);
     return [...set].sort();
   }, [students]);
 
@@ -160,14 +165,17 @@ export function ParticipantPicker({
           />
         </div>
 
-        <Select value={jenjangFilter} onValueChange={setJenjangFilter}>
+        <Select
+          value={jenjangFilter || ALL_FILTER_VALUE}
+          onValueChange={(value) => setJenjangFilter(value === ALL_FILTER_VALUE ? "" : value)}
+        >
           <SelectTrigger className="h-9 w-[130px] text-xs">
             <SelectValue>
               {jenjangFilter || t("students_field_jenjang")}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">
+            <SelectItem value={ALL_FILTER_VALUE}>
               <span className="text-ink-500">{t("students_field_jenjang")}</span>
             </SelectItem>
             {facetedJenjang.map((j) => (
@@ -175,24 +183,20 @@ export function ParticipantPicker({
                 {j}
               </SelectItem>
             ))}
-            {!schoolId &&
-              facetedJenjang.length === 0 &&
-              JENJANG_OPTIONS.map((j) => (
-                <SelectItem key={j} value={j}>
-                  {j}
-                </SelectItem>
-              ))}
           </SelectContent>
         </Select>
 
-        <Select value={gradeFilter} onValueChange={setGradeFilter}>
+        <Select
+          value={gradeFilter || ALL_FILTER_VALUE}
+          onValueChange={(value) => setGradeFilter(value === ALL_FILTER_VALUE ? "" : value)}
+        >
           <SelectTrigger className="h-9 w-[110px] text-xs">
             <SelectValue>
               {gradeFilter || t("students_field_grade")}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">
+            <SelectItem value={ALL_FILTER_VALUE}>
               <span className="text-ink-500">{t("students_field_grade")}</span>
             </SelectItem>
             {facetedGrade.map((g) => (
@@ -324,12 +328,15 @@ function SchoolFacetSelect({
   const schools = useMemo(() => schoolsData?.data ?? [], [schoolsData]);
 
   return (
-    <Select value={value} onValueChange={onValueChange}>
+    <Select
+      value={value || ALL_FILTER_VALUE}
+      onValueChange={(next) => onValueChange(next === ALL_FILTER_VALUE ? "" : next)}
+    >
       <SelectTrigger className="h-9 w-[180px] text-xs">
         <SelectValue placeholder={t("select_school")} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="">
+        <SelectItem value={ALL_FILTER_VALUE}>
           <span className="text-ink-500">{t("select_school")}</span>
         </SelectItem>
         <SelectItem value="none">{t("students_school_facet_none")}</SelectItem>

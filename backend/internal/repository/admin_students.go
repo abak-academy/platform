@@ -22,6 +22,7 @@ type StudentRow struct {
 	Email    *string `json:"email"`
 	Status   string  `json:"status"`
 	Grade    *int    `json:"grade"`
+	Jenjang  string  `json:"jenjang"`
 	// SchoolName is the linked school's name, NULL for registrants who have no
 	// school on file. UnlistedSchoolName carries what a self-registering user
 	// typed when their school wasn't in the list. Operations staff use both to
@@ -66,7 +67,7 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 		filter.Limit = 100
 	}
 
-	query := `SELECT u.id, u.name, u.username, u.email, u.status, u.grade,
+	query := `SELECT u.id, u.name, u.username, u.email, u.status, u.grade, COALESCE(u.jenjang, ''),
 			s.name AS school_name, u.unlisted_school_name, u.created_at
 			FROM users u
 			LEFT JOIN school s ON s.id = u.school_id
@@ -134,7 +135,7 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 
 	for rows.Next() {
 		var s StudentRow
-		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.Email, &s.Status, &s.Grade,
+		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.Email, &s.Status, &s.Grade, &s.Jenjang,
 			&s.SchoolName, &s.UnlistedSchoolName, &s.CreatedAt); err != nil {
 			return nil, "", err
 		}
@@ -237,6 +238,7 @@ type CrossSchoolStudentRow struct {
 	Email    *string `json:"email"`
 	Status   string  `json:"status"`
 	Grade    *int    `json:"grade"`
+	Jenjang  string  `json:"jenjang"`
 	// SchoolID/SchoolName are nullable: a student can have no school on file,
 	// in which case UnlistedSchoolName carries the free-text name they typed
 	// at registration.
@@ -258,7 +260,7 @@ func (r *Repository) SearchStudentsAcrossSchools(ctx context.Context, filter Stu
 		filter.Limit = 100
 	}
 
-	query := `SELECT u.id, u.name, u.username, u.email, u.status, u.grade, u.created_at, u.school_id, s.name, u.unlisted_school_name
+	query := `SELECT u.id, u.name, u.username, u.email, u.status, u.grade, COALESCE(u.jenjang, ''), u.created_at, u.school_id, s.name, u.unlisted_school_name
 			FROM users u LEFT JOIN school s ON u.school_id = s.id
 			WHERE u.role = 'student' AND u.status != 'deleted'`
 	args := []any{}
@@ -321,7 +323,7 @@ func (r *Repository) SearchStudentsAcrossSchools(ctx context.Context, filter Stu
 	nextCursor := ""
 	for rows.Next() {
 		var s CrossSchoolStudentRow
-		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.Email, &s.Status, &s.Grade, &s.CreatedAt, &s.SchoolID, &s.SchoolName, &s.UnlistedSchoolName); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.Email, &s.Status, &s.Grade, &s.Jenjang, &s.CreatedAt, &s.SchoolID, &s.SchoolName, &s.UnlistedSchoolName); err != nil {
 			return nil, "", err
 		}
 		students = append(students, s)

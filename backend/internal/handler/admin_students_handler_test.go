@@ -487,7 +487,8 @@ func TestAdminListStudents_ExamEligibilityAndCursorValidation(t *testing.T) {
 		}
 		var resp struct {
 			Data []struct {
-				ID string `json:"id"`
+				ID      string `json:"id"`
+				Jenjang string `json:"jenjang"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
@@ -495,6 +496,9 @@ func TestAdminListStudents_ExamEligibilityAndCursorValidation(t *testing.T) {
 		}
 		if len(resp.Data) != 1 || resp.Data[0].ID != eligible {
 			t.Fatalf("want only eligible student %s, got %+v", eligible, resp.Data)
+		}
+		if resp.Data[0].Jenjang != "sma" {
+			t.Fatalf("want jenjang sma, got %q", resp.Data[0].Jenjang)
 		}
 	})
 

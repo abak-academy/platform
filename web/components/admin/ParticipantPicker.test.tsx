@@ -66,7 +66,8 @@ vi.mock("@/components/ui/select", () => ({
   SelectValue: () => null,
   SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
-    <option value={value}>{children}</option>
+    value === "" ? (() => { throw new Error("SelectItem value cannot be empty"); })() :
+      <option value={value}>{children}</option>
   ),
 }));
 
@@ -187,6 +188,26 @@ describe("ParticipantPicker (school-scoped mode)", () => {
     expect(await screen.findByText("Citra Dewi")).toBeInTheDocument();
     expect(authFetchCalls).toContain(
       "/admin/students?cursor=next-1&limit=20&school_id=school-1&exam_id=exam-1",
+    );
+  });
+
+  it("offers and clears canonical jenjang filters", async () => {
+    studentResponse = () => ({
+      data: students.map((student) => ({ ...student, jenjang: "" })),
+    });
+    renderWithClient(
+      <ParticipantPicker examId="exam-1" schoolId="school-1" selected={[]} onChange={vi.fn()} />,
+    );
+
+    await screen.findByText("Ada Lovelace");
+    const jenjang = screen.getAllByRole("combobox")[0];
+    fireEvent.change(jenjang, { target: { value: "SMA" } });
+    await waitFor(() =>
+      expect(authFetchCalls.some((path) => path.includes("jenjang=SMA"))).toBe(true),
+    );
+    fireEvent.change(jenjang, { target: { value: "__all__" } });
+    await waitFor(() =>
+      expect(authFetchCalls[authFetchCalls.length - 1]).not.toContain("jenjang="),
     );
   });
 });

@@ -645,6 +645,27 @@ func TestAdminResult_List_ExamNotFound_404(t *testing.T) {
 	}
 }
 
+func TestAdminResult_List_MalformedCursor_400(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	examID := seedExamWithMCQ(t, env.pool)
+	superToken := mintSuperAdminToken(t, env, "invalid-cursor-admin")
+	rec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String()+"&cursor=garbage", superToken)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var apiErr struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &apiErr); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if apiErr.Code != "invalid_cursor" {
+		t.Fatalf("want invalid_cursor, got %q", apiErr.Code)
+	}
+}
+
 func TestAdminResult_Export_CSVContent(t *testing.T) {
 	env := newAdminResultsDBEnv(t)
 
