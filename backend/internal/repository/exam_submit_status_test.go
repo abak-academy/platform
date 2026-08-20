@@ -199,8 +199,8 @@ func TestGetExamRegistrationsByStudent_carriesSessionIDNoScore(t *testing.T) {
 
 // TestGetExamRegistrationsByStudent_carriesMaxAttempts covers FR20/FR21 (spec.md):
 // the frontend's retake-offer predicate needs the exam's max_attempts alongside
-// attempts_used, so the list join must surface it — nil when unset (FR18's
-// single-attempt default), the configured value otherwise.
+// attempts_used, so the list join must surface it — nil when unset (unlimited),
+// the configured value otherwise.
 func TestGetExamRegistrationsByStudent_carriesMaxAttempts(t *testing.T) {
 	pool := newGradingTestPool(t)
 	repo := New(pool)

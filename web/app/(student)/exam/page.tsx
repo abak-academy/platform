@@ -68,13 +68,14 @@ function computeCardState(reg: RegistrationListItem, now: number): CardState {
     // session_id is nullable (list join picks the latest attempt) — without
     // it there's nowhere valid to link, so fall back to in_progress's detail link.
     if (reg.session_id) {
-      // Mirrors CreateExamSessionTx's ceiling exactly (backend/internal/repository/exam.go):
-      // NULL or 0 max_attempts means single-attempt (FR18).
-      const ceiling = reg.max_attempts && reg.max_attempts > 0 ? reg.max_attempts : 1;
+      // nil max_attempts is unlimited; 0 or 1 is a single sitting.
+      const maxAttempts = reg.max_attempts;
+      const unlimited = maxAttempts == null;
+      const ceiling = maxAttempts != null && maxAttempts > 0 ? maxAttempts : 1;
       return {
         kind: "submitted",
         sessionId: reg.session_id,
-        hasAttemptsLeft: reg.attempts_used < ceiling,
+        hasAttemptsLeft: unlimited || reg.attempts_used < ceiling,
       };
     }
     return { kind: "in_progress" };
