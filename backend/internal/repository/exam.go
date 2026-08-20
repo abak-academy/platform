@@ -22,8 +22,9 @@ var ErrSortOrderConflict = errors.New("sort order conflict")
 // ErrInvalidCursor — malformed pagination cursor — surfaced for service-layer mapping to 4xx.
 var ErrInvalidCursor = errors.New("invalid pagination cursor")
 
-// ErrNoAttemptsLeft — CreateExamSessionTx's atomic attempts_used guard matched no row —
-// surfaced for service-layer mapping to ErrAlreadyAttempted.
+// ErrNoAttemptsLeft — CreateExamSessionTx's atomic guard matched no row (ceiling
+// exhausted, or an in_progress session already exists). Surfaced for service-layer
+// mapping: resume the live session when one exists, otherwise ErrAlreadyAttempted.
 var ErrNoAttemptsLeft = errors.New("no attempts left")
 
 // ErrNoActiveSection — AdvanceSessionSectionTx's atomic status='active' guard matched no
@@ -117,6 +118,7 @@ func scanQuestionOption(row interface{ Scan(dest ...any) error }, o *model.Quest
 type TestFilter struct {
 	Subject string
 	Topic   string
+	Q       string
 	Cursor  string
 	Limit   int
 }
@@ -233,6 +235,11 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 	if filter.Topic != "" {
 		query += fmt.Sprintf(` AND t.topic = $%d`, argIdx)
 		args = append(args, filter.Topic)
+		argIdx++
+	}
+	if filter.Q != "" {
+		query += fmt.Sprintf(` AND t.title ILIKE '%%' || $%d || '%%'`, argIdx)
+		args = append(args, filter.Q)
 		argIdx++
 	}
 	if filter.Cursor != "" {
@@ -1125,6 +1132,11 @@ func insertQuestionStatements(ctx context.Context, tx pgx.Tx, questionID uuid.UU
 type ExamFilter struct {
 	Cursor string
 	Limit  int
+	Q      string
+	Status string
+	// SchoolFilter scopes the registration_count subquery to one school's
+	// students; nil counts every registration (mirrors GetExamRoster).
+	SchoolFilter *string
 }
 
 // decodeCardNotes turns the card_notes jsonb column into []string. pgx would
@@ -1183,7 +1195,7 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.Exam
 		&item.ExamNumber, &item.CertificateEnabled, &item.CertificateTemplateHTML,
 		&item.EndScreenImageURL, &item.EndScreenPromoText,
 		&item.CardEnabled, &cardNotes,
-		&item.HasPublishedProduct,
+		&item.HasPublishedProduct, &item.RegistrationCount,
 	)
 	if err != nil {
 		return err
@@ -1290,12 +1302,29 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 			WHERE pe.exam_id = e.id AND p.status = 'published'
 			  AND (p.available_from IS NULL OR p.available_from <= now())
 			  AND (p.available_until IS NULL OR p.available_until >= now())
-		) AS has_published_product
+		) AS has_published_product,
+		(
+			SELECT COUNT(*) FROM exam_registration r
+			JOIN users u ON u.id = r.student_id
+			WHERE r.exam_id = e.id AND ($1::uuid IS NULL OR u.school_id = $1)
+		) AS registration_count
 	FROM exam e
 	WHERE 1=1`
-	args := []interface{}{}
-	argIdx := 1
+	// registration_count's placeholder is rendered in the SELECT list, before
+	// WHERE, so it must bind first regardless of which other predicates apply.
+	args := []interface{}{filter.SchoolFilter}
+	argIdx := 2
 
+	if filter.Q != "" {
+		query += fmt.Sprintf(` AND e.title ILIKE '%%' || $%d || '%%'`, argIdx)
+		args = append(args, filter.Q)
+		argIdx++
+	}
+	if filter.Status != "" {
+		query += fmt.Sprintf(` AND e.status = $%d`, argIdx)
+		args = append(args, filter.Status)
+		argIdx++
+	}
 	if filter.Cursor != "" {
 		query += fmt.Sprintf(` AND e.id > $%d`, argIdx)
 		args = append(args, filter.Cursor)
@@ -1854,17 +1883,44 @@ func (r *Repository) CheckInExamTx(ctx context.Context, tx pgx.Tx, regID uuid.UU
 // optionally stamps checked_in_at when NULL, and inserts an exam_session row.
 // The attempts_used < ceiling predicate is the atomic attempt guard: the service's
 // read-then-act check alone would let two concurrent starts both pass. maxAttempts
-// is the exam's raw max_attempts column value (nil or 0 means single-attempt, FR18);
-// COALESCE(NULLIF($2, 0), 1) resolves the ceiling right here, the sole authority
-// (Invariant 4, NF3) — it is not pre-resolved by the caller.
+// is the exam's raw max_attempts column: nil means unlimited, 0 or 1 means a
+// single sitting (COALESCE(NULLIF($2, 0), 1)), >= 2 is that ceiling. A
+// FOR UPDATE on the registration row plus a live-session count is the
+// one-live-session lock — a second create while a sitting is still open
+// returns ErrNoAttemptsLeft even when the ceiling is unlimited.
 func (r *Repository) CreateExamSessionTx(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration, maxAttempts *int) (model.ExamSession, error) {
-	var attemptsUsed int
+	var lockedID uuid.UUID
 	err := tx.QueryRow(ctx,
+		`SELECT id FROM exam_registration WHERE id = $1 FOR UPDATE`,
+		reg.ID,
+	).Scan(&lockedID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.ExamSession{}, ErrNotFound
+		}
+		return model.ExamSession{}, err
+	}
+
+	var live int
+	err = tx.QueryRow(ctx,
+		`SELECT COUNT(*) FROM exam_session WHERE registration_id = $1 AND status = 'in_progress'`,
+		reg.ID,
+	).Scan(&live)
+	if err != nil {
+		return model.ExamSession{}, err
+	}
+	if live > 0 {
+		return model.ExamSession{}, ErrNoAttemptsLeft
+	}
+
+	var attemptsUsed int
+	err = tx.QueryRow(ctx,
 		`UPDATE exam_registration
 		SET attempts_used = attempts_used + 1,
 		    status = 'in_progress',
 		    checked_in_at = COALESCE(checked_in_at, now())
-		WHERE id = $1 AND attempts_used < COALESCE(NULLIF($2, 0), 1)
+		WHERE id = $1
+		  AND ($2::int IS NULL OR attempts_used < COALESCE(NULLIF($2::int, 0), 1))
 		RETURNING attempts_used`,
 		reg.ID, maxAttempts,
 	).Scan(&attemptsUsed)
@@ -1893,6 +1949,30 @@ func (r *Repository) CreateExamSessionTx(ctx context.Context, tx pgx.Tx, reg mod
 		return model.ExamSession{}, err
 	}
 	return s, nil
+}
+
+// GetInProgressSessionForRegistration returns the student's live session for a
+// registration, if any. When more than one in_progress row exists (legacy data),
+// the highest attempt_number wins. ErrNotFound when none is live.
+func (r *Repository) GetInProgressSessionForRegistration(ctx context.Context, registrationID, studentID uuid.UUID) (*model.ExamSession, error) {
+	var s model.ExamSession
+	err := scanExamSession(r.pool.QueryRow(ctx,
+		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
+			submitted_at, extended_until, admin_submitted, score, certificate_key,
+			certificate_generated_at, certificate_number, last_saved_at, current_position, status, created_at
+		FROM exam_session
+		WHERE registration_id = $1 AND student_id = $2 AND status = 'in_progress'
+		ORDER BY attempt_number DESC
+		LIMIT 1`,
+		registrationID, studentID,
+	), &s)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &s, nil
 }
 
 // GetExamSessionForStudent returns a session scoped to the owning student.

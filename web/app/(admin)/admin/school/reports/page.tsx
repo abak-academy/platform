@@ -6,10 +6,12 @@ import {
   Search,
   Download,
   Loader2,
+  Eye,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import {
   Select,
   SelectContent,
@@ -131,6 +133,52 @@ export default function SchoolReportsPage() {
       setActiveCursor(nextCursor);
     }
   };
+
+  const reportColumns: DataTableColumn<AdminResultRow>[] = [
+    {
+      key: "name",
+      header: t("th_name"),
+      cell: (row) => <span className="font-medium text-ink-900">{row.student_name}</span>,
+    },
+    {
+      key: "username",
+      header: t("school_reports_col_username"),
+      cell: (row) => <span className="text-xs text-ink-600">{row.username ?? "-"}</span>,
+    },
+    {
+      key: "score",
+      header: t("school_reports_col_score"),
+      cell: (row) => <span className="text-xs text-ink-600">{row.score}</span>,
+    },
+    {
+      key: "submitted",
+      header: t("school_reports_col_submitted"),
+      cell: (row) => (
+        <span className="text-xs text-ink-600">
+          {new Date(row.submitted_at).toLocaleString(dateLocale, {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: t("th_actions"),
+      align: "right",
+      cell: (row) => (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t("action_view")}
+          onClick={() => handleRowClick(row.session_id)}
+        >
+          <Eye className="size-4" />
+        </Button>
+      ),
+    },
+  ];
 
   // No exam selected — show empty state
   if (!selectedExamId) {
@@ -316,70 +364,27 @@ export default function SchoolReportsPage() {
       </div>
 
       {/* Results Table */}
-      <div className="md-card-outlined">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
-              <tr>
-                <th className="px-4 py-3">{t("th_name")}</th>
-                <th className="px-4 py-3">{t("school_reports_col_username")}</th>
-                <th className="px-4 py-3">{t("school_reports_col_score")}</th>
-                <th className="px-4 py-3">{t("school_reports_col_submitted")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {accumulated.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="px-4 py-8 text-center text-sm text-ink-500"
-                  >
-                    {t("school_reports_empty")}
-                  </td>
-                </tr>
-              )}
-              {accumulated.map((row) => (
-                <tr
-                  key={row.session_id}
-                  className="cursor-pointer group hover:bg-surface-2"
-                  onClick={() => handleRowClick(row.session_id)}
-                >
-                  <td className="px-4 py-3 font-medium text-ink-900">
-                    {row.student_name}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    {row.username ?? "-"}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    {row.score}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    {new Date(row.submitted_at).toLocaleString(dateLocale, {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Load more */}
-        {nextCursor && (
-          <div className="border-t border-line px-4 py-3 text-center">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLoadMore}
-              disabled={query.isFetching}
-            >
-              {query.isFetching ? t("sys_loading") : t("load_more")}
-            </Button>
-          </div>
-        )}
-      </div>
+      <DataTable
+        data-testid="school-reports-table"
+        columns={reportColumns}
+        rows={accumulated}
+        rowKey={(row) => row.session_id}
+        empty={t("school_reports_empty")}
+        footer={
+          nextCursor && (
+            <div className="border-t border-line px-4 py-3 text-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLoadMore}
+                disabled={query.isFetching}
+              >
+                {query.isFetching ? t("sys_loading") : t("load_more")}
+              </Button>
+            </div>
+          )
+        }
+      />
 
       {/* Drill-down dialog */}
       <Dialog

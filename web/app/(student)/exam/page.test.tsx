@@ -331,25 +331,18 @@ describe("ExamPage", () => {
     expect(screen.queryByRole("button", { name: /Ulangi ujian/i })).not.toBeInTheDocument();
   });
 
-  it("treats max_attempts null/0 as single-attempt: no retake after the one attempt (FR18/FR21)", async () => {
-    const submittedSingleAttempt: RegistrationListItem = {
+  it("offers a retake when max_attempts is null (unlimited)", async () => {
+    const submittedUnlimited: RegistrationListItem = {
       ...paidNoSchedule,
       id: "reg-10",
-      exam_title: "Tryout Sekali Percobaan",
+      exam_title: "Tryout Tidak Terbatas",
       status: "submitted",
       session_id: "sess-10",
-      attempts_used: 1,
+      attempts_used: 3,
       max_attempts: null,
     };
-    const submittedSingleAttemptZero: RegistrationListItem = {
-      ...submittedSingleAttempt,
-      id: "reg-11",
-      exam_title: "Tryout Sekali Percobaan Zero",
-      session_id: "sess-11",
-      max_attempts: 0,
-    };
     registrationsState = {
-      data: [submittedSingleAttempt, submittedSingleAttemptZero],
+      data: [submittedUnlimited],
       isLoading: false,
       isError: false,
       error: null,
@@ -358,10 +351,35 @@ describe("ExamPage", () => {
     render(<ExamPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Tryout Sekali Percobaan")).toBeInTheDocument();
+      expect(screen.getByText("Tryout Tidak Terbatas")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /Ulangi ujian/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Lihat hasil/i })).toBeInTheDocument();
+  });
+
+  it("treats max_attempts 0 as single-attempt: no retake after the one attempt", async () => {
+    const submittedSingleAttemptZero: RegistrationListItem = {
+      ...paidNoSchedule,
+      id: "reg-11",
+      exam_title: "Tryout Sekali Percobaan Zero",
+      status: "submitted",
+      session_id: "sess-11",
+      attempts_used: 1,
+      max_attempts: 0,
+    };
+    registrationsState = {
+      data: [submittedSingleAttemptZero],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    await waitFor(() => {
       expect(screen.getByText("Tryout Sekali Percobaan Zero")).toBeInTheDocument();
     });
-    expect(screen.getAllByRole("link", { name: /Lihat hasil/i })).toHaveLength(2);
+    expect(screen.getByRole("link", { name: /Lihat hasil/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Ulangi ujian/i })).not.toBeInTheDocument();
   });
 

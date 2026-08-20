@@ -305,6 +305,11 @@ func (f *fakeSessionRepo) CreateExamSession(_ context.Context, regID uuid.UUID) 
 	if !ok {
 		return model.ExamSession{}, repository.ErrNotFound
 	}
+	for _, existing := range f.sessions {
+		if existing.RegistrationID == regID && existing.Status == "in_progress" {
+			return model.ExamSession{}, repository.ErrNoAttemptsLeft
+		}
+	}
 	d.AttemptsUsed++
 	d.Status = "in_progress"
 
@@ -313,7 +318,7 @@ func (f *fakeSessionRepo) CreateExamSession(_ context.Context, regID uuid.UUID) 
 		RegistrationID: regID,
 		StudentID:      d.StudentID,
 		ExamID:         d.Exam.ID,
-		AttemptNumber:  1,
+		AttemptNumber:  d.AttemptsUsed,
 		StartedAt:      time.Now(),
 		Status:         "in_progress",
 	}
@@ -868,13 +873,31 @@ func (s *shimSessionService) StartSession(ctx context.Context, studentID, regist
 		}
 	}
 
-	// Attempt limit — max_attempts IS NULL or 0 means single-attempt (FR18).
-	maxAttempts := 1
-	if exam.MaxAttempts != nil && *exam.MaxAttempts > 0 {
-		maxAttempts = *exam.MaxAttempts
+	for _, live := range s.repo.sessions {
+		if live.RegistrationID == rid && live.StudentID == sid && live.Status == "in_progress" {
+			remaining := int64(0)
+			if exam.DurationMinutes != nil && *exam.DurationMinutes > 0 {
+				deadline := live.StartedAt.Add(time.Duration(*exam.DurationMinutes) * time.Minute)
+				remaining = int64(math.Max(0, time.Until(deadline).Seconds()))
+			}
+			return SessionStartPayload{
+				SessionID:        live.ID,
+				RemainingSeconds: remaining,
+				TimerMode:        exam.TimerMode,
+				DurationMinutes:  exam.DurationMinutes,
+			}, nil
+		}
 	}
-	if detail.AttemptsUsed >= maxAttempts {
-		return SessionStartPayload{}, ErrAlreadyAttempted
+
+	// nil max_attempts is unlimited. 0 or 1 is a single sitting.
+	if exam.MaxAttempts != nil {
+		ceiling := *exam.MaxAttempts
+		if ceiling <= 0 {
+			ceiling = 1
+		}
+		if detail.AttemptsUsed >= ceiling {
+			return SessionStartPayload{}, ErrAlreadyAttempted
+		}
 	}
 
 	// Create session
@@ -961,6 +984,7 @@ func TestStartSession_NoCheckin_AlreadyAttempted(t *testing.T) {
 		ScheduledAt:     &scheduledAt,
 		DurationMinutes: intptr(120),
 		TimerMode:       "overall",
+		MaxAttempts:     intptr(1),
 	}
 	svc.repo.seedExam(e)
 
@@ -975,6 +999,80 @@ func TestStartSession_NoCheckin_AlreadyAttempted(t *testing.T) {
 	_, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
 	if !errors.Is(err, ErrAlreadyAttempted) {
 		t.Errorf("want ErrAlreadyAttempted, got %v", err)
+	}
+}
+
+func TestStartSession_NoCheckin_NilMaxAttemptsAllowsRetake(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) { d.AttemptsUsed = 1 },
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	result, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: want unlimited retake when max_attempts is nil, got %v", err)
+	}
+	if result.SessionID == uuid.Nil {
+		t.Error("expected non-nil session_id")
+	}
+}
+
+func TestStartSession_NoCheckin_ResumesInProgress(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	regDetail.Exam.DurationMinutes = intptr(120)
+	svc.repo.seedRegistration(&regDetail)
+
+	first, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("first StartSession: %v", err)
+	}
+	second, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("second StartSession: %v", err)
+	}
+	if second.SessionID != first.SessionID {
+		t.Errorf("resume: want same session_id %s, got %s", first.SessionID, second.SessionID)
+	}
+	updated, _ := svc.repo.GetExamRegistrationByID(ctx, regDetail.ID, regDetail.StudentID)
+	if updated.AttemptsUsed != 1 {
+		t.Errorf("attempts_used: want 1 after resume, got %d", updated.AttemptsUsed)
 	}
 }
 

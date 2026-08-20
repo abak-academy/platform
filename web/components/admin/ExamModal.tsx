@@ -464,6 +464,9 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                     onChange={(e) => setMaxAttempts(e.target.value)}
                     disabled={isPending}
                   />
+                  <p className="text-xs text-ink-500">
+                    {t("exam_packages_modal_max_attempts_hint")}
+                  </p>
                 </div>
               </div>
             </div>

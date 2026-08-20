@@ -1,17 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Calendar } from "lucide-react";
+import { ChevronRight, Calendar, Search } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useExams } from "@/lib/hooks/admin-exams";
 import { useTranslation } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
 import type { ExamListItem } from "@/lib/types";
+
+const SEARCH_DEBOUNCE_MS = 300;
+const STATUS_OPTIONS = ["", "draft", "published"] as const;
 
 // Selling an exam (price/status/publish) is managed on the attached Product(s)
 // via /admin/products — mirrors Course, which shows no status/price columns here.
@@ -32,7 +36,21 @@ export default function ExamPackagesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<ExamListItem | null>(null);
 
-  const { data, isLoading, isError, error } = useExams();
+  const [status, setStatus] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    const id = setTimeout(() => setQ(searchInput.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+
+  const filters = useMemo(
+    () => ({ q: q || undefined, status: status || undefined }),
+    [q, status]
+  );
+
+  const { data, isLoading, isError, error } = useExams(filters);
   const items = data?.data ?? [];
 
   return (
@@ -49,6 +67,31 @@ export default function ExamPackagesPage() {
           ) : undefined
         }
       />
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <select
+          data-slot="select"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s === "" ? t("tab_all") : s}
+            </option>
+          ))}
+        </select>
+
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+          <Input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t("search")}
+            className="pl-9"
+          />
+        </div>
+      </div>
 
       {isLoading && (
         <div className="space-y-2">
@@ -104,6 +147,14 @@ export default function ExamPackagesPage() {
                         <span>{exam.timer_mode}</span>
                       </>
                     )}
+                    <span aria-hidden="true">·</span>
+                    {/* ?? not || — a registration_count of 0 must still render */}
+                    <span>
+                      {t("exam_packages_registered_count").replace(
+                        "{n}",
+                        String(exam.registration_count ?? 0)
+                      )}
+                    </span>
                     <Badge variant={exam.status === "published" ? "default" : "secondary"}>
                       {exam.status ?? "draft"}
                     </Badge>

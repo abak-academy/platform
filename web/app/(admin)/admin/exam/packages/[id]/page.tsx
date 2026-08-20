@@ -466,7 +466,11 @@ export default function ExamPackageDetailPage() {
                 <OverviewRow
                   label={t("exam_packages_overview_max_attempts")}
                   value={
-                    data.max_attempts != null ? String(data.max_attempts) : t("unlimited")
+                    data.max_attempts == null
+                      ? t("unlimited")
+                      : data.max_attempts <= 1
+                        ? t("exam_packages_overview_no_retake")
+                        : String(data.max_attempts)
                   }
                 />
                 <OverviewRow

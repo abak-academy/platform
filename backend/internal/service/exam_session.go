@@ -382,16 +382,24 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 		}
 	}
 
-	// max_attempts IS NULL or 0 means single-attempt (FR18) — every existing exam row
-	// keeps today's behaviour unless an admin sets max_attempts >= 2. Mirrors the
-	// WHERE clause's COALESCE(NULLIF(...,0),1) in CreateExamSessionTx; this is a cheap
-	// pre-check only, the atomic predicate there stays authoritative (C5, Invariant 4).
-	maxAttempts := 1
-	if exam.MaxAttempts != nil && *exam.MaxAttempts > 0 {
-		maxAttempts = *exam.MaxAttempts
+	live, err := s.storeRepo.GetInProgressSessionForRegistration(ctx, rid, sid)
+	if err == nil {
+		return s.sessionStartPayload(ctx, exam, live)
 	}
-	if detail.AttemptsUsed >= maxAttempts {
-		return SessionStartPayload{}, ErrAlreadyAttempted
+	if !errors.Is(err, repository.ErrNotFound) {
+		return SessionStartPayload{}, err
+	}
+
+	// nil max_attempts is unlimited. 0 or 1 is a single sitting. >= 2 is that
+	// ceiling. Mirrors CreateExamSessionTx; this is a cheap pre-check only.
+	if exam.MaxAttempts != nil {
+		ceiling := *exam.MaxAttempts
+		if ceiling <= 0 {
+			ceiling = 1
+		}
+		if detail.AttemptsUsed >= ceiling {
+			return SessionStartPayload{}, ErrAlreadyAttempted
+		}
 	}
 
 	isSectioned := exam.Mode == "utbk" || exam.Mode == "ielts"
@@ -405,6 +413,14 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 	sess, err := s.storeRepo.CreateExamSessionTx(ctx, tx, detail.ExamRegistration, exam.MaxAttempts)
 	if err != nil {
 		if errors.Is(err, repository.ErrNoAttemptsLeft) {
+			tx.Rollback(ctx)
+			live, liveErr := s.storeRepo.GetInProgressSessionForRegistration(ctx, rid, sid)
+			if liveErr == nil {
+				return s.sessionStartPayload(ctx, exam, live)
+			}
+			if liveErr != nil && !errors.Is(liveErr, repository.ErrNotFound) {
+				return SessionStartPayload{}, liveErr
+			}
 			return SessionStartPayload{}, ErrAlreadyAttempted
 		}
 		return SessionStartPayload{}, err
@@ -445,21 +461,24 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 		return SessionStartPayload{}, err
 	}
 
-	// Load questions
-	tests, err := s.storeRepo.GetSessionWithQuestions(ctx, detail.ExamID)
+	return s.sessionStartPayload(ctx, exam, &sess)
+}
+
+// sessionStartPayload is the student-facing start/resume body for an existing
+// exam_session row (new insert or reconnect of an in_progress sitting).
+func (s *Service) sessionStartPayload(ctx context.Context, exam *model.Exam, sess *model.ExamSession) (SessionStartPayload, error) {
+	tests, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
 	if err != nil {
 		return SessionStartPayload{}, err
 	}
 	grouped := groupQuestionsByTest(tests)
 
-	if isSectioned {
+	if exam.Mode == "utbk" || exam.Mode == "ielts" {
 		sections, err := s.storeRepo.GetSessionSections(ctx, sess.ID)
 		if err != nil {
 			return SessionStartPayload{}, err
 		}
 		activeID := enrichSectionedTests(grouped, tests, sections)
-		// Top-level remaining_seconds mirrors the active section's remaining so
-		// the field stays meaningful for sectioned mode (it is not omitempty).
 		var topRemaining int64
 		if activeID != nil {
 			for _, tp := range grouped {
@@ -479,8 +498,7 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 		}, nil
 	}
 
-	remaining := computeRemainingSeconds(sess.StartedAt, exam.DurationMinutes, nil)
-
+	remaining := computeRemainingSeconds(sess.StartedAt, exam.DurationMinutes, sess.ExtendedUntil)
 	return SessionStartPayload{
 		SessionID:        sess.ID,
 		RemainingSeconds: remaining,

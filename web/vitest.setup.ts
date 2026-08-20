@@ -22,18 +22,22 @@ if (typeof document !== "undefined" && !document.execCommand) {
   document.execCommand = vi.fn(() => true);
 }
 
+if (
+  typeof globalThis.localStorage === "undefined" ||
+  typeof globalThis.localStorage.clear !== "function"
+) {
+
 // Node's own experimental global `localStorage` (unconfigured, no
 // --localstorage-file) shadows jsdom's real implementation before vitest's
 // jsdom environment ever copies it onto globalThis — see the KEYS allowlist
 // in vitest's jsdom environment setup, which doesn't list localStorage/
 // sessionStorage, so `"localStorage" in global` short-circuits the copy.
-// Net effect: `localStorage` is `undefined` in every jsdom test regardless of
-// this project's own code. Polyfill a minimal in-memory Storage so any code
-// under test that reads/writes localStorage has something real to hit.
-if (
-  typeof globalThis.localStorage === "undefined" ||
-  typeof globalThis.localStorage.clear !== "function"
-) {
+// Net effect: `localStorage` is `undefined` (Node 22/24) or a method-less empty
+// object (Node 25) in every jsdom test regardless of this project's own code.
+// Polyfill a minimal in-memory Storage so any code under test that reads/writes
+// localStorage has something real to hit. The check is behavioural rather than
+// `typeof … === "undefined"` so both shapes are replaced.
+if (typeof globalThis.localStorage?.clear !== "function") {
   class MemoryStorage {
     private store = new Map<string, string>();
     getItem(key: string): string | null {

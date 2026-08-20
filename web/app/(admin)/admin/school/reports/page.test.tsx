@@ -333,9 +333,9 @@ describe("SchoolReportsPage", () => {
       expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
     });
 
-    // Click a row to drill down
-    const row = screen.getByText("Budi Santoso").closest("tr") || screen.getByText("Budi Santoso");
-    fireEvent.click(row);
+    // Click the row's view control to drill down
+    const row = screen.getByText("Budi Santoso").closest("tr") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /lihat/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Detail Hasil")).toBeInTheDocument();
@@ -371,9 +371,9 @@ describe("SchoolReportsPage", () => {
       expect(screen.getByText("Siti Aisyah")).toBeInTheDocument();
     });
 
-    // Click a row
-    const row = screen.getByText("Siti Aisyah").closest("tr") || screen.getByText("Siti Aisyah");
-    fireEvent.click(row);
+    // Click the row's view control
+    const row = screen.getByText("Siti Aisyah").closest("tr") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /lihat/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Detail Hasil")).toBeInTheDocument();
@@ -382,6 +382,34 @@ describe("SchoolReportsPage", () => {
     // score_pembahasan: breakdown and pembahasan should be visible
     expect(screen.getByText("Berdasarkan Topik")).toBeInTheDocument();
     expect(screen.getByText("Pembahasan")).toBeInTheDocument();
+  });
+
+  // ── Drill-down moved to a labelled view control, not the <tr> (6c2b592) ──
+  it("opens the drill-down via the row's view control, and the <tr> carries no role/tabindex/click handler", async () => {
+    render(<SchoolReportsPage />);
+
+    const selectTrigger = screen.getByRole("combobox");
+    fireEvent.click(selectTrigger);
+    const examOption = await screen.findByText("Tryout Matematika");
+    fireEvent.click(examOption);
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+
+    const row = screen.getByText("Budi Santoso").closest("tr") as HTMLElement;
+    expect(row.getAttribute("role")).toBeNull();
+    expect(row.getAttribute("tabindex")).toBeNull();
+
+    // Clicking the row itself (not the view control) must not open the dialog
+    fireEvent.click(row);
+    expect(screen.queryByText("Detail Hasil")).not.toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole("button", { name: /lihat/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Detail Hasil")).toBeInTheDocument();
+    });
   });
 
   it("renders rich body in pembahasan drill-down via RichContent (Task 8 audit)", async () => {
@@ -416,8 +444,8 @@ describe("SchoolReportsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Siti Aisyah")).toBeInTheDocument();
     });
-    const row = screen.getByText("Siti Aisyah").closest("tr") || screen.getByText("Siti Aisyah");
-    fireEvent.click(row);
+    const row = screen.getByText("Siti Aisyah").closest("tr") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /lihat/i }));
 
     const richNode = await waitFor(() => {
       const el = document.querySelector("[data-rich-content] .katex");

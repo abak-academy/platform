@@ -292,6 +292,7 @@ type BankQuestionListItem struct {
 type ExamListItem struct {
 	Exam                `json:",inline"`
 	HasPublishedProduct bool `json:"has_published_product"`
+	RegistrationCount   int  `json:"registration_count"`
 }
 
 // ExamTestEntry is the read shape for an exam_test row plus the inline Test metadata
@@ -329,9 +330,9 @@ type RegistrationListItem struct {
 	CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
 	DurationMinutes      *int       `json:"duration_minutes"`
 	SessionID            *uuid.UUID `json:"session_id"`
-	// MaxAttempts is the exam's raw max_attempts column (nil or 0 means
-	// single-attempt, FR18) — carried so the card can compute whether a
-	// submitted registration still has attempts left (FR20/FR21).
+	// MaxAttempts is the exam's raw max_attempts column: nil means unlimited
+	// retake, 0 or 1 means a single sitting. Carried so the card can compute
+	// whether a submitted registration still has attempts left (FR20/FR21).
 	MaxAttempts *int `json:"max_attempts"`
 }
 

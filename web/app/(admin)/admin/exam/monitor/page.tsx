@@ -188,8 +188,8 @@ export default function ExamMonitorPage() {
       <div className="space-y-6 fade-in">
         <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <BarChart className="mb-4 size-12 text-[var(--md-sys-color-on-surface-variant)]" />
-          <p className="text-body-medium text-[var(--md-sys-color-on-surface-variant)]">
+          <BarChart className="mb-4 size-12 text-ink-600" />
+          <p className="text-body-medium text-ink-600">
             {t("monitor_no_exam")}
           </p>
         </div>
@@ -224,7 +224,7 @@ export default function ExamMonitorPage() {
       key: "school",
       header: t("school"),
       cell: (row) => (
-        <span className="text-[var(--md-sys-color-on-surface-variant)]">{row.school_name ?? "—"}</span>
+        <span className="text-ink-600">{row.school_name ?? "—"}</span>
       ),
     },
     {
@@ -247,12 +247,12 @@ export default function ExamMonitorPage() {
         row.active_section_title ? (
           <div className="flex flex-col gap-0.5">
             <span className="font-medium">{row.active_section_title}</span>
-            <span className="text-[var(--md-sys-color-on-surface-variant)]">
+            <span className="text-ink-600">
               {formatRemaining(row.active_section_remaining_seconds ?? 0)}
             </span>
           </div>
         ) : (
-          <span className="text-[var(--md-sys-color-on-surface-variant)]">—</span>
+          <span className="text-ink-600">—</span>
         ),
     },
     {
@@ -265,11 +265,11 @@ export default function ExamMonitorPage() {
           <div className="flex items-center gap-2">
             <div className="h-2 w-20 overflow-hidden rounded-full bg-line">
               <div
-                className="h-full rounded-full bg-[var(--md-sys-color-primary)] transition-all"
+                className="h-full rounded-full bg-brand-600 transition-all"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
-            <span className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+            <span className="text-xs text-ink-600">
               {row.answers_saved}/{row.total_questions}
             </span>
           </div>
@@ -280,14 +280,14 @@ export default function ExamMonitorPage() {
       key: "checked_in",
       header: t("monitor_th_checked_in"),
       cell: (row) => (
-        <span className="text-[var(--md-sys-color-on-surface-variant)]">{formatTime(row.checked_in_at)}</span>
+        <span className="text-ink-600">{formatTime(row.checked_in_at)}</span>
       ),
     },
     {
       key: "last_activity",
       header: t("monitor_th_last_activity"),
       cell: (row) => (
-        <span className="text-[var(--md-sys-color-on-surface-variant)]">{formatTime(row.last_saved_at)}</span>
+        <span className="text-ink-600">{formatTime(row.last_saved_at)}</span>
       ),
     },
     {
@@ -335,8 +335,8 @@ export default function ExamMonitorPage() {
             data-testid="exam-monitor-table"
             empty={
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <BarChart className="mb-4 size-12 text-[var(--md-sys-color-on-surface-variant)]" />
-                <p className="text-body-medium text-[var(--md-sys-color-on-surface-variant)]">
+                <BarChart className="mb-4 size-12 text-ink-600" />
+                <p className="text-body-medium text-ink-600">
                   {t("monitor_empty")}
                 </p>
               </div>
@@ -349,7 +349,7 @@ export default function ExamMonitorPage() {
           <div className="rounded-lg border border-line p-4">
             <h3 className="mb-3 text-sm font-semibold">{t("monitor_sidebar_title")}</h3>
             {violations.length === 0 ? (
-              <p className="text-sm text-[var(--md-sys-color-on-surface-variant)]">
+              <p className="text-sm text-ink-600">
                 {t("monitor_no_violations")}
               </p>
             ) : (
@@ -358,15 +358,15 @@ export default function ExamMonitorPage() {
                   <li key={`${v.session_id}-${i}`} className="text-sm">
                     <div className="flex items-center justify-between">
                       <span className="font-medium">{v.student_name}</span>
-                      <span className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+                      <span className="text-xs text-ink-600">
                         ×{v.count}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-[var(--md-sys-color-on-surface-variant)]">
+                    <div className="flex items-center gap-1 text-xs text-ink-600">
                       <AlertTriangle size={10} />
                       <span>{v.latest_type}</span>
                     </div>
-                    <p className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+                    <p className="text-xs text-ink-600">
                       {v.latest_occurred_at
                         ? new Date(v.latest_occurred_at).toLocaleTimeString("id-ID", {
                             hour: "2-digit",
