@@ -6,6 +6,7 @@ import {
   useSessionEssays,
   useGradeEssay,
   useExamRoster,
+  exportExamRoster,
   useExams,
   adminExamsKeys,
 } from "./admin-exams";
@@ -15,6 +16,7 @@ import type { GradingSessionItem, GradingEssayItem, ExamRosterEntry } from "@/li
 const mockAuthFetch = vi.fn();
 
 vi.mock("@/lib/api", () => ({
+  API_BASE: "http://localhost:8080/api/v1",
   authFetch: (...args: Parameters<typeof mockAuthFetch>) => mockAuthFetch(...args),
   ApiError: class extends Error {
     code: string;
@@ -106,7 +108,7 @@ describe("admin-exams grading hooks", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: examKeys.result("s1") });
   });
 
-  it("useExamRoster fetches GET /admin/exams/:id/registrations", async () => {
+  it("useExamRoster requests the selected sort and cursor page", async () => {
     const rows: ExamRosterEntry[] = [
       {
         registration_id: "r1",
@@ -123,11 +125,16 @@ describe("admin-exams grading hooks", () => {
     mockAuthFetch.mockResolvedValueOnce({ data: rows });
 
     const { wrapper } = wrapperFactory();
-    const { result } = renderHook(() => useExamRoster("e1"), { wrapper });
+    const { result } = renderHook(
+      () => useExamRoster("e1", { sort: "desc", cursor: "cursor-2", limit: 20 }),
+      { wrapper },
+    );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams/e1/registrations");
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/admin/exams/e1/registrations?cursor=cursor-2&limit=20&sort=desc",
+    );
     expect(result.current.data?.data).toEqual(rows);
   });
 
@@ -173,6 +180,35 @@ describe("admin-exams grading hooks", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams");
+  });
+});
+
+describe("exportExamRoster", () => {
+  beforeEach(() => {
+    URL.createObjectURL = vi.fn().mockReturnValue("blob:test-url");
+    URL.revokeObjectURL = vi.fn();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("downloads the complete roster from the dedicated export endpoint", async () => {
+    const blob = new Blob(["No. Peserta,Nama\n"], { type: "text/csv" });
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      blob: () => Promise.resolve(blob),
+    });
+
+    await exportExamRoster("exam-1");
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://localhost:8080/api/v1/admin/exams/exam-1/registrations/export",
+      { headers: { Authorization: "Bearer test-token" } },
+    );
+    expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
   });
 });
 

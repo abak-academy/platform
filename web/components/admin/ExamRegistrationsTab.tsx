@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowUpDown, CheckCircle, Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
@@ -15,7 +15,7 @@ import {
   useCreateBulkExamOrder,
 } from "@/lib/hooks/admin-bulk-exam-orders";
 import { useGrantExamAccess } from "@/lib/hooks/admin-exam-grants";
-import { useExamRoster } from "@/lib/hooks/admin-exams";
+import { exportExamRoster, useExamRoster } from "@/lib/hooks/admin-exams";
 import { useAuthStore } from "@/stores/auth";
 import type { ExamRosterEntry } from "@/lib/types";
 
@@ -24,58 +24,42 @@ interface ExamRegistrationsTabProps {
   examName: string;
 }
 
-// csvField quotes a CSV field only when it needs it (contains a comma, quote,
-// or newline), doubling embedded quotes per RFC 4180 — student names can
-// contain commas.
-//
-// A field whose first character is one a spreadsheet reads as the start of a
-// formula is additionally prefixed with a single quote and force-quoted:
-// student names are attacker-supplied at registration, so without this a name
-// like `=HYPERLINK(...)` executes when an admin opens the export in Excel or
-// Sheets.
-const FORMULA_LEAD = /^[=+\-@\t\r]/;
-
-function csvField(value: string): string {
-  const neutralized = FORMULA_LEAD.test(value) ? `'${value}` : value;
-  if (neutralized !== value || /[",\n]/.test(neutralized)) {
-    return `"${neutralized.replace(/"/g, '""')}"`;
-  }
-  return neutralized;
-}
-
-function downloadRosterCSV(rows: ExamRosterEntry[]): void {
-  const header = ["No. Peserta", "Nama", "Username", "Status", "Checked In"];
-  const lines = rows.map((r) =>
-    [
-      r.participant_no || "",
-      r.student_name,
-      r.student_username ?? "",
-      r.status,
-      r.checked_in_at ? "yes" : "no",
-    ]
-      .map(csvField)
-      .join(","),
-  );
-  const csv = [header.join(","), ...lines].join("\n") + "\n";
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "roster.csv";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-// ExamRosterSection is the FR-32 read-only participant roster: a sortable
-// "No. Peserta" table (rows without a stored participant_number sort last and
-// render "—" rather than a bogus number) plus a client-side CSV export.
 function ExamRosterSection({ examId }: { examId: string }) {
   const { t } = useTranslation();
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [nextCursor, setNextCursor] = useState<string | undefined>();
+  const [rows, setRows] = useState<ExamRosterEntry[]>([]);
+  const [exporting, setExporting] = useState(false);
   const [revealedTokens, setRevealedTokens] = useState<Set<string>>(new Set());
-  const { data, isLoading, isError } = useExamRoster(examId);
+  const query = useExamRoster(examId, { cursor, limit: 20, sort: sortDir });
+
+  useEffect(() => {
+    if (!query.data) return;
+    const page = query.data.data ?? [];
+    setRows((previous) => {
+      if (!cursor) return page;
+      const ids = new Set(previous.map((row) => row.registration_id));
+      return [...previous, ...page.filter((row) => !ids.has(row.registration_id))];
+    });
+    setNextCursor(query.data.next_cursor);
+  }, [cursor, query.data]);
+
+  const toggleSort = () => {
+    setRows([]);
+    setCursor(undefined);
+    setNextCursor(undefined);
+    setSortDir((direction) => direction === "asc" ? "desc" : "asc");
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportExamRoster(examId);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const toggleToken = (registrationId: string) => {
     setRevealedTokens((prev) => {
@@ -89,16 +73,6 @@ function ExamRosterSection({ examId }: { examId: string }) {
     });
   };
 
-  const rows = useMemo(() => {
-    const list = data?.data ?? [];
-    const sorted = [...list].sort((a, b) => {
-      const an = a.participant_number ?? Number.MAX_SAFE_INTEGER;
-      const bn = b.participant_number ?? Number.MAX_SAFE_INTEGER;
-      return an - bn;
-    });
-    return sortDir === "asc" ? sorted : sorted.reverse();
-  }, [data, sortDir]);
-
   const columns: DataTableColumn<ExamRosterEntry>[] = [
     {
       key: "participant_no",
@@ -106,7 +80,7 @@ function ExamRosterSection({ examId }: { examId: string }) {
         <button
           type="button"
           className="flex items-center gap-1"
-          onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+          onClick={toggleSort}
         >
           {t("exam_roster_th_participant_no")}
           <ArrowUpDown className="size-3.5" />
@@ -175,23 +149,37 @@ function ExamRosterSection({ examId }: { examId: string }) {
           variant="outline"
           size="sm"
           className="rounded-full"
-          disabled={rows.length === 0}
-          onClick={() => downloadRosterCSV(rows)}
+          disabled={rows.length === 0 || exporting}
+          onClick={handleExport}
         >
           {t("exam_roster_export_csv")}
         </Button>
       </div>
 
-      {isError && <p className="text-sm text-danger">{t("exam_roster_load_failed")}</p>}
+      {query.isError && <p className="text-sm text-danger">{t("exam_roster_load_failed")}</p>}
 
-      {!isError && isLoading && <p className="text-sm text-ink-500">…</p>}
+      {!query.isError && query.isLoading && rows.length === 0 && <p className="text-sm text-ink-500">…</p>}
 
-      {!isError && !isLoading && (
+      {!query.isError && (!query.isLoading || rows.length > 0) && (
         <DataTable
           columns={columns}
           rows={rows}
           rowKey={(r) => r.registration_id}
           empty={t("exam_roster_empty")}
+          footer={
+            nextCursor && (
+              <div className="border-t border-line px-4 py-3 text-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCursor(nextCursor)}
+                  disabled={query.isFetching}
+                >
+                  {query.isFetching ? t("sys_loading") : t("sys_load_more")}
+                </Button>
+              </div>
+            )
+          }
         />
       )}
     </div>
