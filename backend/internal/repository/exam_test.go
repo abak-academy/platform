@@ -112,10 +112,11 @@ func TestTestFilterShape(t *testing.T) {
 	f := TestFilter{
 		Subject: "math",
 		Topic:   "algebra",
+		Q:       "algeb",
 		Cursor:  uuid.NewString(),
 		Limit:   10,
 	}
-	if f.Subject != "math" || f.Topic != "algebra" || f.Limit != 10 {
+	if f.Subject != "math" || f.Topic != "algebra" || f.Q != "algeb" || f.Limit != 10 {
 		t.Errorf("TestFilter fields not round-tripping: %+v", f)
 	}
 }
@@ -284,11 +285,15 @@ func TestScanQuestionOption_passes_expected_destinations(t *testing.T) {
 }
 
 func TestExamFilterShape(t *testing.T) {
+	school := uuid.NewString()
 	f := ExamFilter{
-		Cursor: uuid.NewString(),
-		Limit:  15,
+		Cursor:       uuid.NewString(),
+		Limit:        15,
+		Q:            "paket",
+		Status:       "draft",
+		SchoolFilter: &school,
 	}
-	if f.Cursor == "" || f.Limit != 15 {
+	if f.Cursor == "" || f.Limit != 15 || f.Q != "paket" || f.Status != "draft" || f.SchoolFilter == nil || *f.SchoolFilter != school {
 		t.Errorf("ExamFilter fields not round-tripping: %+v", f)
 	}
 }

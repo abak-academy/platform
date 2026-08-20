@@ -66,6 +66,7 @@ const sampleExams: ExamListItem[] = [
     duration_minutes: 120,
     grace_window_minutes: 5,
     status: "active",
+    registration_count: 0,
   },
   {
     id: "exam-2",
@@ -80,6 +81,7 @@ const sampleExams: ExamListItem[] = [
     duration_minutes: 90,
     grace_window_minutes: 5,
     status: "draft",
+    registration_count: 0,
   },
 ];
 
@@ -489,5 +491,18 @@ describe("ExamMonitorPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Belum ada pelanggaran")).toBeInTheDocument();
     });
+  });
+
+  it("uses ink/brand utility classes instead of raw M3 tokens", async () => {
+    render(<ExamMonitorPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+
+    const table = screen.getByTestId("exam-monitor-table");
+    expect(table.innerHTML).not.toContain("md-sys-color");
+    expect(screen.getByText("SMAN 1 Jakarta")).toHaveClass("text-ink-600");
+    expect(table.querySelector(".bg-brand-600")).not.toBeNull();
   });
 });

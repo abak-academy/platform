@@ -1518,6 +1518,7 @@ export const DICT = {
     bulk_school_enqueue_failed: "Gagal memulai proses.",
     bulk_school_put_failed: "Gagal mengunggah file.",
     bulk_school_import_button: "Impor Massal",
+    exam_packages_registered_count: "{n} peserta terdaftar",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -3028,6 +3029,7 @@ export const DICT = {
     bulk_school_enqueue_failed: "Failed to start processing.",
     bulk_school_put_failed: "Failed to upload file.",
     bulk_school_import_button: "Bulk Import",
+    exam_packages_registered_count: "{n} registered",
   },
 };
 

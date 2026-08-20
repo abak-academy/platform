@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"testing"
 	"time"
 
@@ -705,6 +706,11 @@ func TestExam_NonAdminRole_gets_403_on_tests_endpoints(t *testing.T) {
 		map[string]any{"title": "X", "subject": "math", "topic": "algebra", "duration_minutes": 60}, token)
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode, "body=%v", out)
 	assert.Equal(t, "forbidden", out["code"])
+
+	// FR-9: q is a narrowing predicate only — it grants nothing.
+	resp2, out2 := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests?q=x", nil, token)
+	assert.Equal(t, http.StatusForbidden, resp2.StatusCode, "body=%v", out2)
+	assert.Equal(t, "forbidden", out2["code"])
 }
 
 func TestExam_NonAdminRole_gets_403_on_questions_endpoints(t *testing.T) {
@@ -1732,4 +1738,215 @@ func TestExam_MultiBlankQuestion_update_reduces_blanks(t *testing.T) {
 
 	blank2 := updatedBlanks[1].(map[string]any)
 	assert.Equal(t, "dos", blank2["correct_answer"])
+}
+
+// ----- q/status filters + registration_count (PR #104 follow-up, FR-1..FR-10, FR-22..FR-27) -----
+
+func TestExam_AdminListTests_q_filters_by_title_substring(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	seedTest(t, env, "Aljabar Dasar", "math", "algebra", 60)
+	seedTest(t, env, "Sel dan Jaringan", "biology", "cells", 30)
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests?q=Aljabar", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data := out["data"].([]any)
+	require.Len(t, data, 1)
+	assert.Equal(t, "Aljabar Dasar", data[0].(map[string]any)["title"])
+}
+
+// TestExam_AdminListTests_q_finds_a_row_beyond_the_default_limit is FR-4: the
+// title predicate must apply before LIMIT, or a marker beyond the default
+// page of 20 could never be found without a client-side scan of everything.
+func TestExam_AdminListTests_q_finds_a_row_beyond_the_default_limit(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	ids := make([]string, 0, 25)
+	for i := 0; i < 25; i++ {
+		ids = append(ids, seedTest(t, env, fmt.Sprintf("Plain %d", i), "math", "algebra", 60))
+	}
+	sort.Strings(ids)
+	marker := fmt.Sprintf("Marker-%d", time.Now().UnixNano())
+	ctx := context.Background()
+	_, err := env.pool.Exec(ctx, `UPDATE test SET title = $1 WHERE id = $2`, marker, ids[24])
+	require.NoError(t, err)
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests?q="+marker, nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data := out["data"].([]any)
+	require.Len(t, data, 1)
+	assert.Equal(t, ids[24], data[0].(map[string]any)["id"])
+}
+
+func TestExam_AdminListTests_q_composes_with_subject(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	seedTest(t, env, "Aljabar Dasar", "math", "algebra", 60)   // matches both
+	seedTest(t, env, "Aljabar Lanjut", "biology", "cells", 60) // matches q, not subject
+	seedTest(t, env, "Geometri Dasar", "math", "geometry", 60) // matches subject, not q
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests?subject=math&q=Aljabar", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data := out["data"].([]any)
+	require.Len(t, data, 1)
+	assert.Equal(t, "Aljabar Dasar", data[0].(map[string]any)["title"])
+}
+
+func TestExam_AdminListTests_absent_q_returns_the_unfiltered_set(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	seedTest(t, env, "A", "math", "algebra", 60)
+	seedTest(t, env, "B", "biology", "cells", 30)
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data := out["data"].([]any)
+	assert.GreaterOrEqual(t, len(data), 2)
+}
+
+func TestExam_AdminListExams_q_filters_by_title_substring(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	examA := seedExam(t, env, "Tryout Matematika", "score_pembahasan", nil)
+	seedExam(t, env, "Tryout Bahasa", "score_pembahasan", nil)
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams?q=Matematika", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data := out["data"].([]any)
+	require.Len(t, data, 1)
+	assert.Equal(t, examA, data[0].(map[string]any)["id"])
+}
+
+func TestExam_AdminListExams_status_filters_by_status(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	draftID := seedExam(t, env, "Draft Paket", "score_pembahasan", nil)
+	publishedID := seedExam(t, env, "Published Paket", "score_pembahasan", nil)
+	ctx := context.Background()
+	_, err := env.pool.Exec(ctx, `UPDATE exam SET status = 'published' WHERE id = $1`, publishedID)
+	require.NoError(t, err)
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams?status=draft", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data := out["data"].([]any)
+	require.Len(t, data, 1)
+	assert.Equal(t, draftID, data[0].(map[string]any)["id"])
+
+	respAll, outAll := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams", nil, token)
+	require.Equal(t, http.StatusOK, respAll.StatusCode, "body=%v", outAll)
+	assert.GreaterOrEqual(t, len(outAll["data"].([]any)), 2, "absent status returns every status")
+}
+
+func TestExam_AdminListExams_q_and_status_compose(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	matchBoth := seedExam(t, env, "Tryout Fisika", "score_pembahasan", nil)
+	matchQOnly := seedExam(t, env, "Tryout Fisika Draft", "score_pembahasan", nil)
+	matchStatusOnly := seedExam(t, env, "Tryout Kimia", "score_pembahasan", nil)
+	ctx := context.Background()
+	_, err := env.pool.Exec(ctx, `UPDATE exam SET status = 'published' WHERE id IN ($1, $2)`, matchBoth, matchStatusOnly)
+	require.NoError(t, err)
+	_ = matchQOnly
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams?q=Fisika&status=published", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data := out["data"].([]any)
+	require.Len(t, data, 1)
+	assert.Equal(t, matchBoth, data[0].(map[string]any)["id"])
+}
+
+func TestExam_AdminListExams_registration_count_counts_registrations(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	examWithRegs := seedExam(t, env, "Paket Ramai", "score_pembahasan", nil)
+	examEmpty := seedExam(t, env, "Paket Sepi", "score_pembahasan", nil)
+
+	for i := 0; i < 3; i++ {
+		studentID := seedUser(t, env, "student", "active", false)
+		seedExamRegistration(t, env, studentID, examWithRegs)
+	}
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	counts := map[string]float64{}
+	for _, raw := range out["data"].([]any) {
+		row := raw.(map[string]any)
+		counts[row["id"].(string)] = row["registration_count"].(float64)
+	}
+	assert.Equal(t, float64(3), counts[examWithRegs])
+	assert.Equal(t, float64(0), counts[examEmpty])
+}
+
+// TestExam_AdminListExams_registration_count_is_school_scoped is the FR-25 gate:
+// an admin_school must never learn another school's registration volume.
+func TestExam_AdminListExams_registration_count_is_school_scoped(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	adminToken := authToken(t, env, adminID, "admin_exam")
+
+	schoolA := seedE4School(t, env, "School A", "sch-a-104", []string{"SMA"})
+	schoolB := seedE4School(t, env, "School B", "sch-b-104", []string{"SMA"})
+
+	examID := seedExam(t, env, "Paket Lintas Sekolah", "score_pembahasan", nil)
+
+	for i := 0; i < 2; i++ {
+		studentID := seedE4Student(t, env, "Student A", &schoolA, nil, "SMA")
+		seedExamRegistration(t, env, studentID, examID)
+	}
+	studentB := seedE4Student(t, env, "Student B", &schoolB, nil, "SMA")
+	seedExamRegistration(t, env, studentB, examID)
+
+	schoolAdminID := seedUser(t, env, "admin_school", "active", false)
+	schoolAdminToken := authTokenWithSchool(t, env, schoolAdminID, "admin_school", schoolA)
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams", nil, schoolAdminToken)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	row := findExamRow(t, out, examID)
+	require.NotNil(t, row, "admin_school should still see the exam itself")
+	assert.Equal(t, float64(2), row["registration_count"], "admin_school must see only its own school's registrations")
+
+	respGlobal, outGlobal := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams", nil, adminToken)
+	require.Equal(t, http.StatusOK, respGlobal.StatusCode, "body=%v", outGlobal)
+	rowGlobal := findExamRow(t, outGlobal, examID)
+	require.NotNil(t, rowGlobal)
+	assert.Equal(t, float64(3), rowGlobal["registration_count"], "super_admin/admin_exam sees the total")
+}
+
+// TestExam_AdminListExams_adminExam_is_not_school_scoped is the regression guard
+// for hazard 1: admin_exam has a nil claims.SchoolID and must get 200, not 403.
+func TestExam_AdminListExams_adminExam_is_not_school_scoped(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "admin_exam has a nil SchoolID and must not be 403'd, body=%v", out)
+	assert.NotNil(t, out["data"])
+}
+
+func findExamRow(t *testing.T, out map[string]any, examID string) map[string]any {
+	t.Helper()
+	for _, raw := range out["data"].([]any) {
+		row := raw.(map[string]any)
+		if row["id"].(string) == examID {
+			return row
+		}
+	}
+	return nil
 }

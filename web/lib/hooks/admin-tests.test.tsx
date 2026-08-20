@@ -98,6 +98,17 @@ describe("admin-tests hooks", () => {
     expect(called).toContain("limit=5");
   });
 
+  it("useAdminTests_includes_q_in_query_params", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: "" });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useAdminTests({ q: "tryout" }), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/tests?q=tryout");
+  });
+
   it("useTestDetail_fetches_with_given_id", async () => {
     const detail = {
       test: {

@@ -778,6 +778,8 @@ export interface Exam {
 
 export interface ExamListItem extends Exam {
   has_published_product?: boolean;
+  // optional: ExamDetail extends this, and the detail endpoint never sends it
+  registration_count?: number;
 }
 
 export interface ExamTestEntry {

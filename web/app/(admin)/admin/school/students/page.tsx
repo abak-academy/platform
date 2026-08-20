@@ -17,6 +17,8 @@ import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -307,11 +309,115 @@ export default function SchoolStudentsPage() {
     }
   };
 
+  const columns: DataTableColumn<AdminStudent>[] = [
+    {
+      key: "name",
+      header: t("students_field_name"),
+      cell: (s) => (
+        <div className="flex items-center gap-3">
+          <Avatar size="sm">
+            <AvatarFallback className="bg-brand-50 text-brand-700 text-xs">
+              {initials(s.name)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="font-medium text-ink-900">{s.name}</div>
+        </div>
+      ),
+    },
+    {
+      key: "username",
+      header: t("students_credential_username"),
+      className: "font-mono text-xs text-brand-700",
+      cell: (s) => (s.username ? `@${s.username}` : "—"),
+    },
+    {
+      key: "email",
+      header: t("email"),
+      className: "text-xs text-ink-600",
+      cell: (s) => s.email || "—",
+    },
+    {
+      key: "school",
+      header: t("students_field_school"),
+      className: "text-xs",
+      cell: (s) =>
+        s.school_name ? (
+          <span className="text-ink-600">{s.school_name}</span>
+        ) : s.unlisted_school_name ? (
+          <span className="text-warn" title={t("students_school_unconfirmed")}>
+            {s.unlisted_school_name}
+          </span>
+        ) : (
+          <span className="text-ink-400">{t("students_school_none")}</span>
+        ),
+    },
+    {
+      key: "status",
+      header: t("th_status"),
+      cell: (s) => (
+        <Badge
+          variant="outline"
+          className={cn(
+            "text-[11px] font-semibold capitalize",
+            STATUS_TONE[s.status] ?? "bg-surface-2 text-ink-500 border-line"
+          )}
+        >
+          {s.status === "active" ? t("status_label_active") : t("status_label_inactive")}
+        </Badge>
+      ),
+    },
+    {
+      key: "grade",
+      header: t("students_field_grade"),
+      className: "text-xs text-ink-600",
+      cell: (s) => s.grade || "—",
+    },
+    {
+      key: "created",
+      header: t("accounts_th_created"),
+      className: "text-xs text-ink-600",
+      cell: (s) =>
+        s.created_at
+          ? new Date(s.created_at).toLocaleString(dateLocale, {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            })
+          : "—",
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (s) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-xs" className="rounded-full">
+              <MoreHorizontal className="size-4 text-ink-500" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setReissueTarget(s)}>
+              <Lock className="mr-2 size-4" />
+              {t("students_credential_reissue")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleStatusToggle(s)}>
+              <Lock className="mr-2 size-4" />
+              {s.status === "active"
+                ? t("students_status_toggle_deactivated")
+                : t("students_status_toggle_active")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
   // Loading state (first page only)
   if (query.isLoading && accumulated.length === 0) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <PageHeading title={t("school_students_title")} description={t("sys_loading")} />
+        <AdminPageHeader icon={UserRound} title={t("school_students_title")} description={t("sys_loading")} />
         <div className="py-12 text-center text-ink-500">
           {t("sys_loading_data")}
         </div>
@@ -322,7 +428,7 @@ export default function SchoolStudentsPage() {
   if (query.error && accumulated.length === 0) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <PageHeading title={t("school_students_title")} description={t("sys_error_title")} />
+        <AdminPageHeader icon={UserRound} title={t("school_students_title")} description={t("sys_error_title")} />
         <div className="py-12 text-center text-ink-500">
           {t("sys_error_load")}
         </div>
@@ -332,7 +438,8 @@ export default function SchoolStudentsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <PageHeading
+      <AdminPageHeader
+        icon={UserRound}
         title={t("school_students_title")}
         description={t("students_subtitle")}
         actions={
@@ -455,133 +562,28 @@ export default function SchoolStudentsPage() {
       </div>
 
       {/* Table */}
-      <div className="md-card-outlined">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
-              <tr>
-                <th className="px-4 py-3">{t("students_field_name")}</th>
-                <th className="px-4 py-3">{t("students_credential_username")}</th>
-                <th className="px-4 py-3">{t("email")}</th>
-                <th className="px-4 py-3">{t("students_field_school")}</th>
-                <th className="px-4 py-3">{t("th_status")}</th>
-                <th className="px-4 py-3">{t("students_field_grade")}</th>
-                <th className="px-4 py-3">{t("accounts_th_created")}</th>
-                <th className="px-4 py-3 text-right"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {accumulated.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="px-4 py-8 text-center text-sm text-ink-500"
-                  >
-                    {t("students_empty")}
-                  </td>
-                </tr>
-              )}
-              {accumulated.map((s) => (
-                <tr key={s.id} className="group hover:bg-surface-2">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar size="sm">
-                        <AvatarFallback className="bg-brand-50 text-brand-700 text-xs">
-                          {initials(s.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="font-medium text-ink-900">{s.name}</div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-brand-700">
-                    {s.username ? `@${s.username}` : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    {s.email || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-xs">
-                    {s.school_name ? (
-                      <span className="text-ink-600">{s.school_name}</span>
-                    ) : s.unlisted_school_name ? (
-                      <span className="text-warn" title={t("students_school_unconfirmed")}>
-                        {s.unlisted_school_name}
-                      </span>
-                    ) : (
-                      <span className="text-ink-400">{t("students_school_none")}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[11px] font-semibold capitalize",
-                        STATUS_TONE[s.status] ??
-                          "bg-surface-2 text-ink-500 border-line"
-                      )}
-                    >
-                      {s.status === "active"
-                        ? t("status_label_active")
-                        : t("status_label_inactive")}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    {s.grade || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    {s.created_at
-                      ? new Date(s.created_at).toLocaleString(dateLocale, {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-xs" className="rounded-full">
-                          <MoreHorizontal className="size-4 text-ink-500" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => setReissueTarget(s)}
-                        >
-                          <Lock className="mr-2 size-4" />
-                          {t("students_credential_reissue")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleStatusToggle(s)}
-                        >
-                          <Lock className="mr-2 size-4" />
-                          {s.status === "active"
-                            ? t("students_status_toggle_deactivated")
-                            : t("students_status_toggle_active")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Load more */}
-        {nextCursor && (
-          <div className="border-t border-line px-4 py-3 text-center">
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-full"
-              onClick={handleLoadMore}
-              disabled={query.isFetching}
-            >
-              {query.isFetching ? t("sys_loading") : t("load_more")}
-            </Button>
-          </div>
-        )}
-      </div>
+      <DataTable
+        columns={columns}
+        rows={accumulated}
+        rowKey={(s) => s.id}
+        empty={t("students_empty")}
+        data-testid="school-students-table"
+        footer={
+          nextCursor ? (
+            <div className="border-t border-line px-4 py-3 text-center">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={handleLoadMore}
+                disabled={query.isFetching}
+              >
+                {query.isFetching ? t("sys_loading") : t("load_more")}
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
 
       <BulkImportModal open={bulkImportOpen} onOpenChange={setBulkImportOpen} />
 
@@ -1070,35 +1072,6 @@ export default function SchoolStudentsPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-// Serif page title + muted subline + right-aligned actions, matching the
-// abak design mockup's plain PageHead (no icon badge, unlike AdminPageHeader
-// used elsewhere in the admin shell) — scoped to this page by design.
-function PageHeading({
-  title,
-  description,
-  actions,
-}: {
-  title: string;
-  description?: string;
-  actions?: React.ReactNode;
-}) {
-  return (
-    <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h1 className="font-serif text-[27px] font-semibold tracking-tight text-ink-900">
-          {title}
-        </h1>
-        {description && (
-          <p className="mt-1.5 text-sm text-ink-500">{description}</p>
-        )}
-      </div>
-      {actions && (
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
-      )}
     </div>
   );
 }

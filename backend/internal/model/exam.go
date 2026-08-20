@@ -292,6 +292,7 @@ type BankQuestionListItem struct {
 type ExamListItem struct {
 	Exam                `json:",inline"`
 	HasPublishedProduct bool `json:"has_published_product"`
+	RegistrationCount   int  `json:"registration_count"`
 }
 
 // ExamTestEntry is the read shape for an exam_test row plus the inline Test metadata
