@@ -215,7 +215,9 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 	var normalizedEmail *string
 	if email != nil {
 		e := normalizeEmail(*email)
-		normalizedEmail = &e
+		if e != "" {
+			normalizedEmail = &e
+		}
 	}
 
 	// Resolve one of three intents from the (schoolID, unlistedSchoolName)

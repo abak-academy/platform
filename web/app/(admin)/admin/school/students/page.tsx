@@ -73,6 +73,32 @@ const ALL_SCHOOLS_VALUE = "_all_";
 // sentinel too; it maps back to "" (registered without a school).
 const NO_SCHOOL_VALUE = "_none_";
 
+function compactStudentRegistration(
+  form: StudentRegistrationInput,
+): StudentRegistrationInput {
+  const payload: StudentRegistrationInput = {
+    name: form.name,
+    jenjang: form.jenjang,
+  };
+  const email = form.email?.trim();
+  if (email) payload.email = email;
+  const dob = form.dob?.trim();
+  if (dob) payload.dob = dob;
+  const gender = form.gender?.trim();
+  if (gender) payload.gender = gender;
+  if (form.grade != null) payload.grade = form.grade;
+  const alamat = form.alamat_domisili?.trim();
+  if (alamat) payload.alamat_domisili = alamat;
+  const target = form.target_exam?.trim();
+  if (target) payload.target_exam = target;
+  if (form.provinsi_id) payload.provinsi_id = form.provinsi_id;
+  if (form.kota_id) payload.kota_id = form.kota_id;
+  if (form.kecamatan_id) payload.kecamatan_id = form.kecamatan_id;
+  const kodePos = form.kode_pos?.trim();
+  if (kodePos) payload.kode_pos = kodePos;
+  return payload;
+}
+
 const STATUS_TONE: Record<string, string> = {
   active: "bg-success-bg text-success border-success",
   deactivated: "bg-danger-bg text-danger border-danger",
@@ -216,7 +242,7 @@ export default function SchoolStudentsPage() {
     }
     try {
       const result = await registerStudent.mutateAsync({
-        input: registerForm,
+        input: compactStudentRegistration(registerForm),
         schoolId: isSuperAdmin ? registerSchoolId : undefined,
       });
       setRegisterResult(result);

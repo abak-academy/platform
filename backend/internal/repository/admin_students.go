@@ -137,10 +137,7 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 // CreateStudent inserts a new user with role='student', otp_enabled=false,
 // and scans back id, created_at, updated_at.
 func (r *Repository) CreateStudent(ctx context.Context, u *model.User) error {
-	if u.Email != nil {
-		normalized := normalizeEmail(*u.Email)
-		u.Email = &normalized
-	}
+	u.Email = normalizeOptionalEmail(u.Email)
 	return r.pool.QueryRow(ctx,
 		`INSERT INTO users (
 			email, username, password_hash, role, name,

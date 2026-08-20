@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -10,6 +11,8 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // normalizeGender maps the API's male/female wire values to the DB's
@@ -243,6 +246,10 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 		TargetExam:     targetExam,
 	}
 	if err := s.storeRepo.CreateStudent(ctx, user); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, ErrEmailTaken
+		}
 		return nil, err
 	}
 
@@ -255,7 +262,7 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 		KotaID:       kotaID,
 		KecamatanID:  kecamatanID,
 		KodePos:      kodePos,
-		Email:        email,
+		Email:        user.Email,
 		TempPassword: tempPass,
 		CreatedAt:    user.CreatedAt.Format(time.RFC3339),
 	}, nil

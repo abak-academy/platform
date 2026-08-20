@@ -269,6 +269,64 @@ func TestRegisterStudent_Integration(t *testing.T) {
 			t.Errorf("want ErrInvalidGender, got %v", err)
 		}
 	})
+
+	t.Run("blank and whitespace emails persist as NULL and do not collide", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		empty := ""
+		ws := "   "
+		first, err := svc.RegisterStudent(ctx, schoolID, "Blank Email One", "sma", &empty, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("first blank email: %v", err)
+		}
+		if first.Email != nil {
+			t.Errorf("first response email: want nil, got %v", *first.Email)
+		}
+		second, err := svc.RegisterStudent(ctx, schoolID, "Blank Email Two", "sma", &ws, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("second whitespace email: %v", err)
+		}
+		if second.Email != nil {
+			t.Errorf("second response email: want nil, got %v", *second.Email)
+		}
+
+		var email1, email2 *string
+		if err := repo.Pool().QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, first.ID).Scan(&email1); err != nil {
+			t.Fatalf("read first email: %v", err)
+		}
+		if err := repo.Pool().QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, second.ID).Scan(&email2); err != nil {
+			t.Fatalf("read second email: %v", err)
+		}
+		if email1 != nil {
+			t.Errorf("persisted first email: want NULL, got %q", *email1)
+		}
+		if email2 != nil {
+			t.Errorf("persisted second email: want NULL, got %q", *email2)
+		}
+	})
+
+	t.Run("duplicate real email returns ErrEmailTaken", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		email := "dup-" + uniqueSuffix() + "@example.com"
+		if _, err := svc.RegisterStudent(ctx, schoolID, "Dup Email One", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+			t.Fatalf("first real email: %v", err)
+		}
+		_, err := svc.RegisterStudent(ctx, schoolID, "Dup Email Two", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if !errors.Is(err, ErrEmailTaken) {
+			t.Errorf("want ErrEmailTaken, got %v", err)
+		}
+	})
+
+	t.Run("raw empty-string emails are excluded from idx_users_email_active", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		insert := `INSERT INTO users (email, username, password_hash, role, name, school_id, status)
+			VALUES ('', $1, '', 'student', $2, $3, 'active')`
+		if _, err := repo.Pool().Exec(ctx, insert, "rawblank_"+uniqueSuffix(), "Raw Blank One", schoolID); err != nil {
+			t.Fatalf("first raw empty email insert: %v", err)
+		}
+		if _, err := repo.Pool().Exec(ctx, insert, "rawblank_"+uniqueSuffix(), "Raw Blank Two", schoolID); err != nil {
+			t.Fatalf("second raw empty email insert should not hit unique index: %v", err)
+		}
+	})
 }
 
 func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {

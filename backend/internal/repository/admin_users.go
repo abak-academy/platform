@@ -95,10 +95,7 @@ func (r *Repository) ListAdminUsers(ctx context.Context, filter AdminUserFilter)
 // student-specific columns are left as NULL. The user is created as active with
 // OTP disabled.
 func (r *Repository) CreateAdminUser(ctx context.Context, u *model.User) error {
-	if u.Email != nil {
-		normalized := normalizeEmail(*u.Email)
-		u.Email = &normalized
-	}
+	u.Email = normalizeOptionalEmail(u.Email)
 	return r.pool.QueryRow(ctx,
 		`INSERT INTO users (email, name, password_hash, role, school_id, status, otp_enabled)
 		 VALUES ($1, $2, $3, $4, $5, 'active', false)
