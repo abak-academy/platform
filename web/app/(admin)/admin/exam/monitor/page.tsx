@@ -15,6 +15,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { ExamMonitorAvailable, SessionMonitorRow, SessionMonitorStatus } from "@/lib/types";
 
 // ── Status label key map (i18n keys for each derived status) ──
@@ -107,8 +114,8 @@ export default function ExamMonitorPage() {
 
   const rows = monitorData?.rows ?? [];
   const violations = monitorData?.violations_recent ?? [];
-  const examTitle = monitorData?.exam?.title ?? "";
   const selectedCandidate = availableExams.find((e) => e.id === selectedExamId);
+  const examTitle = selectedCandidate?.title ?? monitorData?.exam?.title ?? "";
 
   const handleReopen = useCallback(
     (sessionId: string) => {
@@ -339,16 +346,9 @@ export default function ExamMonitorPage() {
 
   // ── Detail section (session table + violations sidebar) ──
 
-  let detailSection: React.ReactNode;
+  let detailSection: React.ReactNode = null;
 
-  if (!selectedExamId) {
-    detailSection = (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <BarChart className="mb-4 size-12 text-ink-600" />
-        <p className="text-body-medium text-ink-600">{t("monitor_no_exam")}</p>
-      </div>
-    );
-  } else if (monitorLoading) {
+  if (selectedExamId && monitorLoading) {
     detailSection = (
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="flex-1 space-y-2">
@@ -373,75 +373,59 @@ export default function ExamMonitorPage() {
         </Button>
       </div>
     );
-  } else {
+  } else if (selectedExamId) {
     detailSection = (
-      <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <h2 className="text-base font-semibold">{examTitle}</h2>
-          {selectedCandidate && (
-            <Badge
-              variant="outline"
-              className={AVAILABLE_STATE_BADGE[selectedCandidate.state].className}
-            >
-              {t(AVAILABLE_STATE_BADGE[selectedCandidate.state].labelKey as any)}
-            </Badge>
-          )}
+      <div className="flex flex-col gap-6 lg:flex-row">
+        <div className="min-w-0 flex-1">
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => row.registration_id}
+            data-testid="exam-monitor-table"
+            empty={
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <BarChart className="mb-4 size-12 text-ink-600" />
+                <p className="text-body-medium text-ink-600">
+                  {t("monitor_empty")}
+                </p>
+              </div>
+            }
+          />
         </div>
 
-        <div className="flex flex-col gap-6 lg:flex-row">
-          {/* Main table */}
-          <div className="min-w-0 flex-1">
-            <DataTable
-              columns={columns}
-              rows={rows}
-              rowKey={(row) => row.registration_id}
-              data-testid="exam-monitor-table"
-              empty={
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <BarChart className="mb-4 size-12 text-ink-600" />
-                  <p className="text-body-medium text-ink-600">
-                    {t("monitor_empty")}
-                  </p>
-                </div>
-              }
-            />
-          </div>
-
-          {/* Violation sidebar */}
-          <div className="w-full lg:w-72 lg:shrink-0">
-            <div className="rounded-lg border border-line p-4">
-              <h3 className="mb-3 text-sm font-semibold">{t("monitor_sidebar_title")}</h3>
-              {violations.length === 0 ? (
-                <p className="text-sm text-ink-600">
-                  {t("monitor_no_violations")}
-                </p>
-              ) : (
-                <ul className="space-y-3">
-                  {violations.map((v, i) => (
-                    <li key={`${v.session_id}-${i}`} className="text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{v.student_name}</span>
-                        <span className="text-xs text-ink-600">
-                          ×{v.count}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-ink-600">
-                        <AlertTriangle size={10} />
-                        <span>{v.latest_type}</span>
-                      </div>
-                      <p className="text-xs text-ink-600">
-                        {v.latest_occurred_at
-                          ? new Date(v.latest_occurred_at).toLocaleTimeString("id-ID", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "—"}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+        <div className="w-full lg:w-72 lg:shrink-0">
+          <div className="rounded-lg border border-line p-4">
+            <h3 className="mb-3 text-sm font-semibold">{t("monitor_sidebar_title")}</h3>
+            {violations.length === 0 ? (
+              <p className="text-sm text-ink-600">
+                {t("monitor_no_violations")}
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {violations.map((v, i) => (
+                  <li key={`${v.session_id}-${i}`} className="text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{v.student_name}</span>
+                      <span className="text-xs text-ink-600">
+                        ×{v.count}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-ink-600">
+                      <AlertTriangle size={10} />
+                      <span>{v.latest_type}</span>
+                    </div>
+                    <p className="text-xs text-ink-600">
+                      {v.latest_occurred_at
+                        ? new Date(v.latest_occurred_at).toLocaleTimeString("id-ID", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "—"}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </div>
@@ -454,7 +438,29 @@ export default function ExamMonitorPage() {
     <div className="space-y-6 fade-in">
       <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} />
       {availableSection}
-      {detailSection}
+      <Dialog open={Boolean(selectedExamId)} onOpenChange={(open) => !open && setSelectedExamId("")}>
+        <DialogContent className="sm:max-w-6xl">
+          <DialogHeader>
+            <div className="flex flex-wrap items-center gap-3 pr-8">
+              <DialogTitle>{examTitle || t("exam_monitor_title")}</DialogTitle>
+              {selectedCandidate && (
+                <Badge
+                  variant="outline"
+                  className={AVAILABLE_STATE_BADGE[selectedCandidate.state].className}
+                >
+                  {t(AVAILABLE_STATE_BADGE[selectedCandidate.state].labelKey as any)}
+                </Badge>
+              )}
+            </div>
+            <DialogDescription>
+              {selectedCandidate
+                ? formatWindow(selectedCandidate.scheduled_at, selectedCandidate.scheduled_end_at)
+                : t("exam_monitor_subtitle")}
+            </DialogDescription>
+          </DialogHeader>
+          {detailSection}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
