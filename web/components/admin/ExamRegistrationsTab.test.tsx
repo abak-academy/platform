@@ -89,6 +89,23 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   },
 }));
 
+const csvPresignMutateAsync = vi.fn();
+const csvEnqueueMutateAsync = vi.fn();
+const csvPutFile = vi.fn();
+
+const csvJobStatusState: {
+  data: {
+    id: string;
+    type: string;
+    status: string;
+    progress: number;
+    result_url: string | null;
+    error: string | null;
+    created_at: string;
+    updated_at: string;
+  } | null;
+} = { data: null };
+
 vi.mock("@/lib/hooks/admin-exam-grants", () => ({
   useGrantExamAccess: () => ({
     isPending: false,
@@ -102,6 +119,27 @@ vi.mock("@/lib/hooks/admin-exam-grants", () => ({
         opts?.onSuccess?.(grantMockResult);
       }
     },
+  }),
+  usePresignExamGrantBulkUpload: (examId: string) => ({
+    mutateAsync: (args: unknown) => csvPresignMutateAsync(examId, args),
+    isPending: false,
+  }),
+  useEnqueueExamGrantBulk: () => ({
+    mutateAsync: csvEnqueueMutateAsync,
+    isPending: false,
+  }),
+}));
+
+vi.mock("@/lib/hooks/admin-students-bulk", () => ({
+  putFileToPresignedURL: (...args: Parameters<typeof csvPutFile>) => csvPutFile(...args),
+}));
+
+vi.mock("@/lib/hooks/jobs", () => ({
+  useJobStatus: () => ({
+    data: csvJobStatusState.data,
+    isLoading: false,
+    isError: false,
+    error: null,
   }),
 }));
 
@@ -145,6 +183,10 @@ beforeEach(() => {
   rosterHookSpy.mockClear();
   exportRosterSpy.mockClear();
   resolveRosterData = () => rosterData;
+  csvPresignMutateAsync.mockReset();
+  csvEnqueueMutateAsync.mockReset();
+  csvPutFile.mockReset();
+  csvJobStatusState.data = null;
 });
 
 function wrapperFactory() {
@@ -411,6 +453,219 @@ describe("ExamRegistrationsTab — super_admin grant flow (cross-school, no orde
     const reopened = openGrantModal();
     expect(reopened.getByTestId("participant-add")).toBeInTheDocument();
     expect(reopened.queryByText("Andi Saputra")).not.toBeInTheDocument();
+  });
+});
+
+describe("ExamRegistrationsTab — super_admin CSV bulk grant flow (Frontend B2)", () => {
+  beforeEach(() => {
+    authUser = { role: "super_admin" };
+    grantMutateSpy.mockClear();
+    grantShouldError = false;
+    grantErrorMessage = "";
+    grantMockResult = null;
+    rosterData = { data: [] };
+    rosterIsLoading = false;
+    rosterIsError = false;
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  let lastDownloadedFilename: string | null = null;
+  let lastCapturedBlob: Blob | null = null;
+  const originalCreateElement = document.createElement.bind(document);
+
+  beforeEach(() => {
+    lastDownloadedFilename = null;
+    lastCapturedBlob = null;
+
+    document.createElement = ((tag: string) => {
+      const el = originalCreateElement(tag);
+      if (tag === "a") {
+        (el as HTMLAnchorElement).click = vi.fn(function (this: HTMLAnchorElement) {
+          lastDownloadedFilename = this.download;
+        });
+      }
+      return el;
+    }) as typeof document.createElement;
+
+    URL.createObjectURL = vi.fn().mockImplementation((blob: Blob) => {
+      lastCapturedBlob = blob;
+      return "blob:mock" as unknown as string;
+    }) as typeof URL.createObjectURL;
+  });
+
+  it("does not show a CSV mode toggle in the admin_school order modal", () => {
+    authUser = { role: "admin_school", school_id: "school-1" };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    const dialog = openOrderModal();
+    expect(dialog.queryByTestId("grant-mode-csv")).not.toBeInTheDocument();
+    expect(dialog.queryByTestId("grant-mode-manual")).not.toBeInTheDocument();
+  });
+
+  it("shows a manual/csv mode toggle only for super_admin, defaulting to manual", () => {
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    const dialog = openGrantModal();
+    expect(dialog.getByTestId("grant-mode-manual")).toBeInTheDocument();
+    expect(dialog.getByTestId("grant-mode-csv")).toBeInTheDocument();
+    expect(dialog.getByTestId("participant-add")).toBeInTheDocument();
+  });
+
+  it("downloads a username-only template with the exact content", async () => {
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    fireEvent.click(dialog.getByTestId("csv-download-template"));
+
+    await waitFor(() => expect(lastDownloadedFilename).not.toBeNull());
+    expect(lastCapturedBlob).not.toBeNull();
+    const text = await lastCapturedBlob!.text();
+    expect(text).toBe("username\nandi123\nbudi456\n");
+  });
+
+  it("switching to CSV mode hides the manual ParticipantPicker and grant button", () => {
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    expect(dialog.queryByTestId("participant-add")).not.toBeInTheDocument();
+    expect(dialog.getByTestId("csv-file-input")).toBeInTheDocument();
+  });
+
+  it("runs presign -> PUT -> enqueue in order, then polls the job and shows the result link on success", async () => {
+    csvPresignMutateAsync.mockResolvedValueOnce({
+      url: "http://minio.local/exam-grant-bulk/exam-1/uuid.csv?sig=abc",
+      method: "PUT",
+      key: "exam-grant-bulk/exam-1/uuid.csv",
+    });
+    csvPutFile.mockResolvedValueOnce(undefined);
+    csvEnqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-1" });
+
+    const { rerender } = render(
+      <ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />,
+      { wrapper: wrapperFactory() },
+    );
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    const file = new File(["username\nandi123"], "grants.csv", { type: "text/csv" });
+    fireEvent.change(dialog.getByTestId("csv-file-input"), { target: { files: [file] } });
+    fireEvent.click(dialog.getByTestId("csv-upload-submit"));
+
+    await waitFor(() => expect(csvPresignMutateAsync).toHaveBeenCalledTimes(1));
+    expect(csvPresignMutateAsync).toHaveBeenCalledWith("exam-1", {
+      filename: "grants.csv",
+      contentType: "text/csv",
+    });
+    await waitFor(() => expect(csvPutFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(csvEnqueueMutateAsync).toHaveBeenCalledTimes(1));
+    expect(csvEnqueueMutateAsync).toHaveBeenCalledWith({
+      examId: "exam-1",
+      fileKey: "exam-grant-bulk/exam-1/uuid.csv",
+    });
+
+    expect(csvPresignMutateAsync.mock.invocationCallOrder[0]).toBeLessThan(
+      csvPutFile.mock.invocationCallOrder[0],
+    );
+    expect(csvPutFile.mock.invocationCallOrder[0]).toBeLessThan(
+      csvEnqueueMutateAsync.mock.invocationCallOrder[0],
+    );
+
+    csvJobStatusState.data = {
+      id: "job-1",
+      type: "exam_grant_bulk",
+      status: "succeeded",
+      progress: 100,
+      result_url: "http://minio.local/result.csv?sig=xyz",
+      error: null,
+      created_at: "2026-08-01T00:00:00Z",
+      updated_at: "2026-08-01T00:01:00Z",
+    };
+    rerender(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />);
+
+    await waitFor(() => {
+      const link = within(screen.getByRole("dialog")).getByRole("link");
+      expect((link as HTMLAnchorElement).href).toBe("http://minio.local/result.csv?sig=xyz");
+    });
+  });
+
+  it("shows a failed status with the result link when the job fails but produced a report", async () => {
+    csvPresignMutateAsync.mockResolvedValueOnce({
+      url: "http://minio.local/k?sig=abc",
+      method: "PUT",
+      key: "exam-grant-bulk/exam-1/uuid.csv",
+    });
+    csvPutFile.mockResolvedValueOnce(undefined);
+    csvEnqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-2" });
+
+    const { rerender } = render(
+      <ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />,
+      { wrapper: wrapperFactory() },
+    );
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    const file = new File(["username\nbaduser"], "grants.csv", { type: "text/csv" });
+    fireEvent.change(dialog.getByTestId("csv-file-input"), { target: { files: [file] } });
+    fireEvent.click(dialog.getByTestId("csv-upload-submit"));
+
+    await waitFor(() => expect(csvEnqueueMutateAsync).toHaveBeenCalled());
+
+    csvJobStatusState.data = {
+      id: "job-2",
+      type: "exam_grant_bulk",
+      status: "failed",
+      progress: 100,
+      result_url: "http://minio.local/allfail.csv?sig=def",
+      error: "exam_grant_bulk job job-2: all rows failed",
+      created_at: "2026-08-01T00:00:00Z",
+      updated_at: "2026-08-01T00:01:00Z",
+    };
+    rerender(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />);
+
+    await waitFor(() => {
+      const link = within(screen.getByRole("dialog")).getByRole("link");
+      expect((link as HTMLAnchorElement).href).toBe("http://minio.local/allfail.csv?sig=def");
+    });
+  });
+
+  it("resets CSV file and job state when the modal is closed and reopened", async () => {
+    csvPresignMutateAsync.mockResolvedValueOnce({
+      url: "http://minio.local/k?sig=abc",
+      method: "PUT",
+      key: "exam-grant-bulk/exam-1/uuid.csv",
+    });
+    csvPutFile.mockResolvedValueOnce(undefined);
+    csvEnqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-3" });
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    let dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    const file = new File(["username\nandi123"], "grants.csv", { type: "text/csv" });
+    fireEvent.change(dialog.getByTestId("csv-file-input"), { target: { files: [file] } });
+    fireEvent.click(dialog.getByTestId("csv-upload-submit"));
+
+    await waitFor(() => expect(csvEnqueueMutateAsync).toHaveBeenCalled());
+    expect(dialog.getByText("grants.csv")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    csvJobStatusState.data = null;
+    dialog = openGrantModal();
+    expect(dialog.getByTestId("grant-mode-manual")).toBeInTheDocument();
+    expect(dialog.queryByText("grants.csv")).not.toBeInTheDocument();
   });
 });
 

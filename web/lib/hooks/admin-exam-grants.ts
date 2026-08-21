@@ -39,6 +39,16 @@ export interface GrantExamAccessResponse {
   }>;
 }
 
+export interface PresignedUpload {
+  url: string;
+  method: string;
+  key: string;
+}
+
+export interface EnqueueBulkResult {
+  job_id: string;
+}
+
 // ── Hooks ─────────────────────────────────────────────────────────────────
 
 /**
@@ -82,5 +92,39 @@ export function useGrantExamAccess() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: examGrantKeys.all });
     },
+  });
+}
+
+/**
+ * Request a presigned MinIO PUT URL for a super_admin exam-grant bulk CSV
+ * upload (super_admin only).
+ * POST /admin/exam-grants/bulk/presign?exam_id=&filename=&content_type=
+ */
+export function usePresignExamGrantBulkUpload(examId: string) {
+  return useMutation({
+    mutationFn: ({ filename, contentType }: { filename: string; contentType: string }) => {
+      const qs = new URLSearchParams({
+        exam_id: examId,
+        filename,
+        content_type: contentType,
+      }).toString();
+      return authFetch<PresignedUpload>(`/admin/exam-grants/bulk/presign?${qs}`, {
+        method: "POST",
+      });
+    },
+  });
+}
+
+/**
+ * Enqueue an exam-grant-bulk job for an already-uploaded CSV (super_admin only).
+ * POST /admin/exam-grants/bulk {exam_id, file_key} -> {job_id}
+ */
+export function useEnqueueExamGrantBulk() {
+  return useMutation({
+    mutationFn: ({ examId, fileKey }: { examId: string; fileKey: string }) =>
+      authFetch<EnqueueBulkResult>("/admin/exam-grants/bulk", {
+        method: "POST",
+        body: JSON.stringify({ exam_id: examId, file_key: fileKey }),
+      }),
   });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowUpDown, CheckCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import { ArrowUpDown, CheckCircle, Download, Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/lib/i18n";
@@ -9,6 +9,8 @@ import { ParticipantPicker } from "@/components/admin/ParticipantPicker";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -21,10 +23,30 @@ import {
   usePreviewBulkExamOrder,
   useCreateBulkExamOrder,
 } from "@/lib/hooks/admin-bulk-exam-orders";
-import { useGrantExamAccess } from "@/lib/hooks/admin-exam-grants";
+import {
+  useGrantExamAccess,
+  usePresignExamGrantBulkUpload,
+  useEnqueueExamGrantBulk,
+} from "@/lib/hooks/admin-exam-grants";
+import { putFileToPresignedURL } from "@/lib/hooks/admin-students-bulk";
+import { useJobStatus } from "@/lib/hooks/jobs";
 import { adminExamsKeys, exportExamRoster, useExamRoster } from "@/lib/hooks/admin-exams";
 import { useAuthStore } from "@/stores/auth";
 import type { ExamRosterEntry } from "@/lib/types";
+
+const EXAM_GRANT_BULK_TEMPLATE = "username\nandi123\nbudi456\n";
+
+function downloadExamGrantBulkTemplate(): void {
+  const blob = new Blob([EXAM_GRANT_BULK_TEMPLATE], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "exam_grant_bulk_template.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 interface ExamRegistrationsTabProps {
   examId: string;
@@ -215,10 +237,16 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
     granted_count: number;
     granted_students: Array<{ id: string; name: string; username: string }>;
   } | null>(null);
+  const [grantMode, setGrantMode] = useState<"manual" | "csv">("manual");
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvJobId, setCsvJobId] = useState<string | null>(null);
 
   const previewMutation = usePreviewBulkExamOrder();
   const createMutation = useCreateBulkExamOrder();
   const grantMutation = useGrantExamAccess();
+  const csvPresignMutation = usePresignExamGrantBulkUpload(examId);
+  const csvEnqueueMutation = useEnqueueExamGrantBulk();
+  const csvJob = useJobStatus(csvJobId);
 
   const previewInput = useMemo(() => {
     if (selectedStudentIds.length === 0) return null;
@@ -273,10 +301,51 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
     );
   };
 
+  const handleCsvSubmit = async () => {
+    if (!csvFile) {
+      toast.error(t("exam_grant_bulk_no_file"));
+      return;
+    }
+    try {
+      const presignResp = await csvPresignMutation.mutateAsync({
+        filename: csvFile.name,
+        contentType: csvFile.type || "text/csv",
+      });
+      try {
+        await putFileToPresignedURL(presignResp.url, csvFile, csvFile.type || "text/csv");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : t("exam_grant_bulk_put_failed"));
+        return;
+      }
+      const enqueueResp = await csvEnqueueMutation.mutateAsync({
+        examId,
+        fileKey: presignResp.key,
+      });
+      setCsvJobId(enqueueResp.job_id);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("exam_grant_bulk_enqueue_failed"));
+    }
+  };
+
+  const csvJobData = csvJob.data;
+  const csvIsTerminalSuccess = csvJobData?.status === "succeeded";
+  const csvIsTerminalFailed = csvJobData?.status === "failed";
+
+  useEffect(() => {
+    if (csvIsTerminalSuccess) {
+      queryClient.invalidateQueries({ queryKey: [...adminExamsKeys.rosters(), examId] });
+    }
+    // Only re-run when the job transitions to success, not on every roster/queryClient identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [csvIsTerminalSuccess, examId]);
+
   const resetFlowState = () => {
     setSelectedStudentIds([]);
     setCreatedOrderId(null);
     setGrantResult(null);
+    setGrantMode("manual");
+    setCsvFile(null);
+    setCsvJobId(null);
     previewMutation.reset();
     createMutation.reset();
     grantMutation.reset();
@@ -386,16 +455,157 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
               </div>
             ) : (
               <>
-                <div>
-                  <ParticipantPicker
-                    examId={examId}
-                    schoolId={isSuperAdmin ? undefined : schoolId}
-                    selected={selectedStudentIds}
-                    onChange={setSelectedStudentIds}
-                  />
-                </div>
+                {isSuperAdmin && (
+                  <div className="flex gap-2" data-testid="grant-mode-toggle">
+                    <Button
+                      type="button"
+                      variant={grantMode === "manual" ? "default" : "outline"}
+                      size="sm"
+                      className="rounded-full"
+                      data-testid="grant-mode-manual"
+                      onClick={() => setGrantMode("manual")}
+                    >
+                      {t("exam_grant_mode_manual")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={grantMode === "csv" ? "default" : "outline"}
+                      size="sm"
+                      className="rounded-full"
+                      data-testid="grant-mode-csv"
+                      onClick={() => setGrantMode("csv")}
+                    >
+                      {t("exam_grant_mode_csv")}
+                    </Button>
+                  </div>
+                )}
 
-                {selectedStudentIds.length > 0 && isSuperAdmin && (
+                {isSuperAdmin && grantMode === "csv" ? (
+                  <div className="space-y-6">
+                    <section>
+                      <h3 className="text-sm font-semibold text-ink-900">
+                        1. {t("exam_grant_bulk_download_template")}
+                      </h3>
+                      <div className="mt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full"
+                          data-testid="csv-download-template"
+                          onClick={downloadExamGrantBulkTemplate}
+                        >
+                          <Download className="mr-2 size-4" />
+                          {t("exam_grant_bulk_download_template")}
+                        </Button>
+                      </div>
+                    </section>
+
+                    <section>
+                      <h3 className="text-sm font-semibold text-ink-900">
+                        2. {t("exam_grant_bulk_upload")}
+                      </h3>
+                      <div className="mt-2 space-y-3">
+                        <div className="grid gap-2">
+                          <Label htmlFor="exam-grant-bulk-file">
+                            {t("exam_grant_bulk_choose_file")}
+                          </Label>
+                          <Input
+                            id="exam-grant-bulk-file"
+                            data-testid="csv-file-input"
+                            type="file"
+                            accept=".csv,text/csv"
+                            onChange={(e) => setCsvFile(e.target.files?.[0] ?? null)}
+                            disabled={csvPresignMutation.isPending || csvEnqueueMutation.isPending}
+                          />
+                          {csvFile && (
+                            <p className="text-sm text-muted-foreground">{csvFile.name}</p>
+                          )}
+                        </div>
+
+                        <Button
+                          type="button"
+                          className="rounded-full"
+                          data-testid="csv-upload-submit"
+                          onClick={handleCsvSubmit}
+                          disabled={
+                            !csvFile || csvPresignMutation.isPending || csvEnqueueMutation.isPending
+                          }
+                        >
+                          {csvPresignMutation.isPending || csvEnqueueMutation.isPending ? (
+                            <Loader2 className="mr-2 size-4 animate-spin" />
+                          ) : null}
+                          {t("exam_grant_bulk_upload")}
+                        </Button>
+                      </div>
+                    </section>
+
+                    {csvJobData && (
+                      <section className="md-card-outlined space-y-3 p-4">
+                        {csvIsTerminalSuccess && (
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="size-5 text-success" />
+                            <h4 className="text-sm font-semibold text-ink-900">
+                              {t("exam_grant_bulk_success")}
+                            </h4>
+                          </div>
+                        )}
+
+                        {!csvIsTerminalSuccess && !csvIsTerminalFailed && (
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium text-ink-900">
+                              {t("exam_grant_bulk_progress").replace(
+                                "{pct}",
+                                String(Math.round(csvJobData.progress ?? 0)),
+                              )}
+                            </p>
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
+                              <div
+                                className="h-full bg-primary transition-all"
+                                style={{
+                                  width: `${Math.max(0, Math.min(100, csvJobData.progress ?? 0))}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {csvIsTerminalFailed && (
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-semibold text-danger">
+                              {t("exam_grant_bulk_failed")}
+                            </h4>
+                            {csvJobData.error && (
+                              <p className="text-sm text-danger">{csvJobData.error}</p>
+                            )}
+                          </div>
+                        )}
+
+                        {(csvIsTerminalSuccess || csvIsTerminalFailed) && csvJobData.result_url && (
+                          <a
+                            href={csvJobData.result_url}
+                            className="inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"
+                            download="exam_grant_bulk_result.csv"
+                          >
+                            <Download className="size-4" />
+                            {t("exam_grant_bulk_download_result")}
+                          </a>
+                        )}
+                      </section>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <ParticipantPicker
+                      examId={examId}
+                      schoolId={isSuperAdmin ? undefined : schoolId}
+                      selected={selectedStudentIds}
+                      onChange={setSelectedStudentIds}
+                    />
+                  </div>
+                )}
+
+                {selectedStudentIds.length > 0 && isSuperAdmin && grantMode === "manual" && (
                   <div className="space-y-4">
                     <Button size="lg" className="rounded-full" onClick={handleGrant} disabled={grantMutation.isPending}>
                       {grantMutation.isPending ? (
