@@ -1840,6 +1840,68 @@ describe("SessionPage", () => {
     expect(katex).not.toBeNull();
   });
 
+  it("renders mcq option letter labels from opt.key", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        tests: [
+          {
+            ...sampleSession.tests[0],
+            questions: [
+              {
+                id: "q-mcq-keys",
+                test_id: "test-1",
+                format: "mcq",
+                body: "Pilih huruf",
+                sort_order: 1,
+                options: [
+                  { key: "a", text: "Jakarta", sort_order: 1 },
+                  { key: "b", text: "Bandung", sort_order: 2 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Pilih huruf/);
+    expect(screen.getByTestId("option-key-a")).toHaveTextContent("A");
+    expect(screen.getByTestId("option-key-b")).toHaveTextContent("B");
+  });
+
+  it("renders multi_answer option letter labels from opt.key", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        tests: [
+          {
+            ...sampleSession.tests[0],
+            questions: [
+              {
+                id: "q-multi-keys",
+                test_id: "test-1",
+                format: "multi_answer",
+                body: "Pilih beberapa",
+                sort_order: 1,
+                options: [
+                  { key: "a", text: "Satu", sort_order: 1 },
+                  { key: "e", text: "Lima", sort_order: 2 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Pilih beberapa/);
+    expect(screen.getByTestId("option-key-a")).toHaveTextContent("A");
+    expect(screen.getByTestId("option-key-e")).toHaveTextContent("E");
+  });
+
   // ── Per-question audio (FR-26, FR-27, FR-28) ──────────────────────────
 
   it("renders question-audio player when listening section question has audio_url (FR-26)", async () => {

@@ -386,6 +386,40 @@ describe("SessionResultPage", () => {
     expect(screen.getByText(/Berapa 2\+2\?/)).toBeInTheDocument();
   });
 
+  it("uppercases mcq option keys in pembahasan answers", () => {
+    resultState = {
+      data: {
+        state: "result",
+        result_config: "score_pembahasan",
+        score: 0,
+        correct_count: 0,
+        wrong_count: 1,
+        empty_count: 0,
+        rank: 1,
+        breakdown: [],
+        pembahasan: [
+          {
+            question_id: "q-1",
+            body: "Ibu kota?",
+            format: "mcq",
+            your_answer: "b",
+            correct_answer: "a",
+            is_correct: false,
+            explanation: null,
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    expect(screen.getByText("B")).toBeInTheDocument();
+    expect(screen.getByText("A")).toBeInTheDocument();
+    expect(screen.queryByText("b")).not.toBeInTheDocument();
+  });
+
   it("renders rich body in pembahasan via RichContent (LaTeX + bold HTML)", async () => {
     resultState = {
       data: {

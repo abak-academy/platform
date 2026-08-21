@@ -37,6 +37,7 @@ import type { SessionQuestion, SessionAnswerInput } from "@/lib/types";
 import { RichContent } from "@/components/admin/RichContent";
 import { SectionAudioPlayer } from "./section-audio-player";
 import { QUESTION_BODY_ALLOWED_TAGS } from "@/lib/question-html";
+import { optionKeyLabel } from "@/lib/option-key";
 import {
   loadQueue,
   saveQueue,
@@ -44,6 +45,17 @@ import {
   backoffDelayMs,
   AUTOSAVE_DEBOUNCE_MS,
 } from "@/lib/exam-session-queue";
+
+function OptionKeyBadge({ optionKey }: { optionKey: string }) {
+  return (
+    <span
+      data-testid={`option-key-${optionKey}`}
+      className="w-6 shrink-0 text-center font-mono text-sm font-medium uppercase text-ink-600"
+    >
+      {optionKeyLabel(optionKey)}
+    </span>
+  );
+}
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -1241,6 +1253,7 @@ function renderAnswerInput(
                 : "border-line hover:bg-surface-2"
             } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
           >
+            <OptionKeyBadge optionKey={opt.key} />
             <input
               type="radio"
               name={`q-${question.id}`}
@@ -1280,6 +1293,7 @@ function renderAnswerInput(
                 : "border-line hover:bg-surface-2"
             } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
           >
+            <OptionKeyBadge optionKey={opt.key} />
             <input
               type="checkbox"
               checked={selectedKeys.includes(opt.key)}
