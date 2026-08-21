@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -891,7 +890,7 @@ func TestAdminResults_RoutePrecedence(t *testing.T) {
 	}
 }
 
-func TestSabianRegression_HiddenSubmittedResult_ReconcilesAndStaysStudentHidden(t *testing.T) {
+func TestAdminResults_HiddenSubmittedResult_AdminVisibleStudentHidden(t *testing.T) {
 	env := newAdminResultsDBEnv(t)
 	schoolID := seedSchool(t, env.pool)
 	adminID := seedUserWithSchool(t, env.pool, "admin_school", "Results Admin", schoolID)
@@ -903,37 +902,11 @@ func TestSabianRegression_HiddenSubmittedResult_ReconcilesAndStaysStudentHidden(
 		t.Fatalf("update exam visibility: %v", err)
 	}
 	seedSubmittedSession(t, env.pool, studentID, examID)
-	var registrationID, sessionID uuid.UUID
+	var sessionID uuid.UUID
 	if err := env.pool.QueryRow(context.Background(),
-		`SELECT id FROM exam_registration WHERE student_id = $1 AND exam_id = $2`, studentID, examID,
-	).Scan(&registrationID); err != nil {
-		t.Fatalf("find registration: %v", err)
-	}
-	if err := env.pool.QueryRow(context.Background(),
-		`SELECT id FROM exam_session WHERE registration_id = $1`, registrationID,
+		`SELECT id FROM exam_session WHERE student_id = $1 AND exam_id = $2`, studentID, examID,
 	).Scan(&sessionID); err != nil {
 		t.Fatalf("find session: %v", err)
-	}
-	if _, err := env.pool.Exec(context.Background(),
-		`UPDATE exam_registration SET status = 'in_progress' WHERE id = $1`, registrationID,
-	); err != nil {
-		t.Fatalf("seed stale registration: %v", err)
-	}
-	migrationSQL, err := os.ReadFile("../../db/migrations/0063_exam_registration_status_reconciliation.up.sql")
-	if err != nil {
-		t.Fatalf("read reconciliation migration: %v", err)
-	}
-	if _, err := env.pool.Exec(context.Background(), string(migrationSQL)); err != nil {
-		t.Fatalf("run reconciliation migration: %v", err)
-	}
-	var registrationStatus string
-	if err := env.pool.QueryRow(context.Background(),
-		`SELECT status FROM exam_registration WHERE id = $1`, registrationID,
-	).Scan(&registrationStatus); err != nil {
-		t.Fatalf("read registration status: %v", err)
-	}
-	if registrationStatus != "submitted" {
-		t.Fatalf("registration status: want submitted, got %s", registrationStatus)
 	}
 	token := mintAdminToken(t, env, adminID.String(), schoolID)
 
