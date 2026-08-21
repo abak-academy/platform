@@ -151,7 +151,12 @@ func TestExam_AdminListExamsForMonitor_retakeSessionsCountOnceByRegistration(t *
 		reg, student, liveExam,
 	)
 	require.NoError(t, err)
-	seedInProgressSession(t, env, reg, student, liveExam)
+	_, err = env.pool.Exec(ctx,
+		`INSERT INTO exam_session (registration_id, student_id, exam_id, attempt_number, started_at, status)
+		 VALUES ($1, $2, $3, 2, now(), 'in_progress')`,
+		reg, student, liveExam,
+	)
+	require.NoError(t, err)
 
 	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/sessions/monitor/available", nil, token)
 	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
@@ -161,6 +166,12 @@ func TestExam_AdminListExamsForMonitor_retakeSessionsCountOnceByRegistration(t *
 	require.Equal(t, float64(1), row["total_registered"], "a retake must not double-count its registration")
 	require.Equal(t, float64(1), row["active_count"])
 	require.Equal(t, float64(0), row["not_started_count"])
+
+	detailResp, detailOut := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/sessions/monitor?exam_id="+liveExam, nil, token)
+	require.Equal(t, http.StatusOK, detailResp.StatusCode, "body=%v", detailOut)
+	detailRows := detailOut["rows"].([]any)
+	require.Len(t, detailRows, 1, "the monitor detail must return one row per registration")
+	require.Equal(t, "in_progress", detailRows[0].(map[string]any)["status"])
 }
 
 func intp(i int) *int { return &i }

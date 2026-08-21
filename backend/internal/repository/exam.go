@@ -2767,7 +2767,7 @@ func scanSessionMonitorRow(row interface{ Scan(dest ...any) error }, r *model.Se
 }
 
 // GetSessionMonitorRows returns one registrant row per exam_registration for the given
-// exam, LEFT JOINed with exam_session (max one per registration), plus the student's
+// exam, LEFT JOINed with the latest exam_session attempt, plus the student's
 // name, school, and answer/violation counts via correlated subqueries. For sectioned
 // exams the active section (status='active') is LEFT JOINed so the proctor UI can show
 // "which section, how long left" (FR-20/21); all Active* fields are nil for standard
@@ -2784,7 +2784,13 @@ func (r *Repository) GetSessionMonitorRows(ctx context.Context, examID uuid.UUID
 		FROM exam_registration r
 		JOIN users u ON u.id = r.student_id
 		LEFT JOIN school sc ON sc.id = u.school_id
-		LEFT JOIN exam_session s ON s.registration_id = r.id
+		LEFT JOIN LATERAL (
+			SELECT s.*
+			FROM exam_session s
+			WHERE s.registration_id = r.id
+			ORDER BY s.attempt_number DESC, s.created_at DESC
+			LIMIT 1
+		) s ON true
 		LEFT JOIN exam_session_section ss ON ss.session_id = s.id AND ss.status = 'active'
 		LEFT JOIN test t ON t.id = ss.test_id
 		WHERE r.exam_id = $1
