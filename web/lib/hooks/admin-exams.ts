@@ -36,7 +36,8 @@ export const adminExamsKeys = {
   certificateDesign: (examId: string) =>
     [...adminExamsKeys.detail(examId), "certificate-design"] as const,
   rosters: () => [...adminExamsKeys.all, "roster"] as const,
-  roster: (examId: string) => [...adminExamsKeys.rosters(), examId] as const,
+  roster: (examId: string, filter?: ExamRosterFilters) =>
+    [...adminExamsKeys.rosters(), examId, filter ?? {}] as const,
 };
 
 export interface GradeEssayInput {
@@ -50,6 +51,12 @@ export interface AdminExamsFilters {
   limit?: number;
   q?: string;
   status?: string;
+}
+
+export interface ExamRosterFilters {
+  cursor?: string;
+  limit?: number;
+  sort?: "asc" | "desc";
 }
 
 function buildListPath(filters?: AdminExamsFilters): string {
@@ -273,15 +280,49 @@ export function useExamLeaderboard(
   });
 }
 
-export function useExamRoster(examId: string | undefined, enabled = true) {
+export function useExamRoster(
+  examId: string | undefined,
+  filter?: ExamRosterFilters,
+  enabled = true,
+) {
   return useQuery({
-    queryKey: adminExamsKeys.roster(examId ?? ""),
-    queryFn: () =>
-      authFetch<{ data: ExamRosterEntry[] }>(
-        `/admin/exams/${encodeURIComponent(examId!)}/registrations`,
-      ),
+    queryKey: adminExamsKeys.roster(examId ?? "", filter),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filter?.cursor) params.set("cursor", filter.cursor);
+      if (filter?.limit !== undefined) params.set("limit", String(filter.limit));
+      if (filter?.sort) params.set("sort", filter.sort);
+      const query = params.toString();
+      return authFetch<{ data: ExamRosterEntry[]; next_cursor?: string }>(
+        `/admin/exams/${encodeURIComponent(examId!)}/registrations${query ? `?${query}` : ""}`,
+      );
+    },
     enabled: Boolean(examId) && enabled,
   });
+}
+
+export async function exportExamRoster(examId: string): Promise<void> {
+  const token = useAuthStore.getState().token;
+  const res = await fetch(
+    `${API_BASE}/admin/exams/${encodeURIComponent(examId)}/registrations/export`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!res.ok) {
+    throw new ApiError(
+      `HTTP_${res.status}`,
+      `Failed to export exam roster: ${res.status}`,
+      res.status,
+    );
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "roster.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 export function useExamAnalytics(examId: string | undefined, enabled = true) {

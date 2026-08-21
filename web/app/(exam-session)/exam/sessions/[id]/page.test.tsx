@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { act } from "react";
 
 import SessionPage from "./page";
+import { ApiError } from "@/lib/api";
 import type { SessionState } from "@/lib/types";
 import {
   AUTOSAVE_DEBOUNCE_MS,
@@ -41,6 +42,7 @@ let sessionState = {
 const saveAnswersMutate = vi.fn();
 const saveAnswersMutateAsync = vi.fn();
 const submitSessionMutate = vi.fn();
+const submitSessionMutateAsync = vi.fn();
 const logViolationMutate = vi.fn();
 const advanceSectionMutate = vi.fn();
 const advanceSectionMutateAsync = vi.fn();
@@ -54,6 +56,7 @@ vi.mock("@/lib/hooks/exam", () => ({
   }),
   useSubmitSession: () => ({
     mutate: submitSessionMutate,
+    mutateAsync: submitSessionMutateAsync,
     isPending: false,
   }),
   useLogViolation: () => ({
@@ -371,6 +374,7 @@ describe("SessionPage", () => {
     saveAnswersMutate.mockReset();
     saveAnswersMutateAsync.mockReset();
     submitSessionMutate.mockReset();
+    submitSessionMutateAsync.mockReset();
     logViolationMutate.mockReset();
     advanceSectionMutate.mockReset();
     advanceSectionMutateAsync.mockReset();
@@ -632,7 +636,7 @@ describe("SessionPage", () => {
     rerender(<SessionPage />);
 
     await waitFor(() => {
-      expect(submitSessionMutate).toHaveBeenCalled();
+      expect(submitSessionMutateAsync).toHaveBeenCalled();
     });
   });
 
@@ -655,6 +659,226 @@ describe("SessionPage", () => {
       expect(submitSessionMutate).not.toHaveBeenCalled();
     });
     expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  it("locks answers at 00:00 and flushes them before automatic submission", async () => {
+    vi.useFakeTimers();
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, remaining_seconds: 1 },
+    };
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    let resolveSubmit!: (value: { submitted: boolean; score: number }) => void;
+    submitSessionMutateAsync.mockImplementation(
+      () => new Promise((resolve) => { resolveSubmit = resolve; }),
+    );
+
+    render(<SessionPage />);
+    document.documentElement.requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("enter-fullscreen"));
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("00:00")).toBeInTheDocument();
+    expect(screen.getAllByRole("radio")[1]).toBeDisabled();
+    expect(saveAnswersMutateAsync).toHaveBeenCalledWith({
+      answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
+      current_position: 0,
+    });
+    expect(saveAnswersMutateAsync.mock.invocationCallOrder[0]).toBeLessThan(
+      submitSessionMutateAsync.mock.invocationCallOrder[0],
+    );
+    await act(async () => resolveSubmit({ submitted: true, score: 75 }));
+  });
+
+  it("stops on a terminal expiry error and shows an explicit Retry", async () => {
+    vi.useFakeTimers();
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, remaining_seconds: 0 },
+    };
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    submitSessionMutateAsync.mockRejectedValue(
+      new ApiError("invalid_session", "invalid session", 400),
+    );
+
+    render(<SessionPage />);
+    document.documentElement.requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("enter-fullscreen"));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(submitSessionMutateAsync).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(60_000));
+    expect(submitSessionMutateAsync).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Coba lagi" })).toBeVisible();
+    expect(screen.getAllByRole("radio")[0]).toBeDisabled();
+  });
+
+  it.each([
+    ["transport", new TypeError("network failed")],
+    ["408", new ApiError("timeout", "timeout", 408)],
+    ["429", new ApiError("rate_limited", "rate limited", 429)],
+    ["5xx", new ApiError("server_error", "server error", 503)],
+  ])("retries a transient %s expiry failure", async (_name, transientError) => {
+    vi.useFakeTimers();
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, remaining_seconds: 0 },
+    };
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    submitSessionMutateAsync
+      .mockRejectedValueOnce(transientError)
+      .mockResolvedValueOnce({ submitted: true, score: 75 });
+
+    render(<SessionPage />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(submitSessionMutateAsync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(backoffDelayMs(0));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(submitSessionMutateAsync).toHaveBeenCalledTimes(2);
+    expect(routerReplace).toHaveBeenCalledWith(
+      "/exam/sessions/session-1/result",
+    );
+  });
+
+  it("stops after three transient attempts and Retry starts a fresh cycle", async () => {
+    vi.useFakeTimers();
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, remaining_seconds: 0 },
+    };
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    submitSessionMutateAsync.mockRejectedValue(
+      new ApiError("server_error", "server error", 503),
+    );
+
+    render(<SessionPage />);
+    document.documentElement.requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("enter-fullscreen"));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(backoffDelayMs(0));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(backoffDelayMs(1));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(submitSessionMutateAsync).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole("button", { name: "Coba lagi" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Coba lagi" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(submitSessionMutateAsync).toHaveBeenCalledTimes(4);
+    expect(screen.getAllByRole("radio")[0]).toBeDisabled();
+  });
+
+  it("treats already_submitted as successful expiry recovery", async () => {
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, remaining_seconds: 0 },
+    };
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    submitSessionMutateAsync.mockRejectedValue(
+      new ApiError("already_submitted", "already submitted", 409),
+    );
+
+    render(<SessionPage />);
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith(
+        "/exam/sessions/session-1/result",
+      );
+    });
+    expect(submitSessionMutateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("submits when the expiry save fails permanently", async () => {
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, remaining_seconds: 0 },
+    };
+    saveAnswersMutateAsync.mockRejectedValue(
+      new ApiError("invalid_answer", "invalid answer", 400),
+    );
+    submitSessionMutateAsync.mockResolvedValue({ submitted: true, score: 75 });
+
+    render(<SessionPage />);
+
+    await waitFor(() => {
+      expect(submitSessionMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    expect(routerReplace).toHaveBeenCalledWith(
+      "/exam/sessions/session-1/result",
+    );
+  });
+
+  it("redirects when the expiry save reports already_submitted", async () => {
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, remaining_seconds: 0 },
+    };
+    saveAnswersMutateAsync.mockRejectedValue(
+      new ApiError("already_submitted", "already submitted", 409),
+    );
+
+    render(<SessionPage />);
+
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith(
+        "/exam/sessions/session-1/result",
+      );
+    });
+    expect(submitSessionMutateAsync).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Coba lagi" })).not.toBeInTheDocument();
+  });
+
+  it("redirects when section advance reports already_submitted", async () => {
+    const expiredSection = {
+      ...sectionedSession,
+      tests: sectionedSession.tests.map((test, index) =>
+        index === 0 ? { ...test, remaining_seconds: 0 } : test,
+      ),
+    };
+    sessionState = { ...sessionState, data: expiredSection };
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    advanceSectionMutateAsync.mockRejectedValue(
+      new ApiError("already_submitted", "already submitted", 409),
+    );
+
+    render(<SessionPage />);
+
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith(
+        "/exam/sessions/session-1/result",
+      );
+    });
+    expect(submitSessionMutateAsync).not.toHaveBeenCalled();
   });
 
   // ── Submit confirmation dialog ──────────────────────────────────────────
@@ -814,6 +1038,10 @@ describe("SessionPage", () => {
 
   it("advancing last section triggers submit and redirect (FR-24)", async () => {
     saveAnswersMutateAsync.mockResolvedValue(undefined);
+    let resolveSubmit!: (value: { submitted: boolean; score: number }) => void;
+    submitSessionMutateAsync.mockImplementation(
+      () => new Promise((resolve) => { resolveSubmit = resolve; }),
+    );
     advanceSectionMutateAsync.mockResolvedValue({
       mode: "utbk",
       active_test_id: null,
@@ -849,18 +1077,103 @@ describe("SessionPage", () => {
       expect(advanceSectionMutateAsync).toHaveBeenCalledWith("test-section-2");
     });
     await waitFor(() => {
-      expect(submitSessionMutate).toHaveBeenCalled();
+      expect(submitSessionMutateAsync).toHaveBeenCalled();
     });
 
-    // Simulate submit success
     await act(async () => {
-      const [, opts] = submitSessionMutate.mock.calls[0];
-      opts.onSuccess({ submitted: true, score: 85 });
+      resolveSubmit({ submitted: true, score: 85 });
     });
     expect(routerReplace).toHaveBeenCalledWith(
       "/exam/sessions/session-1/result",
     );
   });
+
+  it.each([
+    ["UTBK", sectionedSession],
+    ["IELTS", ieltsSession],
+  ])("retries a transient non-final %s section advance", async (_mode, baseSession) => {
+    vi.useFakeTimers();
+    const expiredSession = {
+      ...baseSession,
+      tests: baseSession.tests.map((test, index) =>
+        index === 0 ? { ...test, remaining_seconds: 0 } : test,
+      ),
+    };
+    sessionState = { ...sessionState, data: expiredSession };
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    advanceSectionMutateAsync
+      .mockRejectedValueOnce(new ApiError("server_error", "server error", 503))
+      .mockResolvedValueOnce({
+        mode: baseSession.mode,
+        active_test_id: baseSession.tests[1].id,
+        completed: false,
+        tests: baseSession.tests,
+      });
+
+    render(<SessionPage />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(advanceSectionMutateAsync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(backoffDelayMs(0));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(advanceSectionMutateAsync).toHaveBeenCalledTimes(2);
+    expect(submitSessionMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it.each(["utbk", "ielts"] as const)(
+    "retries final %s submission without repeating the completed advance",
+    async (mode) => {
+      vi.useFakeTimers();
+      const baseSession = mode === "utbk" ? sectionedSession : ieltsSession;
+      const finalIndex = baseSession.tests.length - 1;
+      const finalSession = {
+        ...baseSession,
+        active_test_id: baseSession.tests[finalIndex].id,
+        tests: baseSession.tests.map((test, index) => ({
+          ...test,
+          status: index === finalIndex ? "active" as const : "submitted" as const,
+          remaining_seconds: 0,
+        })),
+      };
+      sessionState = { ...sessionState, data: finalSession };
+      saveAnswersMutateAsync.mockResolvedValue(undefined);
+      advanceSectionMutateAsync.mockResolvedValue({
+        mode,
+        active_test_id: null,
+        completed: true,
+        tests: finalSession.tests,
+      });
+      submitSessionMutateAsync
+        .mockRejectedValueOnce(new ApiError("server_error", "server error", 503))
+        .mockResolvedValueOnce({ submitted: true, score: 80 });
+
+      render(<SessionPage />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(submitSessionMutateAsync).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(backoffDelayMs(0));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(advanceSectionMutateAsync).toHaveBeenCalledTimes(1);
+      expect(submitSessionMutateAsync).toHaveBeenCalledTimes(2);
+      expect(routerReplace).toHaveBeenCalledWith(
+        "/exam/sessions/session-1/result",
+      );
+    },
+  );
 
   it("debounced autosave excludes a submitted section's answers (FR-14 seam — backend rejects locked-section saves)", async () => {
     // Section 1 is already submitted; section 2 is active (not expired). Both
@@ -2515,4 +2828,3 @@ describe("SessionPage", () => {
     );
   });
 });
-

@@ -32,21 +32,16 @@ let authStore: {
 };
 
 const mockUseAdminResults = vi.fn();
+let resolveResultsState = (_opts: unknown) => resultsState;
 
 vi.mock("@/lib/api", () => ({
   authFetch: (...args: Parameters<typeof mockAuthFetch>) => mockAuthFetch(...args),
 }));
 
 vi.mock("@/lib/hooks/admin-results", () => ({
-  // Spread a fresh object each call so query.data changes reference like real
-  // react-query does when the query key changes — the component's accumulate
-  // effect keys off that reference to refill after a filter reset.
   useAdminResults: (opts: unknown) => {
     mockUseAdminResults(opts);
-    return {
-      ...resultsState,
-      data: resultsState.data ? { ...resultsState.data } : null,
-    };
+    return resolveResultsState(opts);
   },
   useAdminResultDetail: () => ({ ...detailState }),
   exportAdminResults: (...args: Parameters<typeof mockExport>) => mockExport(...args),
@@ -117,6 +112,7 @@ describe("ExamResultsTab", () => {
     detailState = { data: null, isLoading: false, isFetching: false, isError: false, error: null };
     mockExport.mockReset();
     mockUseAdminResults.mockReset();
+    resolveResultsState = () => resultsState;
     mockAuthFetch.mockReset();
     mockAuthFetch.mockResolvedValue(sampleSchools);
   });
@@ -217,6 +213,55 @@ describe("ExamResultsTab", () => {
       const lastCall = mockUseAdminResults.mock.calls.at(-1)?.[0];
       expect(lastCall.schoolId).toBe("s2");
     });
+  });
+
+  it("restores a cached first page when switching back to All Schools", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    renderTab();
+    await screen.findByText("Budi Santoso");
+
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(await screen.findByRole("option", { name: "SMAN 2 Bandung" }));
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(await screen.findByRole("option", { name: /semua sekolah/i }));
+
+    expect(await screen.findByText("Budi Santoso")).toBeInTheDocument();
+  });
+
+  it("appends result pages once and deduplicates by session_id", async () => {
+    const firstPage = Array.from({ length: 20 }, (_, index) => ({
+      ...sampleResultRows[0],
+      session_id: `sess-${index + 1}`,
+      student_name: `Student ${index + 1}`,
+    }));
+    const secondPage = [
+      firstPage[19],
+      { ...sampleResultRows[0], session_id: "sess-21", student_name: "Student 21" },
+    ];
+    const initial = {
+      data: { data: firstPage, next_cursor: "page-2" },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      error: null,
+    };
+    const next = {
+      data: { data: secondPage, next_cursor: undefined },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      error: null,
+    };
+    resolveResultsState = (opts: unknown) =>
+      (opts as { cursor?: string }).cursor === "page-2" ? next : initial;
+
+    renderTab();
+    await screen.findByText("Student 20");
+    fireEvent.click(screen.getByRole("button", { name: /muat lebih/i }));
+
+    expect(await screen.findByText("Student 21")).toBeInTheDocument();
+    expect(screen.getAllByText("Student 20")).toHaveLength(1);
   });
 
   it("admin_exam sees the dropdown and its requests carry school_id once a school is picked", async () => {

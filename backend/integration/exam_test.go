@@ -786,6 +786,50 @@ func TestExam_AdminListExams_returns_data_and_cursor(t *testing.T) {
 	}
 }
 
+func TestExam_AdminListExams_cursor_walks_without_skipping_boundary(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	want := map[string]bool{}
+	for i := 0; i < 21; i++ {
+		id := seedExam(t, env, fmt.Sprintf("Cursor Paket %02d", i), "score_pembahasan", nil)
+		want[id] = true
+	}
+
+	seen := map[string]bool{}
+	cursor := ""
+	for {
+		path := "/api/v1/admin/exams?limit=20"
+		if cursor != "" {
+			path += "&cursor=" + url.QueryEscape(cursor)
+		}
+		resp, out := doJSONBody(t, env, http.MethodGet, path, nil, token)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+		for _, raw := range out["data"].([]any) {
+			id := raw.(map[string]any)["id"].(string)
+			require.False(t, seen[id], "exam %s returned twice", id)
+			seen[id] = true
+		}
+		cursor, _ = out["next_cursor"].(string)
+		if cursor == "" {
+			break
+		}
+	}
+
+	require.Equal(t, want, seen)
+}
+
+func TestExam_AdminListExams_malformed_cursor_returns_invalid_cursor(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams?cursor=bad", nil, token)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "body=%v", out)
+	require.Equal(t, "invalid_cursor", out["code"])
+}
+
 func TestExam_AdminGetExam_detail_with_and_without_tests(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)

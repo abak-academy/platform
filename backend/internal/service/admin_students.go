@@ -72,6 +72,7 @@ type StudentResponse struct {
 	Email    *string `json:"email"`
 	Status   string  `json:"status"`
 	Grade    *int    `json:"grade"`
+	Jenjang  string  `json:"jenjang"`
 	// SchoolName is NULL for registrants with no school on file;
 	// UnlistedSchoolName carries what a self-registering user typed when their
 	// school wasn't listed. Both are surfaced so operations can follow up.
@@ -97,6 +98,7 @@ func toStudentResponse(row repository.StudentRow) StudentResponse {
 		Email:              row.Email,
 		Status:             row.Status,
 		Grade:              grade,
+		Jenjang:            row.Jenjang,
 		SchoolName:         row.SchoolName,
 		UnlistedSchoolName: row.UnlistedSchoolName,
 		CreatedAt:          row.CreatedAt.Format(time.RFC3339),
@@ -270,6 +272,7 @@ type CrossSchoolStudentResponse struct {
 	Email    *string `json:"email"`
 	Status   string  `json:"status"`
 	Grade    *int    `json:"grade"`
+	Jenjang  string  `json:"jenjang"`
 	// SchoolID/SchoolName are nullable for students with no school on file;
 	// UnlistedSchoolName carries the free-text name they typed instead.
 	SchoolID           *string `json:"school_id"`
@@ -286,6 +289,7 @@ func toCrossSchoolStudentResponse(row repository.CrossSchoolStudentRow) CrossSch
 		Email:              row.Email,
 		Status:             row.Status,
 		Grade:              row.Grade,
+		Jenjang:            row.Jenjang,
 		SchoolID:           row.SchoolID,
 		SchoolName:         row.SchoolName,
 		UnlistedSchoolName: row.UnlistedSchoolName,
@@ -296,7 +300,11 @@ func toCrossSchoolStudentResponse(row repository.CrossSchoolStudentRow) CrossSch
 // SearchStudentsAcrossSchools searches students across all schools with optional
 // filters. Thin pass-through to the repository with bounded default limit.
 // This is the super_admin cross-school search (FR-SEARCH-01/03).
-func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, schoolID *string, noSchool bool, grade *int, jenjang string, limit int, cursor string) ([]CrossSchoolStudentResponse, string, error) {
+func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, schoolID *string, noSchool bool, grade *int, jenjang string, limit int, cursor string, examIDs ...string) ([]CrossSchoolStudentResponse, string, error) {
+	examID := ""
+	if len(examIDs) > 0 {
+		examID = examIDs[0]
+	}
 	rows, nextCursor, err := s.storeRepo.SearchStudentsAcrossSchools(ctx, repository.StudentFilter{
 		Cursor:   cursor,
 		Limit:    limit,
@@ -305,6 +313,7 @@ func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, sch
 		NoSchool: noSchool,
 		Grade:    grade,
 		Jenjang:  jenjang,
+		ExamID:   examID,
 	})
 	if err != nil {
 		return nil, "", err
@@ -319,7 +328,11 @@ func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, sch
 
 // ListStudents returns cursor-paginated students scoped to the given school.
 // Optional grade and jenjang filters narrow the result set.
-func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilter, q string, limit int, cursor string, grade *int, jenjang string) ([]StudentResponse, string, error) {
+func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilter, q string, limit int, cursor string, grade *int, jenjang string, examIDs ...string) ([]StudentResponse, string, error) {
+	examID := ""
+	if len(examIDs) > 0 {
+		examID = examIDs[0]
+	}
 	rows, nextCursor, err := s.storeRepo.ListStudentsBySchool(ctx, schoolID, repository.StudentFilter{
 		Status:  statusFilter,
 		Cursor:  cursor,
@@ -327,6 +340,7 @@ func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilte
 		Q:       q,
 		Grade:   grade,
 		Jenjang: jenjang,
+		ExamID:  examID,
 		// An empty schoolID reaches here only from the roster endpoint, where
 		// super_admin omitted school_id — list every registrant, including
 		// those with no school on file.

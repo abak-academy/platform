@@ -1289,6 +1289,14 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	if filter.Limit == 0 {
 		filter.Limit = 20
 	}
+	var cursorID uuid.UUID
+	if filter.Cursor != "" {
+		var err error
+		cursorID, err = uuid.Parse(filter.Cursor)
+		if err != nil {
+			return nil, "", ErrInvalidCursor
+		}
+	}
 
 	query := `SELECT e.id, e.title, e.is_free, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.allow_leaderboard,
 		e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
@@ -1327,7 +1335,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	}
 	if filter.Cursor != "" {
 		query += fmt.Sprintf(` AND e.id > $%d`, argIdx)
-		args = append(args, filter.Cursor)
+		args = append(args, cursorID)
 		argIdx++
 	}
 
@@ -1354,8 +1362,8 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 
 	var nextCursor string
 	if len(items) > filter.Limit {
-		nextCursor = items[filter.Limit].ID.String()
 		items = items[:filter.Limit]
+		nextCursor = items[len(items)-1].ID.String()
 	}
 
 	return items, nextCursor, nil
@@ -1774,6 +1782,32 @@ func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUI
 // that school (tenant isolation for admin_school — a nil filter is the
 // all-schools view used by super_admin/admin_exam).
 func (r *Repository) GetExamRoster(ctx context.Context, examID uuid.UUID, schoolFilter *string) ([]model.ExamRosterEntry, error) {
+	items, _, err := r.ListExamRoster(ctx, examID, schoolFilter, model.ExamRosterFilter{})
+	return items, err
+}
+
+func (r *Repository) ListExamRoster(ctx context.Context, examID uuid.UUID, schoolFilter *string, filter model.ExamRosterFilter) ([]model.ExamRosterEntry, string, error) {
+	sortDirection := filter.Sort
+	if sortDirection == "" {
+		sortDirection = "asc"
+	}
+	paginated := filter.Limit > 0
+	var cursorNumber *int
+	cursorID := uuid.Nil
+	cursorIsNull := false
+	if filter.Cursor != "" {
+		var err error
+		cursorNumber, cursorID, err = decodeExamRosterCursor(filter.Cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		cursorIsNull = cursorNumber == nil
+	}
+	limit := filter.Limit + 1
+	if !paginated {
+		limit = 0
+	}
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT reg.id, reg.student_id, u.name, u.username, reg.participant_number,
 			reg.status, reg.checked_in_at, reg.created_at, e.scheduled_at, e.exam_number,
@@ -1782,11 +1816,27 @@ func (r *Repository) GetExamRoster(ctx context.Context, examID uuid.UUID, school
 		JOIN exam e ON e.id = reg.exam_id
 		JOIN users u ON u.id = reg.student_id
 		WHERE reg.exam_id = $1 AND ($2::uuid IS NULL OR u.school_id = $2)
-		ORDER BY reg.participant_number NULLS LAST, reg.created_at`,
-		examID, schoolFilter,
+			AND ($3::boolean = false OR
+				($4::boolean AND reg.participant_number IS NULL AND
+					(($7 = 'asc' AND reg.id > $6) OR ($7 = 'desc' AND reg.id < $6))) OR
+				($4::boolean = false AND (
+					reg.participant_number IS NULL OR
+					($7 = 'asc' AND (reg.participant_number > $5::integer OR
+						(reg.participant_number = $5::integer AND reg.id > $6))) OR
+					($7 = 'desc' AND (reg.participant_number < $5::integer OR
+						(reg.participant_number = $5::integer AND reg.id < $6)))
+				))
+			)
+		ORDER BY
+			CASE WHEN $7 = 'asc' THEN reg.participant_number END ASC NULLS LAST,
+			CASE WHEN $7 = 'desc' THEN reg.participant_number END DESC NULLS LAST,
+			CASE WHEN $7 = 'asc' THEN reg.id END ASC,
+			CASE WHEN $7 = 'desc' THEN reg.id END DESC
+		LIMIT NULLIF($8, 0)`,
+		examID, schoolFilter, filter.Cursor != "", cursorIsNull, cursorNumber, cursorID, sortDirection, limit,
 	)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer rows.Close()
 
@@ -1798,17 +1848,49 @@ func (r *Repository) GetExamRoster(ctx context.Context, examID uuid.UUID, school
 			&item.ParticipantNumber, &item.Status, &item.CheckedInAt, &item.RegisteredAt,
 			&item.ExamScheduledAt, &item.ExamNumber, &item.Token,
 		); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	nextCursor := ""
+	if paginated && len(items) > filter.Limit {
+		items = items[:filter.Limit]
+		last := items[len(items)-1]
+		nextCursor = encodeExamRosterCursor(last.ParticipantNumber, last.RegistrationID)
 	}
 	if items == nil {
 		items = []model.ExamRosterEntry{}
 	}
-	return items, nil
+	return items, nextCursor, nil
+}
+
+func encodeExamRosterCursor(participantNumber *int, registrationID uuid.UUID) string {
+	if participantNumber == nil {
+		return "null," + registrationID.String()
+	}
+	return strconv.Itoa(*participantNumber) + "," + registrationID.String()
+}
+
+func decodeExamRosterCursor(cursor string) (*int, uuid.UUID, error) {
+	numberValue, idValue, found := strings.Cut(cursor, ",")
+	if !found {
+		return nil, uuid.Nil, ErrInvalidCursor
+	}
+	id, err := uuid.Parse(idValue)
+	if err != nil {
+		return nil, uuid.Nil, ErrInvalidCursor
+	}
+	if numberValue == "null" {
+		return nil, id, nil
+	}
+	number, err := strconv.Atoi(numberValue)
+	if err != nil || number < 1 {
+		return nil, uuid.Nil, ErrInvalidCursor
+	}
+	return &number, id, nil
 }
 
 // ---------- Session scan helpers ----------

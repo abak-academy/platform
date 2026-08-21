@@ -11,6 +11,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import DOMPurify from "dompurify";
+import { ApiError } from "@/lib/api";
 
 import {
   useReconnectSession,
@@ -63,6 +64,31 @@ function formatTime(seconds: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+const EXPIRY_MAX_ATTEMPTS = 3;
+
+function isTransientExpiryError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return true;
+  return error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
+function isAlreadySubmittedError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "already_submitted";
+}
+
+async function retryExpiryStep<T>(action: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < EXPIRY_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await action();
+    } catch (error) {
+      if (!isTransientExpiryError(error) || attempt === EXPIRY_MAX_ATTEMPTS - 1) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, backoffDelayMs(attempt)));
+    }
+  }
+  throw new Error("expiry recovery exhausted");
+}
+
 // Identifies a queued/save-payload entry by its full content, not just its
 // question id — so an ack for an older value never removes a newer,
 // still-unacknowledged value for the same question from the durable queue.
@@ -102,6 +128,7 @@ export default function SessionPage() {
   const [remaining, setRemaining] = useState<number>(0);
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [expiryRecoveryFailed, setExpiryRecoveryFailed] = useState(false);
   const [showViolationOverlay, setShowViolationOverlay] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">(
     "saved",
@@ -395,6 +422,69 @@ export default function SessionPage() {
     ? (activeTest?.duration_minutes ?? 0) > 0
     : session?.duration_minutes != null;
 
+  const runExpiryRecovery = useCallback(async () => {
+    if (!session) return;
+    setExpiryRecoveryFailed(false);
+    setSubmitting(true);
+    submittingRef.current = true;
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    clearRetryTimer();
+    pendingChangeRef.current = false;
+
+    try {
+      const payload = buildSavePayload();
+      try {
+        await retryExpiryStep(() =>
+          saveAnswers.mutateAsync({
+            answers: payload,
+            current_position: currentQIndexRef.current,
+          }),
+        );
+        clearQueue(sessionId);
+      } catch (error) {
+        if (isAlreadySubmittedError(error)) throw error;
+      }
+
+      if (isSectioned) {
+        const sectionId = session.active_test_id;
+        if (!sectionId) return;
+        const result = await retryExpiryStep(() =>
+          advanceSection.mutateAsync(sectionId),
+        );
+        if (!result.completed) {
+          setSubmitting(false);
+          submittingRef.current = false;
+          return;
+        }
+      }
+
+      await retryExpiryStep(() => submitSession.mutateAsync());
+      clearQueue(sessionId);
+      setRedirecting(true);
+      router.replace(`/exam/sessions/${sessionId}/result`);
+    } catch (error) {
+      if (isAlreadySubmittedError(error)) {
+        clearQueue(sessionId);
+        setRedirecting(true);
+        router.replace(`/exam/sessions/${sessionId}/result`);
+        return;
+      }
+      setSubmitting(false);
+      submittingRef.current = false;
+      setExpiryRecoveryFailed(true);
+    }
+  }, [
+    session,
+    isSectioned,
+    sessionId,
+    saveAnswers,
+    advanceSection,
+    submitSession,
+    router,
+    buildSavePayload,
+    clearRetryTimer,
+  ]);
+
   // Timer countdown
   useEffect(() => {
     if (!session || !hasTimer || session.status !== "in_progress" || remainingRef.current <= 0)
@@ -406,95 +496,24 @@ export default function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, hasTimer, remaining <= 0]);
 
-  // Auto-submit when timer expires (standard mode only)
+  // Start one locked recovery cycle when the active timer expires.
   useEffect(() => {
     if (
       !session ||
       !hasTimer ||
       session.status !== "in_progress" ||
-      remainingRef.current > 0 ||
-      autoSubmittedRef.current ||
-      isSectioned
+      remainingRef.current > 0
     )
       return;
-    autoSubmittedRef.current = true;
-    const doSubmit = async () => {
-      submittingRef.current = true;
-      const arr = buildSavePayload();
-      if (arr.length > 0) {
-        try {
-          await saveAnswers.mutateAsync({
-            answers: arr,
-            current_position: currentQIndexRef.current,
-          });
-        } catch {
-          /* best-effort */
-        }
-      }
-      submitSession.mutate(undefined, {
-        onSuccess: () => {
-          setRedirecting(true);
-          router.replace(`/exam/sessions/${sessionId}/result`);
-        },
-      });
-    };
-    doSubmit();
-    // `session` and `hasTimer` belong in the deps, not just `remaining <= 0`:
-    // `remaining` starts at 0, so a reconnect that lands an already-expired
-    // session (tab closed past the deadline) leaves that condition unchanged at
-    // `true` and would never re-run this effect — the student would be stranded
-    // on a 00:00 screen with every input and the submit button disabled.
-    // autoSubmittedRef keeps the extra runs from submitting twice.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remaining <= 0, session, hasTimer]);
-
-  // Auto-advance when section timer expires (sectioned mode)
-  useEffect(() => {
-    if (
-      !session ||
-      !isSectioned ||
-      !hasTimer ||
-      session.status !== "in_progress" ||
-      remainingRef.current > 0 ||
-      autoAdvanceRef.current
-    )
-      return;
-    autoAdvanceRef.current = true;
-    const doAdvance = async () => {
-      // Always attempt save before advance; answersRef reflects render-phase
-      // state and may not yet include effect-hydrated answers on first fire.
-      const arr = buildSavePayload();
-      try {
-        await saveAnswers.mutateAsync({
-          answers: arr,
-          current_position: currentQIndexRef.current,
-        });
-      } catch {
-        /* best-effort */
-      }
-      const sectionId = session.active_test_id;
-      if (!sectionId) return;
-      try {
-        const result = await advanceSection.mutateAsync(sectionId);
-        if (result.completed) {
-          // Last section — submit now
-          submitSession.mutate(undefined, {
-            onSuccess: () => {
-              setRedirecting(true);
-              router.replace(`/exam/sessions/${sessionId}/result`);
-            },
-          });
-        }
-        // Non-last section: cache invalidation refetches session,
-        // init effect picks up the new active section's timer.
-      } catch {
-        // Allow retry on failure
-        autoAdvanceRef.current = false;
-      }
-    };
-    doAdvance();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remaining <= 0, isSectioned]);
+    if (isSectioned) {
+      if (autoAdvanceRef.current) return;
+      autoAdvanceRef.current = true;
+    } else {
+      if (autoSubmittedRef.current) return;
+      autoSubmittedRef.current = true;
+    }
+    void runExpiryRecovery();
+  }, [remaining <= 0, isSectioned, runExpiryRecovery, session, hasTimer]);
 
   // Violation logging
   useEffect(() => {
@@ -821,6 +840,7 @@ export default function SessionPage() {
                   variant={isFlagged ? "default" : "outline"}
                   size="sm"
                   onClick={() => toggleFlag(currentQ.id)}
+                  disabled={timerExpired}
                 >
                   <Flag className="size-3.5" />
                   {isFlagged ? t("unflag") : t("flag")}
@@ -931,6 +951,17 @@ export default function SessionPage() {
           </div>
         </div>
       </div>
+
+      {expiryRecoveryFailed && (
+        <Card className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 border-danger/30 px-4 py-3">
+          <span className="text-sm text-ink-700">
+            {t("session_expiry_recovery_failed")}
+          </span>
+          <Button size="sm" onClick={runExpiryRecovery}>
+            {t("retry")}
+          </Button>
+        </Card>
+      )}
 
       {/* Submit confirmation dialog */}
       <Dialog open={showConfirm} onOpenChange={setShowConfirm}>

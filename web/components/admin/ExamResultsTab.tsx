@@ -85,7 +85,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
     });
     setNextCursor(query.data.next_cursor);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query.data]);
+  }, [query.data, filterKey]);
 
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const detailResult = useAdminResultDetail(

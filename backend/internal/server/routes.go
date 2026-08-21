@@ -298,6 +298,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamsRead.GET("", h.AdminListExams)
 	adminExamsRead.GET("/:id", h.AdminGetExam)
 	adminExamsRead.GET("/:id/registrations", h.AdminListExamRegistrations)
+	adminExamsRead.GET("/:id/registrations/export", h.AdminExportExamRegistrations)
 
 	// Admin upload routes (image + audio presigning)
 	adminUploads := admin.Group("/uploads")

@@ -403,6 +403,12 @@ type ExamRosterEntry struct {
 	ExamNumber        *int       `json:"-"`
 }
 
+type ExamRosterFilter struct {
+	Cursor string
+	Limit  int
+	Sort   string
+}
+
 // SessionResult is the read shape for GET /api/v1/exam/sessions/:id/result. State is the
 // gate discriminator ("hidden" | "grading" | "locked" | "result"); the remaining fields are
 // populated per state (score/counts/rank always on "result"; breakdown/pembahasan only on

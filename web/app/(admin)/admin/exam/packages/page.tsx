@@ -39,19 +39,38 @@ export default function ExamPackagesPage() {
   const [status, setStatus] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [q, setQ] = useState("");
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [nextCursor, setNextCursor] = useState<string | undefined>();
+  const [items, setItems] = useState<ExamListItem[]>([]);
 
   useEffect(() => {
-    const id = setTimeout(() => setQ(searchInput.trim()), SEARCH_DEBOUNCE_MS);
+    const id = setTimeout(() => {
+      const nextQ = searchInput.trim();
+      if (nextQ === q) return;
+      setItems([]);
+      setCursor(undefined);
+      setNextCursor(undefined);
+      setQ(nextQ);
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(id);
-  }, [searchInput]);
+  }, [q, searchInput]);
 
   const filters = useMemo(
-    () => ({ q: q || undefined, status: status || undefined }),
-    [q, status]
+    () => ({ cursor, limit: 20, q: q || undefined, status: status || undefined }),
+    [cursor, q, status]
   );
 
-  const { data, isLoading, isError, error } = useExams(filters);
-  const items = data?.data ?? [];
+  const { data, isLoading, isFetching, isError, error } = useExams(filters);
+
+  useEffect(() => {
+    if (!data) return;
+    setItems((previous) => {
+      if (!cursor) return data.data;
+      const ids = new Set(previous.map((exam) => exam.id));
+      return [...previous, ...data.data.filter((exam) => !ids.has(exam.id))];
+    });
+    setNextCursor(data.next_cursor);
+  }, [cursor, data, q, status]);
 
   return (
     <div className="space-y-6 fade-in">
@@ -72,7 +91,12 @@ export default function ExamPackagesPage() {
         <select
           data-slot="select"
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => {
+            setItems([]);
+            setCursor(undefined);
+            setNextCursor(undefined);
+            setStatus(e.target.value);
+          }}
           className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
         >
           {STATUS_OPTIONS.map((s) => (
@@ -165,6 +189,18 @@ export default function ExamPackagesPage() {
             ))}
           </div>
         )
+      )}
+
+      {nextCursor && !isError && (
+        <div className="text-center">
+          <Button
+            variant="outline"
+            onClick={() => setCursor(nextCursor)}
+            disabled={isFetching}
+          >
+            {isFetching ? t("sys_loading") : t("load_more")}
+          </Button>
+        </div>
       )}
 
       <ExamModal

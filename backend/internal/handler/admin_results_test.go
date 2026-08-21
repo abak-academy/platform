@@ -378,6 +378,9 @@ func newAdminResultsDBEnv(t *testing.T) *adminResultsDBTestEnv {
 		adminResults.GET("", h.AdminListResults)
 		adminResults.GET("/export", h.AdminExportResults)
 		adminResults.GET("/:session_id", h.AdminGetResultDetail)
+		exam := v1.Group("/exam")
+		exam.Use(handler.JWTMiddleware(svc, signer))
+		exam.GET("/sessions/:id/result", h.StudentGetSessionResult)
 
 		adminResultsDBEnv = &adminResultsDBTestEnv{
 			pool:        pool,
@@ -494,7 +497,10 @@ func seedExamWithMCQ(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 		t.Fatalf("insert test_question: %v", err)
 	}
 
-	for i, o := range []struct{ key, text string; correct bool }{
+	for i, o := range []struct {
+		key, text string
+		correct   bool
+	}{
 		{"a", "Correct answer", true},
 		{"b", "Wrong answer", false},
 	} {
@@ -602,6 +608,20 @@ func mintAdminExamToken(t *testing.T, env *adminResultsDBTestEnv, userID string)
 	return tokenString
 }
 
+func mintStudentResultToken(t *testing.T, env *adminResultsDBTestEnv, userID string) string {
+	t.Helper()
+	rdb := redis.NewClient(&redis.Options{Addr: env.mr.Addr()})
+	t.Cleanup(func() { rdb.Close() })
+	tokenString, jti, err := env.signer.SignAccess(userID, service.RoleStudent, nil, []string{})
+	if err != nil {
+		t.Fatalf("SignAccess: %v", err)
+	}
+	if err := rdb.Set(context.Background(), "session:access:"+jti, userID, 15*time.Minute).Err(); err != nil {
+		t.Fatalf("redis set session: %v", err)
+	}
+	return tokenString
+}
+
 // ---------------------------------------------------------------------------
 // Integration tests
 // ---------------------------------------------------------------------------
@@ -621,6 +641,27 @@ func TestAdminResult_List_ExamNotFound_404(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&resp)
 	if resp["code"] != "exam_not_found" {
 		t.Errorf("code: want exam_not_found, got %v", resp["code"])
+	}
+}
+
+func TestAdminResult_List_MalformedCursor_400(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	examID := seedExamWithMCQ(t, env.pool)
+	superToken := mintSuperAdminToken(t, env, "invalid-cursor-admin")
+	rec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String()+"&cursor=garbage", superToken)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var apiErr struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &apiErr); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if apiErr.Code != "invalid_cursor" {
+		t.Fatalf("want invalid_cursor, got %q", apiErr.Code)
 	}
 }
 
@@ -846,6 +887,71 @@ func TestAdminResults_RoutePrecedence(t *testing.T) {
 	ct := rec.Header().Get("Content-Type")
 	if ct != "text/csv" {
 		t.Errorf("Content-Type: want text/csv, got %q", ct)
+	}
+}
+
+func TestAdminResults_HiddenSubmittedResult_AdminVisibleStudentHidden(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+	schoolID := seedSchool(t, env.pool)
+	adminID := seedUserWithSchool(t, env.pool, "admin_school", "Results Admin", schoolID)
+	studentID := seedUserWithSchool(t, env.pool, "student", "Sabian Isaac", schoolID)
+	examID := seedExamWithMCQ(t, env.pool)
+	if _, err := env.pool.Exec(context.Background(),
+		`UPDATE exam SET result_config = 'hidden', result_release_at = now() + interval '1 day' WHERE id = $1`, examID,
+	); err != nil {
+		t.Fatalf("update exam visibility: %v", err)
+	}
+	seedSubmittedSession(t, env.pool, studentID, examID)
+	var sessionID uuid.UUID
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT id FROM exam_session WHERE student_id = $1 AND exam_id = $2`, studentID, examID,
+	).Scan(&sessionID); err != nil {
+		t.Fatalf("find session: %v", err)
+	}
+	token := mintAdminToken(t, env, adminID.String(), schoolID)
+
+	listRec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String(), token)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list: want 200, got %d body=%s", listRec.Code, listRec.Body.String())
+	}
+	var listResp struct {
+		Data []struct {
+			SessionID string `json:"session_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(listResp.Data) != 1 {
+		t.Fatalf("want hidden result visible to admin, got %d rows", len(listResp.Data))
+	}
+	if listResp.Data[0].SessionID != sessionID.String() {
+		t.Fatalf("session_id: want %s, got %s", sessionID, listResp.Data[0].SessionID)
+	}
+
+	detailRec := getRequest(t, env.e, "/api/v1/admin/results/"+listResp.Data[0].SessionID, token)
+	if detailRec.Code != http.StatusOK {
+		t.Fatalf("detail: want 200, got %d body=%s", detailRec.Code, detailRec.Body.String())
+	}
+	exportRec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+examID.String(), token)
+	records, err := csv.NewReader(bytes.NewReader(exportRec.Body.Bytes())).ReadAll()
+	if exportRec.Code != http.StatusOK || err != nil || len(records) != 2 {
+		t.Fatalf("export: want header and result, status=%d records=%d err=%v", exportRec.Code, len(records), err)
+	}
+
+	studentToken := mintStudentResultToken(t, env, studentID.String())
+	studentRec := getRequest(t, env.e, "/api/v1/exam/sessions/"+sessionID.String()+"/result", studentToken)
+	if studentRec.Code != http.StatusOK {
+		t.Fatalf("student result: want 200, got %d body=%s", studentRec.Code, studentRec.Body.String())
+	}
+	var studentResp struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(studentRec.Body.Bytes(), &studentResp); err != nil {
+		t.Fatalf("decode student result: %v", err)
+	}
+	if studentResp.State != "hidden" {
+		t.Fatalf("student result state: want hidden, got %s", studentResp.State)
 	}
 }
 

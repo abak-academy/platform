@@ -105,11 +105,51 @@ func (h *Handler) AdminListExamRegistrations(c echo.Context) error {
 		}
 		schoolFilter = claims.SchoolID
 	}
-	rows, err := h.svc.AdminGetExamRoster(c.Request().Context(), id, schoolFilter)
+	filter := model.ExamRosterFilter{Cursor: c.QueryParam("cursor"), Sort: c.QueryParam("sort")}
+	if filter.Sort == "" {
+		filter.Sort = "asc"
+	}
+	if filter.Sort != "asc" && filter.Sort != "desc" {
+		return badRequest(c, "invalid sort")
+	}
+	if rawLimit := c.QueryParam("limit"); rawLimit != "" {
+		limit, parseErr := strconv.Atoi(rawLimit)
+		if parseErr != nil || limit < 1 {
+			return badRequest(c, "invalid limit")
+		}
+		filter.Limit = min(limit, 100)
+	} else if filter.Cursor != "" {
+		filter.Limit = 20
+	}
+	rows, nextCursor, err := h.svc.AdminListExamRoster(c.Request().Context(), id, schoolFilter, filter)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "next_cursor": nextCursor})
+}
+
+func (h *Handler) AdminExportExamRegistrations(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	var schoolFilter *string
+	if claims.Role == "admin_school" {
+		if claims.SchoolID == nil {
+			return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+		}
+		schoolFilter = claims.SchoolID
+	}
+	csvBytes, err := h.svc.ExportExamRosterCSV(c.Request().Context(), id, schoolFilter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	c.Response().Header().Set("Content-Disposition", `attachment; filename="roster.csv"`)
+	return c.Blob(http.StatusOK, "text/csv; charset=utf-8", csvBytes)
 }
 
 // examPatchRequest is the PATCH body for AdminUpdateExam. Nullable[T] fields

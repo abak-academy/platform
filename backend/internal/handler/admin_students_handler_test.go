@@ -18,6 +18,7 @@ import (
 	"akademi-bimbel/internal/service"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
@@ -427,6 +428,98 @@ func TestAdminListStudents_AdminSchool_OwnScope_200(t *testing.T) {
 	if resp["data"] == nil {
 		t.Error("want non-nil data array")
 	}
+}
+
+func TestAdminListStudents_ExamEligibilityAndCursorValidation(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+	suffix := uuid.NewString()[:8]
+	var schoolID string
+	if err := env.pool.QueryRow(ctx,
+		`INSERT INTO school (name, code, school_types) VALUES ($1, $2, $3) RETURNING id`,
+		"Eligibility "+suffix, "as_"+suffix, []string{"sma"},
+	).Scan(&schoolID); err != nil {
+		t.Fatalf("seed school: %v", err)
+	}
+	seed := func(name, status string) string {
+		var id string
+		if err := env.pool.QueryRow(ctx,
+			`INSERT INTO users (name, username, role, school_id, status, jenjang, grade, otp_enabled)
+			 VALUES ($1, $2, 'student', $3, $4, 'sma', 10, false) RETURNING id`,
+			name+" "+suffix, "as_"+uuid.NewString()[:12], schoolID, status,
+		).Scan(&id); err != nil {
+			t.Fatalf("seed student: %v", err)
+		}
+		return id
+	}
+	eligible := seed("Eligible", "active")
+	registered := seed("Registered", "active")
+	seed("Deactivated", "deactivated")
+	var examID string
+	if err := env.pool.QueryRow(ctx, `INSERT INTO exam (title) VALUES ($1) RETURNING id`, "Eligibility "+suffix).Scan(&examID); err != nil {
+		t.Fatalf("seed exam: %v", err)
+	}
+	if _, err := env.pool.Exec(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3)`,
+		registered, examID, "as_"+uuid.NewString(),
+	); err != nil {
+		t.Fatalf("seed registration: %v", err)
+	}
+
+	rdb := redis.NewClient(&redis.Options{Addr: env.mr.Addr()})
+	t.Cleanup(func() { rdb.Close() })
+	token, jti, err := env.signer.SignAccess("admin-eligibility", "admin_school", &schoolID, []string{})
+	if err != nil {
+		t.Fatalf("SignAccess: %v", err)
+	}
+	if err := rdb.Set(ctx, "session:access:"+jti, "admin-eligibility", 15*time.Minute).Err(); err != nil {
+		t.Fatalf("redis set session: %v", err)
+	}
+
+	t.Run("exam context composes with school grade and jenjang", func(t *testing.T) {
+		path := "/api/v1/admin/students?q=" + suffix + "&grade=10&jenjang=sma&exam_id=" + examID
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			Data []struct {
+				ID      string `json:"id"`
+				Jenjang string `json:"jenjang"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		if len(resp.Data) != 1 || resp.Data[0].ID != eligible {
+			t.Fatalf("want only eligible student %s, got %+v", eligible, resp.Data)
+		}
+		if resp.Data[0].Jenjang != "sma" {
+			t.Fatalf("want jenjang sma, got %q", resp.Data[0].Jenjang)
+		}
+	})
+
+	t.Run("malformed cursor returns invalid_cursor", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students?cursor=garbage", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var apiErr struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &apiErr); err != nil {
+			t.Fatalf("decode error: %v", err)
+		}
+		if apiErr.Code != "invalid_cursor" {
+			t.Errorf("code: want invalid_cursor, got %s", apiErr.Code)
+		}
+	})
 }
 
 // Registrants are not all school pupils — university students and members of

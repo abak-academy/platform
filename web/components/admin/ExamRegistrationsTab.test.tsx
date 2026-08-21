@@ -63,16 +63,26 @@ vi.mock("@/lib/hooks/admin-bulk-exam-orders", () => ({
   }),
 }));
 
-let rosterData: { data: unknown[] } | undefined = { data: [] };
+let rosterData: { data: unknown[]; next_cursor?: string } | undefined = { data: [] };
 let rosterIsLoading = false;
 let rosterIsError = false;
+const rosterHookSpy = vi.fn();
+const exportRosterSpy = vi.fn().mockResolvedValue(undefined);
+let resolveRosterData: (filter: { cursor?: string; limit: number; sort: "asc" | "desc" }) =>
+  | { data: unknown[]; next_cursor?: string }
+  | undefined = () => rosterData;
 
 vi.mock("@/lib/hooks/admin-exams", () => ({
-  useExamRoster: () => ({
-    data: rosterData,
-    isLoading: rosterIsLoading,
-    isError: rosterIsError,
-  }),
+  useExamRoster: (examId: string, filter: { cursor?: string; limit: number; sort: "asc" | "desc" }) => {
+    rosterHookSpy(examId, filter);
+    return {
+      data: resolveRosterData(filter),
+      isLoading: rosterIsLoading,
+      isFetching: rosterIsLoading,
+      isError: rosterIsError,
+    };
+  },
+  exportExamRoster: (...args: unknown[]) => exportRosterSpy(...args),
 }));
 
 vi.mock("@/lib/hooks/admin-exam-grants", () => ({
@@ -92,9 +102,10 @@ vi.mock("@/lib/hooks/admin-exam-grants", () => ({
 }));
 
 vi.mock("@/components/admin/ParticipantPicker", () => ({
-  ParticipantPicker: ({ onChange }: { selected: string[]; onChange: (ids: string[]) => void }) => (
+  ParticipantPicker: ({ examId, onChange }: { examId: string; selected: string[]; onChange: (ids: string[]) => void }) => (
     <button
       data-testid="participant-add"
+      data-exam-id={examId}
       onClick={() => onChange(["student-1", "student-2"])}
     >
       pick
@@ -122,6 +133,15 @@ vi.mock("sonner", () => ({
 }));
 
 import { toast } from "sonner";
+
+beforeEach(() => {
+  rosterData = { data: [] };
+  rosterIsLoading = false;
+  rosterIsError = false;
+  rosterHookSpy.mockClear();
+  exportRosterSpy.mockClear();
+  resolveRosterData = () => rosterData;
+});
 
 function wrapperFactory() {
   const queryClient = new QueryClient({
@@ -153,6 +173,7 @@ describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam
       wrapper: wrapperFactory(),
     });
     fireEvent.click(screen.getByTestId("participant-add"));
+    expect(screen.getByTestId("participant-add")).toHaveAttribute("data-exam-id", "exam-1");
     expect(screen.queryByText("exam_grant_grant")).not.toBeInTheDocument();
   });
 
@@ -370,35 +391,8 @@ describe("ExamRegistrationsTab — admin_exam read-only (FR-8/FR-9)", () => {
 });
 
 describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
-  const originalCreateElement = document.createElement.bind(document);
-  let lastDownloadedFilename: string | null = null;
-  let lastCapturedBlob: Blob | null = null;
-
   beforeEach(() => {
     authUser = { role: "admin_school", school_id: "school-1" };
-    rosterData = { data: [] };
-    rosterIsLoading = false;
-    rosterIsError = false;
-    lastDownloadedFilename = null;
-    lastCapturedBlob = null;
-
-    document.createElement = ((tag: string) => {
-      const el = originalCreateElement(tag);
-      if (tag === "a") {
-        (el as HTMLAnchorElement).click = vi.fn(function (this: HTMLAnchorElement) {
-          lastDownloadedFilename = this.download;
-        });
-      }
-      return el;
-    }) as typeof document.createElement;
-
-    if (!(URL.createObjectURL as any).__mocked) {
-      URL.createObjectURL = vi.fn().mockImplementation((blob: Blob) => {
-        lastCapturedBlob = blob;
-        return "blob:mock" as unknown as string;
-      }) as typeof URL.createObjectURL;
-      (URL.createObjectURL as any).__mocked = true;
-    }
   });
 
   const rows = [
@@ -452,12 +446,17 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
     expect(screen.getByText("exam_roster_empty")).toBeInTheDocument();
   });
 
-  it("renders rows sorted by participant number ascending by default, with a nil-safe dash for unassigned numbers", () => {
-    rosterData = { data: rows };
+  it("requests the first page ascending by default and renders the server order", () => {
+    rosterData = { data: [rows[1], rows[0], rows[2]] };
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
+    expect(rosterHookSpy).toHaveBeenLastCalledWith("exam-1", {
+      cursor: undefined,
+      limit: 20,
+      sort: "asc",
+    });
     const cells = screen.getAllByTestId("roster-participant-no");
     expect(cells.map((c) => c.textContent)).toEqual([
       "250620-0042-000001",
@@ -466,20 +465,46 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
     ]);
   });
 
-  it("reverses sort order when the No. Peserta header is clicked", () => {
-    rosterData = { data: rows };
+  it("requests descending sort from page one when the header is clicked", () => {
+    const ascending = { data: [rows[1], rows[0], rows[2]], next_cursor: "asc-2" };
+    const descending = { data: [rows[0], rows[1], rows[2]], next_cursor: "desc-2" };
+    resolveRosterData = (filter) => filter.sort === "desc" ? descending : ascending;
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
     fireEvent.click(screen.getByText("exam_roster_th_participant_no"));
 
+    expect(rosterHookSpy).toHaveBeenLastCalledWith("exam-1", {
+      cursor: undefined,
+      limit: 20,
+      sort: "desc",
+    });
     const cells = screen.getAllByTestId("roster-participant-no");
     expect(cells.map((c) => c.textContent)).toEqual([
-      "—",
       "250620-0042-000002",
       "250620-0042-000001",
+      "—",
     ]);
+  });
+
+  it("appends unique registrations when Load More follows next_cursor", () => {
+    const firstPage = { data: [rows[1], rows[0]], next_cursor: "page-2" };
+    const secondPage = { data: [rows[0], rows[2]] };
+    resolveRosterData = (filter) => filter.cursor === "page-2" ? secondPage : firstPage;
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    fireEvent.click(screen.getByText("sys_load_more"));
+
+    expect(rosterHookSpy).toHaveBeenLastCalledWith("exam-1", {
+      cursor: "page-2",
+      limit: 20,
+      sort: "asc",
+    });
+    expect(screen.getAllByText("Budi Santoso")).toHaveLength(1);
+    expect(screen.getByText("Citra Dewi")).toBeInTheDocument();
   });
 
   // NFR-S7: the exam token is a check-in credential. The realistic leak is a
@@ -498,13 +523,11 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
   });
 
   it("reveals only the toggled row's real token, leaving the others masked", () => {
-    rosterData = { data: rows };
+    rosterData = { data: [rows[1], rows[0], rows[2]] };
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
-    // Default sort is ascending by participant_number, so the first rendered
-    // row/toggle is Andi (participant_number 1), not rows[0] (Budi, no. 2).
     const revealButtons = screen.getAllByLabelText("exam_roster_show_token");
     fireEvent.click(revealButtons[0]);
 
@@ -518,46 +541,31 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
     expect(screen.getAllByText("••••••••")).toHaveLength(rows.length - 1);
   });
 
-  it("exports a CSV blob of the roster rows when Export CSV is clicked", async () => {
-    rosterData = { data: rows };
+  it("exports from the full-roster endpoint even when another UI page exists", async () => {
+    rosterData = { data: [rows[1]], next_cursor: "page-2" };
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
     fireEvent.click(screen.getByText("exam_roster_export_csv"));
 
-    expect(lastDownloadedFilename).toBe("roster.csv");
-    expect(lastCapturedBlob).not.toBeNull();
-    const text = await lastCapturedBlob!.text();
-    expect(text).toContain("No. Peserta,Nama,Username,Status,Checked In");
-    expect(text).toContain("250620-0042-000001,Andi Saputra,andi123,registered,yes");
-    expect(text).toContain(",Citra Dewi,,registered,no");
+    await waitFor(() => expect(exportRosterSpy).toHaveBeenCalledWith("exam-1"));
   });
 
-  // Student names are attacker-supplied at registration, so a leading =/+/-/@
-  // must not reach the spreadsheet as a live formula.
-  it("neutralizes formula-leading fields in the exported CSV", async () => {
-    rosterData = {
-      data: [
-        {
-          ...rows[0],
-          registration_id: "reg-evil",
-          student_id: "s-evil",
-          student_name: '=HYPERLINK("http://evil.test","claim prize")',
-          student_username: "+cmd|' /C calc'!A0",
-        },
-      ],
-    };
+  it("shows an error and restores the export button when CSV export fails", async () => {
+    rosterData = { data: [rows[1]] };
+    vi.mocked(toast.error).mockClear();
+    exportRosterSpy.mockRejectedValueOnce(new Error("forbidden"));
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
-    fireEvent.click(screen.getByText("exam_roster_export_csv"));
+    const button = screen.getByRole("button", { name: "exam_roster_export_csv" });
+    fireEvent.click(button);
 
-    const text = await lastCapturedBlob!.text();
-    expect(text).toContain(`"'=HYPERLINK(""http://evil.test"",""claim prize"")"`);
-    expect(text).toContain(`"'+cmd|' /C calc'!A0"`);
-    expect(text).not.toContain(",=HYPERLINK");
-    expect(text).not.toContain(",+cmd");
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("exam_roster_export_failed");
+    });
+    expect(button).toBeEnabled();
   });
 });

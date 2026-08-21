@@ -150,18 +150,12 @@ func (f *fakeSessionRepo) GetSchoolResultSession(_ context.Context, sessionID uu
 // ---------- shimSessionService: admin results extensions ----------
 
 func (s *shimSessionService) ListSchoolResults(ctx context.Context, examID uuid.UUID, schoolID, q, cursor string, limit int) ([]model.AdminResultRow, string, error) {
-	exam, err := s.repo.GetExamForSession(ctx, examID)
+	_, err := s.repo.GetExamForSession(ctx, examID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, "", ErrExamNotFound
 		}
 		return nil, "", err
-	}
-
-	// Gates 1 and 3 (exam-level only): hidden or locked. Force both bools true so
-	// only the exam-level gates are checked (FR-SCHOOL-08-05).
-	if _, ok := resultGate(*exam, true, true); ok {
-		return nil, "", nil
 	}
 
 	if limit <= 0 || limit > 100 {
@@ -170,7 +164,7 @@ func (s *shimSessionService) ListSchoolResults(ctx context.Context, examID uuid.
 
 	f := repository.AdminResultFilter{Q: q, Cursor: cursor, Limit: limit}
 	rows, next, err := s.repo.ListSchoolResults(ctx, examID, schoolID, f)
-	return rows, next, mapCursorErr(err)
+	return rows, next, err
 }
 
 func (s *shimSessionService) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID, schoolID string) (model.AdminResultDetail, error) {
@@ -201,8 +195,7 @@ func (s *shimSessionService) GetSchoolResultDetail(ctx context.Context, sessionI
 		qs = append(qs, td.Questions...)
 	}
 
-	// Gate check (FR-SCHOOL-08-13): if gated, return ErrSessionNotFound.
-	if _, ok := resultGate(*exam, sess.Status == "submitted", isFullyGraded(qs, answers)); ok {
+	if sess.Status != "submitted" || !isFullyGraded(qs, answers) {
 		return model.AdminResultDetail{}, ErrSessionNotFound
 	}
 
@@ -234,7 +227,7 @@ func (s *shimSessionService) GetSchoolResultDetail(ctx context.Context, sessionI
 
 // ---------- tests: ListSchoolResults ----------
 
-func TestAdminResultList_HiddenExam_ReturnsEmpty(t *testing.T) {
+func TestAdminResultList_HiddenExam_ReturnsAdminResults(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
@@ -253,15 +246,15 @@ func TestAdminResultList_HiddenExam_ReturnsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSchoolResults: want nil error, got %v", err)
 	}
-	if rows != nil {
-		t.Errorf("rows: want nil, got %d items", len(rows))
+	if len(rows) != 1 {
+		t.Errorf("rows: want 1, got %d", len(rows))
 	}
 	if next != "" {
 		t.Errorf("next cursor: want empty, got %q", next)
 	}
 }
 
-func TestAdminResultList_LockedExam_ReturnsEmpty(t *testing.T) {
+func TestAdminResultList_FutureRelease_ReturnsAdminResults(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
@@ -281,8 +274,8 @@ func TestAdminResultList_LockedExam_ReturnsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSchoolResults: want nil error, got %v", err)
 	}
-	if rows != nil {
-		t.Errorf("rows: want nil, got %d items", len(rows))
+	if len(rows) != 1 {
+		t.Errorf("rows: want 1, got %d", len(rows))
 	}
 	if next != "" {
 		t.Errorf("next cursor: want empty, got %q", next)
@@ -367,7 +360,7 @@ func TestAdminResultList_CrossSchoolIsolation(t *testing.T) {
 
 // ---------- tests: GetSchoolResultDetail ----------
 
-func TestAdminResultDetail_Hidden_GatesToNotFound(t *testing.T) {
+func TestAdminResultDetail_Hidden_ReturnsAdminResult(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
@@ -383,9 +376,9 @@ func TestAdminResultDetail_Hidden_GatesToNotFound(t *testing.T) {
 		Status: "submitted", Score: floatPtr(80),
 	}
 
-	_, err := svc.GetSchoolResultDetail(ctx, sessID, schoolID)
-	if !errors.Is(err, ErrSessionNotFound) {
-		t.Errorf("want ErrSessionNotFound, got %v", err)
+	detail, err := svc.GetSchoolResultDetail(ctx, sessID, schoolID)
+	if err != nil || detail.SessionID != sessID {
+		t.Errorf("want admin detail for %s, got %+v, err %v", sessID, detail, err)
 	}
 }
 
@@ -440,7 +433,7 @@ func TestAdminResultDetail_Grading_NotFullyGraded_GatesToNotFound(t *testing.T) 
 	}
 }
 
-func TestAdminResultDetail_Locked_GatesToNotFound(t *testing.T) {
+func TestAdminResultDetail_FutureRelease_ReturnsAdminResult(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
@@ -460,9 +453,9 @@ func TestAdminResultDetail_Locked_GatesToNotFound(t *testing.T) {
 		Status: "submitted", Score: floatPtr(80),
 	}
 
-	_, err := svc.GetSchoolResultDetail(ctx, sessID, schoolID)
-	if !errors.Is(err, ErrSessionNotFound) {
-		t.Errorf("want ErrSessionNotFound, got %v", err)
+	detail, err := svc.GetSchoolResultDetail(ctx, sessID, schoolID)
+	if err != nil || detail.SessionID != sessID {
+		t.Errorf("want admin detail for %s, got %+v, err %v", sessID, detail, err)
 	}
 }
 
@@ -616,7 +609,7 @@ func (s *shimSessionService) ExportSchoolResultsCSV(ctx context.Context, examID 
 
 // ---------- tests: ExportSchoolResultsCSV ----------
 
-func TestExportSchoolResults_HiddenExam_OnlyHeader(t *testing.T) {
+func TestExportSchoolResults_HiddenExam_IncludesAdminResults(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
@@ -642,8 +635,8 @@ func TestExportSchoolResults_HiddenExam_OnlyHeader(t *testing.T) {
 		t.Fatalf("read csv: %v", err)
 	}
 
-	if len(records) != 1 {
-		t.Fatalf("want 1 record (header only), got %d", len(records))
+	if len(records) != 2 {
+		t.Fatalf("want header and result, got %d records", len(records))
 	}
 	wantHeader := []string{"name", "username", "score", "submitted_at"}
 	for i, h := range wantHeader {
@@ -653,7 +646,7 @@ func TestExportSchoolResults_HiddenExam_OnlyHeader(t *testing.T) {
 	}
 }
 
-func TestExportSchoolResults_LockedExam_OnlyHeader(t *testing.T) {
+func TestExportSchoolResults_FutureRelease_IncludesAdminResults(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
@@ -680,8 +673,8 @@ func TestExportSchoolResults_LockedExam_OnlyHeader(t *testing.T) {
 		t.Fatalf("read csv: %v", err)
 	}
 
-	if len(records) != 1 {
-		t.Fatalf("want 1 record (header only), got %d", len(records))
+	if len(records) != 2 {
+		t.Fatalf("want header and result, got %d records", len(records))
 	}
 	wantHeader := []string{"name", "username", "score", "submitted_at"}
 	for i, h := range wantHeader {
