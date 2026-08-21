@@ -1479,6 +1479,7 @@ export const DICT = {
     exam_grant_success_desc_count: "Akses ujian telah diberikan kepada {n} siswa",
     exam_grant_empty_students: "Pilih minimal satu siswa.",
     exam_grant_grant_again: "Beri Akses Lagi",
+    exam_registrations_grant_modal_title: "Beri Akses Ujian",
 
     // Admin participant roster (FR-32)
     exam_roster_title: "Daftar Peserta",
@@ -3003,6 +3004,7 @@ export const DICT = {
     exam_grant_success_desc_count: "Exam access has been granted to {n} students",
     exam_grant_empty_students: "Please select at least one student.",
     exam_grant_grant_again: "Grant Again",
+    exam_registrations_grant_modal_title: "Grant Exam Access",
 
     // Admin participant roster (FR-32)
     exam_roster_title: "Participant Roster",
