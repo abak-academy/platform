@@ -34,6 +34,16 @@ func (s *Service) GeneratePresignedSchoolBulkUploadURL(ctx context.Context, file
 	return s.presignPrivatePut(ctx, fmt.Sprintf("school-bulk/%s-%s", uuid.New().String(), filename))
 }
 
+// GeneratePresignedExamGrantBulkUploadURL signs a PUT for an exam-grant-bulk
+// CSV. The key carries the exam id segment (unlike school-bulk) because rows
+// are usernames only — the exam context has to live in the key, not the CSV.
+func (s *Service) GeneratePresignedExamGrantBulkUploadURL(ctx context.Context, examID, filename, contentType string) (*PrivateUploadURL, error) {
+	if _, err := uuid.Parse(examID); err != nil {
+		return nil, ErrInvalidUUID
+	}
+	return s.presignPrivatePut(ctx, fmt.Sprintf("exam-grant-bulk/%s/%s-%s", examID, uuid.New().String(), filename))
+}
+
 func (s *Service) presignPrivatePut(ctx context.Context, key string) (*PrivateUploadURL, error) {
 	if s.storage == nil {
 		return nil, ErrStorageNotConfigured
@@ -136,6 +146,34 @@ func (s *Service) enqueueSchoolBulkJobFromData(ctx context.Context, createdBy, f
 	}
 
 	job := &model.Job{Type: "school_bulk", InputURL: &fileKey, CreatedBy: createdBy}
+	if err := s.storeRepo.CreateJob(ctx, job); err != nil {
+		return "", err
+	}
+	return job.ID, nil
+}
+
+// EnqueueExamGrantBulkJob validates that fileKey lives under
+// exam-grant-bulk/{examID}/ and exists in the private bucket, then creates the
+// exam_grant_bulk job. Row-level CSV validation (username header, per-row
+// grant/skip/fail resolution) happens in the worker (a separate task), not
+// here — this only has to get a valid job record persisted.
+func (s *Service) EnqueueExamGrantBulkJob(ctx context.Context, examID, createdBy, fileKey string) (string, error) {
+	if _, err := uuid.Parse(examID); err != nil {
+		return "", ErrInvalidUUID
+	}
+
+	if !strings.HasPrefix(fileKey, fmt.Sprintf("exam-grant-bulk/%s/", examID)) {
+		return "", ErrUploadNotFound
+	}
+
+	if _, err := s.storage.StatObject(ctx, s.cfg.ObjectStoragePrivateBucketName, fileKey, minio.StatObjectOptions{}); err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return "", ErrUploadNotFound
+		}
+		return "", err
+	}
+
+	job := &model.Job{Type: "exam_grant_bulk", InputURL: &fileKey, CreatedBy: createdBy}
 	if err := s.storeRepo.CreateJob(ctx, job); err != nil {
 		return "", err
 	}
