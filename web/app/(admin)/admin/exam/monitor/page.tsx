@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { BarChart, RefreshCw, AlertTriangle, RotateCcw, XCircle } from "lucide-react";
+import { useState, useCallback } from "react";
+import { BarChart, Eye, RefreshCw, AlertTriangle, RotateCcw, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { useExams } from "@/lib/hooks/admin-exams";
 import {
+  useAvailableExamsForMonitor,
   useSessionMonitor,
   useReopenSession,
   useForceSubmitSession,
@@ -15,14 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type { SessionMonitorRow, SessionMonitorStatus } from "@/lib/types";
+import type { ExamMonitorAvailable, SessionMonitorRow, SessionMonitorStatus } from "@/lib/types";
 
 // ── Status label key map (i18n keys for each derived status) ──
 // Explicit mapping because status "checked_in" has no underscore in its key "st_checkedin"
@@ -62,30 +55,44 @@ function formatTime(iso: string | null): string {
   return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatWindow(scheduledAt: string | null, scheduledEndAt: string | null): string {
+  if (!scheduledAt) return "—";
+  const dateOpts: Intl.DateTimeFormatOptions = {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  };
+  const start = new Date(scheduledAt).toLocaleString("id-ID", dateOpts);
+  if (!scheduledEndAt) return start;
+  const end = new Date(scheduledEndAt).toLocaleString("id-ID", dateOpts);
+  return `${start} – ${end}`;
+}
+
+// ── Available-exams state badge map ──
+
+const AVAILABLE_STATE_BADGE: Record<
+  ExamMonitorAvailable["state"],
+  { className: string; labelKey: string }
+> = {
+  live: { className: "bg-amber-100 text-amber-800 border-amber-200", labelKey: "monitor_state_live" },
+  ended: { className: "bg-line-2 text-ink-700 border-line", labelKey: "monitor_state_ended" },
+};
+
 // ── Page component ──
 
 export default function ExamMonitorPage() {
   const { t } = useTranslation();
   const [selectedExamId, setSelectedExamId] = useState<string>("");
 
-  const { data: examsData, isLoading: examsLoading } = useExams();
-  const examList = examsData?.data ?? [];
-
-  const publishedExams = useMemo(() => {
-    return examList
-      .filter((e) => e.has_published_product)
-      .sort(
-        (a, b) =>
-          new Date(a.scheduled_at ?? 0).getTime() - new Date(b.scheduled_at ?? 0).getTime(),
-      );
-  }, [examList]);
-
-  // Auto-select first published exam
-  useEffect(() => {
-    if (!selectedExamId && publishedExams.length > 0) {
-      setSelectedExamId(publishedExams[0].id);
-    }
-  }, [publishedExams, selectedExamId]);
+  const {
+    data: availableData,
+    isLoading: availableLoading,
+    isError: availableIsError,
+    error: availableErr,
+    refetch: refetchAvailable,
+  } = useAvailableExamsForMonitor();
+  const availableExams = availableData?.data ?? [];
 
   const {
     data: monitorData,
@@ -136,87 +143,97 @@ export default function ExamMonitorPage() {
     [forceSubmit, refetchMonitor, t],
   );
 
-  // ── Picker section ──
+  // ── Available-exams table ──
 
-  const picker = (
-    <div className="flex w-full items-center gap-3 sm:w-auto">
-      <label className="shrink-0 text-sm font-medium">{t("monitor_pick_exam")}</label>
-      <Select value={selectedExamId} onValueChange={setSelectedExamId}>
-        <SelectTrigger className="w-full min-w-0 sm:w-72" aria-label={t("monitor_pick_exam")}>
-          <SelectValue placeholder={t("monitor_pick_exam")} />
-        </SelectTrigger>
-        <SelectContent>
-          {publishedExams.map((e) => (
-            <SelectItem key={e.id} value={e.id}>
-              {e.title}
-            </SelectItem>
+  const availableColumns: DataTableColumn<ExamMonitorAvailable>[] = [
+    { key: "title", header: t("monitor_th_exam"), cell: (row) => row.title },
+    {
+      key: "window",
+      header: t("monitor_th_window"),
+      cell: (row) => (
+        <span className="text-ink-600">{formatWindow(row.scheduled_at, row.scheduled_end_at)}</span>
+      ),
+    },
+    {
+      key: "state",
+      header: t("th_status"),
+      cell: (row) => {
+        const badge = AVAILABLE_STATE_BADGE[row.state];
+        return (
+          <Badge variant="outline" className={badge.className}>
+            {t(badge.labelKey as any)}
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "not_started",
+      header: t("monitor_th_not_started"),
+      align: "right",
+      cell: (row) => String(row.not_started_count),
+    },
+    {
+      key: "active",
+      header: t("monitor_th_active"),
+      align: "right",
+      cell: (row) => String(row.active_count),
+    },
+    {
+      key: "total",
+      header: t("monitor_th_total_registered"),
+      align: "right",
+      cell: (row) => String(row.total_registered),
+    },
+    {
+      key: "actions",
+      header: t("th_actions"),
+      align: "right",
+      cell: (row) => (
+        <Button variant="outline" size="xs" onClick={() => setSelectedExamId(row.id)}>
+          <Eye size={12} />
+          {t("monitor_actions_view")}
+        </Button>
+      ),
+    },
+  ];
+
+  const availableSection = (
+    <div className="space-y-3">
+      <h2 className="text-base font-semibold">{t("monitor_pick_exam")}</h2>
+      {availableLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
           ))}
-        </SelectContent>
-      </Select>
-      {selectedExamId && (
-        <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">
-          {t("monitor_live")}
-        </Badge>
+        </div>
+      ) : availableIsError ? (
+        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
+          <p className="flex items-center gap-2 font-medium">
+            <AlertTriangle size={16} />
+            {availableErr instanceof Error ? availableErr.message : t("error_generic")}
+          </p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={() => refetchAvailable()}>
+            <RefreshCw size={14} /> {t("retry")}
+          </Button>
+        </div>
+      ) : (
+        <DataTable
+          columns={availableColumns}
+          rows={availableExams}
+          rowKey={(row) => row.id}
+          data-testid="exam-monitor-available-table"
+          empty={
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <BarChart className="mb-4 size-12 text-ink-600" />
+              <p className="text-body-medium text-ink-600">{t("monitor_available_empty")}</p>
+            </div>
+          }
+        />
       )}
     </div>
   );
 
-  // ── Loading state ──
-
-  if (monitorLoading || examsLoading) {
-    return (
-      <div className="space-y-6 fade-in">
-        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
-        <div className="flex flex-col gap-6 lg:flex-row">
-          <div className="flex-1 space-y-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
-            ))}
-          </div>
-          <div className="w-full space-y-2 lg:w-72">
-            <Skeleton className="h-48 w-full" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── No exam selected state ──
-
-  if (!selectedExamId) {
-    return (
-      <div className="space-y-6 fade-in">
-        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <BarChart className="mb-4 size-12 text-ink-600" />
-          <p className="text-body-medium text-ink-600">
-            {t("monitor_no_exam")}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Error state ──
-
-  if (monitorError) {
-    return (
-      <div className="space-y-6 fade-in">
-        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
-        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
-          <p className="flex items-center gap-2 font-medium">
-            <AlertTriangle size={16} />
-            {monitorErr instanceof Error ? monitorErr.message : t("error_generic")}
-          </p>
-          <Button variant="outline" size="sm" className="mt-2" onClick={() => refetchMonitor()}>
-            <RefreshCw size={14} /> {t("retry")}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Table columns ──
+  // ── Session table columns (detail section) ──
 
   const columns: DataTableColumn<SessionMonitorRow>[] = [
     { key: "name", header: t("th_name"), cell: (row) => row.student_name },
@@ -319,68 +336,119 @@ export default function ExamMonitorPage() {
     },
   ];
 
+  // ── Detail section (session table + violations sidebar) ──
+
+  let detailSection: React.ReactNode;
+
+  if (!selectedExamId) {
+    detailSection = (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <BarChart className="mb-4 size-12 text-ink-600" />
+        <p className="text-body-medium text-ink-600">{t("monitor_no_exam")}</p>
+      </div>
+    );
+  } else if (monitorLoading) {
+    detailSection = (
+      <div className="flex flex-col gap-6 lg:flex-row">
+        <div className="flex-1 space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+        <div className="w-full space-y-2 lg:w-72">
+          <Skeleton className="h-48 w-full" />
+        </div>
+      </div>
+    );
+  } else if (monitorError) {
+    detailSection = (
+      <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
+        <p className="flex items-center gap-2 font-medium">
+          <AlertTriangle size={16} />
+          {monitorErr instanceof Error ? monitorErr.message : t("error_generic")}
+        </p>
+        <Button variant="outline" size="sm" className="mt-2" onClick={() => refetchMonitor()}>
+          <RefreshCw size={14} /> {t("retry")}
+        </Button>
+      </div>
+    );
+  } else {
+    detailSection = (
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-semibold">{examTitle}</h2>
+          <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">
+            {t("monitor_live")}
+          </Badge>
+        </div>
+
+        <div className="flex flex-col gap-6 lg:flex-row">
+          {/* Main table */}
+          <div className="min-w-0 flex-1">
+            <DataTable
+              columns={columns}
+              rows={rows}
+              rowKey={(row) => row.registration_id}
+              data-testid="exam-monitor-table"
+              empty={
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <BarChart className="mb-4 size-12 text-ink-600" />
+                  <p className="text-body-medium text-ink-600">
+                    {t("monitor_empty")}
+                  </p>
+                </div>
+              }
+            />
+          </div>
+
+          {/* Violation sidebar */}
+          <div className="w-full lg:w-72 lg:shrink-0">
+            <div className="rounded-lg border border-line p-4">
+              <h3 className="mb-3 text-sm font-semibold">{t("monitor_sidebar_title")}</h3>
+              {violations.length === 0 ? (
+                <p className="text-sm text-ink-600">
+                  {t("monitor_no_violations")}
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {violations.map((v, i) => (
+                    <li key={`${v.session_id}-${i}`} className="text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{v.student_name}</span>
+                        <span className="text-xs text-ink-600">
+                          ×{v.count}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-ink-600">
+                        <AlertTriangle size={10} />
+                        <span>{v.latest_type}</span>
+                      </div>
+                      <p className="text-xs text-ink-600">
+                        {v.latest_occurred_at
+                          ? new Date(v.latest_occurred_at).toLocaleTimeString("id-ID", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "—"}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Main content ──
 
   return (
     <div className="space-y-6 fade-in">
-      <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
-
-      <div className="flex flex-col gap-6 lg:flex-row">
-        {/* Main table */}
-        <div className="min-w-0 flex-1">
-          <DataTable
-            columns={columns}
-            rows={rows}
-            rowKey={(row) => row.registration_id}
-            data-testid="exam-monitor-table"
-            empty={
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <BarChart className="mb-4 size-12 text-ink-600" />
-                <p className="text-body-medium text-ink-600">
-                  {t("monitor_empty")}
-                </p>
-              </div>
-            }
-          />
-        </div>
-
-        {/* Violation sidebar */}
-        <div className="w-full lg:w-72 lg:shrink-0">
-          <div className="rounded-lg border border-line p-4">
-            <h3 className="mb-3 text-sm font-semibold">{t("monitor_sidebar_title")}</h3>
-            {violations.length === 0 ? (
-              <p className="text-sm text-ink-600">
-                {t("monitor_no_violations")}
-              </p>
-            ) : (
-              <ul className="space-y-3">
-                {violations.map((v, i) => (
-                  <li key={`${v.session_id}-${i}`} className="text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{v.student_name}</span>
-                      <span className="text-xs text-ink-600">
-                        ×{v.count}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-ink-600">
-                      <AlertTriangle size={10} />
-                      <span>{v.latest_type}</span>
-                    </div>
-                    <p className="text-xs text-ink-600">
-                      {v.latest_occurred_at
-                        ? new Date(v.latest_occurred_at).toLocaleTimeString("id-ID", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "—"}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      </div>
+      <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} />
+      {availableSection}
+      {detailSection}
     </div>
   );
 }

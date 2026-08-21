@@ -63,7 +63,7 @@ async function mockCommonBackend(page: Page) {
 
 async function mockMonitorBackend(page: Page) {
   await mockCommonBackend(page);
-  await page.route("**/api/v1/admin/exams*", (route) => {
+  await page.route("**/api/v1/admin/sessions/monitor/available*", (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     return route.fulfill({
       status: 200,
@@ -74,15 +74,11 @@ async function mockMonitorBackend(page: Page) {
             id: "exam-1",
             title: "Ujian E2E",
             scheduled_at: "2026-08-01T00:00:00Z",
-            has_published_product: true,
-            is_free: true,
-            requires_checkin: true,
-            allow_leaderboard: true,
-            randomize: false,
-            timer_mode: "overall",
-            duration_minutes: 120,
-            grace_window_minutes: 5,
-            status: "active",
+            scheduled_end_at: null,
+            state: "live",
+            total_registered: MONITOR_ROWS.length,
+            active_count: MONITOR_ROWS.length,
+            not_started_count: 0,
           },
         ],
       }),
@@ -170,6 +166,7 @@ for (const viewport of VIEWPORTS) {
     await mockMonitorBackend(page);
     await page.setViewportSize(viewport);
     await page.goto("/admin/exam/monitor");
+    await page.getByRole("button", { name: "Pantau" }).first().click();
     await expect(page.getByText(MONITOR_ROWS[0].student_name)).toBeVisible();
 
     expect(await pageDoesNotScrollSideways(page)).toBe(true);

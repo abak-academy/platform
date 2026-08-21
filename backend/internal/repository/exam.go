@@ -1369,6 +1369,37 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	return items, nextCursor, nil
 }
 
+// ListExamMonitorCandidates returns the scheduling fields of every scheduled exam, for
+// the service layer to filter down to what's currently within its window (or recently
+// ended) for the Session Monitor's available-exams list. Unscheduled exams (scheduled_at
+// IS NULL) can never be "available" in that sense, so they're excluded here.
+func (r *Repository) ListExamMonitorCandidates(ctx context.Context) ([]model.ExamMonitorCandidate, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, title, scheduled_at, scheduled_end_at, check_in_window_minutes,
+			duration_minutes, grace_window_minutes
+		FROM exam
+		WHERE scheduled_at IS NOT NULL`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	candidates := []model.ExamMonitorCandidate{}
+	for rows.Next() {
+		var c model.ExamMonitorCandidate
+		if err := rows.Scan(&c.ID, &c.Title, &c.ScheduledAt, &c.ScheduledEndAt,
+			&c.CheckInWindowMinutes, &c.DurationMinutes, &c.GraceWindowMinutes); err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return candidates, nil
+}
+
 func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.ExamDetail, error) {
 	detail := &model.ExamDetail{}
 	err := scanExam(r.pool.QueryRow(ctx,

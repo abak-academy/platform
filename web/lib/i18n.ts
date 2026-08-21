@@ -1431,14 +1431,16 @@ export const DICT = {
     tests_field_point_wrong: "Poin salah",
 
     // Admin — exam monitor (Slice 7)
-    monitor_pick_exam: "Pilih ujian",
+    monitor_pick_exam: "Ujian tersedia",
     monitor_live: "Live",
-    monitor_no_exam: "Pilih ujian untuk melihat data",
+    monitor_no_exam: "Klik salah satu ujian di atas untuk melihat sesinya",
     monitor_empty: "Belum ada peserta",
+    monitor_available_empty: "Tidak ada ujian yang tersedia saat ini",
     monitor_sidebar_title: "Pelanggaran",
     monitor_no_violations: "Belum ada pelanggaran",
     monitor_actions_reopen: "Perpanjang",
     monitor_actions_force_submit: "Paksa kumpulkan",
+    monitor_actions_view: "Pantau",
     monitor_reopen_prompt: "Tambahkan waktu (menit)",
     monitor_force_submit_confirm: "Yakin ingin memaksa mengumpulkan?",
     monitor_reopened_success: "Waktu diperpanjang",
@@ -1447,6 +1449,13 @@ export const DICT = {
     monitor_th_checked_in: "Check-in",
     monitor_th_last_activity: "Aktivitas",
     monitor_th_active_section: "Sesi Aktif",
+    monitor_th_exam: "Ujian",
+    monitor_th_window: "Jadwal",
+    monitor_th_not_started: "Belum mulai",
+    monitor_th_active: "Aktif",
+    monitor_th_total_registered: "Total Peserta",
+    monitor_state_live: "Berlangsung",
+    monitor_state_ended: "Selesai",
 
     // Bulk exam order (admin_school) / exam grant (super_admin) — merged into
     // the exam detail page's Registrations tab.
@@ -2948,14 +2957,16 @@ export const DICT = {
     tests_field_point_wrong: "Points for wrong",
 
     // Admin — exam monitor (Slice 7)
-    monitor_pick_exam: "Select exam",
+    monitor_pick_exam: "Available exams",
     monitor_live: "Live",
-    monitor_no_exam: "Select an exam to view data",
+    monitor_no_exam: "Click an exam above to view its sessions",
     monitor_empty: "No participants yet",
+    monitor_available_empty: "No exams available right now",
     monitor_sidebar_title: "Violations",
     monitor_no_violations: "No violations yet",
     monitor_actions_reopen: "Reopen",
     monitor_actions_force_submit: "Force Submit",
+    monitor_actions_view: "Monitor",
     monitor_reopen_prompt: "Extra time (minutes)",
     monitor_force_submit_confirm: "Force submit this session?",
     monitor_reopened_success: "Time extended",
@@ -2963,6 +2974,13 @@ export const DICT = {
     monitor_th_progress: "Progress",
     monitor_th_checked_in: "Check-in",
     monitor_th_last_activity: "Last Activity",
+    monitor_th_exam: "Exam",
+    monitor_th_window: "Schedule",
+    monitor_th_not_started: "Not started",
+    monitor_th_active: "Active",
+    monitor_th_total_registered: "Total Registered",
+    monitor_state_live: "Live",
+    monitor_state_ended: "Ended",
     monitor_th_active_section: "Active Section",
 
     // Bulk exam order
