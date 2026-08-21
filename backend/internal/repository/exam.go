@@ -1375,10 +1375,12 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 // IS NULL) can never be "available" in that sense, so they're excluded here.
 func (r *Repository) ListExamMonitorCandidates(ctx context.Context) ([]model.ExamMonitorCandidate, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, title, scheduled_at, scheduled_end_at, check_in_window_minutes,
-			duration_minutes, grace_window_minutes
-		FROM exam
-		WHERE scheduled_at IS NOT NULL`,
+		`SELECT e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.check_in_window_minutes,
+			e.duration_minutes, e.grace_window_minutes,
+			COALESCE((SELECT SUM(t.duration_minutes) FROM exam_test et
+				JOIN test t ON t.id = et.test_id WHERE et.exam_id = e.id), 0)
+		FROM exam e
+		WHERE e.scheduled_at IS NOT NULL`,
 	)
 	if err != nil {
 		return nil, err
@@ -1389,7 +1391,8 @@ func (r *Repository) ListExamMonitorCandidates(ctx context.Context) ([]model.Exa
 	for rows.Next() {
 		var c model.ExamMonitorCandidate
 		if err := rows.Scan(&c.ID, &c.Title, &c.ScheduledAt, &c.ScheduledEndAt,
-			&c.CheckInWindowMinutes, &c.DurationMinutes, &c.GraceWindowMinutes); err != nil {
+			&c.CheckInWindowMinutes, &c.DurationMinutes, &c.GraceWindowMinutes,
+			&c.SectionsDurationMinutes); err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, c)

@@ -627,8 +627,11 @@ type ExamMonitorCandidate struct {
 	ScheduledAt          *time.Time
 	ScheduledEndAt       *time.Time
 	CheckInWindowMinutes *int
-	DurationMinutes      *int
-	GraceWindowMinutes   *int
+	// DurationMinutes is nil for timer_mode=per_test exams (UTBK/IELTS), which
+	// have no single exam-level clock — SectionsDurationMinutes stands in for it.
+	DurationMinutes         *int
+	GraceWindowMinutes      *int
+	SectionsDurationMinutes int
 }
 
 // ExamMonitorAvailable is one row of GET /admin/sessions/monitor/available: an

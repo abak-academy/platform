@@ -108,6 +108,7 @@ export default function ExamMonitorPage() {
   const rows = monitorData?.rows ?? [];
   const violations = monitorData?.violations_recent ?? [];
   const examTitle = monitorData?.exam?.title ?? "";
+  const selectedCandidate = availableExams.find((e) => e.id === selectedExamId);
 
   const handleReopen = useCallback(
     (sessionId: string) => {
@@ -377,9 +378,14 @@ export default function ExamMonitorPage() {
       <div className="space-y-3">
         <div className="flex items-center gap-3">
           <h2 className="text-base font-semibold">{examTitle}</h2>
-          <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">
-            {t("monitor_live")}
-          </Badge>
+          {selectedCandidate && (
+            <Badge
+              variant="outline"
+              className={AVAILABLE_STATE_BADGE[selectedCandidate.state].className}
+            >
+              {t(AVAILABLE_STATE_BADGE[selectedCandidate.state].labelKey as any)}
+            </Badge>
+          )}
         </div>
 
         <div className="flex flex-col gap-6 lg:flex-row">

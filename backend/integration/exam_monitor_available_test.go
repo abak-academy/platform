@@ -104,4 +104,63 @@ func TestExam_AdminListExamsForMonitor_includesGrantOnlyExamWithinWindow(t *test
 	require.Equal(t, float64(1), row["not_started_count"])
 }
 
+func TestExam_AdminListExamsForMonitor_perTestExamUsesSectionsDuration(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	// seedExam defaults timer_mode='per_test' (duration_minutes stays NULL); two
+	// 90-minute sections give the exam a real 180-minute run time that only shows
+	// up via exam_test/test, never on the exam row itself.
+	perTestExam := seedExam(t, env, "UTBK Per-Test", "score_pembahasan", nil)
+	testA := seedTest(t, env, "Section A", "math", "algebra", 90)
+	testB := seedTest(t, env, "Section B", "science", "biology", 90)
+	linkExamTest(t, env, perTestExam, testA, 0)
+	linkExamTest(t, env, perTestExam, testB, 1)
+
+	startedAgo := time.Now().Add(-170 * time.Minute)
+	setExamSchedule(t, env, perTestExam, &startedAgo, nil, intp(30), nil, intp(10))
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/sessions/monitor/available", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+
+	row := findMonitorAvailableRow(out, perTestExam)
+	require.NotNil(t, row, "a per_test exam 170min into a 180min run must still be live, not dropped after just the grace window")
+	require.Equal(t, "live", row["state"])
+}
+
+func TestExam_AdminListExamsForMonitor_retakeSessionsCountOnceByRegistration(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	liveExam := seedExam(t, env, "Ujian Retake", "score_pembahasan", nil)
+	startedAgo := time.Now().Add(-10 * time.Minute)
+	setExamSchedule(t, env, liveExam, &startedAgo, nil, intp(30), intp(120), intp(10))
+
+	student := seedUser(t, env, "student", "active", false)
+	reg := seedExamRegistration(t, env, student, liveExam)
+	checkInRegistration(t, env, reg)
+
+	// A finished first attempt plus an active retake — both exam_session rows
+	// belong to the same registration and must count as one registrant.
+	ctx := context.Background()
+	_, err := env.pool.Exec(ctx,
+		`INSERT INTO exam_session (registration_id, student_id, exam_id, started_at, submitted_at, status)
+		 VALUES ($1, $2, $3, now() - interval '1 hour', now() - interval '30 minutes', 'submitted')`,
+		reg, student, liveExam,
+	)
+	require.NoError(t, err)
+	seedInProgressSession(t, env, reg, student, liveExam)
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/sessions/monitor/available", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+
+	row := findMonitorAvailableRow(out, liveExam)
+	require.NotNil(t, row)
+	require.Equal(t, float64(1), row["total_registered"], "a retake must not double-count its registration")
+	require.Equal(t, float64(1), row["active_count"])
+	require.Equal(t, float64(0), row["not_started_count"])
+}
+
 func intp(i int) *int { return &i }

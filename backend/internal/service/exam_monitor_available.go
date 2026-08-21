@@ -5,6 +5,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/google/uuid"
+
 	"akademi-bimbel/internal/model"
 )
 
@@ -38,7 +40,11 @@ func examMonitorWindow(now time.Time, c model.ExamMonitorCandidate) (state strin
 	if c.ScheduledEndAt != nil {
 		latestStart = *c.ScheduledEndAt
 	}
-	duration := 0
+	// Nil DurationMinutes means timer_mode=per_test (UTBK/IELTS): there's no single
+	// exam-level clock, so the window's duration comes from the sum of the exam's
+	// section durations instead — otherwise the window closes after just the grace
+	// period and the exam vanishes from the list while students are still mid-section.
+	duration := c.SectionsDurationMinutes
 	if c.DurationMinutes != nil {
 		duration = *c.DurationMinutes
 	}
@@ -80,13 +86,36 @@ func (s *Service) ListExamsForMonitor(ctx context.Context) ([]model.ExamMonitorA
 			return nil, err
 		}
 
-		active, notStarted := 0, 0
+		// GetSessionMonitorRows returns one row per exam_session, and a retake
+		// (max_attempts >= 2) gives one registration several sessions — so counts
+		// are aggregated per RegistrationID, not per row, or a retaking student
+		// would be counted more than once.
+		type regState struct {
+			active     bool
+			registered bool
+		}
+		byReg := make(map[uuid.UUID]*regState, len(rows))
 		for i := range rows {
+			rs := byReg[rows[i].RegistrationID]
+			if rs == nil {
+				rs = &regState{}
+				byReg[rows[i].RegistrationID] = rs
+			}
 			switch deriveStatus(rows[i], now, c.DurationMinutes, c.GraceWindowMinutes) {
 			case "registered":
-				notStarted++
+				rs.registered = true
 			case "checked_in", "in_progress", "overdue":
+				rs.active = true
+			}
+		}
+
+		active, notStarted := 0, 0
+		for _, rs := range byReg {
+			switch {
+			case rs.active:
 				active++
+			case rs.registered:
+				notStarted++
 			}
 		}
 
@@ -96,7 +125,7 @@ func (s *Service) ListExamsForMonitor(ctx context.Context) ([]model.ExamMonitorA
 			ScheduledAt:     c.ScheduledAt,
 			ScheduledEndAt:  c.ScheduledEndAt,
 			State:           state,
-			TotalRegistered: len(rows),
+			TotalRegistered: len(byReg),
 			ActiveCount:     active,
 			NotStartedCount: notStarted,
 		})

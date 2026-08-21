@@ -1432,7 +1432,6 @@ export const DICT = {
 
     // Admin — exam monitor (Slice 7)
     monitor_pick_exam: "Ujian tersedia",
-    monitor_live: "Live",
     monitor_no_exam: "Klik salah satu ujian di atas untuk melihat sesinya",
     monitor_empty: "Belum ada peserta",
     monitor_available_empty: "Tidak ada ujian yang tersedia saat ini",
@@ -2958,7 +2957,6 @@ export const DICT = {
 
     // Admin — exam monitor (Slice 7)
     monitor_pick_exam: "Available exams",
-    monitor_live: "Live",
     monitor_no_exam: "Click an exam above to view its sessions",
     monitor_empty: "No participants yet",
     monitor_available_empty: "No exams available right now",

@@ -389,14 +389,31 @@ describe("ExamMonitorPage", () => {
     expect(within(utbkRow).getByText("5")).toBeInTheDocument(); // total_registered
   });
 
-  it("renders the AdminPageHeader and a Live chip once an exam is selected", async () => {
+  it("renders the AdminPageHeader and the selected exam's state chip", async () => {
     render(<ExamMonitorPage />);
     expect(screen.getByRole("heading", { level: 1, name: /Monitor Sesi/i })).toBeInTheDocument();
 
     await selectExamRow("UTBK 2026");
 
+    // "UTBK 2026" is state: "live" in sampleAvailableExams ("Berlangsung" in id locale).
+    // The available-exams table also has its own "Berlangsung" badge for this row, so
+    // selecting it must produce a second occurrence — the detail header's own chip.
     await waitFor(() => {
-      expect(screen.getByText("Live")).toBeInTheDocument();
+      expect(screen.getAllByText("Berlangsung")).toHaveLength(2);
+      expect(screen.getAllByText("Selesai")).toHaveLength(1);
+    });
+  });
+
+  it("renders the ended state chip, not Live, for an exam retained past its window", async () => {
+    render(<ExamMonitorPage />);
+
+    // "Tryout 1" is state: "ended" in sampleAvailableExams — selecting it must show
+    // "Selesai" in the detail header, not the "Berlangsung" chip from the live test above.
+    await selectExamRow("Tryout 1");
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Selesai")).toHaveLength(2);
+      expect(screen.getAllByText("Berlangsung")).toHaveLength(1);
     });
   });
 

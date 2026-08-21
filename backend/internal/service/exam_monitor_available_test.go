@@ -77,6 +77,36 @@ func TestExamMonitorWindow_AfterBuffer_NotAvailable(t *testing.T) {
 	}
 }
 
+func TestExamMonitorWindow_PerTestExam_UsesSectionsDurationNotZero(t *testing.T) {
+	// timer_mode=per_test exams carry DurationMinutes=nil — the section durations
+	// (180min total here) are the only real measure of how long the exam runs.
+	scheduledAt := time.Now().Add(-170 * time.Minute)
+	c := model.ExamMonitorCandidate{
+		ScheduledAt:             &scheduledAt,
+		DurationMinutes:         nil,
+		GraceWindowMinutes:      intptr(10),
+		SectionsDurationMinutes: 180,
+	}
+	state, ok := examMonitorWindow(time.Now(), c)
+	if !ok || state != "live" {
+		t.Errorf("want live 170min into a 180+10min per_test exam, got state=%q ok=%v", state, ok)
+	}
+}
+
+func TestExamMonitorWindow_PerTestExam_EndsAfterSectionsDurationElapses(t *testing.T) {
+	scheduledAt := time.Now().Add(-4 * time.Hour)
+	c := model.ExamMonitorCandidate{
+		ScheduledAt:             &scheduledAt,
+		DurationMinutes:         nil,
+		GraceWindowMinutes:      intptr(10),
+		SectionsDurationMinutes: 180,
+	}
+	state, ok := examMonitorWindow(time.Now(), c)
+	if !ok || state != "ended" {
+		t.Errorf("want ended once sections duration+grace has elapsed, got state=%q ok=%v", state, ok)
+	}
+}
+
 func TestExamMonitorWindow_ScheduledEndAt_ExtendsLatestStart(t *testing.T) {
 	scheduledAt := time.Now().Add(-3 * time.Hour)
 	scheduledEndAt := time.Now().Add(-1 * time.Hour)
