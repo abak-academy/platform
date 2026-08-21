@@ -1052,6 +1052,17 @@ export interface SessionMonitorResponse {
   violations_recent: ViolationRecent[];
 }
 
+export interface ExamMonitorAvailable {
+  id: string;
+  title: string;
+  scheduled_at: string | null;
+  scheduled_end_at: string | null;
+  state: "live" | "ended";
+  total_registered: number;
+  active_count: number;
+  not_started_count: number;
+}
+
 export interface SessionViolationLog {
   id: string;
   session_id: string;

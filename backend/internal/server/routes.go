@@ -162,6 +162,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminSessionsRead := admin.Group("/sessions")
 	adminSessionsRead.Use(handler.RBACMiddleware("sessions:read"))
 	adminSessionsRead.GET("/monitor", h.AdminGetSessionMonitor)
+	adminSessionsRead.GET("/monitor/available", h.AdminListExamsForMonitor)
 	adminSessionsRead.GET("/:id/violations", h.AdminGetSessionViolations)
 
 	// Admin order routes

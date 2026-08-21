@@ -1369,6 +1369,40 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	return items, nextCursor, nil
 }
 
+// ListExamMonitorCandidates returns the scheduling fields of every scheduled exam, for
+// the service layer to filter down to what's currently within its window (or recently
+// ended) for the Session Monitor's available-exams list. Unscheduled exams (scheduled_at
+// IS NULL) can never be "available" in that sense, so they're excluded here.
+func (r *Repository) ListExamMonitorCandidates(ctx context.Context) ([]model.ExamMonitorCandidate, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.check_in_window_minutes,
+			e.duration_minutes, e.grace_window_minutes,
+			COALESCE((SELECT SUM(t.duration_minutes) FROM exam_test et
+				JOIN test t ON t.id = et.test_id WHERE et.exam_id = e.id), 0)
+		FROM exam e
+		WHERE e.scheduled_at IS NOT NULL`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	candidates := []model.ExamMonitorCandidate{}
+	for rows.Next() {
+		var c model.ExamMonitorCandidate
+		if err := rows.Scan(&c.ID, &c.Title, &c.ScheduledAt, &c.ScheduledEndAt,
+			&c.CheckInWindowMinutes, &c.DurationMinutes, &c.GraceWindowMinutes,
+			&c.SectionsDurationMinutes); err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return candidates, nil
+}
+
 func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.ExamDetail, error) {
 	detail := &model.ExamDetail{}
 	err := scanExam(r.pool.QueryRow(ctx,
@@ -2733,7 +2767,7 @@ func scanSessionMonitorRow(row interface{ Scan(dest ...any) error }, r *model.Se
 }
 
 // GetSessionMonitorRows returns one registrant row per exam_registration for the given
-// exam, LEFT JOINed with exam_session (max one per registration), plus the student's
+// exam, LEFT JOINed with the latest exam_session attempt, plus the student's
 // name, school, and answer/violation counts via correlated subqueries. For sectioned
 // exams the active section (status='active') is LEFT JOINed so the proctor UI can show
 // "which section, how long left" (FR-20/21); all Active* fields are nil for standard
@@ -2750,7 +2784,13 @@ func (r *Repository) GetSessionMonitorRows(ctx context.Context, examID uuid.UUID
 		FROM exam_registration r
 		JOIN users u ON u.id = r.student_id
 		LEFT JOIN school sc ON sc.id = u.school_id
-		LEFT JOIN exam_session s ON s.registration_id = r.id
+		LEFT JOIN LATERAL (
+			SELECT s.*
+			FROM exam_session s
+			WHERE s.registration_id = r.id
+			ORDER BY s.attempt_number DESC, s.created_at DESC
+			LIMIT 1
+		) s ON true
 		LEFT JOIN exam_session_section ss ON ss.session_id = s.id AND ss.status = 'active'
 		LEFT JOIN test t ON t.id = ss.test_id
 		WHERE r.exam_id = $1

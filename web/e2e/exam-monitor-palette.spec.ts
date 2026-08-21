@@ -33,7 +33,7 @@ async function mockMonitorBackend(page: Page) {
   await page.route("**/api/v1/**", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: "{}" })
   );
-  await page.route("**/api/v1/admin/exams*", (route) => {
+  await page.route("**/api/v1/admin/sessions/monitor/available*", (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     return route.fulfill({
       status: 200,
@@ -44,15 +44,11 @@ async function mockMonitorBackend(page: Page) {
             id: "exam-1",
             title: "Ujian E2E",
             scheduled_at: "2026-08-01T00:00:00Z",
-            has_published_product: true,
-            is_free: true,
-            requires_checkin: true,
-            allow_leaderboard: true,
-            randomize: false,
-            timer_mode: "overall",
-            duration_minutes: 120,
-            grace_window_minutes: 5,
-            status: "active",
+            scheduled_end_at: null,
+            state: "live",
+            total_registered: 1,
+            active_count: 1,
+            not_started_count: 0,
           },
         ],
       }),
@@ -110,6 +106,12 @@ function parseRgb(rgb: string): [number, number, number] {
   return [Number(m[1]), Number(m[2]), Number(m[3])];
 }
 
+// There's no auto-select anymore — the available-exams table lists the exam
+// first, and monitoring it requires clicking its row's "Pantau" button.
+async function selectExamOnMonitor(page: Page) {
+  await page.getByRole("button", { name: "Pantau" }).first().click();
+}
+
 async function readCellAndCardColors(page: Page): Promise<{ cell: string; card: string }> {
   const cell = page.locator('[data-testid="exam-monitor-table"] td', { hasText: "SMA Negeri Palet" }).locator("span").first();
   const card = page.locator('[data-testid="exam-monitor-table"]');
@@ -127,6 +129,7 @@ test("monitor secondary text resolves to ink-600 in light mode with AA contrast"
   await seedTheme(context, "light");
   await mockMonitorBackend(page);
   await page.goto("/admin/exam/monitor");
+  await selectExamOnMonitor(page);
   await expect(page.getByText("Siswa Palet")).toBeVisible();
 
   expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme"))).not.toBe("dark");
@@ -146,6 +149,7 @@ test("monitor secondary text resolves to ink-600 in dark mode with AA contrast",
   await seedTheme(context, "dark");
   await mockMonitorBackend(page);
   await page.goto("/admin/exam/monitor");
+  await selectExamOnMonitor(page);
   await expect(page.getByText("Siswa Palet")).toBeVisible();
 
   // Assert the seeding actually took before trusting any colour read below —
@@ -167,6 +171,7 @@ test("light and dark ink-600 resolve to different computed colours", async ({ br
     const lightPage = await lightContext.newPage();
     await mockMonitorBackend(lightPage);
     await lightPage.goto("/admin/exam/monitor");
+    await selectExamOnMonitor(lightPage);
     await expect(lightPage.getByText("Siswa Palet")).toBeVisible();
     const { cell: lightCell } = await readCellAndCardColors(lightPage);
 
@@ -175,6 +180,7 @@ test("light and dark ink-600 resolve to different computed colours", async ({ br
     const darkPage = await darkContext.newPage();
     await mockMonitorBackend(darkPage);
     await darkPage.goto("/admin/exam/monitor");
+    await selectExamOnMonitor(darkPage);
     await expect(darkPage.getByText("Siswa Palet")).toBeVisible();
     expect(await darkPage.evaluate(() => document.documentElement.getAttribute("data-theme"))).toBe("dark");
     const { cell: darkCell } = await readCellAndCardColors(darkPage);
