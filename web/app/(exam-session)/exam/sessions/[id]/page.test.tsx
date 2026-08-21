@@ -1395,12 +1395,104 @@ describe("SessionPage", () => {
     expect(cellAnsweredNotCurrent.className).toContain("text-brand-700");
   });
 
-  it("keeps the two-column body grid (1fr question pane / 280px nav rail)", async () => {
+  it("uses a mobile-first body grid with a desktop nav rail", async () => {
     render(<SessionPage />);
     await enterFullscreen();
 
     const body = screen.getByTestId("exam-body");
-    expect(body.className).toMatch(/grid-cols-\[1fr_280px\]/);
+    expect(body.className).toMatch(/(^|\s)grid-cols-1(\s|$)/);
+    expect(body.className).toContain("lg:grid-cols-[minmax(0,1fr)_280px]");
+    expect(body.className).toContain("lg:overflow-hidden");
+  });
+
+  // These assertions prove classNames and React state, not layout.
+  it("keeps the responsive top-bar class and counter structure", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const topBar = screen.getByTestId("exam-top-bar");
+    const counter = screen.getByText(/0\/5/);
+    expect(topBar.className).toContain("flex-wrap");
+    expect(counter.className).toContain("ml-auto");
+  });
+
+  it("keeps the answered counter and save indicator visible in the DOM", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const counter = screen.getByText(/0\/5/);
+    const saveIndicator = screen.getByTestId("save-indicator");
+    expect(counter).toBeInTheDocument();
+    expect(counter.className).not.toContain("hidden");
+    expect(saveIndicator).toBeInTheDocument();
+    expect(saveIndicator.className).not.toContain("hidden");
+  });
+
+  it("starts with the mobile nav panel collapsed", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const toggle = screen.getByTestId("exam-nav-toggle");
+    const panel = document.getElementById("exam-nav-panel");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(panel?.className).toContain("hidden");
+    expect(panel?.className).toContain("lg:block");
+  });
+
+  it("expands the mobile nav panel when toggled", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const toggle = screen.getByTestId("exam-nav-toggle");
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const panel = document.getElementById("exam-nav-panel");
+    expect(panel?.className).toMatch(/(^|\s)block(\s|$)/);
+    expect(panel?.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+    expect(panel?.className).toContain("lg:block");
+  });
+
+  it("keeps all nav legend labels inside the collapsible panel", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const panel = document.getElementById("exam-nav-panel");
+    expect(panel).toContainElement(screen.getByText("Terjawab"));
+    expect(panel).toContainElement(screen.getByText("Tidak terjawab"));
+    expect(panel).toContainElement(screen.getByText("Ditandai"));
+  });
+
+  it("navigates and collapses the mobile nav panel after selecting a question", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const toggle = screen.getByTestId("exam-nav-toggle");
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(document.activeElement).toBe(toggle);
+    expect(screen.getByText("Ibu kota Indonesia adalah?")).toBeInTheDocument();
+  });
+
+  it("uses mobile and desktop sizes for nav question cells", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const cell = screen.getByTestId("session-nav-0");
+    expect(cell.className).toContain("size-10");
+    expect(cell.className).toContain("lg:size-8");
+  });
+
+  it("allows MCQ option text to wrap", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const optionText = screen.getAllByRole("radio")[0]
+      .parentElement?.querySelector("input + div");
+    expect(optionText?.className).toContain("min-w-0");
+    expect(optionText?.className).toContain("break-words");
   });
 
   it("renders writing section questions as essay (FR-25)", async () => {
