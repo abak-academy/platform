@@ -61,6 +61,7 @@ var _ interface {
 	GetExamRegistrationByToken(context.Context, uuid.UUID, string) (*model.ExamRegistration, error)
 	CheckInExamTx(context.Context, pgx.Tx, uuid.UUID) error
 	CreateExamSessionTx(context.Context, pgx.Tx, model.ExamRegistration, *int) (model.ExamSession, error)
+	GetInProgressSessionForRegistration(context.Context, uuid.UUID, uuid.UUID) (*model.ExamSession, error)
 	GetExamSessionForStudent(context.Context, uuid.UUID, uuid.UUID) (*model.ExamSession, error)
 	GetSessionWithQuestions(context.Context, uuid.UUID) ([]model.TestDetail, error)
 	GetSessionAnswers(context.Context, uuid.UUID) ([]model.ExamSessionAnswer, error)

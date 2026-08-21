@@ -270,6 +270,16 @@ describe("ExamPackageDetailPage — overview tab", () => {
     });
   });
 
+  it("shows cannot-retake when max_attempts is 0", async () => {
+    examState.data = { ...sampleExamWithExtendedFields, max_attempts: 0 };
+
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/tidak bisa ulangi/i)).toBeInTheDocument();
+    });
+  });
+
   it("FR-44: shows the draft explanation when the exam status is draft", async () => {
     examState.data = { ...sampleExamWithExtendedFields, status: "draft" };
 

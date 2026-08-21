@@ -146,6 +146,48 @@ const submittedSession: SessionState = {
   remaining_seconds: 0,
 };
 
+const multiTestSession: SessionState = {
+  ...sampleSession,
+  tests: [
+    {
+      id: "test-bahasa",
+      title: "TKA BAHASA INDONESIA SD/MI",
+      subject: "Bahasa Indonesia",
+      questions: [
+        {
+          id: "q-bahasa-1",
+          test_id: "test-bahasa",
+          format: "mcq",
+          body: "Sinonim dari cerdas?",
+          sort_order: 1,
+          options: [
+            { key: "A", text: "Pintar", sort_order: 1 },
+            { key: "B", text: "Lambat", sort_order: 2 },
+          ],
+        },
+      ],
+    },
+    {
+      id: "test-math",
+      title: "Tes Matematika",
+      subject: "Matematika",
+      questions: [
+        {
+          id: "q-math-1",
+          test_id: "test-math",
+          format: "mcq",
+          body: "Berapa 9 - 1?",
+          sort_order: 1,
+          options: [
+            { key: "A", text: "8", sort_order: 1 },
+            { key: "B", text: "7", sort_order: 2 },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 // ── Sectioned session samples ───────────────────────────────────────────────
 
 const sectionedSession: SessionState = {
@@ -570,6 +612,32 @@ describe("SessionPage", () => {
     await enterFullscreen();
 
     expect(screen.getByText(/60:00/)).toBeInTheDocument();
+  });
+
+  it("reconnecting to a session whose timer already ran out auto-submits instead of freezing at 00:00", async () => {
+    // Student closed the tab mid-sitting and came back after the deadline: the
+    // page mounts in its loading state and the reconnect payload lands with
+    // remaining_seconds already 0. Every input and the manual submit button are
+    // disabled at 00:00, so if the auto-submit does not fire on that landing the
+    // sitting is stuck forever. `remaining` starts at 0, so the arrival of an
+    // expired payload must not be mistaken for "nothing changed".
+    sessionState = { ...sessionState, data: null, isLoading: true };
+    const { rerender } = render(<SessionPage />);
+
+    sessionState = {
+      ...sessionState,
+      isLoading: false,
+      data: {
+        ...sampleSession,
+        remaining_seconds: 0,
+        answers: [{ question_id: "q-mcq", answer: "B" }],
+      },
+    };
+    rerender(<SessionPage />);
+
+    await waitFor(() => {
+      expect(submitSessionMutateAsync).toHaveBeenCalled();
+    });
   });
 
   it("untimed exam (per_test, null duration) never auto-submits and hides the countdown", async () => {
@@ -1176,6 +1244,37 @@ describe("SessionPage", () => {
     expect(
       screen.getByTestId("exam-top-bar").querySelector("button")
     ).not.toBeNull();
+  });
+
+  it("updates the top-bar title to the current question's test in a multi-test standard exam", async () => {
+    sessionState = { ...sessionState, data: multiTestSession };
+    render(<SessionPage />);
+
+    document.documentElement.requestFullscreen = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("enter-fullscreen"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sinonim dari cerdas\?/)).toBeInTheDocument();
+    });
+
+    const topBar = screen.getByTestId("exam-top-bar");
+    expect(topBar).toHaveTextContent("TKA BAHASA INDONESIA SD/MI");
+    expect(topBar).not.toHaveTextContent("Tes Matematika");
+
+    fireEvent.click(screen.getByTestId("session-nav-1"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Berapa 9 - 1\?/)).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("exam-top-bar")).toHaveTextContent(
+      "Tes Matematika",
+    );
+    expect(screen.getByTestId("exam-top-bar")).not.toHaveTextContent(
+      "TKA BAHASA INDONESIA SD/MI",
+    );
   });
 
   it("shows distinct mode label and section label in top bar for sectioned mode", async () => {
