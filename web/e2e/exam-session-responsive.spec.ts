@@ -382,6 +382,19 @@ test("E-3 mobile nav expands in flow and selecting a number collapses it", async
     "E-3 selecting question 12 must collapse the panel",
   ).toHaveAttribute("aria-expanded", "false");
   await expect(
+    page.getByTestId("save-indicator"),
+    "E-3 navigation must put the save indicator into the unsaved state before autosave flushes",
+  ).toHaveText("Belum tersimpan");
+  await expect(page.getByTestId("exam-title")).toHaveText("Ujian Gambar");
+  const titleMetrics = await page.getByTestId("exam-title").evaluate((el) => ({
+    clientWidth: el.clientWidth,
+    scrollWidth: el.scrollWidth,
+  }));
+  expect(
+    titleMetrics.scrollWidth,
+    "E-3 mobile title must not truncate to a tiny fragment when the unsaved label is visible",
+  ).toBeLessThanOrEqual(titleMetrics.clientWidth + 1);
+  await expect(
     page.getByText("Pertanyaan gambar 12", { exact: true }),
     "E-3 selecting question 12 must show its question content",
   ).toBeVisible();

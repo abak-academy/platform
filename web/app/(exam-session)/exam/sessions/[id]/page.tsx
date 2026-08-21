@@ -732,8 +732,11 @@ export default function SessionPage() {
         data-testid="exam-top-bar"
         className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface-2 px-4 py-2.5 lg:px-5 lg:py-3"
       >
-        <div className="min-w-0 w-full grow sm:w-auto">
-          <div className="truncate text-sm font-semibold text-ink-900">
+        <div className="min-w-0 w-full shrink-0 sm:w-auto sm:flex-1 sm:shrink">
+          <div
+            data-testid="exam-title"
+            className="truncate text-sm font-semibold text-ink-900"
+          >
             {examTitle}
           </div>
           {isSectioned && (
