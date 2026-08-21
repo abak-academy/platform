@@ -59,6 +59,10 @@ function isTransientExpiryError(error: unknown): boolean {
   return error.status === 408 || error.status === 429 || error.status >= 500;
 }
 
+function isAlreadySubmittedError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "already_submitted";
+}
+
 async function retryExpiryStep<T>(action: () => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt < EXPIRY_MAX_ATTEMPTS; attempt += 1) {
     try {
@@ -417,13 +421,17 @@ export default function SessionPage() {
 
     try {
       const payload = buildSavePayload();
-      await retryExpiryStep(() =>
-        saveAnswers.mutateAsync({
-          answers: payload,
-          current_position: currentQIndexRef.current,
-        }),
-      );
-      clearQueue(sessionId);
+      try {
+        await retryExpiryStep(() =>
+          saveAnswers.mutateAsync({
+            answers: payload,
+            current_position: currentQIndexRef.current,
+          }),
+        );
+        clearQueue(sessionId);
+      } catch (error) {
+        if (isAlreadySubmittedError(error)) throw error;
+      }
 
       if (isSectioned) {
         const sectionId = session.active_test_id;
@@ -438,16 +446,17 @@ export default function SessionPage() {
         }
       }
 
-      try {
-        await retryExpiryStep(() => submitSession.mutateAsync());
-      } catch (error) {
-        if (!(error instanceof ApiError) || error.code !== "already_submitted") {
-          throw error;
-        }
-      }
+      await retryExpiryStep(() => submitSession.mutateAsync());
+      clearQueue(sessionId);
       setRedirecting(true);
       router.replace(`/exam/sessions/${sessionId}/result`);
-    } catch {
+    } catch (error) {
+      if (isAlreadySubmittedError(error)) {
+        clearQueue(sessionId);
+        setRedirecting(true);
+        router.replace(`/exam/sessions/${sessionId}/result`);
+        return;
+      }
       setSubmitting(false);
       submittingRef.current = false;
       setExpiryRecoveryFailed(true);

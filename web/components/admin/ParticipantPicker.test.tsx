@@ -164,6 +164,51 @@ describe("ParticipantPicker (cross-school mode)", () => {
       "/admin/exam-grants/students/search?q=dewi&exam_id=exam-1&limit=20",
     );
   });
+
+  it("selects every filtered page without requiring Load More", async () => {
+    const third = { ...students[0], id: "s3", name: "Citra Dewi", username: "citra" };
+    studentResponse = (path) =>
+      path.includes("cursor=next-1")
+        ? { data: [third] }
+        : { data: students, next_cursor: "next-1" };
+
+    function Harness() {
+      const [selected, setSelected] = React.useState<string[]>([]);
+      return (
+        <>
+          <ParticipantPicker examId="exam-1" selected={selected} onChange={setSelected} />
+          <output data-testid="selected">{selected.join(",")}</output>
+        </>
+      );
+    }
+
+    renderWithClient(<Harness />);
+    await screen.findByText("Ada Lovelace");
+    fireEvent.click(screen.getByText("Pilih semua"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("selected")).toHaveTextContent("s1,s2,s3");
+    });
+    expect(authFetchCalls).toContain(
+      "/admin/exam-grants/students/search?exam_id=exam-1&cursor=next-1&limit=20",
+    );
+  });
+
+  it("reports selections that remain selected outside the loaded filter", async () => {
+    studentResponse = () => ({ data: [] });
+    renderWithClient(
+      <ParticipantPicker examId="exam-1" selected={["persisted-id"]} onChange={vi.fn()} />,
+    );
+
+    expect(await screen.findByText("1 dipilih")).toBeInTheDocument();
+  });
+
+  it("offers grade 12 even when no loaded student is in grade 12", async () => {
+    renderWithClient(<ParticipantPicker examId="exam-1" selected={[]} onChange={vi.fn()} />);
+    await screen.findByText("Ada Lovelace");
+
+    expect(screen.getByRole("option", { name: /12/ })).toBeInTheDocument();
+  });
 });
 
 describe("ParticipantPicker (school-scoped mode)", () => {

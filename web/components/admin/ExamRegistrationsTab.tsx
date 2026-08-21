@@ -56,6 +56,8 @@ function ExamRosterSection({ examId }: { examId: string }) {
     setExporting(true);
     try {
       await exportExamRoster(examId);
+    } catch {
+      toast.error(t("exam_roster_export_failed"));
     } finally {
       setExporting(false);
     }

@@ -21,6 +21,7 @@ import type { AdminStudent } from "@/lib/types";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
 
 const ALL_FILTER_VALUE = "__all__";
+const GRADE_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1));
 
 // ── Debounce helper ───────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ export function ParticipantPicker({
   const [jenjangFilter, setJenjangFilter] = useState("");
   const [gradeFilter, setGradeFilter] = useState("");
   const [schoolFilter, setSchoolFilter] = useState("");
+  const [selectingAllKey, setSelectingAllKey] = useState<string | null>(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
@@ -107,6 +109,23 @@ export function ParticipantPicker({
     });
   }, [activeQuery.data, cursor, filterKey]);
 
+  useEffect(() => {
+    if (selectingAllKey !== filterKey || !activeQuery.data) return;
+    const merged = [
+      ...new Set([
+        ...selectedRef.current,
+        ...activeQuery.data.data.map((student) => student.id),
+      ]),
+    ];
+    selectedRef.current = merged;
+    onChange(merged);
+    if (activeQuery.data.next_cursor) {
+      setPage({ key: filterKey, cursor: activeQuery.data.next_cursor });
+    } else {
+      setSelectingAllKey(null);
+    }
+  }, [activeQuery.data, filterKey, onChange, selectingAllKey]);
+
   // Unique jenjang/grade values from fetched students
   const facetedJenjang = useMemo(() => {
     const set = new Set([
@@ -117,11 +136,12 @@ export function ParticipantPicker({
   }, [students]);
 
   const facetedGrade = useMemo(() => {
-    const set = new Set(
-      students
+    const set = new Set([
+      ...students
         .map((s) => (s.grade != null ? String(s.grade) : ""))
         .filter(Boolean),
-    );
+      ...GRADE_OPTIONS,
+    ]);
     return [...set].sort((a, b) => Number(a) - Number(b));
   }, [students]);
 
@@ -136,20 +156,15 @@ export function ParticipantPicker({
     const allIds = students.map((s) => s.id);
     const current = selectedRef.current;
     const merged = [...new Set([...current, ...allIds])];
+    selectedRef.current = merged;
     onChange(merged);
+    if (nextCursor) setSelectingAllKey(filterKey);
   }
 
   function deselectAll() {
-    const allIds = new Set(students.map((s) => s.id));
-    const remaining = selectedRef.current.filter(
-      (id) => !allIds.has(id),
-    );
-    onChange(remaining);
+    selectedRef.current = [];
+    onChange([]);
   }
-
-  const selectableCount = selected.filter((id) =>
-    students.some((s) => s.id === id),
-  ).length;
 
   return (
     <div className="space-y-4">
@@ -217,12 +232,12 @@ export function ParticipantPicker({
       <div className="flex items-center justify-between text-xs text-ink-500">
         <span>
           {t("participant_picker_selected_count")
-            .replace("{selected}", String(selectableCount))
-            .replace("{total}", String(students.length))}
+            .replace("{selected}", String(selected.length))}
         </span>
         <div className="flex gap-2">
           <button
             onClick={selectAll}
+            disabled={selectingAllKey === filterKey}
             className="font-medium text-brand-600 hover:underline"
           >
             {t("participant_picker_select_all")}

@@ -1003,7 +1003,7 @@ export const DICT = {
     students_school_unconfirmed: "Diisi sendiri oleh pendaftar, belum dikonfirmasi",
     students_school_facet_none: "Tanpa sekolah terdaftar",
     students_school_unlisted_tag: "Belum terdaftar",
-    participant_picker_selected_count: "{selected} / {total} dipilih",
+    participant_picker_selected_count: "{selected} dipilih",
     participant_picker_select_all: "Pilih semua",
     participant_picker_deselect_all: "Hapus semua",
     students_field_name: "Nama Lengkap",
@@ -1484,6 +1484,7 @@ export const DICT = {
     exam_roster_hide_token: "Sembunyikan Token",
     exam_roster_empty: "Belum ada peserta terdaftar.",
     exam_roster_export_csv: "Ekspor CSV",
+    exam_roster_export_failed: "Gagal mengekspor daftar peserta.",
     exam_roster_load_failed: "Gagal memuat daftar peserta.",
     exam_registrations_manual_notice:
       "Pendaftaran peserta secara manual dilakukan oleh Super Admin atau School Operator.",
@@ -2519,7 +2520,7 @@ export const DICT = {
     students_school_unconfirmed: "Entered by the registrant, not yet confirmed",
     students_school_facet_none: "No registered school",
     students_school_unlisted_tag: "Unlisted",
-    participant_picker_selected_count: "{selected} / {total} selected",
+    participant_picker_selected_count: "{selected} selected",
     participant_picker_select_all: "Select all",
     participant_picker_deselect_all: "Clear all",
     students_field_name: "Full Name",
@@ -2999,6 +3000,7 @@ export const DICT = {
     exam_roster_hide_token: "Hide Token",
     exam_roster_empty: "No participants registered yet.",
     exam_roster_export_csv: "Export CSV",
+    exam_roster_export_failed: "Failed to export the participant roster.",
     exam_roster_load_failed: "Failed to load the participant roster.",
     exam_registrations_manual_notice:
       "Manual participant registration is handled by Super Admin or School Operator.",

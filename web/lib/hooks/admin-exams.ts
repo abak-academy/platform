@@ -307,6 +307,13 @@ export async function exportExamRoster(examId: string): Promise<void> {
     `${API_BASE}/admin/exams/${encodeURIComponent(examId)}/registrations/export`,
     { headers: token ? { Authorization: `Bearer ${token}` } : {} },
   );
+  if (!res.ok) {
+    throw new ApiError(
+      `HTTP_${res.status}`,
+      `Failed to export exam roster: ${res.status}`,
+      res.status,
+    );
+  }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

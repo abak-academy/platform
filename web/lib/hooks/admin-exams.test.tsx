@@ -210,6 +210,22 @@ describe("exportExamRoster", () => {
     );
     expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
   });
+
+  it("rejects a failed export response without downloading the error body", async () => {
+    const blob = vi.fn();
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      blob,
+    });
+
+    await expect(exportExamRoster("exam-1")).rejects.toMatchObject({
+      code: "HTTP_403",
+      status: 403,
+    });
+    expect(blob).not.toHaveBeenCalled();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
 });
 
 function wrapperFactory() {

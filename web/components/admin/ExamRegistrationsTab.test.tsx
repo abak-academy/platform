@@ -551,4 +551,21 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
 
     await waitFor(() => expect(exportRosterSpy).toHaveBeenCalledWith("exam-1"));
   });
+
+  it("shows an error and restores the export button when CSV export fails", async () => {
+    rosterData = { data: [rows[1]] };
+    vi.mocked(toast.error).mockClear();
+    exportRosterSpy.mockRejectedValueOnce(new Error("forbidden"));
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const button = screen.getByRole("button", { name: "exam_roster_export_csv" });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("exam_roster_export_failed");
+    });
+    expect(button).toBeEnabled();
+  });
 });

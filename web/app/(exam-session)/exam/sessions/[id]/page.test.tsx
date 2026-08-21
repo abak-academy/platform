@@ -818,6 +818,69 @@ describe("SessionPage", () => {
     expect(submitSessionMutateAsync).toHaveBeenCalledTimes(1);
   });
 
+  it("submits when the expiry save fails permanently", async () => {
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, remaining_seconds: 0 },
+    };
+    saveAnswersMutateAsync.mockRejectedValue(
+      new ApiError("invalid_answer", "invalid answer", 400),
+    );
+    submitSessionMutateAsync.mockResolvedValue({ submitted: true, score: 75 });
+
+    render(<SessionPage />);
+
+    await waitFor(() => {
+      expect(submitSessionMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    expect(routerReplace).toHaveBeenCalledWith(
+      "/exam/sessions/session-1/result",
+    );
+  });
+
+  it("redirects when the expiry save reports already_submitted", async () => {
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, remaining_seconds: 0 },
+    };
+    saveAnswersMutateAsync.mockRejectedValue(
+      new ApiError("already_submitted", "already submitted", 409),
+    );
+
+    render(<SessionPage />);
+
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith(
+        "/exam/sessions/session-1/result",
+      );
+    });
+    expect(submitSessionMutateAsync).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Coba lagi" })).not.toBeInTheDocument();
+  });
+
+  it("redirects when section advance reports already_submitted", async () => {
+    const expiredSection = {
+      ...sectionedSession,
+      tests: sectionedSession.tests.map((test, index) =>
+        index === 0 ? { ...test, remaining_seconds: 0 } : test,
+      ),
+    };
+    sessionState = { ...sessionState, data: expiredSection };
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    advanceSectionMutateAsync.mockRejectedValue(
+      new ApiError("already_submitted", "already submitted", 409),
+    );
+
+    render(<SessionPage />);
+
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith(
+        "/exam/sessions/session-1/result",
+      );
+    });
+    expect(submitSessionMutateAsync).not.toHaveBeenCalled();
+  });
+
   // ── Submit confirmation dialog ──────────────────────────────────────────
 
   it("shows submit confirmation dialog (FR29)", async () => {
