@@ -63,3 +63,23 @@ func (h *Handler) AdminGetAssessmentAttempts(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]any{"data": attempts})
 }
+
+// AdminGetAssessmentResultDetail returns super-admin-only operational answer
+// detail for a submitted, fully graded assessment attempt.
+func (h *Handler) AdminGetAssessmentResultDetail(c echo.Context) error {
+	examID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid exam id")
+	}
+	sessionID, err := uuid.Parse(c.Param("session_id"))
+	if err != nil {
+		return badRequest(c, "invalid session id")
+	}
+
+	detail, err := h.svc.AdminGetAssessmentResultDetail(c.Request().Context(), examID, sessionID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, detail)
+}

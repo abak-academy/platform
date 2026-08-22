@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { AssessmentResponse, AssessmentAttempt } from "@/lib/types";
+import type { AdminResultDetail, AssessmentResponse, AssessmentAttempt } from "@/lib/types";
 
 export const adminAssessmentKeys = {
   all: ["admin", "assessment"] as const,
@@ -10,6 +10,8 @@ export const adminAssessmentKeys = {
     [...adminAssessmentKeys.all, "list", examId, q ?? "", schoolId ?? "", cursor ?? "initial", limit ?? 20] as const,
   attempts: (examId: string, registrationId: string) =>
     [...adminAssessmentKeys.all, "attempts", examId, registrationId] as const,
+  detail: (examId: string, sessionId: string) =>
+    [...adminAssessmentKeys.all, "detail", examId, sessionId] as const,
 };
 
 export function useAssessment(
@@ -41,5 +43,16 @@ export function useAssessmentAttempts(examId: string, registrationId: string) {
         `/admin/exams/${encodeURIComponent(examId)}/assessment/${encodeURIComponent(registrationId)}/attempts`,
       ),
     enabled: Boolean(examId) && Boolean(registrationId),
+  });
+}
+
+export function useAssessmentResultDetail(examId: string, sessionId: string) {
+  return useQuery({
+    queryKey: adminAssessmentKeys.detail(examId, sessionId),
+    queryFn: () =>
+      authFetch<AdminResultDetail>(
+        `/admin/exams/${encodeURIComponent(examId)}/assessment/results/${encodeURIComponent(sessionId)}`,
+      ),
+    enabled: Boolean(examId) && Boolean(sessionId),
   });
 }

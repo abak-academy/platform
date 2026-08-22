@@ -99,7 +99,7 @@ func (s *Service) GetSessionResult(ctx context.Context, studentID, sessionID str
 
 	if exam.ResultConfig == "score_pembahasan" {
 		result.Breakdown = topicBreakdown(tests, answers)
-		result.Pembahasan = buildPembahasan(tests, answers)
+		result.Pembahasan = buildPembahasan(tests, answers, false)
 	}
 
 	result.CertificateURL = certURL
@@ -141,7 +141,7 @@ func isFullyGraded(questions []model.QuestionWithOptions, answers []model.ExamSe
 
 // buildPembahasan builds one row per objective question for score_pembahasan (FR-S5-23);
 // essay questions are excluded (out of scope for Slice 5).
-func buildPembahasan(tests []model.TestDetail, answers []model.ExamSessionAnswer) []model.ResultPembahasanItem {
+func buildPembahasan(tests []model.TestDetail, answers []model.ExamSessionAnswer, includeTopic bool) []model.ResultPembahasanItem {
 	answerByQuestion := make(map[uuid.UUID]model.ExamSessionAnswer, len(answers))
 	for _, a := range answers {
 		answerByQuestion[a.QuestionID] = a
@@ -154,17 +154,20 @@ func buildPembahasan(tests []model.TestDetail, answers []model.ExamSessionAnswer
 				continue
 			}
 			a := answerByQuestion[q.Question.ID]
-			items = append(items, model.ResultPembahasanItem{
+			item := model.ResultPembahasanItem{
 				QuestionID:    q.Question.ID,
-				TestID:        td.Test.ID,
-				TestTitle:     td.Test.Title,
 				Body:          q.Question.Body,
 				Format:        q.Question.Format,
 				YourAnswer:    a.Answer,
 				CorrectAnswer: correctAnswerText(q.Question, q.Options),
 				IsCorrect:     a.IsCorrect,
 				Explanation:   q.Question.Explanation,
-			})
+			}
+			if includeTopic {
+				item.TestID = &td.Test.ID
+				item.TestTitle = &td.Test.Title
+			}
+			items = append(items, item)
 		}
 	}
 	return items

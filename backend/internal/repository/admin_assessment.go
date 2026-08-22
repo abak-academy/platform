@@ -73,10 +73,11 @@ func (f AssessmentFilter) whereRegistration(startArg int) (string, []any) {
 }
 
 // ListAssessmentRows returns the paginated result rows for the super-admin
-// results workspace (Issue 124): one row per registration with a leaderboard-
-// compatible score. Registrations without a submitted, fully graded, scored
-// attempt are intentionally excluded from the table; they still contribute to
-// total_registered in the summary. Cursor is keyset-encoded as
+// results workspace (Issue 124): one row per registration that has a
+// leaderboard-compatible result. Registrations without a submitted, fully
+// graded, scored attempt are intentionally excluded from the result table per
+// the UI decision to make this tab a Hasil/leaderboard view rather than a roster
+// status view; they still contribute to total_registered in the summary. Cursor is keyset-encoded as
 // "<rank>,<negative score>,<registration id>", default limit 20, cap 100.
 func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, filter AssessmentFilter) ([]model.AssessmentRow, string, error) {
 	if filter.Limit <= 0 {
@@ -115,11 +116,10 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 		joined AS (
 			SELECT reg.id AS registration_id, reg.student_id, reg.created_at, reg.student_name, reg.username,
 				reg.school_id, reg.school_name,
-				scored.session_id, scored.attempt_number, 'submitted' AS session_status,
+				scored.session_id, scored.attempt_number,
 				scored.submitted_at, scored.score,
 				COALESCE(attempts_agg.attempts_count, 0) AS attempts_count,
-				COALESCE(result_violations.cnt, 0) AS latest_violations,
-				(scored.session_id IS NOT NULL) AS eligible
+				COALESCE(result_violations.cnt, 0) AS latest_violations
 			FROM reg
 			JOIN scored ON scored.registration_id = reg.id
 			LEFT JOIN attempts_agg ON attempts_agg.registration_id = reg.id
@@ -131,7 +131,7 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 			FROM joined
 		)
 		SELECT registration_id, student_id, created_at, student_name, username, school_id, school_name,
-			rnk, CASE WHEN eligible THEN score END, session_status, session_id, attempt_number,
+			rnk, score, session_id, attempt_number,
 			submitted_at, attempts_count, latest_violations
 		FROM ranked
 		WHERE 1=1`
@@ -171,31 +171,16 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 	}
 	defer rows.Close()
 
-	var cursorRanks []int
-	var cursorScores []float64
 	results := []model.AssessmentRow{}
 	for rows.Next() {
 		var row model.AssessmentRow
 		var createdAt time.Time
-		var sessionStatus *string
 		if err := rows.Scan(
 			&row.RegistrationID, &row.StudentID, &createdAt, &row.StudentName, &row.Username, &row.SchoolID, &row.SchoolName,
-			&row.Rank, &row.Score, &sessionStatus, &row.LatestSessionID, &row.LatestAttemptNumber,
+			&row.Rank, &row.Score, &row.LatestSessionID, &row.LatestAttemptNumber,
 			&row.LatestSubmittedAt, &row.AttemptsCount, &row.LatestViolations,
 		); err != nil {
 			return nil, "", err
-		}
-		switch {
-		case row.LatestSessionID == nil:
-			row.Status = "not_started"
-		case sessionStatus != nil && *sessionStatus == "submitted":
-			row.Status = "completed"
-		default:
-			row.Status = "in_progress"
-		}
-		if row.Rank != nil && row.Score != nil {
-			cursorRanks = append(cursorRanks, *row.Rank)
-			cursorScores = append(cursorScores, *row.Score)
 		}
 		results = append(results, row)
 	}
@@ -206,10 +191,8 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 	var nextCursor string
 	if len(results) > filter.Limit {
 		results = results[:filter.Limit]
-		cursorRanks = cursorRanks[:filter.Limit]
-		cursorScores = cursorScores[:filter.Limit]
 		last := results[len(results)-1]
-		nextCursor = fmt.Sprintf("%d,%s,%s", cursorRanks[len(cursorRanks)-1], strconv.FormatFloat(-cursorScores[len(cursorScores)-1], 'g', -1, 64), last.RegistrationID.String())
+		nextCursor = fmt.Sprintf("%d,%s,%s", *last.Rank, strconv.FormatFloat(-*last.Score, 'g', -1, 64), last.RegistrationID.String())
 	}
 
 	return results, nextCursor, nil
@@ -234,10 +217,10 @@ func (r *Repository) GetAssessmentSummary(ctx context.Context, examID uuid.UUID,
 			JOIN users u ON u.id = reg.student_id AND u.role = 'student'
 			WHERE reg.exam_id = $1`+regClause+`
 		),
-		latest AS `+assessmentLatestSession+`
-		SELECT COUNT(*), COUNT(*) FILTER (WHERE latest.status = 'submitted')
+		scored AS `+assessmentLatestScoredSession+`
+		SELECT COUNT(*), COUNT(scored.registration_id)
 		FROM reg
-		LEFT JOIN latest ON latest.registration_id = reg.id`,
+		LEFT JOIN scored ON scored.registration_id = reg.id`,
 		args...,
 	).Scan(&total, &completed)
 	if err != nil {

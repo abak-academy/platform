@@ -116,6 +116,7 @@ func TestRegisterRoutes_AssessmentRoutesRegistered(t *testing.T) {
 	want := []string{
 		"/api/v1/admin/exams/:id/assessment",
 		"/api/v1/admin/exams/:id/assessment/:registration_id/attempts",
+		"/api/v1/admin/exams/:id/assessment/results/:session_id",
 	}
 	registered := map[string]bool{}
 	for _, r := range e.Routes() {

@@ -47,7 +47,6 @@ const page1: AssessmentResponse = {
       school_name: "SMAN 1",
       rank: 2,
       score: 88.25,
-      status: "completed",
       attempts_count: 2,
       latest_session_id: "session-latest",
       latest_attempt_number: 2,
@@ -71,7 +70,6 @@ const page2: AssessmentResponse = {
       school_name: "SMAN 1",
       rank: 3,
       score: 75,
-      status: "completed",
       attempts_count: 1,
       latest_session_id: "session-siti",
       latest_attempt_number: 1,
@@ -133,7 +131,7 @@ describe("AssessmentTab", () => {
           ],
         });
       }
-      if (url.startsWith("/admin/results/session-latest")) {
+      if (url.startsWith("/admin/exams/exam-1/assessment/results/session-latest")) {
         return Promise.resolve({
           session_id: "session-latest",
           student_name: "Budi Santoso",
@@ -220,6 +218,8 @@ describe("AssessmentTab", () => {
     await waitFor(() => {
       expect(screen.getByText("8")).toBeInTheDocument();
       expect(screen.getByText(/Percobaan 2/)).toBeInTheDocument();
+      expect(screen.getByText(/Selesai|Completed/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Belum Mulai|Not started/i)).not.toBeInTheDocument();
       expect(screen.queryByText("2 + 2 = ?")).not.toBeInTheDocument();
     });
 
@@ -232,7 +232,7 @@ describe("AssessmentTab", () => {
       expect(screen.getByText(/Jawaban Anda|Your answer/i)).toBeInTheDocument();
       expect(screen.getByText(/Jawaban Benar|Correct answer/i)).toBeInTheDocument();
       expect(screen.getByText("Empat adalah jawaban yang benar.")).toBeInTheDocument();
-      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/results/session-latest");
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams/exam-1/assessment/results/session-latest");
     });
   });
 });

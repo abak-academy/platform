@@ -51,7 +51,6 @@ func TestAdminAssessment_DBBackedRoutesAndRBAC(t *testing.T) {
 			Data []struct {
 				RegistrationID string   `json:"registration_id"`
 				StudentName    string   `json:"student_name"`
-				Status         string   `json:"status"`
 				Score          *float64 `json:"score"`
 				Rank           *int     `json:"rank"`
 			} `json:"data"`
@@ -62,7 +61,7 @@ func TestAdminAssessment_DBBackedRoutesAndRBAC(t *testing.T) {
 		if resp.Summary.TotalRegistered != 1 || resp.Summary.CompletedParticipants != 1 || resp.Summary.CompletionRate != 1 {
 			t.Fatalf("summary mismatch: %+v", resp.Summary)
 		}
-		if len(resp.Data) != 1 || resp.Data[0].StudentName != "Assessment Student" || resp.Data[0].Status != "completed" || resp.Data[0].Score == nil || resp.Data[0].Rank == nil {
+		if len(resp.Data) != 1 || resp.Data[0].StudentName != "Assessment Student" || resp.Data[0].Score == nil || resp.Data[0].Rank == nil {
 			t.Fatalf("row mismatch: %+v", resp.Data)
 		}
 	})

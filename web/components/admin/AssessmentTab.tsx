@@ -22,8 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
-import { useAssessment, useAssessmentAttempts } from "@/lib/hooks/admin-assessment";
-import { exportAdminResults, useAdminResultDetail } from "@/lib/hooks/admin-results";
+import { useAssessment, useAssessmentAttempts, useAssessmentResultDetail } from "@/lib/hooks/admin-assessment";
+import { exportAdminResults } from "@/lib/hooks/admin-results";
 import { useSchools } from "@/lib/hooks/students";
 import { formatChoiceAnswer } from "@/lib/option-key";
 import type { AdminResultDetail, AssessmentAttempt, AssessmentRow, AssessmentSummary } from "@/lib/types";
@@ -106,7 +106,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
 
   const selectedRow = accumulated.find((r) => r.registration_id === selectedRegistrationId);
   const attempts = useAssessmentAttempts(examId, selectedRegistrationId);
-  const detail = useAdminResultDetail(selectedSessionId);
+  const detail = useAssessmentResultDetail(examId, selectedSessionId);
   const summary = query.data?.summary ?? stableSummary;
 
   useEffect(() => {
@@ -189,7 +189,11 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
       {summary && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <SummaryCard label={t("assessment_summary_total_registered")} value={summary.total_registered} />
-          <SummaryCard label={t("assessment_summary_completion_rate")} value={`${Math.round(summary.completion_rate * 100)}%`} />
+          <SummaryCard
+            label={t("assessment_summary_completion_rate")}
+            value={`${Math.round(summary.completion_rate * 100)}%`}
+            caption={`${summary.completed_participants}/${summary.total_registered}`}
+          />
           <SummaryCard label={t("admin_exam_analytics_average_score")} value={summary.average_score.toFixed(1)} />
           <SummaryCard
             label={t("assessment_summary_violations")}

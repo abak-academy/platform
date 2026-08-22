@@ -308,6 +308,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminAssessment.Use(handler.RBACMiddleware("assessment:read"))
 	adminAssessment.GET("/:id/assessment", h.AdminGetExamAssessment)
 	adminAssessment.GET("/:id/assessment/:registration_id/attempts", h.AdminGetAssessmentAttempts)
+	adminAssessment.GET("/:id/assessment/results/:session_id", h.AdminGetAssessmentResultDetail)
 
 	// Admin upload routes (image + audio presigning)
 	adminUploads := admin.Group("/uploads")

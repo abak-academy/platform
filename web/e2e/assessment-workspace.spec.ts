@@ -57,7 +57,6 @@ const ASSESSMENT_PAGE_1 = {
       school_name: "SMA E2E",
       rank: 1,
       score: 87.5,
-      status: "completed",
       attempts_count: 2,
       latest_session_id: "sess-1",
       latest_attempt_number: 2,
@@ -80,7 +79,6 @@ const ASSESSMENT_PAGE_2 = {
       school_name: "SMA E2E",
       rank: 2,
       score: 76,
-      status: "completed",
       attempts_count: 1,
       latest_session_id: "sess-2",
       latest_attempt_number: 1,
@@ -141,7 +139,7 @@ async function mockBackend(page: Page) {
         }),
       });
     }
-    if (method === "GET" && path === "/api/v1/admin/results/sess-1") {
+    if (method === "GET" && path === "/api/v1/admin/exams/exam-1/assessment/results/sess-1") {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -230,6 +228,6 @@ test("admin_school keeps scoped Results tab and never calls assessment endpoint"
   await page.goto("/admin/exam/packages/exam-1");
   await expect(page.getByRole("heading", { name: EXAM.title })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hasil" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Hasil" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assessment" })).toHaveCount(0);
   await expect.poll(() => assessmentRequests.length).toBe(0);
 });

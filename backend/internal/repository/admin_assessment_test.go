@@ -63,7 +63,6 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 	ctx := context.Background()
 
 	schoolA := insertAssessmentSchool(t, pool, "Assessment School A")
-	schoolB := insertAssessmentSchool(t, pool, "Assessment School B")
 	grader := insertGradingUser(t, pool, "admin_exam", "Assessment Grader")
 	testID := insertGradingTest(t, pool)
 	essayQID := insertGradingEssayQuestion(t, pool, testID, "Explain assessment", 100, 1)
@@ -71,7 +70,7 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 
 	budi := insertAssessmentStudent(t, pool, "Budi Assessment", "budi-assessment", schoolA)
 	cici := insertAssessmentStudent(t, pool, "Cici Retry", "cici-retry", schoolA)
-	dodi := insertAssessmentStudent(t, pool, "Dodi Ungraded", "dodi-ungraded", schoolB)
+	dodi := insertAssessmentStudent(t, pool, "Dodi Ungraded", "dodi-ungraded", schoolA)
 	evi := insertAssessmentStudent(t, pool, "Evi Empty", "evi-empty", schoolA)
 	fani := insertAssessmentStudent(t, pool, "Fani Tie", "fani-tie", schoolA)
 
@@ -115,7 +114,6 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 		t.Fatalf("school A result row count = %d, want 3: %+v", len(rows), rows)
 	}
 	byName := map[string]struct {
-		status       string
 		score        *float64
 		rank         *int
 		attempts     int
@@ -124,24 +122,26 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 	}{}
 	for _, row := range rows {
 		byName[row.StudentName] = struct {
-			status       string
 			score        *float64
 			rank         *int
 			attempts     int
 			latestVios   int
 			latestSessID *uuid.UUID
-		}{row.Status, row.Score, row.Rank, row.AttemptsCount, row.LatestViolations, row.LatestSessionID}
+		}{row.Score, row.Rank, row.AttemptsCount, row.LatestViolations, row.LatestSessionID}
 	}
-	if got := byName["Budi Assessment"]; got.status != "completed" || got.score == nil || *got.score != 90 || got.rank == nil || *got.rank != 2 || got.attempts != 2 || got.latestVios != 2 || got.latestSessID == nil || *got.latestSessID != budiLatest {
+	if got := byName["Budi Assessment"]; got.score == nil || *got.score != 90 || got.rank == nil || *got.rank != 2 || got.attempts != 2 || got.latestVios != 2 || got.latestSessID == nil || *got.latestSessID != budiLatest {
 		t.Fatalf("Budi row mismatch: %+v", got)
 	}
-	if got := byName["Cici Retry"]; got.status != "completed" || got.score == nil || *got.score != 100 || got.rank == nil || *got.rank != 1 || got.attempts != 2 {
+	if got := byName["Cici Retry"]; got.score == nil || *got.score != 100 || got.rank == nil || *got.rank != 1 || got.attempts != 2 {
 		t.Fatalf("Cici row should use the latest fully graded submitted result despite a newer abandoned retry, got %+v", got)
 	}
 	if _, ok := byName["Evi Empty"]; ok {
 		t.Fatalf("Evi should not appear in result rows without a scored submitted attempt")
 	}
-	if got := byName["Fani Tie"]; got.status != "completed" || got.rank == nil || *got.rank != 2 {
+	if _, ok := byName["Dodi Ungraded"]; ok {
+		t.Fatalf("Dodi should not appear in result rows because his submitted essay is not fully graded")
+	}
+	if got := byName["Fani Tie"]; got.rank == nil || *got.rank != 2 {
 		t.Fatalf("Fani should share rank 2 tie, got %+v", got)
 	}
 
@@ -149,7 +149,7 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAssessmentSummary school A: %v", err)
 	}
-	if total != 4 || completed != 2 || len(scores) != 3 || violationAttempts != 2 || violationEvents != 3 {
+	if total != 5 || completed != 3 || len(scores) != 3 || violationAttempts != 3 || violationEvents != 4 {
 		t.Fatalf("summary mismatch total=%d completed=%d scores=%v violationAttempts=%d violationEvents=%d", total, completed, scores, violationAttempts, violationEvents)
 	}
 	assertFloatClose(t, scores[0]+scores[1]+scores[2], 280)

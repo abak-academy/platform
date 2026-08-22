@@ -452,15 +452,15 @@ type ResultTopicRow struct {
 // ResultPembahasanItem is one objective-question row of the score_pembahasan pembahasan
 // list (FR-S5-23). Essay pembahasan is out of scope for Slice 5.
 type ResultPembahasanItem struct {
-	QuestionID    uuid.UUID `json:"question_id"`
-	TestID        uuid.UUID `json:"test_id"`
-	TestTitle     string    `json:"test_title"`
-	Body          string    `json:"body"`
-	Format        string    `json:"format"`
-	YourAnswer    *string   `json:"your_answer"`
-	CorrectAnswer *string   `json:"correct_answer"`
-	IsCorrect     *bool     `json:"is_correct"`
-	Explanation   *string   `json:"explanation"`
+	QuestionID    uuid.UUID  `json:"question_id"`
+	TestID        *uuid.UUID `json:"test_id,omitempty"`
+	TestTitle     *string    `json:"test_title,omitempty"`
+	Body          string     `json:"body"`
+	Format        string     `json:"format"`
+	YourAnswer    *string    `json:"your_answer"`
+	CorrectAnswer *string    `json:"correct_answer"`
+	IsCorrect     *bool      `json:"is_correct"`
+	Explanation   *string    `json:"explanation"`
 }
 
 // GradingSessionItem is one row of the admin grading queue (FR-S5-16): a submitted
@@ -665,10 +665,10 @@ type AssessmentSummary struct {
 	ViolationEvents       int           `json:"violation_events"`
 }
 
-// AssessmentRow is one participant row of GET /admin/exams/:id/assessment — one
-// exam_registration, never one exam_session (FB-26/FR22). Rank/Score are nil
-// unless the latest session is submitted and fully graded; a nil LatestSessionID
-// means the registration has never started (Status "not_started").
+// AssessmentRow is one ranked result row of GET /admin/exams/:id/assessment — one
+// exam_registration with a submitted, fully graded, scored attempt. The Issue 124
+// workspace is intentionally a Hasil/leaderboard view, not a full roster/status
+// table; registrations without result rows are summarized but not listed.
 type AssessmentRow struct {
 	RegistrationID      uuid.UUID  `json:"registration_id"`
 	StudentID           uuid.UUID  `json:"student_id"`
@@ -678,7 +678,6 @@ type AssessmentRow struct {
 	SchoolName          *string    `json:"school_name"`
 	Rank                *int       `json:"rank"`
 	Score               *float64   `json:"score"`
-	Status              string     `json:"status"`
 	AttemptsCount       int        `json:"attempts_count"`
 	LatestSessionID     *uuid.UUID `json:"latest_session_id"`
 	LatestAttemptNumber *int       `json:"latest_attempt_number"`

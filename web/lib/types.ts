@@ -1300,7 +1300,6 @@ export interface AssessmentRow {
   school_name?: string | null;
   rank?: number | null;
   score?: number | null;
-  status: "not_started" | "in_progress" | "completed";
   attempts_count: number;
   latest_session_id?: string | null;
   latest_attempt_number?: number | null;
