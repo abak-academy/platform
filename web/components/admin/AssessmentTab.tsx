@@ -7,6 +7,12 @@ import { toast } from "sonner";
 import { RichContent } from "@/components/admin/RichContent";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -150,11 +156,11 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
       align: "right",
       cell: (row) => (
         <Button
-          variant={selectedRegistrationId === row.registration_id ? "outline" : "ghost"}
+          variant="ghost"
           size="icon"
           aria-label={t("action_view")}
           disabled={!row.latest_session_id}
-          onClick={() => setSelectedRegistrationId((current) => current === row.registration_id ? "" : row.registration_id)}
+          onClick={() => setSelectedRegistrationId(row.registration_id)}
         >
           <Eye className="size-4" />
         </Button>
@@ -229,27 +235,37 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
         />
       )}
 
-      {selectedRow && (
-        <div className="rounded-2xl border border-line bg-card p-5 shadow-sm">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <h3 className="font-serif text-lg font-semibold text-ink-900">{t("school_reports_detail_title")}</h3>
-              <p className="mt-1 text-sm text-ink-600">
-                <span className="font-semibold text-ink-900">{selectedRow.student_name}</span> · Username: {selectedRow.username ?? "-"}
-              </p>
-              <p className="text-xs text-ink-500">{selectedRow.school_name || "-"}</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => setSelectedRegistrationId("")}>{t("cancel")}</Button>
+      <Dialog
+        open={selectedRegistrationId !== ""}
+        onOpenChange={(open) => {
+          if (!open) setSelectedRegistrationId("");
+        }}
+      >
+        <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle className="font-serif">{t("school_reports_detail_title")}</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[72vh] overflow-y-auto pr-1">
+            {selectedRow && (
+              <div className="space-y-4">
+                <div className="text-sm text-ink-600">
+                  <p>
+                    <span className="font-semibold text-ink-900">{selectedRow.student_name}</span> · Username: {selectedRow.username ?? "-"}
+                  </p>
+                  <p className="text-xs text-ink-500">{selectedRow.school_name || "-"}</p>
+                </div>
+                {detail.isLoading ? (
+                  <div className="py-8 text-center text-ink-500">{t("sys_loading_data")}</div>
+                ) : detail.data ? (
+                  <ResultDetailPanel detail={detail.data} t={t} dateLocale={dateLocale} />
+                ) : (
+                  <div className="py-8 text-center text-ink-500">{t("sys_error_load")}</div>
+                )}
+              </div>
+            )}
           </div>
-          {detail.isLoading ? (
-            <div className="py-8 text-center text-ink-500">{t("sys_loading_data")}</div>
-          ) : detail.data ? (
-            <ResultDetailPanel detail={detail.data} t={t} dateLocale={dateLocale} />
-          ) : (
-            <div className="py-8 text-center text-ink-500">{t("sys_error_load")}</div>
-          )}
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

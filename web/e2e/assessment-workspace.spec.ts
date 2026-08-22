@@ -167,7 +167,7 @@ async function mockBackend(page: Page) {
   });
 }
 
-test("super_admin unified Results workspace is ranked and supports inline detail flow", async ({ page, context }) => {
+test("super_admin unified Results workspace is ranked and supports large detail modal", async ({ page, context }) => {
   const assessmentRequests: string[] = [];
   page.on("request", (req) => {
     if (req.url().includes("/assessment")) assessmentRequests.push(req.url());
