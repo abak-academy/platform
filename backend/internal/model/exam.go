@@ -403,6 +403,12 @@ type ExamRosterEntry struct {
 	ExamNumber        *int       `json:"-"`
 }
 
+type ExamRosterFilter struct {
+	Cursor string
+	Limit  int
+	Sort   string
+}
+
 // SessionResult is the read shape for GET /api/v1/exam/sessions/:id/result. State is the
 // gate discriminator ("hidden" | "grading" | "locked" | "result"); the remaining fields are
 // populated per state (score/counts/rank always on "result"; breakdown/pembahasan only on
@@ -609,4 +615,35 @@ type SessionMonitorResponse struct {
 	Exam             SessionMonitorExam  `json:"exam"`
 	Rows             []SessionMonitorRow `json:"rows"`
 	ViolationsRecent []ViolationRecent   `json:"violations_recent"`
+}
+
+// ExamMonitorCandidate is the scheduling-relevant subset of an Exam used to decide
+// whether it belongs on the Session Monitor's available-exams list. Exams are
+// granted directly (no Product) as often as through a purchase, so availability
+// here is judged by the exam's own schedule, not by a linked product's status.
+type ExamMonitorCandidate struct {
+	ID                   uuid.UUID
+	Title                string
+	ScheduledAt          *time.Time
+	ScheduledEndAt       *time.Time
+	CheckInWindowMinutes *int
+	// DurationMinutes is nil for timer_mode=per_test exams (UTBK/IELTS), which
+	// have no single exam-level clock — SectionsDurationMinutes stands in for it.
+	DurationMinutes         *int
+	GraceWindowMinutes      *int
+	SectionsDurationMinutes int
+}
+
+// ExamMonitorAvailable is one row of GET /admin/sessions/monitor/available: an
+// exam currently inside its scheduled window (or recently ended), with live
+// registration counts for the picker list.
+type ExamMonitorAvailable struct {
+	ID              uuid.UUID  `json:"id"`
+	Title           string     `json:"title"`
+	ScheduledAt     *time.Time `json:"scheduled_at"`
+	ScheduledEndAt  *time.Time `json:"scheduled_end_at"`
+	State           string     `json:"state"` // "live" | "ended"
+	TotalRegistered int        `json:"total_registered"`
+	ActiveCount     int        `json:"active_count"`
+	NotStartedCount int        `json:"not_started_count"`
 }

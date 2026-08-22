@@ -62,6 +62,7 @@ let dashboardState = {
   isError: false,
   refetch: vi.fn(),
 };
+const dashboardData = dashboardState.data;
 
 vi.mock("@/lib/hooks/admin-dashboard", () => ({
   useExamDashboard: () => dashboardState,
@@ -70,6 +71,7 @@ vi.mock("@/lib/hooks/admin-dashboard", () => ({
 describe("admin_exam dashboard", () => {
   beforeEach(() => {
     authStore = { token: "t", user: { role: "admin_exam", name: "Budi" } };
+    dashboardState = { data: dashboardData, isLoading: false, isError: false, refetch: vi.fn() };
   });
 
   it("shows the live session count and the upcoming exams", () => {

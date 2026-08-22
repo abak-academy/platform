@@ -52,8 +52,14 @@ func (h *Handler) AdminSearchGrantStudents(c echo.Context) error {
 		}
 	}
 	jenjang := c.QueryParam("jenjang")
+	examID := c.QueryParam("exam_id")
+	if examID != "" {
+		if _, err := uuid.Parse(examID); err != nil {
+			return c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "exam_id must be a valid UUID"})
+		}
+	}
 
-	students, nextCursor, err := h.svc.SearchStudentsAcrossSchools(c.Request().Context(), q, schoolID, noSchool, grade, jenjang, limit, cursor)
+	students, nextCursor, err := h.svc.SearchStudentsAcrossSchools(c.Request().Context(), q, schoolID, noSchool, grade, jenjang, limit, cursor, examID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

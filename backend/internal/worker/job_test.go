@@ -80,8 +80,13 @@ func (f *fakeObjectStore) PutObjectBytes(ctx context.Context, bucket, key string
 }
 
 type fakeStudentBulkProcessor struct {
-	processFn       func(ctx context.Context, schoolBound *string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
-	processSchoolFn func(ctx context.Context, rows []service.SchoolBulkRow, onProgress func(int)) ([]service.SchoolBulkResultRow, int, error)
+	processFn             func(ctx context.Context, schoolBound *string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
+	processSchoolFn       func(ctx context.Context, rows []service.SchoolBulkRow, onProgress func(int)) ([]service.SchoolBulkResultRow, int, error)
+	grantExamAccessBulkFn func(ctx context.Context, actorID, examID string, usernames []string) ([]service.ExamGrantBulkRowResult, error)
+}
+
+func (f *fakeStudentBulkProcessor) GrantExamAccessBulk(ctx context.Context, actorID, examID string, usernames []string) ([]service.ExamGrantBulkRowResult, error) {
+	return f.grantExamAccessBulkFn(ctx, actorID, examID, usernames)
 }
 
 func (f *fakeStudentBulkProcessor) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { act, render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { formatRupiah } from "@/lib/format";
 import { ExamRegistrationsTab } from "./ExamRegistrationsTab";
@@ -24,6 +24,8 @@ const grantMutateSpy = vi.fn();
 let grantShouldError = false;
 let grantErrorMessage = "";
 let grantMockResult: any = null;
+let holdGrantMutation = false;
+let heldGrantOptions: any = null;
 
 let authUser: { role: string; school_id?: string } = {
   role: "admin_school",
@@ -45,6 +47,7 @@ vi.mock("@/lib/hooks/admin-bulk-exam-orders", () => ({
           opts?.onError?.(new Error("preview failed"));
         } else {
           setData(previewMockResult);
+          opts?.onSuccess?.(previewMockResult);
         }
       },
     };
@@ -63,17 +66,48 @@ vi.mock("@/lib/hooks/admin-bulk-exam-orders", () => ({
   }),
 }));
 
-let rosterData: { data: unknown[] } | undefined = { data: [] };
+let rosterData: { data: unknown[]; next_cursor?: string } | undefined = { data: [] };
 let rosterIsLoading = false;
 let rosterIsError = false;
+const rosterHookSpy = vi.fn();
+const exportRosterSpy = vi.fn().mockResolvedValue(undefined);
+let resolveRosterData: (filter: { cursor?: string; limit: number; sort: "asc" | "desc" }) =>
+  | { data: unknown[]; next_cursor?: string }
+  | undefined = () => rosterData;
 
 vi.mock("@/lib/hooks/admin-exams", () => ({
-  useExamRoster: () => ({
-    data: rosterData,
-    isLoading: rosterIsLoading,
-    isError: rosterIsError,
-  }),
+  useExamRoster: (examId: string, filter: { cursor?: string; limit: number; sort: "asc" | "desc" }) => {
+    rosterHookSpy(examId, filter);
+    return {
+      data: resolveRosterData(filter),
+      isLoading: rosterIsLoading,
+      isFetching: rosterIsLoading,
+      isError: rosterIsError,
+    };
+  },
+  exportExamRoster: (...args: unknown[]) => exportRosterSpy(...args),
+  adminExamsKeys: {
+    all: ["adminExams"] as const,
+    rosters: () => ["adminExams", "roster"] as const,
+  },
 }));
+
+const csvPresignMutateAsync = vi.fn();
+const csvEnqueueMutateAsync = vi.fn();
+const csvPutFile = vi.fn();
+
+const csvJobStatusState: {
+  data: {
+    id: string;
+    type: string;
+    status: string;
+    progress: number;
+    result_url: string | null;
+    error: string | null;
+    created_at: string;
+    updated_at: string;
+  } | null;
+} = { data: null };
 
 vi.mock("@/lib/hooks/admin-exam-grants", () => ({
   useGrantExamAccess: () => ({
@@ -82,6 +116,10 @@ vi.mock("@/lib/hooks/admin-exam-grants", () => ({
     reset: vi.fn(),
     mutate: (input: any, opts?: any) => {
       grantMutateSpy(input, opts);
+      if (holdGrantMutation) {
+        heldGrantOptions = opts;
+        return;
+      }
       if (grantShouldError) {
         opts?.onError?.(new Error(grantErrorMessage));
       } else {
@@ -89,12 +127,34 @@ vi.mock("@/lib/hooks/admin-exam-grants", () => ({
       }
     },
   }),
+  usePresignExamGrantBulkUpload: (examId: string) => ({
+    mutateAsync: (args: unknown) => csvPresignMutateAsync(examId, args),
+    isPending: false,
+  }),
+  useEnqueueExamGrantBulk: () => ({
+    mutateAsync: csvEnqueueMutateAsync,
+    isPending: false,
+  }),
+}));
+
+vi.mock("@/lib/hooks/admin-students-bulk", () => ({
+  putFileToPresignedURL: (...args: Parameters<typeof csvPutFile>) => csvPutFile(...args),
+}));
+
+vi.mock("@/lib/hooks/jobs", () => ({
+  useJobStatus: () => ({
+    data: csvJobStatusState.data,
+    isLoading: false,
+    isError: false,
+    error: null,
+  }),
 }));
 
 vi.mock("@/components/admin/ParticipantPicker", () => ({
-  ParticipantPicker: ({ onChange }: { selected: string[]; onChange: (ids: string[]) => void }) => (
+  ParticipantPicker: ({ examId, onChange }: { examId: string; selected: string[]; onChange: (ids: string[]) => void }) => (
     <button
       data-testid="participant-add"
+      data-exam-id={examId}
       onClick={() => onChange(["student-1", "student-2"])}
     >
       pick
@@ -123,6 +183,21 @@ vi.mock("sonner", () => ({
 
 import { toast } from "sonner";
 
+beforeEach(() => {
+  rosterData = { data: [] };
+  rosterIsLoading = false;
+  rosterIsError = false;
+  rosterHookSpy.mockClear();
+  exportRosterSpy.mockClear();
+  resolveRosterData = () => rosterData;
+  csvPresignMutateAsync.mockReset();
+  csvEnqueueMutateAsync.mockReset();
+  csvPutFile.mockReset();
+  csvJobStatusState.data = null;
+  holdGrantMutation = false;
+  heldGrantOptions = null;
+});
+
 function wrapperFactory() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -130,6 +205,16 @@ function wrapperFactory() {
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
+}
+
+function openGrantModal() {
+  fireEvent.click(screen.getByTestId("open-grant-modal"));
+  return within(screen.getByRole("dialog"));
+}
+
+function openOrderModal() {
+  fireEvent.click(screen.getByTestId("open-order-modal"));
+  return within(screen.getByRole("dialog"));
 }
 
 describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam is fixed by tab context)", () => {
@@ -148,12 +233,22 @@ describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam
     vi.mocked(toast.error).mockClear();
   });
 
-  it("does not render a grant button for admin_school", () => {
+  it("shows the roster only on initial render — no ParticipantPicker, no dialog", () => {
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
-    fireEvent.click(screen.getByTestId("participant-add"));
-    expect(screen.queryByText("exam_grant_grant")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("participant-add")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("open-order-modal")).toBeInTheDocument();
+  });
+
+  it("opens a dialog containing the ParticipantPicker when the add participants action is clicked", () => {
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    const dialog = openOrderModal();
+    expect(dialog.getByTestId("participant-add")).toHaveAttribute("data-exam-id", "exam-1");
+    expect(dialog.queryByText("exam_grant_grant")).not.toBeInTheDocument();
   });
 
   it("previews and creates an order end-to-end, showing the real total", async () => {
@@ -168,9 +263,10 @@ describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam
       wrapper: wrapperFactory(),
     });
 
-    fireEvent.click(screen.getByTestId("participant-add"));
+    const dialog = openOrderModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
 
-    const previewButton = await screen.findByText("bulk_exam_order_preview");
+    const previewButton = await dialog.findByText("bulk_exam_order_preview");
     fireEvent.click(previewButton);
 
     expect(previewMutateSpy).toHaveBeenCalledWith(
@@ -179,10 +275,10 @@ describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam
     );
 
     await waitFor(() => {
-      expect(screen.getByText(formatRupiah(150000))).toBeInTheDocument();
+      expect(dialog.getByText(formatRupiah(150000))).toBeInTheDocument();
     });
 
-    const confirmButton = await screen.findByText("bulk_exam_order_confirm");
+    const confirmButton = await dialog.findByText("bulk_exam_order_confirm");
     fireEvent.click(confirmButton);
 
     expect(createMutateSpy).toHaveBeenCalledWith(
@@ -191,9 +287,9 @@ describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam
     );
 
     await waitFor(() => {
-      expect(screen.getByText("bulk_exam_order_created")).toBeInTheDocument();
+      expect(dialog.getByText("bulk_exam_order_created")).toBeInTheDocument();
     });
-    expect(screen.getByText(/Tryout UTBK 2026/)).toBeInTheDocument();
+    expect(dialog.getByText(/Tryout UTBK 2026/)).toBeInTheDocument();
   });
 
   it("shows an error toast when the backend rejects duplicate participant_ids on create", async () => {
@@ -210,12 +306,13 @@ describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam
       wrapper: wrapperFactory(),
     });
 
-    fireEvent.click(screen.getByTestId("participant-add"));
+    const dialog = openOrderModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
 
-    const previewButton = await screen.findByText("bulk_exam_order_preview");
+    const previewButton = await dialog.findByText("bulk_exam_order_preview");
     fireEvent.click(previewButton);
 
-    const confirmButton = await screen.findByText("bulk_exam_order_confirm");
+    const confirmButton = await dialog.findByText("bulk_exam_order_confirm");
     fireEvent.click(confirmButton);
 
     await waitFor(() => {
@@ -224,6 +321,35 @@ describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam
       );
     });
     expect(screen.queryByText("bulk_exam_order_created")).not.toBeInTheDocument();
+  });
+
+  it("resets selection, preview and created-order state when the dialog is closed", async () => {
+    previewMockResult = {
+      net_new_count: 2,
+      excluded: [],
+      unit_price: 75000,
+      total: 150000,
+    };
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const dialog = openOrderModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
+    fireEvent.click(await dialog.findByText("bulk_exam_order_preview"));
+    fireEvent.click(await dialog.findByText("bulk_exam_order_confirm"));
+    await waitFor(() => {
+      expect(dialog.getByText("bulk_exam_order_created")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    const reopened = openOrderModal();
+    expect(reopened.getByTestId("participant-add")).toBeInTheDocument();
+    expect(reopened.queryByText("bulk_exam_order_created")).not.toBeInTheDocument();
+    expect(reopened.queryByText("bulk_exam_order_preview_title")).not.toBeInTheDocument();
   });
 });
 
@@ -241,15 +367,25 @@ describe("ExamRegistrationsTab — super_admin grant flow (cross-school, no orde
     vi.mocked(toast.error).mockClear();
   });
 
+  it("shows the roster only on initial render — no ParticipantPicker, no dialog", () => {
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.queryByTestId("participant-add")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("open-grant-modal")).toBeInTheDocument();
+  });
+
   it("does not render the order/preview button for super_admin", () => {
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
-    fireEvent.click(screen.getByTestId("participant-add"));
-    expect(screen.queryByText("bulk_exam_order_preview")).not.toBeInTheDocument();
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
+    expect(dialog.queryByText("bulk_exam_order_preview")).not.toBeInTheDocument();
   });
 
-  it("shows granted student names and usernames after a successful grant", async () => {
+  it("calls useGrantExamAccess with { exam_id, student_ids } and shows granted student names and usernames", async () => {
     grantMockResult = {
       granted_count: 2,
       granted_students: [
@@ -262,9 +398,10 @@ describe("ExamRegistrationsTab — super_admin grant flow (cross-school, no orde
       wrapper: wrapperFactory(),
     });
 
-    fireEvent.click(screen.getByTestId("participant-add"));
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
 
-    const grantButton = await screen.findByText("exam_grant_grant");
+    const grantButton = await dialog.findByText("exam_grant_grant");
     fireEvent.click(grantButton);
 
     expect(grantMutateSpy).toHaveBeenCalledWith(
@@ -273,11 +410,11 @@ describe("ExamRegistrationsTab — super_admin grant flow (cross-school, no orde
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Andi Saputra")).toBeInTheDocument();
+      expect(dialog.getByText("Andi Saputra")).toBeInTheDocument();
     });
-    expect(screen.getByText("@andi123")).toBeInTheDocument();
-    expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
-    expect(screen.getByText("@budi456")).toBeInTheDocument();
+    expect(dialog.getByText("@andi123")).toBeInTheDocument();
+    expect(dialog.getByText("Budi Santoso")).toBeInTheDocument();
+    expect(dialog.getByText("@budi456")).toBeInTheDocument();
   });
 
   it("shows an error toast when the backend rejects duplicate student_ids", async () => {
@@ -288,9 +425,10 @@ describe("ExamRegistrationsTab — super_admin grant flow (cross-school, no orde
       wrapper: wrapperFactory(),
     });
 
-    fireEvent.click(screen.getByTestId("participant-add"));
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
 
-    const grantButton = await screen.findByText("exam_grant_grant");
+    const grantButton = await dialog.findByText("exam_grant_grant");
     fireEvent.click(grantButton);
 
     await waitFor(() => {
@@ -299,6 +437,306 @@ describe("ExamRegistrationsTab — super_admin grant flow (cross-school, no orde
       );
     });
     expect(screen.queryByText("Andi Saputra")).not.toBeInTheDocument();
+  });
+
+  it("resets selection and grant-result state when the dialog is closed", async () => {
+    grantMockResult = {
+      granted_count: 1,
+      granted_students: [{ id: "s1", name: "Andi Saputra", username: "andi123" }],
+    };
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
+    fireEvent.click(await dialog.findByText("exam_grant_grant"));
+    await waitFor(() => {
+      expect(dialog.getByText("Andi Saputra")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    const reopened = openGrantModal();
+    expect(reopened.getByTestId("participant-add")).toBeInTheDocument();
+    expect(reopened.queryByText("Andi Saputra")).not.toBeInTheDocument();
+  });
+
+  it("ignores a stale grant success that resolves after the modal was closed", async () => {
+    holdGrantMutation = true;
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
+    fireEvent.click(await dialog.findByText("exam_grant_grant"));
+    expect(heldGrantOptions).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    heldGrantOptions.onSuccess({
+      granted_count: 1,
+      granted_students: [{ id: "s1", name: "Andi Saputra", username: "andi123" }],
+    });
+
+    const reopened = openGrantModal();
+    expect(reopened.getByTestId("participant-add")).toBeInTheDocument();
+    expect(reopened.queryByText("Andi Saputra")).not.toBeInTheDocument();
+    expect(reopened.queryByText("exam_grant_success_title")).not.toBeInTheDocument();
+  });
+});
+
+describe("ExamRegistrationsTab — super_admin CSV bulk grant flow (Frontend B2)", () => {
+  beforeEach(() => {
+    authUser = { role: "super_admin" };
+    grantMutateSpy.mockClear();
+    grantShouldError = false;
+    grantErrorMessage = "";
+    grantMockResult = null;
+    rosterData = { data: [] };
+    rosterIsLoading = false;
+    rosterIsError = false;
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  let lastDownloadedFilename: string | null = null;
+  let lastCapturedBlob: Blob | null = null;
+  const originalCreateElement = document.createElement.bind(document);
+
+  beforeEach(() => {
+    lastDownloadedFilename = null;
+    lastCapturedBlob = null;
+
+    document.createElement = ((tag: string) => {
+      const el = originalCreateElement(tag);
+      if (tag === "a") {
+        (el as HTMLAnchorElement).click = vi.fn(function (this: HTMLAnchorElement) {
+          lastDownloadedFilename = this.download;
+        });
+      }
+      return el;
+    }) as typeof document.createElement;
+
+    URL.createObjectURL = vi.fn().mockImplementation((blob: Blob) => {
+      lastCapturedBlob = blob;
+      return "blob:mock" as unknown as string;
+    }) as typeof URL.createObjectURL;
+  });
+
+  it("does not show a CSV mode toggle in the admin_school order modal", () => {
+    authUser = { role: "admin_school", school_id: "school-1" };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    const dialog = openOrderModal();
+    expect(dialog.queryByTestId("grant-mode-csv")).not.toBeInTheDocument();
+    expect(dialog.queryByTestId("grant-mode-manual")).not.toBeInTheDocument();
+  });
+
+  it("shows a manual/csv mode toggle only for super_admin, defaulting to manual", () => {
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    const dialog = openGrantModal();
+    expect(dialog.getByTestId("grant-mode-manual")).toBeInTheDocument();
+    expect(dialog.getByTestId("grant-mode-csv")).toBeInTheDocument();
+    expect(dialog.getByTestId("participant-add")).toBeInTheDocument();
+  });
+
+  it("downloads a username-only template with the exact content", async () => {
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    fireEvent.click(dialog.getByTestId("csv-download-template"));
+
+    await waitFor(() => expect(lastDownloadedFilename).not.toBeNull());
+    expect(lastCapturedBlob).not.toBeNull();
+    const text = await lastCapturedBlob!.text();
+    expect(text).toBe("username\nandi123\nbudi456\n");
+  });
+
+  it("switching to CSV mode hides the manual ParticipantPicker and grant button", () => {
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    expect(dialog.queryByTestId("participant-add")).not.toBeInTheDocument();
+    expect(dialog.getByTestId("csv-file-input")).toBeInTheDocument();
+  });
+
+  it("runs presign -> PUT -> enqueue in order, then polls the job and shows the result link on success", async () => {
+    csvPresignMutateAsync.mockResolvedValueOnce({
+      url: "http://minio.local/exam-grant-bulk/exam-1/uuid.csv?sig=abc",
+      method: "PUT",
+      key: "exam-grant-bulk/exam-1/uuid.csv",
+    });
+    csvPutFile.mockResolvedValueOnce(undefined);
+    csvEnqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-1" });
+
+    const { rerender } = render(
+      <ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />,
+      { wrapper: wrapperFactory() },
+    );
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    const file = new File(["username\nandi123"], "grants.csv", { type: "text/csv" });
+    fireEvent.change(dialog.getByTestId("csv-file-input"), { target: { files: [file] } });
+    fireEvent.click(dialog.getByTestId("csv-upload-submit"));
+
+    await waitFor(() => expect(csvPresignMutateAsync).toHaveBeenCalledTimes(1));
+    expect(csvPresignMutateAsync).toHaveBeenCalledWith("exam-1", {
+      filename: "grants.csv",
+      contentType: "text/csv",
+    });
+    await waitFor(() => expect(csvPutFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(csvEnqueueMutateAsync).toHaveBeenCalledTimes(1));
+    expect(csvEnqueueMutateAsync).toHaveBeenCalledWith({
+      examId: "exam-1",
+      fileKey: "exam-grant-bulk/exam-1/uuid.csv",
+    });
+
+    expect(csvPresignMutateAsync.mock.invocationCallOrder[0]).toBeLessThan(
+      csvPutFile.mock.invocationCallOrder[0],
+    );
+    expect(csvPutFile.mock.invocationCallOrder[0]).toBeLessThan(
+      csvEnqueueMutateAsync.mock.invocationCallOrder[0],
+    );
+
+    csvJobStatusState.data = {
+      id: "job-1",
+      type: "exam_grant_bulk",
+      status: "succeeded",
+      progress: 100,
+      result_url: "http://minio.local/result.csv?sig=xyz",
+      error: null,
+      created_at: "2026-08-01T00:00:00Z",
+      updated_at: "2026-08-01T00:01:00Z",
+    };
+    rerender(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />);
+
+    await waitFor(() => {
+      const link = within(screen.getByRole("dialog")).getByRole("link");
+      expect((link as HTMLAnchorElement).href).toBe("http://minio.local/result.csv?sig=xyz");
+    });
+  });
+
+  it("shows a failed status with the result link when the job fails but produced a report", async () => {
+    csvPresignMutateAsync.mockResolvedValueOnce({
+      url: "http://minio.local/k?sig=abc",
+      method: "PUT",
+      key: "exam-grant-bulk/exam-1/uuid.csv",
+    });
+    csvPutFile.mockResolvedValueOnce(undefined);
+    csvEnqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-2" });
+
+    const { rerender } = render(
+      <ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />,
+      { wrapper: wrapperFactory() },
+    );
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    const file = new File(["username\nbaduser"], "grants.csv", { type: "text/csv" });
+    fireEvent.change(dialog.getByTestId("csv-file-input"), { target: { files: [file] } });
+    fireEvent.click(dialog.getByTestId("csv-upload-submit"));
+
+    await waitFor(() => expect(csvEnqueueMutateAsync).toHaveBeenCalled());
+
+    csvJobStatusState.data = {
+      id: "job-2",
+      type: "exam_grant_bulk",
+      status: "failed",
+      progress: 100,
+      result_url: "http://minio.local/allfail.csv?sig=def",
+      error: "exam_grant_bulk job job-2: all rows failed",
+      created_at: "2026-08-01T00:00:00Z",
+      updated_at: "2026-08-01T00:01:00Z",
+    };
+    rerender(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />);
+
+    await waitFor(() => {
+      const link = within(screen.getByRole("dialog")).getByRole("link");
+      expect((link as HTMLAnchorElement).href).toBe("http://minio.local/allfail.csv?sig=def");
+    });
+  });
+
+  it("resets CSV file and job state when the modal is closed and reopened", async () => {
+    csvPresignMutateAsync.mockResolvedValueOnce({
+      url: "http://minio.local/k?sig=abc",
+      method: "PUT",
+      key: "exam-grant-bulk/exam-1/uuid.csv",
+    });
+    csvPutFile.mockResolvedValueOnce(undefined);
+    csvEnqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-3" });
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    let dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    const file = new File(["username\nandi123"], "grants.csv", { type: "text/csv" });
+    fireEvent.change(dialog.getByTestId("csv-file-input"), { target: { files: [file] } });
+    fireEvent.click(dialog.getByTestId("csv-upload-submit"));
+
+    await waitFor(() => expect(csvEnqueueMutateAsync).toHaveBeenCalled());
+    expect(dialog.getByText("grants.csv")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    csvJobStatusState.data = null;
+    dialog = openGrantModal();
+    expect(dialog.getByTestId("grant-mode-manual")).toBeInTheDocument();
+    expect(dialog.queryByText("grants.csv")).not.toBeInTheDocument();
+  });
+
+  it("does not continue CSV upload/enqueue after the modal is closed during presign", async () => {
+    let resolvePresign: (value: { url: string; method: string; key: string }) => void = () => {};
+    csvPresignMutateAsync.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePresign = resolve;
+        }),
+    );
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    const file = new File(["username\nandi123"], "grants.csv", { type: "text/csv" });
+    fireEvent.change(dialog.getByTestId("csv-file-input"), { target: { files: [file] } });
+    fireEvent.click(dialog.getByTestId("csv-upload-submit"));
+
+    await waitFor(() => expect(csvPresignMutateAsync).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolvePresign({
+        url: "http://minio.local/exam-grant-bulk/exam-1/uuid.csv?sig=abc",
+        method: "PUT",
+        key: "exam-grant-bulk/exam-1/uuid.csv",
+      });
+      await Promise.resolve();
+    });
+
+    expect(csvPutFile).not.toHaveBeenCalled();
+    expect(csvEnqueueMutateAsync).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });
 
@@ -343,11 +781,14 @@ describe("ExamRegistrationsTab — admin_exam read-only (FR-8/FR-9)", () => {
     expect(screen.getByText("exam_registrations_manual_notice")).toBeInTheDocument();
   });
 
-  it("shows none of the three write controls", () => {
+  it("shows none of the write controls — no action button, no dialog, no picker", () => {
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
+    expect(screen.queryByTestId("open-grant-modal")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("open-order-modal")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByTestId("participant-add")).not.toBeInTheDocument();
     expect(screen.queryByText("exam_grant_grant")).not.toBeInTheDocument();
     expect(screen.queryByText("bulk_exam_order_preview")).not.toBeInTheDocument();
@@ -356,49 +797,23 @@ describe("ExamRegistrationsTab — admin_exam read-only (FR-8/FR-9)", () => {
   // Positive control: a permitted role at the same initial state, with a
   // selection seeded through the picker, does render the write controls —
   // proving the admin_exam absences above are role-gated, not just always-off.
-  it("shows the write controls for a permitted role once participants are picked", () => {
+  it("shows the write controls for a permitted role once the modal is opened and participants are picked", () => {
     authUser = { role: "admin_school", school_id: "school-1" };
     rosterData = { data: [] };
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
-    expect(screen.getByTestId("participant-add")).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("participant-add"));
-    expect(screen.getByText("bulk_exam_order_preview")).toBeInTheDocument();
+    const dialog = openOrderModal();
+    expect(dialog.getByTestId("participant-add")).toBeInTheDocument();
+    fireEvent.click(dialog.getByTestId("participant-add"));
+    expect(dialog.getByText("bulk_exam_order_preview")).toBeInTheDocument();
   });
 });
 
 describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
-  const originalCreateElement = document.createElement.bind(document);
-  let lastDownloadedFilename: string | null = null;
-  let lastCapturedBlob: Blob | null = null;
-
   beforeEach(() => {
     authUser = { role: "admin_school", school_id: "school-1" };
-    rosterData = { data: [] };
-    rosterIsLoading = false;
-    rosterIsError = false;
-    lastDownloadedFilename = null;
-    lastCapturedBlob = null;
-
-    document.createElement = ((tag: string) => {
-      const el = originalCreateElement(tag);
-      if (tag === "a") {
-        (el as HTMLAnchorElement).click = vi.fn(function (this: HTMLAnchorElement) {
-          lastDownloadedFilename = this.download;
-        });
-      }
-      return el;
-    }) as typeof document.createElement;
-
-    if (!(URL.createObjectURL as any).__mocked) {
-      URL.createObjectURL = vi.fn().mockImplementation((blob: Blob) => {
-        lastCapturedBlob = blob;
-        return "blob:mock" as unknown as string;
-      }) as typeof URL.createObjectURL;
-      (URL.createObjectURL as any).__mocked = true;
-    }
   });
 
   const rows = [
@@ -452,12 +867,17 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
     expect(screen.getByText("exam_roster_empty")).toBeInTheDocument();
   });
 
-  it("renders rows sorted by participant number ascending by default, with a nil-safe dash for unassigned numbers", () => {
-    rosterData = { data: rows };
+  it("requests the first page ascending by default and renders the server order", () => {
+    rosterData = { data: [rows[1], rows[0], rows[2]] };
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
+    expect(rosterHookSpy).toHaveBeenLastCalledWith("exam-1", {
+      cursor: undefined,
+      limit: 20,
+      sort: "asc",
+    });
     const cells = screen.getAllByTestId("roster-participant-no");
     expect(cells.map((c) => c.textContent)).toEqual([
       "250620-0042-000001",
@@ -466,20 +886,46 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
     ]);
   });
 
-  it("reverses sort order when the No. Peserta header is clicked", () => {
-    rosterData = { data: rows };
+  it("requests descending sort from page one when the header is clicked", () => {
+    const ascending = { data: [rows[1], rows[0], rows[2]], next_cursor: "asc-2" };
+    const descending = { data: [rows[0], rows[1], rows[2]], next_cursor: "desc-2" };
+    resolveRosterData = (filter) => filter.sort === "desc" ? descending : ascending;
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
     fireEvent.click(screen.getByText("exam_roster_th_participant_no"));
 
+    expect(rosterHookSpy).toHaveBeenLastCalledWith("exam-1", {
+      cursor: undefined,
+      limit: 20,
+      sort: "desc",
+    });
     const cells = screen.getAllByTestId("roster-participant-no");
     expect(cells.map((c) => c.textContent)).toEqual([
-      "—",
       "250620-0042-000002",
       "250620-0042-000001",
+      "—",
     ]);
+  });
+
+  it("appends unique registrations when Load More follows next_cursor", () => {
+    const firstPage = { data: [rows[1], rows[0]], next_cursor: "page-2" };
+    const secondPage = { data: [rows[0], rows[2]] };
+    resolveRosterData = (filter) => filter.cursor === "page-2" ? secondPage : firstPage;
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    fireEvent.click(screen.getByText("sys_load_more"));
+
+    expect(rosterHookSpy).toHaveBeenLastCalledWith("exam-1", {
+      cursor: "page-2",
+      limit: 20,
+      sort: "asc",
+    });
+    expect(screen.getAllByText("Budi Santoso")).toHaveLength(1);
+    expect(screen.getByText("Citra Dewi")).toBeInTheDocument();
   });
 
   // NFR-S7: the exam token is a check-in credential. The realistic leak is a
@@ -498,13 +944,11 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
   });
 
   it("reveals only the toggled row's real token, leaving the others masked", () => {
-    rosterData = { data: rows };
+    rosterData = { data: [rows[1], rows[0], rows[2]] };
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
-    // Default sort is ascending by participant_number, so the first rendered
-    // row/toggle is Andi (participant_number 1), not rows[0] (Budi, no. 2).
     const revealButtons = screen.getAllByLabelText("exam_roster_show_token");
     fireEvent.click(revealButtons[0]);
 
@@ -518,46 +962,31 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
     expect(screen.getAllByText("••••••••")).toHaveLength(rows.length - 1);
   });
 
-  it("exports a CSV blob of the roster rows when Export CSV is clicked", async () => {
-    rosterData = { data: rows };
+  it("exports from the full-roster endpoint even when another UI page exists", async () => {
+    rosterData = { data: [rows[1]], next_cursor: "page-2" };
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
     fireEvent.click(screen.getByText("exam_roster_export_csv"));
 
-    expect(lastDownloadedFilename).toBe("roster.csv");
-    expect(lastCapturedBlob).not.toBeNull();
-    const text = await lastCapturedBlob!.text();
-    expect(text).toContain("No. Peserta,Nama,Username,Status,Checked In");
-    expect(text).toContain("250620-0042-000001,Andi Saputra,andi123,registered,yes");
-    expect(text).toContain(",Citra Dewi,,registered,no");
+    await waitFor(() => expect(exportRosterSpy).toHaveBeenCalledWith("exam-1"));
   });
 
-  // Student names are attacker-supplied at registration, so a leading =/+/-/@
-  // must not reach the spreadsheet as a live formula.
-  it("neutralizes formula-leading fields in the exported CSV", async () => {
-    rosterData = {
-      data: [
-        {
-          ...rows[0],
-          registration_id: "reg-evil",
-          student_id: "s-evil",
-          student_name: '=HYPERLINK("http://evil.test","claim prize")',
-          student_username: "+cmd|' /C calc'!A0",
-        },
-      ],
-    };
+  it("shows an error and restores the export button when CSV export fails", async () => {
+    rosterData = { data: [rows[1]] };
+    vi.mocked(toast.error).mockClear();
+    exportRosterSpy.mockRejectedValueOnce(new Error("forbidden"));
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
-    fireEvent.click(screen.getByText("exam_roster_export_csv"));
+    const button = screen.getByRole("button", { name: "exam_roster_export_csv" });
+    fireEvent.click(button);
 
-    const text = await lastCapturedBlob!.text();
-    expect(text).toContain(`"'=HYPERLINK(""http://evil.test"",""claim prize"")"`);
-    expect(text).toContain(`"'+cmd|' /C calc'!A0"`);
-    expect(text).not.toContain(",=HYPERLINK");
-    expect(text).not.toContain(",+cmd");
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("exam_roster_export_failed");
+    });
+    expect(button).toBeEnabled();
   });
 });

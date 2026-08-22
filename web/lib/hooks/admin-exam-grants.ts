@@ -8,8 +8,8 @@ import type { CrossSchoolStudent } from "@/lib/types";
 
 export const examGrantKeys = {
   all: ["admin", "examGrants"] as const,
-  search: (q?: string, schoolId?: string, jenjang?: string, grade?: string) =>
-    [...examGrantKeys.all, "search", q ?? "", schoolId ?? "", jenjang ?? "", grade ?? ""] as const,
+  search: (q?: string, schoolId?: string, jenjang?: string, grade?: string, examId?: string, cursor?: string, limit?: number) =>
+    [...examGrantKeys.all, "search", q ?? "", schoolId ?? "", jenjang ?? "", grade ?? "", examId ?? "", cursor ?? "initial", limit ?? 20] as const,
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -19,6 +19,9 @@ export interface SearchStudentsAcrossSchoolsOpts {
   schoolId?: string;
   jenjang?: string;
   grade?: string;
+  examId?: string;
+  cursor?: string;
+  limit?: number;
   enabled?: boolean;
 }
 
@@ -36,6 +39,16 @@ export interface GrantExamAccessResponse {
   }>;
 }
 
+export interface PresignedUpload {
+  url: string;
+  method: string;
+  key: string;
+}
+
+export interface EnqueueBulkResult {
+  job_id: string;
+}
+
 // ── Hooks ─────────────────────────────────────────────────────────────────
 
 /**
@@ -44,9 +57,9 @@ export interface GrantExamAccessResponse {
  * All filter params are optional.
  */
 export function useSearchStudentsAcrossSchools(opts?: SearchStudentsAcrossSchoolsOpts) {
-  const { q, schoolId, jenjang, grade, enabled } = opts ?? {};
+  const { q, schoolId, jenjang, grade, examId, cursor, limit, enabled } = opts ?? {};
   return useQuery({
-    queryKey: examGrantKeys.search(q, schoolId, jenjang, grade),
+    queryKey: examGrantKeys.search(q, schoolId, jenjang, grade, examId, cursor, limit),
     enabled: enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -54,6 +67,9 @@ export function useSearchStudentsAcrossSchools(opts?: SearchStudentsAcrossSchool
       if (schoolId) params.set("school_id", schoolId);
       if (jenjang) params.set("jenjang", jenjang);
       if (grade) params.set("grade", grade);
+      if (examId) params.set("exam_id", examId);
+      if (cursor) params.set("cursor", cursor);
+      if (limit) params.set("limit", String(limit));
       const query = params.toString();
       const path = query ? `/admin/exam-grants/students/search?${query}` : "/admin/exam-grants/students/search";
       return authFetch<{ data: CrossSchoolStudent[]; next_cursor?: string }>(path);
@@ -76,5 +92,39 @@ export function useGrantExamAccess() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: examGrantKeys.all });
     },
+  });
+}
+
+/**
+ * Request a presigned MinIO PUT URL for a super_admin exam-grant bulk CSV
+ * upload (super_admin only).
+ * POST /admin/exam-grants/bulk/presign?exam_id=&filename=&content_type=
+ */
+export function usePresignExamGrantBulkUpload(examId: string) {
+  return useMutation({
+    mutationFn: ({ filename, contentType }: { filename: string; contentType: string }) => {
+      const qs = new URLSearchParams({
+        exam_id: examId,
+        filename,
+        content_type: contentType,
+      }).toString();
+      return authFetch<PresignedUpload>(`/admin/exam-grants/bulk/presign?${qs}`, {
+        method: "POST",
+      });
+    },
+  });
+}
+
+/**
+ * Enqueue an exam-grant-bulk job for an already-uploaded CSV (super_admin only).
+ * POST /admin/exam-grants/bulk {exam_id, file_key} -> {job_id}
+ */
+export function useEnqueueExamGrantBulk() {
+  return useMutation({
+    mutationFn: ({ examId, fileKey }: { examId: string; fileKey: string }) =>
+      authFetch<EnqueueBulkResult>("/admin/exam-grants/bulk", {
+        method: "POST",
+        body: JSON.stringify({ exam_id: examId, file_key: fileKey }),
+      }),
   });
 }

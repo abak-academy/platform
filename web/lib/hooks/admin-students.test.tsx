@@ -91,6 +91,28 @@ describe("admin-students hooks", () => {
     );
   });
 
+  it("useAdminStudents passes picker eligibility and grade filters", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: undefined });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(
+      () =>
+        useAdminStudents({
+          examId: "exam-1",
+          jenjang: "SMA",
+          grade: "11",
+          limit: 20,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() =>
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        "/admin/students?limit=20&exam_id=exam-1&jenjang=SMA&grade=11",
+      ),
+    );
+  });
+
   it("useAdminStudents passes school_id when schoolId is provided", async () => {
     mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: undefined });
 

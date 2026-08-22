@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import type {
+  ExamMonitorAvailable,
   SessionMonitorResponse,
   SessionViolationLog,
   SubmitResult,
@@ -12,6 +13,7 @@ export const adminSessionsKeys = {
   all: ["adminSessions"] as const,
   monitorLists: () => [...adminSessionsKeys.all, "monitor"] as const,
   monitor: (examId: string) => [...adminSessionsKeys.monitorLists(), examId] as const,
+  monitorAvailable: () => [...adminSessionsKeys.all, "monitor-available"] as const,
   violationLists: () => [...adminSessionsKeys.all, "violations"] as const,
   violations: (sessionId: string) => [...adminSessionsKeys.violationLists(), sessionId] as const,
 };
@@ -24,6 +26,14 @@ export function useSessionMonitor(examId?: string) {
       return authFetch<SessionMonitorResponse>(`/admin/sessions/monitor?${params.toString()}`);
     },
     enabled: Boolean(examId),
+    refetchInterval: 15_000,
+  });
+}
+
+export function useAvailableExamsForMonitor() {
+  return useQuery({
+    queryKey: adminSessionsKeys.monitorAvailable(),
+    queryFn: () => authFetch<{ data: ExamMonitorAvailable[] }>("/admin/sessions/monitor/available"),
     refetchInterval: 15_000,
   });
 }

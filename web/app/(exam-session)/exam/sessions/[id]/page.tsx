@@ -11,6 +11,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import DOMPurify from "dompurify";
+import { ApiError } from "@/lib/api";
 
 import {
   useReconnectSession,
@@ -37,6 +38,7 @@ import type { SessionQuestion, SessionAnswerInput } from "@/lib/types";
 import { RichContent } from "@/components/admin/RichContent";
 import { SectionAudioPlayer } from "./section-audio-player";
 import { QUESTION_BODY_ALLOWED_TAGS } from "@/lib/question-html";
+import { optionKeyLabel } from "@/lib/option-key";
 import {
   loadQueue,
   saveQueue,
@@ -45,10 +47,46 @@ import {
   AUTOSAVE_DEBOUNCE_MS,
 } from "@/lib/exam-session-queue";
 
+function OptionKeyBadge({ optionKey }: { optionKey: string }) {
+  return (
+    <span
+      data-testid={`option-key-${optionKey}`}
+      className="w-6 shrink-0 text-center font-mono text-sm font-medium uppercase text-ink-600"
+    >
+      {optionKeyLabel(optionKey)}
+    </span>
+  );
+}
+
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+const EXPIRY_MAX_ATTEMPTS = 3;
+
+function isTransientExpiryError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return true;
+  return error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
+function isAlreadySubmittedError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "already_submitted";
+}
+
+async function retryExpiryStep<T>(action: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < EXPIRY_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await action();
+    } catch (error) {
+      if (!isTransientExpiryError(error) || attempt === EXPIRY_MAX_ATTEMPTS - 1) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, backoffDelayMs(attempt)));
+    }
+  }
+  throw new Error("expiry recovery exhausted");
 }
 
 // Identifies a queued/save-payload entry by its full content, not just its
@@ -87,15 +125,20 @@ export default function SessionPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [flagged, setFlagged] = useState<Record<string, boolean>>({});
   const [currentQIndex, setCurrentQIndex] = useState(0);
+  const [navExpanded, setNavExpanded] = useState(false);
   const [remaining, setRemaining] = useState<number>(0);
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [expiryRecoveryFailed, setExpiryRecoveryFailed] = useState(false);
   const [showViolationOverlay, setShowViolationOverlay] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">(
     "saved",
   );
   const autoSubmittedRef = useRef(false);
   const submittingRef = useRef(false);
+  const examBodyRef = useRef<HTMLDivElement>(null);
+  const questionPaneRef = useRef<HTMLDivElement>(null);
+  const navToggleRef = useRef<HTMLButtonElement>(null);
   const autoAdvanceRef = useRef(false);
   const violationCountRef = useRef(0);
   const answersRef = useRef(answers);
@@ -383,6 +426,69 @@ export default function SessionPage() {
     ? (activeTest?.duration_minutes ?? 0) > 0
     : session?.duration_minutes != null;
 
+  const runExpiryRecovery = useCallback(async () => {
+    if (!session) return;
+    setExpiryRecoveryFailed(false);
+    setSubmitting(true);
+    submittingRef.current = true;
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    clearRetryTimer();
+    pendingChangeRef.current = false;
+
+    try {
+      const payload = buildSavePayload();
+      try {
+        await retryExpiryStep(() =>
+          saveAnswers.mutateAsync({
+            answers: payload,
+            current_position: currentQIndexRef.current,
+          }),
+        );
+        clearQueue(sessionId);
+      } catch (error) {
+        if (isAlreadySubmittedError(error)) throw error;
+      }
+
+      if (isSectioned) {
+        const sectionId = session.active_test_id;
+        if (!sectionId) return;
+        const result = await retryExpiryStep(() =>
+          advanceSection.mutateAsync(sectionId),
+        );
+        if (!result.completed) {
+          setSubmitting(false);
+          submittingRef.current = false;
+          return;
+        }
+      }
+
+      await retryExpiryStep(() => submitSession.mutateAsync());
+      clearQueue(sessionId);
+      setRedirecting(true);
+      router.replace(`/exam/sessions/${sessionId}/result`);
+    } catch (error) {
+      if (isAlreadySubmittedError(error)) {
+        clearQueue(sessionId);
+        setRedirecting(true);
+        router.replace(`/exam/sessions/${sessionId}/result`);
+        return;
+      }
+      setSubmitting(false);
+      submittingRef.current = false;
+      setExpiryRecoveryFailed(true);
+    }
+  }, [
+    session,
+    isSectioned,
+    sessionId,
+    saveAnswers,
+    advanceSection,
+    submitSession,
+    router,
+    buildSavePayload,
+    clearRetryTimer,
+  ]);
+
   // Timer countdown
   useEffect(() => {
     if (!session || !hasTimer || session.status !== "in_progress" || remainingRef.current <= 0)
@@ -394,95 +500,24 @@ export default function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, hasTimer, remaining <= 0]);
 
-  // Auto-submit when timer expires (standard mode only)
+  // Start one locked recovery cycle when the active timer expires.
   useEffect(() => {
     if (
       !session ||
       !hasTimer ||
       session.status !== "in_progress" ||
-      remainingRef.current > 0 ||
-      autoSubmittedRef.current ||
-      isSectioned
+      remainingRef.current > 0
     )
       return;
-    autoSubmittedRef.current = true;
-    const doSubmit = async () => {
-      submittingRef.current = true;
-      const arr = buildSavePayload();
-      if (arr.length > 0) {
-        try {
-          await saveAnswers.mutateAsync({
-            answers: arr,
-            current_position: currentQIndexRef.current,
-          });
-        } catch {
-          /* best-effort */
-        }
-      }
-      submitSession.mutate(undefined, {
-        onSuccess: () => {
-          setRedirecting(true);
-          router.replace(`/exam/sessions/${sessionId}/result`);
-        },
-      });
-    };
-    doSubmit();
-    // `session` and `hasTimer` belong in the deps, not just `remaining <= 0`:
-    // `remaining` starts at 0, so a reconnect that lands an already-expired
-    // session (tab closed past the deadline) leaves that condition unchanged at
-    // `true` and would never re-run this effect — the student would be stranded
-    // on a 00:00 screen with every input and the submit button disabled.
-    // autoSubmittedRef keeps the extra runs from submitting twice.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remaining <= 0, session, hasTimer]);
-
-  // Auto-advance when section timer expires (sectioned mode)
-  useEffect(() => {
-    if (
-      !session ||
-      !isSectioned ||
-      !hasTimer ||
-      session.status !== "in_progress" ||
-      remainingRef.current > 0 ||
-      autoAdvanceRef.current
-    )
-      return;
-    autoAdvanceRef.current = true;
-    const doAdvance = async () => {
-      // Always attempt save before advance; answersRef reflects render-phase
-      // state and may not yet include effect-hydrated answers on first fire.
-      const arr = buildSavePayload();
-      try {
-        await saveAnswers.mutateAsync({
-          answers: arr,
-          current_position: currentQIndexRef.current,
-        });
-      } catch {
-        /* best-effort */
-      }
-      const sectionId = session.active_test_id;
-      if (!sectionId) return;
-      try {
-        const result = await advanceSection.mutateAsync(sectionId);
-        if (result.completed) {
-          // Last section — submit now
-          submitSession.mutate(undefined, {
-            onSuccess: () => {
-              setRedirecting(true);
-              router.replace(`/exam/sessions/${sessionId}/result`);
-            },
-          });
-        }
-        // Non-last section: cache invalidation refetches session,
-        // init effect picks up the new active section's timer.
-      } catch {
-        // Allow retry on failure
-        autoAdvanceRef.current = false;
-      }
-    };
-    doAdvance();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remaining <= 0, isSectioned]);
+    if (isSectioned) {
+      if (autoAdvanceRef.current) return;
+      autoAdvanceRef.current = true;
+    } else {
+      if (autoSubmittedRef.current) return;
+      autoSubmittedRef.current = true;
+    }
+    void runExpiryRecovery();
+  }, [remaining <= 0, isSectioned, runExpiryRecovery, session, hasTimer]);
 
   // Violation logging
   useEffect(() => {
@@ -557,6 +592,13 @@ export default function SessionPage() {
     (index: number) => {
       setCurrentQIndex(index);
       scheduleAutosave();
+      for (const el of [examBodyRef.current, questionPaneRef.current]) {
+        if (typeof el?.scrollTo === "function") {
+          el.scrollTo({ top: 0 });
+        } else if (el) {
+          el.scrollTop = 0;
+        }
+      }
     },
     [scheduleAutosave],
   );
@@ -680,14 +722,21 @@ export default function SessionPage() {
     : currentTestTitle;
 
   return (
-    <div data-testid="exam-overlay" className="fixed inset-0 z-40 flex flex-col bg-background">
+    // Dynamic viewport height keeps the exam shell clear of mobile browser chrome.
+    <div
+      data-testid="exam-overlay"
+      className="fixed inset-0 z-40 flex h-[100dvh] flex-col bg-background"
+    >
       {/* Top bar */}
       <div
         data-testid="exam-top-bar"
-        className="flex shrink-0 items-center gap-4 border-b border-line bg-surface-2 px-5 py-3"
+        className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface-2 px-4 py-2.5 lg:px-5 lg:py-3"
       >
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-ink-900">
+        <div className="min-w-0 w-full shrink-0 sm:w-auto sm:flex-1 sm:shrink">
+          <div
+            data-testid="exam-title"
+            className="truncate text-sm font-semibold text-ink-900"
+          >
             {examTitle}
           </div>
           {isSectioned && (
@@ -696,8 +745,7 @@ export default function SessionPage() {
             </div>
           )}
         </div>
-        <div className="flex-1" />
-        <div className="whitespace-nowrap text-xs text-ink-500">
+        <div className="ml-auto whitespace-nowrap text-xs text-ink-500">
           {answeredCount}/{questionsToShow.length}{" "}
           {t("session_legend_answered").toLowerCase()}
         </div>
@@ -713,7 +761,7 @@ export default function SessionPage() {
         </div>
         {hasTimer && (
           <div
-            className={`rounded-md px-3 py-1 text-lg font-mono font-bold ${
+            className={`rounded-md px-2 py-0.5 text-base font-mono font-bold lg:px-3 lg:py-1 lg:text-lg ${
               timerExpired
                 ? "bg-danger-bg text-danger"
                 : "bg-surface-2 text-ink-900"
@@ -737,11 +785,16 @@ export default function SessionPage() {
 
       {/* Body: question pane (1fr) + nav rail (280px) */}
       <div
+        ref={examBodyRef}
         data-testid="exam-body"
-        className="grid flex-1 grid-cols-[1fr_280px] overflow-hidden"
+        className="grid flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_280px] lg:overflow-hidden"
       >
         {/* Question pane */}
-        <div className="overflow-y-auto px-6 py-6">
+        <div
+          ref={questionPaneRef}
+          data-testid="exam-question-pane"
+          className="px-4 py-4 lg:overflow-y-auto lg:px-6 lg:py-6"
+        >
           <div className="mx-auto max-w-3xl">
             {/* Section rail (sectioned mode only) */}
             {isSectioned && (
@@ -809,6 +862,7 @@ export default function SessionPage() {
                   variant={isFlagged ? "default" : "outline"}
                   size="sm"
                   onClick={() => toggleFlag(currentQ.id)}
+                  disabled={timerExpired}
                 >
                   <Flag className="size-3.5" />
                   {isFlagged ? t("unflag") : t("flag")}
@@ -867,58 +921,92 @@ export default function SessionPage() {
         {/* Nav rail */}
         <div
           data-testid="exam-nav-rail"
-          className="overflow-y-auto border-l border-line bg-surface-2 p-5"
+          className="border-t border-line bg-surface-2 p-4 lg:overflow-y-auto lg:border-t-0 lg:border-l lg:p-5"
         >
-          <div className="grid grid-cols-5 gap-2">
-            {questionsToShow.map((q, i) => {
-              const hasAnswer = answers[q.id] != null;
-              const isFlagQ = flagged[q.id] ?? false;
-              const isCurrent = i === currentQIndex;
+          <button
+            ref={navToggleRef}
+            type="button"
+            data-testid="exam-nav-toggle"
+            aria-expanded={navExpanded}
+            aria-controls="exam-nav-panel"
+            onClick={() => setNavExpanded((expanded) => !expanded)}
+            className="flex min-h-11 w-full items-center justify-center rounded-md border border-line bg-surface px-3 text-sm font-medium text-ink-700 lg:hidden"
+          >
+            {t("session_question")} {Math.min(currentQIndex + 1, questionsToShow.length)}/{questionsToShow.length}{" "}
+            · {answeredCount} {t("session_legend_answered").toLowerCase()}
+          </button>
+          <div
+            id="exam-nav-panel"
+            className={`${navExpanded ? "block" : "hidden"} lg:block`}
+          >
+            <div className="grid grid-cols-5 gap-2">
+              {questionsToShow.map((q, i) => {
+                const hasAnswer = answers[q.id] != null;
+                const isFlagQ = flagged[q.id] ?? false;
+                const isCurrent = i === currentQIndex;
 
-              let cellClass = "flex size-8 items-center justify-center rounded-md text-xs font-medium transition-colors";
-              if (isCurrent) {
-                cellClass += " bg-brand-600 text-white";
-              } else if (hasAnswer && isFlagQ) {
-                cellClass += " border border-warning/30 bg-warning-bg text-warning";
-              } else if (hasAnswer) {
-                cellClass += " bg-brand-50 text-brand-700";
-              } else if (isFlagQ) {
-                cellClass += " border border-warning/30 text-warning";
-              } else {
-                cellClass += " bg-surface-2 text-ink-600 hover:bg-surface-3";
-              }
+                let cellClass =
+                  "flex size-10 items-center justify-center rounded-md text-xs font-medium transition-colors lg:size-8";
+                if (isCurrent) {
+                  cellClass += " bg-brand-600 text-white";
+                } else if (hasAnswer && isFlagQ) {
+                  cellClass +=
+                    " border border-warning/30 bg-warning-bg text-warning";
+                } else if (hasAnswer) {
+                  cellClass += " bg-brand-50 text-brand-700";
+                } else if (isFlagQ) {
+                  cellClass += " border border-warning/30 text-warning";
+                } else {
+                  cellClass += " bg-surface-2 text-ink-600 hover:bg-surface-3";
+                }
 
-              return (
-                <button
-                  key={q.id}
-                  type="button"
-                  onClick={() => goToQuestion(i)}
-                  className={cellClass}
-                  data-testid={`session-nav-${i}`}
-                >
-                  {i + 1}
-                </button>
-              );
-            })}
-          </div>
+                return (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => {
+                      goToQuestion(i);
+                      setNavExpanded(false);
+                      navToggleRef.current?.focus({ preventScroll: true });
+                    }}
+                    className={cellClass}
+                    data-testid={`session-nav-${i}`}
+                  >
+                    {i + 1}
+                  </button>
+                );
+              })}
+            </div>
 
-          {/* Legend */}
-          <div className="mt-5 flex flex-col gap-2">
-            <LegendItem
-              swatchClassName="bg-brand-600"
-              label={t("session_legend_answered")}
-            />
-            <LegendItem
-              swatchClassName="border border-line bg-surface"
-              label={t("session_legend_not_answered")}
-            />
-            <LegendItem
-              swatchClassName="border border-warning/30 bg-warning-bg"
-              label={t("session_legend_flagged")}
-            />
+            {/* Legend */}
+            <div className="mt-5 flex flex-col gap-2">
+              <LegendItem
+                swatchClassName="bg-brand-600"
+                label={t("session_legend_answered")}
+              />
+              <LegendItem
+                swatchClassName="border border-line bg-surface"
+                label={t("session_legend_not_answered")}
+              />
+              <LegendItem
+                swatchClassName="border border-warning/30 bg-warning-bg"
+                label={t("session_legend_flagged")}
+              />
+            </div>
           </div>
         </div>
       </div>
+
+      {expiryRecoveryFailed && (
+        <Card className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 border-danger/30 px-4 py-3">
+          <span className="text-sm text-ink-700">
+            {t("session_expiry_recovery_failed")}
+          </span>
+          <Button size="sm" onClick={runExpiryRecovery}>
+            {t("retry")}
+          </Button>
+        </Card>
+      )}
 
       {/* Submit confirmation dialog */}
       <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
@@ -1235,12 +1323,13 @@ function renderAnswerInput(
         {options.map((opt) => (
           <label
             key={opt.key}
-            className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+            className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
               currentValue === opt.key
                 ? "border-brand-500 bg-brand-50"
                 : "border-line hover:bg-surface-2"
             } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
           >
+            <OptionKeyBadge optionKey={opt.key} />
             <input
               type="radio"
               name={`q-${question.id}`}
@@ -1250,7 +1339,7 @@ function renderAnswerInput(
               disabled={disabled}
               className="size-4 accent-brand-600"
             />
-            <div className="text-sm text-ink-800">
+            <div className="min-w-0 flex-1 break-words text-sm text-ink-800">
               <RichContent html={sanitizeForRichContent(opt.text)} />
             </div>
           </label>
@@ -1274,12 +1363,13 @@ function renderAnswerInput(
         {options.map((opt) => (
           <label
             key={opt.key}
-            className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+            className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
               selectedKeys.includes(opt.key)
                 ? "border-brand-500 bg-brand-50"
                 : "border-line hover:bg-surface-2"
             } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
           >
+            <OptionKeyBadge optionKey={opt.key} />
             <input
               type="checkbox"
               checked={selectedKeys.includes(opt.key)}
@@ -1287,7 +1377,7 @@ function renderAnswerInput(
               disabled={disabled}
               className="size-4 accent-brand-600"
             />
-            <div className="text-sm text-ink-800">
+            <div className="min-w-0 flex-1 break-words text-sm text-ink-800">
               <RichContent html={sanitizeForRichContent(opt.text)} />
             </div>
           </label>

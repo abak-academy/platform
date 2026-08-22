@@ -11,16 +11,16 @@ import type {
 
 export const adminStudentsKeys = {
   all: ["admin", "students"] as const,
-  list: (status?: string, q?: string, cursor?: string, limit?: number, schoolId?: string) =>
-    [...adminStudentsKeys.all, "list", status ?? "all", q ?? "", cursor ?? "initial", limit ?? 20, schoolId ?? ""] as const,
+  list: (status?: string, q?: string, cursor?: string, limit?: number, schoolId?: string, examId?: string, jenjang?: string, grade?: string) =>
+    [...adminStudentsKeys.all, "list", status ?? "all", q ?? "", cursor ?? "initial", limit ?? 20, schoolId ?? "", examId ?? "", jenjang ?? "", grade ?? ""] as const,
 };
 
 export function useAdminStudents(
-  opts?: { status?: string; q?: string; cursor?: string; limit?: number; schoolId?: string; enabled?: boolean }
+  opts?: { status?: string; q?: string; cursor?: string; limit?: number; schoolId?: string; examId?: string; jenjang?: string; grade?: string; enabled?: boolean }
 ) {
-  const { status, q, cursor, limit, schoolId, enabled } = opts ?? {};
+  const { status, q, cursor, limit, schoolId, examId, jenjang, grade, enabled } = opts ?? {};
   return useQuery({
-    queryKey: adminStudentsKeys.list(status, q, cursor, limit, schoolId),
+    queryKey: adminStudentsKeys.list(status, q, cursor, limit, schoolId, examId, jenjang, grade),
     enabled: enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -29,6 +29,9 @@ export function useAdminStudents(
       if (cursor) params.set("cursor", cursor);
       if (limit) params.set("limit", String(limit));
       if (schoolId) params.set("school_id", schoolId);
+      if (examId) params.set("exam_id", examId);
+      if (jenjang) params.set("jenjang", jenjang);
+      if (grade) params.set("grade", grade);
       const query = params.toString();
       const path = query ? `/admin/students?${query}` : "/admin/students";
       return authFetch<{ data: AdminStudent[]; next_cursor?: string }>(path);

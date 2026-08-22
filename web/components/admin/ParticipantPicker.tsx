@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, Check, Loader2, X } from "lucide-react";
-import { toast } from "sonner";
-import { useTranslation, type Lang } from "@/lib/i18n";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, Check, Loader2 } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +20,9 @@ import { cn } from "@/lib/utils";
 import type { AdminStudent } from "@/lib/types";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
 
+const ALL_FILTER_VALUE = "__all__";
+const GRADE_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1));
+
 // ── Debounce helper ───────────────────────────────────────────────────────
 
 function useDebouncedValue(value: string, delay: number): string {
@@ -35,21 +37,24 @@ function useDebouncedValue(value: string, delay: number): string {
 // ── ParticipantPicker ─────────────────────────────────────────────────────
 
 export interface ParticipantPickerProps {
+  examId: string;
   schoolId?: string;
   selected: string[];
   onChange: (ids: string[]) => void;
 }
 
 export function ParticipantPicker({
+  examId,
   schoolId,
   selected,
   onChange,
 }: ParticipantPickerProps) {
-  const { t, lang } = useTranslation();
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [jenjangFilter, setJenjangFilter] = useState("");
   const [gradeFilter, setGradeFilter] = useState("");
   const [schoolFilter, setSchoolFilter] = useState("");
+  const [selectingAllKey, setSelectingAllKey] = useState<string | null>(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
@@ -57,62 +62,86 @@ export function ParticipantPicker({
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
 
-  // Build query input for the hook
+  const filterKey = [examId, schoolId, debouncedSearch, jenjangFilter, gradeFilter, schoolFilter].join("|");
+  const [page, setPage] = useState<{ key: string; cursor?: string }>({ key: filterKey });
+  const cursor = page.key === filterKey ? page.cursor : undefined;
+  const [accumulated, setAccumulated] = useState<{ key: string; data: AdminStudent[] }>({
+    key: filterKey,
+    data: [],
+  });
+
   const queryOpts = {
     q: debouncedSearch || undefined,
     jenjang: jenjangFilter || undefined,
     grade: gradeFilter || undefined,
     schoolId: schoolFilter || undefined,
-    enabled: schoolId ? Boolean(schoolId) : true,
+    examId,
+    cursor,
+    limit: 20,
+    enabled: !schoolId,
   };
 
-  let students: AdminStudent[];
-  let isLoading: boolean;
-  let isError: boolean;
+  const scopedQuery = useAdminStudents({
+    q: debouncedSearch || undefined,
+    schoolId,
+    examId,
+    jenjang: jenjangFilter || undefined,
+    grade: gradeFilter || undefined,
+    cursor,
+    limit: 20,
+    enabled: Boolean(schoolId),
+  });
+  const crossQuery = useSearchStudentsAcrossSchools(queryOpts);
+  const activeQuery = schoolId ? scopedQuery : crossQuery;
+  const students = accumulated.key === filterKey ? accumulated.data : [];
+  const nextCursor = activeQuery.data?.next_cursor;
+  const { isLoading, isError } = activeQuery;
 
-  if (schoolId) {
-    // School-scoped: use existing useAdminStudents with schoolId
-    // We need to call the hook unconditionally, then pass schoolId
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const scopedQuery = useAdminStudents({
-      q: debouncedSearch || undefined,
-      schoolId,
-      enabled: Boolean(schoolId),
+  useEffect(() => {
+    if (!activeQuery.data) return;
+    setAccumulated((current) => {
+      const existing = current.key === filterKey && cursor ? current.data : [];
+      const rows = [...existing, ...activeQuery.data.data];
+      return {
+        key: filterKey,
+        data: [...new Map(rows.map((student) => [student.id, student])).values()],
+      };
     });
-    students = scopedQuery.data?.data ?? [];
-    isLoading = scopedQuery.isLoading;
-    isError = scopedQuery.isError;
+  }, [activeQuery.data, cursor, filterKey]);
 
-    // Client-side filter for jenjang/grade since useAdminStudents doesn't support them as params
-    if (jenjangFilter) {
-      students = students.filter((s) => s.jenjang === jenjangFilter);
+  useEffect(() => {
+    if (selectingAllKey !== filterKey || !activeQuery.data) return;
+    const merged = [
+      ...new Set([
+        ...selectedRef.current,
+        ...activeQuery.data.data.map((student) => student.id),
+      ]),
+    ];
+    selectedRef.current = merged;
+    onChange(merged);
+    if (activeQuery.data.next_cursor) {
+      setPage({ key: filterKey, cursor: activeQuery.data.next_cursor });
+    } else {
+      setSelectingAllKey(null);
     }
-    if (gradeFilter) {
-      students = students.filter(
-        (s) => String(s.grade ?? "") === gradeFilter,
-      );
-    }
-  } else {
-    // Cross-school: use search-across-schools hook
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const crossQuery = useSearchStudentsAcrossSchools(queryOpts);
-    students = crossQuery.data?.data ?? [];
-    isLoading = crossQuery.isLoading;
-    isError = crossQuery.isError;
-  }
+  }, [activeQuery.data, filterKey, onChange, selectingAllKey]);
 
   // Unique jenjang/grade values from fetched students
   const facetedJenjang = useMemo(() => {
-    const set = new Set(students.map((s) => s.jenjang).filter(Boolean));
+    const set = new Set([
+      ...students.map((s) => s.jenjang).filter(Boolean),
+      ...JENJANG_OPTIONS,
+    ]);
     return [...set].sort();
   }, [students]);
 
   const facetedGrade = useMemo(() => {
-    const set = new Set(
-      students
+    const set = new Set([
+      ...students
         .map((s) => (s.grade != null ? String(s.grade) : ""))
         .filter(Boolean),
-    );
+      ...GRADE_OPTIONS,
+    ]);
     return [...set].sort((a, b) => Number(a) - Number(b));
   }, [students]);
 
@@ -127,20 +156,15 @@ export function ParticipantPicker({
     const allIds = students.map((s) => s.id);
     const current = selectedRef.current;
     const merged = [...new Set([...current, ...allIds])];
+    selectedRef.current = merged;
     onChange(merged);
+    if (nextCursor) setSelectingAllKey(filterKey);
   }
 
   function deselectAll() {
-    const allIds = new Set(students.map((s) => s.id));
-    const remaining = selectedRef.current.filter(
-      (id) => !allIds.has(id),
-    );
-    onChange(remaining);
+    selectedRef.current = [];
+    onChange([]);
   }
-
-  const selectableCount = selected.filter((id) =>
-    students.some((s) => s.id === id),
-  ).length;
 
   return (
     <div className="space-y-4">
@@ -156,14 +180,17 @@ export function ParticipantPicker({
           />
         </div>
 
-        <Select value={jenjangFilter} onValueChange={setJenjangFilter}>
+        <Select
+          value={jenjangFilter || ALL_FILTER_VALUE}
+          onValueChange={(value) => setJenjangFilter(value === ALL_FILTER_VALUE ? "" : value)}
+        >
           <SelectTrigger className="h-9 w-[130px] text-xs">
             <SelectValue>
               {jenjangFilter || t("students_field_jenjang")}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">
+            <SelectItem value={ALL_FILTER_VALUE}>
               <span className="text-ink-500">{t("students_field_jenjang")}</span>
             </SelectItem>
             {facetedJenjang.map((j) => (
@@ -171,24 +198,20 @@ export function ParticipantPicker({
                 {j}
               </SelectItem>
             ))}
-            {!schoolId &&
-              facetedJenjang.length === 0 &&
-              JENJANG_OPTIONS.map((j) => (
-                <SelectItem key={j} value={j}>
-                  {j}
-                </SelectItem>
-              ))}
           </SelectContent>
         </Select>
 
-        <Select value={gradeFilter} onValueChange={setGradeFilter}>
+        <Select
+          value={gradeFilter || ALL_FILTER_VALUE}
+          onValueChange={(value) => setGradeFilter(value === ALL_FILTER_VALUE ? "" : value)}
+        >
           <SelectTrigger className="h-9 w-[110px] text-xs">
             <SelectValue>
               {gradeFilter || t("students_field_grade")}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">
+            <SelectItem value={ALL_FILTER_VALUE}>
               <span className="text-ink-500">{t("students_field_grade")}</span>
             </SelectItem>
             {facetedGrade.map((g) => (
@@ -209,12 +232,12 @@ export function ParticipantPicker({
       <div className="flex items-center justify-between text-xs text-ink-500">
         <span>
           {t("participant_picker_selected_count")
-            .replace("{selected}", String(selectableCount))
-            .replace("{total}", String(students.length))}
+            .replace("{selected}", String(selected.length))}
         </span>
         <div className="flex gap-2">
           <button
             onClick={selectAll}
+            disabled={selectingAllKey === filterKey}
             className="font-medium text-brand-600 hover:underline"
           >
             {t("participant_picker_select_all")}
@@ -289,6 +312,18 @@ export function ParticipantPicker({
             </button>
           );
         })}
+        {nextCursor && !isLoading && (
+          <div className="flex justify-center pt-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setPage({ key: filterKey, cursor: nextCursor })}
+            >
+              {t("sys_load_more")}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -308,12 +343,15 @@ function SchoolFacetSelect({
   const schools = useMemo(() => schoolsData?.data ?? [], [schoolsData]);
 
   return (
-    <Select value={value} onValueChange={onValueChange}>
+    <Select
+      value={value || ALL_FILTER_VALUE}
+      onValueChange={(next) => onValueChange(next === ALL_FILTER_VALUE ? "" : next)}
+    >
       <SelectTrigger className="h-9 w-[180px] text-xs">
         <SelectValue placeholder={t("select_school")} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="">
+        <SelectItem value={ALL_FILTER_VALUE}>
           <span className="text-ink-500">{t("select_school")}</span>
         </SelectItem>
         <SelectItem value="none">{t("students_school_facet_none")}</SelectItem>

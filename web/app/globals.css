@@ -288,3 +288,7 @@ html[data-theme="dark"] {
 [data-rich-content] p:empty::before {
   content: "\00a0";
 }
+[data-rich-content] img {
+  max-width: 100%;
+  height: auto;
+}

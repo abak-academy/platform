@@ -1114,6 +1114,16 @@ func (h *Handler) AdminGetSessionMonitor(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+// AdminListExamsForMonitor returns exams currently within their scheduled window (or
+// recently ended), with registration counts, for the Session Monitor's exam picker.
+func (h *Handler) AdminListExamsForMonitor(c echo.Context) error {
+	items, err := h.svc.ListExamsForMonitor(c.Request().Context())
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": items})
+}
+
 // AdminGetSessionViolations returns the violation log for a session, newest-first. FR-8.
 func (h *Handler) AdminGetSessionViolations(c echo.Context) error {
 	sessionID := c.Param("id")
