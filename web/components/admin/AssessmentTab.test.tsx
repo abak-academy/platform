@@ -150,10 +150,6 @@ describe("AssessmentTab", () => {
               question_id: "question-1",
               body: "2 + 2 = ?",
               format: "mcq",
-              options: [
-                { key: "A", text: "Tiga", is_correct: false },
-                { key: "B", text: "Empat", is_correct: true },
-              ],
               your_answer: "A",
               correct_answer: "B",
               is_correct: false,
@@ -225,9 +221,10 @@ describe("AssessmentTab", () => {
       expect(screen.getByText("8")).toBeInTheDocument();
       expect(screen.getByText(/Percobaan 2/)).toBeInTheDocument();
       expect(screen.getByText("2 + 2 = ?")).toBeInTheDocument();
-      expect(screen.getByText("Tiga")).toBeInTheDocument();
-      expect(screen.getByText("Empat")).toBeInTheDocument();
+      expect(screen.queryByText("Tiga")).not.toBeInTheDocument();
+      expect(screen.queryByText("Empat")).not.toBeInTheDocument();
       expect(screen.getByText(/Jawaban Anda|Your answer/i)).toBeInTheDocument();
+      expect(screen.getByText(/Jawaban Benar|Correct answer/i)).toBeInTheDocument();
       expect(screen.getByText("Empat adalah jawaban yang benar.")).toBeInTheDocument();
       expect(mockAuthFetch).toHaveBeenCalledWith("/admin/results/session-latest");
     });

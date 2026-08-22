@@ -461,29 +461,6 @@ function QuestionReviewCard({
         <span>{formatChoiceAnswer(item.your_answer, item.format) || "—"}</span>
       </div>
       <div className="font-medium text-ink-900"><RichContent html={item.body} /></div>
-      {item.options && item.options.length > 0 && (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {item.options.map((option) => {
-            const selected = answerIncludes(item.your_answer, option.key);
-            const optionClass = option.is_correct
-              ? "border-success bg-success-bg"
-              : selected
-                ? "border-danger bg-danger-bg"
-                : "border-line bg-surface";
-            return (
-              <div key={option.key} className={`rounded-lg border px-3 py-2 ${optionClass}`}>
-                <div className="flex items-start gap-2">
-                  <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-card text-[11px] font-bold text-ink-800">{option.key.toUpperCase()}</span>
-                  <div className="min-w-0 flex-1 text-ink-800">
-                    <RichContent html={option.text} />
-                    {option.image_url && <img src={option.image_url} alt="" className="mt-2 max-h-24 rounded-md object-contain" />}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
       <div className="mt-3 grid gap-2 text-ink-700 sm:grid-cols-2">
         <p>{t("result_your_answer")}: <span className="font-semibold text-ink-900">{formatChoiceAnswer(item.your_answer, item.format) || "—"}</span></p>
         {item.is_correct === false && (
@@ -493,13 +470,6 @@ function QuestionReviewCard({
       {item.explanation && <p className="mt-3 rounded-lg bg-card/70 px-3 py-2 text-ink-700">{item.explanation}</p>}
     </div>
   );
-}
-
-function answerIncludes(answer: string | null | undefined, key: string): boolean {
-  return (answer ?? "")
-    .split(",")
-    .map((part) => part.trim().toUpperCase())
-    .includes(key.trim().toUpperCase());
 }
 function MetricCard({ value, label, tone }: { value: number; label: string; tone?: "success" | "danger" }) {
   const bg = tone === "success" ? "bg-success-bg" : tone === "danger" ? "bg-danger-bg" : "bg-surface-2";

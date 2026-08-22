@@ -158,10 +158,6 @@ async function mockBackend(page: Page) {
               question_id: "question-1",
               body: "2 + 2 = ?",
               format: "mcq",
-              options: [
-                { key: "A", text: "Tiga", is_correct: false },
-                { key: "B", text: "Empat", is_correct: true },
-              ],
               your_answer: "B",
               correct_answer: "B",
               is_correct: true,

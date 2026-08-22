@@ -160,7 +160,6 @@ func buildPembahasan(tests []model.TestDetail, answers []model.ExamSessionAnswer
 				TestTitle:     td.Test.Title,
 				Body:          q.Question.Body,
 				Format:        q.Question.Format,
-				Options:       pembahasanOptions(q.Options),
 				YourAnswer:    a.Answer,
 				CorrectAnswer: correctAnswerText(q.Question, q.Options),
 				IsCorrect:     a.IsCorrect,
@@ -169,23 +168,6 @@ func buildPembahasan(tests []model.TestDetail, answers []model.ExamSessionAnswer
 		}
 	}
 	return items
-}
-
-func pembahasanOptions(options []model.QuestionOption) []model.ResultPembahasanOption {
-	if len(options) == 0 {
-		return nil
-	}
-	out := make([]model.ResultPembahasanOption, 0, len(options))
-	for _, o := range options {
-		out = append(out, model.ResultPembahasanOption{
-			Key:       o.Key,
-			Text:      o.Text,
-			ImageURL:  o.ImageURL,
-			IsCorrect: o.IsCorrect,
-		})
-	}
-	sort.SliceStable(out, func(i, j int) bool { return strings.ToUpper(out[i].Key) < strings.ToUpper(out[j].Key) })
-	return out
 }
 
 // correctAnswerText derives the displayable correct answer per format: the correct option
