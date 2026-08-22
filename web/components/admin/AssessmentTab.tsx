@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, Eye, Loader2 } from "lucide-react";
+import { CheckCircle2, ChevronDown, Circle, Download, Eye, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { RichContent } from "@/components/admin/RichContent";
@@ -22,11 +22,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
-import { useAssessment } from "@/lib/hooks/admin-assessment";
+import { useAssessment, useAssessmentAttempts } from "@/lib/hooks/admin-assessment";
 import { exportAdminResults, useAdminResultDetail } from "@/lib/hooks/admin-results";
 import { useSchools } from "@/lib/hooks/students";
 import { formatChoiceAnswer } from "@/lib/option-key";
-import type { AdminResultDetail, AssessmentRow, AssessmentSummary } from "@/lib/types";
+import type { AdminResultDetail, AssessmentAttempt, AssessmentRow, AssessmentSummary } from "@/lib/types";
 
 interface AssessmentTabProps {
   examId: string;
@@ -43,6 +43,12 @@ function useDebouncedValue(value: string, delay: number): string {
   return debounced;
 }
 
+function statusLabelKey(status: string): "assessment_status_completed" | "assessment_status_in_progress" | "assessment_status_not_started" {
+  if (status === "completed" || status === "submitted") return "assessment_status_completed";
+  if (status === "in_progress") return "assessment_status_in_progress";
+  return "assessment_status_not_started";
+}
+
 export function AssessmentTab({ examId }: AssessmentTabProps) {
   const { t, lang } = useTranslation();
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
@@ -57,6 +63,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [stableSummary, setStableSummary] = useState<AssessmentSummary | null>(null);
   const [selectedRegistrationId, setSelectedRegistrationId] = useState("");
+  const [selectedSessionId, setSelectedSessionId] = useState("");
 
   const filterKey = `${examId}:${debouncedSearch}:${selectedSchoolId}`;
   const filterKeyRef = useRef(filterKey);
@@ -67,6 +74,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
       setActiveCursor(undefined);
       setNextCursor(undefined);
       setSelectedRegistrationId("");
+      setSelectedSessionId("");
       filterKeyRef.current = filterKey;
     }
   }, [filterKey]);
@@ -97,9 +105,17 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
   }, [query.data, filterKey]);
 
   const selectedRow = accumulated.find((r) => r.registration_id === selectedRegistrationId);
-  const selectedSessionId = selectedRow?.latest_session_id ?? "";
+  const attempts = useAssessmentAttempts(examId, selectedRegistrationId);
   const detail = useAdminResultDetail(selectedSessionId);
   const summary = query.data?.summary ?? stableSummary;
+
+  useEffect(() => {
+    if (!selectedRow) {
+      setSelectedSessionId("");
+      return;
+    }
+    setSelectedSessionId(selectedRow.latest_session_id ?? "");
+  }, [selectedRow?.registration_id, selectedRow?.latest_session_id]);
 
   const [exporting, setExporting] = useState(false);
   const handleExport = async () => {
@@ -254,13 +270,21 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
                   </p>
                   <p className="text-xs text-ink-500">{selectedRow.school_name || "-"}</p>
                 </div>
+                <AttemptSelector
+                  attempts={attempts.data?.data ?? []}
+                  isLoading={attempts.isLoading}
+                  selectedSessionId={selectedSessionId}
+                  onSelect={setSelectedSessionId}
+                  t={t}
+                  dateLocale={dateLocale}
+                />
                 {detail.isLoading ? (
                   <div className="py-8 text-center text-ink-500">{t("sys_loading_data")}</div>
                 ) : detail.data ? (
                   <ResultDetailPanel detail={detail.data} t={t} dateLocale={dateLocale} />
-                ) : (
+                ) : selectedSessionId ? (
                   <div className="py-8 text-center text-ink-500">{t("sys_error_load")}</div>
-                )}
+                ) : null}
               </div>
             )}
           </div>
@@ -280,6 +304,60 @@ function SummaryCard({ label, value, caption }: { label: string; value: string |
   );
 }
 
+function AttemptSelector({
+  attempts,
+  isLoading,
+  selectedSessionId,
+  onSelect,
+  t,
+  dateLocale,
+}: {
+  attempts: AssessmentAttempt[];
+  isLoading: boolean;
+  selectedSessionId: string;
+  onSelect: (sessionId: string) => void;
+  t: ReturnType<typeof useTranslation>["t"];
+  dateLocale: string;
+}) {
+  if (isLoading) {
+    return <div className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm text-ink-500">{t("sys_loading_data")}</div>;
+  }
+  if (attempts.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-semibold text-ink-900">{t("assessment_col_attempts")}</h4>
+      {attempts.map((attempt) => {
+        const selected = attempt.session_id === selectedSessionId;
+        return (
+          <div
+            key={attempt.session_id}
+            className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm ${selected ? "border-primary bg-primary/5" : "border-line bg-card"}`}
+          >
+            <div>
+              <div className="font-medium text-ink-900">
+                {t("assessment_attempt_number")} {attempt.attempt_number}
+                {attempt.is_latest && <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{t("assessment_latest_badge")}</span>}
+              </div>
+              <div className="text-xs text-ink-500">
+                {t(statusLabelKey(attempt.status))} · {attempt.submitted_at ? new Date(attempt.submitted_at).toLocaleString(dateLocale, { day: "2-digit", month: "short", year: "numeric" }) : "-"} · {t("assessment_col_violations")}: {attempt.violations}
+              </div>
+            </div>
+            {attempt.result_available ? (
+              <Button variant={selected ? "default" : "outline"} size="sm" onClick={() => onSelect(attempt.session_id)}>
+                {t("action_view")}
+              </Button>
+            ) : (
+              <span className="text-xs text-ink-600">{t("assessment_attempt_unavailable")}</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
 function ResultDetailPanel({
   detail,
   t,
@@ -289,6 +367,8 @@ function ResultDetailPanel({
   t: ReturnType<typeof useTranslation>["t"];
   dateLocale: string;
 }) {
+  const [openQuestions, setOpenQuestions] = useState<Record<string, boolean>>({});
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-4 gap-2 text-center text-xs">
@@ -320,15 +400,19 @@ function ResultDetailPanel({
         <div>
           <h4 className="mb-2 text-sm font-semibold text-ink-900">{t("result_pembahasan")}</h4>
           <div className="max-h-80 space-y-2 overflow-y-auto">
-            {detail.pembahasan.map((p, index) => (
-              <div key={p.question_id} className="rounded-md border border-line bg-surface-2 px-3 py-2 text-xs">
-                <div className="mb-1 font-semibold text-ink-900">#{index + 1}</div>
-                <div className="font-medium text-ink-900"><RichContent html={p.body} /></div>
-                <p className="mt-1 text-ink-600">{t("result_your_answer")}: {formatChoiceAnswer(p.your_answer, p.format) || "—"}</p>
-                <p className="text-ink-600">{t("result_correct_answer")}: {formatChoiceAnswer(p.correct_answer, p.format) || "—"}</p>
-                {p.explanation && <p className="mt-1 text-ink-500 italic">{p.explanation}</p>}
-              </div>
-            ))}
+            {detail.pembahasan.map((p, index) => {
+              const isOpen = openQuestions[p.question_id] ?? index === 0;
+              return (
+                <QuestionReviewCard
+                  key={p.question_id}
+                  item={p}
+                  index={index}
+                  isOpen={isOpen}
+                  onToggle={() => setOpenQuestions((prev) => ({ ...prev, [p.question_id]: !isOpen }))}
+                  t={t}
+                />
+              );
+            })}
           </div>
         </div>
       )}
@@ -336,6 +420,84 @@ function ResultDetailPanel({
   );
 }
 
+function QuestionReviewCard({
+  item,
+  index,
+  isOpen,
+  onToggle,
+  t,
+}: {
+  item: NonNullable<AdminResultDetail["pembahasan"]>[number];
+  index: number;
+  isOpen: boolean;
+  onToggle: () => void;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  const tone = item.is_correct === true ? "correct" : item.is_correct === false ? "wrong" : "empty";
+  const toneClass = tone === "correct"
+    ? "border-success/30 bg-success-bg"
+    : tone === "wrong"
+      ? "border-danger/30 bg-danger-bg"
+      : "border-line bg-surface-2";
+  const icon = tone === "correct"
+    ? <CheckCircle2 className="size-4 text-success" />
+    : tone === "wrong"
+      ? <XCircle className="size-4 text-danger" />
+      : <Circle className="size-4 text-ink-500" />;
+
+  return (
+    <div className={`rounded-xl border ${toneClass} text-xs`}>
+      <button type="button" className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onClick={onToggle}>
+        <span className="flex min-w-0 items-center gap-2 font-semibold text-ink-900">
+          {icon}
+          <span>#{index + 1}</span>
+          <span className="truncate text-ink-700">{formatChoiceAnswer(item.your_answer, item.format) || "—"}</span>
+        </span>
+        <ChevronDown className={`size-4 shrink-0 text-ink-500 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+      {isOpen && (
+        <div className="space-y-3 border-t border-line/60 bg-card/70 px-4 py-3">
+          <div className="font-medium text-ink-900"><RichContent html={item.body} /></div>
+          {item.options && item.options.length > 0 ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {item.options.map((option) => {
+                const selected = answerIncludes(item.your_answer, option.key);
+                const optionClass = option.is_correct
+                  ? "border-success bg-success-bg"
+                  : selected
+                    ? "border-danger bg-danger-bg"
+                    : "border-line bg-surface";
+                return (
+                  <div key={option.key} className={`rounded-lg border px-3 py-2 ${optionClass}`}>
+                    <div className="flex items-start gap-2">
+                      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-card text-[11px] font-bold text-ink-800">{option.key.toUpperCase()}</span>
+                      <div className="min-w-0 flex-1 text-ink-800">
+                        <RichContent html={option.text} />
+                        {option.image_url && <img src={option.image_url} alt="" className="mt-2 max-h-24 rounded-md object-contain" />}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          <div className="grid gap-2 text-ink-700 sm:grid-cols-2">
+            <p>{t("result_your_answer")}: <span className="font-semibold text-ink-900">{formatChoiceAnswer(item.your_answer, item.format) || "—"}</span></p>
+            <p>{t("result_correct_answer")}: <span className="font-semibold text-ink-900">{formatChoiceAnswer(item.correct_answer, item.format) || "—"}</span></p>
+          </div>
+          {item.explanation && <p className="rounded-lg bg-surface-2 px-3 py-2 text-ink-700">{item.explanation}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function answerIncludes(answer: string | null | undefined, key: string): boolean {
+  return (answer ?? "")
+    .split(",")
+    .map((part) => part.trim().toUpperCase())
+    .includes(key.trim().toUpperCase());
+}
 function MetricCard({ value, label, tone }: { value: number; label: string; tone?: "success" | "danger" }) {
   const bg = tone === "success" ? "bg-success-bg" : tone === "danger" ? "bg-danger-bg" : "bg-surface-2";
   const color = tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-ink-900";

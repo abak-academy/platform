@@ -153,6 +153,21 @@ async function mockBackend(page: Page) {
           wrong_count: 1,
           empty_count: 1,
           breakdown: [{ test_id: "test-1", title: "Matematika", earned: 87.5, max: 100 }],
+          pembahasan: [
+            {
+              question_id: "question-1",
+              body: "2 + 2 = ?",
+              format: "mcq",
+              options: [
+                { key: "A", text: "Tiga", is_correct: false },
+                { key: "B", text: "Empat", is_correct: true },
+              ],
+              your_answer: "B",
+              correct_answer: "B",
+              is_correct: true,
+              explanation: "Empat adalah jawaban yang benar.",
+            },
+          ],
         }),
       });
     }
@@ -196,7 +211,10 @@ test("super_admin unified Results workspace is ranked and supports large detail 
 
   await page.getByRole("button", { name: "Lihat" }).first().click();
   await expect(page.getByRole("heading", { name: "Detail Hasil" })).toBeVisible();
+  await expect(page.getByText("Percobaan 2")).toBeVisible();
   await expect(page.getByText("Matematika")).toBeVisible();
+  await expect(page.getByText("2 + 2 = ?")).toBeVisible();
+  await expect(page.getByText("Empat adalah jawaban yang benar.")).toBeVisible();
 });
 
 test("admin_school keeps scoped Results tab and never calls assessment endpoint", async ({ page, context }) => {

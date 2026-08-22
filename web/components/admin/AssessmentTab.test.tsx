@@ -107,6 +107,32 @@ describe("AssessmentTab", () => {
     toastError.mockReset();
     mockAuthFetch.mockImplementation((url: string) => {
       if (url === "/schools") return Promise.resolve(schools);
+      if (url.startsWith("/admin/exams/exam-1/assessment/reg-1/attempts")) {
+        return Promise.resolve({
+          data: [
+            {
+              session_id: "session-latest",
+              attempt_number: 2,
+              status: "submitted",
+              submitted_at: "2026-08-20T00:00:00Z",
+              score: 88.25,
+              violations: 2,
+              result_available: true,
+              is_latest: true,
+            },
+            {
+              session_id: "session-old",
+              attempt_number: 1,
+              status: "in_progress",
+              submitted_at: null,
+              score: null,
+              violations: 0,
+              result_available: false,
+              is_latest: false,
+            },
+          ],
+        });
+      }
       if (url.startsWith("/admin/results/session-latest")) {
         return Promise.resolve({
           session_id: "session-latest",
@@ -123,7 +149,11 @@ describe("AssessmentTab", () => {
             {
               question_id: "question-1",
               body: "2 + 2 = ?",
-              format: "single_choice",
+              format: "mcq",
+              options: [
+                { key: "A", text: "Tiga", is_correct: false },
+                { key: "B", text: "Empat", is_correct: true },
+              ],
               your_answer: "A",
               correct_answer: "B",
               is_correct: false,
@@ -193,7 +223,10 @@ describe("AssessmentTab", () => {
 
     await waitFor(() => {
       expect(screen.getByText("8")).toBeInTheDocument();
+      expect(screen.getByText(/Percobaan 2/)).toBeInTheDocument();
       expect(screen.getByText("2 + 2 = ?")).toBeInTheDocument();
+      expect(screen.getByText("Tiga")).toBeInTheDocument();
+      expect(screen.getByText("Empat")).toBeInTheDocument();
       expect(screen.getByText(/Jawaban Anda|Your answer/i)).toBeInTheDocument();
       expect(screen.getByText("Empat adalah jawaban yang benar.")).toBeInTheDocument();
       expect(mockAuthFetch).toHaveBeenCalledWith("/admin/results/session-latest");

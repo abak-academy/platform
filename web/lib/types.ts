@@ -1145,6 +1145,7 @@ export interface ResultPembahasanItem {
   question_id: string;
   body: string;
   format: QuestionFormat;
+  options?: Array<{ key: string; text: string; image_url?: string | null; is_correct: boolean }>;
   your_answer?: string | null;
   correct_answer?: string | null;
   is_correct?: boolean | null;
