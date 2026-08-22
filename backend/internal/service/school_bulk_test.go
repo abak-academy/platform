@@ -129,8 +129,39 @@ func TestParseSchoolBulkCSV(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseSchoolBulkCSV: %v", err)
 		}
+		if rows[0].Name != "S" || rows[0].Code != "c1" {
+			t.Errorf("unexpected row: %+v", rows[0])
+		}
+	})
+
+	t.Run("UTF-8 BOM on header is stripped", func(t *testing.T) {
+		data := append([]byte{0xEF, 0xBB, 0xBF}, []byte("name,code\nS,c1\n")...)
+		rows, err := ParseSchoolBulkCSV(data)
+		if err != nil {
+			t.Fatalf("ParseSchoolBulkCSV: %v", err)
+		}
 		if len(rows) != 1 || rows[0].Name != "S" || rows[0].Code != "c1" {
-			t.Errorf("unexpected rows: %+v", rows)
+			t.Errorf("BOM should not break header match, got %+v", rows)
+		}
+	})
+
+	t.Run("cell values are trimmed and blank rows skipped", func(t *testing.T) {
+		data := []byte("name,code,npsn\n SMAN 1 , C1 , 20100001 \n\n")
+		rows, err := ParseSchoolBulkCSV(data)
+		if err != nil {
+			t.Fatalf("ParseSchoolBulkCSV: %v", err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("want 1 row, got %d", len(rows))
+		}
+		if rows[0].Name != "SMAN 1" || rows[0].Code != "C1" {
+			t.Errorf("want trimmed cells, got %+v", rows[0])
+		}
+		if rows[0].NPSN == nil || *rows[0].NPSN != "20100001" {
+			t.Errorf("want trimmed npsn, got %v", rows[0].NPSN)
+		}
+		if rows[0].Row != 2 {
+			t.Errorf("want row 2, got %d", rows[0].Row)
 		}
 	})
 }
@@ -191,8 +222,8 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 
 func TestBuildSchoolBulkResultCSV(t *testing.T) {
 	results := []SchoolBulkResultRow{
-		{Name: "SMAN 1 Jakarta", Code: "sman1", NPSN: "2000", SchoolTypes: "sma|smk", Alamat: "Jl. X", Status: "success"},
-		{Name: "=cmd|'/c calc'!A1", Code: "sman2", Status: "failed", Error: ErrSchoolCodeTaken.Error()},
+		{Row: 2, Name: "SMAN 1 Jakarta", Code: "sman1", NPSN: "2000", SchoolTypes: "sma|smk", Alamat: "Jl. X", Status: "success"},
+		{Row: 3, Name: "=cmd|'/c calc'!A1", Code: "sman2", Status: "failed", Error: ErrSchoolCodeTaken.Error()},
 	}
 	data := BuildSchoolBulkResultCSV(results)
 
@@ -204,13 +235,13 @@ func TestBuildSchoolBulkResultCSV(t *testing.T) {
 	if len(records) != 3 {
 		t.Fatalf("want 3 records (header + 2 rows), got %d", len(records))
 	}
-	wantHeader := []string{"name", "code", "npsn", "school_types", "alamat", "status", "error"}
+	wantHeader := []string{"row", "name", "code", "npsn", "school_types", "alamat", "status", "error"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
 		}
 	}
-	wantRow1 := []string{"SMAN 1 Jakarta", "sman1", "2000", "sma|smk", "Jl. X", "success", ""}
+	wantRow1 := []string{"2", "SMAN 1 Jakarta", "sman1", "2000", "sma|smk", "Jl. X", "success", ""}
 	for i, v := range wantRow1 {
 		if records[1][i] != v {
 			t.Errorf("row1[%d]: want %s, got %s", i, v, records[1][i])
@@ -218,11 +249,11 @@ func TestBuildSchoolBulkResultCSV(t *testing.T) {
 	}
 	// NFR-2: a school name that looks like a spreadsheet formula must be
 	// neutralised in the export, never left as a live leading '='.
-	if strings.HasPrefix(records[2][0], "=") {
-		t.Errorf("formula-injection guard did not fire: name %q still starts with '=' in the exported CSV", records[2][0])
+	if strings.HasPrefix(records[2][1], "=") {
+		t.Errorf("formula-injection guard did not fire: name %q still starts with '=' in the exported CSV", records[2][1])
 	}
-	if records[2][0] != "'=cmd|'/c calc'!A1" {
-		t.Errorf("want neutralised name, got %q", records[2][0])
+	if records[2][1] != "'=cmd|'/c calc'!A1" {
+		t.Errorf("want neutralised name, got %q", records[2][1])
 	}
 }
 
@@ -233,7 +264,8 @@ func TestBuildSchoolBulkResultCSV(t *testing.T) {
 // buildTemplateCSV). That file's matching test asserts the same literal and
 // names this constant, so a divergence fails on one side or the other.
 const frontendSchoolBulkTemplateCSV = "name,code,npsn,school_types,alamat\n" +
-	"SMAN 1 Jakarta,SMAN1JKT,20100001,sma|smk,Jl. Sudirman No. 1\n"
+	"SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,\"Jl. Sudirman No. 1\"\n" +
+	"SMPN 5 Bandung,SMPN5BDG,,SMP,\n"
 
 // TestFrontendTemplateParsesUnmodified is FR-31: the template as downloaded and
 // re-uploaded untouched must parse cleanly — never a header error, never a
@@ -243,8 +275,8 @@ func TestFrontendTemplateParsesUnmodified(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the frontend template must parse: %v", err)
 	}
-	if len(rows) != 1 {
-		t.Fatalf("want 1 example row, got %d", len(rows))
+	if len(rows) != 2 {
+		t.Fatalf("want 2 example rows, got %d", len(rows))
 	}
 	r := rows[0]
 	if r.Name != "SMAN 1 Jakarta" || r.Code != "SMAN1JKT" {
@@ -261,7 +293,7 @@ func TestFrontendTemplateParsesUnmodified(t *testing.T) {
 	if len(r.SchoolTypes) != 2 {
 		t.Fatalf("want 2 school types from the pipe-encoded cell, got %d (%v)", len(r.SchoolTypes), r.SchoolTypes)
 	}
-	if r.SchoolTypes[0] != "sma" || r.SchoolTypes[1] != "smk" {
-		t.Errorf("want [sma smk], got %v", r.SchoolTypes)
+	if r.SchoolTypes[0] != "SMA" || r.SchoolTypes[1] != "SMK" {
+		t.Errorf("want [SMA SMK], got %v", r.SchoolTypes)
 	}
 }

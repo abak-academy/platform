@@ -173,11 +173,59 @@ func TestParseStudentBulkCSV(t *testing.T) {
 		}
 	})
 
-	t.Run("ragged row shorter than header returns ErrInvalidCSV, not a panic", func(t *testing.T) {
+	t.Run("ragged row shorter than header is accepted", func(t *testing.T) {
 		data := []byte("name,school,jenjang\nBudi\n")
-		_, err := ParseStudentBulkCSV(data)
-		if !errors.Is(err, ErrInvalidCSV) {
-			t.Errorf("want ErrInvalidCSV, got %v", err)
+		rows, err := ParseStudentBulkCSV(data)
+		if err != nil {
+			t.Fatalf("ParseStudentBulkCSV: %v", err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("want 1 row, got %d", len(rows))
+		}
+		if rows[0].Name != "Budi" || rows[0].School != "" || rows[0].Jenjang != "" {
+			t.Errorf("want truncated cells empty, got %+v", rows[0])
+		}
+		if rows[0].Row != 2 {
+			t.Errorf("want spreadsheet line 2, got %d", rows[0].Row)
+		}
+	})
+
+	t.Run("UTF-8 BOM on header is stripped", func(t *testing.T) {
+		data := append([]byte{0xEF, 0xBB, 0xBF}, []byte("name,school,jenjang\nBudi,SMAN 1 Jakarta,sma\n")...)
+		rows, err := ParseStudentBulkCSV(data)
+		if err != nil {
+			t.Fatalf("ParseStudentBulkCSV: %v", err)
+		}
+		if len(rows) != 1 || rows[0].Name != "Budi" {
+			t.Errorf("BOM should not break header match, got %+v err=%v", rows, err)
+		}
+	})
+
+	t.Run("cell values are trimmed", func(t *testing.T) {
+		data := []byte("name,school,jenjang,gender\n Budi , SMAN 1 Jakarta , sma , male \n")
+		rows, err := ParseStudentBulkCSV(data)
+		if err != nil {
+			t.Fatalf("ParseStudentBulkCSV: %v", err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("want 1 row, got %d", len(rows))
+		}
+		if rows[0].Name != "Budi" || rows[0].School != "SMAN 1 Jakarta" || rows[0].Jenjang != "sma" {
+			t.Errorf("want trimmed required cells, got %+v", rows[0])
+		}
+		if rows[0].Gender == nil || *rows[0].Gender != "male" {
+			t.Errorf("want trimmed gender male, got %v", rows[0].Gender)
+		}
+	})
+
+	t.Run("blank trailing rows are skipped", func(t *testing.T) {
+		data := []byte("name,school,jenjang\nBudi,SMAN 1 Jakarta,sma\n\n\n")
+		rows, err := ParseStudentBulkCSV(data)
+		if err != nil {
+			t.Fatalf("ParseStudentBulkCSV: %v", err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("want 1 data row after skipping blanks, got %d", len(rows))
 		}
 	})
 
@@ -209,10 +257,36 @@ func TestParseStudentBulkCSV(t *testing.T) {
 	})
 }
 
+const frontendStudentBulkTemplateCSV = "name,school,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
+	"Budi Santoso,SMAN 1 Jakarta,SMA,budi@example.com,2008-05-14,male,11,UTBK,\"Jl. Melati No. 3, RT 04\",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n" +
+	"Siti Aminah,SMAN 1 Jakarta,SMA,,,,,,,,,,\n"
+
+func TestFrontendStudentTemplateParsesUnmodified(t *testing.T) {
+	rows, err := ParseStudentBulkCSV([]byte(frontendStudentBulkTemplateCSV))
+	if err != nil {
+		t.Fatalf("the frontend template must parse: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 example rows, got %d", len(rows))
+	}
+	if rows[0].Jenjang != "SMA" || rows[0].Provinsi == nil || *rows[0].Provinsi != "JAWA BARAT" {
+		t.Errorf("unexpected first row: %+v", rows[0])
+	}
+	if rows[0].Kota == nil || *rows[0].Kota != "KOTA BANDUNG" {
+		t.Errorf("want KOTA BANDUNG, got %v", rows[0].Kota)
+	}
+	if rows[0].AlamatDomisili == nil || *rows[0].AlamatDomisili != "Jl. Melati No. 3, RT 04" {
+		t.Errorf("want quoted address unquoted, got %v", rows[0].AlamatDomisili)
+	}
+	if rows[1].Name != "Siti Aminah" || rows[1].Email != nil {
+		t.Errorf("unexpected minimal row: %+v", rows[1])
+	}
+}
+
 func TestBuildStudentBulkResultCSV(t *testing.T) {
 	results := []StudentBulkResultRow{
-		{Name: "Budi", School: "SMAN 1 Jakarta", Email: "budi@example.com", Status: "success", Username: "budi123", TempPassword: "abc123"},
-		{Name: "Siti", School: "SMAN 1 Jakarta", Status: "failed", Error: "some error"},
+		{Row: 2, Name: "Budi", School: "SMAN 1 Jakarta", Email: "budi@example.com", Status: "success", Username: "budi123", TempPassword: "abc123"},
+		{Row: 3, Name: "Siti", School: "SMAN 1 Jakarta", Status: "failed", Error: "some error"},
 	}
 	data := BuildStudentBulkResultCSV(results)
 
@@ -224,19 +298,19 @@ func TestBuildStudentBulkResultCSV(t *testing.T) {
 	if len(records) != 3 {
 		t.Fatalf("want 3 records (header + 2 rows), got %d", len(records))
 	}
-	wantHeader := []string{"name", "school", "email", "status", "username", "temp_password", "error"}
+	wantHeader := []string{"row", "name", "school", "email", "status", "username", "temp_password", "error"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
 		}
 	}
-	wantRow1 := []string{"Budi", "SMAN 1 Jakarta", "budi@example.com", "success", "budi123", "abc123", ""}
+	wantRow1 := []string{"2", "Budi", "SMAN 1 Jakarta", "budi@example.com", "success", "budi123", "abc123", ""}
 	for i, v := range wantRow1 {
 		if records[1][i] != v {
 			t.Errorf("row1[%d]: want %s, got %s", i, v, records[1][i])
 		}
 	}
-	wantRow2 := []string{"Siti", "SMAN 1 Jakarta", "", "failed", "", "", "some error"}
+	wantRow2 := []string{"3", "Siti", "SMAN 1 Jakarta", "", "failed", "", "", "some error"}
 	for i, v := range wantRow2 {
 		if records[2][i] != v {
 			t.Errorf("row2[%d]: want %s, got %s", i, v, records[2][i])

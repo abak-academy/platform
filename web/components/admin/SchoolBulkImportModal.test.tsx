@@ -132,29 +132,35 @@ describe("SchoolBulkImportModal", () => {
     expect(lastDownloadedFilename).toBe("bulk_school_template.csv");
 
     const lines = (lastDownloadedCSV ?? "").split(/\r?\n/).filter(Boolean);
-    expect(lines.length).toBe(2);
-    // Exact header string per D-3 — this is the same string the backend
-    // ParseSchoolBulkCSV parser requires (service/school_bulk.go).
+    expect(lines.length).toBe(3);
     expect(lines[0]).toBe("name,code,npsn,school_types,alamat");
 
-    const exampleCells = lines[1].split(",");
-    // school_types is the 4th column; D-4 requires pipe encoding in-cell.
-    expect(exampleCells[3]).toContain("|");
-    expect(exampleCells[3]).not.toContain(",");
-
-    // FR-31: the whole file, byte for byte. The identical literal is
-    // frontendSchoolBulkTemplateCSV in
-    // backend/internal/service/school_bulk_test.go, where it is fed through the
-    // real ParseSchoolBulkCSV — changing the template here without changing it
-    // there fails that test.
     expect(lastDownloadedCSV).toBe(
       "name,code,npsn,school_types,alamat\n" +
-        "SMAN 1 Jakarta,SMAN1JKT,20100001,sma|smk,Jl. Sudirman No. 1\n",
+        'SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,"Jl. Sudirman No. 1"\n' +
+        "SMPN 5 Bandung,SMPN5BDG,,SMP,\n",
     );
 
     expect(presignMutateAsync).not.toHaveBeenCalled();
     expect(putFile).not.toHaveBeenCalled();
     expect(enqueueMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("shows the field-rule table and downloads a guide txt", async () => {
+    render(<SchoolBulkImportModal open={true} onOpenChange={vi.fn()} />, {
+      wrapper: wrapperFactory(),
+    });
+
+    expect(screen.getByText("bulk_format_show")).toBeInTheDocument();
+    expect(screen.getByText("school_types")).toBeInTheDocument();
+    expect(screen.getByText("bulk_format_school_code")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /bulk_format_download_guide/i }));
+
+    await waitFor(() => expect(lastDownloadedFilename).toBe("bulk_school_guide.txt"));
+    await waitFor(() => expect(lastDownloadedCSV).not.toBeNull());
+    expect(lastDownloadedCSV).toContain("bulk_format_school_guide_title");
+    expect(lastDownloadedCSV).toContain("bulk_format_school_code");
   });
 
   it("uploading a valid CSV runs presign -> PUT -> enqueue in order with the presigned key", async () => {

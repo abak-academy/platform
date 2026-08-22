@@ -118,7 +118,7 @@ describe("BulkImportModal", () => {
     ).toBeInTheDocument();
   });
 
-  it("clicking Download Template produces a CSV with the exact header and one example row, firing no network request", async () => {
+	it("clicking Download Template produces a CSV with the exact header and two example rows, firing no network request", async () => {
     render(<BulkImportModal open={true} onOpenChange={vi.fn()} />, {
       wrapper: wrapperFactory(),
     });
@@ -129,17 +129,33 @@ describe("BulkImportModal", () => {
     await waitFor(() => expect(lastDownloadedFilename).not.toBeNull());
     await waitFor(() => expect(lastDownloadedCSV).not.toBeNull());
 
-    expect(lastDownloadedFilename).toMatch(/\.csv$/);
-    expect(lastDownloadedCSV!).toMatch(
-      /name,school,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos/,
+    expect(lastDownloadedFilename).toBe("bulk_register_template.csv");
+    expect(lastDownloadedCSV).toBe(
+      "name,school,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
+        'Budi Santoso,SMAN 1 Jakarta,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n' +
+        "Siti Aminah,SMAN 1 Jakarta,SMA,,,,,,,,,,\n",
     );
-    const lines = (lastDownloadedCSV ?? "").split(/\r?\n/).filter(Boolean);
-    expect(lines.length).toBe(2);
-    expect(lines[1]).toMatch(/Budi Santoso/);
 
     expect(presignMutateAsync).not.toHaveBeenCalled();
     expect(putFile).not.toHaveBeenCalled();
     expect(enqueueMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("shows the field-rule table and downloads a guide txt", async () => {
+    render(<BulkImportModal open={true} onOpenChange={vi.fn()} />, {
+      wrapper: wrapperFactory(),
+    });
+
+    expect(screen.getByText("bulk_format_show")).toBeInTheDocument();
+    expect(screen.getByText("jenjang")).toBeInTheDocument();
+    expect(screen.getByText("bulk_format_student_jenjang")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /bulk_format_download_guide/i }));
+
+    await waitFor(() => expect(lastDownloadedFilename).toBe("bulk_register_guide.txt"));
+    await waitFor(() => expect(lastDownloadedCSV).not.toBeNull());
+    expect(lastDownloadedCSV).toContain("bulk_format_student_guide_title");
+    expect(lastDownloadedCSV).toContain("bulk_format_student_school");
   });
 
   it("uploading a valid CSV runs presign -> PUT -> enqueue in order", async () => {

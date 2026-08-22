@@ -113,6 +113,7 @@ func TestBuildCredentialsResultCSV_neutralisesFormulaLead(t *testing.T) {
 // Writer 3 of 3 — the pattern E4's school importer is told to copy.
 func TestBuildStudentBulkResultCSV_neutralisesFormulaLead(t *testing.T) {
 	out := BuildStudentBulkResultCSV([]StudentBulkResultRow{{
+		Row:          2,
 		Name:         evilName,
 		School:       "=SUM(A1)",
 		Email:        "budi@example.com",
@@ -123,14 +124,14 @@ func TestBuildStudentBulkResultCSV_neutralisesFormulaLead(t *testing.T) {
 	}})
 
 	rec := firstDataRecord(t, out)
-	if rec[0] != "'"+evilName {
-		t.Errorf("name not neutralised: got %q", rec[0])
+	if rec[1] != "'"+evilName {
+		t.Errorf("name not neutralised: got %q", rec[1])
 	}
-	if rec[1] != "'=SUM(A1)" {
-		t.Errorf("school not neutralised: got %q", rec[1])
+	if rec[2] != "'=SUM(A1)" {
+		t.Errorf("school not neutralised: got %q", rec[2])
 	}
-	if rec[2] != "budi@example.com" {
-		t.Errorf("benign email was altered: got %q", rec[2])
+	if rec[3] != "budi@example.com" {
+		t.Errorf("benign email was altered: got %q", rec[3])
 	}
 }
 

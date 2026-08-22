@@ -20,30 +20,17 @@ import {
   useEnqueueStudentBulkImport,
 } from "@/lib/hooks/admin-students-bulk";
 import { useJobStatus } from "@/lib/hooks/jobs";
-
-// Same field set as the individual Register Student form (school is the one
-// addition, since bulk rows aren't scoped by a page-level school picker).
-const TEMPLATE_HEADER =
-  "name,school,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos";
-const TEMPLATE_EXAMPLE_ROW =
-  "Budi Santoso,SMAN 1 Jakarta,sma,budi@example.com,2008-05-14,male,11,UTBK,Jl. Melati No. 3,Jawa Barat,Bandung,Coblong,40132";
-
-function buildTemplateCSV(): string {
-  // One illustrative example row, per architecture decision 27.
-  return `${TEMPLATE_HEADER}\n${TEMPLATE_EXAMPLE_ROW}\n`;
-}
+import { BulkFormatGuide } from "@/components/admin/BulkFormatGuide";
+import {
+  STUDENT_BULK_FIELDS,
+  STUDENT_GUIDE_PITFALL_KEYS,
+  buildStudentGuideText,
+  buildStudentTemplateCSV,
+  downloadTextFile,
+} from "@/lib/bulk-import-format";
 
 function downloadTemplate(): void {
-  const csv = buildTemplateCSV();
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "bulk_register_template.csv";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadTextFile("bulk_register_template.csv", buildStudentTemplateCSV(), "text/csv;charset=utf-8");
 }
 
 interface BulkImportModalProps {
@@ -109,7 +96,7 @@ export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
         if (!o) handleClose();
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="font-serif">{t("bulk_register_title")}</DialogTitle>
           <DialogDescription>{t("bulk_register_subtitle")}</DialogDescription>
@@ -121,7 +108,7 @@ export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
             <h3 className="text-sm font-semibold text-ink-900">
               1. {t("bulk_register_download_template")}
             </h3>
-            <div className="mt-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -132,6 +119,25 @@ export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
                 <Download className="mr-2 size-4" />
                 {t("bulk_register_download_template")}
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() =>
+                  downloadTextFile(
+                    "bulk_register_guide.txt",
+                    buildStudentGuideText(t),
+                    "text/plain;charset=utf-8",
+                  )
+                }
+              >
+                <Download className="mr-2 size-4" />
+                {t("bulk_format_download_guide")}
+              </Button>
+            </div>
+            <div className="mt-3">
+              <BulkFormatGuide fields={STUDENT_BULK_FIELDS} pitfallKeys={STUDENT_GUIDE_PITFALL_KEYS} />
             </div>
           </section>
 
