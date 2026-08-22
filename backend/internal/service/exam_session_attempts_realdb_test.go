@@ -62,7 +62,7 @@ func TestStartSession_RealDB_MaxAttempts(t *testing.T) {
 		t.Errorf("resume: want same session_id %s, got %s", first.SessionID, resumed.SessionID)
 	}
 
-	if _, err := svc.SubmitSession(ctx, studentID.String(), first.SessionID.String()); err != nil {
+	if _, err := svc.SubmitSession(ctx, studentID.String(), first.SessionID.String(), ""); err != nil {
 		t.Fatalf("SubmitSession: %v", err)
 	}
 
@@ -74,7 +74,7 @@ func TestStartSession_RealDB_MaxAttempts(t *testing.T) {
 		t.Error("second start returned the same session id as the first")
 	}
 
-	if _, err := svc.SubmitSession(ctx, studentID.String(), second.SessionID.String()); err != nil {
+	if _, err := svc.SubmitSession(ctx, studentID.String(), second.SessionID.String(), ""); err != nil {
 		t.Fatalf("SubmitSession second: %v", err)
 	}
 
@@ -117,7 +117,7 @@ func TestStartSession_RealDB_NilMaxAttemptsUnlimited(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first StartSession: %v", err)
 	}
-	if _, err := svc.SubmitSession(ctx, studentID.String(), first.SessionID.String()); err != nil {
+	if _, err := svc.SubmitSession(ctx, studentID.String(), first.SessionID.String(), ""); err != nil {
 		t.Fatalf("SubmitSession: %v", err)
 	}
 	second, err := svc.StartSession(ctx, studentID.String(), regID.String(), "fp")

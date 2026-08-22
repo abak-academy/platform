@@ -60,6 +60,8 @@ var _ interface {
 var _ interface {
 	GetExamRegistrationByToken(context.Context, uuid.UUID, string) (*model.ExamRegistration, error)
 	CheckInExamTx(context.Context, pgx.Tx, uuid.UUID) error
+	GetDeviceFingerprint(context.Context, uuid.UUID) (*string, error)
+	BindDeviceFingerprintIfEmpty(context.Context, uuid.UUID, string) error
 	CreateExamSessionTx(context.Context, pgx.Tx, model.ExamRegistration, *int) (model.ExamSession, error)
 	GetInProgressSessionForRegistration(context.Context, uuid.UUID, uuid.UUID) (*model.ExamSession, error)
 	GetExamSessionForStudent(context.Context, uuid.UUID, uuid.UUID) (*model.ExamSession, error)
@@ -526,9 +528,9 @@ func TestScanExamSessionAnswer_passes_expected_destinations(t *testing.T) {
 		t.Errorf("dest[8] = %T, want *bool (flagged_for_review)", rec.dests[8])
 	}
 	if _, ok := rec.dests[9].(*time.Time); !ok {
-			t.Errorf("dest[9] = %T, want *time.Time (saved_at)", rec.dests[9])
-		}
+		t.Errorf("dest[9] = %T, want *time.Time (saved_at)", rec.dests[9])
 	}
+}
 
 func TestScanSessionMonitorRow_passes_expected_destinations(t *testing.T) {
 	var row model.SessionMonitorRow
@@ -605,18 +607,18 @@ func TestSessionMonitorRowShape(t *testing.T) {
 	schoolName := "SMA 1"
 	sessionStatus := "in_progress"
 	row := model.SessionMonitorRow{
-		RegistrationID:  uuid.New(),
-		StudentID:       uuid.New(),
-		StudentName:     "Budi",
-		SchoolName:      &schoolName,
-		SessionID:       &uid,
-		SessionStatus:   &sessionStatus,
-		StartedAt:       &now,
-		AdminSubmitted:  false,
-		CheckedInAt:     &now,
-		LastSavedAt:     &now,
-		AnswersSaved:    5,
-		ViolationCount:  0,
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Budi",
+		SchoolName:     &schoolName,
+		SessionID:      &uid,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &now,
+		AdminSubmitted: false,
+		CheckedInAt:    &now,
+		LastSavedAt:    &now,
+		AnswersSaved:   5,
+		ViolationCount: 0,
 	}
 	if row.RegistrationID == uuid.Nil || row.StudentName != "Budi" {
 		t.Errorf("SessionMonitorRow fields not round-tripping: %+v", row)

@@ -187,15 +187,18 @@ type ExamTest struct {
 
 // ExamRegistration enrolls a student in an exam; (student_id, exam_id) is unique.
 type ExamRegistration struct {
-	ID           uuid.UUID  `json:"id"`
-	StudentID    uuid.UUID  `json:"student_id"`
-	ExamID       uuid.UUID  `json:"exam_id"`
-	Token        string     `json:"token"`
-	CardKey      *string    `json:"card_key"`
-	CheckedInAt  *time.Time `json:"checked_in_at"`
-	AttemptsUsed int        `json:"attempts_used"`
-	Status       string     `json:"status"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	StudentID   uuid.UUID  `json:"student_id"`
+	ExamID      uuid.UUID  `json:"exam_id"`
+	Token       string     `json:"token"`
+	CardKey     *string    `json:"card_key"`
+	CheckedInAt *time.Time `json:"checked_in_at"`
+	// DeviceFingerprint is the check-in device lock (SHA-256 of IP|UA). Omitted
+	// from JSON so it never leaks on student registration payloads.
+	DeviceFingerprint *string   `json:"-"`
+	AttemptsUsed      int       `json:"attempts_used"`
+	Status            string    `json:"status"`
+	CreatedAt         time.Time `json:"created_at"`
 	// ParticipantNumber is a per-exam sequence assigned at registration (nil for
 	// rows predating the column until backfilled). Displayed as ParticipantNo.
 	ParticipantNumber *int `json:"participant_number"`

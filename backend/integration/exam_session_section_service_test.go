@@ -146,11 +146,11 @@ func TestService_AdvanceSection_PromotesAndIdempotent(t *testing.T) {
 	require.NoError(t, err)
 
 	// Advance a pending section (testIDs[1]) -> ErrSectionNotActive (FR-11).
-	_, err = env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[1])
+	_, err = env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[1], "")
 	assert.ErrorIs(t, err, service.ErrSectionNotActive)
 
 	// Advance the active section (testIDs[0]) -> promotes testIDs[1].
-	adv1, err := env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[0])
+	adv1, err := env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[0], "")
 	require.NoError(t, err)
 	assert.Equal(t, "utbk", adv1.Mode)
 	require.NotNil(t, adv1.ActiveTestID)
@@ -180,20 +180,20 @@ func TestService_AdvanceSection_PromotesAndIdempotent(t *testing.T) {
 	assert.Equal(t, "pending", sections[2].Status)
 
 	// Advance on already-submitted (testIDs[0]) -> 200 no-op (FR-11 idempotent).
-	advNoop, err := env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[0])
+	advNoop, err := env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[0], "")
 	require.NoError(t, err, "double-advance on submitted must be a 200 no-op")
 	assert.NotNil(t, advNoop.ActiveTestID, "no-op must still return current active_test_id")
 	assert.Equal(t, testIDs[1], advNoop.ActiveTestID.String())
 
 	// Advance testIDs[1] (active) -> promotes testIDs[2].
-	adv2, err := env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[1])
+	adv2, err := env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[1], "")
 	require.NoError(t, err)
 	require.NotNil(t, adv2.ActiveTestID)
 	assert.Equal(t, testIDs[2], adv2.ActiveTestID.String())
 	assert.False(t, adv2.Completed)
 
 	// Advance the last section (testIDs[2]) -> completed=true, active_test_id=nil (FR-12).
-	advLast, err := env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[2])
+	advLast, err := env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[2], "")
 	require.NoError(t, err)
 	assert.Nil(t, advLast.ActiveTestID, "active_test_id must be nil when last section completes")
 	assert.True(t, advLast.Completed, "completed must be true when last section closes")
@@ -223,20 +223,20 @@ func TestService_SaveAnswers_SectionGuard(t *testing.T) {
 	ans := "a"
 	err = env.svc.SaveAnswers(ctx, studentID, start.SessionID.String(), []service.AnswerInput{
 		{QuestionID: qActive, Answer: &ans},
-	}, nil)
+	}, nil, "")
 	require.NoError(t, err)
 
 	// Save to the pending section (testIDs[1]) -> ErrSectionLocked.
 	err = env.svc.SaveAnswers(ctx, studentID, start.SessionID.String(), []service.AnswerInput{
 		{QuestionID: qPending, Answer: &ans},
-	}, nil)
+	}, nil, "")
 	assert.ErrorIs(t, err, service.ErrSectionLocked)
 
 	// Mixed batch (active + pending) -> whole batch rejected.
 	err = env.svc.SaveAnswers(ctx, studentID, start.SessionID.String(), []service.AnswerInput{
 		{QuestionID: qActive, Answer: &ans},
 		{QuestionID: qPending, Answer: &ans},
-	}, nil)
+	}, nil, "")
 	assert.ErrorIs(t, err, service.ErrSectionLocked)
 }
 
@@ -320,7 +320,7 @@ func TestService_StandardMode_Regression(t *testing.T) {
 	assert.Nil(t, start.ActiveTestID, "standard start must not set active_test_id")
 
 	// Reconnect: same regression — no mode/active_test_id, flat remaining.
-	state, err := env.svc.ReconnectSession(ctx, student2, start.SessionID.String())
+	state, err := env.svc.ReconnectSession(ctx, student2, start.SessionID.String(), "")
 	require.NoError(t, err)
 	assert.Empty(t, state.Mode)
 	assert.Nil(t, state.ActiveTestID)
@@ -332,7 +332,7 @@ func TestService_StandardMode_Regression(t *testing.T) {
 	ans := "a"
 	err = env.svc.SaveAnswers(ctx, student2, start.SessionID.String(), []service.AnswerInput{
 		{QuestionID: quid, Answer: &ans},
-	}, nil)
+	}, nil, "")
 	require.NoError(t, err)
 
 	// Suppress unused-var from the first seed helper (keeps the compiler happy
@@ -356,10 +356,10 @@ func TestService_ReconnectSectioned_ReflectsSectionTruth(t *testing.T) {
 	require.NoError(t, err)
 
 	// Advance to the second section before reconnecting.
-	_, err = env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[0])
+	_, err = env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[0], "")
 	require.NoError(t, err)
 
-	state, err := env.svc.ReconnectSession(ctx, studentID, start.SessionID.String())
+	state, err := env.svc.ReconnectSession(ctx, studentID, start.SessionID.String(), "")
 	require.NoError(t, err)
 
 	assert.Equal(t, "utbk", state.Mode)
@@ -388,7 +388,7 @@ func TestService_AdvanceSection_StandardMode_Rejected(t *testing.T) {
 	start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
 	require.NoError(t, err)
 
-	_, err = env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[0])
+	_, err = env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[0], "")
 	assert.Error(t, err, "advance on a standard-mode session must be rejected")
 }
 

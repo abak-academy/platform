@@ -280,6 +280,26 @@ func (f *fakeSessionRepo) GetExamRegistrationByID(_ context.Context, regID, stud
 	return &cp, nil
 }
 
+func (f *fakeSessionRepo) GetDeviceFingerprint(_ context.Context, regID uuid.UUID) (*string, error) {
+	d, ok := f.registrations[regID]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	return d.DeviceFingerprint, nil
+}
+
+func (f *fakeSessionRepo) BindDeviceFingerprintIfEmpty(_ context.Context, regID uuid.UUID, fp string) error {
+	d, ok := f.registrations[regID]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	if d.DeviceFingerprint == nil || *d.DeviceFingerprint == "" {
+		cp := fp
+		d.DeviceFingerprint = &cp
+	}
+	return nil
+}
+
 func (f *fakeSessionRepo) GetExamForSession(_ context.Context, examID uuid.UUID) (*model.Exam, error) {
 	e, ok := f.exams[examID]
 	if !ok {
@@ -560,15 +580,7 @@ func (s *shimSessionService) CheckIn(ctx context.Context, studentID, token, fp s
 		return CheckInResult{}, err
 	}
 
-	// Redis: device lock
-	key := "exam:device:" + reg.ID.String()
-	var ttl time.Duration
-	if exam.DurationMinutes != nil && *exam.DurationMinutes > 0 {
-		ttl = time.Duration(*exam.DurationMinutes) * time.Minute
-	} else {
-		ttl = 24 * time.Hour
-	}
-	if err := s.rdb.Set(ctx, key, fp, ttl).Err(); err != nil {
+	if err := assertCheckinDevice(ctx, s.rdb, s.repo, exam, reg.ID, fp); err != nil {
 		return CheckInResult{}, err
 	}
 
@@ -859,17 +871,8 @@ func (s *shimSessionService) StartSession(ctx context.Context, studentID, regist
 			return SessionStartPayload{}, ErrNotCheckedIn
 		}
 
-		// Device fingerprint check
-		key := "exam:device:" + rid.String()
-		deviceFP, err := s.rdb.Get(ctx, key).Result()
-		if err == redis.Nil {
-			return SessionStartPayload{}, ErrDeviceMismatch
-		}
-		if err != nil {
+		if err := assertCheckinDevice(ctx, s.rdb, s.repo, exam, rid, fp); err != nil {
 			return SessionStartPayload{}, err
-		}
-		if deviceFP != fp {
-			return SessionStartPayload{}, ErrDeviceMismatch
 		}
 	}
 
@@ -1207,6 +1210,163 @@ func TestStartSession_Checkin_DeviceMismatch(t *testing.T) {
 	}
 }
 
+func TestCheckIn_SameDeviceIdempotent_OtherDeviceMismatch(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(10 * time.Minute)
+	e := &model.Exam{
+		Title:                "Finals",
+		RequiresCheckin:      true,
+		ScheduledAt:          &scheduledAt,
+		CheckInWindowMinutes: intptr(30),
+		DurationMinutes:      intptr(120),
+		TimerMode:            "overall",
+	}
+	svc.repo.seedExam(e)
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) { d.Token = "ABC123" },
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	if _, err := svc.CheckIn(ctx, regDetail.StudentID.String(), "ABC123", "fp-a"); err != nil {
+		t.Fatalf("first CheckIn: %v", err)
+	}
+	if _, err := svc.CheckIn(ctx, regDetail.StudentID.String(), "ABC123", "fp-a"); err != nil {
+		t.Fatalf("same-device CheckIn: %v", err)
+	}
+	if _, err := svc.CheckIn(ctx, regDetail.StudentID.String(), "ABC123", "fp-b"); !errors.Is(err, ErrDeviceMismatch) {
+		t.Errorf("other-device CheckIn: want ErrDeviceMismatch, got %v", err)
+	}
+	stored, err := svc.repo.GetDeviceFingerprint(ctx, regDetail.ID)
+	if err != nil {
+		t.Fatalf("GetDeviceFingerprint: %v", err)
+	}
+	if stored == nil || *stored != "fp-a" {
+		t.Errorf("stored fingerprint: want fp-a, got %v", stored)
+	}
+}
+
+func seedCheckedInReg(svc *shimSessionService, exam *model.Exam, regID, studentID uuid.UUID, fp string) model.RegistrationDetail {
+	checkedInAt := time.Now().Add(-10 * time.Minute)
+	reg := newReg(regID, studentID, exam.ID, func(d *model.RegistrationDetail) {
+		d.CheckedInAt = &checkedInAt
+		d.Status = "checked_in"
+		if fp != "" {
+			cp := fp
+			d.DeviceFingerprint = &cp
+		}
+	})
+	svc.repo.seedRegistration(&reg)
+	return reg
+}
+
+func TestStartSession_TwoExamsTwoDevices(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	scheduledAt := time.Now().Add(-5 * time.Minute)
+	studentID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	examA := &model.Exam{
+		Title: "Exam A", RequiresCheckin: true, ScheduledAt: &scheduledAt,
+		DurationMinutes: intptr(120), TimerMode: "overall",
+	}
+	examB := &model.Exam{
+		Title: "Exam B", RequiresCheckin: true, ScheduledAt: &scheduledAt,
+		DurationMinutes: intptr(120), TimerMode: "overall",
+	}
+	svc.repo.seedExam(examA)
+	svc.repo.seedExam(examB)
+
+	regA := seedCheckedInReg(svc, examA, uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), studentID, "fp-a")
+	regB := seedCheckedInReg(svc, examB, uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), studentID, "fp-b")
+
+	if _, err := svc.StartSession(ctx, studentID.String(), regA.ID.String(), "fp-a"); err != nil {
+		t.Fatalf("exam A on device A: %v", err)
+	}
+	if _, err := svc.StartSession(ctx, studentID.String(), regA.ID.String(), "fp-b"); !errors.Is(err, ErrDeviceMismatch) {
+		t.Errorf("exam A on device B: want ErrDeviceMismatch, got %v", err)
+	}
+	if _, err := svc.StartSession(ctx, studentID.String(), regB.ID.String(), "fp-b"); err != nil {
+		t.Fatalf("exam B on device B: %v", err)
+	}
+	if _, err := svc.StartSession(ctx, studentID.String(), regB.ID.String(), "fp-a"); !errors.Is(err, ErrDeviceMismatch) {
+		t.Errorf("exam B on device A: want ErrDeviceMismatch, got %v", err)
+	}
+}
+
+func TestSessionOps_Checkin_DeviceMismatch(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	scheduledAt := time.Now().Add(-5 * time.Minute)
+	e := &model.Exam{
+		Title: "Finals", RequiresCheckin: true, ScheduledAt: &scheduledAt,
+		DurationMinutes: intptr(120), TimerMode: "overall",
+	}
+	svc.repo.seedExam(e)
+	studentID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	reg := seedCheckedInReg(svc, e, uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), studentID, "fp-a")
+
+	started, err := svc.StartSession(ctx, studentID.String(), reg.ID.String(), "fp-a")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	sid := started.SessionID.String()
+	stu := studentID.String()
+	answer := "x"
+	qID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
+
+	if _, err := svc.ReconnectSession(ctx, stu, sid, "fp-b"); !errors.Is(err, ErrDeviceMismatch) {
+		t.Errorf("Reconnect wrong device: want ErrDeviceMismatch, got %v", err)
+	}
+	if _, err := svc.ReconnectSession(ctx, stu, sid, "fp-a"); err != nil {
+		t.Fatalf("Reconnect same device: %v", err)
+	}
+	if err := svc.SaveAnswers(ctx, stu, sid, []AnswerInput{{QuestionID: qID, Answer: &answer}}, "fp-b"); !errors.Is(err, ErrDeviceMismatch) {
+		t.Errorf("SaveAnswers wrong device: want ErrDeviceMismatch, got %v", err)
+	}
+	if err := svc.SaveAnswers(ctx, stu, sid, []AnswerInput{{QuestionID: qID, Answer: &answer}}, "fp-a"); err != nil {
+		t.Fatalf("SaveAnswers same device: %v", err)
+	}
+	if err := svc.LogViolation(ctx, stu, sid, "tab_switch", "fp-b"); !errors.Is(err, ErrDeviceMismatch) {
+		t.Errorf("LogViolation wrong device: want ErrDeviceMismatch, got %v", err)
+	}
+	if _, err := svc.SubmitSession(ctx, stu, sid, "fp-b"); !errors.Is(err, ErrDeviceMismatch) {
+		t.Errorf("SubmitSession wrong device: want ErrDeviceMismatch, got %v", err)
+	}
+	if _, err := svc.SubmitSession(ctx, stu, sid, "fp-a"); err != nil {
+		t.Fatalf("SubmitSession same device: %v", err)
+	}
+}
+
+func TestStartSession_NoCheckin_IgnoresFingerprint(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	scheduledAt := time.Now().Add(-5 * time.Minute)
+	e := &model.Exam{Title: "Open", RequiresCheckin: false, ScheduledAt: &scheduledAt, DurationMinutes: intptr(60), TimerMode: "overall"}
+	svc.repo.seedExam(e)
+	reg := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&reg)
+
+	started, err := svc.StartSession(ctx, reg.StudentID.String(), reg.ID.String(), "fp-a")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	if _, err := svc.ReconnectSession(ctx, reg.StudentID.String(), started.SessionID.String(), "fp-b"); err != nil {
+		t.Fatalf("Reconnect with other fp on no-checkin exam: %v", err)
+	}
+}
+
 func TestStartSession_Checkin_NotCheckedIn(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
@@ -1374,7 +1534,7 @@ func TestStartSession_ScheduledWindow_ClosedAfterEnd(t *testing.T) {
 
 // ---------- ReconnectSession ----------
 
-func (s *shimSessionService) ReconnectSession(ctx context.Context, studentID, sessionID string) (SessionStatePayload, error) {
+func (s *shimSessionService) ReconnectSession(ctx context.Context, studentID, sessionID, fp string) (SessionStatePayload, error) {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return SessionStatePayload{}, fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -1395,6 +1555,12 @@ func (s *shimSessionService) ReconnectSession(ctx context.Context, studentID, se
 	exam, err := s.repo.GetExamForSession(ctx, sess.ExamID)
 	if err != nil {
 		return SessionStatePayload{}, err
+	}
+
+	if sess.Status != "submitted" {
+		if err := assertCheckinDevice(ctx, s.rdb, s.repo, exam, sess.RegistrationID, fp); err != nil {
+			return SessionStatePayload{}, err
+		}
 	}
 
 	duration := exam.DurationMinutes
@@ -1451,7 +1617,7 @@ func TestReconnectSession_HappyPath(t *testing.T) {
 	}
 
 	// Reconnect
-	state, err := svc.ReconnectSession(ctx, regDetail.StudentID.String(), result.SessionID.String())
+	state, err := svc.ReconnectSession(ctx, regDetail.StudentID.String(), result.SessionID.String(), "fp")
 	if err != nil {
 		t.Fatalf("ReconnectSession: %v", err)
 	}
@@ -1477,7 +1643,7 @@ func TestReconnectSession_NotFound(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
-	_, err := svc.ReconnectSession(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")
+	_, err := svc.ReconnectSession(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "fp")
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("want ErrSessionNotFound, got %v", err)
 	}
@@ -1485,7 +1651,7 @@ func TestReconnectSession_NotFound(t *testing.T) {
 
 // ---------- SaveAnswers ----------
 
-func (s *shimSessionService) SaveAnswers(ctx context.Context, studentID, sessionID string, inputs []AnswerInput) error {
+func (s *shimSessionService) SaveAnswers(ctx context.Context, studentID, sessionID string, inputs []AnswerInput, fp string) error {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -1505,6 +1671,14 @@ func (s *shimSessionService) SaveAnswers(ctx context.Context, studentID, session
 
 	if sess.Status != "in_progress" {
 		return ErrAlreadySubmitted
+	}
+
+	exam, err := s.repo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return err
+	}
+	if err := assertCheckinDevice(ctx, s.rdb, s.repo, exam, sess.RegistrationID, fp); err != nil {
+		return err
 	}
 
 	answers := make([]model.ExamSessionAnswer, len(inputs))
@@ -1552,7 +1726,7 @@ func TestSaveAnswers_HappyPath(t *testing.T) {
 	answer := "Paris"
 	err = svc.SaveAnswers(ctx, regDetail.StudentID.String(), sess.SessionID.String(), []AnswerInput{
 		{QuestionID: qID, Answer: &answer},
-	})
+	}, "fp")
 	if err != nil {
 		t.Fatalf("SaveAnswers: %v", err)
 	}
@@ -1598,7 +1772,7 @@ func TestSaveAnswers_AlreadySubmitted(t *testing.T) {
 	}
 
 	// Submit first
-	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String())
+	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String(), "fp")
 	if err != nil {
 		t.Fatalf("SubmitSession: %v", err)
 	}
@@ -1607,7 +1781,7 @@ func TestSaveAnswers_AlreadySubmitted(t *testing.T) {
 	answer := "test"
 	err = svc.SaveAnswers(ctx, regDetail.StudentID.String(), sess.SessionID.String(), []AnswerInput{
 		{QuestionID: uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), Answer: &answer},
-	})
+	}, "fp")
 	if !errors.Is(err, ErrAlreadySubmitted) {
 		t.Errorf("want ErrAlreadySubmitted, got %v", err)
 	}
@@ -1620,7 +1794,7 @@ func TestSaveAnswers_SessionNotFound(t *testing.T) {
 	answer := "test"
 	err := svc.SaveAnswers(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", []AnswerInput{
 		{QuestionID: uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), Answer: &answer},
-	})
+	}, "fp")
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("want ErrSessionNotFound, got %v", err)
 	}
@@ -1628,7 +1802,7 @@ func TestSaveAnswers_SessionNotFound(t *testing.T) {
 
 // ---------- SubmitSession ----------
 
-func (s *shimSessionService) SubmitSession(ctx context.Context, studentID, sessionID string) (SubmitResult, error) {
+func (s *shimSessionService) SubmitSession(ctx context.Context, studentID, sessionID, fp string) (SubmitResult, error) {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return SubmitResult{}, fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -1643,6 +1817,14 @@ func (s *shimSessionService) SubmitSession(ctx context.Context, studentID, sessi
 		if errors.Is(err, repository.ErrNotFound) {
 			return SubmitResult{}, ErrSessionNotFound
 		}
+		return SubmitResult{}, err
+	}
+
+	exam, err := s.repo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return SubmitResult{}, err
+	}
+	if err := assertCheckinDevice(ctx, s.rdb, s.repo, exam, sess.RegistrationID, fp); err != nil {
 		return SubmitResult{}, err
 	}
 
@@ -1706,7 +1888,7 @@ func TestSubmitSession_HappyPath(t *testing.T) {
 		t.Fatalf("StartSession: %v", err)
 	}
 
-	result, err := svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String())
+	result, err := svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String(), "fp")
 	if err != nil {
 		t.Fatalf("SubmitSession: %v", err)
 	}
@@ -1748,13 +1930,13 @@ func TestSubmitSession_AlreadySubmitted(t *testing.T) {
 	}
 
 	// Submit once
-	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String())
+	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String(), "fp")
 	if err != nil {
 		t.Fatalf("first SubmitSession: %v", err)
 	}
 
 	// Submit again
-	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String())
+	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String(), "fp")
 	if !errors.Is(err, ErrAlreadySubmitted) {
 		t.Errorf("want ErrAlreadySubmitted, got %v", err)
 	}
@@ -1762,7 +1944,7 @@ func TestSubmitSession_AlreadySubmitted(t *testing.T) {
 
 // ---------- LogViolation ----------
 
-func (s *shimSessionService) LogViolation(ctx context.Context, studentID, sessionID, violationType string) error {
+func (s *shimSessionService) LogViolation(ctx context.Context, studentID, sessionID, violationType, fp string) error {
 	if !validViolationTypes[violationType] {
 		return ErrInvalidViolationType
 	}
@@ -1786,6 +1968,14 @@ func (s *shimSessionService) LogViolation(ctx context.Context, studentID, sessio
 
 	if sess.Status != "in_progress" {
 		return ErrAlreadySubmitted
+	}
+
+	exam, err := s.repo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return err
+	}
+	if err := assertCheckinDevice(ctx, s.rdb, s.repo, exam, sess.RegistrationID, fp); err != nil {
+		return err
 	}
 
 	return s.repo.LogViolation(ctx, model.SessionViolationLog{
@@ -1824,7 +2014,7 @@ func TestLogViolation_HappyPath(t *testing.T) {
 		t.Fatalf("StartSession: %v", err)
 	}
 
-	err = svc.LogViolation(ctx, regDetail.StudentID.String(), sess.SessionID.String(), "tab_switch")
+	err = svc.LogViolation(ctx, regDetail.StudentID.String(), sess.SessionID.String(), "tab_switch", "fp")
 	if err != nil {
 		t.Errorf("LogViolation: %v", err)
 	}
@@ -1834,7 +2024,7 @@ func TestLogViolation_InvalidType(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
-	err := svc.LogViolation(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "unknown_type")
+	err := svc.LogViolation(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "unknown_type", "fp")
 	if !errors.Is(err, ErrInvalidViolationType) {
 		t.Errorf("want ErrInvalidViolationType, got %v", err)
 	}
@@ -1844,7 +2034,7 @@ func TestLogViolation_SessionNotFound(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
-	err := svc.LogViolation(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "tab_switch")
+	err := svc.LogViolation(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "tab_switch", "fp")
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("want ErrSessionNotFound, got %v", err)
 	}
@@ -2164,7 +2354,7 @@ func TestForceSubmitSession_AlreadySubmitted(t *testing.T) {
 	}
 
 	// Submit normally first
-	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String())
+	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String(), "fp")
 	if err != nil {
 		t.Fatalf("SubmitSession: %v", err)
 	}
@@ -2228,12 +2418,12 @@ func TestSubmitSession_GradedAt_ObjectiveStamped_EssayNil(t *testing.T) {
 	err = svc.SaveAnswers(ctx, regDetail.StudentID.String(), sess.SessionID.String(), []AnswerInput{
 		{QuestionID: mcqQID, Answer: &mcqAnswer},
 		{QuestionID: essayQID, Answer: &essayAnswer},
-	})
+	}, "fp")
 	if err != nil {
 		t.Fatalf("SaveAnswers: %v", err)
 	}
 
-	if _, err := svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String()); err != nil {
+	if _, err := svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String(), "fp"); err != nil {
 		t.Fatalf("SubmitSession: %v", err)
 	}
 
@@ -2295,7 +2485,7 @@ func TestForceSubmitSession_GradedAt_ObjectiveStamped_EssayNil(t *testing.T) {
 	err = svc.SaveAnswers(ctx, regDetail.StudentID.String(), sess.SessionID.String(), []AnswerInput{
 		{QuestionID: mcqQID, Answer: &mcqAnswer},
 		{QuestionID: essayQID, Answer: &essayAnswer},
-	})
+	}, "fp")
 	if err != nil {
 		t.Fatalf("SaveAnswers: %v", err)
 	}

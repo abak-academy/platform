@@ -11,7 +11,7 @@ import {
   useRegistration,
   useStartSession,
 } from "@/lib/hooks/exam";
-import { ApiError } from "@/lib/api";
+import { ApiError, isDeviceMismatch } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -55,11 +55,13 @@ export default function ExamDetailPage() {
         },
         onError: (err) => {
           const msg =
-            err instanceof ApiError
-              ? err.message
-              : err instanceof Error
+            isDeviceMismatch(err)
+              ? t("exam_device_mismatch")
+              : err instanceof ApiError
                 ? err.message
-                : t("invalid_token");
+                : err instanceof Error
+                  ? err.message
+                  : t("invalid_token");
           toast.error(msg);
         },
       },
@@ -76,7 +78,11 @@ export default function ExamDetailPage() {
       router.push(`/exam/sessions/${result.session_id}`);
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : t("competition_error");
+        isDeviceMismatch(err)
+          ? t("exam_device_mismatch")
+          : err instanceof Error
+            ? err.message
+            : t("competition_error");
       toast.error(msg);
     }
   };
