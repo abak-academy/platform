@@ -388,7 +388,7 @@ function ResultDetailPanel({
           <h4 className="mb-2 text-sm font-semibold text-ink-900">{t("result_pembahasan")}</h4>
           <div className="space-y-2">
             {topics.map((topic, index) => {
-              const isOpen = openTopics[topic.id] ?? index === 0;
+              const isOpen = openTopics[topic.id] ?? false;
               const breakdown = detail.breakdown?.find((b) => b.test_id === topic.id || b.title === topic.title);
               return (
                 <div key={topic.id} className="overflow-hidden rounded-xl border border-line bg-card">

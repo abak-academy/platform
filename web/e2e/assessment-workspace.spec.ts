@@ -209,6 +209,8 @@ test("super_admin unified Results workspace is ranked and supports large detail 
   await expect(page.getByRole("heading", { name: "Detail Hasil" })).toBeVisible();
   await expect(page.getByText("Percobaan 2")).toBeVisible();
   await expect(page.getByText("Matematika")).toBeVisible();
+  await expect(page.getByText("2 + 2 = ?")).toHaveCount(0);
+  await page.getByRole("button", { name: /Matematika/ }).click();
   await expect(page.getByText("2 + 2 = ?")).toBeVisible();
   await expect(page.getByText("Empat adalah jawaban yang benar.")).toBeVisible();
 });

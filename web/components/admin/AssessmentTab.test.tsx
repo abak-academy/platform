@@ -220,6 +220,12 @@ describe("AssessmentTab", () => {
     await waitFor(() => {
       expect(screen.getByText("8")).toBeInTheDocument();
       expect(screen.getByText(/Percobaan 2/)).toBeInTheDocument();
+      expect(screen.queryByText("2 + 2 = ?")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Matematika/i }));
+
+    await waitFor(() => {
       expect(screen.getByText("2 + 2 = ?")).toBeInTheDocument();
       expect(screen.queryByText("Tiga")).not.toBeInTheDocument();
       expect(screen.queryByText("Empat")).not.toBeInTheDocument();
