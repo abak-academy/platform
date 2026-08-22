@@ -23,7 +23,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAssessment, useAssessmentAttempts } from "@/lib/hooks/admin-assessment";
 import { useAdminResultDetail, exportAdminResults } from "@/lib/hooks/admin-results";
 import { useSchools } from "@/lib/hooks/students";
-import type { AssessmentRow, AssessmentAttempt } from "@/lib/types";
+import type { AssessmentRow, AssessmentAttempt, AssessmentSummary } from "@/lib/types";
+import { toast } from "sonner";
 
 interface AssessmentTabProps {
   examId: string;
@@ -33,10 +34,25 @@ interface AssessmentTabProps {
 // own sentinel; it maps back to "" (no school_id param, meaning "all schools").
 const ALL_SCHOOLS_VALUE = "_all_";
 
+function useDebouncedValue(value: string, delay: number): string {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
+
 function statusBadgeClass(status: string): string {
   if (status === "completed") return "bg-success-bg text-success";
   if (status === "in_progress") return "bg-warning-bg text-warning";
   return "bg-surface-2 text-ink-500";
+}
+
+function statusLabelKey(status: string): "assessment_status_completed" | "assessment_status_in_progress" | "assessment_status_not_started" {
+  if (status === "completed") return "assessment_status_completed";
+  if (status === "in_progress") return "assessment_status_in_progress";
+  return "assessment_status_not_started";
 }
 
 export function AssessmentTab({ examId }: AssessmentTabProps) {
@@ -46,12 +62,14 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
   const { data: schoolsData } = useSchools(true);
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const [accumulated, setAccumulated] = useState<AssessmentRow[]>([]);
   const [activeCursor, setActiveCursor] = useState<string | undefined>(undefined);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const [stableSummary, setStableSummary] = useState<AssessmentSummary | null>(null);
 
-  const filterKey = `${examId}:${search}:${selectedSchoolId}`;
+  const filterKey = `${examId}:${debouncedSearch}:${selectedSchoolId}`;
   const filterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -65,7 +83,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
 
   const query = useAssessment({
     examId,
-    q: search || undefined,
+    q: debouncedSearch || undefined,
     schoolId: selectedSchoolId || undefined,
     cursor: activeCursor,
     limit: 20,
@@ -84,6 +102,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
       return [...prev, ...fresh];
     });
     setNextCursor(query.data.next_cursor || undefined);
+    setStableSummary(query.data.summary);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data, filterKey]);
 
@@ -96,9 +115,9 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
     if (!examId) return;
     setExporting(true);
     try {
-      await exportAdminResults(examId, selectedSchoolId || undefined);
-    } catch {
-      // Export errors handled silently — the CSV download is best-effort
+      await exportAdminResults(examId, selectedSchoolId || undefined, debouncedSearch || undefined);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("sys_error_load"));
     } finally {
       setExporting(false);
     }
@@ -107,7 +126,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
   const [selectedRegistrationId, setSelectedRegistrationId] = useState<string>("");
   const selectedRow = accumulated.find((r) => r.registration_id === selectedRegistrationId);
 
-  const summary = query.data?.summary;
+  const summary = query.data?.summary ?? stableSummary;
 
   const columns: DataTableColumn<AssessmentRow>[] = [
     {
@@ -130,7 +149,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
       header: t("assessment_col_status"),
       cell: (row) => (
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(row.status)}`}>
-          {t(`assessment_status_${row.status}` as const)}
+          {t(statusLabelKey(row.status))}
         </span>
       ),
     },
@@ -142,7 +161,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
     {
       key: "score",
       header: t("school_reports_col_score"),
-      cell: (row) => <span className="text-xs text-ink-600">{row.score ?? "-"}</span>,
+      cell: (row) => <span className="text-xs text-ink-600">{row.score == null ? "-" : row.score.toFixed(1)}</span>,
     },
     {
       key: "attempts",
@@ -279,7 +298,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
             <AssessmentDrawerContent
               examId={examId}
               row={selectedRow}
-              t={t as unknown as (key: string) => string}
+              t={t}
               dateLocale={dateLocale}
             />
           )}
@@ -297,7 +316,7 @@ function AssessmentDrawerContent({
 }: {
   examId: string;
   row: AssessmentRow;
-  t: (key: string) => string;
+  t: ReturnType<typeof useTranslation>["t"];
   dateLocale: string;
 }) {
   const attempts = useAssessmentAttempts(examId, row.registration_id);
@@ -345,7 +364,7 @@ function AssessmentDrawerContent({
                   )}
                 </div>
                 <div className="text-xs text-ink-500">
-                  {attempt.status} ·{" "}
+                  {t(statusLabelKey(attempt.status))} ·{" "}
                   {attempt.submitted_at
                     ? new Date(attempt.submitted_at).toLocaleString(dateLocale, {
                         day: "2-digit",
@@ -365,7 +384,7 @@ function AssessmentDrawerContent({
                   {t("action_view")}
                 </Button>
               ) : (
-                <span className="text-xs text-ink-400">{t("assessment_attempt_unavailable")}</span>
+                <span className="text-xs text-ink-600">{t("assessment_attempt_unavailable")}</span>
               )}
             </li>
           ))}

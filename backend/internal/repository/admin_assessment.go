@@ -22,9 +22,9 @@ type AssessmentFilter struct {
 	Limit    int
 }
 
-// assessmentLatestSession is the shared "latest attempt per registration" CTE:
-// newest by attempt_number DESC, tie-broken by started_at DESC then id DESC
-// (FR22 — never pick latest submitted first). References $1 = exam_id.
+// assessmentLatestSession is the authoritative status/latest-attempt CTE:
+// newest by attempt_number DESC, tie-broken by started_at DESC then id DESC.
+// References $1 = exam_id.
 const assessmentLatestSession = `(
 	SELECT DISTINCT ON (s.registration_id) s.registration_id, s.id AS session_id,
 		s.attempt_number, s.status, s.submitted_at, s.score
@@ -33,12 +33,25 @@ const assessmentLatestSession = `(
 	ORDER BY s.registration_id, s.attempt_number DESC, s.started_at DESC, s.id DESC
 )`
 
-// assessmentFullyGraded mirrors fullyGradedFilter but is keyed off the latest
-// CTE's session_id column instead of a bare `s.id` alias.
+// assessmentFullyGraded mirrors the leaderboard fullyGradedFilter for a concrete
+// exam_session alias.
 const assessmentFullyGraded = `NOT EXISTS (
 	SELECT 1 FROM exam_session_answer a
 	JOIN question q ON q.id = a.question_id
-	WHERE a.session_id = latest.session_id AND q.format = 'essay' AND a.graded_at IS NULL
+	WHERE a.session_id = s.id AND q.format = 'essay' AND a.graded_at IS NULL
+)`
+
+// assessmentLatestScoredSession matches the leaderboard semantics: filter to
+// submitted + scored + fully graded sessions first, then pick the newest scored
+// attempt per registration. This keeps Assessment score/rank/average aligned
+// with ListExamLeaderboard/GetFullyGradedScores even when a student starts a
+// newer in-progress or ungraded retry.
+const assessmentLatestScoredSession = `(
+	SELECT DISTINCT ON (s.registration_id) s.registration_id, s.id AS session_id,
+		s.attempt_number, s.submitted_at, s.score
+	FROM exam_session s
+	WHERE s.exam_id = $1 AND s.status = 'submitted' AND s.score IS NOT NULL AND ` + assessmentFullyGraded + `
+	ORDER BY s.registration_id, s.attempt_number DESC, s.started_at DESC, s.id DESC
 )`
 
 func (f AssessmentFilter) whereRegistration(startArg int) (string, []any) {
@@ -59,15 +72,17 @@ func (f AssessmentFilter) whereRegistration(startArg int) (string, []any) {
 }
 
 // ListAssessmentRows returns the paginated participant rows for the assessment
-// workspace (Issue 124): one row per exam_registration, with the latest-attempt
-// status/score and a rank computed over the full filtered cohort (not just the
-// current page) so page-2 ranks stay correct. Rank/score are surfaced only for
-// rows whose latest session is submitted, fully graded, and scored. Cursor is
-// keyset-encoded as "<RFC3339Nano created_at>,<registration id>", default
-// limit 20, cap 100.
+// workspace (Issue 124): one row per exam_registration, with latest-attempt
+// status plus leaderboard-compatible score/rank from the newest submitted,
+// fully graded, scored attempt. Rank is computed over the full filtered cohort
+// (not just the current page) so page-2 ranks stay correct. Cursor is keyset-
+// encoded as "<RFC3339Nano created_at>,<registration id>", default limit 20,
+// cap 100.
 func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, filter AssessmentFilter) ([]model.AssessmentRow, string, error) {
-	if filter.Limit <= 0 || filter.Limit > 100 {
+	if filter.Limit <= 0 {
 		filter.Limit = 20
+	} else if filter.Limit > 100 {
+		filter.Limit = 100
 	}
 
 	regClause, regArgs := filter.whereRegistration(2)
@@ -84,6 +99,7 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 			WHERE reg.exam_id = $1` + regClause + `
 		),
 		latest AS ` + assessmentLatestSession + `,
+		scored AS ` + assessmentLatestScoredSession + `,
 		attempts_agg AS (
 			SELECT registration_id, COUNT(*) AS attempts_count
 			FROM exam_session
@@ -101,13 +117,13 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 			SELECT reg.id AS registration_id, reg.student_id, reg.created_at, reg.student_name, reg.username,
 				reg.school_id, reg.school_name,
 				latest.session_id, latest.attempt_number, latest.status AS session_status,
-				latest.submitted_at, latest.score,
+				latest.submitted_at, scored.score,
 				COALESCE(attempts_agg.attempts_count, 0) AS attempts_count,
 				COALESCE(latest_violations.cnt, 0) AS latest_violations,
-				(latest.session_id IS NOT NULL AND latest.status = 'submitted' AND latest.score IS NOT NULL
-					AND ` + assessmentFullyGraded + `) AS eligible
+				(scored.session_id IS NOT NULL) AS eligible
 			FROM reg
 			LEFT JOIN latest ON latest.registration_id = reg.id
+			LEFT JOIN scored ON scored.registration_id = reg.id
 			LEFT JOIN attempts_agg ON attempts_agg.registration_id = reg.id
 			LEFT JOIN latest_violations ON latest_violations.session_id = latest.session_id
 		),
@@ -193,7 +209,8 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 // pagination. AverageScore/Distribution cover only the latest-attempt,
 // submitted, fully-graded, scored rows; ViolationAttempts/ViolationEvents
 // count across every attempt of the filtered registrations, not just the
-// latest (Issue 124 spec).
+// latest (Issue 124 spec). Scores mirror leaderboard semantics: newest
+// submitted + fully graded scored attempt per registration.
 func (r *Repository) GetAssessmentSummary(ctx context.Context, examID uuid.UUID, filter AssessmentFilter) (total int, completed int, scores []float64, violationAttempts int, violationEvents int, err error) {
 	regClause, regArgs := filter.whereRegistration(2)
 	args := []any{examID}
@@ -223,11 +240,10 @@ func (r *Repository) GetAssessmentSummary(ctx context.Context, examID uuid.UUID,
 			JOIN users u ON u.id = reg.student_id AND u.role = 'student'
 			WHERE reg.exam_id = $1`+regClause+`
 		),
-		latest AS `+assessmentLatestSession+`
+		scored AS `+assessmentLatestScoredSession+`
 		SELECT latest.score
 		FROM reg
-		JOIN latest ON latest.registration_id = reg.id
-		WHERE latest.status = 'submitted' AND latest.score IS NOT NULL AND `+assessmentFullyGraded,
+		JOIN scored latest ON latest.registration_id = reg.id`,
 		args...,
 	)
 	if err != nil {

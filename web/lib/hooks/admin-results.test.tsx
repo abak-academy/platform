@@ -239,6 +239,31 @@ describe("exportAdminResults", () => {
     );
   });
 
+  it("exportAdminResults passes q param when provided", async () => {
+    const mockBlob = new Blob(["name,score\n"], { type: "text/csv" });
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      blob: () => Promise.resolve(mockBlob),
+    });
+
+    await exportAdminResults("exam-1", "school-1", "budi");
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://localhost:8080/api/v1/admin/results/export?exam_id=exam-1&school_id=school-1&q=budi",
+      expect.anything(),
+    );
+  });
+
+  it("exportAdminResults throws on failed response", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      blob: () => Promise.resolve(new Blob(["forbidden"])),
+    });
+
+    await expect(exportAdminResults("exam-1")).rejects.toThrow("Export failed (403)");
+  });
+
   it("exportAdminResults omits school_id when not provided", async () => {
     const mockBlob = new Blob(["name,score\n"], { type: "text/csv" });
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({

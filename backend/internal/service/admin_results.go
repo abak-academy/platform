@@ -106,11 +106,11 @@ func (s *Service) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID
 // Uses encoding/csv + bytes.Buffer, matching BuildCredentialsResultCSV in
 // bulk_credentials.go. Header rows are always written even when the result
 // set is empty (hidden/locked exam -> header only, no error).
-func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, schoolID string) ([]byte, error) {
+func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, schoolID, q string) ([]byte, error) {
 	var rows []model.AdminResultRow
 	cursor := ""
 	for {
-		page, next, err := s.ListSchoolResults(ctx, examID, schoolID, "", cursor, 100)
+		page, next, err := s.ListSchoolResults(ctx, examID, schoolID, q, cursor, 100)
 		if err != nil {
 			return nil, err
 		}

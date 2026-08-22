@@ -132,27 +132,27 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 			latestSessID *uuid.UUID
 		}{row.Status, row.Score, row.Rank, row.AttemptsCount, row.LatestViolations, row.LatestSessionID}
 	}
-	if got := byName["Budi Assessment"]; got.status != "completed" || got.score == nil || *got.score != 90 || got.rank == nil || *got.rank != 1 || got.attempts != 2 || got.latestVios != 2 || got.latestSessID == nil || *got.latestSessID != budiLatest {
+	if got := byName["Budi Assessment"]; got.status != "completed" || got.score == nil || *got.score != 90 || got.rank == nil || *got.rank != 2 || got.attempts != 2 || got.latestVios != 2 || got.latestSessID == nil || *got.latestSessID != budiLatest {
 		t.Fatalf("Budi row mismatch: %+v", got)
 	}
-	if got := byName["Cici Retry"]; got.status != "in_progress" || got.score != nil || got.rank != nil || got.attempts != 2 {
-		t.Fatalf("Cici row should use latest in-progress attempt, got %+v", got)
+	if got := byName["Cici Retry"]; got.status != "in_progress" || got.score == nil || *got.score != 100 || got.rank == nil || *got.rank != 1 || got.attempts != 2 {
+		t.Fatalf("Cici row should keep latest status while scoring latest fully graded submission, got %+v", got)
 	}
 	if got := byName["Evi Empty"]; got.status != "not_started" || got.latestSessID != nil || got.attempts != 0 {
 		t.Fatalf("Evi row should be not_started, got %+v", got)
 	}
-	if got := byName["Fani Tie"]; got.status != "completed" || got.rank == nil || *got.rank != 1 {
-		t.Fatalf("Fani should share rank 1 tie, got %+v", got)
+	if got := byName["Fani Tie"]; got.status != "completed" || got.rank == nil || *got.rank != 2 {
+		t.Fatalf("Fani should share rank 2 tie, got %+v", got)
 	}
 
 	total, completed, scores, violationAttempts, violationEvents, err := repo.GetAssessmentSummary(ctx, examID, filterSchoolA)
 	if err != nil {
 		t.Fatalf("GetAssessmentSummary school A: %v", err)
 	}
-	if total != 4 || completed != 2 || len(scores) != 2 || violationAttempts != 2 || violationEvents != 3 {
+	if total != 4 || completed != 2 || len(scores) != 3 || violationAttempts != 2 || violationEvents != 3 {
 		t.Fatalf("summary mismatch total=%d completed=%d scores=%v violationAttempts=%d violationEvents=%d", total, completed, scores, violationAttempts, violationEvents)
 	}
-	assertFloatClose(t, scores[0]+scores[1], 180)
+	assertFloatClose(t, scores[0]+scores[1]+scores[2], 280)
 
 	q := AssessmentFilter{Q: "budi-assessment", Limit: 10}
 	total, completed, scores, violationAttempts, violationEvents, err = repo.GetAssessmentSummary(ctx, examID, q)

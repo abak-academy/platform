@@ -22,8 +22,10 @@ func (s *Service) AdminGetExamAssessment(ctx context.Context, examID uuid.UUID, 
 		return model.AssessmentResponse{}, err
 	}
 
-	if limit <= 0 || limit > 100 {
+	if limit <= 0 {
 		limit = 20
+	} else if limit > 100 {
+		limit = 100
 	}
 
 	filter := repository.AssessmentFilter{Q: q, SchoolID: schoolID, Cursor: cursor, Limit: limit}

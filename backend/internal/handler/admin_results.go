@@ -96,7 +96,7 @@ func (h *Handler) AdminExportResults(c echo.Context) error {
 		return badRequest(c, "invalid exam_id")
 	}
 
-	csvBytes, err := h.svc.ExportSchoolResultsCSV(c.Request().Context(), examID, schoolID)
+	csvBytes, err := h.svc.ExportSchoolResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
 	if err != nil {
 		return mapServiceError(c, err)
 	}
