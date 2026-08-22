@@ -251,7 +251,7 @@ describe("SchoolStudentsPage", () => {
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
-          input: expect.objectContaining({ name: "Dewi Lestari", jenjang: "SMA" }),
+          input: { name: "Dewi Lestari", jenjang: "SMA" },
         }),
       );
       expect(toast.success).toHaveBeenCalledWith("Siswa berhasil didaftarkan.");

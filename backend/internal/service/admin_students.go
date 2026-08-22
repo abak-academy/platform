@@ -130,6 +130,18 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 		return nil, ErrMissingField
 	}
 
+	if email != nil {
+		n := normalizeEmail(*email)
+		if n == "" {
+			email = nil
+		} else {
+			email = &n
+			if err := checkEmailUniqueness(ctx, s.repo, n); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	if kodePos != nil {
 		if err := ValidateKodePos(*kodePos); err != nil {
 			return nil, err
@@ -264,7 +276,7 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 		KotaID:       kotaID,
 		KecamatanID:  kecamatanID,
 		KodePos:      kodePos,
-		Email:        email,
+		Email:        user.Email,
 		TempPassword: tempPass,
 		CreatedAt:    user.CreatedAt.Format(time.RFC3339),
 	}, nil

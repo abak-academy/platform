@@ -11,14 +11,24 @@ import (
 )
 
 func normalizeEmail(email string) string {
-	return strings.ToLower(email)
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// normalizeOptionalEmail treats missing / whitespace-only as SQL NULL so
+// blank emails do not occupy idx_users_email_active (empty string is NOT NULL).
+func normalizeOptionalEmail(email *string) *string {
+	if email == nil {
+		return nil
+	}
+	n := normalizeEmail(*email)
+	if n == "" {
+		return nil
+	}
+	return &n
 }
 
 func (r *Repository) CreateUser(ctx context.Context, u *model.User) error {
-	if u.Email != nil {
-		normalized := normalizeEmail(*u.Email)
-		u.Email = &normalized
-	}
+	u.Email = normalizeOptionalEmail(u.Email)
 	if u.AuthProvider == "" {
 		u.AuthProvider = "password"
 	}
@@ -142,6 +152,7 @@ func (r *Repository) ActivateUser(ctx context.Context, userID string) (bool, err
 // them explicitly — false leaves both untouched, true writes schoolID/
 // unlistedSchoolName verbatim (including NULL when the pointer is nil).
 func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, dob *time.Time, applySchool bool, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) error {
+	email = normalizeOptionalEmail(email)
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users
 		SET name = COALESCE($1, name),
