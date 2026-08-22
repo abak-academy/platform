@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowUpDown, CheckCircle, Download, Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,6 +22,7 @@ import { formatRupiah } from "@/lib/format";
 import {
   usePreviewBulkExamOrder,
   useCreateBulkExamOrder,
+  type BulkExamOrderPreview,
 } from "@/lib/hooks/admin-bulk-exam-orders";
 import {
   useGrantExamAccess,
@@ -233,6 +234,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
+  const [previewResult, setPreviewResult] = useState<BulkExamOrderPreview | null>(null);
   const [grantResult, setGrantResult] = useState<{
     granted_count: number;
     granted_students: Array<{ id: string; name: string; username: string }>;
@@ -240,6 +242,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
   const [grantMode, setGrantMode] = useState<"manual" | "csv">("manual");
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvJobId, setCsvJobId] = useState<string | null>(null);
+  const flowGenerationRef = useRef(0);
 
   const previewMutation = usePreviewBulkExamOrder();
   const createMutation = useCreateBulkExamOrder();
@@ -258,21 +261,34 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
       toast.error(t("bulk_exam_order_empty_students"));
       return;
     }
+    const flowGeneration = flowGenerationRef.current;
     previewMutation.mutate(
       { exam_id: examId, student_ids: selectedStudentIds },
-      { onError: () => toast.error(t("bulk_exam_order_preview_failed")) },
+      {
+        onSuccess: (result) => {
+          if (flowGeneration !== flowGenerationRef.current) return;
+          setPreviewResult(result);
+        },
+        onError: () => {
+          if (flowGeneration !== flowGenerationRef.current) return;
+          toast.error(t("bulk_exam_order_preview_failed"));
+        },
+      },
     );
   };
 
   const handleCreateOrder = () => {
     if (!previewInput) return;
+    const flowGeneration = flowGenerationRef.current;
     createMutation.mutate(previewInput, {
       onSuccess: (order) => {
+        if (flowGeneration !== flowGenerationRef.current) return;
         setCreatedOrderId(order.id);
         toast.success(t("bulk_exam_order_created"));
         queryClient.invalidateQueries({ queryKey: [...adminExamsKeys.rosters(), examId] });
       },
       onError: (err) => {
+        if (flowGeneration !== flowGenerationRef.current) return;
         const msg =
           err instanceof Error ? err.message : t("bulk_exam_order_creating_failed");
         toast.error(msg);
@@ -285,15 +301,18 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
       toast.error(t("exam_grant_empty_students"));
       return;
     }
+    const flowGeneration = flowGenerationRef.current;
     grantMutation.mutate(
       { exam_id: examId, student_ids: selectedStudentIds },
       {
         onSuccess: (result) => {
+          if (flowGeneration !== flowGenerationRef.current) return;
           setGrantResult(result);
           toast.success(t("exam_grant_success"));
           queryClient.invalidateQueries({ queryKey: [...adminExamsKeys.rosters(), examId] });
         },
         onError: (err) => {
+          if (flowGeneration !== flowGenerationRef.current) return;
           const msg = err instanceof Error ? err.message : t("error_generic");
           toast.error(msg);
         },
@@ -306,23 +325,29 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
       toast.error(t("exam_grant_bulk_no_file"));
       return;
     }
+    const flowGeneration = flowGenerationRef.current;
     try {
       const presignResp = await csvPresignMutation.mutateAsync({
         filename: csvFile.name,
         contentType: csvFile.type || "text/csv",
       });
+      if (flowGeneration !== flowGenerationRef.current) return;
       try {
         await putFileToPresignedURL(presignResp.url, csvFile, csvFile.type || "text/csv");
       } catch (err) {
+        if (flowGeneration !== flowGenerationRef.current) return;
         toast.error(err instanceof Error ? err.message : t("exam_grant_bulk_put_failed"));
         return;
       }
+      if (flowGeneration !== flowGenerationRef.current) return;
       const enqueueResp = await csvEnqueueMutation.mutateAsync({
         examId,
         fileKey: presignResp.key,
       });
+      if (flowGeneration !== flowGenerationRef.current) return;
       setCsvJobId(enqueueResp.job_id);
     } catch (err) {
+      if (flowGeneration !== flowGenerationRef.current) return;
       toast.error(err instanceof Error ? err.message : t("exam_grant_bulk_enqueue_failed"));
     }
   };
@@ -342,6 +367,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
   const resetFlowState = () => {
     setSelectedStudentIds([]);
     setCreatedOrderId(null);
+    setPreviewResult(null);
     setGrantResult(null);
     setGrantMode("manual");
     setCsvFile(null);
@@ -357,6 +383,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
   const handleModalOpenChange = (open: boolean) => {
     setModalOpen(open);
+    flowGenerationRef.current += 1;
     if (!open) {
       resetFlowState();
     }
@@ -629,24 +656,24 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                       {t("bulk_exam_order_preview")}
                     </Button>
 
-                    {previewMutation.data && (
+                    {previewResult && (
                       <div className="md-card-outlined space-y-4 p-5">
                         <h4 className="font-serif text-base font-semibold text-ink-900">
                           {t("bulk_exam_order_preview_title")}
                         </h4>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline">
-                            {previewMutation.data.net_new_count}{" "}
+                            {previewResult.net_new_count}{" "}
                             {t("bulk_exam_order_students_count").replace(
                               "{n}",
-                              String(previewMutation.data.net_new_count),
+                              String(previewResult.net_new_count),
                             )}
                           </Badge>
                         </div>
 
-                        {previewMutation.data.excluded.length > 0 && (
+                        {previewResult.excluded.length > 0 && (
                           <div className="max-h-[160px] overflow-y-auto rounded-lg border border-line p-2">
-                            {previewMutation.data.excluded.map((s) => (
+                            {previewResult.excluded.map((s) => (
                               <div
                                 key={s.student_id}
                                 className="flex items-center gap-2 px-2 py-1.5 text-sm"
@@ -664,7 +691,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                               {t("bulk_exam_order_total")}
                             </span>
                             <span className="font-serif text-lg font-bold text-success">
-                              {formatRupiah(previewMutation.data.total)}
+                              {formatRupiah(previewResult.total)}
                             </span>
                           </div>
                         </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { act, render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { formatRupiah } from "@/lib/format";
 import { ExamRegistrationsTab } from "./ExamRegistrationsTab";
@@ -24,6 +24,8 @@ const grantMutateSpy = vi.fn();
 let grantShouldError = false;
 let grantErrorMessage = "";
 let grantMockResult: any = null;
+let holdGrantMutation = false;
+let heldGrantOptions: any = null;
 
 let authUser: { role: string; school_id?: string } = {
   role: "admin_school",
@@ -45,6 +47,7 @@ vi.mock("@/lib/hooks/admin-bulk-exam-orders", () => ({
           opts?.onError?.(new Error("preview failed"));
         } else {
           setData(previewMockResult);
+          opts?.onSuccess?.(previewMockResult);
         }
       },
     };
@@ -113,6 +116,10 @@ vi.mock("@/lib/hooks/admin-exam-grants", () => ({
     reset: vi.fn(),
     mutate: (input: any, opts?: any) => {
       grantMutateSpy(input, opts);
+      if (holdGrantMutation) {
+        heldGrantOptions = opts;
+        return;
+      }
       if (grantShouldError) {
         opts?.onError?.(new Error(grantErrorMessage));
       } else {
@@ -187,6 +194,8 @@ beforeEach(() => {
   csvEnqueueMutateAsync.mockReset();
   csvPutFile.mockReset();
   csvJobStatusState.data = null;
+  holdGrantMutation = false;
+  heldGrantOptions = null;
 });
 
 function wrapperFactory() {
@@ -454,6 +463,31 @@ describe("ExamRegistrationsTab — super_admin grant flow (cross-school, no orde
     expect(reopened.getByTestId("participant-add")).toBeInTheDocument();
     expect(reopened.queryByText("Andi Saputra")).not.toBeInTheDocument();
   });
+
+  it("ignores a stale grant success that resolves after the modal was closed", async () => {
+    holdGrantMutation = true;
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
+    fireEvent.click(await dialog.findByText("exam_grant_grant"));
+    expect(heldGrantOptions).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    heldGrantOptions.onSuccess({
+      granted_count: 1,
+      granted_students: [{ id: "s1", name: "Andi Saputra", username: "andi123" }],
+    });
+
+    const reopened = openGrantModal();
+    expect(reopened.getByTestId("participant-add")).toBeInTheDocument();
+    expect(reopened.queryByText("Andi Saputra")).not.toBeInTheDocument();
+    expect(reopened.queryByText("exam_grant_success_title")).not.toBeInTheDocument();
+  });
 });
 
 describe("ExamRegistrationsTab — super_admin CSV bulk grant flow (Frontend B2)", () => {
@@ -666,6 +700,43 @@ describe("ExamRegistrationsTab — super_admin CSV bulk grant flow (Frontend B2)
     dialog = openGrantModal();
     expect(dialog.getByTestId("grant-mode-manual")).toBeInTheDocument();
     expect(dialog.queryByText("grants.csv")).not.toBeInTheDocument();
+  });
+
+  it("does not continue CSV upload/enqueue after the modal is closed during presign", async () => {
+    let resolvePresign: (value: { url: string; method: string; key: string }) => void = () => {};
+    csvPresignMutateAsync.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePresign = resolve;
+        }),
+    );
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("grant-mode-csv"));
+
+    const file = new File(["username\nandi123"], "grants.csv", { type: "text/csv" });
+    fireEvent.change(dialog.getByTestId("csv-file-input"), { target: { files: [file] } });
+    fireEvent.click(dialog.getByTestId("csv-upload-submit"));
+
+    await waitFor(() => expect(csvPresignMutateAsync).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolvePresign({
+        url: "http://minio.local/exam-grant-bulk/exam-1/uuid.csv?sig=abc",
+        method: "PUT",
+        key: "exam-grant-bulk/exam-1/uuid.csv",
+      });
+      await Promise.resolve();
+    });
+
+    expect(csvPutFile).not.toHaveBeenCalled();
+    expect(csvEnqueueMutateAsync).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });
 
