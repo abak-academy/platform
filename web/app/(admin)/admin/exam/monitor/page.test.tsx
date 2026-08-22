@@ -228,6 +228,50 @@ describe("ExamMonitorPage", () => {
     expect(screen.getByText("Rudi Hermawan")).toBeInTheDocument();
   });
 
+  it("opens selected exam monitor detail in a dialog while keeping the available exams table on the page", async () => {
+    render(<ExamMonitorPage />);
+    expect(screen.getByTestId("exam-monitor-available-table")).toBeInTheDocument();
+    expect(screen.queryByText("Klik salah satu ujian di atas untuk melihat sesinya")).not.toBeInTheDocument();
+
+    await selectExamRow("UTBK 2026");
+
+    const dialog = await screen.findByRole("dialog", { name: "UTBK 2026" });
+    expect(screen.getByTestId("exam-monitor-available-table")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("exam-monitor-table")).toBeInTheDocument();
+    expect(within(dialog).getByText("Pelanggaran")).toBeInTheDocument();
+    expect(within(dialog).getByText("Budi Santoso")).toBeInTheDocument();
+  });
+
+  it("closes the monitor dialog without leaving detail content below the available exams table", async () => {
+    render(<ExamMonitorPage />);
+    await selectExamRow("UTBK 2026");
+
+    const dialog = await screen.findByRole("dialog", { name: "UTBK 2026" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "UTBK 2026" })).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("exam-monitor-available-table")).toBeInTheDocument();
+    expect(screen.queryByText("Budi Santoso")).not.toBeInTheDocument();
+    expect(screen.queryByText("Klik salah satu ujian di atas untuk melihat sesinya")).not.toBeInTheDocument();
+  });
+
+  it("opens another exam in the monitor dialog after the previous dialog is closed", async () => {
+    render(<ExamMonitorPage />);
+    await selectExamRow("UTBK 2026");
+
+    const firstDialog = await screen.findByRole("dialog", { name: "UTBK 2026" });
+    fireEvent.click(within(firstDialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "UTBK 2026" })).not.toBeInTheDocument();
+    });
+
+    await selectExamRow("Tryout 1");
+
+    expect(await screen.findByRole("dialog", { name: "Tryout 1" })).toBeInTheDocument();
+  });
+
   it("renders each status with correct badge label", async () => {
     render(<ExamMonitorPage />);
     await selectExamRow("UTBK 2026");
@@ -354,12 +398,14 @@ describe("ExamMonitorPage", () => {
     });
   });
 
-  it("shows 'click an exam' prompt before any exam is selected", async () => {
+  it("does not render monitor detail or an empty-selection prompt before any exam is selected", async () => {
     render(<ExamMonitorPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Klik salah satu ujian di atas untuk melihat sesinya")).toBeInTheDocument();
+      expect(screen.getByTestId("exam-monitor-available-table")).toBeInTheDocument();
     });
+    expect(screen.queryByTestId("exam-monitor-table")).not.toBeInTheDocument();
+    expect(screen.queryByText("Klik salah satu ujian di atas untuk melihat sesinya")).not.toBeInTheDocument();
   });
 
   it("shows an empty message when no exams are available to monitor", async () => {
