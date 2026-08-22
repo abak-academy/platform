@@ -455,13 +455,12 @@ function QuestionReviewCard({
 
   return (
     <div className={`rounded-xl border ${toneClass} px-4 py-3 text-xs`}>
-      <div className="mb-2 flex items-center gap-2 font-semibold text-ink-900">
+      <div className="mb-2 flex items-start gap-2 font-semibold text-ink-900">
         {icon}
-        <span>#{index + 1}</span>
-        <span>{formatChoiceAnswer(item.your_answer, item.format) || "—"}</span>
+        <span className="shrink-0">#{index + 1}</span>
+        <div className="min-w-0 flex-1"><RichContent html={item.body} /></div>
       </div>
-      <div className="font-medium text-ink-900"><RichContent html={item.body} /></div>
-      <div className="mt-3 grid gap-2 text-ink-700 sm:grid-cols-2">
+      <div className="grid gap-2 text-ink-700 sm:grid-cols-2">
         <p>{t("result_your_answer")}: <span className="font-semibold text-ink-900">{formatChoiceAnswer(item.your_answer, item.format) || "—"}</span></p>
         {item.is_correct === false && (
           <p>{t("result_correct_answer")}: <span className="font-semibold text-ink-900">{formatChoiceAnswer(item.correct_answer, item.format) || "—"}</span></p>
