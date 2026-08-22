@@ -73,52 +73,16 @@ func (s *Service) GrantExamAccess(ctx context.Context, actorID, examID string, s
 
 	var registrations []model.ExamRegistration
 	for _, sid := range studentIDs {
-		reg := model.ExamRegistration{
-			StudentID: sid,
-			ExamID:    examUUID,
-			Token:     repository.GenerateExamToken(),
-			Status:    "registered",
-		}
-		// Same advisory lock as CreateExamRegistration (exam.go:1120-1124) — its
-		// comment already names "admin grant" as a caller sharing this MAX+1
-		// sequence, so this path must serialize on it too or a concurrent
-		// checkout/grant pair can compute the same next number and collide on
-		// uq_examregistration_participant.
-		if _, err := tx.Exec(ctx,
-			`SELECT pg_advisory_xact_lock(hashtext('exam_participant_number'), hashtext($1::text))`,
-			examUUID,
-		); err != nil {
-			return GrantExamAccessResult{}, err
-		}
-		// Use RETURNING so we only capture actually-inserted rows.
-		// ON CONFLICT DO NOTHING produces no output for existing rows.
-		// participant_number must be set here too — AllocateCertificateNumber
-		// (exam.go:1849-1860) scans it into a non-nullable int, and a NULL left
-		// by this path fails certificate generation for every grant-path student
-		// (FB-28).
-		var inserted model.ExamRegistration
-		err := tx.QueryRow(ctx,
-			`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number)
-			 VALUES ($1, $2, $3, $4,
-				(SELECT COALESCE(MAX(participant_number), 0) + 1
-				 FROM exam_registration WHERE exam_id = $2))
-			 ON CONFLICT (student_id, exam_id) DO NOTHING
-			 RETURNING id, student_id, exam_id, token, card_key, checked_in_at, attempts_used, status, created_at`,
-			sid, examUUID, reg.Token, "registered",
-		).Scan(
-			&inserted.ID, &inserted.StudentID, &inserted.ExamID, &inserted.Token,
-			&inserted.CardKey, &inserted.CheckedInAt, &inserted.AttemptsUsed,
-			&inserted.Status, &inserted.CreatedAt,
-		)
+		inserted, err := insertExamRegistrationRow(ctx, tx, sid, examUUID)
 		if err != nil {
-			// pgx.ErrNoRows means the row already existed (ON CONFLICT DO NOTHING
-			// skipped it). This is not an error — silently skip per FR-GRANT-03.
-			if errors.Is(err, pgx.ErrNoRows) {
-				continue
-			}
 			return GrantExamAccessResult{}, err
 		}
-		registrations = append(registrations, inserted)
+		if inserted == nil {
+			// Row already existed (ON CONFLICT DO NOTHING skipped it). This is
+			// not an error — silently skip per FR-GRANT-03.
+			continue
+		}
+		registrations = append(registrations, *inserted)
 	}
 
 	// Write audit log entry (FR-GRANT-04).
@@ -163,4 +127,49 @@ func (s *Service) GrantExamAccess(ctx context.Context, actorID, examID string, s
 		GrantedCount:    len(registrations),
 		GrantedStudents: grantedStudents,
 	}, nil
+}
+
+// insertExamRegistrationRow inserts a single exam registration for studentID
+// within an existing transaction, shared by GrantExamAccess and
+// GrantExamAccessBulk so both paths carry identical business logic. Returns
+// (nil, nil) if the student was already registered (ON CONFLICT DO NOTHING).
+func insertExamRegistrationRow(ctx context.Context, tx pgx.Tx, studentID, examID uuid.UUID) (*model.ExamRegistration, error) {
+	// Same advisory lock as CreateExamRegistration (exam.go:1120-1124) — its
+	// comment already names "admin grant" as a caller sharing this MAX+1
+	// sequence, so this path must serialize on it too or a concurrent
+	// checkout/grant pair can compute the same next number and collide on
+	// uq_examregistration_participant.
+	if _, err := tx.Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtext('exam_participant_number'), hashtext($1::text))`,
+		examID,
+	); err != nil {
+		return nil, err
+	}
+	// Use RETURNING so we only capture actually-inserted rows.
+	// ON CONFLICT DO NOTHING produces no output for existing rows.
+	// participant_number must be set here too — AllocateCertificateNumber
+	// (exam.go:1849-1860) scans it into a non-nullable int, and a NULL left
+	// by this path fails certificate generation for every grant-path student
+	// (FB-28).
+	var inserted model.ExamRegistration
+	err := tx.QueryRow(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number)
+		 VALUES ($1, $2, $3, $4,
+			(SELECT COALESCE(MAX(participant_number), 0) + 1
+			 FROM exam_registration WHERE exam_id = $2))
+		 ON CONFLICT (student_id, exam_id) DO NOTHING
+		 RETURNING id, student_id, exam_id, token, card_key, checked_in_at, attempts_used, status, created_at`,
+		studentID, examID, repository.GenerateExamToken(), "registered",
+	).Scan(
+		&inserted.ID, &inserted.StudentID, &inserted.ExamID, &inserted.Token,
+		&inserted.CardKey, &inserted.CheckedInAt, &inserted.AttemptsUsed,
+		&inserted.Status, &inserted.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &inserted, nil
 }

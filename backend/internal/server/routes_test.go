@@ -67,3 +67,40 @@ func TestRegisterRoutes_BulkExamOrderRoutesRegistered(t *testing.T) {
 		t.Errorf("expected bulk-exam-order route(s) not registered: %v", missing)
 	}
 }
+
+// TestRegisterRoutes_ExamGrantBulkRoutesRegistered asserts that the two
+// exam-grant bulk routes (presign + enqueue) are present in the production
+// registerRoutes function, under the existing super-admin-only
+// /admin/exam-grants group.
+func TestRegisterRoutes_ExamGrantBulkRoutesRegistered(t *testing.T) {
+	signer, svc, _ := newTestDeps(t)
+	e := echo.New()
+	e.HideBanner = true
+	h := handler.New(svc)
+
+	RegisterRoutesForTest(e, h, svc, signer)
+
+	want := map[string]string{
+		http.MethodPost: "/api/v1/admin/exam-grants/bulk/presign",
+	}
+	registered := map[string]bool{}
+	for _, r := range e.Routes() {
+		registered[r.Method+"\x00"+r.Path] = true
+	}
+	for method, path := range want {
+		key := method + "\x00" + path
+		if !registered[key] {
+			t.Errorf("route %s %s not registered", method, path)
+		}
+	}
+
+	gotPaths := map[string]bool{}
+	for _, r := range e.Routes() {
+		if r.Method == http.MethodPost && r.Path == "/api/v1/admin/exam-grants/bulk" {
+			gotPaths[r.Path] = true
+		}
+	}
+	if !gotPaths["/api/v1/admin/exam-grants/bulk"] {
+		t.Errorf("route POST /api/v1/admin/exam-grants/bulk not registered")
+	}
+}

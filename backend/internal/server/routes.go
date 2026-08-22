@@ -313,6 +313,8 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamGrants.Use(handler.RBACMiddleware("exam-grants:write"))
 	adminExamGrants.POST("", h.AdminGrantExamAccess)
 	adminExamGrants.GET("/students/search", h.AdminSearchGrantStudents)
+	adminExamGrants.POST("/bulk/presign", h.AdminPresignExamGrantBulkUpload)
+	adminExamGrants.POST("/bulk", h.AdminEnqueueExamGrantBulk)
 
 	// Admin bulk-exam-order routes (FR-BULK-01..07). admin_school +
 	// super_admin + admin_store may all order exams; capability is
