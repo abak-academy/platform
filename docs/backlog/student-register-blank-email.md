@@ -28,7 +28,7 @@ Bulk already converts empty cells to `nil` → SQL `NULL` (`optionalStr` in [`st
 - Handler binds `Email *string` and forwards `""`.
 - `CreateStudent` only lowercases a non-nil pointer; it never nils blanks.
 
-`RegisterStudent` also does not map `23505` to `ErrEmailTaken` (profile update does). Real duplicates and this blank collision both become `unhandled service error`.
+`RegisterStudent` did not check email uniqueness before insert (self-register and admin-account create do). Real duplicates and a blank-email unique collision both became `unhandled service error`.
 
 If the first single already failed, a row with `email = ''` already exists (earlier UI register). Bulk `NULL` rows do not collide with it; another `''` does.
 
@@ -45,7 +45,7 @@ If the first single already failed, a row with `email = ''` already exists (earl
 ## Proposed fix
 
 1. **Normalize at write.** `normalizeOptionalEmail`: nil / whitespace-only → `nil`, else trim + lowercase. Use in `CreateStudent`, `CreateUser`, `CreateAdminUser`, `UpdateUserProfile`.
-2. **Map unique violation.** `RegisterStudent` maps `23505` to `ErrEmailTaken` → 409 `email_taken`, not 500.
+2. **Taken email.** When a non-blank email is given, `checkEmailUniqueness` (same helper as admin-account create) returns `ErrEmailTaken` → 409 `email_taken`.
 3. **Frontend.** Omit empty optional `email` (and other empty optional strings) from the register JSON. Not sufficient alone.
 4. **Do not change `idx_users_email_active`.** Uniqueness on real emails stays as in 0002. Go already stores blanks as `NULL`, so new registers do not occupy the index. Leftover `email = ''` rows (from earlier UI registers) do not block new `NULL` emails; clean them by hand if desired:
 
