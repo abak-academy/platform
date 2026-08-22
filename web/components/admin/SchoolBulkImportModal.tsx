@@ -20,29 +20,17 @@ import {
   useEnqueueSchoolBulkImport,
 } from "@/lib/hooks/admin-schools-bulk";
 import { useJobStatus } from "@/lib/hooks/jobs";
-
-// Column list per spec §D-3; must match the backend school-bulk CSV parser's
-// required header exactly (service/school_bulk.go). school_types uses the
-// §D-4 pipe encoding.
-const TEMPLATE_HEADER = "name,code,npsn,school_types,alamat";
-const TEMPLATE_EXAMPLE_ROW =
-  "SMAN 1 Jakarta,SMAN1JKT,20100001,sma|smk,Jl. Sudirman No. 1";
-
-function buildTemplateCSV(): string {
-  return `${TEMPLATE_HEADER}\n${TEMPLATE_EXAMPLE_ROW}\n`;
-}
+import { BulkFormatGuide } from "@/components/admin/BulkFormatGuide";
+import {
+  SCHOOL_BULK_FIELDS,
+  SCHOOL_GUIDE_PITFALL_KEYS,
+  buildSchoolGuideText,
+  buildSchoolTemplateCSV,
+  downloadTextFile,
+} from "@/lib/bulk-import-format";
 
 function downloadTemplate(): void {
-  const csv = buildTemplateCSV();
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "bulk_school_template.csv";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadTextFile("bulk_school_template.csv", buildSchoolTemplateCSV(), "text/csv;charset=utf-8");
 }
 
 interface SchoolBulkImportModalProps {
@@ -118,7 +106,7 @@ export function SchoolBulkImportModal({ open, onOpenChange, onImportSuccess }: S
         if (!o) handleClose();
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="font-serif">{t("bulk_school_title")}</DialogTitle>
           <DialogDescription>{t("bulk_school_subtitle")}</DialogDescription>
@@ -130,7 +118,7 @@ export function SchoolBulkImportModal({ open, onOpenChange, onImportSuccess }: S
             <h3 className="text-sm font-semibold text-ink-900">
               1. {t("bulk_school_download_template")}
             </h3>
-            <div className="mt-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -141,6 +129,25 @@ export function SchoolBulkImportModal({ open, onOpenChange, onImportSuccess }: S
                 <Download className="mr-2 size-4" />
                 {t("bulk_school_download_template")}
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() =>
+                  downloadTextFile(
+                    "bulk_school_guide.txt",
+                    buildSchoolGuideText(t),
+                    "text/plain;charset=utf-8",
+                  )
+                }
+              >
+                <Download className="mr-2 size-4" />
+                {t("bulk_format_download_guide")}
+              </Button>
+            </div>
+            <div className="mt-3">
+              <BulkFormatGuide fields={SCHOOL_BULK_FIELDS} pitfallKeys={SCHOOL_GUIDE_PITFALL_KEYS} />
             </div>
           </section>
 

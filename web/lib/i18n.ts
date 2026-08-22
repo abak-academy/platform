@@ -1545,6 +1545,54 @@ export const DICT = {
     bulk_school_put_failed: "Gagal mengunggah file.",
     bulk_school_import_button: "Impor Massal",
     exam_packages_registered_count: "{n} peserta terdaftar",
+
+    bulk_format_show: "Lihat aturan kolom",
+    bulk_format_download_guide: "Unduh panduan",
+    bulk_format_col: "Kolom",
+    bulk_format_required_col: "Wajib",
+    bulk_format_required: "Wajib",
+    bulk_format_optional: "Opsional",
+    bulk_format_rule: "Aturan",
+    bulk_format_example: "Contoh",
+    bulk_format_student_guide_title: "Panduan format impor siswa",
+    bulk_format_school_guide_title: "Panduan format impor sekolah",
+    bulk_format_student_name: "Wajib. Nama lengkap siswa.",
+    bulk_format_student_school:
+      "Wajib. Harus sudah ada di database (nama sekolah, tidak peka huruf besar/kecil). Untuk admin sekolah, setiap baris harus nama sekolah Anda sendiri.",
+    bulk_format_student_jenjang:
+      "Wajib. Isi dengan nilai jenjang, disarankan huruf besar: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. Jika sekolah punya school_types, jenjang harus cocok dengan salah satu jenis itu.",
+    bulk_format_student_email: "Opsional. Jika diisi, tidak boleh sudah terdaftar di sistem.",
+    bulk_format_student_dob:
+      "Opsional. Format YYYY-MM-DD (contoh 2008-05-14). Jangan biarkan Excel mengubahnya jadi tanggal lain.",
+    bulk_format_student_gender: "Opsional. Hanya male / m atau female / f.",
+    bulk_format_student_grade: "Opsional. Bilangan bulat (contoh 11).",
+    bulk_format_student_target_exam: "Opsional. Teks bebas (contoh UTBK).",
+    bulk_format_student_alamat_domisili:
+      "Opsional. Teks bebas. Jika ada koma, bungkus dengan tanda kutip.",
+    bulk_format_student_provinsi:
+      "Opsional, tapi jika diisi maka kota dan kecamatan juga wajib. Harus nama resmi yang sudah ada di database, disarankan huruf besar (contoh JAWA BARAT, bukan Jawa Barat).",
+    bulk_format_student_kota:
+      "Harus nama resmi lengkap yang sudah ada di database dalam provinsi itu, disarankan huruf besar (contoh KOTA BANDUNG, bukan Bandung).",
+    bulk_format_student_kecamatan:
+      "Harus nama resmi yang sudah ada di database dalam kota itu, disarankan huruf besar (contoh COBLONG).",
+    bulk_format_student_kode_pos:
+      "Opsional. Hanya angka. Format sel sebagai teks agar nol di depan tidak hilang.",
+    bulk_format_school_name: "Wajib. Nama sekolah.",
+    bulk_format_school_code:
+      "Wajib. Harus belum ada di database (unik). Mengunggah ulang file yang sama akan gagal karena kode sudah terpakai.",
+    bulk_format_school_npsn: "Opsional. Teks bebas; format dan keunikan tidak dicek.",
+    bulk_format_school_school_types:
+      "Opsional. Satu atau lebih jenjang, dipisah | atau koma. Disarankan huruf besar (contoh SMA|SMK) agar cocok dengan jenjang siswa.",
+    bulk_format_school_alamat: "Opsional. Teks bebas.",
+    bulk_format_pitfall_csv: "Simpan sebagai CSV biasa. Jangan unggah file Excel (.xlsx).",
+    bulk_format_pitfall_header: "Jangan ubah nama kolom pada baris header.",
+    bulk_format_pitfall_comma: "Jika nilai berisi koma, bungkus dengan tanda kutip.",
+    bulk_format_pitfall_excel_text:
+      "Format kolom dob dan kode_pos sebagai teks di Excel agar format tidak berubah.",
+    bulk_format_student_nis: "Kolom nis (jika ada) diabaikan.",
+    bulk_format_max_rows: "Maksimal 1000 baris data.",
+    bulk_format_school_reupload:
+      "Mengunggah ulang file yang sama akan gagal karena code sudah terpakai.",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -3082,10 +3130,60 @@ export const DICT = {
     bulk_school_put_failed: "Failed to upload file.",
     bulk_school_import_button: "Bulk Import",
     exam_packages_registered_count: "{n} registered",
+
+    bulk_format_show: "View column rules",
+    bulk_format_download_guide: "Download guide",
+    bulk_format_col: "Column",
+    bulk_format_required_col: "Required",
+    bulk_format_required: "Required",
+    bulk_format_optional: "Optional",
+    bulk_format_rule: "Rule",
+    bulk_format_example: "Example",
+    bulk_format_student_guide_title: "Student bulk import format guide",
+    bulk_format_school_guide_title: "School bulk import format guide",
+    bulk_format_student_name: "Required. Student's full name.",
+    bulk_format_student_school:
+      "Required. Must already exist in the database (school name, case-insensitive). School admins must use their own school name on every row.",
+    bulk_format_student_jenjang:
+      "Required. Use a jenjang value, preferably uppercase: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. If the school has school_types, jenjang must match one of them.",
+    bulk_format_student_email: "Optional. If set, must not already be registered.",
+    bulk_format_student_dob:
+      "Optional. Format YYYY-MM-DD (example 2008-05-14). Do not let Excel rewrite the date.",
+    bulk_format_student_gender: "Optional. Only male / m or female / f.",
+    bulk_format_student_grade: "Optional. Integer (example 11).",
+    bulk_format_student_target_exam: "Optional. Free text (example UTBK).",
+    bulk_format_student_alamat_domisili:
+      "Optional. Free text. Quote the value if it contains a comma.",
+    bulk_format_student_provinsi:
+      "Optional, but if set then kota and kecamatan are also required. Must be the official name already in the database, preferably uppercase (example JAWA BARAT, not Jawa Barat).",
+    bulk_format_student_kota:
+      "Must be the full official name already in the database within that province, preferably uppercase (example KOTA BANDUNG, not Bandung).",
+    bulk_format_student_kecamatan:
+      "Must be the official name already in the database within that city, preferably uppercase (example COBLONG).",
+    bulk_format_student_kode_pos:
+      "Optional. Digits only. Format the cell as text so leading zeros are kept.",
+    bulk_format_school_name: "Required. School name.",
+    bulk_format_school_code:
+      "Required. Must not already exist in the database (unique). Re-uploading the same file will fail because the code is taken.",
+    bulk_format_school_npsn: "Optional. Free text; format and uniqueness are not checked.",
+    bulk_format_school_school_types:
+      "Optional. One or more jenjang values, separated by | or comma. Prefer uppercase (example SMA|SMK) so student jenjang matches.",
+    bulk_format_school_alamat: "Optional. Free text.",
+    bulk_format_pitfall_csv: "Save as a plain CSV. Do not upload an Excel (.xlsx) file.",
+    bulk_format_pitfall_header: "Do not rename the header columns.",
+    bulk_format_pitfall_comma: "Quote any value that contains a comma.",
+    bulk_format_pitfall_excel_text:
+      "Format the dob and kode_pos columns as text in Excel so the values are not rewritten.",
+    bulk_format_student_nis: "A nis column, if present, is ignored.",
+    bulk_format_max_rows: "Maximum 1000 data rows.",
+    bulk_format_school_reupload:
+      "Re-uploading the same file will fail because code is already taken.",
   },
 };
 
-export function t(lang: Lang, key: keyof (typeof DICT)["id"]): string {
+export type I18nKey = keyof (typeof DICT)["id"];
+
+export function t(lang: Lang, key: I18nKey): string {
   return DICT[lang][key] ?? DICT.id[key] ?? key;
 }
 
@@ -3093,6 +3191,6 @@ export function useTranslation() {
   const lang = useUIStore((s) => s.lang);
   return {
     lang,
-    t: (key: keyof (typeof DICT)["id"]) => t(lang, key),
+    t: (key: I18nKey) => t(lang, key),
   };
 }

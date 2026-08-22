@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -10,6 +11,8 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // normalizeGender maps the API's male/female wire values to the DB's
@@ -109,7 +112,7 @@ func toStudentResponse(row repository.StudentRow) StudentResponse {
 // SchoolTypes slice. Exported for reuse by the profile-update path (Task 30).
 func jenjangInSchoolTypes(jenjang string, types []string) bool {
 	for _, t := range types {
-		if t == jenjang {
+		if strings.EqualFold(t, jenjang) {
 			return true
 		}
 	}
@@ -257,6 +260,10 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 		TargetExam:     targetExam,
 	}
 	if err := s.storeRepo.CreateStudent(ctx, user); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, ErrEmailTaken
+		}
 		return nil, err
 	}
 

@@ -6,13 +6,13 @@ import (
 	"encoding/csv"
 	"io"
 	"strconv"
-	"strings"
 	"time"
 )
 
 const maxBulkRows = 1000
 
 type StudentBulkRow struct {
+	Row            int
 	Name           string
 	School         string
 	Email          *string
@@ -29,6 +29,7 @@ type StudentBulkRow struct {
 }
 
 type StudentBulkResultRow struct {
+	Row          int
 	Name         string
 	School       string
 	Email        string
@@ -44,7 +45,7 @@ type StudentBulkResultRow struct {
 // optional — same field set as single registration (RegisterStudent), minus
 // the region-name-vs-ID resolution which happens in ProcessStudentBulkRows.
 func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
-	r := csv.NewReader(bytes.NewReader(data))
+	r := newBulkCSVReader(data)
 
 	header, err := r.Read()
 	if err != nil {
@@ -58,7 +59,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 	dobIdx, genderIdx, gradeIdx, alamatIdx, targetExamIdx := -1, -1, -1, -1, -1
 	provinsiIdx, kotaIdx, kecamatanIdx, kodePosIdx := -1, -1, -1, -1
 	for i, h := range header {
-		switch strings.ToLower(strings.TrimSpace(h)) {
+		switch normalizeCSVHeader(h) {
 		case "name":
 			nameIdx = i
 		case "jenjang":
@@ -92,14 +93,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 		return nil, ErrMissingCSVHeader
 	}
 
-	optionalStr := func(record []string, idx int) *string {
-		if idx == -1 || record[idx] == "" {
-			return nil
-		}
-		v := record[idx]
-		return &v
-	}
-
+	line := 1
 	var rows []StudentBulkRow
 	for {
 		record, err := r.Read()
@@ -109,24 +103,29 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 		if err != nil {
 			return nil, ErrInvalidCSV
 		}
+		line++
+		if bulkRowIsBlank(record) {
+			continue
+		}
 		if len(rows)+1 > maxBulkRows {
 			return nil, ErrRowLimitExceeded
 		}
 
 		rows = append(rows, StudentBulkRow{
-			Name:           record[nameIdx],
-			School:         record[schoolIdx],
-			Jenjang:        record[jenjangIdx],
-			Email:          optionalStr(record, emailIdx),
-			DOB:            optionalStr(record, dobIdx),
-			Gender:         optionalStr(record, genderIdx),
-			Grade:          optionalStr(record, gradeIdx),
-			AlamatDomisili: optionalStr(record, alamatIdx),
-			TargetExam:     optionalStr(record, targetExamIdx),
-			Provinsi:       optionalStr(record, provinsiIdx),
-			Kota:           optionalStr(record, kotaIdx),
-			Kecamatan:      optionalStr(record, kecamatanIdx),
-			KodePos:        optionalStr(record, kodePosIdx),
+			Row:            line,
+			Name:           bulkCell(record, nameIdx),
+			School:         bulkCell(record, schoolIdx),
+			Jenjang:        bulkCell(record, jenjangIdx),
+			Email:          bulkOptionalCell(record, emailIdx),
+			DOB:            bulkOptionalCell(record, dobIdx),
+			Gender:         bulkOptionalCell(record, genderIdx),
+			Grade:          bulkOptionalCell(record, gradeIdx),
+			AlamatDomisili: bulkOptionalCell(record, alamatIdx),
+			TargetExam:     bulkOptionalCell(record, targetExamIdx),
+			Provinsi:       bulkOptionalCell(record, provinsiIdx),
+			Kota:           bulkOptionalCell(record, kotaIdx),
+			Kecamatan:      bulkOptionalCell(record, kecamatanIdx),
+			KodePos:        bulkOptionalCell(record, kodePosIdx),
 		})
 	}
 
@@ -147,7 +146,7 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 	}
 
 	for i, r := range rows {
-		result := StudentBulkResultRow{Name: r.Name, School: r.School}
+		result := StudentBulkResultRow{Row: r.Row, Name: r.Name, School: r.School}
 		if r.Email != nil {
 			result.Email = *r.Email
 		}
@@ -336,9 +335,9 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 func BuildStudentBulkResultCSV(results []StudentBulkResultRow) []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"name", "school", "email", "status", "username", "temp_password", "error"})
+	_ = w.Write([]string{"row", "name", "school", "email", "status", "username", "temp_password", "error"})
 	for _, r := range results {
-		_ = w.Write(csvSafeRow(r.Name, r.School, r.Email, r.Status, r.Username, r.TempPassword, r.Error))
+		_ = w.Write(csvSafeRow(strconv.Itoa(r.Row), r.Name, r.School, r.Email, r.Status, r.Username, r.TempPassword, r.Error))
 	}
 	w.Flush()
 	return buf.Bytes()

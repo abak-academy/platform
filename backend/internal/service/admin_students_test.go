@@ -10,6 +10,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+func TestJenjangInSchoolTypes(t *testing.T) {
+	if !jenjangInSchoolTypes("sma", []string{"SMA", "SMK"}) {
+		t.Error("want sma to match SMA")
+	}
+	if jenjangInSchoolTypes("sma", []string{"SMP"}) {
+		t.Error("sma must not match SMP")
+	}
+}
+
 func TestGenTempPassword(t *testing.T) {
 	p1, err := genTempPassword()
 	if err != nil {
@@ -161,6 +170,18 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("duplicate email returns ErrEmailTaken", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		email := "dup-bulk-" + schoolID[:8] + "@example.com"
+		if _, err := svc.RegisterStudent(ctx, schoolID, "First Dup", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+			t.Fatalf("first RegisterStudent: %v", err)
+		}
+		_, err := svc.RegisterStudent(ctx, schoolID, "Second Dup", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if !errors.Is(err, ErrEmailTaken) {
+			t.Errorf("want ErrEmailTaken, got %v", err)
+		}
+	})
+
 	t.Run("missing name returns ErrMissingField", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 		_, err := svc.RegisterStudent(ctx, schoolID, "", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
@@ -189,6 +210,14 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		_, err := svc.RegisterStudent(ctx, schoolID, "Budi", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrInvalidJenjang) {
 			t.Errorf("want ErrInvalidJenjang, got %v", err)
+		}
+	})
+
+	t.Run("jenjang matches school_types case-insensitively", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"SMA"})
+		_, err := svc.RegisterStudent(ctx, schoolID, "Budi Case", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("want SMA vs sma to match, got %v", err)
 		}
 	})
 
