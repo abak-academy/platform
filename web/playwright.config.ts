@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
+
 // FB-22/23/24/25 repro harness. Chromium only — see e2e/question-editor.spec.ts
 // for why (jsdom/vitest cannot drive document.execCommand or real selection).
 export default defineConfig({
@@ -7,7 +9,7 @@ export default defineConfig({
   fullyParallel: true,
   reporter: "list",
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL,
     trace: "retain-on-failure",
   },
   projects: [
@@ -17,8 +19,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
+    command: `npm run dev -- -p ${new URL(baseURL).port || "3000"}`,
+    url: baseURL,
     reuseExistingServer: true,
   },
 });
