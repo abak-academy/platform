@@ -99,7 +99,7 @@ func (s *Service) GetSessionResult(ctx context.Context, studentID, sessionID str
 
 	if exam.ResultConfig == "score_pembahasan" {
 		result.Breakdown = topicBreakdown(tests, answers)
-		result.Pembahasan = buildPembahasan(qs, answers)
+		result.Pembahasan = buildPembahasan(tests, answers)
 	}
 
 	result.CertificateURL = certURL
@@ -141,28 +141,32 @@ func isFullyGraded(questions []model.QuestionWithOptions, answers []model.ExamSe
 
 // buildPembahasan builds one row per objective question for score_pembahasan (FR-S5-23);
 // essay questions are excluded (out of scope for Slice 5).
-func buildPembahasan(questions []model.QuestionWithOptions, answers []model.ExamSessionAnswer) []model.ResultPembahasanItem {
+func buildPembahasan(tests []model.TestDetail, answers []model.ExamSessionAnswer) []model.ResultPembahasanItem {
 	answerByQuestion := make(map[uuid.UUID]model.ExamSessionAnswer, len(answers))
 	for _, a := range answers {
 		answerByQuestion[a.QuestionID] = a
 	}
 
-	items := make([]model.ResultPembahasanItem, 0, len(questions))
-	for _, q := range questions {
-		if q.Question.Format == "essay" {
-			continue
+	items := []model.ResultPembahasanItem{}
+	for _, td := range tests {
+		for _, q := range td.Questions {
+			if q.Question.Format == "essay" {
+				continue
+			}
+			a := answerByQuestion[q.Question.ID]
+			items = append(items, model.ResultPembahasanItem{
+				QuestionID:    q.Question.ID,
+				TestID:        td.Test.ID,
+				TestTitle:     td.Test.Title,
+				Body:          q.Question.Body,
+				Format:        q.Question.Format,
+				Options:       pembahasanOptions(q.Options),
+				YourAnswer:    a.Answer,
+				CorrectAnswer: correctAnswerText(q.Question, q.Options),
+				IsCorrect:     a.IsCorrect,
+				Explanation:   q.Question.Explanation,
+			})
 		}
-		a := answerByQuestion[q.Question.ID]
-		items = append(items, model.ResultPembahasanItem{
-			QuestionID:    q.Question.ID,
-			Body:          q.Question.Body,
-			Format:        q.Question.Format,
-			Options:       pembahasanOptions(q.Options),
-			YourAnswer:    a.Answer,
-			CorrectAnswer: correctAnswerText(q.Question, q.Options),
-			IsCorrect:     a.IsCorrect,
-			Explanation:   q.Question.Explanation,
-		})
 	}
 	return items
 }

@@ -97,7 +97,7 @@ func (s *Service) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID
 	// result gate. Always include the per-topic and per-question detail so the
 	// super-admin Results tab can expand a row into the exact submitted answers.
 	detail.Breakdown = topicBreakdown(tests, answers)
-	detail.Pembahasan = buildPembahasan(qs, answers)
+	detail.Pembahasan = buildPembahasan(tests, answers)
 
 	return detail, nil
 }

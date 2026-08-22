@@ -453,6 +453,8 @@ type ResultTopicRow struct {
 // list (FR-S5-23). Essay pembahasan is out of scope for Slice 5.
 type ResultPembahasanItem struct {
 	QuestionID    uuid.UUID                `json:"question_id"`
+	TestID        uuid.UUID                `json:"test_id"`
+	TestTitle     string                   `json:"test_title"`
 	Body          string                   `json:"body"`
 	Format        string                   `json:"format"`
 	Options       []ResultPembahasanOption `json:"options,omitempty"`

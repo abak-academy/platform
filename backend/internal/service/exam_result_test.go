@@ -163,7 +163,7 @@ func (s *shimSessionService) GetSessionResult(ctx context.Context, studentID, se
 
 	if exam.ResultConfig == "score_pembahasan" {
 		result.Breakdown = topicBreakdown(tests, answers)
-		result.Pembahasan = buildPembahasan(qs, answers)
+		result.Pembahasan = buildPembahasan(tests, answers)
 	}
 
 	return result, nil

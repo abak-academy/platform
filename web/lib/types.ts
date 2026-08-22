@@ -1143,6 +1143,8 @@ export interface ResultTopicRow {
 
 export interface ResultPembahasanItem {
   question_id: string;
+  test_id?: string;
+  test_title?: string;
   body: string;
   format: QuestionFormat;
   options?: Array<{ key: string; text: string; image_url?: string | null; is_correct: boolean }>;

@@ -218,7 +218,7 @@ func (s *shimSessionService) GetSchoolResultDetail(ctx context.Context, sessionI
 	}
 
 	detail.Breakdown = topicBreakdown(tests, answers)
-	detail.Pembahasan = buildPembahasan(qs, answers)
+	detail.Pembahasan = buildPembahasan(tests, answers)
 
 	return detail, nil
 }

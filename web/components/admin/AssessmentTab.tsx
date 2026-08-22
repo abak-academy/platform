@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, ChevronDown, Circle, Download, Eye, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Circle, Download, Eye, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { RichContent } from "@/components/admin/RichContent";
@@ -367,7 +367,8 @@ function ResultDetailPanel({
   t: ReturnType<typeof useTranslation>["t"];
   dateLocale: string;
 }) {
-  const [openQuestions, setOpenQuestions] = useState<Record<string, boolean>>({});
+  const topics = groupPembahasanByTopic(detail);
+  const [openTopics, setOpenTopics] = useState<Record<string, boolean>>({});
 
   return (
     <div className="space-y-4">
@@ -382,35 +383,33 @@ function ResultDetailPanel({
         {t("school_reports_col_submitted")}: {new Date(detail.submitted_at).toLocaleString(dateLocale, { day: "2-digit", month: "short", year: "numeric" })}
       </div>
 
-      {detail.breakdown && detail.breakdown.length > 0 && (
-        <div>
-          <h4 className="mb-2 text-sm font-semibold text-ink-900">{t("result_by_topic")}</h4>
-          <div className="space-y-1">
-            {detail.breakdown.map((b) => (
-              <div key={b.test_id} className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-xs">
-                <span className="text-ink-700">{b.title}</span>
-                <span className="font-semibold text-ink-900">{b.earned}/{b.max}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {detail.pembahasan && detail.pembahasan.length > 0 && (
+      {topics.length > 0 && (
         <div>
           <h4 className="mb-2 text-sm font-semibold text-ink-900">{t("result_pembahasan")}</h4>
-          <div className="max-h-80 space-y-2 overflow-y-auto">
-            {detail.pembahasan.map((p, index) => {
-              const isOpen = openQuestions[p.question_id] ?? index === 0;
+          <div className="space-y-2">
+            {topics.map((topic, index) => {
+              const isOpen = openTopics[topic.id] ?? index === 0;
+              const breakdown = detail.breakdown?.find((b) => b.test_id === topic.id || b.title === topic.title);
               return (
-                <QuestionReviewCard
-                  key={p.question_id}
-                  item={p}
-                  index={index}
-                  isOpen={isOpen}
-                  onToggle={() => setOpenQuestions((prev) => ({ ...prev, [p.question_id]: !isOpen }))}
-                  t={t}
-                />
+                <div key={topic.id} className="overflow-hidden rounded-xl border border-line bg-card">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-3 bg-surface-2 px-4 py-3 text-left text-sm"
+                    onClick={() => setOpenTopics((prev) => ({ ...prev, [topic.id]: !isOpen }))}
+                  >
+                    <span className="font-semibold text-ink-900">{topic.title}</span>
+                    <span className="text-xs font-semibold text-ink-700">
+                      {breakdown ? `${breakdown.earned}/${breakdown.max}` : `${topic.items.length} soal`}
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="max-h-96 space-y-2 overflow-y-auto p-3">
+                      {topic.items.map((item, questionIndex) => (
+                        <QuestionReviewCard key={item.question_id} item={item} index={questionIndex} t={t} />
+                      ))}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -420,17 +419,26 @@ function ResultDetailPanel({
   );
 }
 
+function groupPembahasanByTopic(detail: AdminResultDetail) {
+  const groups = new Map<string, { id: string; title: string; items: NonNullable<AdminResultDetail["pembahasan"]> }>();
+  for (const item of detail.pembahasan ?? []) {
+    const fallback = detail.breakdown?.[0];
+    const id = item.test_id ?? fallback?.test_id ?? "general";
+    const title = item.test_title ?? fallback?.title ?? "Explanation";
+    const existing = groups.get(id) ?? { id, title, items: [] };
+    existing.items.push(item);
+    groups.set(id, existing);
+  }
+  return Array.from(groups.values());
+}
+
 function QuestionReviewCard({
   item,
   index,
-  isOpen,
-  onToggle,
   t,
 }: {
   item: NonNullable<AdminResultDetail["pembahasan"]>[number];
   index: number;
-  isOpen: boolean;
-  onToggle: () => void;
   t: ReturnType<typeof useTranslation>["t"];
 }) {
   const tone = item.is_correct === true ? "correct" : item.is_correct === false ? "wrong" : "empty";
@@ -446,48 +454,43 @@ function QuestionReviewCard({
       : <Circle className="size-4 text-ink-500" />;
 
   return (
-    <div className={`rounded-xl border ${toneClass} text-xs`}>
-      <button type="button" className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onClick={onToggle}>
-        <span className="flex min-w-0 items-center gap-2 font-semibold text-ink-900">
-          {icon}
-          <span>#{index + 1}</span>
-          <span className="truncate text-ink-700">{formatChoiceAnswer(item.your_answer, item.format) || "—"}</span>
-        </span>
-        <ChevronDown className={`size-4 shrink-0 text-ink-500 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-      </button>
-      {isOpen && (
-        <div className="space-y-3 border-t border-line/60 bg-card/70 px-4 py-3">
-          <div className="font-medium text-ink-900"><RichContent html={item.body} /></div>
-          {item.options && item.options.length > 0 ? (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {item.options.map((option) => {
-                const selected = answerIncludes(item.your_answer, option.key);
-                const optionClass = option.is_correct
-                  ? "border-success bg-success-bg"
-                  : selected
-                    ? "border-danger bg-danger-bg"
-                    : "border-line bg-surface";
-                return (
-                  <div key={option.key} className={`rounded-lg border px-3 py-2 ${optionClass}`}>
-                    <div className="flex items-start gap-2">
-                      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-card text-[11px] font-bold text-ink-800">{option.key.toUpperCase()}</span>
-                      <div className="min-w-0 flex-1 text-ink-800">
-                        <RichContent html={option.text} />
-                        {option.image_url && <img src={option.image_url} alt="" className="mt-2 max-h-24 rounded-md object-contain" />}
-                      </div>
-                    </div>
+    <div className={`rounded-xl border ${toneClass} px-4 py-3 text-xs`}>
+      <div className="mb-2 flex items-center gap-2 font-semibold text-ink-900">
+        {icon}
+        <span>#{index + 1}</span>
+        <span>{formatChoiceAnswer(item.your_answer, item.format) || "—"}</span>
+      </div>
+      <div className="font-medium text-ink-900"><RichContent html={item.body} /></div>
+      {item.options && item.options.length > 0 && (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {item.options.map((option) => {
+            const selected = answerIncludes(item.your_answer, option.key);
+            const optionClass = option.is_correct
+              ? "border-success bg-success-bg"
+              : selected
+                ? "border-danger bg-danger-bg"
+                : "border-line bg-surface";
+            return (
+              <div key={option.key} className={`rounded-lg border px-3 py-2 ${optionClass}`}>
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-card text-[11px] font-bold text-ink-800">{option.key.toUpperCase()}</span>
+                  <div className="min-w-0 flex-1 text-ink-800">
+                    <RichContent html={option.text} />
+                    {option.image_url && <img src={option.image_url} alt="" className="mt-2 max-h-24 rounded-md object-contain" />}
                   </div>
-                );
-              })}
-            </div>
-          ) : null}
-          <div className="grid gap-2 text-ink-700 sm:grid-cols-2">
-            <p>{t("result_your_answer")}: <span className="font-semibold text-ink-900">{formatChoiceAnswer(item.your_answer, item.format) || "—"}</span></p>
-            <p>{t("result_correct_answer")}: <span className="font-semibold text-ink-900">{formatChoiceAnswer(item.correct_answer, item.format) || "—"}</span></p>
-          </div>
-          {item.explanation && <p className="rounded-lg bg-surface-2 px-3 py-2 text-ink-700">{item.explanation}</p>}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
+      <div className="mt-3 grid gap-2 text-ink-700 sm:grid-cols-2">
+        <p>{t("result_your_answer")}: <span className="font-semibold text-ink-900">{formatChoiceAnswer(item.your_answer, item.format) || "—"}</span></p>
+        {item.is_correct === false && (
+          <p>{t("result_correct_answer")}: <span className="font-semibold text-ink-900">{formatChoiceAnswer(item.correct_answer, item.format) || "—"}</span></p>
+        )}
+      </div>
+      {item.explanation && <p className="mt-3 rounded-lg bg-card/70 px-3 py-2 text-ink-700">{item.explanation}</p>}
     </div>
   );
 }
