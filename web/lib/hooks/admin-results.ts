@@ -47,18 +47,23 @@ export function useAdminResultDetail(sessionId: string, schoolId?: string) {
   });
 }
 
-export async function exportAdminResults(examId: string, schoolId?: string): Promise<void> {
+export async function exportAdminResults(examId: string, schoolId?: string, q?: string): Promise<void> {
   const { useAuthStore } = await import("@/stores/auth");
   const token = useAuthStore.getState().token;
 
   const params = new URLSearchParams();
   params.set("exam_id", examId);
   if (schoolId) params.set("school_id", schoolId);
+  if (q) params.set("q", q);
   const query = params.toString();
 
   const res = await fetch(`${API_BASE}/admin/results/export?${query}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
+
+  if (!res.ok) {
+    throw new Error(`Export failed (${res.status})`);
+  }
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

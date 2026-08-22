@@ -219,7 +219,7 @@ func (s *shimSessionService) GetSchoolResultDetail(ctx context.Context, sessionI
 
 	if exam.ResultConfig == "score_pembahasan" {
 		detail.Breakdown = topicBreakdown(tests, answers)
-		detail.Pembahasan = buildPembahasan(qs, answers)
+		detail.Pembahasan = buildPembahasan(tests, answers, false)
 	}
 
 	return detail, nil
@@ -482,7 +482,7 @@ func TestAdminResultDetail_CrossSchool_GatesToNotFound(t *testing.T) {
 	}
 }
 
-func TestAdminResultDetail_ScoreOnly_NoBreakdownOrPembahasan(t *testing.T) {
+func TestAdminResultDetail_ScoreOnly_DoesNotExposePembahasan(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
@@ -517,11 +517,11 @@ func TestAdminResultDetail_ScoreOnly_NoBreakdownOrPembahasan(t *testing.T) {
 	if detail.CorrectCount != 1 || detail.WrongCount != 0 || detail.EmptyCount != 0 {
 		t.Errorf("counts: want 1/0/0, got %d/%d/%d", detail.CorrectCount, detail.WrongCount, detail.EmptyCount)
 	}
-	if detail.Breakdown != nil {
-		t.Error("score_only should not include breakdown")
+	if len(detail.Breakdown) != 0 {
+		t.Fatalf("score_only school-scoped detail should not include breakdown, got %d", len(detail.Breakdown))
 	}
-	if detail.Pembahasan != nil {
-		t.Error("score_only should not include pembahasan")
+	if len(detail.Pembahasan) != 0 {
+		t.Fatalf("score_only school-scoped detail should not include pembahasan, got %d", len(detail.Pembahasan))
 	}
 }
 
@@ -570,11 +570,11 @@ func TestAdminResultDetail_ScorePembahasan_HasBoth(t *testing.T) {
 
 // ---------- shimSessionService: admin results export ----------
 
-func (s *shimSessionService) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, schoolID string) ([]byte, error) {
+func (s *shimSessionService) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, schoolID, q string) ([]byte, error) {
 	var rows []model.AdminResultRow
 	cursor := ""
 	for {
-		page, next, err := s.ListSchoolResults(ctx, examID, schoolID, "", cursor, 100)
+		page, next, err := s.ListSchoolResults(ctx, examID, schoolID, q, cursor, 100)
 		if err != nil {
 			return nil, err
 		}
@@ -624,7 +624,7 @@ func TestExportSchoolResults_HiddenExam_IncludesAdminResults(t *testing.T) {
 		Status: "submitted", Score: floatPtr(80),
 	}
 
-	csvData, err := svc.ExportSchoolResultsCSV(ctx, examID, schoolID)
+	csvData, err := svc.ExportSchoolResultsCSV(ctx, examID, schoolID, "")
 	if err != nil {
 		t.Fatalf("ExportSchoolResultsCSV: %v", err)
 	}
@@ -662,7 +662,7 @@ func TestExportSchoolResults_FutureRelease_IncludesAdminResults(t *testing.T) {
 		Status: "submitted", Score: floatPtr(80),
 	}
 
-	csvData, err := svc.ExportSchoolResultsCSV(ctx, examID, schoolID)
+	csvData, err := svc.ExportSchoolResultsCSV(ctx, examID, schoolID, "")
 	if err != nil {
 		t.Fatalf("ExportSchoolResultsCSV: %v", err)
 	}
@@ -688,7 +688,7 @@ func TestExportSchoolResults_ExamNotFound(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
-	_, err := svc.ExportSchoolResultsCSV(ctx, uuid.New(), uuid.New().String())
+	_, err := svc.ExportSchoolResultsCSV(ctx, uuid.New(), uuid.New().String(), "")
 	if !errors.Is(err, ErrExamNotFound) {
 		t.Errorf("want ErrExamNotFound, got %v", err)
 	}
@@ -733,7 +733,7 @@ func TestExportSchoolResults_PaginateThenCompare(t *testing.T) {
 	}
 
 	// Now call export.
-	csvData, err := svc.ExportSchoolResultsCSV(ctx, examID, schoolID)
+	csvData, err := svc.ExportSchoolResultsCSV(ctx, examID, schoolID, "")
 	if err != nil {
 		t.Fatalf("ExportSchoolResultsCSV: %v", err)
 	}

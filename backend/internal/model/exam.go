@@ -452,13 +452,15 @@ type ResultTopicRow struct {
 // ResultPembahasanItem is one objective-question row of the score_pembahasan pembahasan
 // list (FR-S5-23). Essay pembahasan is out of scope for Slice 5.
 type ResultPembahasanItem struct {
-	QuestionID    uuid.UUID `json:"question_id"`
-	Body          string    `json:"body"`
-	Format        string    `json:"format"`
-	YourAnswer    *string   `json:"your_answer"`
-	CorrectAnswer *string   `json:"correct_answer"`
-	IsCorrect     *bool     `json:"is_correct"`
-	Explanation   *string   `json:"explanation"`
+	QuestionID    uuid.UUID  `json:"question_id"`
+	TestID        *uuid.UUID `json:"test_id,omitempty"`
+	TestTitle     *string    `json:"test_title,omitempty"`
+	Body          string     `json:"body"`
+	Format        string     `json:"format"`
+	YourAnswer    *string    `json:"your_answer"`
+	CorrectAnswer *string    `json:"correct_answer"`
+	IsCorrect     *bool      `json:"is_correct"`
+	Explanation   *string    `json:"explanation"`
 }
 
 // GradingSessionItem is one row of the admin grading queue (FR-S5-16): a submitted
@@ -646,4 +648,61 @@ type ExamMonitorAvailable struct {
 	TotalRegistered int        `json:"total_registered"`
 	ActiveCount     int        `json:"active_count"`
 	NotStartedCount int        `json:"not_started_count"`
+}
+
+// AssessmentSummary is the aggregate card block of GET /admin/exams/:id/assessment
+// (Issue 124). CompletedParticipants counts latest-attempt submitted registrations
+// regardless of grading; AverageScore/Distribution cover only the latest-attempt,
+// submitted, fully-graded, scored cohort. ViolationAttempts/ViolationEvents count
+// across every attempt for the filtered registrations, not just the latest.
+type AssessmentSummary struct {
+	TotalRegistered       int           `json:"total_registered"`
+	CompletedParticipants int           `json:"completed_participants"`
+	CompletionRate        float64       `json:"completion_rate"`
+	AverageScore          float64       `json:"average_score"`
+	Distribution          []ScoreBucket `json:"distribution"`
+	ViolationAttempts     int           `json:"violation_attempts"`
+	ViolationEvents       int           `json:"violation_events"`
+}
+
+// AssessmentRow is one ranked result row of GET /admin/exams/:id/assessment — one
+// exam_registration with a submitted, fully graded, scored attempt. The Issue 124
+// workspace is intentionally a Hasil/leaderboard view, not a full roster/status
+// table; registrations without result rows are summarized but not listed.
+type AssessmentRow struct {
+	RegistrationID      uuid.UUID  `json:"registration_id"`
+	StudentID           uuid.UUID  `json:"student_id"`
+	StudentName         string     `json:"student_name"`
+	Username            *string    `json:"username"`
+	SchoolID            *uuid.UUID `json:"school_id"`
+	SchoolName          *string    `json:"school_name"`
+	Rank                *int       `json:"rank"`
+	Score               *float64   `json:"score"`
+	AttemptsCount       int        `json:"attempts_count"`
+	LatestSessionID     *uuid.UUID `json:"latest_session_id"`
+	LatestAttemptNumber *int       `json:"latest_attempt_number"`
+	LatestSubmittedAt   *time.Time `json:"latest_submitted_at"`
+	LatestViolations    int        `json:"latest_violations"`
+}
+
+// AssessmentResponse is the top-level response for GET /admin/exams/:id/assessment.
+type AssessmentResponse struct {
+	Summary    AssessmentSummary `json:"summary"`
+	Data       []AssessmentRow   `json:"data"`
+	NextCursor string            `json:"next_cursor"`
+}
+
+// AssessmentAttempt is one row of GET /admin/exams/:id/assessment/:registration_id/attempts,
+// newest-first. IsLatest marks exactly the same session ListAssessmentRows treats as
+// authoritative for that registration. Score/Violations are raw per-attempt facts,
+// not gated by grading completeness (unlike AssessmentRow.Score).
+type AssessmentAttempt struct {
+	SessionID       uuid.UUID  `json:"session_id"`
+	AttemptNumber   int        `json:"attempt_number"`
+	Status          string     `json:"status"`
+	SubmittedAt     *time.Time `json:"submitted_at"`
+	Score           *float64   `json:"score"`
+	Violations      int        `json:"violations"`
+	ResultAvailable bool       `json:"result_available"`
+	IsLatest        bool       `json:"is_latest"`
 }

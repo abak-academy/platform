@@ -378,6 +378,11 @@ func newAdminResultsDBEnv(t *testing.T) *adminResultsDBTestEnv {
 		adminResults.GET("", h.AdminListResults)
 		adminResults.GET("/export", h.AdminExportResults)
 		adminResults.GET("/:session_id", h.AdminGetResultDetail)
+		adminAssessment := admin.Group("/exams")
+		adminAssessment.Use(handler.RBACMiddleware("assessment:read"))
+		adminAssessment.GET("/:id/assessment", h.AdminGetExamAssessment)
+		adminAssessment.GET("/:id/assessment/:registration_id/attempts", h.AdminGetAssessmentAttempts)
+		adminAssessment.GET("/:id/assessment/results/:session_id", h.AdminGetAssessmentResultDetail)
 		exam := v1.Group("/exam")
 		exam.Use(handler.JWTMiddleware(svc, signer))
 		exam.GET("/sessions/:id/result", h.StudentGetSessionResult)
@@ -517,6 +522,10 @@ func seedExamWithMCQ(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 }
 
 func seedSubmittedSession(t *testing.T, pool *pgxpool.Pool, studentID, examID uuid.UUID) {
+	seedSubmittedSessionReturningID(t, pool, studentID, examID)
+}
+
+func seedSubmittedSessionReturningID(t *testing.T, pool *pgxpool.Pool, studentID, examID uuid.UUID) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
 
@@ -559,6 +568,7 @@ func seedSubmittedSession(t *testing.T, pool *pgxpool.Pool, studentID, examID uu
 	if err != nil {
 		t.Fatalf("insert answer: %v", err)
 	}
+	return sessID
 }
 
 // ---------------------------------------------------------------------------
@@ -662,6 +672,64 @@ func TestAdminResult_List_MalformedCursor_400(t *testing.T) {
 	}
 	if apiErr.Code != "invalid_cursor" {
 		t.Fatalf("want invalid_cursor, got %q", apiErr.Code)
+	}
+}
+
+func TestAdminResultDetail_ScoreOnly_DoesNotLeakPembahasanOutsideAssessmentRoute(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	schoolID := seedSchool(t, env.pool)
+	adminID := seedUserWithSchool(t, env.pool, "admin_school", "Detail School Admin", schoolID)
+	examAdminID := seedUserWithSchool(t, env.pool, "admin_exam", "Detail Exam Admin", schoolID)
+	examID := seedExamWithMCQ(t, env.pool)
+	studentID := seedUserWithSchool(t, env.pool, "student", "Detail Student", schoolID)
+	sessionID := seedSubmittedSessionReturningID(t, env.pool, studentID, examID)
+
+	for _, tc := range []struct {
+		name  string
+		token string
+	}{
+		{"admin_school", mintAdminToken(t, env, adminID.String(), schoolID)},
+		{"admin_exam", mintAdminExamToken(t, env, examAdminID.String())},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := getRequest(t, env.e, "/api/v1/admin/results/"+sessionID.String(), tc.token)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+			}
+			var body map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if _, ok := body["pembahasan"]; ok {
+				t.Fatalf("score_only /admin/results detail leaked pembahasan: %+v", body["pembahasan"])
+			}
+			if _, ok := body["breakdown"]; ok {
+				t.Fatalf("score_only /admin/results detail leaked breakdown: %+v", body["breakdown"])
+			}
+		})
+	}
+
+	adminToken := mintAdminToken(t, env, adminID.String(), schoolID)
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/assessment/results/"+sessionID.String(), adminToken)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("admin_school should not reach assessment detail route, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	superToken := mintSuperAdminToken(t, env, "detail-super-admin")
+	rec = getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/assessment/results/"+sessionID.String(), superToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("super_admin assessment detail want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var superBody map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &superBody); err != nil {
+		t.Fatalf("decode super body: %v", err)
+	}
+	if _, ok := superBody["pembahasan"]; !ok {
+		t.Fatalf("super_admin assessment detail should include pembahasan, body=%+v", superBody)
+	}
+	if _, ok := superBody["breakdown"]; !ok {
+		t.Fatalf("super_admin assessment detail should include breakdown, body=%+v", superBody)
 	}
 }
 

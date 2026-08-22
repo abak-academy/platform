@@ -93,24 +93,85 @@ func (s *Service) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID
 		EmptyCount:   empty,
 	}
 
+	// School/admin_exam result detail remains bound to the exam's student-visible
+	// result config. The super-admin assessment workspace has its own
+	// assessment:read-gated detail path below for operational answer review.
 	if exam.ResultConfig == "score_pembahasan" {
 		detail.Breakdown = topicBreakdown(tests, answers)
-		detail.Pembahasan = buildPembahasan(qs, answers)
+		detail.Pembahasan = buildPembahasan(tests, answers, false)
 	}
 
 	return detail, nil
 }
 
-// ExportSchoolResultsCSV builds a CSV of school-scoped results for an exam
+// AdminGetAssessmentResultDetail returns operational answer detail for the
+// super-admin-only assessment workspace. Unlike GetSchoolResultDetail, this
+// intentionally includes breakdown/pembahasan independent of student-visible
+// result_config, but the route is gated by assessment:read.
+func (s *Service) AdminGetAssessmentResultDetail(ctx context.Context, examID, sessionID uuid.UUID) (model.AdminResultDetail, error) {
+	sess, err := s.storeRepo.GetSchoolResultSession(ctx, sessionID, "")
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.AdminResultDetail{}, ErrSessionNotFound
+		}
+		return model.AdminResultDetail{}, err
+	}
+	if sess.ExamID != examID {
+		return model.AdminResultDetail{}, ErrSessionNotFound
+	}
+
+	exam, err := s.storeRepo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return model.AdminResultDetail{}, err
+	}
+	tests, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+	if err != nil {
+		return model.AdminResultDetail{}, err
+	}
+	answers, err := s.storeRepo.GetSessionAnswers(ctx, sessionID)
+	if err != nil {
+		return model.AdminResultDetail{}, err
+	}
+
+	var qs []model.QuestionWithOptions
+	for _, td := range tests {
+		qs = append(qs, td.Questions...)
+	}
+	if sess.Status != "submitted" || !isFullyGraded(qs, answers) {
+		return model.AdminResultDetail{}, ErrSessionNotFound
+	}
+
+	score := 0.0
+	if sess.Score != nil {
+		score = *sess.Score
+	}
+	correct, wrong, empty := objectiveCounts(qs, answers)
+
+	return model.AdminResultDetail{
+		SessionID:    sess.SessionID,
+		StudentName:  sess.StudentName,
+		Username:     sess.Username,
+		Score:        score,
+		SubmittedAt:  sess.SubmittedAt,
+		ResultConfig: exam.ResultConfig,
+		CorrectCount: correct,
+		WrongCount:   wrong,
+		EmptyCount:   empty,
+		Breakdown:    topicBreakdown(tests, answers),
+		Pembahasan:   buildPembahasan(tests, answers, true),
+	}, nil
+}
+
+// ExportSchoolResultsCSV builds a CSV file of school-scoped results for an exam
 // by looping ListSchoolResults page by page until exhausted (FR-SCHOOL-08-17).
 // Uses encoding/csv + bytes.Buffer, matching BuildCredentialsResultCSV in
 // bulk_credentials.go. Header rows are always written even when the result
 // set is empty (hidden/locked exam -> header only, no error).
-func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, schoolID string) ([]byte, error) {
+func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, schoolID, q string) ([]byte, error) {
 	var rows []model.AdminResultRow
 	cursor := ""
 	for {
-		page, next, err := s.ListSchoolResults(ctx, examID, schoolID, "", cursor, 100)
+		page, next, err := s.ListSchoolResults(ctx, examID, schoolID, q, cursor, 100)
 		if err != nil {
 			return nil, err
 		}
