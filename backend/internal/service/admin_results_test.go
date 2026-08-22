@@ -217,10 +217,8 @@ func (s *shimSessionService) GetSchoolResultDetail(ctx context.Context, sessionI
 		EmptyCount:   empty,
 	}
 
-	if exam.ResultConfig == "score_pembahasan" {
-		detail.Breakdown = topicBreakdown(tests, answers)
-		detail.Pembahasan = buildPembahasan(qs, answers)
-	}
+	detail.Breakdown = topicBreakdown(tests, answers)
+	detail.Pembahasan = buildPembahasan(qs, answers)
 
 	return detail, nil
 }
@@ -482,7 +480,7 @@ func TestAdminResultDetail_CrossSchool_GatesToNotFound(t *testing.T) {
 	}
 }
 
-func TestAdminResultDetail_ScoreOnly_NoBreakdownOrPembahasan(t *testing.T) {
+func TestAdminResultDetail_ScoreOnly_IncludesAdminBreakdownAndPembahasan(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
@@ -517,11 +515,11 @@ func TestAdminResultDetail_ScoreOnly_NoBreakdownOrPembahasan(t *testing.T) {
 	if detail.CorrectCount != 1 || detail.WrongCount != 0 || detail.EmptyCount != 0 {
 		t.Errorf("counts: want 1/0/0, got %d/%d/%d", detail.CorrectCount, detail.WrongCount, detail.EmptyCount)
 	}
-	if detail.Breakdown != nil {
-		t.Error("score_only should not include breakdown")
+	if len(detail.Breakdown) != 1 {
+		t.Fatalf("admin detail should include breakdown even for score_only, got %d", len(detail.Breakdown))
 	}
-	if detail.Pembahasan != nil {
-		t.Error("score_only should not include pembahasan")
+	if len(detail.Pembahasan) != 1 {
+		t.Fatalf("admin detail should include per-question answers even for score_only, got %d", len(detail.Pembahasan))
 	}
 }
 

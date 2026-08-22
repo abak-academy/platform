@@ -93,10 +93,11 @@ func (s *Service) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID
 		EmptyCount:   empty,
 	}
 
-	if exam.ResultConfig == "score_pembahasan" {
-		detail.Breakdown = topicBreakdown(tests, answers)
-		detail.Pembahasan = buildPembahasan(qs, answers)
-	}
+	// Admin result drill-down is an operational view, not the student-visible
+	// result gate. Always include the per-topic and per-question detail so the
+	// super-admin Results tab can expand a row into the exact submitted answers.
+	detail.Breakdown = topicBreakdown(tests, answers)
+	detail.Pembahasan = buildPembahasan(qs, answers)
 
 	return detail, nil
 }

@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Download, Eye, Loader2 } from "lucide-react";
-import { useTranslation } from "@/lib/i18n";
+import { toast } from "sonner";
+
+import { RichContent } from "@/components/admin/RichContent";
 import { Button } from "@/components/ui/button";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -12,26 +15,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useAssessment, useAssessmentAttempts } from "@/lib/hooks/admin-assessment";
-import { useAdminResultDetail, exportAdminResults } from "@/lib/hooks/admin-results";
+import { useTranslation } from "@/lib/i18n";
+import { useAssessment } from "@/lib/hooks/admin-assessment";
+import { exportAdminResults, useAdminResultDetail } from "@/lib/hooks/admin-results";
 import { useSchools } from "@/lib/hooks/students";
-import type { AssessmentRow, AssessmentAttempt, AssessmentSummary } from "@/lib/types";
-import { toast } from "sonner";
+import { formatChoiceAnswer } from "@/lib/option-key";
+import type { AdminResultDetail, AssessmentRow, AssessmentSummary } from "@/lib/types";
 
 interface AssessmentTabProps {
   examId: string;
 }
 
-// Radix Select forbids an empty-string item value, so "every school" needs its
-// own sentinel; it maps back to "" (no school_id param, meaning "all schools").
 const ALL_SCHOOLS_VALUE = "_all_";
 
 function useDebouncedValue(value: string, delay: number): string {
@@ -43,24 +37,12 @@ function useDebouncedValue(value: string, delay: number): string {
   return debounced;
 }
 
-function statusBadgeClass(status: string): string {
-  if (status === "completed") return "bg-success-bg text-success";
-  if (status === "in_progress") return "bg-warning-bg text-warning";
-  return "bg-surface-2 text-ink-500";
-}
-
-function statusLabelKey(status: string): "assessment_status_completed" | "assessment_status_in_progress" | "assessment_status_not_started" {
-  if (status === "completed") return "assessment_status_completed";
-  if (status === "in_progress") return "assessment_status_in_progress";
-  return "assessment_status_not_started";
-}
-
 export function AssessmentTab({ examId }: AssessmentTabProps) {
   const { t, lang } = useTranslation();
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
   const { data: schoolsData } = useSchools(true);
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
+  const [selectedSchoolId, setSelectedSchoolId] = useState("");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
 
@@ -68,6 +50,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
   const [activeCursor, setActiveCursor] = useState<string | undefined>(undefined);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [stableSummary, setStableSummary] = useState<AssessmentSummary | null>(null);
+  const [selectedRegistrationId, setSelectedRegistrationId] = useState("");
 
   const filterKey = `${examId}:${debouncedSearch}:${selectedSchoolId}`;
   const filterKeyRef = useRef(filterKey);
@@ -77,6 +60,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
       setAccumulated([]);
       setActiveCursor(undefined);
       setNextCursor(undefined);
+      setSelectedRegistrationId("");
       filterKeyRef.current = filterKey;
     }
   }, [filterKey]);
@@ -106,9 +90,10 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data, filterKey]);
 
-  const handleLoadMore = () => {
-    if (nextCursor) setActiveCursor(nextCursor);
-  };
+  const selectedRow = accumulated.find((r) => r.registration_id === selectedRegistrationId);
+  const selectedSessionId = selectedRow?.latest_session_id ?? "";
+  const detail = useAdminResultDetail(selectedSessionId);
+  const summary = query.data?.summary ?? stableSummary;
 
   const [exporting, setExporting] = useState(false);
   const handleExport = async () => {
@@ -123,12 +108,12 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
     }
   };
 
-  const [selectedRegistrationId, setSelectedRegistrationId] = useState<string>("");
-  const selectedRow = accumulated.find((r) => r.registration_id === selectedRegistrationId);
-
-  const summary = query.data?.summary ?? stableSummary;
-
   const columns: DataTableColumn<AssessmentRow>[] = [
+    {
+      key: "rank",
+      header: t("admin_exam_leaderboard_col_rank"),
+      cell: (row) => <span className="text-xs font-semibold text-ink-700">{row.rank ?? "-"}</span>,
+    },
     {
       key: "name",
       header: t("th_name"),
@@ -143,20 +128,6 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
       key: "school",
       header: t("schools_th_school"),
       cell: (row) => <span className="text-xs text-ink-600">{row.school_name || "-"}</span>,
-    },
-    {
-      key: "status",
-      header: t("assessment_col_status"),
-      cell: (row) => (
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(row.status)}`}>
-          {t(statusLabelKey(row.status))}
-        </span>
-      ),
-    },
-    {
-      key: "rank",
-      header: t("admin_exam_leaderboard_col_rank"),
-      cell: (row) => <span className="text-xs text-ink-600">{row.rank ?? "-"}</span>,
     },
     {
       key: "score",
@@ -179,10 +150,11 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
       align: "right",
       cell: (row) => (
         <Button
-          variant="ghost"
+          variant={selectedRegistrationId === row.registration_id ? "outline" : "ghost"}
           size="icon"
           aria-label={t("action_view")}
-          onClick={() => setSelectedRegistrationId(row.registration_id)}
+          disabled={!row.latest_session_id}
+          onClick={() => setSelectedRegistrationId((current) => current === row.registration_id ? "" : row.registration_id)}
         >
           <Eye className="size-4" />
         </Button>
@@ -194,25 +166,14 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
     <div className="space-y-4">
       {summary && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="rounded-lg border p-4">
-            <div className="text-label text-sm text-ink-500">{t("assessment_summary_total_registered")}</div>
-            <div className="mt-1 text-2xl font-bold">{summary.total_registered}</div>
-          </div>
-          <div className="rounded-lg border p-4">
-            <div className="text-label text-sm text-ink-500">{t("assessment_summary_completion_rate")}</div>
-            <div className="mt-1 text-2xl font-bold">{Math.round(summary.completion_rate * 100)}%</div>
-          </div>
-          <div className="rounded-lg border p-4">
-            <div className="text-label text-sm text-ink-500">{t("admin_exam_analytics_average_score")}</div>
-            <div className="mt-1 text-2xl font-bold">{summary.average_score.toFixed(1)}</div>
-          </div>
-          <div className="rounded-lg border p-4">
-            <div className="text-label text-sm text-ink-500">{t("assessment_summary_violations")}</div>
-            <div className="mt-1 text-2xl font-bold">{summary.violation_events}</div>
-            <div className="text-xs text-ink-500">
-              {summary.violation_attempts} {t("assessment_summary_violation_attempts")}
-            </div>
-          </div>
+          <SummaryCard label={t("assessment_summary_total_registered")} value={summary.total_registered} />
+          <SummaryCard label={t("assessment_summary_completion_rate")} value={`${Math.round(summary.completion_rate * 100)}%`} />
+          <SummaryCard label={t("admin_exam_analytics_average_score")} value={summary.average_score.toFixed(1)} />
+          <SummaryCard
+            label={t("assessment_summary_violations")}
+            value={summary.violation_events}
+            caption={`${summary.violation_attempts} ${t("assessment_summary_violation_attempts")}`}
+          />
         </div>
       )}
 
@@ -229,30 +190,21 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
           </div>
           <div>
             <p className="text-xs text-ink-500">{t("select_school")}</p>
-            <Select
-              value={selectedSchoolId || ALL_SCHOOLS_VALUE}
-              onValueChange={(v) => setSelectedSchoolId(v === ALL_SCHOOLS_VALUE ? "" : v)}
-            >
+            <Select value={selectedSchoolId || ALL_SCHOOLS_VALUE} onValueChange={(v) => setSelectedSchoolId(v === ALL_SCHOOLS_VALUE ? "" : v)}>
               <SelectTrigger className="mt-1 h-9 w-[240px] text-xs" aria-label={t("select_school")}>
                 <SelectValue placeholder={t("students_all_schools")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL_SCHOOLS_VALUE}>{t("students_all_schools")}</SelectItem>
                 {(schoolsData ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
         </div>
         <Button size="sm" onClick={handleExport} disabled={exporting || !examId}>
-          {exporting ? (
-            <Loader2 className="mr-1 size-4 animate-spin" />
-          ) : (
-            <Download className="mr-1 size-4" />
-          )}
+          {exporting ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Download className="mr-1 size-4" />}
           {exporting ? t("school_reports_export_loading") : t("school_reports_export")}
         </Button>
       </div>
@@ -267,176 +219,114 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
           rows={accumulated}
           rowKey={(row) => row.registration_id}
           empty={t("assessment_empty")}
-          footer={
-            nextCursor && (
-              <div className="border-t border-line px-4 py-3 text-center">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleLoadMore}
-                  disabled={query.isFetching}
-                >
-                  {query.isFetching ? t("sys_loading") : t("sys_load_more")}
-                </Button>
-              </div>
-            )
-          }
+          footer={nextCursor && (
+            <div className="border-t border-line px-4 py-3 text-center">
+              <Button variant="outline" size="sm" onClick={() => setActiveCursor(nextCursor)} disabled={query.isFetching}>
+                {query.isFetching ? t("sys_loading") : t("sys_load_more")}
+              </Button>
+            </div>
+          )}
         />
       )}
 
-      <Dialog
-        open={selectedRegistrationId !== ""}
-        onOpenChange={(open) => {
-          if (!open) setSelectedRegistrationId("");
-        }}
-      >
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="font-serif">{t("assessment_drawer_title")}</DialogTitle>
-          </DialogHeader>
-          {selectedRow && (
-            <AssessmentDrawerContent
-              examId={examId}
-              row={selectedRow}
-              t={t}
-              dateLocale={dateLocale}
-            />
+      {selectedRow && (
+        <div className="rounded-2xl border border-line bg-card p-5 shadow-sm">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="font-serif text-lg font-semibold text-ink-900">{t("school_reports_detail_title")}</h3>
+              <p className="mt-1 text-sm text-ink-600">
+                <span className="font-semibold text-ink-900">{selectedRow.student_name}</span> · Username: {selectedRow.username ?? "-"}
+              </p>
+              <p className="text-xs text-ink-500">{selectedRow.school_name || "-"}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setSelectedRegistrationId("")}>{t("cancel")}</Button>
+          </div>
+          {detail.isLoading ? (
+            <div className="py-8 text-center text-ink-500">{t("sys_loading_data")}</div>
+          ) : detail.data ? (
+            <ResultDetailPanel detail={detail.data} t={t} dateLocale={dateLocale} />
+          ) : (
+            <div className="py-8 text-center text-ink-500">{t("sys_error_load")}</div>
           )}
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
   );
 }
 
-function AssessmentDrawerContent({
-  examId,
-  row,
+function SummaryCard({ label, value, caption }: { label: string; value: string | number; caption?: string }) {
+  return (
+    <div className="rounded-xl border border-line bg-card p-4 shadow-sm">
+      <div className="text-label text-sm text-ink-600">{label}</div>
+      <div className="mt-1 text-2xl font-bold text-ink-950">{value}</div>
+      {caption && <div className="text-xs text-ink-600">{caption}</div>}
+    </div>
+  );
+}
+
+function ResultDetailPanel({
+  detail,
   t,
   dateLocale,
 }: {
-  examId: string;
-  row: AssessmentRow;
+  detail: AdminResultDetail;
   t: ReturnType<typeof useTranslation>["t"];
   dateLocale: string;
 }) {
-  const attempts = useAssessmentAttempts(examId, row.registration_id);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>("");
-  const detail = useAdminResultDetail(selectedSessionId);
-
-  const isEligible = (attempt: AssessmentAttempt) => attempt.result_available;
-
   return (
     <div className="space-y-4">
-      <div className="text-sm text-ink-600">
-        <p>
-          <span className="font-semibold text-ink-900">{row.student_name}</span> · Username:{" "}
-          {row.username ?? "-"}
-        </p>
-        <p className="text-xs text-ink-500">{row.school_name || "-"}</p>
+      <div className="grid grid-cols-4 gap-2 text-center text-xs">
+        <MetricCard value={detail.score} label={t("school_reports_detail_score")} />
+        <MetricCard value={detail.correct_count} label={t("school_reports_detail_correct")} tone="success" />
+        <MetricCard value={detail.wrong_count} label={t("school_reports_detail_wrong")} tone="danger" />
+        <MetricCard value={detail.empty_count} label={t("school_reports_detail_empty")} />
       </div>
 
-      {attempts.isLoading && (
-        <div className="space-y-2">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-full" />
-          ))}
+      <div className="text-xs text-ink-500">
+        {t("school_reports_col_submitted")}: {new Date(detail.submitted_at).toLocaleString(dateLocale, { day: "2-digit", month: "short", year: "numeric" })}
+      </div>
+
+      {detail.breakdown && detail.breakdown.length > 0 && (
+        <div>
+          <h4 className="mb-2 text-sm font-semibold text-ink-900">{t("result_by_topic")}</h4>
+          <div className="space-y-1">
+            {detail.breakdown.map((b) => (
+              <div key={b.test_id} className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-xs">
+                <span className="text-ink-700">{b.title}</span>
+                <span className="font-semibold text-ink-900">{b.earned}/{b.max}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {!attempts.isLoading && (attempts.data?.data ?? []).length === 0 && (
-        <p className="py-4 text-center text-sm text-ink-500">{t("assessment_no_attempts")}</p>
-      )}
-
-      {!attempts.isLoading && (attempts.data?.data ?? []).length > 0 && (
-        <ul className="space-y-2">
-          {(attempts.data?.data ?? []).map((attempt) => (
-            <li
-              key={attempt.session_id}
-              className="flex items-center justify-between rounded-lg border p-3"
-            >
-              <div className="text-sm">
-                <div className="font-medium text-ink-900">
-                  {t("assessment_attempt_number")} {attempt.attempt_number}
-                  {attempt.is_latest && (
-                    <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                      {t("assessment_latest_badge")}
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-ink-500">
-                  {t(statusLabelKey(attempt.status))} ·{" "}
-                  {attempt.submitted_at
-                    ? new Date(attempt.submitted_at).toLocaleString(dateLocale, {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })
-                    : "-"}{" "}
-                  · {t("assessment_col_violations")}: {attempt.violations}
-                </div>
+      {detail.pembahasan && detail.pembahasan.length > 0 && (
+        <div>
+          <h4 className="mb-2 text-sm font-semibold text-ink-900">{t("result_pembahasan")}</h4>
+          <div className="max-h-80 space-y-2 overflow-y-auto">
+            {detail.pembahasan.map((p, index) => (
+              <div key={p.question_id} className="rounded-md border border-line bg-surface-2 px-3 py-2 text-xs">
+                <div className="mb-1 font-semibold text-ink-900">#{index + 1}</div>
+                <div className="font-medium text-ink-900"><RichContent html={p.body} /></div>
+                <p className="mt-1 text-ink-600">{t("result_your_answer")}: {formatChoiceAnswer(p.your_answer, p.format) || "—"}</p>
+                <p className="text-ink-600">{t("result_correct_answer")}: {formatChoiceAnswer(p.correct_answer, p.format) || "—"}</p>
+                {p.explanation && <p className="mt-1 text-ink-500 italic">{p.explanation}</p>}
               </div>
-              {isEligible(attempt) ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSelectedSessionId(attempt.session_id)}
-                >
-                  {t("action_view")}
-                </Button>
-              ) : (
-                <span className="text-xs text-ink-600">{t("assessment_attempt_unavailable")}</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {selectedSessionId && (
-        <div className="rounded-lg border p-4">
-          {detail.isLoading ? (
-            <div className="py-4 text-center text-ink-500">{t("sys_loading_data")}</div>
-          ) : detail.data ? (
-            <div className="space-y-3">
-              <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                <div className="rounded-lg bg-surface-2 p-2">
-                  <div className="text-lg font-bold text-ink-900">{detail.data.score}</div>
-                  <div className="text-ink-500">{t("school_reports_detail_score")}</div>
-                </div>
-                <div className="rounded-lg bg-success-bg p-2">
-                  <div className="text-lg font-bold text-success">{detail.data.correct_count}</div>
-                  <div className="text-ink-500">{t("school_reports_detail_correct")}</div>
-                </div>
-                <div className="rounded-lg bg-danger-bg p-2">
-                  <div className="text-lg font-bold text-danger">{detail.data.wrong_count}</div>
-                  <div className="text-ink-500">{t("school_reports_detail_wrong")}</div>
-                </div>
-                <div className="rounded-lg bg-surface-2 p-2">
-                  <div className="text-lg font-bold text-ink-900">{detail.data.empty_count}</div>
-                  <div className="text-ink-500">{t("school_reports_detail_empty")}</div>
-                </div>
-              </div>
-              {detail.data.breakdown && detail.data.breakdown.length > 0 && (
-                <div>
-                  <h4 className="mb-2 text-sm font-semibold text-ink-900">{t("result_by_topic")}</h4>
-                  <div className="space-y-1">
-                    {detail.data.breakdown.map((b) => (
-                      <div
-                        key={b.test_id}
-                        className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-xs"
-                      >
-                        <span className="text-ink-700">{b.title}</span>
-                        <span className="font-semibold text-ink-900">
-                          {b.earned}/{b.max}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : null}
+            ))}
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function MetricCard({ value, label, tone }: { value: number; label: string; tone?: "success" | "danger" }) {
+  const bg = tone === "success" ? "bg-success-bg" : tone === "danger" ? "bg-danger-bg" : "bg-surface-2";
+  const color = tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-ink-900";
+  return (
+    <div className={`rounded-lg ${bg} p-2`}>
+      <div className={`text-lg font-bold ${color}`}>{value}</div>
+      <div className="text-ink-600">{label}</div>
     </div>
   );
 }

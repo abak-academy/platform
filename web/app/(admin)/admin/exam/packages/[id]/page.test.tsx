@@ -809,7 +809,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(screen.getByTestId("exam-results-tab")).toHaveTextContent("exam-1");
   });
 
-  it("super_admin sees Assessment instead of Results/Leaderboard and still sees Edit", async () => {
+  it("super_admin sees unified Results instead of separate Results/Leaderboard and still sees Edit", async () => {
     mockRole = "super_admin";
     render(<ExamPackageDetailPage />);
 
@@ -819,8 +819,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
 
     expect(screen.getByRole("button", { name: /^tes$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^sertifikat$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^asesmen$/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^hasil$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^hasil$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Leaderboard" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
   });
@@ -944,14 +943,14 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(screen.queryByText(/sedang dalam pengembangan/i)).not.toBeInTheDocument();
   });
 
-  it("super_admin sees the Assessment tab content", async () => {
+  it("super_admin sees the unified Results tab content", async () => {
     mockRole = "super_admin";
     render(<ExamPackageDetailPage />);
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: /^asesmen$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^hasil$/i }));
 
     expect(screen.getByTestId("assessment-tab")).toHaveTextContent("exam-1");
     expect(screen.queryByTestId("exam-results-tab")).not.toBeInTheDocument();

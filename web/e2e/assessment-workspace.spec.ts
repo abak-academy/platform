@@ -74,17 +74,17 @@ const ASSESSMENT_PAGE_2 = {
     {
       registration_id: "reg-2",
       student_id: "student-2",
-      student_name: "Siti Belum Mulai",
+      student_name: "Siti Juara",
       username: "siti.start",
       school_id: "school-1",
       school_name: "SMA E2E",
-      rank: null,
-      score: null,
-      status: "not_started",
-      attempts_count: 0,
-      latest_session_id: null,
-      latest_attempt_number: null,
-      latest_submitted_at: null,
+      rank: 2,
+      score: 76,
+      status: "completed",
+      attempts_count: 1,
+      latest_session_id: "sess-2",
+      latest_attempt_number: 1,
+      latest_submitted_at: "2026-08-01T10:05:00Z",
       latest_violations: 0,
     },
   ],
@@ -167,7 +167,7 @@ async function mockBackend(page: Page) {
   });
 }
 
-test("super_admin assessment workspace replaces Results/Leaderboard and supports drawer flow", async ({ page, context }) => {
+test("super_admin unified Results workspace is ranked and supports inline detail flow", async ({ page, context }) => {
   const assessmentRequests: string[] = [];
   page.on("request", (req) => {
     if (req.url().includes("/assessment")) assessmentRequests.push(req.url());
@@ -181,11 +181,10 @@ test("super_admin assessment workspace replaces Results/Leaderboard and supports
 
   await page.goto("/admin/exam/packages/exam-1");
   await expect(page.getByRole("heading", { name: EXAM.title })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Asesmen" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Hasil" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Hasil" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Leaderboard" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Asesmen" }).click();
+  await page.getByRole("button", { name: "Hasil" }).click();
   await expect(page.getByText("Budi Assessment")).toBeVisible();
   await expect(page.getByText("50%")).toBeVisible();
   await expect(page.getByText("87.5").first()).toBeVisible();
@@ -195,13 +194,8 @@ test("super_admin assessment workspace replaces Results/Leaderboard and supports
     .poll(() => assessmentRequests.some((url) => url.includes("q=budi")))
     .toBe(true);
 
-  await page.getByRole("button", { name: "Muat lebih banyak" }).click();
-  await expect(page.getByText("Siti Belum Mulai")).toBeVisible();
-
   await page.getByRole("button", { name: "Lihat" }).first().click();
-  await expect(page.getByRole("heading", { name: "Detail Peserta" })).toBeVisible();
-  await expect(page.getByText("Percobaan 2")).toBeVisible();
-  await page.getByRole("button", { name: "Lihat" }).last().click();
+  await expect(page.getByRole("heading", { name: "Detail Hasil" })).toBeVisible();
   await expect(page.getByText("Matematika")).toBeVisible();
 });
 
@@ -220,6 +214,6 @@ test("admin_school keeps scoped Results tab and never calls assessment endpoint"
   await page.goto("/admin/exam/packages/exam-1");
   await expect(page.getByRole("heading", { name: EXAM.title })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hasil" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Asesmen" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Hasil" })).toBeVisible();
   await expect.poll(() => assessmentRequests.length).toBe(0);
 });

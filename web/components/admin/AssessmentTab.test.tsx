@@ -65,17 +65,17 @@ const page2: AssessmentResponse = {
     {
       registration_id: "reg-2",
       student_id: "student-2",
-      student_name: "Siti Belum Mulai",
+      student_name: "Siti Juara",
       username: "siti",
       school_id: "school-1",
       school_name: "SMAN 1",
-      rank: null,
-      score: null,
-      status: "not_started",
-      attempts_count: 0,
-      latest_session_id: null,
-      latest_attempt_number: null,
-      latest_submitted_at: null,
+      rank: 3,
+      score: 75,
+      status: "completed",
+      attempts_count: 1,
+      latest_session_id: "session-siti",
+      latest_attempt_number: 1,
+      latest_submitted_at: "2026-08-20T00:00:00Z",
       latest_violations: 0,
     },
   ],
@@ -107,35 +107,9 @@ describe("AssessmentTab", () => {
     toastError.mockReset();
     mockAuthFetch.mockImplementation((url: string) => {
       if (url === "/schools") return Promise.resolve(schools);
-      if (url.startsWith("/admin/exams/exam-1/assessment/reg-1/attempts")) {
+      if (url.startsWith("/admin/results/session-latest")) {
         return Promise.resolve({
-          data: [
-            {
-              session_id: "session-latest",
-              attempt_number: 2,
-              status: "in_progress",
-              submitted_at: null,
-              score: null,
-              violations: 2,
-              result_available: false,
-              is_latest: true,
-            },
-            {
-              session_id: "session-old",
-              attempt_number: 1,
-              status: "submitted",
-              submitted_at: "2026-08-20T00:00:00Z",
-              score: 88.25,
-              violations: 0,
-              result_available: true,
-              is_latest: false,
-            },
-          ],
-        });
-      }
-      if (url.startsWith("/admin/results/session-old")) {
-        return Promise.resolve({
-          session_id: "session-old",
+          session_id: "session-latest",
           student_name: "Budi Santoso",
           username: "budi",
           score: 88.25,
@@ -144,7 +118,18 @@ describe("AssessmentTab", () => {
           correct_count: 8,
           wrong_count: 1,
           empty_count: 1,
-          breakdown: [],
+          breakdown: [{ test_id: "test-1", title: "Matematika", earned: 8, max: 10 }],
+          pembahasan: [
+            {
+              question_id: "question-1",
+              body: "2 + 2 = ?",
+              format: "single_choice",
+              your_answer: "A",
+              correct_answer: "B",
+              is_correct: false,
+              explanation: "Empat adalah jawaban yang benar.",
+            },
+          ],
         });
       }
       if (url.startsWith("/admin/exams/exam-1/assessment")) return Promise.resolve(page1);
@@ -197,23 +182,21 @@ describe("AssessmentTab", () => {
     await act(async () => {
       page2Deferred.resolve(page2);
     });
-    await screen.findByText("Siti Belum Mulai");
+    await screen.findByText("Siti Juara");
     expect(screen.getAllByText("Budi Santoso")).toHaveLength(1);
   });
 
-  it("opens the drawer, maps attempt statuses, and loads eligible attempt details", async () => {
+  it("expands a ranked result row and shows per-question answers", async () => {
     renderTab();
     const row = await screen.findByText("Budi Santoso");
     fireEvent.click(within(row.closest("tr") as HTMLElement).getByRole("button", { name: /lihat/i }));
 
-    await screen.findByText(/Percobaan 2/);
-    expect(screen.getByText(/Berlangsung|In Progress/)).toBeInTheDocument();
-    expect(screen.getByText(/Belum tersedia|Not available/i)).toBeInTheDocument();
-
-    fireEvent.click(screen.getAllByRole("button", { name: /lihat/i })[0]);
     await waitFor(() => {
       expect(screen.getByText("8")).toBeInTheDocument();
-      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/results/session-old");
+      expect(screen.getByText("2 + 2 = ?")).toBeInTheDocument();
+      expect(screen.getByText(/Jawaban Anda|Your answer/i)).toBeInTheDocument();
+      expect(screen.getByText("Empat adalah jawaban yang benar.")).toBeInTheDocument();
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/results/session-latest");
     });
   });
 });

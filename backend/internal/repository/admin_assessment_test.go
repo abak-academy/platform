@@ -111,8 +111,8 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 	if next != "" {
 		t.Fatalf("next cursor = %q, want empty", next)
 	}
-	if len(rows) != 4 {
-		t.Fatalf("school A row count = %d, want 4: %+v", len(rows), rows)
+	if len(rows) != 3 {
+		t.Fatalf("school A result row count = %d, want 3: %+v", len(rows), rows)
 	}
 	byName := map[string]struct {
 		status       string
@@ -135,11 +135,11 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 	if got := byName["Budi Assessment"]; got.status != "completed" || got.score == nil || *got.score != 90 || got.rank == nil || *got.rank != 2 || got.attempts != 2 || got.latestVios != 2 || got.latestSessID == nil || *got.latestSessID != budiLatest {
 		t.Fatalf("Budi row mismatch: %+v", got)
 	}
-	if got := byName["Cici Retry"]; got.status != "in_progress" || got.score == nil || *got.score != 100 || got.rank == nil || *got.rank != 1 || got.attempts != 2 {
-		t.Fatalf("Cici row should keep latest status while scoring latest fully graded submission, got %+v", got)
+	if got := byName["Cici Retry"]; got.status != "completed" || got.score == nil || *got.score != 100 || got.rank == nil || *got.rank != 1 || got.attempts != 2 {
+		t.Fatalf("Cici row should use the latest fully graded submitted result despite a newer abandoned retry, got %+v", got)
 	}
-	if got := byName["Evi Empty"]; got.status != "not_started" || got.latestSessID != nil || got.attempts != 0 {
-		t.Fatalf("Evi row should be not_started, got %+v", got)
+	if _, ok := byName["Evi Empty"]; ok {
+		t.Fatalf("Evi should not appear in result rows without a scored submitted attempt")
 	}
 	if got := byName["Fani Tie"]; got.status != "completed" || got.rank == nil || *got.rank != 2 {
 		t.Fatalf("Fani should share rank 2 tie, got %+v", got)
@@ -174,7 +174,7 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAssessmentRows page2: %v", err)
 	}
-	if len(secondPage) != 1 || secondPage[0].RegistrationID == firstPage[0].RegistrationID {
+	if len(secondPage) != 1 || secondPage[0].RegistrationID == firstPage[0].RegistrationID || secondPage[0].Rank == nil || *secondPage[0].Rank != 2 {
 		t.Fatalf("page2 did not advance: page1=%+v page2=%+v", firstPage, secondPage)
 	}
 

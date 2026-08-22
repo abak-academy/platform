@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -71,13 +72,12 @@ func (f AssessmentFilter) whereRegistration(startArg int) (string, []any) {
 	return clause, args
 }
 
-// ListAssessmentRows returns the paginated participant rows for the assessment
-// workspace (Issue 124): one row per exam_registration, with latest-attempt
-// status plus leaderboard-compatible score/rank from the newest submitted,
-// fully graded, scored attempt. Rank is computed over the full filtered cohort
-// (not just the current page) so page-2 ranks stay correct. Cursor is keyset-
-// encoded as "<RFC3339Nano created_at>,<registration id>", default limit 20,
-// cap 100.
+// ListAssessmentRows returns the paginated result rows for the super-admin
+// results workspace (Issue 124): one row per registration with a leaderboard-
+// compatible score. Registrations without a submitted, fully graded, scored
+// attempt are intentionally excluded from the table; they still contribute to
+// total_registered in the summary. Cursor is keyset-encoded as
+// "<rank>,<negative score>,<registration id>", default limit 20, cap 100.
 func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, filter AssessmentFilter) ([]model.AssessmentRow, string, error) {
 	if filter.Limit <= 0 {
 		filter.Limit = 20
@@ -98,7 +98,6 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 			LEFT JOIN school sc ON sc.id = u.school_id
 			WHERE reg.exam_id = $1` + regClause + `
 		),
-		latest AS ` + assessmentLatestSession + `,
 		scored AS ` + assessmentLatestScoredSession + `,
 		attempts_agg AS (
 			SELECT registration_id, COUNT(*) AS attempts_count
@@ -106,7 +105,7 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 			WHERE exam_id = $1
 			GROUP BY registration_id
 		),
-		latest_violations AS (
+		result_violations AS (
 			SELECT l.session_id, COUNT(*) AS cnt
 			FROM session_violation_log l
 			JOIN exam_session s ON s.id = l.session_id
@@ -116,20 +115,19 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 		joined AS (
 			SELECT reg.id AS registration_id, reg.student_id, reg.created_at, reg.student_name, reg.username,
 				reg.school_id, reg.school_name,
-				latest.session_id, latest.attempt_number, latest.status AS session_status,
-				latest.submitted_at, scored.score,
+				scored.session_id, scored.attempt_number, 'submitted' AS session_status,
+				scored.submitted_at, scored.score,
 				COALESCE(attempts_agg.attempts_count, 0) AS attempts_count,
-				COALESCE(latest_violations.cnt, 0) AS latest_violations,
+				COALESCE(result_violations.cnt, 0) AS latest_violations,
 				(scored.session_id IS NOT NULL) AS eligible
 			FROM reg
-			LEFT JOIN latest ON latest.registration_id = reg.id
-			LEFT JOIN scored ON scored.registration_id = reg.id
+			JOIN scored ON scored.registration_id = reg.id
 			LEFT JOIN attempts_agg ON attempts_agg.registration_id = reg.id
-			LEFT JOIN latest_violations ON latest_violations.session_id = latest.session_id
+			LEFT JOIN result_violations ON result_violations.session_id = scored.session_id
 		),
 		ranked AS (
 			SELECT joined.*,
-				CASE WHEN eligible THEN RANK() OVER (PARTITION BY eligible ORDER BY score DESC) END AS rnk
+				RANK() OVER (ORDER BY score DESC) AS rnk
 			FROM joined
 		)
 		SELECT registration_id, student_id, created_at, student_name, username, school_id, school_name,
@@ -139,11 +137,19 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 		WHERE 1=1`
 
 	if filter.Cursor != "" {
-		timeStr, idStr, found := strings.Cut(filter.Cursor, ",")
+		rankStr, rest, found := strings.Cut(filter.Cursor, ",")
 		if !found {
 			return nil, "", fmt.Errorf("%w: %q", ErrInvalidCursor, filter.Cursor)
 		}
-		cursorTime, err := time.Parse(time.RFC3339Nano, timeStr)
+		scoreStr, idStr, found := strings.Cut(rest, ",")
+		if !found {
+			return nil, "", fmt.Errorf("%w: %q", ErrInvalidCursor, filter.Cursor)
+		}
+		cursorRank, err := strconv.Atoi(rankStr)
+		if err != nil {
+			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
+		}
+		cursorNegScore, err := strconv.ParseFloat(scoreStr, 64)
 		if err != nil {
 			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 		}
@@ -151,12 +157,12 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 		if err != nil {
 			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 		}
-		query += fmt.Sprintf(` AND (created_at > $%d OR (created_at = $%d AND registration_id > $%d))`, argIdx, argIdx, argIdx+1)
-		args = append(args, cursorTime, cursorID)
-		argIdx += 2
+		query += fmt.Sprintf(` AND (rnk > $%d OR (rnk = $%d AND (-score) > $%d) OR (rnk = $%d AND (-score) = $%d AND registration_id > $%d))`, argIdx, argIdx, argIdx+1, argIdx, argIdx+1, argIdx+2)
+		args = append(args, cursorRank, cursorNegScore, cursorID)
+		argIdx += 3
 	}
 
-	query += ` ORDER BY created_at ASC, registration_id ASC LIMIT $` + fmt.Sprintf("%d", argIdx)
+	query += ` ORDER BY rnk ASC, score DESC, registration_id ASC LIMIT $` + fmt.Sprintf("%d", argIdx)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -165,7 +171,8 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 	}
 	defer rows.Close()
 
-	var createdAts []time.Time
+	var cursorRanks []int
+	var cursorScores []float64
 	results := []model.AssessmentRow{}
 	for rows.Next() {
 		var row model.AssessmentRow
@@ -186,7 +193,10 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 		default:
 			row.Status = "in_progress"
 		}
-		createdAts = append(createdAts, createdAt)
+		if row.Rank != nil && row.Score != nil {
+			cursorRanks = append(cursorRanks, *row.Rank)
+			cursorScores = append(cursorScores, *row.Score)
+		}
 		results = append(results, row)
 	}
 	if err := rows.Err(); err != nil {
@@ -196,9 +206,10 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 	var nextCursor string
 	if len(results) > filter.Limit {
 		results = results[:filter.Limit]
-		createdAts = createdAts[:filter.Limit]
+		cursorRanks = cursorRanks[:filter.Limit]
+		cursorScores = cursorScores[:filter.Limit]
 		last := results[len(results)-1]
-		nextCursor = createdAts[len(createdAts)-1].Format(time.RFC3339Nano) + "," + last.RegistrationID.String()
+		nextCursor = fmt.Sprintf("%d,%s,%s", cursorRanks[len(cursorRanks)-1], strconv.FormatFloat(-cursorScores[len(cursorScores)-1], 'g', -1, 64), last.RegistrationID.String())
 	}
 
 	return results, nextCursor, nil
