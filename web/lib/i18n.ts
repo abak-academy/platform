@@ -1257,6 +1257,7 @@ export const DICT = {
     admin_exam_detail_tab_results: "Hasil",
     admin_exam_detail_tab_grading: "Penilaian",
     admin_exam_detail_tab_leaderboard: "Leaderboard",
+    admin_exam_detail_tab_assessment: "Asesmen",
     admin_exam_detail_edit: "Edit",
     admin_exam_detail_draft_notice:
       "Ujian ini berstatus draft: tidak terlihat oleh siswa dan dapat diubah bebas. Publikasikan ujian untuk membuatnya terlihat oleh siswa — itu satu-satunya hal yang mengubah status ini.",
@@ -1357,6 +1358,26 @@ export const DICT = {
     admin_exam_analytics_average_score: "Rata-rata Skor",
     admin_exam_analytics_completion_rate: "Tingkat Penyelesaian",
     admin_exam_analytics_distribution: "Distribusi Skor",
+
+    // Assessment workspace (Issue 124, super_admin only)
+    assessment_col_status: "Status",
+    assessment_col_attempts: "Percobaan",
+    assessment_col_violations: "Pelanggaran",
+    assessment_status_not_started: "Belum Mulai",
+    assessment_status_in_progress: "Sedang Berlangsung",
+    assessment_status_completed: "Selesai",
+    assessment_summary_total_registered: "Total Terdaftar",
+    assessment_summary_completion_rate: "Tingkat Penyelesaian",
+    assessment_summary_violations: "Total Pelanggaran",
+    assessment_summary_violation_attempts: "percobaan terdampak",
+    assessment_search_label: "Cari",
+    assessment_search_placeholder: "Nama atau username siswa",
+    assessment_empty: "Belum ada peserta",
+    assessment_drawer_title: "Detail Peserta",
+    assessment_no_attempts: "Belum ada percobaan",
+    assessment_attempt_number: "Percobaan",
+    assessment_latest_badge: "Terbaru",
+    assessment_attempt_unavailable: "Belum tersedia",
 
     // Exam session — check-in
     exam_checkin_title: "Check-in Ujian",
@@ -2795,6 +2816,7 @@ export const DICT = {
     admin_exam_detail_tab_results: "Results",
     admin_exam_detail_tab_grading: "Grading",
     admin_exam_detail_tab_leaderboard: "Leaderboard",
+    admin_exam_detail_tab_assessment: "Assessment",
     admin_exam_detail_edit: "Edit",
     admin_exam_detail_draft_notice:
       "This exam is in draft status: invisible to students and freely editable. Publishing the exam is what makes it visible to students — the only thing that changes this.",
@@ -2895,6 +2917,26 @@ export const DICT = {
     admin_exam_analytics_average_score: "Average Score",
     admin_exam_analytics_completion_rate: "Completion Rate",
     admin_exam_analytics_distribution: "Score Distribution",
+
+    // Assessment workspace (Issue 124, super_admin only)
+    assessment_col_status: "Status",
+    assessment_col_attempts: "Attempts",
+    assessment_col_violations: "Violations",
+    assessment_status_not_started: "Not Started",
+    assessment_status_in_progress: "In Progress",
+    assessment_status_completed: "Completed",
+    assessment_summary_total_registered: "Total Registered",
+    assessment_summary_completion_rate: "Completion Rate",
+    assessment_summary_violations: "Total Violations",
+    assessment_summary_violation_attempts: "attempts affected",
+    assessment_search_label: "Search",
+    assessment_search_placeholder: "Student name or username",
+    assessment_empty: "No participants yet",
+    assessment_drawer_title: "Participant Detail",
+    assessment_no_attempts: "No attempts yet",
+    assessment_attempt_number: "Attempt",
+    assessment_latest_badge: "Latest",
+    assessment_attempt_unavailable: "Not available",
 
     // Exam session — check-in
     exam_checkin_title: "Exam Check-in",

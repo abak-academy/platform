@@ -1277,6 +1277,52 @@ export interface AdminResultDetail {
   pembahasan?: ResultPembahasanItem[];
 }
 
+// ── Admin Assessment workspace (Issue 124, super_admin only) ────────────────
+
+export interface AssessmentSummary {
+  total_registered: number;
+  completed_participants: number;
+  completion_rate: number;
+  average_score: number;
+  distribution: ScoreBucket[];
+  violation_attempts: number;
+  violation_events: number;
+}
+
+export interface AssessmentRow {
+  registration_id: string;
+  student_id: string;
+  student_name: string;
+  username?: string | null;
+  school_id?: string | null;
+  school_name?: string | null;
+  rank?: number | null;
+  score?: number | null;
+  status: "not_started" | "in_progress" | "completed";
+  attempts_count: number;
+  latest_session_id?: string | null;
+  latest_attempt_number?: number | null;
+  latest_submitted_at?: string | null;
+  latest_violations: number;
+}
+
+export interface AssessmentResponse {
+  summary: AssessmentSummary;
+  data: AssessmentRow[];
+  next_cursor: string;
+}
+
+export interface AssessmentAttempt {
+  session_id: string;
+  attempt_number: number;
+  status: string;
+  submitted_at?: string | null;
+  score?: number | null;
+  violations: number;
+  result_available: boolean;
+  is_latest: boolean;
+}
+
 // Generic job row from the backend job table. Mirrors service.JobResponse.
 // Terminal statuses observed in worker/student_bulk.go: "succeeded" and "failed".
 export interface JobStatus {

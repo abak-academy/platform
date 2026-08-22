@@ -15,6 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AssessmentTab } from "@/components/admin/AssessmentTab";
 import { CertificateDesignTab } from "@/components/admin/CertificateDesignTab";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
@@ -55,7 +56,8 @@ type Tab =
   | "registrations"
   | "results"
   | "grading"
-  | "leaderboard";
+  | "leaderboard"
+  | "assessment";
 
 const TAB_ORDER: Tab[] = [
   "overview",
@@ -65,6 +67,17 @@ const TAB_ORDER: Tab[] = [
   "results",
   "grading",
   "leaderboard",
+];
+
+// super_admin gets the participant-centric Assessment workspace (Issue 124)
+// in place of the separate Results/Leaderboard tabs.
+const SUPER_ADMIN_TABS: Tab[] = [
+  "overview",
+  "tests",
+  "certificate",
+  "registrations",
+  "assessment",
+  "grading",
 ];
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -90,6 +103,7 @@ export default function ExamPackageDetailPage() {
   const { t } = useTranslation();
   const role = useAuthStore((s) => s.user?.role);
   const isSchoolScoped = role === "admin_school";
+  const isSuperAdmin = role === "super_admin";
   const canAccessResultsAndRegistrations =
     role === "admin_school" || role === "super_admin" || role === "admin_exam";
 
@@ -102,9 +116,9 @@ export default function ExamPackageDetailPage() {
   const setCertificateEnabled = useSetCertificateEnabled(id);
   const setCardEnabled = useSetCardEnabled(id);
 
-  const visibleTabs = (isSchoolScoped ? SCHOOL_SCOPED_TABS : TAB_ORDER).filter(
-    (key) => key !== "certificate" || data?.certificate_enabled,
-  );
+  const visibleTabs = (
+    isSchoolScoped ? SCHOOL_SCOPED_TABS : isSuperAdmin ? SUPER_ADMIN_TABS : TAB_ORDER
+  ).filter((key) => key !== "certificate" || data?.certificate_enabled);
 
   async function handleEnableCertificate() {
     try {
@@ -131,11 +145,12 @@ export default function ExamPackageDetailPage() {
   const [lbEntries, setLbEntries] = useState<ExamLeaderboardEntry[]>([]);
   const [lbCursor, setLbCursor] = useState<string | undefined>(undefined);
 
-  const { data: analytics, isLoading: analyticsLoading } = useExamAnalytics(id, !isSchoolScoped);
+  const legacyLeaderboardEnabled = !isSchoolScoped && !isSuperAdmin;
+  const { data: analytics, isLoading: analyticsLoading } = useExamAnalytics(id, legacyLeaderboardEnabled);
   const lb = useExamLeaderboard(
     id,
     lbCursor ? { cursor: lbCursor, limit: 20 } : { limit: 20 },
-    !isSchoolScoped,
+    legacyLeaderboardEnabled,
   );
 
   interface PendingSection {
@@ -774,6 +789,7 @@ export default function ExamPackageDetailPage() {
               <UnderMaintenance icon={ListChecks} title={t("admin_exam_detail_tab_results")} />
             )
           )}
+          {tab === "assessment" && isSuperAdmin && <AssessmentTab examId={id} />}
           {tab === "grading" && (
             <div className="md-card-outlined space-y-4 p-6">
               <div className="flex items-center justify-between">

@@ -301,6 +301,14 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamsRead.GET("/:id/registrations", h.AdminListExamRegistrations)
 	adminExamsRead.GET("/:id/registrations/export", h.AdminExportExamRegistrations)
 
+	// Admin exam assessment workspace (Issue 124) — super_admin only. "assessment:read"
+	// is claimed by no other role, so RBACMiddleware rejects everyone else with 403
+	// (mirrors the adminSystem group's "system:admin" idiom).
+	adminAssessment := admin.Group("/exams")
+	adminAssessment.Use(handler.RBACMiddleware("assessment:read"))
+	adminAssessment.GET("/:id/assessment", h.AdminGetExamAssessment)
+	adminAssessment.GET("/:id/assessment/:registration_id/attempts", h.AdminGetAssessmentAttempts)
+
 	// Admin upload routes (image + audio presigning)
 	adminUploads := admin.Group("/uploads")
 	adminUploads.Use(handler.RBACMiddleware("uploads:write"))

@@ -45,6 +45,12 @@ vi.mock("@/components/admin/ExamResultsTab", () => ({
   ),
 }));
 
+vi.mock("@/components/admin/AssessmentTab", () => ({
+  AssessmentTab: ({ examId }: { examId: string }) => (
+    <div data-testid="assessment-tab">{examId}</div>
+  ),
+}));
+
 vi.mock("@/components/admin/CertificateDesignTab", () => ({
   CertificateDesignTab: ({ examId }: { examId: string }) => (
     <div data-testid="certificate-design-tab">{examId}</div>
@@ -803,7 +809,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(screen.getByTestId("exam-results-tab")).toHaveTextContent("exam-1");
   });
 
-  it("super_admin still sees all seven tabs and the Edit button", async () => {
+  it("super_admin sees Assessment instead of Results/Leaderboard and still sees Edit", async () => {
     mockRole = "super_admin";
     render(<ExamPackageDetailPage />);
 
@@ -813,7 +819,9 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
 
     expect(screen.getByRole("button", { name: /^tes$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^sertifikat$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Leaderboard" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^asesmen$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^hasil$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Leaderboard" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
   });
 
@@ -855,7 +863,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(useSessionEssaysSpy).toHaveBeenLastCalledWith(undefined, false);
   });
 
-  it("super_admin does fire the tests/analytics/leaderboard/grading queries", async () => {
+  it("super_admin skips legacy leaderboard queries but keeps tests/grading enabled", async () => {
     mockRole = "super_admin";
     useAdminTestsSpy.mockClear();
     useExamAnalyticsSpy.mockClear();
@@ -870,7 +878,12 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     });
 
     expect(useAdminTestsSpy).toHaveBeenLastCalledWith(undefined, true);
-    expect(useExamAnalyticsSpy).toHaveBeenLastCalledWith("exam-1", true);
+    expect(useExamAnalyticsSpy).toHaveBeenLastCalledWith("exam-1", false);
+    expect(useExamLeaderboardSpy).toHaveBeenLastCalledWith(
+      "exam-1",
+      { limit: 20 },
+      false,
+    );
     expect(useGradingSessionsSpy).toHaveBeenLastCalledWith("exam-1", true);
     expect(useSessionEssaysSpy).toHaveBeenLastCalledWith(undefined, true);
   });
@@ -931,16 +944,17 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(screen.queryByText(/sedang dalam pengembangan/i)).not.toBeInTheDocument();
   });
 
-  it("super_admin still sees the Results tab content, unchanged", async () => {
+  it("super_admin sees the Assessment tab content", async () => {
     mockRole = "super_admin";
     render(<ExamPackageDetailPage />);
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: /^hasil$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^asesmen$/i }));
 
-    expect(screen.getByTestId("exam-results-tab")).toHaveTextContent("exam-1");
+    expect(screen.getByTestId("assessment-tab")).toHaveTextContent("exam-1");
+    expect(screen.queryByTestId("exam-results-tab")).not.toBeInTheDocument();
   });
 
   it("admin_store sees UnderMaintenance on both Registrations and Results", async () => {
