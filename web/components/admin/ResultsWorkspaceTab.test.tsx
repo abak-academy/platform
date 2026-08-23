@@ -28,7 +28,8 @@ const summary = {
   total_registered: 2,
   completed_participants: 1,
   completion_rate: 0.5,
-  average_score: 88.25,
+  average_score: 69,
+  max_possible_score: 73,
   distribution: [
     { label: "0-20", count: 0 },
     { label: "21-40", count: 0 },
@@ -52,7 +53,7 @@ const page1: ResultsWorkspaceResponse = {
       school_id: "school-1",
       school_name: "SMAN 1",
       rank: 2,
-      score: 88.25,
+      score: 69,
       attempts_count: 2,
       latest_session_id: "session-latest",
       latest_attempt_number: 2,
@@ -119,7 +120,7 @@ describe("ResultsWorkspaceTab", () => {
               attempt_number: 2,
               status: "submitted",
               submitted_at: "2026-08-20T00:00:00Z",
-              score: 88.25,
+              score: 69,
               violations: 2,
               result_available: true,
               is_latest: true,
@@ -142,7 +143,7 @@ describe("ResultsWorkspaceTab", () => {
           session_id: "session-latest",
           student_name: "Budi Santoso",
           username: "budi",
-          score: 88.25,
+          score: 69,
           submitted_at: "2026-08-20T00:00:00Z",
           result_config: "score_only",
           correct_count: 8,
@@ -203,9 +204,10 @@ describe("ResultsWorkspaceTab", () => {
 
     renderTab();
     await screen.findByText("Budi Santoso");
-    expect(screen.getAllByText("88.3").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("94.5%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("69.0 / 73").length).toBeGreaterThan(0);
     expect(screen.getByText(/Distribusi Skor|Score Distribution/i)).toBeInTheDocument();
-    expect(screen.getByText("81-100")).toBeInTheDocument();
+    expect(screen.getByText("81-100%")).toBeInTheDocument();
     expect(screen.getByText((content) => content.replace(/\s/g, "") === "50%")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /muat lebih banyak/i }));
@@ -225,6 +227,8 @@ describe("ResultsWorkspaceTab", () => {
 
     await waitFor(() => {
       expect(screen.getByText("8")).toBeInTheDocument();
+      expect(screen.getAllByText("94.5%").length).toBeGreaterThan(1);
+      expect(screen.getAllByText("69.0 / 73").length).toBeGreaterThan(1);
       expect(screen.getByText(/Percobaan 2/)).toBeInTheDocument();
       expect(screen.getByText(/Selesai|Completed/i)).toBeInTheDocument();
       expect(screen.queryByText(/Belum Mulai|Not started/i)).not.toBeInTheDocument();

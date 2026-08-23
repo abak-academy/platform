@@ -108,6 +108,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
   const attempts = useResultsWorkspaceAttempts(examId, selectedRegistrationId);
   const detail = useResultsWorkspaceDetail(examId, selectedSessionId);
   const summary = query.data?.summary ?? stableSummary;
+  const maxPossibleScore = summary?.max_possible_score ?? 0;
 
   useEffect(() => {
     if (!selectedRow) {
@@ -154,7 +155,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
     {
       key: "score",
       header: t("school_reports_col_score"),
-      cell: (row) => <span className="text-xs text-ink-600">{row.score == null ? "-" : row.score.toFixed(1)}</span>,
+      cell: (row) => <ScoreCell score={row.score} maxPossibleScore={maxPossibleScore} />,
     },
     {
       key: "attempts",
@@ -194,7 +195,11 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
             value={`${Math.round(summary.completion_rate * 100)}%`}
             caption={`${summary.completed_participants}/${summary.total_registered}`}
           />
-          <SummaryCard label={t("admin_exam_analytics_average_score")} value={summary.average_score.toFixed(1)} />
+          <SummaryCard
+            label={t("admin_exam_analytics_average_score")}
+            value={formatScorePercent(summary.average_score, summary.max_possible_score)}
+            caption={`${summary.average_score.toFixed(1)} / ${formatScore(summary.max_possible_score)} ${t("results_workspace_max_score")}`}
+          />
           <SummaryCard
             label={t("results_workspace_summary_violations")}
             value={summary.violation_events}
@@ -286,7 +291,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
                 {detail.isLoading ? (
                   <div className="py-8 text-center text-ink-500">{t("sys_loading_data")}</div>
                 ) : detail.data ? (
-                  <ResultDetailPanel detail={detail.data} t={t} dateLocale={dateLocale} />
+                  <ResultDetailPanel detail={detail.data} maxPossibleScore={maxPossibleScore} t={t} dateLocale={dateLocale} />
                 ) : selectedSessionId ? (
                   <div className="py-8 text-center text-ink-500">{t("sys_error_load")}</div>
                 ) : null}
@@ -295,6 +300,25 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function formatScore(score: number): string {
+  return Number.isInteger(score) ? String(score) : score.toFixed(1);
+}
+
+function formatScorePercent(score: number | null | undefined, maxPossibleScore: number): string {
+  if (score == null || maxPossibleScore <= 0) return "-";
+  return `${((score / maxPossibleScore) * 100).toFixed(1)}%`;
+}
+
+function ScoreCell({ score, maxPossibleScore }: { score?: number | null; maxPossibleScore: number }) {
+  if (score == null) return <span className="text-xs text-ink-600">-</span>;
+  return (
+    <div className="text-xs text-ink-600">
+      <div className="font-semibold text-ink-800">{formatScorePercent(score, maxPossibleScore)}</div>
+      <div className="text-ink-500">{score.toFixed(1)} / {formatScore(maxPossibleScore)}</div>
     </div>
   );
 }
@@ -322,8 +346,8 @@ function ScoreDistributionCard({
       <div className="text-label text-sm text-ink-600">{label}</div>
       <div className="mt-3 space-y-1.5">
         {distribution.map((bucket) => (
-          <div key={bucket.label} className="grid grid-cols-[44px_1fr_20px] items-center gap-2 text-xs text-ink-600">
-            <span>{bucket.label}</span>
+          <div key={bucket.label} className="grid grid-cols-[54px_1fr_20px] items-center gap-2 text-xs text-ink-600">
+            <span>{bucket.label}%</span>
             <div className="h-2 overflow-hidden rounded-full bg-surface-2">
               <div
                 className="h-full rounded-full bg-primary"
@@ -394,10 +418,12 @@ function AttemptSelector({
 
 function ResultDetailPanel({
   detail,
+  maxPossibleScore,
   t,
   dateLocale,
 }: {
   detail: AdminResultDetail;
+  maxPossibleScore: number;
   t: ReturnType<typeof useTranslation>["t"];
   dateLocale: string;
 }) {
@@ -407,7 +433,11 @@ function ResultDetailPanel({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-4 gap-2 text-center text-xs">
-        <MetricCard value={detail.score} label={t("school_reports_detail_score")} />
+        <MetricCard
+          value={formatScorePercent(detail.score, maxPossibleScore)}
+          label={t("school_reports_detail_score")}
+          caption={`${detail.score.toFixed(1)} / ${formatScore(maxPossibleScore)}`}
+        />
         <MetricCard value={detail.correct_count} label={t("school_reports_detail_correct")} tone="success" />
         <MetricCard value={detail.wrong_count} label={t("school_reports_detail_wrong")} tone="danger" />
         <MetricCard value={detail.empty_count} label={t("school_reports_detail_empty")} />
@@ -504,13 +534,14 @@ function QuestionReviewCard({
     </div>
   );
 }
-function MetricCard({ value, label, tone }: { value: number; label: string; tone?: "success" | "danger" }) {
+function MetricCard({ value, label, tone, caption }: { value: number | string; label: string; tone?: "success" | "danger"; caption?: string }) {
   const bg = tone === "success" ? "bg-success-bg" : tone === "danger" ? "bg-danger-bg" : "bg-surface-2";
   const color = tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-ink-900";
   return (
     <div className={`rounded-lg ${bg} p-2`}>
       <div className={`text-lg font-bold ${color}`}>{value}</div>
       <div className="text-ink-600">{label}</div>
+      {caption && <div className="text-[11px] text-ink-500">{caption}</div>}
     </div>
   );
 }

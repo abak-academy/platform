@@ -73,6 +73,7 @@ func (s *Service) AdminGetExamResultsWorkspace(ctx context.Context, examID uuid.
 		CompletedParticipants: completed,
 		CompletionRate:        completionRate,
 		AverageScore:          averageScore,
+		MaxPossibleScore:      maxPossible,
 		Distribution:          scoreDistribution(scores, maxPossible),
 		ViolationAttempts:     violationAttempts,
 		ViolationEvents:       violationEvents,

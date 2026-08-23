@@ -660,6 +660,7 @@ type ResultsWorkspaceSummary struct {
 	CompletedParticipants int           `json:"completed_participants"`
 	CompletionRate        float64       `json:"completion_rate"`
 	AverageScore          float64       `json:"average_score"`
+	MaxPossibleScore      float64       `json:"max_possible_score"`
 	Distribution          []ScoreBucket `json:"distribution"`
 	ViolationAttempts     int           `json:"violation_attempts"`
 	ViolationEvents       int           `json:"violation_events"`

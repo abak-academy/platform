@@ -47,6 +47,7 @@ func TestAdminResultsWorkspace_DBBackedRoutesAndRBAC(t *testing.T) {
 				TotalRegistered       int     `json:"total_registered"`
 				CompletedParticipants int     `json:"completed_participants"`
 				CompletionRate        float64 `json:"completion_rate"`
+				MaxPossibleScore      float64 `json:"max_possible_score"`
 			} `json:"summary"`
 			Data []struct {
 				RegistrationID string   `json:"registration_id"`
@@ -60,6 +61,9 @@ func TestAdminResultsWorkspace_DBBackedRoutesAndRBAC(t *testing.T) {
 		}
 		if resp.Summary.TotalRegistered != 1 || resp.Summary.CompletedParticipants != 1 || resp.Summary.CompletionRate != 1 {
 			t.Fatalf("summary mismatch: %+v", resp.Summary)
+		}
+		if resp.Summary.MaxPossibleScore <= 0 {
+			t.Fatalf("summary max_possible_score must be populated: %+v", resp.Summary)
 		}
 		if len(resp.Data) != 1 || resp.Data[0].StudentName != "Results Workspace Student" || resp.Data[0].Score == nil || resp.Data[0].Rank == nil {
 			t.Fatalf("row mismatch: %+v", resp.Data)

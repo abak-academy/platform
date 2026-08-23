@@ -1286,6 +1286,7 @@ export interface ResultsWorkspaceSummary {
   completed_participants: number;
   completion_rate: number;
   average_score: number;
+  max_possible_score: number;
   distribution: ScoreBucket[];
   violation_attempts: number;
   violation_events: number;
