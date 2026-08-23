@@ -125,3 +125,112 @@ func (r *Repository) GetSchoolResultSession(ctx context.Context, sessionID uuid.
 	}
 	return &s, nil
 }
+
+// ListDetailedExportRows returns export rows with per-question details using
+// latest-scored semantics. Applies school scope, search query, and ranking
+// shared with the Results Workspace (Issue 130).
+func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUID, schoolID, q string) ([]model.AdminExportRow, error) {
+	// Use resultsWorkspaceLatestScoredSession CTE for latest-scored ranking alignment.
+	query := `WITH
+		scored AS (
+			SELECT DISTINCT ON (s.registration_id) s.registration_id, s.id AS session_id,
+				s.attempt_number, s.submitted_at, s.started_at, s.score
+			FROM exam_session s
+			WHERE s.exam_id = $1 AND s.status = 'submitted' AND s.score IS NOT NULL AND ` + resultsWorkspaceFullyGraded + `
+			ORDER BY s.registration_id, s.attempt_number DESC, s.started_at DESC, s.id DESC
+		),
+		joined AS (
+			SELECT reg.id AS registration_id, scored.session_id, u.name AS student_name, u.username,
+				COALESCE(sc.name, u.unlisted_school_name) AS school_name,
+				scored.submitted_at, scored.started_at, scored.score, reg.created_at
+			FROM exam_registration reg
+			JOIN users u ON u.id = reg.student_id AND u.role = 'student'
+			LEFT JOIN school sc ON sc.id = u.school_id
+			JOIN scored ON scored.registration_id = reg.id
+			WHERE reg.exam_id = $1
+				AND ($2::text = '' OR u.school_id = $2::uuid)
+				AND ($3::text = '' OR u.name ILIKE '%' || $3 || '%' OR u.username ILIKE '%' || $3 || '%')
+		),
+		ranked AS (
+			SELECT joined.*, RANK() OVER (ORDER BY score DESC) AS rnk
+			FROM joined
+		)
+		SELECT registration_id, session_id, student_name, username, school_name, rnk, score,
+			submitted_at, started_at
+		FROM ranked
+		ORDER BY rnk ASC, score DESC, registration_id ASC`
+
+	rows, err := r.pool.Query(ctx, query, examID, schoolID, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := []model.AdminExportRow{}
+	sessionIDs := []uuid.UUID{}
+	for rows.Next() {
+		var row model.AdminExportRow
+		if err := rows.Scan(&row.RegistrationID, &row.SessionID, &row.StudentName, &row.Username,
+			&row.SchoolName, &row.Rank, &row.Score, &row.SubmittedAt, &row.StartedAt); err != nil {
+			return nil, err
+		}
+		results = append(results, row)
+		sessionIDs = append(sessionIDs, row.SessionID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+
+	if len(results) == 0 {
+		return results, nil
+	}
+
+	// Fetch per-question answers in bounded session batches after the ranking rows
+	// are closed. This avoids holding one pool connection while waiting for another
+	// per participant during concurrent exports, without building an unbounded
+	// sessions x questions result in one query.
+	answersBySession := make(map[uuid.UUID][]model.AdminExportQuestionRow, len(results))
+	const exportAnswerBatchSize = 100
+	for start := 0; start < len(sessionIDs); start += exportAnswerBatchSize {
+		end := start + exportAnswerBatchSize
+		if end > len(sessionIDs) {
+			end = len(sessionIDs)
+		}
+
+		qrows, err := r.pool.Query(ctx,
+			`SELECT exported.session_id, q.id, q.question_number, q.format, a.answer, a.score, a.is_correct
+			FROM exam_test et
+			JOIN test_question tq ON tq.test_id = et.test_id
+			JOIN question q ON q.id = tq.question_id
+			CROSS JOIN unnest($2::uuid[]) AS exported(session_id)
+			LEFT JOIN exam_session_answer a ON a.question_id = q.id AND a.session_id = exported.session_id
+			WHERE et.exam_id = $1
+			ORDER BY exported.session_id, et.sort_order ASC, tq.sort_order ASC, q.question_number ASC`,
+			examID, sessionIDs[start:end])
+		if err != nil {
+			return nil, err
+		}
+
+		for qrows.Next() {
+			var sessionID uuid.UUID
+			var qa model.AdminExportQuestionRow
+			if err := qrows.Scan(&sessionID, &qa.QuestionID, &qa.QuestionNum, &qa.Format, &qa.StudentAnswer, &qa.Points, &qa.IsCorrect); err != nil {
+				qrows.Close()
+				return nil, err
+			}
+			answersBySession[sessionID] = append(answersBySession[sessionID], qa)
+		}
+		if err := qrows.Err(); err != nil {
+			qrows.Close()
+			return nil, err
+		}
+		qrows.Close()
+	}
+
+	for i := range results {
+		results[i].QuestionRows = answersBySession[results[i].SessionID]
+	}
+
+	return results, nil
+}

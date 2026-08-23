@@ -101,6 +101,6 @@ func (h *Handler) AdminExportResults(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 
-	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="results.csv"`)
+	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="results-detailed.csv"`)
 	return c.Blob(http.StatusOK, "text/csv", csvBytes)
 }

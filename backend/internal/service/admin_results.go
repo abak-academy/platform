@@ -168,21 +168,7 @@ func (s *Service) AdminGetResultsWorkspaceResultDetail(ctx context.Context, exam
 // bulk_credentials.go. Header rows are always written even when the result
 // set is empty (hidden/locked exam -> header only, no error).
 func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, schoolID, q string) ([]byte, error) {
-	var rows []model.AdminResultRow
-	cursor := ""
-	for {
-		page, next, err := s.ListSchoolResults(ctx, examID, schoolID, q, cursor, 100)
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, page...)
-		if next == "" {
-			break
-		}
-		cursor = next
-	}
-
-	return BuildSchoolResultsCSV(rows), nil
+	return s.ExportDetailedResultsCSV(ctx, examID, schoolID, q)
 }
 
 // BuildSchoolResultsCSV writes the results export as CSV bytes. Split out of
@@ -210,4 +196,152 @@ func BuildSchoolResultsCSV(rows []model.AdminResultRow) []byte {
 	}
 	w.Flush()
 	return buf.Bytes()
+}
+
+// ExportDetailedResultsCSV builds a detailed export with per-question answers,
+// using latest-scored ranking semantics. Applies score_only policy: no correct
+// answers or explanations leak (Issue 130). Header includes rank, student,
+// school, score, counts, then per-question: answer + points.
+func (s *Service) ExportDetailedResultsCSV(ctx context.Context, examID uuid.UUID, schoolID, q string) ([]byte, error) {
+	if _, err := s.storeRepo.GetExamByID(ctx, examID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrExamNotFound
+		}
+		return nil, err
+	}
+
+	rows, err := s.storeRepo.ListDetailedExportRows(ctx, examID, schoolID, q)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch all questions to build header and ensure consistent ordering.
+	tests, err := s.storeRepo.GetSessionWithQuestions(ctx, examID)
+	if err != nil {
+		return nil, err
+	}
+
+	var questions []model.QuestionWithOptions
+	for _, td := range tests {
+		questions = append(questions, td.Questions...)
+	}
+
+	return BuildDetailedResultsCSV(rows, questions), nil
+}
+
+// BuildDetailedResultsCSV writes detailed results with per-question columns.
+// score_only policy: IsCorrect, CorrectAnswer, Explanation never appear.
+func BuildDetailedResultsCSV(rows []model.AdminExportRow, questions []model.QuestionWithOptions) []byte {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+
+	// Header: summary columns + per-question (Answer, Points).
+	header := []string{"Rank", "Student Name", "Username", "School", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds"}
+	for _, q := range questions {
+		qNum := fmt.Sprintf("Q%d", q.Question.QuestionNumber)
+		header = append(header, qNum+" Answer", qNum+" Points")
+	}
+	_ = w.Write(header)
+
+	for _, r := range rows {
+		correctCount, wrongCount, emptyCount := exportObjectiveCounts(questions, r.QuestionRows)
+
+		// Summary row cells.
+		rankStr := fmt.Sprintf("%d", r.Rank)
+		username := ""
+		if r.Username != nil {
+			username = *r.Username
+		}
+		schoolName := ""
+		if r.SchoolName != nil {
+			schoolName = *r.SchoolName
+		}
+		scoreStr := ""
+		if r.Score != nil {
+			scoreStr = fmt.Sprintf("%v", *r.Score)
+		}
+		submittedAt := ""
+		if r.SubmittedAt != nil {
+			submittedAt = r.SubmittedAt.Format(time.RFC3339)
+		}
+		startedAt := ""
+		if r.StartedAt != nil {
+			startedAt = r.StartedAt.Format(time.RFC3339)
+		}
+		durationSeconds := ""
+		if r.StartedAt != nil && r.SubmittedAt != nil {
+			duration := r.SubmittedAt.Sub(*r.StartedAt).Seconds()
+			if duration < 0 {
+				duration = 0
+			}
+			durationSeconds = fmt.Sprintf("%.0f", duration)
+		}
+
+		row := []string{
+			rankStr,
+			csvSafeField(r.StudentName),
+			csvSafeField(username),
+			csvSafeField(schoolName),
+			scoreStr,
+			fmt.Sprintf("%d", correctCount),
+			fmt.Sprintf("%d", wrongCount),
+			fmt.Sprintf("%d", emptyCount),
+			startedAt,
+			submittedAt,
+			durationSeconds,
+		}
+
+		// Per-question columns: answer + points (no is_correct, no correct_answer).
+		for _, q := range questions {
+			answer := ""
+			points := ""
+
+			// Find this question's answer in the row.
+			for _, qa := range r.QuestionRows {
+				if qa.QuestionID == q.Question.ID {
+					if qa.StudentAnswer != nil {
+						answer = csvSafeField(*qa.StudentAnswer)
+					}
+					if qa.Points != nil {
+						points = fmt.Sprintf("%v", *qa.Points)
+					}
+					break
+				}
+			}
+
+			row = append(row, answer, points)
+		}
+
+		_ = w.Write(row)
+	}
+
+	w.Flush()
+	return buf.Bytes()
+}
+
+// exportObjectiveCounts mirrors objectiveCounts for detailed export rows:
+// objective questions only, missing/nil/empty answers count as empty, essays are
+// excluded from Correct/Wrong/Empty summary counts.
+func exportObjectiveCounts(questions []model.QuestionWithOptions, answers []model.AdminExportQuestionRow) (correct, wrong, empty int) {
+	answerByQuestion := make(map[uuid.UUID]model.AdminExportQuestionRow, len(answers))
+	for _, a := range answers {
+		answerByQuestion[a.QuestionID] = a
+	}
+
+	for _, q := range questions {
+		if q.Question.Format == "essay" {
+			continue
+		}
+		a, ok := answerByQuestion[q.Question.ID]
+		if !ok || a.StudentAnswer == nil || *a.StudentAnswer == "" {
+			empty++
+			continue
+		}
+		if a.IsCorrect != nil && *a.IsCorrect {
+			correct++
+		} else {
+			wrong++
+		}
+	}
+	return correct, wrong, empty
 }

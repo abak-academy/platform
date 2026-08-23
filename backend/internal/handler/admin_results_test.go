@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -654,6 +655,24 @@ func TestAdminResult_List_ExamNotFound_404(t *testing.T) {
 	}
 }
 
+func TestAdminResult_Export_ExamNotFound_404(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	schoolID := seedSchool(t, env.pool)
+	adminID := seedUserWithSchool(t, env.pool, "admin_school", "Export NF Admin", schoolID)
+	token := mintAdminToken(t, env, adminID.String(), schoolID)
+
+	rec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+uuid.NewString(), token)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "exam_not_found" {
+		t.Errorf("code: want exam_not_found, got %v", resp["code"])
+	}
+}
+
 func TestAdminResult_List_MalformedCursor_400(t *testing.T) {
 	env := newAdminResultsDBEnv(t)
 
@@ -757,8 +776,8 @@ func TestAdminResult_Export_CSVContent(t *testing.T) {
 		t.Errorf("Content-Type: want text/csv, got %q", ct)
 	}
 	cd := rec.Header().Get("Content-Disposition")
-	if cd != `attachment; filename="results.csv"` {
-		t.Errorf("Content-Disposition: want attachment; filename=\"results.csv\", got %q", cd)
+	if cd != `attachment; filename="results-detailed.csv"` {
+		t.Errorf("Content-Disposition: want attachment; filename=\"results-detailed.csv\", got %q", cd)
 	}
 
 	r := csv.NewReader(bytes.NewReader(rec.Body.Bytes()))
@@ -770,24 +789,35 @@ func TestAdminResult_Export_CSVContent(t *testing.T) {
 		t.Fatalf("want 3 records (header + 2 data rows), got %d", len(records))
 	}
 
-	wantHeader := []string{"name", "username", "score", "submitted_at"}
+	wantHeader := []string{"Rank", "Student Name", "Username", "School", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
 		}
 	}
+	for _, forbidden := range []string{"Correct Answer", "Explanation", "Pembahasan"} {
+		for _, h := range records[0] {
+			if strings.Contains(h, forbidden) {
+				t.Fatalf("school/admin export must not leak %q column: %v", forbidden, records[0])
+			}
+		}
+	}
 
 	names := map[string]bool{"Student One": false, "Student Two": false}
 	for _, row := range records[1:] {
-		names[row[0]] = true
-		if row[1] == "" {
-			t.Errorf("row %s: expected non-empty username", row[0])
+		name := row[1]
+		names[name] = true
+		if row[2] == "" {
+			t.Errorf("row %s: expected non-empty username", name)
 		}
-		if row[2] != "80" {
-			t.Errorf("row %s: want score 80, got %s", row[0], row[2])
+		if row[4] != "80" {
+			t.Errorf("row %s: want score 80, got %s", name, row[4])
 		}
-		if row[3] == "" {
-			t.Errorf("row %s: expected non-empty submitted_at", row[0])
+		if row[9] == "" {
+			t.Errorf("row %s: expected non-empty submitted_at", name)
+		}
+		if len(row) < len(wantHeader)+2 || row[len(wantHeader)] != "a" || row[len(wantHeader)+1] != "1" {
+			t.Errorf("row %s: expected per-question answer/points columns, got %v", name, row)
 		}
 	}
 	for name, found := range names {
@@ -1181,7 +1211,7 @@ func TestAdminResult_Export_AdminExam_NoSchoolID_ReturnsAllSchools(t *testing.T)
 	}
 	names := map[string]bool{}
 	for _, row := range records[1:] {
-		names[row[0]] = true
+		names[row[1]] = true
 	}
 	for _, want := range []string{"Admin Exam Export A", "Admin Exam Export B"} {
 		if !names[want] {

@@ -69,7 +69,7 @@ export async function exportAdminResults(examId: string, schoolId?: string, q?: 
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "results.csv";
+  a.download = "results-detailed.csv";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

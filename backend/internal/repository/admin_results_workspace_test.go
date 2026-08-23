@@ -163,6 +163,20 @@ func TestResultsWorkspaceRepository_DBBackedSemantics(t *testing.T) {
 		t.Fatalf("q-filter summary mismatch total=%d completed=%d scores=%v violationAttempts=%d violationEvents=%d", total, completed, scores, violationAttempts, violationEvents)
 	}
 
+	exportRows, err := repo.ListDetailedExportRows(ctx, examID, schoolA.String(), "budi-results")
+	if err != nil {
+		t.Fatalf("ListDetailedExportRows: %v", err)
+	}
+	if len(exportRows) != 1 {
+		t.Fatalf("detailed export q-filter rows = %d, want 1: %+v", len(exportRows), exportRows)
+	}
+	if exportRows[0].SessionID != budiLatest || exportRows[0].Rank != 1 || exportRows[0].Score == nil || *exportRows[0].Score != 90 {
+		t.Fatalf("detailed export should use latest scored workspace semantics, got %+v", exportRows[0])
+	}
+	if len(exportRows[0].QuestionRows) != 1 || exportRows[0].QuestionRows[0].QuestionID != essayQID || exportRows[0].QuestionRows[0].StudentAnswer == nil || *exportRows[0].QuestionRows[0].StudentAnswer != answer || exportRows[0].QuestionRows[0].Points == nil || *exportRows[0].QuestionRows[0].Points != 90 {
+		t.Fatalf("detailed export answer columns mismatch: %+v", exportRows[0].QuestionRows)
+	}
+
 	firstPage, cursor, err := repo.ListResultsWorkspaceRows(ctx, examID, ResultsWorkspaceFilter{SchoolID: &schoolA, Limit: 1})
 	if err != nil {
 		t.Fatalf("ListResultsWorkspaceRows page1: %v", err)
