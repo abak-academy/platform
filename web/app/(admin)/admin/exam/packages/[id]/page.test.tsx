@@ -45,9 +45,9 @@ vi.mock("@/components/admin/ExamResultsTab", () => ({
   ),
 }));
 
-vi.mock("@/components/admin/AssessmentTab", () => ({
-  AssessmentTab: ({ examId }: { examId: string }) => (
-    <div data-testid="assessment-tab">{examId}</div>
+vi.mock("@/components/admin/ResultsWorkspaceTab", () => ({
+  ResultsWorkspaceTab: ({ examId }: { examId: string }) => (
+    <div data-testid="results-workspace-tab">{examId}</div>
   ),
 }));
 
@@ -952,7 +952,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^hasil$/i }));
 
-    expect(screen.getByTestId("assessment-tab")).toHaveTextContent("exam-1");
+    expect(screen.getByTestId("results-workspace-tab")).toHaveTextContent("exam-1");
     expect(screen.queryByTestId("exam-results-tab")).not.toBeInTheDocument();
   });
 

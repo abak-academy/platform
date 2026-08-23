@@ -12,21 +12,21 @@ import (
 	"akademi-bimbel/internal/model"
 )
 
-// AssessmentFilter carries the optional q/school_id filters shared by the
+// ResultsWorkspaceFilter carries the optional q/school_id filters shared by the
 // paginated row list and the unpaginated summary aggregate — both must see
 // the same filtered cohort (Issue 124 spec: "Summary and table filters must
 // match").
-type AssessmentFilter struct {
+type ResultsWorkspaceFilter struct {
 	Q        string
 	SchoolID *uuid.UUID
 	Cursor   string
 	Limit    int
 }
 
-// assessmentLatestSession is the authoritative status/latest-attempt CTE:
+// resultsWorkspaceLatestSession is the authoritative status/latest-attempt CTE:
 // newest by attempt_number DESC, tie-broken by started_at DESC then id DESC.
 // References $1 = exam_id.
-const assessmentLatestSession = `(
+const resultsWorkspaceLatestSession = `(
 	SELECT DISTINCT ON (s.registration_id) s.registration_id, s.id AS session_id,
 		s.attempt_number, s.status, s.submitted_at, s.score
 	FROM exam_session s
@@ -34,28 +34,28 @@ const assessmentLatestSession = `(
 	ORDER BY s.registration_id, s.attempt_number DESC, s.started_at DESC, s.id DESC
 )`
 
-// assessmentFullyGraded mirrors the leaderboard fullyGradedFilter for a concrete
+// resultsWorkspaceFullyGraded mirrors the leaderboard fullyGradedFilter for a concrete
 // exam_session alias.
-const assessmentFullyGraded = `NOT EXISTS (
+const resultsWorkspaceFullyGraded = `NOT EXISTS (
 	SELECT 1 FROM exam_session_answer a
 	JOIN question q ON q.id = a.question_id
 	WHERE a.session_id = s.id AND q.format = 'essay' AND a.graded_at IS NULL
 )`
 
-// assessmentLatestScoredSession matches the leaderboard semantics: filter to
+// resultsWorkspaceLatestScoredSession matches the leaderboard semantics: filter to
 // submitted + scored + fully graded sessions first, then pick the newest scored
-// attempt per registration. This keeps Assessment score/rank/average aligned
+// attempt per registration. This keeps Results workspace score/rank/average aligned
 // with ListExamLeaderboard/GetFullyGradedScores even when a student starts a
 // newer in-progress or ungraded retry.
-const assessmentLatestScoredSession = `(
+const resultsWorkspaceLatestScoredSession = `(
 	SELECT DISTINCT ON (s.registration_id) s.registration_id, s.id AS session_id,
 		s.attempt_number, s.submitted_at, s.score
 	FROM exam_session s
-	WHERE s.exam_id = $1 AND s.status = 'submitted' AND s.score IS NOT NULL AND ` + assessmentFullyGraded + `
+	WHERE s.exam_id = $1 AND s.status = 'submitted' AND s.score IS NOT NULL AND ` + resultsWorkspaceFullyGraded + `
 	ORDER BY s.registration_id, s.attempt_number DESC, s.started_at DESC, s.id DESC
 )`
 
-func (f AssessmentFilter) whereRegistration(startArg int) (string, []any) {
+func (f ResultsWorkspaceFilter) whereRegistration(startArg int) (string, []any) {
 	clause := ""
 	args := []any{}
 	arg := startArg
@@ -72,14 +72,14 @@ func (f AssessmentFilter) whereRegistration(startArg int) (string, []any) {
 	return clause, args
 }
 
-// ListAssessmentRows returns the paginated result rows for the super-admin
+// ListResultsWorkspaceRows returns the paginated result rows for the super-admin
 // results workspace (Issue 124): one row per registration that has a
 // leaderboard-compatible result. Registrations without a submitted, fully
 // graded, scored attempt are intentionally excluded from the result table per
 // the UI decision to make this tab a Hasil/leaderboard view rather than a roster
 // status view; they still contribute to total_registered in the summary. Cursor is keyset-encoded as
 // "<rank>,<negative score>,<registration id>", default limit 20, cap 100.
-func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, filter AssessmentFilter) ([]model.AssessmentRow, string, error) {
+func (r *Repository) ListResultsWorkspaceRows(ctx context.Context, examID uuid.UUID, filter ResultsWorkspaceFilter) ([]model.ResultsWorkspaceRow, string, error) {
 	if filter.Limit <= 0 {
 		filter.Limit = 20
 	} else if filter.Limit > 100 {
@@ -99,7 +99,7 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 			LEFT JOIN school sc ON sc.id = u.school_id
 			WHERE reg.exam_id = $1` + regClause + `
 		),
-		scored AS ` + assessmentLatestScoredSession + `,
+		scored AS ` + resultsWorkspaceLatestScoredSession + `,
 		attempts_agg AS (
 			SELECT registration_id, COUNT(*) AS attempts_count
 			FROM exam_session
@@ -171,9 +171,9 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 	}
 	defer rows.Close()
 
-	results := []model.AssessmentRow{}
+	results := []model.ResultsWorkspaceRow{}
 	for rows.Next() {
-		var row model.AssessmentRow
+		var row model.ResultsWorkspaceRow
 		var createdAt time.Time
 		if err := rows.Scan(
 			&row.RegistrationID, &row.StudentID, &createdAt, &row.StudentName, &row.Username, &row.SchoolID, &row.SchoolName,
@@ -198,14 +198,14 @@ func (r *Repository) ListAssessmentRows(ctx context.Context, examID uuid.UUID, f
 	return results, nextCursor, nil
 }
 
-// GetAssessmentSummary computes the aggregate card block for the assessment
+// GetResultsWorkspaceSummary computes the aggregate card block for the results
 // workspace over the full filtered cohort (q/school_id), independent of
 // pagination. AverageScore/Distribution cover only the latest-attempt,
 // submitted, fully-graded, scored rows; ViolationAttempts/ViolationEvents
 // count across every attempt of the filtered registrations, not just the
 // latest (Issue 124 spec). Scores mirror leaderboard semantics: newest
 // submitted + fully graded scored attempt per registration.
-func (r *Repository) GetAssessmentSummary(ctx context.Context, examID uuid.UUID, filter AssessmentFilter) (total int, completed int, scores []float64, violationAttempts int, violationEvents int, err error) {
+func (r *Repository) GetResultsWorkspaceSummary(ctx context.Context, examID uuid.UUID, filter ResultsWorkspaceFilter) (total int, completed int, scores []float64, violationAttempts int, violationEvents int, err error) {
 	regClause, regArgs := filter.whereRegistration(2)
 	args := []any{examID}
 	args = append(args, regArgs...)
@@ -217,7 +217,7 @@ func (r *Repository) GetAssessmentSummary(ctx context.Context, examID uuid.UUID,
 			JOIN users u ON u.id = reg.student_id AND u.role = 'student'
 			WHERE reg.exam_id = $1`+regClause+`
 		),
-		scored AS `+assessmentLatestScoredSession+`
+		scored AS `+resultsWorkspaceLatestScoredSession+`
 		SELECT COUNT(*), COUNT(scored.registration_id)
 		FROM reg
 		LEFT JOIN scored ON scored.registration_id = reg.id`,
@@ -234,7 +234,7 @@ func (r *Repository) GetAssessmentSummary(ctx context.Context, examID uuid.UUID,
 			JOIN users u ON u.id = reg.student_id AND u.role = 'student'
 			WHERE reg.exam_id = $1`+regClause+`
 		),
-		scored AS `+assessmentLatestScoredSession+`
+		scored AS `+resultsWorkspaceLatestScoredSession+`
 		SELECT latest.score
 		FROM reg
 		JOIN scored latest ON latest.registration_id = reg.id`,
@@ -275,12 +275,12 @@ func (r *Repository) GetAssessmentSummary(ctx context.Context, examID uuid.UUID,
 	return total, completed, scores, violationAttempts, violationEvents, nil
 }
 
-// ListAssessmentAttempts returns every exam_session for a registration,
+// ListResultsWorkspaceAttempts returns every exam_session for a registration,
 // newest-first, with a per-session violation count and IsLatest marking the
-// same session ListAssessmentRows treats as authoritative for that
+// same session ListResultsWorkspaceRows treats as authoritative for that
 // registration. Returns ErrNotFound if the registration does not exist or
 // does not belong to examID.
-func (r *Repository) ListAssessmentAttempts(ctx context.Context, examID, registrationID uuid.UUID) ([]model.AssessmentAttempt, error) {
+func (r *Repository) ListResultsWorkspaceAttempts(ctx context.Context, examID, registrationID uuid.UUID) ([]model.ResultsWorkspaceAttempt, error) {
 	var exists bool
 	if err := r.pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM exam_registration WHERE id = $1 AND exam_id = $2)`,
@@ -316,9 +316,9 @@ func (r *Repository) ListAssessmentAttempts(ctx context.Context, examID, registr
 	}
 	defer rows.Close()
 
-	attempts := []model.AssessmentAttempt{}
+	attempts := []model.ResultsWorkspaceAttempt{}
 	for rows.Next() {
-		var a model.AssessmentAttempt
+		var a model.ResultsWorkspaceAttempt
 		if err := rows.Scan(&a.SessionID, &a.AttemptNumber, &a.Status, &a.SubmittedAt, &a.Score, &a.Violations, &a.ResultAvailable, &a.IsLatest); err != nil {
 			return nil, err
 		}

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AssessmentTab } from "./AssessmentTab";
-import type { AssessmentResponse, School } from "@/lib/types";
+import { ResultsWorkspaceTab } from "./ResultsWorkspaceTab";
+import type { ResultsWorkspaceResponse, School } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 const toastError = vi.fn();
@@ -34,7 +34,7 @@ const summary = {
   violation_events: 2,
 };
 
-const page1: AssessmentResponse = {
+const page1: ResultsWorkspaceResponse = {
   summary,
   next_cursor: "cursor-2",
   data: [
@@ -56,7 +56,7 @@ const page1: AssessmentResponse = {
   ],
 };
 
-const page2: AssessmentResponse = {
+const page2: ResultsWorkspaceResponse = {
   summary,
   next_cursor: "",
   data: [
@@ -93,19 +93,19 @@ function renderTab() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <AssessmentTab examId="exam-1" />
+      <ResultsWorkspaceTab examId="exam-1" />
     </QueryClientProvider>,
   );
 }
 
-describe("AssessmentTab", () => {
+describe("ResultsWorkspaceTab", () => {
   beforeEach(() => {
     vi.useRealTimers();
     mockAuthFetch.mockReset();
     toastError.mockReset();
     mockAuthFetch.mockImplementation((url: string) => {
       if (url === "/schools") return Promise.resolve(schools);
-      if (url.startsWith("/admin/exams/exam-1/assessment/reg-1/attempts")) {
+      if (url.startsWith("/admin/exams/exam-1/results-workspace/reg-1/attempts")) {
         return Promise.resolve({
           data: [
             {
@@ -131,7 +131,7 @@ describe("AssessmentTab", () => {
           ],
         });
       }
-      if (url.startsWith("/admin/exams/exam-1/assessment/results/session-latest")) {
+      if (url.startsWith("/admin/exams/exam-1/results-workspace/sessions/session-latest")) {
         return Promise.resolve({
           session_id: "session-latest",
           student_name: "Budi Santoso",
@@ -156,7 +156,7 @@ describe("AssessmentTab", () => {
           ],
         });
       }
-      if (url.startsWith("/admin/exams/exam-1/assessment")) return Promise.resolve(page1);
+      if (url.startsWith("/admin/exams/exam-1/results-workspace")) return Promise.resolve(page1);
       return Promise.reject(new Error(`Unhandled authFetch ${url}`));
     });
   });
@@ -177,21 +177,21 @@ describe("AssessmentTab", () => {
     fireEvent.change(screen.getByPlaceholderText(/nama atau username/i), { target: { value: "budi" } });
 
     await new Promise((resolve) => setTimeout(resolve, 250));
-    expect(mockAuthFetch.mock.calls.filter(([url]) => String(url).includes("/assessment")).length).toBe(0);
+    expect(mockAuthFetch.mock.calls.filter(([url]) => String(url).includes("/results-workspace")).length).toBe(0);
 
     await new Promise((resolve) => setTimeout(resolve, 100));
     await waitFor(() => {
       expect(mockAuthFetch.mock.calls.some(([url]) => String(url).includes("q=budi"))).toBe(true);
     });
-    expect(mockAuthFetch.mock.calls.filter(([url]) => String(url).includes("/assessment") && String(url).includes("q=")).length).toBe(1);
+    expect(mockAuthFetch.mock.calls.filter(([url]) => String(url).includes("/results-workspace") && String(url).includes("q=")).length).toBe(1);
   });
 
   it("accumulates unique rows and keeps summary mounted while loading more", async () => {
-    const page2Deferred = deferred<AssessmentResponse>();
+    const page2Deferred = deferred<ResultsWorkspaceResponse>();
     mockAuthFetch.mockImplementation((url: string) => {
       if (url === "/schools") return Promise.resolve(schools);
       if (url.includes("cursor=cursor-2")) return page2Deferred.promise;
-      if (url.startsWith("/admin/exams/exam-1/assessment")) return Promise.resolve(page1);
+      if (url.startsWith("/admin/exams/exam-1/results-workspace")) return Promise.resolve(page1);
       return Promise.reject(new Error(`Unhandled authFetch ${url}`));
     });
 
@@ -232,7 +232,7 @@ describe("AssessmentTab", () => {
       expect(screen.getByText(/Jawaban Anda|Your answer/i)).toBeInTheDocument();
       expect(screen.getByText(/Jawaban Benar|Correct answer/i)).toBeInTheDocument();
       expect(screen.getByText("Empat adalah jawaban yang benar.")).toBeInTheDocument();
-      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams/exam-1/assessment/results/session-latest");
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams/exam-1/results-workspace/sessions/session-latest");
     });
   });
 });

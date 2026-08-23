@@ -105,7 +105,7 @@ func TestRegisterRoutes_ExamGrantBulkRoutesRegistered(t *testing.T) {
 	}
 }
 
-func TestRegisterRoutes_AssessmentRoutesRegistered(t *testing.T) {
+func TestRegisterRoutes_ResultsWorkspaceRoutesRegistered(t *testing.T) {
 	signer, svc, _ := newTestDeps(t)
 	e := echo.New()
 	e.HideBanner = true
@@ -114,9 +114,9 @@ func TestRegisterRoutes_AssessmentRoutesRegistered(t *testing.T) {
 	RegisterRoutesForTest(e, h, svc, signer)
 
 	want := []string{
-		"/api/v1/admin/exams/:id/assessment",
-		"/api/v1/admin/exams/:id/assessment/:registration_id/attempts",
-		"/api/v1/admin/exams/:id/assessment/results/:session_id",
+		"/api/v1/admin/exams/:id/results-workspace",
+		"/api/v1/admin/exams/:id/results-workspace/:registration_id/attempts",
+		"/api/v1/admin/exams/:id/results-workspace/sessions/:session_id",
 	}
 	registered := map[string]bool{}
 	for _, r := range e.Routes() {

@@ -1279,9 +1279,9 @@ export interface AdminResultDetail {
   pembahasan?: ResultPembahasanItem[];
 }
 
-// ── Admin Assessment workspace (Issue 124, super_admin only) ────────────────
+// ── Admin Results workspace (Issue 124, super_admin only) ────────────────
 
-export interface AssessmentSummary {
+export interface ResultsWorkspaceSummary {
   total_registered: number;
   completed_participants: number;
   completion_rate: number;
@@ -1291,7 +1291,7 @@ export interface AssessmentSummary {
   violation_events: number;
 }
 
-export interface AssessmentRow {
+export interface ResultsWorkspaceRow {
   registration_id: string;
   student_id: string;
   student_name: string;
@@ -1307,13 +1307,13 @@ export interface AssessmentRow {
   latest_violations: number;
 }
 
-export interface AssessmentResponse {
-  summary: AssessmentSummary;
-  data: AssessmentRow[];
+export interface ResultsWorkspaceResponse {
+  summary: ResultsWorkspaceSummary;
+  data: ResultsWorkspaceRow[];
   next_cursor: string;
 }
 
-export interface AssessmentAttempt {
+export interface ResultsWorkspaceAttempt {
   session_id: string;
   attempt_number: number;
   status: string;

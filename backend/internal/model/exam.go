@@ -650,12 +650,12 @@ type ExamMonitorAvailable struct {
 	NotStartedCount int        `json:"not_started_count"`
 }
 
-// AssessmentSummary is the aggregate card block of GET /admin/exams/:id/assessment
+// ResultsWorkspaceSummary is the aggregate card block of GET /admin/exams/:id/results-workspace
 // (Issue 124). CompletedParticipants counts latest-attempt submitted registrations
 // regardless of grading; AverageScore/Distribution cover only the latest-attempt,
 // submitted, fully-graded, scored cohort. ViolationAttempts/ViolationEvents count
 // across every attempt for the filtered registrations, not just the latest.
-type AssessmentSummary struct {
+type ResultsWorkspaceSummary struct {
 	TotalRegistered       int           `json:"total_registered"`
 	CompletedParticipants int           `json:"completed_participants"`
 	CompletionRate        float64       `json:"completion_rate"`
@@ -665,11 +665,11 @@ type AssessmentSummary struct {
 	ViolationEvents       int           `json:"violation_events"`
 }
 
-// AssessmentRow is one ranked result row of GET /admin/exams/:id/assessment — one
+// ResultsWorkspaceRow is one ranked result row of GET /admin/exams/:id/results-workspace — one
 // exam_registration with a submitted, fully graded, scored attempt. The Issue 124
 // workspace is intentionally a Hasil/leaderboard view, not a full roster/status
 // table; registrations without result rows are summarized but not listed.
-type AssessmentRow struct {
+type ResultsWorkspaceRow struct {
 	RegistrationID      uuid.UUID  `json:"registration_id"`
 	StudentID           uuid.UUID  `json:"student_id"`
 	StudentName         string     `json:"student_name"`
@@ -685,18 +685,18 @@ type AssessmentRow struct {
 	LatestViolations    int        `json:"latest_violations"`
 }
 
-// AssessmentResponse is the top-level response for GET /admin/exams/:id/assessment.
-type AssessmentResponse struct {
-	Summary    AssessmentSummary `json:"summary"`
-	Data       []AssessmentRow   `json:"data"`
-	NextCursor string            `json:"next_cursor"`
+// ResultsWorkspaceResponse is the top-level response for GET /admin/exams/:id/results-workspace.
+type ResultsWorkspaceResponse struct {
+	Summary    ResultsWorkspaceSummary `json:"summary"`
+	Data       []ResultsWorkspaceRow   `json:"data"`
+	NextCursor string                  `json:"next_cursor"`
 }
 
-// AssessmentAttempt is one row of GET /admin/exams/:id/assessment/:registration_id/attempts,
-// newest-first. IsLatest marks exactly the same session ListAssessmentRows treats as
+// ResultsWorkspaceAttempt is one row of GET /admin/exams/:id/results-workspace/:registration_id/attempts,
+// newest-first. IsLatest marks exactly the same session ListResultsWorkspaceRows treats as
 // authoritative for that registration. Score/Violations are raw per-attempt facts,
-// not gated by grading completeness (unlike AssessmentRow.Score).
-type AssessmentAttempt struct {
+// not gated by grading completeness (unlike ResultsWorkspaceRow.Score).
+type ResultsWorkspaceAttempt struct {
 	SessionID       uuid.UUID  `json:"session_id"`
 	AttemptNumber   int        `json:"attempt_number"`
 	Status          string     `json:"status"`

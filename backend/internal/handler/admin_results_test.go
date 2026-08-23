@@ -378,11 +378,11 @@ func newAdminResultsDBEnv(t *testing.T) *adminResultsDBTestEnv {
 		adminResults.GET("", h.AdminListResults)
 		adminResults.GET("/export", h.AdminExportResults)
 		adminResults.GET("/:session_id", h.AdminGetResultDetail)
-		adminAssessment := admin.Group("/exams")
-		adminAssessment.Use(handler.RBACMiddleware("assessment:read"))
-		adminAssessment.GET("/:id/assessment", h.AdminGetExamAssessment)
-		adminAssessment.GET("/:id/assessment/:registration_id/attempts", h.AdminGetAssessmentAttempts)
-		adminAssessment.GET("/:id/assessment/results/:session_id", h.AdminGetAssessmentResultDetail)
+		adminResultsWorkspace := admin.Group("/exams")
+		adminResultsWorkspace.Use(handler.RBACMiddleware("results-workspace:read"))
+		adminResultsWorkspace.GET("/:id/results-workspace", h.AdminGetExamResultsWorkspace)
+		adminResultsWorkspace.GET("/:id/results-workspace/:registration_id/attempts", h.AdminGetResultsWorkspaceAttempts)
+		adminResultsWorkspace.GET("/:id/results-workspace/sessions/:session_id", h.AdminGetResultsWorkspaceResultDetail)
 		exam := v1.Group("/exam")
 		exam.Use(handler.JWTMiddleware(svc, signer))
 		exam.GET("/sessions/:id/result", h.StudentGetSessionResult)
@@ -675,7 +675,7 @@ func TestAdminResult_List_MalformedCursor_400(t *testing.T) {
 	}
 }
 
-func TestAdminResultDetail_ScoreOnly_DoesNotLeakPembahasanOutsideAssessmentRoute(t *testing.T) {
+func TestAdminResultDetail_ScoreOnly_DoesNotLeakPembahasanOutsideResultsWorkspaceRoute(t *testing.T) {
 	env := newAdminResultsDBEnv(t)
 
 	schoolID := seedSchool(t, env.pool)
@@ -711,25 +711,25 @@ func TestAdminResultDetail_ScoreOnly_DoesNotLeakPembahasanOutsideAssessmentRoute
 	}
 
 	adminToken := mintAdminToken(t, env, adminID.String(), schoolID)
-	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/assessment/results/"+sessionID.String(), adminToken)
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/results-workspace/sessions/"+sessionID.String(), adminToken)
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("admin_school should not reach assessment detail route, got %d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("admin_school should not reach results workspace detail route, got %d body=%s", rec.Code, rec.Body.String())
 	}
 
 	superToken := mintSuperAdminToken(t, env, "detail-super-admin")
-	rec = getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/assessment/results/"+sessionID.String(), superToken)
+	rec = getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/results-workspace/sessions/"+sessionID.String(), superToken)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("super_admin assessment detail want 200, got %d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("super_admin results workspace detail want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	var superBody map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &superBody); err != nil {
 		t.Fatalf("decode super body: %v", err)
 	}
 	if _, ok := superBody["pembahasan"]; !ok {
-		t.Fatalf("super_admin assessment detail should include pembahasan, body=%+v", superBody)
+		t.Fatalf("super_admin results workspace detail should include pembahasan, body=%+v", superBody)
 	}
 	if _, ok := superBody["breakdown"]; !ok {
-		t.Fatalf("super_admin assessment detail should include breakdown, body=%+v", superBody)
+		t.Fatalf("super_admin results workspace detail should include breakdown, body=%+v", superBody)
 	}
 }
 

@@ -15,7 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { AssessmentTab } from "@/components/admin/AssessmentTab";
+import { ResultsWorkspaceTab } from "@/components/admin/ResultsWorkspaceTab";
 import { CertificateDesignTab } from "@/components/admin/CertificateDesignTab";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
@@ -57,7 +57,7 @@ type Tab =
   | "results"
   | "grading"
   | "leaderboard"
-  | "assessment";
+  | "results_workspace";
 
 const TAB_ORDER: Tab[] = [
   "overview",
@@ -69,14 +69,14 @@ const TAB_ORDER: Tab[] = [
   "leaderboard",
 ];
 
-// super_admin gets the participant-centric Assessment workspace (Issue 124)
+// super_admin gets the participant-centric Results workspace (Issue 124)
 // in place of the separate Results/Leaderboard tabs.
 const SUPER_ADMIN_TABS: Tab[] = [
   "overview",
   "tests",
   "certificate",
   "registrations",
-  "assessment",
+  "results_workspace",
   "grading",
 ];
 
@@ -789,7 +789,7 @@ export default function ExamPackageDetailPage() {
               <UnderMaintenance icon={ListChecks} title={t("admin_exam_detail_tab_results")} />
             )
           )}
-          {tab === "assessment" && isSuperAdmin && <AssessmentTab examId={id} />}
+          {tab === "results_workspace" && isSuperAdmin && <ResultsWorkspaceTab examId={id} />}
           {tab === "grading" && (
             <div className="md-card-outlined space-y-4 p-6">
               <div className="flex items-center justify-between">

@@ -94,8 +94,8 @@ func (s *Service) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID
 	}
 
 	// School/admin_exam result detail remains bound to the exam's student-visible
-	// result config. The super-admin assessment workspace has its own
-	// assessment:read-gated detail path below for operational answer review.
+	// result config. The super-admin results workspace has its own
+	// results-workspace:read-gated detail path below for operational answer review.
 	if exam.ResultConfig == "score_pembahasan" {
 		detail.Breakdown = topicBreakdown(tests, answers)
 		detail.Pembahasan = buildPembahasan(tests, answers, false)
@@ -104,11 +104,11 @@ func (s *Service) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID
 	return detail, nil
 }
 
-// AdminGetAssessmentResultDetail returns operational answer detail for the
-// super-admin-only assessment workspace. Unlike GetSchoolResultDetail, this
+// AdminGetResultsWorkspaceResultDetail returns operational answer detail for the
+// super-admin-only results workspace. Unlike GetSchoolResultDetail, this
 // intentionally includes breakdown/pembahasan independent of student-visible
-// result_config, but the route is gated by assessment:read.
-func (s *Service) AdminGetAssessmentResultDetail(ctx context.Context, examID, sessionID uuid.UUID) (model.AdminResultDetail, error) {
+// result_config, but the route is gated by results-workspace:read.
+func (s *Service) AdminGetResultsWorkspaceResultDetail(ctx context.Context, examID, sessionID uuid.UUID) (model.AdminResultDetail, error) {
 	sess, err := s.storeRepo.GetSchoolResultSession(ctx, sessionID, "")
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {

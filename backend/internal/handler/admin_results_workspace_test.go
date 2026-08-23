@@ -7,15 +7,15 @@ import (
 	"testing"
 )
 
-func TestAdminAssessment_DBBackedRoutesAndRBAC(t *testing.T) {
+func TestAdminResultsWorkspace_DBBackedRoutesAndRBAC(t *testing.T) {
 	env := newAdminResultsDBEnv(t)
 
 	schoolID := seedSchool(t, env.pool)
-	superID := seedUserWithSchool(t, env.pool, "super_admin", "Assessment Super", schoolID)
-	adminExamID := seedUserWithSchool(t, env.pool, "admin_exam", "Assessment Exam Admin", schoolID)
-	adminSchoolID := seedUserWithSchool(t, env.pool, "admin_school", "Assessment School Admin", schoolID)
+	superID := seedUserWithSchool(t, env.pool, "super_admin", "Results Workspace Super", schoolID)
+	adminExamID := seedUserWithSchool(t, env.pool, "admin_exam", "Results Workspace Exam Admin", schoolID)
+	adminSchoolID := seedUserWithSchool(t, env.pool, "admin_school", "Results Workspace School Admin", schoolID)
 	examID := seedExamWithMCQ(t, env.pool)
-	studentID := seedUserWithSchool(t, env.pool, "student", "Assessment Student", schoolID)
+	studentID := seedUserWithSchool(t, env.pool, "student", "Results Workspace Student", schoolID)
 	seedSubmittedSession(t, env.pool, studentID, examID)
 
 	superToken := mintSuperAdminToken(t, env, superID.String())
@@ -30,7 +30,7 @@ func TestAdminAssessment_DBBackedRoutesAndRBAC(t *testing.T) {
 		{"admin_school forbidden", adminSchoolToken},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/assessment", tc.token)
+			rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/results-workspace", tc.token)
 			if rec.Code != http.StatusForbidden {
 				t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
 			}
@@ -38,7 +38,7 @@ func TestAdminAssessment_DBBackedRoutesAndRBAC(t *testing.T) {
 	}
 
 	t.Run("super_admin list 200 from real DB", func(t *testing.T) {
-		rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/assessment?limit=1", superToken)
+		rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/results-workspace?limit=1", superToken)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 		}
@@ -61,13 +61,13 @@ func TestAdminAssessment_DBBackedRoutesAndRBAC(t *testing.T) {
 		if resp.Summary.TotalRegistered != 1 || resp.Summary.CompletedParticipants != 1 || resp.Summary.CompletionRate != 1 {
 			t.Fatalf("summary mismatch: %+v", resp.Summary)
 		}
-		if len(resp.Data) != 1 || resp.Data[0].StudentName != "Assessment Student" || resp.Data[0].Score == nil || resp.Data[0].Rank == nil {
+		if len(resp.Data) != 1 || resp.Data[0].StudentName != "Results Workspace Student" || resp.Data[0].Score == nil || resp.Data[0].Rank == nil {
 			t.Fatalf("row mismatch: %+v", resp.Data)
 		}
 	})
 
 	t.Run("malformed cursor maps to validation error", func(t *testing.T) {
-		rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/assessment?cursor=garbage", superToken)
+		rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/results-workspace?cursor=garbage", superToken)
 		if rec.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
 		}
@@ -84,7 +84,7 @@ func TestAdminAssessment_DBBackedRoutesAndRBAC(t *testing.T) {
 
 	t.Run("attempts validates registration belongs to exam", func(t *testing.T) {
 		otherExamID := seedExamWithMCQ(t, env.pool)
-		otherStudentID := seedUserWithSchool(t, env.pool, "student", "Other Assessment Student", schoolID)
+		otherStudentID := seedUserWithSchool(t, env.pool, "student", "Other Results Workspace Student", schoolID)
 		seedSubmittedSession(t, env.pool, otherStudentID, otherExamID)
 		var otherRegistrationID string
 		if err := env.pool.QueryRow(
@@ -95,17 +95,17 @@ func TestAdminAssessment_DBBackedRoutesAndRBAC(t *testing.T) {
 			t.Fatalf("lookup other registration: %v", err)
 		}
 
-		rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/assessment/"+otherRegistrationID+"/attempts", superToken)
+		rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/results-workspace/"+otherRegistrationID+"/attempts", superToken)
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("want 404 for mismatched registration/exam, got %d body=%s", rec.Code, rec.Body.String())
 		}
 	})
 
 	t.Run("malformed ids return 400", func(t *testing.T) {
-		if rec := getRequest(t, env.e, "/api/v1/admin/exams/not-a-uuid/assessment", superToken); rec.Code != http.StatusBadRequest {
+		if rec := getRequest(t, env.e, "/api/v1/admin/exams/not-a-uuid/results-workspace", superToken); rec.Code != http.StatusBadRequest {
 			t.Fatalf("bad exam id: want 400, got %d body=%s", rec.Code, rec.Body.String())
 		}
-		if rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/assessment/not-a-uuid/attempts", superToken); rec.Code != http.StatusBadRequest {
+		if rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/results-workspace/not-a-uuid/attempts", superToken); rec.Code != http.StatusBadRequest {
 			t.Fatalf("bad registration id: want 400, got %d body=%s", rec.Code, rec.Body.String())
 		}
 	})

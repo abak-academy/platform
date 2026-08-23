@@ -10,16 +10,16 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-// AdminGetExamAssessment returns the participant-centric assessment workspace
+// AdminGetExamResultsWorkspace returns the participant-centric results workspace
 // read model for an exam (Issue 124): a paginated per-registration row list
 // plus a cohort summary computed over the same q/school_id filter. Super-admin
 // only — enforced by the RBAC middleware, not here.
-func (s *Service) AdminGetExamAssessment(ctx context.Context, examID uuid.UUID, q string, schoolID *uuid.UUID, cursor string, limit int) (model.AssessmentResponse, error) {
+func (s *Service) AdminGetExamResultsWorkspace(ctx context.Context, examID uuid.UUID, q string, schoolID *uuid.UUID, cursor string, limit int) (model.ResultsWorkspaceResponse, error) {
 	if _, err := s.storeRepo.GetExamByID(ctx, examID); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return model.AssessmentResponse{}, ErrExamNotFound
+			return model.ResultsWorkspaceResponse{}, ErrExamNotFound
 		}
-		return model.AssessmentResponse{}, err
+		return model.ResultsWorkspaceResponse{}, err
 	}
 
 	if limit <= 0 {
@@ -28,24 +28,24 @@ func (s *Service) AdminGetExamAssessment(ctx context.Context, examID uuid.UUID, 
 		limit = 100
 	}
 
-	filter := repository.AssessmentFilter{Q: q, SchoolID: schoolID, Cursor: cursor, Limit: limit}
+	filter := repository.ResultsWorkspaceFilter{Q: q, SchoolID: schoolID, Cursor: cursor, Limit: limit}
 
-	rows, nextCursor, err := s.storeRepo.ListAssessmentRows(ctx, examID, filter)
+	rows, nextCursor, err := s.storeRepo.ListResultsWorkspaceRows(ctx, examID, filter)
 	if err != nil {
 		if errors.Is(err, repository.ErrInvalidCursor) {
-			return model.AssessmentResponse{}, ErrValidation
+			return model.ResultsWorkspaceResponse{}, ErrValidation
 		}
-		return model.AssessmentResponse{}, err
+		return model.ResultsWorkspaceResponse{}, err
 	}
 
-	total, completed, scores, violationAttempts, violationEvents, err := s.storeRepo.GetAssessmentSummary(ctx, examID, filter)
+	total, completed, scores, violationAttempts, violationEvents, err := s.storeRepo.GetResultsWorkspaceSummary(ctx, examID, filter)
 	if err != nil {
-		return model.AssessmentResponse{}, err
+		return model.ResultsWorkspaceResponse{}, err
 	}
 
 	tests, err := s.storeRepo.GetSessionWithQuestions(ctx, examID)
 	if err != nil {
-		return model.AssessmentResponse{}, err
+		return model.ResultsWorkspaceResponse{}, err
 	}
 	maxPossible := 0.0
 	for _, td := range tests {
@@ -68,7 +68,7 @@ func (s *Service) AdminGetExamAssessment(ctx context.Context, examID uuid.UUID, 
 		averageScore = sum / float64(len(scores))
 	}
 
-	summary := model.AssessmentSummary{
+	summary := model.ResultsWorkspaceSummary{
 		TotalRegistered:       total,
 		CompletedParticipants: completed,
 		CompletionRate:        completionRate,
@@ -78,15 +78,15 @@ func (s *Service) AdminGetExamAssessment(ctx context.Context, examID uuid.UUID, 
 		ViolationEvents:       violationEvents,
 	}
 
-	return model.AssessmentResponse{Summary: summary, Data: rows, NextCursor: nextCursor}, nil
+	return model.ResultsWorkspaceResponse{Summary: summary, Data: rows, NextCursor: nextCursor}, nil
 }
 
-// AdminGetAssessmentAttempts returns every attempt for a single registration
+// AdminGetResultsWorkspaceAttempts returns every attempt for a single registration
 // (Issue 124 attempt drawer). ErrRegistrationNotFound covers both "no such
 // registration" and "registration belongs to a different exam" — the repo
 // validates registration_id against exam_id together.
-func (s *Service) AdminGetAssessmentAttempts(ctx context.Context, examID, registrationID uuid.UUID) ([]model.AssessmentAttempt, error) {
-	attempts, err := s.storeRepo.ListAssessmentAttempts(ctx, examID, registrationID)
+func (s *Service) AdminGetResultsWorkspaceAttempts(ctx context.Context, examID, registrationID uuid.UUID) ([]model.ResultsWorkspaceAttempt, error) {
+	attempts, err := s.storeRepo.ListResultsWorkspaceAttempts(ctx, examID, registrationID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrRegistrationNotFound

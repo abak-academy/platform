@@ -301,14 +301,14 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamsRead.GET("/:id/registrations", h.AdminListExamRegistrations)
 	adminExamsRead.GET("/:id/registrations/export", h.AdminExportExamRegistrations)
 
-	// Admin exam assessment workspace (Issue 124) — super_admin only. "assessment:read"
+	// Admin exam results workspace (Issue 124) — super_admin only. "results-workspace:read"
 	// is claimed by no other role, so RBACMiddleware rejects everyone else with 403
 	// (mirrors the adminSystem group's "system:admin" idiom).
-	adminAssessment := admin.Group("/exams")
-	adminAssessment.Use(handler.RBACMiddleware("assessment:read"))
-	adminAssessment.GET("/:id/assessment", h.AdminGetExamAssessment)
-	adminAssessment.GET("/:id/assessment/:registration_id/attempts", h.AdminGetAssessmentAttempts)
-	adminAssessment.GET("/:id/assessment/results/:session_id", h.AdminGetAssessmentResultDetail)
+	adminResultsWorkspace := admin.Group("/exams")
+	adminResultsWorkspace.Use(handler.RBACMiddleware("results-workspace:read"))
+	adminResultsWorkspace.GET("/:id/results-workspace", h.AdminGetExamResultsWorkspace)
+	adminResultsWorkspace.GET("/:id/results-workspace/:registration_id/attempts", h.AdminGetResultsWorkspaceAttempts)
+	adminResultsWorkspace.GET("/:id/results-workspace/sessions/:session_id", h.AdminGetResultsWorkspaceResultDetail)
 
 	// Admin upload routes (image + audio presigning)
 	adminUploads := admin.Group("/uploads")

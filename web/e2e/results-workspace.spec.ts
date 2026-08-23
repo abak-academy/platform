@@ -18,7 +18,7 @@ const ADMIN_SCHOOL = {
 
 const EXAM = {
   id: "exam-1",
-  title: "Assessment Workspace E2E",
+  title: "Results Workspace E2E",
   scheduled_at: "2026-08-01T08:00:00Z",
   timer_mode: "overall",
   duration_minutes: 90,
@@ -51,8 +51,8 @@ const ASSESSMENT_PAGE_1 = {
     {
       registration_id: "reg-1",
       student_id: "student-1",
-      student_name: "Budi Assessment",
-      username: "budi.assessment",
+      student_name: "Budi Results",
+      username: "budi.results",
       school_id: "school-1",
       school_name: "SMA E2E",
       rank: 1,
@@ -105,11 +105,11 @@ async function mockBackend(page: Page) {
         body: JSON.stringify([{ id: "school-1", name: "SMA E2E" }]),
       });
     }
-    if (method === "GET" && path === "/api/v1/admin/exams/exam-1/assessment") {
+    if (method === "GET" && path === "/api/v1/admin/exams/exam-1/results-workspace") {
       const body = url.searchParams.get("cursor") ? ASSESSMENT_PAGE_2 : ASSESSMENT_PAGE_1;
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     }
-    if (method === "GET" && path === "/api/v1/admin/exams/exam-1/assessment/reg-1/attempts") {
+    if (method === "GET" && path === "/api/v1/admin/exams/exam-1/results-workspace/reg-1/attempts") {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -139,13 +139,13 @@ async function mockBackend(page: Page) {
         }),
       });
     }
-    if (method === "GET" && path === "/api/v1/admin/exams/exam-1/assessment/results/sess-1") {
+    if (method === "GET" && path === "/api/v1/admin/exams/exam-1/results-workspace/sessions/sess-1") {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
           session_id: "sess-1",
-          student_name: "Budi Assessment",
+          student_name: "Budi Results",
           score: 87.5,
           correct_count: 8,
           wrong_count: 1,
@@ -177,9 +177,9 @@ async function mockBackend(page: Page) {
 }
 
 test("super_admin unified Results workspace is ranked and supports large detail modal", async ({ page, context }) => {
-  const assessmentRequests: string[] = [];
+  const resultsWorkspaceRequests: string[] = [];
   page.on("request", (req) => {
-    if (req.url().includes("/assessment")) assessmentRequests.push(req.url());
+    if (req.url().includes("/results-workspace")) resultsWorkspaceRequests.push(req.url());
   });
   await seedSession(context, {
     token: "e2e-fake-token",
@@ -194,13 +194,13 @@ test("super_admin unified Results workspace is ranked and supports large detail 
   await expect(page.getByRole("button", { name: "Leaderboard" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Hasil" }).click();
-  await expect(page.getByText("Budi Assessment")).toBeVisible();
+  await expect(page.getByText("Budi Results")).toBeVisible();
   await expect(page.getByText("50%")).toBeVisible();
   await expect(page.getByText("87.5").first()).toBeVisible();
 
   await page.getByPlaceholder("Nama atau username siswa").fill("budi");
   await expect
-    .poll(() => assessmentRequests.some((url) => url.includes("q=budi")))
+    .poll(() => resultsWorkspaceRequests.some((url) => url.includes("q=budi")))
     .toBe(true);
 
   await page.getByRole("button", { name: "Lihat" }).first().click();
@@ -213,10 +213,10 @@ test("super_admin unified Results workspace is ranked and supports large detail 
   await expect(page.getByText("Empat adalah jawaban yang benar.")).toBeVisible();
 });
 
-test("admin_school keeps scoped Results tab and never calls assessment endpoint", async ({ page, context }) => {
-  const assessmentRequests: string[] = [];
+test("admin_school keeps scoped Results tab and never calls results workspace endpoint", async ({ page, context }) => {
+  const resultsWorkspaceRequests: string[] = [];
   page.on("request", (req) => {
-    if (req.url().includes("/assessment")) assessmentRequests.push(req.url());
+    if (req.url().includes("/results-workspace")) resultsWorkspaceRequests.push(req.url());
   });
   await seedSession(context, {
     token: "e2e-fake-token",
@@ -228,6 +228,6 @@ test("admin_school keeps scoped Results tab and never calls assessment endpoint"
   await page.goto("/admin/exam/packages/exam-1");
   await expect(page.getByRole("heading", { name: EXAM.title })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hasil" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Assessment" })).toHaveCount(0);
-  await expect.poll(() => assessmentRequests.length).toBe(0);
+  await expect(page.getByRole("button", { name: "Asesmen" })).toHaveCount(0);
+  await expect.poll(() => resultsWorkspaceRequests.length).toBe(0);
 });

@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func insertAssessmentSchool(t *testing.T, pool *pgxpool.Pool, name string) uuid.UUID {
+func insertResultsWorkspaceSchool(t *testing.T, pool *pgxpool.Pool, name string) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
 	var id uuid.UUID
@@ -24,7 +24,7 @@ func insertAssessmentSchool(t *testing.T, pool *pgxpool.Pool, name string) uuid.
 	return id
 }
 
-func insertAssessmentStudent(t *testing.T, pool *pgxpool.Pool, name, username string, schoolID uuid.UUID) uuid.UUID {
+func insertResultsWorkspaceStudent(t *testing.T, pool *pgxpool.Pool, name, username string, schoolID uuid.UUID) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
 	var id uuid.UUID
@@ -38,7 +38,7 @@ func insertAssessmentStudent(t *testing.T, pool *pgxpool.Pool, name, username st
 	return id
 }
 
-func insertAssessmentViolation(t *testing.T, pool *pgxpool.Pool, sessionID, studentID uuid.UUID) {
+func insertResultsWorkspaceViolation(t *testing.T, pool *pgxpool.Pool, sessionID, studentID uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 	if _, err := pool.Exec(ctx,
@@ -57,22 +57,22 @@ func assertFloatClose(t *testing.T, got, want float64) {
 	}
 }
 
-func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
+func TestResultsWorkspaceRepository_DBBackedSemantics(t *testing.T) {
 	pool := newGradingTestPool(t)
 	repo := New(pool)
 	ctx := context.Background()
 
-	schoolA := insertAssessmentSchool(t, pool, "Assessment School A")
-	grader := insertGradingUser(t, pool, "admin_exam", "Assessment Grader")
+	schoolA := insertResultsWorkspaceSchool(t, pool, "Results Workspace School A")
+	grader := insertGradingUser(t, pool, "admin_exam", "Results Workspace Grader")
 	testID := insertGradingTest(t, pool)
-	essayQID := insertGradingEssayQuestion(t, pool, testID, "Explain assessment", 100, 1)
+	essayQID := insertGradingEssayQuestion(t, pool, testID, "Explain result", 100, 1)
 	examID := insertGradingExam(t, pool, testID)
 
-	budi := insertAssessmentStudent(t, pool, "Budi Assessment", "budi-assessment", schoolA)
-	cici := insertAssessmentStudent(t, pool, "Cici Retry", "cici-retry", schoolA)
-	dodi := insertAssessmentStudent(t, pool, "Dodi Ungraded", "dodi-ungraded", schoolA)
-	evi := insertAssessmentStudent(t, pool, "Evi Empty", "evi-empty", schoolA)
-	fani := insertAssessmentStudent(t, pool, "Fani Tie", "fani-tie", schoolA)
+	budi := insertResultsWorkspaceStudent(t, pool, "Budi Results", "budi-results", schoolA)
+	cici := insertResultsWorkspaceStudent(t, pool, "Cici Retry", "cici-retry", schoolA)
+	dodi := insertResultsWorkspaceStudent(t, pool, "Dodi Ungraded", "dodi-ungraded", schoolA)
+	evi := insertResultsWorkspaceStudent(t, pool, "Evi Empty", "evi-empty", schoolA)
+	fani := insertResultsWorkspaceStudent(t, pool, "Fani Tie", "fani-tie", schoolA)
 
 	base := time.Now().Add(-2 * time.Hour)
 	gradedAt := base.Add(time.Hour)
@@ -83,29 +83,29 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 	insertGradingAnswer(t, pool, budiOld, essayQID, &answer, f64PtrG(60), &grader, &gradedAt)
 	budiLatest := insertGradingSessionForRegistration(t, pool, regBudi, budi, examID, 2, "submitted", timePtrG(base.Add(30*time.Minute)), f64PtrG(90))
 	insertGradingAnswer(t, pool, budiLatest, essayQID, &answer, f64PtrG(90), &grader, &gradedAt)
-	insertAssessmentViolation(t, pool, budiLatest, budi)
-	insertAssessmentViolation(t, pool, budiLatest, budi)
+	insertResultsWorkspaceViolation(t, pool, budiLatest, budi)
+	insertResultsWorkspaceViolation(t, pool, budiLatest, budi)
 
 	regCici := insertGradingRegistration(t, pool, cici, examID)
 	ciciOld := insertGradingSessionForRegistration(t, pool, regCici, cici, examID, 1, "submitted", timePtrG(base), f64PtrG(100))
 	insertGradingAnswer(t, pool, ciciOld, essayQID, &answer, f64PtrG(100), &grader, &gradedAt)
-	insertAssessmentViolation(t, pool, ciciOld, cici)
+	insertResultsWorkspaceViolation(t, pool, ciciOld, cici)
 	insertGradingSessionForRegistration(t, pool, regCici, cici, examID, 2, "in_progress", nil, nil)
 
 	regDodi := insertGradingRegistration(t, pool, dodi, examID)
 	dodiSession := insertGradingSessionForRegistration(t, pool, regDodi, dodi, examID, 1, "submitted", timePtrG(base), f64PtrG(70))
 	insertGradingAnswer(t, pool, dodiSession, essayQID, &answer, nil, nil, nil)
-	insertAssessmentViolation(t, pool, dodiSession, dodi)
+	insertResultsWorkspaceViolation(t, pool, dodiSession, dodi)
 
 	insertGradingRegistration(t, pool, evi, examID)
 	regFani := insertGradingRegistration(t, pool, fani, examID)
 	faniSession := insertGradingSessionForRegistration(t, pool, regFani, fani, examID, 1, "submitted", timePtrG(base), f64PtrG(90))
 	insertGradingAnswer(t, pool, faniSession, essayQID, &answer, f64PtrG(90), &grader, &gradedAt)
 
-	filterSchoolA := AssessmentFilter{SchoolID: &schoolA, Limit: 10}
-	rows, next, err := repo.ListAssessmentRows(ctx, examID, filterSchoolA)
+	filterSchoolA := ResultsWorkspaceFilter{SchoolID: &schoolA, Limit: 10}
+	rows, next, err := repo.ListResultsWorkspaceRows(ctx, examID, filterSchoolA)
 	if err != nil {
-		t.Fatalf("ListAssessmentRows school A: %v", err)
+		t.Fatalf("ListResultsWorkspaceRows school A: %v", err)
 	}
 	if next != "" {
 		t.Fatalf("next cursor = %q, want empty", next)
@@ -129,7 +129,7 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 			latestSessID *uuid.UUID
 		}{row.Score, row.Rank, row.AttemptsCount, row.LatestViolations, row.LatestSessionID}
 	}
-	if got := byName["Budi Assessment"]; got.score == nil || *got.score != 90 || got.rank == nil || *got.rank != 2 || got.attempts != 2 || got.latestVios != 2 || got.latestSessID == nil || *got.latestSessID != budiLatest {
+	if got := byName["Budi Results"]; got.score == nil || *got.score != 90 || got.rank == nil || *got.rank != 2 || got.attempts != 2 || got.latestVios != 2 || got.latestSessID == nil || *got.latestSessID != budiLatest {
 		t.Fatalf("Budi row mismatch: %+v", got)
 	}
 	if got := byName["Cici Retry"]; got.score == nil || *got.score != 100 || got.rank == nil || *got.rank != 1 || got.attempts != 2 {
@@ -145,42 +145,42 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 		t.Fatalf("Fani should share rank 2 tie, got %+v", got)
 	}
 
-	total, completed, scores, violationAttempts, violationEvents, err := repo.GetAssessmentSummary(ctx, examID, filterSchoolA)
+	total, completed, scores, violationAttempts, violationEvents, err := repo.GetResultsWorkspaceSummary(ctx, examID, filterSchoolA)
 	if err != nil {
-		t.Fatalf("GetAssessmentSummary school A: %v", err)
+		t.Fatalf("GetResultsWorkspaceSummary school A: %v", err)
 	}
 	if total != 5 || completed != 3 || len(scores) != 3 || violationAttempts != 3 || violationEvents != 4 {
 		t.Fatalf("summary mismatch total=%d completed=%d scores=%v violationAttempts=%d violationEvents=%d", total, completed, scores, violationAttempts, violationEvents)
 	}
 	assertFloatClose(t, scores[0]+scores[1]+scores[2], 280)
 
-	q := AssessmentFilter{Q: "budi-assessment", Limit: 10}
-	total, completed, scores, violationAttempts, violationEvents, err = repo.GetAssessmentSummary(ctx, examID, q)
+	q := ResultsWorkspaceFilter{Q: "budi-results", Limit: 10}
+	total, completed, scores, violationAttempts, violationEvents, err = repo.GetResultsWorkspaceSummary(ctx, examID, q)
 	if err != nil {
-		t.Fatalf("GetAssessmentSummary q: %v", err)
+		t.Fatalf("GetResultsWorkspaceSummary q: %v", err)
 	}
 	if total != 1 || completed != 1 || len(scores) != 1 || scores[0] != 90 || violationAttempts != 1 || violationEvents != 2 {
 		t.Fatalf("q-filter summary mismatch total=%d completed=%d scores=%v violationAttempts=%d violationEvents=%d", total, completed, scores, violationAttempts, violationEvents)
 	}
 
-	firstPage, cursor, err := repo.ListAssessmentRows(ctx, examID, AssessmentFilter{SchoolID: &schoolA, Limit: 1})
+	firstPage, cursor, err := repo.ListResultsWorkspaceRows(ctx, examID, ResultsWorkspaceFilter{SchoolID: &schoolA, Limit: 1})
 	if err != nil {
-		t.Fatalf("ListAssessmentRows page1: %v", err)
+		t.Fatalf("ListResultsWorkspaceRows page1: %v", err)
 	}
 	if len(firstPage) != 1 || cursor == "" {
 		t.Fatalf("page1 len=%d cursor=%q", len(firstPage), cursor)
 	}
-	secondPage, _, err := repo.ListAssessmentRows(ctx, examID, AssessmentFilter{SchoolID: &schoolA, Cursor: cursor, Limit: 1})
+	secondPage, _, err := repo.ListResultsWorkspaceRows(ctx, examID, ResultsWorkspaceFilter{SchoolID: &schoolA, Cursor: cursor, Limit: 1})
 	if err != nil {
-		t.Fatalf("ListAssessmentRows page2: %v", err)
+		t.Fatalf("ListResultsWorkspaceRows page2: %v", err)
 	}
 	if len(secondPage) != 1 || secondPage[0].RegistrationID == firstPage[0].RegistrationID || secondPage[0].Rank == nil || *secondPage[0].Rank != 2 {
 		t.Fatalf("page2 did not advance: page1=%+v page2=%+v", firstPage, secondPage)
 	}
 
-	attempts, err := repo.ListAssessmentAttempts(ctx, examID, regBudi)
+	attempts, err := repo.ListResultsWorkspaceAttempts(ctx, examID, regBudi)
 	if err != nil {
-		t.Fatalf("ListAssessmentAttempts: %v", err)
+		t.Fatalf("ListResultsWorkspaceAttempts: %v", err)
 	}
 	if len(attempts) != 2 {
 		t.Fatalf("attempt count = %d, want 2: %+v", len(attempts), attempts)
@@ -192,10 +192,10 @@ func TestAssessmentRepository_DBBackedSemantics(t *testing.T) {
 		t.Fatalf("old attempt mismatch: %+v", attempts[1])
 	}
 
-	if _, err := repo.ListAssessmentAttempts(ctx, examID, uuid.New()); err != ErrNotFound {
+	if _, err := repo.ListResultsWorkspaceAttempts(ctx, examID, uuid.New()); err != ErrNotFound {
 		t.Fatalf("wrong registration err = %v, want ErrNotFound", err)
 	}
-	if _, _, err := repo.ListAssessmentRows(ctx, examID, AssessmentFilter{Cursor: "not-a-cursor"}); !errors.Is(err, ErrInvalidCursor) {
+	if _, _, err := repo.ListResultsWorkspaceRows(ctx, examID, ResultsWorkspaceFilter{Cursor: "not-a-cursor"}); !errors.Is(err, ErrInvalidCursor) {
 		t.Fatalf("invalid cursor err = %v, want ErrInvalidCursor", err)
 	}
 }

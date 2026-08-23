@@ -22,13 +22,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
-import { useAssessment, useAssessmentAttempts, useAssessmentResultDetail } from "@/lib/hooks/admin-assessment";
+import { useResultsWorkspace, useResultsWorkspaceAttempts, useResultsWorkspaceDetail } from "@/lib/hooks/admin-results-workspace";
 import { exportAdminResults } from "@/lib/hooks/admin-results";
 import { useSchools } from "@/lib/hooks/students";
 import { formatChoiceAnswer } from "@/lib/option-key";
-import type { AdminResultDetail, AssessmentAttempt, AssessmentRow, AssessmentSummary } from "@/lib/types";
+import type { AdminResultDetail, ResultsWorkspaceAttempt, ResultsWorkspaceRow, ResultsWorkspaceSummary } from "@/lib/types";
 
-interface AssessmentTabProps {
+interface ResultsWorkspaceTabProps {
   examId: string;
 }
 
@@ -43,13 +43,13 @@ function useDebouncedValue(value: string, delay: number): string {
   return debounced;
 }
 
-function statusLabelKey(status: string): "assessment_status_completed" | "assessment_status_in_progress" | "assessment_status_not_started" {
-  if (status === "completed" || status === "submitted") return "assessment_status_completed";
-  if (status === "in_progress") return "assessment_status_in_progress";
-  return "assessment_status_not_started";
+function statusLabelKey(status: string): "results_workspace_status_completed" | "results_workspace_status_in_progress" | "results_workspace_status_not_started" {
+  if (status === "completed" || status === "submitted") return "results_workspace_status_completed";
+  if (status === "in_progress") return "results_workspace_status_in_progress";
+  return "results_workspace_status_not_started";
 }
 
-export function AssessmentTab({ examId }: AssessmentTabProps) {
+export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
   const { t, lang } = useTranslation();
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
@@ -58,10 +58,10 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  const [accumulated, setAccumulated] = useState<AssessmentRow[]>([]);
+  const [accumulated, setAccumulated] = useState<ResultsWorkspaceRow[]>([]);
   const [activeCursor, setActiveCursor] = useState<string | undefined>(undefined);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
-  const [stableSummary, setStableSummary] = useState<AssessmentSummary | null>(null);
+  const [stableSummary, setStableSummary] = useState<ResultsWorkspaceSummary | null>(null);
   const [selectedRegistrationId, setSelectedRegistrationId] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState("");
 
@@ -79,7 +79,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
     }
   }, [filterKey]);
 
-  const query = useAssessment({
+  const query = useResultsWorkspace({
     examId,
     q: debouncedSearch || undefined,
     schoolId: selectedSchoolId || undefined,
@@ -105,8 +105,8 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
   }, [query.data, filterKey]);
 
   const selectedRow = accumulated.find((r) => r.registration_id === selectedRegistrationId);
-  const attempts = useAssessmentAttempts(examId, selectedRegistrationId);
-  const detail = useAssessmentResultDetail(examId, selectedSessionId);
+  const attempts = useResultsWorkspaceAttempts(examId, selectedRegistrationId);
+  const detail = useResultsWorkspaceDetail(examId, selectedSessionId);
   const summary = query.data?.summary ?? stableSummary;
 
   useEffect(() => {
@@ -130,7 +130,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
     }
   };
 
-  const columns: DataTableColumn<AssessmentRow>[] = [
+  const columns: DataTableColumn<ResultsWorkspaceRow>[] = [
     {
       key: "rank",
       header: t("admin_exam_leaderboard_col_rank"),
@@ -158,12 +158,12 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
     },
     {
       key: "attempts",
-      header: t("assessment_col_attempts"),
+      header: t("results_workspace_col_attempts"),
       cell: (row) => <span className="text-xs text-ink-600">{row.attempts_count}</span>,
     },
     {
       key: "violations",
-      header: t("assessment_col_violations"),
+      header: t("results_workspace_col_violations"),
       cell: (row) => <span className="text-xs text-ink-600">{row.latest_violations}</span>,
     },
     {
@@ -188,17 +188,17 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
     <div className="space-y-4">
       {summary && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <SummaryCard label={t("assessment_summary_total_registered")} value={summary.total_registered} />
+          <SummaryCard label={t("results_workspace_summary_total_registered")} value={summary.total_registered} />
           <SummaryCard
-            label={t("assessment_summary_completion_rate")}
+            label={t("results_workspace_summary_completion_rate")}
             value={`${Math.round(summary.completion_rate * 100)}%`}
             caption={`${summary.completed_participants}/${summary.total_registered}`}
           />
           <SummaryCard label={t("admin_exam_analytics_average_score")} value={summary.average_score.toFixed(1)} />
           <SummaryCard
-            label={t("assessment_summary_violations")}
+            label={t("results_workspace_summary_violations")}
             value={summary.violation_events}
-            caption={`${summary.violation_attempts} ${t("assessment_summary_violation_attempts")}`}
+            caption={`${summary.violation_attempts} ${t("results_workspace_summary_violation_attempts")}`}
           />
         </div>
       )}
@@ -206,10 +206,10 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <p className="text-xs text-ink-500">{t("assessment_search_label")}</p>
+            <p className="text-xs text-ink-500">{t("results_workspace_search_label")}</p>
             <Input
               className="mt-1 h-9 w-[220px] text-xs"
-              placeholder={t("assessment_search_placeholder")}
+              placeholder={t("results_workspace_search_placeholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -244,7 +244,7 @@ export function AssessmentTab({ examId }: AssessmentTabProps) {
           columns={columns}
           rows={accumulated}
           rowKey={(row) => row.registration_id}
-          empty={t("assessment_empty")}
+          empty={t("results_workspace_empty")}
           footer={nextCursor && (
             <div className="border-t border-line px-4 py-3 text-center">
               <Button variant="outline" size="sm" onClick={() => setActiveCursor(nextCursor)} disabled={query.isFetching}>
@@ -316,7 +316,7 @@ function AttemptSelector({
   t,
   dateLocale,
 }: {
-  attempts: AssessmentAttempt[];
+  attempts: ResultsWorkspaceAttempt[];
   isLoading: boolean;
   selectedSessionId: string;
   onSelect: (sessionId: string) => void;
@@ -330,7 +330,7 @@ function AttemptSelector({
 
   return (
     <div className="space-y-2">
-      <h4 className="text-sm font-semibold text-ink-900">{t("assessment_col_attempts")}</h4>
+      <h4 className="text-sm font-semibold text-ink-900">{t("results_workspace_col_attempts")}</h4>
       {attempts.map((attempt) => {
         const selected = attempt.session_id === selectedSessionId;
         return (
@@ -340,11 +340,11 @@ function AttemptSelector({
           >
             <div>
               <div className="font-medium text-ink-900">
-                {t("assessment_attempt_number")} {attempt.attempt_number}
-                {attempt.is_latest && <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{t("assessment_latest_badge")}</span>}
+                {t("results_workspace_attempt_number")} {attempt.attempt_number}
+                {attempt.is_latest && <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{t("results_workspace_latest_badge")}</span>}
               </div>
               <div className="text-xs text-ink-500">
-                {t(statusLabelKey(attempt.status))} · {attempt.submitted_at ? new Date(attempt.submitted_at).toLocaleString(dateLocale, { day: "2-digit", month: "short", year: "numeric" }) : "-"} · {t("assessment_col_violations")}: {attempt.violations}
+                {t(statusLabelKey(attempt.status))} · {attempt.submitted_at ? new Date(attempt.submitted_at).toLocaleString(dateLocale, { day: "2-digit", month: "short", year: "numeric" }) : "-"} · {t("results_workspace_col_violations")}: {attempt.violations}
               </div>
             </div>
             {attempt.result_available ? (
@@ -352,7 +352,7 @@ function AttemptSelector({
                 {t("action_view")}
               </Button>
             ) : (
-              <span className="text-xs text-ink-600">{t("assessment_attempt_unavailable")}</span>
+              <span className="text-xs text-ink-600">{t("results_workspace_attempt_unavailable")}</span>
             )}
           </div>
         );

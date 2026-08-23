@@ -8,10 +8,10 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// AdminGetExamAssessment returns the participant-centric assessment workspace
+// AdminGetExamResultsWorkspace returns the participant-centric results workspace
 // for an exam (Issue 124). Super-admin only — gated by the RBACMiddleware
-// "assessment:read" capability on the route, not by an in-handler role check.
-func (h *Handler) AdminGetExamAssessment(c echo.Context) error {
+// "results-workspace:read" capability on the route, not by an in-handler role check.
+func (h *Handler) AdminGetExamResultsWorkspace(c echo.Context) error {
 	examID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return badRequest(c, "invalid exam id")
@@ -36,7 +36,7 @@ func (h *Handler) AdminGetExamAssessment(c echo.Context) error {
 		}
 	}
 
-	resp, err := h.svc.AdminGetExamAssessment(c.Request().Context(), examID, c.QueryParam("q"), schoolID, c.QueryParam("cursor"), limit)
+	resp, err := h.svc.AdminGetExamResultsWorkspace(c.Request().Context(), examID, c.QueryParam("q"), schoolID, c.QueryParam("cursor"), limit)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -44,9 +44,9 @@ func (h *Handler) AdminGetExamAssessment(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
-// AdminGetAssessmentAttempts returns the attempt history for a single
-// registration within the assessment workspace drawer (Issue 124).
-func (h *Handler) AdminGetAssessmentAttempts(c echo.Context) error {
+// AdminGetResultsWorkspaceAttempts returns the attempt history for a single
+// registration within the results workspace drawer (Issue 124).
+func (h *Handler) AdminGetResultsWorkspaceAttempts(c echo.Context) error {
 	examID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return badRequest(c, "invalid exam id")
@@ -56,7 +56,7 @@ func (h *Handler) AdminGetAssessmentAttempts(c echo.Context) error {
 		return badRequest(c, "invalid registration id")
 	}
 
-	attempts, err := h.svc.AdminGetAssessmentAttempts(c.Request().Context(), examID, registrationID)
+	attempts, err := h.svc.AdminGetResultsWorkspaceAttempts(c.Request().Context(), examID, registrationID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -64,9 +64,9 @@ func (h *Handler) AdminGetAssessmentAttempts(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"data": attempts})
 }
 
-// AdminGetAssessmentResultDetail returns super-admin-only operational answer
-// detail for a submitted, fully graded assessment attempt.
-func (h *Handler) AdminGetAssessmentResultDetail(c echo.Context) error {
+// AdminGetResultsWorkspaceResultDetail returns super-admin-only operational answer
+// detail for a submitted, fully graded results workspace attempt.
+func (h *Handler) AdminGetResultsWorkspaceResultDetail(c echo.Context) error {
 	examID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return badRequest(c, "invalid exam id")
@@ -76,7 +76,7 @@ func (h *Handler) AdminGetAssessmentResultDetail(c echo.Context) error {
 		return badRequest(c, "invalid session id")
 	}
 
-	detail, err := h.svc.AdminGetAssessmentResultDetail(c.Request().Context(), examID, sessionID)
+	detail, err := h.svc.AdminGetResultsWorkspaceResultDetail(c.Request().Context(), examID, sessionID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
