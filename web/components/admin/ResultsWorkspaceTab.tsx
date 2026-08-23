@@ -155,7 +155,12 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
     {
       key: "score",
       header: t("school_reports_col_score"),
-      cell: (row) => <ScoreCell score={row.score} maxPossibleScore={maxPossibleScore} />,
+      cell: (row) => <ScoreCell score={row.score} />,
+    },
+    {
+      key: "normalized_score",
+      header: t("results_workspace_normalized_score"),
+      cell: (row) => <NormalizedScoreCell score={row.score} maxPossibleScore={maxPossibleScore} />,
     },
     {
       key: "attempts",
@@ -197,15 +202,15 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
           />
           <SummaryCard
             label={t("admin_exam_analytics_average_score")}
-            value={formatScorePercent(summary.average_score, summary.max_possible_score)}
-            caption={`${summary.average_score.toFixed(1)} / ${formatScore(summary.max_possible_score)} ${t("results_workspace_max_score")}`}
+            value={summary.average_score.toFixed(1)}
+            caption={`${t("results_workspace_max_score")}: ${formatScore(summary.max_possible_score)}`}
           />
           <SummaryCard
             label={t("results_workspace_summary_violations")}
             value={summary.violation_events}
             caption={`${summary.violation_attempts} ${t("results_workspace_summary_violation_attempts")}`}
           />
-          <ScoreDistributionCard label={t("admin_exam_analytics_distribution")} distribution={summary.distribution} />
+          <ScoreDistributionCard label={t("results_workspace_normalized_score_distribution")} distribution={summary.distribution} />
         </div>
       )}
 
@@ -308,19 +313,18 @@ function formatScore(score: number): string {
   return Number.isInteger(score) ? String(score) : score.toFixed(1);
 }
 
-function formatScorePercent(score: number | null | undefined, maxPossibleScore: number): string {
+function formatNormalizedScore(score: number | null | undefined, maxPossibleScore: number): string {
   if (score == null || maxPossibleScore <= 0) return "-";
-  return `${((score / maxPossibleScore) * 100).toFixed(1)}%`;
+  return ((score / maxPossibleScore) * 100).toFixed(1);
 }
 
-function ScoreCell({ score, maxPossibleScore }: { score?: number | null; maxPossibleScore: number }) {
+function ScoreCell({ score }: { score?: number | null }) {
   if (score == null) return <span className="text-xs text-ink-600">-</span>;
-  return (
-    <div className="text-xs text-ink-600">
-      <div className="font-semibold text-ink-800">{formatScorePercent(score, maxPossibleScore)}</div>
-      <div className="text-ink-500">{score.toFixed(1)} / {formatScore(maxPossibleScore)}</div>
-    </div>
-  );
+  return <span className="text-xs font-semibold text-ink-800">{score.toFixed(1)}</span>;
+}
+
+function NormalizedScoreCell({ score, maxPossibleScore }: { score?: number | null; maxPossibleScore: number }) {
+  return <span className="text-xs text-ink-600">{formatNormalizedScore(score, maxPossibleScore)}</span>;
 }
 
 function SummaryCard({ label, value, caption }: { label: string; value: string | number; caption?: string }) {
@@ -347,7 +351,7 @@ function ScoreDistributionCard({
       <div className="mt-3 space-y-1.5">
         {distribution.map((bucket) => (
           <div key={bucket.label} className="grid grid-cols-[54px_1fr_20px] items-center gap-2 text-xs text-ink-600">
-            <span>{bucket.label}%</span>
+            <span>{bucket.label}</span>
             <div className="h-2 overflow-hidden rounded-full bg-surface-2">
               <div
                 className="h-full rounded-full bg-primary"
@@ -434,9 +438,9 @@ function ResultDetailPanel({
     <div className="space-y-4">
       <div className="grid grid-cols-4 gap-2 text-center text-xs">
         <MetricCard
-          value={formatScorePercent(detail.score, maxPossibleScore)}
+          value={detail.score.toFixed(1)}
           label={t("school_reports_detail_score")}
-          caption={`${detail.score.toFixed(1)} / ${formatScore(maxPossibleScore)}`}
+          caption={`${t("results_workspace_normalized_score")}: ${formatNormalizedScore(detail.score, maxPossibleScore)}`}
         />
         <MetricCard value={detail.correct_count} label={t("school_reports_detail_correct")} tone="success" />
         <MetricCard value={detail.wrong_count} label={t("school_reports_detail_wrong")} tone="danger" />

@@ -204,10 +204,11 @@ describe("ResultsWorkspaceTab", () => {
 
     renderTab();
     await screen.findByText("Budi Santoso");
-    expect(screen.getAllByText("94.5%").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("69.0 / 73").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Distribusi Skor|Score Distribution/i)).toBeInTheDocument();
-    expect(screen.getByText("81-100%")).toBeInTheDocument();
+    expect(screen.getAllByText("69.0").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("94.5").length).toBeGreaterThan(0);
+    expect(screen.getByText(/Distribusi Skor Normalisasi|Normalized Score Distribution/i)).toBeInTheDocument();
+    expect(screen.getByText("81-100")).toBeInTheDocument();
+    expect(screen.queryByText("81-100%")).not.toBeInTheDocument();
     expect(screen.getByText((content) => content.replace(/\s/g, "") === "50%")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /muat lebih banyak/i }));
@@ -227,8 +228,8 @@ describe("ResultsWorkspaceTab", () => {
 
     await waitFor(() => {
       expect(screen.getByText("8")).toBeInTheDocument();
-      expect(screen.getAllByText("94.5%").length).toBeGreaterThan(1);
-      expect(screen.getAllByText("69.0 / 73").length).toBeGreaterThan(1);
+      expect(screen.getAllByText("69.0").length).toBeGreaterThan(1);
+      expect(screen.getAllByText("94.5").length).toBeGreaterThan(0);
       expect(screen.getByText(/Percobaan 2/)).toBeInTheDocument();
       expect(screen.getByText(/Selesai|Completed/i)).toBeInTheDocument();
       expect(screen.queryByText(/Belum Mulai|Not started/i)).not.toBeInTheDocument();
