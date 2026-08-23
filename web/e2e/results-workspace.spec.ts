@@ -197,6 +197,8 @@ test("super_admin unified Results workspace is ranked and supports large detail 
   await expect(page.getByText("Budi Results")).toBeVisible();
   await expect(page.getByText("50%")).toBeVisible();
   await expect(page.getByText("87.5").first()).toBeVisible();
+  await expect(page.getByText("Distribusi Skor")).toBeVisible();
+  await expect(page.getByText("81-100")).toBeVisible();
 
   await page.getByPlaceholder("Nama atau username siswa").fill("budi");
   await expect

@@ -29,7 +29,13 @@ const summary = {
   completed_participants: 1,
   completion_rate: 0.5,
   average_score: 88.25,
-  distribution: [],
+  distribution: [
+    { label: "0-20", count: 0 },
+    { label: "21-40", count: 0 },
+    { label: "41-60", count: 0 },
+    { label: "61-80", count: 0 },
+    { label: "81-100", count: 1 },
+  ],
   violation_attempts: 1,
   violation_events: 2,
 };
@@ -198,6 +204,8 @@ describe("ResultsWorkspaceTab", () => {
     renderTab();
     await screen.findByText("Budi Santoso");
     expect(screen.getAllByText("88.3").length).toBeGreaterThan(0);
+    expect(screen.getByText(/Distribusi Skor|Score Distribution/i)).toBeInTheDocument();
+    expect(screen.getByText("81-100")).toBeInTheDocument();
     expect(screen.getByText((content) => content.replace(/\s/g, "") === "50%")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /muat lebih banyak/i }));

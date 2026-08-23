@@ -187,7 +187,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
   return (
     <div className="space-y-4">
       {summary && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <SummaryCard label={t("results_workspace_summary_total_registered")} value={summary.total_registered} />
           <SummaryCard
             label={t("results_workspace_summary_completion_rate")}
@@ -200,6 +200,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
             value={summary.violation_events}
             caption={`${summary.violation_attempts} ${t("results_workspace_summary_violation_attempts")}`}
           />
+          <ScoreDistributionCard label={t("admin_exam_analytics_distribution")} distribution={summary.distribution} />
         </div>
       )}
 
@@ -304,6 +305,35 @@ function SummaryCard({ label, value, caption }: { label: string; value: string |
       <div className="text-label text-sm text-ink-600">{label}</div>
       <div className="mt-1 text-2xl font-bold text-ink-950">{value}</div>
       {caption && <div className="text-xs text-ink-600">{caption}</div>}
+    </div>
+  );
+}
+
+function ScoreDistributionCard({
+  label,
+  distribution,
+}: {
+  label: string;
+  distribution: { label: string; count: number }[];
+}) {
+  const maxCount = Math.max(1, ...distribution.map((bucket) => bucket.count));
+  return (
+    <div className="rounded-xl border border-line bg-card p-4 shadow-sm">
+      <div className="text-label text-sm text-ink-600">{label}</div>
+      <div className="mt-3 space-y-1.5">
+        {distribution.map((bucket) => (
+          <div key={bucket.label} className="grid grid-cols-[44px_1fr_20px] items-center gap-2 text-xs text-ink-600">
+            <span>{bucket.label}</span>
+            <div className="h-2 overflow-hidden rounded-full bg-surface-2">
+              <div
+                className="h-full rounded-full bg-primary"
+                style={{ width: `${Math.max(6, (bucket.count / maxCount) * 100)}%` }}
+              />
+            </div>
+            <span className="text-right font-semibold text-ink-900">{bucket.count}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
