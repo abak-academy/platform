@@ -585,26 +585,7 @@ func (s *shimSessionService) ExportSchoolResultsCSV(ctx context.Context, examID 
 		cursor = next
 	}
 
-	var buf bytes.Buffer
-	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"name", "username", "score", "submitted_at"})
-	for _, r := range rows {
-		nis := ""
-		if r.Username != nil {
-			nis = *r.Username
-		}
-		scoreStr := ""
-		if r.Score != nil {
-			scoreStr = fmt.Sprintf("%v", *r.Score)
-		}
-		submittedAt := ""
-		if r.SubmittedAt != nil {
-			submittedAt = r.SubmittedAt.Format(time.RFC3339)
-		}
-		_ = w.Write([]string{r.StudentName, nis, scoreStr, submittedAt})
-	}
-	w.Flush()
-	return buf.Bytes(), nil
+	return BuildSchoolResultsCSV(rows), nil
 }
 
 // ---------- tests: ExportSchoolResultsCSV ----------
@@ -638,7 +619,7 @@ func TestExportSchoolResults_HiddenExam_IncludesAdminResults(t *testing.T) {
 	if len(records) != 2 {
 		t.Fatalf("want header and result, got %d records", len(records))
 	}
-	wantHeader := []string{"name", "username", "score", "submitted_at"}
+	wantHeader := []string{"name", "username", "score", "submitted_at", "violations"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
@@ -676,7 +657,7 @@ func TestExportSchoolResults_FutureRelease_IncludesAdminResults(t *testing.T) {
 	if len(records) != 2 {
 		t.Fatalf("want header and result, got %d records", len(records))
 	}
-	wantHeader := []string{"name", "username", "score", "submitted_at"}
+	wantHeader := []string{"name", "username", "score", "submitted_at", "violations"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
@@ -747,6 +728,9 @@ func TestExportSchoolResults_PaginateThenCompare(t *testing.T) {
 	if len(records) != seedSessions+1 {
 		t.Fatalf("want %d records (header + %d rows), got %d", seedSessions+1, seedSessions, len(records))
 	}
+	if got, want := records[0], []string{"name", "username", "score", "submitted_at", "violations"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("summary header: want %v, got %v", want, got)
+	}
 
 	// Verify each accumulated row has a matching CSV row.
 	for i, row := range accumulated {
@@ -775,6 +759,55 @@ func TestExportSchoolResults_PaginateThenCompare(t *testing.T) {
 		if csvRow[3] != submittedAt {
 			t.Errorf("row %d submitted_at: want %s, got %s", i, submittedAt, csvRow[3])
 		}
+		if csvRow[4] != fmt.Sprintf("%d", row.Violations) {
+			t.Errorf("row %d violations: want %d, got %s", i, row.Violations, csvRow[4])
+		}
+	}
+}
+
+func TestBuildDetailedResultsCSV_ObjectiveCountsAndSparseAnswers(t *testing.T) {
+	correctQ := uuid.New()
+	wrongQ := uuid.New()
+	emptyQ := uuid.New()
+	missingQ := uuid.New()
+	essayQ := uuid.New()
+	questions := []model.QuestionWithOptions{
+		{Question: model.Question{ID: correctQ, Format: "mcq"}},
+		{Question: model.Question{ID: wrongQ, Format: "mcq"}},
+		{Question: model.Question{ID: emptyQ, Format: "mcq"}},
+		{Question: model.Question{ID: missingQ, Format: "mcq"}},
+		{Question: model.Question{ID: essayQ, Format: "essay"}},
+	}
+	trueVal := true
+	falseVal := false
+	zero := 0.0
+	nine := 9.0
+	row := model.AdminExportRow{
+		Rank:        1,
+		StudentName: "Sparse Student",
+		Score:       floatPtr(9),
+		Violations:  4,
+		QuestionRows: []model.AdminExportQuestionRow{
+			{QuestionID: correctQ, StudentAnswer: strPtr("a"), Points: &nine, IsCorrect: &trueVal},
+			{QuestionID: wrongQ, StudentAnswer: strPtr("b"), Points: &zero, IsCorrect: &falseVal},
+			{QuestionID: emptyQ, StudentAnswer: strPtr(""), Points: &zero, IsCorrect: &falseVal},
+			{QuestionID: essayQ, StudentAnswer: strPtr("essay text"), Points: &nine},
+		},
+	}
+
+	records, err := csv.NewReader(bytes.NewReader(BuildDetailedResultsCSV([]model.AdminExportRow{row}, questions))).ReadAll()
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+	if got := records[1][5:8]; got[0] != "1" || got[1] != "1" || got[2] != "2" {
+		t.Fatalf("counts Correct/Wrong/Empty = %v, want [1 1 2]", got)
+	}
+	if records[0][11] != "Violations" || records[1][11] != "4" {
+		t.Fatalf("violations column mismatch: header=%v row=%v", records[0], records[1])
+	}
+	// Q2 is an answered-wrong 0-point cell; Q3 is explicit empty; Q4 is missing.
+	if records[1][15] != "0" || records[1][16] != "" || records[1][18] != "" {
+		t.Fatalf("sparse/wrong cells mismatch: header=%v row=%v", records[0], records[1])
 	}
 }
 

@@ -96,11 +96,21 @@ func (h *Handler) AdminExportResults(c echo.Context) error {
 		return badRequest(c, "invalid exam_id")
 	}
 
-	csvBytes, err := h.svc.ExportSchoolResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
+	var csvBytes []byte
+	if claims.Role == "super_admin" {
+		csvBytes, err = h.svc.ExportDetailedResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
+	} else {
+		csvBytes, err = h.svc.ExportSchoolResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
+	}
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 
-	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="results.csv"`)
+	filename := "results.csv"
+	if claims.Role == "super_admin" {
+		filename = "results-detailed.csv"
+	}
+	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="`+filename+`"`)
+	c.Response().Header().Set("Access-Control-Expose-Headers", echo.HeaderContentDisposition)
 	return c.Blob(http.StatusOK, "text/csv", csvBytes)
 }

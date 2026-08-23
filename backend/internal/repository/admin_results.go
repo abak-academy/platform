@@ -27,10 +27,15 @@ func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, sc
 		filter.Limit = 20
 	}
 
-	query := `SELECT s.id, u.name, u.username, s.score, s.submitted_at, COALESCE(sc.name, u.unlisted_school_name)
+	query := `SELECT s.id, u.name, u.username, s.score, s.submitted_at, COALESCE(sc.name, u.unlisted_school_name), COALESCE(v.cnt, 0)
 		FROM exam_session s
 		JOIN users u ON u.id = s.student_id AND u.role = 'student'
 		LEFT JOIN school sc ON sc.id = u.school_id
+		LEFT JOIN (
+			SELECT session_id, COUNT(*) AS cnt
+			FROM session_violation_log
+			GROUP BY session_id
+		) v ON v.session_id = s.id
 		WHERE s.exam_id = $2 AND s.status = 'submitted' AND ($1::uuid IS NULL OR u.school_id = $1) AND ` + fullyGradedFilter
 	var schoolArg *string
 	if schoolID != "" {
@@ -75,7 +80,7 @@ func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, sc
 	results := []model.AdminResultRow{}
 	for rows.Next() {
 		var row model.AdminResultRow
-		if err := rows.Scan(&row.SessionID, &row.StudentName, &row.Username, &row.Score, &row.SubmittedAt, &row.SchoolName); err != nil {
+		if err := rows.Scan(&row.SessionID, &row.StudentName, &row.Username, &row.Score, &row.SubmittedAt, &row.SchoolName, &row.Violations); err != nil {
 			return nil, "", err
 		}
 		results = append(results, row)
@@ -124,4 +129,122 @@ func (r *Repository) GetSchoolResultSession(ctx context.Context, sessionID uuid.
 		return nil, err
 	}
 	return &s, nil
+}
+
+// ListDetailedExportRows returns export rows with per-question details using
+// latest-scored semantics. Applies school scope, search query, and ranking
+// shared with the Results Workspace (Issue 130).
+func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUID, schoolID, q string) ([]model.AdminExportRow, error) {
+	// Keep export ranking aligned with Results Workspace latest-scored semantics.
+	query := `WITH
+		scored AS (
+			SELECT DISTINCT ON (s.registration_id) s.registration_id, s.id AS session_id,
+				s.attempt_number, s.submitted_at, s.started_at, s.score
+			FROM exam_session s
+			WHERE s.exam_id = $1 AND s.status = 'submitted' AND s.score IS NOT NULL AND ` + resultsWorkspaceFullyGraded + `
+			ORDER BY s.registration_id, s.attempt_number DESC, s.started_at DESC, s.id DESC
+		),
+		joined AS (
+			SELECT reg.id AS registration_id, scored.session_id, u.name AS student_name, u.username,
+				COALESCE(sc.name, u.unlisted_school_name) AS school_name,
+				scored.submitted_at, scored.started_at, scored.score, reg.created_at,
+				COALESCE(v.cnt, 0) AS violations
+			FROM exam_registration reg
+			JOIN users u ON u.id = reg.student_id AND u.role = 'student'
+			LEFT JOIN school sc ON sc.id = u.school_id
+			JOIN scored ON scored.registration_id = reg.id
+			LEFT JOIN (
+				SELECT session_id, COUNT(*) AS cnt
+				FROM session_violation_log
+				GROUP BY session_id
+			) v ON v.session_id = scored.session_id
+			WHERE reg.exam_id = $1
+				AND ($2::text = '' OR u.school_id = $2::uuid)
+		),
+		ranked AS (
+			SELECT joined.*, RANK() OVER (ORDER BY score DESC) AS rnk
+			FROM joined
+		),
+		filtered AS (
+			SELECT * FROM ranked
+			WHERE ($3::text = '' OR student_name ILIKE '%' || $3 || '%' OR username ILIKE '%' || $3 || '%')
+		)
+		SELECT registration_id, session_id, student_name, username, school_name, rnk, score,
+			submitted_at, started_at, violations
+		FROM filtered
+		ORDER BY rnk ASC, score DESC, registration_id ASC`
+
+	rows, err := r.pool.Query(ctx, query, examID, schoolID, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := []model.AdminExportRow{}
+	sessionIDs := []uuid.UUID{}
+	for rows.Next() {
+		var row model.AdminExportRow
+		if err := rows.Scan(&row.RegistrationID, &row.SessionID, &row.StudentName, &row.Username,
+			&row.SchoolName, &row.Rank, &row.Score, &row.SubmittedAt, &row.StartedAt, &row.Violations); err != nil {
+			return nil, err
+		}
+		results = append(results, row)
+		sessionIDs = append(sessionIDs, row.SessionID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+
+	if len(results) == 0 {
+		return results, nil
+	}
+
+	// Fetch per-question answers in bounded session batches after the ranking rows
+	// are closed. This avoids holding one pool connection while waiting for another
+	// per participant during concurrent exports, without building an unbounded
+	// sessions x questions result in one query.
+	answersBySession := make(map[uuid.UUID][]model.AdminExportQuestionRow, len(results))
+	const exportAnswerBatchSize = 100
+	for start := 0; start < len(sessionIDs); start += exportAnswerBatchSize {
+		end := start + exportAnswerBatchSize
+		if end > len(sessionIDs) {
+			end = len(sessionIDs)
+		}
+
+		qrows, err := r.pool.Query(ctx,
+			`SELECT exported.session_id, q.id, q.question_number, q.format, a.answer, a.score, a.is_correct
+			FROM exam_test et
+			JOIN test_question tq ON tq.test_id = et.test_id
+			JOIN question q ON q.id = tq.question_id
+			CROSS JOIN unnest($2::uuid[]) AS exported(session_id)
+			LEFT JOIN exam_session_answer a ON a.question_id = q.id AND a.session_id = exported.session_id
+			WHERE et.exam_id = $1
+			ORDER BY exported.session_id, et.sort_order ASC, tq.sort_order ASC, q.question_number ASC`,
+			examID, sessionIDs[start:end])
+		if err != nil {
+			return nil, err
+		}
+
+		for qrows.Next() {
+			var sessionID uuid.UUID
+			var qa model.AdminExportQuestionRow
+			if err := qrows.Scan(&sessionID, &qa.QuestionID, &qa.QuestionNum, &qa.Format, &qa.StudentAnswer, &qa.Points, &qa.IsCorrect); err != nil {
+				qrows.Close()
+				return nil, err
+			}
+			answersBySession[sessionID] = append(answersBySession[sessionID], qa)
+		}
+		if err := qrows.Err(); err != nil {
+			qrows.Close()
+			return nil, err
+		}
+		qrows.Close()
+	}
+
+	for i := range results {
+		results[i].QuestionRows = answersBySession[results[i].SessionID]
+	}
+
+	return results, nil
 }

@@ -26,6 +26,7 @@ import {
 } from "@/lib/hooks/admin-results";
 import { useSchools } from "@/lib/hooks/students";
 import { useAuthStore } from "@/stores/auth";
+import { toast } from "sonner";
 import type { AdminResultRow, AdminResultDetail } from "@/lib/types";
 
 interface ExamResultsTabProps {
@@ -98,9 +99,9 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
     if (!examId) return;
     setExporting(true);
     try {
-      await exportAdminResults(examId, canScopeAllSchools ? selectedSchoolId : undefined);
-    } catch {
-      // Export errors handled silently — the CSV download is best-effort
+      await exportAdminResults(examId, canScopeAllSchools ? selectedSchoolId : undefined, search || undefined);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("sys_error_load"));
     } finally {
       setExporting(false);
     }

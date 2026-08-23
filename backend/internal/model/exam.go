@@ -505,6 +505,36 @@ type AdminResultRow struct {
 	Username    *string    `json:"username"`
 	Score       *float64   `json:"score"`
 	SubmittedAt *time.Time `json:"submitted_at"`
+	Violations  int        `json:"violations"`
+}
+
+// AdminExportRow is the export-specific row shape: one per registration with
+// latest-scored attempt, including per-question answers and points (Issue 130).
+type AdminExportRow struct {
+	RegistrationID uuid.UUID                `json:"registration_id"`
+	SessionID      uuid.UUID                `json:"session_id"`
+	StudentName    string                   `json:"student_name"`
+	Username       *string                  `json:"username"`
+	SchoolName     *string                  `json:"school_name"`
+	Rank           int                      `json:"rank"`
+	Score          *float64                 `json:"score"`
+	CorrectCount   int                      `json:"correct_count"`
+	WrongCount     int                      `json:"wrong_count"`
+	EmptyCount     int                      `json:"empty_count"`
+	Violations     int                      `json:"violations"`
+	SubmittedAt    *time.Time               `json:"submitted_at"`
+	StartedAt      *time.Time               `json:"started_at"`
+	QuestionRows   []AdminExportQuestionRow `json:"question_rows"`
+}
+
+// AdminExportQuestionRow is one question's answer detail in an export row.
+type AdminExportQuestionRow struct {
+	QuestionID    uuid.UUID `json:"question_id"`
+	QuestionNum   int       `json:"question_num"`
+	Format        string    `json:"format"`
+	StudentAnswer *string   `json:"student_answer"`
+	Points        *float64  `json:"points"`
+	IsCorrect     *bool     `json:"is_correct"`
 }
 
 // AdminResultSession is the detail read shape for a school-scoped session result

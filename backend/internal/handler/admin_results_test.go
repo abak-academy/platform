@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -571,6 +572,18 @@ func seedSubmittedSessionReturningID(t *testing.T, pool *pgxpool.Pool, studentID
 	return sessID
 }
 
+func seedSessionViolation(t *testing.T, pool *pgxpool.Pool, sessionID, studentID uuid.UUID) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO session_violation_log (session_id, student_id, violation_type, occurred_at)
+		 VALUES ($1, $2, 'tab_switch', now())`,
+		sessionID, studentID,
+	)
+	if err != nil {
+		t.Fatalf("insert session violation: %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Token helper for DB-backed env (school-scoped admin_school)
 // ---------------------------------------------------------------------------
@@ -644,6 +657,24 @@ func TestAdminResult_List_ExamNotFound_404(t *testing.T) {
 	token := mintAdminToken(t, env, adminID.String(), schoolID)
 
 	rec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+uuid.NewString(), token)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "exam_not_found" {
+		t.Errorf("code: want exam_not_found, got %v", resp["code"])
+	}
+}
+
+func TestAdminResult_Export_ExamNotFound_404(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	schoolID := seedSchool(t, env.pool)
+	adminID := seedUserWithSchool(t, env.pool, "admin_school", "Export NF Admin", schoolID)
+	token := mintAdminToken(t, env, adminID.String(), schoolID)
+
+	rec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+uuid.NewString(), token)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -742,8 +773,10 @@ func TestAdminResult_Export_CSVContent(t *testing.T) {
 
 	student1 := seedUserWithSchool(t, env.pool, "student", "Student One", schoolID)
 	student2 := seedUserWithSchool(t, env.pool, "student", "Student Two", schoolID)
-	seedSubmittedSession(t, env.pool, student1, examID)
+	session1 := seedSubmittedSessionReturningID(t, env.pool, student1, examID)
 	seedSubmittedSession(t, env.pool, student2, examID)
+	seedSessionViolation(t, env.pool, session1, student1)
+	seedSessionViolation(t, env.pool, session1, student1)
 
 	token := mintAdminToken(t, env, adminID.String(), schoolID)
 	rec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+examID.String(), token)
@@ -770,29 +803,85 @@ func TestAdminResult_Export_CSVContent(t *testing.T) {
 		t.Fatalf("want 3 records (header + 2 data rows), got %d", len(records))
 	}
 
-	wantHeader := []string{"name", "username", "score", "submitted_at"}
+	wantHeader := []string{"name", "username", "score", "submitted_at", "violations"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
 		}
 	}
+	for _, forbidden := range []string{"Q1 Answer", "Q1 Points", "Correct Answer", "Explanation", "Pembahasan"} {
+		for _, h := range records[0] {
+			if strings.Contains(h, forbidden) {
+				t.Fatalf("school/admin export must not leak %q column: %v", forbidden, records[0])
+			}
+		}
+	}
 
 	names := map[string]bool{"Student One": false, "Student Two": false}
 	for _, row := range records[1:] {
-		names[row[0]] = true
+		name := row[0]
+		names[name] = true
 		if row[1] == "" {
-			t.Errorf("row %s: expected non-empty username", row[0])
+			t.Errorf("row %s: expected non-empty username", name)
 		}
 		if row[2] != "80" {
-			t.Errorf("row %s: want score 80, got %s", row[0], row[2])
+			t.Errorf("row %s: want score 80, got %s", name, row[2])
 		}
 		if row[3] == "" {
-			t.Errorf("row %s: expected non-empty submitted_at", row[0])
+			t.Errorf("row %s: expected non-empty submitted_at", name)
+		}
+		if name == "Student One" && row[4] != "2" {
+			t.Errorf("row %s: want violations 2, got %s", name, row[4])
 		}
 	}
 	for name, found := range names {
 		if !found {
 			t.Errorf("CSV missing student: %s", name)
+		}
+	}
+}
+
+func TestAdminResult_Export_SuperAdminGetsDetailedCSV(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	schoolID := seedSchool(t, env.pool)
+	examID := seedExamWithMCQ(t, env.pool)
+	studentID := seedUserWithSchool(t, env.pool, "student", "Detailed Student", schoolID)
+	sessionID := seedSubmittedSessionReturningID(t, env.pool, studentID, examID)
+	seedSessionViolation(t, env.pool, sessionID, studentID)
+	seedSessionViolation(t, env.pool, sessionID, studentID)
+	seedSessionViolation(t, env.pool, sessionID, studentID)
+
+	token := mintSuperAdminToken(t, env, "csv-super-admin")
+	rec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+examID.String()+"&q=Detailed", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="results-detailed.csv"` {
+		t.Fatalf("Content-Disposition: want detailed filename, got %q", cd)
+	}
+
+	records, err := csv.NewReader(bytes.NewReader(rec.Body.Bytes())).ReadAll()
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("want header + 1 row, got %d records", len(records))
+	}
+	wantHeader := []string{"Rank", "Student Name", "Username", "School", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds", "Violations", "Q1 Answer", "Q1 Points"}
+	for i, h := range wantHeader {
+		if records[0][i] != h {
+			t.Fatalf("header[%d]: want %s, got %s; header=%v", i, h, records[0][i], records[0])
+		}
+	}
+	if records[1][1] != "Detailed Student" || records[1][11] != "3" || records[1][len(wantHeader)-2] != "a" || records[1][len(wantHeader)-1] != "1" {
+		t.Fatalf("detailed row mismatch: %v", records[1])
+	}
+	for _, forbidden := range []string{"Correct Answer", "Explanation", "Pembahasan"} {
+		for _, h := range records[0] {
+			if strings.Contains(h, forbidden) {
+				t.Fatalf("detailed export must not leak %q column: %v", forbidden, records[0])
+			}
 		}
 	}
 }

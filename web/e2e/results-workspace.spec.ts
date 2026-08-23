@@ -167,7 +167,15 @@ async function mockBackend(page: Page) {
       });
     }
     if (method === "GET" && path === "/api/v1/admin/results/export") {
-      return route.fulfill({ status: 200, contentType: "text/csv", body: "student,score\nBudi,87.5\n" });
+      return route.fulfill({
+        status: 200,
+        contentType: "text/csv",
+        headers: {
+          "content-disposition": "attachment; filename=\"results-detailed.csv\"",
+          "access-control-expose-headers": "Content-Disposition",
+        },
+        body: "Rank,Student Name,Username,School,Score,Correct,Wrong,Empty,Started At,Submitted At,Duration Seconds,Violations,Q1 Answer,Q1 Points\n1,Budi Results,budi.results,SMA E2E,87.5,1,0,0,2026-08-01T09:00:00Z,2026-08-01T10:00:00Z,3600,2,B,87.5\n",
+      });
     }
     if (method === "GET" && path === "/api/v1/admin/exams/exam-1/registrations") {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) });
@@ -179,8 +187,10 @@ async function mockBackend(page: Page) {
 
 test("super_admin unified Results workspace is ranked and supports large detail modal", async ({ page, context }) => {
   const resultsWorkspaceRequests: string[] = [];
+  const exportRequests: string[] = [];
   page.on("request", (req) => {
     if (req.url().includes("/results-workspace")) resultsWorkspaceRequests.push(req.url());
+    if (req.url().includes("/admin/results/export")) exportRequests.push(req.url());
   });
   await seedSession(context, {
     token: "e2e-fake-token",
@@ -206,6 +216,12 @@ test("super_admin unified Results workspace is ranked and supports large detail 
   await expect
     .poll(() => resultsWorkspaceRequests.some((url) => url.includes("q=budi")))
     .toBe(true);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Ekspor CSV" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("results-detailed.csv");
+  expect(exportRequests.some((url) => url.includes("exam_id=exam-1") && url.includes("q=budi"))).toBe(true);
 
   await page.getByRole("button", { name: "Lihat" }).first().click();
   await expect(page.getByRole("heading", { name: "Detail Hasil" })).toBeVisible();
