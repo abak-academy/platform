@@ -1257,6 +1257,7 @@ export const DICT = {
     admin_exam_detail_tab_results: "Hasil",
     admin_exam_detail_tab_grading: "Penilaian",
     admin_exam_detail_tab_leaderboard: "Leaderboard",
+    admin_exam_detail_tab_results_workspace: "Hasil",
     admin_exam_detail_edit: "Edit",
     admin_exam_detail_draft_notice:
       "Ujian ini berstatus draft: tidak terlihat oleh siswa dan dapat diubah bebas. Publikasikan ujian untuk membuatnya terlihat oleh siswa — itu satu-satunya hal yang mengubah status ini.",
@@ -1357,6 +1358,26 @@ export const DICT = {
     admin_exam_analytics_average_score: "Rata-rata Skor",
     admin_exam_analytics_completion_rate: "Tingkat Penyelesaian",
     admin_exam_analytics_distribution: "Distribusi Skor",
+
+    // Results workspace (Issue 124, super_admin only)
+    results_workspace_col_status: "Status",
+    results_workspace_col_attempts: "Percobaan",
+    results_workspace_col_violations: "Pelanggaran",
+    results_workspace_status_not_started: "Belum Mulai",
+    results_workspace_status_in_progress: "Sedang Berlangsung",
+    results_workspace_status_completed: "Selesai",
+    results_workspace_summary_total_registered: "Total Terdaftar",
+    results_workspace_summary_completion_rate: "Tingkat Penyelesaian",
+    results_workspace_summary_violations: "Total Pelanggaran",
+    results_workspace_summary_violation_attempts: "percobaan terdampak",
+    results_workspace_search_label: "Cari",
+    results_workspace_search_placeholder: "Nama atau username siswa",
+    results_workspace_empty: "Belum ada hasil",
+    results_workspace_drawer_title: "Detail Peserta",
+    results_workspace_no_attempts: "Belum ada percobaan",
+    results_workspace_attempt_number: "Percobaan",
+    results_workspace_latest_badge: "Terbaru",
+    results_workspace_attempt_unavailable: "Belum tersedia",
 
     // Exam session — check-in
     exam_checkin_title: "Check-in Ujian",
@@ -2843,6 +2864,7 @@ export const DICT = {
     admin_exam_detail_tab_results: "Results",
     admin_exam_detail_tab_grading: "Grading",
     admin_exam_detail_tab_leaderboard: "Leaderboard",
+    admin_exam_detail_tab_results_workspace: "Results",
     admin_exam_detail_edit: "Edit",
     admin_exam_detail_draft_notice:
       "This exam is in draft status: invisible to students and freely editable. Publishing the exam is what makes it visible to students — the only thing that changes this.",
@@ -2943,6 +2965,26 @@ export const DICT = {
     admin_exam_analytics_average_score: "Average Score",
     admin_exam_analytics_completion_rate: "Completion Rate",
     admin_exam_analytics_distribution: "Score Distribution",
+
+    // Results workspace (Issue 124, super_admin only)
+    results_workspace_col_status: "Status",
+    results_workspace_col_attempts: "Attempts",
+    results_workspace_col_violations: "Violations",
+    results_workspace_status_not_started: "Not Started",
+    results_workspace_status_in_progress: "In Progress",
+    results_workspace_status_completed: "Completed",
+    results_workspace_summary_total_registered: "Total Registered",
+    results_workspace_summary_completion_rate: "Completion Rate",
+    results_workspace_summary_violations: "Total Violations",
+    results_workspace_summary_violation_attempts: "attempts affected",
+    results_workspace_search_label: "Search",
+    results_workspace_search_placeholder: "Student name or username",
+    results_workspace_empty: "No results yet",
+    results_workspace_drawer_title: "Participant Detail",
+    results_workspace_no_attempts: "No attempts yet",
+    results_workspace_attempt_number: "Attempt",
+    results_workspace_latest_badge: "Latest",
+    results_workspace_attempt_unavailable: "Not available",
 
     // Exam session — check-in
     exam_checkin_title: "Exam Check-in",

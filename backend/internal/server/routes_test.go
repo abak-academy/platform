@@ -23,8 +23,8 @@ func TestRegisterRoutes_BulkExamOrderRoutesRegistered(t *testing.T) {
 	RegisterRoutesForTest(e, h, svc, signer)
 
 	want := map[string]string{
-		http.MethodGet:    "/api/v1/admin/bulk-exam-orders/exams",
-		http.MethodPost:   "/api/v1/admin/bulk-exam-orders",
+		http.MethodGet:  "/api/v1/admin/bulk-exam-orders/exams",
+		http.MethodPost: "/api/v1/admin/bulk-exam-orders",
 	}
 	optionalWant := []string{
 		"/api/v1/admin/bulk-exam-orders/preview",
@@ -102,5 +102,31 @@ func TestRegisterRoutes_ExamGrantBulkRoutesRegistered(t *testing.T) {
 	}
 	if !gotPaths["/api/v1/admin/exam-grants/bulk"] {
 		t.Errorf("route POST /api/v1/admin/exam-grants/bulk not registered")
+	}
+}
+
+func TestRegisterRoutes_ResultsWorkspaceRoutesRegistered(t *testing.T) {
+	signer, svc, _ := newTestDeps(t)
+	e := echo.New()
+	e.HideBanner = true
+	h := handler.New(svc)
+
+	RegisterRoutesForTest(e, h, svc, signer)
+
+	want := []string{
+		"/api/v1/admin/exams/:id/results-workspace",
+		"/api/v1/admin/exams/:id/results-workspace/:registration_id/attempts",
+		"/api/v1/admin/exams/:id/results-workspace/sessions/:session_id",
+	}
+	registered := map[string]bool{}
+	for _, r := range e.Routes() {
+		if r.Method == http.MethodGet {
+			registered[r.Path] = true
+		}
+	}
+	for _, path := range want {
+		if !registered[path] {
+			t.Errorf("route GET %s not registered", path)
+		}
 	}
 }
