@@ -184,29 +184,40 @@ func TestListExams_OrdersByCreatedAtNewestFirst_WithCursor(t *testing.T) {
 	r := New(pool)
 
 	prefix := "Created Sort " + uuid.NewString()[:8]
-	olderExam, _ := linkedExamProduct(t, r, prefix+" Older", nil, nil)
-	newerExam, _ := linkedExamProduct(t, r, prefix+" Newer", nil, nil)
+	olderExam := uuid.New()
+	newerLowID := olderExam
+	newerHighID := olderExam
+	olderExam[15] = 1
+	newerLowID[15] = 2
+	newerHighID[15] = 3
 
 	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Microsecond)
-	if _, err := pool.Exec(ctx, `UPDATE exam SET created_at = $1 WHERE id = $2`, base, olderExam); err != nil {
-		t.Fatalf("set older created_at: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE exam SET created_at = $1 WHERE id = $2`, base.Add(time.Hour), newerExam); err != nil {
-		t.Fatalf("set newer created_at: %v", err)
+	for _, row := range []struct {
+		id        uuid.UUID
+		title     string
+		createdAt time.Time
+	}{
+		{olderExam, prefix + " Older", base},
+		{newerLowID, prefix + " Newer A", base.Add(time.Hour)},
+		{newerHighID, prefix + " Newer B", base.Add(time.Hour)},
+	} {
+		if _, err := pool.Exec(ctx, `INSERT INTO exam (id, title, result_config, created_at) VALUES ($1, $2, 'hidden', $3)`, row.id, row.title, row.createdAt); err != nil {
+			t.Fatalf("insert exam %s: %v", row.title, err)
+		}
 	}
 
-	page1, cursor, err := r.ListExams(ctx, ExamFilter{Q: prefix, Limit: 1})
+	page1, cursor, err := r.ListExams(ctx, ExamFilter{Q: prefix, Limit: 2})
 	if err != nil {
 		t.Fatalf("list page 1: %v", err)
 	}
-	if len(page1) != 1 || page1[0].ID != newerExam {
-		t.Fatalf("page 1 should return newest exam first, got %+v want %s", page1, newerExam)
+	if len(page1) != 2 || page1[0].ID != newerLowID || page1[1].ID != newerHighID {
+		t.Fatalf("page 1 should return newest exams first, tie-broken by id ASC; got %+v", page1)
 	}
 	if cursor == "" {
 		t.Fatal("page 1 should return a cursor")
 	}
 
-	page2, next, err := r.ListExams(ctx, ExamFilter{Q: prefix, Limit: 1, Cursor: cursor})
+	page2, next, err := r.ListExams(ctx, ExamFilter{Q: prefix, Limit: 2, Cursor: cursor})
 	if err != nil {
 		t.Fatalf("list page 2: %v", err)
 	}

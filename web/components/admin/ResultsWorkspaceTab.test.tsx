@@ -227,6 +227,8 @@ describe("ResultsWorkspaceTab", () => {
 
     await waitFor(() => {
       expect(screen.getByText("8")).toBeInTheDocument();
+      expect(screen.getAllByText("94.5%").length).toBeGreaterThan(1);
+      expect(screen.getAllByText("69.0 / 73").length).toBeGreaterThan(1);
       expect(screen.getByText(/Percobaan 2/)).toBeInTheDocument();
       expect(screen.getByText(/Selesai|Completed/i)).toBeInTheDocument();
       expect(screen.queryByText(/Belum Mulai|Not started/i)).not.toBeInTheDocument();

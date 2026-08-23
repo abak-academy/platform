@@ -291,7 +291,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
                 {detail.isLoading ? (
                   <div className="py-8 text-center text-ink-500">{t("sys_loading_data")}</div>
                 ) : detail.data ? (
-                  <ResultDetailPanel detail={detail.data} t={t} dateLocale={dateLocale} />
+                  <ResultDetailPanel detail={detail.data} maxPossibleScore={maxPossibleScore} t={t} dateLocale={dateLocale} />
                 ) : selectedSessionId ? (
                   <div className="py-8 text-center text-ink-500">{t("sys_error_load")}</div>
                 ) : null}
@@ -418,10 +418,12 @@ function AttemptSelector({
 
 function ResultDetailPanel({
   detail,
+  maxPossibleScore,
   t,
   dateLocale,
 }: {
   detail: AdminResultDetail;
+  maxPossibleScore: number;
   t: ReturnType<typeof useTranslation>["t"];
   dateLocale: string;
 }) {
@@ -431,7 +433,11 @@ function ResultDetailPanel({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-4 gap-2 text-center text-xs">
-        <MetricCard value={detail.score} label={t("school_reports_detail_score")} />
+        <MetricCard
+          value={formatScorePercent(detail.score, maxPossibleScore)}
+          label={t("school_reports_detail_score")}
+          caption={`${detail.score.toFixed(1)} / ${formatScore(maxPossibleScore)}`}
+        />
         <MetricCard value={detail.correct_count} label={t("school_reports_detail_correct")} tone="success" />
         <MetricCard value={detail.wrong_count} label={t("school_reports_detail_wrong")} tone="danger" />
         <MetricCard value={detail.empty_count} label={t("school_reports_detail_empty")} />
@@ -528,13 +534,14 @@ function QuestionReviewCard({
     </div>
   );
 }
-function MetricCard({ value, label, tone }: { value: number; label: string; tone?: "success" | "danger" }) {
+function MetricCard({ value, label, tone, caption }: { value: number | string; label: string; tone?: "success" | "danger"; caption?: string }) {
   const bg = tone === "success" ? "bg-success-bg" : tone === "danger" ? "bg-danger-bg" : "bg-surface-2";
   const color = tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-ink-900";
   return (
     <div className={`rounded-lg ${bg} p-2`}>
       <div className={`text-lg font-bold ${color}`}>{value}</div>
       <div className="text-ink-600">{label}</div>
+      {caption && <div className="text-[11px] text-ink-500">{caption}</div>}
     </div>
   );
 }
