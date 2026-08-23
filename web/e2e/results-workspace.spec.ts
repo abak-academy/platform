@@ -37,6 +37,7 @@ const ASSESSMENT_PAGE_1 = {
     completed_participants: 1,
     completion_rate: 0.5,
     average_score: 87.5,
+    max_possible_score: 100,
     distribution: [
       { label: "0-20", count: 0 },
       { label: "21-40", count: 0 },
@@ -196,9 +197,10 @@ test("super_admin unified Results workspace is ranked and supports large detail 
   await page.getByRole("button", { name: "Hasil" }).click();
   await expect(page.getByText("Budi Results")).toBeVisible();
   await expect(page.getByText("50%")).toBeVisible();
-  await expect(page.getByText("87.5").first()).toBeVisible();
+  await expect(page.getByText("87.5%").first()).toBeVisible();
+  await expect(page.getByText("87.5 / 100").first()).toBeVisible();
   await expect(page.getByText("Distribusi Skor")).toBeVisible();
-  await expect(page.getByText("81-100")).toBeVisible();
+  await expect(page.getByText("81-100%")).toBeVisible();
 
   await page.getByPlaceholder("Nama atau username siswa").fill("budi");
   await expect

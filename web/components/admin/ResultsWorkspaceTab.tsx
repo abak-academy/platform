@@ -108,6 +108,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
   const attempts = useResultsWorkspaceAttempts(examId, selectedRegistrationId);
   const detail = useResultsWorkspaceDetail(examId, selectedSessionId);
   const summary = query.data?.summary ?? stableSummary;
+  const maxPossibleScore = summary?.max_possible_score ?? 0;
 
   useEffect(() => {
     if (!selectedRow) {
@@ -154,7 +155,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
     {
       key: "score",
       header: t("school_reports_col_score"),
-      cell: (row) => <span className="text-xs text-ink-600">{row.score == null ? "-" : row.score.toFixed(1)}</span>,
+      cell: (row) => <ScoreCell score={row.score} maxPossibleScore={maxPossibleScore} />,
     },
     {
       key: "attempts",
@@ -194,7 +195,11 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
             value={`${Math.round(summary.completion_rate * 100)}%`}
             caption={`${summary.completed_participants}/${summary.total_registered}`}
           />
-          <SummaryCard label={t("admin_exam_analytics_average_score")} value={summary.average_score.toFixed(1)} />
+          <SummaryCard
+            label={t("admin_exam_analytics_average_score")}
+            value={formatScorePercent(summary.average_score, summary.max_possible_score)}
+            caption={`${summary.average_score.toFixed(1)} / ${formatScore(summary.max_possible_score)} ${t("results_workspace_max_score")}`}
+          />
           <SummaryCard
             label={t("results_workspace_summary_violations")}
             value={summary.violation_events}
@@ -299,6 +304,25 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
   );
 }
 
+function formatScore(score: number): string {
+  return Number.isInteger(score) ? String(score) : score.toFixed(1);
+}
+
+function formatScorePercent(score: number | null | undefined, maxPossibleScore: number): string {
+  if (score == null || maxPossibleScore <= 0) return "-";
+  return `${((score / maxPossibleScore) * 100).toFixed(1)}%`;
+}
+
+function ScoreCell({ score, maxPossibleScore }: { score?: number | null; maxPossibleScore: number }) {
+  if (score == null) return <span className="text-xs text-ink-600">-</span>;
+  return (
+    <div className="text-xs text-ink-600">
+      <div className="font-semibold text-ink-800">{formatScorePercent(score, maxPossibleScore)}</div>
+      <div className="text-ink-500">{score.toFixed(1)} / {formatScore(maxPossibleScore)}</div>
+    </div>
+  );
+}
+
 function SummaryCard({ label, value, caption }: { label: string; value: string | number; caption?: string }) {
   return (
     <div className="rounded-xl border border-line bg-card p-4 shadow-sm">
@@ -322,8 +346,8 @@ function ScoreDistributionCard({
       <div className="text-label text-sm text-ink-600">{label}</div>
       <div className="mt-3 space-y-1.5">
         {distribution.map((bucket) => (
-          <div key={bucket.label} className="grid grid-cols-[44px_1fr_20px] items-center gap-2 text-xs text-ink-600">
-            <span>{bucket.label}</span>
+          <div key={bucket.label} className="grid grid-cols-[54px_1fr_20px] items-center gap-2 text-xs text-ink-600">
+            <span>{bucket.label}%</span>
             <div className="h-2 overflow-hidden rounded-full bg-surface-2">
               <div
                 className="h-full rounded-full bg-primary"

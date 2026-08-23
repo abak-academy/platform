@@ -1290,9 +1290,18 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 		filter.Limit = 20
 	}
 	var cursorID uuid.UUID
+	var cursorCreatedAt time.Time
 	if filter.Cursor != "" {
+		createdAtRaw, idRaw, ok := strings.Cut(filter.Cursor, ",")
+		if !ok {
+			return nil, "", ErrInvalidCursor
+		}
 		var err error
-		cursorID, err = uuid.Parse(filter.Cursor)
+		cursorCreatedAt, err = time.Parse(time.RFC3339Nano, createdAtRaw)
+		if err != nil {
+			return nil, "", ErrInvalidCursor
+		}
+		cursorID, err = uuid.Parse(idRaw)
 		if err != nil {
 			return nil, "", ErrInvalidCursor
 		}
@@ -1334,12 +1343,12 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 		argIdx++
 	}
 	if filter.Cursor != "" {
-		query += fmt.Sprintf(` AND e.id > $%d`, argIdx)
-		args = append(args, cursorID)
-		argIdx++
+		query += fmt.Sprintf(` AND (e.created_at < $%d OR (e.created_at = $%d AND e.id > $%d))`, argIdx, argIdx, argIdx+1)
+		args = append(args, cursorCreatedAt, cursorID)
+		argIdx += 2
 	}
 
-	query += ` ORDER BY e.id LIMIT $` + fmt.Sprintf("%d", argIdx)
+	query += ` ORDER BY e.created_at DESC, e.id ASC LIMIT $` + fmt.Sprintf("%d", argIdx)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -1363,7 +1372,8 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	var nextCursor string
 	if len(items) > filter.Limit {
 		items = items[:filter.Limit]
-		nextCursor = items[len(items)-1].ID.String()
+		last := items[len(items)-1]
+		nextCursor = last.CreatedAt.Format(time.RFC3339Nano) + "," + last.ID.String()
 	}
 
 	return items, nextCursor, nil

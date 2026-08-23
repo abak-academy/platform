@@ -34,7 +34,7 @@ func TestListProducts_AvailabilityWindow(t *testing.T) {
 		}
 	}
 	mk("always", nil, nil)
-	mk("future", &tomorrow, nil)  // not yet available
+	mk("future", &tomorrow, nil)   // not yet available
 	mk("expired", nil, &yesterday) // window has passed
 
 	names := func(f ProductFilter) map[string]bool {
@@ -175,5 +175,45 @@ func TestListExams_HasPublishedProduct_RespectsAvailabilityWindow(t *testing.T) 
 	}
 	if flags[expiredExam] {
 		t.Error("an exam whose product has expired must not report has_published_product")
+	}
+}
+
+func TestListExams_OrdersByCreatedAtNewestFirst_WithCursor(t *testing.T) {
+	ctx := context.Background()
+	pool := newGradingTestPool(t)
+	r := New(pool)
+
+	prefix := "Created Sort " + uuid.NewString()[:8]
+	olderExam, _ := linkedExamProduct(t, r, prefix+" Older", nil, nil)
+	newerExam, _ := linkedExamProduct(t, r, prefix+" Newer", nil, nil)
+
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Microsecond)
+	if _, err := pool.Exec(ctx, `UPDATE exam SET created_at = $1 WHERE id = $2`, base, olderExam); err != nil {
+		t.Fatalf("set older created_at: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE exam SET created_at = $1 WHERE id = $2`, base.Add(time.Hour), newerExam); err != nil {
+		t.Fatalf("set newer created_at: %v", err)
+	}
+
+	page1, cursor, err := r.ListExams(ctx, ExamFilter{Q: prefix, Limit: 1})
+	if err != nil {
+		t.Fatalf("list page 1: %v", err)
+	}
+	if len(page1) != 1 || page1[0].ID != newerExam {
+		t.Fatalf("page 1 should return newest exam first, got %+v want %s", page1, newerExam)
+	}
+	if cursor == "" {
+		t.Fatal("page 1 should return a cursor")
+	}
+
+	page2, next, err := r.ListExams(ctx, ExamFilter{Q: prefix, Limit: 1, Cursor: cursor})
+	if err != nil {
+		t.Fatalf("list page 2: %v", err)
+	}
+	if len(page2) != 1 || page2[0].ID != olderExam {
+		t.Fatalf("page 2 should return older exam after cursor, got %+v want %s", page2, olderExam)
+	}
+	if next != "" {
+		t.Fatalf("page 2 should be the last page, got cursor %q", next)
 	}
 }
