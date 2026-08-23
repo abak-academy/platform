@@ -505,6 +505,7 @@ type AdminResultRow struct {
 	Username    *string    `json:"username"`
 	Score       *float64   `json:"score"`
 	SubmittedAt *time.Time `json:"submitted_at"`
+	Violations  int        `json:"violations"`
 }
 
 // AdminExportRow is the export-specific row shape: one per registration with
@@ -520,6 +521,7 @@ type AdminExportRow struct {
 	CorrectCount   int                      `json:"correct_count"`
 	WrongCount     int                      `json:"wrong_count"`
 	EmptyCount     int                      `json:"empty_count"`
+	Violations     int                      `json:"violations"`
 	SubmittedAt    *time.Time               `json:"submitted_at"`
 	StartedAt      *time.Time               `json:"started_at"`
 	QuestionRows   []AdminExportQuestionRow `json:"question_rows"`

@@ -174,7 +174,7 @@ async function mockBackend(page: Page) {
           "content-disposition": "attachment; filename=\"results-detailed.csv\"",
           "access-control-expose-headers": "Content-Disposition",
         },
-        body: "Rank,Student Name,Username,School,Score,Correct,Wrong,Empty,Started At,Submitted At,Duration Seconds,Q1 Answer,Q1 Points\n1,Budi Results,budi.results,SMA E2E,87.5,1,0,0,2026-08-01T09:00:00Z,2026-08-01T10:00:00Z,3600,B,87.5\n",
+        body: "Rank,Student Name,Username,School,Score,Correct,Wrong,Empty,Started At,Submitted At,Duration Seconds,Violations,Q1 Answer,Q1 Points\n1,Budi Results,budi.results,SMA E2E,87.5,1,0,0,2026-08-01T09:00:00Z,2026-08-01T10:00:00Z,3600,2,B,87.5\n",
       });
     }
     if (method === "GET" && path === "/api/v1/admin/exams/exam-1/registrations") {

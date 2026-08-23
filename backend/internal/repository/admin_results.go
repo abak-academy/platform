@@ -27,10 +27,15 @@ func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, sc
 		filter.Limit = 20
 	}
 
-	query := `SELECT s.id, u.name, u.username, s.score, s.submitted_at, COALESCE(sc.name, u.unlisted_school_name)
+	query := `SELECT s.id, u.name, u.username, s.score, s.submitted_at, COALESCE(sc.name, u.unlisted_school_name), COALESCE(v.cnt, 0)
 		FROM exam_session s
 		JOIN users u ON u.id = s.student_id AND u.role = 'student'
 		LEFT JOIN school sc ON sc.id = u.school_id
+		LEFT JOIN (
+			SELECT session_id, COUNT(*) AS cnt
+			FROM session_violation_log
+			GROUP BY session_id
+		) v ON v.session_id = s.id
 		WHERE s.exam_id = $2 AND s.status = 'submitted' AND ($1::uuid IS NULL OR u.school_id = $1) AND ` + fullyGradedFilter
 	var schoolArg *string
 	if schoolID != "" {
@@ -75,7 +80,7 @@ func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, sc
 	results := []model.AdminResultRow{}
 	for rows.Next() {
 		var row model.AdminResultRow
-		if err := rows.Scan(&row.SessionID, &row.StudentName, &row.Username, &row.Score, &row.SubmittedAt, &row.SchoolName); err != nil {
+		if err := rows.Scan(&row.SessionID, &row.StudentName, &row.Username, &row.Score, &row.SubmittedAt, &row.SchoolName, &row.Violations); err != nil {
 			return nil, "", err
 		}
 		results = append(results, row)
@@ -142,11 +147,17 @@ func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUI
 		joined AS (
 			SELECT reg.id AS registration_id, scored.session_id, u.name AS student_name, u.username,
 				COALESCE(sc.name, u.unlisted_school_name) AS school_name,
-				scored.submitted_at, scored.started_at, scored.score, reg.created_at
+				scored.submitted_at, scored.started_at, scored.score, reg.created_at,
+				COALESCE(v.cnt, 0) AS violations
 			FROM exam_registration reg
 			JOIN users u ON u.id = reg.student_id AND u.role = 'student'
 			LEFT JOIN school sc ON sc.id = u.school_id
 			JOIN scored ON scored.registration_id = reg.id
+			LEFT JOIN (
+				SELECT session_id, COUNT(*) AS cnt
+				FROM session_violation_log
+				GROUP BY session_id
+			) v ON v.session_id = scored.session_id
 			WHERE reg.exam_id = $1
 				AND ($2::text = '' OR u.school_id = $2::uuid)
 		),
@@ -159,7 +170,7 @@ func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUI
 			WHERE ($3::text = '' OR student_name ILIKE '%' || $3 || '%' OR username ILIKE '%' || $3 || '%')
 		)
 		SELECT registration_id, session_id, student_name, username, school_name, rnk, score,
-			submitted_at, started_at
+			submitted_at, started_at, violations
 		FROM filtered
 		ORDER BY rnk ASC, score DESC, registration_id ASC`
 
@@ -174,7 +185,7 @@ func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUI
 	for rows.Next() {
 		var row model.AdminExportRow
 		if err := rows.Scan(&row.RegistrationID, &row.SessionID, &row.StudentName, &row.Username,
-			&row.SchoolName, &row.Rank, &row.Score, &row.SubmittedAt, &row.StartedAt); err != nil {
+			&row.SchoolName, &row.Rank, &row.Score, &row.SubmittedAt, &row.StartedAt, &row.Violations); err != nil {
 			return nil, err
 		}
 		results = append(results, row)

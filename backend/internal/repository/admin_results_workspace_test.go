@@ -170,7 +170,7 @@ func TestResultsWorkspaceRepository_DBBackedSemantics(t *testing.T) {
 	if len(exportRows) != 1 {
 		t.Fatalf("detailed export q-filter rows = %d, want 1: %+v", len(exportRows), exportRows)
 	}
-	if exportRows[0].SessionID != budiLatest || exportRows[0].Rank != 2 || exportRows[0].Score == nil || *exportRows[0].Score != 90 {
+	if exportRows[0].SessionID != budiLatest || exportRows[0].Rank != 2 || exportRows[0].Score == nil || *exportRows[0].Score != 90 || exportRows[0].Violations != 2 {
 		t.Fatalf("detailed export should use latest scored workspace semantics, got %+v", exportRows[0])
 	}
 	if len(exportRows[0].QuestionRows) != 1 || exportRows[0].QuestionRows[0].QuestionID != essayQID || exportRows[0].QuestionRows[0].StudentAnswer == nil || *exportRows[0].QuestionRows[0].StudentAnswer != answer || exportRows[0].QuestionRows[0].Points == nil || *exportRows[0].QuestionRows[0].Points != 90 {

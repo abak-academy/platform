@@ -187,7 +187,7 @@ func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, 
 func BuildSchoolResultsCSV(rows []model.AdminResultRow) []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"name", "username", "score", "submitted_at"})
+	_ = w.Write([]string{"name", "username", "score", "submitted_at", "violations"})
 	for _, r := range rows {
 		username := ""
 		if r.Username != nil {
@@ -203,7 +203,7 @@ func BuildSchoolResultsCSV(rows []model.AdminResultRow) []byte {
 		}
 		// score and submitted_at are machine-formatted, never attacker-supplied;
 		// sanitising them would turn a negative score into text.
-		_ = w.Write([]string{csvSafeField(r.StudentName), csvSafeField(username), scoreStr, submittedAt})
+		_ = w.Write([]string{csvSafeField(r.StudentName), csvSafeField(username), scoreStr, submittedAt, fmt.Sprintf("%d", r.Violations)})
 	}
 	w.Flush()
 	return buf.Bytes()
@@ -247,7 +247,7 @@ func BuildDetailedResultsCSV(rows []model.AdminExportRow, questions []model.Ques
 	w := csv.NewWriter(&buf)
 
 	// Header: summary columns + per-question (Answer, Points).
-	header := []string{"Rank", "Student Name", "Username", "School", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds"}
+	header := []string{"Rank", "Student Name", "Username", "School", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds", "Violations"}
 	for i := range questions {
 		qNum := fmt.Sprintf("Q%d", i+1)
 		header = append(header, qNum+" Answer", qNum+" Points")
@@ -304,6 +304,7 @@ func BuildDetailedResultsCSV(rows []model.AdminExportRow, questions []model.Ques
 			startedAt,
 			submittedAt,
 			durationSeconds,
+			fmt.Sprintf("%d", r.Violations),
 		}
 
 		// Per-question columns: answer + points (no is_correct, no correct_answer).

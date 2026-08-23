@@ -572,6 +572,18 @@ func seedSubmittedSessionReturningID(t *testing.T, pool *pgxpool.Pool, studentID
 	return sessID
 }
 
+func seedSessionViolation(t *testing.T, pool *pgxpool.Pool, sessionID, studentID uuid.UUID) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO session_violation_log (session_id, student_id, violation_type, occurred_at)
+		 VALUES ($1, $2, 'tab_switch', now())`,
+		sessionID, studentID,
+	)
+	if err != nil {
+		t.Fatalf("insert session violation: %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Token helper for DB-backed env (school-scoped admin_school)
 // ---------------------------------------------------------------------------
@@ -761,8 +773,10 @@ func TestAdminResult_Export_CSVContent(t *testing.T) {
 
 	student1 := seedUserWithSchool(t, env.pool, "student", "Student One", schoolID)
 	student2 := seedUserWithSchool(t, env.pool, "student", "Student Two", schoolID)
-	seedSubmittedSession(t, env.pool, student1, examID)
+	session1 := seedSubmittedSessionReturningID(t, env.pool, student1, examID)
 	seedSubmittedSession(t, env.pool, student2, examID)
+	seedSessionViolation(t, env.pool, session1, student1)
+	seedSessionViolation(t, env.pool, session1, student1)
 
 	token := mintAdminToken(t, env, adminID.String(), schoolID)
 	rec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+examID.String(), token)
@@ -789,7 +803,7 @@ func TestAdminResult_Export_CSVContent(t *testing.T) {
 		t.Fatalf("want 3 records (header + 2 data rows), got %d", len(records))
 	}
 
-	wantHeader := []string{"name", "username", "score", "submitted_at"}
+	wantHeader := []string{"name", "username", "score", "submitted_at", "violations"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
@@ -816,6 +830,9 @@ func TestAdminResult_Export_CSVContent(t *testing.T) {
 		if row[3] == "" {
 			t.Errorf("row %s: expected non-empty submitted_at", name)
 		}
+		if name == "Student One" && row[4] != "2" {
+			t.Errorf("row %s: want violations 2, got %s", name, row[4])
+		}
 	}
 	for name, found := range names {
 		if !found {
@@ -830,7 +847,10 @@ func TestAdminResult_Export_SuperAdminGetsDetailedCSV(t *testing.T) {
 	schoolID := seedSchool(t, env.pool)
 	examID := seedExamWithMCQ(t, env.pool)
 	studentID := seedUserWithSchool(t, env.pool, "student", "Detailed Student", schoolID)
-	seedSubmittedSession(t, env.pool, studentID, examID)
+	sessionID := seedSubmittedSessionReturningID(t, env.pool, studentID, examID)
+	seedSessionViolation(t, env.pool, sessionID, studentID)
+	seedSessionViolation(t, env.pool, sessionID, studentID)
+	seedSessionViolation(t, env.pool, sessionID, studentID)
 
 	token := mintSuperAdminToken(t, env, "csv-super-admin")
 	rec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+examID.String()+"&q=Detailed", token)
@@ -848,13 +868,13 @@ func TestAdminResult_Export_SuperAdminGetsDetailedCSV(t *testing.T) {
 	if len(records) != 2 {
 		t.Fatalf("want header + 1 row, got %d records", len(records))
 	}
-	wantHeader := []string{"Rank", "Student Name", "Username", "School", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds", "Q1 Answer", "Q1 Points"}
+	wantHeader := []string{"Rank", "Student Name", "Username", "School", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds", "Violations", "Q1 Answer", "Q1 Points"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Fatalf("header[%d]: want %s, got %s; header=%v", i, h, records[0][i], records[0])
 		}
 	}
-	if records[1][1] != "Detailed Student" || records[1][len(wantHeader)-2] != "a" || records[1][len(wantHeader)-1] != "1" {
+	if records[1][1] != "Detailed Student" || records[1][11] != "3" || records[1][len(wantHeader)-2] != "a" || records[1][len(wantHeader)-1] != "1" {
 		t.Fatalf("detailed row mismatch: %v", records[1])
 	}
 	for _, forbidden := range []string{"Correct Answer", "Explanation", "Pembahasan"} {
