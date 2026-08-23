@@ -170,7 +170,10 @@ async function mockBackend(page: Page) {
       return route.fulfill({
         status: 200,
         contentType: "text/csv",
-        headers: { "content-disposition": "attachment; filename=\"results-detailed.csv\"" },
+        headers: {
+          "content-disposition": "attachment; filename=\"results-detailed.csv\"",
+          "access-control-expose-headers": "Content-Disposition",
+        },
         body: "Rank,Student Name,Username,School,Score,Correct,Wrong,Empty,Started At,Submitted At,Duration Seconds,Q1 Answer,Q1 Points\n1,Budi Results,budi.results,SMA E2E,87.5,1,0,0,2026-08-01T09:00:00Z,2026-08-01T10:00:00Z,3600,B,87.5\n",
       });
     }

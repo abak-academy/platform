@@ -542,7 +542,7 @@ describe("SchoolReportsPage", () => {
 
     fireEvent.click(exportBtn);
 
-    expect(mockExport).toHaveBeenCalledWith("exam-1", undefined);
+    expect(mockExport).toHaveBeenCalledWith("exam-1", undefined, undefined);
   });
 
   // ── School dropdown (Bug B) ──

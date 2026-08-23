@@ -778,6 +778,48 @@ func TestExportSchoolResults_PaginateThenCompare(t *testing.T) {
 	}
 }
 
+func TestBuildDetailedResultsCSV_ObjectiveCountsAndSparseAnswers(t *testing.T) {
+	correctQ := uuid.New()
+	wrongQ := uuid.New()
+	emptyQ := uuid.New()
+	missingQ := uuid.New()
+	essayQ := uuid.New()
+	questions := []model.QuestionWithOptions{
+		{Question: model.Question{ID: correctQ, Format: "mcq"}},
+		{Question: model.Question{ID: wrongQ, Format: "mcq"}},
+		{Question: model.Question{ID: emptyQ, Format: "mcq"}},
+		{Question: model.Question{ID: missingQ, Format: "mcq"}},
+		{Question: model.Question{ID: essayQ, Format: "essay"}},
+	}
+	trueVal := true
+	falseVal := false
+	zero := 0.0
+	nine := 9.0
+	row := model.AdminExportRow{
+		Rank:        1,
+		StudentName: "Sparse Student",
+		Score:       floatPtr(9),
+		QuestionRows: []model.AdminExportQuestionRow{
+			{QuestionID: correctQ, StudentAnswer: strPtr("a"), Points: &nine, IsCorrect: &trueVal},
+			{QuestionID: wrongQ, StudentAnswer: strPtr("b"), Points: &zero, IsCorrect: &falseVal},
+			{QuestionID: emptyQ, StudentAnswer: strPtr(""), Points: &zero, IsCorrect: &falseVal},
+			{QuestionID: essayQ, StudentAnswer: strPtr("essay text"), Points: &nine},
+		},
+	}
+
+	records, err := csv.NewReader(bytes.NewReader(BuildDetailedResultsCSV([]model.AdminExportRow{row}, questions))).ReadAll()
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+	if got := records[1][5:8]; got[0] != "1" || got[1] != "1" || got[2] != "2" {
+		t.Fatalf("counts Correct/Wrong/Empty = %v, want [1 1 2]", got)
+	}
+	// Q2 is an answered-wrong 0-point cell; Q3 is explicit empty; Q4 is missing.
+	if records[1][14] != "0" || records[1][15] != "" || records[1][17] != "" {
+		t.Fatalf("sparse/wrong cells mismatch: header=%v row=%v", records[0], records[1])
+	}
+}
+
 func TestAdminResultDetail_NoRankInJSON(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)

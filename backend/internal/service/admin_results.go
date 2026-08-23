@@ -162,13 +162,24 @@ func (s *Service) AdminGetResultsWorkspaceResultDetail(ctx context.Context, exam
 	}, nil
 }
 
-// ExportSchoolResultsCSV builds a CSV file of school-scoped results for an exam
-// by looping ListSchoolResults page by page until exhausted (FR-SCHOOL-08-17).
-// Uses encoding/csv + bytes.Buffer, matching BuildCredentialsResultCSV in
-// bulk_credentials.go. Header rows are always written even when the result
-// set is empty (hidden/locked exam -> header only, no error).
+// ExportSchoolResultsCSV builds the school/admin_exam summary export. It never
+// includes per-question answers or points, so score_only exams cannot leak answer
+// keys to school-scoped admins.
 func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, schoolID, q string) ([]byte, error) {
-	return s.ExportDetailedResultsCSV(ctx, examID, schoolID, q)
+	var rows []model.AdminResultRow
+	cursor := ""
+	for {
+		page, next, err := s.ListSchoolResults(ctx, examID, schoolID, q, cursor, 100)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, page...)
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	return BuildSchoolResultsCSV(rows), nil
 }
 
 // BuildSchoolResultsCSV writes the results export as CSV bytes. Split out of
@@ -237,14 +248,18 @@ func BuildDetailedResultsCSV(rows []model.AdminExportRow, questions []model.Ques
 
 	// Header: summary columns + per-question (Answer, Points).
 	header := []string{"Rank", "Student Name", "Username", "School", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds"}
-	for _, q := range questions {
-		qNum := fmt.Sprintf("Q%d", q.Question.QuestionNumber)
+	for i := range questions {
+		qNum := fmt.Sprintf("Q%d", i+1)
 		header = append(header, qNum+" Answer", qNum+" Points")
 	}
 	_ = w.Write(header)
 
 	for _, r := range rows {
-		correctCount, wrongCount, emptyCount := exportObjectiveCounts(questions, r.QuestionRows)
+		correctCount, wrongCount, emptyCount := objectiveCounts(questions, exportQuestionRowsAsAnswers(r.QuestionRows))
+		questionRowsByID := make(map[uuid.UUID]model.AdminExportQuestionRow, len(r.QuestionRows))
+		for _, qa := range r.QuestionRows {
+			questionRowsByID[qa.QuestionID] = qa
+		}
 
 		// Summary row cells.
 		rankStr := fmt.Sprintf("%d", r.Rank)
@@ -296,16 +311,12 @@ func BuildDetailedResultsCSV(rows []model.AdminExportRow, questions []model.Ques
 			answer := ""
 			points := ""
 
-			// Find this question's answer in the row.
-			for _, qa := range r.QuestionRows {
-				if qa.QuestionID == q.Question.ID {
-					if qa.StudentAnswer != nil {
-						answer = csvSafeField(*qa.StudentAnswer)
-					}
-					if qa.Points != nil {
-						points = fmt.Sprintf("%v", *qa.Points)
-					}
-					break
+			if qa, ok := questionRowsByID[q.Question.ID]; ok {
+				if qa.StudentAnswer != nil {
+					answer = csvSafeField(*qa.StudentAnswer)
+				}
+				if qa.Points != nil {
+					points = fmt.Sprintf("%v", *qa.Points)
 				}
 			}
 
@@ -319,29 +330,15 @@ func BuildDetailedResultsCSV(rows []model.AdminExportRow, questions []model.Ques
 	return buf.Bytes()
 }
 
-// exportObjectiveCounts mirrors objectiveCounts for detailed export rows:
-// objective questions only, missing/nil/empty answers count as empty, essays are
-// excluded from Correct/Wrong/Empty summary counts.
-func exportObjectiveCounts(questions []model.QuestionWithOptions, answers []model.AdminExportQuestionRow) (correct, wrong, empty int) {
-	answerByQuestion := make(map[uuid.UUID]model.AdminExportQuestionRow, len(answers))
-	for _, a := range answers {
-		answerByQuestion[a.QuestionID] = a
+func exportQuestionRowsAsAnswers(rows []model.AdminExportQuestionRow) []model.ExamSessionAnswer {
+	answers := make([]model.ExamSessionAnswer, 0, len(rows))
+	for _, r := range rows {
+		answers = append(answers, model.ExamSessionAnswer{
+			QuestionID: r.QuestionID,
+			Answer:     r.StudentAnswer,
+			Score:      r.Points,
+			IsCorrect:  r.IsCorrect,
+		})
 	}
-
-	for _, q := range questions {
-		if q.Question.Format == "essay" {
-			continue
-		}
-		a, ok := answerByQuestion[q.Question.ID]
-		if !ok || a.StudentAnswer == nil || *a.StudentAnswer == "" {
-			empty++
-			continue
-		}
-		if a.IsCorrect != nil && *a.IsCorrect {
-			correct++
-		} else {
-			wrong++
-		}
-	}
-	return correct, wrong, empty
+	return answers
 }

@@ -69,9 +69,15 @@ export async function exportAdminResults(examId: string, schoolId?: string, q?: 
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "results-detailed.csv";
+  a.download = filenameFromContentDisposition(res.headers.get("Content-Disposition")) ?? "results.csv";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function filenameFromContentDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const match = /filename="?([^";]+)"?/i.exec(header);
+  return match?.[1] ?? null;
 }

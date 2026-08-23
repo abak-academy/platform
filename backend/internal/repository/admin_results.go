@@ -130,7 +130,7 @@ func (r *Repository) GetSchoolResultSession(ctx context.Context, sessionID uuid.
 // latest-scored semantics. Applies school scope, search query, and ranking
 // shared with the Results Workspace (Issue 130).
 func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUID, schoolID, q string) ([]model.AdminExportRow, error) {
-	// Use resultsWorkspaceLatestScoredSession CTE for latest-scored ranking alignment.
+	// Keep export ranking aligned with Results Workspace latest-scored semantics.
 	query := `WITH
 		scored AS (
 			SELECT DISTINCT ON (s.registration_id) s.registration_id, s.id AS session_id,
@@ -149,15 +149,18 @@ func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUI
 			JOIN scored ON scored.registration_id = reg.id
 			WHERE reg.exam_id = $1
 				AND ($2::text = '' OR u.school_id = $2::uuid)
-				AND ($3::text = '' OR u.name ILIKE '%' || $3 || '%' OR u.username ILIKE '%' || $3 || '%')
 		),
 		ranked AS (
 			SELECT joined.*, RANK() OVER (ORDER BY score DESC) AS rnk
 			FROM joined
+		),
+		filtered AS (
+			SELECT * FROM ranked
+			WHERE ($3::text = '' OR student_name ILIKE '%' || $3 || '%' OR username ILIKE '%' || $3 || '%')
 		)
 		SELECT registration_id, session_id, student_name, username, school_name, rnk, score,
 			submitted_at, started_at
-		FROM ranked
+		FROM filtered
 		ORDER BY rnk ASC, score DESC, registration_id ASC`
 
 	rows, err := r.pool.Query(ctx, query, examID, schoolID, q)

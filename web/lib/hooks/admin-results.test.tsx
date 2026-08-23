@@ -198,6 +198,7 @@ describe("exportAdminResults", () => {
     const mockBlob = new Blob(["name,nis,score\n"], { type: "text/csv" });
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
+      headers: new Headers({ "Content-Disposition": 'attachment; filename="results-detailed.csv"' }),
       blob: () => Promise.resolve(mockBlob),
     });
 
@@ -218,6 +219,7 @@ describe("exportAdminResults", () => {
     const mockBlob = new Blob(["data"], { type: "text/csv" });
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
+      headers: new Headers({ "Content-Disposition": 'attachment; filename="results-detailed.csv"' }),
       blob: () => Promise.resolve(mockBlob),
     });
 
@@ -228,6 +230,7 @@ describe("exportAdminResults", () => {
     const mockBlob = new Blob(["name,score\n"], { type: "text/csv" });
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
+      headers: new Headers({ "Content-Disposition": 'attachment; filename="results-detailed.csv"' }),
       blob: () => Promise.resolve(mockBlob),
     });
 
@@ -243,6 +246,7 @@ describe("exportAdminResults", () => {
     const mockBlob = new Blob(["name,score\n"], { type: "text/csv" });
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
+      headers: new Headers({ "Content-Disposition": 'attachment; filename="results-detailed.csv"' }),
       blob: () => Promise.resolve(mockBlob),
     });
 
@@ -268,6 +272,7 @@ describe("exportAdminResults", () => {
     const mockBlob = new Blob(["name,score\n"], { type: "text/csv" });
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
+      headers: new Headers({ "Content-Disposition": 'attachment; filename="results-detailed.csv"' }),
       blob: () => Promise.resolve(mockBlob),
     });
 

@@ -37,6 +37,7 @@ import { useSchoolOptions } from "@/lib/hooks/admin-schools";
 import { useAuthStore } from "@/stores/auth";
 import { RichContent } from "@/components/admin/RichContent";
 import { formatChoiceAnswer } from "@/lib/option-key";
+import { toast } from "sonner";
 import type { AdminResultRow, AdminResultDetail, ProductType } from "@/lib/types";
 
 export default function SchoolReportsPage() {
@@ -121,9 +122,9 @@ export default function SchoolReportsPage() {
     if (!selectedExamId) return;
     setExporting(true);
     try {
-      await exportAdminResults(selectedExamId, isSuperAdmin ? selectedSchoolId : undefined);
-    } catch {
-      // Export errors handled silently — the CSV download is best-effort
+      await exportAdminResults(selectedExamId, isSuperAdmin ? selectedSchoolId : undefined, search || undefined);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("sys_error_load"));
     } finally {
       setExporting(false);
     }
