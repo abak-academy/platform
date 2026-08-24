@@ -66,7 +66,7 @@ function formatTime(seconds: number): string {
 
 const EXPIRY_MAX_ATTEMPTS = 3;
 const VIOLATION_GRACE_MS = 3000;
-const VIOLATION_DUPLICATE_SUPPRESS_MS = 1000;
+const VIOLATION_DUPLICATE_SUPPRESS_MS = 5000;
 
 function isTransientExpiryError(error: unknown): boolean {
   if (!(error instanceof ApiError)) return true;
@@ -121,6 +121,8 @@ export default function SessionPage() {
   const submitSession = useSubmitSession(sessionId);
   const logViolation = useLogViolation(sessionId);
   const advanceSection = useAdvanceSection(sessionId);
+  const logViolationRef = useRef(logViolation);
+  logViolationRef.current = logViolation;
 
   const [redirecting, setRedirecting] = useState(false);
   const [fullscreenGranted, setFullscreenGranted] = useState(false);
@@ -544,11 +546,11 @@ export default function SessionPage() {
       const last = lastViolationAtRef.current[type];
       if (last != null && now - last < VIOLATION_DUPLICATE_SUPPRESS_MS) return;
       lastViolationAtRef.current[type] = now;
-      logViolation.mutate(type);
+      logViolationRef.current.mutate(type);
       violationCountRef.current += 1;
       setShowViolationOverlay(true);
     },
-    [logViolation],
+    [],
   );
 
   const scheduleViolation = useCallback(
@@ -592,7 +594,7 @@ export default function SessionPage() {
       clearPendingViolation("fullscreen_exit");
       clearPendingViolation("tab_switch");
     };
-  }, [sessionId, session?.status, logViolation, scheduleViolation, clearPendingViolation]);
+  }, [sessionId, session?.status, scheduleViolation, clearPendingViolation]);
 
   // Request fullscreen
   const enterFullscreen = useCallback(async () => {

@@ -1565,9 +1565,9 @@ describe("SessionPage", () => {
 
   // ── Anti-cheat visible warning overlay (Task 4) ──────────────────────────────
 
-  async function advanceViolationGrace() {
+  async function advanceViolationGrace(ms = 3000) {
     act(() => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(ms);
     });
     await act(async () => {
       await Promise.resolve();
@@ -1603,6 +1603,28 @@ describe("SessionPage", () => {
 
     expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
     expect(screen.getByText(/Peringatan pelanggaran/)).toBeInTheDocument();
+  });
+
+  it("keeps a pending fullscreen violation alive across timer rerenders", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+
+    await advanceViolationGrace(1000);
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+    expect(screen.getByText("59:59")).toBeInTheDocument();
+
+    await advanceViolationGrace(2000);
+    expect(logViolationMutate).toHaveBeenCalledWith("fullscreen_exit");
+    expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
   });
 
   it("increments violation counter and shows count after grace (FR13, FR18)", async () => {
@@ -1652,6 +1674,8 @@ describe("SessionPage", () => {
     });
     expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
 
+    await advanceViolationGrace(5000);
+
     act(() => {
       Object.defineProperty(document, "fullscreenElement", {
         value: null,
@@ -1662,6 +1686,40 @@ describe("SessionPage", () => {
     await advanceViolationGrace();
 
     expect(screen.getByText(/Anda telah melanggar 2 kali/i)).toBeInTheDocument();
+  });
+
+  it("suppresses rapid duplicate fullscreen exits after the first warning", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace();
+    expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("violation-return-button"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Anda telah melanggar 2 kali/i)).not.toBeInTheDocument();
   });
 
   it("cancels a brief tab switch when the page returns before grace elapses", async () => {
@@ -1724,6 +1782,8 @@ describe("SessionPage", () => {
       await Promise.resolve();
     });
     expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+
+    await advanceViolationGrace(5000);
 
     act(() => {
       Object.defineProperty(document, "hidden", {
