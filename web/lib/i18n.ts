@@ -1397,8 +1397,9 @@ export const DICT = {
     // Exam session — session UI
     session_question: "Soal",
     of: "dari",
-    flag: "Tandai",
-    unflag: "Hapus tanda",
+    flag: "Tandai ragu-ragu",
+    unflag: "Hapus ragu-ragu",
+    clear_answer: "Kosongkan jawaban",
     submit_confirm: "Yakin ingin mengumpulkan jawaban?",
     submit: "Kumpulkan",
     time_remaining: "Sisa waktu",
@@ -3008,8 +3009,9 @@ export const DICT = {
     // Exam session — session UI
     session_question: "Question",
     of: "of",
-    flag: "Flag",
-    unflag: "Unflag",
+    flag: "Mark unsure",
+    unflag: "Clear unsure mark",
+    clear_answer: "Clear answer",
     submit_confirm: "Are you sure you want to submit?",
     submit: "Submit",
     time_remaining: "Time remaining",

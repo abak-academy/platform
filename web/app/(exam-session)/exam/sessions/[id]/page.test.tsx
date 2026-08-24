@@ -363,6 +363,12 @@ async function enterFullscreenUntil(text: RegExp) {
 
 describe("SessionPage", () => {
   beforeEach(() => {
+    Object.defineProperty(document, "hidden", { value: false, configurable: true });
+    Object.defineProperty(document, "fullscreenElement", { value: document.documentElement, configurable: true });
+    Object.defineProperty(document, "exitFullscreen", {
+      value: vi.fn().mockResolvedValue(undefined),
+      configurable: true,
+    });
     uiStore = { lang: "id" };
     sessionState = {
       data: sampleSession,
@@ -548,11 +554,11 @@ describe("SessionPage", () => {
     render(<SessionPage />);
     await enterFullscreen();
 
-    const flagBtn = screen.getByRole("button", { name: /tandai/i });
+    const flagBtn = screen.getByRole("button", { name: /ragu-ragu/i });
     fireEvent.click(flagBtn);
 
     expect(
-      screen.getByRole("button", { name: /hapus tanda/i })
+      screen.getByRole("button", { name: /hapus ragu-ragu/i })
     ).toBeInTheDocument();
   });
 
@@ -570,7 +576,7 @@ describe("SessionPage", () => {
     await enterFullscreen();
 
     expect(
-      screen.getByRole("button", { name: /hapus tanda/i })
+      screen.getByRole("button", { name: /hapus ragu-ragu/i })
     ).toBeInTheDocument();
   });
 
@@ -579,7 +585,7 @@ describe("SessionPage", () => {
     render(<SessionPage />);
     await enterFullscreen();
 
-    const flagBtn = screen.getByRole("button", { name: /tandai/i });
+    const flagBtn = screen.getByRole("button", { name: /ragu-ragu/i });
     fireEvent.click(flagBtn);
 
     fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
@@ -603,6 +609,41 @@ describe("SessionPage", () => {
         }),
       ])
     );
+  });
+
+  it("clears a selected MCQ answer back to empty and marks the question unanswered", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const radios = screen.getAllByRole("radio");
+    fireEvent.click(radios[1]);
+    expect(radios[1]).toBeChecked();
+    expect(screen.getByTestId("session-nav-0").className).toContain("bg-success");
+
+    fireEvent.click(screen.getByRole("button", { name: /kosongkan jawaban/i }));
+
+    expect(radios[1]).not.toBeChecked();
+    expect(screen.getByTestId("session-nav-0").className).not.toContain("bg-success");
+    expect(screen.getByTestId("session-nav-0").className).toContain("border-line");
+  });
+
+  it("uses high-contrast status styles for answered, flagged, and unanswered question numbers", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        answers: [
+          { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+          { question_id: "q-multi", answer: "", flagged_for_review: true },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    expect(screen.getByTestId("session-nav-0").className).toContain("bg-success");
+    expect(screen.getByTestId("session-nav-1").className).toContain("bg-warn");
+    expect(screen.getByTestId("session-nav-2").className).toContain("border-line");
   });
 
   // ── Timer ───────────────────────────────────────────────────────────────
@@ -1384,15 +1425,17 @@ describe("SessionPage", () => {
     expect(rail.querySelector('[data-testid="session-nav-0"]')).not.toBeNull();
 
     const cellCurrentAnswered = screen.getByTestId("session-nav-0");
-    // Current takes precedence over answered styling
-    expect(cellCurrentAnswered.className).toContain("bg-brand-600");
+    // Current is now a ring so the answered status stays visible.
+    expect(cellCurrentAnswered.className).toContain("bg-success");
+    expect(cellCurrentAnswered.className).toContain("ring-brand-600");
     expect(cellCurrentAnswered.className).toContain("text-white");
 
     // Navigate away — q0 is now answered but no longer current
     fireEvent.click(screen.getByTestId("session-nav-2"));
     const cellAnsweredNotCurrent = screen.getByTestId("session-nav-0");
-    expect(cellAnsweredNotCurrent.className).toContain("bg-brand-50");
-    expect(cellAnsweredNotCurrent.className).toContain("text-brand-700");
+    expect(cellAnsweredNotCurrent.className).toContain("bg-success");
+    expect(cellAnsweredNotCurrent.className).not.toContain("ring-brand-600");
+    expect(cellAnsweredNotCurrent.className).toContain("text-white");
   });
 
   it("uses a mobile-first body grid with a desktop nav rail", async () => {
@@ -1522,32 +1565,51 @@ describe("SessionPage", () => {
 
   // ── Anti-cheat visible warning overlay (Task 4) ──────────────────────────────
 
-  it("shows violation warning overlay on fullscreen exit during in_progress (FR13)", async () => {
-    render(<SessionPage />);
-    await enterFullscreen();
-
-    // Simulate fullscreen exit
+  async function advanceViolationGrace() {
     act(() => {
-      const event = new Event("fullscreenchange");
+      vi.advanceTimersByTime(3000);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+
+  async function enterFullscreenWithFakeTimers() {
+    document.documentElement.requestFullscreen = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("enter-fullscreen"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/Berapa 2\+2\?/)).toBeInTheDocument();
+  }
+
+  it("shows violation warning overlay only after fullscreen exit grace", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+
+    act(() => {
       Object.defineProperty(document, "fullscreenElement", {
         value: null,
         configurable: true,
       });
-      document.dispatchEvent(event);
+      document.dispatchEvent(new Event("fullscreenchange"));
     });
 
-    // Overlay should be visible
-    await waitFor(() => {
-      expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
-    });
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+    await advanceViolationGrace();
+
+    expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
     expect(screen.getByText(/Peringatan pelanggaran/)).toBeInTheDocument();
   });
 
-  it("increments violation counter and shows count in overlay (FR13, FR18)", async () => {
+  it("increments violation counter and shows count after grace (FR13, FR18)", async () => {
+    vi.useFakeTimers();
     render(<SessionPage />);
-    await enterFullscreen();
+    await enterFullscreenWithFakeTimers();
 
-    // First fullscreen exit
     act(() => {
       Object.defineProperty(document, "fullscreenElement", {
         value: null,
@@ -1555,17 +1617,16 @@ describe("SessionPage", () => {
       });
       document.dispatchEvent(new Event("fullscreenchange"));
     });
+    await advanceViolationGrace();
 
-    await waitFor(() => {
-      expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
-    });
+    expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
   });
 
-  it("increments violation counter on second fullscreen exit (FR18)", async () => {
+  it("increments violation counter on second fullscreen exit after grace (FR18)", async () => {
+    vi.useFakeTimers();
     render(<SessionPage />);
-    await enterFullscreen();
+    await enterFullscreenWithFakeTimers();
 
-    // First exit
     act(() => {
       Object.defineProperty(document, "fullscreenElement", {
         value: null,
@@ -1573,12 +1634,10 @@ describe("SessionPage", () => {
       });
       document.dispatchEvent(new Event("fullscreenchange"));
     });
+    await advanceViolationGrace();
 
-    await waitFor(() => {
-      expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
-    });
+    expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
 
-    // Second exit (re-enable fullscreen and exit again)
     act(() => {
       Object.defineProperty(document, "fullscreenElement", {
         value: document.documentElement,
@@ -1586,17 +1645,13 @@ describe("SessionPage", () => {
       });
       document.dispatchEvent(new Event("fullscreenchange"));
     });
+    fireEvent.click(screen.getByTestId("violation-return-button"));
 
-    // Close the overlay first
-    act(() => {
-      fireEvent.click(screen.getByTestId("violation-return-button"));
+    await act(async () => {
+      await Promise.resolve();
     });
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
-    });
-
-    // Now exit again
     act(() => {
       Object.defineProperty(document, "fullscreenElement", {
         value: null,
@@ -1604,17 +1659,35 @@ describe("SessionPage", () => {
       });
       document.dispatchEvent(new Event("fullscreenchange"));
     });
+    await advanceViolationGrace();
 
-    await waitFor(() => {
-      expect(screen.getByText(/Anda telah melanggar 2 kali/i)).toBeInTheDocument();
-    });
+    expect(screen.getByText(/Anda telah melanggar 2 kali/i)).toBeInTheDocument();
   });
 
-  it("shows violation overlay on tab switch (visibility hidden) (FR14)", async () => {
+  it("cancels a brief tab switch when the page returns before grace elapses", async () => {
+    vi.useFakeTimers();
     render(<SessionPage />);
-    await enterFullscreen();
+    await enterFullscreenWithFakeTimers();
 
-    // Simulate tab switch (visibility hidden)
+    act(() => {
+      Object.defineProperty(document, "hidden", { value: true, configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      Object.defineProperty(document, "hidden", { value: false, configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).not.toHaveBeenCalledWith("tab_switch");
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+  });
+
+  it("shows violation overlay on tab switch only after visibility grace", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+
     act(() => {
       Object.defineProperty(document, "hidden", {
         value: true,
@@ -1623,17 +1696,18 @@ describe("SessionPage", () => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
 
-    await waitFor(() => {
-      expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
-    });
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+    await advanceViolationGrace();
+
+    expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
     expect(screen.getByText(/Peringatan pelanggaran/)).toBeInTheDocument();
   });
 
-  it("tab switch increments shared violation counter (FR14, FR18)", async () => {
+  it("tab switch increments shared violation counter after grace (FR14, FR18)", async () => {
+    vi.useFakeTimers();
     render(<SessionPage />);
-    await enterFullscreen();
+    await enterFullscreenWithFakeTimers();
 
-    // First fullscreen exit
     act(() => {
       Object.defineProperty(document, "fullscreenElement", {
         value: null,
@@ -1641,21 +1715,16 @@ describe("SessionPage", () => {
       });
       document.dispatchEvent(new Event("fullscreenchange"));
     });
+    await advanceViolationGrace();
 
-    await waitFor(() => {
-      expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
+    expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("violation-return-button"));
+    await act(async () => {
+      await Promise.resolve();
     });
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
 
-    // Dismiss overlay
-    act(() => {
-      fireEvent.click(screen.getByTestId("violation-return-button"));
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
-    });
-
-    // Tab switch — should increment shared counter to 2
     act(() => {
       Object.defineProperty(document, "hidden", {
         value: true,
@@ -1663,15 +1732,15 @@ describe("SessionPage", () => {
       });
       document.dispatchEvent(new Event("visibilitychange"));
     });
+    await advanceViolationGrace();
 
-    await waitFor(() => {
-      expect(screen.getByText(/Anda telah melanggar 2 kali/i)).toBeInTheDocument();
-    });
+    expect(screen.getByText(/Anda telah melanggar 2 kali/i)).toBeInTheDocument();
   });
 
   it("clicking return button requests fullscreen and closes overlay (FR15)", async () => {
+    vi.useFakeTimers();
     render(<SessionPage />);
-    await enterFullscreen();
+    await enterFullscreenWithFakeTimers();
 
     const requestFullscreenMock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(document.documentElement, "requestFullscreen", {
@@ -1679,7 +1748,6 @@ describe("SessionPage", () => {
       configurable: true,
     });
 
-    // Trigger violation
     act(() => {
       Object.defineProperty(document, "fullscreenElement", {
         value: null,
@@ -1687,26 +1755,21 @@ describe("SessionPage", () => {
       });
       document.dispatchEvent(new Event("fullscreenchange"));
     });
+    await advanceViolationGrace();
 
-    await waitFor(() => {
-      expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
-    });
+    expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
 
-    // Click return button
-    const button = screen.getByTestId("violation-return-button");
-    fireEvent.click(button);
+    fireEvent.click(screen.getByTestId("violation-return-button"));
 
-    // Give the async callback time to execute
     await act(async () => {
       await Promise.resolve();
     });
 
-    // Overlay should be closed
-    await waitFor(() => {
-      expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+    await act(async () => {
+      await Promise.resolve();
     });
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
 
-    // requestFullscreen should have been called
     expect(requestFullscreenMock).toHaveBeenCalled();
   });
 
@@ -1727,8 +1790,9 @@ describe("SessionPage", () => {
   });
 
   it("timer continues running while violation overlay is shown (FR16)", async () => {
+    vi.useFakeTimers();
     render(<SessionPage />);
-    await enterFullscreen();
+    await enterFullscreenWithFakeTimers();
 
     // Verify timer is present and running (shows initial time)
     expect(screen.getByText("60:00")).toBeInTheDocument();
@@ -1741,11 +1805,9 @@ describe("SessionPage", () => {
       });
       document.dispatchEvent(new Event("fullscreenchange"));
     });
+    await advanceViolationGrace();
 
-    // Wait for overlay to appear
-    await waitFor(() => {
-      expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
-    });
+    expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
 
     // Verify timer element is still in the DOM while overlay is shown
     // (i.e., the timer wasn't removed or paused by the overlay)
@@ -1760,9 +1822,10 @@ describe("SessionPage", () => {
     expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
   });
 
-  it("calls logViolation.mutate on fullscreen_exit (unchanged from existing behavior)", async () => {
+  it("calls logViolation.mutate on fullscreen_exit after grace", async () => {
+    vi.useFakeTimers();
     render(<SessionPage />);
-    await enterFullscreen();
+    await enterFullscreenWithFakeTimers();
 
     logViolationMutate.mockClear();
 
@@ -1775,14 +1838,16 @@ describe("SessionPage", () => {
       document.dispatchEvent(new Event("fullscreenchange"));
     });
 
-    await waitFor(() => {
-      expect(logViolationMutate).toHaveBeenCalledWith("fullscreen_exit");
-    });
+    expect(logViolationMutate).not.toHaveBeenCalledWith("fullscreen_exit");
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).toHaveBeenCalledWith("fullscreen_exit");
   });
 
-  it("calls logViolation.mutate on tab_switch (unchanged from existing behavior)", async () => {
+  it("calls logViolation.mutate on tab_switch after grace", async () => {
+    vi.useFakeTimers();
     render(<SessionPage />);
-    await enterFullscreen();
+    await enterFullscreenWithFakeTimers();
 
     logViolationMutate.mockClear();
 
@@ -1795,9 +1860,10 @@ describe("SessionPage", () => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
 
-    await waitFor(() => {
-      expect(logViolationMutate).toHaveBeenCalledWith("tab_switch");
-    });
+    expect(logViolationMutate).not.toHaveBeenCalledWith("tab_switch");
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).toHaveBeenCalledWith("tab_switch");
   });
 
   it("does not show overlay for non-in_progress sessions", async () => {

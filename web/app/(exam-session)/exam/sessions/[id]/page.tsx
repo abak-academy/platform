@@ -65,6 +65,8 @@ function formatTime(seconds: number): string {
 }
 
 const EXPIRY_MAX_ATTEMPTS = 3;
+const VIOLATION_GRACE_MS = 3000;
+const VIOLATION_DUPLICATE_SUPPRESS_MS = 1000;
 
 function isTransientExpiryError(error: unknown): boolean {
   if (!(error instanceof ApiError)) return true;
@@ -141,6 +143,12 @@ export default function SessionPage() {
   const navToggleRef = useRef<HTMLButtonElement>(null);
   const autoAdvanceRef = useRef(false);
   const violationCountRef = useRef(0);
+  const violationTimersRef = useRef<
+    Partial<Record<"fullscreen_exit" | "tab_switch", ReturnType<typeof setTimeout>>>
+  >({});
+  const lastViolationAtRef = useRef<
+    Partial<Record<"fullscreen_exit" | "tab_switch", number>>
+  >({});
   const answersRef = useRef(answers);
   answersRef.current = answers;
   const flaggedRef = useRef(flagged);
@@ -519,21 +527,58 @@ export default function SessionPage() {
     void runExpiryRecovery();
   }, [remaining <= 0, isSectioned, runExpiryRecovery, session, hasTimer]);
 
+  const clearPendingViolation = useCallback(
+    (type: "fullscreen_exit" | "tab_switch") => {
+      const timer = violationTimersRef.current[type];
+      if (timer) {
+        clearTimeout(timer);
+        delete violationTimersRef.current[type];
+      }
+    },
+    [],
+  );
+
+  const showTrackedViolation = useCallback(
+    (type: "fullscreen_exit" | "tab_switch") => {
+      const now = Date.now();
+      const last = lastViolationAtRef.current[type];
+      if (last != null && now - last < VIOLATION_DUPLICATE_SUPPRESS_MS) return;
+      lastViolationAtRef.current[type] = now;
+      logViolation.mutate(type);
+      violationCountRef.current += 1;
+      setShowViolationOverlay(true);
+    },
+    [logViolation],
+  );
+
+  const scheduleViolation = useCallback(
+    (type: "fullscreen_exit" | "tab_switch", stillViolating: () => boolean) => {
+      if (violationTimersRef.current[type]) return;
+      violationTimersRef.current[type] = setTimeout(() => {
+        delete violationTimersRef.current[type];
+        if (stillViolating()) {
+          showTrackedViolation(type);
+        }
+      }, VIOLATION_GRACE_MS);
+    },
+    [showTrackedViolation],
+  );
+
   // Violation logging
   useEffect(() => {
     if (!sessionId || session?.status !== "in_progress") return;
     const onFullscreen = () => {
       if (!document.fullscreenElement) {
-        logViolation.mutate("fullscreen_exit");
-        violationCountRef.current += 1;
-        setShowViolationOverlay(true);
+        scheduleViolation("fullscreen_exit", () => !document.fullscreenElement);
+      } else {
+        clearPendingViolation("fullscreen_exit");
       }
     };
     const onVisibility = () => {
       if (document.hidden) {
-        logViolation.mutate("tab_switch");
-        violationCountRef.current += 1;
-        setShowViolationOverlay(true);
+        scheduleViolation("tab_switch", () => document.hidden);
+      } else {
+        clearPendingViolation("tab_switch");
       }
     };
     const onCopy = () => logViolation.mutate("copy_attempt");
@@ -544,8 +589,10 @@ export default function SessionPage() {
       document.removeEventListener("fullscreenchange", onFullscreen);
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("copy", onCopy);
+      clearPendingViolation("fullscreen_exit");
+      clearPendingViolation("tab_switch");
     };
-  }, [sessionId, session?.status, logViolation]);
+  }, [sessionId, session?.status, logViolation, scheduleViolation, clearPendingViolation]);
 
   // Request fullscreen
   const enterFullscreen = useCallback(async () => {
@@ -704,7 +751,9 @@ export default function SessionPage() {
 
   const questionsToShow = activeQuestions;
   const currentQ = questionsToShow[currentQIndex];
-  const answeredCount = Object.keys(answers).length;
+  const answeredCount = Object.values(answers).filter(
+    (answer) => answer !== "",
+  ).length;
   const isFlagged = currentQ ? flagged[currentQ.id] ?? false : false;
   const timerExpired = hasTimer && remaining <= 0;
   const currentTestTitle =
@@ -863,6 +912,11 @@ export default function SessionPage() {
                   size="sm"
                   onClick={() => toggleFlag(currentQ.id)}
                   disabled={timerExpired}
+                  className={
+                    isFlagged
+                      ? "bg-warn text-white hover:bg-warn/90"
+                      : "border-warn/40 text-warn hover:bg-warn-bg"
+                  }
                 >
                   <Flag className="size-3.5" />
                   {isFlagged ? t("unflag") : t("flag")}
@@ -885,6 +939,21 @@ export default function SessionPage() {
                   answers[currentQ.id] ?? "",
                   (val) => setAnswer(currentQ.id, val),
                   timerExpired,
+                )}
+
+                {(answers[currentQ.id] ?? "") !== "" && (
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAnswer(currentQ.id, "")}
+                      disabled={timerExpired}
+                      className="border-line text-ink-700"
+                    >
+                      {t("clear_answer")}
+                    </Button>
+                  </div>
                 )}
               </Card>
             )}
@@ -941,23 +1010,23 @@ export default function SessionPage() {
           >
             <div className="grid grid-cols-5 gap-2">
               {questionsToShow.map((q, i) => {
-                const hasAnswer = answers[q.id] != null;
+                const hasAnswer = (answers[q.id] ?? "") !== "";
                 const isFlagQ = flagged[q.id] ?? false;
                 const isCurrent = i === currentQIndex;
 
                 let cellClass =
-                  "flex size-10 items-center justify-center rounded-md text-xs font-medium transition-colors lg:size-8";
-                if (isCurrent) {
-                  cellClass += " bg-brand-600 text-white";
-                } else if (hasAnswer && isFlagQ) {
-                  cellClass +=
-                    " border border-warning/30 bg-warning-bg text-warning";
+                  "flex size-10 items-center justify-center rounded-md border text-xs font-bold transition-colors lg:size-8";
+                if (hasAnswer && isFlagQ) {
+                  cellClass += " border-warn bg-warn text-white";
                 } else if (hasAnswer) {
-                  cellClass += " bg-brand-50 text-brand-700";
+                  cellClass += " border-success bg-success text-white";
                 } else if (isFlagQ) {
-                  cellClass += " border border-warning/30 text-warning";
+                  cellClass += " border-warn bg-warn text-white";
                 } else {
-                  cellClass += " bg-surface-2 text-ink-600 hover:bg-surface-3";
+                  cellClass += " border-line bg-surface text-ink-700 hover:bg-surface-3";
+                }
+                if (isCurrent) {
+                  cellClass += " ring-2 ring-brand-600 ring-offset-2 ring-offset-surface";
                 }
 
                 return (
@@ -981,7 +1050,7 @@ export default function SessionPage() {
             {/* Legend */}
             <div className="mt-5 flex flex-col gap-2">
               <LegendItem
-                swatchClassName="bg-brand-600"
+                swatchClassName="border border-success bg-success"
                 label={t("session_legend_answered")}
               />
               <LegendItem
@@ -989,7 +1058,7 @@ export default function SessionPage() {
                 label={t("session_legend_not_answered")}
               />
               <LegendItem
-                swatchClassName="border border-warning/30 bg-warning-bg"
+                swatchClassName="border border-warn bg-warn"
                 label={t("session_legend_flagged")}
               />
             </div>
