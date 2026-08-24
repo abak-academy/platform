@@ -3009,8 +3009,8 @@ export const DICT = {
     // Exam session — session UI
     session_question: "Question",
     of: "of",
-    flag: "Mark unsure",
-    unflag: "Clear unsure mark",
+    flag: "Unsure",
+    unflag: "Unmark",
     clear_answer: "Clear answer",
     submit_confirm: "Are you sure you want to submit?",
     submit: "Submit",
