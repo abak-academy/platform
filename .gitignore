@@ -37,4 +37,6 @@ docs/superpowers
 backend/repo_cov.out
 
 # Local agent worktrees
+.hermes/
+.superpowers/
 .worktrees/
