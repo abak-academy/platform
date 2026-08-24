@@ -43,6 +43,7 @@
      nav/status cells failed AA for small labels. */
   --color-success:    #147a4b;
   --color-success-bg: #e5f5ec;
+  --color-status-solid-fg: #ffffff;
   --color-violet:     #7c4ddb;
   --color-violet-bg:  #efe9fb;
   --color-gold:       #b08612;
@@ -175,6 +176,10 @@ html[data-theme="dark"] {
   --color-danger-bg:  rgba(211, 58, 46, .30);
   --color-success:    #5fd096;
   --color-success-bg: rgba(31, 158, 99, .28);
+  /* Dark-mode status colors are intentionally bright because they are also
+     used as foreground text on dark surfaces. Solid status fills therefore
+     need a dark foreground instead of hard-coded white. */
+  --color-status-solid-fg: #161225;
   --color-violet:     #b89dea;
   --color-violet-bg:  rgba(124, 77, 219, .30);
   --color-gold:       #ddc46e;

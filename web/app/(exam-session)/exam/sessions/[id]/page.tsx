@@ -916,7 +916,7 @@ export default function SessionPage() {
                   disabled={timerExpired}
                   className={
                     isFlagged
-                      ? "bg-warn text-white hover:bg-warn/90"
+                      ? "bg-warn text-[var(--color-status-solid-fg)] hover:bg-warn/90"
                       : "border-warn/40 text-warn hover:bg-warn-bg"
                   }
                 >
@@ -1019,11 +1019,11 @@ export default function SessionPage() {
                 let cellClass =
                   "flex size-10 items-center justify-center rounded-md border text-xs font-bold transition-colors lg:size-8";
                 if (hasAnswer && isFlagQ) {
-                  cellClass += " border-warn bg-warn text-white";
+                  cellClass += " border-warn bg-warn text-[var(--color-status-solid-fg)]";
                 } else if (hasAnswer) {
-                  cellClass += " border-success bg-success text-white";
+                  cellClass += " border-success bg-success text-[var(--color-status-solid-fg)]";
                 } else if (isFlagQ) {
-                  cellClass += " border-warn bg-warn text-white";
+                  cellClass += " border-warn bg-warn text-[var(--color-status-solid-fg)]";
                 } else {
                   cellClass += " border-line bg-surface text-ink-700 hover:bg-surface-3";
                 }

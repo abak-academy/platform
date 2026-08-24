@@ -1428,14 +1428,18 @@ describe("SessionPage", () => {
     // Current is now a ring so the answered status stays visible.
     expect(cellCurrentAnswered.className).toContain("bg-success");
     expect(cellCurrentAnswered.className).toContain("ring-brand-600");
-    expect(cellCurrentAnswered.className).toContain("text-white");
+    expect(cellCurrentAnswered.className).toContain(
+      "text-[var(--color-status-solid-fg)]",
+    );
 
     // Navigate away — q0 is now answered but no longer current
     fireEvent.click(screen.getByTestId("session-nav-2"));
     const cellAnsweredNotCurrent = screen.getByTestId("session-nav-0");
     expect(cellAnsweredNotCurrent.className).toContain("bg-success");
     expect(cellAnsweredNotCurrent.className).not.toContain("ring-brand-600");
-    expect(cellAnsweredNotCurrent.className).toContain("text-white");
+    expect(cellAnsweredNotCurrent.className).toContain(
+      "text-[var(--color-status-solid-fg)]",
+    );
   });
 
   it("uses a mobile-first body grid with a desktop nav rail", async () => {
