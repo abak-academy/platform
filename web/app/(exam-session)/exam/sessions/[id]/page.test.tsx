@@ -618,12 +618,12 @@ describe("SessionPage", () => {
     const radios = screen.getAllByRole("radio");
     fireEvent.click(radios[1]);
     expect(radios[1]).toBeChecked();
-    expect(screen.getByTestId("session-nav-0").className).toContain("bg-[var(--color-status-success-solid)]");
+    expect(screen.getByTestId("session-nav-0").className).toContain("bg-brand-600");
 
     fireEvent.click(screen.getByRole("button", { name: /kosongkan jawaban/i }));
 
     expect(radios[1]).not.toBeChecked();
-    expect(screen.getByTestId("session-nav-0").className).not.toContain("bg-[var(--color-status-success-solid)]");
+    expect(screen.getByTestId("session-nav-0").className).not.toContain("bg-brand-600");
     expect(screen.getByTestId("session-nav-0").className).toContain("border-line");
   });
 
@@ -641,8 +641,9 @@ describe("SessionPage", () => {
     render(<SessionPage />);
     await enterFullscreen();
 
-    expect(screen.getByTestId("session-nav-0").className).toContain("bg-[var(--color-status-success-solid)]");
-    expect(screen.getByTestId("session-nav-1").className).toContain("bg-[var(--color-status-warn-solid)]");
+    expect(screen.getByTestId("session-nav-0").className).toContain("bg-brand-600");
+    expect(screen.getByTestId("session-nav-1").className).toContain("bg-surface");
+    expect(screen.getByTestId("session-nav-1").querySelector("span")?.className).toContain("bg-warn");
     expect(screen.getByTestId("session-nav-2").className).toContain("border-line");
   });
 
@@ -1397,10 +1398,10 @@ describe("SessionPage", () => {
     });
 
     const topBar = screen.getByTestId("exam-top-bar");
-    // Verify they're in separate elements (title in first child div, section label in nested div)
-    const titleDivs = topBar.querySelectorAll("div.min-w-0 > div");
-    expect(titleDivs[0]?.textContent).toBe("UTBK");
-    expect(titleDivs[1]?.textContent).toBe("TPS");
+    const title = screen.getByTestId("exam-title");
+    expect(title.textContent).toBe("UTBK");
+    expect(title.nextElementSibling?.textContent).toBe("TPS");
+    expect(topBar).toContainElement(title);
   });
 
   it("nav rail shows the three legend entries with correct labels", async () => {
@@ -1426,19 +1427,19 @@ describe("SessionPage", () => {
 
     const cellCurrentAnswered = screen.getByTestId("session-nav-0");
     // Current is now a ring so the answered status stays visible.
-    expect(cellCurrentAnswered.className).toContain("bg-[var(--color-status-success-solid)]");
+    expect(cellCurrentAnswered.className).toContain("bg-brand-600");
     expect(cellCurrentAnswered.className).toContain("ring-brand-600");
     expect(cellCurrentAnswered.className).toContain(
-      "text-[var(--color-status-solid-fg)]",
+      "text-white",
     );
 
     // Navigate away — q0 is now answered but no longer current
     fireEvent.click(screen.getByTestId("session-nav-2"));
     const cellAnsweredNotCurrent = screen.getByTestId("session-nav-0");
-    expect(cellAnsweredNotCurrent.className).toContain("bg-[var(--color-status-success-solid)]");
+    expect(cellAnsweredNotCurrent.className).toContain("bg-brand-600");
     expect(cellAnsweredNotCurrent.className).not.toContain("ring-brand-600");
     expect(cellAnsweredNotCurrent.className).toContain(
-      "text-[var(--color-status-solid-fg)]",
+      "text-white",
     );
   });
 

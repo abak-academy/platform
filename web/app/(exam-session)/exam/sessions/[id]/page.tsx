@@ -7,8 +7,10 @@ import {
   Maximize2,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Flag,
   BookOpen,
+  Trophy,
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { ApiError } from "@/lib/api";
@@ -758,10 +760,10 @@ export default function SessionPage() {
   ).length;
   const isFlagged = currentQ ? flagged[currentQ.id] ?? false : false;
   const timerExpired = hasTimer && remaining <= 0;
-  const currentTestTitle =
-    session.tests.find((t) => t.id === currentQ?.test_id)?.title ??
-    session.tests[0]?.title ??
-    "";
+  const currentTest =
+    session.tests.find((t) => t.id === currentQ?.test_id) ??
+    session.tests[0];
+  const currentTestTitle = currentTest?.title ?? "";
   // In sectioned mode (utbk/ielts), use the mode label for the top bar title
   // to avoid duplicating the first section's title (which appears as the section label below).
   // In standard mode, show the title of the test that owns the current question
@@ -771,6 +773,7 @@ export default function SessionPage() {
       ? t("exam_packages_modal_mode_utbk")
       : t("exam_packages_modal_mode_ielts")
     : currentTestTitle;
+  const examSubtitle = isSectioned ? activeTest?.title : currentTest?.subject;
 
   return (
     // Dynamic viewport height keeps the exam shell clear of mobile browser chrome.
@@ -781,34 +784,39 @@ export default function SessionPage() {
       {/* Top bar */}
       <div
         data-testid="exam-top-bar"
-        className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-line bg-surface-2 px-4 py-2.5 sm:flex sm:flex-wrap sm:gap-x-4 lg:px-5 lg:py-3"
+        className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-line bg-surface px-4 py-2 sm:flex sm:flex-wrap sm:gap-x-4 lg:px-5"
       >
-        <div className="min-w-0 sm:w-auto sm:flex-1 sm:shrink">
-          <div
-            data-testid="exam-title"
-            className="truncate text-sm font-semibold text-ink-900"
-          >
-            {examTitle}
-          </div>
-          {isSectioned && (
-            <div className="truncate text-xs text-ink-500">
-              {activeTest?.title ?? ""}
+        <div className="flex min-w-0 items-center gap-2 sm:w-auto sm:flex-1 sm:shrink">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm">
+            <Trophy className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <div
+              data-testid="exam-title"
+              className="truncate text-sm font-bold text-ink-900"
+            >
+              {examTitle}
             </div>
-          )}
+            {examSubtitle && (
+              <div className="truncate text-xs text-ink-500">
+                {examSubtitle}
+              </div>
+            )}
+          </div>
         </div>
         {!isSectioned && (
           <Button
             type="button"
-            variant="default"
+            variant="destructive"
             size="sm"
             onClick={() => setShowConfirm(true)}
             disabled={timerExpired || submitting}
-            className="justify-self-end rounded-full bg-brand-600 px-4 font-bold text-white shadow-sm hover:bg-brand-700"
+            className="justify-self-end rounded-full bg-danger px-4 font-bold text-white shadow-sm hover:bg-danger/90 sm:order-3"
           >
             {t("submit")}
           </Button>
         )}
-        <div className="col-span-2 flex min-w-0 items-center gap-3 text-xs text-ink-500 sm:col-span-1 sm:ml-auto sm:gap-4">
+        <div className="col-span-2 flex min-w-0 items-center gap-3 text-xs text-ink-500 sm:order-2 sm:col-span-1 sm:ml-auto sm:gap-4">
           <div className="whitespace-nowrap">
             {answeredCount}/{questionsToShow.length}{" "}
             {t("session_legend_answered").toLowerCase()}
@@ -825,12 +833,13 @@ export default function SessionPage() {
           </div>
           {hasTimer && (
             <div
-              className={`ml-auto rounded-md px-2 py-0.5 text-base font-mono font-bold lg:px-3 lg:py-1 lg:text-lg ${
+              className={`ml-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-base font-mono font-bold lg:px-3 lg:text-lg ${
                 timerExpired
                   ? "bg-danger-bg text-danger"
-                  : "bg-surface-2 text-ink-900"
+                  : "bg-brand-50 text-brand-700"
               }`}
             >
+              <Clock className="size-4" />
               {formatTime(remaining)}
             </div>
           )}
@@ -902,24 +911,29 @@ export default function SessionPage() {
             )}
 
             {/* Question count + flag toggle */}
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-ink-600">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2 text-sm text-ink-600">
                 <BookOpen className="size-4" />
-                <span>
+                <span className="whitespace-nowrap">
                   {t("session_question")} {Math.min(currentQIndex + 1, questionsToShow.length)} {t("of")}{" "}
                   {questionsToShow.length}
                 </span>
+                {currentQ && (
+                  <span className="hidden rounded-md bg-line-2 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-ink-500 sm:inline-flex">
+                    {t(("fmt_" + currentQ.format) as I18nKey)}
+                  </span>
+                )}
               </div>
               {currentQ && (
                 <Button
                   type="button"
-                  variant={isFlagged ? "default" : "outline"}
+                  variant="outline"
                   size="sm"
                   onClick={() => toggleFlag(currentQ.id)}
                   disabled={timerExpired}
                   className={
                     isFlagged
-                      ? "border-[var(--color-status-warn-solid)] bg-[var(--color-status-warn-solid)] text-[var(--color-status-solid-fg)] shadow-sm hover:opacity-90"
+                      ? "border-warn/60 bg-surface text-warn shadow-sm hover:bg-warn-bg"
                       : "border-warn/40 text-warn hover:bg-warn-bg"
                   }
                 >
@@ -931,11 +945,8 @@ export default function SessionPage() {
 
             {/* Question card */}
             {currentQ && (
-              <Card className="mb-4 p-5">
-                <div className="mb-2 text-xs uppercase tracking-wide text-ink-500">
-                  {t(("fmt_" + currentQ.format) as I18nKey)}
-                </div>
-                <div className="mb-4 text-base text-ink-900">
+              <Card className="mb-4 p-5 sm:p-7">
+                <div className="mb-5 text-base text-ink-900">
                   <RichContent html={currentQ.body} />
                 </div>
 
@@ -995,8 +1006,11 @@ export default function SessionPage() {
         {/* Nav rail */}
         <div
           data-testid="exam-nav-rail"
-          className="mt-5 rounded-t-2xl border-t border-line bg-surface-2 p-4 shadow-[0_-8px_24px_rgba(21,24,58,0.06)] lg:mt-0 lg:rounded-none lg:border-t-0 lg:border-l lg:p-5 lg:shadow-none lg:overflow-y-auto"
+          className="mt-5 rounded-t-2xl border-t border-line bg-surface p-4 shadow-[0_-8px_24px_rgba(21,24,58,0.06)] lg:mt-0 lg:rounded-none lg:border-t-0 lg:border-l lg:p-5 lg:shadow-none lg:overflow-y-auto"
         >
+          <div className="mb-4 hidden text-xs font-bold uppercase tracking-[0.12em] text-ink-500 lg:block">
+            {t("session_question")}
+          </div>
           <button
             ref={navToggleRef}
             type="button"
@@ -1020,15 +1034,11 @@ export default function SessionPage() {
                 const isCurrent = i === currentQIndex;
 
                 let cellClass =
-                  "flex size-10 items-center justify-center rounded-md border text-xs font-bold transition-colors lg:size-8";
-                if (hasAnswer && isFlagQ) {
-                  cellClass += " border-[var(--color-status-warn-solid)] bg-[var(--color-status-warn-solid)] text-[var(--color-status-solid-fg)]";
-                } else if (hasAnswer) {
-                  cellClass += " border-[var(--color-status-success-solid)] bg-[var(--color-status-success-solid)] text-[var(--color-status-solid-fg)]";
-                } else if (isFlagQ) {
-                  cellClass += " border-[var(--color-status-warn-solid)] bg-[var(--color-status-warn-solid)] text-[var(--color-status-solid-fg)]";
+                  "relative flex size-10 items-center justify-center rounded-md border text-xs font-bold transition-colors lg:size-8";
+                if (hasAnswer) {
+                  cellClass += " border-brand-600 bg-brand-600 text-white";
                 } else {
-                  cellClass += " border-line bg-surface text-ink-700 hover:bg-surface-3";
+                  cellClass += " border-line bg-surface text-ink-700 hover:border-brand-300 hover:bg-brand-50";
                 }
                 if (isCurrent) {
                   cellClass += " ring-2 ring-brand-600 ring-offset-2 ring-offset-surface";
@@ -1047,6 +1057,9 @@ export default function SessionPage() {
                     data-testid={`session-nav-${i}`}
                   >
                     {i + 1}
+                    {isFlagQ && (
+                      <span className="absolute -right-1 -top-1 size-2.5 rounded-full bg-warn ring-2 ring-surface" />
+                    )}
                   </button>
                 );
               })}
@@ -1055,7 +1068,7 @@ export default function SessionPage() {
             {/* Legend */}
             <div className="mt-5 flex flex-col gap-2">
               <LegendItem
-                swatchClassName="border border-[var(--color-status-success-solid)] bg-[var(--color-status-success-solid)]"
+                swatchClassName="border border-brand-600 bg-brand-600"
                 label={t("session_legend_answered")}
               />
               <LegendItem
@@ -1063,7 +1076,7 @@ export default function SessionPage() {
                 label={t("session_legend_not_answered")}
               />
               <LegendItem
-                swatchClassName="border border-[var(--color-status-warn-solid)] bg-[var(--color-status-warn-solid)]"
+                swatchClassName="scale-75 rounded-full border border-warn bg-warn"
                 label={t("session_legend_flagged")}
               />
             </div>
@@ -1093,10 +1106,10 @@ export default function SessionPage() {
           </DialogHeader>
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-start">
             <Button
-              variant="default"
+              variant="destructive"
               onClick={handleSubmit}
               disabled={submitting}
-              className="h-10 w-full rounded-xl bg-brand-600 font-bold text-white hover:bg-brand-700"
+              className="h-10 w-full rounded-full bg-danger font-bold text-white hover:bg-danger/90"
             >
               {submitting ? t("sys_loading") : t("submit")}
             </Button>
