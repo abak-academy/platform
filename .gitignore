@@ -1,5 +1,9 @@
-# Node
-/node_modules/
+# Node / Next.js
+node_modules/
+web/.next/
+web/out/
+web/build/
+web/*.tsbuildinfo
 web/test-results/
 web/playwright-report/
 
