@@ -258,6 +258,22 @@ describe("exportAdminResults", () => {
     );
   });
 
+  it("exportAdminResults passes attempts=all for all-attempt export", async () => {
+    const mockBlob = new Blob(["name,score\n"], { type: "text/csv" });
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({ "Content-Disposition": 'attachment; filename="results-detailed-all-attempts.csv"' }),
+      blob: () => Promise.resolve(mockBlob),
+    });
+
+    await exportAdminResults("exam-1", "school-1", "budi", "all");
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://localhost:8080/api/v1/admin/results/export?exam_id=exam-1&school_id=school-1&q=budi&attempts=all",
+      expect.anything(),
+    );
+  });
+
   it("exportAdminResults throws on failed response", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: false,

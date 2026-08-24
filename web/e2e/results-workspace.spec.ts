@@ -167,14 +167,17 @@ async function mockBackend(page: Page) {
       });
     }
     if (method === "GET" && path === "/api/v1/admin/results/export") {
+      const allAttempts = url.searchParams.get("attempts") === "all";
       return route.fulfill({
         status: 200,
         contentType: "text/csv",
         headers: {
-          "content-disposition": "attachment; filename=\"results-detailed.csv\"",
+          "content-disposition": `attachment; filename="${allAttempts ? "results-detailed-all-attempts.csv" : "results-detailed.csv"}"`,
           "access-control-expose-headers": "Content-Disposition",
         },
-        body: "Rank,Student Name,Username,School,Score,Correct,Wrong,Empty,Started At,Submitted At,Duration Seconds,Violations,Q1 Answer,Q1 Points\n1,Budi Results,budi.results,SMA E2E,87.5,1,0,0,2026-08-01T09:00:00Z,2026-08-01T10:00:00Z,3600,2,B,87.5\n",
+        body: allAttempts
+          ? "Student Name,Username,School,Attempt No,Session Ref,Attempt Status,Score,Correct,Wrong,Empty,Started At,Submitted At,Duration Seconds,Violations,Q1 Answer,Q1 Points\nBudi Results,budi.results,SMA E2E,2,550e8400e29b,submitted,87.5,1,0,0,2026-08-01T09:00:00Z,2026-08-01T10:00:00Z,3600,2,B,87.5\n"
+          : "Rank,Student Name,Username,School,Score,Correct,Wrong,Empty,Started At,Submitted At,Duration Seconds,Violations,Q1 Answer,Q1 Points\n1,Budi Results,budi.results,SMA E2E,87.5,1,0,0,2026-08-01T09:00:00Z,2026-08-01T10:00:00Z,3600,2,B,87.5\n",
       });
     }
     if (method === "GET" && path === "/api/v1/admin/exams/exam-1/registrations") {
@@ -207,10 +210,10 @@ test("super_admin unified Results workspace is ranked and supports large detail 
   await page.getByRole("button", { name: "Hasil" }).click();
   await expect(page.getByText("Budi Results")).toBeVisible();
   await expect(page.getByText("50%")).toBeVisible();
-  await expect(page.getByText("87.5%").first()).toBeVisible();
-  await expect(page.getByText("87.5 / 100").first()).toBeVisible();
+  await expect(page.getByText("87.5").first()).toBeVisible();
+  await expect(page.getByText("Skor Maks: 100")).toBeVisible();
   await expect(page.getByText("Distribusi Skor")).toBeVisible();
-  await expect(page.getByText("81-100%")).toBeVisible();
+  await expect(page.getByText("81-100")).toBeVisible();
 
   await page.getByPlaceholder("Nama atau username siswa").fill("budi");
   await expect
@@ -222,6 +225,12 @@ test("super_admin unified Results workspace is ranked and supports large detail 
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("results-detailed.csv");
   expect(exportRequests.some((url) => url.includes("exam_id=exam-1") && url.includes("q=budi"))).toBe(true);
+
+  const allDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Semua Percobaan" }).click();
+  const allDownload = await allDownloadPromise;
+  expect(allDownload.suggestedFilename()).toBe("results-detailed-all-attempts.csv");
+  expect(exportRequests.some((url) => url.includes("exam_id=exam-1") && url.includes("q=budi") && url.includes("attempts=all"))).toBe(true);
 
   await page.getByRole("button", { name: "Lihat" }).first().click();
   await expect(page.getByRole("heading", { name: "Detail Hasil" })).toBeVisible();

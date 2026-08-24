@@ -139,7 +139,7 @@ func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUI
 	query := `WITH
 		scored AS (
 			SELECT DISTINCT ON (s.registration_id) s.registration_id, s.id AS session_id,
-				s.attempt_number, s.submitted_at, s.started_at, s.score
+				s.attempt_number, s.status AS attempt_status, s.submitted_at, s.started_at, s.score
 			FROM exam_session s
 			WHERE s.exam_id = $1 AND s.status = 'submitted' AND s.score IS NOT NULL AND ` + resultsWorkspaceFullyGraded + `
 			ORDER BY s.registration_id, s.attempt_number DESC, s.started_at DESC, s.id DESC
@@ -147,7 +147,7 @@ func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUI
 		joined AS (
 			SELECT reg.id AS registration_id, scored.session_id, u.name AS student_name, u.username,
 				COALESCE(sc.name, u.unlisted_school_name) AS school_name,
-				scored.submitted_at, scored.started_at, scored.score, reg.created_at,
+				scored.attempt_number, scored.attempt_status, scored.submitted_at, scored.started_at, scored.score, reg.created_at,
 				COALESCE(v.cnt, 0) AS violations
 			FROM exam_registration reg
 			JOIN users u ON u.id = reg.student_id AND u.role = 'student'
@@ -169,7 +169,7 @@ func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUI
 			SELECT * FROM ranked
 			WHERE ($3::text = '' OR student_name ILIKE '%' || $3 || '%' OR username ILIKE '%' || $3 || '%')
 		)
-		SELECT registration_id, session_id, student_name, username, school_name, rnk, score,
+		SELECT registration_id, session_id, student_name, username, school_name, attempt_number, attempt_status, rnk, score,
 			submitted_at, started_at, violations
 		FROM filtered
 		ORDER BY rnk ASC, score DESC, registration_id ASC`
@@ -185,7 +185,7 @@ func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUI
 	for rows.Next() {
 		var row model.AdminExportRow
 		if err := rows.Scan(&row.RegistrationID, &row.SessionID, &row.StudentName, &row.Username,
-			&row.SchoolName, &row.Rank, &row.Score, &row.SubmittedAt, &row.StartedAt, &row.Violations); err != nil {
+			&row.SchoolName, &row.AttemptNumber, &row.AttemptStatus, &row.Rank, &row.Score, &row.SubmittedAt, &row.StartedAt, &row.Violations); err != nil {
 			return nil, err
 		}
 		results = append(results, row)
@@ -196,6 +196,60 @@ func (r *Repository) ListDetailedExportRows(ctx context.Context, examID uuid.UUI
 	}
 	rows.Close()
 
+	return r.attachDetailedExportQuestionRows(ctx, examID, results, sessionIDs)
+}
+
+// ListDetailedAllAttemptExportRows returns one export row per submitted, scored,
+// fully-graded attempt. It intentionally does not rank rows: the same student can
+// have multiple attempts, so a leaderboard rank would be misleading in CSV.
+func (r *Repository) ListDetailedAllAttemptExportRows(ctx context.Context, examID uuid.UUID, schoolID, q string) ([]model.AdminExportRow, error) {
+	query := `SELECT reg.id AS registration_id, s.id AS session_id, u.name AS student_name, u.username,
+			COALESCE(sc.name, u.unlisted_school_name) AS school_name,
+			s.attempt_number, s.status AS attempt_status, s.score, s.submitted_at, s.started_at,
+			COALESCE(v.cnt, 0) AS violations
+		FROM exam_session s
+		JOIN exam_registration reg ON reg.id = s.registration_id AND reg.exam_id = $1
+		JOIN users u ON u.id = s.student_id AND u.role = 'student'
+		LEFT JOIN school sc ON sc.id = u.school_id
+		LEFT JOIN (
+			SELECT session_id, COUNT(*) AS cnt
+			FROM session_violation_log
+			GROUP BY session_id
+		) v ON v.session_id = s.id
+		WHERE s.exam_id = $1
+			AND s.status = 'submitted'
+			AND s.score IS NOT NULL
+			AND ` + resultsWorkspaceFullyGraded + `
+			AND ($2::text = '' OR u.school_id = $2::uuid)
+			AND ($3::text = '' OR u.name ILIKE '%' || $3 || '%' OR u.username ILIKE '%' || $3 || '%')
+		ORDER BY u.name ASC, u.username ASC, s.attempt_number ASC, s.started_at ASC, s.id ASC`
+
+	rows, err := r.pool.Query(ctx, query, examID, schoolID, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := []model.AdminExportRow{}
+	sessionIDs := []uuid.UUID{}
+	for rows.Next() {
+		var row model.AdminExportRow
+		if err := rows.Scan(&row.RegistrationID, &row.SessionID, &row.StudentName, &row.Username,
+			&row.SchoolName, &row.AttemptNumber, &row.AttemptStatus, &row.Score, &row.SubmittedAt, &row.StartedAt, &row.Violations); err != nil {
+			return nil, err
+		}
+		results = append(results, row)
+		sessionIDs = append(sessionIDs, row.SessionID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+
+	return r.attachDetailedExportQuestionRows(ctx, examID, results, sessionIDs)
+}
+
+func (r *Repository) attachDetailedExportQuestionRows(ctx context.Context, examID uuid.UUID, results []model.AdminExportRow, sessionIDs []uuid.UUID) ([]model.AdminExportRow, error) {
 	if len(results) == 0 {
 		return results, nil
 	}

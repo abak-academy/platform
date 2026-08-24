@@ -97,8 +97,15 @@ func (h *Handler) AdminExportResults(c echo.Context) error {
 	}
 
 	var csvBytes []byte
+	filename := "results.csv"
 	if claims.Role == "super_admin" {
-		csvBytes, err = h.svc.ExportDetailedResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
+		if c.QueryParam("attempts") == "all" {
+			csvBytes, err = h.svc.ExportDetailedAllAttemptResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
+			filename = "results-detailed-all-attempts.csv"
+		} else {
+			csvBytes, err = h.svc.ExportDetailedResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
+			filename = "results-detailed.csv"
+		}
 	} else {
 		csvBytes, err = h.svc.ExportSchoolResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
 	}
@@ -106,10 +113,6 @@ func (h *Handler) AdminExportResults(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 
-	filename := "results.csv"
-	if claims.Role == "super_admin" {
-		filename = "results-detailed.csv"
-	}
 	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="`+filename+`"`)
 	c.Response().Header().Set("Access-Control-Expose-Headers", echo.HeaderContentDisposition)
 	return c.Blob(http.StatusOK, "text/csv", csvBytes)

@@ -811,6 +811,40 @@ func TestBuildDetailedResultsCSV_ObjectiveCountsAndSparseAnswers(t *testing.T) {
 	}
 }
 
+func TestBuildDetailedAllAttemptResultsCSV_AttemptColumnsAndSessionRef(t *testing.T) {
+	questionID := uuid.New()
+	questions := []model.QuestionWithOptions{{Question: model.Question{ID: questionID, Format: "mcq"}}}
+	trueVal := true
+	nine := 9.0
+	sessionID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+	row := model.AdminExportRow{
+		SessionID:     sessionID,
+		StudentName:   "Budi Results",
+		Username:      strPtr("budi"),
+		AttemptNumber: 2,
+		AttemptStatus: "submitted",
+		Score:         floatPtr(9),
+		Violations:    3,
+		QuestionRows: []model.AdminExportQuestionRow{
+			{QuestionID: questionID, StudentAnswer: strPtr("a"), Points: &nine, IsCorrect: &trueVal},
+		},
+	}
+
+	records, err := csv.NewReader(bytes.NewReader(BuildDetailedAllAttemptResultsCSV([]model.AdminExportRow{row}, questions))).ReadAll()
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+	wantHeader := []string{"Student Name", "Username", "School", "Attempt No", "Session Ref", "Attempt Status", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds", "Violations", "Q1 Answer", "Q1 Points"}
+	for i, h := range wantHeader {
+		if records[0][i] != h {
+			t.Fatalf("header[%d]: want %s, got %s; header=%v", i, h, records[0][i], records[0])
+		}
+	}
+	if records[1][3] != "2" || records[1][4] != "550e8400e29b" || records[1][5] != "submitted" || records[1][13] != "3" || records[1][14] != "a" || records[1][15] != "9" {
+		t.Fatalf("all-attempt row mismatch: %v", records[1])
+	}
+}
+
 func TestAdminResultDetail_NoRankInJSON(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)

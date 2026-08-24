@@ -47,7 +47,12 @@ export function useAdminResultDetail(sessionId: string, schoolId?: string) {
   });
 }
 
-export async function exportAdminResults(examId: string, schoolId?: string, q?: string): Promise<void> {
+export async function exportAdminResults(
+  examId: string,
+  schoolId?: string,
+  q?: string,
+  attempts: "latest" | "all" = "latest",
+): Promise<void> {
   const { useAuthStore } = await import("@/stores/auth");
   const token = useAuthStore.getState().token;
 
@@ -55,6 +60,7 @@ export async function exportAdminResults(examId: string, schoolId?: string, q?: 
   params.set("exam_id", examId);
   if (schoolId) params.set("school_id", schoolId);
   if (q) params.set("q", q);
+  if (attempts === "all") params.set("attempts", "all");
   const query = params.toString();
 
   const res = await fetch(`${API_BASE}/admin/results/export?${query}`, {

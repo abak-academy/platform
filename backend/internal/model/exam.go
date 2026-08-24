@@ -508,14 +508,17 @@ type AdminResultRow struct {
 	Violations  int        `json:"violations"`
 }
 
-// AdminExportRow is the export-specific row shape: one per registration with
-// latest-scored attempt, including per-question answers and points (Issue 130).
+// AdminExportRow is the export-specific row shape. Latest export emits one row
+// per registration with latest-scored attempt; all-attempt export emits one row
+// per scored attempt, including per-question answers and points.
 type AdminExportRow struct {
 	RegistrationID uuid.UUID                `json:"registration_id"`
 	SessionID      uuid.UUID                `json:"session_id"`
 	StudentName    string                   `json:"student_name"`
 	Username       *string                  `json:"username"`
 	SchoolName     *string                  `json:"school_name"`
+	AttemptNumber  int                      `json:"attempt_number"`
+	AttemptStatus  string                   `json:"attempt_status"`
 	Rank           int                      `json:"rank"`
 	Score          *float64                 `json:"score"`
 	CorrectCount   int                      `json:"correct_count"`

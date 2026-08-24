@@ -118,16 +118,16 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
     setSelectedSessionId(selectedRow.latest_session_id ?? "");
   }, [selectedRow?.registration_id, selectedRow?.latest_session_id]);
 
-  const [exporting, setExporting] = useState(false);
-  const handleExport = async () => {
+  const [exporting, setExporting] = useState<"latest" | "all" | null>(null);
+  const handleExport = async (attempts: "latest" | "all" = "latest") => {
     if (!examId) return;
-    setExporting(true);
+    setExporting(attempts);
     try {
-      await exportAdminResults(examId, selectedSchoolId || undefined, debouncedSearch || undefined);
+      await exportAdminResults(examId, selectedSchoolId || undefined, debouncedSearch || undefined, attempts);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("sys_error_load"));
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   };
 
@@ -240,10 +240,16 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
             </Select>
           </div>
         </div>
-        <Button size="sm" onClick={handleExport} disabled={exporting || !examId}>
-          {exporting ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Download className="mr-1 size-4" />}
-          {exporting ? t("school_reports_export_loading") : t("school_reports_export")}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => handleExport("latest")} disabled={Boolean(exporting) || !examId}>
+            {exporting === "latest" ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Download className="mr-1 size-4" />}
+            {exporting === "latest" ? t("school_reports_export_loading") : t("school_reports_export")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => handleExport("all")} disabled={Boolean(exporting) || !examId}>
+            {exporting === "all" ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Download className="mr-1 size-4" />}
+            {exporting === "all" ? t("school_reports_export_loading") : t("results_workspace_export_all_attempts")}
+          </Button>
+        </div>
       </div>
 
       {query.isLoading && accumulated.length === 0 ? (

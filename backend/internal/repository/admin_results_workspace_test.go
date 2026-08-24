@@ -177,6 +177,23 @@ func TestResultsWorkspaceRepository_DBBackedSemantics(t *testing.T) {
 		t.Fatalf("detailed export answer columns mismatch: %+v", exportRows[0].QuestionRows)
 	}
 
+	allAttemptRows, err := repo.ListDetailedAllAttemptExportRows(ctx, examID, schoolA.String(), "budi-results")
+	if err != nil {
+		t.Fatalf("ListDetailedAllAttemptExportRows: %v", err)
+	}
+	if len(allAttemptRows) != 2 {
+		t.Fatalf("all-attempt export q-filter rows = %d, want 2: %+v", len(allAttemptRows), allAttemptRows)
+	}
+	if allAttemptRows[0].SessionID != budiOld || allAttemptRows[0].AttemptNumber != 1 || allAttemptRows[0].AttemptStatus != "submitted" || allAttemptRows[0].Rank != 0 || allAttemptRows[0].Score == nil || *allAttemptRows[0].Score != 60 || allAttemptRows[0].Violations != 0 {
+		t.Fatalf("old all-attempt row mismatch: %+v", allAttemptRows[0])
+	}
+	if allAttemptRows[1].SessionID != budiLatest || allAttemptRows[1].AttemptNumber != 2 || allAttemptRows[1].AttemptStatus != "submitted" || allAttemptRows[1].Rank != 0 || allAttemptRows[1].Score == nil || *allAttemptRows[1].Score != 90 || allAttemptRows[1].Violations != 2 {
+		t.Fatalf("latest all-attempt row mismatch: %+v", allAttemptRows[1])
+	}
+	if len(allAttemptRows[0].QuestionRows) != 1 || allAttemptRows[0].QuestionRows[0].Points == nil || *allAttemptRows[0].QuestionRows[0].Points != 60 {
+		t.Fatalf("old all-attempt answer columns mismatch: %+v", allAttemptRows[0].QuestionRows)
+	}
+
 	firstPage, cursor, err := repo.ListResultsWorkspaceRows(ctx, examID, ResultsWorkspaceFilter{SchoolID: &schoolA, Limit: 1})
 	if err != nil {
 		t.Fatalf("ListResultsWorkspaceRows page1: %v", err)

@@ -886,6 +886,41 @@ func TestAdminResult_Export_SuperAdminGetsDetailedCSV(t *testing.T) {
 	}
 }
 
+func TestAdminResult_Export_SuperAdminAllAttemptsGetsAttemptMetadata(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	schoolID := seedSchool(t, env.pool)
+	examID := seedExamWithMCQ(t, env.pool)
+	studentID := seedUserWithSchool(t, env.pool, "student", "All Attempts Student", schoolID)
+	sessionID := seedSubmittedSessionReturningID(t, env.pool, studentID, examID)
+
+	token := mintSuperAdminToken(t, env, "csv-super-admin-all")
+	rec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+examID.String()+"&attempts=all", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="results-detailed-all-attempts.csv"` {
+		t.Fatalf("Content-Disposition: want all-attempt filename, got %q", cd)
+	}
+
+	records, err := csv.NewReader(bytes.NewReader(rec.Body.Bytes())).ReadAll()
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("want header + 1 row, got %d records", len(records))
+	}
+	wantHeader := []string{"Student Name", "Username", "School", "Attempt No", "Session Ref", "Attempt Status", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds", "Violations", "Q1 Answer", "Q1 Points"}
+	for i, h := range wantHeader {
+		if records[0][i] != h {
+			t.Fatalf("header[%d]: want %s, got %s; header=%v", i, h, records[0][i], records[0])
+		}
+	}
+	if records[1][0] != "All Attempts Student" || records[1][3] != "1" || records[1][4] != strings.ReplaceAll(sessionID.String(), "-", "")[:12] || records[1][5] != "submitted" || records[1][14] != "a" || records[1][15] != "1" {
+		t.Fatalf("all-attempt detailed row mismatch: %v", records[1])
+	}
+}
+
 func TestAdminResult_List_SuperAdmin_NonexistentSchool_404(t *testing.T) {
 	env := newAdminResultsDBEnv(t)
 
