@@ -618,12 +618,12 @@ describe("SessionPage", () => {
     const radios = screen.getAllByRole("radio");
     fireEvent.click(radios[1]);
     expect(radios[1]).toBeChecked();
-    expect(screen.getByTestId("session-nav-0").className).toContain("bg-success");
+    expect(screen.getByTestId("session-nav-0").className).toContain("bg-[var(--color-status-success-solid)]");
 
     fireEvent.click(screen.getByRole("button", { name: /kosongkan jawaban/i }));
 
     expect(radios[1]).not.toBeChecked();
-    expect(screen.getByTestId("session-nav-0").className).not.toContain("bg-success");
+    expect(screen.getByTestId("session-nav-0").className).not.toContain("bg-[var(--color-status-success-solid)]");
     expect(screen.getByTestId("session-nav-0").className).toContain("border-line");
   });
 
@@ -641,8 +641,8 @@ describe("SessionPage", () => {
     render(<SessionPage />);
     await enterFullscreen();
 
-    expect(screen.getByTestId("session-nav-0").className).toContain("bg-success");
-    expect(screen.getByTestId("session-nav-1").className).toContain("bg-warn");
+    expect(screen.getByTestId("session-nav-0").className).toContain("bg-[var(--color-status-success-solid)]");
+    expect(screen.getByTestId("session-nav-1").className).toContain("bg-[var(--color-status-warn-solid)]");
     expect(screen.getByTestId("session-nav-2").className).toContain("border-line");
   });
 
@@ -1426,7 +1426,7 @@ describe("SessionPage", () => {
 
     const cellCurrentAnswered = screen.getByTestId("session-nav-0");
     // Current is now a ring so the answered status stays visible.
-    expect(cellCurrentAnswered.className).toContain("bg-success");
+    expect(cellCurrentAnswered.className).toContain("bg-[var(--color-status-success-solid)]");
     expect(cellCurrentAnswered.className).toContain("ring-brand-600");
     expect(cellCurrentAnswered.className).toContain(
       "text-[var(--color-status-solid-fg)]",
@@ -1435,7 +1435,7 @@ describe("SessionPage", () => {
     // Navigate away — q0 is now answered but no longer current
     fireEvent.click(screen.getByTestId("session-nav-2"));
     const cellAnsweredNotCurrent = screen.getByTestId("session-nav-0");
-    expect(cellAnsweredNotCurrent.className).toContain("bg-success");
+    expect(cellAnsweredNotCurrent.className).toContain("bg-[var(--color-status-success-solid)]");
     expect(cellAnsweredNotCurrent.className).not.toContain("ring-brand-600");
     expect(cellAnsweredNotCurrent.className).toContain(
       "text-[var(--color-status-solid-fg)]",
@@ -1459,8 +1459,11 @@ describe("SessionPage", () => {
 
     const topBar = screen.getByTestId("exam-top-bar");
     const counter = screen.getByText(/0\/5/);
+    const metaRow = counter.parentElement;
+    expect(topBar.className).toContain("grid-cols-[minmax(0,1fr)_auto]");
     expect(topBar.className).toContain("flex-wrap");
-    expect(counter.className).toContain("ml-auto");
+    expect(metaRow?.className).toContain("col-span-2");
+    expect(metaRow?.className).toContain("sm:ml-auto");
   });
 
   it("keeps the answered counter and save indicator visible in the DOM", async () => {

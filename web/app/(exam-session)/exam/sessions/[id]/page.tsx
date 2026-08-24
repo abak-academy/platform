@@ -781,9 +781,9 @@ export default function SessionPage() {
       {/* Top bar */}
       <div
         data-testid="exam-top-bar"
-        className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface-2 px-4 py-2.5 lg:px-5 lg:py-3"
+        className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-line bg-surface-2 px-4 py-2.5 sm:flex sm:flex-wrap sm:gap-x-4 lg:px-5 lg:py-3"
       >
-        <div className="min-w-0 w-full shrink-0 sm:w-auto sm:flex-1 sm:shrink">
+        <div className="min-w-0 sm:w-auto sm:flex-1 sm:shrink">
           <div
             data-testid="exam-title"
             className="truncate text-sm font-semibold text-ink-900"
@@ -796,42 +796,45 @@ export default function SessionPage() {
             </div>
           )}
         </div>
-        <div className="ml-auto whitespace-nowrap text-xs text-ink-500">
-          {answeredCount}/{questionsToShow.length}{" "}
-          {t("session_legend_answered").toLowerCase()}
-        </div>
-        <div
-          data-testid="save-indicator"
-          className="whitespace-nowrap text-xs text-ink-500"
-        >
-          {saveStatus === "saved"
-            ? t("session_save_saved")
-            : saveStatus === "saving"
-              ? t("session_save_saving")
-              : t("session_save_unsaved")}
-        </div>
-        {hasTimer && (
-          <div
-            className={`rounded-md px-2 py-0.5 text-base font-mono font-bold lg:px-3 lg:py-1 lg:text-lg ${
-              timerExpired
-                ? "bg-danger-bg text-danger"
-                : "bg-surface-2 text-ink-900"
-            }`}
-          >
-            {formatTime(remaining)}
-          </div>
-        )}
         {!isSectioned && (
           <Button
             type="button"
-            variant="destructive"
+            variant="default"
             size="sm"
             onClick={() => setShowConfirm(true)}
             disabled={timerExpired || submitting}
+            className="justify-self-end rounded-full bg-brand-600 px-4 font-bold text-white shadow-sm hover:bg-brand-700"
           >
             {t("submit")}
           </Button>
         )}
+        <div className="col-span-2 flex min-w-0 items-center gap-3 text-xs text-ink-500 sm:col-span-1 sm:ml-auto sm:gap-4">
+          <div className="whitespace-nowrap">
+            {answeredCount}/{questionsToShow.length}{" "}
+            {t("session_legend_answered").toLowerCase()}
+          </div>
+          <div
+            data-testid="save-indicator"
+            className="min-w-[4.75rem] whitespace-nowrap"
+          >
+            {saveStatus === "saved"
+              ? t("session_save_saved")
+              : saveStatus === "saving"
+                ? t("session_save_saving")
+                : t("session_save_unsaved")}
+          </div>
+          {hasTimer && (
+            <div
+              className={`ml-auto rounded-md px-2 py-0.5 text-base font-mono font-bold lg:px-3 lg:py-1 lg:text-lg ${
+                timerExpired
+                  ? "bg-danger-bg text-danger"
+                  : "bg-surface-2 text-ink-900"
+              }`}
+            >
+              {formatTime(remaining)}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Body: question pane (1fr) + nav rail (280px) */}
@@ -916,7 +919,7 @@ export default function SessionPage() {
                   disabled={timerExpired}
                   className={
                     isFlagged
-                      ? "bg-warn text-[var(--color-status-solid-fg)] hover:bg-warn/90"
+                      ? "border-[var(--color-status-warn-solid)] bg-[var(--color-status-warn-solid)] text-[var(--color-status-solid-fg)] shadow-sm hover:opacity-90"
                       : "border-warn/40 text-warn hover:bg-warn-bg"
                   }
                 >
@@ -992,7 +995,7 @@ export default function SessionPage() {
         {/* Nav rail */}
         <div
           data-testid="exam-nav-rail"
-          className="border-t border-line bg-surface-2 p-4 lg:overflow-y-auto lg:border-t-0 lg:border-l lg:p-5"
+          className="mt-5 rounded-t-2xl border-t border-line bg-surface-2 p-4 shadow-[0_-8px_24px_rgba(21,24,58,0.06)] lg:mt-0 lg:rounded-none lg:border-t-0 lg:border-l lg:p-5 lg:shadow-none lg:overflow-y-auto"
         >
           <button
             ref={navToggleRef}
@@ -1019,11 +1022,11 @@ export default function SessionPage() {
                 let cellClass =
                   "flex size-10 items-center justify-center rounded-md border text-xs font-bold transition-colors lg:size-8";
                 if (hasAnswer && isFlagQ) {
-                  cellClass += " border-warn bg-warn text-[var(--color-status-solid-fg)]";
+                  cellClass += " border-[var(--color-status-warn-solid)] bg-[var(--color-status-warn-solid)] text-[var(--color-status-solid-fg)]";
                 } else if (hasAnswer) {
-                  cellClass += " border-success bg-success text-[var(--color-status-solid-fg)]";
+                  cellClass += " border-[var(--color-status-success-solid)] bg-[var(--color-status-success-solid)] text-[var(--color-status-solid-fg)]";
                 } else if (isFlagQ) {
-                  cellClass += " border-warn bg-warn text-[var(--color-status-solid-fg)]";
+                  cellClass += " border-[var(--color-status-warn-solid)] bg-[var(--color-status-warn-solid)] text-[var(--color-status-solid-fg)]";
                 } else {
                   cellClass += " border-line bg-surface text-ink-700 hover:bg-surface-3";
                 }
@@ -1052,7 +1055,7 @@ export default function SessionPage() {
             {/* Legend */}
             <div className="mt-5 flex flex-col gap-2">
               <LegendItem
-                swatchClassName="border border-success bg-success"
+                swatchClassName="border border-[var(--color-status-success-solid)] bg-[var(--color-status-success-solid)]"
                 label={t("session_legend_answered")}
               />
               <LegendItem
@@ -1060,7 +1063,7 @@ export default function SessionPage() {
                 label={t("session_legend_not_answered")}
               />
               <LegendItem
-                swatchClassName="border border-warn bg-warn"
+                swatchClassName="border border-[var(--color-status-warn-solid)] bg-[var(--color-status-warn-solid)]"
                 label={t("session_legend_flagged")}
               />
             </div>
@@ -1081,24 +1084,27 @@ export default function SessionPage() {
 
       {/* Submit confirmation dialog */}
       <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="max-w-sm rounded-2xl p-5 sm:max-w-md">
+          <DialogHeader className="gap-2 text-center">
             <DialogTitle>{t("submit_confirm")}</DialogTitle>
             <DialogDescription>
               {answeredCount}/{questionsToShow.length} {t("session_question").toLowerCase()}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">{t("cancel")}</Button>
-            </DialogClose>
+          <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-start">
             <Button
-              variant="destructive"
+              variant="default"
               onClick={handleSubmit}
               disabled={submitting}
+              className="h-10 w-full rounded-xl bg-brand-600 font-bold text-white hover:bg-brand-700"
             >
               {submitting ? t("sys_loading") : t("submit")}
             </Button>
+            <DialogClose asChild>
+              <Button variant="outline" className="h-10 w-full rounded-xl">
+                {t("cancel")}
+              </Button>
+            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
