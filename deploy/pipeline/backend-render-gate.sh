@@ -49,4 +49,4 @@ cd backend
 # so the main suite is not slowed by pulling the Chromium image. Matches
 # every gate test by prefix (TestCertificateRender_*, TestCardRender_*), not
 # one by name — a new gate test must not silently sit unrun.
-go test -tags gotenberg_integration -run 'TestCertificateRender_|TestCardRender_' -count=1 -v ./internal/service/
+go test -tags gotenberg_integration -run 'TestCertificateRender_|TestCardRender_|TestQuestionBundleRender_' -count=1 -v ./internal/service/

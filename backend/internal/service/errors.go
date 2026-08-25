@@ -6,8 +6,9 @@ var (
 	// ErrStorageNotConfigured replaces eight separate inline allocations of the
 	// same message across certificate/exam/job/student, so callers can match it
 	// with errors.Is instead of comparing strings.
-	ErrStorageNotConfigured = errors.New("storage not configured")
-	ErrIncompleteSchedule   = errors.New("delivery_date and delivery_time must be given together")
+	ErrStorageNotConfigured     = errors.New("storage not configured")
+	ErrPDFRendererNotConfigured = errors.New("pdf renderer not configured")
+	ErrIncompleteSchedule       = errors.New("delivery_date and delivery_time must be given together")
 
 	ErrAlreadyAttempted     = errors.New("already attempted")
 	ErrExamNotStarted       = errors.New("exam not started")

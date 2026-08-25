@@ -476,7 +476,7 @@ export default function TestDetailPage() {
 
           {/* Right: questions panel */}
           <div className="space-y-4">
-            <QuestionBundleControls scope="test" scopeId={id} disabled={questions.length === 0} />
+            <QuestionBundleControls testId={id} disabled={questions.length === 0} />
 
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-[15px] font-semibold text-ink-900">

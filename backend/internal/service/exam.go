@@ -474,10 +474,21 @@ func (s *Service) UpdateTest(ctx context.Context, id uuid.UUID, t model.Test) (m
 		}
 		return model.Test{}, err
 	}
-	if err := s.storeRepo.UpdateTest(ctx, id, &t); err != nil {
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Test{}, err
+	}
+	defer tx.Rollback(ctx)
+	if err := s.storeRepo.UpdateTestTx(ctx, tx, id, &t); err != nil {
 		if errors.Is(err, repository.ErrSortOrderConflict) {
 			return model.Test{}, fmt.Errorf("%w: sort order conflict", ErrValidation)
 		}
+		return model.Test{}, err
+	}
+	if err := s.storeRepo.ClearQuestionBundleKeysByTestTx(ctx, tx, id); err != nil {
+		return model.Test{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return model.Test{}, err
 	}
 	t.ID = id
@@ -491,7 +502,18 @@ func (s *Service) DeleteTest(ctx context.Context, id uuid.UUID) error {
 		}
 		return err
 	}
-	return s.storeRepo.DeleteTest(ctx, id)
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := s.storeRepo.ClearQuestionBundleKeysByTestTx(ctx, tx, id); err != nil {
+		return err
+	}
+	if err := s.storeRepo.DeleteTestTx(ctx, tx, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Service) ListTests(ctx context.Context, filter repository.TestFilter) ([]model.Test, string, error) {
@@ -558,6 +580,9 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 			}
 			return model.QuestionWithOptions{}, err
 		}
+		if err := s.storeRepo.ClearQuestionBundleKeysByQuestionTx(ctx, tx, q.ID); err != nil {
+			return model.QuestionWithOptions{}, err
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -589,6 +614,9 @@ func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q
 		return model.QuestionWithOptions{}, err
 	}
 	if err := s.storeRepo.AttachQuestionToTestTx(ctx, tx, testID, q.ID); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+	if err := s.storeRepo.ClearQuestionBundleKeysByTestTx(ctx, tx, testID); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 
@@ -639,6 +667,9 @@ func (s *Service) AttachQuestions(ctx context.Context, testID uuid.UUID, questio
 	if err := s.storeRepo.AttachQuestionsToTestTx(ctx, tx, testID, questionIDs); err != nil {
 		return err
 	}
+	if err := s.storeRepo.ClearQuestionBundleKeysByTestTx(ctx, tx, testID); err != nil {
+		return err
+	}
 
 	return tx.Commit(ctx)
 }
@@ -652,7 +683,18 @@ func (s *Service) DetachQuestion(ctx context.Context, testID, questionID uuid.UU
 		}
 		return err
 	}
-	return s.storeRepo.DetachQuestionFromTest(ctx, testID, questionID)
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := s.storeRepo.DetachQuestionFromTestTx(ctx, tx, testID, questionID); err != nil {
+		return err
+	}
+	if err := s.storeRepo.ClearQuestionBundleKeysByTestTx(ctx, tx, testID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // ReorderTestQuestions validates that the supplied id set equals the currently
@@ -684,6 +726,9 @@ func (s *Service) ReorderTestQuestions(ctx context.Context, testID uuid.UUID, or
 	defer tx.Rollback(ctx)
 
 	if err := s.storeRepo.ReorderTestQuestionsTx(ctx, tx, testID, orderedQuestionIDs); err != nil {
+		return err
+	}
+	if err := s.storeRepo.ClearQuestionBundleKeysByTestTx(ctx, tx, testID); err != nil {
 		return err
 	}
 
@@ -752,13 +797,21 @@ func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("%w: question has been answered in %d session(s) and cannot be deleted", ErrValidation, answered)
 	}
 
-	if err := s.storeRepo.DeleteQuestion(ctx, id); err != nil {
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := s.storeRepo.ClearQuestionBundleKeysByQuestionTx(ctx, tx, id); err != nil {
+		return err
+	}
+	if err := s.storeRepo.DeleteQuestionTx(ctx, tx, id); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrQuestionNotFound
 		}
 		return err
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 // ListBankQuestions returns cursor-paginated bank questions with topic name and
@@ -1206,7 +1259,6 @@ func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testID
 	if err := s.storeRepo.ReplaceExamTestsTx(ctx, tx, examID, tests); err != nil {
 		return err
 	}
-
 	return tx.Commit(ctx)
 }
 

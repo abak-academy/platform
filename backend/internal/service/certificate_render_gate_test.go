@@ -320,3 +320,35 @@ func TestCardRender_ThroughWorker(t *testing.T) {
 		t.Fatal("rasterized card has zero dimensions")
 	}
 }
+
+// TestQuestionBundleRender_FETemplate proves a self-contained template emitted
+// by the frontend contract renders through the same real Gotenberg engine used
+// by the worker. The backend only receives the contract and verified question
+// data; it owns no production document markup.
+func TestQuestionBundleRender_FETemplate(t *testing.T) {
+	template, err := ValidateQuestionBundleTemplate(validQuestionBundleTemplate())
+	if err != nil {
+		t.Fatalf("ValidateQuestionBundleTemplate: %v", err)
+	}
+	answer := "4"
+	document, err := buildQuestionBundleDocument(template, "kunci", "Render Gate Bundle", []model.TestDetail{{
+		Test: model.Test{Title: "TPS", Subject: "TPS", Topic: "Penalaran", DurationMinutes: 60},
+		Questions: []model.QuestionWithOptions{{
+			Question: model.Question{Format: "mcq", Body: "<p>2 + 2 = ?</p>", CorrectAnswer: &answer, PointCorrect: 1},
+		}},
+	}}, nil)
+	if err != nil {
+		t.Fatalf("buildQuestionBundleDocument: %v", err)
+	}
+	pdf, err := NewGotenbergPDFGenerator(renderGateGotenbergURL(), nil).RenderHTML(context.Background(), document)
+	if err != nil {
+		t.Fatalf("RenderHTML: %v", err)
+	}
+	if !bytes.HasPrefix(pdf, []byte("%PDF-")) {
+		t.Fatalf("output is not a PDF (no %%PDF- header); first bytes: %q", pdf[:min(16, len(pdf))])
+	}
+	img := renderToPNG(t, pdf)
+	if img.Bounds().Dx() >= img.Bounds().Dy() {
+		t.Errorf("expected A4 portrait, got %dx%d px", img.Bounds().Dx(), img.Bounds().Dy())
+	}
+}

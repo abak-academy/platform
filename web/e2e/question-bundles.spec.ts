@@ -8,13 +8,6 @@ const ADMIN_EXAM = {
   role: "admin_exam",
 };
 
-const ADMIN_SCHOOL = {
-  id: "e2e-admin-school-id",
-  email: "admin.school@example.test",
-  name: "Admin School",
-  role: "admin_school",
-};
-
 const TEST_DETAIL = {
   test: {
     id: "test-1",
@@ -69,6 +62,7 @@ const EXAM_DETAIL = {
 
 async function mockQuestionBundleBackend(page: Page) {
   const requests: string[] = [];
+  const requested = new Set<string>();
   await page.route("**/api/v1/**", async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -91,40 +85,34 @@ async function mockQuestionBundleBackend(page: Page) {
     if (method === "GET" && path === "/api/v1/admin/tests") {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [TEST_DETAIL.test] }) });
     }
-    if (method === "POST" && (path === "/api/v1/admin/tests/test-1/question-bundle" || path === "/api/v1/admin/exams/exam-1/question-bundle")) {
-      const body = req.postDataJSON() as { include_answer_key?: boolean };
+    if (method === "POST" && (path === "/api/v1/admin/tests/test-1/question-bundles/kunci" || path === "/api/v1/admin/tests/test-1/question-bundles/naskah")) {
+      const body = req.postDataJSON() as { template?: { document?: string } };
+      expect(body.template?.document).toContain("{{tests_html}}");
+      requested.add(path);
       return route.fulfill({
         status: 202,
         contentType: "application/json",
         body: JSON.stringify({
-          id: body.include_answer_key ? "bundle-key" : "bundle-paper",
-          scope_type: path.includes("/exams/") ? "exam" : "test",
-          scope_id: path.includes("/exams/") ? "exam-1" : "test-1",
-          variant: body.include_answer_key ? "kunci" : "naskah",
+          test_id: "test-1",
+          variant: path.endsWith("/kunci") ? "kunci" : "naskah",
           status: "queued",
-          created_at: "2026-08-25T01:00:00Z",
-          updated_at: "2026-08-25T01:00:00Z",
         }),
       });
     }
-    if (method === "GET" && (path === "/api/v1/admin/question-bundles/bundle-key" || path === "/api/v1/admin/question-bundles/bundle-paper")) {
-      const key = path.endsWith("bundle-key");
+    if (method === "GET" && path.startsWith("/api/v1/admin/tests/test-1/question-bundles/") && !path.endsWith("/download")) {
+      const key = path.endsWith("/kunci");
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          id: key ? "bundle-key" : "bundle-paper",
-          scope_type: "test",
-          scope_id: "test-1",
+          test_id: "test-1",
           variant: key ? "kunci" : "naskah",
-          status: "ready",
-          created_at: "2026-08-25T01:00:00Z",
-          updated_at: "2026-08-25T01:00:01Z",
-          generated_at: "2026-08-25T01:00:01Z",
+          status: requested.has(path) ? "ready" : "idle",
+          generated_at: requested.has(path) ? "2026-08-25T01:00:01Z" : undefined,
         }),
       });
     }
-    if (method === "GET" && (path === "/api/v1/admin/question-bundles/bundle-key/download" || path === "/api/v1/admin/question-bundles/bundle-paper/download")) {
+    if (method === "GET" && path.startsWith("/api/v1/admin/tests/test-1/question-bundles/") && path.endsWith("/download")) {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ url: "https://files.example/question-bundle.pdf" }) });
     }
 
@@ -139,18 +127,20 @@ test("admin_exam can enqueue and download a test question bundle", async ({ page
   await page.goto("/admin/exam/tests/test-1");
 
   await expect(page.getByTestId("test-question-bundle-controls")).toBeVisible();
-  await page.getByRole("button", { name: "Buat kunci" }).click();
-  await expect(page.getByTestId("question-bundle-status")).toContainText("siap diunduh");
-  await page.getByRole("button", { name: "Unduh PDF" }).click();
+  const keyControls = page.getByTestId("question-bundle-kunci");
+  await keyControls.getByRole("button", { name: "Buat PDF" }).click();
+  await expect(page.getByTestId("question-bundle-kunci-status")).toContainText("siap");
+  await keyControls.getByRole("button", { name: "Unduh" }).click();
 
-  expect(requests).toContain("POST /api/v1/admin/tests/test-1/question-bundle");
-  expect(requests).toContain("GET /api/v1/admin/question-bundles/bundle-key/download");
+  expect(requests).toContain("POST /api/v1/admin/tests/test-1/question-bundles/kunci");
+  expect(requests).toContain("GET /api/v1/admin/tests/test-1/question-bundles/kunci/download");
 });
 
-test("admin_school does not see question bundle controls", async ({ page, context }) => {
-  await seedSession(context, { token: "token", refreshToken: "refresh", user: ADMIN_SCHOOL });
-  await mockQuestionBundleBackend(page);
+test("exam packages never expose aggregate question bundle controls", async ({ page, context }) => {
+  await seedSession(context, { token: "token", refreshToken: "refresh", user: ADMIN_EXAM });
+  const requests = await mockQuestionBundleBackend(page);
   await page.goto("/admin/exam/packages/exam-1");
 
   await expect(page.getByTestId("exam-question-bundle-controls")).toHaveCount(0);
+  expect(requests.some((request) => request.includes("/admin/exams/exam-1/question-bundles/"))).toBe(false);
 });

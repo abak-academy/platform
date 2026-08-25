@@ -57,12 +57,6 @@ vi.mock("@/components/admin/CertificateDesignTab", () => ({
   ),
 }));
 
-vi.mock("@/components/admin/QuestionBundleControls", () => ({
-  QuestionBundleControls: ({ scope, scopeId }: { scope: string; scopeId: string }) => (
-    <div data-testid={`${scope}-question-bundle-controls`}>{scopeId}</div>
-  ),
-}));
-
 // ExamModal's end-screen section uses ImageUploadInput, which calls
 // usePresignAdminImageUpload (a real useMutation) — mock it so rendering the
 // modal doesn't need a QueryClient.
@@ -270,6 +264,16 @@ describe("ExamPackageDetailPage — overview tab", () => {
     expect(screen.getByText("5 menit")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("modern")).toBeInTheDocument();
+  });
+
+  it("does not render aggregate question bundle controls", async () => {
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("UTBK")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("exam-question-bundle-controls")).not.toBeInTheDocument();
   });
 
   it("shows unlimited when max_attempts is null", async () => {

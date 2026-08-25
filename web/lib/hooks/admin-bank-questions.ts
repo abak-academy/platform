@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch, authFetchMultipart, API_BASE, ApiError } from "@/lib/api";
+import { questionBundleKeys } from "./question-bundles";
 import type {
   AdminQuestionImportResponse,
   AdminQuestionInput,
@@ -71,6 +72,7 @@ export function useUpdateBankQuestion(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
       qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: questionBundleKeys.all });
     },
   });
 }
@@ -84,6 +86,7 @@ export function useDeleteBankQuestion() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
+      qc.invalidateQueries({ queryKey: questionBundleKeys.all });
     },
   });
 }

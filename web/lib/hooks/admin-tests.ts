@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import { adminBankQuestionsKeys } from "./admin-bank-questions";
+import { questionBundleKeys } from "./question-bundles";
 import type {
   Test,
   TestDetail,
@@ -85,6 +86,7 @@ export function useUpdateTest(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminTestsKeys.list() });
       qc.invalidateQueries({ queryKey: adminTestsKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: questionBundleKeys.all });
     },
   });
 }
@@ -144,6 +146,7 @@ export function useSaveQuestion(testId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
       qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
+      qc.invalidateQueries({ queryKey: questionBundleKeys.all });
     },
   });
 }
@@ -158,6 +161,7 @@ export function useDeleteQuestion(testId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
       qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
+      qc.invalidateQueries({ queryKey: questionBundleKeys.all });
     },
   });
 }
@@ -176,6 +180,7 @@ export function useAttachQuestions(testId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
       qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
+      qc.invalidateQueries({ queryKey: questionBundleKeys.all });
     },
   });
 }
@@ -193,6 +198,7 @@ export function useDetachQuestion(testId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
       qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
+      qc.invalidateQueries({ queryKey: questionBundleKeys.all });
     },
   });
 }
@@ -210,6 +216,7 @@ export function useReorderTestQuestions(testId: string) {
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
+      qc.invalidateQueries({ queryKey: questionBundleKeys.all });
     },
   });
 }

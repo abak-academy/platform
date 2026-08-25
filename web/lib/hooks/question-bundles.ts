@@ -1,53 +1,55 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { QuestionBundle } from "@/lib/types";
+import type { QuestionBundleState, QuestionBundleTemplate, QuestionBundleVariant } from "@/lib/types";
 
 export const questionBundleKeys = {
   all: ["admin", "question-bundles"] as const,
-  detail: (id: string) => [...questionBundleKeys.all, id] as const,
+  test: (testId: string, variant: QuestionBundleVariant) =>
+    [...questionBundleKeys.all, "test", testId, variant] as const,
 };
 
-export type QuestionBundleScope = "exam" | "test";
-
-export interface CreateQuestionBundleInput {
-  include_answer_key: boolean;
+function testPath(testId: string, variant: QuestionBundleVariant): string {
+  return `/admin/tests/${encodeURIComponent(testId)}/question-bundles/${variant}`;
 }
 
-function createPath(scope: QuestionBundleScope, scopeId: string): string {
-  const encoded = encodeURIComponent(scopeId);
-  return scope === "exam"
-    ? `/admin/exams/${encoded}/question-bundle`
-    : `/admin/tests/${encoded}/question-bundle`;
+async function serializeQuestionBundleTemplate(): Promise<QuestionBundleTemplate> {
+  const response = await fetch("/api/admin/question-bundle-template", { method: "POST" });
+  if (!response.ok) throw new Error("Gagal menyiapkan template PDF.");
+  const body = (await response.json()) as { template: QuestionBundleTemplate };
+  return body.template;
 }
 
-export function useCreateQuestionBundle(scope: QuestionBundleScope, scopeId: string) {
-  return useMutation({
-    mutationFn: (input: CreateQuestionBundleInput) =>
-      authFetch<QuestionBundle>(createPath(scope, scopeId), {
-        method: "POST",
-        body: JSON.stringify(input),
-      }),
-  });
-}
-
-export function useQuestionBundle(
-  bundleId: string | undefined,
+export function useQuestionBundleState(
+  testId: string,
+  variant: QuestionBundleVariant,
   enabled: boolean,
-  refetchInterval: number | false | ((query: { state: { data?: QuestionBundle } }) => number | false) = false,
 ) {
   return useQuery({
-    queryKey: questionBundleKeys.detail(bundleId ?? ""),
-    queryFn: () => authFetch<QuestionBundle>(`/admin/question-bundles/${encodeURIComponent(bundleId!)}`),
-    enabled: Boolean(bundleId) && enabled,
-    refetchInterval,
+    queryKey: questionBundleKeys.test(testId, variant),
+    queryFn: () => authFetch<QuestionBundleState>(testPath(testId, variant)),
+    enabled,
+    refetchInterval: (query) => query.state.data?.status === "queued" ? 2000 : false,
   });
 }
 
-export function useQuestionBundleDownload() {
+export function useRequestQuestionBundle(testId: string, variant: QuestionBundleVariant) {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (bundleId: string) =>
-      authFetch<{ url: string }>(`/admin/question-bundles/${encodeURIComponent(bundleId)}/download`),
+    mutationFn: async () => {
+      const template = await serializeQuestionBundleTemplate();
+      return authFetch<QuestionBundleState>(testPath(testId, variant), {
+        method: "POST",
+        body: JSON.stringify({ template }),
+      });
+    },
+    onSuccess: (state) => queryClient.setQueryData(questionBundleKeys.test(testId, variant), state),
+  });
+}
+
+export function useQuestionBundleDownload(testId: string, variant: QuestionBundleVariant) {
+  return useMutation({
+    mutationFn: () => authFetch<{ url: string }>(`${testPath(testId, variant)}/download`),
   });
 }

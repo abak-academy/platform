@@ -279,7 +279,15 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 }
 
 func (r *Repository) UpdateTest(ctx context.Context, id uuid.UUID, t *model.Test) error {
-	_, err := r.pool.Exec(ctx,
+	return updateTest(ctx, r.pool, id, t)
+}
+
+func (r *Repository) UpdateTestTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, t *model.Test) error {
+	return updateTest(ctx, tx, id, t)
+}
+
+func updateTest(ctx context.Context, q execer, id uuid.UUID, t *model.Test) error {
+	_, err := q.Exec(ctx,
 		`UPDATE test
 		SET title = $1, subject = $2, topic = $3, duration_minutes = $4, audio_url = $5, audio_play_limit = $6, section_type = $7
 		WHERE id = $8`,
@@ -289,7 +297,15 @@ func (r *Repository) UpdateTest(ctx context.Context, id uuid.UUID, t *model.Test
 }
 
 func (r *Repository) DeleteTest(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx,
+	return deleteTest(ctx, r.pool, id)
+}
+
+func (r *Repository) DeleteTestTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
+	return deleteTest(ctx, tx, id)
+}
+
+func deleteTest(ctx context.Context, q execer, id uuid.UUID) error {
+	_, err := q.Exec(ctx,
 		`DELETE FROM test WHERE id = $1`,
 		id,
 	)
@@ -692,7 +708,15 @@ func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 }
 
 func (r *Repository) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx,
+	return deleteQuestion(ctx, r.pool, id)
+}
+
+func (r *Repository) DeleteQuestionTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
+	return deleteQuestion(ctx, tx, id)
+}
+
+func deleteQuestion(ctx context.Context, q execer, id uuid.UUID) error {
+	_, err := q.Exec(ctx,
 		`DELETE FROM question WHERE id = $1`,
 		id,
 	)
@@ -1054,7 +1078,15 @@ func (r *Repository) AttachQuestionsToTestTx(ctx context.Context, tx pgx.Tx, tes
 // DetachQuestionFromTest removes the test_question join row for (testID, questionID).
 // It is idempotent: deleting a non-existent attachment returns no error (FR-22).
 func (r *Repository) DetachQuestionFromTest(ctx context.Context, testID, questionID uuid.UUID) error {
-	_, err := r.pool.Exec(ctx,
+	return r.detachQuestionFromTest(ctx, r.pool, testID, questionID)
+}
+
+func (r *Repository) DetachQuestionFromTestTx(ctx context.Context, tx pgx.Tx, testID, questionID uuid.UUID) error {
+	return r.detachQuestionFromTest(ctx, tx, testID, questionID)
+}
+
+func (r *Repository) detachQuestionFromTest(ctx context.Context, q execer, testID, questionID uuid.UUID) error {
+	_, err := q.Exec(ctx,
 		`DELETE FROM test_question WHERE test_id = $1 AND question_id = $2`,
 		testID, questionID,
 	)
@@ -3051,90 +3083,83 @@ func (r *Repository) ExtendActiveSectionTx(ctx context.Context, tx pgx.Tx, sessi
 	return nil
 }
 
-// CreateQuestionBundleTx creates a new question_bundle row in a transaction.
-// All writes (bundle, outbox event, audit) must occur in the same transaction.
-func (r *Repository) CreateQuestionBundleTx(ctx context.Context, tx pgx.Tx, bundle *model.QuestionBundle) error {
-	return tx.QueryRow(ctx,
-		`INSERT INTO question_bundle (id, exam_id, test_id, variant, status, created_by, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, now(), now())
-		 RETURNING id, exam_id, test_id, variant, status, object_key, error, created_by, created_at, updated_at, generated_at`,
-		bundle.ID, bundle.ExamID, bundle.TestID, bundle.Variant, bundle.Status, bundle.CreatedBy,
-	).Scan(
-		&bundle.ID, &bundle.ExamID, &bundle.TestID, &bundle.Variant, &bundle.Status,
-		&bundle.ObjectKey, &bundle.Error, &bundle.CreatedBy, &bundle.CreatedAt, &bundle.UpdatedAt, &bundle.GeneratedAt,
-	)
+func questionBundleOwnerColumns(variant string) (keyColumn, generatedColumn string, err error) {
+	if variant != "naskah" && variant != "kunci" {
+		return "", "", fmt.Errorf("invalid question bundle variant %q", variant)
+	}
+	return "question_" + variant + "_key", "question_" + variant + "_generated_at", nil
 }
 
-// GetQuestionBundleByID fetches a bundle by ID.
-func (r *Repository) GetQuestionBundleByID(ctx context.Context, bundleID uuid.UUID) (*model.QuestionBundle, error) {
-	bundle := &model.QuestionBundle{}
-	err := r.pool.QueryRow(ctx,
-		`SELECT id, exam_id, test_id, variant, status, object_key, error, created_by, created_at, updated_at, generated_at
-		 FROM question_bundle WHERE id = $1`,
-		bundleID,
-	).Scan(
-		&bundle.ID, &bundle.ExamID, &bundle.TestID, &bundle.Variant, &bundle.Status,
-		&bundle.ObjectKey, &bundle.Error, &bundle.CreatedBy, &bundle.CreatedAt, &bundle.UpdatedAt, &bundle.GeneratedAt,
-	)
+func (r *Repository) GetQuestionBundleOwner(ctx context.Context, testID uuid.UUID, variant string) (*model.QuestionBundleOwner, error) {
+	keyColumn, generatedColumn, err := questionBundleOwnerColumns(variant)
+	if err != nil {
+		return nil, err
+	}
+	owner := &model.QuestionBundleOwner{}
+	err = r.pool.QueryRow(ctx, fmt.Sprintf(`SELECT %s, %s, question_bundle_revision FROM test WHERE id = $1`, keyColumn, generatedColumn), testID).
+		Scan(&owner.ObjectKey, &owner.GeneratedAt, &owner.Revision)
 	if isNotFound(err) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	return bundle, nil
+	return owner, nil
 }
 
-// UpdateQuestionBundleStatusTx atomically transitions a bundle's status, preventing
-// concurrent workers from regressing ready to processing. Returns 0 if no row matched.
-func (r *Repository) UpdateQuestionBundleStatusTx(ctx context.Context, tx pgx.Tx, bundleID uuid.UUID, oldStatus, newStatus string) error {
-	tag, err := tx.Exec(ctx,
-		`UPDATE question_bundle
-		 SET status = $2, updated_at = now()
-		 WHERE id = $1 AND status = $3`,
-		bundleID, newStatus, oldStatus,
-	)
+// SetQuestionBundleReadyIfCurrent persists a rendered artifact only when no source edit
+// invalidated the owner after the worker captured expectedRevision. A false
+// return is a benign stale-render race: the uploaded deterministic object is
+// ignored and a later request regenerates from current content.
+func (r *Repository) SetQuestionBundleReadyIfCurrent(ctx context.Context, testID uuid.UUID, variant, objectKey string, expectedRevision int64) (bool, error) {
+	keyColumn, generatedColumn, err := questionBundleOwnerColumns(variant)
+	if err != nil {
+		return false, err
+	}
+	tag, err := r.pool.Exec(ctx, fmt.Sprintf(`UPDATE test SET %s = $2, %s = now() WHERE id = $1 AND question_bundle_revision = $3`, keyColumn, generatedColumn), testID, objectKey, expectedRevision)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() == 0 {
+		var exists bool
+		if err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM test WHERE id = $1)`, testID).Scan(&exists); err != nil {
+			return false, err
+		}
+		if !exists {
+			return false, ErrNotFound
+		}
+		return false, nil
+	}
+	return true, nil
+}
+
+// SetQuestionBundleReady is the non-worker helper used by tests and maintenance
+// paths. Generation workers must use SetQuestionBundleReadyIfCurrent with the
+// revision captured before rendering.
+func (r *Repository) SetQuestionBundleReady(ctx context.Context, testID uuid.UUID, variant, objectKey string) error {
+	owner, err := r.GetQuestionBundleOwner(ctx, testID, variant)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	_, err = r.SetQuestionBundleReadyIfCurrent(ctx, testID, variant, objectKey, owner.Revision)
+	return err
 }
 
-// UpdateQuestionBundleReadyTx marks a bundle as ready with object_key and generated_at.
-// State transition is guarded: only from processing → ready.
-func (r *Repository) UpdateQuestionBundleReadyTx(ctx context.Context, tx pgx.Tx, bundleID uuid.UUID, objectKey string) error {
-	tag, err := tx.Exec(ctx,
-		`UPDATE question_bundle
-		 SET status = 'ready', object_key = $2, generated_at = now(), updated_at = now()
-		 WHERE id = $1 AND status = 'processing'`,
-		bundleID, objectKey,
-	)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+func clearQuestionBundleColumns(ctx context.Context, tx pgx.Tx, predicate string, args ...any) error {
+	_, err := tx.Exec(ctx, fmt.Sprintf(`UPDATE test SET
+		question_naskah_key = NULL, question_naskah_generated_at = NULL,
+		question_kunci_key = NULL, question_kunci_generated_at = NULL,
+		question_bundle_revision = question_bundle_revision + 1
+		WHERE %s`, predicate), args...)
+	return err
 }
 
-// UpdateQuestionBundleFailedTx marks a bundle as failed with a sanitized error message.
-// State transition is guarded: only from processing → failed.
-func (r *Repository) UpdateQuestionBundleFailedTx(ctx context.Context, tx pgx.Tx, bundleID uuid.UUID, errorMsg string) error {
-	tag, err := tx.Exec(ctx,
-		`UPDATE question_bundle
-		 SET status = 'failed', error = $2, updated_at = now()
-		 WHERE id = $1 AND status = 'processing'`,
-		bundleID, errorMsg,
-	)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+func (r *Repository) ClearQuestionBundleKeysByTestTx(ctx context.Context, tx pgx.Tx, testID uuid.UUID) error {
+	return clearQuestionBundleColumns(ctx, tx, "id = $1", testID)
+}
+
+func (r *Repository) ClearQuestionBundleKeysByQuestionTx(ctx context.Context, tx pgx.Tx, questionID uuid.UUID) error {
+	return clearQuestionBundleColumns(ctx, tx, `EXISTS (
+		SELECT 1 FROM test_question tq WHERE tq.test_id = test.id AND tq.question_id = $1
+	)`, questionID)
 }

@@ -3,225 +3,102 @@ package handler
 import (
 	"errors"
 	"net/http"
-	"time"
+
+	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/service"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-
-	"akademi-bimbel/internal/infra"
-	"akademi-bimbel/internal/model"
-	"akademi-bimbel/internal/repository"
-	"akademi-bimbel/internal/service"
 )
 
-// CreateQuestionBundleRequest is the POST body for creating a question bundle.
-type CreateQuestionBundleRequest struct {
-	IncludeAnswerKey bool `json:"include_answer_key"`
+type questionBundleRequest struct {
+	Template service.QuestionBundleTemplate `json:"template"`
 }
 
-// QuestionBundleResponse is the API response for question bundle operations.
-type QuestionBundleResponse struct {
-	ID          string  `json:"id"`
-	ScopeType   string  `json:"scope_type"`
-	ScopeID     string  `json:"scope_id"`
-	Variant     string  `json:"variant"`
-	Status      string  `json:"status"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-	GeneratedAt *string `json:"generated_at,omitempty"`
-	Error       *string `json:"error,omitempty"`
-}
-
-// AdminCreateTestQuestionBundle creates a question bundle for a test. POST /admin/tests/:id/question-bundle
-func (h *Handler) AdminCreateTestQuestionBundle(c echo.Context) error {
-	testID := c.Param("id")
-	if testID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "test_id required"})
+func questionBundleClaims(c echo.Context) (*infra.Claims, uuid.UUID, error) {
+	claims, ok := c.Get("claims").(*infra.Claims)
+	if !ok || claims == nil || claims.Sub == "" {
+		return nil, uuid.Nil, service.ErrInvalidCredentials
 	}
-
-	tid, err := uuid.Parse(testID)
+	actor, err := uuid.Parse(claims.Sub)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid test_id"})
+		return nil, uuid.Nil, service.ErrInvalidCredentials
 	}
+	return claims, actor, nil
+}
 
-	var req CreateQuestionBundleRequest
+func questionBundleTarget(c echo.Context) (uuid.UUID, string, error) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return uuid.Nil, "", err
+	}
+	variant := c.Param("variant")
+	if variant != "naskah" && variant != "kunci" {
+		return uuid.Nil, "", service.ErrValidation
+	}
+	return id, variant, nil
+}
+
+func (h *Handler) AdminRequestTestQuestionBundle(c echo.Context) error {
+	testID, variant, err := questionBundleTarget(c)
+	if err != nil {
+		return badRequest(c, "invalid question bundle target")
+	}
+	claims, actor, err := questionBundleClaims(c)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	var req questionBundleRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return badRequest(c, "invalid request body")
 	}
-
-	claims, ok := c.Get("claims").(*infra.Claims)
-	if !ok || claims == nil || claims.Sub == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing auth"})
-	}
-
-	actor, err := uuid.Parse(claims.Sub)
+	state, err := h.svc.RequestQuestionBundle(c.Request().Context(), actor, claims.Role, testID, variant, req.Template)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid actor"})
+		return mapQuestionBundleError(c, err)
 	}
-
-	bundle, err := h.svc.EnqueueQuestionBundle(c.Request().Context(), actor, claims.Role, nil, &tid, req.IncludeAnswerKey)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "test not found"})
-		}
-		if errors.Is(err, service.ErrForbidden) {
-			return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
-		}
-		if errors.Is(err, service.ErrValidation) {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
+	status := http.StatusAccepted
+	if state.Status == "ready" {
+		status = http.StatusOK
 	}
-
-	return c.JSON(http.StatusAccepted, bundleToResponse(bundle))
+	return c.JSON(status, state)
 }
 
-// AdminCreateExamQuestionBundle creates a question bundle for an exam. POST /admin/exams/:id/question-bundle
-func (h *Handler) AdminCreateExamQuestionBundle(c echo.Context) error {
-	examID := c.Param("id")
-	if examID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "exam_id required"})
-	}
-
-	eid, err := uuid.Parse(examID)
+func (h *Handler) AdminGetTestQuestionBundle(c echo.Context) error {
+	testID, variant, err := questionBundleTarget(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid exam_id"})
+		return badRequest(c, "invalid question bundle target")
 	}
-
-	var req CreateQuestionBundleRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-	}
-
-	claims, ok := c.Get("claims").(*infra.Claims)
-	if !ok || claims == nil || claims.Sub == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing auth"})
-	}
-
-	actor, err := uuid.Parse(claims.Sub)
+	claims, _, err := questionBundleClaims(c)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid actor"})
+		return mapServiceError(c, err)
 	}
-
-	bundle, err := h.svc.EnqueueQuestionBundle(c.Request().Context(), actor, claims.Role, &eid, nil, req.IncludeAnswerKey)
+	state, err := h.svc.GetQuestionBundleState(c.Request().Context(), claims.Role, testID, variant)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "exam not found"})
-		}
-		if errors.Is(err, service.ErrForbidden) {
-			return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
-		}
-		if errors.Is(err, service.ErrValidation) {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return mapQuestionBundleError(c, err)
 	}
-
-	return c.JSON(http.StatusAccepted, bundleToResponse(bundle))
+	return c.JSON(http.StatusOK, state)
 }
 
-// AdminGetQuestionBundleStatus gets bundle status. GET /admin/question-bundles/:id
-func (h *Handler) AdminGetQuestionBundleStatus(c echo.Context) error {
-	bundleID := c.Param("id")
-	if bundleID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "bundle_id required"})
-	}
-
-	bid, err := uuid.Parse(bundleID)
+func (h *Handler) AdminDownloadTestQuestionBundle(c echo.Context) error {
+	testID, variant, err := questionBundleTarget(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid bundle_id"})
+		return badRequest(c, "invalid question bundle target")
 	}
-
-	claims, ok := c.Get("claims").(*infra.Claims)
-	if !ok || claims == nil || claims.Sub == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing auth"})
-	}
-
-	actor, err := uuid.Parse(claims.Sub)
+	claims, actor, err := questionBundleClaims(c)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid actor"})
+		return mapServiceError(c, err)
 	}
-
-	bundle, err := h.svc.GetQuestionBundle(c.Request().Context(), bid, actor, claims.Role)
+	url, err := h.svc.GetQuestionBundleDownloadURL(c.Request().Context(), actor, claims.Role, testID, variant)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "bundle not found"})
-		}
-		if errors.Is(err, service.ErrForbidden) {
-			return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return mapQuestionBundleError(c, err)
 	}
-
-	return c.JSON(http.StatusOK, bundleToResponse(bundle))
+	return c.JSON(http.StatusOK, map[string]string{"url": url})
 }
 
-// AdminDownloadQuestionBundle gets a download URL. GET /admin/question-bundles/:id/download
-func (h *Handler) AdminDownloadQuestionBundle(c echo.Context) error {
-	bundleID := c.Param("id")
-	if bundleID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "bundle_id required"})
+func mapQuestionBundleError(c echo.Context, err error) error {
+	if errors.Is(err, repository.ErrNotFound) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "question bundle owner not found"})
 	}
-
-	bid, err := uuid.Parse(bundleID)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid bundle_id"})
-	}
-
-	claims, ok := c.Get("claims").(*infra.Claims)
-	if !ok || claims == nil || claims.Sub == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing auth"})
-	}
-
-	actor, err := uuid.Parse(claims.Sub)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid actor"})
-	}
-
-	url, err := h.svc.GetQuestionBundleDownloadURL(c.Request().Context(), bid, actor, claims.Role)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "bundle not found"})
-		}
-		if errors.Is(err, service.ErrForbidden) {
-			return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
-		}
-		if errors.Is(err, service.ErrValidation) {
-			return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"url": url,
-	})
-}
-
-func bundleToResponse(b *model.QuestionBundle) QuestionBundleResponse {
-	resp := QuestionBundleResponse{
-		ID:        b.ID.String(),
-		Variant:   b.Variant,
-		Status:    b.Status,
-		CreatedAt: b.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt: b.UpdatedAt.UTC().Format(time.RFC3339),
-	}
-
-	if b.GeneratedAt != nil {
-		t := b.GeneratedAt.UTC().Format(time.RFC3339)
-		resp.GeneratedAt = &t
-	}
-
-	if b.Error != nil {
-		resp.Error = b.Error
-	}
-
-	if b.ExamID != nil {
-		resp.ScopeType = "exam"
-		resp.ScopeID = b.ExamID.String()
-	} else if b.TestID != nil {
-		resp.ScopeType = "test"
-		resp.ScopeID = b.TestID.String()
-	}
-
-	return resp
+	return mapServiceError(c, err)
 }

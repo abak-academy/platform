@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 
 	"github.com/google/uuid"
@@ -16,7 +17,7 @@ import (
 // (mirrors studentBulkProcessor's split in student_bulk.go).
 type certificateGenerator interface {
 	GenerateCertificatePDF(ctx context.Context, sessionID uuid.UUID) error
-	GenerateQuestionBundlePDF(ctx context.Context, bundleID uuid.UUID) error
+	GenerateQuestionBundlePDF(ctx context.Context, payload service.QuestionBundleNeededPayload) error
 }
 
 // handleCertificateNeeded is the "CertificateNeeded" outbox event handler
@@ -65,27 +66,39 @@ func (w *Worker) handleQuestionBundleNeeded(ctx context.Context, event model.Out
 	var payload service.QuestionBundleNeededPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		slog.Error("unmarshal QuestionBundleNeeded payload", "event_id", event.ID, "err", err)
+		w.markQuestionBundleEventProcessed(ctx, event.ID)
+		return
+	}
+	if err := service.ValidateQuestionBundlePayload(payload); err != nil {
+		slog.Error("discard invalid QuestionBundleNeeded payload", "event_id", event.ID, "err", err)
+		w.markQuestionBundleEventProcessed(ctx, event.ID)
 		return
 	}
 
-	if err := w.certGen.GenerateQuestionBundlePDF(ctx, payload.BundleID); err != nil {
-		slog.Error("generate question bundle pdf", "event_id", event.ID, "bundle_id", payload.BundleID, "err", err)
+	if err := w.certGen.GenerateQuestionBundlePDF(ctx, payload); err != nil {
+		slog.Error("generate question bundle pdf", "event_id", event.ID, "test_id", payload.TestID, "variant", payload.Variant, "err", err)
+		if errors.Is(err, service.ErrStorageNotConfigured) || errors.Is(err, service.ErrPDFRendererNotConfigured) {
+			w.markQuestionBundleEventProcessed(ctx, event.ID)
+		}
 		return
 	}
 
+	w.markQuestionBundleEventProcessed(ctx, event.ID)
+}
+
+func (w *Worker) markQuestionBundleEventProcessed(ctx context.Context, eventID int64) {
 	tx, err := w.repo.BeginTx(ctx)
 	if err != nil {
-		slog.Error("begin tx", "event_id", event.ID, "err", err)
+		slog.Error("begin tx", "event_id", eventID, "err", err)
 		return
 	}
 	defer tx.Rollback(ctx)
 
-	if err := w.repo.MarkOutboxProcessed(ctx, tx, event.ID); err != nil {
-		slog.Error("mark outbox processed", "event_id", event.ID, "err", err)
+	if err := w.repo.MarkOutboxProcessed(ctx, tx, eventID); err != nil {
+		slog.Error("mark outbox processed", "event_id", eventID, "err", err)
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
-		slog.Error("commit tx", "event_id", event.ID, "err", err)
-		return
+		slog.Error("commit tx", "event_id", eventID, "err", err)
 	}
 }

@@ -15,8 +15,9 @@ import (
 )
 
 type fakeCertGenerator struct {
-	calls      []uuid.UUID
-	generateFn func(ctx context.Context, sessionID uuid.UUID) error
+	calls       []uuid.UUID
+	bundleCalls int
+	generateFn  func(ctx context.Context, sessionID uuid.UUID) error
 }
 
 func (f *fakeCertGenerator) GenerateCertificatePDF(ctx context.Context, sessionID uuid.UUID) error {
@@ -27,7 +28,8 @@ func (f *fakeCertGenerator) GenerateCertificatePDF(ctx context.Context, sessionI
 	return nil
 }
 
-func (f *fakeCertGenerator) GenerateQuestionBundlePDF(ctx context.Context, bundleID uuid.UUID) error {
+func (f *fakeCertGenerator) GenerateQuestionBundlePDF(ctx context.Context, payload service.QuestionBundleNeededPayload) error {
+	f.bundleCalls++
 	return nil
 }
 
@@ -107,5 +109,34 @@ func TestHandleCertificateNeeded_GenerateFailure_LeavesEventUnprocessed(t *testi
 
 	if marked {
 		t.Error("expected the outbox event NOT to be marked processed after a generation failure")
+	}
+}
+
+func TestHandleQuestionBundleNeeded_InvalidLegacyPayloadIsDiscarded(t *testing.T) {
+	ctx := context.Background()
+	marked := false
+	certGen := &fakeCertGenerator{}
+	repo := &mockRepository{
+		claimOutboxEventsFn: func(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
+			return []model.OutboxEvent{{
+				ID: 42, AggregateID: uuid.New(), EventType: "QuestionBundleNeeded",
+				Payload: []byte(`{"bundle_id":"11111111-1111-1111-1111-111111111111"}`), CreatedAt: time.Now().String(),
+			}}, nil
+		},
+		markOutboxProcessedFn: func(ctx context.Context, tx pgx.Tx, id int64) error {
+			marked = id == 42
+			return nil
+		},
+		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
+			return &mockTx{commitFn: func(ctx context.Context) error { return nil }, rollbackFn: func(ctx context.Context) error { return nil }}, nil
+		},
+	}
+
+	(&Worker{repo: repo, certGen: certGen}).pollOutbox(ctx)
+	if !marked {
+		t.Fatal("invalid legacy QuestionBundleNeeded event must be marked processed")
+	}
+	if certGen.bundleCalls != 0 {
+		t.Fatalf("GenerateQuestionBundlePDF calls = %d, want 0 for invalid payload", certGen.bundleCalls)
 	}
 }

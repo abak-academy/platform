@@ -55,3 +55,17 @@ func (r *Repository) MarkOutboxProcessed(ctx context.Context, tx pgx.Tx, id int6
 	)
 	return err
 }
+
+func (r *Repository) HasPendingQuestionBundleEvent(ctx context.Context, testID uuid.UUID, variant string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS (
+			SELECT 1 FROM outbox
+			WHERE aggregate_type = $1 AND aggregate_id = $2
+			  AND event_type = 'QuestionBundleNeeded' AND processed_at IS NULL
+			  AND payload->>'variant' = $3
+		)`,
+		"question_bundle_test", testID, variant,
+	).Scan(&exists)
+	return exists, err
+}
