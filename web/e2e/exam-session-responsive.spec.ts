@@ -628,5 +628,10 @@ test("E-11 fullscreen violation uses the blocking warning modal hierarchy", asyn
   );
   await expect(page.getByTestId("violation-return-button")).toBeVisible();
   await assertWithinViewport(dialog, viewport, "E-11 violation modal");
+  const dialogBox = await assertVisibleBox(dialog, "E-11 violation modal size");
+  expect(dialogBox.width, "E-11 desktop modal width must match the 352px mockup").toBeGreaterThanOrEqual(350);
+  expect(dialogBox.width, "E-11 desktop modal width must match the 352px mockup").toBeLessThanOrEqual(354);
+  expect(dialogBox.height, "E-11 desktop modal height must match the 310px mockup").toBeGreaterThanOrEqual(308);
+  expect(dialogBox.height, "E-11 desktop modal height must match the 310px mockup").toBeLessThanOrEqual(312);
   await capture(page, "e11-violation-modal-1280x800");
 });

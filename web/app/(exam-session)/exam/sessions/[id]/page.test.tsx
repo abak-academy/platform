@@ -1349,7 +1349,7 @@ describe("SessionPage", () => {
     const submitButton = screen.getByTestId("exam-top-bar").querySelector("button");
     expect(submitButton).not.toBeNull();
     expect(submitButton?.className).toContain("bg-[var(--color-submit)]");
-    expect(submitButton?.className).toContain("border-brand-600");
+    expect(submitButton?.className).not.toContain("border-brand-600");
   });
 
   it("updates the top-bar title to the current question's test in a multi-test standard exam", async () => {
