@@ -11,6 +11,7 @@ import {
   Flag,
   BookOpen,
   Trophy,
+  TriangleAlert,
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { ApiError } from "@/lib/api";
@@ -811,7 +812,7 @@ export default function SessionPage() {
             size="sm"
             onClick={() => setShowConfirm(true)}
             disabled={timerExpired || submitting}
-            className="justify-self-end rounded-full bg-danger px-4 font-bold text-white shadow-sm hover:bg-danger/90 sm:order-3"
+            className="justify-self-end rounded-full border-2 border-brand-600 bg-[var(--color-submit)] px-4 font-bold text-white shadow-sm hover:bg-[var(--color-submit-hover)] sm:order-3"
           >
             {t("submit")}
           </Button>
@@ -1109,7 +1110,7 @@ export default function SessionPage() {
               variant="destructive"
               onClick={handleSubmit}
               disabled={submitting}
-              className="h-10 w-full rounded-full bg-danger font-bold text-white hover:bg-danger/90"
+              className="h-10 w-full rounded-full border-2 border-brand-600 bg-[var(--color-submit)] font-bold text-white hover:bg-[var(--color-submit-hover)]"
             >
               {submitting ? t("sys_loading") : t("submit")}
             </Button>
@@ -1126,21 +1127,45 @@ export default function SessionPage() {
       {showViolationOverlay && (
         <div
           data-testid="violation-overlay"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-danger/15 p-4 backdrop-blur-sm"
         >
-          <Card className="mx-4 max-w-md p-6">
-            <h2 className="mb-4 text-lg font-bold text-ink-900">
+          <Card
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="violation-warning-title"
+            aria-describedby="violation-warning-message violation-warning-count"
+            className="w-full max-w-[22rem] border-2 border-danger bg-surface p-7 text-center shadow-xl"
+          >
+            <div
+              data-testid="violation-warning-icon"
+              className="mx-auto mb-5 flex size-16 items-center justify-center rounded-full bg-danger-bg text-danger"
+              aria-hidden="true"
+            >
+              <TriangleAlert className="size-7" />
+            </div>
+            <h2
+              id="violation-warning-title"
+              className="mb-3 font-serif text-xl font-bold text-ink-900"
+            >
               {t("violation_warning")}
             </h2>
-            <p className="mb-6 text-sm text-ink-600">
-              {t("violation_warning_body").replace(
+            <p id="violation-warning-message" className="text-sm leading-6 text-ink-600">
+              {t("violation_warning_body")}
+            </p>
+            <p
+              id="violation-warning-count"
+              data-testid="violation-warning-count"
+              className="mb-6 mt-3 text-xs font-semibold text-danger"
+            >
+              {t("violation_warning_count").replace(
                 "{n}",
                 String(violationCountRef.current),
               )}
             </p>
             <Button
               onClick={handleViolationReturn}
-              className="w-full"
+              autoFocus
+              className="h-12 w-full rounded-full bg-brand-600 font-bold text-white shadow-[0_8px_14px_rgba(61,77,219,0.30)] hover:bg-brand-700"
               data-testid="violation-return-button"
             >
               {t("return_to_exam")}

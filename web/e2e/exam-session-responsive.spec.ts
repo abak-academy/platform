@@ -602,3 +602,31 @@ test("E-10 sectioned mobile keeps its timer visible and has no Submit", async ({
   ).toHaveCount(0);
   await capture(page, "e10-sectioned-mobile-390x844");
 });
+
+test("E-11 fullscreen violation uses the blocking warning modal hierarchy", async ({
+  page,
+  context,
+}) => {
+  const viewport = { width: 1280, height: 800 };
+  await openExam(page, context, imageSession, viewport);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, "fullscreenElement", {
+      value: null,
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("fullscreenchange"));
+  });
+
+  const overlay = page.getByTestId("violation-overlay");
+  const dialog = page.getByRole("alertdialog");
+  await expect(overlay).toBeVisible({ timeout: 4000 });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId("violation-warning-icon")).toBeVisible();
+  await expect(page.getByTestId("violation-warning-count")).toHaveText(
+    "Total pelanggaran tercatat: 1",
+  );
+  await expect(page.getByTestId("violation-return-button")).toBeVisible();
+  await assertWithinViewport(dialog, viewport, "E-11 violation modal");
+  await capture(page, "e11-violation-modal-1280x800");
+});

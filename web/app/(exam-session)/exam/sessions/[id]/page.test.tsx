@@ -1346,9 +1346,10 @@ describe("SessionPage", () => {
     // Timer
     expect(topBar).toHaveTextContent("60:00");
     // Submit button (standard mode)
-    expect(
-      screen.getByTestId("exam-top-bar").querySelector("button")
-    ).not.toBeNull();
+    const submitButton = screen.getByTestId("exam-top-bar").querySelector("button");
+    expect(submitButton).not.toBeNull();
+    expect(submitButton?.className).toContain("bg-[var(--color-submit)]");
+    expect(submitButton?.className).toContain("border-brand-600");
   });
 
   it("updates the top-bar title to the current question's test in a multi-test standard exam", async () => {
@@ -1596,7 +1597,7 @@ describe("SessionPage", () => {
     expect(screen.getByText(/Berapa 2\+2\?/)).toBeInTheDocument();
   }
 
-  it("shows violation warning overlay only after fullscreen exit grace", async () => {
+  it("shows a fully described violation warning only after fullscreen exit grace", async () => {
     vi.useFakeTimers();
     render(<SessionPage />);
     await enterFullscreenWithFakeTimers();
@@ -1613,7 +1614,15 @@ describe("SessionPage", () => {
     await advanceViolationGrace();
 
     expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
-    expect(screen.getByText(/Peringatan pelanggaran/)).toBeInTheDocument();
+    expect(screen.getByText(/Peringatan/)).toBeInTheDocument();
+    expect(screen.getByRole("alertdialog")).toHaveAttribute("aria-modal", "true");
+    expect(screen.getByTestId("violation-warning-icon")).toBeInTheDocument();
+    expect(screen.getByTestId("violation-warning-count")).toHaveTextContent(
+      "Total pelanggaran tercatat: 1",
+    );
+    expect(screen.getByTestId("violation-return-button").className).toContain(
+      "bg-brand-600",
+    );
   });
 
   it("keeps a pending fullscreen violation alive across timer rerenders", async () => {
@@ -1652,7 +1661,7 @@ describe("SessionPage", () => {
     });
     await advanceViolationGrace();
 
-    expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
+    expect(screen.getByText(/Total pelanggaran tercatat: 1/i)).toBeInTheDocument();
   });
 
   it("increments violation counter on second fullscreen exit after grace (FR18)", async () => {
@@ -1669,7 +1678,7 @@ describe("SessionPage", () => {
     });
     await advanceViolationGrace();
 
-    expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
+    expect(screen.getByText(/Total pelanggaran tercatat: 1/i)).toBeInTheDocument();
 
     act(() => {
       Object.defineProperty(document, "fullscreenElement", {
@@ -1696,7 +1705,7 @@ describe("SessionPage", () => {
     });
     await advanceViolationGrace();
 
-    expect(screen.getByText(/Anda telah melanggar 2 kali/i)).toBeInTheDocument();
+    expect(screen.getByText(/Total pelanggaran tercatat: 2/i)).toBeInTheDocument();
   });
 
   it("suppresses rapid duplicate fullscreen exits after the first warning", async () => {
@@ -1712,7 +1721,7 @@ describe("SessionPage", () => {
       document.dispatchEvent(new Event("fullscreenchange"));
     });
     await advanceViolationGrace();
-    expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
+    expect(screen.getByText(/Total pelanggaran tercatat: 1/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("violation-return-button"));
     await act(async () => {
@@ -1730,7 +1739,7 @@ describe("SessionPage", () => {
     await advanceViolationGrace();
 
     expect(logViolationMutate).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(/Anda telah melanggar 2 kali/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Total pelanggaran tercatat: 2/i)).not.toBeInTheDocument();
   });
 
   it("cancels a brief tab switch when the page returns before grace elapses", async () => {
@@ -1769,7 +1778,7 @@ describe("SessionPage", () => {
     await advanceViolationGrace();
 
     expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
-    expect(screen.getByText(/Peringatan pelanggaran/)).toBeInTheDocument();
+    expect(screen.getByText(/Peringatan/)).toBeInTheDocument();
   });
 
   it("tab switch increments shared violation counter after grace (FR14, FR18)", async () => {
@@ -1786,7 +1795,7 @@ describe("SessionPage", () => {
     });
     await advanceViolationGrace();
 
-    expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
+    expect(screen.getByText(/Total pelanggaran tercatat: 1/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("violation-return-button"));
     await act(async () => {
@@ -1805,7 +1814,7 @@ describe("SessionPage", () => {
     });
     await advanceViolationGrace();
 
-    expect(screen.getByText(/Anda telah melanggar 2 kali/i)).toBeInTheDocument();
+    expect(screen.getByText(/Total pelanggaran tercatat: 2/i)).toBeInTheDocument();
   });
 
   it("clicking return button requests fullscreen and closes overlay (FR15)", async () => {

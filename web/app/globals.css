@@ -39,6 +39,10 @@
   --color-warn-bg:    #fbf1e2;
   --color-danger:     #d33a2e;
   --color-danger-bg:  #fbeae8;
+  /* Final-submit CTA: close to the approved warm red, but dark enough for
+     AA white text at the compact header button size. */
+  --color-submit:       #d13f2b;
+  --color-submit-hover: #b93424;
   /* #1f9e63 was only 3.43:1 with white text, so solid success
      nav/status cells failed AA for small labels. */
   --color-success:    #147a4b;
