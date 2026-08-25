@@ -256,6 +256,11 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminTests.DELETE("/:id/questions/:questionId", h.AdminDetachQuestion)
 	adminTests.PUT("/:id/questions/order", h.AdminReorderTestQuestions)
 
+	// Admin test question-bundle routes
+	adminTestBundles := admin.Group("/tests/:id/question-bundle")
+	adminTestBundles.Use(handler.RBACMiddleware("question-bundles:*"))
+	adminTestBundles.POST("", h.AdminCreateTestQuestionBundle)
+
 	adminQuestions := admin.Group("/questions")
 	adminQuestions.Use(handler.RBACMiddleware("questions:*"))
 	adminQuestions.GET("", h.AdminListBankQuestions)
@@ -334,6 +339,17 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminBulkExamOrders.POST("/preview", h.AdminPreviewBulkOrder)
 	adminBulkExamOrders.POST("", h.AdminCreateBulkOrder)
 	adminBulkExamOrders.POST("/:id/checkout", h.AdminCheckoutBulkOrder)
+
+	// Admin exam question-bundle routes
+	adminExamBundles := admin.Group("/exams/:id/question-bundle")
+	adminExamBundles.Use(handler.RBACMiddleware("question-bundles:*"))
+	adminExamBundles.POST("", h.AdminCreateExamQuestionBundle)
+
+	// Admin question-bundle status and download routes
+	adminBundles := admin.Group("/question-bundles")
+	adminBundles.Use(handler.RBACMiddleware("question-bundles:*"))
+	adminBundles.GET("/:id", h.AdminGetQuestionBundleStatus)
+	adminBundles.GET("/:id/download", h.AdminDownloadQuestionBundle)
 
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")

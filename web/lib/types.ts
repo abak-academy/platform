@@ -801,6 +801,21 @@ export interface ExamDetail extends ExamListItem {
   tests: ExamTestEntry[];
 }
 
+export type QuestionBundleVariant = "naskah" | "kunci";
+export type QuestionBundleStatus = "queued" | "processing" | "ready" | "failed";
+
+export interface QuestionBundle {
+  id: string;
+  scope_type: "exam" | "test";
+  scope_id: string;
+  variant: QuestionBundleVariant;
+  status: QuestionBundleStatus;
+  created_at: string;
+  updated_at: string;
+  generated_at?: string;
+  error?: string;
+}
+
 export type ExamResultConfig = "hidden" | "score_only" | "score_pembahasan";
 
 export interface CreateExamPayload {

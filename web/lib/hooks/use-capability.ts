@@ -9,7 +9,7 @@ import type { UserRole } from "@/lib/nav-config";
 // decides what to render, so drift here is a cosmetic bug, not a hole.
 const ROLE_CAPABILITIES: Record<string, string[]> = {
   student: [],
-  admin_exam: ["questions:*", "tests:*", "products(exam):*", "products(course):*", "sections:*", "sessions:*", "uploads:write", "results:read"],
+  admin_exam: ["questions:*", "tests:*", "products(exam):*", "products(course):*", "sections:*", "sessions:*", "uploads:write", "results:read", "question-bundles:*"],
   admin_store: ["products(book|course):write", "sections:*", "orders:*", "promos:*", "notifications:*", "uploads:write"],
   admin_school: ["students:*", "results:read", "bulk-exam-orders:write", "products(exam):read"],
   super_admin: ["*", "schools:write"],

@@ -740,3 +740,20 @@ type ResultsWorkspaceAttempt struct {
 	ResultAvailable bool       `json:"result_available"`
 	IsLatest        bool       `json:"is_latest"`
 }
+
+// QuestionBundle is an async PDF generation record for exam/test question packets.
+// Exactly one of ExamID/TestID is non-nil. Status is one of: queued, processing, ready, failed.
+// Variant is one of: naskah (question-only), kunci (with answer key).
+type QuestionBundle struct {
+	ID          uuid.UUID  `json:"id"`
+	ExamID      *uuid.UUID `json:"exam_id"`
+	TestID      *uuid.UUID `json:"test_id"`
+	Variant     string     `json:"variant"`
+	Status      string     `json:"status"`
+	ObjectKey   *string    `json:"object_key"`
+	Error       *string    `json:"error"`
+	CreatedBy   uuid.UUID  `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	GeneratedAt *time.Time `json:"generated_at"`
+}

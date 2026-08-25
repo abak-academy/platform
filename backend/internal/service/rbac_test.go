@@ -142,6 +142,7 @@ func TestAdminExamCapabilities(t *testing.T) {
 		"sessions:*",
 		"uploads:write",
 		"results:read",
+		"question-bundles:*",
 	}
 	got := Capabilities(RoleAdminExam)
 	if len(got) != len(want) {
@@ -159,7 +160,7 @@ func TestAdminExamCapabilities(t *testing.T) {
 // merged "products(exam|course):*" entry would stop matching this and lock the
 // exam admin out of the /admin/exams read group (routes.go:293).
 func TestAdminExamRetainsExamReadCapability(t *testing.T) {
-	for _, required := range []string{"products(exam):read", "products(exam):write", "products(course):write", "results:read"} {
+	for _, required := range []string{"products(exam):read", "products(exam):write", "products(course):write", "results:read", "question-bundles:write"} {
 		if !HasCapability(RoleAdminExam, required) {
 			t.Errorf("HasCapability(admin_exam, %q) = false, want true", required)
 		}

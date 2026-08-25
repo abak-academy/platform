@@ -3050,3 +3050,91 @@ func (r *Repository) ExtendActiveSectionTx(ctx context.Context, tx pgx.Tx, sessi
 	}
 	return nil
 }
+
+// CreateQuestionBundleTx creates a new question_bundle row in a transaction.
+// All writes (bundle, outbox event, audit) must occur in the same transaction.
+func (r *Repository) CreateQuestionBundleTx(ctx context.Context, tx pgx.Tx, bundle *model.QuestionBundle) error {
+	return tx.QueryRow(ctx,
+		`INSERT INTO question_bundle (id, exam_id, test_id, variant, status, created_by, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, now(), now())
+		 RETURNING id, exam_id, test_id, variant, status, object_key, error, created_by, created_at, updated_at, generated_at`,
+		bundle.ID, bundle.ExamID, bundle.TestID, bundle.Variant, bundle.Status, bundle.CreatedBy,
+	).Scan(
+		&bundle.ID, &bundle.ExamID, &bundle.TestID, &bundle.Variant, &bundle.Status,
+		&bundle.ObjectKey, &bundle.Error, &bundle.CreatedBy, &bundle.CreatedAt, &bundle.UpdatedAt, &bundle.GeneratedAt,
+	)
+}
+
+// GetQuestionBundleByID fetches a bundle by ID.
+func (r *Repository) GetQuestionBundleByID(ctx context.Context, bundleID uuid.UUID) (*model.QuestionBundle, error) {
+	bundle := &model.QuestionBundle{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, exam_id, test_id, variant, status, object_key, error, created_by, created_at, updated_at, generated_at
+		 FROM question_bundle WHERE id = $1`,
+		bundleID,
+	).Scan(
+		&bundle.ID, &bundle.ExamID, &bundle.TestID, &bundle.Variant, &bundle.Status,
+		&bundle.ObjectKey, &bundle.Error, &bundle.CreatedBy, &bundle.CreatedAt, &bundle.UpdatedAt, &bundle.GeneratedAt,
+	)
+	if isNotFound(err) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return bundle, nil
+}
+
+// UpdateQuestionBundleStatusTx atomically transitions a bundle's status, preventing
+// concurrent workers from regressing ready to processing. Returns 0 if no row matched.
+func (r *Repository) UpdateQuestionBundleStatusTx(ctx context.Context, tx pgx.Tx, bundleID uuid.UUID, oldStatus, newStatus string) error {
+	tag, err := tx.Exec(ctx,
+		`UPDATE question_bundle
+		 SET status = $2, updated_at = now()
+		 WHERE id = $1 AND status = $3`,
+		bundleID, newStatus, oldStatus,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateQuestionBundleReadyTx marks a bundle as ready with object_key and generated_at.
+// State transition is guarded: only from processing → ready.
+func (r *Repository) UpdateQuestionBundleReadyTx(ctx context.Context, tx pgx.Tx, bundleID uuid.UUID, objectKey string) error {
+	tag, err := tx.Exec(ctx,
+		`UPDATE question_bundle
+		 SET status = 'ready', object_key = $2, generated_at = now(), updated_at = now()
+		 WHERE id = $1 AND status = 'processing'`,
+		bundleID, objectKey,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateQuestionBundleFailedTx marks a bundle as failed with a sanitized error message.
+// State transition is guarded: only from processing → failed.
+func (r *Repository) UpdateQuestionBundleFailedTx(ctx context.Context, tx pgx.Tx, bundleID uuid.UUID, errorMsg string) error {
+	tag, err := tx.Exec(ctx,
+		`UPDATE question_bundle
+		 SET status = 'failed', error = $2, updated_at = now()
+		 WHERE id = $1 AND status = 'processing'`,
+		bundleID, errorMsg,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

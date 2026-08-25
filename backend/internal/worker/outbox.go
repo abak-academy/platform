@@ -148,6 +148,8 @@ func (w *Worker) pollOutbox(ctx context.Context) {
 			w.handleOrderPaid(ctx, event)
 		case "CertificateNeeded":
 			w.handleCertificateNeeded(ctx, event)
+		case "QuestionBundleNeeded":
+			w.handleQuestionBundleNeeded(ctx, event)
 		default:
 			slog.Warn("unknown event type", "type", event.EventType)
 		}

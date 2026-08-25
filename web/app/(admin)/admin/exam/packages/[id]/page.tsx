@@ -20,6 +20,7 @@ import { CertificateDesignTab } from "@/components/admin/CertificateDesignTab";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
 import { ExamResultsTab } from "@/components/admin/ExamResultsTab";
+import { QuestionBundleControls } from "@/components/admin/QuestionBundleControls";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -493,6 +494,10 @@ export default function ExamPackageDetailPage() {
                 />
                 <OverviewRow label="Status" value={data.status ?? "—"} />
               </dl>
+
+              {!isSchoolScoped && (
+                <QuestionBundleControls scope="exam" scopeId={id} disabled={data.tests.length === 0} />
+              )}
 
               {!isSchoolScoped && (
                 <div className="rounded-lg border p-4">

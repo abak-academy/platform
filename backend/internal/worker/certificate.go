@@ -16,6 +16,7 @@ import (
 // (mirrors studentBulkProcessor's split in student_bulk.go).
 type certificateGenerator interface {
 	GenerateCertificatePDF(ctx context.Context, sessionID uuid.UUID) error
+	GenerateQuestionBundlePDF(ctx context.Context, bundleID uuid.UUID) error
 }
 
 // handleCertificateNeeded is the "CertificateNeeded" outbox event handler
@@ -38,6 +39,37 @@ func (w *Worker) handleCertificateNeeded(ctx context.Context, event model.Outbox
 
 	if err := w.certGen.GenerateCertificatePDF(ctx, payload.SessionID); err != nil {
 		slog.Error("generate certificate pdf", "event_id", event.ID, "session_id", payload.SessionID, "err", err)
+		return
+	}
+
+	tx, err := w.repo.BeginTx(ctx)
+	if err != nil {
+		slog.Error("begin tx", "event_id", event.ID, "err", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	if err := w.repo.MarkOutboxProcessed(ctx, tx, event.ID); err != nil {
+		slog.Error("mark outbox processed", "event_id", event.ID, "err", err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("commit tx", "event_id", event.ID, "err", err)
+		return
+	}
+}
+
+// handleQuestionBundleNeeded renders the async admin question-bundle PDF and
+// marks the event processed after the bundle reaches a terminal persisted state.
+func (w *Worker) handleQuestionBundleNeeded(ctx context.Context, event model.OutboxEvent) {
+	var payload service.QuestionBundleNeededPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		slog.Error("unmarshal QuestionBundleNeeded payload", "event_id", event.ID, "err", err)
+		return
+	}
+
+	if err := w.certGen.GenerateQuestionBundlePDF(ctx, payload.BundleID); err != nil {
+		slog.Error("generate question bundle pdf", "event_id", event.ID, "bundle_id", payload.BundleID, "err", err)
 		return
 	}
 

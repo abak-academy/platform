@@ -57,6 +57,12 @@ vi.mock("@/components/admin/CertificateDesignTab", () => ({
   ),
 }));
 
+vi.mock("@/components/admin/QuestionBundleControls", () => ({
+  QuestionBundleControls: ({ scope, scopeId }: { scope: string; scopeId: string }) => (
+    <div data-testid={`${scope}-question-bundle-controls`}>{scopeId}</div>
+  ),
+}));
+
 // ExamModal's end-screen section uses ImageUploadInput, which calls
 // usePresignAdminImageUpload (a real useMutation) — mock it so rendering the
 // modal doesn't need a QueryClient.

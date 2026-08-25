@@ -27,6 +27,10 @@ func (f *fakeCertGenerator) GenerateCertificatePDF(ctx context.Context, sessionI
 	return nil
 }
 
+func (f *fakeCertGenerator) GenerateQuestionBundlePDF(ctx context.Context, bundleID uuid.UUID) error {
+	return nil
+}
+
 // TestHandleCertificateNeeded_CallsGenerateAndMarksProcessed proves the
 // worker dispatches a "CertificateNeeded" event to GenerateCertificatePDF —
 // the only place a certificate is generated — and marks the event processed

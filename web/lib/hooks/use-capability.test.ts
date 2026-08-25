@@ -13,6 +13,8 @@ describe("admin_exam capabilities", () => {
     "sessions:*",
     "uploads:write",
     "results:read",
+    "question-bundles:*",
+    "question-bundles:write",
   ])("grants '%s'", (cap) => {
     expect(hasCapability("admin_exam", cap)).toBe(true);
   });
