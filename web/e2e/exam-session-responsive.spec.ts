@@ -367,6 +367,12 @@ test("E-3 mobile nav expands in flow and selecting a number collapses it", async
     panel,
     "E-3 panel must become visible when expanded",
   ).toBeVisible();
+  const toggleBox = await assertVisibleBox(toggle, "E-3 mobile nav toggle");
+  const panelBox = await assertVisibleBox(panel, "E-3 expanded mobile nav panel");
+  expect(
+    panelBox.y,
+    "E-3 expanded panel must have a visible gap below the compact question summary",
+  ).toBeGreaterThanOrEqual(toggleBox.y + toggleBox.height + 8);
   await assertNoIntersection(
     card,
     panel,

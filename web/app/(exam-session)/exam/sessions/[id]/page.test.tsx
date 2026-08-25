@@ -1501,6 +1501,9 @@ describe("SessionPage", () => {
     const panel = document.getElementById("exam-nav-panel");
     expect(panel?.className).toMatch(/(^|\s)block(\s|$)/);
     expect(panel?.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+    expect(panel?.className).toContain("mt-3");
+    expect(panel?.className).toContain("rounded-xl");
+    expect(panel?.className).toContain("shadow-sm");
     expect(panel?.className).toContain("lg:block");
   });
 

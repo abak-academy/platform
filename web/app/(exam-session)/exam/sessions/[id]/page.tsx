@@ -1025,7 +1025,7 @@ export default function SessionPage() {
           </button>
           <div
             id="exam-nav-panel"
-            className={`${navExpanded ? "block" : "hidden"} lg:block`}
+            className={`${navExpanded ? "mt-3 block rounded-xl border border-line bg-surface p-3 shadow-sm" : "hidden"} lg:mt-0 lg:block lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none`}
           >
             <div className="grid grid-cols-5 gap-2">
               {questionsToShow.map((q, i) => {
@@ -1066,7 +1066,7 @@ export default function SessionPage() {
             </div>
 
             {/* Legend */}
-            <div className="mt-5 flex flex-col gap-2">
+            <div className="mt-5 flex flex-col gap-2 border-t border-line pt-4">
               <LegendItem
                 swatchClassName="border border-brand-600 bg-brand-600"
                 label={t("session_legend_answered")}
