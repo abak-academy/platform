@@ -1,0 +1,229 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "type": "row",
+      "title": "The question: if the exam is slow, what is it?",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Students in an exam (§4)",
+      "description": "Sessions started but not submitted. The N behind every capacity number.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [{ "refId": "A", "expr": "exam_sessions_active" }],
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 }
+    },
+    {
+      "type": "timeseries",
+      "title": "API pool vs ceiling (§1)",
+      "description": "Acquired/Total/Max of the pgxpool inside api. Acquired hugging Max while requests slow down = connection starvation.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "dbpool_acquired_conns{job=~\"$app\"}", "legendFormat": "acquired {{job}}" },
+        { "refId": "B", "expr": "dbpool_total_conns{job=~\"$app\"}", "legendFormat": "total {{job}}" },
+        { "refId": "C", "expr": "dbpool_max_conns{job=~\"$app\"}", "legendFormat": "max {{job}}" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 10, "x": 4, "y": 1 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Pool-empty acquires (§1) — THE #96 detector",
+      "description": "rate() of acquires that had to wait because the pool was empty. Any sustained rise above zero means MaxConns is too small. Read side-by-side with PgBouncer below: cl_waiting=0 does NOT prove this pool healthy.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (job) (rate(dbpool_empty_acquire_total{job=~\"$app\"}[5m]))", "legendFormat": "{{job}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 5, "x": 14, "y": 1 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Mean acquire duration (§1)",
+      "description": "rate(AcquireDuration)/rate(acquires). Time spent waiting inside pool.Acquire before a query even starts.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (job) (rate(dbpool_acquire_duration_seconds_total{job=~\"$app\"}[5m]) / rate(dbpool_acquire_total{job=~\"$app\"}[5m]))", "legendFormat": "{{job}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 1 }
+    },
+    {
+      "type": "timeseries",
+      "title": "PgBouncer waiting clients (§6)",
+      "description": "cl_active/cl_waiting from SHOW POOLS on vm-db. Only proves PgBouncer itself is fine — always read together with the app-pool panels above.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (db) (pgbouncer_pools_cl_active)", "legendFormat": "cl_active {{db}}" },
+        { "refId": "B", "expr": "sum by (db) (pgbouncer_pools_cl_waiting)", "legendFormat": "cl_waiting {{db}}" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 10, "x": 0, "y": 9 },
+      "transformations": []
+    },
+    {
+      "type": "timeseries",
+      "title": "PgBouncer server connections (§6)",
+      "description": "sv_active/sv_idle against Postgres. If sv_idle hits zero while clients wait, default_pool_size is the ceiling.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (db) (pgbouncer_pools_sv_active)", "legendFormat": "sv_active {{db}}" },
+        { "refId": "B", "expr": "sum by (db) (pgbouncer_pools_sv_idle)", "legendFormat": "sv_idle {{db}}" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 7, "x": 10, "y": 9 }
+    },
+    {
+      "type": "logs",
+      "title": "Errors across services",
+      "description": "Live error stream. Click any metrics spike's time range and read what happened here.",
+      "datasource": { "type": "loki", "uid": "grafanacloud-loki" },
+      "targets": [
+        { "refId": "A", "expr": "{env=~\"$env\", service=~\"api|worker|web|nginx\"} | json | level=~\"(?i)error\"" }
+      ],
+      "gridPos": { "h": 8, "w": 7, "x": 17, "y": 9 }
+    },
+    {
+      "type": "row",
+      "title": "HTTP hot paths (§2)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by route",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (route) (rate(http_requests_total[5m]))", "legendFormat": "{{route}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 latency — answers & session-open paths",
+      "description": "PATCH /sessions/:id/answers (~111 req/s at 5000 students) and POST /sessions (assembles the whole paper, 4+6T queries).",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (route, le) (rate(http_request_duration_seconds_bucket{route=\"/api/v1/exam/sessions/:id/answers\"}[5m])))", "legendFormat": "p95 PATCH answers" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (route, le) (rate(http_request_duration_seconds_bucket{route=\"/api/v1/exam/sessions\"}[5m])))", "legendFormat": "p95 POST sessions" },
+        { "refId": "C", "expr": "histogram_quantile(0.95, sum by (route, le) (rate(http_request_duration_seconds_bucket{route=\"/api/v1/auth/login\"}[5m])))", "legendFormat": "p95 login" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 }
+    },
+    {
+      "type": "row",
+      "title": "Login (§3) & runtime (§5)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }
+    },
+    {
+      "type": "timeseries",
+      "title": "bcrypt verify duration p50/p95",
+      "description": "Validates the modeled ~234 ms/op against e2-standard-2 under real load; drives the concurrent-login ceiling.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(login_bcrypt_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(login_bcrypt_seconds_bucket[5m])))", "legendFormat": "p95" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 27 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Goroutines & heap per process",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "go_goroutines{job=~\"$app\"}", "legendFormat": "goroutines {{job}}" },
+        { "refId": "B", "expr": "go_memstats_heap_inuse_bytes{job=~\"$app\"}", "legendFormat": "heap {{job}}" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 27 }
+    },
+    {
+      "type": "timeseries",
+      "title": "GC pause fraction (§5)",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "rate(go_gc_duration_seconds_sum{job=~\"$app\"}[5m])", "legendFormat": "{{job}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 27 }
+    },
+    {
+      "type": "row",
+      "title": "Who eats the VM (§7)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU per container",
+      "description": "vm-app divides 2 vCPU across six containers — VM-wide CPU never says who spent it.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name!=\"\"}[5m]))", "legendFormat": "{{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 35 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory per container",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (name) (container_memory_usage_bytes{name!=\"\"})", "legendFormat": "{{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 35 }
+    },
+    {
+      "type": "timeseries",
+      "title": "VM CPU / memory (node_exporter)",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "(1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))", "legendFormat": "CPU used" },
+        { "refId": "B", "expr": "1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)", "legendFormat": "mem used" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 35 }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["abak", "exam-day"],
+  "templating": {
+    "list": [
+      {
+        "name": "env",
+        "label": "Environment",
+        "type": "custom",
+        "query": "local,prod",
+        "current": { "selected": false, "text": "prod", "value": "prod" },
+        "includeAll": true,
+        "multi": true,
+        "options": []
+      },
+      {
+        "name": "app",
+        "label": "App processes",
+        "type": "custom",
+        "query": "api,worker",
+        "current": { "selected": false, "text": "api", "value": "api" },
+        "includeAll": true,
+        "multi": true,
+        "options": []
+      }
+    ]
+  },
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Exam day — where is the time going?",
+  "uid": "abak-exam-day",
+  "version": 1,
+  "weekStart": ""
+}

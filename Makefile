@@ -5,7 +5,7 @@ GO := $(GOROOT)/bin/go
 COMPOSE := docker compose -f deploy/compose/local.yml
 DATABASE_URL ?= postgres://akademi:akademi@localhost:5432/akademi?sslmode=disable
 
-.PHONY: help up down logs api worker web migrate-up migrate-down tidy build
+.PHONY: help up down logs obs-up obs-down api worker web migrate-up migrate-down tidy build
 
 help: ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -18,6 +18,12 @@ down: ## stop infra
 
 logs: ## tail infra logs
 	$(COMPOSE) logs -f
+
+obs-up: ## start infra + monitoring repro stack (grafana at :3002)
+	$(COMPOSE) --profile observability up -d
+
+obs-down: ## stop everything, including the monitoring repro stack
+	$(COMPOSE) --profile observability down --remove-orphans
 
 api: ## run the API server on :8080
 	cd backend && $(GO) run ./cmd/api

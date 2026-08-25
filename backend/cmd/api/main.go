@@ -14,6 +14,7 @@ import (
 	"akademi-bimbel/internal/adapter"
 	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/metrics"
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/server"
 	"akademi-bimbel/internal/service"
@@ -51,6 +52,19 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+	metrics.RegisterDBPool(pool)
+
+	// Observability endpoint (issue #98): bound to the compose network only —
+	// nginx never proxies this port, so /metrics is unreachable from the
+	// public internet by construction. METRICS_ADDR overrides for tests.
+	metricsAddr := envDefault("METRICS_ADDR", ":9102")
+	metricsSrv := &http.Server{Addr: metricsAddr, Handler: metrics.Handler()}
+	go func() {
+		if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("metrics server", "err", err)
+		}
+	}()
+	logger.Info("metrics endpoint listening", "addr", metricsAddr)
 
 	rdb := infra.NewRedis(cfg.RedisAddr, cfg.RedisPassword)
 	defer rdb.Close()
@@ -92,6 +106,9 @@ func main() {
 	defer cancel()
 	if err := e.Shutdown(shutdownCtx); err != nil {
 		logger.Error("shutdown", "err", err)
+	}
+	if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("metrics shutdown", "err", err)
 	}
 	logger.Info("api stopped")
 }

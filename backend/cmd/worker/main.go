@@ -3,6 +3,7 @@ package main
 import (
 	"akademi-bimbel/config"
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"akademi-bimbel/internal/adapter"
 	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/metrics"
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 	"akademi-bimbel/internal/worker"
@@ -47,6 +49,17 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+	metrics.RegisterDBPool(pool)
+
+	// Observability endpoint (issue #98) — internal compose network only.
+	metricsAddr := envDefault("METRICS_ADDR", ":9102")
+	metricsSrv := &http.Server{Addr: metricsAddr, Handler: metrics.Handler()}
+	go func() {
+		if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("metrics server", "err", err)
+		}
+	}()
+	logger.Info("metrics endpoint listening", "addr", metricsAddr)
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     cfg.RedisAddr,
@@ -70,6 +83,12 @@ func main() {
 	w := worker.New(pool, rdb, repo, cfg.WorkerPollInterval, sweeperInterval, announcementPollInterval, svc, repo, objectStore, svc, cfg.WorkerPollInterval, cfg.ObjectStoragePrivateBucketName, svc)
 	logger.Info("worker started", "poll_interval", cfg.WorkerPollInterval.String(), "sweeper_interval", sweeperInterval.String(), "announcement_poll_interval", announcementPollInterval.String())
 	w.Run(ctx)
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("metrics shutdown", "err", err)
+	}
 	logger.Info("worker stopped")
 }
 

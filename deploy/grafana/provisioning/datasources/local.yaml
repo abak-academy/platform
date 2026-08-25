@@ -1,0 +1,21 @@
+# Local datasources carry the SAME UIDs as the Grafana Cloud hosted datasources
+# (grafanacloud-prom / grafanacloud-loki). Dashboard JSON in
+# deploy/grafana/dashboards/ references those UIDs, so one file provisions
+# cleanly in both places — iterate locally at :3002, import to Cloud unchanged.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: grafanacloud-prom
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+
+  - name: Loki
+    uid: grafanacloud-loki
+    type: loki
+    access: proxy
+    url: http://loki:3100

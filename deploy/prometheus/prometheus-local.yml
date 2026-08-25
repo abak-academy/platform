@@ -1,0 +1,8 @@
+# Local-only Prometheus. Scraping is Alloy's job everywhere (parity with
+# production), so this server runs idle except for the remote-write receiver
+# that Alloy pushes into — it exists to reproduce, offline, exactly what
+# Grafana Cloud would receive.
+global:
+  scrape_interval: 15s
+
+scrape_configs: []
