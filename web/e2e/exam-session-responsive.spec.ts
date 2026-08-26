@@ -367,6 +367,12 @@ test("E-3 mobile nav expands in flow and selecting a number collapses it", async
     panel,
     "E-3 panel must become visible when expanded",
   ).toBeVisible();
+  const toggleBox = await assertVisibleBox(toggle, "E-3 mobile nav toggle");
+  const panelBox = await assertVisibleBox(panel, "E-3 expanded mobile nav panel");
+  expect(
+    panelBox.y,
+    "E-3 expanded panel must have a visible gap below the compact question summary",
+  ).toBeGreaterThanOrEqual(toggleBox.y + toggleBox.height + 8);
   await assertNoIntersection(
     card,
     panel,
@@ -595,4 +601,37 @@ test("E-10 sectioned mobile keeps its timer visible and has no Submit", async ({
     "E-10 sectioned mode must not render Submit",
   ).toHaveCount(0);
   await capture(page, "e10-sectioned-mobile-390x844");
+});
+
+test("E-11 fullscreen violation uses the blocking warning modal hierarchy", async ({
+  page,
+  context,
+}) => {
+  const viewport = { width: 1280, height: 800 };
+  await openExam(page, context, imageSession, viewport);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, "fullscreenElement", {
+      value: null,
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("fullscreenchange"));
+  });
+
+  const overlay = page.getByTestId("violation-overlay");
+  const dialog = page.getByRole("alertdialog");
+  await expect(overlay).toBeVisible({ timeout: 4000 });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId("violation-warning-icon")).toBeVisible();
+  await expect(page.getByTestId("violation-warning-count")).toHaveText(
+    "Total pelanggaran tercatat: 1",
+  );
+  await expect(page.getByTestId("violation-return-button")).toBeVisible();
+  await assertWithinViewport(dialog, viewport, "E-11 violation modal");
+  const dialogBox = await assertVisibleBox(dialog, "E-11 violation modal size");
+  expect(dialogBox.width, "E-11 desktop modal width must match the 352px mockup").toBeGreaterThanOrEqual(350);
+  expect(dialogBox.width, "E-11 desktop modal width must match the 352px mockup").toBeLessThanOrEqual(354);
+  expect(dialogBox.height, "E-11 desktop modal height must match the 310px mockup").toBeGreaterThanOrEqual(308);
+  expect(dialogBox.height, "E-11 desktop modal height must match the 310px mockup").toBeLessThanOrEqual(312);
+  await capture(page, "e11-violation-modal-1280x800");
 });

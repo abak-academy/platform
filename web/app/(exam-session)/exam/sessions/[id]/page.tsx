@@ -7,8 +7,11 @@ import {
   Maximize2,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Flag,
   BookOpen,
+  Trophy,
+  TriangleAlert,
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { ApiError } from "@/lib/api";
@@ -65,6 +68,8 @@ function formatTime(seconds: number): string {
 }
 
 const EXPIRY_MAX_ATTEMPTS = 3;
+const VIOLATION_GRACE_MS = 3000;
+const VIOLATION_DUPLICATE_SUPPRESS_MS = 5000;
 
 function isTransientExpiryError(error: unknown): boolean {
   if (!(error instanceof ApiError)) return true;
@@ -119,6 +124,8 @@ export default function SessionPage() {
   const submitSession = useSubmitSession(sessionId);
   const logViolation = useLogViolation(sessionId);
   const advanceSection = useAdvanceSection(sessionId);
+  const logViolationRef = useRef(logViolation);
+  logViolationRef.current = logViolation;
 
   const [redirecting, setRedirecting] = useState(false);
   const [fullscreenGranted, setFullscreenGranted] = useState(false);
@@ -141,6 +148,12 @@ export default function SessionPage() {
   const navToggleRef = useRef<HTMLButtonElement>(null);
   const autoAdvanceRef = useRef(false);
   const violationCountRef = useRef(0);
+  const violationTimersRef = useRef<
+    Partial<Record<"fullscreen_exit" | "tab_switch", ReturnType<typeof setTimeout>>>
+  >({});
+  const lastViolationAtRef = useRef<
+    Partial<Record<"fullscreen_exit" | "tab_switch", number>>
+  >({});
   const answersRef = useRef(answers);
   answersRef.current = answers;
   const flaggedRef = useRef(flagged);
@@ -519,21 +532,58 @@ export default function SessionPage() {
     void runExpiryRecovery();
   }, [remaining <= 0, isSectioned, runExpiryRecovery, session, hasTimer]);
 
+  const clearPendingViolation = useCallback(
+    (type: "fullscreen_exit" | "tab_switch") => {
+      const timer = violationTimersRef.current[type];
+      if (timer) {
+        clearTimeout(timer);
+        delete violationTimersRef.current[type];
+      }
+    },
+    [],
+  );
+
+  const showTrackedViolation = useCallback(
+    (type: "fullscreen_exit" | "tab_switch") => {
+      const now = Date.now();
+      const last = lastViolationAtRef.current[type];
+      if (last != null && now - last < VIOLATION_DUPLICATE_SUPPRESS_MS) return;
+      lastViolationAtRef.current[type] = now;
+      logViolationRef.current.mutate(type);
+      violationCountRef.current += 1;
+      setShowViolationOverlay(true);
+    },
+    [],
+  );
+
+  const scheduleViolation = useCallback(
+    (type: "fullscreen_exit" | "tab_switch", stillViolating: () => boolean) => {
+      if (violationTimersRef.current[type]) return;
+      violationTimersRef.current[type] = setTimeout(() => {
+        delete violationTimersRef.current[type];
+        if (stillViolating()) {
+          showTrackedViolation(type);
+        }
+      }, VIOLATION_GRACE_MS);
+    },
+    [showTrackedViolation],
+  );
+
   // Violation logging
   useEffect(() => {
     if (!sessionId || session?.status !== "in_progress") return;
     const onFullscreen = () => {
       if (!document.fullscreenElement) {
-        logViolation.mutate("fullscreen_exit");
-        violationCountRef.current += 1;
-        setShowViolationOverlay(true);
+        scheduleViolation("fullscreen_exit", () => !document.fullscreenElement);
+      } else {
+        clearPendingViolation("fullscreen_exit");
       }
     };
     const onVisibility = () => {
       if (document.hidden) {
-        logViolation.mutate("tab_switch");
-        violationCountRef.current += 1;
-        setShowViolationOverlay(true);
+        scheduleViolation("tab_switch", () => document.hidden);
+      } else {
+        clearPendingViolation("tab_switch");
       }
     };
     const onCopy = () => logViolation.mutate("copy_attempt");
@@ -544,8 +594,10 @@ export default function SessionPage() {
       document.removeEventListener("fullscreenchange", onFullscreen);
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("copy", onCopy);
+      clearPendingViolation("fullscreen_exit");
+      clearPendingViolation("tab_switch");
     };
-  }, [sessionId, session?.status, logViolation]);
+  }, [sessionId, session?.status, scheduleViolation, clearPendingViolation]);
 
   // Request fullscreen
   const enterFullscreen = useCallback(async () => {
@@ -704,13 +756,15 @@ export default function SessionPage() {
 
   const questionsToShow = activeQuestions;
   const currentQ = questionsToShow[currentQIndex];
-  const answeredCount = Object.keys(answers).length;
+  const answeredCount = Object.values(answers).filter(
+    (answer) => answer !== "",
+  ).length;
   const isFlagged = currentQ ? flagged[currentQ.id] ?? false : false;
   const timerExpired = hasTimer && remaining <= 0;
-  const currentTestTitle =
-    session.tests.find((t) => t.id === currentQ?.test_id)?.title ??
-    session.tests[0]?.title ??
-    "";
+  const currentTest =
+    session.tests.find((t) => t.id === currentQ?.test_id) ??
+    session.tests[0];
+  const currentTestTitle = currentTest?.title ?? "";
   // In sectioned mode (utbk/ielts), use the mode label for the top bar title
   // to avoid duplicating the first section's title (which appears as the section label below).
   // In standard mode, show the title of the test that owns the current question
@@ -720,6 +774,7 @@ export default function SessionPage() {
       ? t("exam_packages_modal_mode_utbk")
       : t("exam_packages_modal_mode_ielts")
     : currentTestTitle;
+  const examSubtitle = isSectioned ? activeTest?.title : currentTest?.subject;
 
   return (
     // Dynamic viewport height keeps the exam shell clear of mobile browser chrome.
@@ -730,46 +785,26 @@ export default function SessionPage() {
       {/* Top bar */}
       <div
         data-testid="exam-top-bar"
-        className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface-2 px-4 py-2.5 lg:px-5 lg:py-3"
+        className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-line bg-surface px-4 py-2 sm:flex sm:flex-wrap sm:gap-x-4 lg:px-5"
       >
-        <div className="min-w-0 w-full shrink-0 sm:w-auto sm:flex-1 sm:shrink">
-          <div
-            data-testid="exam-title"
-            className="truncate text-sm font-semibold text-ink-900"
-          >
-            {examTitle}
-          </div>
-          {isSectioned && (
-            <div className="truncate text-xs text-ink-500">
-              {activeTest?.title ?? ""}
+        <div className="flex min-w-0 items-center gap-2 sm:w-auto sm:flex-1 sm:shrink">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm">
+            <Trophy className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <div
+              data-testid="exam-title"
+              className="truncate text-sm font-bold text-ink-900"
+            >
+              {examTitle}
             </div>
-          )}
-        </div>
-        <div className="ml-auto whitespace-nowrap text-xs text-ink-500">
-          {answeredCount}/{questionsToShow.length}{" "}
-          {t("session_legend_answered").toLowerCase()}
-        </div>
-        <div
-          data-testid="save-indicator"
-          className="whitespace-nowrap text-xs text-ink-500"
-        >
-          {saveStatus === "saved"
-            ? t("session_save_saved")
-            : saveStatus === "saving"
-              ? t("session_save_saving")
-              : t("session_save_unsaved")}
-        </div>
-        {hasTimer && (
-          <div
-            className={`rounded-md px-2 py-0.5 text-base font-mono font-bold lg:px-3 lg:py-1 lg:text-lg ${
-              timerExpired
-                ? "bg-danger-bg text-danger"
-                : "bg-surface-2 text-ink-900"
-            }`}
-          >
-            {formatTime(remaining)}
+            {examSubtitle && (
+              <div className="truncate text-xs text-ink-500">
+                {examSubtitle}
+              </div>
+            )}
           </div>
-        )}
+        </div>
         {!isSectioned && (
           <Button
             type="button"
@@ -777,10 +812,39 @@ export default function SessionPage() {
             size="sm"
             onClick={() => setShowConfirm(true)}
             disabled={timerExpired || submitting}
+            className="justify-self-end rounded-full bg-[var(--color-submit)] px-4 font-bold text-white shadow-sm hover:bg-[var(--color-submit-hover)] sm:order-3"
           >
             {t("submit")}
           </Button>
         )}
+        <div className="col-span-2 flex min-w-0 items-center gap-3 text-xs text-ink-500 sm:order-2 sm:col-span-1 sm:ml-auto sm:gap-4">
+          <div className="whitespace-nowrap">
+            {answeredCount}/{questionsToShow.length}{" "}
+            {t("session_legend_answered").toLowerCase()}
+          </div>
+          <div
+            data-testid="save-indicator"
+            className="min-w-[4.75rem] whitespace-nowrap"
+          >
+            {saveStatus === "saved"
+              ? t("session_save_saved")
+              : saveStatus === "saving"
+                ? t("session_save_saving")
+                : t("session_save_unsaved")}
+          </div>
+          {hasTimer && (
+            <div
+              className={`ml-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-base font-mono font-bold lg:px-3 lg:text-lg ${
+                timerExpired
+                  ? "bg-danger-bg text-danger"
+                  : "bg-brand-50 text-brand-700"
+              }`}
+            >
+              <Clock className="size-4" />
+              {formatTime(remaining)}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Body: question pane (1fr) + nav rail (280px) */}
@@ -848,21 +912,31 @@ export default function SessionPage() {
             )}
 
             {/* Question count + flag toggle */}
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-ink-600">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2 text-sm text-ink-600">
                 <BookOpen className="size-4" />
-                <span>
+                <span className="whitespace-nowrap">
                   {t("session_question")} {Math.min(currentQIndex + 1, questionsToShow.length)} {t("of")}{" "}
                   {questionsToShow.length}
                 </span>
+                {currentQ && (
+                  <span className="hidden rounded-md bg-line-2 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-ink-500 sm:inline-flex">
+                    {t(("fmt_" + currentQ.format) as I18nKey)}
+                  </span>
+                )}
               </div>
               {currentQ && (
                 <Button
                   type="button"
-                  variant={isFlagged ? "default" : "outline"}
+                  variant="outline"
                   size="sm"
                   onClick={() => toggleFlag(currentQ.id)}
                   disabled={timerExpired}
+                  className={
+                    isFlagged
+                      ? "border-warn/60 bg-surface text-warn shadow-sm hover:bg-warn-bg"
+                      : "border-warn/40 text-warn hover:bg-warn-bg"
+                  }
                 >
                   <Flag className="size-3.5" />
                   {isFlagged ? t("unflag") : t("flag")}
@@ -872,11 +946,8 @@ export default function SessionPage() {
 
             {/* Question card */}
             {currentQ && (
-              <Card className="mb-4 p-5">
-                <div className="mb-2 text-xs uppercase tracking-wide text-ink-500">
-                  {t(("fmt_" + currentQ.format) as I18nKey)}
-                </div>
-                <div className="mb-4 text-base text-ink-900">
+              <Card className="mb-4 p-5 sm:p-7">
+                <div className="mb-5 text-base text-ink-900">
                   <RichContent html={currentQ.body} />
                 </div>
 
@@ -885,6 +956,21 @@ export default function SessionPage() {
                   answers[currentQ.id] ?? "",
                   (val) => setAnswer(currentQ.id, val),
                   timerExpired,
+                )}
+
+                {(answers[currentQ.id] ?? "") !== "" && (
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAnswer(currentQ.id, "")}
+                      disabled={timerExpired}
+                      className="border-line text-ink-700"
+                    >
+                      {t("clear_answer")}
+                    </Button>
+                  </div>
                 )}
               </Card>
             )}
@@ -921,8 +1007,11 @@ export default function SessionPage() {
         {/* Nav rail */}
         <div
           data-testid="exam-nav-rail"
-          className="border-t border-line bg-surface-2 p-4 lg:overflow-y-auto lg:border-t-0 lg:border-l lg:p-5"
+          className="mt-5 rounded-t-2xl border-t border-line bg-surface p-4 shadow-[0_-8px_24px_rgba(21,24,58,0.06)] lg:mt-0 lg:rounded-none lg:border-t-0 lg:border-l lg:p-5 lg:shadow-none lg:overflow-y-auto"
         >
+          <div className="mb-4 hidden text-xs font-bold uppercase tracking-[0.12em] text-ink-500 lg:block">
+            {t("session_question")}
+          </div>
           <button
             ref={navToggleRef}
             type="button"
@@ -937,27 +1026,23 @@ export default function SessionPage() {
           </button>
           <div
             id="exam-nav-panel"
-            className={`${navExpanded ? "block" : "hidden"} lg:block`}
+            className={`${navExpanded ? "mt-3 block rounded-xl border border-line bg-surface p-3 shadow-sm" : "hidden"} lg:mt-0 lg:block lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none`}
           >
             <div className="grid grid-cols-5 gap-2">
               {questionsToShow.map((q, i) => {
-                const hasAnswer = answers[q.id] != null;
+                const hasAnswer = (answers[q.id] ?? "") !== "";
                 const isFlagQ = flagged[q.id] ?? false;
                 const isCurrent = i === currentQIndex;
 
                 let cellClass =
-                  "flex size-10 items-center justify-center rounded-md text-xs font-medium transition-colors lg:size-8";
-                if (isCurrent) {
-                  cellClass += " bg-brand-600 text-white";
-                } else if (hasAnswer && isFlagQ) {
-                  cellClass +=
-                    " border border-warning/30 bg-warning-bg text-warning";
-                } else if (hasAnswer) {
-                  cellClass += " bg-brand-50 text-brand-700";
-                } else if (isFlagQ) {
-                  cellClass += " border border-warning/30 text-warning";
+                  "relative flex size-10 items-center justify-center rounded-md border text-xs font-bold transition-colors lg:size-8";
+                if (hasAnswer) {
+                  cellClass += " border-brand-600 bg-brand-600 text-white";
                 } else {
-                  cellClass += " bg-surface-2 text-ink-600 hover:bg-surface-3";
+                  cellClass += " border-line bg-surface text-ink-700 hover:border-brand-300 hover:bg-brand-50";
+                }
+                if (isCurrent) {
+                  cellClass += " ring-2 ring-brand-600 ring-offset-2 ring-offset-surface";
                 }
 
                 return (
@@ -973,15 +1058,18 @@ export default function SessionPage() {
                     data-testid={`session-nav-${i}`}
                   >
                     {i + 1}
+                    {isFlagQ && (
+                      <span className="absolute -right-1 -top-1 size-2.5 rounded-full bg-warn ring-2 ring-surface" />
+                    )}
                   </button>
                 );
               })}
             </div>
 
             {/* Legend */}
-            <div className="mt-5 flex flex-col gap-2">
+            <div className="mt-5 flex flex-col gap-2 border-t border-line pt-4">
               <LegendItem
-                swatchClassName="bg-brand-600"
+                swatchClassName="border border-brand-600 bg-brand-600"
                 label={t("session_legend_answered")}
               />
               <LegendItem
@@ -989,7 +1077,7 @@ export default function SessionPage() {
                 label={t("session_legend_not_answered")}
               />
               <LegendItem
-                swatchClassName="border border-warning/30 bg-warning-bg"
+                swatchClassName="scale-75 rounded-full border border-warn bg-warn"
                 label={t("session_legend_flagged")}
               />
             </div>
@@ -1010,24 +1098,27 @@ export default function SessionPage() {
 
       {/* Submit confirmation dialog */}
       <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="max-w-sm rounded-2xl p-5 sm:max-w-md">
+          <DialogHeader className="gap-2 text-center">
             <DialogTitle>{t("submit_confirm")}</DialogTitle>
             <DialogDescription>
               {answeredCount}/{questionsToShow.length} {t("session_question").toLowerCase()}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">{t("cancel")}</Button>
-            </DialogClose>
+          <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-start">
             <Button
               variant="destructive"
               onClick={handleSubmit}
               disabled={submitting}
+              className="h-10 w-full rounded-full bg-[var(--color-submit)] font-bold text-white hover:bg-[var(--color-submit-hover)]"
             >
               {submitting ? t("sys_loading") : t("submit")}
             </Button>
+            <DialogClose asChild>
+              <Button variant="outline" className="h-10 w-full rounded-xl">
+                {t("cancel")}
+              </Button>
+            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1036,25 +1127,51 @@ export default function SessionPage() {
       {showViolationOverlay && (
         <div
           data-testid="violation-overlay"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-danger/15 p-4 backdrop-blur-sm"
         >
-          <Card className="mx-4 max-w-md p-6">
-            <h2 className="mb-4 text-lg font-bold text-ink-900">
-              {t("violation_warning")}
-            </h2>
-            <p className="mb-6 text-sm text-ink-600">
-              {t("violation_warning_body").replace(
-                "{n}",
-                String(violationCountRef.current),
-              )}
-            </p>
-            <Button
-              onClick={handleViolationReturn}
-              className="w-full"
-              data-testid="violation-return-button"
-            >
-              {t("return_to_exam")}
-            </Button>
+          <Card
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="violation-warning-title"
+            aria-describedby="violation-warning-message violation-warning-count"
+            className="w-full max-w-[22rem] gap-0 rounded-[18px] border-2 border-danger bg-surface p-6 text-center shadow-xl sm:h-[19.375rem]"
+          >
+            <div className="flex h-full flex-col items-center">
+              <div
+                data-testid="violation-warning-icon"
+                className="mb-4 flex size-16 items-center justify-center rounded-full bg-danger-bg text-danger"
+                aria-hidden="true"
+              >
+                <TriangleAlert className="size-7" />
+              </div>
+              <h2
+                id="violation-warning-title"
+                className="mb-2 font-serif text-lg font-bold text-ink-900"
+              >
+                {t("violation_warning")}
+              </h2>
+              <p id="violation-warning-message" className="text-sm leading-5 text-ink-600">
+                {t("violation_warning_body")}
+              </p>
+              <p
+                id="violation-warning-count"
+                data-testid="violation-warning-count"
+                className="mt-2 text-xs font-semibold text-danger"
+              >
+                {t("violation_warning_count").replace(
+                  "{n}",
+                  String(violationCountRef.current),
+                )}
+              </p>
+              <Button
+                onClick={handleViolationReturn}
+                autoFocus
+                className="mt-5 h-11 w-full rounded-full bg-brand-600 font-bold text-white shadow-[0_8px_14px_rgba(61,77,219,0.30)] hover:bg-brand-700"
+                data-testid="violation-return-button"
+              >
+                {t("return_to_exam")}
+              </Button>
+            </div>
           </Card>
         </div>
       )}
