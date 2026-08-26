@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { authFetch } from "@/lib/api";
+import { authFetch, isDeviceMismatch } from "@/lib/api";
 import type {
   RegistrationDetail,
   RegistrationListItem,
@@ -89,6 +89,10 @@ export function useReconnectSession(sessionId: string | undefined) {
         `/exam/sessions/${encodeURIComponent(sessionId!)}`,
       ),
     enabled: Boolean(sessionId),
+    retry: (count, err) => {
+      if (isDeviceMismatch(err)) return false;
+      return count < 3;
+    },
   });
 }
 

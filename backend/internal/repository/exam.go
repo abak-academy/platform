@@ -1726,7 +1726,7 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 	var cardNotesRaw []byte
 	err := r.pool.QueryRow(ctx,
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
-			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at, reg.participant_number,
+			reg.checked_in_at, reg.device_fingerprint, reg.attempts_used, reg.status, reg.created_at, reg.participant_number,
 			e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.check_in_window_minutes,
 			e.timer_mode, e.duration_minutes, e.result_config, e.exam_number,
 			e.card_enabled, e.card_notes,
@@ -1741,7 +1741,7 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 		regID, studentID,
 	).Scan(
 		&detail.ID, &detail.StudentID, &detail.ExamID, &detail.Token, &cardKey,
-		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
+		&checkedInAt, &detail.DeviceFingerprint, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
 		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
 		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
 		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber,
@@ -1777,7 +1777,7 @@ func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUI
 	var cardNotesRaw []byte
 	err := r.pool.QueryRow(ctx,
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
-			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at, reg.participant_number,
+			reg.checked_in_at, reg.device_fingerprint, reg.attempts_used, reg.status, reg.created_at, reg.participant_number,
 			e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.check_in_window_minutes,
 			e.timer_mode, e.duration_minutes, e.result_config, e.exam_number,
 			e.card_enabled, e.card_notes,
@@ -1792,7 +1792,7 @@ func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUI
 		regID,
 	).Scan(
 		&detail.ID, &detail.StudentID, &detail.ExamID, &detail.Token, &cardKey,
-		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
+		&checkedInAt, &detail.DeviceFingerprint, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
 		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
 		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
 		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber,
@@ -1965,13 +1965,13 @@ func (r *Repository) GetExamRegistrationByToken(ctx context.Context, studentID u
 	var cardKey *string
 	var checkedInAt *time.Time
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, student_id, exam_id, token, card_key, checked_in_at, attempts_used, status, created_at
+		`SELECT id, student_id, exam_id, token, card_key, checked_in_at, device_fingerprint, attempts_used, status, created_at
 		FROM exam_registration
 		WHERE student_id = $1 AND token = $2`,
 		studentID, token,
 	).Scan(
 		&reg.ID, &reg.StudentID, &reg.ExamID, &reg.Token,
-		&cardKey, &checkedInAt, &reg.AttemptsUsed, &reg.Status, &reg.CreatedAt,
+		&cardKey, &checkedInAt, &reg.DeviceFingerprint, &reg.AttemptsUsed, &reg.Status, &reg.CreatedAt,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -2001,6 +2001,51 @@ func (r *Repository) CheckInExamTx(ctx context.Context, tx pgx.Tx, regID uuid.UU
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// GetDeviceFingerprint returns the persisted check-in device lock for a
+// registration. nil means unbound.
+func (r *Repository) GetDeviceFingerprint(ctx context.Context, regID uuid.UUID) (*string, error) {
+	var fp *string
+	err := r.pool.QueryRow(ctx,
+		`SELECT device_fingerprint FROM exam_registration WHERE id = $1`,
+		regID,
+	).Scan(&fp)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return fp, nil
+}
+
+// BindDeviceFingerprintIfEmpty stamps device_fingerprint when it is still NULL.
+// A later call with a different fingerprint is a no-op; the caller re-reads.
+func (r *Repository) BindDeviceFingerprintIfEmpty(ctx context.Context, regID uuid.UUID, fp string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE exam_registration
+		SET device_fingerprint = $2
+		WHERE id = $1 AND device_fingerprint IS NULL`,
+		regID, fp,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		var exists bool
+		err := r.pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM exam_registration WHERE id = $1)`,
+			regID,
+		).Scan(&exists)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return ErrNotFound
+		}
 	}
 	return nil
 }

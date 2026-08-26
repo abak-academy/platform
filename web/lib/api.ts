@@ -23,6 +23,10 @@ export class ApiError extends Error {
   }
 }
 
+export function isDeviceMismatch(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "device_mismatch";
+}
+
 interface ErrorBody {
   code?: string;
   message?: string;

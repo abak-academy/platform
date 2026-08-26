@@ -5,6 +5,7 @@ import { act } from "react";
 import SessionPage from "./page";
 import { ApiError } from "@/lib/api";
 import type { SessionState } from "@/lib/types";
+import { ApiError } from "@/lib/api";
 import {
   AUTOSAVE_DEBOUNCE_MS,
   backoffDelayMs,
@@ -412,6 +413,22 @@ describe("SessionPage", () => {
     };
     render(<SessionPage />);
     expect(screen.getByText(/gagal memuat data/i)).toBeInTheDocument();
+  });
+
+  it("shows a device-mismatch card without retry when reconnect is forbidden", () => {
+    sessionState = {
+      data: null,
+      isLoading: false,
+      isError: true,
+      error: new ApiError("device_mismatch", "device mismatch", 403),
+      refetch: vi.fn(),
+    };
+    render(<SessionPage />);
+    expect(screen.getByText(/perangkat tidak sesuai/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/terikat ke perangkat check-in/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /coba lagi/i })).not.toBeInTheDocument();
   });
 
   // ── Submitted state ─────────────────────────────────────────────────────
@@ -2750,6 +2767,31 @@ describe("SessionPage", () => {
     expect(screen.getByTestId("save-indicator")).toHaveTextContent(
       "Tersimpan",
     );
+  });
+
+  it("does not retry a save rejected for device mismatch", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onError(new ApiError("device_mismatch", "device mismatch", 403));
+    });
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Belum tersimpan",
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(backoffDelayMs(0) + 5_000);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
   });
 
   it("replays a localStorage-queued payload exactly once on mount and clears it (FR-33, NFR-R5)", async () => {

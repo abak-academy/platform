@@ -24,6 +24,7 @@ import {
   useAdvanceSection,
 } from "@/lib/hooks/exam";
 import { useTranslation, DICT } from "@/lib/i18n";
+import { isDeviceMismatch } from "@/lib/api";
 type I18nKey = keyof typeof DICT.id;
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -269,9 +270,13 @@ export default function SessionPage() {
             setSaveStatus("saved");
           }
         },
-        onError: () => {
+        onError: (err) => {
           if (submittingRef.current) return;
           if (mySeq !== saveSeqRef.current) return; // superseded by a newer attempt
+          if (isDeviceMismatch(err)) {
+            setSaveStatus("unsaved");
+            return;
+          }
           clearRetryTimer();
           const delay = backoffDelayMs(retryAttemptRef.current);
           retryAttemptRef.current += 1;
@@ -364,8 +369,8 @@ export default function SessionPage() {
     setAnswers(initAnswers);
     setFlagged(initFlags);
     // Position is always seeded from the server response, never from
-    // localStorage — it must survive a reconnect on a different device
-    // (FR-36). Written to the ref synchronously for the same reason as
+    // localStorage — it must survive a reconnect on the same device after a
+    // tab close (FR-36). Written to the ref synchronously for the same reason as
     // remainingRef above.
     const savedPosition = session.current_position ?? 0;
     currentQIndexRef.current = savedPosition;
@@ -691,20 +696,34 @@ export default function SessionPage() {
   // ── Error state (check before !session to handle query error) ────────
 
   if (isError) {
+    const deviceMismatch = isDeviceMismatch(error);
     return (
       <div className="mx-auto max-w-3xl px-4 py-8">
         <Card className="border-danger/30 bg-danger-bg px-5 py-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
-              {t("sys_error_load")}
-              {error instanceof Error && error.message
-                ? ` ${error.message}`
-                : ""}
+              {deviceMismatch ? (
+                <>
+                  <p className="font-medium text-ink-900">
+                    {t("exam_device_mismatch_title")}
+                  </p>
+                  <p>{t("exam_device_mismatch")}</p>
+                </>
+              ) : (
+                <>
+                  {t("sys_error_load")}
+                  {error instanceof Error && error.message
+                    ? ` ${error.message}`
+                    : ""}
+                </>
+              )}
             </div>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              {t("retry")}
-            </Button>
+            {!deviceMismatch && (
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                {t("retry")}
+              </Button>
+            )}
           </div>
         </Card>
       </div>

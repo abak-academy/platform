@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 
 import { useCheckIn, useRegistrations, useStartSession } from "@/lib/hooks/exam";
+import { isDeviceMismatch } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -202,7 +203,13 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
           setToken("");
         },
         onError: (err) => {
-          toast.error(err instanceof Error ? err.message : t("invalid_token"));
+          toast.error(
+            isDeviceMismatch(err)
+              ? t("exam_device_mismatch")
+              : err instanceof Error
+                ? err.message
+                : t("invalid_token"),
+          );
         },
       },
     );
@@ -213,7 +220,13 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
       const result = await startSessionMutation.mutateAsync(reg.id);
       router.push(`/exam/sessions/${result.session_id}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("competition_error"));
+      toast.error(
+        isDeviceMismatch(err)
+          ? t("exam_device_mismatch")
+          : err instanceof Error
+            ? err.message
+            : t("competition_error"),
+      );
     }
   };
 

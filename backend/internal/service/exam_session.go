@@ -120,6 +120,76 @@ func fingerprint(ip, ua string) string {
 	return hex.EncodeToString(h[:])
 }
 
+type deviceFingerprintStore interface {
+	GetDeviceFingerprint(context.Context, uuid.UUID) (*string, error)
+	BindDeviceFingerprintIfEmpty(context.Context, uuid.UUID, string) error
+}
+
+func writeDeviceLockCache(ctx context.Context, rdb *redis.Client, exam *model.Exam, registrationID uuid.UUID, fp string) {
+	if rdb == nil || fp == "" {
+		return
+	}
+	ttl := 24 * time.Hour
+	if exam != nil && exam.DurationMinutes != nil && *exam.DurationMinutes > 0 {
+		ttl = time.Duration(*exam.DurationMinutes) * time.Minute
+	}
+	_ = rdb.Set(ctx, "exam:device:"+registrationID.String(), fp, ttl).Err()
+}
+
+// assertCheckinDevice binds or compares the check-in device fingerprint.
+// Postgres is the source of truth; Redis is a write-through cache and a
+// grandfather path for in-flight locks that were never persisted.
+func assertCheckinDevice(ctx context.Context, rdb *redis.Client, store deviceFingerprintStore, exam *model.Exam, registrationID uuid.UUID, fp string) error {
+	if exam == nil || !exam.RequiresCheckin {
+		return nil
+	}
+	stored, err := store.GetDeviceFingerprint(ctx, registrationID)
+	if err != nil {
+		return err
+	}
+	if stored == nil || *stored == "" {
+		bindFP := fp
+		if rdb != nil {
+			if redisFP, rerr := rdb.Get(ctx, "exam:device:"+registrationID.String()).Result(); rerr == nil && redisFP != "" {
+				if redisFP != fp {
+					return ErrDeviceMismatch
+				}
+				bindFP = redisFP
+			}
+		}
+		if bindFP == "" {
+			return ErrDeviceMismatch
+		}
+		if err := store.BindDeviceFingerprintIfEmpty(ctx, registrationID, bindFP); err != nil {
+			return err
+		}
+		stored, err = store.GetDeviceFingerprint(ctx, registrationID)
+		if err != nil {
+			return err
+		}
+	}
+	if stored == nil || *stored != fp {
+		return ErrDeviceMismatch
+	}
+	writeDeviceLockCache(ctx, rdb, exam, registrationID, fp)
+	return nil
+}
+
+func (s *Service) assertCheckinDevice(ctx context.Context, exam *model.Exam, registrationID uuid.UUID, fp string) error {
+	return assertCheckinDevice(ctx, s.rdb, s.storeRepo, exam, registrationID, fp)
+}
+
+func (s *Service) assertSessionDevice(ctx context.Context, sess *model.ExamSession, fp string) error {
+	if sess.Status == "submitted" {
+		return nil
+	}
+	exam, err := s.storeRepo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return err
+	}
+	return s.assertCheckinDevice(ctx, exam, sess.RegistrationID, fp)
+}
+
 // validViolationTypes is the set of allowed violation_type values.
 var validViolationTypes = map[string]bool{
 	"fullscreen_exit": true,
@@ -303,13 +373,7 @@ func (s *Service) CheckIn(ctx context.Context, studentID, token, fp string) (Che
 		return CheckInResult{}, err
 	}
 
-	// Redis device lock
-	key := "exam:device:" + reg.ID.String()
-	ttl := 24 * time.Hour
-	if exam.DurationMinutes != nil && *exam.DurationMinutes > 0 {
-		ttl = time.Duration(*exam.DurationMinutes) * time.Minute
-	}
-	if err := s.rdb.Set(ctx, key, fp, ttl).Err(); err != nil {
+	if err := s.assertCheckinDevice(ctx, exam, reg.ID, fp); err != nil {
 		return CheckInResult{}, err
 	}
 
@@ -369,16 +433,8 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 			return SessionStartPayload{}, ErrNotCheckedIn
 		}
 
-		key := "exam:device:" + rid.String()
-		deviceFP, err := s.rdb.Get(ctx, key).Result()
-		if err == redis.Nil {
-			return SessionStartPayload{}, ErrDeviceMismatch
-		}
-		if err != nil {
+		if err := s.assertCheckinDevice(ctx, exam, rid, fp); err != nil {
 			return SessionStartPayload{}, err
-		}
-		if deviceFP != fp {
-			return SessionStartPayload{}, ErrDeviceMismatch
 		}
 	}
 
@@ -512,7 +568,7 @@ func (s *Service) sessionStartPayload(ctx context.Context, exam *model.Exam, ses
 
 // ReconnectSession returns the current session state, questions, saved answers,
 // and remaining time. FR13–FR14.
-func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID string) (SessionStatePayload, error) {
+func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID, fp string) (SessionStatePayload, error) {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return SessionStatePayload{}, fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -527,6 +583,10 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 		if errors.Is(err, repository.ErrNotFound) {
 			return SessionStatePayload{}, ErrSessionNotFound
 		}
+		return SessionStatePayload{}, err
+	}
+
+	if err := s.assertSessionDevice(ctx, sess, fp); err != nil {
 		return SessionStatePayload{}, err
 	}
 
@@ -598,7 +658,7 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 // [0, total_questions) for the exam or the whole request is rejected with
 // ErrInvalidPosition before any answer or position is written (FR-36 relies on
 // this field never holding a value the client couldn't have reached).
-func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, inputs []AnswerInput, position *int) error {
+func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, inputs []AnswerInput, position *int, fp string) error {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -618,6 +678,10 @@ func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, 
 
 	if sess.Status != "in_progress" {
 		return ErrAlreadySubmitted
+	}
+
+	if err := s.assertSessionDevice(ctx, sess, fp); err != nil {
+		return err
 	}
 
 	// FR-14/FR-15: sectioned-mode guard. Reject any answer whose question belongs
@@ -686,7 +750,7 @@ func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, 
 // rejected with ErrSectionNotActive when the target section is pending. The
 // repo's atomic WHERE status='active' guard (NFR-5) makes double-fire safe;
 // the service disambiguates the 0-row result via the section's true status.
-func (s *Service) AdvanceSection(ctx context.Context, studentID, sessionID, testID string) (AdvanceSectionResult, error) {
+func (s *Service) AdvanceSection(ctx context.Context, studentID, sessionID, testID, fp string) (AdvanceSectionResult, error) {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return AdvanceSectionResult{}, fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -709,6 +773,10 @@ func (s *Service) AdvanceSection(ctx context.Context, studentID, sessionID, test
 	}
 	if sess.Status != "in_progress" {
 		return AdvanceSectionResult{}, ErrAlreadySubmitted
+	}
+
+	if err := s.assertSessionDevice(ctx, sess, fp); err != nil {
+		return AdvanceSectionResult{}, err
 	}
 
 	exam, err := s.storeRepo.GetExamForSession(ctx, sess.ExamID)
@@ -780,7 +848,7 @@ func (s *Service) buildAdvanceResult(ctx context.Context, exam *model.Exam, sess
 
 // SubmitSession grades objective answers and marks the session as submitted.
 // FR17–FR20.
-func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID string) (SubmitResult, error) {
+func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID, fp string) (SubmitResult, error) {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return SubmitResult{}, fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -795,6 +863,10 @@ func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID string
 		if errors.Is(err, repository.ErrNotFound) {
 			return SubmitResult{}, ErrSessionNotFound
 		}
+		return SubmitResult{}, err
+	}
+
+	if err := s.assertSessionDevice(ctx, sess, fp); err != nil {
 		return SubmitResult{}, err
 	}
 
@@ -857,7 +929,7 @@ func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID string
 // ---------- LogViolation ----------
 
 // LogViolation records an integrity event. FR21–FR22.
-func (s *Service) LogViolation(ctx context.Context, studentID, sessionID, violationType string) error {
+func (s *Service) LogViolation(ctx context.Context, studentID, sessionID, violationType, fp string) error {
 	if !validViolationTypes[violationType] {
 		return ErrInvalidViolationType
 	}
@@ -881,6 +953,10 @@ func (s *Service) LogViolation(ctx context.Context, studentID, sessionID, violat
 
 	if sess.Status != "in_progress" {
 		return ErrAlreadySubmitted
+	}
+
+	if err := s.assertSessionDevice(ctx, sess, fp); err != nil {
+		return err
 	}
 
 	return s.storeRepo.LogViolation(ctx, model.SessionViolationLog{
