@@ -138,6 +138,9 @@ export default function SessionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [expiryRecoveryFailed, setExpiryRecoveryFailed] = useState(false);
   const [showViolationOverlay, setShowViolationOverlay] = useState(false);
+  const [violationType, setViolationType] = useState<
+    "fullscreen_exit" | "tab_switch" | null
+  >(null);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">(
     "saved",
   );
@@ -564,6 +567,7 @@ export default function SessionPage() {
       lastViolationAtRef.current[type] = now;
       logViolationRef.current.mutate(type);
       violationCountRef.current += 1;
+      setViolationType(type);
       setShowViolationOverlay(true);
     },
     [],
@@ -662,6 +666,7 @@ export default function SessionPage() {
     } catch {
       /* non-critical */
     }
+    setViolationType(null);
     setShowViolationOverlay(false);
   }, []);
 
@@ -1200,7 +1205,11 @@ export default function SessionPage() {
                 {t("violation_warning")}
               </h2>
               <p id="violation-warning-message" className="text-sm leading-5 text-ink-600">
-                {t("violation_warning_body")}
+                {t(
+                  violationType === "tab_switch"
+                    ? "violation_warning_tab_switch_body"
+                    : "violation_warning_fullscreen_exit_body",
+                )}
               </p>
               <p
                 id="violation-warning-count"

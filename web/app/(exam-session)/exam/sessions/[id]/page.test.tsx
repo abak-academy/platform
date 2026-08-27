@@ -1844,6 +1844,10 @@ describe("SessionPage", () => {
 
     expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
     expect(screen.getByText(/Peringatan/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Anda berpindah tab atau jendela\. Kembali ke halaman ujian/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/mode layar penuh/i)).not.toBeInTheDocument();
   });
 
   it("tab switch increments shared violation counter after grace (FR14, FR18)", async () => {
