@@ -2032,6 +2032,7 @@ describe("SessionPage", () => {
         .filter((tb) => tb.tagName === "INPUT");
       expect(inputs.length).toBeGreaterThanOrEqual(2);
     });
+    expect(screen.queryByText(/\{\{/)).not.toBeInTheDocument();
   });
 
   it("preserves values independently across blanks when typing (FR-17)", async () => {
@@ -2801,7 +2802,6 @@ describe("SessionPage", () => {
     expect(saveAnswersMutate).toHaveBeenCalledWith(
       {
         answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
-        current_position: 0,
       },
       expect.anything(),
     );
@@ -2873,7 +2873,6 @@ describe("SessionPage", () => {
     expect(saveAnswersMutate).toHaveBeenCalledWith(
       {
         answers: [{ question_id: "q-short", answer: "queued-value", flagged_for_review: false }],
-        current_position: 0,
       },
       expect.anything(),
     );
@@ -3167,17 +3166,15 @@ describe("SessionPage", () => {
     // Must land on question 6, not be reset to question 1.
     expect(screen.getByText(/Soal 6 dari 6/)).toBeInTheDocument();
 
-    // The next save must carry the position the student is actually on —
-    // not silently overwrite the server's persisted position with 0.
+    // The next answer save must not overwrite the server's persisted position.
     vi.useFakeTimers();
     fireEvent.click(screen.getAllByRole("radio")[0]);
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
     });
 
-    expect(saveAnswersMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ current_position: 5 }),
-      expect.anything(),
+    expect(saveAnswersMutate.mock.calls[0][0]).not.toHaveProperty(
+      "current_position",
     );
   });
 });

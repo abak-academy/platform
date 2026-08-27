@@ -985,9 +985,11 @@ export default function SessionPage() {
             {/* Question card */}
             {currentQ && (
               <Card className="mb-4 p-5 sm:p-7">
-                <div className="mb-5 text-base text-ink-900">
-                  <RichContent html={currentQ.body} />
-                </div>
+                {currentQ.format !== "multi_blank" && (
+                  <div className="mb-5 text-base text-ink-900">
+                    <RichContent html={sanitizeForRichContent(currentQ.body)} />
+                  </div>
+                )}
 
                 {renderAnswerInput(
                   currentQ,
