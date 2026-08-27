@@ -159,6 +159,7 @@ export default function SessionPage() {
     element: HTMLInputElement | HTMLTextAreaElement;
     onBlur: () => void;
   } | null>(null);
+  const keyboardFullscreenGestureRetryRef = useRef<(() => void) | null>(null);
   const lastViolationAtRef = useRef<
     Partial<Record<"fullscreen_exit" | "tab_switch", number>>
   >({});
@@ -608,6 +609,34 @@ export default function SessionPage() {
       recovery.element.removeEventListener("blur", recovery.onBlur);
       keyboardFullscreenRecoveryRef.current = null;
     };
+    const clearKeyboardGestureRetry = () => {
+      const retry = keyboardFullscreenGestureRetryRef.current;
+      if (!retry) return;
+      document.removeEventListener("pointerdown", retry);
+      document.removeEventListener("keydown", retry);
+      keyboardFullscreenGestureRetryRef.current = null;
+    };
+    const requestKeyboardFullscreenRecovery = () => {
+      return document.documentElement.requestFullscreen?.()
+        .then(() => {
+          keyboardFullscreenExitRef.current = false;
+          clearKeyboardGestureRetry();
+        });
+    };
+    const armKeyboardGestureRetry = () => {
+      if (keyboardFullscreenGestureRetryRef.current) return;
+      const retry = () => {
+        if (!keyboardFullscreenExitRef.current || document.fullscreenElement) {
+          keyboardFullscreenExitRef.current = false;
+          clearKeyboardGestureRetry();
+          return;
+        }
+        requestKeyboardFullscreenRecovery()?.catch(() => {});
+      };
+      keyboardFullscreenGestureRetryRef.current = retry;
+      document.addEventListener("pointerdown", retry);
+      document.addEventListener("keydown", retry);
+    };
     const onFullscreen = () => {
       if (!document.fullscreenElement) {
         const activeElement = document.activeElement;
@@ -621,11 +650,9 @@ export default function SessionPage() {
             clearKeyboardRecovery();
             const onBlur = () => {
               clearKeyboardRecovery();
-              document.documentElement.requestFullscreen?.()
-                .then(() => {
-                  keyboardFullscreenExitRef.current = false;
-                })
-                .catch(() => {});
+              requestKeyboardFullscreenRecovery()?.catch(() => {
+                armKeyboardGestureRetry();
+              });
             };
             keyboardFullscreenRecoveryRef.current = {
               element: activeElement,
@@ -646,6 +673,7 @@ export default function SessionPage() {
       } else {
         keyboardFullscreenExitRef.current = false;
         clearKeyboardRecovery();
+        clearKeyboardGestureRetry();
         clearPendingViolation("fullscreen_exit");
       }
     };
@@ -665,6 +693,7 @@ export default function SessionPage() {
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("copy", onCopy);
       clearKeyboardRecovery();
+      clearKeyboardGestureRetry();
       clearPendingViolation("fullscreen_exit");
       clearPendingViolation("tab_switch");
     };

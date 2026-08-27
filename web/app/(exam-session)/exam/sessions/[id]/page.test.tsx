@@ -1691,6 +1691,45 @@ describe("SessionPage", () => {
     expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
   });
 
+  it("retries keyboard fullscreen recovery on the next document gesture", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    const requestFullscreen = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fullscreen denied"))
+      .mockResolvedValue(undefined);
+    document.documentElement.requestFullscreen = requestFullscreen;
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const input = screen
+      .getAllByRole("textbox")
+      .find((field) => field.tagName === "INPUT") as HTMLInputElement;
+    input.focus();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace();
+
+    input.blur();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+
+    fireEvent.pointerDown(document);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps a pending fullscreen violation alive across timer rerenders", async () => {
     vi.useFakeTimers();
     render(<SessionPage />);
