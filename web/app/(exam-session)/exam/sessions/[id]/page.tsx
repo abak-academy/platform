@@ -861,6 +861,7 @@ export default function SessionPage() {
 
   const questionsToShow = activeQuestions;
   const currentQ = questionsToShow[currentQIndex];
+  const isLastQuestion = currentQIndex >= questionsToShow.length - 1;
   const answeredCount = Object.values(answers).filter(
     (answer) => answer !== "",
   ).length;
@@ -1090,23 +1091,39 @@ export default function SessionPage() {
                 size="sm"
                 disabled={currentQIndex === 0}
                 onClick={() => goToQuestion(Math.max(0, currentQIndex - 1))}
+                className="min-w-28 justify-start"
               >
                 <ChevronLeft className="size-4" />
+                {t("pagination_prev")}
               </Button>
 
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={currentQIndex >= questionsToShow.length - 1}
-                onClick={() =>
-                  goToQuestion(
-                    Math.min(questionsToShow.length - 1, currentQIndex + 1),
-                  )
-                }
-              >
-                <ChevronRight className="size-4" />
-              </Button>
+              {isLastQuestion ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowConfirm(true)}
+                  disabled={timerExpired || submitting}
+                  className="min-w-28 rounded-full bg-[var(--color-submit)] font-bold text-white shadow-sm hover:bg-[var(--color-submit-hover)]"
+                >
+                  {t("submit")}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    goToQuestion(
+                      Math.min(questionsToShow.length - 1, currentQIndex + 1),
+                    )
+                  }
+                  className="min-w-28 justify-end"
+                >
+                  {t("pagination_next")}
+                  <ChevronRight className="size-4" />
+                </Button>
+              )}
             </div>
           </div>
         </div>

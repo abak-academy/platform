@@ -939,6 +939,25 @@ describe("SessionPage", () => {
     });
   });
 
+  it("shows labeled previous/next controls and turns next into submit on the last question", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    expect(screen.getByRole("button", { name: /sebelumnya/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /berikutnya/i })).toBeEnabled();
+
+    fireEvent.click(screen.getByTestId("session-nav-4"));
+    expect(screen.getByText(/Soal 5 dari 5/)).toBeInTheDocument();
+
+    const submitButtons = screen.getAllByRole("button", { name: /kumpulkan/i });
+    expect(submitButtons).toHaveLength(2);
+
+    fireEvent.click(submitButtons[1]);
+    expect(
+      screen.getByText(/yakin ingin mengumpulkan jawaban/i),
+    ).toBeInTheDocument();
+  });
+
   // ── Answer updates state ────────────────────────────────────────────────
 
   it("updates answer state when MCQ option is selected (FR29)", async () => {
