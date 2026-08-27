@@ -154,6 +154,11 @@ export default function SessionPage() {
   const violationTimersRef = useRef<
     Partial<Record<"fullscreen_exit" | "tab_switch", ReturnType<typeof setTimeout>>>
   >({});
+  const keyboardFullscreenExitRef = useRef(false);
+  const keyboardFullscreenRecoveryRef = useRef<{
+    element: HTMLInputElement | HTMLTextAreaElement;
+    onBlur: () => void;
+  } | null>(null);
   const lastViolationAtRef = useRef<
     Partial<Record<"fullscreen_exit" | "tab_switch", number>>
   >({});
@@ -597,6 +602,12 @@ export default function SessionPage() {
         examBodyRef.current?.contains(activeElement)
       );
     };
+    const clearKeyboardRecovery = () => {
+      const recovery = keyboardFullscreenRecoveryRef.current;
+      if (!recovery) return;
+      recovery.element.removeEventListener("blur", recovery.onBlur);
+      keyboardFullscreenRecoveryRef.current = null;
+    };
     const onFullscreen = () => {
       if (!document.fullscreenElement) {
         const activeElement = document.activeElement;
@@ -605,24 +616,36 @@ export default function SessionPage() {
             activeElement instanceof HTMLTextAreaElement) &&
           examBodyRef.current?.contains(activeElement)
         ) {
-          activeElement.addEventListener(
-            "blur",
-            () => {
-              document.documentElement.requestFullscreen?.().catch(() => {
-                scheduleViolation(
-                  "fullscreen_exit",
-                  () => !document.fullscreenElement && !answerFieldIsFocused(),
-                );
-              });
-            },
-            { once: true },
-          );
+          keyboardFullscreenExitRef.current = true;
+          if (keyboardFullscreenRecoveryRef.current?.element !== activeElement) {
+            clearKeyboardRecovery();
+            const onBlur = () => {
+              clearKeyboardRecovery();
+              document.documentElement.requestFullscreen?.()
+                .then(() => {
+                  keyboardFullscreenExitRef.current = false;
+                })
+                .catch(() => {});
+            };
+            keyboardFullscreenRecoveryRef.current = {
+              element: activeElement,
+              onBlur,
+            };
+            activeElement.addEventListener("blur", onBlur, { once: true });
+          }
+        } else {
+          keyboardFullscreenExitRef.current = false;
         }
         scheduleViolation(
           "fullscreen_exit",
-          () => !document.fullscreenElement && !answerFieldIsFocused(),
+          () =>
+            !document.fullscreenElement &&
+            !answerFieldIsFocused() &&
+            !keyboardFullscreenExitRef.current,
         );
       } else {
+        keyboardFullscreenExitRef.current = false;
+        clearKeyboardRecovery();
         clearPendingViolation("fullscreen_exit");
       }
     };
@@ -641,6 +664,7 @@ export default function SessionPage() {
       document.removeEventListener("fullscreenchange", onFullscreen);
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("copy", onCopy);
+      clearKeyboardRecovery();
       clearPendingViolation("fullscreen_exit");
       clearPendingViolation("tab_switch");
     };

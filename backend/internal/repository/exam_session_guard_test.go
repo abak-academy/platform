@@ -211,6 +211,87 @@ func TestSaveAnswersTx_DuplicateQuestionLastWins(t *testing.T) {
 	}
 }
 
+func TestSaveAnswersTx_BatchesMultipleDistinctAnswers(t *testing.T) {
+	pool, tracer := newSaveAnswersTracePool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	reg, firstQuestionID := seedGuardRegistration(t, pool)
+	var testID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`SELECT test_id FROM exam_test WHERE exam_id = $1 ORDER BY sort_order LIMIT 1`,
+		reg.ExamID,
+	).Scan(&testID); err != nil {
+		t.Fatalf("get test id: %v", err)
+	}
+	secondQuestionID := insertGradingEssayQuestion(t, pool, testID, "Q2", 10, 2)
+
+	tx, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin session tx: %v", err)
+	}
+	session, err := repo.CreateExamSessionTx(ctx, tx, reg, nil)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit session tx: %v", err)
+	}
+
+	firstAnswer, secondAnswer := "first", "second"
+	tracer.reset()
+	if err := repo.SaveAnswersTx(ctx, session.ID, []model.ExamSessionAnswer{
+		{QuestionID: firstQuestionID, Answer: &firstAnswer, FlaggedForReview: true},
+		{QuestionID: secondQuestionID, Answer: &secondAnswer},
+	}, nil); err != nil {
+		t.Fatalf("SaveAnswersTx: %v", err)
+	}
+	if got := tracer.count(); got != 1 {
+		t.Fatalf("statements: want 1 for two distinct answers, got %d", got)
+	}
+
+	rows, err := pool.Query(ctx,
+		`SELECT question_id, answer, flagged_for_review
+		FROM exam_session_answer
+		WHERE session_id = $1
+		ORDER BY answer`,
+		session.ID,
+	)
+	if err != nil {
+		t.Fatalf("select answers: %v", err)
+	}
+	defer rows.Close()
+
+	got := map[uuid.UUID]struct {
+		answer  string
+		flagged bool
+	}{}
+	for rows.Next() {
+		var questionID uuid.UUID
+		var answer string
+		var flagged bool
+		if err := rows.Scan(&questionID, &answer, &flagged); err != nil {
+			t.Fatalf("scan answer: %v", err)
+		}
+		got[questionID] = struct {
+			answer  string
+			flagged bool
+		}{answer: answer, flagged: flagged}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("answers written: want 2, got %d", len(got))
+	}
+	if got[firstQuestionID].answer != firstAnswer || !got[firstQuestionID].flagged {
+		t.Errorf("first answer mismatch: %+v", got[firstQuestionID])
+	}
+	if got[secondQuestionID].answer != secondAnswer || got[secondQuestionID].flagged {
+		t.Errorf("second answer mismatch: %+v", got[secondQuestionID])
+	}
+}
+
 func TestGetQuestionTestMap_DuplicateQuestionLastTestWins(t *testing.T) {
 	pool := newGradingTestPool(t)
 	repo := New(pool)

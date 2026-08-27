@@ -1657,7 +1657,7 @@ describe("SessionPage", () => {
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
   });
 
-  it("records fullscreen exit after a focused-field grace expires and fullscreen recovery fails", async () => {
+  it("does not record a keyboard-induced fullscreen exit when fullscreen recovery fails", async () => {
     vi.useFakeTimers();
     render(<SessionPage />);
     await enterFullscreenWithFakeTimers();
@@ -1687,7 +1687,8 @@ describe("SessionPage", () => {
     });
     await advanceViolationGrace();
 
-    expect(logViolationMutate).toHaveBeenCalledWith("fullscreen_exit");
+    expect(logViolationMutate).not.toHaveBeenCalledWith("fullscreen_exit");
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
   });
 
   it("keeps a pending fullscreen violation alive across timer rerenders", async () => {

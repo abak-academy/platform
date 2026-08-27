@@ -2215,7 +2215,7 @@ func (r *Repository) GetSessionAnswers(ctx context.Context, sessionID uuid.UUID)
 	return answers, nil
 }
 
-// SaveAnswersTx writes answers and session progress in one guarded statement.
+// SaveAnswersTx writes answers/progress only for in-progress sessions; empty or rejected saves are no-ops.
 func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer, position *int) error {
 	if len(answers) == 0 && position == nil {
 		return nil
@@ -2256,7 +2256,7 @@ func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, ans
 		flagged[i] = answer.FlaggedForReview
 	}
 
-	tag, err := r.pool.Exec(ctx,
+	_, err := r.pool.Exec(ctx,
 		`WITH guard AS MATERIALIZED (
 			SELECT id FROM exam_session WHERE id = $1 AND status = 'in_progress' FOR UPDATE
 		), ins AS (
@@ -2282,9 +2282,6 @@ func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, ans
 	)
 	if err != nil {
 		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return nil
 	}
 	return nil
 }
