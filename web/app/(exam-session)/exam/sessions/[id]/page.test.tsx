@@ -2892,6 +2892,89 @@ describe("SessionPage", () => {
     );
   });
 
+  it("sends only the new position after an acknowledged answer save (FR-1)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onSuccess();
+    });
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+      answers: [],
+      current_position: 2,
+    });
+  });
+
+  it("omits an unchanged current position from an answer save (FR-2)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate.mock.calls[0][0]).not.toHaveProperty("current_position");
+  });
+
+  it("keeps an unacknowledged answer in the navigation save after a failed save (FR-3)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onError(new Error("network error"));
+    });
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+      answers: [
+        { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
+  });
+
+  it("does not overwrite an unacknowledged queue entry during a position-only save (FR-4)", async () => {
+    saveQueue("session-1", [
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+    ]);
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(loadQueue("session-1")).toEqual([
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+    ]);
+  });
+
   it("hydrates position from the server response even when localStorage is empty (FR-36, FR-37)", async () => {
     localStorage.clear();
     sessionState = {

@@ -213,6 +213,7 @@ export default function SessionPage() {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingChangeRef = useRef(false);
+  const answersDirtyRef = useRef(false);
   const retryAttemptRef = useRef(0);
   // Sequence number of the most recently ISSUED save. Two saves can still be
   // outstanding at once (the hook serializes the actual network calls, but
@@ -221,6 +222,11 @@ export default function SessionPage() {
   // repaint the "saved" indicator over a newer save that is still pending or
   // has failed (FR-34, NFR-R5).
   const saveSeqRef = useRef(0);
+
+  const buildAutosavePayload = useCallback(
+    () => (answersDirtyRef.current ? buildSavePayload() : []),
+    [buildSavePayload],
+  );
 
   const clearRetryTimer = useCallback(() => {
     if (retryTimerRef.current) {
@@ -243,7 +249,10 @@ export default function SessionPage() {
       }
       setSaveStatus("saving");
       const mySeq = ++saveSeqRef.current;
-      saveAnswers.mutate({ answers: payload, current_position: position }, {
+      saveAnswers.mutate({
+        answers: payload,
+        ...(positionChanged ? { current_position: position } : {}),
+      }, {
         onSuccess: () => {
           // Drop exactly the queued entries this save's payload matches
           // byte-for-byte — content, not just question id, so a newer
@@ -265,6 +274,7 @@ export default function SessionPage() {
           // stale ack must never repaint "saved" over that (FR-34).
           if (mySeq === saveSeqRef.current) {
             retryAttemptRef.current = 0;
+            answersDirtyRef.current = false;
             lastSavedPositionRef.current = position;
             setSaveStatus("saved");
           }
@@ -282,20 +292,21 @@ export default function SessionPage() {
             // own payload or re-reading localStorage: either can be stale by
             // the time the backoff elapses, and buildSavePayload always
             // reflects whatever the user has actually typed.
-            attemptSave(buildSavePayload());
+            attemptSave(buildAutosavePayload());
           }, delay);
         },
       });
     },
-    [sessionId, saveAnswers, clearRetryTimer, buildSavePayload],
+    [sessionId, saveAnswers, clearRetryTimer, buildAutosavePayload],
   );
 
   const flushDebouncedSave = useCallback(() => {
     debounceTimerRef.current = null;
     if (!pendingChangeRef.current) return;
     pendingChangeRef.current = false;
-    const payload = buildSavePayload();
-    saveQueue(sessionId, payload);
+    const answersDirty = answersDirtyRef.current;
+    const payload = answersDirty ? buildSavePayload() : [];
+    if (answersDirty) saveQueue(sessionId, payload);
     clearRetryTimer();
     retryAttemptRef.current = 0;
     attemptSave(payload);
@@ -625,6 +636,7 @@ export default function SessionPage() {
   const setAnswer = useCallback(
     (questionId: string, value: string) => {
       setAnswers((prev) => ({ ...prev, [questionId]: value }));
+      answersDirtyRef.current = true;
       scheduleAutosave();
     },
     [scheduleAutosave],
@@ -633,6 +645,7 @@ export default function SessionPage() {
   const toggleFlag = useCallback(
     (questionId: string) => {
       setFlagged((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
+      answersDirtyRef.current = true;
       scheduleAutosave();
     },
     [scheduleAutosave],
