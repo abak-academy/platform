@@ -943,8 +943,8 @@ describe("SessionPage", () => {
     render(<SessionPage />);
     await enterFullscreen();
 
-    expect(screen.getByRole("button", { name: /sebelumnya/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /berikutnya/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /soal sebelumnya/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /soal berikutnya/i })).toBeEnabled();
 
     fireEvent.click(screen.getByTestId("session-nav-4"));
     expect(screen.getByText(/Soal 5 dari 5/)).toBeInTheDocument();

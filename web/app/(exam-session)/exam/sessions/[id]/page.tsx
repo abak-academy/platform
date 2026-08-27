@@ -1094,7 +1094,7 @@ export default function SessionPage() {
                 className="min-w-28 justify-start"
               >
                 <ChevronLeft className="size-4" />
-                {t("pagination_prev")}
+                {t("session_prev_question")}
               </Button>
 
               {isLastQuestion ? (
@@ -1120,7 +1120,7 @@ export default function SessionPage() {
                   }
                   className="min-w-28 justify-end"
                 >
-                  {t("pagination_next")}
+                  {t("session_next_question")}
                   <ChevronRight className="size-4" />
                 </Button>
               )}
