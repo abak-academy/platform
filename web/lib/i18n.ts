@@ -1412,6 +1412,10 @@ export const DICT = {
     session_save_saving: "Menyimpan…",
     session_save_unsaved: "Belum tersimpan",
     session_expiry_recovery_failed: "Pengumpulan otomatis gagal. Jawaban tetap terkunci.",
+    violation_warning_fullscreen_exit_body:
+      "Anda keluar dari mode layar penuh. Kembali ke mode layar penuh untuk melanjutkan ujian.",
+    violation_warning_tab_switch_body:
+      "Anda berpindah tab atau jendela. Kembali ke halaman ujian untuk melanjutkan.",
     violation_warning_body: "Anda keluar dari mode ujian aktif. Kejadian ini tercatat.",
     violation_warning_count: "Total pelanggaran tercatat: {n}",
     return_to_exam: "Kembali ke ujian",
@@ -3025,6 +3029,10 @@ export const DICT = {
     session_save_saving: "Saving…",
     session_save_unsaved: "Unsaved",
     session_expiry_recovery_failed: "Automatic submission failed. Answers remain locked.",
+    violation_warning_fullscreen_exit_body:
+      "You exited fullscreen mode. Return to fullscreen mode to continue the exam.",
+    violation_warning_tab_switch_body:
+      "You switched tabs or windows. Return to the exam page to continue.",
     violation_warning_body: "You left the active exam mode. This incident has been recorded.",
     violation_warning_count: "Total recorded violations: {n}",
     return_to_exam: "Return to exam",

@@ -1625,6 +1625,111 @@ describe("SessionPage", () => {
     );
   });
 
+  it("does not record a fullscreen exit while an answer field is focused, and re-enters on blur", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    document.documentElement.requestFullscreen = requestFullscreen;
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const input = screen
+      .getAllByRole("textbox")
+      .find((field) => field.tagName === "INPUT") as HTMLInputElement;
+    input.focus();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+
+    input.blur();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not record a keyboard-induced fullscreen exit when fullscreen recovery fails", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    document.documentElement.requestFullscreen = vi
+      .fn()
+      .mockRejectedValue(new Error("fullscreen denied"));
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const input = screen
+      .getAllByRole("textbox")
+      .find((field) => field.tagName === "INPUT") as HTMLInputElement;
+    input.focus();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace();
+    expect(logViolationMutate).not.toHaveBeenCalled();
+
+    input.blur();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).not.toHaveBeenCalledWith("fullscreen_exit");
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+  });
+
+  it("retries keyboard fullscreen recovery on the next document gesture", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    const requestFullscreen = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fullscreen denied"))
+      .mockResolvedValue(undefined);
+    document.documentElement.requestFullscreen = requestFullscreen;
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const input = screen
+      .getAllByRole("textbox")
+      .find((field) => field.tagName === "INPUT") as HTMLInputElement;
+    input.focus();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace();
+
+    input.blur();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+
+    fireEvent.pointerDown(document);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps a pending fullscreen violation alive across timer rerenders", async () => {
     vi.useFakeTimers();
     render(<SessionPage />);
@@ -1779,6 +1884,10 @@ describe("SessionPage", () => {
 
     expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
     expect(screen.getByText(/Peringatan/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Anda berpindah tab atau jendela\. Kembali ke halaman ujian/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/mode layar penuh/i)).not.toBeInTheDocument();
   });
 
   it("tab switch increments shared violation counter after grace (FR14, FR18)", async () => {
@@ -2000,6 +2109,7 @@ describe("SessionPage", () => {
         .filter((tb) => tb.tagName === "INPUT");
       expect(inputs.length).toBeGreaterThanOrEqual(2);
     });
+    expect(screen.queryByText(/\{\{/)).not.toBeInTheDocument();
   });
 
   it("preserves values independently across blanks when typing (FR-17)", async () => {
@@ -2769,7 +2879,6 @@ describe("SessionPage", () => {
     expect(saveAnswersMutate).toHaveBeenCalledWith(
       {
         answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
-        current_position: 0,
       },
       expect.anything(),
     );
@@ -2802,6 +2911,33 @@ describe("SessionPage", () => {
     expect(screen.getByTestId("save-indicator")).toHaveTextContent(
       "Tersimpan",
     );
+  });
+
+  it("keeps a failed queued replay in the next navigation save (FR-3)", async () => {
+    saveQueue("session-1", [
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+    ]);
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onError(new Error("network error"));
+    });
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+      answers: [
+        { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
   });
 
   it("replay does not clobber a server answer for a question absent from the queue (FR-37, NFR-R5)", async () => {
@@ -2841,7 +2977,6 @@ describe("SessionPage", () => {
     expect(saveAnswersMutate).toHaveBeenCalledWith(
       {
         answers: [{ question_id: "q-short", answer: "queued-value", flagged_for_review: false }],
-        current_position: 0,
       },
       expect.anything(),
     );
@@ -2892,6 +3027,89 @@ describe("SessionPage", () => {
     );
   });
 
+  it("sends only the new position after an acknowledged answer save (FR-1)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onSuccess();
+    });
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+      answers: [],
+      current_position: 2,
+    });
+  });
+
+  it("omits an unchanged current position from an answer save (FR-2)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate.mock.calls[0][0]).not.toHaveProperty("current_position");
+  });
+
+  it("keeps an unacknowledged answer in the navigation save after a failed save (FR-3)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onError(new Error("network error"));
+    });
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+      answers: [
+        { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
+  });
+
+  it("does not overwrite an unacknowledged queue entry during a position-only save (FR-4)", async () => {
+    saveQueue("session-1", [
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+    ]);
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(loadQueue("session-1")).toEqual([
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+    ]);
+  });
+
   it("hydrates position from the server response even when localStorage is empty (FR-36, FR-37)", async () => {
     localStorage.clear();
     sessionState = {
@@ -2905,6 +3123,38 @@ describe("SessionPage", () => {
   });
 
   // ── Blocker 3: overlapping saves must never lose or misreport an answer ──
+
+  it("keeps an edit made during an outstanding save's debounce window dirty after the older acknowledgement (FR-3)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = () =>
+      screen.getAllByRole("textbox").filter((tb) => tb.tagName === "INPUT")[0];
+
+    fireEvent.change(textInput(), { target: { value: "v1" } });
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(textInput(), { target: { value: "v2" } });
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onSuccess();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+      answers: [
+        { question_id: "q-short", answer: "v2", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
+  });
 
   it("a stale save's ack must not report 'saved' while a newer save is still pending, and the newer edit survives that newer save failing (Blocker 3a, FR-32, FR-34, NFR-R5)", async () => {
     render(<SessionPage />);
@@ -3052,17 +3302,15 @@ describe("SessionPage", () => {
     // Must land on question 6, not be reset to question 1.
     expect(screen.getByText(/Soal 6 dari 6/)).toBeInTheDocument();
 
-    // The next save must carry the position the student is actually on —
-    // not silently overwrite the server's persisted position with 0.
+    // The next answer save must not overwrite the server's persisted position.
     vi.useFakeTimers();
     fireEvent.click(screen.getAllByRole("radio")[0]);
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
     });
 
-    expect(saveAnswersMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ current_position: 5 }),
-      expect.anything(),
+    expect(saveAnswersMutate.mock.calls[0][0]).not.toHaveProperty(
+      "current_position",
     );
   });
 });

@@ -138,6 +138,9 @@ export default function SessionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [expiryRecoveryFailed, setExpiryRecoveryFailed] = useState(false);
   const [showViolationOverlay, setShowViolationOverlay] = useState(false);
+  const [violationType, setViolationType] = useState<
+    "fullscreen_exit" | "tab_switch" | null
+  >(null);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">(
     "saved",
   );
@@ -151,6 +154,12 @@ export default function SessionPage() {
   const violationTimersRef = useRef<
     Partial<Record<"fullscreen_exit" | "tab_switch", ReturnType<typeof setTimeout>>>
   >({});
+  const keyboardFullscreenExitRef = useRef(false);
+  const keyboardFullscreenRecoveryRef = useRef<{
+    element: HTMLInputElement | HTMLTextAreaElement;
+    onBlur: () => void;
+  } | null>(null);
+  const keyboardFullscreenGestureRetryRef = useRef<(() => void) | null>(null);
   const lastViolationAtRef = useRef<
     Partial<Record<"fullscreen_exit" | "tab_switch", number>>
   >({});
@@ -213,6 +222,8 @@ export default function SessionPage() {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingChangeRef = useRef(false);
+  const answersDirtyRef = useRef(false);
+  const answerEditSeqRef = useRef(0);
   const retryAttemptRef = useRef(0);
   // Sequence number of the most recently ISSUED save. Two saves can still be
   // outstanding at once (the hook serializes the actual network calls, but
@@ -221,6 +232,11 @@ export default function SessionPage() {
   // repaint the "saved" indicator over a newer save that is still pending or
   // has failed (FR-34, NFR-R5).
   const saveSeqRef = useRef(0);
+
+  const buildAutosavePayload = useCallback(
+    () => (answersDirtyRef.current ? buildSavePayload() : loadQueue(sessionId)),
+    [buildSavePayload, sessionId],
+  );
 
   const clearRetryTimer = useCallback(() => {
     if (retryTimerRef.current) {
@@ -243,7 +259,11 @@ export default function SessionPage() {
       }
       setSaveStatus("saving");
       const mySeq = ++saveSeqRef.current;
-      saveAnswers.mutate({ answers: payload, current_position: position }, {
+      const editSeq = answerEditSeqRef.current;
+      saveAnswers.mutate({
+        answers: payload,
+        ...(positionChanged ? { current_position: position } : {}),
+      }, {
         onSuccess: () => {
           // Drop exactly the queued entries this save's payload matches
           // byte-for-byte — content, not just question id, so a newer
@@ -263,8 +283,9 @@ export default function SessionPage() {
           // may still be pending or may itself have already failed — its
           // outcome owns the indicator and the acknowledged position. A
           // stale ack must never repaint "saved" over that (FR-34).
-          if (mySeq === saveSeqRef.current) {
+          if (mySeq === saveSeqRef.current && editSeq === answerEditSeqRef.current) {
             retryAttemptRef.current = 0;
+            answersDirtyRef.current = false;
             lastSavedPositionRef.current = position;
             setSaveStatus("saved");
           }
@@ -282,20 +303,21 @@ export default function SessionPage() {
             // own payload or re-reading localStorage: either can be stale by
             // the time the backoff elapses, and buildSavePayload always
             // reflects whatever the user has actually typed.
-            attemptSave(buildSavePayload());
+            attemptSave(buildAutosavePayload());
           }, delay);
         },
       });
     },
-    [sessionId, saveAnswers, clearRetryTimer, buildSavePayload],
+    [sessionId, saveAnswers, clearRetryTimer, buildAutosavePayload],
   );
 
   const flushDebouncedSave = useCallback(() => {
     debounceTimerRef.current = null;
     if (!pendingChangeRef.current) return;
     pendingChangeRef.current = false;
-    const payload = buildSavePayload();
-    saveQueue(sessionId, payload);
+    const answersDirty = answersDirtyRef.current;
+    const payload = buildAutosavePayload();
+    if (answersDirty) saveQueue(sessionId, payload);
     clearRetryTimer();
     retryAttemptRef.current = 0;
     attemptSave(payload);
@@ -551,6 +573,7 @@ export default function SessionPage() {
       lastViolationAtRef.current[type] = now;
       logViolationRef.current.mutate(type);
       violationCountRef.current += 1;
+      setViolationType(type);
       setShowViolationOverlay(true);
     },
     [],
@@ -572,10 +595,85 @@ export default function SessionPage() {
   // Violation logging
   useEffect(() => {
     if (!sessionId || session?.status !== "in_progress") return;
+    const answerFieldIsFocused = () => {
+      const activeElement = document.activeElement;
+      return (
+        (activeElement instanceof HTMLInputElement ||
+          activeElement instanceof HTMLTextAreaElement) &&
+        examBodyRef.current?.contains(activeElement)
+      );
+    };
+    const clearKeyboardRecovery = () => {
+      const recovery = keyboardFullscreenRecoveryRef.current;
+      if (!recovery) return;
+      recovery.element.removeEventListener("blur", recovery.onBlur);
+      keyboardFullscreenRecoveryRef.current = null;
+    };
+    const clearKeyboardGestureRetry = () => {
+      const retry = keyboardFullscreenGestureRetryRef.current;
+      if (!retry) return;
+      document.removeEventListener("pointerdown", retry);
+      document.removeEventListener("keydown", retry);
+      keyboardFullscreenGestureRetryRef.current = null;
+    };
+    const requestKeyboardFullscreenRecovery = () => {
+      return document.documentElement.requestFullscreen?.()
+        .then(() => {
+          keyboardFullscreenExitRef.current = false;
+          clearKeyboardGestureRetry();
+        });
+    };
+    const armKeyboardGestureRetry = () => {
+      if (keyboardFullscreenGestureRetryRef.current) return;
+      const retry = () => {
+        if (!keyboardFullscreenExitRef.current || document.fullscreenElement) {
+          keyboardFullscreenExitRef.current = false;
+          clearKeyboardGestureRetry();
+          return;
+        }
+        requestKeyboardFullscreenRecovery()?.catch(() => {});
+      };
+      keyboardFullscreenGestureRetryRef.current = retry;
+      document.addEventListener("pointerdown", retry);
+      document.addEventListener("keydown", retry);
+    };
     const onFullscreen = () => {
       if (!document.fullscreenElement) {
-        scheduleViolation("fullscreen_exit", () => !document.fullscreenElement);
+        const activeElement = document.activeElement;
+        if (
+          (activeElement instanceof HTMLInputElement ||
+            activeElement instanceof HTMLTextAreaElement) &&
+          examBodyRef.current?.contains(activeElement)
+        ) {
+          keyboardFullscreenExitRef.current = true;
+          if (keyboardFullscreenRecoveryRef.current?.element !== activeElement) {
+            clearKeyboardRecovery();
+            const onBlur = () => {
+              clearKeyboardRecovery();
+              requestKeyboardFullscreenRecovery()?.catch(() => {
+                armKeyboardGestureRetry();
+              });
+            };
+            keyboardFullscreenRecoveryRef.current = {
+              element: activeElement,
+              onBlur,
+            };
+            activeElement.addEventListener("blur", onBlur, { once: true });
+          }
+        } else {
+          keyboardFullscreenExitRef.current = false;
+        }
+        scheduleViolation(
+          "fullscreen_exit",
+          () =>
+            !document.fullscreenElement &&
+            !answerFieldIsFocused() &&
+            !keyboardFullscreenExitRef.current,
+        );
       } else {
+        keyboardFullscreenExitRef.current = false;
+        clearKeyboardRecovery();
+        clearKeyboardGestureRetry();
         clearPendingViolation("fullscreen_exit");
       }
     };
@@ -594,6 +692,8 @@ export default function SessionPage() {
       document.removeEventListener("fullscreenchange", onFullscreen);
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("copy", onCopy);
+      clearKeyboardRecovery();
+      clearKeyboardGestureRetry();
       clearPendingViolation("fullscreen_exit");
       clearPendingViolation("tab_switch");
     };
@@ -619,12 +719,15 @@ export default function SessionPage() {
     } catch {
       /* non-critical */
     }
+    setViolationType(null);
     setShowViolationOverlay(false);
   }, []);
 
   const setAnswer = useCallback(
     (questionId: string, value: string) => {
       setAnswers((prev) => ({ ...prev, [questionId]: value }));
+      answersDirtyRef.current = true;
+      answerEditSeqRef.current += 1;
       scheduleAutosave();
     },
     [scheduleAutosave],
@@ -633,6 +736,8 @@ export default function SessionPage() {
   const toggleFlag = useCallback(
     (questionId: string) => {
       setFlagged((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
+      answersDirtyRef.current = true;
+      answerEditSeqRef.current += 1;
       scheduleAutosave();
     },
     [scheduleAutosave],
@@ -947,9 +1052,11 @@ export default function SessionPage() {
             {/* Question card */}
             {currentQ && (
               <Card className="mb-4 p-5 sm:p-7">
-                <div className="mb-5 text-base text-ink-900">
-                  <RichContent html={currentQ.body} />
-                </div>
+                {currentQ.format !== "multi_blank" && (
+                  <div className="mb-5 text-base text-ink-900">
+                    <RichContent html={sanitizeForRichContent(currentQ.body)} />
+                  </div>
+                )}
 
                 {renderAnswerInput(
                   currentQ,
@@ -1151,7 +1258,11 @@ export default function SessionPage() {
                 {t("violation_warning")}
               </h2>
               <p id="violation-warning-message" className="text-sm leading-5 text-ink-600">
-                {t("violation_warning_body")}
+                {t(
+                  violationType === "tab_switch"
+                    ? "violation_warning_tab_switch_body"
+                    : "violation_warning_fullscreen_exit_body",
+                )}
               </p>
               <p
                 id="violation-warning-count"
