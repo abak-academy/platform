@@ -2217,6 +2217,10 @@ func (r *Repository) GetSessionAnswers(ctx context.Context, sessionID uuid.UUID)
 
 // SaveAnswersTx writes answers and session progress in one guarded statement.
 func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer, position *int) error {
+	if len(answers) == 0 && position == nil {
+		return nil
+	}
+
 	// A single ON CONFLICT statement cannot update the same row twice (SQLSTATE 21000).
 	seen := make(map[uuid.UUID]struct{}, len(answers))
 	collapsed := make([]model.ExamSessionAnswer, 0, len(answers))

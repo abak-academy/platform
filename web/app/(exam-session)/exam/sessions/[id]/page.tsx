@@ -214,6 +214,7 @@ export default function SessionPage() {
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingChangeRef = useRef(false);
   const answersDirtyRef = useRef(false);
+  const answerEditSeqRef = useRef(0);
   const retryAttemptRef = useRef(0);
   // Sequence number of the most recently ISSUED save. Two saves can still be
   // outstanding at once (the hook serializes the actual network calls, but
@@ -224,8 +225,8 @@ export default function SessionPage() {
   const saveSeqRef = useRef(0);
 
   const buildAutosavePayload = useCallback(
-    () => (answersDirtyRef.current ? buildSavePayload() : []),
-    [buildSavePayload],
+    () => (answersDirtyRef.current ? buildSavePayload() : loadQueue(sessionId)),
+    [buildSavePayload, sessionId],
   );
 
   const clearRetryTimer = useCallback(() => {
@@ -249,6 +250,7 @@ export default function SessionPage() {
       }
       setSaveStatus("saving");
       const mySeq = ++saveSeqRef.current;
+      const editSeq = answerEditSeqRef.current;
       saveAnswers.mutate({
         answers: payload,
         ...(positionChanged ? { current_position: position } : {}),
@@ -272,7 +274,7 @@ export default function SessionPage() {
           // may still be pending or may itself have already failed — its
           // outcome owns the indicator and the acknowledged position. A
           // stale ack must never repaint "saved" over that (FR-34).
-          if (mySeq === saveSeqRef.current) {
+          if (mySeq === saveSeqRef.current && editSeq === answerEditSeqRef.current) {
             retryAttemptRef.current = 0;
             answersDirtyRef.current = false;
             lastSavedPositionRef.current = position;
@@ -305,7 +307,7 @@ export default function SessionPage() {
     if (!pendingChangeRef.current) return;
     pendingChangeRef.current = false;
     const answersDirty = answersDirtyRef.current;
-    const payload = answersDirty ? buildSavePayload() : [];
+    const payload = buildAutosavePayload();
     if (answersDirty) saveQueue(sessionId, payload);
     clearRetryTimer();
     retryAttemptRef.current = 0;
@@ -602,7 +604,12 @@ export default function SessionPage() {
           activeElement.addEventListener(
             "blur",
             () => {
-              document.documentElement.requestFullscreen?.().catch(() => {});
+              document.documentElement.requestFullscreen?.().catch(() => {
+                scheduleViolation(
+                  "fullscreen_exit",
+                  () => !document.fullscreenElement && !answerFieldIsFocused(),
+                );
+              });
             },
             { once: true },
           );
@@ -662,6 +669,7 @@ export default function SessionPage() {
     (questionId: string, value: string) => {
       setAnswers((prev) => ({ ...prev, [questionId]: value }));
       answersDirtyRef.current = true;
+      answerEditSeqRef.current += 1;
       scheduleAutosave();
     },
     [scheduleAutosave],
@@ -671,6 +679,7 @@ export default function SessionPage() {
     (questionId: string) => {
       setFlagged((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
       answersDirtyRef.current = true;
+      answerEditSeqRef.current += 1;
       scheduleAutosave();
     },
     [scheduleAutosave],

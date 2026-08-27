@@ -136,6 +136,32 @@ func TestSaveAnswersTx_UsesOneStatement(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.answers == nil && tc.position == nil {
+				var before time.Time
+				if err := pool.QueryRow(ctx,
+					`UPDATE exam_session SET last_saved_at = now() - interval '1 hour' WHERE id = $1 RETURNING last_saved_at`,
+					session.ID,
+				).Scan(&before); err != nil {
+					t.Fatalf("set last_saved_at: %v", err)
+				}
+				tracer.reset()
+				if err := repo.SaveAnswersTx(ctx, session.ID, tc.answers, tc.position); err != nil {
+					t.Fatalf("SaveAnswersTx: %v", err)
+				}
+				if got := tracer.count(); got != 0 {
+					t.Errorf("statements: want 0, got %d", got)
+				}
+				var after time.Time
+				if err := pool.QueryRow(ctx,
+					`SELECT last_saved_at FROM exam_session WHERE id = $1`, session.ID,
+				).Scan(&after); err != nil {
+					t.Fatalf("select last_saved_at: %v", err)
+				}
+				if !after.Equal(before) {
+					t.Errorf("last_saved_at changed: before %v, after %v", before, after)
+				}
+				return
+			}
 			tracer.reset()
 			if err := repo.SaveAnswersTx(ctx, session.ID, tc.answers, tc.position); err != nil {
 				t.Fatalf("SaveAnswersTx: %v", err)
@@ -182,6 +208,37 @@ func TestSaveAnswersTx_DuplicateQuestionLastWins(t *testing.T) {
 	}
 	if got != last {
 		t.Errorf("answer: want last value %q, got %q", last, got)
+	}
+}
+
+func TestGetQuestionTestMap_DuplicateQuestionLastTestWins(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	firstTestID := insertGradingTest(t, pool)
+	examID := insertGradingExam(t, pool, firstTestID)
+	questionID := insertGradingEssayQuestion(t, pool, firstTestID, "Q1", 10, 1)
+	lastTestID := insertGradingTest(t, pool)
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO exam_test (exam_id, test_id, sort_order) VALUES ($1, $2, $3)`,
+		examID, lastTestID, 2,
+	); err != nil {
+		t.Fatalf("insert last exam test: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)`,
+		lastTestID, questionID, 1,
+	); err != nil {
+		t.Fatalf("insert duplicate test question: %v", err)
+	}
+
+	questionTest, err := repo.GetQuestionTestMap(ctx, examID)
+	if err != nil {
+		t.Fatalf("GetQuestionTestMap: %v", err)
+	}
+	if got := questionTest[questionID]; got != lastTestID {
+		t.Errorf("question test: want later sort-order test %v, got %v", lastTestID, got)
 	}
 }
 

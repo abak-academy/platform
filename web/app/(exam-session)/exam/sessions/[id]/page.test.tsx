@@ -1650,11 +1650,44 @@ describe("SessionPage", () => {
     expect(logViolationMutate).not.toHaveBeenCalled();
     expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
 
-    fireEvent.blur(input);
+    input.blur();
     await act(async () => {
       await Promise.resolve();
     });
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("records fullscreen exit after a focused-field grace expires and fullscreen recovery fails", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    document.documentElement.requestFullscreen = vi
+      .fn()
+      .mockRejectedValue(new Error("fullscreen denied"));
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const input = screen
+      .getAllByRole("textbox")
+      .find((field) => field.tagName === "INPUT") as HTMLInputElement;
+    input.focus();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace();
+    expect(logViolationMutate).not.toHaveBeenCalled();
+
+    input.blur();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).toHaveBeenCalledWith("fullscreen_exit");
   });
 
   it("keeps a pending fullscreen violation alive across timer rerenders", async () => {
@@ -2836,6 +2869,33 @@ describe("SessionPage", () => {
     );
   });
 
+  it("keeps a failed queued replay in the next navigation save (FR-3)", async () => {
+    saveQueue("session-1", [
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+    ]);
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onError(new Error("network error"));
+    });
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+      answers: [
+        { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
+  });
+
   it("replay does not clobber a server answer for a question absent from the queue (FR-37, NFR-R5)", async () => {
     saveQueue("session-1", [
       { question_id: "q-short", answer: "queued-value", flagged_for_review: false },
@@ -3019,6 +3079,38 @@ describe("SessionPage", () => {
   });
 
   // ── Blocker 3: overlapping saves must never lose or misreport an answer ──
+
+  it("keeps an edit made during an outstanding save's debounce window dirty after the older acknowledgement (FR-3)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = () =>
+      screen.getAllByRole("textbox").filter((tb) => tb.tagName === "INPUT")[0];
+
+    fireEvent.change(textInput(), { target: { value: "v1" } });
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(textInput(), { target: { value: "v2" } });
+    await act(async () => {
+      const [, opts] = saveAnswersMutate.mock.calls[0];
+      opts.onSuccess();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+
+    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+      answers: [
+        { question_id: "q-short", answer: "v2", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
+  });
 
   it("a stale save's ack must not report 'saved' while a newer save is still pending, and the newer edit survives that newer save failing (Blocker 3a, FR-32, FR-34, NFR-R5)", async () => {
     render(<SessionPage />);
