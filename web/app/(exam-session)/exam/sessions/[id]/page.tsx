@@ -583,9 +583,34 @@ export default function SessionPage() {
   // Violation logging
   useEffect(() => {
     if (!sessionId || session?.status !== "in_progress") return;
+    const answerFieldIsFocused = () => {
+      const activeElement = document.activeElement;
+      return (
+        (activeElement instanceof HTMLInputElement ||
+          activeElement instanceof HTMLTextAreaElement) &&
+        examBodyRef.current?.contains(activeElement)
+      );
+    };
     const onFullscreen = () => {
       if (!document.fullscreenElement) {
-        scheduleViolation("fullscreen_exit", () => !document.fullscreenElement);
+        const activeElement = document.activeElement;
+        if (
+          (activeElement instanceof HTMLInputElement ||
+            activeElement instanceof HTMLTextAreaElement) &&
+          examBodyRef.current?.contains(activeElement)
+        ) {
+          activeElement.addEventListener(
+            "blur",
+            () => {
+              document.documentElement.requestFullscreen?.().catch(() => {});
+            },
+            { once: true },
+          );
+        }
+        scheduleViolation(
+          "fullscreen_exit",
+          () => !document.fullscreenElement && !answerFieldIsFocused(),
+        );
       } else {
         clearPendingViolation("fullscreen_exit");
       }

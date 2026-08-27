@@ -1625,6 +1625,38 @@ describe("SessionPage", () => {
     );
   });
 
+  it("does not record a fullscreen exit while an answer field is focused, and re-enters on blur", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    document.documentElement.requestFullscreen = requestFullscreen;
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const input = screen
+      .getAllByRole("textbox")
+      .find((field) => field.tagName === "INPUT") as HTMLInputElement;
+    input.focus();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+
+    fireEvent.blur(input);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps a pending fullscreen violation alive across timer rerenders", async () => {
     vi.useFakeTimers();
     render(<SessionPage />);
