@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"akademi-bimbel/internal/model"
 )
@@ -2214,38 +2215,51 @@ func (r *Repository) GetSessionAnswers(ctx context.Context, sessionID uuid.UUID)
 	return answers, nil
 }
 
-// SaveAnswersTx upserts answers and stamps last_saved_at on the session, in one
-// transaction. The FOR UPDATE lock serializes saves against SubmitSessionTx's CAS:
-// a late autosave that already passed the service's status pre-check waits on the
-// submit's row lock, re-reads 'submitted', and becomes a no-op instead of
-// overwriting graded rows. position is optional (FR-35): when non-nil it is
-// persisted alongside the answers in the same UPDATE.
+// SaveAnswersTx writes answers and session progress in one guarded statement.
 func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer, position *int) error {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	var status string
-	err = tx.QueryRow(ctx,
-		`SELECT status FROM exam_session WHERE id = $1 FOR UPDATE`,
-		sessionID,
-	).Scan(&status)
-	if err != nil {
-		if isNotFound(err) {
-			return ErrNotFound
+	// A single ON CONFLICT statement cannot update the same row twice (SQLSTATE 21000).
+	seen := make(map[uuid.UUID]struct{}, len(answers))
+	collapsed := make([]model.ExamSessionAnswer, 0, len(answers))
+	for i := len(answers) - 1; i >= 0; i-- {
+		if _, ok := seen[answers[i].QuestionID]; ok {
+			continue
 		}
-		return err
+		seen[answers[i].QuestionID] = struct{}{}
+		collapsed = append(collapsed, answers[i])
 	}
-	if status != "in_progress" {
-		return nil
+	for i, j := 0, len(collapsed)-1; i < j; i, j = i+1, j-1 {
+		collapsed[i], collapsed[j] = collapsed[j], collapsed[i]
 	}
 
-	for _, a := range answers {
-		_, err := tx.Exec(ctx,
-			`INSERT INTO exam_session_answer (session_id, question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review, saved_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+	questionIDs := make([]uuid.UUID, len(collapsed))
+	answerValues := make([]*string, len(collapsed))
+	isCorrect := make([]*bool, len(collapsed))
+	scores := make([]*float64, len(collapsed))
+	gradedBy := make([]pgtype.UUID, len(collapsed))
+	gradedAt := make([]*time.Time, len(collapsed))
+	graderComments := make([]*string, len(collapsed))
+	flagged := make([]bool, len(collapsed))
+	for i, answer := range collapsed {
+		questionIDs[i] = answer.QuestionID
+		answerValues[i] = answer.Answer
+		isCorrect[i] = answer.IsCorrect
+		scores[i] = answer.Score
+		if answer.GradedBy != nil {
+			gradedBy[i] = pgtype.UUID{Bytes: *answer.GradedBy, Valid: true}
+		}
+		gradedAt[i] = answer.GradedAt
+		graderComments[i] = answer.GraderComment
+		flagged[i] = answer.FlaggedForReview
+	}
+
+	tag, err := r.pool.Exec(ctx,
+		`WITH guard AS MATERIALIZED (
+			SELECT id FROM exam_session WHERE id = $1 AND status = 'in_progress' FOR UPDATE
+		), ins AS (
+			INSERT INTO exam_session_answer (session_id, question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review, saved_at)
+			SELECT g.id, u.question_id, u.answer, u.is_correct, u.score, u.graded_by, u.graded_at, u.grader_comment, u.flagged_for_review, now()
+			FROM guard g, unnest($2::uuid[], $3::text[], $4::boolean[], $5::double precision[], $6::uuid[], $7::timestamptz[], $8::text[], $9::boolean[])
+				AS u(question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review)
 			ON CONFLICT (session_id, question_id) DO UPDATE SET
 				answer = EXCLUDED.answer,
 				is_correct = EXCLUDED.is_correct,
@@ -2254,30 +2268,21 @@ func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, ans
 				graded_at = EXCLUDED.graded_at,
 				grader_comment = EXCLUDED.grader_comment,
 				flagged_for_review = EXCLUDED.flagged_for_review,
-				saved_at = now()`,
-			sessionID, a.QuestionID, a.Answer, a.IsCorrect, a.Score,
-			a.GradedBy, a.GradedAt, a.GraderComment, a.FlaggedForReview,
+				saved_at = now()
 		)
-		if err != nil {
-			return err
-		}
-	}
-
-	if position != nil {
-		_, err = tx.Exec(ctx,
-			`UPDATE exam_session SET last_saved_at = now(), current_position = $2 WHERE id = $1`,
-			sessionID, *position,
-		)
-	} else {
-		_, err = tx.Exec(ctx,
-			`UPDATE exam_session SET last_saved_at = now() WHERE id = $1`,
-			sessionID,
-		)
-	}
+		UPDATE exam_session s
+		SET last_saved_at = now(), current_position = COALESCE($10, s.current_position)
+		FROM guard g
+		WHERE s.id = g.id`,
+		sessionID, questionIDs, answerValues, isCorrect, scores, gradedBy, gradedAt, graderComments, flagged, position,
+	)
 	if err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if tag.RowsAffected() == 0 {
+		return nil
+	}
+	return nil
 }
 
 // SubmitSessionTx performs a CAS submit of a session, writes graded answers,

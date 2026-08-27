@@ -3,14 +3,83 @@ package repository
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/model"
 )
+
+type saveAnswersQueryTracer struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (t *saveAnswersQueryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryStartData) context.Context {
+	t.mu.Lock()
+	t.n++
+	t.mu.Unlock()
+	return ctx
+}
+
+func (t *saveAnswersQueryTracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+func (t *saveAnswersQueryTracer) reset() {
+	t.mu.Lock()
+	t.n = 0
+	t.mu.Unlock()
+}
+
+func (t *saveAnswersQueryTracer) count() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.n
+}
+
+func newSaveAnswersTracePool(t *testing.T) (*pgxpool.Pool, *saveAnswersQueryTracer) {
+	t.Helper()
+	ctx := context.Background()
+
+	pgContainer, err := tcpostgres.Run(ctx,
+		"postgres:17-alpine",
+		tcpostgres.WithDatabase("akademi_test"),
+		tcpostgres.WithUsername("test"),
+		tcpostgres.WithPassword("test"),
+		tcpostgres.BasicWaitStrategies(),
+	)
+	if err != nil {
+		t.Fatalf("start postgres container: %v", err)
+	}
+	t.Cleanup(func() { _ = pgContainer.Terminate(ctx) })
+
+	dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	if err := infra.RunMigrations(ctx, dsn); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Fatalf("parse pool config: %v", err)
+	}
+	tracer := &saveAnswersQueryTracer{}
+	cfg.ConnConfig.Tracer = tracer
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool, tracer
+}
 
 func seedGuardRegistration(t *testing.T, pool *pgxpool.Pool) (model.ExamRegistration, uuid.UUID) {
 	t.Helper()
@@ -32,6 +101,212 @@ func seedGuardRegistration(t *testing.T, pool *pgxpool.Pool) (model.ExamRegistra
 		t.Fatalf("insert exam_registration: %v", err)
 	}
 	return reg, questionID
+}
+
+func TestSaveAnswersTx_UsesOneStatement(t *testing.T) {
+	pool, tracer := newSaveAnswersTracePool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	reg, questionID := seedGuardRegistration(t, pool)
+	tx, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin session tx: %v", err)
+	}
+	session, err := repo.CreateExamSessionTx(ctx, tx, reg, nil)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit session tx: %v", err)
+	}
+
+	answer := "answer"
+	position := 3
+	cases := []struct {
+		name     string
+		answers  []model.ExamSessionAnswer
+		position *int
+	}{
+		{name: "empty answers nil position"},
+		{name: "answers nil position", answers: []model.ExamSessionAnswer{{QuestionID: questionID, Answer: &answer}}},
+		{name: "empty answers position", position: &position},
+		{name: "answers position", answers: []model.ExamSessionAnswer{{QuestionID: questionID, Answer: &answer}}, position: &position},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tracer.reset()
+			if err := repo.SaveAnswersTx(ctx, session.ID, tc.answers, tc.position); err != nil {
+				t.Fatalf("SaveAnswersTx: %v", err)
+			}
+			if got := tracer.count(); got != 1 {
+				t.Errorf("statements: want 1, got %d", got)
+			}
+		})
+	}
+}
+
+func TestSaveAnswersTx_DuplicateQuestionLastWins(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	reg, questionID := seedGuardRegistration(t, pool)
+	tx, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin session tx: %v", err)
+	}
+	session, err := repo.CreateExamSessionTx(ctx, tx, reg, nil)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit session tx: %v", err)
+	}
+
+	first, last := "first", "last"
+	if err := repo.SaveAnswersTx(ctx, session.ID, []model.ExamSessionAnswer{
+		{QuestionID: questionID, Answer: &first},
+		{QuestionID: questionID, Answer: &last},
+	}, nil); err != nil {
+		t.Fatalf("SaveAnswersTx: %v", err)
+	}
+
+	var got string
+	if err := pool.QueryRow(ctx,
+		`SELECT answer FROM exam_session_answer WHERE session_id = $1 AND question_id = $2`,
+		session.ID, questionID,
+	).Scan(&got); err != nil {
+		t.Fatalf("select answer: %v", err)
+	}
+	if got != last {
+		t.Errorf("answer: want last value %q, got %q", last, got)
+	}
+}
+
+func TestSaveAnswersTx_PositionAndLastSavedAt(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	reg, questionID := seedGuardRegistration(t, pool)
+	tx, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin session tx: %v", err)
+	}
+	session, err := repo.CreateExamSessionTx(ctx, tx, reg, nil)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit session tx: %v", err)
+	}
+
+	position := 4
+	if err := repo.SaveAnswersTx(ctx, session.ID, nil, &position); err != nil {
+		t.Fatalf("SaveAnswersTx position: %v", err)
+	}
+	var firstSavedAt time.Time
+	var gotPosition int
+	if err := pool.QueryRow(ctx,
+		`SELECT last_saved_at, current_position FROM exam_session WHERE id = $1`, session.ID,
+	).Scan(&firstSavedAt, &gotPosition); err != nil {
+		t.Fatalf("select after position save: %v", err)
+	}
+	if gotPosition != position {
+		t.Errorf("current_position: want %d, got %d", position, gotPosition)
+	}
+
+	time.Sleep(10 * time.Millisecond)
+	answer := "answer"
+	if err := repo.SaveAnswersTx(ctx, session.ID, []model.ExamSessionAnswer{{QuestionID: questionID, Answer: &answer}}, nil); err != nil {
+		t.Fatalf("SaveAnswersTx answer: %v", err)
+	}
+	var secondSavedAt time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT last_saved_at, current_position FROM exam_session WHERE id = $1`, session.ID,
+	).Scan(&secondSavedAt, &gotPosition); err != nil {
+		t.Fatalf("select after answer save: %v", err)
+	}
+	if !secondSavedAt.After(firstSavedAt) {
+		t.Errorf("last_saved_at: want later than %v, got %v", firstSavedAt, secondSavedAt)
+	}
+	if gotPosition != position {
+		t.Errorf("current_position after answer-only save: want %d, got %d", position, gotPosition)
+	}
+}
+
+func TestSaveAnswersTx_ConcurrentSubmit_NoOverwrite(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	reg, questionID := seedGuardRegistration(t, pool)
+	tx, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin session tx: %v", err)
+	}
+	session, err := repo.CreateExamSessionTx(ctx, tx, reg, nil)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit session tx: %v", err)
+	}
+
+	gradedAt := time.Now()
+	isCorrect := true
+	gradedAnswer := "graded"
+	score := 10.0
+	submitTx, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin submit tx: %v", err)
+	}
+	rows, err := repo.SubmitSessionTx(ctx, submitTx, session.ID, []model.ExamSessionAnswer{{
+		QuestionID: questionID,
+		Answer:     &gradedAnswer,
+		IsCorrect:  &isCorrect,
+		Score:      &score,
+		GradedAt:   &gradedAt,
+	}}, score, false)
+	if err != nil {
+		t.Fatalf("SubmitSessionTx: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("SubmitSessionTx rows: want 1, got %d", rows)
+	}
+
+	stale := "stale autosave"
+	saveResult := make(chan error, 1)
+	go func() {
+		saveResult <- repo.SaveAnswersTx(ctx, session.ID, []model.ExamSessionAnswer{{QuestionID: questionID, Answer: &stale}}, nil)
+	}()
+	select {
+	case err := <-saveResult:
+		t.Fatalf("SaveAnswersTx returned before submit commit: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := submitTx.Commit(ctx); err != nil {
+		t.Fatalf("commit submit tx: %v", err)
+	}
+	if err := <-saveResult; err != nil {
+		t.Fatalf("SaveAnswersTx: %v", err)
+	}
+
+	var gotAnswer string
+	var gotCorrect bool
+	var gotScore float64
+	var gotGradedAt time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT answer, is_correct, score, graded_at FROM exam_session_answer WHERE session_id = $1 AND question_id = $2`,
+		session.ID, questionID,
+	).Scan(&gotAnswer, &gotCorrect, &gotScore, &gotGradedAt); err != nil {
+		t.Fatalf("select graded answer: %v", err)
+	}
+	if gotAnswer != gradedAnswer || !gotCorrect || gotScore != score || gotGradedAt.IsZero() {
+		t.Errorf("graded answer changed: answer=%q is_correct=%v score=%v graded_at=%v", gotAnswer, gotCorrect, gotScore, gotGradedAt)
+	}
 }
 
 // A second CreateExamSessionTx for the same registration must fail atomically at the
