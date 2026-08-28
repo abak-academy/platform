@@ -20,6 +20,17 @@ import (
 // ErrSortOrderConflict — uq_question_order SQLSTATE 23505 — surfaced for service-layer mapping.
 var ErrSortOrderConflict = errors.New("sort order conflict")
 
+// pgerrcodeUniqueViolation is Postgres unique_violation (SQLSTATE 23505) — the code
+// behind uq_question_order, uq_examregistration_participant, and
+// idx_exam_session_certificate_number.
+const pgerrcodeUniqueViolation = "23505"
+
+// isUniqueViolation reports whether err is Postgres unique_violation (SQLSTATE 23505).
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == pgerrcodeUniqueViolation
+}
+
 // ErrInvalidCursor — malformed pagination cursor — surfaced for service-layer mapping to 4xx.
 var ErrInvalidCursor = errors.New("invalid pagination cursor")
 
@@ -2558,12 +2569,25 @@ func (r *Repository) UpdateRegistrationCard(ctx context.Context, regID uuid.UUID
 }
 
 // AllocateCertificateNumber assigns ABK/YYYY/<exam_number(pad4)>/<participant_number(pad6)>
-// to a session's certificate_number exactly once (FR-25). The number is composed in Go —
-// no global sequence is consumed — from the session's exam (exam_number, scheduled_at) and
-// its registration (participant_number). A second call for an already-numbered session
-// returns the existing value unchanged. A concurrent second call loses the guarding
-// UPDATE (WHERE certificate_number IS NULL matches no row) and falls through to a read
-// of the value the first call committed.
+// to a registration exactly once (FR-25): every session of the same exam_registration —
+// retakes included — shares the one number, because the value is composed from the
+// registration's participant_number and the exam's exam_number/scheduled_at, so a
+// second session of the same registration would compose the identical string and
+// deterministically violate idx_exam_session_certificate_number (23505 — the 2026-08
+// worker error storm; see docs/backlog/certificate-number-collision-23505.md).
+//
+// Calls resolve in order:
+//  1. the session already has a number → return it unchanged;
+//  2. a sibling session of the same registration has one → reuse it (retakes never
+//     compose — the number identifies the participant in that exam, not an attempt;
+//     each session's PDF still renders its own score/rank);
+//  3. compose and UPDATE with the WHERE certificate_number IS NULL guard. A
+//     concurrent sibling that wins the race (23505 on the unique index) falls back
+//     to (2) and picks up the winner's committed number.
+//
+// A 23505 with no sibling number means a row outside the registration already holds
+// the composed value — only possible via legacy ABK/YYYY/NNNNNN rows (migration
+// 0041) — and is surfaced as an error rather than masked.
 func (r *Repository) AllocateCertificateNumber(ctx context.Context, sessionID uuid.UUID) (string, error) {
 	var existing *string
 	var examNumber, participantNumber int
@@ -2586,6 +2610,10 @@ func (r *Repository) AllocateCertificateNumber(ctx context.Context, sessionID uu
 		return *existing, nil
 	}
 
+	if number := r.siblingCertificateNumber(ctx, sessionID); number != "" {
+		return number, nil
+	}
+
 	loc, err := time.LoadLocation("Asia/Jakarta")
 	if err != nil {
 		return "", err
@@ -2606,6 +2634,14 @@ func (r *Repository) AllocateCertificateNumber(ctx context.Context, sessionID uu
 	if err == nil {
 		return allocated, nil
 	}
+	if isUniqueViolation(err) {
+		// A sibling session won the compose race and holds this number now.
+		if number := r.siblingCertificateNumber(ctx, sessionID); number != "" {
+			return number, nil
+		}
+		// No sibling holds it — a row outside the registration does (legacy
+		// 3-segment number). Fall through and surface the error honestly.
+	}
 	if !isNotFound(err) {
 		return "", err
 	}
@@ -2616,6 +2652,26 @@ func (r *Repository) AllocateCertificateNumber(ctx context.Context, sessionID uu
 		return "", err
 	}
 	return allocated, nil
+}
+
+// siblingCertificateNumber returns the certificate number already assigned to the
+// newest-numbered sibling session of the same exam_registration (latest attempt
+// first), or "" when no sibling — including the session itself — has one yet.
+func (r *Repository) siblingCertificateNumber(ctx context.Context, sessionID uuid.UUID) string {
+	var number *string
+	err := r.pool.QueryRow(ctx,
+		`SELECT s2.certificate_number
+		FROM exam_session s2
+		WHERE s2.registration_id = (SELECT registration_id FROM exam_session WHERE id = $1)
+		  AND s2.certificate_number IS NOT NULL
+		ORDER BY s2.attempt_number DESC
+		LIMIT 1`,
+		sessionID,
+	).Scan(&number)
+	if err != nil || number == nil {
+		return ""
+	}
+	return *number
 }
 
 // ListExamLeaderboard returns a cursor-paginated ranked list of fully-graded submitted
