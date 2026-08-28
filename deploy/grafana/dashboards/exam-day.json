@@ -16,7 +16,7 @@
       "description": "Sessions inside their exam's live window (started, unsubmitted, exam still running). The N behind every capacity number. Worker-only — the api never sets this gauge.",
       "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
       "targets": [{ "refId": "A", "expr": "exam_sessions_active{job=\"worker\"}" }],
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 }
+      "gridPos": { "h": 8, "w": 4, "x": 0, "y": 1 }
     },
     {
       "type": "timeseries",
@@ -40,7 +40,7 @@
         { "refId": "A", "expr": "sum by (job) (rate(dbpool_empty_acquire_total{job=~\"$app\"}[5m]))", "legendFormat": "{{job}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
-      "gridPos": { "h": 4, "w": 5, "x": 14, "y": 1 }
+      "gridPos": { "h": 8, "w": 5, "x": 14, "y": 1 }
     },
     {
       "type": "timeseries",
@@ -51,7 +51,7 @@
         { "refId": "A", "expr": "sum by (job) (rate(dbpool_acquire_duration_seconds_total{job=~\"$app\"}[5m]) / rate(dbpool_acquire_total{job=~\"$app\"}[5m]))", "legendFormat": "{{job}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
-      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 1 }
+      "gridPos": { "h": 8, "w": 5, "x": 19, "y": 1 }
     },
     {
       "type": "timeseries",
@@ -190,11 +190,319 @@
       ],
       "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
       "gridPos": { "h": 7, "w": 6, "x": 18, "y": 35 }
+    },
+    {
+      "type": "row",
+      "title": "API traffic detail",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 }
+    },
+    {
+      "type": "stat",
+      "title": "Request rate",
+      "description": "All routes, 5m rate. Empty while the API has had no traffic.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(http_requests_total[5m]))" }],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 43 }
+    },
+    {
+      "type": "stat",
+      "title": "5xx rate",
+      "description": "Empty means no 5xx in the window — that is success, not a broken panel.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m]))" }],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 43 }
+    },
+    {
+      "type": "stat",
+      "title": "Error %",
+      "description": "5xx share of all requests. NaN while the API is idle.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [{ "refId": "A", "expr": "100 * sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 43 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by method & status",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (method, status) (rate(http_requests_total[5m]))", "legendFormat": "{{method}} {{status}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 43 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p50/p95/p99 — all routes",
+      "description": "NaN while idle; percentiles need traffic in the window.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))", "legendFormat": "p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 47 }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 latency by route",
+      "description": "Every route the middleware has seen, not just the three exam paths above.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (route, le) (rate(http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{route}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 51 }
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx rate by route",
+      "description": "Empty until a 5xx happens. Read together with the error log stream below.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (route) (rate(http_requests_total{status=~\"5..\"}[5m]))", "legendFormat": "{{route}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 55 }
+    },
+    {
+      "type": "row",
+      "title": "Process resources (api/worker)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 63 }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU per process",
+      "description": "1.0 = one full core. The VM has 2 — api+worker here must share with everything below.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (job) (rate(process_cpu_seconds_total{job=~\"$app\"}[5m]))", "legendFormat": "{{job}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 64 }
+    },
+    {
+      "type": "timeseries",
+      "title": "RSS memory per process",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "process_resident_memory_bytes{job=~\"$app\"}", "legendFormat": "{{job}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 64 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Open FDs vs limit",
+      "description": "Climbing toward max usually means a connection or file handle leak.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "process_open_fds{job=~\"$app\"}", "legendFormat": "open {{job}}" },
+        { "refId": "B", "expr": "process_max_fds{job=~\"$app\"}", "legendFormat": "max {{job}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 64 }
+    },
+    {
+      "type": "row",
+      "title": "VM health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 71 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Load average (1/5/15)",
+      "description": "Sustained load above the core count (4 in the local VM, 2 on vm-app) means queuing.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "node_load1", "legendFormat": "load1" },
+        { "refId": "B", "expr": "node_load5", "legendFormat": "load5" },
+        { "refId": "C", "expr": "node_load15", "legendFormat": "load15" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 72 }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU time by mode",
+      "description": "Rising iowait means the disk is the bottleneck, not the CPU.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "avg by (mode) (rate(node_cpu_seconds_total{mode=~\"idle|iowait|system|user\"}[5m]))", "legendFormat": "{{mode}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 72 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory available & swap used",
+      "description": "Available shrinking while swap grows = memory pressure; swapping kills Postgres latency.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "node_memory_MemAvailable_bytes", "legendFormat": "mem available" },
+        { "refId": "B", "expr": "node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes", "legendFormat": "swap used" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 72 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk I/O",
+      "description": "Real block devices only (vda on the VM); loop/nbd noise filtered out.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_disk_read_bytes_total{device=~\"vd.*|sd.*|nvme.*|xvd.*\"}[5m])", "legendFormat": "read {{device}}" },
+        { "refId": "B", "expr": "rate(node_disk_written_bytes_total{device=~\"vd.*|sd.*|nvme.*|xvd.*\"}[5m])", "legendFormat": "written {{device}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 79 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Filesystem used %",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "1 - (node_filesystem_avail_bytes{fstype!~\"tmpfs|squashfs\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|squashfs\"})", "legendFormat": "{{mountpoint}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 79 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Network throughput",
+      "description": "Loopback and veth/bridge interfaces excluded — physical NICs only.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[5m])", "legendFormat": "rx {{device}}" },
+        { "refId": "B", "expr": "rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[5m])", "legendFormat": "tx {{device}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 79 }
+    },
+    {
+      "type": "timeseries",
+      "title": "TCP retransmits & listen drops",
+      "description": "Sustained retransmits = network path trouble (student-facing network for exam day). Listen drops = accept queue overflow.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "rate(node_netstat_Tcp_RetransSegs[5m])", "legendFormat": "retransmits" },
+        { "refId": "B", "expr": "rate(node_netstat_TcpExt_ListenDrops[5m])", "legendFormat": "listen drops" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "pps", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 86 }
+    },
+    {
+      "type": "timeseries",
+      "title": "TCP established connections",
+      "description": "CurrEstab — VM-wide established connection count. Sustained climbs pair with listen drops; for exam day this is the student-connection footprint.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "node_netstat_Tcp_CurrEstab", "legendFormat": "established" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 86 }
+    },
+    {
+      "type": "row",
+      "title": "Container health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 93 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Working set vs memory limit",
+      "description": "OOM-relevant memory per container. Limit lines sit at 0 locally (local.yml sets no mem_limit) — they become the ceiling in prod.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "container_memory_working_set_bytes{name!=\"\"}", "legendFormat": "{{name}}" },
+        { "refId": "B", "expr": "container_spec_memory_limit_bytes{name!=\"\"}", "legendFormat": "limit {{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 94 }
+    },
+    {
+      "type": "timeseries",
+      "title": "OOM events (1h)",
+      "description": "Anything above zero means the kernel killed a container in the last hour.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (name) (increase(container_oom_events_total{name!=\"\"}[1h]))", "legendFormat": "{{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 4, "x": 12, "y": 94 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Restarts (1h)",
+      "description": "changes() of container start time — every step is a container (re)start. Crash-looping shows as a staircase.",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [
+        { "refId": "A", "expr": "changes(container_start_time_seconds{name!=\"\"}[1h])", "legendFormat": "{{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 4, "x": 16, "y": 94 }
+    },
+    {
+      "type": "stat",
+      "title": "Containers up",
+      "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+      "targets": [{ "refId": "A", "expr": "count(container_memory_working_set_bytes{name!=\"\"})" }],
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 4, "x": 20, "y": 94 }
+    },
+    {
+      "type": "row",
+      "title": "Logs",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 101 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Log volume per service",
+      "description": "count_over_time per 5m bucket. Locally grafana and postgres dominate the noise floor.",
+      "datasource": { "type": "loki", "uid": "grafanacloud-loki" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (service) (count_over_time({env=~\"$env\"}[5m]))", "legendFormat": "{{service}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 102 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Errors per service",
+      "description": "level is promoted to a label by Alloy from slog's JSON; non-JSON output (web) never appears here — use the error stream above for that.",
+      "datasource": { "type": "loki", "uid": "grafanacloud-loki" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (service) (count_over_time({env=~\"$env\", level=~\"(?i)error\"}[5m]))", "legendFormat": "{{service}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 102 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Worker outbox claims by type",
+      "description": "One line per claim at the worker (issue #98 logging convention). Throughput proxy for background work; no job-duration metric exists yet.",
+      "datasource": { "type": "loki", "uid": "grafanacloud-loki" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (type) (count_over_time({env=~\"$env\", service=\"worker\"} | json | msg=\"outbox event claimed\" [5m]))", "legendFormat": "{{type}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 109 }
+    },
+    {
+      "type": "logs",
+      "title": "Worker outbox claim stream",
+      "description": "Live companion to the claim counts on the left — one line per claim, with event id and type.",
+      "datasource": { "type": "loki", "uid": "grafanacloud-loki" },
+      "targets": [
+        { "refId": "A", "expr": "{env=~\"$env\", service=\"worker\"} | json | msg=\"outbox event claimed\"" }
+      ],
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 109 }
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["abak", "exam-day"],
+  "tags": ["abak", "overview"],
   "templating": {
     "list": [
       {
@@ -202,7 +510,7 @@
         "label": "Environment",
         "type": "custom",
         "query": "local,prod",
-        "current": { "selected": false, "text": "prod", "value": "prod" },
+        "current": { "selected": false, "text": "local", "value": "local" },
         "includeAll": true,
         "multi": true,
         "options": []
@@ -222,7 +530,7 @@
   "time": { "from": "now-3h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Exam day — where is the time going?",
+  "title": "Platform overview",
   "uid": "abak-exam-day",
   "version": 1,
   "weekStart": ""

@@ -166,7 +166,11 @@ services:
       - /dev/kmsg:/dev/kmsg
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:ro
+      # Socket FILE, not the /var/run dir: on macOS the dir mount carries a
+      # dangling symlink (docker.sock -> ~/.docker/run/docker.sock) and the
+      # docker factory silently falls back to Raw (root cgroup only, no
+      # per-container series). Same mount style alloy uses below.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
