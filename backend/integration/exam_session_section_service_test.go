@@ -2,16 +2,77 @@ package integration_test
 
 import (
 	"context"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 )
+
+type saveAnswersQueryTracer struct {
+	mu      sync.Mutex
+	queries []string
+}
+
+func (t *saveAnswersQueryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	t.mu.Lock()
+	t.queries = append(t.queries, data.SQL)
+	t.mu.Unlock()
+	return ctx
+}
+
+func (t *saveAnswersQueryTracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+func (t *saveAnswersQueryTracer) reset() {
+	t.mu.Lock()
+	t.queries = nil
+	t.mu.Unlock()
+}
+
+func (t *saveAnswersQueryTracer) countMatching(text string) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	count := 0
+	for _, query := range t.queries {
+		if strings.Contains(query, text) {
+			count++
+		}
+	}
+	return count
+}
+
+func (t *saveAnswersQueryTracer) total() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.queries)
+}
+
+func tracedSaveAnswersService(t *testing.T, env *testEnv) (*service.Service, *saveAnswersQueryTracer) {
+	t.Helper()
+	ctx := context.Background()
+	poolConfig, err := pgxpool.ParseConfig(env.pool.Config().ConnString())
+	require.NoError(t, err)
+	tracer := &saveAnswersQueryTracer{}
+	poolConfig.ConnConfig.Tracer = tracer
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+	repo := repository.New(pool)
+	return service.NewWithStore(
+		repo, repo, env.rdb, nil,
+		&service.NoopOTPProvider{}, &service.NoopEmailProvider{},
+		&service.NoopPaymentClient{}, &service.NoopLogisticsClient{},
+		nil, nil, nil,
+	), tracer
+}
 
 // seedSectionedExamForService seeds a student, a sectioned exam (mode), N tests
 // (each with one mcq question), exam_test links ordered by sort_order, and a
@@ -238,6 +299,130 @@ func TestService_SaveAnswers_SectionGuard(t *testing.T) {
 		{QuestionID: qPending, Answer: &ans},
 	}, nil)
 	assert.ErrorIs(t, err, service.ErrSectionLocked)
+}
+
+func TestService_SaveAnswers_QuestionOutsideExamRejected(t *testing.T) {
+	for _, mode := range []string{"utbk", "standard"} {
+		t.Run(mode, func(t *testing.T) {
+			env := newTestEnv(t)
+			ctx := context.Background()
+
+			studentID, regID, _ := seedSectionedExamForService(t, env, mode, []int{30})
+			start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+			require.NoError(t, err)
+
+			var outsideQuestionID uuid.UUID
+			err = env.pool.QueryRow(ctx,
+				`INSERT INTO question (format, body, point_correct, point_wrong)
+				 VALUES ('mcq', $1, 1, 0) RETURNING id`,
+				"Outside question "+uuid.NewString()[:8],
+			).Scan(&outsideQuestionID)
+			require.NoError(t, err)
+
+			answer := "a"
+			err = env.svc.SaveAnswers(ctx, studentID, start.SessionID.String(), []service.AnswerInput{{
+				QuestionID: outsideQuestionID,
+				Answer:     &answer,
+			}}, nil)
+			require.ErrorIs(t, err, service.ErrValidation)
+			assert.ErrorContains(t, err, "question not part of this exam")
+
+			var answerCount int
+			err = env.pool.QueryRow(ctx,
+				`SELECT COUNT(*) FROM exam_session_answer WHERE session_id = $1`, start.SessionID,
+			).Scan(&answerCount)
+			require.NoError(t, err)
+			assert.Zero(t, answerCount)
+		})
+	}
+}
+
+func TestService_SaveAnswers_PositionOnlySkipsSectionGuardQueries(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	studentID, regID, _ := seedSectionedExamForService(t, env, "utbk", []int{30})
+	start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+	require.NoError(t, err)
+
+	svc, tracer := tracedSaveAnswersService(t, env)
+	position := 0
+	tracer.reset()
+	err = svc.SaveAnswers(ctx, studentID, start.SessionID.String(), []service.AnswerInput{}, &position)
+	require.NoError(t, err)
+	assert.Zero(t, tracer.countMatching("FROM exam_session_section"))
+	assert.Zero(t, tracer.countMatching("SELECT tq.question_id, tq.test_id"))
+
+	var currentPosition *int
+	err = env.pool.QueryRow(ctx,
+		`SELECT current_position FROM exam_session WHERE id = $1`, start.SessionID,
+	).Scan(&currentPosition)
+	require.NoError(t, err)
+	require.NotNil(t, currentPosition)
+	assert.Equal(t, position, *currentPosition)
+}
+
+func TestService_SaveAnswers_InvalidPositionRejectsWholeBatch(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	studentID, regID, _ := seedSectionedExamForService(t, env, "utbk", []int{30})
+	start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+	require.NoError(t, err)
+	require.Len(t, start.Tests, 1)
+	require.Len(t, start.Tests[0].Questions, 1)
+
+	answer := "a"
+	invalidPosition := 1
+	err = env.svc.SaveAnswers(ctx, studentID, start.SessionID.String(), []service.AnswerInput{{
+		QuestionID: start.Tests[0].Questions[0].ID,
+		Answer:     &answer,
+	}}, &invalidPosition)
+	require.ErrorIs(t, err, service.ErrInvalidPosition)
+
+	var currentPosition *int
+	err = env.pool.QueryRow(ctx,
+		`SELECT current_position FROM exam_session WHERE id = $1`, start.SessionID,
+	).Scan(&currentPosition)
+	require.NoError(t, err)
+	assert.Nil(t, currentPosition)
+
+	var answerCount int
+	err = env.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM exam_session_answer WHERE session_id = $1`, start.SessionID,
+	).Scan(&answerCount)
+	require.NoError(t, err)
+	assert.Zero(t, answerCount)
+}
+
+func TestService_SaveAnswers_StatementBudget(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		mode       string
+		sections   []int
+		maxQueries int
+	}{
+		{name: "standard", mode: "standard", sections: []int{30}, maxQueries: 5},
+		{name: "sectioned", mode: "utbk", sections: []int{30, 30, 30}, maxQueries: 7},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			ctx := context.Background()
+			studentID, regID, _ := seedSectionedExamForService(t, env, tc.mode, tc.sections)
+			start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+			require.NoError(t, err)
+			require.NotEmpty(t, start.Tests)
+			require.Len(t, start.Tests[0].Questions, 1)
+
+			svc, tracer := tracedSaveAnswersService(t, env)
+			answer := "a"
+			tracer.reset()
+			err = svc.SaveAnswers(ctx, studentID, start.SessionID.String(), []service.AnswerInput{{
+				QuestionID: start.Tests[0].Questions[0].ID,
+				Answer:     &answer,
+			}}, nil)
+			require.NoError(t, err)
+			assert.LessOrEqual(t, tracer.total(), tc.maxQueries)
+		})
+	}
 }
 
 // TestService_StandardMode_Regression verifies FR-6/FR-15: a standard-mode

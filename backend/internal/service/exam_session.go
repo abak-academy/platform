@@ -620,38 +620,33 @@ func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, 
 		return ErrAlreadySubmitted
 	}
 
-	// FR-14/FR-15: sectioned-mode guard. Reject any answer whose question belongs
-	// to a Test whose section is not 'active'. Standard mode skips the guard.
-	exam, err := s.storeRepo.GetExamForSession(ctx, sess.ExamID)
-	if err != nil {
-		return err
-	}
-	if exam.Mode == "utbk" || exam.Mode == "ielts" {
-		tests, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+	if len(inputs) > 0 {
+		exam, err := s.storeRepo.GetExamForSession(ctx, sess.ExamID)
 		if err != nil {
 			return err
 		}
-		sections, err := s.storeRepo.GetSessionSections(ctx, sessID)
+		questionTest, err := s.storeRepo.GetQuestionTestMap(ctx, sess.ExamID)
 		if err != nil {
 			return err
-		}
-		sectionByTest := make(map[uuid.UUID]string, len(sections))
-		for _, sec := range sections {
-			sectionByTest[sec.TestID] = sec.Status
-		}
-		questionTest := make(map[uuid.UUID]uuid.UUID)
-		for _, td := range tests {
-			for _, q := range td.Questions {
-				questionTest[q.Question.ID] = td.Test.ID
-			}
 		}
 		for _, in := range inputs {
-			tid, ok := questionTest[in.QuestionID]
-			if !ok {
+			if _, ok := questionTest[in.QuestionID]; !ok {
 				return fmt.Errorf("%w: question not part of this exam", ErrValidation)
 			}
-			if sectionByTest[tid] != "active" {
-				return ErrSectionLocked
+		}
+		if exam.Mode == "utbk" || exam.Mode == "ielts" {
+			sections, err := s.storeRepo.GetSessionSections(ctx, sessID)
+			if err != nil {
+				return err
+			}
+			sectionByTest := make(map[uuid.UUID]string, len(sections))
+			for _, sec := range sections {
+				sectionByTest[sec.TestID] = sec.Status
+			}
+			for _, in := range inputs {
+				if sectionByTest[questionTest[in.QuestionID]] != "active" {
+					return ErrSectionLocked
+				}
 			}
 		}
 	}
