@@ -155,6 +155,13 @@ services:
   cadvisor:
     image: ghcr.io/google/cadvisor:v0.60.5
     restart: unless-stopped
+    # Default config emitted ~1,800 active series for 7 containers — most of
+    # the Grafana Cloud free-tier budget. docker_only + this disable list keep
+    # the families exam-day.json reads (container_cpu_*, container_memory_*)
+    # and drop the rest; see docs/backlog/observability-grafana-cloud.md.
+    command:
+      - --docker_only
+      - --disable_metrics=disk,diskIO,tcp,udp,sched,process,hugetlb,referenced_memory,resctrl
     devices:
       - /dev/kmsg:/dev/kmsg
     volumes:

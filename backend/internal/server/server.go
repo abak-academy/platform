@@ -17,9 +17,16 @@ func New(h *handler.Handler, svc *service.Service, jwtSigner *infra.JWTSigner, c
 	e := echo.New()
 	e.HideBanner = true
 
-	e.Use(middleware.Recover())
-	e.Use(middleware.RequestID())
+	// Ordering contract: Echo runs first-registered middleware outermost, and a
+	// panic unwinds past everything INNER to Recover(). MetricsMiddleware and
+	// the request logger are therefore registered BEFORE Recover() so a panic
+	// still lands in http_requests_total as a 500 and still produces its one
+	// Info line — the runbook's status=~"5.." alert and decision #5 depend on
+	// both. Recover() itself must stay inner to catch the panic and convert it
+	// to a 500 response the outer middleware can record.
 	e.Use(MetricsMiddleware())
+	e.Use(middleware.RequestID())
+	e.Use(middleware.Recover())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: cfg.CORSOrigins,
 	}))

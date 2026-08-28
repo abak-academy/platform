@@ -157,6 +157,11 @@ services:
 
   cadvisor:
     image: ghcr.io/google/cadvisor:v0.60.5
+    # Same trim as production.yml — local repro must match prod's series set
+    # or dashboards validated here lie about what Grafana Cloud will store.
+    command:
+      - --docker_only
+      - --disable_metrics=disk,diskIO,tcp,udp,sched,process,hugetlb,referenced_memory,resctrl
     devices:
       - /dev/kmsg:/dev/kmsg
     volumes:

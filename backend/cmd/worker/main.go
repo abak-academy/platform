@@ -50,6 +50,10 @@ func main() {
 	}
 	defer pool.Close()
 	metrics.RegisterDBPool(pool)
+	// Worker-only collectors: exam_sessions_active is Set here and nowhere
+	// else, so only this process registers it — an api-exported gauge would
+	// sit at 0 forever and split the dashboard tile in two.
+	metrics.RegisterWorkerMetrics()
 
 	// Observability endpoint (issue #98) — internal compose network only.
 	metricsAddr := envDefault("METRICS_ADDR", ":9102")

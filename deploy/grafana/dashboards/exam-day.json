@@ -13,9 +13,9 @@
     {
       "type": "stat",
       "title": "Students in an exam (§4)",
-      "description": "Sessions started but not submitted. The N behind every capacity number.",
+      "description": "Sessions inside their exam's live window (started, unsubmitted, exam still running). The N behind every capacity number. Worker-only — the api never sets this gauge.",
       "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
-      "targets": [{ "refId": "A", "expr": "exam_sessions_active" }],
+      "targets": [{ "refId": "A", "expr": "exam_sessions_active{job=\"worker\"}" }],
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 }
     },
     {
@@ -124,11 +124,11 @@
     {
       "type": "timeseries",
       "title": "bcrypt verify duration p50/p95",
-      "description": "Validates the modeled ~234 ms/op against e2-standard-2 under real load; drives the concurrent-login ceiling.",
+      "description": "Validates the modeled ~234 ms/op against e2-standard-2 under real load; drives the concurrent-login ceiling. Split by op — the capacity model quotes the login series only.",
       "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(login_bcrypt_seconds_bucket[5m])))", "legendFormat": "p50" },
-        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(login_bcrypt_seconds_bucket[5m])))", "legendFormat": "p95" }
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le, op) (rate(login_bcrypt_seconds_bucket[5m])))", "legendFormat": "{{op}} p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le, op) (rate(login_bcrypt_seconds_bucket[5m])))", "legendFormat": "{{op}} p95" }
       ],
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 27 }

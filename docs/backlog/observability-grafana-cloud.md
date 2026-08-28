@@ -17,8 +17,14 @@ These were argued and settled during design review; change them through discussi
 1. **Grafana Cloud free tier**, not self-hosted Prometheus/Grafana. `vm-app` divides
    2 vCPU across six containers that are already the thing we are trying to protect;
    running the monitoring stack on it would tax the patient exactly at exam time. The
-   free tier's quotas (10k active series, 50 GB logs/month) sit comfortably above our
-   projected usage (<5k series; peak exam traffic ≈ 100 MB of log lines per hour).
+   free tier's quotas (10k active series, 50 GB logs/month) sit above our projected
+   usage — but not comfortably: **measured ≈7k active series** with defaults
+   (cadvisor ~1.8k, node-exporter ~1.3k, `http_request_duration_seconds` ~2.6k,
+   `http_requests_total` ~560, go/process collectors ~57 per process). 10k is a hard
+   ceiling — **Grafana Cloud rejects writes past it**, which would drop data on exam
+   day specifically — so cadvisor ships with `--docker_only` and a `--disable_metrics`
+   list (see production.yml), and if the measured post-trim total still creeps toward
+   10k the next lever is a `write_relabel_config` keep-list in `config.alloy`.
 2. **One collector process: Grafana Alloy.** It scrapes every local source and pushes
    both metrics (remote_write) and logs out over HTTPS. No inbound ports are opened;
    the firewall stays 443-only.
@@ -88,8 +94,8 @@ Mapped to issue #98 §1–§8:
 |---|---|---|
 | 1 | `dbpool_acquired_conns`, `dbpool_total_conns`, `dbpool_max_conns`, `dbpool_idle_conns`, `dbpool_acquire_total`, `dbpool_empty_acquire_total`, `dbpool_acquire_duration_seconds_total`, `dbpool_canceled_acquire_total` | `pgxpool.Stat()` read at scrape time via GaugeFunc/CounterFunc callbacks — no polling goroutine. `EmptyAcquireCount > 0` rising is THE detector for the #96 condition. Note pgx v5 exposes cumulative totals, not per-acquire samples, so p95 wait must be approximated by rate ratios; a true histogram would require wrapping `pool.Acquire` everywhere — deferred until proven necessary. |
 | 2 | `http_requests_total{route,method,status}`, `http_request_duration_seconds{route,method}` | echo middleware in `internal/server/metrics.go`. The route label carries the TEMPLATE (`/api/v1/exam/sessions/:id/answers`); raw URIs would explode cardinality one series per session id. Status fallback handles Echo's error handler running outside the middleware chain. |
-| 3 | `login_bcrypt_seconds` | wraps `CompareHashAndPassword` in Login and ChangePassword (`internal/service/auth.go`). Validates the modeled ~234 ms/op against real VM load; drives the concurrent-login ceiling. |
-| 4 | `exam_sessions_active` | worker counts `exam_session WHERE submitted_at IS NULL` every 30s. Counted in SQL, not in-process, because "active" has one authoritative answer and api/worker are separate processes. |
+| 3 | `login_bcrypt_seconds{op}` | wraps `CompareHashAndPassword` in Login and ChangePassword (`internal/service/auth.go`), labelled `op="login"` / `op="change_password"`. Validates the modeled ~234 ms/op against real VM load; drives the concurrent-login ceiling. The capacity model quotes the `login` series only. |
+| 4 | `exam_sessions_active` | worker counts sessions whose exam is inside its live window (scheduled start → duration+grace past the end; unscheduled exams: started < 3h ago) every 30s, served by the partial index `idx_examsession_active`. Registered **only in the worker process** — an api-exported gauge would sit at 0 forever. Counted in SQL, not in-process, because "active" has one authoritative answer. |
 | 5 | `go_*`, `process_*` | client_golang runtime collectors, registered alongside app metrics. |
 | 6 | `pgbouncer_pools_*`, `pgbouncer_stats_*` | pgbouncer_exporter on vm-db (manual install — see runbook). Dashboard places it side-by-side with §1 because `cl_waiting = 0` proves nothing about the app-side pool. |
 | 7 | `container_cpu_usage_seconds_total`, `container_memory_usage_bytes{name}` | cAdvisor. Answers "did gotenberg or worker steal CPU from api". |

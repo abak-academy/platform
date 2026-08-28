@@ -39,25 +39,36 @@ var (
 	}, []string{"route", "method"})
 
 	// §3: validates the ~234 ms/op bcrypt figure from the capacity model
-	// against real hardware under real load.
-	LoginBcryptSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
+	// against real hardware under real load. Labelled by op because
+	// CompareHashAndPassword runs on both Login and ChangePassword, while the
+	// capacity model (and the dashboard panel) quotes only the login series.
+	LoginBcryptSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "login_bcrypt_seconds",
-		Help:    "Duration of bcrypt.CompareHashAndPassword on password verification.",
+		Help:    "Duration of bcrypt.CompareHashAndPassword, labelled by operation (login, change_password).",
 		Buckets: []float64{0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.6, 0.8, 1, 2},
-	})
+	}, []string{"op"})
+
+	// Password-verify call sites (op label values above).
+	OpLogin          = "login"
+	OpChangePassword = "change_password"
 
 	// §4: the "N" the entire capacity arithmetic rests on. Set periodically by
-	// the worker from a DB count, so it stays correct across processes.
+	// the worker from a DB count of sessions inside their exam's live window,
+	// so it stays correct across processes. Registered ONLY in the worker
+	// process (RegisterWorkerMetrics) — the api never Sets it, and an
+	// unconditionally registered gauge would make the api export
+	// exam_sessions_active 0 forever, splitting the dashboard tile in two.
 	ExamSessionsActive = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "exam_sessions_active",
-		Help: "Exam sessions started but not yet submitted (students currently working).",
+		Help: "Exam sessions inside their exam's live window (students currently working).",
 	})
 )
 
 var (
-	regOnce  sync.Once
-	reg      *prometheus.Registry
-	poolOnce sync.Once
+	regOnce    sync.Once
+	reg        *prometheus.Registry
+	poolOnce   sync.Once
+	workerOnce sync.Once
 )
 
 // Registry lazily builds the shared registry. Runtime collectors (§5:
@@ -71,10 +82,19 @@ func Registry() *prometheus.Registry {
 			HTTPRequestsTotal,
 			HTTPRequestDuration,
 			LoginBcryptSeconds,
-			ExamSessionsActive,
 		)
 	})
 	return reg
+}
+
+// RegisterWorkerMetrics opts the worker process into worker-only collectors.
+// The api must not call this: ExamSessionsActive is Set by the worker alone,
+// and an api-exported exam_sessions_active would sit at 0 forever.
+func RegisterWorkerMetrics() {
+	Registry()
+	workerOnce.Do(func() {
+		reg.MustRegister(ExamSessionsActive)
+	})
 }
 
 // Handler returns the /metrics handler for the internal port.
@@ -129,7 +149,8 @@ func RegisterDBPool(pool *pgxpool.Pool) {
 	})
 }
 
-// ObservePasswordVerify records one bcrypt comparison duration.
-func ObservePasswordVerify(d time.Duration) {
-	LoginBcryptSeconds.Observe(d.Seconds())
+// ObservePasswordVerify records one bcrypt comparison duration under the
+// given op label (OpLogin or OpChangePassword).
+func ObservePasswordVerify(op string, d time.Duration) {
+	LoginBcryptSeconds.WithLabelValues(op).Observe(d.Seconds())
 }
