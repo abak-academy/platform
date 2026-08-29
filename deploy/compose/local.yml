@@ -131,6 +131,105 @@ services:
     depends_on:
       - api
 
+  # ------------------------------------------------------------------
+  # Observability repro (issue #98). Opt-in so everyday dev machines are not
+  # taxed by ~800 MB of monitoring containers:
+  #
+  #   docker compose --profile observability -f deploy/compose/local.yml up -d
+  #
+  # Same topology and the SAME alloy config file as production.yml; only URLs
+  # differ (local Prometheus/Loki instead of Grafana Cloud, no credentials).
+  # Grafana at http://localhost:3002 provisions the dashboards from
+  # deploy/grafana/dashboards/ — the exact JSON imported into Cloud later.
+  # Known gap: pgbouncer-exporter does not exist locally (no PgBouncer here),
+  # so that one scrape target stays DOWN; §6 panels show NoData.
+  # ------------------------------------------------------------------
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    command:
+      - --path.rootfs=/host
+    pid: host
+    volumes:
+      - /:/host:ro
+    profiles:
+      - observability
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.5
+    # Same trim as production.yml — local repro must match prod's series set
+    # or dashboards validated here lie about what Grafana Cloud will store.
+    command:
+      - --docker_only
+      - --disable_metrics=disk,diskIO,tcp,udp,sched,process,hugetlb,referenced_memory,resctrl
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      # Socket FILE, not the /var/run dir: on macOS the dir mount carries a
+      # dangling symlink (docker.sock -> ~/.docker/run/docker.sock) and the
+      # docker factory silently falls back to Raw (root cgroup only, no
+      # per-container series). Same mount style alloy uses below.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    profiles:
+      - observability
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
+      - --storage.tsdb.retention.time=3d
+    volumes:
+      - ../prometheus/prometheus-local.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    profiles:
+      - observability
+
+  loki:
+    image: grafana/loki:3.7.6
+    ports:
+      - "3100:3100"
+    profiles:
+      - observability
+
+  grafana:
+    image: grafana/grafana:13.2.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3002:3000"
+    profiles:
+      - observability
+
+  alloy:
+    image: grafana/alloy:v1.19.0
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    environment:
+      DEPLOY_ENV: local
+    user: "0:0" # read access to the docker socket for log tailing + discovery
+    volumes:
+      - ../alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - api
+      - worker
+    ports:
+      - "12345:12345"
+    profiles:
+      - observability
+
 volumes:
   pgdata:
   miniodata:

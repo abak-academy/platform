@@ -40,13 +40,16 @@ app/
 │   ├── app/(exam-session)/ chrome-free exam runner
 │   ├── app/(admin)/        admin shell + all domain pages
 │   └── public/fonts/       certificate typefaces for the design editor (mirrors the backend's embedded copy)
-├── deploy/             everything build- and run-related
-│   ├── compose/            local.yml, staging.yml, production.yml
-│   ├── images/             Dockerfile.api, Dockerfile.worker
-│   ├── nginx/              staging.conf, production.conf
-│   ├── pipeline/           *.sh, invoked directly by .github/workflows/pipeline.yml
-│   ├── secrets/            *.example.yaml templates (real secrets are gitignored)
-│   └── storage-cors.json   GCS bucket CORS
+├── deploy/               everything build- and run-related
+│   ├── alloy/                config.alloy — the single collector config shared by local repro and production
+│   ├── compose/              local.yml, staging.yml, production.yml
+│   ├── grafana/              dashboard JSONs + provisioning for the local observability stack
+│   ├── images/               Dockerfile.api, Dockerfile.worker
+│   ├── nginx/                staging.conf, production.conf
+│   ├── pipeline/             *.sh, invoked directly by .github/workflows/pipeline.yml
+│   ├── prometheus/           prometheus-local.yml — local remote-write receiver stand-in for Grafana Cloud
+│   ├── secrets/              *.example.yaml templates (real secrets are gitignored)
+│   └── storage-cors.json     GCS bucket CORS
 ├── docs/               runbooks/ and backlog/
 └── Makefile
 ```
@@ -75,6 +78,7 @@ boxes, so editing them here does not update a running environment.
 | Migrations | custom runner in `internal/infra/migrate.go` — **not** golang-migrate |
 | Cache / idempotency | Redis via go-redis/v9 |
 | Logging | stdlib slog (JSON) |
+| Metrics & logs | Grafana Cloud via a single Alloy collector; in-app metrics on an internal-only :9102 (`internal/metrics`) |
 | Payment | Midtrans Snap |
 | Shipping | Biteship |
 | PDF rendering | Gotenberg sidecar (Chromium HTML → PDF) |
@@ -116,6 +120,20 @@ docker compose up -d   # postgres + redis + minio + gotenberg + api + worker + w
 
 The `web` container is a baked image with no source mount — run `npm run dev` for frontend iteration.
 
+### Observability repro (optional)
+
+The monitoring stack from issue #98 runs locally, offline, using the **same** `deploy/alloy/config.alloy`
+that production uses — only the URLs differ (local Prometheus/Loki instead of Grafana Cloud):
+
+```bash
+cd deploy && docker compose --profile observability up -d   # or: make obs-up
+```
+
+- Dashboard: `http://localhost:3002` → Abak folder → *"Exam day — where is the time going?"* (provisioned from `deploy/grafana/dashboards/`)
+- Prometheus UI `:9090` · Loki API `:3100` · Alloy UI `:12345`
+
+Known gap: there is no PgBouncer locally, so the `pgbouncer` scrape target stays DOWN and its panels show no data. Rollout to production (Grafana Cloud credentials, vm-db exporter, alerts) is a separate, human-driven path: `docs/runbooks/monitoring-deployment.md`.
+
 ## Local development (without Docker)
 
 **Prerequisites:** Go 1.26+ · Node 20+ · Docker (for infra only)
@@ -149,5 +167,7 @@ cd web && npx vitest run
 
 ## Operations
 
+- `docs/runbooks/monitoring-deployment.md` — pre/post-deploy checklist for the Grafana Cloud rollout (issue #98)
+- `docs/backlog/observability-grafana-cloud.md` — design decisions behind the metrics & logs stack
 - `docs/runbooks/` — PostgreSQL 16→17 data migration, repository migration to the client org
 - `docs/backlog/` — accepted tech debt, with the reasoning for deferring it

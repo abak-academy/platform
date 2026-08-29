@@ -63,6 +63,8 @@ func (w *Worker) pollJobs(ctx context.Context) {
 		return
 	}
 
+	slog.Info("job claimed", "job_id", job.ID, "type", job.Type)
+
 	switch job.Type {
 	case "student_bulk":
 		w.runStudentBulkJob(ctx, *job)

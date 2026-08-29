@@ -123,3 +123,83 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # ---------------------------------------------------------------
+  # Monitoring stack (issue #98). All three are stock upstream images,
+  # version-pinned — nothing here is built from this repo. Adding them is
+  # additive: `docker compose up -d` creates only these services and never
+  # touches the six above. Combined footprint is bounded by the mem_limits;
+  # actual measured numbers belong in docs/runbooks/monitoring-deployment.md.
+  #
+  # Credentials come from deploy/.env (hand-placed on the box, gitignored) —
+  # see deploy/.env.example for where each value lives in the Grafana Cloud
+  # portal. The alloy config is the SAME file local.yml mounts; only URLs
+  # differ, which keeps dashboard reproducibility honest.
+  # ---------------------------------------------------------------
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+    pid: host
+    volumes:
+      - /:/host:ro
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.5
+    restart: unless-stopped
+    # Default config emitted ~1,800 active series for 7 containers — most of
+    # the Grafana Cloud free-tier budget. docker_only + this disable list keep
+    # the families exam-day.json reads (container_cpu_*, container_memory_*)
+    # and drop the rest; see docs/backlog/observability-grafana-cloud.md.
+    command:
+      - --docker_only
+      - --disable_metrics=disk,diskIO,tcp,udp,sched,process,hugetlb,referenced_memory,resctrl
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    mem_limit: 200m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  alloy:
+    image: grafana/alloy:v1.19.0
+    restart: unless-stopped
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    user: "0:0" # read access to the docker socket for log tailing + discovery
+    environment:
+      DEPLOY_ENV: prod
+      PROMETHEUS_URL: ${GRAFANA_CLOUD_PROM_URL:?set GRAFANA_CLOUD_PROM_URL in deploy/.env}
+      PROMETHEUS_USERNAME: ${GRAFANA_CLOUD_PROM_INSTANCE_ID:?set GRAFANA_CLOUD_PROM_INSTANCE_ID in deploy/.env}
+      PROMETHEUS_PASSWORD: ${GRAFANA_CLOUD_PROM_API_KEY:?set GRAFANA_CLOUD_PROM_API_KEY in deploy/.env}
+      LOKI_URL: ${GRAFANA_CLOUD_LOKI_URL:?set GRAFANA_CLOUD_LOKI_URL in deploy/.env}
+      LOKI_USERNAME: ${GRAFANA_CLOUD_LOKI_TENANT_ID:?set GRAFANA_CLOUD_LOKI_TENANT_ID in deploy/.env}
+      LOKI_PASSWORD: ${GRAFANA_CLOUD_LOKI_API_KEY:?set GRAFANA_CLOUD_LOKI_API_KEY in deploy/.env}
+      PGBOUNCER_EXPORTER_ADDRESS: ${PGBOUNCER_EXPORTER_ADDRESS:-10.20.0.10:9127}
+    volumes:
+      - ../alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    mem_limit: 384m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
