@@ -15,6 +15,18 @@ export const adminStudentsKeys = {
     [...adminStudentsKeys.all, "list", status ?? "all", q ?? "", cursor ?? "initial", limit ?? 20, schoolId ?? "", examId ?? "", jenjang ?? "", grade ?? ""] as const,
 };
 
+// AdminStudentListResponse carries filter-aware counts of the whole scoped
+// set (ignoring cursor/limit) alongside the page, mirroring the schools list
+// response — the students page's stat cards render these instead of counting
+// locally loaded rows.
+interface AdminStudentListResponse {
+  data: AdminStudent[];
+  next_cursor?: string;
+  total?: number;
+  active?: number;
+  deactivated?: number;
+}
+
 export function useAdminStudents(
   opts?: { status?: string; q?: string; cursor?: string; limit?: number; schoolId?: string; examId?: string; jenjang?: string; grade?: string; enabled?: boolean }
 ) {
@@ -34,7 +46,7 @@ export function useAdminStudents(
       if (grade) params.set("grade", grade);
       const query = params.toString();
       const path = query ? `/admin/students?${query}` : "/admin/students";
-      return authFetch<{ data: AdminStudent[]; next_cursor?: string }>(path);
+      return authFetch<AdminStudentListResponse>(path);
     },
   });
 }

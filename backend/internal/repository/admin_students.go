@@ -55,35 +55,15 @@ type StudentFilter struct {
 	NoSchool bool
 }
 
-// ListStudentsBySchool returns non-deleted students scoped to a school,
-// cursor-paginated (same shape as ListAdminUsers). Supports optional
-// status filter, free-text search on name/username, grade filter, and
-// jenjang filter.
-func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, filter StudentFilter) ([]StudentRow, string, error) {
-	if filter.Limit <= 0 {
-		filter.Limit = 20
-	}
-	if filter.Limit > 100 {
-		filter.Limit = 100
-	}
-
-	query := `SELECT u.id, u.name, u.username, u.email, u.status, u.grade, COALESCE(u.jenjang, ''),
-			s.name AS school_name, u.unlisted_school_name, u.created_at
-			FROM users u
-			LEFT JOIN school s ON s.id = u.school_id
-			WHERE u.role = 'student' AND u.status != 'deleted'`
+// appendStudentFilterSQL appends the predicates shared by
+// ListStudentsBySchool and CountStudentsBySchool — school scope, status,
+// free-text q, grade, jenjang — to a query whose WHERE already contains the
+// base `u.role = 'student' AND u.status != 'deleted'`. Cursor and limit are
+// the caller's job (counts must ignore them), and ExamID is deliberately
+// excluded: it encodes "not yet registered for this exam" for the
+// participant picker, a shape no stat card should count.
+func appendStudentFilterSQL(query string, filter StudentFilter, schoolID string, argNum int) (string, []any, int) {
 	args := []any{}
-	argNum := 1
-	var cursorAt time.Time
-	cursorID := uuid.Nil
-	if filter.Cursor != "" {
-		at, id, err := DecodeOrderCursor(filter.Cursor)
-		if err != nil {
-			return nil, "", err
-		}
-		cursorAt, cursorID = at, id
-	}
-
 	if !filter.AllSchools {
 		query += fmt.Sprintf(` AND u.school_id = $%d`, argNum)
 		args = append(args, schoolID)
@@ -109,6 +89,38 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 		args = append(args, filter.Jenjang)
 		argNum++
 	}
+	return query, args, argNum
+}
+
+// ListStudentsBySchool returns non-deleted students scoped to a school,
+// cursor-paginated (same shape as ListAdminUsers). Supports optional
+// status filter, free-text search on name/username, grade filter, and
+// jenjang filter.
+func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, filter StudentFilter) ([]StudentRow, string, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = 20
+	}
+	if filter.Limit > 100 {
+		filter.Limit = 100
+	}
+
+	query := `SELECT u.id, u.name, u.username, u.email, u.status, u.grade, COALESCE(u.jenjang, ''),
+			s.name AS school_name, u.unlisted_school_name, u.created_at
+			FROM users u
+			LEFT JOIN school s ON s.id = u.school_id
+			WHERE u.role = 'student' AND u.status != 'deleted'`
+	var cursorAt time.Time
+	cursorID := uuid.Nil
+	if filter.Cursor != "" {
+		at, id, err := DecodeOrderCursor(filter.Cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		cursorAt, cursorID = at, id
+	}
+
+	query, args, argNum := appendStudentFilterSQL(query, filter, schoolID, 1)
+
 	if filter.ExamID != "" {
 		query += fmt.Sprintf(` AND u.status = 'active'
 			AND NOT EXISTS (SELECT 1 FROM exam_registration er WHERE er.student_id = u.id AND er.exam_id = $%d::uuid)`, argNum)
@@ -153,6 +165,37 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 	}
 
 	return students, nextCursor, nil
+}
+
+// StudentAdminCounts summarizes the current filtered student set for the
+// admin student list's stat cards, so "Total"/"Aktif"/"Nonaktif" reflect the
+// full filtered result set in the DB rather than only the rows loaded onto
+// the client so far — the same stat-cards-from-a-single-page bug previously
+// fixed on the schools list (see CountSchoolsAdmin and
+// docs/backlog/student-list-stats-and-search-debounce.md).
+type StudentAdminCounts struct {
+	Total       int `json:"total"`
+	Active      int `json:"active"`
+	Deactivated int `json:"deactivated"`
+}
+
+// CountStudentsAdmin returns total/active/deactivated counts for the same
+// school scope and status/q/grade/jenjang filters ListStudentsBySchool
+// applies, ignoring cursor, limit, and the exam-eligibility filter.
+// (CountStudentsBySchool is the unrelated per-school student_count used by
+// the school rows themselves.)
+func (r *Repository) CountStudentsAdmin(ctx context.Context, schoolID string, filter StudentFilter) (StudentAdminCounts, error) {
+	query := `SELECT COUNT(*),
+		COUNT(*) FILTER (WHERE u.status = 'active'),
+		COUNT(*) FILTER (WHERE u.status = 'deactivated')
+		FROM users u
+		WHERE u.role = 'student' AND u.status != 'deleted'`
+
+	query, args, _ := appendStudentFilterSQL(query, filter, schoolID, 1)
+
+	var counts StudentAdminCounts
+	err := r.pool.QueryRow(ctx, query, args...).Scan(&counts.Total, &counts.Active, &counts.Deactivated)
+	return counts, err
 }
 
 // CreateStudent inserts a new user with role='student', otp_enabled=false,

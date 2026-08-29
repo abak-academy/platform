@@ -430,6 +430,94 @@ func TestAdminListStudents_AdminSchool_OwnScope_200(t *testing.T) {
 	}
 }
 
+// GET /admin/students must return filter-aware counts of the whole scoped
+// set (ignoring cursor/limit) so the UI stat cards are not derived from the
+// single page loaded on the client — the same stat-card bug previously fixed
+// on GET /admin/schools (docs/backlog/student-list-stats-and-search-debounce.md).
+func TestAdminListStudents_ReturnsFilterAwareCounts(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+
+	suffix := uuid.NewString()[:8]
+	var schoolID string
+	if err := env.pool.QueryRow(ctx,
+		`INSERT INTO school (name, code, school_types) VALUES ($1, $2, $3) RETURNING id`,
+		"Counts "+suffix, "cnt_"+suffix, []string{"sma"},
+	).Scan(&schoolID); err != nil {
+		t.Fatalf("seed school: %v", err)
+	}
+	seed := func(name, status string) {
+		if _, err := env.pool.Exec(ctx,
+			`INSERT INTO users (name, username, role, school_id, status, jenjang, grade, otp_enabled)
+			 VALUES ($1, $2, 'student', $3, $4, 'sma', 10, false)`,
+			name+" "+suffix, "cnt_"+uuid.NewString()[:12], schoolID, status,
+		); err != nil {
+			t.Fatalf("seed student: %v", err)
+		}
+	}
+	seed("Counted Active 1", "active")
+	seed("Counted Active 2", "active")
+	seed("Counted Inactive", "deactivated")
+
+	rdb := redis.NewClient(&redis.Options{Addr: env.mr.Addr()})
+	t.Cleanup(func() { rdb.Close() })
+	token, jti, err := env.signer.SignAccess("admin-counts", "admin_school", &schoolID, []string{})
+	if err != nil {
+		t.Fatalf("SignAccess: %v", err)
+	}
+	if err := rdb.Set(ctx, "session:access:"+jti, "admin-counts", 15*time.Minute).Err(); err != nil {
+		t.Fatalf("redis set session: %v", err)
+	}
+
+	t.Run("counts cover the whole scope even with limit=1", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students?q="+suffix+"&limit=1", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+			Total       int `json:"total"`
+			Active      int `json:"active"`
+			Deactivated int `json:"deactivated"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		if len(resp.Data) != 1 {
+			t.Errorf("data: want 1 row (limit), got %d", len(resp.Data))
+		}
+		if resp.Total != 3 || resp.Active != 2 || resp.Deactivated != 1 {
+			t.Errorf("counts: want 3/2/1, got %d/%d/%d", resp.Total, resp.Active, resp.Deactivated)
+		}
+	})
+
+	t.Run("counts follow the status filter", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students?q="+suffix+"&status=active", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			Total       int `json:"total"`
+			Active      int `json:"active"`
+			Deactivated int `json:"deactivated"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		if resp.Total != 2 || resp.Active != 2 || resp.Deactivated != 0 {
+			t.Errorf("active-filtered counts: want 2/2/0, got %d/%d/%d", resp.Total, resp.Active, resp.Deactivated)
+		}
+	})
+}
+
 func TestAdminListStudents_ExamEligibilityAndCursorValidation(t *testing.T) {
 	env := newAdminStuDBEnv(t)
 	ctx := context.Background()

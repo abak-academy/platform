@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import { toast } from "sonner";
 import SchoolStudentsPage from "./page";
 import type { AdminStudent, StudentRegistrationResult, StudentCredentials, School } from "@/lib/types";
@@ -7,8 +7,16 @@ import type { AdminStudent, StudentRegistrationResult, StudentCredentials, Schoo
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
 
+interface StudentsListResponse {
+  data: AdminStudent[];
+  next_cursor?: string;
+  total?: number;
+  active?: number;
+  deactivated?: number;
+}
+
 let studentsState = {
-  data: null as { data: AdminStudent[]; next_cursor?: string } | null,
+  data: null as StudentsListResponse | null,
   isLoading: true,
   isFetching: false,
   isError: false,
@@ -19,6 +27,10 @@ let studentsState = {
 let registerState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let changeStatusState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let reissueState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+
+// Records every call so tests can assert q/status/cursor are actually sent
+// to the server, not just filtered client-side.
+const useAdminStudentsCalls: unknown[] = [];
 
 // Auth store mock
 let authStore: {
@@ -37,7 +49,10 @@ let schoolsState = {
 };
 
 vi.mock("@/lib/hooks/admin-students", () => ({
-  useAdminStudents: () => studentsState,
+  useAdminStudents: (params: unknown) => {
+    useAdminStudentsCalls.push(params);
+    return studentsState;
+  },
   useRegisterStudent: () => registerState,
   useChangeStudentStatus: () => changeStatusState,
   useReissueStudentCredentials: () => reissueState,
@@ -105,9 +120,16 @@ const sampleStudents: AdminStudent[] = [
   },
 ];
 
-const paginatedResponse = (students: AdminStudent[]) => ({
+// total/active/deactivated mirror what CountStudentsAdmin would return for
+// the full filtered set — deliberately not derived from students.length,
+// since that was exactly the "Total ≈ 20" bug (client only ever saw loaded
+// rows).
+const paginatedResponse = (students: AdminStudent[], next_cursor?: string): StudentsListResponse => ({
   data: students,
-  next_cursor: undefined,
+  next_cursor,
+  total: students.length,
+  active: students.filter((s) => s.status === "active").length,
+  deactivated: students.filter((s) => s.status === "deactivated").length,
 });
 
 describe("SchoolStudentsPage", () => {
@@ -136,6 +158,13 @@ describe("SchoolStudentsPage", () => {
     mockMutateAsync.mockReset();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
+    useAdminStudentsCalls.length = 0;
+  });
+
+  // A prior test throwing before vi.useRealTimers() would otherwise leave
+  // fake timers on and hang every later waitFor() in this file.
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("renders loading state when loading and no accumulated data", async () => {
@@ -195,6 +224,46 @@ describe("SchoolStudentsPage", () => {
       expect(screen.getByText("2")).toBeInTheDocument();
     });
     expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(1);
+  });
+
+  // The stat cards must render the server's filter-aware counts, not
+  // accumulated.length — with only 2 rows loaded the total must still say 42.
+  it("renders stat cards from the server counts, not the loaded rows", async () => {
+    studentsState = {
+      data: { data: sampleStudents, next_cursor: undefined, total: 42, active: 40, deactivated: 2 },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<SchoolStudentsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("42")).toBeInTheDocument();
+    });
+    expect(screen.getByText("40")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("debounces search input before sending it as the q param", async () => {
+    vi.useFakeTimers();
+    render(<SchoolStudentsPage />);
+
+    const search = screen.getByPlaceholderText(/cari nama|search name/i);
+    fireEvent.change(search, { target: { value: "budi" } });
+
+    // Not yet — a keystroke must not immediately trigger a new query.
+    let last = useAdminStudentsCalls.at(-1) as { q?: string } | undefined;
+    expect(last?.q).toBeUndefined();
+
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+
+    last = useAdminStudentsCalls.at(-1) as { q?: string } | undefined;
+    expect(last?.q).toBe("budi");
   });
 
   it("opens the bulk import modal from the header button", async () => {

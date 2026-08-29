@@ -360,7 +360,7 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 	studentID := reg.ID
 
 	t.Run("list is scoped to school", func(t *testing.T) {
-		rowsA, _, err := svc.ListStudents(ctx, schoolA, "", "", 20, "", nil, "")
+		rowsA, _, _, err := svc.ListStudents(ctx, schoolA, "", "", 20, "", nil, "")
 		if err != nil {
 			t.Fatalf("ListStudents (schoolA): %v", err)
 		}
@@ -374,7 +374,7 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 			t.Error("student should be listed under its own school")
 		}
 
-		rowsB, _, err := svc.ListStudents(ctx, schoolB, "", "", 20, "", nil, "")
+		rowsB, _, _, err := svc.ListStudents(ctx, schoolB, "", "", 20, "", nil, "")
 		if err != nil {
 			t.Fatalf("ListStudents (schoolB): %v", err)
 		}
@@ -396,7 +396,7 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 		if err := svc.ChangeStudentStatus(ctx, schoolA, studentID, "deactivated"); err != nil {
 			t.Fatalf("ChangeStudentStatus: %v", err)
 		}
-		rows, _, err := svc.ListStudents(ctx, schoolA, "", "", 20, "", nil, "")
+		rows, _, _, err := svc.ListStudents(ctx, schoolA, "", "", 20, "", nil, "")
 		if err != nil {
 			t.Fatalf("ListStudents: %v", err)
 		}

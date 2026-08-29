@@ -6,6 +6,7 @@
 | **Date** | 2026-08-19 |
 | **Surface** | Admin Sistem → Sekolah (`/admin/system/schools`), `GET /admin/schools` |
 | **Not the bug** | Bulk CSV writer (`ProcessSchoolBulkRows` → `CreateSchool`) |
+| **Related** | [student-list-stats-and-search-debounce.md](student-list-stats-and-search-debounce.md) — the same stat-cards/no-debounce bug shape, later found and fixed on the students module |
 
 Bulk import of ~122 schools wrote rows (`status=success` in the result CSV; `SELECT count(*) FROM school` matches). The Sekolah list still showed about **20** schools. Search in the UI did not find names that exist in the `school` table.
 
