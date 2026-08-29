@@ -1,9 +1,7 @@
 # Monitoring rollout — pre & post deployment (issue #98)
 
-Step-by-step for putting the observability stack live. Design decisions and the
-metric inventory live in
-[`docs/backlog/observability-grafana-cloud.md`](../backlog/observability-grafana-cloud.md);
-this file is the operator path.
+Step-by-step for putting the observability stack live after issue #98. This is
+the operator path.
 
 Two distinct rollouts:
 

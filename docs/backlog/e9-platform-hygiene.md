@@ -9,7 +9,7 @@
 | **Depends on** | — |
 | **Verified against** | `main` @ `d2efa3a`, 2026-07-30 |
 
-> **Not a vertical slice** — no schema, no UI, nothing the client sees. Like [E1](e1-foundation-unblock.md)
+> **Not a vertical slice** — no schema, no UI, nothing the client sees. Like the old E1 foundation cleanup,
 > it earns its place by what it stops costing elsewhere. Do not try to force a UI deliverable into it.
 
 Items are independent; take them in any order. F-5 is the only one with a compounding cost.
@@ -22,7 +22,7 @@ Still a manual `IMAGE_TAG` edit followed by `pull && up -d` on both VMs. WIF now
 WIF + IAP path is far cheaper than when this was parked.
 
 **More urgent than its priority suggests.** Production has repeatedly trailed `main` by several
-commits, and [E5](e5-orders-payments.md) §4 is the worked example: FB-15 was reported as broken when
+commits, and E5 §4 is the worked example: FB-15 was reported as broken when
 the fix was already merged. Until F-5 lands, **every "still broken" report carries that ambiguity**,
 and the cost is paid in trust at every demo — first action on any such report has to be "deploy and
 re-check", which is a whole round-trip before the work even starts.

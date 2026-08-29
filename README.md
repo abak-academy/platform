@@ -168,6 +168,5 @@ cd web && npx vitest run
 ## Operations
 
 - `docs/runbooks/monitoring-deployment.md` — pre/post-deploy checklist for the Grafana Cloud rollout (issue #98)
-- `docs/backlog/observability-grafana-cloud.md` — design decisions behind the metrics & logs stack
 - `docs/runbooks/` — PostgreSQL 16→17 data migration, repository migration to the client org
 - `docs/backlog/` — accepted tech debt, with the reasoning for deferring it
