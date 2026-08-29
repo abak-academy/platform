@@ -5,7 +5,7 @@
 | **Issue** | [#98](https://github.com/abak-academy/platform/issues/98) |
 | **Objective** | When an exam slows down, one dashboard answers which of these it is: API CPU, app-side connection pool, Postgres/PgBouncer, or the student network — instead of today's zero signals. |
 | **Depends on** | None hard. Ideally lands before [#95](https://github.com/abak-academy/platform/issues/95), because a load test without metrics produces p95s with no causes. |
-| **Verified against** | `main`, 2026-08-25 (local repro run end-to-end: scrape, remote-write, log shipping, dashboard provisioning) |
+| **Verified against** | `main`, 2026-08-25 (local repro run end-to-end: scrape, remote-write, log shipping, dashboard provisioning); production rollout started 2026-08-29 — see the runbook's deployment log |
 | **Ops guide** | [`docs/runbooks/monitoring-deployment.md`](../runbooks/monitoring-deployment.md) |
 
 ---
@@ -58,7 +58,7 @@ These were argued and settled during design review; change them through discussi
 ## Topology
 
 ```
-                     GRAFANA CLOUD (SG region)
+                     GRAFANA CLOUD (prod-ap-southeast-2, Indonesia)
         ┌──────────────────────────────────────────────┐
         │  Grafana UI ◀─ PromQL/LogQL ─▶ Prometheus    │
         │        ▲                        Loki         │
@@ -132,12 +132,17 @@ Implemented in this change:
    verified end-to-end offline.
 3. Production compose additions (node-exporter, cadvisor, alloy) + nginx JSON
    access log — additive only; `up -d` creates the three services without touching
-   existing ones.
+   existing ones. ✅ 2026-08-29: trio live on vm-app, applied as a hand-port into
+   the box's `app-production.yaml` (runbook §2); the nginx recreate is still pending.
 
 Remaining, requiring human/cloud actions — see the runbook:
 
-4. Grafana Cloud stack creation, credentials into `deploy/.env`, import dashboard.
-5. pgbouncer_exporter install on vm-db.
+4. Grafana Cloud stack creation + credentials — ✅ stack created 2026-08-29
+   (region `prod-ap-southeast-2`, Indonesia); credentials live in the box's
+   `/home/<deploy-user>/abak-app/.env` (vm-app runs a hand-placed deploy dir, no git
+   checkout — see runbook §2). Dashboard import still pending.
+5. pgbouncer_exporter on vm-db — **deferred**: no vm-db access; the app-side
+   `dbpool_empty_acquire_total` still covers the #96 detection.
 6. Alert rules (pool-empty acquires, p95 answers threshold, sustained api CPU, 5xx
    rate) configured in Cloud AND deliberately triggered once — #98 rejects
-   alerts that have only ever been configured.
+   alerts that have only ever been configured. Still pending.
