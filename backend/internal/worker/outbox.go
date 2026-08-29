@@ -125,6 +125,8 @@ func (w *Worker) Run(ctx context.Context) {
 		}
 	}()
 
+	go w.pollActiveExamSessions(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -143,6 +145,7 @@ func (w *Worker) pollOutbox(ctx context.Context) {
 	}
 
 	for _, event := range events {
+		slog.Info("outbox event claimed", "event_id", event.ID, "type", event.EventType)
 		switch event.EventType {
 		case "OrderPaid":
 			w.handleOrderPaid(ctx, event)

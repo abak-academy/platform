@@ -9,12 +9,25 @@ import (
 	"strings"
 	"time"
 
+	"akademi-bimbel/internal/metrics"
 	"akademi-bimbel/internal/model"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// comparePassword times the bcrypt comparison. Its latency is the dominant
+// per-login CPU cost — the capacity model (#62/#98 §3) predicts ~234 ms/op on
+// dev hardware and a hard ceiling of concurrent logins on the 2-vCPU VM, so
+// the real distribution gets measured, not assumed. op distinguishes the two
+// call sites: the capacity model quotes the login series only.
+func comparePassword(hash, password, op string) bool {
+	start := time.Now()
+	ok := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
+	metrics.ObservePasswordVerify(op, time.Since(start))
+	return ok
+}
 
 type UserRepository interface {
 	Ping(ctx context.Context) error
@@ -87,7 +100,7 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (acces
 	if user == nil {
 		return "", "", "", ErrInvalidCredentials
 	}
-	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
+	if !comparePassword(user.PasswordHash, password, metrics.OpLogin) {
 		return "", "", "", ErrInvalidCredentials
 	}
 	switch user.Status {
@@ -373,7 +386,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 	if user == nil {
 		return ErrUserNotFound
 	}
-	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)) != nil {
+	if !comparePassword(user.PasswordHash, currentPassword, metrics.OpChangePassword) {
 		return ErrInvalidCredentials
 	}
 	if len(newPassword) < minPasswordLen {

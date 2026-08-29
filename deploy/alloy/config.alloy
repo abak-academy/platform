@@ -1,0 +1,143 @@
+// Shared Grafana Alloy configuration -- identical file for local repro and
+// production (vm-app). Environment differences enter ONLY through these
+// variables, set in deploy/compose/*.yml:
+//
+//   DEPLOY_ENV                    "local" | "prod"        (external `env` label)
+//   PROMETHEUS_URL                remote_write endpoint   (local: prometheus:9090,
+//                                 prod: Grafana Cloud remote-write URL)
+//   PROMETHEUS_USERNAME/_PASSWORD basic auth              (local: empty, ignored)
+//   LOKI_URL / LOKI_USERNAME /
+//   LOKI_PASSWORD                 Loki push endpoint + creds (same pattern)
+//   PGBOUNCER_EXPORTER_ADDRESS    section 6 target; lives on vm-db in prod.
+//                                 Locally the default DNS name never resolves
+//                                 to a live exporter, so that one target
+//                                 shows DOWN -- expected and documented.
+//
+// Everything else is deliberately static so a dashboard or LogQL query proven
+// locally behaves identically against Grafana Cloud.
+
+logging {
+	level  = "info"
+	format = "json"
+}
+
+// ---------------------------------------------------------------- metrics ---
+
+prometheus.remote_write "default" {
+	external_labels = {
+		env = coalesce(sys.env("DEPLOY_ENV"), "local"),
+	}
+
+	endpoint {
+		url = coalesce(sys.env("PROMETHEUS_URL"), "http://prometheus:9090/api/v1/write")
+
+		basic_auth {
+			username = sys.env("PROMETHEUS_USERNAME")
+			password = sys.env("PROMETHEUS_PASSWORD")
+		}
+	}
+}
+
+// In-app metrics (sections 1-5 of issue #98): the internal-only :9102 servers
+// inside api and worker. These service names resolve on both compose networks
+// (local.yml and production.yml use the same names).
+//
+// scrape_interval 15s — the default 60s lands fewer samples than the
+// dashboard's 30s refresh and leaves a #95 load ramp with 2-3 points. 15s
+// costs samples, not active series, so the Grafana Cloud series ceiling is
+// untouched; the floor is the 10s default scrape_timeout, so don't go below.
+prometheus.scrape "apps" {
+	targets = [
+		{ "__address__" = "api:9102",    job = "api" },
+		{ "__address__" = "worker:9102", job = "worker" },
+	]
+
+	scrape_interval = "15s"
+
+	forward_to = [prometheus.remote_write.default.receiver]
+}
+
+// Section 7: per-container CPU/memory plus VM-level context. Both run in
+// local.yml too, so container_* and node_* queries are reproducible before
+// any deploy. Same 15s interval and reasoning as the apps scrape above.
+prometheus.scrape "infra" {
+	targets = [
+		{ "__address__" = "node-exporter:9100", job = "node_exporter" },
+		{ "__address__" = "cadvisor:8080",      job = "cadvisor" },
+	]
+
+	scrape_interval = "15s"
+
+	forward_to = [prometheus.remote_write.default.receiver]
+}
+
+// Section 6: PgBouncer pools/stats. Read from vm-db over the internal network
+// in prod; see the header note about this target being down locally by design.
+prometheus.scrape "pgbouncer" {
+	targets = [
+		{ "__address__" = coalesce(sys.env("PGBOUNCER_EXPORTER_ADDRESS"), "pgbouncer-exporter:9127"), job = "pgbouncer" },
+	]
+
+	scrape_interval = "30s"
+
+	forward_to = [prometheus.remote_write.default.receiver]
+}
+
+// ------------------------------------------------------------------- logs ---
+
+discovery.docker "containers" {
+	host = "unix:///var/run/docker.sock"
+}
+
+// Label parity across environments: dashboards and LogQL ask {service="api"}
+// whether the compose project is akademi-bimbel (local) or abak-prod (prod).
+discovery.relabel "container_logs" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+}
+
+loki.process "normalize" {
+	// slog emits JSON with a level field; promoting it to an indexed label
+	// makes {service="api", level="error"} cheap without parsing at query
+	// time. Non-JSON lines (e.g. Next.js output) pass through untouched.
+	stage.json {
+		expressions = { level = "level" }
+	}
+
+	stage.labels {
+		values = { level = "" }
+	}
+
+	stage.static_labels {
+		values = { env = coalesce(sys.env("DEPLOY_ENV"), "local") }
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.source.docker "containers" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.relabel.container_logs.output
+	forward_to = [loki.process.normalize.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url = coalesce(sys.env("LOKI_URL"), "http://loki:3100/loki/api/v1/push")
+
+		basic_auth {
+			username = sys.env("LOKI_USERNAME")
+			password = sys.env("LOKI_PASSWORD")
+		}
+	}
+}
