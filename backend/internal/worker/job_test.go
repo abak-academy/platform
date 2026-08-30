@@ -247,6 +247,40 @@ func TestRunStudentBulkJobSucceedsUploadsReportAndFinishesSucceeded(t *testing.T
 	}
 }
 
+func TestRunStudentBulkJobCleanupIgnoresCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	job := model.Job{ID: "job-cancelled", Type: "student_bulk", CreatedBy: "u1", InputURL: strPtr("student-bulk/s1/upload.csv")}
+	repo := &fakeJobRepo{
+		getUserByIDFn: func(context.Context, string) (*model.User, error) {
+			return &model.User{ID: "u1", Role: service.RoleAdminSchool, SchoolID: schoolIDPtr("s1")}, nil
+		},
+	}
+	store := &fakeObjectStore{
+		getObjectBytesFn: func(context.Context, string, string) ([]byte, error) {
+			return []byte(validBulkCSV), nil
+		},
+		deleteObjectFn: func(deleteCtx context.Context, _, _ string) error {
+			if err := deleteCtx.Err(); err != nil {
+				t.Errorf("cleanup context is cancelled: %v", err)
+			}
+			return nil
+		},
+	}
+	svc := &fakeStudentBulkProcessor{
+		processFn: func(context.Context, *string, string, []service.StudentBulkRow, func(int)) ([]service.StudentBulkResultRow, int, error) {
+			cancel()
+			return []service.StudentBulkResultRow{{Name: "Ali", Status: "success"}}, 1, nil
+		},
+	}
+
+	w := &Worker{jobRepo: repo, objectStore: store, svc: svc, privateBucket: "private-bucket"}
+	w.runStudentBulkJob(ctx, job)
+
+	if len(store.deleteCalls) != 1 {
+		t.Fatalf("expected one cleanup call, got %v", store.deleteCalls)
+	}
+}
+
 func TestRunStudentBulkJob_SuperAdmin_NamespaceFolder_CoLocatesResult(t *testing.T) {
 	ctx := context.Background()
 	folder := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"

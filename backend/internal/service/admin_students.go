@@ -442,7 +442,7 @@ func (s *Service) ReissueStudentCredentials(ctx context.Context, schoolID, targe
 	if err := s.storeRepo.ResetStudentPasswordHash(ctx, targetID, schoolID, string(hash)); err != nil {
 		return nil, err
 	}
-	s.revokeAllSessions(ctx, targetID)
+	s.revokeRefreshSessions(ctx, targetID)
 
 	return &StudentCredentialsResponse{
 		Username:     *student.Username,

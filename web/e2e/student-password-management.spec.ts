@@ -89,14 +89,19 @@ test("super_admin can create and set explicit student passwords without renderin
   await page.getByRole("combobox").nth(2).click();
   await page.getByRole("option", { name: "SMA" }).click();
   await page.getByRole("dialog").getByRole("button", { name: /daftarkan siswa/i }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const credentialDialog = page.getByRole("dialog");
+  await expect(credentialDialog).toBeVisible();
+  await expect(credentialDialog.getByText("Kredensial Siswa")).toBeVisible();
+  await expect(credentialDialog.getByText("manual")).toBeVisible();
+  await expect(credentialDialog.getByText("Password Sementara")).toHaveCount(0);
   expect(captures.register).toEqual({
     name: "Manual Password",
     jenjang: "SMA",
     password: "chosenPass123",
   });
   await expect(page.getByText("chosenPass123")).toHaveCount(0);
-  await expect(page.getByText("Kredensial Siswa")).toHaveCount(0);
+  await credentialDialog.getByRole("button", { name: "Batal" }).click();
+  await expect(credentialDialog).toHaveCount(0);
 
   await page.locator("tr", { hasText: "Budi Santoso" }).getByRole("button").click();
   await page.getByText("Set Password").click();

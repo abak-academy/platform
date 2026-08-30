@@ -464,6 +464,24 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 	})
 
 	t.Run("credential reissue overwrites hash and returns a new password", func(t *testing.T) {
+		if svc.rdb == nil {
+			t.Fatal("newRealDBService must provide Redis so session policy is exercised")
+		}
+		accessJTI := "reissue-access-" + uniqueSuffix()
+		refreshToken := "reissue-refresh-" + uniqueSuffix()
+		if err := svc.rdb.Set(ctx, "session:access:"+accessJTI, studentID, 0).Err(); err != nil {
+			t.Fatalf("seed access session: %v", err)
+		}
+		if err := svc.rdb.SAdd(ctx, "user_access_sessions:"+studentID, accessJTI).Err(); err != nil {
+			t.Fatalf("index access session: %v", err)
+		}
+		if err := svc.rdb.Set(ctx, "session:refresh:"+refreshToken, studentID, 0).Err(); err != nil {
+			t.Fatalf("seed refresh session: %v", err)
+		}
+		if err := svc.rdb.SAdd(ctx, "user_refresh_sessions:"+studentID, refreshToken).Err(); err != nil {
+			t.Fatalf("index refresh session: %v", err)
+		}
+
 		creds, err := svc.ReissueStudentCredentials(ctx, schoolA, studentID)
 		if err != nil {
 			t.Fatalf("ReissueStudentCredentials: %v", err)
@@ -484,6 +502,12 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 		}
 		if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(reg.TempPassword)) == nil {
 			t.Error("old temp password should no longer validate against the persisted hash")
+		}
+		if !svc.SessionActive(ctx, accessJTI) {
+			t.Error("credential reissue must preserve the live access session")
+		}
+		if exists, err := svc.rdb.Exists(ctx, "session:refresh:"+refreshToken).Result(); err != nil || exists != 0 {
+			t.Errorf("credential reissue must revoke refresh session: exists=%d err=%v", exists, err)
 		}
 	})
 
@@ -529,6 +553,23 @@ func TestSetStudentPassword_Integration(t *testing.T) {
 	if err := svc.ChangeStudentStatus(ctx, "", deactivated, "deactivated"); err != nil {
 		t.Fatalf("deactivate seed student: %v", err)
 	}
+	if svc.rdb == nil {
+		t.Fatal("newRealDBService must provide Redis so session revocation is exercised")
+	}
+	accessJTI := "set-password-access-" + uniqueSuffix()
+	refreshToken := "set-password-refresh-" + uniqueSuffix()
+	if err := svc.rdb.Set(ctx, "session:access:"+accessJTI, active, 0).Err(); err != nil {
+		t.Fatalf("seed access session: %v", err)
+	}
+	if err := svc.rdb.SAdd(ctx, "user_access_sessions:"+active, accessJTI).Err(); err != nil {
+		t.Fatalf("index access session: %v", err)
+	}
+	if err := svc.rdb.Set(ctx, "session:refresh:"+refreshToken, active, 0).Err(); err != nil {
+		t.Fatalf("seed refresh session: %v", err)
+	}
+	if err := svc.rdb.SAdd(ctx, "user_refresh_sessions:"+active, refreshToken).Err(); err != nil {
+		t.Fatalf("index refresh session: %v", err)
+	}
 
 	for name, studentID := range map[string]string{
 		"school-linked active": active,
@@ -551,6 +592,12 @@ func TestSetStudentPassword_Integration(t *testing.T) {
 				t.Fatalf("hash does not match new password: %v", err)
 			}
 		})
+	}
+	if svc.SessionActive(ctx, accessJTI) {
+		t.Error("manual set password must revoke the access session")
+	}
+	if exists, err := svc.rdb.Exists(ctx, "session:refresh:"+refreshToken).Result(); err != nil || exists != 0 {
+		t.Errorf("manual set password must revoke refresh session: exists=%d err=%v", exists, err)
 	}
 
 	t.Run("weak password fails without mutation", func(t *testing.T) {

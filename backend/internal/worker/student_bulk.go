@@ -22,9 +22,9 @@ type studentBulkProcessor interface {
 // finishes the job as failed with the job's progress left unchanged.
 func (w *Worker) runStudentBulkJob(ctx context.Context, job model.Job) {
 	if job.InputURL != nil {
-		// Defer ensures plaintext uploads are removed after every terminal FinishJob call.
+		// Unlike school CSVs, student CSVs may hold plaintext passwords, so cleanup follows successful and failed FinishJob calls.
 		defer func() {
-			if err := w.objectStore.DeleteObject(ctx, w.privateBucket, *job.InputURL); err != nil {
+			if err := w.objectStore.DeleteObject(context.WithoutCancel(ctx), w.privateBucket, *job.InputURL); err != nil {
 				slog.Error("delete input", "job_id", job.ID, "err", err)
 			}
 		}()

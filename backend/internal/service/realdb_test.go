@@ -9,7 +9,9 @@ import (
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/repository"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
@@ -20,9 +22,10 @@ import (
 // this package that needs it; callers must use unique codes/NIS/names (see
 // uniqueSuffix) since rows are never reset between tests.
 var (
-	realDBOnce sync.Once
-	realDBSvc  *Service
-	realDBRepo *repository.Repository
+	realDBOnce  sync.Once
+	realDBSvc   *Service
+	realDBRepo  *repository.Repository
+	realDBRedis *miniredis.Miniredis
 )
 
 func newRealDBService(t *testing.T) (*Service, *repository.Repository) {
@@ -51,8 +54,14 @@ func newRealDBService(t *testing.T) (*Service, *repository.Repository) {
 			t.Fatalf("new pool: %v", err)
 		}
 		repo := repository.New(pool)
+		redisServer, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("start miniredis: %v", err)
+		}
+		rdb := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
 		realDBRepo = repo
-		realDBSvc = NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil, nil, nil, nil)
+		realDBRedis = redisServer
+		realDBSvc = NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil, nil, nil, nil)
 	})
 	if realDBSvc == nil {
 		t.Fatal("real db service failed to initialize")

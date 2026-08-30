@@ -238,7 +238,7 @@ func TestStudentManualPasswordManagement_Integration(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	reissueAccessExists, err := env.rdb.Exists(ctx, "session:access:"+reissueJTI).Result()
 	require.NoError(t, err)
-	require.Zero(t, reissueAccessExists, "credential reissue must revoke student access sessions")
+	require.EqualValues(t, 1, reissueAccessExists, "credential reissue must preserve student access sessions")
 	reissueRefreshExists, err := env.rdb.Exists(ctx, "session:refresh:"+reissueRefresh).Result()
 	require.NoError(t, err)
 	require.Zero(t, reissueRefreshExists, "credential reissue must revoke student refresh sessions")

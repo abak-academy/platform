@@ -354,9 +354,6 @@ func (s *Service) ResetPassword(ctx context.Context, token, otp, newPassword str
 // (mintSession stores them in separate, unpaired sets), so every refresh
 // token is always revoked, the caller's included (FR-31).
 func (s *Service) revokeAllSessions(ctx context.Context, userID string, exceptJTI ...string) {
-	if s.rdb == nil {
-		return
-	}
 	var keep string
 	if len(exceptJTI) > 0 {
 		keep = exceptJTI[0]
@@ -374,6 +371,10 @@ func (s *Service) revokeAllSessions(ctx context.Context, userID string, exceptJT
 		s.rdb.Del(ctx, "user_access_sessions:"+userID)
 	}
 
+	s.revokeRefreshSessions(ctx, userID)
+}
+
+func (s *Service) revokeRefreshSessions(ctx context.Context, userID string) {
 	refreshTokens, _ := s.rdb.SMembers(ctx, "user_refresh_sessions:"+userID).Result()
 	for _, rt := range refreshTokens {
 		s.rdb.Del(ctx, "session:refresh:"+rt)
