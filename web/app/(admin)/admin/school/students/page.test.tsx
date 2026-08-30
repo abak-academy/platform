@@ -6,6 +6,7 @@ import type { AdminStudent, StudentRegistrationResult, StudentCredentials, Schoo
 
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
+const setPasswordMutateAsync = vi.fn();
 
 let studentsState = {
   data: null as { data: AdminStudent[]; next_cursor?: string } | null,
@@ -19,6 +20,7 @@ let studentsState = {
 let registerState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let changeStatusState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let reissueState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+let setPasswordState = { mutateAsync: setPasswordMutateAsync, isPending: false };
 
 // Auth store mock
 let authStore: {
@@ -41,6 +43,7 @@ vi.mock("@/lib/hooks/admin-students", () => ({
   useRegisterStudent: () => registerState,
   useChangeStudentStatus: () => changeStatusState,
   useReissueStudentCredentials: () => reissueState,
+  useSetStudentPassword: () => setPasswordState,
 }));
 
 vi.mock("@/stores/auth", () => ({
@@ -132,8 +135,10 @@ describe("SchoolStudentsPage", () => {
     registerState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     changeStatusState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     reissueState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+    setPasswordState = { mutateAsync: setPasswordMutateAsync, isPending: false };
     mockMutate.mockReset();
     mockMutateAsync.mockReset();
+    setPasswordMutateAsync.mockReset();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
   });
@@ -389,6 +394,110 @@ describe("SchoolStudentsPage", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("gagal register");
     });
+  });
+
+  it("lets super_admin send an explicit registration password without rendering it after success", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+    mockMutateAsync.mockResolvedValueOnce({
+      id: "st3",
+      name: "Manual Password",
+      username: "manual",
+      jenjang: "SMA",
+      status: "active",
+      created_at: "2026-03-01T00:00:00Z",
+    } satisfies StudentRegistrationResult);
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /daftarkan siswa/i }));
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.input(screen.getByPlaceholderText("Nama Lengkap"), {
+      target: { value: "Manual Password" },
+    });
+    const password = "  chosenPass123  ";
+    fireEvent.input(within(dialog).getByPlaceholderText("Password"), {
+      target: { value: password },
+    });
+
+    const jenjangTrigger = within(dialog).getAllByRole("combobox")[2];
+    fireEvent.click(jenjangTrigger);
+    fireEvent.click(await screen.findByRole("option", { name: "SMA" }));
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /daftarkan siswa/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({ password }),
+        }),
+      );
+      expect(toast.success).toHaveBeenCalledWith("Siswa berhasil didaftarkan.");
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.queryByText(password)).not.toBeInTheDocument();
+    expect(screen.queryByText("Kredensial Siswa")).not.toBeInTheDocument();
+  });
+
+  it("hides explicit password controls from admin_school while keeping reissue credentials", async () => {
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /daftarkan siswa/i }));
+    expect(screen.queryByPlaceholderText("Password")).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Batal" }));
+
+    const rows = screen.getAllByRole("row");
+    const budiRow = rows.find((r) => within(r).queryByText("Budi Santoso"));
+    expect(budiRow).toBeTruthy();
+    fireEvent.pointerDown(
+      within(budiRow as HTMLElement).getByRole("button", { name: "" }),
+      { button: 0 },
+    );
+
+    expect(await screen.findByText("Terbitkan Ulang Kredensial")).toBeInTheDocument();
+    expect(screen.queryByText("Set Password")).not.toBeInTheDocument();
+  });
+
+  it("lets super_admin set a student password with confirmation and clears submitted values", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+    setPasswordMutateAsync.mockResolvedValueOnce({ message: "password updated" });
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    const rows = screen.getAllByRole("row");
+    const budiRow = rows.find((r) => within(r).queryByText("Budi Santoso"));
+    expect(budiRow).toBeTruthy();
+    fireEvent.pointerDown(
+      within(budiRow as HTMLElement).getByRole("button", { name: "" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByText("Set Password"));
+
+    let dialog = await screen.findByRole("dialog");
+    const newPassword = within(dialog).getByPlaceholderText("Password Baru");
+    const confirmPassword = within(dialog).getByPlaceholderText("Konfirmasi Password");
+    fireEvent.input(newPassword, { target: { value: "chosenPass123" } });
+    fireEvent.input(confirmPassword, { target: { value: "different123" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Set Password" }));
+
+    expect(setPasswordMutateAsync).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith("Konfirmasi password tidak cocok.");
+
+    fireEvent.input(confirmPassword, { target: { value: "chosenPass123" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Set Password" }));
+
+    await waitFor(() => {
+      expect(setPasswordMutateAsync).toHaveBeenCalledWith({
+        id: "st1",
+        newPassword: "chosenPass123",
+      });
+      expect(toast.success).toHaveBeenCalledWith("Password siswa berhasil diperbarui.");
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.queryByDisplayValue("chosenPass123")).not.toBeInTheDocument();
   });
 
   // ── School dropdown (Bug B) ──

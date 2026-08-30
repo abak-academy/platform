@@ -288,6 +288,7 @@ func newAdminStuDBEnv(t *testing.T) *adminStuDBTestEnv {
 		adminStudents.Use(handler.RBACMiddleware("students:*"))
 		adminStudents.GET("", h.AdminListStudents)
 		adminStudents.POST("", h.AdminRegisterStudent)
+		adminStudents.PATCH("/:id/password", h.AdminSetStudentPassword, handler.RBACMiddleware("system:admin"))
 		adminStudents.PATCH("/:id", h.AdminChangeStudentStatus)
 		adminStudents.GET("/:id/credentials", h.AdminGetStudentCredentials)
 		adminStudents.POST("/bulk/presign", h.AdminPresignStudentBulkUpload)
@@ -329,6 +330,20 @@ func mintSuperAdminStuToken(t *testing.T, env *adminStuDBTestEnv, userID string)
 	rdb := redis.NewClient(&redis.Options{Addr: env.mr.Addr()})
 	t.Cleanup(func() { rdb.Close() })
 	tokenString, jti, err := env.signer.SignAccess(userID, "super_admin", nil, []string{})
+	if err != nil {
+		t.Fatalf("SignAccess: %v", err)
+	}
+	if err := rdb.Set(context.Background(), "session:access:"+jti, userID, 15*time.Minute).Err(); err != nil {
+		t.Fatalf("redis set session: %v", err)
+	}
+	return tokenString
+}
+
+func mintAdminStuToken(t *testing.T, env *adminStuDBTestEnv, userID, role string, schoolID *string) string {
+	t.Helper()
+	rdb := redis.NewClient(&redis.Options{Addr: env.mr.Addr()})
+	t.Cleanup(func() { rdb.Close() })
+	tokenString, jti, err := env.signer.SignAccess(userID, role, schoolID, []string{})
 	if err != nil {
 		t.Fatalf("SignAccess: %v", err)
 	}
@@ -641,6 +656,222 @@ func TestAdminRegisterStudent_SuperAdmin_WithoutSchool(t *testing.T) {
 	if schoolID != nil {
 		t.Errorf("school_id should be NULL when no school was given, got %q", *schoolID)
 	}
+}
+
+func TestAdminRegisterStudent_ExplicitPassword(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+	schoolID := seedSchoolForStu(t, env.pool)
+	password := "chosenPass123"
+
+	t.Run("super_admin explicit password returns no temp_password and stores hash", func(t *testing.T) {
+		token := mintSuperAdminStuToken(t, env, "00000000-0000-0000-0000-00000000e101")
+		body := `{"name":"Explicit Handler","jenjang":"SMA","password":"` + password + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students?school_id="+schoolID, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("want 201, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), password) || strings.Contains(rec.Body.String(), "temp_password") {
+			t.Fatalf("explicit-password response leaked secret or temp_password: %s", rec.Body.String())
+		}
+		var resp struct {
+			ID           string  `json:"id"`
+			Username     string  `json:"username"`
+			TempPassword *string `json:"temp_password"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.Username == "" || resp.TempPassword != nil {
+			t.Fatalf("unexpected response: %+v", resp)
+		}
+		var hash string
+		if err := env.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, resp.ID).Scan(&hash); err != nil {
+			t.Fatalf("read hash: %v", err)
+		}
+		if hash == password || !strings.HasPrefix(hash, "$2") {
+			t.Fatalf("password was not stored as bcrypt hash: %q", hash)
+		}
+	})
+
+	t.Run("super_admin omitted password keeps generated temp_password", func(t *testing.T) {
+		token := mintSuperAdminStuToken(t, env, "00000000-0000-0000-0000-00000000e102")
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students?school_id="+schoolID, strings.NewReader(`{"name":"Generated Handler","jenjang":"SMA"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("want 201, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			TempPassword string `json:"temp_password"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.TempPassword == "" {
+			t.Fatal("omitted password should preserve generated temp_password")
+		}
+	})
+
+	t.Run("admin_school explicit password is forbidden and inserts nothing", func(t *testing.T) {
+		token := mintAdminStuToken(t, env, "00000000-0000-0000-0000-00000000e103", service.RoleAdminSchool, &schoolID)
+		name := "Forbidden Handler " + uuid.NewString()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", strings.NewReader(`{"name":"`+name+`","jenjang":"SMA","password":"`+password+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), password) {
+			t.Fatalf("forbidden response leaked password: %s", rec.Body.String())
+		}
+		var count int
+		if err := env.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE name = $1`, name).Scan(&count); err != nil {
+			t.Fatalf("count users: %v", err)
+		}
+		if count != 0 {
+			t.Fatalf("forbidden create inserted %d rows", count)
+		}
+	})
+
+	t.Run("admin_school omitted password keeps legacy create", func(t *testing.T) {
+		token := mintAdminStuToken(t, env, "00000000-0000-0000-0000-00000000e104", service.RoleAdminSchool, &schoolID)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", strings.NewReader(`{"name":"Scoped Generated Handler","jenjang":"SMA"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("want 201, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			TempPassword string `json:"temp_password"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.TempPassword == "" {
+			t.Fatal("scoped omitted password should preserve generated temp_password")
+		}
+	})
+}
+
+func TestAdminSetStudentPassword(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+	schoolID := seedSchoolForStu(t, env.pool)
+	reg, err := env.svc.RegisterStudent(ctx, schoolID, "Set Password Handler", "SMA", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+	var originalHash string
+	if err := env.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, reg.ID).Scan(&originalHash); err != nil {
+		t.Fatalf("read original hash: %v", err)
+	}
+
+	t.Run("unauthenticated is 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/students/"+reg.ID+"/password", strings.NewReader(`{"new_password":"manualNew123"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	for _, tc := range []struct {
+		name string
+		role string
+	}{
+		{"admin_school", service.RoleAdminSchool},
+		{"admin_store", service.RoleAdminStore},
+		{"student", service.RoleStudent},
+	} {
+		t.Run(tc.name+" is 403", func(t *testing.T) {
+			token := mintAdminStuToken(t, env, "00000000-0000-0000-0000-"+uuid.NewString()[24:], tc.role, &schoolID)
+			req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/students/"+reg.ID+"/password", strings.NewReader(`{"new_password":"manualNew123"}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+			env.e.ServeHTTP(rec, req)
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+			}
+			var hash string
+			if err := env.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, reg.ID).Scan(&hash); err != nil {
+				t.Fatalf("read hash: %v", err)
+			}
+			if hash != originalHash {
+				t.Fatal("denied request mutated hash")
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name string
+		path string
+		body string
+		want int
+		code string
+	}{
+		{"missing password", "/api/v1/admin/students/" + reg.ID + "/password", `{}`, http.StatusBadRequest, "invalid_request"},
+		{"blank password", "/api/v1/admin/students/" + reg.ID + "/password", `{"new_password":""}`, http.StatusBadRequest, "invalid_request"},
+		{"weak password", "/api/v1/admin/students/" + reg.ID + "/password", `{"new_password":"short"}`, http.StatusBadRequest, "invalid_request"},
+		{"malformed id", "/api/v1/admin/students/not-a-uuid/password", `{"new_password":"manualNew123"}`, http.StatusBadRequest, "invalid_request"},
+		{"missing target", "/api/v1/admin/students/00000000-0000-0000-0000-000000000000/password", `{"new_password":"manualNew123"}`, http.StatusNotFound, "student_not_found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			token := mintSuperAdminStuToken(t, env, "00000000-0000-0000-0000-"+uuid.NewString()[24:])
+			req := httptest.NewRequest(http.MethodPatch, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+			env.e.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("want %d, got %d body=%s", tc.want, rec.Code, rec.Body.String())
+			}
+			var resp struct {
+				Code string `json:"code"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if resp.Code != tc.code {
+				t.Fatalf("want code %s, got %s", tc.code, resp.Code)
+			}
+		})
+	}
+
+	t.Run("super_admin succeeds with generic secret-free response", func(t *testing.T) {
+		newPassword := "manualNew123"
+		token := mintSuperAdminStuToken(t, env, "00000000-0000-0000-0000-00000000e201")
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/students/"+reg.ID+"/password", strings.NewReader(`{"new_password":"`+newPassword+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		if strings.TrimSpace(rec.Body.String()) != `{"message":"password updated"}` {
+			t.Fatalf("want exact generic response, got %s", rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), newPassword) || strings.Contains(rec.Body.String(), reg.Username) {
+			t.Fatalf("response leaked secret fields: %s", rec.Body.String())
+		}
+	})
 }
 
 func TestAdminGetStudentCredentials_SuperAdmin_NoSchoolID_200(t *testing.T) {

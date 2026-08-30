@@ -225,6 +225,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminStudents.Use(handler.RBACMiddleware("students:*"))
 	adminStudents.GET("", h.AdminListStudents)
 	adminStudents.POST("", h.AdminRegisterStudent)
+	adminStudents.PATCH("/:id/password", h.AdminSetStudentPassword, handler.RBACMiddleware("system:admin"))
 	adminStudents.PATCH("/:id", h.AdminChangeStudentStatus)
 	adminStudents.GET("/:id/credentials", h.AdminGetStudentCredentials)
 	adminStudents.POST("/bulk/presign", h.AdminPresignStudentBulkUpload)

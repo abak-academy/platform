@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"akademi-bimbel/internal/repository"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestParseStudentBulkCSV(t *testing.T) {
@@ -255,6 +257,30 @@ func TestParseStudentBulkCSV(t *testing.T) {
 			t.Errorf("want ErrRowLimitExceeded, got %v", err)
 		}
 	})
+
+	t.Run("optional password header is case-insensitive and blank cells are omitted", func(t *testing.T) {
+		data := []byte("name,school,jenjang,PASSWORD\nBudi,SMAN 1 Jakarta,sma,chosenPass123\nSiti,SMAN 1 Jakarta,sma,\n")
+		rows, err := ParseStudentBulkCSV(data)
+		if err != nil {
+			t.Fatalf("ParseStudentBulkCSV: %v", err)
+		}
+		if rows[0].Password == nil || *rows[0].Password != "chosenPass123" {
+			t.Fatalf("want parsed explicit password, got %+v", rows[0].Password)
+		}
+		if rows[1].Password != nil {
+			t.Fatalf("blank password cell should be nil, got %q", *rows[1].Password)
+		}
+	})
+
+	t.Run("missing password header leaves password nil", func(t *testing.T) {
+		rows, err := ParseStudentBulkCSV([]byte("name,school,jenjang\nBudi,SMAN 1 Jakarta,sma\n"))
+		if err != nil {
+			t.Fatalf("ParseStudentBulkCSV: %v", err)
+		}
+		if rows[0].Password != nil {
+			t.Fatalf("missing password header should leave nil, got %q", *rows[0].Password)
+		}
+	})
 }
 
 const frontendStudentBulkTemplateCSV = "name,school,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
@@ -318,6 +344,25 @@ func TestBuildStudentBulkResultCSV(t *testing.T) {
 	}
 }
 
+func TestBuildStudentBulkResultCSV_DoesNotLeakExplicitPassword(t *testing.T) {
+	explicitPassword := "chosenPass123"
+	hash, err := hashPassword(explicitPassword)
+	if err != nil {
+		t.Fatalf("hashPassword: %v", err)
+	}
+	results := []StudentBulkResultRow{
+		{Row: 2, Name: "Budi", School: "SMAN 1 Jakarta", Email: "budi@example.com", Status: "success", Username: "budi123", TempPassword: ""},
+		{Row: 3, Name: "Siti", School: "SMAN 1 Jakarta", Status: "success", Username: "siti123", TempPassword: "generated123"},
+	}
+	data := string(BuildStudentBulkResultCSV(results))
+	if !strings.Contains(data, "temp_password") || !strings.Contains(data, "generated123") {
+		t.Fatalf("legacy temp_password column/value must remain, got %s", data)
+	}
+	if strings.Contains(data, explicitPassword) || strings.Contains(data, string(hash)) {
+		t.Fatalf("result CSV leaked explicit password or hash: %s", data)
+	}
+}
+
 // schoolNameByID is a test helper that retrieves the school name for a given ID.
 func schoolNameByID(t *testing.T, repo *repository.Repository, schoolID string) string {
 	t.Helper()
@@ -345,7 +390,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Name: "Siti", School: schoolName, Jenjang: "sma"},
 		}
 		var progressCalls []int
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, func(pct int) {
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, func(pct int) {
 			progressCalls = append(progressCalls, pct)
 		})
 		if err != nil {
@@ -379,7 +424,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "Fields", School: schoolName, Jenjang: "sma", DOB: &dob, Gender: &gender, Grade: &grade, AlamatDomisili: &alamat, TargetExam: &targetExam},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -418,7 +463,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "BadDOB", School: schoolName, Jenjang: "sma", DOB: &badDOB},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -438,7 +483,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "BadGrade", School: schoolName, Jenjang: "sma", Grade: &badGrade},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -470,7 +515,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "Andi", School: schoolName, Jenjang: "sma", Provinsi: &sulselProv, Kota: &makassarKota, Kecamatan: &mariso, KodePos: &kodePos},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -493,7 +538,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "Partial", School: schoolName, Jenjang: "sma", Provinsi: &sulselProv},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -515,7 +560,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "Bogus", School: schoolName, Jenjang: "sma", Provinsi: &bogusProv, Kota: &makassarKota, Kecamatan: &mariso},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -538,7 +583,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Name: "A", School: schoolName, Jenjang: "sma"},
 			{Name: "B", School: schoolName, Jenjang: "sma"},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, func(int) {})
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, func(int) {})
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -564,7 +609,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		}
 
 		callCount := 0
-		results, successCount, err := svc.ProcessStudentBulkRows(cancelCtx, schoolBound, rows, func(int) {
+		results, successCount, err := svc.ProcessStudentBulkRows(cancelCtx, schoolBound, RoleAdminSchool, rows, func(int) {
 			callCount++
 			if callCount == 1 {
 				cancel()
@@ -601,7 +646,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			rows[i] = StudentBulkRow{Name: "Student", School: schoolName, Jenjang: "sma"}
 		}
 		var progressCalls []int
-		_, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, func(pct int) {
+		_, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, func(pct int) {
 			progressCalls = append(progressCalls, pct)
 		})
 		if err != nil {
@@ -632,7 +677,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "NoSchool", School: "THIS SCHOOL DOES NOT EXIST", Jenjang: "sma"},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -656,7 +701,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "Cross", School: schoolBName, Jenjang: "sma"},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -682,7 +727,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Name: "FromB", School: schoolBName, Jenjang: "sma"},
 		}
 		// schoolBound = nil simulates super_admin (unrestricted).
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -709,7 +754,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Name: "Good", School: schoolName, Jenjang: "sma"},
 			{Name: "Bad", School: "NONEXISTENT SCHOOL", Jenjang: "sma"},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -727,6 +772,98 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		}
 		if results[1].School != "NONEXISTENT SCHOOL" {
 			t.Errorf("result 1: want raw school=%q, got %q", "NONEXISTENT SCHOOL", results[1].School)
+		}
+	})
+
+	t.Run("super_admin mixed explicit and generated passwords are per-row", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		schoolName := schoolNameByID(t, repo, schoolID)
+		explicitPassword := "chosenPass123"
+		rows := []StudentBulkRow{
+			{Name: "Explicit Bulk " + uniqueSuffix(), School: schoolName, Jenjang: "sma", Password: &explicitPassword},
+			{Name: "Generated Bulk " + uniqueSuffix(), School: schoolName, Jenjang: "sma"},
+		}
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if successCount != 2 {
+			t.Fatalf("want successCount=2, got %d: %+v", successCount, results)
+		}
+		if results[0].Status != "success" || results[0].TempPassword != "" {
+			t.Fatalf("explicit row should succeed without result temp_password, got %+v", results[0])
+		}
+		if results[1].Status != "success" || results[1].TempPassword == "" {
+			t.Fatalf("generated row should retain result temp_password, got %+v", results[1])
+		}
+		explicitUser, err := repo.GetUserByUsername(ctx, results[0].Username)
+		if err != nil || explicitUser == nil {
+			t.Fatalf("read explicit user: %v", err)
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(explicitUser.PasswordHash), []byte(explicitPassword)); err != nil {
+			t.Fatalf("explicit row hash does not match supplied password: %v", err)
+		}
+		generatedUser, err := repo.GetUserByUsername(ctx, results[1].Username)
+		if err != nil || generatedUser == nil {
+			t.Fatalf("read generated user: %v", err)
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(generatedUser.PasswordHash), []byte(results[1].TempPassword)); err != nil {
+			t.Fatalf("generated row hash does not match generated temp password: %v", err)
+		}
+	})
+
+	t.Run("super_admin weak explicit password fails only that row", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		schoolName := schoolNameByID(t, repo, schoolID)
+		weak := "short"
+		rows := []StudentBulkRow{
+			{Name: "Weak Bulk " + uniqueSuffix(), School: schoolName, Jenjang: "sma", Password: &weak},
+			{Name: "Valid Bulk " + uniqueSuffix(), School: schoolName, Jenjang: "sma"},
+		}
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if successCount != 1 {
+			t.Fatalf("want only valid row to succeed, got %d: %+v", successCount, results)
+		}
+		if results[0].Status != "failed" || results[0].Error != ErrWeakPassword.Error() || results[0].Username != "" || results[0].TempPassword != "" {
+			t.Fatalf("weak explicit row should fail without credentials, got %+v", results[0])
+		}
+		if results[1].Status != "success" || results[1].TempPassword == "" {
+			t.Fatalf("valid generated row should succeed, got %+v", results[1])
+		}
+	})
+
+	t.Run("admin_school explicit password is forbidden per row while blank rows succeed", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		schoolName := schoolNameByID(t, repo, schoolID)
+		schoolBound := &schoolID
+		explicitPassword := "chosenPass123"
+		explicitName := "Forbidden Bulk " + uniqueSuffix()
+		rows := []StudentBulkRow{
+			{Name: explicitName, School: schoolName, Jenjang: "sma", Password: &explicitPassword},
+			{Name: "Allowed Bulk " + uniqueSuffix(), School: schoolName, Jenjang: "sma"},
+		}
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if successCount != 1 {
+			t.Fatalf("want only blank-password row to succeed, got %d: %+v", successCount, results)
+		}
+		if results[0].Status != "failed" || results[0].Error != ErrForbidden.Error() || results[0].Username != "" || results[0].TempPassword != "" {
+			t.Fatalf("explicit admin_school row should be forbidden without credentials, got %+v", results[0])
+		}
+		if results[1].Status != "success" || results[1].TempPassword == "" {
+			t.Fatalf("blank admin_school row should succeed unchanged, got %+v", results[1])
+		}
+		var count int
+		if err := repo.Pool().QueryRow(ctx, `SELECT count(*) FROM users WHERE name = $1`, explicitName).Scan(&count); err != nil {
+			t.Fatalf("count forbidden insert: %v", err)
+		}
+		if count != 0 {
+			t.Fatalf("forbidden explicit row inserted %d users", count)
 		}
 	})
 }

@@ -24,21 +24,23 @@ import { BulkFormatGuide } from "@/components/admin/BulkFormatGuide";
 import {
   STUDENT_BULK_FIELDS,
   STUDENT_GUIDE_PITFALL_KEYS,
+  SUPER_ADMIN_STUDENT_BULK_FIELDS,
   buildStudentGuideText,
   buildStudentTemplateCSV,
   downloadTextFile,
 } from "@/lib/bulk-import-format";
 
-function downloadTemplate(): void {
-  downloadTextFile("bulk_register_template.csv", buildStudentTemplateCSV(), "text/csv;charset=utf-8");
+function downloadTemplate(allowExplicitPassword: boolean): void {
+  downloadTextFile("bulk_register_template.csv", buildStudentTemplateCSV(allowExplicitPassword), "text/csv;charset=utf-8");
 }
 
 interface BulkImportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  allowExplicitPassword: boolean;
 }
 
-export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
+export function BulkImportModal({ open, onOpenChange, allowExplicitPassword }: BulkImportModalProps) {
   const { t } = useTranslation();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -88,6 +90,7 @@ export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
   const jobData = job.data;
   const isTerminalSuccess = jobData?.status === "succeeded";
   const isTerminalFailed = jobData?.status === "failed";
+  const bulkFields = allowExplicitPassword ? SUPER_ADMIN_STUDENT_BULK_FIELDS : STUDENT_BULK_FIELDS;
 
   return (
     <Dialog
@@ -114,7 +117,7 @@ export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
                 variant="outline"
                 size="sm"
                 className="rounded-full"
-                onClick={downloadTemplate}
+                onClick={() => downloadTemplate(allowExplicitPassword)}
               >
                 <Download className="mr-2 size-4" />
                 {t("bulk_register_download_template")}
@@ -127,7 +130,7 @@ export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
                 onClick={() =>
                   downloadTextFile(
                     "bulk_register_guide.txt",
-                    buildStudentGuideText(t),
+                    buildStudentGuideText(t, allowExplicitPassword),
                     "text/plain;charset=utf-8",
                   )
                 }
@@ -137,7 +140,7 @@ export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
               </Button>
             </div>
             <div className="mt-3">
-              <BulkFormatGuide fields={STUDENT_BULK_FIELDS} pitfallKeys={STUDENT_GUIDE_PITFALL_KEYS} />
+              <BulkFormatGuide fields={bulkFields} pitfallKeys={STUDENT_GUIDE_PITFALL_KEYS} />
             </div>
           </section>
 

@@ -13,7 +13,7 @@ import (
 // studentBulkProcessor covers just the row-processing step so *service.Service
 // (concrete, real-DB-backed) can be swapped for a fake at the worker-dispatch level.
 type studentBulkProcessor interface {
-	ProcessStudentBulkRows(ctx context.Context, schoolBound *string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
+	ProcessStudentBulkRows(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
 }
 
 // runStudentBulkJob downloads the job's input CSV, processes each row through
@@ -56,7 +56,7 @@ func (w *Worker) runStudentBulkJob(ctx context.Context, job model.Job) {
 		}
 	}
 
-	results, successCount, err := w.svc.ProcessStudentBulkRows(ctx, schoolBound, rows, onProgress)
+	results, successCount, err := w.svc.ProcessStudentBulkRows(ctx, schoolBound, user.Role, rows, onProgress)
 	if err != nil {
 		w.failStudentBulkJob(ctx, job, fmt.Sprintf("process rows: %v", err))
 		return
