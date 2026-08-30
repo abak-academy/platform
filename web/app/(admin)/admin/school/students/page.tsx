@@ -97,7 +97,8 @@ function compactStudentRegistration(
   if (form.kecamatan_id) payload.kecamatan_id = form.kecamatan_id;
   const kodePos = form.kode_pos?.trim();
   if (kodePos) payload.kode_pos = kodePos;
-  if (form.password) payload.password = form.password;
+  const password = form.password?.trim();
+  if (password) payload.password = password;
   return payload;
 }
 
@@ -257,11 +258,7 @@ export default function SchoolStudentsPage() {
         schoolId: isSuperAdmin ? registerSchoolId : undefined,
       });
       toast.success(t("students_register_success"));
-      if (result.temp_password) {
-        setRegisterResult(result);
-      } else {
-        handleCloseRegister();
-      }
+      setRegisterResult(result);
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : t("students_register_failed");
@@ -671,7 +668,7 @@ export default function SchoolStudentsPage() {
         if (!open) handleCloseRegister();
       }}>
         <DialogContent className="sm:max-w-2xl">
-          {registerResult?.temp_password ? (
+          {registerResult ? (
             /* Credential panel — one-time display */
             <>
               <DialogHeader>
@@ -710,6 +707,7 @@ export default function SchoolStudentsPage() {
                     </Button>
                   </div>
                 </div>
+                {registerResult.temp_password ? (
                 <div>
                   <Label>{t("students_credential_password")}</Label>
                   <div className="mt-1 flex items-center gap-2">
@@ -737,6 +735,7 @@ export default function SchoolStudentsPage() {
                     </Button>
                   </div>
                 </div>
+                ) : null}
               </div>
               <DialogFooter className="mt-4">
                 <Button className="rounded-full" onClick={handleCloseRegister}>

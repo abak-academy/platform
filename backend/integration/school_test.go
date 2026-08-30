@@ -140,6 +140,14 @@ func TestStudentManualPasswordManagement_Integration(t *testing.T) {
 	require.NotContains(t, body, "temp_password")
 	explicitUsername := body["username"].(string)
 	explicitID := body["id"].(string)
+	studentAccess, studentJTI, err := env.signer.SignAccess(explicitID, service.RoleStudent, &schoolID, service.Capabilities(service.RoleStudent))
+	require.NoError(t, err)
+	require.NotEmpty(t, studentAccess)
+	studentRefresh := "student-refresh-" + explicitID
+	require.NoError(t, env.rdb.Set(ctx, "session:access:"+studentJTI, explicitID, 15*time.Minute).Err())
+	require.NoError(t, env.rdb.SAdd(ctx, "user_access_sessions:"+explicitID, studentJTI).Err())
+	require.NoError(t, env.rdb.Set(ctx, "session:refresh:"+studentRefresh, explicitID, 24*time.Hour).Err())
+	require.NoError(t, env.rdb.SAdd(ctx, "user_refresh_sessions:"+explicitID, studentRefresh).Err())
 
 	loginResp, _ := doJSONBody(t, env, http.MethodPost, "/api/v1/auth/login", map[string]string{
 		"identifier": explicitUsername,
@@ -179,6 +187,19 @@ func TestStudentManualPasswordManagement_Integration(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, map[string]any{"message": "password updated"}, body)
 	require.NotContains(t, marshalMap(body), resetPassword)
+	accessExists, err := env.rdb.Exists(ctx, "session:access:"+studentJTI).Result()
+	require.NoError(t, err)
+	require.Zero(t, accessExists, "manual password set must revoke student access sessions")
+	refreshExists, err := env.rdb.Exists(ctx, "session:refresh:"+studentRefresh).Result()
+	require.NoError(t, err)
+	require.Zero(t, refreshExists, "manual password set must revoke student refresh sessions")
+	var passwordAuditCount int
+	err = env.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM audit_log WHERE actor_id = $1 AND target_type = 'user' AND target_id = $2 AND action = 'student.set_password'`,
+		superID, explicitID,
+	).Scan(&passwordAuditCount)
+	require.NoError(t, err)
+	require.Equal(t, 1, passwordAuditCount)
 
 	loginResp, _ = doJSONBody(t, env, http.MethodPost, "/api/v1/auth/login", map[string]string{
 		"identifier": explicitUsername,
@@ -206,6 +227,21 @@ func TestStudentManualPasswordManagement_Integration(t *testing.T) {
 	}, superToken)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	require.Equal(t, "student_not_found", body["code"])
+
+	reissueJTI := "reissue-session"
+	reissueRefresh := "reissue-refresh-" + explicitID
+	require.NoError(t, env.rdb.Set(ctx, "session:access:"+reissueJTI, explicitID, 15*time.Minute).Err())
+	require.NoError(t, env.rdb.SAdd(ctx, "user_access_sessions:"+explicitID, reissueJTI).Err())
+	require.NoError(t, env.rdb.Set(ctx, "session:refresh:"+reissueRefresh, explicitID, 24*time.Hour).Err())
+	require.NoError(t, env.rdb.SAdd(ctx, "user_refresh_sessions:"+explicitID, reissueRefresh).Err())
+	resp, _ = doJSONBody(t, env, http.MethodGet, "/api/v1/admin/students/"+explicitID+"/credentials", nil, superToken)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	reissueAccessExists, err := env.rdb.Exists(ctx, "session:access:"+reissueJTI).Result()
+	require.NoError(t, err)
+	require.Zero(t, reissueAccessExists, "credential reissue must revoke student access sessions")
+	reissueRefreshExists, err := env.rdb.Exists(ctx, "session:refresh:"+reissueRefresh).Result()
+	require.NoError(t, err)
+	require.Zero(t, reissueRefreshExists, "credential reissue must revoke student refresh sessions")
 }
 
 func marshalMap(v map[string]any) string {

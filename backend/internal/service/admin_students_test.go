@@ -352,7 +352,7 @@ func TestRegisterStudentExplicitPassword_Integration(t *testing.T) {
 	schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 
 	t.Run("weak explicit password is rejected", func(t *testing.T) {
-		_, err := svc.RegisterStudentWithPassword(ctx, schoolID, "Weak Explicit", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "short")
+		_, err := svc.RegisterStudentWithPassword(ctx, RoleSuperAdmin, schoolID, "Weak Explicit", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "short")
 		if !errors.Is(err, ErrWeakPassword) {
 			t.Errorf("want ErrWeakPassword, got %v", err)
 		}
@@ -360,7 +360,7 @@ func TestRegisterStudentExplicitPassword_Integration(t *testing.T) {
 
 	t.Run("valid explicit password is hashed and not returned", func(t *testing.T) {
 		password := "chosenPass123"
-		resp, err := svc.RegisterStudentWithPassword(ctx, schoolID, "Explicit Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, password)
+		resp, err := svc.RegisterStudentWithPassword(ctx, RoleSuperAdmin, schoolID, "Explicit Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, password)
 		if err != nil {
 			t.Fatalf("RegisterStudentWithPassword: %v", err)
 		}
@@ -376,6 +376,13 @@ func TestRegisterStudentExplicitPassword_Integration(t *testing.T) {
 		}
 		if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
 			t.Fatalf("persisted hash does not match explicit password: %v", err)
+		}
+	})
+
+	t.Run("non-super-admin explicit password is forbidden", func(t *testing.T) {
+		_, err := svc.RegisterStudentWithPassword(ctx, RoleAdminSchool, schoolID, "Forbidden Explicit", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "chosenPass123")
+		if !errors.Is(err, ErrForbidden) {
+			t.Errorf("want ErrForbidden, got %v", err)
 		}
 	})
 }
@@ -514,6 +521,7 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 func TestSetStudentPassword_Integration(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
+	actorID := "00000000-0000-0000-0000-000000000001"
 	schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 	active := createTestStudentWithSchool(t, svc, schoolID, "sma")
 	schoolless := createTestStudentNoSchool(t, svc)
@@ -529,7 +537,7 @@ func TestSetStudentPassword_Integration(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			password := "manualNew123"
-			if err := svc.SetStudentPassword(ctx, studentID, password); err != nil {
+			if err := svc.SetStudentPassword(ctx, actorID, studentID, password); err != nil {
 				t.Fatalf("SetStudentPassword: %v", err)
 			}
 			var hash string
@@ -550,7 +558,7 @@ func TestSetStudentPassword_Integration(t *testing.T) {
 		if err := repo.Pool().QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, active).Scan(&before); err != nil {
 			t.Fatalf("read before: %v", err)
 		}
-		err := svc.SetStudentPassword(ctx, active, "short")
+		err := svc.SetStudentPassword(ctx, actorID, active, "short")
 		if !errors.Is(err, ErrWeakPassword) {
 			t.Fatalf("want ErrWeakPassword, got %v", err)
 		}
@@ -564,14 +572,14 @@ func TestSetStudentPassword_Integration(t *testing.T) {
 	})
 
 	t.Run("missing deleted and non-student targets fail without mutation", func(t *testing.T) {
-		if err := svc.SetStudentPassword(ctx, "00000000-0000-0000-0000-000000000000", "manualNew123"); !errors.Is(err, ErrStudentNotFound) {
+		if err := svc.SetStudentPassword(ctx, actorID, "00000000-0000-0000-0000-000000000000", "manualNew123"); !errors.Is(err, ErrStudentNotFound) {
 			t.Fatalf("missing target: want ErrStudentNotFound, got %v", err)
 		}
 		deleted := createTestStudentWithSchool(t, svc, schoolID, "sma")
 		if _, err := repo.Pool().Exec(ctx, `UPDATE users SET status = 'deleted' WHERE id = $1`, deleted); err != nil {
 			t.Fatalf("mark deleted: %v", err)
 		}
-		if err := svc.SetStudentPassword(ctx, deleted, "manualNew123"); !errors.Is(err, ErrStudentNotFound) {
+		if err := svc.SetStudentPassword(ctx, actorID, deleted, "manualNew123"); !errors.Is(err, ErrStudentNotFound) {
 			t.Fatalf("deleted target: want ErrStudentNotFound, got %v", err)
 		}
 		var adminID string
@@ -581,7 +589,7 @@ func TestSetStudentPassword_Integration(t *testing.T) {
 		).Scan(&adminID); err != nil {
 			t.Fatalf("seed admin: %v", err)
 		}
-		if err := svc.SetStudentPassword(ctx, adminID, "manualNew123"); !errors.Is(err, ErrStudentNotFound) {
+		if err := svc.SetStudentPassword(ctx, actorID, adminID, "manualNew123"); !errors.Is(err, ErrStudentNotFound) {
 			t.Fatalf("non-student target: want ErrStudentNotFound, got %v", err)
 		}
 		var adminHash string

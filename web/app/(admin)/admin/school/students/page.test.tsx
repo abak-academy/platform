@@ -396,7 +396,7 @@ describe("SchoolStudentsPage", () => {
     });
   });
 
-  it("lets super_admin send an explicit registration password without rendering it after success", async () => {
+  it("shows the generated username without rendering an explicit password after success", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
     mockMutateAsync.mockResolvedValueOnce({
       id: "st3",
@@ -430,14 +430,17 @@ describe("SchoolStudentsPage", () => {
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
-          input: expect.objectContaining({ password }),
+          input: expect.objectContaining({ password: "chosenPass123" }),
         }),
       );
       expect(toast.success).toHaveBeenCalledWith("Siswa berhasil didaftarkan.");
     });
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => {
+      expect(screen.getByText("Kredensial Siswa")).toBeInTheDocument();
+      expect(screen.getByText("manual")).toBeInTheDocument();
+    });
     expect(screen.queryByText(password)).not.toBeInTheDocument();
-    expect(screen.queryByText("Kredensial Siswa")).not.toBeInTheDocument();
+    expect(screen.queryByText("Password Sementara")).not.toBeInTheDocument();
   });
 
   it("hides explicit password controls from admin_school while keeping reissue credentials", async () => {

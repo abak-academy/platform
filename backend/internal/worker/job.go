@@ -25,6 +25,7 @@ type jobRepository interface {
 type objectStore interface {
 	GetObjectBytes(ctx context.Context, bucket, key string) ([]byte, error)
 	PutObjectBytes(ctx context.Context, bucket, key string, data []byte, contentType string) error
+	DeleteObject(ctx context.Context, bucket, key string) error
 }
 
 type minioObjectStore struct {
@@ -48,6 +49,10 @@ func (m *minioObjectStore) GetObjectBytes(ctx context.Context, bucket, key strin
 func (m *minioObjectStore) PutObjectBytes(ctx context.Context, bucket, key string, data []byte, contentType string) error {
 	_, err := m.client.PutObject(ctx, bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: contentType})
 	return err
+}
+
+func (m *minioObjectStore) DeleteObject(ctx context.Context, bucket, key string) error {
+	return m.client.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{})
 }
 
 // pollJobs claims one queued job of any type and routes it to a handler by

@@ -129,7 +129,10 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 	return s.registerStudent(ctx, schoolID, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil)
 }
 
-func (s *Service) RegisterStudentWithPassword(ctx context.Context, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
+func (s *Service) RegisterStudentWithPassword(ctx context.Context, actorRole, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
+	if actorRole != RoleSuperAdmin {
+		return nil, ErrForbidden
+	}
 	return s.registerStudent(ctx, schoolID, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password)
 }
 
@@ -439,6 +442,7 @@ func (s *Service) ReissueStudentCredentials(ctx context.Context, schoolID, targe
 	if err := s.storeRepo.ResetStudentPasswordHash(ctx, targetID, schoolID, string(hash)); err != nil {
 		return nil, err
 	}
+	s.revokeAllSessions(ctx, targetID)
 
 	return &StudentCredentialsResponse{
 		Username:     *student.Username,
@@ -446,7 +450,7 @@ func (s *Service) ReissueStudentCredentials(ctx context.Context, schoolID, targe
 	}, nil
 }
 
-func (s *Service) SetStudentPassword(ctx context.Context, targetID, newPassword string) error {
+func (s *Service) SetStudentPassword(ctx context.Context, actorID, targetID, newPassword string) error {
 	if _, err := parseUUID(targetID); err != nil {
 		return ErrInvalidUUID
 	}
@@ -464,5 +468,10 @@ func (s *Service) SetStudentPassword(ctx context.Context, targetID, newPassword 
 	if err != nil {
 		return err
 	}
-	return s.storeRepo.ResetStudentPasswordHash(ctx, targetID, "", string(hash))
+	if err := s.storeRepo.ResetStudentPasswordHash(ctx, targetID, "", string(hash)); err != nil {
+		return err
+	}
+	s.revokeAllSessions(ctx, targetID)
+	actor := &actorID
+	return s.storeRepo.InsertAuditLogMeta(ctx, nil, actor, "user", targetID, "student.set_password", map[string]any{})
 }

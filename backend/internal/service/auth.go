@@ -354,6 +354,9 @@ func (s *Service) ResetPassword(ctx context.Context, token, otp, newPassword str
 // (mintSession stores them in separate, unpaired sets), so every refresh
 // token is always revoked, the caller's included (FR-31).
 func (s *Service) revokeAllSessions(ctx context.Context, userID string, exceptJTI ...string) {
+	if s.rdb == nil {
+		return
+	}
 	var keep string
 	if len(exceptJTI) > 0 {
 		keep = exceptJTI[0]

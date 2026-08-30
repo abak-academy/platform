@@ -56,9 +56,11 @@ func (f *fakeJobRepo) GetUserByID(ctx context.Context, id string) (*model.User, 
 type fakeObjectStore struct {
 	getObjectBytesFn func(ctx context.Context, bucket, key string) ([]byte, error)
 	putObjectBytesFn func(ctx context.Context, bucket, key string, data []byte, contentType string) error
+	deleteObjectFn   func(ctx context.Context, bucket, key string) error
 
-	getCalls []string
-	putCalls []putCall
+	getCalls    []string
+	putCalls    []putCall
+	deleteCalls []string
 }
 
 type putCall struct {
@@ -75,6 +77,14 @@ func (f *fakeObjectStore) PutObjectBytes(ctx context.Context, bucket, key string
 	f.putCalls = append(f.putCalls, putCall{bucket, key, contentType, data})
 	if f.putObjectBytesFn != nil {
 		return f.putObjectBytesFn(ctx, bucket, key, data, contentType)
+	}
+	return nil
+}
+
+func (f *fakeObjectStore) DeleteObject(ctx context.Context, bucket, key string) error {
+	f.deleteCalls = append(f.deleteCalls, bucket+"/"+key)
+	if f.deleteObjectFn != nil {
+		return f.deleteObjectFn(ctx, bucket, key)
 	}
 	return nil
 }
@@ -170,6 +180,12 @@ func TestRunStudentBulkJobSucceedsUploadsReportAndFinishesSucceeded(t *testing.T
 		getObjectBytesFn: func(ctx context.Context, bucket, key string) ([]byte, error) {
 			return []byte(validBulkCSV), nil
 		},
+		deleteObjectFn: func(ctx context.Context, bucket, key string) error {
+			if len(repo.finishCalls) != 1 {
+				t.Fatalf("input deletion must follow FinishJob, got %d finish calls", len(repo.finishCalls))
+			}
+			return nil
+		},
 	}
 	svc := &fakeStudentBulkProcessor{
 		processFn: func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
@@ -225,6 +241,9 @@ func TestRunStudentBulkJobSucceedsUploadsReportAndFinishesSucceeded(t *testing.T
 	}
 	if finish.errMsg != nil {
 		t.Errorf("expected nil errMsg, got %v", *finish.errMsg)
+	}
+	if len(store.deleteCalls) != 1 || store.deleteCalls[0] != "private-bucket/student-bulk/s1/upload.csv" {
+		t.Fatalf("expected input CSV deletion after completion, got %v", store.deleteCalls)
 	}
 }
 

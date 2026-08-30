@@ -105,10 +105,7 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 
 	var resp *service.StudentRegistrationResponse
 	if req.Password != nil && *req.Password != "" {
-		if claims.Role != service.RoleSuperAdmin {
-			return mapServiceError(c, service.ErrForbidden)
-		}
-		resp, err = h.svc.RegisterStudentWithPassword(c.Request().Context(), schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos, *req.Password)
+		resp, err = h.svc.RegisterStudentWithPassword(c.Request().Context(), claims.Role, schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos, *req.Password)
 	} else {
 		resp, err = h.svc.RegisterStudent(c.Request().Context(), schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos)
 	}
@@ -119,6 +116,7 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 }
 
 func (h *Handler) AdminSetStudentPassword(c echo.Context) error {
+	claims := ClaimsFromContext(c)
 	var req struct {
 		NewPassword *string `json:"new_password"`
 	}
@@ -128,7 +126,7 @@ func (h *Handler) AdminSetStudentPassword(c echo.Context) error {
 	if req.NewPassword == nil || *req.NewPassword == "" {
 		return badRequest(c, "new_password is required")
 	}
-	if err := h.svc.SetStudentPassword(c.Request().Context(), c.Param("id"), *req.NewPassword); err != nil {
+	if err := h.svc.SetStudentPassword(c.Request().Context(), claims.Sub, c.Param("id"), *req.NewPassword); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"message": "password updated"})

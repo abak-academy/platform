@@ -154,16 +154,6 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 		if r.Email != nil {
 			result.Email = *r.Email
 		}
-		if r.Password != nil && actorRole != RoleSuperAdmin {
-			result.Status = "failed"
-			result.Error = ErrForbidden.Error()
-			results[i] = result
-			if onProgress != nil && (i+1)%checkpoint == 0 {
-				onProgress((i + 1) * 100 / len(rows))
-			}
-			continue
-		}
-
 		// Resolve School name to school_id.
 		school, err := s.storeRepo.GetSchoolByNameCI(ctx, r.School)
 		if err != nil {
@@ -321,7 +311,7 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 
 		var resp *StudentRegistrationResponse
 		if r.Password != nil {
-			resp, err = s.RegisterStudentWithPassword(ctx, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, *r.Password)
+			resp, err = s.RegisterStudentWithPassword(ctx, actorRole, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, *r.Password)
 		} else {
 			resp, err = s.RegisterStudent(ctx, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos)
 		}
