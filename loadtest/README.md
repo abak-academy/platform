@@ -18,116 +18,71 @@ The harness has passed a 1-VU local smoke test against a mock API, including see
 - Use a standard exam with `requires_checkin=false` for the first baseline.
 - The API and database URLs are reachable from Docker. For services on the Mac, use `host.docker.internal` instead of `localhost`.
 
-Start from the repository root:
+Start from the repository root and create the local configuration:
 
 ```bash
 cd /path/to/platform
-mkdir -p loadtest/results
+cp loadtest/.env.example loadtest/.env.local
 ```
 
-Set the target values:
+`loadtest/.env.local` is ignored by Git. Edit it with the database, API, exam, and workload values. Shell-quote values containing spaces or special characters.
 
-```bash
-export LOADTEST_DATABASE_URL='postgres://user:password@db-host:5432/abak_loadtest'
-export LOADTEST_BASE_URL='https://loadtest.example.com'
-export EXAM_ID='00000000-0000-0000-0000-000000000000'
-export LOADTEST_PASSWORD='replace-with-a-test-only-password'
+The smoke-test defaults are:
+
+```dotenv
+RUN_ID=smoke_20260830
+USERS=1
+LOGIN_SPREAD_SECONDS=0
+ANSWER_INTERVAL_SECONDS=0
+ANSWER_JITTER_SECONDS=0
+SUBMIT_AT_SECONDS=0
 ```
 
-Confirm the database name before seeding:
-
-```bash
-docker run --rm postgres:16-alpine \
-  psql "$LOADTEST_DATABASE_URL" -Atc 'select current_database()'
-```
-
-Use the returned name as `confirm_db` below. The seed refuses to run when it does not exactly match PostgreSQL `current_database()`.
+`CONFIRM_DB` must exactly match `PGDATABASE`. The SQL seed also verifies it against PostgreSQL `current_database()` before writing anything.
 
 ## Seed a run
 
-Every stage needs a fresh `RUN_ID`. The seed creates one synthetic account and exam registration per VU.
+Every stage needs a fresh `RUN_ID`. The seed creates one synthetic account and exam registration per VU:
 
 ```bash
-export RUN_ID='smoke_20260830'
-export USERS=1
-
-docker run --rm \
-  -e LOADTEST_PASSWORD \
-  -v "$PWD:/repo:ro" \
-  postgres:16-alpine \
-  psql "$LOADTEST_DATABASE_URL" \
-  -v confirm_db=abak_loadtest \
-  -v exam_id="$EXAM_ID" \
-  -v run_id="$RUN_ID" \
-  -v user_count="$USERS" \
-  -f /repo/loadtest/seed.sql
+./loadtest/run.sh seed
 ```
 
-Re-running the seed with the same `RUN_ID` resets that run's sessions and registrations. This is useful after a failed or interrupted test.
+The output ends with the confirmed `run_id`, `exam_id`, and `users_seeded` count. Re-running the seed with the same `RUN_ID` resets that run's sessions and registrations.
 
 ## Run a smoke test
 
 Run one user with no human pacing:
 
 ```bash
-docker run --rm \
-  -v "$PWD/loadtest:/scripts:ro" \
-  -v "$PWD/loadtest/results:/results" \
-  -e NON_PRODUCTION_CONFIRM=loadtest \
-  -e BASE_URL="$LOADTEST_BASE_URL/api/v1" \
-  -e EXAM_ID \
-  -e RUN_ID \
-  -e LOADTEST_PASSWORD \
-  -e USERS \
-  -e LOGIN_SPREAD_SECONDS=0 \
-  -e ANSWER_INTERVAL_SECONDS=0 \
-  -e ANSWER_JITTER_SECONDS=0 \
-  -e K6_WEB_DASHBOARD=true \
-  -e K6_WEB_DASHBOARD_PORT=-1 \
-  -e K6_WEB_DASHBOARD_EXPORT="/results/${RUN_ID}-${USERS}.html" \
-  grafana/k6:latest run \
-  --summary-export="/results/${RUN_ID}-${USERS}.json" \
-  /scripts/exam-lifecycle.js
+./loadtest/run.sh test
 ```
 
 Open the reports:
 
 ```bash
-open "loadtest/results/${RUN_ID}-${USERS}.html"
-jq . "loadtest/results/${RUN_ID}-${USERS}.json"
+open loadtest/results/smoke_20260830-1.html
+jq . loadtest/results/smoke_20260830-1.json
 ```
 
 ## Run the 100-user baseline
 
-Use a new run and repeat the seed command with 100 users:
+Edit `loadtest/.env.local` for a new run:
 
-```bash
-export RUN_ID='baseline100_20260830'
-export USERS=100
+```dotenv
+RUN_ID=baseline100_20260830
+USERS=100
+LOGIN_SPREAD_SECONDS=60
+ANSWER_INTERVAL_SECONDS=45
+ANSWER_JITTER_SECONDS=10
+SUBMIT_AT_SECONDS=3600
 ```
 
-After seeding, run with human pacing and a synchronized submit time:
+Then seed and run:
 
 ```bash
-docker run --rm \
-  -v "$PWD/loadtest:/scripts:ro" \
-  -v "$PWD/loadtest/results:/results" \
-  -e NON_PRODUCTION_CONFIRM=loadtest \
-  -e BASE_URL="$LOADTEST_BASE_URL/api/v1" \
-  -e EXAM_ID \
-  -e RUN_ID \
-  -e LOADTEST_PASSWORD \
-  -e USERS \
-  -e LOGIN_SPREAD_SECONDS=60 \
-  -e ANSWER_INTERVAL_SECONDS=45 \
-  -e ANSWER_JITTER_SECONDS=10 \
-  -e SUBMIT_AT_SECONDS=3600 \
-  -e K6_WEB_DASHBOARD=true \
-  -e K6_WEB_DASHBOARD_PORT=-1 \
-  -e K6_WEB_DASHBOARD_EXPORT="/results/${RUN_ID}-${USERS}.html" \
-  grafana/k6:latest run \
-  --summary-export="/results/${RUN_ID}-${USERS}.json" \
-  /scripts/exam-lifecycle.js
+./loadtest/run.sh seed
+./loadtest/run.sh test
 ```
 
 `SUBMIT_AT_SECONDS` is measured from test setup. Set it longer than:

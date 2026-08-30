@@ -6,6 +6,7 @@ web/build/
 web/*.tsbuildinfo
 web/test-results/
 web/playwright-report/
+loadtest/results/
 
 # Go
 /backend/bin/
