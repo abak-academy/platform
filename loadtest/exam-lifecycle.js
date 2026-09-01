@@ -70,18 +70,19 @@ export default function (test) {
   const suffix = String(index).padStart(5, "0");
   const identifier = `lt_${RUN_ID}_${suffix}`;
   const registrationToken = `lt-${RUN_ID}-${suffix}`;
+  const clientHeaders = { "X-Forwarded-For": virtualUserIP(index) };
 
   sleep(Math.random() * LOGIN_SPREAD_SECONDS);
 
   const login = request("POST", "/auth/login", {
     identifier,
     password: PASSWORD,
-  }, null, "login");
+  }, clientHeaders, "login");
   if (!expectStatus(login, 200, "login")) return failLifecycle();
 
   const accessToken = json(login, "access_token");
   if (!accessToken) return failLifecycle();
-  const headers = { Authorization: `Bearer ${accessToken}` };
+  const headers = { ...clientHeaders, Authorization: `Bearer ${accessToken}` };
 
   const registrations = request("GET", "/exam/registrations", null, headers, "registration");
   if (!expectStatus(registrations, 200, "registration list")) return failLifecycle();
@@ -264,11 +265,24 @@ function humanDelay() {
 }
 
 function integerEnv(name, fallback) {
-  const value = Number.parseInt(__ENV[name] || String(fallback), 10);
-  return Number.isFinite(value) ? value : fallback;
+  const raw = __ENV[name];
+  if (raw === undefined || raw === "") return fallback;
+  if (!/^-?[0-9]+$/.test(raw)) {
+    throw new Error(`${name} must be an integer`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`${name} must be a safe integer`);
+  }
+  return value;
 }
 
 function numberEnv(name, fallback) {
   const value = Number.parseFloat(__ENV[name] || String(fallback));
   return Number.isFinite(value) ? value : fallback;
+}
+
+function virtualUserIP(index) {
+  const zeroBased = index - 1;
+  return `10.240.${Math.floor(zeroBased / 254)}.${(zeroBased % 254) + 1}`;
 }

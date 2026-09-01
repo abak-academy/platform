@@ -1,46 +1,82 @@
 \set ON_ERROR_STOP on
 \getenv loadtest_password LOADTEST_PASSWORD
 
-SELECT current_database() = :'confirm_db' AS database_confirmed \gset
-\if :database_confirmed
-\else
-  \echo 'refusing seed: confirm_db does not match current_database()'
-  \quit 3
-\endif
-
-SELECT :'run_id' ~ '^[a-z0-9][a-z0-9_-]{2,30}$' AS run_id_valid \gset
-\if :run_id_valid
-\else
-  \echo 'refusing seed: run_id must match ^[a-z0-9][a-z0-9_-]{2,30}$'
-  \quit 3
-\endif
-
-SELECT :'user_count'::int BETWEEN 1 AND 10000 AS user_count_valid \gset
-\if :user_count_valid
-\else
-  \echo 'refusing seed: user_count must be between 1 and 10000'
-  \quit 3
-\endif
-
-SELECT length(:'loadtest_password') >= 8 AS password_valid \gset
-\if :password_valid
-\else
-  \echo 'refusing seed: LOADTEST_PASSWORD must contain at least 8 characters'
-  \quit 3
-\endif
-
-SELECT EXISTS (
-  SELECT 1
-  FROM exam
-  WHERE id = :'exam_id'::uuid
-) AS exam_exists \gset
-\if :exam_exists
-\else
-  \echo 'refusing seed: exam_id does not exist'
-  \quit 3
-\endif
-
 BEGIN;
+
+SELECT
+  set_config('loadtest.confirm_db', :'confirm_db', true) AS confirm_db_setting,
+  set_config('loadtest.run_id', :'run_id', true) AS run_id_setting,
+  set_config('loadtest.user_count', :'user_count', true) AS user_count_setting,
+  set_config('loadtest.password', :'loadtest_password', true) AS password_setting,
+  set_config('loadtest.exam_id', :'exam_id', true) AS exam_id_setting
+\gset
+
+DO $loadtest_guard$
+DECLARE
+  requested_run_id TEXT := current_setting('loadtest.run_id');
+  requested_user_count TEXT := current_setting('loadtest.user_count');
+  requested_exam_id TEXT := current_setting('loadtest.exam_id');
+  requested_exam_uuid UUID;
+BEGIN
+  IF current_database() <> current_setting('loadtest.confirm_db') THEN
+    RAISE EXCEPTION 'refusing seed: confirm_db does not match current_database()';
+  END IF;
+  IF requested_run_id !~ '^[a-z0-9][a-z0-9_-]{2,30}$' THEN
+    RAISE EXCEPTION 'refusing seed: run_id must match ^[a-z0-9][a-z0-9_-]{2,30}$';
+  END IF;
+  IF requested_user_count !~ '^[0-9]+$'
+     OR requested_user_count::numeric NOT BETWEEN 1 AND 10000 THEN
+    RAISE EXCEPTION 'refusing seed: user_count must be an integer between 1 and 10000';
+  END IF;
+  IF length(current_setting('loadtest.password')) < 8 THEN
+    RAISE EXCEPTION 'refusing seed: LOADTEST_PASSWORD must contain at least 8 characters';
+  END IF;
+  BEGIN
+    requested_exam_uuid := requested_exam_id::uuid;
+  EXCEPTION WHEN invalid_text_representation THEN
+    RAISE EXCEPTION 'refusing seed: exam_id must be a valid UUID';
+  END;
+  IF NOT EXISTS (SELECT 1 FROM exam WHERE id = requested_exam_uuid) THEN
+    RAISE EXCEPTION 'refusing seed: exam_id does not exist';
+  END IF;
+END
+$loadtest_guard$;
+
+CREATE TEMP TABLE loadtest_run_students ON COMMIT DROP AS
+SELECT u.id, u.username
+FROM users u
+WHERE u.username LIKE
+  ('lt\_' || replace(:'run_id', '_', '\_') || '\_%') ESCAPE '\';
+
+CREATE TEMP TABLE loadtest_sessions ON COMMIT DROP AS
+SELECT s.id
+FROM exam_session s
+JOIN exam_registration r ON r.id = s.registration_id
+JOIN loadtest_run_students u ON u.id = r.student_id
+WHERE r.exam_id = :'exam_id'::uuid;
+
+DELETE FROM session_violation_log
+WHERE session_id IN (SELECT id FROM loadtest_sessions);
+
+DELETE FROM outbox
+WHERE aggregate_id IN (SELECT id FROM loadtest_sessions);
+
+DELETE FROM exam_session
+WHERE id IN (SELECT id FROM loadtest_sessions);
+
+DELETE FROM exam_registration r
+USING loadtest_run_students u
+WHERE r.student_id = u.id
+  AND r.exam_id = :'exam_id'::uuid;
+
+DELETE FROM users u
+USING loadtest_run_students previous
+WHERE u.id = previous.id
+  AND NOT EXISTS (
+    SELECT 1
+    FROM generate_series(1, :'user_count'::int) AS desired(n)
+    WHERE u.username = format('lt_%s_%s', :'run_id', lpad(desired.n::text, 5, '0'))
+  );
 
 WITH password AS MATERIALIZED (
   SELECT crypt(:'loadtest_password', gen_salt('bf', 10)) AS hash
@@ -66,27 +102,6 @@ SELECT u.id, generated.n
 FROM generate_series(1, :'user_count'::int) AS generated(n)
 JOIN users u
   ON u.username = format('lt_%s_%s', :'run_id', lpad(generated.n::text, 5, '0'));
-
-CREATE TEMP TABLE loadtest_sessions ON COMMIT DROP AS
-SELECT s.id
-FROM exam_session s
-JOIN exam_registration r ON r.id = s.registration_id
-JOIN loadtest_students u ON u.id = r.student_id
-WHERE r.exam_id = :'exam_id'::uuid;
-
-DELETE FROM session_violation_log
-WHERE session_id IN (SELECT id FROM loadtest_sessions);
-
-DELETE FROM outbox
-WHERE aggregate_id IN (SELECT id FROM loadtest_sessions);
-
-DELETE FROM exam_session
-WHERE id IN (SELECT id FROM loadtest_sessions);
-
-DELETE FROM exam_registration r
-USING loadtest_students u
-WHERE r.student_id = u.id
-  AND r.exam_id = :'exam_id'::uuid;
 
 LOCK TABLE exam_registration IN SHARE ROW EXCLUSIVE MODE;
 

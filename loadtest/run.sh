@@ -51,6 +51,7 @@ case "${1:-}" in
     report_name=${REPORT_NAME:-"$RUN_ID-$USERS"}
     mkdir -p "$repo_root/loadtest/results"
 
+    set +e
     docker run --rm \
       -v "$repo_root/loadtest:/scripts:ro" \
       -v "$repo_root/loadtest/results:/results" \
@@ -63,18 +64,28 @@ case "${1:-}" in
       -e LOGIN_SPREAD_SECONDS \
       -e ANSWER_INTERVAL_SECONDS \
       -e ANSWER_JITTER_SECONDS \
+      -e SAVE_RETRIES \
+      -e MAX_QUESTIONS \
       -e SUBMIT_AT_SECONDS \
       -e MAX_DURATION \
       -e REQUIRES_CHECKIN \
+      -e LOGIN_P95_MS \
+      -e START_P95_MS \
+      -e AUTOSAVE_P95_MS \
+      -e RECONNECT_P95_MS \
+      -e SUBMIT_P95_MS \
       -e K6_WEB_DASHBOARD=true \
       -e K6_WEB_DASHBOARD_PORT=-1 \
       -e K6_WEB_DASHBOARD_EXPORT="/results/$report_name.html" \
       grafana/k6:latest run \
       --summary-export="/results/$report_name.json" \
       /scripts/exam-lifecycle.js
+    k6_status=$?
+    set -e
 
     echo "HTML: loadtest/results/$report_name.html"
     echo "JSON: loadtest/results/$report_name.json"
+    exit "$k6_status"
     ;;
   *)
     echo "usage: loadtest/run.sh <seed|test> [env-file]" >&2

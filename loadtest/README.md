@@ -107,12 +107,14 @@ Do not continue to the next stage unless all of these are true:
 - The k6 generator is not CPU, memory, or network saturated.
 - API and database evidence still show headroom.
 
-The current shared-IP login limiter may make the 100-user baseline fail during login. That result confirms the known blocker; it is not a k6 failure.
+Each VU sends one stable synthetic `X-Forwarded-For` address for its whole lifecycle, including check-in. This keeps the shared generator IP from collapsing the login test into the per-IP limiter while preserving device identity.
 
 ## Interpret the result
 
 The HTML report is for human review. The JSON summary is for comparison and automation. Neither can identify the server bottleneck alone.
 
 A capacity report must pair k6 results with API CPU, database CPU, connection-pool pressure, restarts, and network throughput. Name the saturated resource rather than reporting p95 alone.
+
+`run.sh test` prints both intended report paths and returns k6's original exit status, including exit 99 when thresholds fail.
 
 For a check-in exam, its configured window must be open and `REQUIRES_CHECKIN=true` must be passed to k6.
