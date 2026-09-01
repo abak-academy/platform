@@ -36,7 +36,7 @@ case "${1:-}" in
       -e PGPASSWORD \
       -e LOADTEST_PASSWORD \
       -v "$repo_root:/repo:ro" \
-      postgres:16-alpine \
+      postgres:17-alpine \
       psql \
       -v confirm_db="$CONFIRM_DB" \
       -v exam_id="$EXAM_ID" \
