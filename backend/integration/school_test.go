@@ -112,6 +112,143 @@ func TestSchoolCRUD_Integration(t *testing.T) {
 		"reissue should return a different password")
 }
 
+func TestStudentManualPasswordManagement_Integration(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	var schoolID string
+	err := env.pool.QueryRow(ctx,
+		`INSERT INTO school (name, code, npsn, school_types, alamat, status)
+		 VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
+		"Manual Password School", "manualpwd", "20000999", []string{"SMA"}, "Jl. Manual",
+	).Scan(&schoolID)
+	require.NoError(t, err)
+
+	superID := seedUser(t, env, "super_admin", "active", false)
+	superToken := authToken(t, env, superID, "super_admin")
+	adminID := seedUser(t, env, "admin_school", "active", false)
+	adminToken := authTokenWithSchool(t, env, adminID, "admin_school", schoolID)
+
+	explicitPassword := "chosenPass123"
+	resp, body := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/students?school_id="+schoolID, map[string]any{
+		"name":     "Explicit Integration",
+		"jenjang":  "SMA",
+		"password": explicitPassword,
+	}, superToken)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NotContains(t, marshalMap(body), explicitPassword)
+	require.NotContains(t, body, "temp_password")
+	explicitUsername := body["username"].(string)
+	explicitID := body["id"].(string)
+	studentAccess, studentJTI, err := env.signer.SignAccess(explicitID, service.RoleStudent, &schoolID, service.Capabilities(service.RoleStudent))
+	require.NoError(t, err)
+	require.NotEmpty(t, studentAccess)
+	studentRefresh := "student-refresh-" + explicitID
+	require.NoError(t, env.rdb.Set(ctx, "session:access:"+studentJTI, explicitID, 15*time.Minute).Err())
+	require.NoError(t, env.rdb.SAdd(ctx, "user_access_sessions:"+explicitID, studentJTI).Err())
+	require.NoError(t, env.rdb.Set(ctx, "session:refresh:"+studentRefresh, explicitID, 24*time.Hour).Err())
+	require.NoError(t, env.rdb.SAdd(ctx, "user_refresh_sessions:"+explicitID, studentRefresh).Err())
+
+	loginResp, _ := doJSONBody(t, env, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"identifier": explicitUsername,
+		"password":   explicitPassword,
+	}, "")
+	require.Equal(t, http.StatusOK, loginResp.StatusCode)
+
+	resp, generated := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/students?school_id="+schoolID, map[string]any{
+		"name":    "Generated Integration",
+		"jenjang": "SMA",
+	}, superToken)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NotEmpty(t, generated["temp_password"])
+	loginResp, _ = doJSONBody(t, env, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"identifier": generated["username"].(string),
+		"password":   generated["temp_password"].(string),
+	}, "")
+	require.Equal(t, http.StatusOK, loginResp.StatusCode)
+
+	forbiddenName := "Forbidden Integration"
+	resp, body = doJSONBody(t, env, http.MethodPost, "/api/v1/admin/students", map[string]any{
+		"name":     forbiddenName,
+		"jenjang":  "SMA",
+		"password": explicitPassword,
+	}, adminToken)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NotContains(t, marshalMap(body), explicitPassword)
+	var forbiddenCount int
+	err = env.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE name = $1`, forbiddenName).Scan(&forbiddenCount)
+	require.NoError(t, err)
+	require.Zero(t, forbiddenCount)
+
+	resetPassword := "resetPass123"
+	resp, body = doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/students/"+explicitID+"/password", map[string]string{
+		"new_password": resetPassword,
+	}, superToken)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, map[string]any{"message": "password updated"}, body)
+	require.NotContains(t, marshalMap(body), resetPassword)
+	accessExists, err := env.rdb.Exists(ctx, "session:access:"+studentJTI).Result()
+	require.NoError(t, err)
+	require.Zero(t, accessExists, "manual password set must revoke student access sessions")
+	refreshExists, err := env.rdb.Exists(ctx, "session:refresh:"+studentRefresh).Result()
+	require.NoError(t, err)
+	require.Zero(t, refreshExists, "manual password set must revoke student refresh sessions")
+	var passwordAuditCount int
+	err = env.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM audit_log WHERE actor_id = $1 AND target_type = 'user' AND target_id = $2 AND action = 'student.set_password'`,
+		superID, explicitID,
+	).Scan(&passwordAuditCount)
+	require.NoError(t, err)
+	require.Equal(t, 1, passwordAuditCount)
+
+	loginResp, _ = doJSONBody(t, env, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"identifier": explicitUsername,
+		"password":   explicitPassword,
+	}, "")
+	require.Equal(t, http.StatusUnauthorized, loginResp.StatusCode)
+	loginResp, _ = doJSONBody(t, env, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"identifier": explicitUsername,
+		"password":   resetPassword,
+	}, "")
+	require.Equal(t, http.StatusOK, loginResp.StatusCode)
+
+	resp, _ = doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/students/"+explicitID+"/password", map[string]string{
+		"new_password": "blockedPass123",
+	}, adminToken)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	loginResp, _ = doJSONBody(t, env, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"identifier": explicitUsername,
+		"password":   "blockedPass123",
+	}, "")
+	require.Equal(t, http.StatusUnauthorized, loginResp.StatusCode)
+
+	resp, body = doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/students/"+superID+"/password", map[string]string{
+		"new_password": "adminTarget123",
+	}, superToken)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.Equal(t, "student_not_found", body["code"])
+
+	reissueJTI := "reissue-session"
+	reissueRefresh := "reissue-refresh-" + explicitID
+	require.NoError(t, env.rdb.Set(ctx, "session:access:"+reissueJTI, explicitID, 15*time.Minute).Err())
+	require.NoError(t, env.rdb.SAdd(ctx, "user_access_sessions:"+explicitID, reissueJTI).Err())
+	require.NoError(t, env.rdb.Set(ctx, "session:refresh:"+reissueRefresh, explicitID, 24*time.Hour).Err())
+	require.NoError(t, env.rdb.SAdd(ctx, "user_refresh_sessions:"+explicitID, reissueRefresh).Err())
+	resp, _ = doJSONBody(t, env, http.MethodGet, "/api/v1/admin/students/"+explicitID+"/credentials", nil, superToken)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	reissueAccessExists, err := env.rdb.Exists(ctx, "session:access:"+reissueJTI).Result()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, reissueAccessExists, "credential reissue must preserve student access sessions")
+	reissueRefreshExists, err := env.rdb.Exists(ctx, "session:refresh:"+reissueRefresh).Result()
+	require.NoError(t, err)
+	require.Zero(t, reissueRefreshExists, "credential reissue must revoke student refresh sessions")
+}
+
+func marshalMap(v map[string]any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
 // TestAdminCreateSchool_OmittedSchoolTypes_Integration reproduces the
 // FR-SCH-02 blocker: omitting school_types (a spec-optional field) must not
 // 500 — the NOT NULL column has no default applied when an explicit NULL is

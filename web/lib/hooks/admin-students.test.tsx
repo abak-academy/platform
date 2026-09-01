@@ -6,6 +6,7 @@ import {
   useRegisterStudent,
   useChangeStudentStatus,
   useReissueStudentCredentials,
+  useSetStudentPassword,
   adminStudentsKeys,
 } from "./admin-students";
 import type {
@@ -256,6 +257,27 @@ describe("admin-students hooks", () => {
     expect(mockAuthFetch).toHaveBeenCalledWith(
       "/admin/students/st1/credentials",
     );
+  });
+
+  it("useSetStudentPassword patches only new_password and invalidates list", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ message: "password updated" });
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useSetStudentPassword(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        id: "st1",
+        newPassword: "chosenPass123",
+      });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/students/st1/password", {
+      method: "PATCH",
+      body: JSON.stringify({ new_password: "chosenPass123" }),
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminStudentsKeys.all });
   });
 });
 

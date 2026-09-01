@@ -102,14 +102,14 @@ describe("BulkImportModal", () => {
   });
 
   it("renders nothing when closed", () => {
-    render(<BulkImportModal open={false} onOpenChange={vi.fn()} />, {
+    render(<BulkImportModal open={false} onOpenChange={vi.fn()} allowExplicitPassword={false} />, {
       wrapper: wrapperFactory(),
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("renders the dialog title and a Download Template button when open", () => {
-    render(<BulkImportModal open={true} onOpenChange={vi.fn()} />, {
+    render(<BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />, {
       wrapper: wrapperFactory(),
     });
     expect(screen.getByText("bulk_register_title")).toBeInTheDocument();
@@ -119,7 +119,7 @@ describe("BulkImportModal", () => {
   });
 
 	it("clicking Download Template produces a CSV with the exact header and two example rows, firing no network request", async () => {
-    render(<BulkImportModal open={true} onOpenChange={vi.fn()} />, {
+    render(<BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />, {
       wrapper: wrapperFactory(),
     });
 
@@ -142,7 +142,7 @@ describe("BulkImportModal", () => {
   });
 
   it("shows the field-rule table and downloads a guide txt", async () => {
-    render(<BulkImportModal open={true} onOpenChange={vi.fn()} />, {
+    render(<BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />, {
       wrapper: wrapperFactory(),
     });
 
@@ -158,6 +158,37 @@ describe("BulkImportModal", () => {
     expect(lastDownloadedCSV).toContain("bulk_format_student_school");
   });
 
+  it("includes password guidance and blank password template cells when allowed", async () => {
+    render(<BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={true} />, {
+      wrapper: wrapperFactory(),
+    });
+
+    expect(screen.getByText("password")).toBeInTheDocument();
+    expect(screen.getByText("bulk_format_student_password")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /bulk_register_download_template/i }));
+    await waitFor(() => expect(lastDownloadedCSV).not.toBeNull());
+    expect(lastDownloadedCSV).toContain("kode_pos,password");
+    expect(lastDownloadedCSV).not.toContain("password123");
+
+    fireEvent.click(screen.getByRole("button", { name: /bulk_format_download_guide/i }));
+    await waitFor(() => expect(lastDownloadedFilename).toBe("bulk_register_guide.txt"));
+    await waitFor(() => expect(lastDownloadedCSV).toContain("bulk_format_student_password"));
+  });
+
+  it("omits password guidance and template column when not allowed", async () => {
+    render(<BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />, {
+      wrapper: wrapperFactory(),
+    });
+
+    expect(screen.queryByText("password")).not.toBeInTheDocument();
+    expect(screen.queryByText("bulk_format_student_password")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /bulk_register_download_template/i }));
+    await waitFor(() => expect(lastDownloadedCSV).not.toBeNull());
+    expect(lastDownloadedCSV).not.toContain("password");
+  });
+
   it("uploading a valid CSV runs presign -> PUT -> enqueue in order", async () => {
     presignMutateAsync.mockResolvedValueOnce({
       url: "http://minio.local/k?sig=xyz",
@@ -167,7 +198,7 @@ describe("BulkImportModal", () => {
     enqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-1" });
     putFile.mockResolvedValueOnce(undefined);
 
-    render(<BulkImportModal open={true} onOpenChange={vi.fn()} />, {
+    render(<BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />, {
       wrapper: wrapperFactory(),
     });
 
@@ -204,7 +235,7 @@ describe("BulkImportModal", () => {
     putFile.mockResolvedValueOnce(undefined);
 
     const { rerender } = render(
-      <BulkImportModal open={true} onOpenChange={vi.fn()} />,
+      <BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />,
       { wrapper: wrapperFactory() },
     );
 
@@ -228,7 +259,7 @@ describe("BulkImportModal", () => {
       updated_at: "2026-07-18T00:01:00Z",
     };
     pollTick++;
-    rerender(<BulkImportModal open={true} onOpenChange={vi.fn()} />);
+    rerender(<BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />);
 
     await waitFor(() => {
       expect(screen.getByText(/unresolvable school name/i)).toBeInTheDocument();
@@ -245,7 +276,7 @@ describe("BulkImportModal", () => {
     putFile.mockResolvedValueOnce(undefined);
 
     const { rerender } = render(
-      <BulkImportModal open={true} onOpenChange={vi.fn()} />,
+      <BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />,
       { wrapper: wrapperFactory() },
     );
 
@@ -269,7 +300,7 @@ describe("BulkImportModal", () => {
       updated_at: "2026-07-18T00:02:00Z",
     };
     pollTick++;
-    rerender(<BulkImportModal open={true} onOpenChange={vi.fn()} />);
+    rerender(<BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />);
 
     await waitFor(() => {
       const link = screen.getByRole("link");
@@ -291,7 +322,7 @@ describe("BulkImportModal", () => {
     putFile.mockResolvedValueOnce(undefined);
 
     const { rerender } = render(
-      <BulkImportModal open={true} onOpenChange={vi.fn()} />,
+      <BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />,
       { wrapper: wrapperFactory() },
     );
 
@@ -315,7 +346,7 @@ describe("BulkImportModal", () => {
       updated_at: "2026-07-18T00:02:00Z",
     };
     pollTick++;
-    rerender(<BulkImportModal open={true} onOpenChange={vi.fn()} />);
+    rerender(<BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />);
 
     await waitFor(() => {
       const link = screen.getByRole("link");

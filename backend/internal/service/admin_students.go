@@ -63,7 +63,7 @@ type StudentRegistrationResponse struct {
 	KecamatanID  *string `json:"kecamatan_id"`
 	KodePos      *string `json:"kode_pos"`
 	Email        *string `json:"email"`
-	TempPassword string  `json:"temp_password"`
+	TempPassword string  `json:"temp_password,omitempty"`
 	CreatedAt    string  `json:"created_at"`
 }
 
@@ -126,6 +126,17 @@ func jenjangInSchoolTypes(jenjang string, types []string) bool {
 // jenjang is required; provinsiID/kotaID/kecamatanID are optional but must be
 // all-or-nothing (FR-REG-02a). kodePos is independently optional.
 func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*StudentRegistrationResponse, error) {
+	return s.registerStudent(ctx, schoolID, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil)
+}
+
+func (s *Service) RegisterStudentWithPassword(ctx context.Context, actorRole, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
+	if actorRole != RoleSuperAdmin {
+		return nil, ErrForbidden
+	}
+	return s.registerStudent(ctx, schoolID, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password)
+}
+
+func (s *Service) registerStudent(ctx context.Context, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password *string) (*StudentRegistrationResponse, error) {
 	if name == "" || jenjang == "" {
 		return nil, ErrMissingField
 	}
@@ -223,12 +234,23 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 		return nil, err
 	}
 
-	tempPass, err := genTempPassword()
-	if err != nil {
-		return nil, fmt.Errorf("generate temp password: %w", err)
+	tempPass := ""
+	passwordToHash := ""
+	if password != nil {
+		if len(*password) < minPasswordLen {
+			return nil, ErrWeakPassword
+		}
+		passwordToHash = *password
+	} else {
+		var err error
+		tempPass, err = genTempPassword()
+		if err != nil {
+			return nil, fmt.Errorf("generate temp password: %w", err)
+		}
+		passwordToHash = tempPass
 	}
 
-	hash, err := hashPassword(tempPass)
+	hash, err := hashPassword(passwordToHash)
 	if err != nil {
 		return nil, err
 	}
@@ -420,9 +442,36 @@ func (s *Service) ReissueStudentCredentials(ctx context.Context, schoolID, targe
 	if err := s.storeRepo.ResetStudentPasswordHash(ctx, targetID, schoolID, string(hash)); err != nil {
 		return nil, err
 	}
+	s.revokeRefreshSessions(ctx, targetID)
 
 	return &StudentCredentialsResponse{
 		Username:     *student.Username,
 		TempPassword: tempPass,
 	}, nil
+}
+
+func (s *Service) SetStudentPassword(ctx context.Context, actorID, targetID, newPassword string) error {
+	if _, err := parseUUID(targetID); err != nil {
+		return ErrInvalidUUID
+	}
+	if len(newPassword) < minPasswordLen {
+		return ErrWeakPassword
+	}
+	student, err := s.storeRepo.GetStudentByID(ctx, targetID, "")
+	if err != nil {
+		return err
+	}
+	if student == nil {
+		return ErrStudentNotFound
+	}
+	hash, err := hashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	if err := s.storeRepo.ResetStudentPasswordHash(ctx, targetID, "", string(hash)); err != nil {
+		return err
+	}
+	s.revokeAllSessions(ctx, targetID)
+	actor := &actorID
+	return s.storeRepo.InsertAuditLogMeta(ctx, nil, actor, "user", targetID, "student.set_password", map[string]any{})
 }

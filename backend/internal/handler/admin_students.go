@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"akademi-bimbel/internal/service"
 	"net/http"
 	"strconv"
 	"time"
@@ -84,6 +85,7 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 		KotaID         *string `json:"kota_id"`
 		KecamatanID    *string `json:"kecamatan_id"`
 		KodePos        *string `json:"kode_pos"`
+		Password       *string `json:"password"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -101,11 +103,33 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 		dob = &parsed
 	}
 
-	resp, err := h.svc.RegisterStudent(c.Request().Context(), schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos)
+	var resp *service.StudentRegistrationResponse
+	if req.Password != nil && *req.Password != "" {
+		resp, err = h.svc.RegisterStudentWithPassword(c.Request().Context(), claims.Role, schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos, *req.Password)
+	} else {
+		resp, err = h.svc.RegisterStudent(c.Request().Context(), schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos)
+	}
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusCreated, resp)
+}
+
+func (h *Handler) AdminSetStudentPassword(c echo.Context) error {
+	claims := ClaimsFromContext(c)
+	var req struct {
+		NewPassword *string `json:"new_password"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if req.NewPassword == nil || *req.NewPassword == "" {
+		return badRequest(c, "new_password is required")
+	}
+	if err := h.svc.SetStudentPassword(c.Request().Context(), claims.Sub, c.Param("id"), *req.NewPassword); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"message": "password updated"})
 }
 
 // AdminChangeStudentStatus toggles a student's active/deactivated status.
