@@ -76,6 +76,11 @@ WHERE u.id = previous.id
     SELECT 1
     FROM generate_series(1, :'user_count'::int) AS desired(n)
     WHERE u.username = format('lt_%s_%s', :'run_id', lpad(desired.n::text, 5, '0'))
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM exam_registration r
+    WHERE r.student_id = u.id
   );
 
 WITH password AS MATERIALIZED (
@@ -120,7 +125,7 @@ INSERT INTO exam_registration (
 SELECT
   u.id,
   :'exam_id'::uuid,
-  format('lt-%s-%s', :'run_id', lpad(u.n::text, 5, '0')),
+  format('lt-%s-%s-%s', :'run_id', :'exam_id', lpad(u.n::text, 5, '0')),
   'registered',
   participant_base.value + u.n
 FROM loadtest_students u

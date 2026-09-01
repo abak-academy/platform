@@ -69,7 +69,7 @@ export default function (test) {
   const index = exec.vu.idInTest;
   const suffix = String(index).padStart(5, "0");
   const identifier = `lt_${RUN_ID}_${suffix}`;
-  const registrationToken = `lt-${RUN_ID}-${suffix}`;
+  const registrationToken = `lt-${RUN_ID}-${EXAM_ID}-${suffix}`;
   const clientHeaders = { "X-Forwarded-For": virtualUserIP(index) };
 
   sleep(Math.random() * LOGIN_SPREAD_SECONDS);
@@ -278,8 +278,16 @@ function integerEnv(name, fallback) {
 }
 
 function numberEnv(name, fallback) {
-  const value = Number.parseFloat(__ENV[name] || String(fallback));
-  return Number.isFinite(value) ? value : fallback;
+  const raw = __ENV[name];
+  if (raw === undefined || raw === "") return fallback;
+  if (!/^-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)$/.test(raw)) {
+    throw new Error(`${name} must be a number`);
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    throw new Error(`${name} must be a finite number`);
+  }
+  return value;
 }
 
 function virtualUserIP(index) {
