@@ -12,6 +12,9 @@ type Claims struct {
 	Role         string   `json:"role"`
 	SchoolID     *string  `json:"school_id,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
+	// MustChange marks credentials an admin issued; the JWT middleware
+	// confines such tokens to the password-change flow.
+	MustChange bool `json:"must_change_password,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -24,14 +27,22 @@ func NewJWTSigner(secret string, ttl time.Duration) *JWTSigner {
 	return &JWTSigner{secret: []byte(secret), ttl: ttl}
 }
 
-func (s *JWTSigner) SignAccess(sub, role string, schoolID *string, capabilities []string) (tokenString, jti string, err error) {
+// SignAccess mints an access token. The optional mustChange flag (variadic so
+// existing call sites are unchanged) marks admin-issued credentials that must
+// rotate at first login.
+func (s *JWTSigner) SignAccess(sub, role string, schoolID *string, capabilities []string, mustChange ...bool) (tokenString, jti string, err error) {
 	jti = fmt.Sprintf("%d", time.Now().UnixNano())
 	now := time.Now()
+	var flag bool
+	if len(mustChange) > 0 {
+		flag = mustChange[0]
+	}
 	claims := Claims{
 		Sub:          sub,
 		Role:         role,
 		SchoolID:     schoolID,
 		Capabilities: capabilities,
+		MustChange:   flag,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti,
 			IssuedAt:  jwt.NewNumericDate(now),

@@ -82,3 +82,31 @@ func TestJWT_ExpiredToken(t *testing.T) {
 		t.Errorf("expected expiry message, got: %v", err)
 	}
 }
+
+func TestJWT_MustChangeClaim(t *testing.T) {
+	signer := infra.NewJWTSigner("supersecret", 15*time.Minute)
+
+	token, _, err := signer.SignAccess("user-1", "student", nil, nil, true)
+	if err != nil {
+		t.Fatalf("SignAccess with flag: %v", err)
+	}
+	claims, err := signer.ParseAccess(token)
+	if err != nil {
+		t.Fatalf("ParseAccess: %v", err)
+	}
+	if !claims.MustChange {
+		t.Error("want must_change_password claim set when flag passed")
+	}
+
+	token, _, err = signer.SignAccess("user-1", "student", nil, nil)
+	if err != nil {
+		t.Fatalf("SignAccess without flag: %v", err)
+	}
+	claims, err = signer.ParseAccess(token)
+	if err != nil {
+		t.Fatalf("ParseAccess: %v", err)
+	}
+	if claims.MustChange {
+		t.Error("want must_change_password claim absent when flag not passed")
+	}
+}

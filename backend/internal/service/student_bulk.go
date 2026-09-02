@@ -30,14 +30,26 @@ type StudentBulkRow struct {
 }
 
 type StudentBulkResultRow struct {
-	Row          int
-	Name         string
-	School       string
-	Email        string
-	Status       string
-	Username     string
-	TempPassword string
-	Error        string
+	Row    int
+	Name   string
+	School string
+	Email  string
+	// Jenjang..KodePos echo the input row so the report is a superset of the
+	// upload. password is intentionally absent: it is never echoed back.
+	Jenjang        string
+	DOB            string
+	Gender         string
+	Grade          string
+	AlamatDomisili string
+	TargetExam     string
+	Provinsi       string
+	Kota           string
+	Kecamatan      string
+	KodePos        string
+	Status         string
+	Username       string
+	TempPassword   string
+	Error          string
 }
 
 // ParseStudentBulkCSV reads a student-bulk upload. jenjang and school are
@@ -139,8 +151,10 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 // ProcessStudentBulkRows applies RegisterStudent to each row, resolving
 // province/city/district names to IDs before passing them to RegisterStudent.
 // schoolBound, when non-nil, restricts every row's resolved school to match it.
-// nil means no restriction (super_admin cross-school).
-func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, actorRole string, rows []StudentBulkRow, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
+// nil means no restriction (super_admin cross-school). requestPassword is the
+// optional request-level temp password applied to rows without a CSV password
+// column value.
+func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, actorRole string, rows []StudentBulkRow, requestPassword *string, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
 	results := make([]StudentBulkResultRow, len(rows))
 	successCount := 0
 
@@ -150,9 +164,25 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 	}
 
 	for i, r := range rows {
-		result := StudentBulkResultRow{Row: r.Row, Name: r.Name, School: r.School}
+		result := StudentBulkResultRow{
+			Row:            r.Row,
+			Name:           r.Name,
+			School:         r.School,
+			Jenjang:        r.Jenjang,
+			Gender:         deref(r.Gender),
+			Grade:          deref(r.Grade),
+			AlamatDomisili: deref(r.AlamatDomisili),
+			TargetExam:     deref(r.TargetExam),
+			Provinsi:       deref(r.Provinsi),
+			Kota:           deref(r.Kota),
+			Kecamatan:      deref(r.Kecamatan),
+			KodePos:        deref(r.KodePos),
+		}
 		if r.Email != nil {
 			result.Email = *r.Email
+		}
+		if r.DOB != nil {
+			result.DOB = *r.DOB
 		}
 		// Resolve School name to school_id.
 		school, err := s.storeRepo.GetSchoolByNameCI(ctx, r.School)
@@ -309,11 +339,23 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 			grade = &parsed
 		}
 
+		pass := r.Password
+		if pass == nil {
+			pass = requestPassword
+		}
 		var resp *StudentRegistrationResponse
-		if r.Password != nil {
-			resp, err = s.RegisterStudentWithPassword(ctx, actorRole, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, *r.Password)
-		} else {
+		switch {
+		case pass == nil:
 			resp, err = s.RegisterStudent(ctx, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos)
+		case actorRole == RoleSuperAdmin:
+			resp, err = s.RegisterStudentWithPassword(ctx, actorRole, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, *pass)
+		case r.Password == nil:
+			// admin_school request-level temp password for own-school rows
+			// (schoolBound above); the CSV password column stays
+			// super_admin-only, so an admin_school CSV password fails the row.
+			resp, err = s.registerStudent(ctx, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, pass)
+		default:
+			err = ErrForbidden
 		}
 		if err == nil {
 			result.Status = "success"
@@ -339,13 +381,23 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 	return results, successCount, nil
 }
 
-// BuildStudentBulkResultCSV writes the per-row report as CSV bytes.
+// BuildStudentBulkResultCSV writes the per-row report as CSV bytes. The
+// header echoes the recognized input columns (never password) plus the result
+// columns, so the report is a superset of the upload.
 func BuildStudentBulkResultCSV(results []StudentBulkResultRow) []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"row", "name", "school", "email", "status", "username", "temp_password", "error"})
+	_ = w.Write([]string{
+		"row", "name", "jenjang", "school", "email", "dob", "gender", "grade",
+		"alamat_domisili", "target_exam", "provinsi", "kota", "kecamatan", "kode_pos",
+		"status", "username", "temp_password", "error",
+	})
 	for _, r := range results {
-		_ = w.Write(csvSafeRow(strconv.Itoa(r.Row), r.Name, r.School, r.Email, r.Status, r.Username, r.TempPassword, r.Error))
+		_ = w.Write(csvSafeRow(
+			strconv.Itoa(r.Row), r.Name, r.Jenjang, r.School, r.Email, r.DOB,
+			r.Gender, r.Grade, r.AlamatDomisili, r.TargetExam, r.Provinsi,
+			r.Kota, r.Kecamatan, r.KodePos, r.Status, r.Username, r.TempPassword, r.Error,
+		))
 	}
 	w.Flush()
 	return buf.Bytes()

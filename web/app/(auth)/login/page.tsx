@@ -28,6 +28,12 @@ export default function LoginPage() {
     setError(null);
     try {
       const data = await login.mutateAsync({ identifier, password });
+      if (data.user?.must_change_password) {
+        // Admin-issued temporary credential: the API already confines the
+        // session to the change-password flow, so land there directly.
+        router.push("/force-change-password");
+        return;
+      }
       router.push(redirectForRole(data.user?.role));
     } catch (err) {
       if (err instanceof ApiError && err.code === "verification_pending") {

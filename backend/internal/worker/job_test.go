@@ -90,7 +90,7 @@ func (f *fakeObjectStore) DeleteObject(ctx context.Context, bucket, key string) 
 }
 
 type fakeStudentBulkProcessor struct {
-	processFn             func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
+	processFn             func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, requestPassword *string, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
 	processSchoolFn       func(ctx context.Context, rows []service.SchoolBulkRow, onProgress func(int)) ([]service.SchoolBulkResultRow, int, error)
 	grantExamAccessBulkFn func(ctx context.Context, actorID, examID string, usernames []string) ([]service.ExamGrantBulkRowResult, error)
 }
@@ -99,8 +99,8 @@ func (f *fakeStudentBulkProcessor) GrantExamAccessBulk(ctx context.Context, acto
 	return f.grantExamAccessBulkFn(ctx, actorID, examID, usernames)
 }
 
-func (f *fakeStudentBulkProcessor) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
-	return f.processFn(ctx, schoolBound, actorRole, rows, onProgress)
+func (f *fakeStudentBulkProcessor) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, requestPassword *string, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+	return f.processFn(ctx, schoolBound, actorRole, rows, requestPassword, onProgress)
 }
 
 func (f *fakeStudentBulkProcessor) ProcessSchoolBulkRows(ctx context.Context, rows []service.SchoolBulkRow, onProgress func(int)) ([]service.SchoolBulkResultRow, int, error) {
@@ -188,7 +188,7 @@ func TestRunStudentBulkJobSucceedsUploadsReportAndFinishesSucceeded(t *testing.T
 		},
 	}
 	svc := &fakeStudentBulkProcessor{
-		processFn: func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+		processFn: func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, requestPassword *string, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
 			if schoolBound == nil || *schoolBound != "s1" {
 				t.Errorf("expected schoolBound s1, got %v", schoolBound)
 			}
@@ -267,7 +267,7 @@ func TestRunStudentBulkJobCleanupIgnoresCancellation(t *testing.T) {
 		},
 	}
 	svc := &fakeStudentBulkProcessor{
-		processFn: func(context.Context, *string, string, []service.StudentBulkRow, func(int)) ([]service.StudentBulkResultRow, int, error) {
+		processFn: func(context.Context, *string, string, []service.StudentBulkRow, *string, func(int)) ([]service.StudentBulkResultRow, int, error) {
 			cancel()
 			return []service.StudentBulkResultRow{{Name: "Ali", Status: "success"}}, 1, nil
 		},
@@ -297,7 +297,7 @@ func TestRunStudentBulkJob_SuperAdmin_NamespaceFolder_CoLocatesResult(t *testing
 		},
 	}
 	svc := &fakeStudentBulkProcessor{
-		processFn: func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+		processFn: func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, requestPassword *string, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
 			if schoolBound != nil {
 				t.Errorf("super_admin must not bind rows to a school, got %v", schoolBound)
 			}
@@ -345,7 +345,7 @@ func TestRunStudentBulkJobZeroSuccessesFinishesFailedButKeepsResultURL(t *testin
 		},
 	}
 	svc := &fakeStudentBulkProcessor{
-		processFn: func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+		processFn: func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, requestPassword *string, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
 			return []service.StudentBulkResultRow{
 				{Name: "Ali", Status: "failed", Error: "some error"},
 				{Name: "Budi", Status: "failed", Error: "some error"},
@@ -430,7 +430,7 @@ func TestRunStudentBulkJobNilSchoolIDProceedsUnrestricted(t *testing.T) {
 	}
 	var sawBound *string
 	svc := &fakeStudentBulkProcessor{
-		processFn: func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+		processFn: func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, requestPassword *string, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
 			sawBound = schoolBound
 			if actorRole != service.RoleSuperAdmin {
 				t.Errorf("expected actorRole super_admin, got %s", actorRole)
@@ -504,7 +504,7 @@ func TestRunStudentBulkJobFailsWhenUploadFails(t *testing.T) {
 		},
 	}
 	svc := &fakeStudentBulkProcessor{
-		processFn: func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+		processFn: func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, requestPassword *string, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
 			return []service.StudentBulkResultRow{{Name: "Ali", Status: "success"}}, 1, nil
 		},
 	}

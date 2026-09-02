@@ -1569,6 +1569,16 @@ export const DICT = {
     bulk_register_no_file: "Pilih file terlebih dahulu.",
     bulk_register_enqueue_failed: "Gagal memulai proses.",
     bulk_register_put_failed: "Gagal mengunggah file.",
+    bulk_register_temp_password_label: "Kata sandi sementara (opsional)",
+    bulk_register_temp_password_placeholder: "Minimal 8 karakter",
+    bulk_register_temp_password_hint:
+      "Dipakai untuk semua baris tanpa kolom password di CSV. Setiap siswa wajib menggantinya saat login pertama.",
+
+    // Forced password change (admin-issued temporary credential)
+    force_change_password_title: "Ganti Kata Sandi Sementara",
+    force_change_password_lede:
+      "Akun Anda menggunakan kata sandi sementara dari admin. Buat kata sandi baru untuk melanjutkan.",
+    force_change_password_loading: "Memuat…",
 
     // Bulk school-import modal (super_admin Schools page)
     bulk_school_title: "Impor Sekolah Massal",
@@ -3197,6 +3207,16 @@ export const DICT = {
     bulk_register_no_file: "Please select a file first.",
     bulk_register_enqueue_failed: "Failed to start processing.",
     bulk_register_put_failed: "Failed to upload file.",
+    bulk_register_temp_password_label: "Temporary password (optional)",
+    bulk_register_temp_password_placeholder: "Minimum 8 characters",
+    bulk_register_temp_password_hint:
+      "Applied to every row without a CSV password column. Each student must replace it at first login.",
+
+    // Forced password change (admin-issued temporary credential)
+    force_change_password_title: "Replace Temporary Password",
+    force_change_password_lede:
+      "Your account is using an admin-issued temporary password. Create a new password to continue.",
+    force_change_password_loading: "Loading…",
 
     // Bulk school-import modal (super_admin Schools page)
     bulk_school_title: "Bulk School Import",

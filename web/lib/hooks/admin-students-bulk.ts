@@ -55,14 +55,19 @@ export async function putFileToPresignedURL(
 
 /**
  * Enqueue a student-bulk import job for an already-uploaded CSV.
- * POST /admin/students/bulk {file_key} -> {job_id}
+ * POST /admin/students/bulk {file_key, temp_password?} -> {job_id}
+ *
+ * tempPassword, when provided, becomes the shared temporary password for every
+ * row without a CSV password value; the backend forces a change at first login.
  */
 export function useEnqueueStudentBulkImport() {
   return useMutation({
-    mutationFn: ({ fileKey }: { fileKey: string }) =>
+    mutationFn: ({ fileKey, tempPassword }: { fileKey: string; tempPassword?: string }) =>
       authFetch<EnqueueBulkResult>("/admin/students/bulk", {
         method: "POST",
-        body: JSON.stringify({ file_key: fileKey }),
+        body: JSON.stringify(
+          tempPassword ? { file_key: fileKey, temp_password: tempPassword } : { file_key: fileKey },
+        ),
       }),
   });
 }

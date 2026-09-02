@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -127,6 +128,71 @@ func TestJWTMiddleware_InsufficientRole(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("want 403, got %d", rec.Code)
 	}
+}
+
+func TestJWTMiddleware_MustChangePasswordGate(t *testing.T) {
+	signer, svc, mr := newTestDeps(t)
+
+	tokenStr, jti, err := signer.SignAccess("user1", service.RoleStudent, nil, nil, true)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	mr.Set("session:access:"+jti, "user1")
+
+	ok := func(c echo.Context) error { return c.String(http.StatusOK, "ok") }
+	e := echo.New()
+	e.GET("/api/v1/admin/students", ok, JWTMiddleware(svc, signer))
+	e.GET("/api/v1/auth/me", ok, JWTMiddleware(svc, signer))
+	e.PATCH("/api/v1/auth/password/change", ok, JWTMiddleware(svc, signer))
+	e.POST("/api/v1/auth/logout", ok, JWTMiddleware(svc, signer))
+
+	t.Run("blocks other routes with password_change_required", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students", nil)
+		req.Header.Set("Authorization", "Bearer "+tokenStr)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("want 403, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "password_change_required") {
+			t.Errorf("want password_change_required code, got %s", rec.Body.String())
+		}
+	})
+
+	t.Run("allows me, password change and logout", func(t *testing.T) {
+		for _, tc := range []struct{ method, path string }{
+			{http.MethodGet, "/api/v1/auth/me"},
+			{http.MethodPatch, "/api/v1/auth/password/change"},
+			{http.MethodPost, "/api/v1/auth/logout"},
+		} {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			req.Header.Set("Authorization", "Bearer "+tokenStr)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("%s %s: want 200, got %d", tc.method, tc.path, rec.Code)
+			}
+		}
+	})
+
+	t.Run("token without flag is unaffected", func(t *testing.T) {
+		plainToken, plainJTI, err := signer.SignAccess("user2", service.RoleStudent, nil, nil)
+		if err != nil {
+			t.Fatalf("sign: %v", err)
+		}
+		mr.Set("session:access:"+plainJTI, "user2")
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students", nil)
+		req.Header.Set("Authorization", "Bearer "+plainToken)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d", rec.Code)
+		}
+	})
 }
 
 func TestJWTMiddleware_ValidToken(t *testing.T) {
