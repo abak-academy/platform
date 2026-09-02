@@ -11,7 +11,7 @@ import (
 // all whitespace, take the first 4 runes (fewer if the stripped name is shorter).
 // The caller appends 4 random digits for uniqueness.
 func GenerateUsername(fullName string) string {
-	name := strings.TrimSpace(fullName)
+	name := strings.TrimSpace(stripFormatRunes(fullName))
 	name = strings.ToLower(name)
 	name = strings.ReplaceAll(name, " ", "")
 	name = strings.ReplaceAll(name, "\t", "")

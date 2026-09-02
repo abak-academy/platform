@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"akademi-bimbel/internal/repository"
@@ -167,6 +168,35 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		}
 		if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(resp.TempPassword)); err != nil {
 			t.Errorf("persisted hash does not match returned temp password: %v", err)
+		}
+	})
+
+	t.Run("name with invisible format chars is stripped", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		resp, err := svc.RegisterStudent(ctx, schoolID, "\u2060Aghesa Qonita", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("RegisterStudent: %v", err)
+		}
+		if resp.Name != "Aghesa Qonita" {
+			t.Errorf("Name: want stripped value, got %q", resp.Name)
+		}
+		// The joiner must not survive in the username nor consume one of the
+		// four base-rune slots, or the clean-typed username never matches.
+		if strings.HasPrefix(resp.Username, "\u2060") {
+			t.Errorf("Username %q still starts with the word joiner", resp.Username)
+		}
+		if !strings.HasPrefix(resp.Username, "aghe") {
+			t.Errorf("Username %q: want base 'aghe'", resp.Username)
+		}
+		u, err := repo.GetUserByUsername(ctx, resp.Username)
+		if err != nil {
+			t.Fatalf("GetUserByUsername: %v", err)
+		}
+		if u == nil {
+			t.Fatal("student not findable by the generated username")
+		}
+		if u.Name != "Aghesa Qonita" {
+			t.Errorf("persisted Name: want stripped value, got %q", u.Name)
 		}
 	})
 
@@ -778,6 +808,30 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 // (school_id, unlisted_school_name) pair must be clearable, and switching
 // between a listed and unlisted school must resolve jenjang against the
 // right school.
+func TestUpdateProfile_NameStripsFormatChars(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+	userID := createTestStudentWithSchool(t, svc, schoolID, "sma")
+
+	dirty := "\u2060Aghesa Qonita"
+	updated, err := svc.UpdateProfile(ctx, userID, &dirty, nil, nil, nil, nil, nil, nil, nil /* dob */, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+	if updated.Name != "Aghesa Qonita" {
+		t.Errorf("Name: want stripped value, got %q", updated.Name)
+	}
+	persisted, err := repo.GetUserByID(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if persisted.Name != "Aghesa Qonita" {
+		t.Errorf("persisted Name: want stripped value, got %q", persisted.Name)
+	}
+}
+
 func TestUpdateProfile_SchoolPairClearing(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()

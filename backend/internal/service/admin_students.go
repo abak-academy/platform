@@ -137,6 +137,7 @@ func (s *Service) RegisterStudentWithPassword(ctx context.Context, actorRole, sc
 }
 
 func (s *Service) registerStudent(ctx context.Context, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password *string) (*StudentRegistrationResponse, error) {
+	name = strings.TrimSpace(stripFormatRunes(name))
 	if name == "" || jenjang == "" {
 		return nil, ErrMissingField
 	}
