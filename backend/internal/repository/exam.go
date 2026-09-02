@@ -135,6 +135,30 @@ type TestFilter struct {
 	Limit   int
 }
 
+// testFilterSQL renders the shared WHERE tail for the test list and its count
+// so the two cannot drift. Cursor is pagination, not filtering, and is
+// deliberately excluded here.
+func testFilterSQL(filter TestFilter, argIdx int) (string, []interface{}, int) {
+	query := ""
+	args := []interface{}{}
+	if filter.Subject != "" {
+		query += fmt.Sprintf(` AND t.subject = $%d`, argIdx)
+		args = append(args, filter.Subject)
+		argIdx++
+	}
+	if filter.Topic != "" {
+		query += fmt.Sprintf(` AND t.topic = $%d`, argIdx)
+		args = append(args, filter.Topic)
+		argIdx++
+	}
+	if filter.Q != "" {
+		query += fmt.Sprintf(` AND t.title ILIKE '%%' || $%d || '%%'`, argIdx)
+		args = append(args, filter.Q)
+		argIdx++
+	}
+	return query, args, argIdx
+}
+
 // QuestionFilter is the filter for the bank question list endpoint (FR-14).
 type QuestionFilter struct {
 	Format  string
@@ -236,24 +260,9 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 		SELECT test_id, COUNT(*) AS cnt FROM test_question GROUP BY test_id
 	) q ON q.test_id = t.id
 	WHERE 1=1`
-	args := []interface{}{}
-	argIdx := 1
+	where, args, argIdx := testFilterSQL(filter, 1)
+	query += where
 
-	if filter.Subject != "" {
-		query += fmt.Sprintf(` AND t.subject = $%d`, argIdx)
-		args = append(args, filter.Subject)
-		argIdx++
-	}
-	if filter.Topic != "" {
-		query += fmt.Sprintf(` AND t.topic = $%d`, argIdx)
-		args = append(args, filter.Topic)
-		argIdx++
-	}
-	if filter.Q != "" {
-		query += fmt.Sprintf(` AND t.title ILIKE '%%' || $%d || '%%'`, argIdx)
-		args = append(args, filter.Q)
-		argIdx++
-	}
 	if filter.Cursor != "" {
 		query += fmt.Sprintf(` AND t.id > $%d`, argIdx)
 		args = append(args, filter.Cursor)
@@ -288,6 +297,15 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 	}
 
 	return tests, nextCursor, nil
+}
+
+// CountTests returns the total row count for the same filters the test list
+// applies, so the UI can show "shown of total".
+func (r *Repository) CountTests(ctx context.Context, filter TestFilter) (int, error) {
+	where, args, _ := testFilterSQL(filter, 1)
+	var total int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM test t WHERE 1=1`+where, args...).Scan(&total)
+	return total, err
 }
 
 func (r *Repository) UpdateTest(ctx context.Context, id uuid.UUID, t *model.Test) error {
