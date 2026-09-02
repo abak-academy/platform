@@ -2,7 +2,9 @@
 
 This suite runs one complete student lifecycle per virtual user:
 
-`login -> registration lookup -> optional check-in -> start -> cumulative autosaves -> section advance -> reconnect verification -> submit`
+`login -> token refresh as needed -> registration lookup -> optional check-in -> start -> cumulative autosaves -> section advance -> reconnect verification -> submit`
+
+Each VU keeps its refresh token and rotates the access and refresh tokens before the access token expires. This keeps long-running exams on the same authenticated session and stable `X-Forwarded-For` identity.
 
 It refuses to run unless `NON_PRODUCTION_CONFIRM=loadtest`. Use an isolated database with synthetic data only.
 
@@ -103,6 +105,7 @@ Do not continue to the next stage unless all of these are true:
 - `lifecycle_failed` is below 1%.
 - `lost_answers` is zero.
 - Autosave p95 is below 300 ms.
+- Token refresh error rate is below 1%.
 - Login, start, reconnect, and submit thresholds pass.
 - The k6 generator is not CPU, memory, or network saturated.
 - API and database evidence still show headroom.
