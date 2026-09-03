@@ -36,10 +36,15 @@ func (h *Handler) AdminListTests(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
+	total, err := h.svc.CountTests(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"data":        tests,
 		"next_cursor": nextCursor,
+		"total":       total,
 	})
 }
 
