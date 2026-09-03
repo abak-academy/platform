@@ -368,13 +368,15 @@ func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, sch
 }
 
 // ListStudents returns cursor-paginated students scoped to the given school.
-// Optional grade and jenjang filters narrow the result set.
-func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilter, q string, limit int, cursor string, grade *int, jenjang string, examIDs ...string) ([]StudentResponse, string, error) {
+// Optional grade and jenjang filters narrow the result set. Also returns a
+// filter-aware count of the whole scoped set (ignoring cursor/limit) so the
+// admin list's stat cards reflect the DB, not just the rows loaded so far.
+func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilter, q string, limit int, cursor string, grade *int, jenjang string, examIDs ...string) ([]StudentResponse, string, repository.StudentAdminCounts, error) {
 	examID := ""
 	if len(examIDs) > 0 {
 		examID = examIDs[0]
 	}
-	rows, nextCursor, err := s.storeRepo.ListStudentsBySchool(ctx, schoolID, repository.StudentFilter{
+	filter := repository.StudentFilter{
 		Status:  statusFilter,
 		Cursor:  cursor,
 		Limit:   limit,
@@ -386,16 +388,24 @@ func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilte
 		// super_admin omitted school_id — list every registrant, including
 		// those with no school on file.
 		AllSchools: schoolID == "",
-	})
+	}
+	rows, nextCursor, err := s.storeRepo.ListStudentsBySchool(ctx, schoolID, filter)
 	if err != nil {
-		return nil, "", err
+		return nil, "", repository.StudentAdminCounts{}, err
+	}
+
+	// The count query ignores cursor/limit/exam-eligibility internally, so the
+	// same filter can drive both the page and the stat cards.
+	counts, err := s.storeRepo.CountStudentsAdmin(ctx, schoolID, filter)
+	if err != nil {
+		return nil, "", repository.StudentAdminCounts{}, err
 	}
 
 	students := make([]StudentResponse, len(rows))
 	for i, r := range rows {
 		students[i] = toStudentResponse(r)
 	}
-	return students, nextCursor, nil
+	return students, nextCursor, counts, nil
 }
 
 // ChangeStudentStatus toggles a student's active/deactivated status.

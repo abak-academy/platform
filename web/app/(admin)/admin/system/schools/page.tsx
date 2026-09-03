@@ -249,35 +249,18 @@ export default function SystemSchoolsPage() {
     if (nextCursor) setFetchCursor(nextCursor);
   };
 
-  if (isLoading && schools.length === 0) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader
-          icon={Building}
-          title={t("schools_title")}
-          description={t("sys_loading")}
-        />
-        <div className="py-12 text-center text-ink-500">
-          {t("sys_loading_data")}
-        </div>
-      </div>
-    );
-  }
-
-  if (error && schools.length === 0) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader
-          icon={Building}
-          title={t("schools_title")}
-          description={t("sys_error_title")}
-        />
-        <div className="py-12 text-center text-ink-500">
-          {t("sys_error_load")}
-        </div>
-      </div>
-    );
-  }
+  // Loading/error states render inside the table instead of replacing the
+  // whole page — an early return would unmount the search input mid-search,
+  // dropping its focus every time results refresh (same shape as
+  // ParticipantPicker, which keeps its toolbar mounted).
+  const tableEmpty =
+    error && schools.length === 0
+      ? t("sys_error_load")
+      : isLoading
+        ? t("sys_loading_data")
+        : lang === "en"
+          ? "No schools found."
+          : "Tidak ada sekolah ditemukan.";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
@@ -365,7 +348,7 @@ export default function SystemSchoolsPage() {
                     colSpan={8}
                     className="px-4 py-8 text-center text-sm text-ink-500"
                   >
-                    {lang === "en" ? "No schools found." : "Tidak ada sekolah ditemukan."}
+                    {tableEmpty}
                   </td>
                 </tr>
               )}
