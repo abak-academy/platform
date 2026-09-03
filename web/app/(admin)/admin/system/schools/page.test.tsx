@@ -152,7 +152,7 @@ describe("SystemSchoolsPage", () => {
     renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Memuat…")).toBeInTheDocument();
+      expect(screen.getByText("Memuat data…")).toBeInTheDocument();
     });
   });
 
@@ -413,6 +413,66 @@ describe("SystemSchoolsPage", () => {
 
     last = useAdminSchoolsCalls.at(-1) as { q?: string } | undefined;
     expect(last?.q).toBe("jakarta");
+  });
+
+  // Regression: the loading state used to early-return a full-page screen,
+  // unmounting the search input mid-search and dropping its focus — the user
+  // had to click the field again after every result refresh. Loading now
+  // renders inside the table while the toolbar (and the focused input) stay
+  // mounted, same shape as ParticipantPicker.
+  it("keeps the search input mounted and focused while a search reloads the list", () => {
+    vi.useFakeTimers();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <SystemSchoolsPage />
+      </QueryClientProvider>,
+    );
+    const rerenderPage = () =>
+      rerender(
+        <QueryClientProvider client={qc}>
+          <SystemSchoolsPage />
+        </QueryClientProvider>,
+      );
+
+    const search = screen.getByPlaceholderText(/cari sekolah|search school/i);
+    search.focus();
+
+    // Type, then simulate the fresh (uncached) query key going pending while
+    // the debounce fires — the exact moment the old early return unmounted it.
+    fireEvent.change(search, { target: { value: "jakarta" } });
+    act(() => {
+      schoolsState = {
+        data: null,
+        isLoading: true,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    });
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+
+    expect(screen.getByText("Memuat data…")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/cari sekolah|search school/i)).toBe(search);
+    expect(search).toHaveFocus();
+
+    // Results arrive: same input node, still focused.
+    act(() => {
+      schoolsState = {
+        data: paginatedResponse(sampleSchools),
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    });
+    rerenderPage();
+
+    expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/cari sekolah|search school/i)).toBe(search);
+    expect(search).toHaveFocus();
   });
 
   it("resets the cursor to page 1 when the status filter changes after loading more", async () => {

@@ -456,28 +456,16 @@ export default function SchoolStudentsPage() {
     },
   ];
 
-  // Loading state (first page only)
-  if (query.isLoading && accumulated.length === 0) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader icon={UserRound} title={t("school_students_title")} description={t("sys_loading")} />
-        <div className="py-12 text-center text-ink-500">
-          {t("sys_loading_data")}
-        </div>
-      </div>
-    );
-  }
-
-  if (query.error && accumulated.length === 0) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader icon={UserRound} title={t("school_students_title")} description={t("sys_error_title")} />
-        <div className="py-12 text-center text-ink-500">
-          {t("sys_error_load")}
-        </div>
-      </div>
-    );
-  }
+  // Loading/error states render inside the table (DataTable's empty cell)
+  // instead of replacing the whole page — an early return would unmount the
+  // search input mid-search, dropping its focus every time results refresh
+  // (same shape as ParticipantPicker, which keeps its toolbar mounted).
+  const tableEmpty =
+    query.error && accumulated.length === 0
+      ? t("sys_error_load")
+      : query.isLoading
+        ? t("sys_loading_data")
+        : t("students_empty");
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
@@ -609,7 +597,7 @@ export default function SchoolStudentsPage() {
         columns={columns}
         rows={accumulated}
         rowKey={(s) => s.id}
-        empty={t("students_empty")}
+        empty={tableEmpty}
         data-testid="school-students-table"
         footer={
           nextCursor ? (

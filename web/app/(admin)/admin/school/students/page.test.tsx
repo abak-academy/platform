@@ -180,7 +180,7 @@ describe("SchoolStudentsPage", () => {
     render(<SchoolStudentsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Memuat…")).toBeInTheDocument();
+      expect(screen.getByText("Memuat data…")).toBeInTheDocument();
     });
   });
 
@@ -264,6 +264,57 @@ describe("SchoolStudentsPage", () => {
 
     last = useAdminStudentsCalls.at(-1) as { q?: string } | undefined;
     expect(last?.q).toBe("budi");
+  });
+
+  // Regression: the loading state used to early-return a full-page screen,
+  // unmounting the search input mid-search and dropping its focus — the user
+  // had to click the field again after every result refresh. Loading now
+  // renders inside the table while the toolbar (and the focused input) stay
+  // mounted, same shape as ParticipantPicker.
+  it("keeps the search input mounted and focused while a search reloads the list", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<SchoolStudentsPage />);
+
+    const search = screen.getByPlaceholderText(/cari nama|search name/i);
+    search.focus();
+
+    // Type, then simulate the fresh (uncached) query key going pending while
+    // the debounce fires — the exact moment the old early return unmounted it.
+    fireEvent.change(search, { target: { value: "budi" } });
+    act(() => {
+      studentsState = {
+        data: null,
+        isLoading: true,
+        isFetching: true,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    });
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+
+    expect(screen.getByText("Memuat data…")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/cari nama|search name/i)).toBe(search);
+    expect(search).toHaveFocus();
+
+    // Results arrive: same input node, still focused.
+    act(() => {
+      studentsState = {
+        data: paginatedResponse(sampleStudents),
+        isLoading: false,
+        isFetching: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    });
+    rerender(<SchoolStudentsPage />);
+
+    expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/cari nama|search name/i)).toBe(search);
+    expect(search).toHaveFocus();
   });
 
   it("opens the bulk import modal from the header button", async () => {
