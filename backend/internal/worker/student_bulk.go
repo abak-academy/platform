@@ -13,7 +13,7 @@ import (
 // studentBulkProcessor covers just the row-processing step so *service.Service
 // (concrete, real-DB-backed) can be swapped for a fake at the worker-dispatch level.
 type studentBulkProcessor interface {
-	ProcessStudentBulkRows(ctx context.Context, schoolBound *string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
+	ProcessStudentBulkRows(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
 }
 
 // runStudentBulkJob downloads the job's input CSV, processes each row through
@@ -21,6 +21,15 @@ type studentBulkProcessor interface {
 // finishes the job. Any failure before a result CSV is durably uploaded
 // finishes the job as failed with the job's progress left unchanged.
 func (w *Worker) runStudentBulkJob(ctx context.Context, job model.Job) {
+	if job.InputURL != nil {
+		// Unlike school CSVs, student CSVs may hold plaintext passwords, so cleanup follows successful and failed FinishJob calls.
+		defer func() {
+			if err := w.objectStore.DeleteObject(context.WithoutCancel(ctx), w.privateBucket, *job.InputURL); err != nil {
+				slog.Error("delete input", "job_id", job.ID, "err", err)
+			}
+		}()
+	}
+
 	user, err := w.jobRepo.GetUserByID(ctx, job.CreatedBy)
 	if err != nil || user == nil {
 		w.failStudentBulkJob(ctx, job, fmt.Sprintf("resolve owning user: %v", err))
@@ -56,7 +65,7 @@ func (w *Worker) runStudentBulkJob(ctx context.Context, job model.Job) {
 		}
 	}
 
-	results, successCount, err := w.svc.ProcessStudentBulkRows(ctx, schoolBound, rows, onProgress)
+	results, successCount, err := w.svc.ProcessStudentBulkRows(ctx, schoolBound, user.Role, rows, onProgress)
 	if err != nil {
 		w.failStudentBulkJob(ctx, job, fmt.Sprintf("process rows: %v", err))
 		return

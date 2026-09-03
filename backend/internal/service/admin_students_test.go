@@ -346,6 +346,47 @@ func TestRegisterStudent_Integration(t *testing.T) {
 	})
 }
 
+func TestRegisterStudentExplicitPassword_Integration(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+
+	t.Run("weak explicit password is rejected", func(t *testing.T) {
+		_, err := svc.RegisterStudentWithPassword(ctx, RoleSuperAdmin, schoolID, "Weak Explicit", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "short")
+		if !errors.Is(err, ErrWeakPassword) {
+			t.Errorf("want ErrWeakPassword, got %v", err)
+		}
+	})
+
+	t.Run("valid explicit password is hashed and not returned", func(t *testing.T) {
+		password := "chosenPass123"
+		resp, err := svc.RegisterStudentWithPassword(ctx, RoleSuperAdmin, schoolID, "Explicit Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, password)
+		if err != nil {
+			t.Fatalf("RegisterStudentWithPassword: %v", err)
+		}
+		if resp.TempPassword != "" {
+			t.Fatalf("explicit-password response must not include temp password, got %q", resp.TempPassword)
+		}
+		u, err := repo.GetUserByUsername(ctx, resp.Username)
+		if err != nil || u == nil {
+			t.Fatalf("GetUserByUsername(%s): %v", resp.Username, err)
+		}
+		if u.PasswordHash == password {
+			t.Fatal("password must be hashed, not stored as plaintext")
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
+			t.Fatalf("persisted hash does not match explicit password: %v", err)
+		}
+	})
+
+	t.Run("non-super-admin explicit password is forbidden", func(t *testing.T) {
+		_, err := svc.RegisterStudentWithPassword(ctx, RoleAdminSchool, schoolID, "Forbidden Explicit", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "chosenPass123")
+		if !errors.Is(err, ErrForbidden) {
+			t.Errorf("want ErrForbidden, got %v", err)
+		}
+	})
+}
+
 func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
@@ -423,6 +464,24 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 	})
 
 	t.Run("credential reissue overwrites hash and returns a new password", func(t *testing.T) {
+		if svc.rdb == nil {
+			t.Fatal("newRealDBService must provide Redis so session policy is exercised")
+		}
+		accessJTI := "reissue-access-" + uniqueSuffix()
+		refreshToken := "reissue-refresh-" + uniqueSuffix()
+		if err := svc.rdb.Set(ctx, "session:access:"+accessJTI, studentID, 0).Err(); err != nil {
+			t.Fatalf("seed access session: %v", err)
+		}
+		if err := svc.rdb.SAdd(ctx, "user_access_sessions:"+studentID, accessJTI).Err(); err != nil {
+			t.Fatalf("index access session: %v", err)
+		}
+		if err := svc.rdb.Set(ctx, "session:refresh:"+refreshToken, studentID, 0).Err(); err != nil {
+			t.Fatalf("seed refresh session: %v", err)
+		}
+		if err := svc.rdb.SAdd(ctx, "user_refresh_sessions:"+studentID, refreshToken).Err(); err != nil {
+			t.Fatalf("index refresh session: %v", err)
+		}
+
 		creds, err := svc.ReissueStudentCredentials(ctx, schoolA, studentID)
 		if err != nil {
 			t.Fatalf("ReissueStudentCredentials: %v", err)
@@ -443,6 +502,12 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 		}
 		if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(reg.TempPassword)) == nil {
 			t.Error("old temp password should no longer validate against the persisted hash")
+		}
+		if !svc.SessionActive(ctx, accessJTI) {
+			t.Error("credential reissue must preserve the live access session")
+		}
+		if exists, err := svc.rdb.Exists(ctx, "session:refresh:"+refreshToken).Result(); err != nil || exists != 0 {
+			t.Errorf("credential reissue must revoke refresh session: exists=%d err=%v", exists, err)
 		}
 	})
 
@@ -473,6 +538,113 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 		}
 		if err := svc.ChangeStudentStatus(ctx, "", noSchoolID, "deactivated"); err != nil {
 			t.Fatalf("ChangeStudentStatus no-school student: %v", err)
+		}
+	})
+}
+
+func TestSetStudentPassword_Integration(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	actorID := "00000000-0000-0000-0000-000000000001"
+	schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+	active := createTestStudentWithSchool(t, svc, schoolID, "sma")
+	schoolless := createTestStudentNoSchool(t, svc)
+	deactivated := createTestStudentWithSchool(t, svc, schoolID, "sma")
+	if err := svc.ChangeStudentStatus(ctx, "", deactivated, "deactivated"); err != nil {
+		t.Fatalf("deactivate seed student: %v", err)
+	}
+	if svc.rdb == nil {
+		t.Fatal("newRealDBService must provide Redis so session revocation is exercised")
+	}
+	accessJTI := "set-password-access-" + uniqueSuffix()
+	refreshToken := "set-password-refresh-" + uniqueSuffix()
+	if err := svc.rdb.Set(ctx, "session:access:"+accessJTI, active, 0).Err(); err != nil {
+		t.Fatalf("seed access session: %v", err)
+	}
+	if err := svc.rdb.SAdd(ctx, "user_access_sessions:"+active, accessJTI).Err(); err != nil {
+		t.Fatalf("index access session: %v", err)
+	}
+	if err := svc.rdb.Set(ctx, "session:refresh:"+refreshToken, active, 0).Err(); err != nil {
+		t.Fatalf("seed refresh session: %v", err)
+	}
+	if err := svc.rdb.SAdd(ctx, "user_refresh_sessions:"+active, refreshToken).Err(); err != nil {
+		t.Fatalf("index refresh session: %v", err)
+	}
+
+	for name, studentID := range map[string]string{
+		"school-linked active": active,
+		"school-less active":   schoolless,
+		"deactivated":          deactivated,
+	} {
+		t.Run(name, func(t *testing.T) {
+			password := "manualNew123"
+			if err := svc.SetStudentPassword(ctx, actorID, studentID, password); err != nil {
+				t.Fatalf("SetStudentPassword: %v", err)
+			}
+			var hash string
+			if err := repo.Pool().QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, studentID).Scan(&hash); err != nil {
+				t.Fatalf("read hash: %v", err)
+			}
+			if hash == password {
+				t.Fatal("password must be hashed")
+			}
+			if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
+				t.Fatalf("hash does not match new password: %v", err)
+			}
+		})
+	}
+	if svc.SessionActive(ctx, accessJTI) {
+		t.Error("manual set password must revoke the access session")
+	}
+	if exists, err := svc.rdb.Exists(ctx, "session:refresh:"+refreshToken).Result(); err != nil || exists != 0 {
+		t.Errorf("manual set password must revoke refresh session: exists=%d err=%v", exists, err)
+	}
+
+	t.Run("weak password fails without mutation", func(t *testing.T) {
+		var before string
+		if err := repo.Pool().QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, active).Scan(&before); err != nil {
+			t.Fatalf("read before: %v", err)
+		}
+		err := svc.SetStudentPassword(ctx, actorID, active, "short")
+		if !errors.Is(err, ErrWeakPassword) {
+			t.Fatalf("want ErrWeakPassword, got %v", err)
+		}
+		var after string
+		if err := repo.Pool().QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, active).Scan(&after); err != nil {
+			t.Fatalf("read after: %v", err)
+		}
+		if after != before {
+			t.Fatal("weak password must not mutate hash")
+		}
+	})
+
+	t.Run("missing deleted and non-student targets fail without mutation", func(t *testing.T) {
+		if err := svc.SetStudentPassword(ctx, actorID, "00000000-0000-0000-0000-000000000000", "manualNew123"); !errors.Is(err, ErrStudentNotFound) {
+			t.Fatalf("missing target: want ErrStudentNotFound, got %v", err)
+		}
+		deleted := createTestStudentWithSchool(t, svc, schoolID, "sma")
+		if _, err := repo.Pool().Exec(ctx, `UPDATE users SET status = 'deleted' WHERE id = $1`, deleted); err != nil {
+			t.Fatalf("mark deleted: %v", err)
+		}
+		if err := svc.SetStudentPassword(ctx, actorID, deleted, "manualNew123"); !errors.Is(err, ErrStudentNotFound) {
+			t.Fatalf("deleted target: want ErrStudentNotFound, got %v", err)
+		}
+		var adminID string
+		if err := repo.Pool().QueryRow(ctx,
+			`INSERT INTO users (name, username, role, status, password_hash) VALUES ($1, $2, 'admin_school', 'active', 'old') RETURNING id`,
+			"Not Student "+uniqueSuffix(), "admin_"+uniqueSuffix(),
+		).Scan(&adminID); err != nil {
+			t.Fatalf("seed admin: %v", err)
+		}
+		if err := svc.SetStudentPassword(ctx, actorID, adminID, "manualNew123"); !errors.Is(err, ErrStudentNotFound) {
+			t.Fatalf("non-student target: want ErrStudentNotFound, got %v", err)
+		}
+		var adminHash string
+		if err := repo.Pool().QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, adminID).Scan(&adminHash); err != nil {
+			t.Fatalf("read admin hash: %v", err)
+		}
+		if adminHash != "old" {
+			t.Fatal("non-student target must not mutate hash")
 		}
 	})
 }

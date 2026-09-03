@@ -53,6 +53,7 @@ import {
   useRegisterStudent,
   useChangeStudentStatus,
   useReissueStudentCredentials,
+  useSetStudentPassword,
 } from "@/lib/hooks/admin-students";
 import { useSchoolOptions } from "@/lib/hooks/admin-schools";
 import { useSchools } from "@/lib/hooks/students";
@@ -101,6 +102,8 @@ function compactStudentRegistration(
   if (form.kecamatan_id) payload.kecamatan_id = form.kecamatan_id;
   const kodePos = form.kode_pos?.trim();
   if (kodePos) payload.kode_pos = kodePos;
+  const password = form.password?.trim();
+  if (password) payload.password = password;
   return payload;
 }
 
@@ -212,6 +215,7 @@ export default function SchoolStudentsPage() {
     kota_id: undefined,
     kecamatan_id: undefined,
     kode_pos: undefined,
+    password: "",
   });
   const [registerResult, setRegisterResult] =
     useState<StudentRegistrationResult | null>(null);
@@ -226,12 +230,20 @@ export default function SchoolStudentsPage() {
   const [reissueResult, setReissueResult] =
     useState<StudentCredentials | null>(null);
 
+  // Set password dialog
+  const [setPasswordTarget, setSetPasswordTarget] = useState<AdminStudent | null>(null);
+  const [passwordForm, setPasswordForm] = useState({
+    newPassword: "",
+    confirmPassword: "",
+  });
+
   // Copy-to-clipboard state
   const [copied, setCopied] = useState<"username" | "password" | null>(null);
 
   const registerStudent = useRegisterStudent();
   const changeStatus = useChangeStudentStatus();
   const reissueCreds = useReissueStudentCredentials();
+  const setPassword = useSetStudentPassword();
 
   // Region hooks (Task 17)
   const { data: provinces, isLoading: provincesLoading } = useProvinces();
@@ -262,11 +274,37 @@ export default function SchoolStudentsPage() {
         input: compactStudentRegistration(registerForm),
         schoolId: isSuperAdmin ? registerSchoolId : undefined,
       });
-      setRegisterResult(result);
       toast.success(t("students_register_success"));
+      setRegisterResult(result);
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : t("students_register_failed");
+      toast.error(msg);
+    }
+  };
+
+  const handleSetPassword = async () => {
+    if (!setPasswordTarget) return;
+    if (!passwordForm.newPassword) {
+      toast.error(t("accounts_toast_required"));
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error(t("students_password_mismatch"));
+      return;
+    }
+    try {
+      await setPassword.mutateAsync({
+        id: setPasswordTarget.id,
+        newPassword: passwordForm.newPassword,
+      });
+      toast.success(t("students_password_updated"));
+      handleCloseSetPassword();
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : t("students_password_update_failed");
       toast.error(msg);
     }
   };
@@ -338,12 +376,18 @@ export default function SchoolStudentsPage() {
       kota_id: undefined,
       kecamatan_id: undefined,
       kode_pos: undefined,
+      password: "",
     });
   };
 
   const handleCloseReissue = () => {
     setReissueTarget(null);
     setReissueResult(null);
+  };
+
+  const handleCloseSetPassword = () => {
+    setSetPasswordTarget(null);
+    setPasswordForm({ newPassword: "", confirmPassword: "" });
   };
 
   const handleLoadMore = () => {
@@ -440,6 +484,12 @@ export default function SchoolStudentsPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {isSuperAdmin && (
+              <DropdownMenuItem onClick={() => setSetPasswordTarget(s)}>
+                <Lock className="mr-2 size-4" />
+                {t("students_set_password")}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => setReissueTarget(s)}>
               <Lock className="mr-2 size-4" />
               {t("students_credential_reissue")}
@@ -616,7 +666,7 @@ export default function SchoolStudentsPage() {
         }
       />
 
-      <BulkImportModal open={bulkImportOpen} onOpenChange={setBulkImportOpen} />
+      <BulkImportModal open={bulkImportOpen} onOpenChange={setBulkImportOpen} allowExplicitPassword={isSuperAdmin} />
 
       {/* Register dialog */}
       <Dialog open={registerOpen} onOpenChange={(open) => {
@@ -662,6 +712,7 @@ export default function SchoolStudentsPage() {
                     </Button>
                   </div>
                 </div>
+                {registerResult.temp_password ? (
                 <div>
                   <Label>{t("students_credential_password")}</Label>
                   <div className="mt-1 flex items-center gap-2">
@@ -673,7 +724,7 @@ export default function SchoolStudentsPage() {
                       size="sm"
                       className="rounded-full"
                       onClick={() =>
-                        handleCopy(registerResult.temp_password, "password")
+                        handleCopy(registerResult.temp_password ?? "", "password")
                       }
                     >
                       {copied === "password" ? (
@@ -689,6 +740,7 @@ export default function SchoolStudentsPage() {
                     </Button>
                   </div>
                 </div>
+                ) : null}
               </div>
               <DialogFooter className="mt-4">
                 <Button className="rounded-full" onClick={handleCloseRegister}>
@@ -778,6 +830,21 @@ export default function SchoolStudentsPage() {
                     </SelectContent>
                   </Select>
                 </FormField>
+                {isSuperAdmin && (
+                  <FormField label={t("students_password_optional")} hint={t("students_password_optional_hint")}>
+                    <Input
+                      type="password"
+                      value={registerForm.password ?? ""}
+                      onChange={(e) =>
+                        setRegisterForm((f) => ({
+                          ...f,
+                          password: e.target.value,
+                        }))
+                      }
+                      placeholder={t("students_password_optional")}
+                    />
+                  </FormField>
+                )}
               </RegisterSection>
 
               <RegisterSection
@@ -1101,6 +1168,64 @@ export default function SchoolStudentsPage() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Set password dialog */}
+      <Dialog
+        open={setPasswordTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) handleCloseSetPassword();
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-serif">
+              {t("students_set_password")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <FormField label={t("students_new_password")} required>
+              <Input
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={(e) =>
+                  setPasswordForm((f) => ({
+                    ...f,
+                    newPassword: e.target.value,
+                  }))
+                }
+                placeholder={t("students_new_password")}
+              />
+            </FormField>
+            <FormField label={t("students_confirm_password")} required>
+              <Input
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={(e) =>
+                  setPasswordForm((f) => ({
+                    ...f,
+                    confirmPassword: e.target.value,
+                  }))
+                }
+                placeholder={t("students_confirm_password")}
+              />
+            </FormField>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" className="rounded-full" onClick={handleCloseSetPassword}>
+              {t("cancel")}
+            </Button>
+            <Button
+              className="rounded-full"
+              onClick={handleSetPassword}
+              disabled={setPassword.isPending}
+            >
+              {setPassword.isPending
+                ? t("saving")
+                : t("students_set_password")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

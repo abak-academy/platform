@@ -26,6 +26,7 @@ type StudentBulkRow struct {
 	Kota           *string
 	Kecamatan      *string
 	KodePos        *string
+	Password       *string
 }
 
 type StudentBulkResultRow struct {
@@ -57,7 +58,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 
 	nameIdx, jenjangIdx, schoolIdx, emailIdx := -1, -1, -1, -1
 	dobIdx, genderIdx, gradeIdx, alamatIdx, targetExamIdx := -1, -1, -1, -1, -1
-	provinsiIdx, kotaIdx, kecamatanIdx, kodePosIdx := -1, -1, -1, -1
+	provinsiIdx, kotaIdx, kecamatanIdx, kodePosIdx, passwordIdx := -1, -1, -1, -1, -1
 	for i, h := range header {
 		switch normalizeCSVHeader(h) {
 		case "name":
@@ -86,6 +87,8 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 			kecamatanIdx = i
 		case "kode_pos":
 			kodePosIdx = i
+		case "password":
+			passwordIdx = i
 			// "nis" is intentionally ignored
 		}
 	}
@@ -126,6 +129,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 			Kota:           bulkOptionalCell(record, kotaIdx),
 			Kecamatan:      bulkOptionalCell(record, kecamatanIdx),
 			KodePos:        bulkOptionalCell(record, kodePosIdx),
+			Password:       bulkOptionalCell(record, passwordIdx),
 		})
 	}
 
@@ -136,7 +140,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 // province/city/district names to IDs before passing them to RegisterStudent.
 // schoolBound, when non-nil, restricts every row's resolved school to match it.
 // nil means no restriction (super_admin cross-school).
-func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, rows []StudentBulkRow, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
+func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, actorRole string, rows []StudentBulkRow, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
 	results := make([]StudentBulkResultRow, len(rows))
 	successCount := 0
 
@@ -150,7 +154,6 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 		if r.Email != nil {
 			result.Email = *r.Email
 		}
-
 		// Resolve School name to school_id.
 		school, err := s.storeRepo.GetSchoolByNameCI(ctx, r.School)
 		if err != nil {
@@ -306,7 +309,12 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 			grade = &parsed
 		}
 
-		resp, err := s.RegisterStudent(ctx, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos)
+		var resp *StudentRegistrationResponse
+		if r.Password != nil {
+			resp, err = s.RegisterStudentWithPassword(ctx, actorRole, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, *r.Password)
+		} else {
+			resp, err = s.RegisterStudent(ctx, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos)
+		}
 		if err == nil {
 			result.Status = "success"
 			result.Username = resp.Username

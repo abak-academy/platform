@@ -14,7 +14,9 @@ import (
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
@@ -26,8 +28,9 @@ import (
 // newRealDBService) is the only way to exercise it end-to-end; the container is
 // shared across this file's tests via sync.Once.
 var (
-	jobEnvOnce sync.Once
-	jobEnv     *adminJobsTestEnv
+	jobEnvOnce  sync.Once
+	jobEnv      *adminJobsTestEnv
+	jobEnvRedis *miniredis.Miniredis
 )
 
 type adminJobsTestEnv struct {
@@ -63,7 +66,13 @@ func newAdminJobsEnv(t *testing.T) *adminJobsTestEnv {
 			t.Fatalf("new pool: %v", err)
 		}
 		repo := repository.New(pool)
-		svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, nil, nil, nil)
+		redisServer, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("start miniredis: %v", err)
+		}
+		rdb := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+		jobEnvRedis = redisServer
+		svc := service.NewWithStore(repo, repo, rdb, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, nil, nil, nil)
 		e := echo.New()
 		e.HideBanner = true
 		jobEnv = &adminJobsTestEnv{e: e, h: handler.New(svc), svc: svc, repo: repo}

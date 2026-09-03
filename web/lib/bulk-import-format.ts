@@ -17,6 +17,7 @@ export type BulkFieldSpec = {
     | "bulk_format_student_kota"
     | "bulk_format_student_kecamatan"
     | "bulk_format_student_kode_pos"
+    | "bulk_format_student_password"
     | "bulk_format_school_name"
     | "bulk_format_school_code"
     | "bulk_format_school_npsn"
@@ -32,6 +33,10 @@ export const STUDENT_TEMPLATE_ROWS = [
   'Budi Santoso,SMAN 1 Jakarta,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132',
   "Siti Aminah,SMAN 1 Jakarta,SMA,,,,,,,,,,",
 ];
+
+export const SUPER_ADMIN_STUDENT_TEMPLATE_HEADER = `${STUDENT_TEMPLATE_HEADER},password`;
+
+export const SUPER_ADMIN_STUDENT_TEMPLATE_ROWS = STUDENT_TEMPLATE_ROWS.map((row) => `${row},`);
 
 export const SCHOOL_TEMPLATE_HEADER = "name,code,npsn,school_types,alamat";
 
@@ -61,6 +66,11 @@ export const STUDENT_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "kode_pos", required: false, ruleKey: "bulk_format_student_kode_pos", example: "40132" },
 ];
 
+export const SUPER_ADMIN_STUDENT_BULK_FIELDS: BulkFieldSpec[] = [
+  ...STUDENT_BULK_FIELDS,
+  { column: "password", required: false, ruleKey: "bulk_format_student_password", example: "" },
+];
+
 export const SCHOOL_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "name", required: true, ruleKey: "bulk_format_school_name", example: "SMAN 1 Jakarta" },
   { column: "code", required: true, ruleKey: "bulk_format_school_code", example: "SMAN1JKT" },
@@ -86,8 +96,10 @@ export const SCHOOL_GUIDE_PITFALL_KEYS = [
   "bulk_format_max_rows",
 ] as const satisfies readonly I18nKey[];
 
-export function buildStudentTemplateCSV(): string {
-  return `${STUDENT_TEMPLATE_HEADER}\n${STUDENT_TEMPLATE_ROWS.join("\n")}\n`;
+export function buildStudentTemplateCSV(includePassword = false): string {
+  const header = includePassword ? SUPER_ADMIN_STUDENT_TEMPLATE_HEADER : STUDENT_TEMPLATE_HEADER;
+  const rows = includePassword ? SUPER_ADMIN_STUDENT_TEMPLATE_ROWS : STUDENT_TEMPLATE_ROWS;
+  return `${header}\n${rows.join("\n")}\n`;
 }
 
 export function buildSchoolTemplateCSV(): string {
@@ -105,11 +117,12 @@ function formatFieldGuide(fields: BulkFieldSpec[], t: Translate): string {
     .join("\n\n");
 }
 
-export function buildStudentGuideText(t: Translate): string {
+export function buildStudentGuideText(t: Translate, includePassword = false): string {
+  const fields = includePassword ? SUPER_ADMIN_STUDENT_BULK_FIELDS : STUDENT_BULK_FIELDS;
   return [
     t("bulk_format_student_guide_title"),
     "",
-    formatFieldGuide(STUDENT_BULK_FIELDS, t),
+    formatFieldGuide(fields, t),
     "",
     ...STUDENT_GUIDE_PITFALL_KEYS.map((k) => `- ${t(k)}`),
     "",

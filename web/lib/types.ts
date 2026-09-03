@@ -103,12 +103,13 @@ export interface StudentRegistrationInput {
   kota_id?: string;
   kecamatan_id?: string;
   kode_pos?: string;
+  password?: string;
 }
 
 export interface StudentRegistrationResult extends AdminStudent {
   /** Registration always generates one, unlike an arbitrary existing account. */
   username: string;
-  temp_password: string;
+  temp_password?: string;
 }
 
 export interface StudentCredentials {

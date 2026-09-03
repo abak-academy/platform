@@ -101,3 +101,20 @@ export function useReissueStudentCredentials() {
     },
   });
 }
+
+export function useSetStudentPassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, newPassword }: { id: string; newPassword: string }) =>
+      authFetch<{ message: string }>(
+        `/admin/students/${encodeURIComponent(id)}/password`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ new_password: newPassword }),
+        }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminStudentsKeys.all });
+    },
+  });
+}
