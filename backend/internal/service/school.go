@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
+	"unicode"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -36,6 +38,15 @@ func toSchoolResponse(row repository.SchoolAdminRow) SchoolResponse {
 		CreatedAt:    row.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:    row.UpdatedAt.Format(time.RFC3339),
 	}
+}
+
+func validSchoolName(name string) bool {
+	for _, r := range strings.TrimSpace(name) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
 }
 
 // AdminListSchoolsParams carries the optional filters accepted by
@@ -87,8 +98,11 @@ func (s *Service) SchoolOptions(ctx context.Context) ([]repository.SchoolOption,
 
 // CreateSchool creates a new school with status='active' and student_count=0.
 func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *string, schoolTypes []string, alamat *string) (*SchoolResponse, error) {
-	if name == "" || code == "" {
+	if code == "" {
 		return nil, ErrMissingField
+	}
+	if !validSchoolName(name) {
+		return nil, ErrInvalidSchoolName
 	}
 
 	exists, err := s.storeRepo.SchoolCodeExists(ctx, code, nil)
@@ -134,6 +148,10 @@ func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *str
 // UpdateSchool patches school fields. Nil pointers leave the corresponding
 // column unchanged.
 func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alamat *string, schoolTypes []string, code *string) (*SchoolResponse, error) {
+	if name != nil && !validSchoolName(*name) {
+		return nil, ErrInvalidSchoolName
+	}
+
 	school, err := s.storeRepo.GetSchoolByID(ctx, id)
 	if err != nil {
 		return nil, err
