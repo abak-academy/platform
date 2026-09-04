@@ -111,6 +111,7 @@ export default function SessionPage() {
     refetch,
   } = useReconnectSession(sessionId);
   const saveAnswers = useSaveAnswers(sessionId);
+  const saveAnswersMutateAsync = saveAnswers.mutateAsync;
   const submitSession = useSubmitSession(sessionId);
   const logViolation = useLogViolation(sessionId);
   const advanceSection = useAdvanceSection(sessionId);
@@ -259,11 +260,12 @@ export default function SessionPage() {
       const mySeq = ++saveSeqRef.current;
       const editSeq = answerEditSeqRef.current;
       const answersPayload = queueToSavePayload(payload);
-      saveAnswers.mutate({
-        answers: answersPayload,
-        ...(positionChanged ? { current_position: position } : {}),
-      }, {
-        onSuccess: () => {
+      void (async () => {
+        try {
+          await saveAnswersMutateAsync({
+            answers: answersPayload,
+            ...(positionChanged ? { current_position: position } : {}),
+          });
           const stillPending =
             payload.length > 0
               ? acknowledgeQueueRevisions(sessionId, payload)
@@ -281,8 +283,7 @@ export default function SessionPage() {
             lastSavedPositionRef.current = position;
             setSaveStatus("saved");
           }
-        },
-        onError: () => {
+        } catch {
           if (submittingRef.current) return;
           if (mySeq !== saveSeqRef.current) return; // superseded by a newer attempt
           clearRetryTimer();
@@ -295,10 +296,10 @@ export default function SessionPage() {
             // own payload: it can be stale by the time the backoff elapses.
             attemptSave(buildAutosavePayload());
           }, delay);
-        },
-      });
+        }
+      })();
     },
-    [sessionId, saveAnswers, clearRetryTimer, buildAutosavePayload],
+    [sessionId, saveAnswersMutateAsync, clearRetryTimer, buildAutosavePayload],
   );
 
   const flushDebouncedSave = useCallback(() => {
@@ -346,7 +347,7 @@ export default function SessionPage() {
         reconciliationByQuestion.set(answer.question_id, answer);
       }
       if (queued.length > 0 || positionChanged) {
-        await saveAnswers.mutateAsync({
+        await saveAnswersMutateAsync({
           answers: queueToSavePayload(queued),
           ...(positionChanged ? { current_position: position } : {}),
         });
@@ -356,7 +357,7 @@ export default function SessionPage() {
         lastSavedPositionRef.current = position;
       }
 
-      await saveAnswers.mutateAsync({
+      await saveAnswersMutateAsync({
         answers: [...reconciliationByQuestion.values()],
         current_position: currentQIndexRef.current,
       });
@@ -376,14 +377,14 @@ export default function SessionPage() {
     buildSavePayload,
     clearRetryTimer,
     loadScopedQueuedDeltas,
-    saveAnswers,
+    saveAnswersMutateAsync,
     sessionId,
   ]);
 
   const reconcileFullSnapshot = useCallback(async () => {
     setSaveStatus("saving");
     try {
-      await saveAnswers.mutateAsync({
+      await saveAnswersMutateAsync({
         answers: buildSavePayload(),
         current_position: currentQIndexRef.current,
       });
@@ -393,7 +394,7 @@ export default function SessionPage() {
       setSaveStatus("unsaved");
       throw error;
     }
-  }, [buildSavePayload, loadScopedQueuedDeltas, saveAnswers]);
+  }, [buildSavePayload, loadScopedQueuedDeltas, saveAnswersMutateAsync]);
 
   useEffect(() => {
     return () => {
@@ -557,7 +558,7 @@ export default function SessionPage() {
         const payload = buildSavePayload();
         try {
           await retryExpiryStep(() =>
-            saveAnswers.mutateAsync({
+            saveAnswersMutateAsync({
               answers: payload,
               current_position: currentQIndexRef.current,
             }),
@@ -600,7 +601,7 @@ export default function SessionPage() {
     session,
     isSectioned,
     sessionId,
-    saveAnswers,
+    saveAnswersMutateAsync,
     advanceSection,
     submitSession,
     router,
