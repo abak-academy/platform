@@ -14,6 +14,14 @@ import (
 
 const claimsKey = "claims"
 
+// mustChangeAllowedPaths are the routes a token flagged must_change_password
+// may still reach: read own profile, rotate the password, log out.
+var mustChangeAllowedPaths = map[string]bool{
+	"/api/v1/auth/me":              true,
+	"/api/v1/auth/password/change": true,
+	"/api/v1/auth/logout":          true,
+}
+
 func JWTMiddleware(svc *service.Service, signer *infra.JWTSigner) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -28,6 +36,12 @@ func JWTMiddleware(svc *service.Service, signer *infra.JWTSigner) echo.Middlewar
 			}
 			if !svc.SessionActive(c.Request().Context(), claims.ID) {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"code": "unauthorized", "message": "missing or invalid token"})
+			}
+			if claims.MustChange && !mustChangeAllowedPaths[c.Path()] {
+				return c.JSON(http.StatusForbidden, map[string]string{
+					"code":    "password_change_required",
+					"message": "change your password before continuing",
+				})
 			}
 			c.Set(claimsKey, claims)
 			return next(c)
