@@ -67,11 +67,7 @@ function saveState(
   sessionId: string,
   state: { entries: QueuedAnswer[]; next_revision: number },
 ): void {
-  try {
-    localStorage.setItem(storageKey(sessionId), JSON.stringify(state));
-  } catch {
-    /* storage unavailable (private mode, quota) */
-  }
+  localStorage.setItem(storageKey(sessionId), JSON.stringify(state));
 }
 
 export function loadQueue(sessionId: string): QueuedAnswer[] {

@@ -337,37 +337,39 @@ export default function SessionPage() {
     setSaveStatus("saving");
 
     try {
-      const queued = buildAutosavePayload();
-      const position = currentQIndexRef.current;
-      const positionChanged = position !== lastSavedPositionRef.current;
-      const reconciliationByQuestion = new Map(
-        buildSavePayload().map((answer) => [answer.question_id, answer]),
-      );
-      for (const answer of queueToSavePayload(queued)) {
-        reconciliationByQuestion.set(answer.question_id, answer);
-      }
-      if (queued.length > 0 || positionChanged) {
-        await saveAnswersMutateAsync({
-          answers: queueToSavePayload(queued),
-          ...(positionChanged ? { current_position: position } : {}),
-        });
-        if (queued.length > 0) {
-          acknowledgeQueueRevisions(sessionId, queued);
+      for (let attempt = 0; attempt < 25; attempt += 1) {
+        const queued = buildAutosavePayload();
+        const position = currentQIndexRef.current;
+        const positionChanged = position !== lastSavedPositionRef.current;
+        const reconciliationByQuestion = new Map(
+          buildSavePayload().map((answer) => [answer.question_id, answer]),
+        );
+        for (const answer of queueToSavePayload(queued)) {
+          reconciliationByQuestion.set(answer.question_id, answer);
         }
-        lastSavedPositionRef.current = position;
-      }
+        if (queued.length > 0 || positionChanged) {
+          await saveAnswersMutateAsync({
+            answers: queueToSavePayload(queued),
+            ...(positionChanged ? { current_position: position } : {}),
+          });
+          if (queued.length > 0) {
+            acknowledgeQueueRevisions(sessionId, queued);
+          }
+          lastSavedPositionRef.current = position;
+        }
 
-      await saveAnswersMutateAsync({
-        answers: [...reconciliationByQuestion.values()],
-        current_position: currentQIndexRef.current,
-      });
-      lastSavedPositionRef.current = currentQIndexRef.current;
+        await saveAnswersMutateAsync({
+          answers: [...reconciliationByQuestion.values()],
+          current_position: currentQIndexRef.current,
+        });
+        lastSavedPositionRef.current = currentQIndexRef.current;
 
-      if (loadScopedQueuedDeltas().length === 0) {
-        setSaveStatus("saved");
-      } else {
-        setSaveStatus("unsaved");
+        if (loadScopedQueuedDeltas().length === 0) {
+          setSaveStatus("saved");
+          return;
+        }
       }
+      throw new Error("save_barrier_pending_revisions");
     } catch (error) {
       setSaveStatus("unsaved");
       throw error;
@@ -811,11 +813,16 @@ export default function SessionPage() {
 
   const setAnswer = useCallback(
     (questionId: string, value: string) => {
-      queueAnswerDelta(sessionId, {
-        question_id: questionId,
-        answer: value,
-        flagged_for_review: flaggedRef.current[questionId] ?? false,
-      });
+      try {
+        queueAnswerDelta(sessionId, {
+          question_id: questionId,
+          answer: value,
+          flagged_for_review: flaggedRef.current[questionId] ?? false,
+        });
+      } catch {
+        setSaveStatus("unsaved");
+        return;
+      }
       setAnswers((prev) => ({ ...prev, [questionId]: value }));
       answerEditSeqRef.current += 1;
       scheduleAutosave();
@@ -827,11 +834,16 @@ export default function SessionPage() {
     (questionId: string) => {
       setFlagged((prev) => {
         const nextFlag = !prev[questionId];
-        queueAnswerDelta(sessionId, {
-          question_id: questionId,
-          answer: answersRef.current[questionId] ?? "",
-          flagged_for_review: nextFlag,
-        });
+        try {
+          queueAnswerDelta(sessionId, {
+            question_id: questionId,
+            answer: answersRef.current[questionId] ?? "",
+            flagged_for_review: nextFlag,
+          });
+        } catch {
+          setSaveStatus("unsaved");
+          return prev;
+        }
         answerEditSeqRef.current += 1;
         scheduleAutosave();
         return { ...prev, [questionId]: nextFlag };

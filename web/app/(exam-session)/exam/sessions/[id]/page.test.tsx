@@ -1093,6 +1093,68 @@ describe("SessionPage", () => {
     expect(loadQueue("session-1")).toEqual([]);
   });
 
+  it("keeps submit blocked when a newer revision appears during barrier drain until that revision is acknowledged", async () => {
+    const firstBarrierSave = deferred();
+    saveAnswersMutateAsync
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => firstBarrierSave.promise)
+      .mockResolvedValue(undefined);
+    render(<SessionPage />);
+    await enterFullscreen();
+    await clearInitialReconciliation();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT")[0];
+    fireEvent.change(textInput, { target: { value: "v1" } });
+    fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /kumpulkan/i }).at(-1)!);
+
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    saveQueue("session-1", [
+      {
+        question_id: "q-short",
+        answer: "v2",
+        flagged_for_review: false,
+        revision: 2,
+      },
+    ]);
+    expect(submitSessionMutate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      firstBarrierSave.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(submitSessionMutate).toHaveBeenCalledTimes(1);
+    });
+
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(2, {
+      answers: [
+        { question_id: "q-short", answer: "v1", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(3, {
+      answers: [
+        { question_id: "q-short", answer: "v2", flagged_for_review: false },
+      ],
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(4, {
+      answers: [
+        { question_id: "q-short", answer: "v2", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
+    expect(
+      saveAnswersMutateAsync.mock.invocationCallOrder[3],
+    ).toBeLessThan(submitSessionMutate.mock.invocationCallOrder[0]);
+    expect(loadQueue("session-1")).toEqual([]);
+  });
+
   it("does not submit when the save barrier fails and retry can reconcile without losing the latest queued edit", async () => {
     saveAnswersMutateAsync.mockResolvedValue(undefined);
 
@@ -3141,6 +3203,35 @@ describe("SessionPage", () => {
         revision: 1,
       },
     ]);
+  });
+
+  it("keeps the page unsaved and does not autosave when durable queue storage fails", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    render(<SessionPage />);
+    await enterFullscreen();
+    await clearInitialReconciliation();
+    vi.useFakeTimers();
+    const setItem = vi
+      .spyOn(localStorage, "setItem")
+      .mockImplementation(() => {
+        throw new Error("quota exceeded");
+      });
+
+    try {
+      fireEvent.click(screen.getAllByRole("radio")[1]);
+      expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+        "Belum tersimpan",
+      );
+      await act(async () => {
+        vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+        await Promise.resolve();
+      });
+    } finally {
+      setItem.mockRestore();
+    }
+
+    expect(saveAnswersMutateAsync).not.toHaveBeenCalled();
+    expect(loadQueue("session-1")).toEqual([]);
   });
 
   it("retries a failing save with growing backoff delays and eventually succeeds (FR-32)", async () => {

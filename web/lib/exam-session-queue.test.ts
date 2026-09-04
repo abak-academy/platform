@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   loadQueue,
   saveQueue,
@@ -83,6 +83,27 @@ describe("exam-session-queue", () => {
     expect(loadQueue("session-1")).toEqual([
       { question_id: "q1", answer: "A", flagged_for_review: false, revision: 1 },
     ]);
+  });
+
+  it("surfaces storage write failures so callers cannot report a non-durable edit as saved", () => {
+    const setItem = vi
+      .spyOn(localStorage, "setItem")
+      .mockImplementation(() => {
+        throw new Error("quota exceeded");
+      });
+
+    try {
+      expect(() =>
+        queueAnswerDelta("session-1", {
+          question_id: "q1",
+          answer: "A",
+          flagged_for_review: false,
+        }),
+      ).toThrow("quota exceeded");
+    } finally {
+      setItem.mockRestore();
+    }
+    expect(loadQueue("session-1")).toEqual([]);
   });
 
   it("stores edits as latest per-question values with session-local monotonic revisions", () => {
