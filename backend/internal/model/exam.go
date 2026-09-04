@@ -242,6 +242,13 @@ type ExamSessionAnswer struct {
 	SavedAt          time.Time  `json:"saved_at"`
 }
 
+// ExamExpiryCandidate is one bounded worker candidate. TestID is nil for standard sessions.
+type ExamExpiryCandidate struct {
+	SessionID uuid.UUID
+	TestID    *uuid.UUID
+	DueAt     time.Time
+}
+
 // SessionViolationLog records integrity events (tab-switch, copy-paste, etc.) for a session.
 type SessionViolationLog struct {
 	ID            uuid.UUID `json:"id"`

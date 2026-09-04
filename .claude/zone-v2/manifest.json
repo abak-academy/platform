@@ -50,7 +50,7 @@
     {
       "id": 4,
       "title": "Bounded server-side expiry worker",
-      "status": "pending",
+      "status": "implemented",
       "depends_on": [1],
       "acceptance_criteria": [
         "Fixed-limit deterministic queries select only due timed standard sessions or due active timed sections using duration, extension, and grace, never scheduled_end_at or untimed sessions.",
@@ -62,5 +62,5 @@
   ],
   "decisions": [],
   "created_at": "2026-09-04T00:00:00+07:00",
-  "updated_at": "2026-09-04T19:05:30+07:00"
+  "updated_at": "2026-09-04T19:14:00+07:00"
 }

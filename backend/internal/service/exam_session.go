@@ -809,6 +809,17 @@ func (s *Service) finalizeSession(ctx context.Context, sessID uuid.UUID, adminSu
 		return SubmitResult{}, ErrAlreadySubmitted
 	}
 
+	result, err := s.finalizeLockedSessionTx(ctx, tx, sessID, sess, adminSubmitted)
+	if err != nil {
+		return SubmitResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SubmitResult{}, err
+	}
+	return result, nil
+}
+
+func (s *Service) finalizeLockedSessionTx(ctx context.Context, tx pgx.Tx, sessID uuid.UUID, sess *model.ExamSession, adminSubmitted bool) (SubmitResult, error) {
 	// A failed load must abort the submit: grading against a partial/empty question
 	// set would CAS-submit the student's only attempt with a wrong score.
 	questions, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
@@ -846,10 +857,6 @@ func (s *Service) finalizeSession(ctx context.Context, sessID uuid.UUID, adminSu
 	// layout awaiting grading no-ops here and gets a second chance from
 	// GradeEssayAnswer's own enqueue once grading completes.
 	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "exam_session", sessID, "CertificateNeeded", CertificateNeededPayload{SessionID: sessID}); err != nil {
-		return SubmitResult{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
 		return SubmitResult{}, err
 	}
 
