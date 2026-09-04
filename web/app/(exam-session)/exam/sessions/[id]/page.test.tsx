@@ -3254,7 +3254,7 @@ describe("SessionPage", () => {
     await clearInitialReconciliation();
     vi.useFakeTimers();
     const setItem = vi
-      .spyOn(localStorage, "setItem")
+      .spyOn(Object.getPrototypeOf(localStorage) as Storage, "setItem")
       .mockImplementation(() => {
         throw new Error("quota exceeded");
       });

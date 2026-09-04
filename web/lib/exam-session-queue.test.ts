@@ -87,7 +87,7 @@ describe("exam-session-queue", () => {
 
   it("surfaces storage write failures so callers cannot report a non-durable edit as saved", () => {
     const setItem = vi
-      .spyOn(localStorage, "setItem")
+      .spyOn(Object.getPrototypeOf(localStorage) as Storage, "setItem")
       .mockImplementation(() => {
         throw new Error("quota exceeded");
       });
