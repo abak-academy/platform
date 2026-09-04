@@ -2151,6 +2151,26 @@ func (r *Repository) GetExamSessionForStudent(ctx context.Context, sessionID, st
 	return &s, nil
 }
 
+func (r *Repository) GetExamSessionForStudentForUpdateTx(ctx context.Context, tx pgx.Tx, sessionID, studentID uuid.UUID) (*model.ExamSession, error) {
+	var s model.ExamSession
+	err := scanExamSession(tx.QueryRow(ctx,
+		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
+			submitted_at, extended_until, admin_submitted, score, certificate_key,
+			certificate_generated_at, certificate_number, last_saved_at, current_position, status, created_at
+		FROM exam_session
+		WHERE id = $1 AND student_id = $2
+		FOR UPDATE`,
+		sessionID, studentID,
+	), &s)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &s, nil
+}
+
 // GetExamSessionByID returns a session by ID without ownership filter (admin use).
 func (r *Repository) GetExamSessionByID(ctx context.Context, sessionID uuid.UUID) (*model.ExamSession, error) {
 	var s model.ExamSession
@@ -2160,6 +2180,26 @@ func (r *Repository) GetExamSessionByID(ctx context.Context, sessionID uuid.UUID
 			certificate_generated_at, certificate_number, last_saved_at, current_position, status, created_at
 		FROM exam_session
 		WHERE id = $1`,
+		sessionID,
+	), &s)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (r *Repository) GetExamSessionByIDForUpdateTx(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID) (*model.ExamSession, error) {
+	var s model.ExamSession
+	err := scanExamSession(tx.QueryRow(ctx,
+		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
+			submitted_at, extended_until, admin_submitted, score, certificate_key,
+			certificate_generated_at, certificate_number, last_saved_at, current_position, status, created_at
+		FROM exam_session
+		WHERE id = $1
+		FOR UPDATE`,
 		sessionID,
 	), &s)
 	if err != nil {
@@ -2214,7 +2254,17 @@ func (r *Repository) GetSessionWithQuestions(ctx context.Context, examID uuid.UU
 
 // GetSessionAnswers returns all answers for a session ordered by question_id.
 func (r *Repository) GetSessionAnswers(ctx context.Context, sessionID uuid.UUID) ([]model.ExamSessionAnswer, error) {
-	rows, err := r.pool.Query(ctx,
+	return scanSessionAnswers(ctx, r.pool, sessionID)
+}
+
+func (r *Repository) GetSessionAnswersTx(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID) ([]model.ExamSessionAnswer, error) {
+	return scanSessionAnswers(ctx, tx, sessionID)
+}
+
+func scanSessionAnswers(ctx context.Context, q interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, sessionID uuid.UUID) ([]model.ExamSessionAnswer, error) {
+	rows, err := q.Query(ctx,
 		`SELECT session_id, question_id, answer, is_correct, score, graded_by,
 			graded_at, grader_comment, flagged_for_review, saved_at
 		FROM exam_session_answer
@@ -2244,13 +2294,7 @@ func (r *Repository) GetSessionAnswers(ctx context.Context, sessionID uuid.UUID)
 	return answers, nil
 }
 
-// SaveAnswersTx writes answers/progress only for in-progress sessions; empty or rejected saves are no-ops.
-func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer, position *int) error {
-	if len(answers) == 0 && position == nil {
-		return nil
-	}
-
-	// A single ON CONFLICT statement cannot update the same row twice (SQLSTATE 21000).
+func collapseSessionAnswersLastWins(answers []model.ExamSessionAnswer) []model.ExamSessionAnswer {
 	seen := make(map[uuid.UUID]struct{}, len(answers))
 	collapsed := make([]model.ExamSessionAnswer, 0, len(answers))
 	for i := len(answers) - 1; i >= 0; i-- {
@@ -2263,16 +2307,19 @@ func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, ans
 	for i, j := 0, len(collapsed)-1; i < j; i, j = i+1, j-1 {
 		collapsed[i], collapsed[j] = collapsed[j], collapsed[i]
 	}
+	return collapsed
+}
 
-	questionIDs := make([]uuid.UUID, len(collapsed))
-	answerValues := make([]*string, len(collapsed))
-	isCorrect := make([]*bool, len(collapsed))
-	scores := make([]*float64, len(collapsed))
-	gradedBy := make([]pgtype.UUID, len(collapsed))
-	gradedAt := make([]*time.Time, len(collapsed))
-	graderComments := make([]*string, len(collapsed))
-	flagged := make([]bool, len(collapsed))
-	for i, answer := range collapsed {
+func gradedAnswerArrays(answers []model.ExamSessionAnswer) ([]uuid.UUID, []*string, []*bool, []*float64, []pgtype.UUID, []*time.Time, []*string, []bool) {
+	questionIDs := make([]uuid.UUID, len(answers))
+	answerValues := make([]*string, len(answers))
+	isCorrect := make([]*bool, len(answers))
+	scores := make([]*float64, len(answers))
+	gradedBy := make([]pgtype.UUID, len(answers))
+	gradedAt := make([]*time.Time, len(answers))
+	graderComments := make([]*string, len(answers))
+	flagged := make([]bool, len(answers))
+	for i, answer := range answers {
 		questionIDs[i] = answer.QuestionID
 		answerValues[i] = answer.Answer
 		isCorrect[i] = answer.IsCorrect
@@ -2284,6 +2331,43 @@ func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, ans
 		graderComments[i] = answer.GraderComment
 		flagged[i] = answer.FlaggedForReview
 	}
+	return questionIDs, answerValues, isCorrect, scores, gradedBy, gradedAt, graderComments, flagged
+}
+
+func (r *Repository) upsertGradedAnswersTx(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID, answers []model.ExamSessionAnswer) error {
+	collapsed := collapseSessionAnswersLastWins(answers)
+	if len(collapsed) == 0 {
+		return nil
+	}
+
+	questionIDs, answerValues, isCorrect, scores, gradedBy, gradedAt, graderComments, flagged := gradedAnswerArrays(collapsed)
+	_, err := tx.Exec(ctx,
+		`INSERT INTO exam_session_answer (session_id, question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review, saved_at)
+		SELECT $1, u.question_id, u.answer, u.is_correct, u.score, u.graded_by, u.graded_at, u.grader_comment, u.flagged_for_review, now()
+		FROM unnest($2::uuid[], $3::text[], $4::boolean[], $5::double precision[], $6::uuid[], $7::timestamptz[], $8::text[], $9::boolean[])
+			AS u(question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review)
+		ON CONFLICT (session_id, question_id) DO UPDATE SET
+			answer = EXCLUDED.answer,
+			is_correct = EXCLUDED.is_correct,
+			score = EXCLUDED.score,
+			graded_by = EXCLUDED.graded_by,
+			graded_at = EXCLUDED.graded_at,
+			grader_comment = EXCLUDED.grader_comment,
+			flagged_for_review = EXCLUDED.flagged_for_review,
+			saved_at = now()`,
+		sessionID, questionIDs, answerValues, isCorrect, scores, gradedBy, gradedAt, graderComments, flagged,
+	)
+	return err
+}
+
+// SaveAnswersTx writes answers/progress only for in-progress sessions; empty or rejected saves are no-ops.
+func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer, position *int) error {
+	if len(answers) == 0 && position == nil {
+		return nil
+	}
+
+	collapsed := collapseSessionAnswersLastWins(answers)
+	questionIDs, answerValues, isCorrect, scores, gradedBy, gradedAt, graderComments, flagged := gradedAnswerArrays(collapsed)
 
 	_, err := r.pool.Exec(ctx,
 		`WITH guard AS MATERIALIZED (
@@ -2318,13 +2402,13 @@ func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, ans
 // SubmitSessionTx performs a CAS submit of a session, writes graded answers,
 // and sets the overall score. Returns the number of rows affected by the CAS update.
 func (r *Repository) SubmitSessionTx(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID, graded []model.ExamSessionAnswer, score float64, adminSubmitted bool) (int64, error) {
-	query := `UPDATE exam_session SET status = 'submitted', submitted_at = now()`
+	query := `UPDATE exam_session SET status = 'submitted', submitted_at = now(), score = $2`
 	if adminSubmitted {
 		query += `, admin_submitted = true`
 	}
 	query += ` WHERE id = $1 AND status = 'in_progress'`
 
-	tag, err := tx.Exec(ctx, query, sessionID)
+	tag, err := tx.Exec(ctx, query, sessionID, score)
 	if err != nil {
 		return 0, err
 	}
@@ -2337,33 +2421,7 @@ func (r *Repository) SubmitSessionTx(ctx context.Context, tx pgx.Tx, sessionID u
 		); err != nil {
 			return 0, err
 		}
-
-		for _, a := range graded {
-			_, err := tx.Exec(ctx,
-				`INSERT INTO exam_session_answer (session_id, question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review, saved_at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-				ON CONFLICT (session_id, question_id) DO UPDATE SET
-					answer = EXCLUDED.answer,
-					is_correct = EXCLUDED.is_correct,
-					score = EXCLUDED.score,
-					graded_by = EXCLUDED.graded_by,
-					graded_at = EXCLUDED.graded_at,
-					grader_comment = EXCLUDED.grader_comment,
-					flagged_for_review = EXCLUDED.flagged_for_review,
-					saved_at = now()`,
-				sessionID, a.QuestionID, a.Answer, a.IsCorrect, a.Score,
-				a.GradedBy, a.GradedAt, a.GraderComment, a.FlaggedForReview,
-			)
-			if err != nil {
-				return 0, err
-			}
-		}
-
-		_, err = tx.Exec(ctx,
-			`UPDATE exam_session SET score = $1 WHERE id = $2`,
-			score, sessionID,
-		)
-		if err != nil {
+		if err := r.upsertGradedAnswersTx(ctx, tx, sessionID, graded); err != nil {
 			return 0, err
 		}
 	}
