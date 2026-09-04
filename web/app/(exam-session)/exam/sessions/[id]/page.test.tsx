@@ -1155,6 +1155,48 @@ describe("SessionPage", () => {
     expect(loadQueue("session-1")).toEqual([]);
   });
 
+  it("fails closed when active scoped revisions keep appearing through the barrier cap", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    render(<SessionPage />);
+    await enterFullscreen();
+    await clearInitialReconciliation();
+    let revision = 2;
+    saveAnswersMutateAsync.mockImplementation(async (payload) => {
+      if ("current_position" in payload) {
+        saveQueue("session-1", [
+          {
+            question_id: "q-mcq",
+            answer: `v${revision}`,
+            flagged_for_review: false,
+            revision,
+          },
+        ]);
+        revision += 1;
+      }
+    });
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /kumpulkan/i }).at(-1)!);
+
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(50);
+    });
+    expect(submitSessionMutate).not.toHaveBeenCalled();
+    expect(advanceSectionMutateAsync).not.toHaveBeenCalled();
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Belum tersimpan",
+    );
+    expect(loadQueue("session-1")).toEqual([
+      {
+        question_id: "q-mcq",
+        answer: "v26",
+        flagged_for_review: false,
+        revision: 26,
+      },
+    ]);
+  });
+
   it("does not submit when the save barrier fails and retry can reconcile without losing the latest queued edit", async () => {
     saveAnswersMutateAsync.mockResolvedValue(undefined);
 
