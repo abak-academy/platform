@@ -48,18 +48,21 @@ func scanProduct(row interface{ Scan(dest ...any) error }, p *model.Product) err
 
 // productAvailabilityFilter is the SQL predicate that restricts the public
 // catalog to products currently inside their availability window (P-A).
-const productAvailabilityFilter = ` AND (available_from IS NULL OR available_from <= now())` +
-	` AND (available_until IS NULL OR available_until >= now())`
+const productAvailabilityFilter = ` AND (p.available_from IS NULL OR p.available_from <= now())` +
+	` AND (p.available_until IS NULL OR p.available_until >= now())`
+
+const examOrderabilityFilter = ` AND (e.scheduled_at IS NULL OR COALESCE(e.scheduled_end_at, e.scheduled_at) >= now())`
 
 type ProductFilter struct {
-	Type       string
+	Type string
 	// Types is a role-scoped allowlist applied in SQL. nil means unrestricted;
 	// a non-nil empty slice means the role may see no type at all.
-	Types      []string
-	Status     string
-	VisibleOnly bool // true = only published + not hidden
-	Cursor     string
-	Limit      int
+	Types             []string
+	Status            string
+	VisibleOnly       bool // true = only published and inside product availability
+	OrderableExamOnly bool // true = linked to at least one exam whose schedule has not ended
+	Cursor            string
+	Limit             int
 }
 
 func (r *Repository) CreateProduct(ctx context.Context, p *model.Product) error {
@@ -112,9 +115,10 @@ func (r *Repository) GetProductByExamID(ctx context.Context, examID uuid.UUID) (
 		        p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.created_at, p.updated_at
 		 FROM product p
 		 JOIN product_exam pe ON pe.product_id = p.id
+		 JOIN exam e ON e.id = pe.exam_id
 		 WHERE pe.exam_id = $1 AND p.type = 'exam' AND p.status = 'published'
 		   AND (p.available_from IS NULL OR p.available_from <= now())
-		   AND (p.available_until IS NULL OR p.available_until >= now())`,
+		   AND (p.available_until IS NULL OR p.available_until >= now())`+examOrderabilityFilter,
 		examID,
 	), p)
 	if err != nil {
@@ -132,13 +136,13 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 	}
 
 	products := []model.Product{}
-	query := `SELECT id, type, name, description, price, stock, status, weight_grams, image_url, specs, available_from, available_until, created_at, updated_at
-	FROM product WHERE 1=1`
+	query := `SELECT p.id, p.type, p.name, p.description, p.price, p.stock, p.status, p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.created_at, p.updated_at
+	FROM product p WHERE 1=1`
 	args := []interface{}{}
 	argIdx := 1
 
 	if filter.Type != "" {
-		query += fmt.Sprintf(` AND type = $%d`, argIdx)
+		query += fmt.Sprintf(` AND p.type = $%d`, argIdx)
 		args = append(args, filter.Type)
 		argIdx++
 	}
@@ -155,28 +159,35 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 			args = append(args, t)
 			argIdx++
 		}
-		query += ` AND type IN (` + strings.Join(placeholders, ", ") + `)`
+		query += ` AND p.type IN (` + strings.Join(placeholders, ", ") + `)`
 	}
 	if filter.Status != "" {
-		query += fmt.Sprintf(` AND status = $%d`, argIdx)
+		query += fmt.Sprintf(` AND p.status = $%d`, argIdx)
 		args = append(args, filter.Status)
 		argIdx++
 	}
 	if filter.VisibleOnly {
 		// public catalog: published and within the availability window
-		query += ` AND status = 'published'`
+		query += ` AND p.status = 'published'`
 		query += productAvailabilityFilter
+	}
+	if filter.OrderableExamOnly {
+		query += ` AND EXISTS (
+			SELECT 1 FROM product_exam pe
+			JOIN exam e ON e.id = pe.exam_id
+			WHERE pe.product_id = p.id` + examOrderabilityFilter + `
+		)`
 	}
 	if filter.Cursor != "" {
 		if _, err := uuid.Parse(filter.Cursor); err != nil {
 			return nil, "", ErrInvalidCursor
 		}
-		query += fmt.Sprintf(` AND id > $%d`, argIdx)
+		query += fmt.Sprintf(` AND p.id > $%d`, argIdx)
 		args = append(args, filter.Cursor)
 		argIdx++
 	}
 
-	query += ` ORDER BY id LIMIT $` + fmt.Sprintf("%d", argIdx)
+	query += ` ORDER BY p.id LIMIT $` + fmt.Sprintf("%d", argIdx)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)

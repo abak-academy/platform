@@ -181,3 +181,58 @@ func TestUpdateProductWithCourses_AvailabilityWindowIsTriState(t *testing.T) {
 		t.Errorf("an explicitly null window must be cleared, got from=%v until=%v", gotFrom, gotUntil)
 	}
 }
+
+func TestListOrderableExams_RespectsExamWindow(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	now := time.Now()
+	future := now.Add(24 * time.Hour)
+	yesterday := now.Add(-24 * time.Hour)
+	tomorrow := now.Add(24 * time.Hour)
+
+	futureExam, err := svc.CreateExam(ctx, model.Exam{Title: "Orderable Future Exam " + uuid.NewString()[:8], ScheduledAt: &future})
+	if err != nil {
+		t.Fatalf("CreateExam future: %v", err)
+	}
+	pastExam, err := svc.CreateExam(ctx, model.Exam{Title: "Orderable Past Exam " + uuid.NewString()[:8], ScheduledAt: &yesterday})
+	if err != nil {
+		t.Fatalf("CreateExam past: %v", err)
+	}
+	openWindowExam, err := svc.CreateExam(ctx, model.Exam{Title: "Orderable Open Window Exam " + uuid.NewString()[:8], ScheduledAt: &yesterday, ScheduledEndAt: &tomorrow})
+	if err != nil {
+		t.Fatalf("CreateExam open window: %v", err)
+	}
+
+	futureProduct, err := svc.CreateProductWithExams(ctx, model.Product{Type: "exam", Name: "Future Exam Product " + uuid.NewString()[:8], Price: 1000, Status: "published"}, []string{futureExam.ID.String()}, RoleSuperAdmin)
+	if err != nil {
+		t.Fatalf("CreateProductWithExams future: %v", err)
+	}
+	pastProduct, err := svc.CreateProductWithExams(ctx, model.Product{Type: "exam", Name: "Past Exam Product " + uuid.NewString()[:8], Price: 1000, Status: "published"}, []string{pastExam.ID.String()}, RoleSuperAdmin)
+	if err != nil {
+		t.Fatalf("CreateProductWithExams past: %v", err)
+	}
+	openWindowProduct, err := svc.CreateProductWithExams(ctx, model.Product{Type: "exam", Name: "Open Window Exam Product " + uuid.NewString()[:8], Price: 1000, Status: "published"}, []string{openWindowExam.ID.String()}, RoleSuperAdmin)
+	if err != nil {
+		t.Fatalf("CreateProductWithExams open window: %v", err)
+	}
+
+	products, err := svc.ListOrderableExams(ctx, RoleAdminSchool)
+	if err != nil {
+		t.Fatalf("ListOrderableExams: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, product := range products {
+		seen[product.ID] = true
+	}
+
+	if !seen[futureProduct.ID] {
+		t.Error("future scheduled exam product must be orderable")
+	}
+	if !seen[openWindowProduct.ID] {
+		t.Error("exam product inside scheduled_end_at window must be orderable")
+	}
+	if seen[pastProduct.ID] {
+		t.Error("past scheduled exam product must not be orderable")
+	}
+}
