@@ -49,21 +49,25 @@ func TestAdminCreateSchool_MissingCode(t *testing.T) {
 }
 
 func TestAdminCreateSchool_InvalidName(t *testing.T) {
-	env := newAdminSystemEnv(t)
+	for _, name := range []string{"", "..."} {
+		t.Run(name, func(t *testing.T) {
+			env := newAdminSystemEnv(t)
 
-	body := map[string]string{"name": "...", "code": "test"}
-	b, _ := json.Marshal(body)
-	req := httptest.NewRequest(http.MethodPost, "/admin/schools", bytes.NewReader(b))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	c := env.e.NewContext(req, rec)
-	setAdminClaims(c, "u1")
+			body := map[string]string{"name": name, "code": "test"}
+			b, _ := json.Marshal(body)
+			req := httptest.NewRequest(http.MethodPost, "/admin/schools", bytes.NewReader(b))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c := env.e.NewContext(req, rec)
+			setAdminClaims(c, "u1")
 
-	err := env.h.AdminCreateSchool(c)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+			err := env.h.AdminCreateSchool(c)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			assertInvalidSchoolNameResponse(t, rec)
+		})
 	}
-	assertInvalidSchoolNameResponse(t, rec)
 }
 
 func TestAdminUpdateSchool_InvalidName(t *testing.T) {
