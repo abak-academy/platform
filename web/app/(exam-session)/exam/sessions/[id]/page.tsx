@@ -37,17 +37,20 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import type { SessionQuestion, SessionAnswerInput } from "@/lib/types";
+import type { SessionQuestion } from "@/lib/types";
 import { RichContent } from "@/components/admin/RichContent";
 import { SectionAudioPlayer } from "./section-audio-player";
 import { QUESTION_BODY_ALLOWED_TAGS } from "@/lib/question-html";
 import { optionKeyLabel } from "@/lib/option-key";
 import {
   loadQueue,
-  saveQueue,
   clearQueue,
+  queueAnswerDelta,
+  acknowledgeQueueRevisions,
+  queueToSavePayload,
   backoffDelayMs,
   AUTOSAVE_DEBOUNCE_MS,
+  type QueuedAnswer,
 } from "@/lib/exam-session-queue";
 
 function OptionKeyBadge({ optionKey }: { optionKey: string }) {
@@ -92,19 +95,6 @@ async function retryExpiryStep<T>(action: () => Promise<T>): Promise<T> {
     }
   }
   throw new Error("expiry recovery exhausted");
-}
-
-// Identifies a queued/save-payload entry by its full content, not just its
-// question id — so an ack for an older value never removes a newer,
-// still-unacknowledged value for the same question from the durable queue.
-function queueEntryKey(entry: {
-  question_id: string;
-  answer: string;
-  flagged_for_review?: boolean;
-}): string {
-  // `\0` here is the two-char escape, not a literal NUL — a real 0x00 in
-  // this file makes git/GitHub treat the whole .tsx as binary.
-  return `${entry.question_id}\0${entry.answer}\0${Boolean(entry.flagged_for_review)}`;
 }
 
 export default function SessionPage() {
@@ -217,12 +207,19 @@ export default function SessionPage() {
     }));
   }, []);
 
+  const loadScopedQueuedDeltas = useCallback(() => {
+    const queued = loadQueue(sessionId);
+    const activeIds = activeQuestionIdsRef.current;
+    return activeIds
+      ? queued.filter((entry) => activeIds.has(entry.question_id))
+      : queued;
+  }, [sessionId]);
+
   // ── Durable autosave: debounce on change, retry with backoff, replay the
   // localStorage queue on reconnect (FR-31..FR-34, FR-37, NFR-P3, NFR-R5) ────
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingChangeRef = useRef(false);
-  const answersDirtyRef = useRef(false);
   const answerEditSeqRef = useRef(0);
   const retryAttemptRef = useRef(0);
   // Sequence number of the most recently ISSUED save. Two saves can still be
@@ -234,8 +231,8 @@ export default function SessionPage() {
   const saveSeqRef = useRef(0);
 
   const buildAutosavePayload = useCallback(
-    () => (answersDirtyRef.current ? buildSavePayload() : loadQueue(sessionId)),
-    [buildSavePayload, sessionId],
+    () => loadScopedQueuedDeltas(),
+    [loadScopedQueuedDeltas],
   );
 
   const clearRetryTimer = useCallback(() => {
@@ -249,7 +246,7 @@ export default function SessionPage() {
   // backoff until it succeeds. submittingRef guards against racing the
   // submit round-trip (same guard the old 30s tick used).
   const attemptSave = useCallback(
-    (payload: SessionAnswerInput[]) => {
+    (payload: QueuedAnswer[]) => {
       if (submittingRef.current) return;
       const position = currentQIndexRef.current;
       const positionChanged = position !== lastSavedPositionRef.current;
@@ -260,32 +257,26 @@ export default function SessionPage() {
       setSaveStatus("saving");
       const mySeq = ++saveSeqRef.current;
       const editSeq = answerEditSeqRef.current;
+      const answersPayload = queueToSavePayload(payload);
       saveAnswers.mutate({
-        answers: payload,
+        answers: answersPayload,
         ...(positionChanged ? { current_position: position } : {}),
       }, {
         onSuccess: () => {
-          // Drop exactly the queued entries this save's payload matches
-          // byte-for-byte — content, not just question id, so a newer
-          // unacknowledged edit for the same question (queued by a later,
-          // still-outstanding save) is never discarded by an older save's
-          // ack (FR-32, NFR-R5).
-          const acked = new Set(payload.map(queueEntryKey));
-          const stillPending = loadQueue(sessionId).filter(
-            (q) => !acked.has(queueEntryKey(q)),
-          );
-          if (stillPending.length > 0) {
-            saveQueue(sessionId, stillPending);
-          } else {
-            clearQueue(sessionId);
-          }
+          const stillPending =
+            payload.length > 0
+              ? acknowledgeQueueRevisions(sessionId, payload)
+              : loadQueue(sessionId);
           // A newer save may have been issued since this one started, and
           // may still be pending or may itself have already failed — its
           // outcome owns the indicator and the acknowledged position. A
           // stale ack must never repaint "saved" over that (FR-34).
-          if (mySeq === saveSeqRef.current && editSeq === answerEditSeqRef.current) {
+          if (
+            stillPending.length === 0 &&
+            mySeq === saveSeqRef.current &&
+            editSeq === answerEditSeqRef.current
+          ) {
             retryAttemptRef.current = 0;
-            answersDirtyRef.current = false;
             lastSavedPositionRef.current = position;
             setSaveStatus("saved");
           }
@@ -300,9 +291,7 @@ export default function SessionPage() {
           retryTimerRef.current = setTimeout(() => {
             retryTimerRef.current = null;
             // Rebuild from current state rather than reusing this attempt's
-            // own payload or re-reading localStorage: either can be stale by
-            // the time the backoff elapses, and buildSavePayload always
-            // reflects whatever the user has actually typed.
+            // own payload: it can be stale by the time the backoff elapses.
             attemptSave(buildAutosavePayload());
           }, delay);
         },
@@ -315,17 +304,15 @@ export default function SessionPage() {
     debounceTimerRef.current = null;
     if (!pendingChangeRef.current) return;
     pendingChangeRef.current = false;
-    const answersDirty = answersDirtyRef.current;
     const payload = buildAutosavePayload();
-    if (answersDirty) saveQueue(sessionId, payload);
     clearRetryTimer();
     retryAttemptRef.current = 0;
     attemptSave(payload);
-  }, [buildSavePayload, sessionId, clearRetryTimer, attemptSave]);
+  }, [buildAutosavePayload, clearRetryTimer, attemptSave]);
 
   // At most one save per debounce window (NFR-P3): the first change in a
-  // window starts the timer; later changes in the same window just mark
-  // pending — flushDebouncedSave reads the latest state via buildSavePayload
+  // window starts the timer; later changes in the same window update their
+  // queued revisions — flushDebouncedSave reads the current pending queue
   // when the window elapses, then the next change starts a fresh window.
   const scheduleAutosave = useCallback(() => {
     setSaveStatus("unsaved");
@@ -418,7 +405,7 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId) return;
     const replay = () => {
-      const queued = loadQueue(sessionId);
+      const queued = loadScopedQueuedDeltas();
       if (queued.length > 0) {
         clearRetryTimer();
         retryAttemptRef.current = 0;
@@ -429,7 +416,7 @@ export default function SessionPage() {
     window.addEventListener("online", replay);
     return () => window.removeEventListener("online", replay);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, loadScopedQueuedDeltas]);
 
   // Sectioned mode: land on the new section's first question when the active
   // section actually changes (e.g. advancing), else a shorter next section
@@ -725,22 +712,33 @@ export default function SessionPage() {
 
   const setAnswer = useCallback(
     (questionId: string, value: string) => {
+      queueAnswerDelta(sessionId, {
+        question_id: questionId,
+        answer: value,
+        flagged_for_review: flaggedRef.current[questionId] ?? false,
+      });
       setAnswers((prev) => ({ ...prev, [questionId]: value }));
-      answersDirtyRef.current = true;
       answerEditSeqRef.current += 1;
       scheduleAutosave();
     },
-    [scheduleAutosave],
+    [sessionId, scheduleAutosave],
   );
 
   const toggleFlag = useCallback(
     (questionId: string) => {
-      setFlagged((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
-      answersDirtyRef.current = true;
-      answerEditSeqRef.current += 1;
-      scheduleAutosave();
+      setFlagged((prev) => {
+        const nextFlag = !prev[questionId];
+        queueAnswerDelta(sessionId, {
+          question_id: questionId,
+          answer: answersRef.current[questionId] ?? "",
+          flagged_for_review: nextFlag,
+        });
+        answerEditSeqRef.current += 1;
+        scheduleAutosave();
+        return { ...prev, [questionId]: nextFlag };
+      });
     },
-    [scheduleAutosave],
+    [sessionId, scheduleAutosave],
   );
 
   // Navigation rides the same debounced save pipeline as answers/flags so the

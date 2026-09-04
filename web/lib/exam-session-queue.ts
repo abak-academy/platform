@@ -6,6 +6,7 @@ export interface QueuedAnswer {
   question_id: string;
   answer: string;
   flagged_for_review: boolean;
+  revision: number;
 }
 
 const KEY_PREFIX = "exam-session-queue:";
@@ -18,23 +19,75 @@ function storageKey(sessionId: string): string {
   return `${KEY_PREFIX}${sessionId}`;
 }
 
-export function loadQueue(sessionId: string): QueuedAnswer[] {
+function isQueuedAnswer(value: unknown): value is QueuedAnswer {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<QueuedAnswer>;
+  return (
+    typeof entry.question_id === "string" &&
+    typeof entry.answer === "string" &&
+    typeof entry.flagged_for_review === "boolean" &&
+    typeof entry.revision === "number" &&
+    Number.isInteger(entry.revision) &&
+    entry.revision > 0
+  );
+}
+
+function normalizeEntries(value: unknown): QueuedAnswer[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isQueuedAnswer);
+}
+
+function loadState(sessionId: string): {
+  entries: QueuedAnswer[];
+  next_revision: number;
+} {
   try {
     const raw = localStorage.getItem(storageKey(sessionId));
-    if (!raw) return [];
+    if (!raw) return { entries: [], next_revision: 1 };
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const entries = normalizeEntries(parsed?.entries);
+    const maxRevision = entries.reduce(
+      (max, entry) => Math.max(max, entry.revision),
+      0,
+    );
+    const parsedNext = parsed?.next_revision;
+    const nextRevision =
+      typeof parsedNext === "number" &&
+      Number.isInteger(parsedNext) &&
+      parsedNext > maxRevision
+        ? parsedNext
+        : maxRevision + 1;
+    return { entries, next_revision: Math.max(1, nextRevision) };
   } catch {
-    return [];
+    return { entries: [], next_revision: 1 };
   }
 }
 
-export function saveQueue(sessionId: string, entries: QueuedAnswer[]): void {
+function saveState(
+  sessionId: string,
+  state: { entries: QueuedAnswer[]; next_revision: number },
+): void {
   try {
-    localStorage.setItem(storageKey(sessionId), JSON.stringify(entries));
+    localStorage.setItem(storageKey(sessionId), JSON.stringify(state));
   } catch {
-    /* storage unavailable (private mode, quota) — best-effort durability only */
+    /* storage unavailable (private mode, quota) */
   }
+}
+
+export function loadQueue(sessionId: string): QueuedAnswer[] {
+  return loadState(sessionId).entries;
+}
+
+export function saveQueue(sessionId: string, entries: QueuedAnswer[]): void {
+  const current = loadState(sessionId);
+  const maxRevision = entries.reduce(
+    (max, entry) => Math.max(max, entry.revision),
+    0,
+  );
+  saveState(sessionId, {
+    entries,
+    next_revision: Math.max(current.next_revision, maxRevision + 1),
+  });
 }
 
 export function clearQueue(sessionId: string): void {
@@ -43,6 +96,49 @@ export function clearQueue(sessionId: string): void {
   } catch {
     /* best-effort */
   }
+}
+
+export function queueAnswerDelta(
+  sessionId: string,
+  entry: Omit<QueuedAnswer, "revision">,
+): QueuedAnswer {
+  const state = loadState(sessionId);
+  const queued = { ...entry, revision: state.next_revision };
+  const entries = state.entries.filter(
+    (item) => item.question_id !== entry.question_id,
+  );
+  entries.push(queued);
+  saveState(sessionId, {
+    entries,
+    next_revision: state.next_revision + 1,
+  });
+  return queued;
+}
+
+export function acknowledgeQueueRevisions(
+  sessionId: string,
+  acknowledged: QueuedAnswer[],
+): QueuedAnswer[] {
+  const state = loadState(sessionId);
+  const acked = new Map(
+    acknowledged.map((entry) => [entry.question_id, entry.revision]),
+  );
+  const remaining = state.entries.filter(
+    (entry) => acked.get(entry.question_id) !== entry.revision,
+  );
+  saveState(sessionId, {
+    entries: remaining,
+    next_revision: state.next_revision,
+  });
+  return remaining;
+}
+
+export function queueToSavePayload(entries: QueuedAnswer[]) {
+  return entries.map(({ question_id, answer, flagged_for_review }) => ({
+    question_id,
+    answer,
+    flagged_for_review,
+  }));
 }
 
 // Exponential backoff for retry attempt N (0-indexed), capped at RETRY_MAX_MS.

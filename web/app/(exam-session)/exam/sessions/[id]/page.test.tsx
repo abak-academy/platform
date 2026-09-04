@@ -2825,6 +2825,29 @@ describe("SessionPage", () => {
     expect(saveAnswersMutate.mock.calls.length).toBeLessThan(10);
   });
 
+  it("stores an answer edit durably with a local revision before debounce dispatch (FR-31)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT")[0];
+
+    fireEvent.change(textInput, { target: { value: "queued now" } });
+
+    expect(saveAnswersMutate).not.toHaveBeenCalled();
+    expect(loadQueue("session-1")).toEqual([
+      {
+        question_id: "q-short",
+        answer: "queued now",
+        flagged_for_review: false,
+        revision: 1,
+      },
+    ]);
+  });
+
   it("retries a failing save with growing backoff delays and eventually succeeds (FR-32)", async () => {
     render(<SessionPage />);
     await enterFullscreen();
@@ -2883,7 +2906,7 @@ describe("SessionPage", () => {
 
   it("replays a localStorage-queued payload exactly once on mount and clears it (FR-33, NFR-R5)", async () => {
     saveQueue("session-1", [
-      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false, revision: 1 },
     ]);
     saveAnswersMutate.mockImplementation((_payload, opts) => {
       opts?.onSuccess?.();
@@ -2934,7 +2957,7 @@ describe("SessionPage", () => {
 
   it("keeps a failed queued replay in the next navigation save (FR-3)", async () => {
     saveQueue("session-1", [
-      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false, revision: 1 },
     ]);
     render(<SessionPage />);
     await enterFullscreen();
@@ -2961,7 +2984,7 @@ describe("SessionPage", () => {
 
   it("replay does not clobber a server answer for a question absent from the queue (FR-37, NFR-R5)", async () => {
     saveQueue("session-1", [
-      { question_id: "q-short", answer: "queued-value", flagged_for_review: false },
+      { question_id: "q-short", answer: "queued-value", flagged_for_review: false, revision: 1 },
     ]);
     saveAnswersMutate.mockImplementation((_payload, opts) => {
       opts?.onSuccess?.();
@@ -3113,7 +3136,7 @@ describe("SessionPage", () => {
 
   it("does not overwrite an unacknowledged queue entry during a position-only save (FR-4)", async () => {
     saveQueue("session-1", [
-      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false, revision: 1 },
     ]);
     render(<SessionPage />);
     await enterFullscreen();
@@ -3125,7 +3148,7 @@ describe("SessionPage", () => {
     });
 
     expect(loadQueue("session-1")).toEqual([
-      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false, revision: 1 },
     ]);
   });
 
@@ -3215,7 +3238,7 @@ describe("SessionPage", () => {
     // v2 must still be durably queued — recoverable even if the tab closed
     // at this exact instant.
     expect(loadQueue("session-1")).toEqual([
-      { question_id: "q-short", answer: "v2", flagged_for_review: false },
+      { question_id: "q-short", answer: "v2", flagged_for_review: false, revision: 2 },
     ]);
 
     // Now B fails.
@@ -3231,7 +3254,7 @@ describe("SessionPage", () => {
     );
     // Still recoverable in the durable queue...
     expect(loadQueue("session-1")).toEqual([
-      { question_id: "q-short", answer: "v2", flagged_for_review: false },
+      { question_id: "q-short", answer: "v2", flagged_for_review: false, revision: 2 },
     ]);
     // ...and actively retried, not silently dropped.
     const delay = backoffDelayMs(0);
@@ -3260,8 +3283,8 @@ describe("SessionPage", () => {
     expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
 
     // Before A's ack/refetch lands, the student edits a DIFFERENT question.
-    // This edit lives only in React state: the debounce hasn't elapsed, so
-    // it is not yet in the durable queue either.
+    // This edit is already in the durable queue, but the debounce has not
+    // elapsed yet, so it has not been sent to the server.
     fireEvent.click(screen.getByTestId("session-nav-2"));
     const textInput = () =>
       screen.getAllByRole("textbox").filter((tb) => tb.tagName === "INPUT")[0];
