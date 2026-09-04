@@ -181,6 +181,7 @@ export default function SessionPage() {
   // from that stale-by-definition snapshot would clobber a local edit made
   // after the save was issued but before the refetch landed (FR-37, NFR-R5).
   const hasHydratedRef = useRef(false);
+  const postHydrationReconciledRef = useRef(false);
   // Guards the section-change effect further below the same way, for the
   // position/timer reset that effect owns (Task 19 fixed the equivalent bug
   // for standard mode; sectioned mode needs its own guard since it runs on
@@ -324,6 +325,76 @@ export default function SessionPage() {
     );
   }, [flushDebouncedSave]);
 
+  const runSaveBarrier = useCallback(async () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    clearRetryTimer();
+    pendingChangeRef.current = false;
+    retryAttemptRef.current = 0;
+    setSaveStatus("saving");
+
+    try {
+      const queued = buildAutosavePayload();
+      const position = currentQIndexRef.current;
+      const positionChanged = position !== lastSavedPositionRef.current;
+      const reconciliationByQuestion = new Map(
+        buildSavePayload().map((answer) => [answer.question_id, answer]),
+      );
+      for (const answer of queueToSavePayload(queued)) {
+        reconciliationByQuestion.set(answer.question_id, answer);
+      }
+      if (queued.length > 0 || positionChanged) {
+        await saveAnswers.mutateAsync({
+          answers: queueToSavePayload(queued),
+          ...(positionChanged ? { current_position: position } : {}),
+        });
+        if (queued.length > 0) {
+          acknowledgeQueueRevisions(sessionId, queued);
+        }
+        lastSavedPositionRef.current = position;
+      }
+
+      await saveAnswers.mutateAsync({
+        answers: [...reconciliationByQuestion.values()],
+        current_position: currentQIndexRef.current,
+      });
+      lastSavedPositionRef.current = currentQIndexRef.current;
+
+      if (loadScopedQueuedDeltas().length === 0) {
+        setSaveStatus("saved");
+      } else {
+        setSaveStatus("unsaved");
+      }
+    } catch (error) {
+      setSaveStatus("unsaved");
+      throw error;
+    }
+  }, [
+    buildAutosavePayload,
+    buildSavePayload,
+    clearRetryTimer,
+    loadScopedQueuedDeltas,
+    saveAnswers,
+    sessionId,
+  ]);
+
+  const reconcileFullSnapshot = useCallback(async () => {
+    setSaveStatus("saving");
+    try {
+      await saveAnswers.mutateAsync({
+        answers: buildSavePayload(),
+        current_position: currentQIndexRef.current,
+      });
+      lastSavedPositionRef.current = currentQIndexRef.current;
+      setSaveStatus(loadScopedQueuedDeltas().length === 0 ? "saved" : "unsaved");
+    } catch (error) {
+      setSaveStatus("unsaved");
+      throw error;
+    }
+  }, [buildSavePayload, loadScopedQueuedDeltas, saveAnswers]);
+
   useEffect(() => {
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -370,6 +441,8 @@ export default function SessionPage() {
       if (q.flagged_for_review) initFlags[q.question_id] = true;
       else delete initFlags[q.question_id];
     }
+    answersRef.current = initAnswers;
+    flaggedRef.current = initFlags;
     setAnswers(initAnswers);
     setFlagged(initFlags);
     // Position is always seeded from the server response, never from
@@ -397,6 +470,26 @@ export default function SessionPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
+
+  useEffect(() => {
+    if (
+      !session ||
+      session.status !== "in_progress" ||
+      !hasHydratedRef.current ||
+      postHydrationReconciledRef.current
+    )
+      return;
+    postHydrationReconciledRef.current = true;
+    void reconcileFullSnapshot().catch(() => {});
+  }, [session, reconcileFullSnapshot]);
+
+  useEffect(() => {
+    if (!session || session.status !== "in_progress") return;
+    const id = setInterval(() => {
+      void reconcileFullSnapshot().catch(() => {});
+    }, 300_000);
+    return () => clearInterval(id);
+  }, [session, reconcileFullSnapshot]);
 
   // Replay any queue left over from a previous tab/session, and again
   // whenever connectivity returns (FR-33, FR-37). Declared after the
@@ -458,17 +551,21 @@ export default function SessionPage() {
     pendingChangeRef.current = false;
 
     try {
-      const payload = buildSavePayload();
-      try {
-        await retryExpiryStep(() =>
-          saveAnswers.mutateAsync({
-            answers: payload,
-            current_position: currentQIndexRef.current,
-          }),
-        );
-        clearQueue(sessionId);
-      } catch (error) {
-        if (isAlreadySubmittedError(error)) throw error;
+      if (isSectioned) {
+        await runSaveBarrier();
+      } else {
+        const payload = buildSavePayload();
+        try {
+          await retryExpiryStep(() =>
+            saveAnswers.mutateAsync({
+              answers: payload,
+              current_position: currentQIndexRef.current,
+            }),
+          );
+          clearQueue(sessionId);
+        } catch (error) {
+          if (isAlreadySubmittedError(error)) throw error;
+        }
       }
 
       if (isSectioned) {
@@ -509,6 +606,7 @@ export default function SessionPage() {
     router,
     buildSavePayload,
     clearRetryTimer,
+    runSaveBarrier,
   ]);
 
   // Timer countdown
@@ -762,16 +860,12 @@ export default function SessionPage() {
     if (submitting) return;
     setSubmitting(true);
     submittingRef.current = true;
-    const arr = buildSavePayload();
-    if (arr.length > 0) {
-      try {
-        await saveAnswers.mutateAsync({
-          answers: arr,
-          current_position: currentQIndexRef.current,
-        });
-      } catch {
-        /* best-effort */
-      }
+    try {
+      await runSaveBarrier();
+    } catch {
+      setSubmitting(false);
+      submittingRef.current = false;
+      return;
     }
     submitSession.mutate(undefined, {
       onSuccess: () => {
@@ -789,7 +883,7 @@ export default function SessionPage() {
         setShowConfirm(false);
       },
     });
-  }, [submitting, saveAnswers, submitSession, router, sessionId, buildSavePayload]);
+  }, [submitting, runSaveBarrier, submitSession, router, sessionId]);
 
   // ── Error state (check before !session to handle query error) ────────
 

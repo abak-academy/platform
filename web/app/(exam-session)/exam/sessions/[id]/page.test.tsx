@@ -584,6 +584,10 @@ describe("SessionPage", () => {
     saveAnswersMutateAsync.mockResolvedValue(undefined);
     render(<SessionPage />);
     await enterFullscreen();
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    saveAnswersMutateAsync.mockClear();
 
     const flagBtn = screen.getByRole("button", { name: /ragu-ragu/i });
     fireEvent.click(flagBtn);
@@ -600,7 +604,12 @@ describe("SessionPage", () => {
     await waitFor(() => {
       expect(saveAnswersMutateAsync).toHaveBeenCalled();
     });
-    const payload = saveAnswersMutateAsync.mock.calls[0][0];
+    const payload = saveAnswersMutateAsync.mock.calls.find(([call]) =>
+      (call as { answers: Array<{ question_id: string }> }).answers.some(
+        (answer) => answer.question_id === "q-mcq",
+      ),
+    )?.[0];
+    expect(payload).toBeDefined();
     expect(payload.answers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -977,8 +986,13 @@ describe("SessionPage", () => {
   // ── Submit flow (also tests save is triggered) ──────────────────────────
 
   it("submit saves answers, calls hook, and redirects to result (FR29, FR-S5-25)", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
     render(<SessionPage />);
     await enterFullscreen();
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    saveAnswersMutateAsync.mockClear();
 
     // Answer a question first so save is triggered
     const radios = screen.getAllByRole("radio");
@@ -998,9 +1012,14 @@ describe("SessionPage", () => {
     fireEvent.click(btns[btns.length - 1]);
 
     // Verify save was triggered before submit
-    expect(saveAnswersMutateAsync).toHaveBeenCalledWith({
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(1, {
       answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
-      current_position: 0,
+    });
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(2, {
+        answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
+        current_position: 0,
+      });
     });
 
     // Verify submitSession was called (handleSubmit awaits the save first,
@@ -1019,6 +1038,99 @@ describe("SessionPage", () => {
     expect(routerReplace).toHaveBeenCalledWith(
       "/exam/sessions/session-1/result",
     );
+  });
+
+  it("submit drains queued deltas, reconciles the full snapshot, then calls submit", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    render(<SessionPage />);
+    await enterFullscreen();
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    saveAnswersMutateAsync.mockClear();
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    fireEvent.click(screen.getByRole("button", { name: /tandai ragu-ragu/i }));
+    fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
+
+    const btns = screen.getAllByRole("button", { name: /kumpulkan/i });
+    fireEvent.click(btns[btns.length - 1]);
+
+    await waitFor(() => {
+      expect(submitSessionMutate).toHaveBeenCalledTimes(1);
+    });
+
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(1, {
+      answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: true }],
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(2, {
+      answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: true }],
+      current_position: 0,
+    });
+    expect(
+      saveAnswersMutateAsync.mock.invocationCallOrder[0],
+    ).toBeLessThan(saveAnswersMutateAsync.mock.invocationCallOrder[1]);
+    expect(
+      saveAnswersMutateAsync.mock.invocationCallOrder[1],
+    ).toBeLessThan(submitSessionMutate.mock.invocationCallOrder[0]);
+    expect(loadQueue("session-1")).toEqual([]);
+  });
+
+  it("does not submit when the save barrier fails and retry can reconcile without losing the latest queued edit", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+
+    render(<SessionPage />);
+    await enterFullscreen();
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    saveAnswersMutateAsync.mockReset();
+    saveAnswersMutateAsync
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValue(undefined);
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT")[0];
+    fireEvent.change(textInput, { target: { value: "latest answer" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /kumpulkan/i }).at(-1)!);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+        "Belum tersimpan",
+      );
+    });
+    expect(submitSessionMutate).not.toHaveBeenCalled();
+    expect(loadQueue("session-1")).toEqual([
+      {
+        question_id: "q-short",
+        answer: "latest answer",
+        flagged_for_review: false,
+        revision: 1,
+      },
+    ]);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /kumpulkan/i }).at(-1)!);
+
+    await waitFor(() => {
+      expect(submitSessionMutate).toHaveBeenCalledTimes(1);
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(2, {
+      answers: [
+        { question_id: "q-short", answer: "latest answer", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(3, {
+      answers: [
+        { question_id: "q-short", answer: "latest answer", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
+    expect(loadQueue("session-1")).toEqual([]);
   });
 
   // ── Sectioned mode (FR-23) ────────────────────────────────────────────
@@ -1089,12 +1201,161 @@ describe("SessionPage", () => {
     await waitFor(() => {
       expect(saveAnswersMutateAsync).toHaveBeenCalled();
     });
+    expect(advanceSectionMutateAsync).toHaveBeenCalledWith("test-section-1");
+
+    // Submit should NOT be called for a non-last section advance
+    expect(submitSessionMutate).not.toHaveBeenCalled();
+  });
+
+  it("section advance drains queued deltas and reconciles only the active section before advancing", async () => {
+    saveQueue("session-1", [
+      {
+        question_id: "q-sec1-mcq",
+        answer: "B",
+        flagged_for_review: false,
+        revision: 1,
+      },
+      {
+        question_id: "q-sec1-essay",
+        answer: "",
+        flagged_for_review: true,
+        revision: 2,
+      },
+    ]);
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    advanceSectionMutateAsync.mockResolvedValue({
+      mode: "utbk",
+      active_test_id: "test-section-2",
+      completed: false,
+      tests: sectionedSession.tests,
+    });
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sectionedSession,
+        tests: sectionedSession.tests.map((test, index) =>
+          index === 0 ? { ...test, remaining_seconds: 0 } : test,
+        ),
+      },
+    };
+
+    render(<SessionPage />);
+
     await waitFor(() => {
       expect(advanceSectionMutateAsync).toHaveBeenCalledWith("test-section-1");
     });
 
-    // Submit should NOT be called for a non-last section advance
-    expect(submitSessionMutate).not.toHaveBeenCalled();
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(2, {
+      answers: [
+        { question_id: "q-sec1-mcq", answer: "B", flagged_for_review: false },
+        { question_id: "q-sec1-essay", answer: "", flagged_for_review: true },
+      ],
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(3, {
+      answers: [
+        { question_id: "q-sec1-mcq", answer: "B", flagged_for_review: false },
+        { question_id: "q-sec1-essay", answer: "", flagged_for_review: true },
+      ],
+      current_position: 0,
+    });
+    const sentIds = saveAnswersMutateAsync.mock.calls.flatMap(([payload]) =>
+      (payload as { answers: Array<{ question_id: string }> }).answers.map(
+        (answer) => answer.question_id,
+      ),
+    );
+    expect(sentIds).not.toContain("q-sec2-mcq");
+    expect(
+      saveAnswersMutateAsync.mock.invocationCallOrder[2],
+    ).toBeLessThan(advanceSectionMutateAsync.mock.invocationCallOrder[0]);
+  });
+
+  it("does not advance a section when the save barrier fails", async () => {
+    saveQueue("session-1", [
+      {
+        question_id: "q-sec1-mcq",
+        answer: "B",
+        flagged_for_review: false,
+        revision: 1,
+      },
+    ]);
+    saveAnswersMutateAsync.mockRejectedValue(new Error("network down"));
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sectionedSession,
+        tests: sectionedSession.tests.map((test, index) =>
+          index === 0 ? { ...test, remaining_seconds: 0 } : test,
+        ),
+      },
+    };
+
+    render(<SessionPage />);
+
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalled();
+    });
+    expect(advanceSectionMutateAsync).not.toHaveBeenCalled();
+    expect(loadQueue("session-1")).toEqual([
+      {
+        question_id: "q-sec1-mcq",
+        answer: "B",
+        flagged_for_review: false,
+        revision: 1,
+      },
+    ]);
+  });
+
+  it("sends one full reconciliation after reconnect hydration", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        answers: [
+          { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+          { question_id: "q-short", answer: "", flagged_for_review: true },
+        ],
+      },
+    };
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+
+    render(<SessionPage />);
+
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledWith({
+        answers: [
+          { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+          { question_id: "q-short", answer: "", flagged_for_review: true },
+        ],
+        current_position: 0,
+      });
+    });
+  });
+
+  it("reconciles once per five active minutes and stops after unmount", async () => {
+    vi.useFakeTimers();
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+
+    const { unmount } = render(<SessionPage />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(300_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(2);
+
+    unmount();
+    await act(async () => {
+      vi.advanceTimersByTime(300_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(2);
   });
 
   it("advancing last section triggers submit and redirect (FR-24)", async () => {
