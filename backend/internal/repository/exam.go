@@ -2399,9 +2399,17 @@ func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, ans
 	return nil
 }
 
-// SubmitSessionTx performs a CAS submit of a session, writes graded answers,
-// and sets the overall score. Returns the number of rows affected by the CAS update.
+// SubmitSessionTx writes graded answers, performs a CAS submit, and sets the
+// overall score. Returns the number of rows affected by the CAS update.
 func (r *Repository) SubmitSessionTx(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID, graded []model.ExamSessionAnswer, score float64, adminSubmitted bool) (int64, error) {
+	if _, err := tx.Exec(ctx, `SAVEPOINT submit_session_before_grading`); err != nil {
+		return 0, err
+	}
+	if err := r.upsertGradedAnswersTx(ctx, tx, sessionID, graded); err != nil {
+		_, _ = tx.Exec(ctx, `ROLLBACK TO SAVEPOINT submit_session_before_grading`)
+		return 0, err
+	}
+
 	query := `UPDATE exam_session SET status = 'submitted', submitted_at = now(), score = $2`
 	if adminSubmitted {
 		query += `, admin_submitted = true`
@@ -2414,6 +2422,9 @@ func (r *Repository) SubmitSessionTx(ctx context.Context, tx pgx.Tx, sessionID u
 	}
 
 	if tag.RowsAffected() == 1 {
+		if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT submit_session_before_grading`); err != nil {
+			return 0, err
+		}
 		if _, err := tx.Exec(ctx,
 			`UPDATE exam_registration SET status = 'submitted'
 			WHERE id = (SELECT registration_id FROM exam_session WHERE id = $1)`,
@@ -2421,11 +2432,15 @@ func (r *Repository) SubmitSessionTx(ctx context.Context, tx pgx.Tx, sessionID u
 		); err != nil {
 			return 0, err
 		}
-		if err := r.upsertGradedAnswersTx(ctx, tx, sessionID, graded); err != nil {
-			return 0, err
-		}
+		return tag.RowsAffected(), nil
 	}
 
+	if _, err := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT submit_session_before_grading`); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT submit_session_before_grading`); err != nil {
+		return 0, err
+	}
 	return tag.RowsAffected(), nil
 }
 
