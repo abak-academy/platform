@@ -54,7 +54,8 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (p
 	if len(password) < minPasswordLen {
 		return "", ErrWeakPassword
 	}
-	if strings.TrimSpace(name) == "" {
+	name = strings.TrimSpace(stripFormatRunes(name))
+	if name == "" {
 		return "", ErrInvalidCredentials
 	}
 
