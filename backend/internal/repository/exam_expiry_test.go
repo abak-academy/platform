@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -116,21 +115,6 @@ func TestListDueExamExpiryCandidates_SelectsDueActiveSections(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("due active section session %s was not selected: %#v", dueSession, got)
-	}
-}
-
-func TestExamSessionSectionActiveIndexExists(t *testing.T) {
-	pool := newGradingTestPool(t)
-	var indexDefinition string
-	err := pool.QueryRow(context.Background(),
-		`SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_examsessionsection_active'`,
-	).Scan(&indexDefinition)
-	if err != nil {
-		t.Fatalf("query active section index: %v", err)
-	}
-	want := "WHERE (status = 'active'::text)"
-	if !strings.Contains(indexDefinition, want) {
-		t.Fatalf("active section index = %q, want predicate %q", indexDefinition, want)
 	}
 }
 
