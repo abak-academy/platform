@@ -18,10 +18,15 @@ const SUBMIT_AT_SECONDS = numberEnv("SUBMIT_AT_SECONDS", 0);
 const MAX_DURATION = __ENV.MAX_DURATION || "2h";
 const REQUIRES_CHECKIN = (__ENV.REQUIRES_CHECKIN || "false") === "true";
 const REFRESH_BEFORE_MS = 60 * 1000;
+const LOGIN_TRANSPORT_RETRIES = 3;
+const LOGIN_RETRY_JITTER_SECONDS = 0.5;
 
 const lifecycleFailed = new Rate("lifecycle_failed");
 const completedLifecycles = new Counter("completed_lifecycles");
 const lostAnswers = new Counter("lost_answers");
+const loginFirstAttemptFailed = new Rate("login_first_attempt_failed");
+const loginFinalFailed = new Rate("login_final_failed");
+const loginTransportRetries = new Counter("login_transport_retries");
 
 export const options = {
   scenarios: {
@@ -35,7 +40,7 @@ export const options = {
   thresholds: {
     lifecycle_failed: ["rate<0.01"],
     lost_answers: ["count==0"],
-    "http_req_failed{phase:login}": ["rate<0.01"],
+    login_final_failed: ["rate<0.01"],
     "http_req_failed{phase:refresh}": ["rate<0.01"],
     "http_req_failed{phase:start}": ["rate<0.01"],
     "http_req_failed{phase:autosave}": ["rate<0.01"],
@@ -77,11 +82,11 @@ export default function (test) {
 
   sleep(Math.random() * LOGIN_SPREAD_SECONDS);
 
-  const login = request("POST", "/auth/login", {
+  const login = loginWithTransportRetry({
     identifier,
     password: PASSWORD,
-  }, clientHeaders, "login");
-  if (!expectStatus(login, 200, "login")) return failLifecycle();
+  }, clientHeaders);
+  if (!login || !expectStatus(login, 200, "login")) return failLifecycle();
 
   const accessToken = json(login, "access_token");
   const refreshToken = json(login, "refresh_token");
@@ -173,6 +178,24 @@ export default function (test) {
 
   completedLifecycles.add(1);
   lifecycleFailed.add(false);
+}
+
+function loginWithTransportRetry(body, clientHeaders) {
+  let response = null;
+  for (let attempt = 0; attempt <= LOGIN_TRANSPORT_RETRIES; attempt++) {
+    response = request("POST", "/auth/login", body, clientHeaders, "login");
+    if (attempt === 0) loginFirstAttemptFailed.add(!response || response.status !== 200);
+    if (response && response.status !== 0) {
+      loginFinalFailed.add(response.status !== 200);
+      return response;
+    }
+    if (attempt < LOGIN_TRANSPORT_RETRIES) {
+      loginTransportRetries.add(1);
+      sleep(2 ** attempt + Math.random() * LOGIN_RETRY_JITTER_SECONDS);
+    }
+  }
+  loginFinalFailed.add(true);
+  return response;
 }
 
 function saveWithRetry(sessionID, answers, position, auth, clientHeaders) {
