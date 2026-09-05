@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -134,6 +135,28 @@ func TestSubmitSession_CompetingFinalizersCreateOneOutbox(t *testing.T) {
 	}
 }
 
+func TestSubmitSession_WithSingleConnectionPoolDoesNotWaitForSecondConnection(t *testing.T) {
+	_, sharedRepo := newRealDBService(t)
+	ctx := context.Background()
+	config := sharedRepo.Pool().Config().Copy()
+	config.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatalf("new single-connection pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	repo := repository.New(pool)
+	svc := &Service{storeRepo: repo}
+	sessionID, _ := seedServiceExpiryStandard(t, repo, time.Now().UTC().Truncate(time.Second))
+
+	submitCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if _, err := svc.ForceSubmitSession(submitCtx, sessionID.String()); err != nil {
+		t.Fatalf("ForceSubmitSession with one DB connection: %v", err)
+	}
+}
+
 func TestExpireExamCandidate_RevalidationNoOpsForTerminalRace(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
@@ -252,6 +275,30 @@ func TestExpireExamSessions_ContinuesAfterCandidateError(t *testing.T) {
 	if got := countCertificateNeeded(t, repo, okSessionID); got != 1 {
 		t.Fatalf("ok session CertificateNeeded rows = %d, want 1", got)
 	}
+}
+
+func TestExpireExamSessions_DrainsPastFailedFullPage(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	failedSessionID, _ := seedServiceExpiryStandard(t, repo, now.Add(-2*time.Minute))
+	firstOKSessionID, _ := seedServiceExpiryStandard(t, repo, now.Add(-time.Minute))
+	secondOKSessionID, _ := seedServiceExpiryStandard(t, repo, now)
+	installFailingTrigger(t, repo, "exam_session", "UPDATE OF status", fmt.Sprintf("WHEN (NEW.id = '%s'::uuid AND NEW.status = 'submitted')", failedSessionID), "forced poison candidate")
+
+	results, err := svc.ExpireExamSessions(ctx, now, 2)
+	if err != nil {
+		t.Fatalf("ExpireExamSessions: %v", err)
+	}
+	if !expiryResultFailedWith(results, failedSessionID, "forced poison candidate") {
+		t.Fatalf("results = %#v, want poison candidate failure", results)
+	}
+	if !expiryResultSucceeded(results, firstOKSessionID) || !expiryResultSucceeded(results, secondOKSessionID) {
+		t.Fatalf("results = %#v, want both later candidates processed", results)
+	}
+	assertSessionAndRegistrationStatus(t, repo, failedSessionID, "in_progress", "in_progress")
+	assertSessionAndRegistrationStatus(t, repo, firstOKSessionID, "submitted", "submitted")
+	assertSessionAndRegistrationStatus(t, repo, secondOKSessionID, "submitted", "submitted")
 }
 
 func installFailingTrigger(t *testing.T, repo *repository.Repository, table, event, when, message string) {

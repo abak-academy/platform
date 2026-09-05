@@ -28,6 +28,28 @@ describe("exam-session-queue", () => {
     expect(loadQueue("session-1")).toEqual(entries);
   });
 
+  it("migrates the legacy bare-array queue without dropping pending answers", () => {
+    localStorage.setItem(
+      "exam-session-queue:session-1",
+      JSON.stringify([
+        { question_id: "q1", answer: "A", flagged_for_review: false },
+        { question_id: "q2", answer: "B", flagged_for_review: true },
+      ]),
+    );
+
+    expect(loadQueue("session-1")).toEqual([
+      { question_id: "q1", answer: "A", flagged_for_review: false, revision: 1 },
+      { question_id: "q2", answer: "B", flagged_for_review: true, revision: 2 },
+    ]);
+    expect(
+      queueAnswerDelta("session-1", {
+        question_id: "q3",
+        answer: "C",
+        flagged_for_review: false,
+      }),
+    ).toMatchObject({ revision: 3 });
+  });
+
   it("clearQueue removes the payload so a later load returns empty (FR-33)", () => {
     saveQueue("session-1", [
       { question_id: "q1", answer: "A", flagged_for_review: false, revision: 1 },

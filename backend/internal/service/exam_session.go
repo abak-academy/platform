@@ -785,13 +785,27 @@ func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID string
 	if err != nil {
 		return SubmitResult{}, fmt.Errorf("%w: invalid session id", ErrValidation)
 	}
+	sess, err := s.storeRepo.GetExamSessionForStudent(ctx, sessID, sid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return SubmitResult{}, ErrSessionNotFound
+		}
+		return SubmitResult{}, err
+	}
+	if sess.Status != "in_progress" {
+		return SubmitResult{}, ErrAlreadySubmitted
+	}
+	questions, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+	if err != nil {
+		return SubmitResult{}, err
+	}
 
-	return s.finalizeSession(ctx, sessID, false, func(ctx context.Context, tx pgx.Tx) (*model.ExamSession, error) {
+	return s.finalizeSession(ctx, sessID, questions, false, func(ctx context.Context, tx pgx.Tx) (*model.ExamSession, error) {
 		return s.storeRepo.GetExamSessionForStudentForUpdateTx(ctx, tx, sessID, sid)
 	})
 }
 
-func (s *Service) finalizeSession(ctx context.Context, sessID uuid.UUID, adminSubmitted bool, lockSession func(context.Context, pgx.Tx) (*model.ExamSession, error)) (SubmitResult, error) {
+func (s *Service) finalizeSession(ctx context.Context, sessID uuid.UUID, questions []model.TestDetail, adminSubmitted bool, lockSession func(context.Context, pgx.Tx) (*model.ExamSession, error)) (SubmitResult, error) {
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return SubmitResult{}, err
@@ -809,7 +823,7 @@ func (s *Service) finalizeSession(ctx context.Context, sessID uuid.UUID, adminSu
 		return SubmitResult{}, ErrAlreadySubmitted
 	}
 
-	result, err := s.finalizeLockedSessionTx(ctx, tx, sessID, sess, adminSubmitted)
+	result, err := s.finalizeLockedSessionTx(ctx, tx, sessID, questions, adminSubmitted)
 	if err != nil {
 		return SubmitResult{}, err
 	}
@@ -819,13 +833,7 @@ func (s *Service) finalizeSession(ctx context.Context, sessID uuid.UUID, adminSu
 	return result, nil
 }
 
-func (s *Service) finalizeLockedSessionTx(ctx context.Context, tx pgx.Tx, sessID uuid.UUID, sess *model.ExamSession, adminSubmitted bool) (SubmitResult, error) {
-	// A failed load must abort the submit: grading against a partial/empty question
-	// set would CAS-submit the student's only attempt with a wrong score.
-	questions, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
-	if err != nil {
-		return SubmitResult{}, err
-	}
+func (s *Service) finalizeLockedSessionTx(ctx context.Context, tx pgx.Tx, sessID uuid.UUID, questions []model.TestDetail, adminSubmitted bool) (SubmitResult, error) {
 	answers, err := s.storeRepo.GetSessionAnswersTx(ctx, tx, sessID)
 	if err != nil {
 		return SubmitResult{}, err
@@ -958,8 +966,22 @@ func (s *Service) ForceSubmitSession(ctx context.Context, sessionID string) (Sub
 	if err != nil {
 		return SubmitResult{}, fmt.Errorf("%w: invalid session id", ErrValidation)
 	}
+	sess, err := s.storeRepo.GetExamSessionByID(ctx, sessID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return SubmitResult{}, ErrSessionNotFound
+		}
+		return SubmitResult{}, err
+	}
+	if sess.Status != "in_progress" {
+		return SubmitResult{}, ErrAlreadySubmitted
+	}
+	questions, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+	if err != nil {
+		return SubmitResult{}, err
+	}
 
-	return s.finalizeSession(ctx, sessID, true, func(ctx context.Context, tx pgx.Tx) (*model.ExamSession, error) {
+	return s.finalizeSession(ctx, sessID, questions, true, func(ctx context.Context, tx pgx.Tx) (*model.ExamSession, error) {
 		return s.storeRepo.GetExamSessionByIDForUpdateTx(ctx, tx, sessID)
 	})
 }

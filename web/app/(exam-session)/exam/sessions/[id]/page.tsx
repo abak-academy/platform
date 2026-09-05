@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { ApiError } from "@/lib/api";
+import { toast } from "sonner";
 
 import {
   useReconnectSession,
@@ -71,6 +72,7 @@ function formatTime(seconds: number): string {
 }
 
 const EXPIRY_MAX_ATTEMPTS = 3;
+const SAVE_BARRIER_TIMEOUT_MS = 10_000;
 const VIOLATION_GRACE_MS = 3000;
 const VIOLATION_DUPLICATE_SUPPRESS_MS = 5000;
 
@@ -95,6 +97,27 @@ async function retryExpiryStep<T>(action: () => Promise<T>): Promise<T> {
     }
   }
   throw new Error("expiry recovery exhausted");
+}
+
+function beforeDeadline<T>(promise: Promise<T>, deadline: number): Promise<T> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return Promise.reject(new Error("save_barrier_timeout"));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("save_barrier_timeout")),
+      remaining,
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 export default function SessionPage() {
@@ -231,6 +254,7 @@ export default function SessionPage() {
   // repaint the "saved" indicator over a newer save that is still pending or
   // has failed (FR-34, NFR-R5).
   const saveSeqRef = useRef(0);
+  const volatileUnsavedRef = useRef(false);
 
   const buildAutosavePayload = useCallback(
     () => loadScopedQueuedDeltas(),
@@ -252,30 +276,37 @@ export default function SessionPage() {
       if (submittingRef.current) return;
       const position = currentQIndexRef.current;
       const positionChanged = position !== lastSavedPositionRef.current;
-      if (payload.length === 0 && !positionChanged) {
+      const useSnapshot = volatileUnsavedRef.current;
+      if (payload.length === 0 && !positionChanged && !useSnapshot) {
         setSaveStatus("saved");
         return;
       }
       setSaveStatus("saving");
       const mySeq = ++saveSeqRef.current;
       const editSeq = answerEditSeqRef.current;
-      const answersPayload = queueToSavePayload(payload);
+      const answersPayload = useSnapshot
+        ? buildSavePayload()
+        : queueToSavePayload(payload);
       void (async () => {
         try {
           await saveAnswersMutateAsync({
             answers: answersPayload,
             ...(positionChanged ? { current_position: position } : {}),
           });
-          const stillPending =
-            payload.length > 0
-              ? acknowledgeQueueRevisions(sessionId, payload)
-              : loadQueue(sessionId);
+          if (payload.length > 0) {
+            acknowledgeQueueRevisions(sessionId, payload);
+          }
+          const stillPending = loadScopedQueuedDeltas();
+          if (useSnapshot && editSeq === answerEditSeqRef.current) {
+            volatileUnsavedRef.current = false;
+          }
           // A newer save may have been issued since this one started, and
           // may still be pending or may itself have already failed — its
           // outcome owns the indicator and the acknowledged position. A
           // stale ack must never repaint "saved" over that (FR-34).
           if (
             stillPending.length === 0 &&
+            !volatileUnsavedRef.current &&
             mySeq === saveSeqRef.current &&
             editSeq === answerEditSeqRef.current
           ) {
@@ -299,7 +330,14 @@ export default function SessionPage() {
         }
       })();
     },
-    [sessionId, saveAnswersMutateAsync, clearRetryTimer, buildAutosavePayload],
+    [
+      sessionId,
+      saveAnswersMutateAsync,
+      clearRetryTimer,
+      buildAutosavePayload,
+      buildSavePayload,
+      loadScopedQueuedDeltas,
+    ],
   );
 
   const flushDebouncedSave = useCallback(() => {
@@ -335,36 +373,40 @@ export default function SessionPage() {
     pendingChangeRef.current = false;
     retryAttemptRef.current = 0;
     setSaveStatus("saving");
+    const deadline = Date.now() + SAVE_BARRIER_TIMEOUT_MS;
 
     try {
       for (let attempt = 0; attempt < 25; attempt += 1) {
         const queued = buildAutosavePayload();
         const position = currentQIndexRef.current;
         const positionChanged = position !== lastSavedPositionRef.current;
-        const reconciliationByQuestion = new Map(
-          buildSavePayload().map((answer) => [answer.question_id, answer]),
-        );
-        for (const answer of queueToSavePayload(queued)) {
-          reconciliationByQuestion.set(answer.question_id, answer);
+        const useSnapshot = volatileUnsavedRef.current;
+        if (queued.length === 0 && !positionChanged && !useSnapshot) {
+          setSaveStatus("saved");
+          return;
         }
-        if (queued.length > 0 || positionChanged) {
-          await saveAnswersMutateAsync({
-            answers: queueToSavePayload(queued),
+        const editSeq = answerEditSeqRef.current;
+        await beforeDeadline(
+          saveAnswersMutateAsync({
+            answers: useSnapshot
+              ? buildSavePayload()
+              : queueToSavePayload(queued),
             ...(positionChanged ? { current_position: position } : {}),
-          });
-          if (queued.length > 0) {
-            acknowledgeQueueRevisions(sessionId, queued);
-          }
-          lastSavedPositionRef.current = position;
+          }),
+          deadline,
+        );
+        if (queued.length > 0) {
+          acknowledgeQueueRevisions(sessionId, queued);
         }
+        if (useSnapshot && editSeq === answerEditSeqRef.current) {
+          volatileUnsavedRef.current = false;
+        }
+        lastSavedPositionRef.current = position;
 
-        await saveAnswersMutateAsync({
-          answers: [...reconciliationByQuestion.values()],
-          current_position: currentQIndexRef.current,
-        });
-        lastSavedPositionRef.current = currentQIndexRef.current;
-
-        if (loadScopedQueuedDeltas().length === 0) {
+        if (
+          loadScopedQueuedDeltas().length === 0 &&
+          !volatileUnsavedRef.current
+        ) {
           setSaveStatus("saved");
           return;
         }
@@ -813,6 +855,9 @@ export default function SessionPage() {
 
   const setAnswer = useCallback(
     (questionId: string, value: string) => {
+      const nextAnswers = { ...answersRef.current, [questionId]: value };
+      answersRef.current = nextAnswers;
+      setAnswers(nextAnswers);
       try {
         queueAnswerDelta(sessionId, {
           question_id: questionId,
@@ -820,10 +865,8 @@ export default function SessionPage() {
           flagged_for_review: flaggedRef.current[questionId] ?? false,
         });
       } catch {
-        setSaveStatus("unsaved");
-        return;
+        volatileUnsavedRef.current = true;
       }
-      setAnswers((prev) => ({ ...prev, [questionId]: value }));
       answerEditSeqRef.current += 1;
       scheduleAutosave();
     },
@@ -832,22 +875,21 @@ export default function SessionPage() {
 
   const toggleFlag = useCallback(
     (questionId: string) => {
-      setFlagged((prev) => {
-        const nextFlag = !prev[questionId];
-        try {
-          queueAnswerDelta(sessionId, {
-            question_id: questionId,
-            answer: answersRef.current[questionId] ?? "",
-            flagged_for_review: nextFlag,
-          });
-        } catch {
-          setSaveStatus("unsaved");
-          return prev;
-        }
-        answerEditSeqRef.current += 1;
-        scheduleAutosave();
-        return { ...prev, [questionId]: nextFlag };
-      });
+      const nextFlag = !flaggedRef.current[questionId];
+      const nextFlags = { ...flaggedRef.current, [questionId]: nextFlag };
+      flaggedRef.current = nextFlags;
+      setFlagged(nextFlags);
+      try {
+        queueAnswerDelta(sessionId, {
+          question_id: questionId,
+          answer: answersRef.current[questionId] ?? "",
+          flagged_for_review: nextFlag,
+        });
+      } catch {
+        volatileUnsavedRef.current = true;
+      }
+      answerEditSeqRef.current += 1;
+      scheduleAutosave();
     },
     [sessionId, scheduleAutosave],
   );
@@ -876,6 +918,7 @@ export default function SessionPage() {
     try {
       await runSaveBarrier();
     } catch {
+      toast.error(t("session_submit_save_failed"));
       setSubmitting(false);
       submittingRef.current = false;
       return;
@@ -896,7 +939,7 @@ export default function SessionPage() {
         setShowConfirm(false);
       },
     });
-  }, [submitting, runSaveBarrier, submitSession, router, sessionId]);
+  }, [submitting, runSaveBarrier, submitSession, router, sessionId, t]);
 
   // ── Error state (check before !session to handle query error) ────────
 

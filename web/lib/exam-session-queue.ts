@@ -45,12 +45,17 @@ function loadState(sessionId: string): {
     const raw = localStorage.getItem(storageKey(sessionId));
     if (!raw) return { entries: [], next_revision: 1 };
     const parsed = JSON.parse(raw);
-    const entries = normalizeEntries(parsed?.entries);
+    const storedEntries = Array.isArray(parsed)
+      ? parsed.map((entry, index) =>
+          isQueuedAnswer(entry) ? entry : { ...entry, revision: index + 1 },
+        )
+      : parsed?.entries;
+    const entries = normalizeEntries(storedEntries);
     const maxRevision = entries.reduce(
       (max, entry) => Math.max(max, entry.revision),
       0,
     );
-    const parsedNext = parsed?.next_revision;
+    const parsedNext = Array.isArray(parsed) ? undefined : parsed?.next_revision;
     const nextRevision =
       typeof parsedNext === "number" &&
       Number.isInteger(parsedNext) &&

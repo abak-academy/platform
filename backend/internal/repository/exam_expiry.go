@@ -11,8 +11,15 @@ import (
 )
 
 func (r *Repository) ListDueExamExpiryCandidates(ctx context.Context, now time.Time, limit int) ([]model.ExamExpiryCandidate, error) {
+	return r.ListDueExamExpiryCandidatesPage(ctx, now, limit, 0)
+}
+
+func (r *Repository) ListDueExamExpiryCandidatesPage(ctx context.Context, now time.Time, limit, offset int) ([]model.ExamExpiryCandidate, error) {
 	if limit <= 0 {
 		return []model.ExamExpiryCandidate{}, nil
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	rows, err := r.pool.Query(ctx,
 		`WITH candidates AS (
@@ -51,8 +58,8 @@ func (r *Repository) ListDueExamExpiryCandidates(ctx context.Context, now time.T
 		FROM candidates
 		WHERE due_at <= $1
 		ORDER BY due_at ASC, session_id ASC, test_id ASC NULLS FIRST
-		LIMIT $2`,
-		now, limit,
+		LIMIT $2 OFFSET $3`,
+		now, limit, offset,
 	)
 	if err != nil {
 		return nil, err

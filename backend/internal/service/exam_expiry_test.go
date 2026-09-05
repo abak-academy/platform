@@ -11,6 +11,17 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
+func TestExpireExamSessions_NonPositiveLimitReturnsEmpty(t *testing.T) {
+	svc := &Service{}
+	results, err := svc.ExpireExamSessions(context.Background(), time.Now(), 0)
+	if err != nil {
+		t.Fatalf("ExpireExamSessions: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("results = %#v, want empty", results)
+	}
+}
+
 func TestExpireExamSessions_StandardFinalizesThroughSharedSubmit(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()

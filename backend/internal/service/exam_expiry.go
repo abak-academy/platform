@@ -16,23 +16,51 @@ type ExamExpiryResult struct {
 }
 
 func (s *Service) ExpireExamSessions(ctx context.Context, now time.Time, limit int) ([]ExamExpiryResult, error) {
-	candidates, err := s.storeRepo.ListDueExamExpiryCandidates(ctx, now, limit)
-	if err != nil {
-		return nil, err
+	if limit <= 0 {
+		return []ExamExpiryResult{}, nil
 	}
-	results := make([]ExamExpiryResult, 0, len(candidates))
-	for _, candidate := range candidates {
-		processed, err := s.expireExamCandidate(ctx, now, candidate)
-		results = append(results, ExamExpiryResult{
-			Candidate: candidate,
-			Processed: processed,
-			Err:       err,
-		})
+	results := make([]ExamExpiryResult, 0)
+	skipped := 0
+	for {
+		candidates, err := s.storeRepo.ListDueExamExpiryCandidatesPage(ctx, now, limit, skipped)
+		if err != nil {
+			return nil, err
+		}
+		for _, candidate := range candidates {
+			processed, err := s.expireExamCandidate(ctx, now, candidate)
+			if err != nil {
+				// Failed rows remain due, so skip them on the next page of this sweep.
+				skipped++
+			}
+			results = append(results, ExamExpiryResult{
+				Candidate: candidate,
+				Processed: processed,
+				Err:       err,
+			})
+		}
+		if len(candidates) < limit {
+			break
+		}
 	}
 	return results, nil
 }
 
 func (s *Service) expireExamCandidate(ctx context.Context, now time.Time, candidate model.ExamExpiryCandidate) (bool, error) {
+	unlockedSession, err := s.storeRepo.GetExamSessionByID(ctx, candidate.SessionID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if unlockedSession.Status != "in_progress" {
+		return false, nil
+	}
+	questions, err := s.storeRepo.GetSessionWithQuestions(ctx, unlockedSession.ExamID)
+	if err != nil {
+		return false, err
+	}
+
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return false, err
@@ -58,7 +86,7 @@ func (s *Service) expireExamCandidate(ctx context.Context, now time.Time, candid
 		if exam.Mode != "standard" || !standardSessionDue(*sess, *exam, now) {
 			return false, nil
 		}
-		if _, err := s.finalizeLockedSessionTx(ctx, tx, sess.ID, sess, false); err != nil {
+		if _, err := s.finalizeLockedSessionTx(ctx, tx, sess.ID, questions, false); err != nil {
 			return false, err
 		}
 		if err := tx.Commit(ctx); err != nil {
@@ -88,7 +116,7 @@ func (s *Service) expireExamCandidate(ctx context.Context, now time.Time, candid
 		return false, err
 	}
 	if nextTestID == nil {
-		if _, err := s.finalizeLockedSessionTx(ctx, tx, sess.ID, sess, false); err != nil {
+		if _, err := s.finalizeLockedSessionTx(ctx, tx, sess.ID, questions, false); err != nil {
 			return false, err
 		}
 	}
