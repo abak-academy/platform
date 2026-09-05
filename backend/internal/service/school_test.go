@@ -33,6 +33,27 @@ func findSchool(t *testing.T, svc *Service, id string) SchoolResponse {
 	}
 }
 
+func findSchoolByCode(t *testing.T, svc *Service, code string) SchoolResponse {
+	t.Helper()
+	ctx := context.Background()
+	cursor := ""
+	for {
+		rows, next, _, err := svc.AdminListSchools(ctx, AdminListSchoolsParams{Limit: 100, Cursor: cursor})
+		if err != nil {
+			t.Fatalf("AdminListSchools: %v", err)
+		}
+		for _, r := range rows {
+			if r.Code == code {
+				return r
+			}
+		}
+		if next == "" {
+			t.Fatalf("school with code %s not found in AdminListSchools", code)
+		}
+		cursor = next
+	}
+}
+
 func TestCreateSchool_Integration(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
@@ -79,10 +100,10 @@ func TestCreateSchool_Integration(t *testing.T) {
 		}
 	})
 
-	t.Run("missing name returns ErrMissingField", func(t *testing.T) {
+	t.Run("missing name returns ErrInvalidSchoolName", func(t *testing.T) {
 		_, err := svc.CreateSchool(ctx, "", "somecode", nil, nil, nil)
-		if !errors.Is(err, ErrMissingField) {
-			t.Errorf("want ErrMissingField, got %v", err)
+		if !errors.Is(err, ErrInvalidSchoolName) {
+			t.Errorf("want ErrInvalidSchoolName, got %v", err)
 		}
 	})
 
@@ -90,6 +111,35 @@ func TestCreateSchool_Integration(t *testing.T) {
 		_, err := svc.CreateSchool(ctx, "Some School", "", nil, nil, nil)
 		if !errors.Is(err, ErrMissingField) {
 			t.Errorf("want ErrMissingField, got %v", err)
+		}
+	})
+
+	t.Run("rejects names without letters or digits", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			want error
+		}{
+			{name: "", want: ErrInvalidSchoolName},
+			{name: "   ", want: ErrInvalidSchoolName},
+			{name: " ...--- ", want: ErrInvalidSchoolName},
+		} {
+			_, err := svc.CreateSchool(ctx, tc.name, "cs_"+uniqueSuffix(), nil, nil, nil)
+			if !errors.Is(err, tc.want) {
+				t.Errorf("CreateSchool(%q): want %v, got %v", tc.name, tc.want, err)
+			}
+		}
+	})
+
+	t.Run("accepts names with digits punctuation and unicode letters", func(t *testing.T) {
+		for _, name := range []string{"12345", "SMA Harapan-1", "Al-Ma'ruf", "École Internationale", "東京学園"} {
+			code := "cs_" + uniqueSuffix()
+			resp, err := svc.CreateSchool(ctx, name, code, nil, nil, nil)
+			if err != nil {
+				t.Fatalf("CreateSchool(%q): %v", name, err)
+			}
+			if resp.Name != name {
+				t.Errorf("Name: want %q, got %q", name, resp.Name)
+			}
 		}
 	})
 
@@ -125,6 +175,46 @@ func TestUpdateSchool_Integration(t *testing.T) {
 		}
 		if updated.Code != code {
 			t.Errorf("Code should be unchanged: want %s, got %s", code, updated.Code)
+		}
+	})
+
+	t.Run("omitted name leaves existing name unchanged", func(t *testing.T) {
+		code := "us_" + uniqueSuffix()
+		created, err := svc.CreateSchool(ctx, "Name Stays", code, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		alamat := "Jl. Updated"
+		updated, err := svc.UpdateSchool(ctx, created.ID, nil, nil, &alamat, nil, nil)
+		if err != nil {
+			t.Fatalf("UpdateSchool: %v", err)
+		}
+		if updated.Name != created.Name {
+			t.Errorf("Name: want unchanged %q, got %q", created.Name, updated.Name)
+		}
+		if updated.Alamat == nil || *updated.Alamat != alamat {
+			t.Errorf("Alamat: want %q, got %v", alamat, updated.Alamat)
+		}
+	})
+
+	t.Run("invalid name is rejected and row remains unchanged", func(t *testing.T) {
+		code := "us_" + uniqueSuffix()
+		created, err := svc.CreateSchool(ctx, "Still Valid", code, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		invalidName := "..."
+		newCode := "us_" + uniqueSuffix()
+		_, err = svc.UpdateSchool(ctx, created.ID, &invalidName, nil, nil, nil, &newCode)
+		if !errors.Is(err, ErrInvalidSchoolName) {
+			t.Fatalf("want ErrInvalidSchoolName, got %v", err)
+		}
+		found := findSchool(t, svc, created.ID)
+		if found.Name != created.Name {
+			t.Errorf("Name changed after rejected update: want %q, got %q", created.Name, found.Name)
+		}
+		if found.Code != code {
+			t.Errorf("Code changed after rejected update: want %q, got %q", code, found.Code)
 		}
 	})
 
@@ -188,6 +278,48 @@ func TestUpdateSchool_Integration(t *testing.T) {
 		_, err = svc.UpdateSchool(ctx, schoolB.ID, nil, nil, nil, nil, &codeA)
 		if !errors.Is(err, ErrSchoolCodeTaken) {
 			t.Errorf("want ErrSchoolCodeTaken, got %v", err)
+		}
+	})
+}
+
+func TestSchoolNameConstraintViolationReturnsValidationError(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	const rejectedName = "DB_ONLY_REJECT_issue_163"
+
+	_, err := repo.Pool().Exec(ctx, `
+		ALTER TABLE school DROP CONSTRAINT school_name_meaningful_check;
+		ALTER TABLE school ADD CONSTRAINT school_name_meaningful_check
+			CHECK (name <> 'DB_ONLY_REJECT_issue_163')`)
+	if err != nil {
+		t.Fatalf("replace school name constraint: %v", err)
+	}
+	t.Cleanup(func() {
+		_, cleanupErr := repo.Pool().Exec(context.Background(), `
+			ALTER TABLE school DROP CONSTRAINT school_name_meaningful_check;
+			ALTER TABLE school ADD CONSTRAINT school_name_meaningful_check
+				CHECK (name ~ '[[:alnum:]]')`)
+		if cleanupErr != nil {
+			t.Errorf("restore school name constraint: %v", cleanupErr)
+		}
+	})
+
+	t.Run("create", func(t *testing.T) {
+		_, err := svc.CreateSchool(ctx, rejectedName, "cs_"+uniqueSuffix(), nil, nil, nil)
+		if !errors.Is(err, ErrInvalidSchoolName) {
+			t.Fatalf("want ErrInvalidSchoolName, got %v", err)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		created, err := svc.CreateSchool(ctx, "Before constraint rejection", "us_"+uniqueSuffix(), nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		name := rejectedName
+		_, err = svc.UpdateSchool(ctx, created.ID, &name, nil, nil, nil, nil)
+		if !errors.Is(err, ErrInvalidSchoolName) {
+			t.Fatalf("want ErrInvalidSchoolName, got %v", err)
 		}
 	})
 }

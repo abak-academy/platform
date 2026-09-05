@@ -205,6 +205,37 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("invalid name fails at row level and later row still succeeds", func(t *testing.T) {
+		validCode := "sb_" + uniqueSuffix()
+		rows := []SchoolBulkRow{
+			{Row: 2, Name: "...", Code: "sb_" + uniqueSuffix()},
+			{Row: 3, Name: "Valid Bulk School", Code: validCode},
+		}
+		results, successCount, err := svc.ProcessSchoolBulkRows(ctx, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessSchoolBulkRows: %v", err)
+		}
+		if successCount != 1 {
+			t.Errorf("want successCount=1, got %d", successCount)
+		}
+		if len(results) != 2 {
+			t.Fatalf("want 2 results, got %d", len(results))
+		}
+		if results[0].Status != "failed" || results[0].Error != ErrInvalidSchoolName.Error() {
+			t.Errorf("want row0 invalid-name failure, got %+v", results[0])
+		}
+		if results[1].Status != "success" || results[1].Error != "" {
+			t.Errorf("want row1 success, got %+v", results[1])
+		}
+		if results[0].Row != 2 || results[1].Row != 3 {
+			t.Errorf("row order not preserved: %+v", results)
+		}
+		found := findSchoolByCode(t, svc, validCode)
+		if found.Code != validCode {
+			t.Errorf("created valid row code: want %q, got %q", validCode, found.Code)
+		}
+	})
+
 	t.Run("onProgress reaches 100 at end", func(t *testing.T) {
 		rows := []SchoolBulkRow{
 			{Name: "A", Code: "sb_" + uniqueSuffix()},
@@ -224,6 +255,7 @@ func TestBuildSchoolBulkResultCSV(t *testing.T) {
 	results := []SchoolBulkResultRow{
 		{Row: 2, Name: "SMAN 1 Jakarta", Code: "sman1", NPSN: "2000", SchoolTypes: "sma|smk", Alamat: "Jl. X", Status: "success"},
 		{Row: 3, Name: "=cmd|'/c calc'!A1", Code: "sman2", Status: "failed", Error: ErrSchoolCodeTaken.Error()},
+		{Row: 4, Name: "...", Code: "sman3", Status: "failed", Error: ErrInvalidSchoolName.Error()},
 	}
 	data := BuildSchoolBulkResultCSV(results)
 
@@ -232,8 +264,8 @@ func TestBuildSchoolBulkResultCSV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read back csv: %v", err)
 	}
-	if len(records) != 3 {
-		t.Fatalf("want 3 records (header + 2 rows), got %d", len(records))
+	if len(records) != 4 {
+		t.Fatalf("want 4 records (header + 3 rows), got %d", len(records))
 	}
 	wantHeader := []string{"row", "name", "code", "npsn", "school_types", "alamat", "status", "error"}
 	for i, h := range wantHeader {
@@ -254,6 +286,9 @@ func TestBuildSchoolBulkResultCSV(t *testing.T) {
 	}
 	if records[2][1] != "'=cmd|'/c calc'!A1" {
 		t.Errorf("want neutralised name, got %q", records[2][1])
+	}
+	if records[3][7] != ErrInvalidSchoolName.Error() {
+		t.Errorf("want invalid name error in error column, got %q", records[3][7])
 	}
 }
 
