@@ -54,6 +54,7 @@ type Worker struct {
 	jobRepo                  jobRepository
 	objectStore              objectStore
 	svc                      bulkProcessor
+	expirySvc                expiryProcessor
 	jobPollInterval          time.Duration
 	privateBucket            string
 	certGen                  certificateGenerator
@@ -71,6 +72,7 @@ func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval,
 		jobRepo:                  jobRepo,
 		objectStore:              objectStore,
 		svc:                      svc,
+		expirySvc:                resolveExpiryProcessor(svc),
 		jobPollInterval:          jobPollInterval,
 		privateBucket:            privateBucket,
 		certGen:                  certGen,
@@ -126,6 +128,7 @@ func (w *Worker) Run(ctx context.Context) {
 	}()
 
 	go w.pollActiveExamSessions(ctx)
+	go w.pollExamExpiryLoop(ctx)
 
 	for {
 		select {
