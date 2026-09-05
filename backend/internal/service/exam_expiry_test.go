@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -11,7 +12,27 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-func TestExpireExamSessions_NonPositiveLimitReturnsEmpty(t *testing.T) {
+func TestExpiryPageMadeProgress(t *testing.T) {
+	tests := []struct {
+		name    string
+		results []ExamExpiryResult
+		want    bool
+	}{
+		{name: "empty page", want: false},
+		{name: "only no-ops", results: []ExamExpiryResult{{}}, want: false},
+		{name: "processed candidate", results: []ExamExpiryResult{{Processed: true}}, want: true},
+		{name: "skipped failed candidate", results: []ExamExpiryResult{{Err: errors.New("failed")}}, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := expiryPageMadeProgress(tt.results); got != tt.want {
+				t.Fatalf("expiryPageMadeProgress() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExpireExamSessions_NonPositivePageSizeReturnsEmpty(t *testing.T) {
 	svc := &Service{}
 	results, err := svc.ExpireExamSessions(context.Background(), time.Now(), 0)
 	if err != nil {

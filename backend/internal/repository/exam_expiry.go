@@ -10,12 +10,12 @@ import (
 	"akademi-bimbel/internal/model"
 )
 
-func (r *Repository) ListDueExamExpiryCandidates(ctx context.Context, now time.Time, limit int) ([]model.ExamExpiryCandidate, error) {
-	return r.ListDueExamExpiryCandidatesPage(ctx, now, limit, 0)
+func (r *Repository) ListDueExamExpiryCandidates(ctx context.Context, now time.Time, pageSize int) ([]model.ExamExpiryCandidate, error) {
+	return r.ListDueExamExpiryCandidatesPage(ctx, now, pageSize, 0)
 }
 
-func (r *Repository) ListDueExamExpiryCandidatesPage(ctx context.Context, now time.Time, limit, offset int) ([]model.ExamExpiryCandidate, error) {
-	if limit <= 0 {
+func (r *Repository) ListDueExamExpiryCandidatesPage(ctx context.Context, now time.Time, pageSize, offset int) ([]model.ExamExpiryCandidate, error) {
+	if pageSize <= 0 {
 		return []model.ExamExpiryCandidate{}, nil
 	}
 	if offset < 0 {
@@ -59,7 +59,7 @@ func (r *Repository) ListDueExamExpiryCandidatesPage(ctx context.Context, now ti
 		WHERE due_at <= $1
 		ORDER BY due_at ASC, session_id ASC, test_id ASC NULLS FIRST
 		LIMIT $2 OFFSET $3`,
-		now, limit, offset,
+		now, pageSize, offset,
 	)
 	if err != nil {
 		return nil, err

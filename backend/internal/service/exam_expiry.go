@@ -15,17 +15,18 @@ type ExamExpiryResult struct {
 	Err       error
 }
 
-func (s *Service) ExpireExamSessions(ctx context.Context, now time.Time, limit int) ([]ExamExpiryResult, error) {
-	if limit <= 0 {
+func (s *Service) ExpireExamSessions(ctx context.Context, now time.Time, pageSize int) ([]ExamExpiryResult, error) {
+	if pageSize <= 0 {
 		return []ExamExpiryResult{}, nil
 	}
 	results := make([]ExamExpiryResult, 0)
 	skipped := 0
 	for {
-		candidates, err := s.storeRepo.ListDueExamExpiryCandidatesPage(ctx, now, limit, skipped)
+		candidates, err := s.storeRepo.ListDueExamExpiryCandidatesPage(ctx, now, pageSize, skipped)
 		if err != nil {
 			return nil, err
 		}
+		pageStart := len(results)
 		for _, candidate := range candidates {
 			processed, err := s.expireExamCandidate(ctx, now, candidate)
 			if err != nil {
@@ -38,11 +39,20 @@ func (s *Service) ExpireExamSessions(ctx context.Context, now time.Time, limit i
 				Err:       err,
 			})
 		}
-		if len(candidates) < limit {
+		if !expiryPageMadeProgress(results[pageStart:]) || len(candidates) < pageSize {
 			break
 		}
 	}
 	return results, nil
+}
+
+func expiryPageMadeProgress(results []ExamExpiryResult) bool {
+	for _, result := range results {
+		if result.Processed || result.Err != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) expireExamCandidate(ctx context.Context, now time.Time, candidate model.ExamExpiryCandidate) (bool, error) {

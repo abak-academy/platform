@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,7 +55,7 @@ func TestListDueExamExpiryCandidates_SelectsDueTimedRowsDeterministically(t *tes
 		t.Fatalf("ListDueExamExpiryCandidates: %v", err)
 	}
 	if len(got) != 2 {
-		t.Fatalf("candidates: want 2 fixed-limit rows, got %d: %#v", len(got), got)
+		t.Fatalf("candidates: want 2 rows, got %d: %#v", len(got), got)
 	}
 	if got[0].SessionID != dueFirst || got[0].TestID != nil {
 		t.Fatalf("first candidate = %#v, want standard session %s", got[0], dueFirst)
@@ -115,6 +116,21 @@ func TestListDueExamExpiryCandidates_SelectsDueActiveSections(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("due active section session %s was not selected: %#v", dueSession, got)
+	}
+}
+
+func TestExamSessionSectionActiveIndexExists(t *testing.T) {
+	pool := newGradingTestPool(t)
+	var indexDefinition string
+	err := pool.QueryRow(context.Background(),
+		`SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_examsessionsection_active'`,
+	).Scan(&indexDefinition)
+	if err != nil {
+		t.Fatalf("query active section index: %v", err)
+	}
+	want := "WHERE (status = 'active'::text)"
+	if !strings.Contains(indexDefinition, want) {
+		t.Fatalf("active section index = %q, want predicate %q", indexDefinition, want)
 	}
 }
 

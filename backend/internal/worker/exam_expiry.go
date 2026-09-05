@@ -9,12 +9,13 @@ import (
 )
 
 const (
-	examExpiryBatchLimit   = 50
+	examExpiryPageSize     = 50
 	examExpiryPollInterval = 30 * time.Minute
+	examExpirySweepTimeout = 5 * time.Minute
 )
 
 type expiryProcessor interface {
-	ExpireExamSessions(ctx context.Context, now time.Time, limit int) ([]service.ExamExpiryResult, error)
+	ExpireExamSessions(ctx context.Context, now time.Time, pageSize int) ([]service.ExamExpiryResult, error)
 }
 
 func resolveExpiryProcessor(svc bulkProcessor) expiryProcessor {
@@ -50,7 +51,9 @@ func (w *Worker) pollExamExpiry(ctx context.Context) {
 	default:
 	}
 
-	results, err := w.expirySvc.ExpireExamSessions(ctx, time.Now(), examExpiryBatchLimit)
+	sweepCtx, cancel := context.WithTimeout(ctx, examExpirySweepTimeout)
+	defer cancel()
+	results, err := w.expirySvc.ExpireExamSessions(sweepCtx, time.Now(), examExpiryPageSize)
 	if err != nil {
 		slog.Error("expire exam sessions", "err", err)
 		return
