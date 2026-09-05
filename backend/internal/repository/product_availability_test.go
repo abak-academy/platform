@@ -74,10 +74,21 @@ func linkedExamProduct(t *testing.T, r *Repository, title string, from, until *t
 }
 
 func linkedScheduledExamProduct(t *testing.T, r *Repository, title string, scheduledAt, scheduledEndAt, from, until *time.Time) (uuid.UUID, uuid.UUID) {
+	return linkedScheduledExamProductWithTiming(t, r, title, scheduledAt, scheduledEndAt, nil, nil, from, until)
+}
+
+func linkedScheduledExamProductWithTiming(t *testing.T, r *Repository, title string, scheduledAt, scheduledEndAt *time.Time, durationMinutes, graceWindowMinutes *int, from, until *time.Time) (uuid.UUID, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 
-	e := model.Exam{Title: title + " " + uuid.NewString()[:8], ResultConfig: "hidden", ScheduledAt: scheduledAt, ScheduledEndAt: scheduledEndAt}
+	e := model.Exam{
+		Title:              title + " " + uuid.NewString()[:8],
+		ResultConfig:       "hidden",
+		ScheduledAt:        scheduledAt,
+		ScheduledEndAt:     scheduledEndAt,
+		DurationMinutes:    durationMinutes,
+		GraceWindowMinutes: graceWindowMinutes,
+	}
 	if err := r.CreateExam(ctx, &e); err != nil {
 		t.Fatalf("create exam %s: %v", title, err)
 	}
@@ -104,6 +115,42 @@ func linkedScheduledExamProduct(t *testing.T, r *Repository, title string, sched
 		t.Fatalf("parse product id: %v", err)
 	}
 	return e.ID, pID
+}
+
+func TestListProducts_VisibleOnlyRespectsExamWindow(t *testing.T) {
+	ctx := context.Background()
+	pool := newGradingTestPool(t)
+	r := New(pool)
+
+	now := time.Now()
+	future := now.Add(24 * time.Hour)
+	yesterday := now.Add(-24 * time.Hour)
+	justStarted := now.Add(-5 * time.Minute)
+	duration := 60
+	grace := 10
+
+	_, futureProduct := linkedScheduledExamProduct(t, r, "Visible Future Exam", &future, nil, nil, nil)
+	_, startedProduct := linkedScheduledExamProductWithTiming(t, r, "Visible Started Exam", &justStarted, nil, &duration, &grace, nil, nil)
+	_, expiredProduct := linkedScheduledExamProduct(t, r, "Visible Expired Exam", &yesterday, nil, nil, nil)
+
+	products, _, err := r.ListProducts(ctx, ProductFilter{VisibleOnly: true, Type: "exam", Limit: 100})
+	if err != nil {
+		t.Fatalf("ListProducts: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, p := range products {
+		seen[p.ID] = true
+	}
+
+	if !seen[futureProduct.String()] {
+		t.Error("future exam product must stay visible in the public catalog")
+	}
+	if !seen[startedProduct.String()] {
+		t.Error("started exam product must stay visible while duration+grace is still open")
+	}
+	if seen[expiredProduct.String()] {
+		t.Error("expired exam product must be hidden from the public catalog")
+	}
 }
 
 // TestGetProductByExamID_AvailabilityWindow covers the student-facing lookup that
@@ -176,6 +223,32 @@ func TestGetProductByExamID_RejectsPastExamWindow(t *testing.T) {
 	}
 	if _, err := r.GetProductByExamID(ctx, closedWindowExam); !errors.Is(err, ErrNotFound) {
 		t.Errorf("a flexible-window exam after scheduled_end_at must not be orderable, got err=%v", err)
+	}
+}
+
+func TestGetProductByExamID_AllowsStartedExamUntilDurationAndGraceEnd(t *testing.T) {
+	ctx := context.Background()
+	pool := newGradingTestPool(t)
+	r := New(pool)
+
+	now := time.Now()
+	started := now.Add(-5 * time.Minute)
+	ended := now.Add(-20 * time.Minute)
+	duration := 10
+	grace := 15
+
+	openExam, openProduct := linkedScheduledExamProductWithTiming(t, r, "Started Open Exam", &started, nil, &duration, &grace, nil, nil)
+	closedExam, _ := linkedScheduledExamProductWithTiming(t, r, "Started Closed Exam", &ended, nil, &duration, nil, nil, nil)
+
+	got, err := r.GetProductByExamID(ctx, openExam)
+	if err != nil {
+		t.Fatalf("an exam product inside duration+grace must be orderable: %v", err)
+	}
+	if got.ID != openProduct.String() {
+		t.Errorf("got product %s, want %s", got.ID, openProduct)
+	}
+	if _, err := r.GetProductByExamID(ctx, closedExam); !errors.Is(err, ErrNotFound) {
+		t.Errorf("an exam product past duration+grace must not be orderable, got err=%v", err)
 	}
 }
 

@@ -190,6 +190,9 @@ func TestListOrderableExams_RespectsExamWindow(t *testing.T) {
 	future := now.Add(24 * time.Hour)
 	yesterday := now.Add(-24 * time.Hour)
 	tomorrow := now.Add(24 * time.Hour)
+	justStarted := now.Add(-5 * time.Minute)
+	duration := 60
+	grace := 10
 
 	futureExam, err := svc.CreateExam(ctx, model.Exam{Title: "Orderable Future Exam " + uuid.NewString()[:8], ScheduledAt: &future})
 	if err != nil {
@@ -203,6 +206,10 @@ func TestListOrderableExams_RespectsExamWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateExam open window: %v", err)
 	}
+	startedExam, err := svc.CreateExam(ctx, model.Exam{Title: "Orderable Started Exam " + uuid.NewString()[:8], ScheduledAt: &justStarted, DurationMinutes: &duration, GraceWindowMinutes: &grace})
+	if err != nil {
+		t.Fatalf("CreateExam started: %v", err)
+	}
 
 	futureProduct, err := svc.CreateProductWithExams(ctx, model.Product{Type: "exam", Name: "Future Exam Product " + uuid.NewString()[:8], Price: 1000, Status: "published"}, []string{futureExam.ID.String()}, RoleSuperAdmin)
 	if err != nil {
@@ -215,6 +222,10 @@ func TestListOrderableExams_RespectsExamWindow(t *testing.T) {
 	openWindowProduct, err := svc.CreateProductWithExams(ctx, model.Product{Type: "exam", Name: "Open Window Exam Product " + uuid.NewString()[:8], Price: 1000, Status: "published"}, []string{openWindowExam.ID.String()}, RoleSuperAdmin)
 	if err != nil {
 		t.Fatalf("CreateProductWithExams open window: %v", err)
+	}
+	startedProduct, err := svc.CreateProductWithExams(ctx, model.Product{Type: "exam", Name: "Started Exam Product " + uuid.NewString()[:8], Price: 1000, Status: "published"}, []string{startedExam.ID.String()}, RoleSuperAdmin)
+	if err != nil {
+		t.Fatalf("CreateProductWithExams started: %v", err)
 	}
 
 	products, err := svc.ListOrderableExams(ctx, RoleAdminSchool)
@@ -232,7 +243,29 @@ func TestListOrderableExams_RespectsExamWindow(t *testing.T) {
 	if !seen[openWindowProduct.ID] {
 		t.Error("exam product inside scheduled_end_at window must be orderable")
 	}
+	if !seen[startedProduct.ID] {
+		t.Error("started exam product must remain orderable while duration+grace is still open")
+	}
 	if seen[pastProduct.ID] {
 		t.Error("past scheduled exam product must not be orderable")
+	}
+}
+
+func TestGetProduct_StudentRejectsExpiredExamProduct(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	yesterday := time.Now().Add(-24 * time.Hour)
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Student Expired Exam " + uuid.NewString()[:8], ScheduledAt: &yesterday})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+	product, err := svc.CreateProductWithExams(ctx, model.Product{Type: "exam", Name: "Student Expired Exam Product " + uuid.NewString()[:8], Price: 1000, Status: "published"}, []string{exam.ID.String()}, RoleSuperAdmin)
+	if err != nil {
+		t.Fatalf("CreateProductWithExams: %v", err)
+	}
+
+	if _, err := svc.GetProduct(ctx, product.ID, RoleStudent); err != ErrProductNotFound {
+		t.Fatalf("student GetProduct for expired exam must return ErrProductNotFound, got %v", err)
 	}
 }

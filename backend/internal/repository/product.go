@@ -51,7 +51,29 @@ func scanProduct(row interface{ Scan(dest ...any) error }, p *model.Product) err
 const productAvailabilityFilter = ` AND (p.available_from IS NULL OR p.available_from <= now())` +
 	` AND (p.available_until IS NULL OR p.available_until >= now())`
 
-const examOrderabilityFilter = ` AND (e.scheduled_at IS NULL OR COALESCE(e.scheduled_end_at, e.scheduled_at) >= now())`
+// examOrderabilityFilter closes ordering when the exam is no longer startable:
+// latestStart (scheduled_end_at when flexible, scheduled_at otherwise) plus the
+// exam runtime and grace window. This mirrors the Session Monitor's live window;
+// stopping at scheduled_at would reject late purchases while students can still
+// legitimately start.
+const examOrderabilityFilter = ` AND (
+			e.scheduled_at IS NULL OR now() <= COALESCE(e.scheduled_end_at, e.scheduled_at) +
+			((COALESCE(e.duration_minutes, COALESCE((
+				SELECT SUM(t.duration_minutes)
+				FROM exam_test et
+				JOIN test t ON t.id = et.test_id
+				WHERE et.exam_id = e.id
+			), 0)) + COALESCE(e.grace_window_minutes, 0)) * INTERVAL '1 minute')
+		)`
+
+// linkedOrderableExamProductFilter keeps exam products out of student-facing
+// catalog/detail reads after every linked exam has passed its startable window.
+// Non-exam products use only the product availability window.
+const linkedOrderableExamProductFilter = ` AND (p.type <> 'exam' OR EXISTS (
+			SELECT 1 FROM product_exam pe
+			JOIN exam e ON e.id = pe.exam_id
+			WHERE pe.product_id = p.id` + examOrderabilityFilter + `
+		))`
 
 type ProductFilter struct {
 	Type string
@@ -59,8 +81,8 @@ type ProductFilter struct {
 	// a non-nil empty slice means the role may see no type at all.
 	Types             []string
 	Status            string
-	VisibleOnly       bool // true = only published and inside product availability
-	OrderableExamOnly bool // true = linked to at least one exam whose schedule has not ended
+	VisibleOnly       bool // true = student-visible catalog rules
+	OrderableExamOnly bool // true = linked to at least one exam whose startable window is open
 	Cursor            string
 	Limit             int
 }
@@ -107,7 +129,7 @@ func (r *Repository) GetProductByID(ctx context.Context, id string) (*model.Prod
 
 // GetProductByExamID returns the exam-type product linked to the given exam
 // via product_exam. Returns ErrNotFound when no product is linked or the
-// linked product is not of type "exam" or is not published.
+// linked product is not currently orderable for that exam.
 func (r *Repository) GetProductByExamID(ctx context.Context, examID uuid.UUID) (*model.Product, error) {
 	p := &model.Product{}
 	err := scanProduct(r.pool.QueryRow(ctx,
@@ -167,9 +189,12 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 		argIdx++
 	}
 	if filter.VisibleOnly {
-		// public catalog: published and within the availability window
+		// public catalog: published, within the product availability window, and
+		// for exam products linked to at least one exam whose startable window is
+		// still open.
 		query += ` AND p.status = 'published'`
 		query += productAvailabilityFilter
+		query += linkedOrderableExamProductFilter
 	}
 	if filter.OrderableExamOnly {
 		query += ` AND EXISTS (
@@ -216,6 +241,19 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 	}
 
 	return products, nextCursor, nil
+}
+
+func (r *Repository) ProductHasOrderableExam(ctx context.Context, productID uuid.UUID) (bool, error) {
+	var ok bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS (
+			SELECT 1 FROM product_exam pe
+			JOIN exam e ON e.id = pe.exam_id
+			WHERE pe.product_id = $1`+examOrderabilityFilter+`
+		)`,
+		productID,
+	).Scan(&ok)
+	return ok, err
 }
 
 func (r *Repository) UpdateProduct(ctx context.Context, id string, p *model.Product) error {
