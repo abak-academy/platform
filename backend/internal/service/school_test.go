@@ -282,6 +282,48 @@ func TestUpdateSchool_Integration(t *testing.T) {
 	})
 }
 
+func TestSchoolNameConstraintViolationReturnsValidationError(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	const rejectedName = "DB_ONLY_REJECT_issue_163"
+
+	_, err := repo.Pool().Exec(ctx, `
+		ALTER TABLE school DROP CONSTRAINT school_name_meaningful_check;
+		ALTER TABLE school ADD CONSTRAINT school_name_meaningful_check
+			CHECK (name <> 'DB_ONLY_REJECT_issue_163')`)
+	if err != nil {
+		t.Fatalf("replace school name constraint: %v", err)
+	}
+	t.Cleanup(func() {
+		_, cleanupErr := repo.Pool().Exec(context.Background(), `
+			ALTER TABLE school DROP CONSTRAINT school_name_meaningful_check;
+			ALTER TABLE school ADD CONSTRAINT school_name_meaningful_check
+				CHECK (name ~ '[[:alnum:]]')`)
+		if cleanupErr != nil {
+			t.Errorf("restore school name constraint: %v", cleanupErr)
+		}
+	})
+
+	t.Run("create", func(t *testing.T) {
+		_, err := svc.CreateSchool(ctx, rejectedName, "cs_"+uniqueSuffix(), nil, nil, nil)
+		if !errors.Is(err, ErrInvalidSchoolName) {
+			t.Fatalf("want ErrInvalidSchoolName, got %v", err)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		created, err := svc.CreateSchool(ctx, "Before constraint rejection", "us_"+uniqueSuffix(), nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		name := rejectedName
+		_, err = svc.UpdateSchool(ctx, created.ID, &name, nil, nil, nil, nil)
+		if !errors.Is(err, ErrInvalidSchoolName) {
+			t.Fatalf("want ErrInvalidSchoolName, got %v", err)
+		}
+	})
+}
+
 func TestChangeSchoolStatus_Integration(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
