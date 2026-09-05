@@ -144,6 +144,19 @@ func (s *Service) GetProduct(ctx context.Context, id string, role string) (model
 			(p.AvailableUntil != nil && now.After(*p.AvailableUntil)) {
 			return model.Product{}, ErrProductNotFound
 		}
+		if p.Type == "exam" {
+			pID, err := parseUUID(p.ID)
+			if err != nil {
+				return model.Product{}, ErrProductNotFound
+			}
+			ok, err := s.storeRepo.ProductHasOrderableExam(ctx, pID)
+			if err != nil {
+				return model.Product{}, err
+			}
+			if !ok {
+				return model.Product{}, ErrProductNotFound
+			}
+		}
 	}
 	if p.Type == "course" {
 		pID, err := parseUUID(p.ID)
@@ -820,13 +833,13 @@ func (s *Service) buildCartPatch(ctx context.Context, order model.Order, patch C
 		CourierServiceCode: order.CourierServiceCode,
 		IsEstimate:         order.IsEstimate,
 		PromoCodeID:        order.PromoCodeID,
-		Discount:        order.Discount,
-		ShippingCost:    order.ShippingCost,
-		Total:           order.Total,
-		ProvinceID:      patch.ProvinceID,
-		CityID:          patch.CityID,
-		DistrictID:      patch.DistrictID,
-		KodePos:         patch.KodePos,
+		Discount:           order.Discount,
+		ShippingCost:       order.ShippingCost,
+		Total:              order.Total,
+		ProvinceID:         patch.ProvinceID,
+		CityID:             patch.CityID,
+		DistrictID:         patch.DistrictID,
+		KodePos:            patch.KodePos,
 	}
 
 	if patch.Courier != "" {

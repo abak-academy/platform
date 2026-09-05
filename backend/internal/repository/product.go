@@ -48,18 +48,43 @@ func scanProduct(row interface{ Scan(dest ...any) error }, p *model.Product) err
 
 // productAvailabilityFilter is the SQL predicate that restricts the public
 // catalog to products currently inside their availability window (P-A).
-const productAvailabilityFilter = ` AND (available_from IS NULL OR available_from <= now())` +
-	` AND (available_until IS NULL OR available_until >= now())`
+const productAvailabilityFilter = ` AND (p.available_from IS NULL OR p.available_from <= now())` +
+	` AND (p.available_until IS NULL OR p.available_until >= now())`
+
+// examOrderabilityFilter closes ordering when the exam is no longer startable:
+// latestStart (scheduled_end_at when flexible, scheduled_at otherwise) plus the
+// exam runtime and grace window. This mirrors the Session Monitor's live window;
+// stopping at scheduled_at would reject late purchases while students can still
+// legitimately start.
+const examOrderabilityFilter = ` AND (
+			e.scheduled_at IS NULL OR now() <= COALESCE(e.scheduled_end_at, e.scheduled_at) +
+			((COALESCE(e.duration_minutes, COALESCE((
+				SELECT SUM(t.duration_minutes)
+				FROM exam_test et
+				JOIN test t ON t.id = et.test_id
+				WHERE et.exam_id = e.id
+			), 0)) + COALESCE(e.grace_window_minutes, 0)) * INTERVAL '1 minute')
+		)`
+
+// linkedOrderableExamProductFilter keeps exam products out of student-facing
+// catalog/detail reads after every linked exam has passed its startable window.
+// Non-exam products use only the product availability window.
+const linkedOrderableExamProductFilter = ` AND (p.type <> 'exam' OR EXISTS (
+			SELECT 1 FROM product_exam pe
+			JOIN exam e ON e.id = pe.exam_id
+			WHERE pe.product_id = p.id` + examOrderabilityFilter + `
+		))`
 
 type ProductFilter struct {
-	Type       string
+	Type string
 	// Types is a role-scoped allowlist applied in SQL. nil means unrestricted;
 	// a non-nil empty slice means the role may see no type at all.
-	Types      []string
-	Status     string
-	VisibleOnly bool // true = only published + not hidden
-	Cursor     string
-	Limit      int
+	Types             []string
+	Status            string
+	VisibleOnly       bool // true = student-visible catalog rules
+	OrderableExamOnly bool // true = linked to at least one exam whose startable window is open
+	Cursor            string
+	Limit             int
 }
 
 func (r *Repository) CreateProduct(ctx context.Context, p *model.Product) error {
@@ -104,7 +129,7 @@ func (r *Repository) GetProductByID(ctx context.Context, id string) (*model.Prod
 
 // GetProductByExamID returns the exam-type product linked to the given exam
 // via product_exam. Returns ErrNotFound when no product is linked or the
-// linked product is not of type "exam" or is not published.
+// linked product is not currently orderable for that exam.
 func (r *Repository) GetProductByExamID(ctx context.Context, examID uuid.UUID) (*model.Product, error) {
 	p := &model.Product{}
 	err := scanProduct(r.pool.QueryRow(ctx,
@@ -112,9 +137,10 @@ func (r *Repository) GetProductByExamID(ctx context.Context, examID uuid.UUID) (
 		        p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.created_at, p.updated_at
 		 FROM product p
 		 JOIN product_exam pe ON pe.product_id = p.id
+		 JOIN exam e ON e.id = pe.exam_id
 		 WHERE pe.exam_id = $1 AND p.type = 'exam' AND p.status = 'published'
 		   AND (p.available_from IS NULL OR p.available_from <= now())
-		   AND (p.available_until IS NULL OR p.available_until >= now())`,
+		   AND (p.available_until IS NULL OR p.available_until >= now())`+examOrderabilityFilter,
 		examID,
 	), p)
 	if err != nil {
@@ -132,13 +158,13 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 	}
 
 	products := []model.Product{}
-	query := `SELECT id, type, name, description, price, stock, status, weight_grams, image_url, specs, available_from, available_until, created_at, updated_at
-	FROM product WHERE 1=1`
+	query := `SELECT p.id, p.type, p.name, p.description, p.price, p.stock, p.status, p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.created_at, p.updated_at
+	FROM product p WHERE 1=1`
 	args := []interface{}{}
 	argIdx := 1
 
 	if filter.Type != "" {
-		query += fmt.Sprintf(` AND type = $%d`, argIdx)
+		query += fmt.Sprintf(` AND p.type = $%d`, argIdx)
 		args = append(args, filter.Type)
 		argIdx++
 	}
@@ -155,28 +181,38 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 			args = append(args, t)
 			argIdx++
 		}
-		query += ` AND type IN (` + strings.Join(placeholders, ", ") + `)`
+		query += ` AND p.type IN (` + strings.Join(placeholders, ", ") + `)`
 	}
 	if filter.Status != "" {
-		query += fmt.Sprintf(` AND status = $%d`, argIdx)
+		query += fmt.Sprintf(` AND p.status = $%d`, argIdx)
 		args = append(args, filter.Status)
 		argIdx++
 	}
 	if filter.VisibleOnly {
-		// public catalog: published and within the availability window
-		query += ` AND status = 'published'`
+		// public catalog: published, within the product availability window, and
+		// for exam products linked to at least one exam whose startable window is
+		// still open.
+		query += ` AND p.status = 'published'`
 		query += productAvailabilityFilter
+		query += linkedOrderableExamProductFilter
+	}
+	if filter.OrderableExamOnly {
+		query += ` AND EXISTS (
+			SELECT 1 FROM product_exam pe
+			JOIN exam e ON e.id = pe.exam_id
+			WHERE pe.product_id = p.id` + examOrderabilityFilter + `
+		)`
 	}
 	if filter.Cursor != "" {
 		if _, err := uuid.Parse(filter.Cursor); err != nil {
 			return nil, "", ErrInvalidCursor
 		}
-		query += fmt.Sprintf(` AND id > $%d`, argIdx)
+		query += fmt.Sprintf(` AND p.id > $%d`, argIdx)
 		args = append(args, filter.Cursor)
 		argIdx++
 	}
 
-	query += ` ORDER BY id LIMIT $` + fmt.Sprintf("%d", argIdx)
+	query += ` ORDER BY p.id LIMIT $` + fmt.Sprintf("%d", argIdx)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -205,6 +241,19 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 	}
 
 	return products, nextCursor, nil
+}
+
+func (r *Repository) ProductHasOrderableExam(ctx context.Context, productID uuid.UUID) (bool, error) {
+	var ok bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS (
+			SELECT 1 FROM product_exam pe
+			JOIN exam e ON e.id = pe.exam_id
+			WHERE pe.product_id = $1`+examOrderabilityFilter+`
+		)`,
+		productID,
+	).Scan(&ok)
+	return ok, err
 }
 
 func (r *Repository) UpdateProduct(ctx context.Context, id string, p *model.Product) error {
