@@ -52,6 +52,12 @@ func TestPollExamExpiryUsesFixedBatchAndLogsCandidateFailures(t *testing.T) {
 	}
 }
 
+func TestExamExpiryPollInterval(t *testing.T) {
+	if examExpiryPollInterval != 30*time.Minute {
+		t.Fatalf("expiry poll interval = %s, want 30m", examExpiryPollInterval)
+	}
+}
+
 func TestPollExamExpiryReturnsWhenContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

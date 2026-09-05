@@ -8,7 +8,10 @@ import (
 	"akademi-bimbel/internal/service"
 )
 
-const examExpiryBatchLimit = 50
+const (
+	examExpiryBatchLimit   = 50
+	examExpiryPollInterval = 30 * time.Minute
+)
 
 type expiryProcessor interface {
 	ExpireExamSessions(ctx context.Context, now time.Time, limit int) ([]service.ExamExpiryResult, error)
@@ -23,7 +26,7 @@ func (w *Worker) pollExamExpiryLoop(ctx context.Context) {
 	if w.expirySvc == nil {
 		return
 	}
-	ticker := time.NewTicker(w.interval)
+	ticker := time.NewTicker(examExpiryPollInterval)
 	defer ticker.Stop()
 
 	w.pollExamExpiry(ctx)
