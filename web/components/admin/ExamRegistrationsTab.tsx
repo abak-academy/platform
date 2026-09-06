@@ -355,6 +355,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
   const csvJobData = csvJob.data;
   const csvIsTerminalSuccess = csvJobData?.status === "succeeded";
   const csvIsTerminalFailed = csvJobData?.status === "failed";
+  const previewExcluded = previewResult?.excluded ?? [];
 
   useEffect(() => {
     if (csvIsTerminalSuccess) {
@@ -671,9 +672,9 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                           </Badge>
                         </div>
 
-                        {previewResult.excluded.length > 0 && (
+                        {previewExcluded.length > 0 && (
                           <div className="max-h-[160px] overflow-y-auto rounded-lg border border-line p-2">
-                            {previewResult.excluded.map((s) => (
+                            {previewExcluded.map((s) => (
                               <div
                                 key={s.student_id}
                                 className="flex items-center gap-2 px-2 py-1.5 text-sm"

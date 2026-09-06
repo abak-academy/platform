@@ -12,7 +12,7 @@ let previewShouldError = false;
 let previewMockResult:
   | {
       net_new_count: number;
-      excluded: { student_id: string; name: string; reason: string }[];
+      excluded?: { student_id: string; name: string; reason: string }[];
       unit_price: number;
       total: number;
     }
@@ -290,6 +290,27 @@ describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam
       expect(dialog.getByText("bulk_exam_order_created")).toBeInTheDocument();
     });
     expect(dialog.getByText(/Tryout UTBK 2026/)).toBeInTheDocument();
+  });
+
+  it("renders a preview when the backend omits an empty excluded list", async () => {
+    previewMockResult = {
+      net_new_count: 2,
+      unit_price: 75000,
+      total: 150000,
+    };
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const dialog = openOrderModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
+    fireEvent.click(await dialog.findByText("bulk_exam_order_preview"));
+
+    await waitFor(() => {
+      expect(dialog.getByText(formatRupiah(150000))).toBeInTheDocument();
+    });
+    expect(dialog.queryByText("already_registered")).not.toBeInTheDocument();
   });
 
   it("shows an error toast when the backend rejects duplicate participant_ids on create", async () => {

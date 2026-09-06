@@ -12,10 +12,10 @@ import (
 
 // BulkOrderPreview is the response for PreviewBulkExamOrder.
 type BulkOrderPreview struct {
-	NetNewCount int                  `json:"net_new_count"`
-	Excluded    []BulkOrderExcluded  `json:"excluded,omitempty"`
-	UnitPrice   float64              `json:"unit_price"`
-	Total       float64              `json:"total"`
+	NetNewCount int                 `json:"net_new_count"`
+	Excluded    []BulkOrderExcluded `json:"excluded,omitempty"`
+	UnitPrice   float64             `json:"unit_price"`
+	Total       float64             `json:"total"`
 }
 
 // BulkOrderExcluded describes a student excluded from the bulk order.
@@ -29,7 +29,10 @@ type BulkOrderExcluded struct {
 // role. Thin wrapper reusing ListProducts.
 func (s *Service) ListOrderableExams(ctx context.Context, role string) ([]model.Product, error) {
 	products, _, err := s.ListProducts(ctx, repository.ProductFilter{
-		Type: "exam",
+		Type:              "exam",
+		Status:            "published",
+		VisibleOnly:       true,
+		OrderableExamOnly: true,
 	}, role)
 	return products, err
 }

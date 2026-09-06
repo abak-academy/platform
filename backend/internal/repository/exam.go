@@ -1348,7 +1348,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 			JOIN product p ON p.id = pe.product_id
 			WHERE pe.exam_id = e.id AND p.status = 'published'
 			  AND (p.available_from IS NULL OR p.available_from <= now())
-			  AND (p.available_until IS NULL OR p.available_until >= now())
+			  AND (p.available_until IS NULL OR p.available_until >= now())` + examOrderabilityFilter + `
 		) AS has_published_product,
 		(
 			SELECT COUNT(*) FROM exam_registration r
