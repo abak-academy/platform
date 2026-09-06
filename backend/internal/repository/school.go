@@ -237,19 +237,19 @@ func (r *Repository) CreateSchool(ctx context.Context, s *model.School) error {
 	).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt)
 }
 
-// UpdateSchool patches editable fields using COALESCE. Nil pointer arguments
-// leave the corresponding column unchanged.
-func (r *Repository) UpdateSchool(ctx context.Context, id string, name, npsn, alamat *string, schoolTypes []string, code *string) error {
+// UpdateSchool patches editable fields. npsnSet distinguishes an omitted NPSN
+// from an explicit blank value normalized to NULL by the service.
+func (r *Repository) UpdateSchool(ctx context.Context, id string, name *string, npsnSet bool, npsn, alamat *string, schoolTypes []string, code *string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE school
 		SET name = COALESCE($1, name),
-			npsn = COALESCE($2, npsn),
-			alamat = COALESCE($3, alamat),
-			school_types = COALESCE($4, school_types),
-			code = COALESCE($5, code),
+			npsn = CASE WHEN $2 THEN $3 ELSE npsn END,
+			alamat = COALESCE($4, alamat),
+			school_types = COALESCE($5, school_types),
+			code = COALESCE($6, code),
 			updated_at = now()
-		WHERE id = $6`,
-		name, npsn, alamat, schoolTypes, code, id,
+		WHERE id = $7`,
+		name, npsnSet, npsn, alamat, schoolTypes, code, id,
 	)
 	return err
 }

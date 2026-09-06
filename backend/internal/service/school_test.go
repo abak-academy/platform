@@ -7,7 +7,83 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func TestNormalizeSchoolNPSN(t *testing.T) {
+	tests := []struct {
+		name string
+		in   *string
+		want *string
+		err  error
+	}{
+		{name: "omitted remains null"},
+		{name: "blank becomes null", in: stringPtr(" \t ")},
+		{name: "numeric accepted", in: stringPtr(" 20101234 "), want: stringPtr("20101234")},
+		{name: "letter prefixed accepted and uppercased", in: stringPtr(" p1234567 "), want: stringPtr("P1234567")},
+		{name: "too short rejected", in: stringPtr("1234567"), err: ErrInvalidSchoolNPSN},
+		{name: "too long rejected", in: stringPtr("123456789"), err: ErrInvalidSchoolNPSN},
+		{name: "punctuation rejected", in: stringPtr("1234-678"), err: ErrInvalidSchoolNPSN},
+		{name: "non ASCII rejected", in: stringPtr("É1234567"), err: ErrInvalidSchoolNPSN},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := normalizeSchoolNPSN(tt.in)
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("normalizeSchoolNPSN: want error %v, got %v", tt.err, err)
+			}
+			if tt.want == nil {
+				if got != nil {
+					t.Fatalf("want nil, got %q", *got)
+				}
+				return
+			}
+			if got == nil || *got != *tt.want {
+				t.Fatalf("want %q, got %v", *tt.want, got)
+			}
+		})
+	}
+}
+
+func TestMapSchoolWriteError_OnlyNamedUniqueViolation(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want error
+	}{
+		{
+			name: "named NPSN unique violation",
+			err:  &pgconn.PgError{Code: "23505", ConstraintName: schoolNPSNUniqueIndex},
+			want: ErrSchoolNPSNTaken,
+		},
+		{
+			name: "different unique violation unchanged",
+			err:  &pgconn.PgError{Code: "23505", ConstraintName: "school_code_key"},
+		},
+		{
+			name: "named constraint with different SQLSTATE unchanged",
+			err:  &pgconn.PgError{Code: "23514", ConstraintName: schoolNPSNUniqueIndex},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mapSchoolWriteError(tt.err)
+			if tt.want != nil {
+				if !errors.Is(got, tt.want) {
+					t.Fatalf("want %v, got %v", tt.want, got)
+				}
+				return
+			}
+			if got != tt.err {
+				t.Fatalf("want original error, got %v", got)
+			}
+		})
+	}
+}
+
+func stringPtr(value string) *string { return &value }
 
 // findSchool pages through AdminListSchools looking for a school by ID. The
 // real-DB fixture is shared across every test in this package, so a single
@@ -153,6 +229,75 @@ func TestCreateSchool_Integration(t *testing.T) {
 			t.Errorf("want ErrSchoolCodeTaken, got %v", err)
 		}
 	})
+
+	t.Run("normalizes NPSN and stores blank as null", func(t *testing.T) {
+		code := "cs_" + uniqueSuffix()
+		npsn := " p1234567 "
+		created, err := svc.CreateSchool(ctx, "Normalized NPSN School", code, &npsn, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		if created.NPSN == nil || *created.NPSN != "P1234567" {
+			t.Fatalf("NPSN: want P1234567, got %v", created.NPSN)
+		}
+
+		blank := "  "
+		cleared, err := svc.UpdateSchool(ctx, created.ID, nil, &blank, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("UpdateSchool blank NPSN: %v", err)
+		}
+		if cleared.NPSN != nil {
+			t.Fatalf("NPSN: want nil after blank update, got %q", *cleared.NPSN)
+		}
+	})
+
+	t.Run("rejects malformed NPSN before create", func(t *testing.T) {
+		code := "cs_" + uniqueSuffix()
+		invalid := "1234-678"
+		_, err := svc.CreateSchool(ctx, "Invalid NPSN School", code, &invalid, nil, nil)
+		if !errors.Is(err, ErrInvalidSchoolNPSN) {
+			t.Fatalf("want ErrInvalidSchoolNPSN, got %v", err)
+		}
+		for _, row := range mustListSchools(t, svc) {
+			if row.Code == code {
+				t.Fatalf("school %q was written despite invalid NPSN", code)
+			}
+		}
+	})
+
+	t.Run("rejects duplicate normalized NPSN and allows multiple nulls", func(t *testing.T) {
+		npsn := "Q1234567"
+		if _, err := svc.CreateSchool(ctx, "First NPSN", "cs_"+uniqueSuffix(), &npsn, nil, nil); err != nil {
+			t.Fatalf("CreateSchool first: %v", err)
+		}
+		duplicate := " q1234567 "
+		_, err := svc.CreateSchool(ctx, "Duplicate NPSN", "cs_"+uniqueSuffix(), &duplicate, nil, nil)
+		if !errors.Is(err, ErrSchoolNPSNTaken) {
+			t.Fatalf("want ErrSchoolNPSNTaken, got %v", err)
+		}
+		for _, name := range []string{"Null NPSN One", "Null NPSN Two"} {
+			if _, err := svc.CreateSchool(ctx, name, "cs_"+uniqueSuffix(), nil, nil, nil); err != nil {
+				t.Fatalf("CreateSchool %q with nil NPSN: %v", name, err)
+			}
+		}
+	})
+}
+
+func mustListSchools(t *testing.T, svc *Service) []SchoolResponse {
+	t.Helper()
+	var all []SchoolResponse
+	cursor := ""
+	for {
+		rows, next, _, err := svc.AdminListSchools(context.Background(), AdminListSchoolsParams{Limit: 100, Cursor: cursor})
+		if err != nil {
+			t.Fatalf("AdminListSchools: %v", err)
+		}
+		all = append(all, rows...)
+		if next == "" {
+			return all
+		}
+		cursor = next
+	}
 }
 
 func TestUpdateSchool_Integration(t *testing.T) {

@@ -24,6 +24,8 @@ func TestMapServiceError(t *testing.T) {
 		wantDetail any
 	}{
 		{name: "email taken", err: service.ErrEmailTaken, wantStatus: 409, wantCode: "email_taken"},
+		{name: "school NPSN taken", err: service.ErrSchoolNPSNTaken, wantStatus: 409, wantCode: "school_npsn_taken"},
+		{name: "invalid school NPSN", err: service.ErrInvalidSchoolNPSN, wantStatus: 400, wantCode: "invalid_request"},
 		{name: "invalid credentials", err: service.ErrInvalidCredentials, wantStatus: 401, wantCode: "invalid_credentials"},
 		{name: "otp rate limit", err: service.ErrOTPRateLimit, wantStatus: 429, wantCode: "rate_limited"},
 		{name: "otp expired", err: service.ErrOTPExpired, wantStatus: 422, wantCode: "otp_invalid"},

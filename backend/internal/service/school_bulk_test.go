@@ -249,6 +249,28 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 			t.Errorf("want final progress 100, got %v", calls)
 		}
 	})
+
+	t.Run("uses direct school NPSN normalization and validation", func(t *testing.T) {
+		valid := " r1234567 "
+		invalid := "bad"
+		rows := []SchoolBulkRow{
+			{Row: 2, Name: "Normalized Bulk School", Code: "sb_" + uniqueSuffix(), NPSN: &valid},
+			{Row: 3, Name: "Invalid Bulk School", Code: "sb_" + uniqueSuffix(), NPSN: &invalid},
+		}
+		results, successCount, err := svc.ProcessSchoolBulkRows(ctx, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessSchoolBulkRows: %v", err)
+		}
+		if successCount != 1 {
+			t.Fatalf("successCount: want 1, got %d", successCount)
+		}
+		if results[0].Status != "success" || results[0].NPSN != "R1234567" {
+			t.Fatalf("normalized row: %+v", results[0])
+		}
+		if results[1].Status != "failed" || results[1].Error != ErrInvalidSchoolNPSN.Error() {
+			t.Fatalf("invalid row: %+v", results[1])
+		}
+	})
 }
 
 func TestBuildSchoolBulkResultCSV(t *testing.T) {
