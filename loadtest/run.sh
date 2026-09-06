@@ -69,6 +69,7 @@ case "${1:-}" in
       -e SUBMIT_AT_SECONDS \
       -e MAX_DURATION \
       -e REQUIRES_CHECKIN \
+      -e CONTINUE_TRANSPORT_ERRORS \
       -e LOGIN_P95_MS \
       -e START_P95_MS \
       -e AUTOSAVE_P95_MS \

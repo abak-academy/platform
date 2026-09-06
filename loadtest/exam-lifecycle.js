@@ -17,6 +17,7 @@ const SAVE_RETRIES = integerEnv("SAVE_RETRIES", 3);
 const SUBMIT_AT_SECONDS = numberEnv("SUBMIT_AT_SECONDS", 0);
 const MAX_DURATION = __ENV.MAX_DURATION || "2h";
 const REQUIRES_CHECKIN = (__ENV.REQUIRES_CHECKIN || "false") === "true";
+const CONTINUE_TRANSPORT_ERRORS = __ENV.CONTINUE_TRANSPORT_ERRORS === "true";
 const REFRESH_BEFORE_MS = 60 * 1000;
 const LOGIN_TRANSPORT_RETRIES = 3;
 const LOGIN_RETRY_JITTER_SECONDS = 0.5;
@@ -27,6 +28,7 @@ const lostAnswers = new Counter("lost_answers");
 const loginFirstAttemptFailed = new Rate("login_first_attempt_failed");
 const loginFinalFailed = new Rate("login_final_failed");
 const loginTransportRetries = new Counter("login_transport_retries");
+const transportRetries = new Counter("transport_retries");
 
 export const options = {
   scenarios: {
@@ -182,16 +184,17 @@ export default function (test) {
 
 function loginWithTransportRetry(body, clientHeaders) {
   let response = null;
-  for (let attempt = 0; attempt <= LOGIN_TRANSPORT_RETRIES; attempt++) {
+  for (let attempt = 0; CONTINUE_TRANSPORT_ERRORS || attempt <= LOGIN_TRANSPORT_RETRIES; attempt++) {
     response = request("POST", "/auth/login", body, clientHeaders, "login");
     if (attempt === 0) loginFirstAttemptFailed.add(!response || response.status !== 200);
     if (response && response.status !== 0) {
       loginFinalFailed.add(response.status !== 200);
       return response;
     }
-    if (attempt < LOGIN_TRANSPORT_RETRIES) {
+    if (CONTINUE_TRANSPORT_ERRORS || attempt < LOGIN_TRANSPORT_RETRIES) {
       loginTransportRetries.add(1);
-      sleep(2 ** attempt + Math.random() * LOGIN_RETRY_JITTER_SECONDS);
+      if (CONTINUE_TRANSPORT_ERRORS) transportRetries.add(1, { phase: "login" });
+      sleep(Math.min(2 ** attempt, 30) + Math.random() * LOGIN_RETRY_JITTER_SECONDS);
     }
   }
   loginFinalFailed.add(true);
@@ -311,7 +314,12 @@ function request(method, path, body, headers, phase) {
     payload = JSON.stringify(body);
     params.headers["Content-Type"] = "application/json";
   }
-  return http.request(method, `${BASE_URL}${path}`, payload, params);
+  for (let attempt = 0; ; attempt++) {
+    const response = http.request(method, `${BASE_URL}${path}`, payload, params);
+    if (!CONTINUE_TRANSPORT_ERRORS || phase === "login" || response.status !== 0) return response;
+    transportRetries.add(1, { phase });
+    sleep(Math.min(2 ** attempt, 30) + Math.random());
+  }
 }
 
 function expectStatus(response, status, label) {

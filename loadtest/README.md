@@ -44,6 +44,8 @@ SUBMIT_AT_SECONDS=0
 
 For a laptop without working IPv6, set `K6_DNS='ttl=inf,select=roundRobin,policy=onlyIPv4'`. If the laptop network cannot maintain thousands of idle connections, `K6_NO_CONNECTION_REUSE=true` closes each request's connection. Record this setting with the result: it adds connection/TLS overhead between the generator and the target, so client latency is not directly comparable to keep-alive runs.
 
+For capacity exploration, `CONTINUE_TRANSPORT_ERRORS=true` keeps a VU retrying requests with transport status 0 instead of abandoning its lifecycle. Retries back off to 30 seconds plus jitter and remain bounded by k6's `MAX_DURATION`; exhausted duration must be reported as interrupted, not passed. Every failed HTTP attempt remains in k6 metrics, and `transport_retries` counts retries. HTTP error responses are returned normally. A transport error does not establish whether the client, network, or server caused it; inspect server telemetry before attributing the failure. This mode can recover a lifecycle despite a failed request-error gate, and a VU waiting to reconnect does not prove an active server session.
+
 ## Seed a run
 
 Every stage needs a fresh `RUN_ID`. The seed creates one synthetic account and exam registration per VU:
