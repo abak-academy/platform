@@ -74,6 +74,8 @@ case "${1:-}" in
       -e AUTOSAVE_P95_MS \
       -e RECONNECT_P95_MS \
       -e SUBMIT_P95_MS \
+      -e K6_DNS \
+      -e K6_NO_CONNECTION_REUSE \
       -e K6_WEB_DASHBOARD=true \
       -e K6_WEB_DASHBOARD_PORT=-1 \
       -e K6_WEB_DASHBOARD_EXPORT="/results/$report_name.html" \

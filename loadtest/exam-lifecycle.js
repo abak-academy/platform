@@ -237,7 +237,7 @@ function refreshAccess(auth, clientHeaders) {
     clientHeaders,
     "refresh",
   );
-  if (response.status !== 200) return false;
+  if (!expectStatus(response, 200, "refresh")) return false;
 
   const next = authState(json(response, "access_token"), json(response, "refresh_token"));
   if (!next) return false;

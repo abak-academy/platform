@@ -42,6 +42,8 @@ SUBMIT_AT_SECONDS=0
 
 `CONFIRM_DB` must exactly match `PGDATABASE`. The SQL seed also verifies it against PostgreSQL `current_database()` before writing anything.
 
+For a laptop without working IPv6, set `K6_DNS='ttl=inf,select=roundRobin,policy=onlyIPv4'`. If the laptop network cannot maintain thousands of idle connections, `K6_NO_CONNECTION_REUSE=true` closes each request's connection. Record this setting with the result: it adds connection/TLS overhead between the generator and the target, so client latency is not directly comparable to keep-alive runs.
+
 ## Seed a run
 
 Every stage needs a fresh `RUN_ID`. The seed creates one synthetic account and exam registration per VU:
