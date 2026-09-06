@@ -19,7 +19,7 @@ const MAX_DURATION = __ENV.MAX_DURATION || "2h";
 const REQUIRES_CHECKIN = (__ENV.REQUIRES_CHECKIN || "false") === "true";
 const CONTINUE_TRANSPORT_ERRORS = __ENV.CONTINUE_TRANSPORT_ERRORS === "true";
 const REFRESH_BEFORE_MS = 60 * 1000;
-const LOGIN_TRANSPORT_RETRIES = 3;
+const TRANSPORT_RETRY_LIMIT = 3;
 const LOGIN_RETRY_JITTER_SECONDS = 0.5;
 
 const lifecycleFailed = new Rate("lifecycle_failed");
@@ -184,16 +184,16 @@ export default function (test) {
 
 function loginWithTransportRetry(body, clientHeaders) {
   let response = null;
-  for (let attempt = 0; CONTINUE_TRANSPORT_ERRORS || attempt <= LOGIN_TRANSPORT_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= TRANSPORT_RETRY_LIMIT; attempt++) {
     response = request("POST", "/auth/login", body, clientHeaders, "login");
     if (attempt === 0) loginFirstAttemptFailed.add(!response || response.status !== 200);
     if (response && response.status !== 0) {
       loginFinalFailed.add(response.status !== 200);
       return response;
     }
-    if (CONTINUE_TRANSPORT_ERRORS || attempt < LOGIN_TRANSPORT_RETRIES) {
+    if (attempt < TRANSPORT_RETRY_LIMIT) {
       loginTransportRetries.add(1);
-      if (CONTINUE_TRANSPORT_ERRORS) transportRetries.add(1, { phase: "login" });
+      transportRetries.add(1, { phase: "login" });
       sleep(Math.min(2 ** attempt, 30) + Math.random() * LOGIN_RETRY_JITTER_SECONDS);
     }
   }
@@ -212,7 +212,11 @@ function saveWithRetry(sessionID, answers, position, auth, clientHeaders) {
       "autosave",
     );
     if (response && response.status === 200) return true;
-    if (attempt < SAVE_RETRIES) sleep(2 ** (attempt + 1));
+    if (!response || response.status !== 0) return false;
+    if (attempt < SAVE_RETRIES) {
+      transportRetries.add(1, { phase: "autosave" });
+      sleep(2 ** (attempt + 1) + Math.random());
+    }
   }
   return false;
 }
@@ -316,7 +320,7 @@ function request(method, path, body, headers, phase) {
   }
   for (let attempt = 0; ; attempt++) {
     const response = http.request(method, `${BASE_URL}${path}`, payload, params);
-    if (!CONTINUE_TRANSPORT_ERRORS || phase === "login" || response.status !== 0) return response;
+    if (!CONTINUE_TRANSPORT_ERRORS || method !== "GET" || response.status !== 0 || attempt >= TRANSPORT_RETRY_LIMIT) return response;
     transportRetries.add(1, { phase });
     sleep(Math.min(2 ** attempt, 30) + Math.random());
   }
