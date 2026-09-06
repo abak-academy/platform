@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	"akademi-bimbel/internal/service"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -88,7 +90,8 @@ func newAdminJobsEnv(t *testing.T) *adminJobsTestEnv {
 func seedJobOwner(t *testing.T, env *adminJobsTestEnv, nis string) string {
 	t.Helper()
 	ctx := context.Background()
-	school, err := env.svc.CreateSchool(ctx, "Job Test School "+nis, "job_"+nis, nil, nil, nil)
+	npsn := strings.ToUpper(strings.ReplaceAll(uuid.NewString(), "-", "")[:8])
+	school, err := env.svc.CreateSchool(ctx, "Job Test School "+nis, "job_"+nis, &npsn, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}

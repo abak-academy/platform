@@ -389,7 +389,8 @@ func TestUpdateSchool_Integration(t *testing.T) {
 
 	t.Run("code change succeeds when students exist (lock removed)", func(t *testing.T) {
 		code := "us_" + uniqueSuffix()
-		school, err := svc.CreateSchool(ctx, "School With Students", code, nil, nil, nil)
+		npsn := "S" + uniqueSuffix()[:7]
+		school, err := svc.CreateSchool(ctx, "School With Students", code, &npsn, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -413,7 +414,8 @@ func TestUpdateSchool_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateSchool A: %v", err)
 		}
-		schoolB, err := svc.CreateSchool(ctx, "School B", codeB, nil, nil, nil)
+		npsn := "S" + uniqueSuffix()[:7]
+		schoolB, err := svc.CreateSchool(ctx, "School B", codeB, &npsn, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool B: %v", err)
 		}
@@ -479,7 +481,8 @@ func TestAdminListSchools_Integration(t *testing.T) {
 
 	code := "ls_" + uniqueSuffix()
 	name := "Listable School " + code
-	school, err := svc.CreateSchool(ctx, name, code, nil, nil, nil)
+	npsn := "S" + uniqueSuffix()[:7]
+	school, err := svc.CreateSchool(ctx, name, code, &npsn, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}

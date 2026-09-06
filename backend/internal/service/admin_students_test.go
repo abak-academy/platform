@@ -235,6 +235,19 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("NPSN-less school blocks registration", func(t *testing.T) {
+		code := "no_npsn_" + uniqueSuffix()
+		school, err := svc.CreateSchool(ctx, "NPSN-less Registration School "+code, code, nil, []string{"sma"}, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+
+		_, err = svc.RegisterStudent(ctx, school.ID, "NPSN-less Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if !errors.Is(err, ErrInvalidSchoolNPSN) {
+			t.Errorf("want ErrInvalidSchoolNPSN, got %v", err)
+		}
+	})
+
 	t.Run("incomplete address returns ErrIncompleteAddress", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 		provinsiID := "prov-a"

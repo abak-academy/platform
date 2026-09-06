@@ -228,7 +228,8 @@ func TestAdminBulkReissueCredentials_HappyPath_ReturnsCSV(t *testing.T) {
 	env := newAdminJobsEnv(t)
 	ctx := context.Background()
 
-	school, err := env.svc.CreateSchool(ctx, "Bulk Reissue School", "bulkreissue1", nil, nil, nil)
+	npsn := "BR000001"
+	school, err := env.svc.CreateSchool(ctx, "Bulk Reissue School", "bulkreissue1", &npsn, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
