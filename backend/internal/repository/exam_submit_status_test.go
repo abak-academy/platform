@@ -5,6 +5,11 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"akademi-bimbel/internal/model"
 )
 
 // TestSubmitSessionTx_advancesRegistrationStatus covers FR7 (spec.md): the student
@@ -110,8 +115,10 @@ func TestSubmitSessionTx_zeroRowsCAS_leavesRegistrationUnchanged(t *testing.T) {
 
 	student := insertGradingUser(t, pool, "student", "Student AlreadySubmitted")
 	testID := insertGradingTest(t, pool)
+	qID := insertGradingEssayQuestion(t, pool, testID, "Already submitted essay", 5, 1)
 	examID := insertGradingExam(t, pool, testID)
 	sessionID := insertGradingSession(t, pool, student, examID, "submitted", nil, nil)
+	insertGradingAnswer(t, pool, sessionID, qID, strPtrG("existing"), nil, nil, nil)
 
 	if _, err := pool.Exec(ctx,
 		`UPDATE exam_registration SET status = 'checked_in'
@@ -127,7 +134,13 @@ func TestSubmitSessionTx_zeroRowsCAS_leavesRegistrationUnchanged(t *testing.T) {
 	}
 	defer tx.Rollback(ctx)
 
-	affected, err := repo.SubmitSessionTx(ctx, tx, sessionID, nil, 0, false)
+	graded := []model.ExamSessionAnswer{{
+		QuestionID:       qID,
+		Answer:           strPtrG("must not write"),
+		Score:            f64PtrG(10),
+		FlaggedForReview: true,
+	}}
+	affected, err := repo.SubmitSessionTx(ctx, tx, sessionID, graded, 10, false)
 	if err != nil {
 		t.Fatalf("SubmitSessionTx: %v", err)
 	}
@@ -150,6 +163,118 @@ func TestSubmitSessionTx_zeroRowsCAS_leavesRegistrationUnchanged(t *testing.T) {
 	}
 	if regStatus != "checked_in" {
 		t.Errorf("registration status = %q, want unchanged %q — a 0-row CAS must write nothing", regStatus, "checked_in")
+	}
+	var answer string
+	var score *float64
+	var flagged bool
+	err = pool.QueryRow(ctx,
+		`SELECT answer, score, flagged_for_review FROM exam_session_answer WHERE session_id = $1 AND question_id = $2`,
+		sessionID, qID,
+	).Scan(&answer, &score, &flagged)
+	if err != nil {
+		t.Fatalf("query answer after 0-row CAS: %v", err)
+	}
+	if answer != "existing" || score != nil || flagged {
+		t.Errorf("answer row after 0-row CAS = answer:%q score:%v flagged:%v, want unchanged existing/nil/false", answer, score, flagged)
+	}
+}
+
+func TestSubmitSessionTx_bulkGradedAnswersLastWinsNullsAndAdminCAS(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	student := insertGradingUser(t, pool, "student", "Student BulkSubmit")
+	admin := insertGradingUser(t, pool, "admin_exam", "Admin BulkSubmit")
+	testID := insertGradingTest(t, pool)
+	q1 := insertGradingEssayQuestion(t, pool, testID, "First essay", 5, 1)
+	q2 := insertGradingEssayQuestion(t, pool, testID, "Second essay", 5, 2)
+	examID := insertGradingExam(t, pool, testID)
+	sessionID := insertGradingSession(t, pool, student, examID, "in_progress", nil, nil)
+	insertGradingAnswer(t, pool, sessionID, q1, strPtrG("old"), f64PtrG(1), &admin, timePtrG(time.Now()))
+
+	answer := "kept"
+	comment := "reviewed"
+	correct := true
+	score := 4.5
+	gradedAt := time.Now().UTC()
+	graded := []model.ExamSessionAnswer{
+		{
+			QuestionID:       q1,
+			Answer:           strPtrG("first value loses"),
+			IsCorrect:        &correct,
+			Score:            f64PtrG(9),
+			GradedBy:         &admin,
+			GradedAt:         &gradedAt,
+			GraderComment:    strPtrG("loses"),
+			FlaggedForReview: true,
+		},
+		{
+			QuestionID:       q2,
+			Answer:           &answer,
+			IsCorrect:        &correct,
+			Score:            &score,
+			GradedBy:         &admin,
+			GradedAt:         &gradedAt,
+			GraderComment:    &comment,
+			FlaggedForReview: true,
+		},
+		{
+			QuestionID:       q1,
+			Answer:           nil,
+			IsCorrect:        nil,
+			Score:            nil,
+			GradedBy:         nil,
+			GradedAt:         nil,
+			GraderComment:    nil,
+			FlaggedForReview: false,
+		},
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback(ctx)
+
+	affected, err := repo.SubmitSessionTx(ctx, tx, sessionID, graded, 4.5, true)
+	if err != nil {
+		t.Fatalf("SubmitSessionTx: %v", err)
+	}
+	if affected != 1 {
+		t.Fatalf("affected = %d, want 1", affected)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	sess, err := repo.GetExamSessionByID(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("GetExamSessionByID: %v", err)
+	}
+	if sess.Status != "submitted" {
+		t.Errorf("status = %q, want submitted", sess.Status)
+	}
+	if sess.Score == nil || *sess.Score != 4.5 {
+		t.Errorf("session score = %v, want 4.5", sess.Score)
+	}
+	if !sess.AdminSubmitted {
+		t.Error("admin_submitted = false, want true")
+	}
+
+	answers, err := repo.GetSessionAnswers(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("GetSessionAnswers: %v", err)
+	}
+	byQuestion := map[uuid.UUID]model.ExamSessionAnswer{}
+	for _, a := range answers {
+		byQuestion[a.QuestionID] = a
+	}
+	if got := byQuestion[q1]; got.Answer != nil || got.IsCorrect != nil || got.Score != nil || got.GradedBy != nil || got.GradedAt != nil || got.GraderComment != nil || got.FlaggedForReview {
+		t.Errorf("q1 last-wins/null preservation failed: %+v", got)
+	}
+	if got := byQuestion[q2]; got.Answer == nil || *got.Answer != answer || got.IsCorrect == nil || !*got.IsCorrect || got.Score == nil || *got.Score != score || got.GradedBy == nil || *got.GradedBy != admin || got.GradedAt == nil || got.GraderComment == nil || *got.GraderComment != comment || !got.FlaggedForReview {
+		t.Errorf("q2 nullable/non-null fields not preserved: %+v", got)
 	}
 }
 
