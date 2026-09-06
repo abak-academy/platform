@@ -198,8 +198,9 @@ var (
 
 // --- from school.go ---
 var (
-	ErrSchoolNotFound  = errors.New("school not found")
-	ErrSchoolCodeTaken = errors.New("school code already taken")
+	ErrSchoolNotFound    = errors.New("school not found")
+	ErrSchoolCodeTaken   = errors.New("school code already taken")
+	ErrInvalidSchoolName = errors.New("school name must contain at least one letter or digit")
 )
 
 // --- from shipping_rates.go ---
