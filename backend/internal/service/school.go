@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,11 +9,7 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
-
-	"github.com/jackc/pgx/v5/pgconn"
 )
-
-const schoolNameConstraint = "school_name_meaningful_check"
 
 // SchoolResponse is the school shape returned in admin responses.
 type SchoolResponse struct {
@@ -52,14 +47,6 @@ func validSchoolName(name string) bool {
 		}
 	}
 	return false
-}
-
-func mapSchoolNameConstraintError(err error) error {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == schoolNameConstraint {
-		return ErrInvalidSchoolName
-	}
-	return err
 }
 
 // AdminListSchoolsParams carries the optional filters accepted by
@@ -141,7 +128,7 @@ func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *str
 		Alamat:      alamat,
 	}
 	if err := s.storeRepo.CreateSchool(ctx, school); err != nil {
-		return nil, mapSchoolNameConstraintError(err)
+		return nil, err
 	}
 
 	return &SchoolResponse{
@@ -184,7 +171,7 @@ func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alama
 	}
 
 	if err := s.storeRepo.UpdateSchool(ctx, id, name, npsn, alamat, schoolTypes, code); err != nil {
-		return nil, mapSchoolNameConstraintError(err)
+		return nil, err
 	}
 
 	updated, err := s.storeRepo.GetSchoolByID(ctx, id)
