@@ -284,6 +284,25 @@ func (r *Repository) GetSchoolByNameCI(ctx context.Context, name string) (*model
 	return s, nil
 }
 
+func (r *Repository) GetSchoolByNPSN(ctx context.Context, npsn string) (*model.School, error) {
+	s := &model.School{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, name, code, npsn, school_types, alamat, status, created_at, updated_at
+		FROM school WHERE UPPER(BTRIM(npsn)) = $1`,
+		npsn,
+	).Scan(
+		&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
+		&s.Status, &s.CreatedAt, &s.UpdatedAt,
+	)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return s, nil
+}
+
 // CountStudentsBySchool returns the number of non-deleted students for a school.
 func (r *Repository) CountStudentsBySchool(ctx context.Context, schoolID string) (int, error) {
 	var count int

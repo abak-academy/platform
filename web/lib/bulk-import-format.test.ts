@@ -8,6 +8,16 @@ import {
 } from "./bulk-import-format";
 
 describe("bulk-import-format templates", () => {
+  it("uses required school_npsn identity instead of school name", () => {
+    const csv = buildStudentTemplateCSV();
+    expect(csv.split("\n")[0]).toContain("name,school_npsn,jenjang");
+    expect(csv.split("\n")[0]).not.toContain("name,school,jenjang");
+
+    const t = (key: I18nKey) => key;
+    expect(buildStudentGuideText(t)).toContain("bulk_format_student_school_npsn");
+    expect(buildStudentGuideText(t)).not.toContain("bulk_format_student_school\n");
+  });
+
   it("student template has Kemendagri region names and uppercase jenjang", () => {
     const csv = buildStudentTemplateCSV();
     expect(csv).toContain("JAWA BARAT,KOTA BANDUNG,COBLONG");
@@ -15,11 +25,11 @@ describe("bulk-import-format templates", () => {
     expect(csv.split("\n").filter(Boolean)).toHaveLength(3);
   });
 
-  it("scoped student template stays byte-for-byte legacy and has no password column", () => {
+  it("scoped student template uses school_npsn and has no password column", () => {
     expect(buildStudentTemplateCSV(false)).toBe(
-      "name,school,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
-        'Budi Santoso,SMAN 1 Jakarta,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n' +
-        "Siti Aminah,SMAN 1 Jakarta,SMA,,,,,,,,,,\n",
+      "name,school_npsn,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
+        'Budi Santoso,20100001,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n' +
+        "Siti Aminah,P1234567,SMA,,,,,,,,,,\n",
     );
     expect(buildStudentTemplateCSV(false)).not.toContain("password");
   });
@@ -44,7 +54,7 @@ describe("bulk-import-format templates", () => {
 
   it("guides include field rules from the translator", () => {
     const t = (key: I18nKey) => key;
-    expect(buildStudentGuideText(t)).toContain("bulk_format_student_school");
+    expect(buildStudentGuideText(t)).toContain("bulk_format_student_school_npsn");
     expect(buildSchoolGuideText(t)).toContain("bulk_format_school_code");
   });
 

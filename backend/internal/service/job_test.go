@@ -22,7 +22,7 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 	fileKey := "student-bulk/" + schoolID + "/" + uniqueSuffix() + "-students.csv"
 
 	t.Run("valid csv creates a queued job pointing at the file key", func(t *testing.T) {
-		csv := []byte("name,school,jenjang\nBudi,SchoolName,sma\n")
+		csv := []byte("name,school_npsn,jenjang\nBudi,20100001,sma\n")
 		jobID, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, csv)
 		if err != nil {
 			t.Fatalf("enqueueStudentBulkJobFromData: %v", err)
@@ -61,9 +61,9 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 	})
 
 	t.Run("over row-limit csv propagates ErrRowLimitExceeded", func(t *testing.T) {
-		csv := "name,school,jenjang\n"
+		csv := "name,school_npsn,jenjang\n"
 		for i := 0; i < maxBulkRows+1; i++ {
-			csv += "Student,School,sma\n"
+			csv += "Student,20100001,sma\n"
 		}
 		_, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, []byte(csv))
 		if !errors.Is(err, ErrRowLimitExceeded) {

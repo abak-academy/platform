@@ -5,7 +5,7 @@ export type BulkFieldSpec = {
   required: boolean;
   ruleKey:
     | "bulk_format_student_name"
-    | "bulk_format_student_school"
+    | "bulk_format_student_school_npsn"
     | "bulk_format_student_jenjang"
     | "bulk_format_student_email"
     | "bulk_format_student_dob"
@@ -27,11 +27,11 @@ export type BulkFieldSpec = {
 };
 
 export const STUDENT_TEMPLATE_HEADER =
-  "name,school,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos";
+  "name,school_npsn,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos";
 
 export const STUDENT_TEMPLATE_ROWS = [
-  'Budi Santoso,SMAN 1 Jakarta,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132',
-  "Siti Aminah,SMAN 1 Jakarta,SMA,,,,,,,,,,",
+  'Budi Santoso,20100001,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132',
+  "Siti Aminah,P1234567,SMA,,,,,,,,,,",
 ];
 
 export const SUPER_ADMIN_STUDENT_TEMPLATE_HEADER = `${STUDENT_TEMPLATE_HEADER},password`;
@@ -47,7 +47,7 @@ export const SCHOOL_TEMPLATE_ROWS = [
 
 export const STUDENT_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "name", required: true, ruleKey: "bulk_format_student_name", example: "Budi Santoso" },
-  { column: "school", required: true, ruleKey: "bulk_format_student_school", example: "SMAN 1 Jakarta" },
+  { column: "school_npsn", required: true, ruleKey: "bulk_format_student_school_npsn", example: "20100001" },
   { column: "jenjang", required: true, ruleKey: "bulk_format_student_jenjang", example: "SMA" },
   { column: "email", required: false, ruleKey: "bulk_format_student_email", example: "budi@example.com" },
   { column: "dob", required: false, ruleKey: "bulk_format_student_dob", example: "2008-05-14" },

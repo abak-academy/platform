@@ -253,13 +253,14 @@ var (
 
 // --- from student_bulk.go ---
 var (
-	ErrInvalidCSV           = errors.New("invalid csv")
-	ErrMissingCSVHeader     = errors.New("csv missing required name/jenjang/school header")
-	ErrRowLimitExceeded     = errors.New("row limit exceeded")
-	ErrSchoolNotFoundByName = errors.New("school not found by name")
-	ErrCrossSchoolBound     = errors.New("school mismatch: row school differs from bound school")
-	ErrInvalidDOBFormat     = errors.New("invalid dob format, expected YYYY-MM-DD")
-	ErrInvalidGradeFormat   = errors.New("invalid grade, expected an integer")
+	ErrInvalidCSV                    = errors.New("invalid csv")
+	ErrMissingCSVHeader              = errors.New("csv missing required name/jenjang/school_npsn header")
+	ErrRowLimitExceeded              = errors.New("row limit exceeded")
+	ErrStudentBulkSchoolNPSNRequired = errors.New("school_npsn is required")
+	ErrSchoolNotFoundByNPSN          = errors.New("school not found by NPSN")
+	ErrCrossSchoolBound              = errors.New("school mismatch: row school_npsn differs from bound school")
+	ErrInvalidDOBFormat              = errors.New("invalid dob format, expected YYYY-MM-DD")
+	ErrInvalidGradeFormat            = errors.New("invalid grade, expected an integer")
 )
 
 // --- from school_bulk.go ---

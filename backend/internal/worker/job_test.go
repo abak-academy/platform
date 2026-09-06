@@ -165,7 +165,7 @@ func TestPollJobsDispatchesStudentBulkJob(t *testing.T) {
 	}
 }
 
-const validBulkCSV = "name,school,jenjang\nAli,SchoolA,sma\nBudi,SchoolA,sma\n"
+const validBulkCSV = "name,school_npsn,jenjang\nAli,20100001,sma\nBudi,20100001,sma\n"
 
 func TestRunStudentBulkJobSucceedsUploadsReportAndFinishesSucceeded(t *testing.T) {
 	ctx := context.Background()
