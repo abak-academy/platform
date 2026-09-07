@@ -872,8 +872,12 @@ func TestChangePassword_RevokesOtherSessionsKeepsCaller(t *testing.T) {
 			}
 			jtiB := claimsB.ID
 
-			if err := svc.ChangePassword(ctx, "u1", "oldpassword", "brandnewpass", jtiA); err != nil {
+			session, err := svc.ChangePassword(ctx, "u1", "oldpassword", "brandnewpass", jtiA)
+			if err != nil {
 				t.Fatalf("ChangePassword: %v", err)
+			}
+			if session == nil || session.AccessToken == "" || session.RefreshToken == "" {
+				t.Fatalf("ChangePassword must return a fresh token pair, got %+v", session)
 			}
 
 			// Assertion 1: the other session is dead.
@@ -943,7 +947,7 @@ func TestChangePassword_FailedChangeRevokesNothing(t *testing.T) {
 		t.Fatalf("parse B: %v", err)
 	}
 
-	err = svc.ChangePassword(ctx, "u1", "wrongpassword", "brandnewpass", claimsA.ID)
+	_, err = svc.ChangePassword(ctx, "u1", "wrongpassword", "brandnewpass", claimsA.ID)
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("want ErrInvalidCredentials, got %v", err)
 	}

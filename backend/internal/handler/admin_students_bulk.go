@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 
+	"akademi-bimbel/internal/service"
+
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -70,13 +72,19 @@ func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 	}
 
 	var req struct {
-		FileKey string `json:"file_key"`
+		FileKey      string `json:"file_key"`
+		TempPassword string `json:"temp_password"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
 	if req.FileKey == "" {
 		return badRequest(c, "file_key is required")
+	}
+	if req.TempPassword != "" {
+		if err := service.ValidateRequestTempPassword(req.TempPassword); err != nil {
+			return mapServiceError(c, err)
+		}
 	}
 
 	// For super_admin, extract the folder UUID from the fileKey prefix (the
@@ -94,7 +102,7 @@ func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 		}
 	}
 
-	jobID, err := h.svc.EnqueueStudentBulkJob(c.Request().Context(), schoolID, claims.Sub, req.FileKey)
+	jobID, err := h.svc.EnqueueStudentBulkJob(c.Request().Context(), schoolID, claims.Sub, req.FileKey, req.TempPassword)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

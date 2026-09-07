@@ -5,7 +5,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"akademi-bimbel/config"
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/repository"
 
@@ -61,7 +63,12 @@ func newRealDBService(t *testing.T) (*Service, *repository.Repository) {
 		rdb := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
 		realDBRepo = repo
 		realDBRedis = redisServer
-		realDBSvc = NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil, nil, nil, nil)
+		realDBSvc = NewWithStore(repo, repo, rdb,
+			infra.NewJWTSigner("test-secret", 15*time.Minute),
+			&NoopOTPProvider{}, &NoopEmailProvider{},
+			nil, nil, nil,
+			&config.Config{AccessTokenTTL: 15 * time.Minute, RefreshTokenTTL: 168 * time.Hour},
+			nil)
 	})
 	if realDBSvc == nil {
 		t.Fatal("real db service failed to initialize")

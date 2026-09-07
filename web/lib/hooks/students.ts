@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
-import type { Dashboard, School, User } from "@/lib/types";
+import type { ChangePasswordResponse, Dashboard, School, User } from "@/lib/types";
 
 export const studentsKeys = {
   all: ["students"] as const,
@@ -113,12 +113,21 @@ export interface ChangePasswordInput {
   new_password: string;
 }
 
+// The backend returns a fresh token pair so a must-change-flagged session is
+// replaced in the same round trip; swap it into the auth store here.
 export function useChangePassword() {
+  const setSession = useAuthStore((s) => s.setSession);
   return useMutation({
     mutationFn: (input: ChangePasswordInput) =>
-      authFetch<void>(`/auth/password/change`, {
+      authFetch<ChangePasswordResponse>(`/auth/password/change`, {
         method: "PATCH",
         body: JSON.stringify(input),
       }),
+    onSuccess: (data) => {
+      const { user, refreshToken } = useAuthStore.getState();
+      if (data.access_token && user) {
+        setSession(data.access_token, data.refresh_token ?? refreshToken ?? "", user);
+      }
+    },
   });
 }

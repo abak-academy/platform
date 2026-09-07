@@ -117,6 +117,14 @@ export interface StudentCredentials {
   temp_password: string;
 }
 
+// Sent by PATCH /auth/password/change; the fresh pair lets the client swap out
+// a must-change-flagged token in one round trip.
+export interface ChangePasswordResponse {
+  message?: string;
+  access_token?: string;
+  refresh_token?: string;
+}
+
 export interface User {
   id: string;
   email?: string;
@@ -128,6 +136,7 @@ export interface User {
   auth_provider?: "password" | "google";
   status?: string;
   otp_enabled?: boolean;
+  must_change_password?: boolean;
   phone?: string;
   nis?: string;
   grade?: number;

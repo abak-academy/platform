@@ -74,12 +74,24 @@ func (s *Service) fetchPrivateObject(ctx context.Context, key string) ([]byte, e
 	return io.ReadAll(obj)
 }
 
+// bulkPasswordKey holds the request-level temp password for a student_bulk
+// job. Redis rather than the jobs table: the jobs table has no payload column
+// and a plaintext password must not sit at rest in operational data. The key
+// TTL outlives any realistic worker backlog.
+const bulkPasswordKeyTTL = 24 * time.Hour
+
+func bulkPasswordKey(jobID string) string {
+	return "bulkpass:" + jobID
+}
+
 // EnqueueStudentBulkJob validates that fileKey lives under
 // student-bulk/{schoolID}/ and exists in the private bucket, then delegates
 // to enqueueStudentBulkJobFromData. For admin_school, schoolID is the JWT
 // school. For super_admin it is the presign folder UUID (not a real school);
-// row school is resolved later from the CSV.
-func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy, fileKey string) (string, error) {
+// row school is resolved later from the CSV. tempPassword, when non-empty,
+// is the request-level temp password applied to every row the worker
+// processes for this job.
+func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy, fileKey, tempPassword string) (string, error) {
 	if !strings.HasPrefix(fileKey, fmt.Sprintf("student-bulk/%s/", schoolID)) {
 		return "", ErrUploadNotFound
 	}
@@ -96,13 +108,13 @@ func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy
 		return "", err
 	}
 
-	return s.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, data)
+	return s.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, tempPassword, data)
 }
 
 // enqueueStudentBulkJobFromData validates the CSV and inserts the job row.
 // schoolID is unused here — row-scoping is enforced by the caller passing
 // claims.SchoolID, and a future job type might need it in this signature.
-func (s *Service) enqueueStudentBulkJobFromData(ctx context.Context, schoolID, createdBy, fileKey string, data []byte) (string, error) {
+func (s *Service) enqueueStudentBulkJobFromData(ctx context.Context, schoolID, createdBy, fileKey, tempPassword string, data []byte) (string, error) {
 	if _, err := ParseStudentBulkCSV(data); err != nil {
 		return "", err
 	}
@@ -110,6 +122,11 @@ func (s *Service) enqueueStudentBulkJobFromData(ctx context.Context, schoolID, c
 	job := &model.Job{Type: "student_bulk", InputURL: &fileKey, CreatedBy: createdBy}
 	if err := s.storeRepo.CreateJob(ctx, job); err != nil {
 		return "", err
+	}
+	if tempPassword != "" {
+		if err := s.rdb.Set(ctx, bulkPasswordKey(job.ID), tempPassword, bulkPasswordKeyTTL).Err(); err != nil {
+			return "", err
+		}
 	}
 	return job.ID, nil
 }

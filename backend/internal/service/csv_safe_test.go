@@ -127,11 +127,11 @@ func TestBuildStudentBulkResultCSV_neutralisesFormulaLead(t *testing.T) {
 	if rec[1] != "'"+evilName {
 		t.Errorf("name not neutralised: got %q", rec[1])
 	}
-	if rec[2] != "'=SUM(A1)" {
-		t.Errorf("school not neutralised: got %q", rec[2])
+	if rec[3] != "'=SUM(A1)" {
+		t.Errorf("school not neutralised: got %q", rec[3])
 	}
-	if rec[3] != "budi@example.com" {
-		t.Errorf("benign email was altered: got %q", rec[3])
+	if rec[4] != "budi@example.com" {
+		t.Errorf("benign email was altered: got %q", rec[4])
 	}
 }
 

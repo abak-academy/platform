@@ -124,7 +124,15 @@ async function doAuthFetch<T>(
         window.location.href = loginPath;
       }
     }
-    throw await parseError(res);
+    const err = await parseError(res);
+    // A must-change-flagged token is confined to the password-change flow;
+    // bounce the whole app to that screen so the user can proceed.
+    if (res.status === 403 && err.code === "password_change_required") {
+      if (typeof window !== "undefined") {
+        window.location.href = "/force-change-password";
+      }
+    }
+    throw err;
   }
   if (res.status === 204 || res.status === 205) return undefined as T;
   return res.json() as Promise<T>;

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/repository"
 
 	"golang.org/x/crypto/bcrypt"
@@ -538,6 +540,108 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 		}
 		if err := svc.ChangeStudentStatus(ctx, "", noSchoolID, "deactivated"); err != nil {
 			t.Fatalf("ChangeStudentStatus no-school student: %v", err)
+		}
+	})
+}
+
+// TestMustChangePasswordLifecycle_Integration pins the forced-change flag end
+// to end: admin-issued credentials set it, the student's own ChangePassword
+// clears it and returns a fresh claim-free session.
+func TestMustChangePasswordLifecycle_Integration(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	signer := infra.NewJWTSigner("test-secret", 15*time.Minute)
+
+	schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+
+	t.Run("single register sets the flag for generated and explicit passwords", func(t *testing.T) {
+		reg, err := svc.RegisterStudent(ctx, schoolID, "Flag Temp "+uniqueSuffix(), "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("RegisterStudent: %v", err)
+		}
+		u, err := repo.GetUserByID(ctx, reg.ID)
+		if err != nil || u == nil {
+			t.Fatalf("GetUserByID: %v", err)
+		}
+		if !u.MustChangePassword {
+			t.Error("generated temp registration must set must_change_password")
+		}
+
+		explicit := "chosenPass123"
+		reg2, err := svc.RegisterStudentWithPassword(ctx, RoleSuperAdmin, schoolID, "Flag Explicit "+uniqueSuffix(), "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, explicit)
+		if err != nil {
+			t.Fatalf("RegisterStudentWithPassword: %v", err)
+		}
+		u2, err := repo.GetUserByID(ctx, reg2.ID)
+		if err != nil || u2 == nil {
+			t.Fatalf("GetUserByID: %v", err)
+		}
+		if !u2.MustChangePassword {
+			t.Error("explicit admin-issued password must set must_change_password")
+		}
+	})
+
+	t.Run("reissue and one-by-one set re-arm the flag", func(t *testing.T) {
+		reg, err := svc.RegisterStudent(ctx, schoolID, "Flag Reissue "+uniqueSuffix(), "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("RegisterStudent: %v", err)
+		}
+		// Simulate the student having rotated once: flag cleared.
+		if _, err := svc.ChangePassword(ctx, reg.ID, reg.TempPassword, "rotatedPass1", ""); err != nil {
+			t.Fatalf("first ChangePassword: %v", err)
+		}
+		u, err := repo.GetUserByID(ctx, reg.ID)
+		if err != nil || u == nil {
+			t.Fatalf("GetUserByID after change: %v", err)
+		}
+		if u.MustChangePassword {
+			t.Fatal("ChangePassword must clear must_change_password")
+		}
+
+		if _, err := svc.ReissueStudentCredentials(ctx, schoolID, reg.ID); err != nil {
+			t.Fatalf("ReissueStudentCredentials: %v", err)
+		}
+		u, err = repo.GetUserByID(ctx, reg.ID)
+		if err != nil || u == nil {
+			t.Fatalf("GetUserByID after reissue: %v", err)
+		}
+		if !u.MustChangePassword {
+			t.Error("reissue must re-arm must_change_password")
+		}
+
+		if err := svc.SetStudentPassword(ctx, "00000000-0000-0000-0000-000000000001", reg.ID, "adminSetPass1"); err != nil {
+			t.Fatalf("SetStudentPassword: %v", err)
+		}
+		u, err = repo.GetUserByID(ctx, reg.ID)
+		if err != nil || u == nil {
+			t.Fatalf("GetUserByID after set: %v", err)
+		}
+		if !u.MustChangePassword {
+			t.Error("one-by-one admin set must keep must_change_password armed")
+		}
+	})
+
+	t.Run("ChangePassword returns a fresh session without the must-change claim", func(t *testing.T) {
+		reg, err := svc.RegisterStudent(ctx, schoolID, "Flag Rotate "+uniqueSuffix(), "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("RegisterStudent: %v", err)
+		}
+		session, err := svc.ChangePassword(ctx, reg.ID, reg.TempPassword, "finalPass123", "")
+		if err != nil {
+			t.Fatalf("ChangePassword: %v", err)
+		}
+		if session == nil || session.AccessToken == "" || session.RefreshToken == "" {
+			t.Fatalf("want fresh token pair, got %+v", session)
+		}
+		claims, err := signer.ParseAccess(session.AccessToken)
+		if err != nil {
+			t.Fatalf("ParseAccess: %v", err)
+		}
+		if claims.MustChange {
+			t.Error("fresh session must not carry the must_change_password claim")
+		}
+		if !svc.SessionActive(ctx, claims.ID) {
+			t.Error("fresh access session must be active")
 		}
 	})
 }

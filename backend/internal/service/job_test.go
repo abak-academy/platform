@@ -23,7 +23,7 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 
 	t.Run("valid csv creates a queued job pointing at the file key", func(t *testing.T) {
 		csv := []byte("name,school,jenjang\nBudi,SchoolName,sma\n")
-		jobID, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, csv)
+		jobID, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, "", csv)
 		if err != nil {
 			t.Fatalf("enqueueStudentBulkJobFromData: %v", err)
 		}
@@ -54,7 +54,7 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 
 	t.Run("csv missing required headers propagates ErrMissingCSVHeader, no job created", func(t *testing.T) {
 		csv := []byte("foo,bar\nx,y\n")
-		_, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, csv)
+		_, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, "", csv)
 		if !errors.Is(err, ErrMissingCSVHeader) {
 			t.Errorf("want ErrMissingCSVHeader, got %v", err)
 		}
@@ -65,7 +65,7 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 		for i := 0; i < maxBulkRows+1; i++ {
 			csv += "Student,School,sma\n"
 		}
-		_, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, []byte(csv))
+		_, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, "", []byte(csv))
 		if !errors.Is(err, ErrRowLimitExceeded) {
 			t.Errorf("want ErrRowLimitExceeded, got %v", err)
 		}
@@ -84,10 +84,53 @@ func TestEnqueueStudentBulkJob_RejectsFileKeyOutsideCallersSchool_Integration(t 
 	}
 
 	otherSchoolsFileKey := "student-bulk/" + schoolB + "/" + uniqueSuffix() + "-students.csv"
-	_, err = svc.EnqueueStudentBulkJob(ctx, schoolA, reg.ID, otherSchoolsFileKey)
+	_, err = svc.EnqueueStudentBulkJob(ctx, schoolA, reg.ID, otherSchoolsFileKey, "")
 	if !errors.Is(err, ErrUploadNotFound) {
 		t.Errorf("want ErrUploadNotFound for a file_key outside the caller's own school prefix, got %v", err)
 	}
+}
+
+// TestEnqueueStudentBulkJob_RequestPasswordKey_Integration pins the Redis
+// one-shot transport: a request-level temp password is stored under
+// bulkpass:{jobID} for the worker to consume, and absent when not supplied.
+func TestEnqueueStudentBulkJob_RequestPasswordKey_Integration(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	if realDBRedis == nil {
+		t.Fatal("newRealDBService must provide miniredis")
+	}
+	ctx := context.Background()
+
+	schoolID := createTestSchool(t, svc)
+	reg, err := svc.RegisterStudent(ctx, schoolID, "Bulk Pass Enqueuer", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+	fileKey := "student-bulk/" + schoolID + "/" + uniqueSuffix() + "-students.csv"
+	csv := []byte("name,school,jenjang\nBudi,SchoolName,sma\n")
+
+	t.Run("stores the request-level password under bulkpass:{jobID}", func(t *testing.T) {
+		jobID, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, reg.ID, fileKey, "welcomePass123", csv)
+		if err != nil {
+			t.Fatalf("enqueueStudentBulkJobFromData: %v", err)
+		}
+		val, err := realDBRedis.Get("bulkpass:" + jobID)
+		if err != nil {
+			t.Fatalf("bulkpass key missing: %v", err)
+		}
+		if val != "welcomePass123" {
+			t.Errorf("bulkpass value: want welcomePass123, got %s", val)
+		}
+	})
+
+	t.Run("no request-level password stores no key", func(t *testing.T) {
+		jobID, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, reg.ID, fileKey, "", csv)
+		if err != nil {
+			t.Fatalf("enqueueStudentBulkJobFromData: %v", err)
+		}
+		if realDBRedis.Exists("bulkpass:" + jobID) {
+			t.Error("bulkpass key must be absent when no temp password supplied")
+		}
+	})
 }
 
 func TestGetJobStatus_Integration(t *testing.T) {

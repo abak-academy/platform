@@ -46,6 +46,15 @@ type UserRepository interface {
 
 const minPasswordLen = 8
 
+// ValidateRequestTempPassword enforces the minimum length for the optional
+// request-level temp password on student bulk register.
+func ValidateRequestTempPassword(password string) error {
+	if len(password) < minPasswordLen {
+		return ErrWeakPassword
+	}
+	return nil
+}
+
 func (s *Service) Register(ctx context.Context, email, password, name string) (pendingToken string, err error) {
 	email = normalizeEmail(email)
 	if email == "" {
@@ -382,32 +391,50 @@ func (s *Service) revokeRefreshSessions(ctx context.Context, userID string) {
 	s.rdb.Del(ctx, "user_refresh_sessions:"+userID)
 }
 
-func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, newPassword, callerJTI string) error {
+// PasswordChangeSession is the fresh token pair ChangePassword returns so the
+// client can swap out the must-change-flagged token in one round trip.
+type PasswordChangeSession struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+// ChangePassword rotates the caller's password and ends the forced-change
+// state. It returns a freshly minted session so the client can swap tokens in
+// the same round trip: the old access token still carries the
+// must_change_password claim, and the middleware fails closed on it.
+func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, newPassword, callerJTI string) (*PasswordChangeSession, error) {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if user == nil {
-		return ErrUserNotFound
+		return nil, ErrUserNotFound
 	}
 	if !comparePassword(user.PasswordHash, currentPassword, metrics.OpChangePassword) {
-		return ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 	if len(newPassword) < minPasswordLen {
-		return ErrWeakPassword
+		return nil, ErrWeakPassword
 	}
 	if newPassword == currentPassword {
-		return ErrWeakPassword
+		return nil, ErrWeakPassword
 	}
 	hash, err := hashPassword(newPassword)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.repo.UpdatePasswordHash(ctx, userID, string(hash)); err != nil {
-		return err
+		return nil, err
 	}
+	// UpdatePasswordHash cleared the flag in the DB; mirror it here so the
+	// re-minted token below drops the must_change_password claim.
+	user.MustChangePassword = false
 	s.revokeAllSessions(ctx, userID, callerJTI)
-	return nil
+	access, refresh, err := s.mintSession(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	return &PasswordChangeSession{AccessToken: access, RefreshToken: refresh}, nil
 }
 
 func (s *Service) SessionActive(ctx context.Context, jti string) bool {
@@ -417,7 +444,7 @@ func (s *Service) SessionActive(ctx context.Context, jti string) bool {
 
 func (s *Service) mintSession(ctx context.Context, user *model.User) (accessToken, refreshToken string, err error) {
 	caps := Capabilities(user.Role)
-	tokenString, jti, err := s.jwtSigner.SignAccess(user.ID, user.Role, user.SchoolID, caps)
+	tokenString, jti, err := s.jwtSigner.SignAccess(user.ID, user.Role, user.SchoolID, caps, user.MustChangePassword)
 	if err != nil {
 		return "", "", err
 	}

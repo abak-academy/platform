@@ -45,6 +45,7 @@ export function BulkImportModal({ open, onOpenChange, allowExplicitPassword }: B
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [tempPassword, setTempPassword] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
 
   const presign = usePresignStudentBulkUpload();
@@ -74,7 +75,10 @@ export function BulkImportModal({ open, onOpenChange, allowExplicitPassword }: B
         toast.error(err instanceof Error ? err.message : t("bulk_register_put_failed"));
         return;
       }
-      const enqueueResp = await enqueue.mutateAsync({ fileKey: presignResp.key });
+      const enqueueResp = await enqueue.mutateAsync({
+        fileKey: presignResp.key,
+        tempPassword: tempPassword || undefined,
+      });
       setJobId(enqueueResp.job_id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("bulk_register_enqueue_failed"));
@@ -83,6 +87,7 @@ export function BulkImportModal({ open, onOpenChange, allowExplicitPassword }: B
 
   function handleClose() {
     setFile(null);
+    setTempPassword("");
     setJobId(null);
     onOpenChange(false);
   }
@@ -161,6 +166,25 @@ export function BulkImportModal({ open, onOpenChange, allowExplicitPassword }: B
                   disabled={isUploading}
                 />
                 {file && <p className="text-sm text-muted-foreground">{file.name}</p>}
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="bulk-register-temp-password">
+                  {t("bulk_register_temp_password_label")}
+                </Label>
+                <Input
+                  id="bulk-register-temp-password"
+                  type="text"
+                  value={tempPassword}
+                  onChange={(e) => setTempPassword(e.target.value)}
+                  placeholder={t("bulk_register_temp_password_placeholder")}
+                  autoComplete="off"
+                  minLength={8}
+                  disabled={isUploading}
+                />
+                <p className="text-[12px] leading-[1.5] text-muted-foreground">
+                  {t("bulk_register_temp_password_hint")}
+                </p>
               </div>
 
               <Button type="submit" className="rounded-full" disabled={isUploading || !file}>
