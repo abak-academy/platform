@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"akademi-bimbel/internal/model"
@@ -339,6 +340,67 @@ func TestUpdateSchool_Integration(t *testing.T) {
 		}
 		if updated.Alamat == nil || *updated.Alamat != alamat {
 			t.Errorf("Alamat: want %q, got %v", alamat, updated.Alamat)
+		}
+	})
+
+	t.Run("normalizes NPSN on update", func(t *testing.T) {
+		code := "us_" + uniqueSuffix()
+		created, err := svc.CreateSchool(ctx, "Normalize Update", code, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		npsn := " u" + uniqueSuffix()[:7] + " "
+		updated, err := svc.UpdateSchool(ctx, created.ID, nil, &npsn, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("UpdateSchool: %v", err)
+		}
+		want := strings.ToUpper(strings.TrimSpace(npsn))
+		if updated.NPSN == nil || *updated.NPSN != want {
+			t.Fatalf("NPSN: want %q, got %v", want, updated.NPSN)
+		}
+		persisted := findSchool(t, svc, created.ID)
+		if persisted.NPSN == nil || *persisted.NPSN != want {
+			t.Fatalf("persisted NPSN: want %q, got %v", want, persisted.NPSN)
+		}
+	})
+
+	t.Run("rejects malformed NPSN before update and preserves the row", func(t *testing.T) {
+		code := "us_" + uniqueSuffix()
+		npsn := "V" + uniqueSuffix()[:7]
+		created, err := svc.CreateSchool(ctx, "Invalid NPSN Update", code, &npsn, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		invalid := "1234-678"
+		_, err = svc.UpdateSchool(ctx, created.ID, nil, &invalid, nil, nil, nil)
+		if !errors.Is(err, ErrInvalidSchoolNPSN) {
+			t.Fatalf("want ErrInvalidSchoolNPSN, got %v", err)
+		}
+		persisted := findSchool(t, svc, created.ID)
+		if persisted.NPSN == nil || *persisted.NPSN != *created.NPSN {
+			t.Fatalf("NPSN changed after rejected update: want %v, got %v", created.NPSN, persisted.NPSN)
+		}
+	})
+
+	t.Run("rejects duplicate normalized NPSN on update and preserves the row", func(t *testing.T) {
+		takenNPSN := "W" + uniqueSuffix()[:7]
+		taken, err := svc.CreateSchool(ctx, "Taken NPSN", "us_"+uniqueSuffix(), &takenNPSN, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool taken: %v", err)
+		}
+		originalNPSN := "X" + uniqueSuffix()[:7]
+		target, err := svc.CreateSchool(ctx, "Duplicate Update Target", "us_"+uniqueSuffix(), &originalNPSN, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool target: %v", err)
+		}
+		duplicate := " " + strings.ToLower(*taken.NPSN) + " "
+		_, err = svc.UpdateSchool(ctx, target.ID, nil, &duplicate, nil, nil, nil)
+		if !errors.Is(err, ErrSchoolNPSNTaken) {
+			t.Fatalf("want ErrSchoolNPSNTaken, got %v", err)
+		}
+		persisted := findSchool(t, svc, target.ID)
+		if persisted.NPSN == nil || *persisted.NPSN != *target.NPSN {
+			t.Fatalf("NPSN changed after duplicate update: want %v, got %v", target.NPSN, persisted.NPSN)
 		}
 	})
 

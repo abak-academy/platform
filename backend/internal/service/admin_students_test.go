@@ -1026,6 +1026,30 @@ func TestUpdateProfile_SelectedSchoolValidation(t *testing.T) {
 		assertSchoolUnchanged(t, userID, originalSchoolID)
 	})
 
+	t.Run("malformed stored NPSN is rejected without changing relationship", func(t *testing.T) {
+		originalSchoolID := createTestSchool(t, svc)
+		userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
+		var selectedSchoolID string
+		if err := repo.Pool().QueryRow(ctx,
+			`INSERT INTO school (name, code, npsn, status) VALUES ($1, $2, $3, 'active') RETURNING id`,
+			"Malformed NPSN School", "bad_npsn_"+uniqueSuffix(), "bad",
+		).Scan(&selectedSchoolID); err != nil {
+			t.Fatalf("seed malformed-NPSN school: %v", err)
+		}
+
+		_, err := svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil,
+			nil,
+			&selectedSchoolID,
+			nil, nil,
+			nil, nil, nil, nil,
+		)
+		if !errors.Is(err, ErrInvalidSchoolNPSN) {
+			t.Fatalf("want ErrInvalidSchoolNPSN, got %v", err)
+		}
+		assertSchoolUnchanged(t, userID, originalSchoolID)
+	})
+
 	t.Run("trimmed unlisted fallback clears listed school without creating one", func(t *testing.T) {
 		originalSchoolID := createTestSchool(t, svc)
 		userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
