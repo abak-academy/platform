@@ -263,10 +263,11 @@ func newAdminStuDBEnv(t *testing.T) *adminStuDBTestEnv {
 		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 		cfg := &config.Config{
-			JWTSecret:       "test-secret",
-			AccessTokenTTL:  15 * time.Minute,
-			RefreshTokenTTL: 168 * time.Hour,
-			OTPTTL:          5 * time.Minute,
+			JWTSecret:                     "test-secret",
+			AccessTokenTTL:                15 * time.Minute,
+			RefreshTokenTTL:               168 * time.Hour,
+			OTPTTL:                        5 * time.Minute,
+			EnforceSchoolNPSNRegistration: true,
 		}
 		signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 		svc := service.NewWithStore(

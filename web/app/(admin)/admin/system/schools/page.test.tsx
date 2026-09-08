@@ -325,6 +325,40 @@ describe("SystemSchoolsPage", () => {
     });
   });
 
+  it("sends an explicit blank NPSN when the admin clears it", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ id: "s1", npsn: null });
+    renderPage(<SystemSchoolsPage />);
+
+    await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
+    const row = screen.getAllByRole("row").find((item) => within(item).queryByText("SMAN 1 Jakarta"));
+    fireEvent.pointerDown(within(row as HTMLElement).getByRole("button", { name: "" }), { button: 0 });
+    fireEvent.click(await screen.findByText("Edit"));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.input(within(dialog).getByDisplayValue("12345678"), { target: { value: "" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({ id: "s1", npsn: "" });
+    });
+  });
+
+  it("shows the NPSN format hint and limits create and edit inputs", async () => {
+    renderPage(<SystemSchoolsPage />);
+    await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /buat/i }));
+    let dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByPlaceholderText("8 karakter, mis. 20100001")).toHaveAttribute("maxlength", "8");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^batal$/i }));
+
+    const row = screen.getAllByRole("row").find((item) => within(item).queryByText("SMAN 1 Jakarta"));
+    fireEvent.pointerDown(within(row as HTMLElement).getByRole("button", { name: "" }), { button: 0 });
+    fireEvent.click(await screen.findByText("Edit"));
+    dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByPlaceholderText("8 karakter, mis. 20100001")).toHaveAttribute("maxlength", "8");
+  });
+
   it("toggles a school's status from the row menu", async () => {
     mockMutateAsync.mockResolvedValueOnce({ status: "deactivated" });
 

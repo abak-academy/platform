@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { I18nKey } from "./i18n";
+import { DICT, type I18nKey } from "./i18n";
 import {
   buildSchoolTemplateCSV,
   buildStudentTemplateCSV,
@@ -56,6 +56,13 @@ describe("bulk-import-format templates", () => {
     const t = (key: I18nKey) => key;
     expect(buildStudentGuideText(t)).toContain("bulk_format_student_school_npsn");
     expect(buildSchoolGuideText(t)).toContain("bulk_format_school_code");
+  });
+
+  it("school NPSN guide describes the enforced format and uniqueness", () => {
+    expect(DICT.id.bulk_format_school_npsn).toContain("8");
+    expect(DICT.id.bulk_format_school_npsn.toLowerCase()).toContain("unik");
+    expect(DICT.en.bulk_format_school_npsn).toContain("8");
+    expect(DICT.en.bulk_format_school_npsn.toLowerCase()).toContain("unique");
   });
 
   it("student guide includes password only for super admin", () => {

@@ -6,11 +6,77 @@ import (
 	"strings"
 	"testing"
 
+	"akademi-bimbel/config"
 	"akademi-bimbel/internal/repository"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
+
+func TestRegisterStudent_AllowsLegacySchoolWhenNPSNEnforcementDisabled(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	previousConfig := svc.cfg
+	svc.cfg = &config.Config{}
+	t.Cleanup(func() { svc.cfg = previousConfig })
+
+	code := "legacy_no_npsn_" + uniqueSuffix()
+	school, err := svc.CreateSchool(context.Background(), "Legacy School "+code, code, nil, []string{"sma"}, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool: %v", err)
+	}
+
+	if _, err := svc.RegisterStudent(context.Background(), school.ID, "Legacy Student "+uniqueSuffix(), "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("RegisterStudent with enforcement disabled: %v", err)
+	}
+}
+
+func TestUpdateProfile_AllowsLegacySchoolWhenNPSNEnforcementDisabled(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	previousConfig := svc.cfg
+	svc.cfg = &config.Config{}
+	t.Cleanup(func() { svc.cfg = previousConfig })
+
+	ctx := context.Background()
+	originalSchoolID := createTestSchool(t, svc)
+	userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
+	code := "legacy_profile_" + uniqueSuffix()
+	legacySchool, err := svc.CreateSchool(ctx, "Legacy Profile School "+code, code, nil, []string{"sma"}, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool: %v", err)
+	}
+
+	updated, err := svc.UpdateProfile(ctx, userID,
+		nil, nil, nil, nil, nil, nil, nil,
+		nil, &legacySchool.ID, nil, nil,
+		nil, nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("UpdateProfile with enforcement disabled: %v", err)
+	}
+	if updated.SchoolID == nil || *updated.SchoolID != legacySchool.ID {
+		t.Fatalf("SchoolID: want %s, got %v", legacySchool.ID, updated.SchoolID)
+	}
+
+	var malformedSchoolID string
+	malformedNPSN := "bad_" + uniqueSuffix()
+	if err := svc.storeRepo.Pool().QueryRow(ctx,
+		`INSERT INTO school (name, code, npsn, status) VALUES ($1, $2, $3, 'active') RETURNING id`,
+		"Malformed Legacy School "+code, "malformed_"+uniqueSuffix(), malformedNPSN,
+	).Scan(&malformedSchoolID); err != nil {
+		t.Fatalf("seed malformed-NPSN school: %v", err)
+	}
+	updated, err = svc.UpdateProfile(ctx, userID,
+		nil, nil, nil, nil, nil, nil, nil,
+		nil, &malformedSchoolID, nil, nil,
+		nil, nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("UpdateProfile with malformed legacy NPSN and enforcement disabled: %v", err)
+	}
+	if updated.SchoolID == nil || *updated.SchoolID != malformedSchoolID {
+		t.Fatalf("SchoolID: want %s, got %v", malformedSchoolID, updated.SchoolID)
+	}
+}
 
 func TestJenjangInSchoolTypes(t *testing.T) {
 	if !jenjangInSchoolTypes("sma", []string{"SMA", "SMK"}) {
@@ -130,6 +196,9 @@ func seedSchoolWithJenjang(t *testing.T, svc *Service, repo *repository.Reposito
 
 func TestRegisterStudent_Integration(t *testing.T) {
 	svc, repo := newRealDBService(t)
+	previousConfig := svc.cfg
+	svc.cfg = &config.Config{EnforceSchoolNPSNRegistration: true}
+	t.Cleanup(func() { svc.cfg = previousConfig })
 	ctx := context.Background()
 
 	t.Run("happy path: username format, temp password once, bcrypt hash persisted", func(t *testing.T) {
@@ -931,6 +1000,9 @@ func TestUpdateProfile_SchoolPairClearing(t *testing.T) {
 
 func TestUpdateProfile_SelectedSchoolValidation(t *testing.T) {
 	svc, repo := newRealDBService(t)
+	previousConfig := svc.cfg
+	svc.cfg = &config.Config{EnforceSchoolNPSNRegistration: true}
+	t.Cleanup(func() { svc.cfg = previousConfig })
 	ctx := context.Background()
 
 	assertSchoolUnchanged := func(t *testing.T, userID, wantSchoolID string) {

@@ -987,6 +987,7 @@ export const DICT = {
     schools_field_code: "Kode Sekolah",
     schools_field_student_count: "Jumlah Siswa",
     schools_placeholder_name: "mis. SMAN 1 Jakarta",
+    schools_placeholder_npsn: "8 karakter, mis. 20100001",
     schools_field_city: "Kota",
     schools_field_province: "Provinsi",
 
@@ -1601,7 +1602,7 @@ export const DICT = {
     bulk_format_school_guide_title: "Panduan format impor sekolah",
     bulk_format_student_name: "Wajib. Nama lengkap siswa.",
     bulk_format_student_school_npsn:
-	  "Wajib. Tepat 8 huruf atau angka; spasi tepi dihapus dan huruf dinormalkan menjadi kapital. NPSN harus milik sekolah aktif yang sudah ada. Admin sekolah hanya dapat memakai NPSN sekolahnya sendiri.",
+      "Wajib. Tepat 8 huruf atau angka; spasi tepi dihapus dan huruf dinormalkan menjadi kapital. NPSN harus milik sekolah aktif yang sudah ada. Admin sekolah hanya dapat memakai NPSN sekolahnya sendiri.",
     bulk_format_student_jenjang:
       "Wajib. Isi dengan nilai jenjang, disarankan huruf besar: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. Jika sekolah punya school_types, jenjang harus cocok dengan salah satu jenis itu.",
     bulk_format_student_email: "Opsional. Jika diisi, tidak boleh sudah terdaftar di sistem.",
@@ -1625,7 +1626,7 @@ export const DICT = {
     bulk_format_school_name: "Wajib. Nama sekolah.",
     bulk_format_school_code:
       "Wajib. Harus belum ada di database (unik). Mengunggah ulang file yang sama akan gagal karena kode sudah terpakai.",
-    bulk_format_school_npsn: "Opsional. Teks bebas; format dan keunikan tidak dicek.",
+    bulk_format_school_npsn: "Opsional. Jika diisi, harus tepat 8 huruf atau angka; spasi tepi dihapus, huruf dinormalkan menjadi kapital, dan nilainya harus unik.",
     bulk_format_school_school_types:
       "Opsional. Satu atau lebih jenjang, dipisah | atau koma. Disarankan huruf besar (contoh SMA|SMK) agar cocok dengan jenjang siswa.",
     bulk_format_school_alamat: "Opsional. Teks bebas.",
@@ -2618,6 +2619,7 @@ export const DICT = {
     schools_field_code: "School Code",
     schools_field_student_count: "Student Count",
     schools_placeholder_name: "e.g. SMAN 1 Jakarta",
+    schools_placeholder_npsn: "8 characters, e.g. 20100001",
     schools_field_city: "City",
     schools_field_province: "Province",
 
@@ -3231,7 +3233,7 @@ export const DICT = {
     bulk_format_school_guide_title: "School bulk import format guide",
     bulk_format_student_name: "Required. Student's full name.",
     bulk_format_student_school_npsn:
-	  "Required. Exactly 8 letters or digits; surrounding spaces are trimmed and letters normalized to uppercase. The NPSN must belong to an existing active school. School admins may only use their own school's NPSN.",
+      "Required. Exactly 8 letters or digits; surrounding spaces are trimmed and letters normalized to uppercase. The NPSN must belong to an existing active school. School admins may only use their own school's NPSN.",
     bulk_format_student_jenjang:
       "Required. Use a jenjang value, preferably uppercase: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. If the school has school_types, jenjang must match one of them.",
     bulk_format_student_email: "Optional. If set, must not already be registered.",
@@ -3255,7 +3257,7 @@ export const DICT = {
     bulk_format_school_name: "Required. School name.",
     bulk_format_school_code:
       "Required. Must not already exist in the database (unique). Re-uploading the same file will fail because the code is taken.",
-    bulk_format_school_npsn: "Optional. Free text; format and uniqueness are not checked.",
+    bulk_format_school_npsn: "Optional. If set, it must be exactly 8 letters or digits; surrounding spaces are trimmed, letters are normalized to uppercase, and the value must be unique.",
     bulk_format_school_school_types:
       "Optional. One or more jenjang values, separated by | or comma. Prefer uppercase (example SMA|SMK) so student jenjang matches.",
     bulk_format_school_alamat: "Optional. Free text.",

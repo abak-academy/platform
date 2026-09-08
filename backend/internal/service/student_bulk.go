@@ -7,26 +7,29 @@ import (
 	"io"
 	"strconv"
 	"time"
+
+	"akademi-bimbel/internal/model"
 )
 
 const maxBulkRows = 1000
 
 type StudentBulkRow struct {
-	Row            int
-	Name           string
-	SchoolNPSN     string
-	Email          *string
-	Jenjang        string
-	DOB            *string
-	Gender         *string
-	Grade          *string
-	AlamatDomisili *string
-	TargetExam     *string
-	Provinsi       *string
-	Kota           *string
-	Kecamatan      *string
-	KodePos        *string
-	Password       *string
+	Row              int
+	Name             string
+	SchoolNPSN       string
+	LegacySchoolName string
+	Email            *string
+	Jenjang          string
+	DOB              *string
+	Gender           *string
+	Grade            *string
+	AlamatDomisili   *string
+	TargetExam       *string
+	Provinsi         *string
+	Kota             *string
+	Kecamatan        *string
+	KodePos          *string
+	Password         *string
 }
 
 type StudentBulkResultRow struct {
@@ -47,6 +50,16 @@ type StudentBulkResultRow struct {
 // optional — same field set as single registration (RegisterStudent), minus
 // the region-name-vs-ID resolution which happens in ProcessStudentBulkRows.
 func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
+	return parseStudentBulkCSV(data, false)
+}
+
+// ParseStudentBulkCSVForWorker also accepts the pre-NPSN school header so
+// jobs queued before deployment can finish processing.
+func ParseStudentBulkCSVForWorker(data []byte) ([]StudentBulkRow, error) {
+	return parseStudentBulkCSV(data, true)
+}
+
+func parseStudentBulkCSV(data []byte, allowLegacySchool bool) ([]StudentBulkRow, error) {
 	r := newBulkCSVReader(data)
 
 	header, err := r.Read()
@@ -57,7 +70,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 		return nil, ErrInvalidCSV
 	}
 
-	nameIdx, jenjangIdx, schoolNPSNIdx, emailIdx := -1, -1, -1, -1
+	nameIdx, jenjangIdx, schoolNPSNIdx, legacySchoolIdx, emailIdx := -1, -1, -1, -1, -1
 	dobIdx, genderIdx, gradeIdx, alamatIdx, targetExamIdx := -1, -1, -1, -1, -1
 	provinsiIdx, kotaIdx, kecamatanIdx, kodePosIdx, passwordIdx := -1, -1, -1, -1, -1
 	for i, h := range header {
@@ -68,6 +81,10 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 			jenjangIdx = i
 		case "school_npsn":
 			schoolNPSNIdx = i
+		case "school":
+			if allowLegacySchool {
+				legacySchoolIdx = i
+			}
 		case "email":
 			emailIdx = i
 		case "dob":
@@ -93,8 +110,11 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 			// "nis" is intentionally ignored
 		}
 	}
-	if nameIdx == -1 || jenjangIdx == -1 || schoolNPSNIdx == -1 {
+	if nameIdx == -1 || jenjangIdx == -1 || (schoolNPSNIdx == -1 && legacySchoolIdx == -1) {
 		return nil, ErrMissingCSVHeader
+	}
+	if schoolNPSNIdx != -1 {
+		legacySchoolIdx = -1
 	}
 
 	line := 1
@@ -116,21 +136,22 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 		}
 
 		rows = append(rows, StudentBulkRow{
-			Row:            line,
-			Name:           bulkCell(record, nameIdx),
-			SchoolNPSN:     bulkCell(record, schoolNPSNIdx),
-			Jenjang:        bulkCell(record, jenjangIdx),
-			Email:          bulkOptionalCell(record, emailIdx),
-			DOB:            bulkOptionalCell(record, dobIdx),
-			Gender:         bulkOptionalCell(record, genderIdx),
-			Grade:          bulkOptionalCell(record, gradeIdx),
-			AlamatDomisili: bulkOptionalCell(record, alamatIdx),
-			TargetExam:     bulkOptionalCell(record, targetExamIdx),
-			Provinsi:       bulkOptionalCell(record, provinsiIdx),
-			Kota:           bulkOptionalCell(record, kotaIdx),
-			Kecamatan:      bulkOptionalCell(record, kecamatanIdx),
-			KodePos:        bulkOptionalCell(record, kodePosIdx),
-			Password:       bulkOptionalCell(record, passwordIdx),
+			Row:              line,
+			Name:             bulkCell(record, nameIdx),
+			SchoolNPSN:       bulkCell(record, schoolNPSNIdx),
+			LegacySchoolName: bulkCell(record, legacySchoolIdx),
+			Jenjang:          bulkCell(record, jenjangIdx),
+			Email:            bulkOptionalCell(record, emailIdx),
+			DOB:              bulkOptionalCell(record, dobIdx),
+			Gender:           bulkOptionalCell(record, genderIdx),
+			Grade:            bulkOptionalCell(record, gradeIdx),
+			AlamatDomisili:   bulkOptionalCell(record, alamatIdx),
+			TargetExam:       bulkOptionalCell(record, targetExamIdx),
+			Provinsi:         bulkOptionalCell(record, provinsiIdx),
+			Kota:             bulkOptionalCell(record, kotaIdx),
+			Kecamatan:        bulkOptionalCell(record, kecamatanIdx),
+			KodePos:          bulkOptionalCell(record, kodePosIdx),
+			Password:         bulkOptionalCell(record, passwordIdx),
 		})
 	}
 
@@ -156,22 +177,27 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 		if r.Email != nil {
 			result.Email = *r.Email
 		}
-		npsn, err := normalizeSchoolNPSN(&rawNPSN)
-		if err == nil && npsn == nil {
-			err = ErrStudentBulkSchoolNPSNRequired
-		}
-		if err != nil {
-			result.Status = "failed"
-			result.Error = err.Error()
-			results[i] = result
-			if onProgress != nil && (i+1)%checkpoint == 0 {
-				onProgress((i + 1) * 100 / len(rows))
+		var school *model.School
+		var err error
+		if r.LegacySchoolName != "" {
+			school, err = s.storeRepo.GetSchoolByNameCI(ctx, r.LegacySchoolName)
+		} else {
+			npsn, normalizeErr := normalizeSchoolNPSN(&rawNPSN)
+			if normalizeErr == nil && npsn == nil {
+				normalizeErr = ErrStudentBulkSchoolNPSNRequired
 			}
-			continue
+			if normalizeErr != nil {
+				result.Status = "failed"
+				result.Error = normalizeErr.Error()
+				results[i] = result
+				if onProgress != nil && (i+1)%checkpoint == 0 {
+					onProgress((i + 1) * 100 / len(rows))
+				}
+				continue
+			}
+			result.SchoolNPSN = *npsn
+			school, err = s.storeRepo.GetSchoolByNPSN(ctx, *npsn)
 		}
-		result.SchoolNPSN = *npsn
-
-		school, err := s.storeRepo.GetSchoolByNPSN(ctx, *npsn)
 		if err != nil {
 			result.Status = "failed"
 			result.Error = err.Error()
@@ -183,7 +209,11 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 		}
 		if school == nil {
 			result.Status = "failed"
-			result.Error = ErrSchoolNotFoundByNPSN.Error()
+			if r.LegacySchoolName != "" {
+				result.Error = ErrSchoolNotFound.Error()
+			} else {
+				result.Error = ErrSchoolNotFoundByNPSN.Error()
+			}
 			results[i] = result
 			if onProgress != nil && (i+1)%checkpoint == 0 {
 				onProgress((i + 1) * 100 / len(rows))
@@ -214,6 +244,9 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 
 		schoolID := school.ID
 		result.SchoolName = school.Name
+		if r.LegacySchoolName != "" && school.NPSN != nil {
+			result.SchoolNPSN = *school.NPSN
+		}
 
 		// Resolve address names to IDs (all-or-nothing).
 		var provinsiID, kotaID, kecamatanID, kodePos *string

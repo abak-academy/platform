@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMigration0064SchoolNPSNUnique(t *testing.T) {
+func TestMigration0065SchoolNPSNUnique(t *testing.T) {
 	ctx := context.Background()
 	pool := newMigration0025Pool(t)
 	applyMigrationsUpTo(t, pool, "0063_exam_session_active_index.up.sql")
@@ -36,7 +36,7 @@ func TestMigration0064SchoolNPSNUnique(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	applyMigrationFile(t, pool, "0064_school_npsn_unique.up.sql")
+	applyMigrationFile(t, pool, "0065_school_npsn_unique.up.sql")
 
 	var blankCount int
 	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM school WHERE code LIKE 'legacy_blank_%' AND npsn IS NULL`).Scan(&blankCount))
@@ -64,7 +64,7 @@ func TestMigration0064SchoolNPSNUnique(t *testing.T) {
 	require.NoError(t, insertSchoolWithoutNPSN(ctx, pool, "Null One", "null_one"))
 	require.NoError(t, insertSchoolWithoutNPSN(ctx, pool, "Null Two", "null_two"))
 
-	applyMigrationFile(t, pool, "0064_school_npsn_unique.down.sql")
+	applyMigrationFile(t, pool, "0065_school_npsn_unique.down.sql")
 	var indexExists bool
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE tablename = 'school' AND indexname = 'uq_school_npsn_normalized')`,

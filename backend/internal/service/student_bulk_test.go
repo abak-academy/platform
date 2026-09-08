@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"akademi-bimbel/config"
 	"akademi-bimbel/internal/repository"
 
 	"golang.org/x/crypto/bcrypt"
@@ -298,6 +299,26 @@ func TestParseStudentBulkCSV(t *testing.T) {
 	})
 }
 
+func TestParseStudentBulkCSVForWorker_AcceptsLegacySchoolHeader(t *testing.T) {
+	rows, err := ParseStudentBulkCSVForWorker([]byte("name,school,jenjang\nBudi,SMAN 1 Jakarta,sma\n"))
+	if err != nil {
+		t.Fatalf("ParseStudentBulkCSVForWorker: %v", err)
+	}
+	if len(rows) != 1 || rows[0].LegacySchoolName != "SMAN 1 Jakarta" || rows[0].SchoolNPSN != "" {
+		t.Fatalf("legacy row: %+v", rows)
+	}
+}
+
+func TestParseStudentBulkCSVForWorker_PrefersNPSNHeader(t *testing.T) {
+	rows, err := ParseStudentBulkCSVForWorker([]byte("name,school_npsn,school,jenjang\nBudi,20100001,Legacy School,sma\n"))
+	if err != nil {
+		t.Fatalf("ParseStudentBulkCSVForWorker: %v", err)
+	}
+	if len(rows) != 1 || rows[0].SchoolNPSN != "20100001" || rows[0].LegacySchoolName != "" {
+		t.Fatalf("new-format row: %+v", rows)
+	}
+}
+
 const frontendStudentBulkTemplateCSV = "name,school_npsn,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
 	"Budi Santoso,20100001,SMA,budi@example.com,2008-05-14,male,11,UTBK,\"Jl. Melati No. 3, RT 04\",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n" +
 	"Siti Aminah,P1234567,SMA,,,,,,,,,,\n"
@@ -366,8 +387,8 @@ func TestBuildStudentBulkResultCSV_DoesNotLeakExplicitPassword(t *testing.T) {
 		t.Fatalf("hashPassword: %v", err)
 	}
 	results := []StudentBulkResultRow{
-		{Row: 2, Name: "Budi", SchoolNPSN: "SMAN 1 Jakarta", Email: "budi@example.com", Status: "success", Username: "budi123", TempPassword: ""},
-		{Row: 3, Name: "Siti", SchoolNPSN: "SMAN 1 Jakarta", Status: "success", Username: "siti123", TempPassword: "generated123"},
+		{Row: 2, Name: "Budi", SchoolNPSN: "20100001", Email: "budi@example.com", Status: "success", Username: "budi123", TempPassword: ""},
+		{Row: 3, Name: "Siti", SchoolNPSN: "20100001", Status: "success", Username: "siti123", TempPassword: "generated123"},
 	}
 	data := string(BuildStudentBulkResultCSV(results))
 	if !strings.Contains(data, "temp_password") || !strings.Contains(data, "generated123") {
@@ -398,6 +419,27 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 
 	// Seed region data for name-resolution tests.
 	seedTestRegionData(t, repo)
+
+	t.Run("resolves a queued legacy school-name row", func(t *testing.T) {
+		previousConfig := svc.cfg
+		svc.cfg = &config.Config{}
+		t.Cleanup(func() { svc.cfg = previousConfig })
+
+		code := "legacy_bulk_" + uniqueSuffix()
+		school, err := svc.CreateSchool(ctx, "Legacy Bulk School "+code, code, nil, []string{"sma"}, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		rows := []StudentBulkRow{{Row: 2, Name: "Legacy Bulk Student", LegacySchoolName: school.Name, Jenjang: "sma"}}
+
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if successCount != 1 || results[0].Status != "success" || results[0].SchoolName != school.Name {
+			t.Fatalf("legacy row: count=%d result=%+v", successCount, results[0])
+		}
+	})
 
 	t.Run("normalizes NPSN and distinguishes blank malformed and unknown rows", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})

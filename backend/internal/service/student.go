@@ -197,6 +197,9 @@ func (s *Service) validateSelectedSchool(ctx context.Context, schoolID string) (
 	if school.Status != "active" {
 		return nil, ErrSchoolDeactivated
 	}
+	if s.cfg == nil || !s.cfg.EnforceSchoolNPSNRegistration {
+		return school, nil
+	}
 	npsn, err := normalizeSchoolNPSN(school.NPSN)
 	if err != nil {
 		return nil, err
