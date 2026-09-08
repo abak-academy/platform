@@ -155,7 +155,7 @@ describe("BulkImportModal", () => {
     await waitFor(() => expect(lastDownloadedFilename).toBe("bulk_register_guide.txt"));
     await waitFor(() => expect(lastDownloadedCSV).not.toBeNull());
     expect(lastDownloadedCSV).toContain("bulk_format_student_guide_title");
-		expect(lastDownloadedCSV).toContain("bulk_format_student_school_npsn");
+    expect(lastDownloadedCSV).toContain("bulk_format_student_school_npsn");
   });
 
   it("includes password guidance and blank password template cells when allowed", async () => {
