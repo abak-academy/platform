@@ -220,6 +220,11 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 		}
 	}
 
+	if name != nil {
+		n := stripFormatRunes(*name)
+		name = &n
+	}
+
 	// Resolve one of three intents from the (schoolID, unlistedSchoolName)
 	// pair: listed (non-empty school_id), unlisted (empty school_id and/or a
 	// non-empty unlisted name), or absent (neither field mentioned — leave

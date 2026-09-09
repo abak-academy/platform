@@ -53,6 +53,10 @@ func TestGenerateUsername(t *testing.T) {
 		{"very short", "Ai", "ai", 2},
 		{"single char", "X", "x", 1},
 		{"hyphenated", "Jean-Paul", "jean", 4},
+		{"word joiner prefix", "\u2060Budi Santoso", "budi", 4},
+		{"zero width space", "Budi\u200bSantoso", "budi", 4},
+		{"bom prefix", "\ufeffBudi", "budi", 4},
+		{"soft hyphen", "Bu\u00addi", "budi", 4},
 	}
 
 	for _, tt := range tests {
