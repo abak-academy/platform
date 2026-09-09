@@ -68,6 +68,11 @@ beforeEach(() => {
   mockRole = undefined;
   mockSetCertificateEnabled.mockClear();
   mockSetCardEnabled.mockClear();
+  adminTestsState = {
+    data: { data: [] as Test[] },
+    isLoading: false,
+    isFetching: false,
+  };
 });
 
 const mockReplaceTests = vi.fn();
@@ -171,15 +176,35 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   },
 }));
 
+let adminTestsState: {
+  data: { data: Test[]; next_cursor?: string; total?: number } | undefined;
+  isLoading: boolean;
+  isFetching: boolean;
+} = { data: { data: [] as Test[] }, isLoading: false, isFetching: false };
+
 vi.mock("@/lib/hooks/admin-tests", () => ({
   useAdminTests: (...args: unknown[]) => {
     useAdminTestsSpy(...args);
-    return {
-      data: { data: [] as Test[] },
-      isLoading: false,
-    };
+    return adminTestsState;
   },
 }));
+
+const sampleAvailableTests: Test[] = [
+  {
+    id: "avail-1",
+    title: "Tes Aljabar",
+    subject: "Matematika",
+    topic: "Aljabar",
+    duration_minutes: 60,
+  },
+  {
+    id: "avail-2",
+    title: "Tes Optik",
+    subject: "Fisika",
+    topic: "Optik",
+    duration_minutes: 45,
+  },
+];
 
 const sampleExam: ExamDetail = {
   id: "exam-1",
@@ -851,7 +876,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
       expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
     });
 
-    expect(useAdminTestsSpy).toHaveBeenLastCalledWith(undefined, false);
+    expect(useAdminTestsSpy).toHaveBeenLastCalledWith({ q: undefined, cursor: undefined }, false);
     expect(useExamAnalyticsSpy).toHaveBeenLastCalledWith("exam-1", false);
     expect(useExamLeaderboardSpy).toHaveBeenLastCalledWith(
       "exam-1",
@@ -876,7 +901,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
       expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
     });
 
-    expect(useAdminTestsSpy).toHaveBeenLastCalledWith(undefined, true);
+    expect(useAdminTestsSpy).toHaveBeenLastCalledWith({ q: undefined, cursor: undefined }, true);
     expect(useExamAnalyticsSpy).toHaveBeenLastCalledWith("exam-1", false);
     expect(useExamLeaderboardSpy).toHaveBeenLastCalledWith(
       "exam-1",
@@ -1066,5 +1091,94 @@ describe("ExamPackageDetailPage — certificate enablement (FR-8/FR-11/FR-12)", 
       expect(mockSetCertificateEnabled).toHaveBeenCalledTimes(1);
     });
     expect(mockSetCertificateEnabled).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("ExamPackageDetailPage — Tes Tersedia picker", () => {
+  beforeEach(() => {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });
+    examState = {
+      data: sampleExam,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+  });
+
+  async function openTestsTab() {
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^tes$/i }));
+  }
+
+  it("shows the search input, shown/total summary, and load-more when a next_cursor exists", async () => {
+    mockRole = "super_admin";
+    adminTestsState = {
+      data: { data: sampleAvailableTests, next_cursor: "cursor-2", total: 25 },
+      isLoading: false,
+      isFetching: false,
+    };
+
+    await openTestsTab();
+
+    expect(screen.getByText("Tes Aljabar")).toBeInTheDocument();
+    expect(screen.getByText("Tes Optik")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Cari…")).toBeInTheDocument();
+    expect(screen.getByText("Menampilkan 2 dari 25 tes")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /muat lebih banyak/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("sends the trimmed q after the debounce and keeps search across load-more", async () => {
+    mockRole = "super_admin";
+    adminTestsState = {
+      data: { data: sampleAvailableTests, next_cursor: "cursor-2", total: 25 },
+      isLoading: false,
+      isFetching: false,
+    };
+
+    await openTestsTab();
+
+    fireEvent.change(screen.getByPlaceholderText("Cari…"), {
+      target: { value: "  optik  " },
+    });
+
+    await waitFor(() => {
+      expect(useAdminTestsSpy).toHaveBeenLastCalledWith(
+        { q: "optik", cursor: undefined },
+        true,
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /muat lebih banyak/i }));
+
+    await waitFor(() => {
+      expect(useAdminTestsSpy).toHaveBeenLastCalledWith(
+        { q: "optik", cursor: "cursor-2" },
+        true,
+      );
+    });
+  });
+
+  it("omits the load-more control when no next_cursor remains", async () => {
+    mockRole = "super_admin";
+    adminTestsState = {
+      data: { data: sampleAvailableTests, total: 2 },
+      isLoading: false,
+      isFetching: false,
+    };
+
+    await openTestsTab();
+
+    expect(screen.getByText("Menampilkan 2 dari 2 tes")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /muat lebih banyak/i }),
+    ).not.toBeInTheDocument();
   });
 });

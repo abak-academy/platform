@@ -14,7 +14,7 @@ vi.mock("next/navigation", () => ({
 const mockMutateAsync = vi.fn();
 
 let testsState = {
-  data: null as { data: Test[]; next_cursor?: string } | null,
+  data: null as { data: Test[]; next_cursor?: string; total?: number } | null,
   isLoading: true,
   isError: false,
   error: null as Error | null,
@@ -272,6 +272,7 @@ describe("TestsPage", () => {
       subject: undefined,
       topic: undefined,
       q: undefined,
+      cursor: undefined,
     });
   });
 
@@ -314,5 +315,48 @@ describe("TestsPage", () => {
     expect(topicSelect.value).toBe("");
     expect(within(topicSelect).queryByText("Stoikiometri")).not.toBeInTheDocument();
     expect(within(topicSelect).getByText("Mekanika")).toBeInTheDocument();
+  });
+
+  it("shows shown/total summary and load-more when a next_cursor exists", async () => {
+    testsState = {
+      data: { data: sampleTests, next_cursor: "cursor-2", total: 22 },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<TestsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Menampilkan 2 dari 22 tes")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /muat lebih banyak/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /muat lebih banyak/i }));
+
+    await waitFor(() => {
+      expect(mockUseAdminTests).toHaveBeenLastCalledWith(
+        expect.objectContaining({ cursor: "cursor-2" }),
+      );
+    });
+  });
+
+  it("omits the summary and load-more when the list is empty", async () => {
+    testsState = {
+      data: { data: [], total: 0 },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<TestsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/belum ada tes/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/menampilkan/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /muat lebih banyak/i })).not.toBeInTheDocument();
   });
 });

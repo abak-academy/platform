@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import { toast } from "sonner";
 import SchoolStudentsPage from "./page";
 import type { AdminStudent, StudentRegistrationResult, StudentCredentials, School } from "@/lib/types";
@@ -8,8 +8,16 @@ const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
 const setPasswordMutateAsync = vi.fn();
 
+interface StudentsListResponse {
+  data: AdminStudent[];
+  next_cursor?: string;
+  total?: number;
+  active?: number;
+  deactivated?: number;
+}
+
 let studentsState = {
-  data: null as { data: AdminStudent[]; next_cursor?: string } | null,
+  data: null as StudentsListResponse | null,
   isLoading: true,
   isFetching: false,
   isError: false,
@@ -21,6 +29,10 @@ let registerState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPendin
 let changeStatusState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let reissueState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let setPasswordState = { mutateAsync: setPasswordMutateAsync, isPending: false };
+
+// Records every call so tests can assert q/status/cursor are actually sent
+// to the server, not just filtered client-side.
+const useAdminStudentsCalls: unknown[] = [];
 
 // Auth store mock
 let authStore: {
@@ -39,7 +51,10 @@ let schoolsState = {
 };
 
 vi.mock("@/lib/hooks/admin-students", () => ({
-  useAdminStudents: () => studentsState,
+  useAdminStudents: (params: unknown) => {
+    useAdminStudentsCalls.push(params);
+    return studentsState;
+  },
   useRegisterStudent: () => registerState,
   useChangeStudentStatus: () => changeStatusState,
   useReissueStudentCredentials: () => reissueState,
@@ -108,9 +123,16 @@ const sampleStudents: AdminStudent[] = [
   },
 ];
 
-const paginatedResponse = (students: AdminStudent[]) => ({
+// total/active/deactivated mirror what CountStudentsAdmin would return for
+// the full filtered set — deliberately not derived from students.length,
+// since that was exactly the "Total ≈ 20" bug (client only ever saw loaded
+// rows).
+const paginatedResponse = (students: AdminStudent[], next_cursor?: string): StudentsListResponse => ({
   data: students,
-  next_cursor: undefined,
+  next_cursor,
+  total: students.length,
+  active: students.filter((s) => s.status === "active").length,
+  deactivated: students.filter((s) => s.status === "deactivated").length,
 });
 
 describe("SchoolStudentsPage", () => {
@@ -141,6 +163,13 @@ describe("SchoolStudentsPage", () => {
     setPasswordMutateAsync.mockReset();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
+    useAdminStudentsCalls.length = 0;
+  });
+
+  // A prior test throwing before vi.useRealTimers() would otherwise leave
+  // fake timers on and hang every later waitFor() in this file.
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("renders loading state when loading and no accumulated data", async () => {
@@ -156,7 +185,7 @@ describe("SchoolStudentsPage", () => {
     render(<SchoolStudentsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Memuat…")).toBeInTheDocument();
+      expect(screen.getByText("Memuat data…")).toBeInTheDocument();
     });
   });
 
@@ -200,6 +229,97 @@ describe("SchoolStudentsPage", () => {
       expect(screen.getByText("2")).toBeInTheDocument();
     });
     expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(1);
+  });
+
+  // The stat cards must render the server's filter-aware counts, not
+  // accumulated.length — with only 2 rows loaded the total must still say 42.
+  it("renders stat cards from the server counts, not the loaded rows", async () => {
+    studentsState = {
+      data: { data: sampleStudents, next_cursor: undefined, total: 42, active: 40, deactivated: 2 },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<SchoolStudentsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("42")).toBeInTheDocument();
+    });
+    expect(screen.getByText("40")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("debounces search input before sending it as the q param", async () => {
+    vi.useFakeTimers();
+    render(<SchoolStudentsPage />);
+
+    const search = screen.getByPlaceholderText(/cari nama|search name/i);
+    fireEvent.change(search, { target: { value: "budi" } });
+
+    // Not yet — a keystroke must not immediately trigger a new query.
+    let last = useAdminStudentsCalls.at(-1) as { q?: string } | undefined;
+    expect(last?.q).toBeUndefined();
+
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+
+    last = useAdminStudentsCalls.at(-1) as { q?: string } | undefined;
+    expect(last?.q).toBe("budi");
+  });
+
+  // Regression: the loading state used to early-return a full-page screen,
+  // unmounting the search input mid-search and dropping its focus — the user
+  // had to click the field again after every result refresh. Loading now
+  // renders inside the table while the toolbar (and the focused input) stay
+  // mounted, same shape as ParticipantPicker.
+  it("keeps the search input mounted and focused while a search reloads the list", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<SchoolStudentsPage />);
+
+    const search = screen.getByPlaceholderText(/cari nama|search name/i);
+    search.focus();
+
+    // Type, then simulate the fresh (uncached) query key going pending while
+    // the debounce fires — the exact moment the old early return unmounted it.
+    fireEvent.change(search, { target: { value: "budi" } });
+    act(() => {
+      studentsState = {
+        data: null,
+        isLoading: true,
+        isFetching: true,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    });
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+
+    expect(screen.getByText("Memuat data…")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/cari nama|search name/i)).toBe(search);
+    expect(search).toHaveFocus();
+
+    // Results arrive: same input node, still focused.
+    act(() => {
+      studentsState = {
+        data: paginatedResponse(sampleStudents),
+        isLoading: false,
+        isFetching: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    });
+    rerender(<SchoolStudentsPage />);
+
+    expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/cari nama|search name/i)).toBe(search);
+    expect(search).toHaveFocus();
   });
 
   it("opens the bulk import modal from the header button", async () => {

@@ -164,6 +164,47 @@ func insertSchoolForAdminStudentsTest(t *testing.T, r *Repository, name, code st
 	return id
 }
 
+func TestCountStudentsAdmin_matchesFilteredTotals(t *testing.T) {
+	pool := newGradingTestPool(t)
+	r := New(pool)
+	ctx := context.Background()
+
+	suffix := uuid.NewString()[:8]
+	schoolID := insertSchoolForAdminStudentsTest(t, r, "Count School "+suffix, "csa_"+suffix)
+	seedStudentPageRow(t, r, schoolID, "Counted Active 1 "+suffix, "active", "sma", 10, time.Now().UTC())
+	seedStudentPageRow(t, r, schoolID, "Counted Active 2 "+suffix, "active", "sma", 11, time.Now().UTC())
+	seedStudentPageRow(t, r, schoolID, "Counted Inactive "+suffix, "deactivated", "sma", 12, time.Now().UTC())
+	// A different school's student with the same name pattern must not leak
+	// into the counts of a school-scoped query.
+	otherSchool := insertSchoolForAdminStudentsTest(t, r, "Other Count School "+suffix, "csb_"+suffix)
+	seedStudentPageRow(t, r, otherSchool, "Counted Active 3 "+suffix, "active", "sma", 10, time.Now().UTC())
+
+	filter := StudentFilter{Q: suffix, Limit: 1, Cursor: "would-be-ignored-if-it-were-valid"}
+	counts, err := r.CountStudentsAdmin(ctx, schoolID, filter)
+	if err != nil {
+		t.Fatalf("CountStudentsAdmin: %v", err)
+	}
+	if counts.Total != 3 {
+		t.Errorf("Total: want 3, got %d", counts.Total)
+	}
+	if counts.Active != 2 {
+		t.Errorf("Active: want 2, got %d", counts.Active)
+	}
+	if counts.Deactivated != 1 {
+		t.Errorf("Deactivated: want 1, got %d", counts.Deactivated)
+	}
+
+	// Counts are filter-aware: narrowing to active makes total == active and
+	// zeroes the deactivated bucket (same behavior as CountSchoolsAdmin).
+	counts, err = r.CountStudentsAdmin(ctx, schoolID, StudentFilter{Q: suffix, Status: "active"})
+	if err != nil {
+		t.Fatalf("CountStudentsAdmin(active): %v", err)
+	}
+	if counts.Total != 2 || counts.Active != 2 || counts.Deactivated != 0 {
+		t.Errorf("active-filtered counts: want 2/2/0, got %d/%d/%d", counts.Total, counts.Active, counts.Deactivated)
+	}
+}
+
 func TestSearchStudentsAcrossSchools_NullSchool(t *testing.T) {
 	pool := newGradingTestPool(t)
 	r := New(pool)

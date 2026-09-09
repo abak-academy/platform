@@ -168,7 +168,7 @@ func TestListStudentsWithGradeAndJenjang_Integration(t *testing.T) {
 
 	t.Run("grade filter returns only matching grade", func(t *testing.T) {
 		g := 10
-		rows, _, err := svc.ListStudents(ctx, schoolID, "", "", 100, "", &g, "")
+		rows, _, _, err := svc.ListStudents(ctx, schoolID, "", "", 100, "", &g, "")
 		if err != nil {
 			t.Fatalf("ListStudents: %v", err)
 		}
@@ -178,7 +178,7 @@ func TestListStudentsWithGradeAndJenjang_Integration(t *testing.T) {
 	})
 
 	t.Run("jenjang filter returns only matching jenjang", func(t *testing.T) {
-		rows, _, err := svc.ListStudents(ctx, schoolID, "", "", 100, "", nil, jenjangSMA)
+		rows, _, _, err := svc.ListStudents(ctx, schoolID, "", "", 100, "", nil, jenjangSMA)
 		if err != nil {
 			t.Fatalf("ListStudents: %v", err)
 		}
@@ -189,7 +189,7 @@ func TestListStudentsWithGradeAndJenjang_Integration(t *testing.T) {
 
 	t.Run("grade + jenjang combined returns intersection", func(t *testing.T) {
 		g := 10
-		rows, _, err := svc.ListStudents(ctx, schoolID, "", "", 100, "", &g, jenjangSMP)
+		rows, _, _, err := svc.ListStudents(ctx, schoolID, "", "", 100, "", &g, jenjangSMP)
 		if err != nil {
 			t.Fatalf("ListStudents: %v", err)
 		}
@@ -200,7 +200,7 @@ func TestListStudentsWithGradeAndJenjang_Integration(t *testing.T) {
 
 	t.Run("grade + jenjang + q combined returns intersection", func(t *testing.T) {
 		g := 10
-		rows, _, err := svc.ListStudents(ctx, schoolID, "", "SMA Grade 10 A", 100, "", &g, jenjangSMA)
+		rows, _, _, err := svc.ListStudents(ctx, schoolID, "", "SMA Grade 10 A", 100, "", &g, jenjangSMA)
 		if err != nil {
 			t.Fatalf("ListStudents: %v", err)
 		}
@@ -210,7 +210,7 @@ func TestListStudentsWithGradeAndJenjang_Integration(t *testing.T) {
 	})
 
 	t.Run("no filters returns all students", func(t *testing.T) {
-		rows, _, err := svc.ListStudents(ctx, schoolID, "", "", 100, "", nil, "")
+		rows, _, _, err := svc.ListStudents(ctx, schoolID, "", "", 100, "", nil, "")
 		if err != nil {
 			t.Fatalf("ListStudents: %v", err)
 		}

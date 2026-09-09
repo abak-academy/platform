@@ -50,14 +50,20 @@ func (h *Handler) AdminListStudents(c echo.Context) error {
 		}
 	}
 
-	students, nextCursor, err := h.svc.ListStudents(c.Request().Context(), schoolID, statusFilter, q, limit, cursor, grade, jenjang, examID)
+	students, nextCursor, counts, err := h.svc.ListStudents(c.Request().Context(), schoolID, statusFilter, q, limit, cursor, grade, jenjang, examID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 
+	// total/active/deactivated are filter-aware counts of the whole scoped
+	// set (ignoring cursor/limit), mirroring GET /admin/schools — the stat
+	// cards must not be derived from the single page loaded on the client.
 	return c.JSON(http.StatusOK, map[string]any{
 		"data":        students,
 		"next_cursor": nextCursor,
+		"total":       counts.Total,
+		"active":      counts.Active,
+		"deactivated": counts.Deactivated,
 	})
 }
 

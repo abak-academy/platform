@@ -498,6 +498,10 @@ func (s *Service) ListTests(ctx context.Context, filter repository.TestFilter) (
 	return s.storeRepo.ListTests(ctx, filter)
 }
 
+func (s *Service) CountTests(ctx context.Context, filter repository.TestFilter) (int, error) {
+	return s.storeRepo.CountTests(ctx, filter)
+}
+
 func (s *Service) GetTestDetail(ctx context.Context, id uuid.UUID) (model.TestDetail, error) {
 	d, err := s.storeRepo.GetTestDetail(ctx, id)
 	if err != nil {

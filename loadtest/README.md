@@ -2,7 +2,9 @@
 
 This suite runs one complete student lifecycle per virtual user:
 
-`login -> registration lookup -> optional check-in -> start -> cumulative autosaves -> section advance -> reconnect verification -> submit`
+`login -> token refresh as needed -> registration lookup -> optional check-in -> start -> cumulative autosaves -> section advance -> reconnect verification -> submit`
+
+Each VU keeps its refresh token and rotates the access and refresh tokens before the access token expires. This keeps long-running exams on the same authenticated session and stable `X-Forwarded-For` identity.
 
 It refuses to run unless `NON_PRODUCTION_CONFIRM=loadtest`. Use an isolated database with synthetic data only.
 
@@ -39,6 +41,14 @@ SUBMIT_AT_SECONDS=0
 ```
 
 `CONFIRM_DB` must exactly match `PGDATABASE`. The SQL seed also verifies it against PostgreSQL `current_database()` before writing anything.
+
+For a laptop without working IPv6, set `K6_DNS='ttl=inf,select=roundRobin,policy=onlyIPv4'`. If the laptop network cannot maintain thousands of idle connections, `K6_NO_CONNECTION_REUSE=true` closes each request's connection. Record this setting with the result: it adds connection/TLS overhead between the generator and the target, so client latency is not directly comparable to keep-alive runs.
+
+`CONTINUE_TRANSPORT_ERRORS=true` enables at most three retries (four attempts total) for GET requests with transport status 0, with 1/2/4-second backoff plus jitter. Login also has at most three transport retries, regardless of this flag. Autosave uses only `SAVE_RETRIES` (default three), replays the same answer payload and position, and adds jitter to its existing backoff; there is no nested request-level retry. HTTP error responses are not retried by these transport loops. The existing one-time token refresh on HTTP 401 remains in place.
+
+Refresh, start, check-in, section advance, and submit are not automatically retried after transport failure. Refresh rotates and deletes the old token; a lost response makes replay unsafe. Start can create an attempt, and submit may have committed even when its response was lost. A failed refresh stops the current operation rather than replaying the token through autosave retries. Recovering these ambiguous mutations requires separate reconciliation logic, not blind retry.
+
+Every failed HTTP attempt remains in k6 metrics, and `transport_retries` counts scheduled retries by phase. Retries do not reset the submit clock or `MAX_DURATION`; time spent in requests still consumes the run budget. This can recover a lifecycle despite a failed request-error gate. A transport failure does not identify its cause, and a VU retrying a request does not prove an active server session. No load-test capacity is certified by the local harness tests.
 
 ## Seed a run
 
@@ -103,6 +113,7 @@ Do not continue to the next stage unless all of these are true:
 - `lifecycle_failed` is below 1%.
 - `lost_answers` is zero.
 - Autosave p95 is below 300 ms.
+- Token refresh error rate is below 1%.
 - Login, start, reconnect, and submit thresholds pass.
 - The k6 generator is not CPU, memory, or network saturated.
 - API and database evidence still show headroom.

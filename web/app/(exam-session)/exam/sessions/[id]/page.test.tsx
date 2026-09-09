@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
-import { act } from "react";
+import { StrictMode, act } from "react";
+import { toast } from "sonner";
 
 import SessionPage from "./page";
 import { ApiError } from "@/lib/api";
@@ -361,6 +362,23 @@ async function enterFullscreenUntil(text: RegExp) {
   });
 }
 
+async function clearInitialReconciliation() {
+  await waitFor(() => {
+    expect(saveAnswersMutateAsync).toHaveBeenCalled();
+  });
+  saveAnswersMutateAsync.mockClear();
+}
+
+function deferred() {
+  let resolve!: () => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("SessionPage", () => {
   beforeEach(() => {
     Object.defineProperty(document, "hidden", { value: false, configurable: true });
@@ -385,6 +403,7 @@ describe("SessionPage", () => {
     advanceSectionMutate.mockReset();
     advanceSectionMutateAsync.mockReset();
     routerReplace.mockReset();
+    (toast.error as ReturnType<typeof vi.fn>).mockReset();
     localStorage.clear();
   });
 
@@ -562,6 +581,28 @@ describe("SessionPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("queues one flag revision for one click in StrictMode", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    render(
+      <StrictMode>
+        <SessionPage />
+      </StrictMode>,
+    );
+    await enterFullscreen();
+    await clearInitialReconciliation();
+
+    fireEvent.click(screen.getByRole("button", { name: /ragu-ragu/i }));
+
+    expect(loadQueue("session-1")).toEqual([
+      {
+        question_id: "q-mcq",
+        answer: "",
+        flagged_for_review: true,
+        revision: 1,
+      },
+    ]);
+  });
+
   it("rehydrates flagged_for_review from session answers on reconnect (FR29)", async () => {
     sessionState = {
       ...sessionState,
@@ -584,6 +625,10 @@ describe("SessionPage", () => {
     saveAnswersMutateAsync.mockResolvedValue(undefined);
     render(<SessionPage />);
     await enterFullscreen();
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    saveAnswersMutateAsync.mockClear();
 
     const flagBtn = screen.getByRole("button", { name: /ragu-ragu/i });
     fireEvent.click(flagBtn);
@@ -600,7 +645,12 @@ describe("SessionPage", () => {
     await waitFor(() => {
       expect(saveAnswersMutateAsync).toHaveBeenCalled();
     });
-    const payload = saveAnswersMutateAsync.mock.calls[0][0];
+    const payload = saveAnswersMutateAsync.mock.calls.find(([call]) =>
+      (call as { answers: Array<{ question_id: string }> }).answers.some(
+        (answer) => answer.question_id === "q-mcq",
+      ),
+    )?.[0];
+    expect(payload).toBeDefined();
     expect(payload.answers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -977,8 +1027,13 @@ describe("SessionPage", () => {
   // ── Submit flow (also tests save is triggered) ──────────────────────────
 
   it("submit saves answers, calls hook, and redirects to result (FR29, FR-S5-25)", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
     render(<SessionPage />);
     await enterFullscreen();
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    saveAnswersMutateAsync.mockClear();
 
     // Answer a question first so save is triggered
     const radios = screen.getAllByRole("radio");
@@ -998,10 +1053,10 @@ describe("SessionPage", () => {
     fireEvent.click(btns[btns.length - 1]);
 
     // Verify save was triggered before submit
-    expect(saveAnswersMutateAsync).toHaveBeenCalledWith({
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(1, {
       answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
-      current_position: 0,
     });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
 
     // Verify submitSession was called (handleSubmit awaits the save first,
     // so the mutate call lands on a later microtask).
@@ -1019,6 +1074,215 @@ describe("SessionPage", () => {
     expect(routerReplace).toHaveBeenCalledWith(
       "/exam/sessions/session-1/result",
     );
+  });
+
+  it("submit sends one drained delta batch without an unchanged full snapshot", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    render(<SessionPage />);
+    await enterFullscreen();
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    saveAnswersMutateAsync.mockClear();
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    fireEvent.click(screen.getByRole("button", { name: /tandai ragu-ragu/i }));
+    fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
+
+    const btns = screen.getAllByRole("button", { name: /kumpulkan/i });
+    fireEvent.click(btns[btns.length - 1]);
+
+    await waitFor(() => {
+      expect(submitSessionMutate).toHaveBeenCalledTimes(1);
+    });
+
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(1, {
+      answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: true }],
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+    expect(
+      saveAnswersMutateAsync.mock.invocationCallOrder[0],
+    ).toBeLessThan(submitSessionMutate.mock.invocationCallOrder[0]);
+    expect(loadQueue("session-1")).toEqual([]);
+  });
+
+  it("keeps submit blocked when a newer revision appears during barrier drain until that revision is acknowledged", async () => {
+    const firstBarrierSave = deferred();
+    saveAnswersMutateAsync
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => firstBarrierSave.promise)
+      .mockResolvedValue(undefined);
+    render(<SessionPage />);
+    await enterFullscreen();
+    await clearInitialReconciliation();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT")[0];
+    fireEvent.change(textInput, { target: { value: "v1" } });
+    fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /kumpulkan/i }).at(-1)!);
+
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    saveQueue("session-1", [
+      {
+        question_id: "q-short",
+        answer: "v2",
+        flagged_for_review: false,
+        revision: 2,
+      },
+    ]);
+    expect(submitSessionMutate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      firstBarrierSave.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(submitSessionMutate).toHaveBeenCalledTimes(1);
+    });
+
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(1, {
+      answers: [
+        { question_id: "q-short", answer: "v1", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(2, {
+      answers: [
+        { question_id: "q-short", answer: "v2", flagged_for_review: false },
+      ],
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(2);
+    expect(
+      saveAnswersMutateAsync.mock.invocationCallOrder[1],
+    ).toBeLessThan(submitSessionMutate.mock.invocationCallOrder[0]);
+    expect(loadQueue("session-1")).toEqual([]);
+  });
+
+  it("fails closed when active scoped revisions keep appearing through the barrier cap", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    render(<SessionPage />);
+    await enterFullscreen();
+    await clearInitialReconciliation();
+    let revision = 2;
+    saveAnswersMutateAsync.mockImplementation(async () => {
+      saveQueue("session-1", [
+        {
+          question_id: "q-mcq",
+          answer: `v${revision}`,
+          flagged_for_review: false,
+          revision,
+        },
+      ]);
+      revision += 1;
+    });
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /kumpulkan/i }).at(-1)!);
+
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(25);
+    });
+    expect(submitSessionMutate).not.toHaveBeenCalled();
+    expect(advanceSectionMutateAsync).not.toHaveBeenCalled();
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Belum tersimpan",
+    );
+    expect(loadQueue("session-1")).toEqual([
+      {
+        question_id: "q-mcq",
+        answer: "v26",
+        flagged_for_review: false,
+        revision: 26,
+      },
+    ]);
+  });
+
+  it("stops waiting for a hung save barrier and surfaces the submit failure", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    render(<SessionPage />);
+    await enterFullscreen();
+    await clearInitialReconciliation();
+    vi.useFakeTimers();
+    saveAnswersMutateAsync.mockImplementation(() => new Promise(() => {}));
+
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /kumpulkan/i }).at(-1)!);
+
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(submitSessionMutate).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "Jawaban belum tersimpan. Coba lagi sebelum mengumpulkan.",
+    );
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+      "Belum tersimpan",
+    );
+  });
+
+  it("does not submit when the save barrier fails and retry can reconcile without losing the latest queued edit", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+
+    render(<SessionPage />);
+    await enterFullscreen();
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    saveAnswersMutateAsync.mockReset();
+    saveAnswersMutateAsync
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValue(undefined);
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT")[0];
+    fireEvent.change(textInput, { target: { value: "latest answer" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /kumpulkan/i }).at(-1)!);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+        "Belum tersimpan",
+      );
+    });
+    expect(submitSessionMutate).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "Jawaban belum tersimpan. Coba lagi sebelum mengumpulkan.",
+    );
+    expect(loadQueue("session-1")).toEqual([
+      {
+        question_id: "q-short",
+        answer: "latest answer",
+        flagged_for_review: false,
+        revision: 1,
+      },
+    ]);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /kumpulkan/i }).at(-1)!);
+
+    await waitFor(() => {
+      expect(submitSessionMutate).toHaveBeenCalledTimes(1);
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(2, {
+      answers: [
+        { question_id: "q-short", answer: "latest answer", flagged_for_review: false },
+      ],
+      current_position: 2,
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(2);
+    expect(loadQueue("session-1")).toEqual([]);
   });
 
   // ── Sectioned mode (FR-23) ────────────────────────────────────────────
@@ -1089,12 +1353,169 @@ describe("SessionPage", () => {
     await waitFor(() => {
       expect(saveAnswersMutateAsync).toHaveBeenCalled();
     });
+    expect(advanceSectionMutateAsync).toHaveBeenCalledWith("test-section-1");
+
+    // Submit should NOT be called for a non-last section advance
+    expect(submitSessionMutate).not.toHaveBeenCalled();
+  });
+
+  it("section advance drains queued deltas and reconciles only the active section before advancing", async () => {
+    saveQueue("session-1", [
+      {
+        question_id: "q-sec1-mcq",
+        answer: "B",
+        flagged_for_review: false,
+        revision: 1,
+      },
+      {
+        question_id: "q-sec1-essay",
+        answer: "",
+        flagged_for_review: true,
+        revision: 2,
+      },
+    ]);
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    advanceSectionMutateAsync.mockResolvedValue({
+      mode: "utbk",
+      active_test_id: "test-section-2",
+      completed: false,
+      tests: sectionedSession.tests,
+    });
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sectionedSession,
+        tests: sectionedSession.tests.map((test, index) =>
+          index === 0 ? { ...test, remaining_seconds: 0 } : test,
+        ),
+      },
+    };
+
+    render(<SessionPage />);
+
     await waitFor(() => {
       expect(advanceSectionMutateAsync).toHaveBeenCalledWith("test-section-1");
     });
 
-    // Submit should NOT be called for a non-last section advance
-    expect(submitSessionMutate).not.toHaveBeenCalled();
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(2, {
+      answers: [
+        { question_id: "q-sec1-mcq", answer: "B", flagged_for_review: false },
+        { question_id: "q-sec1-essay", answer: "", flagged_for_review: true },
+      ],
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenNthCalledWith(3, {
+      answers: [
+        { question_id: "q-sec1-mcq", answer: "B", flagged_for_review: false },
+        { question_id: "q-sec1-essay", answer: "", flagged_for_review: true },
+      ],
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(3);
+    const sentIds = saveAnswersMutateAsync.mock.calls.flatMap(([payload]) =>
+      (payload as { answers: Array<{ question_id: string }> }).answers.map(
+        (answer) => answer.question_id,
+      ),
+    );
+    expect(sentIds).not.toContain("q-sec2-mcq");
+    expect(
+      saveAnswersMutateAsync.mock.invocationCallOrder[2],
+    ).toBeLessThan(advanceSectionMutateAsync.mock.invocationCallOrder[0]);
+  });
+
+  it("does not advance a section when the save barrier fails", async () => {
+    saveQueue("session-1", [
+      {
+        question_id: "q-sec1-mcq",
+        answer: "B",
+        flagged_for_review: false,
+        revision: 1,
+      },
+    ]);
+    saveAnswersMutateAsync.mockRejectedValue(new Error("network down"));
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sectionedSession,
+        tests: sectionedSession.tests.map((test, index) =>
+          index === 0 ? { ...test, remaining_seconds: 0 } : test,
+        ),
+      },
+    };
+
+    render(<SessionPage />);
+
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalled();
+    });
+    expect(advanceSectionMutateAsync).not.toHaveBeenCalled();
+    expect(loadQueue("session-1")).toEqual([
+      {
+        question_id: "q-sec1-mcq",
+        answer: "B",
+        flagged_for_review: false,
+        revision: 1,
+      },
+    ]);
+  });
+
+  it("sends one full reconciliation after reconnect hydration", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        answers: [
+          { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+          { question_id: "q-short", answer: "", flagged_for_review: true },
+        ],
+      },
+    };
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+
+    render(<SessionPage />);
+
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledWith({
+        answers: [
+          { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+          { question_id: "q-short", answer: "", flagged_for_review: true },
+        ],
+        current_position: 0,
+      });
+    });
+  });
+
+  it("reconciles at five active minutes despite one-second countdown rerenders and stops after unmount", async () => {
+    vi.useFakeTimers();
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+
+    const { unmount } = render(<SessionPage />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+
+    for (let second = 0; second < 299; second += 1) {
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+        await Promise.resolve();
+      });
+    }
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(2);
+
+    unmount();
+    await act(async () => {
+      vi.advanceTimersByTime(300_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(2);
   });
 
   it("advancing last section triggers submit and redirect (FR-24)", async () => {
@@ -1265,6 +1686,7 @@ describe("SessionPage", () => {
     sessionState = { ...sessionState, data: section2Active };
     render(<SessionPage />);
     await enterFullscreenUntil(/Literasi Question 1\?/);
+    saveAnswersMutateAsync.mockClear();
 
     vi.useFakeTimers();
     fireEvent.click(screen.getAllByRole("radio")[0]);
@@ -1272,14 +1694,48 @@ describe("SessionPage", () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
     });
 
-    expect(saveAnswersMutate).toHaveBeenCalled();
-    const sentIds = saveAnswersMutate.mock.calls.flatMap(([payload]) =>
+    expect(saveAnswersMutateAsync).toHaveBeenCalled();
+    const sentIds = saveAnswersMutateAsync.mock.calls.flatMap(([payload]) =>
       (payload as { answers: Array<{ question_id: string }> }).answers.map(
         (p) => p.question_id,
       ),
     );
     expect(sentIds).toContain("q-sec2-mcq"); // active section answer is saved
     expect(sentIds).not.toContain("q-sec1-mcq"); // submitted section answer is not resent
+  });
+
+  it("reports the active section saved when only another section remains queued", async () => {
+    sessionState = { ...sessionState, data: sectionedSession };
+    saveQueue("session-1", [
+      {
+        question_id: "q-sec1-mcq",
+        answer: "B",
+        flagged_for_review: false,
+        revision: 1,
+      },
+      {
+        question_id: "q-sec2-mcq",
+        answer: "A",
+        flagged_for_review: false,
+        revision: 2,
+      },
+    ]);
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+
+    render(<SessionPage />);
+    await enterFullscreenSectioned();
+
+    await waitFor(() => {
+      expect(loadQueue("session-1")).toEqual([
+        {
+          question_id: "q-sec2-mcq",
+          answer: "A",
+          flagged_for_review: false,
+          revision: 2,
+        },
+      ]);
+    });
+    expect(screen.getByTestId("save-indicator")).toHaveTextContent("Tersimpan");
   });
 
   it("resets the question index to 0 when advancing to a shorter section (FR-13)", async () => {
@@ -2801,6 +3257,7 @@ describe("SessionPage", () => {
   it("debounces continuous changes to at most one save per debounce window (FR-31, NFR-P3)", async () => {
     render(<SessionPage />);
     await enterFullscreen();
+    await clearInitialReconciliation();
     vi.useFakeTimers();
 
     // Navigate to the short-answer question and simulate ~10s of continuous
@@ -2818,29 +3275,87 @@ describe("SessionPage", () => {
 
     // ~10s of continuous changes over a debounce window well under 10s must
     // not produce a save per keystroke — at most one save per window.
-    expect(saveAnswersMutate.mock.calls.length).toBeGreaterThan(0);
-    expect(saveAnswersMutate.mock.calls.length).toBeLessThanOrEqual(
+    expect(saveAnswersMutateAsync.mock.calls.length).toBeGreaterThan(0);
+    expect(saveAnswersMutateAsync.mock.calls.length).toBeLessThanOrEqual(
       Math.ceil((33 * 300) / AUTOSAVE_DEBOUNCE_MS) + 1,
     );
-    expect(saveAnswersMutate.mock.calls.length).toBeLessThan(10);
+    expect(saveAnswersMutateAsync.mock.calls.length).toBeLessThan(10);
+  });
+
+  it("stores an answer edit durably with a local revision before debounce dispatch (FR-31)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+    await clearInitialReconciliation();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT")[0];
+
+    fireEvent.change(textInput, { target: { value: "queued now" } });
+
+    expect(saveAnswersMutateAsync).not.toHaveBeenCalled();
+    expect(loadQueue("session-1")).toEqual([
+      {
+        question_id: "q-short",
+        answer: "queued now",
+        flagged_for_review: false,
+        revision: 1,
+      },
+    ]);
+  });
+
+  it("keeps an answer in memory and autosaves server-side when durable storage fails", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    render(<SessionPage />);
+    await enterFullscreen();
+    await clearInitialReconciliation();
+    vi.useFakeTimers();
+    const setItem = vi
+      .spyOn(Object.getPrototypeOf(localStorage) as Storage, "setItem")
+      .mockImplementation(() => {
+        throw new Error("quota exceeded");
+      });
+
+    try {
+      const answer = screen.getAllByRole("radio")[1];
+      fireEvent.click(answer);
+      expect(answer).toBeChecked();
+      expect(screen.getByTestId("save-indicator")).toHaveTextContent(
+        "Belum tersimpan",
+      );
+      await act(async () => {
+        vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+        await Promise.resolve();
+      });
+    } finally {
+      setItem.mockRestore();
+    }
+
+    expect(saveAnswersMutateAsync).toHaveBeenCalledWith({
+      answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
+    });
+    expect(loadQueue("session-1")).toEqual([]);
   });
 
   it("retries a failing save with growing backoff delays and eventually succeeds (FR-32)", async () => {
+    saveAnswersMutateAsync.mockResolvedValueOnce(undefined);
     render(<SessionPage />);
     await enterFullscreen();
+    await clearInitialReconciliation();
+    saveAnswersMutateAsync
+      .mockRejectedValueOnce(new Error("network error"))
+      .mockRejectedValueOnce(new Error("network error"))
+      .mockResolvedValueOnce(undefined);
     vi.useFakeTimers();
 
     fireEvent.click(screen.getAllByRole("radio")[1]);
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+      await Promise.resolve();
     });
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
-
-    // First attempt fails.
-    await act(async () => {
-      const [, opts] = saveAnswersMutate.mock.calls[0];
-      opts.onError(new Error("network error"));
-    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("save-indicator")).toHaveTextContent(
       "Belum tersimpan",
     );
@@ -2849,32 +3364,29 @@ describe("SessionPage", () => {
     await act(async () => {
       vi.advanceTimersByTime(delay1 - 1);
     });
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(1); // not yet retried
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1); // not yet retried
     await act(async () => {
       vi.advanceTimersByTime(1);
+      await Promise.resolve();
     });
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(2); // first retry fired
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(2); // first retry fired
 
     // Second attempt also fails — the next delay must be strictly longer.
-    await act(async () => {
-      const [, opts] = saveAnswersMutate.mock.calls[1];
-      opts.onError(new Error("network error"));
-    });
     const delay2 = backoffDelayMs(1);
     expect(delay2).toBeGreaterThan(delay1);
     await act(async () => {
       vi.advanceTimersByTime(delay2 - 1);
     });
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(2);
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(2);
     await act(async () => {
       vi.advanceTimersByTime(1);
+      await Promise.resolve();
     });
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(3);
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(3);
 
     // Third attempt succeeds.
     await act(async () => {
-      const [, opts] = saveAnswersMutate.mock.calls[2];
-      opts.onSuccess();
+      await Promise.resolve();
     });
     expect(screen.getByTestId("save-indicator")).toHaveTextContent(
       "Tersimpan",
@@ -2883,30 +3395,29 @@ describe("SessionPage", () => {
 
   it("replays a localStorage-queued payload exactly once on mount and clears it (FR-33, NFR-R5)", async () => {
     saveQueue("session-1", [
-      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false, revision: 1 },
     ]);
-    saveAnswersMutate.mockImplementation((_payload, opts) => {
-      opts?.onSuccess?.();
-    });
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
 
     render(<SessionPage />);
     await enterFullscreen();
 
     await waitFor(() => {
-      expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+      expect(loadQueue("session-1")).toEqual([]);
     });
-    expect(saveAnswersMutate).toHaveBeenCalledWith(
-      {
-        answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
-      },
-      expect.anything(),
+    expect(saveAnswersMutateAsync).toHaveBeenCalledWith(
+      { answers: [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }] },
     );
-    expect(loadQueue("session-1")).toEqual([]);
   });
 
   it("indicator shows unsaved while a save is pending and saved after acknowledgement (FR-34)", async () => {
+    const save = deferred();
+    saveAnswersMutateAsync
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => save.promise);
     render(<SessionPage />);
     await enterFullscreen();
+    await clearInitialReconciliation();
 
     expect(screen.getByTestId("save-indicator")).toHaveTextContent(
       "Tersimpan",
@@ -2921,37 +3432,102 @@ describe("SessionPage", () => {
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
     });
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      const [, opts] = saveAnswersMutate.mock.calls[0];
-      opts.onSuccess();
+      save.resolve();
+      await Promise.resolve();
     });
     expect(screen.getByTestId("save-indicator")).toHaveTextContent(
       "Tersimpan",
     );
   });
 
-  it("keeps a failed queued replay in the next navigation save (FR-3)", async () => {
-    saveQueue("session-1", [
-      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
-    ]);
+  it("acknowledges overlapping q1 and q2 autosaves by each request's own result", async () => {
+    let resolveQ1!: () => void;
+    let resolveQ2!: () => void;
+    saveAnswersMutateAsync.mockResolvedValueOnce(undefined);
+    saveAnswersMutateAsync
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveQ1 = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveQ2 = resolve;
+          }),
+      );
+
     render(<SessionPage />);
     await enterFullscreen();
-    vi.useFakeTimers();
-
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
-    await act(async () => {
-      const [, opts] = saveAnswersMutate.mock.calls[0];
-      opts.onError(new Error("network error"));
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
     });
+    saveAnswersMutateAsync.mockClear();
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const textInput = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT")[0];
+    fireEvent.change(textInput, { target: { value: "second answer" } });
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveQ1();
+      await Promise.resolve();
+    });
+    expect(loadQueue("session-1")).toEqual([
+      {
+        question_id: "q-short",
+        answer: "second answer",
+        flagged_for_review: false,
+        revision: 2,
+      },
+    ]);
+
+    await act(async () => {
+      resolveQ2();
+      await Promise.resolve();
+    });
+    expect(loadQueue("session-1")).toEqual([]);
+  });
+
+  it("keeps a failed queued replay in the next navigation save (FR-3)", async () => {
+    saveQueue("session-1", [
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false, revision: 1 },
+    ]);
+    saveAnswersMutateAsync
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("network error"))
+      .mockResolvedValueOnce(undefined);
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(2);
+    });
+    vi.useFakeTimers();
 
     fireEvent.click(screen.getByTestId("session-nav-2"));
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+      await Promise.resolve();
     });
 
-    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+    expect(saveAnswersMutateAsync.mock.calls[2][0]).toEqual({
       answers: [
         { question_id: "q-mcq", answer: "B", flagged_for_review: false },
       ],
@@ -2961,11 +3537,9 @@ describe("SessionPage", () => {
 
   it("replay does not clobber a server answer for a question absent from the queue (FR-37, NFR-R5)", async () => {
     saveQueue("session-1", [
-      { question_id: "q-short", answer: "queued-value", flagged_for_review: false },
+      { question_id: "q-short", answer: "queued-value", flagged_for_review: false, revision: 1 },
     ]);
-    saveAnswersMutate.mockImplementation((_payload, opts) => {
-      opts?.onSuccess?.();
-    });
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
     sessionState = {
       ...sessionState,
       data: {
@@ -2993,11 +3567,8 @@ describe("SessionPage", () => {
     });
 
     // Replay sent exactly the queue's content — nothing more, nothing less.
-    expect(saveAnswersMutate).toHaveBeenCalledWith(
-      {
-        answers: [{ question_id: "q-short", answer: "queued-value", flagged_for_review: false }],
-      },
-      expect.anything(),
+    expect(saveAnswersMutateAsync).toHaveBeenCalledWith(
+      { answers: [{ question_id: "q-short", answer: "queued-value", flagged_for_review: false }] },
     );
     expect(loadQueue("session-1")).toEqual([]);
   });
@@ -3033,39 +3604,40 @@ describe("SessionPage", () => {
   it("includes the new question index in the next save payload after navigating (FR-36)", async () => {
     render(<SessionPage />);
     await enterFullscreen();
+    await clearInitialReconciliation();
     vi.useFakeTimers();
 
     fireEvent.click(screen.getByTestId("session-nav-2"));
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+      await Promise.resolve();
     });
 
-    expect(saveAnswersMutate).toHaveBeenCalledWith(
+    expect(saveAnswersMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ current_position: 2 }),
-      expect.anything(),
     );
   });
 
   it("sends only the new position after an acknowledged answer save (FR-1)", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
     render(<SessionPage />);
     await enterFullscreen();
+    await clearInitialReconciliation();
     vi.useFakeTimers();
 
     fireEvent.click(screen.getAllByRole("radio")[1]);
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
-    });
-    await act(async () => {
-      const [, opts] = saveAnswersMutate.mock.calls[0];
-      opts.onSuccess();
+      await Promise.resolve();
     });
 
     fireEvent.click(screen.getByTestId("session-nav-2"));
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+      await Promise.resolve();
     });
 
-    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+    expect(saveAnswersMutateAsync.mock.calls[1][0]).toEqual({
       answers: [],
       current_position: 2,
     });
@@ -3074,36 +3646,41 @@ describe("SessionPage", () => {
   it("omits an unchanged current position from an answer save (FR-2)", async () => {
     render(<SessionPage />);
     await enterFullscreen();
+    await clearInitialReconciliation();
     vi.useFakeTimers();
 
     fireEvent.click(screen.getAllByRole("radio")[1]);
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+      await Promise.resolve();
     });
 
-    expect(saveAnswersMutate.mock.calls[0][0]).not.toHaveProperty("current_position");
+    expect(saveAnswersMutateAsync.mock.calls[0][0]).not.toHaveProperty("current_position");
   });
 
   it("keeps an unacknowledged answer in the navigation save after a failed save (FR-3)", async () => {
+    saveAnswersMutateAsync
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("network error"))
+      .mockResolvedValueOnce(undefined);
     render(<SessionPage />);
     await enterFullscreen();
+    await clearInitialReconciliation();
     vi.useFakeTimers();
 
     fireEvent.click(screen.getAllByRole("radio")[1]);
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
-    });
-    await act(async () => {
-      const [, opts] = saveAnswersMutate.mock.calls[0];
-      opts.onError(new Error("network error"));
+      await Promise.resolve();
     });
 
     fireEvent.click(screen.getByTestId("session-nav-2"));
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+      await Promise.resolve();
     });
 
-    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+    expect(saveAnswersMutateAsync.mock.calls[1][0]).toEqual({
       answers: [
         { question_id: "q-mcq", answer: "B", flagged_for_review: false },
       ],
@@ -3112,11 +3689,15 @@ describe("SessionPage", () => {
   });
 
   it("does not overwrite an unacknowledged queue entry during a position-only save (FR-4)", async () => {
-    saveQueue("session-1", [
-      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
-    ]);
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
     render(<SessionPage />);
     await enterFullscreen();
+    await clearInitialReconciliation();
+    const navigationSave = deferred();
+    saveAnswersMutateAsync.mockImplementationOnce(() => navigationSave.promise);
+    saveQueue("session-1", [
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false, revision: 1 },
+    ]);
     vi.useFakeTimers();
 
     fireEvent.click(screen.getByTestId("session-nav-2"));
@@ -3125,8 +3706,14 @@ describe("SessionPage", () => {
     });
 
     expect(loadQueue("session-1")).toEqual([
-      { question_id: "q-mcq", answer: "B", flagged_for_review: false },
+      { question_id: "q-mcq", answer: "B", flagged_for_review: false, revision: 1 },
     ]);
+
+    await act(async () => {
+      navigationSave.resolve();
+      await Promise.resolve();
+    });
+    expect(loadQueue("session-1")).toEqual([]);
   });
 
   it("hydrates position from the server response even when localStorage is empty (FR-36, FR-37)", async () => {
@@ -3144,8 +3731,10 @@ describe("SessionPage", () => {
   // ── Blocker 3: overlapping saves must never lose or misreport an answer ──
 
   it("keeps an edit made during an outstanding save's debounce window dirty after the older acknowledgement (FR-3)", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
     render(<SessionPage />);
     await enterFullscreen();
+    await clearInitialReconciliation();
     vi.useFakeTimers();
 
     fireEvent.click(screen.getByTestId("session-nav-2"));
@@ -3155,29 +3744,34 @@ describe("SessionPage", () => {
     fireEvent.change(textInput(), { target: { value: "v1" } });
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+      await Promise.resolve();
     });
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
 
     fireEvent.change(textInput(), { target: { value: "v2" } });
     await act(async () => {
-      const [, opts] = saveAnswersMutate.mock.calls[0];
-      opts.onSuccess();
-    });
-    await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+      await Promise.resolve();
     });
 
-    expect(saveAnswersMutate.mock.calls[1][0]).toEqual({
+    expect(saveAnswersMutateAsync.mock.calls[1][0]).toEqual({
       answers: [
         { question_id: "q-short", answer: "v2", flagged_for_review: false },
       ],
-      current_position: 2,
     });
   });
 
   it("a stale save's ack must not report 'saved' while a newer save is still pending, and the newer edit survives that newer save failing (Blocker 3a, FR-32, FR-34, NFR-R5)", async () => {
+    const first = deferred();
+    const second = deferred();
+    saveAnswersMutateAsync
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+      .mockResolvedValueOnce(undefined);
     render(<SessionPage />);
     await enterFullscreen();
+    await clearInitialReconciliation();
     vi.useFakeTimers();
 
     fireEvent.click(screen.getByTestId("session-nav-2"));
@@ -3189,7 +3783,7 @@ describe("SessionPage", () => {
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
     });
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
 
     // Second edit before A resolves — flush B. Both A and B are now
     // outstanding: exactly the race a 2s debounce makes routine whenever a
@@ -3198,13 +3792,13 @@ describe("SessionPage", () => {
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
     });
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(2);
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(2);
 
     // A — the OLDER request — acknowledges first. This is the actual race:
     // an older, slower request settling after a newer one was dispatched.
     await act(async () => {
-      const [, optsA] = saveAnswersMutate.mock.calls[0];
-      optsA.onSuccess();
+      first.resolve();
+      await Promise.resolve();
     });
 
     // The stale ack must not claim everything is saved — B (v2) is still
@@ -3215,13 +3809,13 @@ describe("SessionPage", () => {
     // v2 must still be durably queued — recoverable even if the tab closed
     // at this exact instant.
     expect(loadQueue("session-1")).toEqual([
-      { question_id: "q-short", answer: "v2", flagged_for_review: false },
+      { question_id: "q-short", answer: "v2", flagged_for_review: false, revision: 2 },
     ]);
 
     // Now B fails.
     await act(async () => {
-      const [, optsB] = saveAnswersMutate.mock.calls[1];
-      optsB.onError(new Error("network error"));
+      second.reject(new Error("network error"));
+      await Promise.resolve();
     });
 
     // The indicator must say unsaved — the answer is not acknowledged
@@ -3231,15 +3825,16 @@ describe("SessionPage", () => {
     );
     // Still recoverable in the durable queue...
     expect(loadQueue("session-1")).toEqual([
-      { question_id: "q-short", answer: "v2", flagged_for_review: false },
+      { question_id: "q-short", answer: "v2", flagged_for_review: false, revision: 2 },
     ]);
     // ...and actively retried, not silently dropped.
     const delay = backoffDelayMs(0);
     await act(async () => {
       vi.advanceTimersByTime(delay);
+      await Promise.resolve();
     });
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(3);
-    const [retryPayload] = saveAnswersMutate.mock.calls[2];
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(3);
+    const [retryPayload] = saveAnswersMutateAsync.mock.calls[2];
     expect(retryPayload.answers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ question_id: "q-short", answer: "v2" }),
@@ -3248,8 +3843,13 @@ describe("SessionPage", () => {
   });
 
   it("an edit made between a save's PATCH going out and the resulting refetch landing survives the refetch (Blocker 3b, FR-37, NFR-R5)", async () => {
+    const first = deferred();
+    saveAnswersMutateAsync
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => first.promise);
     const { rerender } = render(<SessionPage />);
     await enterFullscreen();
+    await clearInitialReconciliation();
     vi.useFakeTimers();
 
     // Answer q-mcq — flush A.
@@ -3257,11 +3857,11 @@ describe("SessionPage", () => {
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
     });
-    expect(saveAnswersMutate).toHaveBeenCalledTimes(1);
+    expect(saveAnswersMutateAsync).toHaveBeenCalledTimes(1);
 
     // Before A's ack/refetch lands, the student edits a DIFFERENT question.
-    // This edit lives only in React state: the debounce hasn't elapsed, so
-    // it is not yet in the durable queue either.
+    // This edit is already in the durable queue, but the debounce has not
+    // elapsed yet, so it has not been sent to the server.
     fireEvent.click(screen.getByTestId("session-nav-2"));
     const textInput = () =>
       screen.getAllByRole("textbox").filter((tb) => tb.tagName === "INPUT")[0];
@@ -3272,8 +3872,8 @@ describe("SessionPage", () => {
     // snapshot that predates "fresh-edit" — hydration must not depend on
     // whether the save itself ever triggers one.
     await act(async () => {
-      const [, opts] = saveAnswersMutate.mock.calls[0];
-      opts.onSuccess();
+      first.resolve();
+      await Promise.resolve();
     });
     sessionState = {
       ...sessionState,
@@ -3317,6 +3917,7 @@ describe("SessionPage", () => {
     };
     render(<SessionPage />);
     await enterFullscreenUntil(/Section Question 6\?/);
+    await clearInitialReconciliation();
 
     // Must land on question 6, not be reset to question 1.
     expect(screen.getByText(/Soal 6 dari 6/)).toBeInTheDocument();
@@ -3326,9 +3927,10 @@ describe("SessionPage", () => {
     fireEvent.click(screen.getAllByRole("radio")[0]);
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+      await Promise.resolve();
     });
 
-    expect(saveAnswersMutate.mock.calls[0][0]).not.toHaveProperty(
+    expect(saveAnswersMutateAsync.mock.calls[0][0]).not.toHaveProperty(
       "current_position",
     );
   });

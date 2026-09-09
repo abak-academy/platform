@@ -56,15 +56,47 @@ export default function TestsPage() {
     if (topic && !topicOptions.some((opt) => opt.name === topic)) setTopic("");
   }, [topic, topicsForSubject.data]);
 
-  const { data: testsResp, isLoading, isError, error } = useAdminTests({
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [entries, setEntries] = useState<Test[]>([]);
+
+  const {
+    data: testsResp,
+    isLoading,
+    isError,
+    error,
+    isFetching,
+  } = useAdminTests({
     subject: subject || undefined,
     topic: topic || undefined,
     q: q || undefined,
+    cursor,
   });
-  const tests = testsResp?.data ?? [];
+  const tests = entries;
   const create = useCreateTest();
   const update = useUpdateTest(editingTest?.id ?? "");
   const remove = useDeleteTest(deletingId ?? "");
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCursor(undefined);
+    setEntries([]);
+  }, [subject, topic, q]);
+
+  // Accumulate pages
+  useEffect(() => {
+    if (!testsResp) return;
+    if (!cursor) {
+      setEntries(testsResp.data ?? []);
+    } else {
+      setEntries((prev) => [...prev, ...(testsResp.data ?? [])]);
+    }
+  }, [testsResp]);
+
+  function handleLoadMore() {
+    if (testsResp?.next_cursor) {
+      setCursor(testsResp.next_cursor);
+    }
+  }
 
   function openCreate() {
     setEditingTest(null);
@@ -168,7 +200,7 @@ export default function TestsPage() {
         </div>
       </div>
 
-      {isLoading && (
+      {isLoading && tests.length === 0 && (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
@@ -182,13 +214,8 @@ export default function TestsPage() {
         </div>
       )}
 
-      {!isLoading && !isError && (
-        tests.length === 0 ? (
-          <div className="md-card-outlined px-4 py-8 text-center text-ink-500">
-            {t("tests_empty")}
-          </div>
-        ) : (
-          <div className="md-card-outlined divide-y">
+      {!isError && tests.length > 0 && (
+        <div className="md-card-outlined divide-y">
             {tests.map((test) => (
               <div
                 key={test.id}
@@ -246,8 +273,34 @@ export default function TestsPage() {
                 </div>
               </div>
             ))}
-          </div>
-        )
+        </div>
+      )}
+
+      {!isLoading && !isError && tests.length === 0 && (
+        <div className="md-card-outlined px-4 py-8 text-center text-ink-500">
+          {t("tests_empty")}
+        </div>
+      )}
+
+      {!isLoading && !isError && tests.length > 0 && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-label text-sm text-ink-500">
+            {t("tests_shown_of_total")
+              .replace("{shown}", String(tests.length))
+              .replace("{total}", String(testsResp?.total ?? tests.length))}
+          </p>
+          {testsResp?.next_cursor && (
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full"
+              onClick={handleLoadMore}
+              disabled={isFetching}
+            >
+              {isFetching ? t("sys_loading") : t("sys_load_more")}
+            </Button>
+          )}
+        </div>
       )}
 
       <TestModal

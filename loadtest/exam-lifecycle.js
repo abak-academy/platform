@@ -1,4 +1,5 @@
 import exec from "k6/execution";
+import encoding from "k6/encoding";
 import http from "k6/http";
 import { check, sleep } from "k6";
 import { Counter, Rate } from "k6/metrics";
@@ -16,10 +17,18 @@ const SAVE_RETRIES = integerEnv("SAVE_RETRIES", 3);
 const SUBMIT_AT_SECONDS = numberEnv("SUBMIT_AT_SECONDS", 0);
 const MAX_DURATION = __ENV.MAX_DURATION || "2h";
 const REQUIRES_CHECKIN = (__ENV.REQUIRES_CHECKIN || "false") === "true";
+const CONTINUE_TRANSPORT_ERRORS = __ENV.CONTINUE_TRANSPORT_ERRORS === "true";
+const REFRESH_BEFORE_MS = 60 * 1000;
+const TRANSPORT_RETRY_LIMIT = 3;
+const LOGIN_RETRY_JITTER_SECONDS = 0.5;
 
 const lifecycleFailed = new Rate("lifecycle_failed");
 const completedLifecycles = new Counter("completed_lifecycles");
 const lostAnswers = new Counter("lost_answers");
+const loginFirstAttemptFailed = new Rate("login_first_attempt_failed");
+const loginFinalFailed = new Rate("login_final_failed");
+const loginTransportRetries = new Counter("login_transport_retries");
+const transportRetries = new Counter("transport_retries");
 
 export const options = {
   scenarios: {
@@ -33,7 +42,8 @@ export const options = {
   thresholds: {
     lifecycle_failed: ["rate<0.01"],
     lost_answers: ["count==0"],
-    "http_req_failed{phase:login}": ["rate<0.01"],
+    login_final_failed: ["rate<0.01"],
+    "http_req_failed{phase:refresh}": ["rate<0.01"],
     "http_req_failed{phase:start}": ["rate<0.01"],
     "http_req_failed{phase:autosave}": ["rate<0.01"],
     "http_req_failed{phase:reconnect}": ["rate<0.01"],
@@ -74,31 +84,32 @@ export default function (test) {
 
   sleep(Math.random() * LOGIN_SPREAD_SECONDS);
 
-  const login = request("POST", "/auth/login", {
+  const login = loginWithTransportRetry({
     identifier,
     password: PASSWORD,
-  }, clientHeaders, "login");
-  if (!expectStatus(login, 200, "login")) return failLifecycle();
+  }, clientHeaders);
+  if (!login || !expectStatus(login, 200, "login")) return failLifecycle();
 
   const accessToken = json(login, "access_token");
-  if (!accessToken) return failLifecycle();
-  const headers = { ...clientHeaders, Authorization: `Bearer ${accessToken}` };
+  const refreshToken = json(login, "refresh_token");
+  const auth = authState(accessToken, refreshToken);
+  if (!auth) return failLifecycle();
 
-  const registrations = request("GET", "/exam/registrations", null, headers, "registration");
-  if (!expectStatus(registrations, 200, "registration list")) return failLifecycle();
+  const registrations = authenticatedRequest("GET", "/exam/registrations", null, auth, clientHeaders, "registration");
+  if (!registrations || !expectStatus(registrations, 200, "registration list")) return failLifecycle();
 
   const registration = (json(registrations, "data") || []).find((item) => item.exam_id === EXAM_ID);
   if (!registration || !registration.id) return failLifecycle();
 
   if (REQUIRES_CHECKIN) {
-    const checkin = request("POST", "/exam/checkin", { token: registrationToken }, headers, "checkin");
-    if (!expectStatus(checkin, 200, "check-in")) return failLifecycle();
+    const checkin = authenticatedRequest("POST", "/exam/checkin", { token: registrationToken }, auth, clientHeaders, "checkin");
+    if (!checkin || !expectStatus(checkin, 200, "check-in")) return failLifecycle();
   }
 
-  const start = request("POST", "/exam/sessions", {
+  const start = authenticatedRequest("POST", "/exam/sessions", {
     registration_id: registration.id,
-  }, headers, "start");
-  if (!expectStatus(start, 200, "start")) return failLifecycle();
+  }, auth, clientHeaders, "start");
+  if (!start || !expectStatus(start, 200, "start")) return failLifecycle();
 
   const started = responseJSON(start);
   if (!started || !started.session_id || !Array.isArray(started.tests)) return failLifecycle();
@@ -134,28 +145,29 @@ export default function (test) {
       saveAnswers.push(input);
 
       const currentPosition = sectioned ? sectionPosition : position;
-      if (!saveWithRetry(sessionID, saveAnswers, currentPosition, headers)) return failLifecycle();
+      if (!saveWithRetry(sessionID, saveAnswers, currentPosition, auth, clientHeaders)) return failLifecycle();
       answered++;
       position++;
       sectionPosition++;
     }
 
     if (sectioned && saveAnswers.length > 0) {
-      const advance = request(
+      const advance = authenticatedRequest(
         "POST",
         `/exam/sessions/${sessionID}/sections/${testSection.id}/advance`,
         null,
-        headers,
+        auth,
+        clientHeaders,
         "advance",
       );
-      if (!expectStatus(advance, 200, "advance section")) return failLifecycle();
+      if (!advance || !expectStatus(advance, 200, "advance section")) return failLifecycle();
     }
 
     if (MAX_QUESTIONS > 0 && answered >= MAX_QUESTIONS) break;
   }
 
-  const reconnect = request("GET", `/exam/sessions/${sessionID}`, null, headers, "reconnect");
-  if (!expectStatus(reconnect, 200, "reconnect")) return failLifecycle();
+  const reconnect = authenticatedRequest("GET", `/exam/sessions/${sessionID}`, null, auth, clientHeaders, "reconnect");
+  if (!reconnect || !expectStatus(reconnect, 200, "reconnect")) return failLifecycle();
   if (!answersPersisted(responseJSON(reconnect), answers)) return failLifecycle();
 
   if (test.submitAt > 0) {
@@ -163,26 +175,104 @@ export default function (test) {
     if (waitSeconds > 0) sleep(waitSeconds);
   }
 
-  const submit = request("POST", `/exam/sessions/${sessionID}/submit`, null, headers, "submit");
-  if (!expectStatus(submit, 200, "submit")) return failLifecycle();
+  const submit = authenticatedRequest("POST", `/exam/sessions/${sessionID}/submit`, null, auth, clientHeaders, "submit");
+  if (!submit || !expectStatus(submit, 200, "submit")) return failLifecycle();
 
   completedLifecycles.add(1);
   lifecycleFailed.add(false);
 }
 
-function saveWithRetry(sessionID, answers, position, headers) {
+function loginWithTransportRetry(body, clientHeaders) {
+  let response = null;
+  for (let attempt = 0; attempt <= TRANSPORT_RETRY_LIMIT; attempt++) {
+    response = request("POST", "/auth/login", body, clientHeaders, "login");
+    if (attempt === 0) loginFirstAttemptFailed.add(!response || response.status !== 200);
+    if (response && response.status !== 0) {
+      loginFinalFailed.add(response.status !== 200);
+      return response;
+    }
+    if (attempt < TRANSPORT_RETRY_LIMIT) {
+      loginTransportRetries.add(1);
+      transportRetries.add(1, { phase: "login" });
+      sleep(Math.min(2 ** attempt, 30) + Math.random() * LOGIN_RETRY_JITTER_SECONDS);
+    }
+  }
+  loginFinalFailed.add(true);
+  return response;
+}
+
+function saveWithRetry(sessionID, answers, position, auth, clientHeaders) {
   for (let attempt = 0; attempt <= SAVE_RETRIES; attempt++) {
-    const response = request(
+    const response = authenticatedRequest(
       "PATCH",
       `/exam/sessions/${sessionID}/answers`,
       { answers, current_position: position },
-      headers,
+      auth,
+      clientHeaders,
       "autosave",
     );
-    if (response.status === 200) return true;
-    if (attempt < SAVE_RETRIES) sleep(2 ** (attempt + 1));
+    if (response && response.status === 200) return true;
+    if (!response || response.status !== 0) return false;
+    if (attempt < SAVE_RETRIES) {
+      transportRetries.add(1, { phase: "autosave" });
+      sleep(2 ** (attempt + 1) + Math.random());
+    }
   }
   return false;
+}
+
+function authenticatedRequest(method, path, body, auth, clientHeaders, phase) {
+  if (!ensureFreshAccess(auth, clientHeaders)) return null;
+
+  let response = request(method, path, body, authorizedHeaders(auth, clientHeaders), phase);
+  if (response.status !== 401 || !refreshAccess(auth, clientHeaders)) return response;
+
+  response = request(method, path, body, authorizedHeaders(auth, clientHeaders), phase);
+  return response;
+}
+
+function ensureFreshAccess(auth, clientHeaders) {
+  if (auth.expiresAt - Date.now() > REFRESH_BEFORE_MS) return true;
+  return refreshAccess(auth, clientHeaders);
+}
+
+function refreshAccess(auth, clientHeaders) {
+  const response = request(
+    "POST",
+    "/auth/refresh",
+    { refresh_token: auth.refreshToken },
+    clientHeaders,
+    "refresh",
+  );
+  if (!expectStatus(response, 200, "refresh")) return false;
+
+  const next = authState(json(response, "access_token"), json(response, "refresh_token"));
+  if (!next) return false;
+  auth.accessToken = next.accessToken;
+  auth.refreshToken = next.refreshToken;
+  auth.expiresAt = next.expiresAt;
+  return true;
+}
+
+function authState(accessToken, refreshToken) {
+  const expiresAt = tokenExpiry(accessToken);
+  if (!accessToken || !refreshToken || expiresAt === 0) return null;
+  return { accessToken, refreshToken, expiresAt };
+}
+
+function tokenExpiry(accessToken) {
+  try {
+    const parts = accessToken.split(".");
+    if (parts.length !== 3) return 0;
+    const claims = JSON.parse(encoding.b64decode(parts[1], "rawurl", "s"));
+    return Number.isFinite(claims.exp) ? claims.exp * 1000 : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+function authorizedHeaders(auth, clientHeaders) {
+  return { ...clientHeaders, Authorization: `Bearer ${auth.accessToken}` };
 }
 
 function answersPersisted(state, expected) {
@@ -228,7 +318,12 @@ function request(method, path, body, headers, phase) {
     payload = JSON.stringify(body);
     params.headers["Content-Type"] = "application/json";
   }
-  return http.request(method, `${BASE_URL}${path}`, payload, params);
+  for (let attempt = 0; ; attempt++) {
+    const response = http.request(method, `${BASE_URL}${path}`, payload, params);
+    if (!CONTINUE_TRANSPORT_ERRORS || method !== "GET" || response.status !== 0 || attempt >= TRANSPORT_RETRY_LIMIT) return response;
+    transportRetries.add(1, { phase });
+    sleep(Math.min(2 ** attempt, 30) + Math.random());
+  }
 }
 
 function expectStatus(response, status, label) {

@@ -1071,6 +1071,7 @@ export const DICT = {
     tests_page_title: "Penyusun Tes",
     tests_page_description: "Buat dan kelola tes untuk bank soal.",
     tests_empty: "Belum ada tes. Buat tes pertama Anda.",
+    tests_shown_of_total: "Menampilkan {shown} dari {total} tes",
     tests_new: "Tes baru",
     tests_edit: "Sunting tes",
     tests_detail_section_heading: "Detail tes",
@@ -1421,6 +1422,7 @@ export const DICT = {
     session_save_saved: "Tersimpan",
     session_save_saving: "Menyimpan…",
     session_save_unsaved: "Belum tersimpan",
+    session_submit_save_failed: "Jawaban belum tersimpan. Coba lagi sebelum mengumpulkan.",
     session_expiry_recovery_failed: "Pengumpulan otomatis gagal. Jawaban tetap terkunci.",
     violation_warning_fullscreen_exit_body:
       "Anda keluar dari mode layar penuh. Kembali ke mode layar penuh untuk melanjutkan ujian.",
@@ -2700,6 +2702,7 @@ export const DICT = {
     tests_page_title: "Test authoring",
     tests_page_description: "Create and manage tests for the question bank.",
     tests_empty: "No tests yet. Create your first test.",
+    tests_shown_of_total: "Showing {shown} of {total} tests",
     tests_new: "New test",
     tests_edit: "Edit test",
     tests_detail_section_heading: "Test details",
@@ -3050,6 +3053,7 @@ export const DICT = {
     session_save_saved: "Saved",
     session_save_saving: "Saving…",
     session_save_unsaved: "Unsaved",
+    session_submit_save_failed: "Answers are not saved yet. Try again before submitting.",
     session_expiry_recovery_failed: "Automatic submission failed. Answers remain locked.",
     violation_warning_fullscreen_exit_body:
       "You exited fullscreen mode. Return to fullscreen mode to continue the exam.",

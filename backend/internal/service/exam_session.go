@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 
 	"akademi-bimbel/internal/model"
@@ -784,7 +785,6 @@ func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID string
 	if err != nil {
 		return SubmitResult{}, fmt.Errorf("%w: invalid session id", ErrValidation)
 	}
-
 	sess, err := s.storeRepo.GetExamSessionForStudent(ctx, sessID, sid)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -792,14 +792,49 @@ func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID string
 		}
 		return SubmitResult{}, err
 	}
-
-	// A failed load must abort the submit: grading against a partial/empty question
-	// set would CAS-submit the student's only attempt with a wrong score.
+	if sess.Status != "in_progress" {
+		return SubmitResult{}, ErrAlreadySubmitted
+	}
 	questions, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
 	if err != nil {
 		return SubmitResult{}, err
 	}
-	answers, err := s.storeRepo.GetSessionAnswers(ctx, sessID)
+
+	return s.finalizeSession(ctx, sessID, questions, false, func(ctx context.Context, tx pgx.Tx) (*model.ExamSession, error) {
+		return s.storeRepo.GetExamSessionForStudentForUpdateTx(ctx, tx, sessID, sid)
+	})
+}
+
+func (s *Service) finalizeSession(ctx context.Context, sessID uuid.UUID, questions []model.TestDetail, adminSubmitted bool, lockSession func(context.Context, pgx.Tx) (*model.ExamSession, error)) (SubmitResult, error) {
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return SubmitResult{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	sess, err := lockSession(ctx, tx)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return SubmitResult{}, ErrSessionNotFound
+		}
+		return SubmitResult{}, err
+	}
+	if sess.Status != "in_progress" {
+		return SubmitResult{}, ErrAlreadySubmitted
+	}
+
+	result, err := s.finalizeLockedSessionTx(ctx, tx, sessID, questions, adminSubmitted)
+	if err != nil {
+		return SubmitResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SubmitResult{}, err
+	}
+	return result, nil
+}
+
+func (s *Service) finalizeLockedSessionTx(ctx context.Context, tx pgx.Tx, sessID uuid.UUID, questions []model.TestDetail, adminSubmitted bool) (SubmitResult, error) {
+	answers, err := s.storeRepo.GetSessionAnswersTx(ctx, tx, sessID)
 	if err != nil {
 		return SubmitResult{}, err
 	}
@@ -816,13 +851,7 @@ func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID string
 
 	graded, score := gradeObjective(qs, answerMap)
 
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return SubmitResult{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	rows, err := s.storeRepo.SubmitSessionTx(ctx, tx, sessID, graded, score, false)
+	rows, err := s.storeRepo.SubmitSessionTx(ctx, tx, sessID, graded, score, adminSubmitted)
 	if err != nil {
 		return SubmitResult{}, err
 	}
@@ -836,10 +865,6 @@ func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID string
 	// layout awaiting grading no-ops here and gets a second chance from
 	// GradeEssayAnswer's own enqueue once grading completes.
 	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "exam_session", sessID, "CertificateNeeded", CertificateNeededPayload{SessionID: sessID}); err != nil {
-		return SubmitResult{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
 		return SubmitResult{}, err
 	}
 
@@ -941,7 +966,6 @@ func (s *Service) ForceSubmitSession(ctx context.Context, sessionID string) (Sub
 	if err != nil {
 		return SubmitResult{}, fmt.Errorf("%w: invalid session id", ErrValidation)
 	}
-
 	sess, err := s.storeRepo.GetExamSessionByID(ctx, sessID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -949,56 +973,17 @@ func (s *Service) ForceSubmitSession(ctx context.Context, sessionID string) (Sub
 		}
 		return SubmitResult{}, err
 	}
-
-	// Same guard as SubmitSession: never grade against a failed load.
+	if sess.Status != "in_progress" {
+		return SubmitResult{}, ErrAlreadySubmitted
+	}
 	questions, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
 	if err != nil {
 		return SubmitResult{}, err
 	}
-	answers, err := s.storeRepo.GetSessionAnswers(ctx, sessID)
-	if err != nil {
-		return SubmitResult{}, err
-	}
 
-	answerMap := make(map[uuid.UUID]*string)
-	for _, a := range answers {
-		answerMap[a.QuestionID] = a.Answer
-	}
-
-	var qs []model.QuestionWithOptions
-	for _, td := range questions {
-		qs = append(qs, td.Questions...)
-	}
-
-	graded, score := gradeObjective(qs, answerMap)
-
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return SubmitResult{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	rows, err := s.storeRepo.SubmitSessionTx(ctx, tx, sessID, graded, score, true)
-	if err != nil {
-		return SubmitResult{}, err
-	}
-	if rows == 0 {
-		return SubmitResult{}, ErrAlreadySubmitted
-	}
-
-	// See SubmitSession's identical enqueue for why this is unconditional.
-	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, "exam_session", sessID, "CertificateNeeded", CertificateNeededPayload{SessionID: sessID}); err != nil {
-		return SubmitResult{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return SubmitResult{}, err
-	}
-
-	return SubmitResult{
-		Status: "submitted",
-		Score:  &score,
-	}, nil
+	return s.finalizeSession(ctx, sessID, questions, true, func(ctx context.Context, tx pgx.Tx) (*model.ExamSession, error) {
+		return s.storeRepo.GetExamSessionByIDForUpdateTx(ctx, tx, sessID)
+	})
 }
 
 // ---------- Session monitor helpers ----------

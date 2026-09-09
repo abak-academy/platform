@@ -46,7 +46,8 @@ function buildListPath(filters?: AdminTestsFilters): string {
 export function useAdminTests(filters?: AdminTestsFilters, enabled = true) {
   return useQuery({
     queryKey: [...adminTestsKeys.list(), filters ?? {}] as const,
-    queryFn: () => authFetch<{ data: Test[]; next_cursor?: string }>(buildListPath(filters)),
+    queryFn: () =>
+      authFetch<{ data: Test[]; next_cursor?: string; total?: number }>(buildListPath(filters)),
     enabled,
   });
 }

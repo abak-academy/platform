@@ -10,6 +10,7 @@ import {
   ListChecks,
   Pencil,
   Plus,
+  Search,
   Trash2,
   Trophy,
   Users,
@@ -42,10 +43,17 @@ import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import { useAuthStore } from "@/stores/auth";
-import type { ExamLeaderboardEntry, GradingEssayItem, GradingSessionItem } from "@/lib/types";
+import type {
+  ExamLeaderboardEntry,
+  GradingEssayItem,
+  GradingSessionItem,
+  Test,
+} from "@/lib/types";
 
 // admin_school gets scoped operational tabs, never content-management tabs.
 const SCHOOL_SCOPED_TABS: Tab[] = ["overview", "registrations", "results"];
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 // Price/status/publish for an exam-type product live on the attached Product(s),
 // managed via /admin/products (mirrors Course) — not here.
@@ -136,11 +144,21 @@ export default function ExamPackageDetailPage() {
       toast.error(errorMessage(err, t("error_generic")));
     }
   }
-  const { data: availableResp, isLoading: availableLoading } = useAdminTests(
-    undefined,
-    !isSchoolScoped,
-  );
-  const availableTests = availableResp?.data ?? [];
+  const [testSearch, setTestSearch] = useState("");
+  const [testQ, setTestQ] = useState("");
+  const [testCursor, setTestCursor] = useState<string | undefined>(undefined);
+  const [testEntries, setTestEntries] = useState<Test[]>([]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setTestQ(testSearch.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [testSearch]);
+
+  const {
+    data: availableResp,
+    isLoading: availableLoading,
+    isFetching: availableFetching,
+  } = useAdminTests({ q: testQ || undefined, cursor: testCursor }, !isSchoolScoped);
 
   const [lbEntries, setLbEntries] = useState<ExamLeaderboardEntry[]>([]);
   const [lbCursor, setLbCursor] = useState<string | undefined>(undefined);
@@ -202,8 +220,8 @@ export default function ExamPackageDetailPage() {
 
   const availableToAdd = useMemo(() => {
     const attached = new Set(attachedIds);
-    return availableTests.filter((test) => !attached.has(test.id));
-  }, [availableTests, attachedIds]);
+    return testEntries.filter((test) => !attached.has(test.id));
+  }, [testEntries, attachedIds]);
 
   function handleAddTest(testId: string) {
     setAttachedIds((prev) => [...prev, testId]);
@@ -279,6 +297,12 @@ export default function ExamPackageDetailPage() {
     setLbCursor(undefined);
   }, [id]);
 
+  // Reset test-picker pagination when exam or search changes
+  useEffect(() => {
+    setTestCursor(undefined);
+    setTestEntries([]);
+  }, [id, testQ]);
+
   // Accumulate leaderboard pages
   useEffect(() => {
     if (!lb.data) return;
@@ -288,6 +312,22 @@ export default function ExamPackageDetailPage() {
       setLbEntries((prev) => [...prev, ...(lb.data.data ?? [])]);
     }
   }, [lb.data]);
+
+  // Accumulate test-picker pages
+  useEffect(() => {
+    if (!availableResp) return;
+    if (!testCursor) {
+      setTestEntries(availableResp.data ?? []);
+    } else {
+      setTestEntries((prev) => [...prev, ...(availableResp.data ?? [])]);
+    }
+  }, [availableResp]);
+
+  function handleLoadMoreTests() {
+    if (availableResp?.next_cursor) {
+      setTestCursor(availableResp.next_cursor);
+    }
+  }
 
   function handleLoadMore() {
     if (lb.data?.next_cursor) {
@@ -729,7 +769,16 @@ export default function ExamPackageDetailPage() {
                 <h3 className="text-title-medium mb-3 font-semibold">
                   {t("admin_exam_detail_tests_available")}
                 </h3>
-                {availableLoading ? (
+                <div className="relative mb-3">
+                  <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+                  <Input
+                    value={testSearch}
+                    onChange={(e) => setTestSearch(e.target.value)}
+                    placeholder={t("search")}
+                    className="pl-9"
+                  />
+                </div>
+                {availableLoading && testEntries.length === 0 ? (
                   <div className="space-y-2">
                     {Array.from({ length: 3 }).map((_, i) => (
                       <Skeleton key={i} className="h-10 w-full" />
@@ -766,6 +815,28 @@ export default function ExamPackageDetailPage() {
                       </li>
                     ))}
                   </ul>
+                )}
+                <div className="mt-3 text-label text-sm text-ink-500">
+                  {t("tests_shown_of_total")
+                    .replace("{shown}", String(availableToAdd.length))
+                    .replace(
+                      "{total}",
+                      String(availableResp?.total ?? availableToAdd.length),
+                    )}
+                </div>
+                {availableResp?.next_cursor && (
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={handleLoadMoreTests}
+                      disabled={availableFetching}
+                    >
+                      {availableFetching ? t("sys_loading") : t("sys_load_more")}
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>

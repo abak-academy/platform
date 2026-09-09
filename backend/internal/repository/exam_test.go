@@ -19,6 +19,7 @@ var _ interface {
 	GetTestByID(context.Context, uuid.UUID) (*model.Test, error)
 	GetTestDetail(context.Context, uuid.UUID) (*model.TestDetail, error)
 	ListTests(context.Context, TestFilter) ([]model.Test, string, error)
+	CountTests(context.Context, TestFilter) (int, error)
 	UpdateTest(context.Context, uuid.UUID, *model.Test) error
 	DeleteTest(context.Context, uuid.UUID) error
 	ListQuestions(context.Context, uuid.UUID) ([]model.QuestionWithOptions, error)

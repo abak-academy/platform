@@ -67,8 +67,8 @@ func (h *Handler) AdminCreateSchool(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	if req.Name == "" || req.Code == "" {
-		return badRequest(c, "name and code are required")
+	if req.Code == "" {
+		return badRequest(c, "code is required")
 	}
 
 	school, err := h.svc.CreateSchool(c.Request().Context(), req.Name, req.Code, req.NPSN, req.SchoolTypes, req.Alamat)

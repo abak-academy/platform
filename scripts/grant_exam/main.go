@@ -1,4 +1,5 @@
-// Grant exam access from a CSV of exam_id + username.
+// Grant student to exam — resolve usernames to student IDs, then bulk-enroll
+// them into an exam from a CSV of exam_id + username.
 //
 // For each username, GET /api/v1/admin/exam-grants/students/search?q=<username>
 // to resolve student id (exact username match). Then POST /api/v1/admin/exam-grants
@@ -10,7 +11,12 @@
 //	<exam-uuid>,zalf6539
 //	<exam-uuid>,"user-a,user-b"
 //
-//	go run scripts/grant_exam.go
+// Output CSV: exam_id,username,student_id,status,http_status,name,error with
+// status granted | skipped | failed (skipped = already registered).
+//
+// Operator guide with examples: docs/runbooks/admin-scripts.md.
+//
+//	go run scripts/grant_exam/main.go
 package main
 
 import (

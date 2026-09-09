@@ -24,7 +24,7 @@ export interface BulkOrderExcluded {
 // (backend/internal/service/bulk_exam_order.go:23-28)
 export interface BulkExamOrderPreview {
   net_new_count: number;
-  excluded: BulkOrderExcluded[];
+  excluded?: BulkOrderExcluded[];
   unit_price: number;
   total: number;
 }

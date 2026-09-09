@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Plus,
   MoreHorizontal,
@@ -74,6 +74,11 @@ const ALL_SCHOOLS_VALUE = "_all_";
 // sentinel too; it maps back to "" (registered without a school).
 const NO_SCHOOL_VALUE = "_none_";
 
+// Search is sent to the server (q param), so it must be debounced the same
+// way the schools page debounces school search — otherwise every keystroke
+// fires a new paginated request and resets the accumulated list.
+const SEARCH_DEBOUNCE_MS = 300;
+
 function compactStudentRegistration(
   form: StudentRegistrationInput,
 ): StudentRegistrationInput {
@@ -127,16 +132,32 @@ export default function SchoolStudentsPage() {
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
 
   // Filters
-  const [search, setSearch] = useState("");
+  // searchInput is the raw input value; debouncedSearch is what actually goes
+  // to the server (q param) and into filterKey below, so pagination doesn't
+  // reset and refetch on every keystroke.
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [searchInput]);
 
   // Cursor pagination
   const [accumulated, setAccumulated] = useState<AdminStudent[]>([]);
   const [activeCursor, setActiveCursor] = useState<string | undefined>(undefined);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
 
+  // Stats mirror the server's filter-aware counts (Service.ListStudents →
+  // CountStudentsAdmin), not accumulated.length — that would only ever count
+  // the rows loaded so far, which was the "Total ≈ 20" bug previously fixed
+  // on the schools page. Held in state (rather than read straight off the
+  // query) so the numbers don't flash to 0 between pages.
+  const [stats, setStats] = useState({ total: 0, active: 0, deactivated: 0 });
+
   // Guard: reset pagination on filter change
-  const filterKey = `${statusFilter}:${search}:${selectedSchoolId}`;
+  const filterKey = `${statusFilter}:${debouncedSearch}:${selectedSchoolId}`;
   const pageFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -150,7 +171,7 @@ export default function SchoolStudentsPage() {
 
   const query = useAdminStudents({
     status: statusFilter === "all" ? undefined : statusFilter,
-    q: search || undefined,
+    q: debouncedSearch || undefined,
     cursor: activeCursor,
     limit: 20,
     ...(isSuperAdmin && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
@@ -168,6 +189,11 @@ export default function SchoolStudentsPage() {
       return [...prev, ...fresh];
     });
     setNextCursor(query.data.next_cursor);
+    setStats({
+      total: query.data.total ?? 0,
+      active: query.data.active ?? 0,
+      deactivated: query.data.deactivated ?? 0,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data]);
 
@@ -218,15 +244,6 @@ export default function SchoolStudentsPage() {
   const changeStatus = useChangeStudentStatus();
   const reissueCreds = useReissueStudentCredentials();
   const setPassword = useSetStudentPassword();
-
-  const stats = useMemo(
-    () => ({
-      total: accumulated.length,
-      active: accumulated.filter((s) => s.status === "active").length,
-      deactivated: accumulated.filter((s) => s.status === "deactivated").length,
-    }),
-    [accumulated]
-  );
 
   // Region hooks (Task 17)
   const { data: provinces, isLoading: provincesLoading } = useProvinces();
@@ -489,28 +506,16 @@ export default function SchoolStudentsPage() {
     },
   ];
 
-  // Loading state (first page only)
-  if (query.isLoading && accumulated.length === 0) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader icon={UserRound} title={t("school_students_title")} description={t("sys_loading")} />
-        <div className="py-12 text-center text-ink-500">
-          {t("sys_loading_data")}
-        </div>
-      </div>
-    );
-  }
-
-  if (query.error && accumulated.length === 0) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader icon={UserRound} title={t("school_students_title")} description={t("sys_error_title")} />
-        <div className="py-12 text-center text-ink-500">
-          {t("sys_error_load")}
-        </div>
-      </div>
-    );
-  }
+  // Loading/error states render inside the table (DataTable's empty cell)
+  // instead of replacing the whole page — an early return would unmount the
+  // search input mid-search, dropping its focus every time results refresh
+  // (same shape as ParticipantPicker, which keeps its toolbar mounted).
+  const tableEmpty =
+    query.error && accumulated.length === 0
+      ? t("sys_error_load")
+      : query.isLoading
+        ? t("sys_loading_data")
+        : t("students_empty");
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
@@ -629,8 +634,8 @@ export default function SchoolStudentsPage() {
           </Select>
           <Search className="size-4 text-ink-400" />
           <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder={t("students_search_placeholder")}
             className="h-9 w-[200px] text-xs"
           />
@@ -642,7 +647,7 @@ export default function SchoolStudentsPage() {
         columns={columns}
         rows={accumulated}
         rowKey={(s) => s.id}
-        empty={t("students_empty")}
+        empty={tableEmpty}
         data-testid="school-students-table"
         footer={
           nextCursor ? (

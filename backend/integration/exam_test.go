@@ -190,6 +190,7 @@ func TestExam_AdminListTests_returns_data_and_cursor(t *testing.T) {
 	require.True(t, ok, "data should be array, got %T", out["data"])
 	assert.Len(t, data, 3)
 	assert.NotNil(t, out["next_cursor"])
+	assert.Equal(t, float64(3), out["total"])
 }
 
 func TestExam_AdminListTests_includes_question_count_per_row(t *testing.T) {
