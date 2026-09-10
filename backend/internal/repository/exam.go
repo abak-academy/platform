@@ -1353,7 +1353,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 		(
 			SELECT COUNT(*) FROM exam_registration r
 			JOIN users u ON u.id = r.student_id
-			WHERE r.exam_id = e.id AND ($1::uuid IS NULL OR u.school_id = $1)
+			WHERE r.exam_id = e.id AND r.status <> 'revoked' AND ($1::uuid IS NULL OR u.school_id = $1)
 		) AS registration_count
 	FROM exam e
 	WHERE 1=1`
@@ -1660,9 +1660,12 @@ func (r *Repository) ReplaceExamTestsTx(ctx context.Context, tx pgx.Tx, examID u
 	return nil
 }
 
-// CreateExamRegistration inserts a row using ON CONFLICT DO NOTHING — outbox
+// CreateExamRegistration inserts a row using ON CONFLICT upsert — outbox
 // re-delivery (same OrderPaid event processed twice) collapses to a no-op when
-// (student_id, exam_id) already exists. RowsAffected == 0 is success, not error.
+// (student_id, exam_id) already exists. The conflict branch also reactivates a
+// revoked registration on re-purchase: status resets to 'registered' and the
+// old token/checked-in/revoked bookkeeping is cleared, while participant_number
+// and attempts history stay untouched. RowsAffected == 0 is success, not error.
 func (r *Repository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
 	// Serialize participant-number assignment per exam so concurrent
 	// registrations (outbox fan-out, admin grant) can't compute the same
@@ -1675,14 +1678,20 @@ func (r *Repository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg 
 	); err != nil {
 		return err
 	}
-	// ON CONFLICT DO NOTHING keeps re-delivery idempotent; when it skips, the
+	// ON CONFLICT keeps re-delivery idempotent (still exactly one row): the
+	// conditional DO UPDATE only fires for a revoked row, so a re-delivery or
+	// duplicate insert against a live registration is a no-op, while a later
+	// paid order after a revoke revives it. When the branch doesn't fire, the
 	// MAX+1 subquery result is simply discarded so no number is consumed.
 	_, err := tx.Exec(ctx,
 		`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number)
 		VALUES ($1, $2, $3, $4,
 			(SELECT COALESCE(MAX(participant_number), 0) + 1
 			 FROM exam_registration WHERE exam_id = $2))
-		ON CONFLICT (student_id, exam_id) DO NOTHING`,
+		ON CONFLICT (student_id, exam_id) DO UPDATE
+		SET status = 'registered', token = EXCLUDED.token, checked_in_at = NULL,
+		    revoked_at = NULL, revoked_by = NULL
+		WHERE exam_registration.status = 'revoked'`,
 		reg.StudentID, reg.ExamID, reg.Token, reg.Status,
 	)
 	return err
@@ -1710,7 +1719,7 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 			ORDER BY attempt_number DESC
 			LIMIT 1
 		) s ON true
-		WHERE reg.student_id = $1
+		WHERE reg.student_id = $1 AND reg.status <> 'revoked'
 		ORDER BY reg.created_at DESC`,
 		studentID,
 	)
@@ -2031,6 +2040,152 @@ func (r *Repository) CheckInExamTx(ctx context.Context, tx pgx.Tx, regID uuid.UU
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// RevokeExamRegistrationsTx flips the live (non-revoked) exam registrations
+// for the given (exam, student) pairs to status='revoked', stamping who and
+// when. Rows already revoked are left untouched (idempotent). Returns a
+// studentID → registrationID map for the rows actually revoked in this call —
+// callers use it for audit metadata and exam:device:<regID> Redis cleanup.
+func (r *Repository) RevokeExamRegistrationsTx(ctx context.Context, tx pgx.Tx, examID uuid.UUID, studentIDs []uuid.UUID, actorID string) (map[uuid.UUID]uuid.UUID, error) {
+	if len(studentIDs) == 0 {
+		return map[uuid.UUID]uuid.UUID{}, nil
+	}
+
+	rows, err := tx.Query(ctx,
+		`UPDATE exam_registration
+		SET status = 'revoked', revoked_at = now(), revoked_by = $3
+		WHERE exam_id = $1 AND student_id = ANY($2) AND status <> 'revoked'
+		RETURNING student_id, id`,
+		examID, studentIDs, actorID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	revoked := make(map[uuid.UUID]uuid.UUID)
+	for rows.Next() {
+		var studentID, regID uuid.UUID
+		if err := rows.Scan(&studentID, &regID); err != nil {
+			return nil, err
+		}
+		revoked[studentID] = regID
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return revoked, nil
+}
+
+// CountInProgressSessions returns how many exam_session rows are still open
+// for the given (exam, student) pairs. Revoke refuses registrations with a
+// live session — the session's save/submit path never re-checks the
+// registration status, so revoking under it would leave a half-tracked
+// attempt.
+func (r *Repository) CountInProgressSessions(ctx context.Context, examID uuid.UUID, studentIDs []uuid.UUID) ([]uuid.UUID, error) {
+	if len(studentIDs) == 0 {
+		return []uuid.UUID{}, nil
+	}
+
+	rows, err := r.pool.Query(ctx,
+		`SELECT DISTINCT student_id FROM exam_session
+		WHERE exam_id = $1 AND student_id = ANY($2) AND status = 'in_progress'`,
+		examID, studentIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// GetExamRegistrationStatuses returns the current status of each
+// (exam, student) pair, keyed by student_id. Missing pairs are simply absent
+// from the map — callers treat absence as "no registration".
+func (r *Repository) GetExamRegistrationStatuses(ctx context.Context, examID uuid.UUID, studentIDs []uuid.UUID) (map[uuid.UUID]string, error) {
+	if len(studentIDs) == 0 {
+		return map[uuid.UUID]string{}, nil
+	}
+
+	rows, err := r.pool.Query(ctx,
+		`SELECT student_id, status FROM exam_registration WHERE exam_id = $1 AND student_id = ANY($2)`,
+		examID, studentIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	statuses := make(map[uuid.UUID]string, len(studentIDs))
+	for rows.Next() {
+		var id uuid.UUID
+		var status string
+		if err := rows.Scan(&id, &status); err != nil {
+			return nil, err
+		}
+		statuses[id] = status
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return statuses, nil
+}
+
+// RevokeExamRegistrationsByOrderTx revokes the exam registrations created by
+// a refunded order: for each exam-type order item, resolve the exams behind
+// the product and revoke every order participant's (or the buyer's, for
+// self-purchases) registration for those exams. Mirror of
+// RevokeEnrollmentsByOrder — runs inside the refund's transaction.
+// examsByProduct maps product_id → exam_ids linked by product_exam.
+func (r *Repository) RevokeExamRegistrationsByOrderTx(ctx context.Context, tx pgx.Tx, examsByProduct map[uuid.UUID][]uuid.UUID, participants []uuid.UUID, actorID string) error {
+	// Resolve the distinct (exam, student) pairs to revoke. An order item can
+	// link several exams (product_exam is M:N) and several participants share
+	// one product.
+	type pair struct {
+		examID    uuid.UUID
+		studentID uuid.UUID
+	}
+	var pairs []pair
+	seen := make(map[pair]bool)
+	for _, p := range participants {
+		for _, examIDs := range examsByProduct {
+			for _, examID := range examIDs {
+				key := pair{examID: examID, studentID: p}
+				if !seen[key] {
+					seen[key] = true
+					pairs = append(pairs, key)
+				}
+			}
+		}
+	}
+	if len(pairs) == 0 {
+		return nil
+	}
+
+	for _, pair := range pairs {
+		if _, err := tx.Exec(ctx,
+			`UPDATE exam_registration
+			SET status = 'revoked', revoked_at = now(), revoked_by = $3
+			WHERE exam_id = $1 AND student_id = $2 AND status <> 'revoked'`,
+			pair.examID, pair.studentID, actorID,
+		); err != nil {
+			return err
+		}
 	}
 	return nil
 }

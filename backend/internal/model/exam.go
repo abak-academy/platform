@@ -199,6 +199,10 @@ type ExamRegistration struct {
 	// ParticipantNumber is a per-exam sequence assigned at registration (nil for
 	// rows predating the column until backfilled). Displayed as ParticipantNo.
 	ParticipantNumber *int `json:"participant_number"`
+	// RevokedAt/RevokedBy are set when an admin revokes the registration (soft
+	// revoke — the row is kept so sessions/history stay referentially intact).
+	RevokedAt *time.Time `json:"revoked_at"`
+	RevokedBy *string    `json:"revoked_by"`
 }
 
 // ExamSession is one in-flight attempt by a student; multiple sessions per registration

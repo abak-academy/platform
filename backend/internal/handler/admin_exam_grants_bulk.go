@@ -57,3 +57,53 @@ func (h *Handler) AdminEnqueueExamGrantBulk(c echo.Context) error {
 	}
 	return c.JSON(http.StatusAccepted, map[string]string{"job_id": jobID})
 }
+
+// AdminPresignExamRevokeBulkUpload handles POST /admin/exam-grants/revoke/bulk/presign.
+// Revoke-side twin of AdminPresignExamGrantBulkUpload — same query params,
+// different key prefix (exam-revoke-bulk/{examID}/...).
+func (h *Handler) AdminPresignExamRevokeBulkUpload(c echo.Context) error {
+	examID := c.QueryParam("exam_id")
+	if examID == "" {
+		return badRequest(c, "exam_id is required")
+	}
+	filename := c.QueryParam("filename")
+	if filename == "" {
+		return badRequest(c, "filename is required")
+	}
+	contentType := c.QueryParam("content_type")
+
+	resp, err := h.svc.GeneratePresignedExamRevokeBulkUploadURL(c.Request().Context(), examID, filename, contentType)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+// AdminEnqueueExamRevokeBulk handles POST /admin/exam-grants/revoke/bulk.
+// Enqueues an async exam_revoke_bulk job from an already-uploaded CSV.
+func (h *Handler) AdminEnqueueExamRevokeBulk(c echo.Context) error {
+	claims := ClaimsFromContext(c)
+	if claims == nil {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing or invalid token"})
+	}
+
+	var req struct {
+		ExamID  string `json:"exam_id"`
+		FileKey string `json:"file_key"`
+	}
+	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if req.ExamID == "" {
+		return badRequest(c, "exam_id is required")
+	}
+	if req.FileKey == "" {
+		return badRequest(c, "file_key is required")
+	}
+
+	jobID, err := h.svc.EnqueueExamRevokeBulkJob(c.Request().Context(), req.ExamID, claims.Sub, req.FileKey)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusAccepted, map[string]string{"job_id": jobID})
+}
