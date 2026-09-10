@@ -65,6 +65,21 @@ describe("bulk-import-format templates", () => {
     expect(DICT.en.bulk_format_school_npsn.toLowerCase()).toContain("unique");
   });
 
+  it("student NPSN guide explains the transitional legacy school header", () => {
+    expect(DICT.id.bulk_format_student_school_npsn).toContain(
+      "Selama rollout NPSN masih berlangsung, sekolah yang belum memiliki NPSN boleh mengganti header `school_npsn` dengan `school` dan mengisi nama sekolah yang terdaftar.",
+    );
+    expect(DICT.id.bulk_format_student_school_npsn).toContain(
+      "Jangan sertakan kedua header tersebut sekaligus; jika keduanya ada, parser memprioritaskan `school_npsn`.",
+    );
+    expect(DICT.en.bulk_format_student_school_npsn).toContain(
+      "While the NPSN rollout is pending, a school without an NPSN may replace the `school_npsn` header with `school` and provide the registered school name.",
+    );
+    expect(DICT.en.bulk_format_student_school_npsn).toContain(
+      "Do not include both headers; when both are present, the parser prioritizes `school_npsn`.",
+    );
+  });
+
   it("student guide includes password only for super admin", () => {
     const t = (key: I18nKey) => key;
     expect(buildStudentGuideText(t, false)).not.toContain("bulk_format_student_password");
