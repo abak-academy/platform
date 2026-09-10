@@ -6,8 +6,42 @@ import (
 	"sync"
 	"testing"
 
+	"akademi-bimbel/config"
 	"akademi-bimbel/internal/model"
 )
+
+func TestEnqueueStudentBulkJobFromData_LegacyHeaderFollowsNPSNEnforcement(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	previousConfig := svc.cfg
+	t.Cleanup(func() { svc.cfg = previousConfig })
+
+	ctx := context.Background()
+	svc.cfg = &config.Config{}
+	code := "legacy_enqueue_" + uniqueSuffix()
+	school, err := svc.CreateSchool(ctx, "Legacy Enqueue School "+code, code, nil, []string{"sma"}, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool: %v", err)
+	}
+	creator, err := svc.RegisterStudent(ctx, school.ID, "Legacy Enqueue Admin "+uniqueSuffix(), "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+	csv := []byte("name,school,jenjang\nBudi," + school.Name + ",sma\n")
+	fileKey := "student-bulk/" + school.ID + "/" + uniqueSuffix() + "-students.csv"
+
+	jobID, err := svc.enqueueStudentBulkJobFromData(ctx, school.ID, creator.ID, fileKey, csv)
+	if err != nil {
+		t.Fatalf("enqueue with enforcement disabled: %v", err)
+	}
+	if jobID == "" {
+		t.Fatal("enqueue with enforcement disabled returned an empty job id")
+	}
+
+	svc.cfg = &config.Config{EnforceSchoolNPSNRegistration: true}
+	if _, err := svc.enqueueStudentBulkJobFromData(ctx, school.ID, creator.ID, fileKey, csv); !errors.Is(err, ErrMissingCSVHeader) {
+		t.Fatalf("enqueue with enforcement enabled: want ErrMissingCSVHeader, got %v", err)
+	}
+}
 
 func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 	svc, _ := newRealDBService(t)
