@@ -96,6 +96,14 @@ const csvPresignMutateAsync = vi.fn();
 const csvEnqueueMutateAsync = vi.fn();
 const csvPutFile = vi.fn();
 
+const revokeMutateSpy = vi.fn();
+let revokeShouldError = false;
+let revokeErrorMessage = "";
+let revokeMockResult: any = null;
+
+const revokeCsvPresignMutateAsync = vi.fn();
+const revokeCsvEnqueueMutateAsync = vi.fn();
+
 const csvJobStatusState: {
   data: {
     id: string;
@@ -133,6 +141,27 @@ vi.mock("@/lib/hooks/admin-exam-grants", () => ({
   }),
   useEnqueueExamGrantBulk: () => ({
     mutateAsync: csvEnqueueMutateAsync,
+    isPending: false,
+  }),
+  useRevokeExamAccess: () => ({
+    isPending: false,
+    isError: false,
+    reset: vi.fn(),
+    mutate: (input: any, opts?: any) => {
+      revokeMutateSpy(input, opts);
+      if (revokeShouldError) {
+        opts?.onError?.(new Error(revokeErrorMessage));
+      } else {
+        opts?.onSuccess?.(revokeMockResult);
+      }
+    },
+  }),
+  usePresignExamRevokeBulkUpload: (examId: string) => ({
+    mutateAsync: (args: unknown) => revokeCsvPresignMutateAsync(examId, args),
+    isPending: false,
+  }),
+  useEnqueueExamRevokeBulk: () => ({
+    mutateAsync: revokeCsvEnqueueMutateAsync,
     isPending: false,
   }),
 }));
@@ -193,9 +222,14 @@ beforeEach(() => {
   csvPresignMutateAsync.mockReset();
   csvEnqueueMutateAsync.mockReset();
   csvPutFile.mockReset();
+  revokeCsvPresignMutateAsync.mockReset();
+  revokeCsvEnqueueMutateAsync.mockReset();
   csvJobStatusState.data = null;
   holdGrantMutation = false;
   heldGrantOptions = null;
+  revokeShouldError = false;
+  revokeErrorMessage = "";
+  revokeMockResult = null;
 });
 
 function wrapperFactory() {
@@ -758,6 +792,184 @@ describe("ExamRegistrationsTab — super_admin CSV bulk grant flow (Frontend B2)
     expect(csvPutFile).not.toHaveBeenCalled();
     expect(csvEnqueueMutateAsync).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("ExamRegistrationsTab — super_admin roster revoke flow", () => {
+  beforeEach(() => {
+    authUser = { role: "super_admin" };
+    rosterIsLoading = false;
+    rosterIsError = false;
+    revokeShouldError = false;
+    revokeErrorMessage = "";
+    revokeMockResult = null;
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  const rosterRows = [
+    {
+      registration_id: "reg-1",
+      student_id: "s1",
+      student_name: "Andi Saputra",
+      student_username: "andi123",
+      participant_number: 1,
+      participant_no: "250620-0042-000001",
+      status: "registered",
+      checked_in_at: null,
+      token: "TOKEN-ANDI-001",
+    },
+    {
+      registration_id: "reg-2",
+      student_id: "s2",
+      student_name: "Budi Santoso",
+      student_username: "budi456",
+      participant_number: 2,
+      participant_no: "250620-0042-000002",
+      status: "registered",
+      checked_in_at: null,
+      token: "TOKEN-BUDI-002",
+    },
+    {
+      registration_id: "reg-3",
+      student_id: "s3",
+      student_name: "Citra Dewi",
+      student_username: null,
+      participant_number: 3,
+      participant_no: "250620-0042-000003",
+      status: "revoked",
+      checked_in_at: null,
+      token: "TOKEN-CITRA-003",
+    },
+  ];
+
+  it("shows selection checkboxes only for super_admin", () => {
+    rosterData = { data: rosterRows };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.getByTestId("roster-select-all")).toBeInTheDocument();
+    expect(screen.getByTestId("roster-select-s1")).toBeInTheDocument();
+    expect(screen.getByTestId("roster-select-s2")).toBeInTheDocument();
+  });
+
+  it("does not show checkboxes for admin_school", () => {
+    authUser = { role: "admin_school", school_id: "school-1" };
+    rosterData = { data: rosterRows };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.queryByTestId("roster-select-all")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("roster-select-s1")).not.toBeInTheDocument();
+  });
+
+  it("excludes revoked rows from selection and hides their checkbox", () => {
+    rosterData = { data: rosterRows };
+    revokeMockResult = { revoked_count: 2, results: [] };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.queryByTestId("roster-select-s3")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("roster-select-all"));
+    expect(screen.getByTestId("roster-revoke-button")).toHaveTextContent("exam_roster_revoke");
+
+    fireEvent.click(screen.getByTestId("roster-revoke-button"));
+    fireEvent.click(screen.getByTestId("roster-revoke-confirm"));
+
+    expect(revokeMutateSpy).toHaveBeenCalledWith(
+      { exam_id: "exam-1", student_ids: ["s1", "s2"] },
+      expect.any(Object),
+    );
+  });
+
+  it("shows the per-row result dialog and clears the selection after a successful revoke", async () => {
+    rosterData = { data: rosterRows };
+    revokeMockResult = {
+      revoked_count: 1,
+      results: [
+        { student_id: "s1", name: "Andi Saputra", username: "andi123", status: "revoked", message: "" },
+        { student_id: "s2", name: "Budi Santoso", username: "budi456", status: "failed", message: "has an in-progress session: force-submit first" },
+      ],
+    };
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    fireEvent.click(screen.getByTestId("roster-select-s1"));
+    fireEvent.click(screen.getByTestId("roster-select-s2"));
+    fireEvent.click(screen.getByTestId("roster-revoke-button"));
+    fireEvent.click(screen.getByTestId("roster-revoke-confirm"));
+
+    await waitFor(() => {
+      expect(screen.getByText("exam_roster_revoke_result_title")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("failed — has an in-progress session: force-submit first"),
+    ).toBeInTheDocument();
+    expect(toast.success).toHaveBeenCalledWith("exam_roster_revoke_success".replace("{n}", "1"));
+    expect(screen.queryByTestId("roster-revoke-button")).not.toBeInTheDocument();
+  });
+
+  it("shows an error toast when the revoke request fails", async () => {
+    rosterData = { data: rosterRows };
+    revokeShouldError = true;
+    revokeErrorMessage = "registration has an in-progress session";
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    fireEvent.click(screen.getByTestId("roster-select-all"));
+    fireEvent.click(screen.getByTestId("roster-revoke-button"));
+    fireEvent.click(screen.getByTestId("roster-revoke-confirm"));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("registration has an in-progress session");
+    });
+    expect(screen.queryByText("exam_roster_revoke_result_title")).not.toBeInTheDocument();
+  });
+
+  it("runs the revoke CSV flow with the revoke presign/enqueue endpoints", async () => {
+    rosterData = { data: [] };
+    revokeCsvPresignMutateAsync.mockResolvedValueOnce({
+      url: "http://minio.local/exam-revoke-bulk/exam-1/uuid.csv?sig=abc",
+      method: "PUT",
+      key: "exam-revoke-bulk/exam-1/uuid.csv",
+    });
+    csvPutFile.mockResolvedValueOnce(undefined);
+    revokeCsvEnqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-r1" });
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    fireEvent.click(screen.getByTestId("open-grant-modal"));
+    const dialog = within(screen.getByRole("dialog"));
+    fireEvent.click(dialog.getByTestId("grant-mode-revoke-csv"));
+    expect(dialog.getByText("exam_revoke_bulk_title")).toBeInTheDocument();
+
+    fireEvent.change(dialog.getByTestId("csv-file-input"), {
+      target: { files: [new File(["username\nandi123\n"], "revokes.csv", { type: "text/csv" })] },
+    });
+    fireEvent.click(dialog.getByTestId("csv-upload-submit"));
+
+    await waitFor(() => {
+      expect(revokeCsvPresignMutateAsync).toHaveBeenCalledWith("exam-1", {
+        filename: "revokes.csv",
+        contentType: "text/csv",
+      });
+    });
+    await waitFor(() => {
+      expect(csvPutFile).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(revokeCsvEnqueueMutateAsync).toHaveBeenCalledWith({
+        examId: "exam-1",
+        fileKey: "exam-revoke-bulk/exam-1/uuid.csv",
+      });
+    });
   });
 });
 

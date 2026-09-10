@@ -44,6 +44,16 @@ func (s *Service) GeneratePresignedExamGrantBulkUploadURL(ctx context.Context, e
 	return s.presignPrivatePut(ctx, fmt.Sprintf("exam-grant-bulk/%s/%s-%s", examID, uuid.New().String(), filename))
 }
 
+// GeneratePresignedExamRevokeBulkUploadURL is the revoke-side twin of
+// GeneratePresignedExamGrantBulkUploadURL: usernames-only CSV, so the exam
+// context has to live in the key (exam-revoke-bulk/{examID}/...).
+func (s *Service) GeneratePresignedExamRevokeBulkUploadURL(ctx context.Context, examID, filename, contentType string) (*PrivateUploadURL, error) {
+	if _, err := uuid.Parse(examID); err != nil {
+		return nil, ErrInvalidUUID
+	}
+	return s.presignPrivatePut(ctx, fmt.Sprintf("exam-revoke-bulk/%s/%s-%s", examID, uuid.New().String(), filename))
+}
+
 func (s *Service) presignPrivatePut(ctx context.Context, key string) (*PrivateUploadURL, error) {
 	if s.storage == nil {
 		return nil, ErrStorageNotConfigured
@@ -174,6 +184,34 @@ func (s *Service) EnqueueExamGrantBulkJob(ctx context.Context, examID, createdBy
 	}
 
 	job := &model.Job{Type: "exam_grant_bulk", InputURL: &fileKey, CreatedBy: createdBy}
+	if err := s.storeRepo.CreateJob(ctx, job); err != nil {
+		return "", err
+	}
+	return job.ID, nil
+}
+
+// EnqueueExamRevokeBulkJob validates that fileKey lives under
+// exam-revoke-bulk/{examID}/ and exists in the private bucket, then creates
+// the exam_revoke_bulk job. Row-level CSV validation (username header,
+// per-row revoke/skip/fail resolution) happens in the worker, not here —
+// mirror of EnqueueExamGrantBulkJob.
+func (s *Service) EnqueueExamRevokeBulkJob(ctx context.Context, examID, createdBy, fileKey string) (string, error) {
+	if _, err := uuid.Parse(examID); err != nil {
+		return "", ErrInvalidUUID
+	}
+
+	if !strings.HasPrefix(fileKey, fmt.Sprintf("exam-revoke-bulk/%s/", examID)) {
+		return "", ErrUploadNotFound
+	}
+
+	if _, err := s.storage.StatObject(ctx, s.cfg.ObjectStoragePrivateBucketName, fileKey, minio.StatObjectOptions{}); err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return "", ErrUploadNotFound
+		}
+		return "", err
+	}
+
+	job := &model.Job{Type: "exam_revoke_bulk", InputURL: &fileKey, CreatedBy: createdBy}
 	if err := s.storeRepo.CreateJob(ctx, job); err != nil {
 		return "", err
 	}

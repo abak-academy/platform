@@ -1535,6 +1535,18 @@ export const DICT = {
     exam_grant_bulk_no_file: "Pilih file CSV terlebih dahulu.",
     exam_grant_bulk_put_failed: "Gagal mengunggah file.",
     exam_grant_bulk_enqueue_failed: "Gagal memulai proses.",
+    exam_grant_mode_revoke_csv: "Revoke CSV",
+    exam_revoke_bulk_title: "Revoke Akses Ujian via CSV",
+    exam_revoke_bulk_download_template: "Unduh Template Revoke",
+    exam_revoke_bulk_choose_file: "Pilih file CSV revoke",
+    exam_revoke_bulk_upload: "Unggah & Revoke",
+    exam_revoke_bulk_progress: "Memproses revoke… {pct}%",
+    exam_revoke_bulk_success: "Revoke selesai.",
+    exam_revoke_bulk_failed: "Revoke gagal",
+    exam_revoke_bulk_download_result: "Unduh Hasil Revoke",
+    exam_revoke_bulk_no_file: "Pilih file CSV terlebih dahulu.",
+    exam_revoke_bulk_put_failed: "Gagal mengunggah file.",
+    exam_revoke_bulk_enqueue_failed: "Gagal memulai proses.",
 
     // Admin participant roster (FR-32)
     exam_roster_title: "Daftar Peserta",
@@ -1550,6 +1562,16 @@ export const DICT = {
     exam_roster_export_csv: "Ekspor CSV",
     exam_roster_export_failed: "Gagal mengekspor daftar peserta.",
     exam_roster_load_failed: "Gagal memuat daftar peserta.",
+    exam_roster_select_all: "Pilih semua peserta",
+    exam_roster_select_row: "Pilih {name}",
+    exam_roster_revoke: "Revoke Akses ({n})",
+    exam_roster_revoke_confirm_title: "Revoke Akses Ujian?",
+    exam_roster_revoke_confirm_desc:
+      "{n} peserta terpilih akan kehilangan akses ujian ini dan tidak bisa check-in atau mengikuti ujian lagi.",
+    exam_roster_revoke_cancel: "Batal",
+    exam_roster_revoke_result_title: "Hasil Revoke Akses",
+    exam_roster_revoke_success: "Akses {n} peserta berhasil dicabut.",
+    exam_roster_revoke_failed: "Revoke gagal.",
     exam_registrations_manual_notice:
       "Pendaftaran peserta secara manual dilakukan oleh Super Admin atau School Operator.",
 
@@ -3165,6 +3187,18 @@ export const DICT = {
     exam_grant_bulk_no_file: "Choose a CSV file first.",
     exam_grant_bulk_put_failed: "Failed to upload the file.",
     exam_grant_bulk_enqueue_failed: "Failed to start the job.",
+    exam_grant_mode_revoke_csv: "Revoke CSV",
+    exam_revoke_bulk_title: "Revoke Exam Access via CSV",
+    exam_revoke_bulk_download_template: "Download Revoke Template",
+    exam_revoke_bulk_choose_file: "Choose revoke CSV file",
+    exam_revoke_bulk_upload: "Upload & Revoke",
+    exam_revoke_bulk_progress: "Processing revoke… {pct}%",
+    exam_revoke_bulk_success: "Revoke finished.",
+    exam_revoke_bulk_failed: "Revoke failed",
+    exam_revoke_bulk_download_result: "Download Revoke Results",
+    exam_revoke_bulk_no_file: "Choose a CSV file first.",
+    exam_revoke_bulk_put_failed: "Failed to upload the file.",
+    exam_revoke_bulk_enqueue_failed: "Failed to start the job.",
 
     // Admin participant roster (FR-32)
     exam_roster_title: "Participant Roster",
@@ -3180,6 +3214,16 @@ export const DICT = {
     exam_roster_export_csv: "Export CSV",
     exam_roster_export_failed: "Failed to export the participant roster.",
     exam_roster_load_failed: "Failed to load the participant roster.",
+    exam_roster_select_all: "Select all participants",
+    exam_roster_select_row: "Select {name}",
+    exam_roster_revoke: "Revoke Access ({n})",
+    exam_roster_revoke_confirm_title: "Revoke exam access?",
+    exam_roster_revoke_confirm_desc:
+      "{n} selected participants will lose access to this exam and will no longer be able to check in or take it.",
+    exam_roster_revoke_cancel: "Cancel",
+    exam_roster_revoke_result_title: "Revoke Access Results",
+    exam_roster_revoke_success: "Revoked access for {n} participants.",
+    exam_roster_revoke_failed: "Revoke failed.",
     exam_registrations_manual_notice:
       "Manual participant registration is handled by Super Admin or School Operator.",
 

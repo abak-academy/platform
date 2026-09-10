@@ -101,3 +101,35 @@ func (h *Handler) AdminGrantExamAccess(c echo.Context) error {
 
 	return c.JSON(http.StatusCreated, result)
 }
+
+// AdminRevokeExamAccess handles POST /admin/exam-grants/revoke.
+// Soft-revokes the exam registrations for the given students — the inverse
+// of AdminGrantExamAccess, same no-school-scoping rule: super_admin's revoke
+// is not school-scoped.
+func (h *Handler) AdminRevokeExamAccess(c echo.Context) error {
+	claims := ClaimsFromContext(c)
+	if claims == nil {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing or invalid token"})
+	}
+
+	var req struct {
+		ExamID     string      `json:"exam_id"`
+		StudentIDs []uuid.UUID `json:"student_ids"`
+	}
+	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if req.ExamID == "" {
+		return badRequest(c, "exam_id is required")
+	}
+	if len(req.StudentIDs) == 0 {
+		return badRequest(c, "student_ids is required")
+	}
+
+	result, err := h.svc.RevokeExamAccess(c.Request().Context(), claims.Sub, req.ExamID, req.StudentIDs)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, result)
+}

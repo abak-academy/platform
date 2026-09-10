@@ -90,13 +90,18 @@ func (f *fakeObjectStore) DeleteObject(ctx context.Context, bucket, key string) 
 }
 
 type fakeStudentBulkProcessor struct {
-	processFn             func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
-	processSchoolFn       func(ctx context.Context, rows []service.SchoolBulkRow, onProgress func(int)) ([]service.SchoolBulkResultRow, int, error)
-	grantExamAccessBulkFn func(ctx context.Context, actorID, examID string, usernames []string) ([]service.ExamGrantBulkRowResult, error)
+	processFn              func(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
+	processSchoolFn        func(ctx context.Context, rows []service.SchoolBulkRow, onProgress func(int)) ([]service.SchoolBulkResultRow, int, error)
+	grantExamAccessBulkFn  func(ctx context.Context, actorID, examID string, usernames []string) ([]service.ExamGrantBulkRowResult, error)
+	revokeExamAccessBulkFn func(ctx context.Context, actorID, examID string, usernames []string) ([]service.ExamRevokeBulkRowResult, error)
 }
 
 func (f *fakeStudentBulkProcessor) GrantExamAccessBulk(ctx context.Context, actorID, examID string, usernames []string) ([]service.ExamGrantBulkRowResult, error) {
 	return f.grantExamAccessBulkFn(ctx, actorID, examID, usernames)
+}
+
+func (f *fakeStudentBulkProcessor) RevokeExamAccessBulk(ctx context.Context, actorID, examID string, usernames []string) ([]service.ExamRevokeBulkRowResult, error) {
+	return f.revokeExamAccessBulkFn(ctx, actorID, examID, usernames)
 }
 
 func (f *fakeStudentBulkProcessor) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {

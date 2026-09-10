@@ -1717,6 +1717,12 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID, refund
 	if err := s.storeRepo.RevokeEnrollmentsByOrder(ctx, tx, id); err != nil {
 		return err
 	}
+	// Exam-side twin of RevokeEnrollmentsByOrder: a refunded order's exam
+	// registrations must not outlive the refund (the course side revokes,
+	// leaving exams live would let refunded students keep sitting exams).
+	if err := s.revokeOrderExamRegistrationsTx(ctx, tx, id, order.StudentID, order.Items, actorID); err != nil {
+		return err
+	}
 	if err := s.storeRepo.ClearOrderTracking(ctx, tx, id); err != nil {
 		return err
 	}
