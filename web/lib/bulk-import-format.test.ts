@@ -67,16 +67,16 @@ describe("bulk-import-format templates", () => {
 
   it("student NPSN guide explains the transitional legacy school header", () => {
     expect(DICT.id.bulk_format_student_school_npsn).toContain(
-      "Selama rollout NPSN masih berlangsung, sekolah yang belum memiliki NPSN boleh mengganti header `school_npsn` dengan `school` dan mengisi nama sekolah yang terdaftar.",
+      "Selama rollout NPSN masih berlangsung, sekolah yang belum memiliki NPSN boleh mengganti header `school_npsn` dengan `school` dan mengisi nama sekolah yang terdaftar. Ini satu-satunya pengecualian untuk aturan jangan mengubah nama header di bawah.",
     );
     expect(DICT.id.bulk_format_student_school_npsn).toContain(
-      "Jangan sertakan kedua header tersebut sekaligus; jika keduanya ada, parser memprioritaskan `school_npsn`.",
+      "Jangan sertakan kedua header tersebut sekaligus; jika keduanya ada, nilai `school_npsn` yang akan digunakan.",
     );
     expect(DICT.en.bulk_format_student_school_npsn).toContain(
-      "While the NPSN rollout is pending, a school without an NPSN may replace the `school_npsn` header with `school` and provide the registered school name.",
+      "While the NPSN rollout is pending, a school without an NPSN may replace the `school_npsn` header with `school` and provide the registered school name. This is the sole exception to the do-not-rename-headers rule below.",
     );
     expect(DICT.en.bulk_format_student_school_npsn).toContain(
-      "Do not include both headers; when both are present, the parser prioritizes `school_npsn`.",
+      "Do not include both headers; when both are present, the `school_npsn` value will be used.",
     );
   });
 
