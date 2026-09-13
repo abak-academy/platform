@@ -186,6 +186,30 @@ func (s *Service) ListSchools(ctx context.Context) ([]*model.School, error) {
 	return s.repo.ListSchools(ctx)
 }
 
+func (s *Service) validateSelectedSchool(ctx context.Context, schoolID string) (*model.School, error) {
+	school, err := s.storeRepo.GetSchoolByID(ctx, schoolID)
+	if err != nil {
+		return nil, err
+	}
+	if school == nil {
+		return nil, ErrSchoolNotFound
+	}
+	if school.Status != "active" {
+		return nil, ErrSchoolDeactivated
+	}
+	if s.cfg == nil || !s.cfg.EnforceSchoolNPSNRegistration {
+		return school, nil
+	}
+	npsn, err := normalizeSchoolNPSN(school.NPSN)
+	if err != nil {
+		return nil, err
+	}
+	if npsn == nil {
+		return nil, ErrInvalidSchoolNPSN
+	}
+	return school, nil
+}
+
 func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, dob *time.Time, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*model.User, error) {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
@@ -244,8 +268,13 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 	var applySchool bool
 	var repoSchoolID, repoUnlistedName *string
 	var resolveSchoolID string
+	var selectedSchool *model.School
 	switch {
 	case listed:
+		selectedSchool, err = s.validateSelectedSchool(ctx, *trimmedSchoolID)
+		if err != nil {
+			return nil, err
+		}
 		applySchool = true
 		repoSchoolID = trimmedSchoolID
 		resolveSchoolID = *trimmedSchoolID
@@ -260,9 +289,12 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 
 	// Validate jenjang against school_types when a school is resolvable.
 	if jenjang != nil && resolveSchoolID != "" {
-		school, err := s.storeRepo.GetSchoolByID(ctx, resolveSchoolID)
-		if err != nil {
-			return nil, err
+		school := selectedSchool
+		if school == nil {
+			school, err = s.storeRepo.GetSchoolByID(ctx, resolveSchoolID)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if school != nil && len(school.SchoolTypes) > 0 && !jenjangInSchoolTypes(*jenjang, school.SchoolTypes) {
 			return nil, ErrInvalidJenjang

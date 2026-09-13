@@ -165,7 +165,42 @@ func TestPollJobsDispatchesStudentBulkJob(t *testing.T) {
 	}
 }
 
-const validBulkCSV = "name,school,jenjang\nAli,SchoolA,sma\nBudi,SchoolA,sma\n"
+const validBulkCSV = "name,school_npsn,jenjang\nAli,20100001,sma\nBudi,20100001,sma\n"
+
+func TestRunStudentBulkJobAcceptsQueuedLegacySchoolCSV(t *testing.T) {
+	ctx := context.Background()
+	job := model.Job{ID: "job-legacy", Type: "student_bulk", CreatedBy: "u1", InputURL: strPtr("student-bulk/s1/legacy.csv")}
+	processed := false
+
+	repo := &fakeJobRepo{
+		getUserByIDFn: func(context.Context, string) (*model.User, error) {
+			return &model.User{ID: "u1", Role: service.RoleAdminSchool, SchoolID: schoolIDPtr("s1")}, nil
+		},
+	}
+	store := &fakeObjectStore{
+		getObjectBytesFn: func(context.Context, string, string) ([]byte, error) {
+			return []byte("name,school,jenjang\nAli,Legacy School,sma\n"), nil
+		},
+	}
+	svc := &fakeStudentBulkProcessor{
+		processFn: func(_ context.Context, _ *string, _ string, rows []service.StudentBulkRow, _ func(int)) ([]service.StudentBulkResultRow, int, error) {
+			processed = true
+			if len(rows) != 1 {
+				t.Fatalf("parsed rows: want 1, got %d", len(rows))
+			}
+			return []service.StudentBulkResultRow{{Name: "Ali", Status: "success"}}, 1, nil
+		},
+	}
+
+	(&Worker{jobRepo: repo, objectStore: store, svc: svc, privateBucket: "private-bucket"}).runStudentBulkJob(ctx, job)
+
+	if !processed {
+		t.Fatal("queued legacy CSV was rejected before row processing")
+	}
+	if len(repo.finishCalls) != 1 || repo.finishCalls[0].status != "succeeded" {
+		t.Fatalf("finish calls: want one succeeded job, got %+v", repo.finishCalls)
+	}
+}
 
 func TestRunStudentBulkJobSucceedsUploadsReportAndFinishesSucceeded(t *testing.T) {
 	ctx := context.Background()

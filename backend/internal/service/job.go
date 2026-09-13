@@ -103,7 +103,11 @@ func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy
 // schoolID is unused here — row-scoping is enforced by the caller passing
 // claims.SchoolID, and a future job type might need it in this signature.
 func (s *Service) enqueueStudentBulkJobFromData(ctx context.Context, schoolID, createdBy, fileKey string, data []byte) (string, error) {
-	if _, err := ParseStudentBulkCSV(data); err != nil {
+	parseCSV := ParseStudentBulkCSV
+	if s.cfg == nil || !s.cfg.EnforceSchoolNPSNRegistration {
+		parseCSV = ParseStudentBulkCSVForWorker
+	}
+	if _, err := parseCSV(data); err != nil {
 		return "", err
 	}
 

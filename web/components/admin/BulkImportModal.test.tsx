@@ -131,9 +131,9 @@ describe("BulkImportModal", () => {
 
     expect(lastDownloadedFilename).toBe("bulk_register_template.csv");
     expect(lastDownloadedCSV).toBe(
-      "name,school,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
-        'Budi Santoso,SMAN 1 Jakarta,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n' +
-        "Siti Aminah,SMAN 1 Jakarta,SMA,,,,,,,,,,\n",
+      "name,school_npsn,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
+        'Budi Santoso,20100001,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n' +
+        "Siti Aminah,P1234567,SMA,,,,,,,,,,\n",
     );
 
     expect(presignMutateAsync).not.toHaveBeenCalled();
@@ -155,7 +155,7 @@ describe("BulkImportModal", () => {
     await waitFor(() => expect(lastDownloadedFilename).toBe("bulk_register_guide.txt"));
     await waitFor(() => expect(lastDownloadedCSV).not.toBeNull());
     expect(lastDownloadedCSV).toContain("bulk_format_student_guide_title");
-    expect(lastDownloadedCSV).toContain("bulk_format_student_school");
+    expect(lastDownloadedCSV).toContain("bulk_format_student_school_npsn");
   });
 
   it("includes password guidance and blank password template cells when allowed", async () => {
@@ -203,7 +203,7 @@ describe("BulkImportModal", () => {
     });
 
     const fileInput = screen.getByLabelText(/choose_file|file/i) as HTMLInputElement;
-    const file = new File(["name,school,jenjang,provinsi,kota,kecamatan,kode_pos,email\nBudi,SMAN 1,sma,JB,Bandung,Coblong,40132,budi@example.com"], "students.csv", { type: "text/csv" });
+    const file = new File(["name,school_npsn,jenjang,provinsi,kota,kecamatan,kode_pos,email\nBudi,20100001,sma,JB,Bandung,Coblong,40132,budi@example.com"], "students.csv", { type: "text/csv" });
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     const submitBtn = screen.getByRole("button", { name: /upload|import|submit|start/i });

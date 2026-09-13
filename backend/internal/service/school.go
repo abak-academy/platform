@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,7 +10,10 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+const schoolNPSNUniqueIndex = "uq_school_npsn_normalized"
 
 // SchoolResponse is the school shape returned in admin responses.
 type SchoolResponse struct {
@@ -47,6 +51,34 @@ func validSchoolName(name string) bool {
 		}
 	}
 	return false
+}
+
+func normalizeSchoolNPSN(npsn *string) (*string, error) {
+	if npsn == nil {
+		return nil, nil
+	}
+	normalized := strings.ToUpper(strings.TrimSpace(*npsn))
+	if normalized == "" {
+		return nil, nil
+	}
+	if len(normalized) != 8 {
+		return nil, ErrInvalidSchoolNPSN
+	}
+	for i := range len(normalized) {
+		c := normalized[i]
+		if (c < '0' || c > '9') && (c < 'A' || c > 'Z') {
+			return nil, ErrInvalidSchoolNPSN
+		}
+	}
+	return &normalized, nil
+}
+
+func mapSchoolWriteError(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == schoolNPSNUniqueIndex {
+		return ErrSchoolNPSNTaken
+	}
+	return err
 }
 
 // AdminListSchoolsParams carries the optional filters accepted by
@@ -104,6 +136,10 @@ func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *str
 	if !validSchoolName(name) {
 		return nil, ErrInvalidSchoolName
 	}
+	npsn, err := normalizeSchoolNPSN(npsn)
+	if err != nil {
+		return nil, err
+	}
 
 	exists, err := s.storeRepo.SchoolCodeExists(ctx, code, nil)
 	if err != nil {
@@ -128,7 +164,7 @@ func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *str
 		Alamat:      alamat,
 	}
 	if err := s.storeRepo.CreateSchool(ctx, school); err != nil {
-		return nil, err
+		return nil, mapSchoolWriteError(err)
 	}
 
 	return &SchoolResponse{
@@ -151,6 +187,11 @@ func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alama
 	if name != nil && !validSchoolName(*name) {
 		return nil, ErrInvalidSchoolName
 	}
+	npsnSet := npsn != nil
+	npsn, err := normalizeSchoolNPSN(npsn)
+	if err != nil {
+		return nil, err
+	}
 
 	school, err := s.storeRepo.GetSchoolByID(ctx, id)
 	if err != nil {
@@ -170,8 +211,8 @@ func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alama
 		}
 	}
 
-	if err := s.storeRepo.UpdateSchool(ctx, id, name, npsn, alamat, schoolTypes, code); err != nil {
-		return nil, err
+	if err := s.storeRepo.UpdateSchool(ctx, id, name, npsnSet, npsn, alamat, schoolTypes, code); err != nil {
+		return nil, mapSchoolWriteError(err)
 	}
 
 	updated, err := s.storeRepo.GetSchoolByID(ctx, id)

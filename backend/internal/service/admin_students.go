@@ -165,15 +165,9 @@ func (s *Service) registerStudent(ctx context.Context, schoolID, name, jenjang s
 	// one is given it is still validated; when it is omitted an operator
 	// confirms the school after registration.
 	if schoolID != "" {
-		school, err := s.storeRepo.GetSchoolByID(ctx, schoolID)
+		school, err := s.validateSelectedSchool(ctx, schoolID)
 		if err != nil {
 			return nil, err
-		}
-		if school == nil {
-			return nil, ErrSchoolNotFound
-		}
-		if school.Status == "deactivated" {
-			return nil, ErrSchoolDeactivated
 		}
 
 		// Validate jenjang against school's SchoolTypes when types are configured.

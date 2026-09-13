@@ -6,10 +6,77 @@ import (
 	"strings"
 	"testing"
 
+	"akademi-bimbel/config"
 	"akademi-bimbel/internal/repository"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
+
+func TestRegisterStudent_AllowsLegacySchoolWhenNPSNEnforcementDisabled(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	previousConfig := svc.cfg
+	svc.cfg = &config.Config{}
+	t.Cleanup(func() { svc.cfg = previousConfig })
+
+	code := "legacy_no_npsn_" + uniqueSuffix()
+	school, err := svc.CreateSchool(context.Background(), "Legacy School "+code, code, nil, []string{"sma"}, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool: %v", err)
+	}
+
+	if _, err := svc.RegisterStudent(context.Background(), school.ID, "Legacy Student "+uniqueSuffix(), "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("RegisterStudent with enforcement disabled: %v", err)
+	}
+}
+
+func TestUpdateProfile_AllowsLegacySchoolWhenNPSNEnforcementDisabled(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	previousConfig := svc.cfg
+	svc.cfg = &config.Config{}
+	t.Cleanup(func() { svc.cfg = previousConfig })
+
+	ctx := context.Background()
+	originalSchoolID := createTestSchool(t, svc)
+	userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
+	code := "legacy_profile_" + uniqueSuffix()
+	legacySchool, err := svc.CreateSchool(ctx, "Legacy Profile School "+code, code, nil, []string{"sma"}, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool: %v", err)
+	}
+
+	updated, err := svc.UpdateProfile(ctx, userID,
+		nil, nil, nil, nil, nil, nil, nil,
+		nil, &legacySchool.ID, nil, nil,
+		nil, nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("UpdateProfile with enforcement disabled: %v", err)
+	}
+	if updated.SchoolID == nil || *updated.SchoolID != legacySchool.ID {
+		t.Fatalf("SchoolID: want %s, got %v", legacySchool.ID, updated.SchoolID)
+	}
+
+	var malformedSchoolID string
+	malformedNPSN := "bad_" + uniqueSuffix()
+	if err := svc.storeRepo.Pool().QueryRow(ctx,
+		`INSERT INTO school (name, code, npsn, status) VALUES ($1, $2, $3, 'active') RETURNING id`,
+		"Malformed Legacy School "+code, "malformed_"+uniqueSuffix(), malformedNPSN,
+	).Scan(&malformedSchoolID); err != nil {
+		t.Fatalf("seed malformed-NPSN school: %v", err)
+	}
+	updated, err = svc.UpdateProfile(ctx, userID,
+		nil, nil, nil, nil, nil, nil, nil,
+		nil, &malformedSchoolID, nil, nil,
+		nil, nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("UpdateProfile with malformed legacy NPSN and enforcement disabled: %v", err)
+	}
+	if updated.SchoolID == nil || *updated.SchoolID != malformedSchoolID {
+		t.Fatalf("SchoolID: want %s, got %v", malformedSchoolID, updated.SchoolID)
+	}
+}
 
 func TestJenjangInSchoolTypes(t *testing.T) {
 	if !jenjangInSchoolTypes("sma", []string{"SMA", "SMK"}) {
@@ -102,7 +169,8 @@ func TestStudentSentinelErrors(t *testing.T) {
 func createTestSchool(t *testing.T, svc *Service) string {
 	t.Helper()
 	code := "stu_" + uniqueSuffix()
-	resp, err := svc.CreateSchool(context.Background(), "Student Test School "+code, code, nil, nil, nil)
+	npsn := "T" + uniqueSuffix()[:7]
+	resp, err := svc.CreateSchool(context.Background(), "Student Test School "+code, code, &npsn, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
@@ -128,6 +196,9 @@ func seedSchoolWithJenjang(t *testing.T, svc *Service, repo *repository.Reposito
 
 func TestRegisterStudent_Integration(t *testing.T) {
 	svc, repo := newRealDBService(t)
+	previousConfig := svc.cfg
+	svc.cfg = &config.Config{EnforceSchoolNPSNRegistration: true}
+	t.Cleanup(func() { svc.cfg = previousConfig })
 	ctx := context.Background()
 
 	t.Run("happy path: username format, temp password once, bcrypt hash persisted", func(t *testing.T) {
@@ -259,6 +330,19 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		_, err := svc.RegisterStudent(ctx, schoolID, "Blocked Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolDeactivated) {
 			t.Errorf("want ErrSchoolDeactivated, got %v", err)
+		}
+	})
+
+	t.Run("NPSN-less school blocks registration", func(t *testing.T) {
+		code := "no_npsn_" + uniqueSuffix()
+		school, err := svc.CreateSchool(ctx, "NPSN-less Registration School "+code, code, nil, []string{"sma"}, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+
+		_, err = svc.RegisterStudent(ctx, school.ID, "NPSN-less Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if !errors.Is(err, ErrInvalidSchoolNPSN) {
+			t.Errorf("want ErrInvalidSchoolNPSN, got %v", err)
 		}
 	})
 
@@ -963,6 +1047,191 @@ func TestUpdateProfile_SchoolPairClearing(t *testing.T) {
 		}
 		if updated.UnlistedSchoolName != nil {
 			t.Errorf("UnlistedSchoolName: want unchanged nil, got %v", *updated.UnlistedSchoolName)
+		}
+	})
+}
+
+func TestUpdateProfile_SelectedSchoolValidation(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	previousConfig := svc.cfg
+	svc.cfg = &config.Config{EnforceSchoolNPSNRegistration: true}
+	t.Cleanup(func() { svc.cfg = previousConfig })
+	ctx := context.Background()
+
+	assertSchoolUnchanged := func(t *testing.T, userID, wantSchoolID string) {
+		t.Helper()
+		user, err := svc.Me(ctx, userID)
+		if err != nil {
+			t.Fatalf("Me: %v", err)
+		}
+		if user.SchoolID == nil || *user.SchoolID != wantSchoolID {
+			t.Fatalf("SchoolID changed: want %s, got %v", wantSchoolID, user.SchoolID)
+		}
+	}
+
+	t.Run("active NPSN-backed listed school succeeds", func(t *testing.T) {
+		originalSchoolID := createTestSchool(t, svc)
+		userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
+		selectedSchoolID := createTestSchool(t, svc)
+		submittedSchoolID := "  " + selectedSchoolID + "  "
+
+		updated, err := svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil,
+			nil,
+			&submittedSchoolID,
+			nil, nil,
+			nil, nil, nil, nil,
+		)
+		if err != nil {
+			t.Fatalf("UpdateProfile: %v", err)
+		}
+		if updated.SchoolID == nil || *updated.SchoolID != selectedSchoolID {
+			t.Fatalf("SchoolID: want %s, got %v", selectedSchoolID, updated.SchoolID)
+		}
+	})
+
+	t.Run("missing listed school is rejected without changing relationship", func(t *testing.T) {
+		originalSchoolID := createTestSchool(t, svc)
+		userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
+		missingSchoolID := uuid.NewString()
+
+		_, err := svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil,
+			nil,
+			&missingSchoolID,
+			nil, nil,
+			nil, nil, nil, nil,
+		)
+		if !errors.Is(err, ErrSchoolNotFound) {
+			t.Fatalf("want ErrSchoolNotFound, got %v", err)
+		}
+		assertSchoolUnchanged(t, userID, originalSchoolID)
+	})
+
+	t.Run("deactivated listed school is rejected without changing relationship", func(t *testing.T) {
+		originalSchoolID := createTestSchool(t, svc)
+		userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
+		selectedSchoolID := createTestSchool(t, svc)
+		if _, err := svc.ChangeSchoolStatus(ctx, selectedSchoolID, "deactivated"); err != nil {
+			t.Fatalf("ChangeSchoolStatus: %v", err)
+		}
+
+		_, err := svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil,
+			nil,
+			&selectedSchoolID,
+			nil, nil,
+			nil, nil, nil, nil,
+		)
+		if !errors.Is(err, ErrSchoolDeactivated) {
+			t.Fatalf("want ErrSchoolDeactivated, got %v", err)
+		}
+		assertSchoolUnchanged(t, userID, originalSchoolID)
+	})
+
+	t.Run("NPSN-less listed school is rejected without changing relationship", func(t *testing.T) {
+		originalSchoolID := createTestSchool(t, svc)
+		userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
+		code := "no_npsn_" + uniqueSuffix()
+		selected, err := svc.CreateSchool(ctx, "NPSN-less School "+code, code, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+
+		_, err = svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil,
+			nil,
+			&selected.ID,
+			nil, nil,
+			nil, nil, nil, nil,
+		)
+		if !errors.Is(err, ErrInvalidSchoolNPSN) {
+			t.Fatalf("want ErrInvalidSchoolNPSN, got %v", err)
+		}
+		assertSchoolUnchanged(t, userID, originalSchoolID)
+	})
+
+	t.Run("malformed stored NPSN is rejected without changing relationship", func(t *testing.T) {
+		originalSchoolID := createTestSchool(t, svc)
+		userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
+		var selectedSchoolID string
+		if err := repo.Pool().QueryRow(ctx,
+			`INSERT INTO school (name, code, npsn, status) VALUES ($1, $2, $3, 'active') RETURNING id`,
+			"Malformed NPSN School", "bad_npsn_"+uniqueSuffix(), "bad",
+		).Scan(&selectedSchoolID); err != nil {
+			t.Fatalf("seed malformed-NPSN school: %v", err)
+		}
+
+		_, err := svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil,
+			nil,
+			&selectedSchoolID,
+			nil, nil,
+			nil, nil, nil, nil,
+		)
+		if !errors.Is(err, ErrInvalidSchoolNPSN) {
+			t.Fatalf("want ErrInvalidSchoolNPSN, got %v", err)
+		}
+		assertSchoolUnchanged(t, userID, originalSchoolID)
+	})
+
+	t.Run("trimmed unlisted fallback clears listed school without creating one", func(t *testing.T) {
+		originalSchoolID := createTestSchool(t, svc)
+		userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
+		var before int
+		if err := repo.Pool().QueryRow(ctx, `SELECT COUNT(*) FROM school`).Scan(&before); err != nil {
+			t.Fatalf("count schools before: %v", err)
+		}
+		emptySchoolID := ""
+		unlistedName := "  Sekolah Mandiri " + uniqueSuffix() + "  "
+		wantUnlistedName := strings.TrimSpace(unlistedName)
+
+		updated, err := svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil,
+			nil,
+			&emptySchoolID,
+			&unlistedName, nil,
+			nil, nil, nil, nil,
+		)
+		if err != nil {
+			t.Fatalf("UpdateProfile: %v", err)
+		}
+		if updated.SchoolID != nil {
+			t.Fatalf("SchoolID: want nil, got %v", *updated.SchoolID)
+		}
+		if updated.UnlistedSchoolName == nil || *updated.UnlistedSchoolName != wantUnlistedName {
+			t.Fatalf("UnlistedSchoolName: want %q, got %v", wantUnlistedName, updated.UnlistedSchoolName)
+		}
+		var after int
+		if err := repo.Pool().QueryRow(ctx, `SELECT COUNT(*) FROM school`).Scan(&after); err != nil {
+			t.Fatalf("count schools after: %v", err)
+		}
+		if after != before {
+			t.Fatalf("school count changed: before %d, after %d", before, after)
+		}
+	})
+
+	t.Run("listed school still takes precedence over conflicting unlisted name", func(t *testing.T) {
+		originalSchoolID := createTestSchool(t, svc)
+		userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
+		selectedSchoolID := createTestSchool(t, svc)
+		unlistedName := "Conflicting School"
+
+		updated, err := svc.UpdateProfile(ctx, userID,
+			nil, nil, nil, nil, nil, nil, nil,
+			nil,
+			&selectedSchoolID,
+			&unlistedName, nil,
+			nil, nil, nil, nil,
+		)
+		if err != nil {
+			t.Fatalf("UpdateProfile: %v", err)
+		}
+		if updated.SchoolID == nil || *updated.SchoolID != selectedSchoolID {
+			t.Fatalf("SchoolID: want %s, got %v", selectedSchoolID, updated.SchoolID)
+		}
+		if updated.UnlistedSchoolName != nil {
+			t.Fatalf("UnlistedSchoolName: want nil, got %q", *updated.UnlistedSchoolName)
 		}
 	})
 }

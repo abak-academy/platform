@@ -201,7 +201,7 @@ export default function SystemSchoolsPage() {
 
       if (editForm.name !== editTarget.name) payload.name = editForm.name;
       if (editForm.code !== (editTarget.code ?? "")) payload.code = editForm.code;
-      if (editForm.npsn !== (editTarget.npsn ?? "")) payload.npsn = editForm.npsn || undefined;
+      if (editForm.npsn !== (editTarget.npsn ?? "")) payload.npsn = editForm.npsn;
 
       const types = editForm.school_types
         ? editForm.school_types
@@ -507,7 +507,8 @@ export default function SystemSchoolsPage() {
                 value={createForm.npsn}
                 onChange={(e) =>
                   setCreateForm((f) => ({ ...f, npsn: e.target.value }))}
-                placeholder="NPSN"
+                placeholder={t("schools_placeholder_npsn")}
+                maxLength={8}
               />
             </div>
             <div>
@@ -584,7 +585,8 @@ export default function SystemSchoolsPage() {
                 value={editForm.npsn}
                 onChange={(e) =>
                   setEditForm((f) => ({ ...f, npsn: e.target.value }))}
-                placeholder="NPSN"
+                placeholder={t("schools_placeholder_npsn")}
+                maxLength={8}
               />
             </div>
             <div>

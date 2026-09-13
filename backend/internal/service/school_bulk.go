@@ -138,9 +138,14 @@ func (s *Service) ProcessSchoolBulkRows(ctx context.Context, rows []SchoolBulkRo
 			result.Alamat = *r.Alamat
 		}
 
-		_, err := s.CreateSchool(ctx, r.Name, r.Code, r.NPSN, r.SchoolTypes, r.Alamat)
+		created, err := s.CreateSchool(ctx, r.Name, r.Code, r.NPSN, r.SchoolTypes, r.Alamat)
 		if err == nil {
 			result.Status = "success"
+			if created.NPSN != nil {
+				result.NPSN = *created.NPSN
+			} else {
+				result.NPSN = ""
+			}
 			successCount++
 		} else {
 			result.Status = "failed"

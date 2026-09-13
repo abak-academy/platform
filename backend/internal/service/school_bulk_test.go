@@ -249,6 +249,62 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 			t.Errorf("want final progress 100, got %v", calls)
 		}
 	})
+
+	t.Run("uses direct school NPSN normalization and validation", func(t *testing.T) {
+		valid := " r1234567 "
+		blank := "   "
+		invalid := "bad"
+		blankCode := "sb_" + uniqueSuffix()
+		rows := []SchoolBulkRow{
+			{Row: 2, Name: "Normalized Bulk School", Code: "sb_" + uniqueSuffix(), NPSN: &valid},
+			{Row: 3, Name: "Blank Bulk School", Code: blankCode, NPSN: &blank},
+			{Row: 4, Name: "Invalid Bulk School", Code: "sb_" + uniqueSuffix(), NPSN: &invalid},
+		}
+		results, successCount, err := svc.ProcessSchoolBulkRows(ctx, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessSchoolBulkRows: %v", err)
+		}
+		if successCount != 2 {
+			t.Fatalf("successCount: want 2, got %d", successCount)
+		}
+		if results[0].Status != "success" || results[0].NPSN != "R1234567" {
+			t.Fatalf("normalized row: %+v", results[0])
+		}
+		if results[1].Status != "success" || results[1].NPSN != "" {
+			t.Fatalf("blank row: %+v", results[1])
+		}
+		persistedBlank := findSchoolByCode(t, svc, blankCode)
+		if persistedBlank.NPSN != nil {
+			t.Fatalf("blank bulk NPSN: want nil, got %q", *persistedBlank.NPSN)
+		}
+		if results[2].Status != "failed" || results[2].Error != ErrInvalidSchoolNPSN.Error() {
+			t.Fatalf("invalid row: %+v", results[2])
+		}
+	})
+
+	t.Run("rejects duplicate normalized NPSN and continues later rows", func(t *testing.T) {
+		takenNPSN := "Y" + uniqueSuffix()[:7]
+		created, err := svc.CreateSchool(ctx, "Bulk Duplicate Seed", "sb_"+uniqueSuffix(), &takenNPSN, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool seed: %v", err)
+		}
+		duplicate := " " + strings.ToLower(*created.NPSN) + " "
+		valid := "Z" + uniqueSuffix()[:7]
+		rows := []SchoolBulkRow{
+			{Row: 8, Name: "Bulk Duplicate", Code: "sb_" + uniqueSuffix(), NPSN: &duplicate},
+			{Row: 11, Name: "Bulk After Duplicate", Code: "sb_" + uniqueSuffix(), NPSN: &valid},
+		}
+		results, successCount, err := svc.ProcessSchoolBulkRows(ctx, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessSchoolBulkRows: %v", err)
+		}
+		if successCount != 1 || results[0].Row != 8 || results[0].Status != "failed" || results[0].Error != ErrSchoolNPSNTaken.Error() {
+			t.Fatalf("duplicate row: count=%d result=%+v", successCount, results[0])
+		}
+		if results[1].Row != 11 || results[1].Status != "success" {
+			t.Fatalf("later row did not continue: %+v", results[1])
+		}
+	})
 }
 
 func TestBuildSchoolBulkResultCSV(t *testing.T) {
