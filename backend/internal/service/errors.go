@@ -206,6 +206,14 @@ var (
 	ErrInvalidSchoolSearch = errors.New("invalid school search")
 )
 
+// --- from pusdatin_import.go ---
+var (
+	ErrPusdatinSourceChecksum     = errors.New("pusdatin source checksum mismatch")
+	ErrPusdatinHeaderMismatch     = errors.New("pusdatin source header mismatch")
+	ErrPusdatinResolutionMismatch = errors.New("pusdatin duplicate resolution mismatch")
+	ErrPusdatinGeographyDrift     = errors.New("pusdatin geography mapping drift")
+)
+
 // --- from shipping_rates.go ---
 var (
 	// ErrShippingUnavailable means no carrier quote could be obtained and no
