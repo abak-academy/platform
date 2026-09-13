@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { RichContent } from "@/components/admin/RichContent";
 import { Button } from "@/components/ui/button";
+import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import {
   Dialog,
@@ -14,17 +15,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
 import { useResultsWorkspace, useResultsWorkspaceAttempts, useResultsWorkspaceDetail } from "@/lib/hooks/admin-results-workspace";
 import { exportAdminResults } from "@/lib/hooks/admin-results";
-import { useSchools } from "@/lib/hooks/students";
 import { formatChoiceAnswer } from "@/lib/option-key";
 import type { AdminResultDetail, ResultsWorkspaceAttempt, ResultsWorkspaceRow, ResultsWorkspaceSummary } from "@/lib/types";
 
@@ -32,7 +25,6 @@ interface ResultsWorkspaceTabProps {
   examId: string;
 }
 
-const ALL_SCHOOLS_VALUE = "_all_";
 
 function useDebouncedValue(value: string, delay: number): string {
   const [debounced, setDebounced] = useState(value);
@@ -53,7 +45,6 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
   const { t, lang } = useTranslation();
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
-  const { data: schoolsData } = useSchools(true);
   const [selectedSchoolId, setSelectedSchoolId] = useState("");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -225,20 +216,13 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div>
-            <p className="text-xs text-ink-500">{t("select_school")}</p>
-            <Select value={selectedSchoolId || ALL_SCHOOLS_VALUE} onValueChange={(v) => setSelectedSchoolId(v === ALL_SCHOOLS_VALUE ? "" : v)}>
-              <SelectTrigger className="mt-1 h-9 w-[240px] text-xs" aria-label={t("select_school")}>
-                <SelectValue placeholder={t("students_all_schools")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_SCHOOLS_VALUE}>{t("students_all_schools")}</SelectItem>
-                {(schoolsData ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SchoolFilterPicker
+            value={selectedSchoolId}
+            onChange={setSelectedSchoolId}
+            label={t("select_school")}
+            allLabel={t("students_all_schools")}
+            className="min-w-[260px]"
+          />
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={() => handleExport("latest")} disabled={Boolean(exporting) || !examId}>

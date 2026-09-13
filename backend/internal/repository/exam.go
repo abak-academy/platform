@@ -33,6 +33,7 @@ func isUniqueViolation(err error) bool {
 
 // ErrInvalidCursor — malformed pagination cursor — surfaced for service-layer mapping to 4xx.
 var ErrInvalidCursor = errors.New("invalid pagination cursor")
+var ErrAmbiguousSchoolIdentity = errors.New("ambiguous school identity")
 
 // ErrNoAttemptsLeft — CreateExamSessionTx's atomic guard matched no row (ceiling
 // exhausted, or an in_progress session already exists). Surfaced for service-layer

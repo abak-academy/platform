@@ -27,13 +27,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
 import { useProducts } from "@/lib/hooks/products";
 import {
   useAdminResults,
   useAdminResultDetail,
   exportAdminResults,
 } from "@/lib/hooks/admin-results";
-import { useSchoolOptions } from "@/lib/hooks/admin-schools";
 import { useAuthStore } from "@/stores/auth";
 import { RichContent } from "@/components/admin/RichContent";
 import { formatChoiceAnswer } from "@/lib/option-key";
@@ -47,7 +47,6 @@ export default function SchoolReportsPage() {
   // Role-gated school picker (super_admin only)
   const currentRole = useAuthStore((s) => s.user?.role);
   const isSuperAdmin = currentRole === "super_admin";
-  const { data: schoolsData, isLoading: schoolsLoading } = useSchoolOptions();
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
 
   // Exam picker
@@ -201,12 +200,12 @@ export default function SchoolReportsPage() {
           }
         />
         {isSuperAdmin && (
-          <SchoolPicker
-            schoolsData={schoolsData?.data ?? []}
-            selectedSchoolId={selectedSchoolId}
-            onSelect={setSelectedSchoolId}
-            isLoading={schoolsLoading}
+          <SchoolFilterPicker
+            value={selectedSchoolId}
+            onChange={setSelectedSchoolId}
             label={t("select_school")}
+            allLabel={t("select_school")}
+            className="mb-4"
           />
         )}
         <ExamPicker
@@ -247,12 +246,12 @@ export default function SchoolReportsPage() {
           }
         />
         {isSuperAdmin && (
-          <SchoolPicker
-            schoolsData={schoolsData?.data ?? []}
-            selectedSchoolId={selectedSchoolId}
-            onSelect={setSelectedSchoolId}
-            isLoading={schoolsLoading}
+          <SchoolFilterPicker
+            value={selectedSchoolId}
+            onChange={setSelectedSchoolId}
             label={t("select_school")}
+            allLabel={t("select_school")}
+            className="mb-4"
           />
         )}
         <ExamPicker
@@ -292,12 +291,12 @@ export default function SchoolReportsPage() {
           }
         />
         {isSuperAdmin && (
-          <SchoolPicker
-            schoolsData={schoolsData?.data ?? []}
-            selectedSchoolId={selectedSchoolId}
-            onSelect={setSelectedSchoolId}
-            isLoading={schoolsLoading}
+          <SchoolFilterPicker
+            value={selectedSchoolId}
+            onChange={setSelectedSchoolId}
             label={t("select_school")}
+            allLabel={t("select_school")}
+            className="mb-4"
           />
         )}
         <ExamPicker
@@ -337,12 +336,12 @@ export default function SchoolReportsPage() {
       />
 
       {isSuperAdmin && (
-        <SchoolPicker
-          schoolsData={schoolsData?.data ?? []}
-          selectedSchoolId={selectedSchoolId}
-          onSelect={setSelectedSchoolId}
-          isLoading={schoolsLoading}
+        <SchoolFilterPicker
+          value={selectedSchoolId}
+          onChange={setSelectedSchoolId}
           label={t("select_school")}
+          allLabel={t("select_school")}
+          className="mb-4"
         />
       )}
 
@@ -419,47 +418,6 @@ export default function SchoolReportsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function SchoolPicker({
-  schoolsData,
-  selectedSchoolId,
-  onSelect,
-  isLoading,
-  label,
-}: {
-  schoolsData: { id: string; name: string }[];
-  selectedSchoolId: string;
-  onSelect: (id: string) => void;
-  isLoading: boolean;
-  label: string;
-}) {
-  if (isLoading) {
-    return (
-      <div className="mb-4">
-        <p className="text-xs text-ink-500">{label}</p>
-        <div className="mt-1 h-9 w-[240px] animate-pulse rounded-md bg-surface-2" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="mb-4">
-      <p className="text-xs text-ink-500">{label}</p>
-      <Select value={selectedSchoolId} onValueChange={onSelect}>
-        <SelectTrigger className="mt-1 h-9 w-[240px] text-xs" aria-label={label}>
-          <SelectValue placeholder={label} />
-        </SelectTrigger>
-        <SelectContent>
-          {schoolsData.map((s) => (
-            <SelectItem key={s.id} value={s.id}>
-              {s.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
     </div>
   );
 }

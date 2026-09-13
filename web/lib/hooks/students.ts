@@ -3,12 +3,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
-import type { Dashboard, School, User } from "@/lib/types";
+import type { Dashboard, SchoolOption, User } from "@/lib/types";
 
 export const studentsKeys = {
   all: ["students"] as const,
   dashboard: () => [...studentsKeys.all, "dashboard"] as const,
   profile: () => [...studentsKeys.all, "profile"] as const,
+  schoolSearch: (params: SchoolSearchParams) =>
+    [...studentsKeys.all, "school-search", params] as const,
+  schoolById: (id?: string) => [...studentsKeys.all, "school", id ?? ""] as const,
 };
 
 export function useDashboard() {
@@ -45,11 +48,45 @@ export interface UpdateProfileInput {
   kode_pos?: string;
 }
 
-export function useSchools(enabled = true) {
+export interface SchoolSearchParams {
+  q?: string;
+  province_id?: string;
+  category?: string;
+  npsn?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface SchoolOptionsEnvelope {
+  data: SchoolOption[];
+  next_cursor: string;
+}
+
+function schoolSearchPath(base: string, params: SchoolSearchParams) {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.province_id) search.set("province_id", params.province_id);
+  if (params.category) search.set("category", params.category);
+  if (params.npsn) search.set("npsn", params.npsn);
+  if (params.cursor) search.set("cursor", params.cursor);
+  if (params.limit) search.set("limit", String(params.limit));
+  const query = search.toString();
+  return query ? `${base}?${query}` : base;
+}
+
+export function useSchoolSearch(params: SchoolSearchParams, enabled = true) {
   return useQuery({
-    queryKey: [...studentsKeys.all, "schools"],
-    queryFn: () => authFetch<School[]>(`/schools`),
+    queryKey: studentsKeys.schoolSearch(params),
     enabled,
+    queryFn: () => authFetch<SchoolOptionsEnvelope>(schoolSearchPath("/schools", params)),
+  });
+}
+
+export function useSchoolById(id?: string | null) {
+  return useQuery({
+    queryKey: studentsKeys.schoolById(id ?? ""),
+    enabled: Boolean(id),
+    queryFn: () => authFetch<SchoolOption>(`/schools/${encodeURIComponent(id!)}`),
   });
 }
 

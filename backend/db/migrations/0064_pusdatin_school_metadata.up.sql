@@ -1,4 +1,0 @@
-ALTER TABLE school
-    ADD COLUMN IF NOT EXISTS category TEXT,
-    ADD COLUMN IF NOT EXISTS provinsi_id TEXT REFERENCES province(id),
-    ADD COLUMN IF NOT EXISTS kota_id TEXT REFERENCES city(id);

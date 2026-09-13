@@ -10,6 +10,7 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -27,6 +28,20 @@ type SchoolResponse struct {
 	StudentCount int      `json:"student_count"`
 	CreatedAt    string   `json:"created_at"`
 	UpdatedAt    string   `json:"updated_at"`
+}
+
+type SchoolOptionsResponse struct {
+	Data       []model.SchoolOption `json:"data"`
+	NextCursor string               `json:"next_cursor"`
+}
+
+type SchoolSearchParams struct {
+	Q          string
+	ProvinceID string
+	Category   string
+	NPSN       string
+	Cursor     string
+	Limit      int
 }
 
 func toSchoolResponse(row repository.SchoolAdminRow) SchoolResponse {
@@ -122,10 +137,94 @@ func (s *Service) AdminListSchools(ctx context.Context, params AdminListSchoolsP
 	return schools, nextCursor, counts, nil
 }
 
-// SchoolOptions returns the full active school registry (id/name/code) for
-// picker dropdowns. See ListSchoolOptions for why this is unpaginated.
-func (s *Service) SchoolOptions(ctx context.Context) ([]repository.SchoolOption, error) {
-	return s.storeRepo.ListSchoolOptions(ctx)
+// SchoolOptions returns a bounded active school search page for picker dropdowns.
+func (s *Service) SchoolOptions(ctx context.Context, params SchoolSearchParams) (SchoolOptionsResponse, error) {
+	filter, empty, err := s.buildSchoolSearchFilter(ctx, params)
+	if err != nil || empty {
+		return SchoolOptionsResponse{Data: []model.SchoolOption{}}, err
+	}
+	rows, nextCursor, err := s.storeRepo.SearchSchoolOptions(ctx, filter)
+	if err != nil {
+		if errors.Is(err, repository.ErrInvalidCursor) || errors.Is(err, repository.ErrAmbiguousSchoolIdentity) {
+			return SchoolOptionsResponse{}, ErrInvalidSchoolSearch
+		}
+		return SchoolOptionsResponse{}, err
+	}
+	return SchoolOptionsResponse{Data: rows, NextCursor: nextCursor}, nil
+}
+
+func (s *Service) buildSchoolSearchFilter(ctx context.Context, params SchoolSearchParams) (repository.SchoolSearchFilter, bool, error) {
+	limit := params.Limit
+	if limit == 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	npsn := strings.TrimSpace(params.NPSN)
+	if npsn != "" {
+		normalized, err := normalizeSchoolNPSN(&npsn)
+		if err != nil {
+			return repository.SchoolSearchFilter{}, false, err
+		}
+		return repository.SchoolSearchFilter{NPSN: *normalized, Limit: limit}, false, nil
+	}
+
+	q := strings.TrimSpace(params.Q)
+	provinceID := strings.TrimSpace(params.ProvinceID)
+	category := strings.ToUpper(strings.TrimSpace(params.Category))
+	cursor := strings.TrimSpace(params.Cursor)
+	if q == "" && provinceID == "" && category == "" && cursor == "" {
+		return repository.SchoolSearchFilter{}, true, nil
+	}
+	if q == "" || len([]rune(q)) < 3 || provinceID == "" {
+		return repository.SchoolSearchFilter{}, true, nil
+	}
+	if len([]rune(q)) > 100 {
+		return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
+	}
+	if category != "" && !allowedSchoolSearchCategory(category) {
+		return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
+	}
+	province, err := s.storeRepo.GetProvinceByID(ctx, provinceID)
+	if err != nil {
+		return repository.SchoolSearchFilter{}, false, err
+	}
+	if province == nil {
+		return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
+	}
+
+	return repository.SchoolSearchFilter{
+		Q:          q,
+		ProvinceID: provinceID,
+		Category:   category,
+		Cursor:     cursor,
+		Limit:      limit,
+	}, false, nil
+}
+
+func allowedSchoolSearchCategory(category string) bool {
+	switch category {
+	case "SD", "MI", "SMP", "MTS", "SMA", "MA", "SMK":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Service) GetSchoolOption(ctx context.Context, id string) (*model.SchoolOption, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, ErrInvalidUUID
+	}
+	school, err := s.storeRepo.GetSchoolOptionByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if school == nil {
+		return nil, ErrSchoolNotFound
+	}
+	return school, nil
 }
 
 // CreateSchool creates a new school with status='active' and student_count=0.

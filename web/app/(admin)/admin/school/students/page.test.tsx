@@ -65,15 +65,79 @@ vi.mock("@/stores/auth", () => ({
   useAuthStore: (selector: (s: typeof authStore) => unknown) => selector(authStore),
 }));
 
-vi.mock("@/lib/hooks/admin-schools", () => ({
-  useSchoolOptions: () => schoolsState,
-}));
-
 vi.mock("@/lib/hooks/students", () => ({
-  useSchools: () => ({
-    data: [{ id: "s1", name: "SMAN 1 Jakarta", school_types: ["SMA", "SMK"] }],
+  useSchoolById: (id?: string) => ({
+    data: id ? { id, name: "SMAN 1 Jakarta", school_types: ["SMA", "SMK"] } : null,
     isLoading: false,
   }),
+}));
+
+
+vi.mock("@/components/SchoolPicker", () => {
+  const schools = [
+    { id: "school-1", name: "School One", school_types: ["SMA", "SMK"] },
+    { id: "s1", name: "SMAN 1 Jakarta", school_types: ["SMA", "SMK"] },
+    { id: "s2", name: "SMAN 2 Bandung", school_types: ["SMP", "SMA"] },
+  ];
+  return {
+    SchoolPicker: ({ id = "school", value = "", onChange, allowUnlisted, unlistedName = "", onUnlistedNameChange }: { id?: string; value?: string; onChange: (school: { id: string; name: string; school_types?: string[] } | null) => void; allowUnlisted?: boolean; unlistedName?: string; onUnlistedNameChange?: (value: string) => void }) => {
+      if (allowUnlisted && unlistedName) {
+        return (
+          <input
+            id={id}
+            aria-label="Tulis nama sekolah Anda"
+            value={unlistedName.trimStart()}
+            onChange={(event) => {
+              onChange(null);
+              onUnlistedNameChange?.(event.target.value);
+            }}
+          />
+        );
+      }
+      return (
+        <div>
+          <button type="button" role="combobox" aria-label="Sekolah">
+            {schools.find((school) => school.id === value)?.name ?? "Pilih sekolah"}
+          </button>
+          {schools.map((school) => (
+            <button
+              key={school.id}
+              type="button"
+              role="option"
+              onClick={() => {
+                onUnlistedNameChange?.("");
+                onChange(school);
+              }}
+            >
+              {school.name}
+            </button>
+          ))}
+          {allowUnlisted ? (
+            <button
+              type="button"
+              role="option"
+              onClick={() => {
+                onChange(null);
+                onUnlistedNameChange?.(" ");
+              }}
+            >
+              Sekolah tidak ditemukan / tidak ada di daftar
+            </button>
+          ) : null}
+        </div>
+      );
+    },
+  };
+});
+
+vi.mock("@/components/SchoolFilterPicker", () => ({
+  SchoolFilterPicker: ({ value, onChange, label, allLabel }: { value: string; onChange: (value: string) => void; label: string; allLabel: string }) => (
+    <select aria-label={label} value={value || ""} onChange={(event) => onChange(event.target.value)}>
+      <option value="">{allLabel}</option>
+      <option value="sch-1">SMAN 1 Jakarta</option>
+      <option value="s2">SMAN 2 Bandung</option>
+    </select>
+  ),
 }));
 
 vi.mock("@/lib/hooks/regions", () => ({
@@ -688,7 +752,7 @@ describe("SchoolStudentsPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           input: expect.objectContaining({ name: "Peserta Umum", jenjang: "SMP" }),
-          schoolId: "",
+          schoolId: undefined,
         }),
       );
     });
@@ -723,7 +787,7 @@ describe("SchoolStudentsPage", () => {
 
     const dialogSchoolPicker = within(dialog).getByRole("combobox", { name: /sekolah/i });
     fireEvent.click(dialogSchoolPicker);
-    fireEvent.click(await screen.findByText("SMAN 2 Bandung"));
+    fireEvent.click(within(dialog).getByRole("option", { name: "SMAN 2 Bandung" }));
 
     expect(jenjangTrigger).not.toBeDisabled();
     fireEvent.click(jenjangTrigger);

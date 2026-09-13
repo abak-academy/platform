@@ -126,17 +126,39 @@ func jenjangInSchoolTypes(jenjang string, types []string) bool {
 // jenjang is required; provinsiID/kotaID/kecamatanID are optional but must be
 // all-or-nothing (FR-REG-02a). kodePos is independently optional.
 func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*StudentRegistrationResponse, error) {
-	return s.registerStudent(ctx, schoolID, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil)
+	return s.registerStudent(ctx, schoolID, nil, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil)
 }
 
 func (s *Service) RegisterStudentWithPassword(ctx context.Context, actorRole, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
 	if actorRole != RoleSuperAdmin {
 		return nil, ErrForbidden
 	}
-	return s.registerStudent(ctx, schoolID, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password)
+	return s.registerStudent(ctx, schoolID, nil, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password)
 }
 
-func (s *Service) registerStudent(ctx context.Context, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password *string) (*StudentRegistrationResponse, error) {
+func (s *Service) RegisterStudentUnlisted(ctx context.Context, actorRole, unlistedSchoolName, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*StudentRegistrationResponse, error) {
+	if actorRole != RoleSuperAdmin {
+		return nil, ErrForbidden
+	}
+	unlistedSchoolName = strings.TrimSpace(unlistedSchoolName)
+	if unlistedSchoolName == "" {
+		return nil, ErrMissingField
+	}
+	return s.registerStudent(ctx, "", &unlistedSchoolName, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil)
+}
+
+func (s *Service) RegisterStudentUnlistedWithPassword(ctx context.Context, actorRole, unlistedSchoolName, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
+	if actorRole != RoleSuperAdmin {
+		return nil, ErrForbidden
+	}
+	unlistedSchoolName = strings.TrimSpace(unlistedSchoolName)
+	if unlistedSchoolName == "" {
+		return nil, ErrMissingField
+	}
+	return s.registerStudent(ctx, "", &unlistedSchoolName, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password)
+}
+
+func (s *Service) registerStudent(ctx context.Context, schoolID string, unlistedSchoolName *string, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password *string) (*StudentRegistrationResponse, error) {
 	name = strings.TrimSpace(stripFormatRunes(name))
 	if name == "" || jenjang == "" {
 		return nil, ErrMissingField
@@ -257,24 +279,25 @@ func (s *Service) registerStudent(ctx context.Context, schoolID, name, jenjang s
 	}
 
 	user := &model.User{
-		Username:       &username,
-		Name:           name,
-		Email:          email,
-		PasswordHash:   string(hash),
-		Role:           RoleStudent,
-		SchoolID:       schoolIDPtr,
-		Status:         "active",
-		OTPEnabled:     false,
-		Jenjang:        &jenjang,
-		ProvinsiID:     provinsiID,
-		KotaID:         kotaID,
-		KecamatanID:    kecamatanID,
-		KodePos:        kodePos,
-		DOB:            dob,
-		Gender:         gender,
-		Grade:          grade,
-		AlamatDomisili: alamatDomisili,
-		TargetExam:     targetExam,
+		Username:           &username,
+		Name:               name,
+		Email:              email,
+		PasswordHash:       string(hash),
+		Role:               RoleStudent,
+		SchoolID:           schoolIDPtr,
+		UnlistedSchoolName: unlistedSchoolName,
+		Status:             "active",
+		OTPEnabled:         false,
+		Jenjang:            &jenjang,
+		ProvinsiID:         provinsiID,
+		KotaID:             kotaID,
+		KecamatanID:        kecamatanID,
+		KodePos:            kodePos,
+		DOB:                dob,
+		Gender:             gender,
+		Grade:              grade,
+		AlamatDomisili:     alamatDomisili,
+		TargetExam:         targetExam,
 	}
 	if err := s.storeRepo.CreateStudent(ctx, user); err != nil {
 		var pgErr *pgconn.PgError

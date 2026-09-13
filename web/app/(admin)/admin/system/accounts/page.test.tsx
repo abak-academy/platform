@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import { toast } from "sonner";
 import SystemAccountsPage from "./page";
-import type { AdminAccount, School } from "@/lib/types";
+import type { AdminAccount } from "@/lib/types";
 
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
@@ -20,14 +20,6 @@ let changeRoleState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPend
 let changeStatusState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let resetPwdState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 
-let schoolsState = {
-  data: null as School[] | null,
-  isLoading: false,
-  isError: false,
-  error: null as Error | null,
-  refetch: vi.fn(),
-};
-
 vi.mock("@/lib/hooks/admin-accounts", () => ({
   useAdminAccounts: () => accountsState,
   useCreateAdminAccount: () => createState,
@@ -36,8 +28,18 @@ vi.mock("@/lib/hooks/admin-accounts", () => ({
   useResetAccountPassword: () => resetPwdState,
 }));
 
-vi.mock("@/lib/hooks/students", () => ({
-  useSchools: () => schoolsState,
+
+vi.mock("@/components/SchoolFilterPicker", () => ({
+  SchoolFilterPicker: ({ value, onChange, label, allLabel }: { value: string; onChange: (value: string) => void; label: string; allLabel: string }) => (
+    <div>
+      <label>{label}</label>
+      <select aria-label={label} value={value || ""} onChange={(event) => onChange(event.target.value)}>
+        <option value="">{allLabel}</option>
+        <option value="sch-1">SMAN 1 Jakarta</option>
+        <option value="s2">SMAN 2 Bandung</option>
+      </select>
+    </div>
+  ),
 }));
 
 vi.mock("sonner", () => ({
@@ -78,10 +80,7 @@ const sampleAccounts: AdminAccount[] = [
   },
 ];
 
-const sampleSchools: School[] = [
-  { id: "sch-1", name: "SMAN 1 Jakarta" },
-  { id: "sch-2", name: "SMAN 2 Jakarta" },
-];
+
 
 describe("SystemAccountsPage", () => {
   beforeEach(() => {
@@ -96,13 +95,6 @@ describe("SystemAccountsPage", () => {
     changeRoleState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     changeStatusState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     resetPwdState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
-    schoolsState = {
-      data: sampleSchools,
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    };
     mockMutate.mockReset();
     mockMutateAsync.mockReset();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();

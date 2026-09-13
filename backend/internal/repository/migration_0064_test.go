@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMigration0064_PusdatinSchoolMetadata(t *testing.T) {
+func TestMigration0064_SchoolSearchMetadata(t *testing.T) {
 	ctx := context.Background()
 	pool := newMigration0025Pool(t)
 
@@ -23,18 +23,20 @@ func TestMigration0064_PusdatinSchoolMetadata(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO school (name, code, npsn, school_types, alamat, status)
 		VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
-		"Pusdatin Metadata School", "pusdatin-metadata", "12345678", []string{"SMA"}, "Jl. Lama",
+		"Metadata Migration School", "metadata-migration", "12345678", []string{"SMA"}, "Jl. Lama",
 	).Scan(&schoolID))
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO users (email, role, name, school_id) VALUES ($1, 'student', $2, $3) RETURNING id`,
 		"migration-0064@test.local", "Migration Student", schoolID,
 	).Scan(&userID))
 
-	applyMigrationFile(t, pool, "0064_pusdatin_school_metadata.up.sql")
+	applyMigrationFile(t, pool, "0064_school_search_metadata.up.sql")
 
 	requireColumnExists(t, pool, "school", "category", true)
 	requireColumnExists(t, pool, "school", "provinsi_id", true)
 	requireColumnExists(t, pool, "school", "kota_id", true)
+	requireSchoolSearchIndexExists(t, pool, "idx_school_active_name_trgm")
+	requireSchoolSearchIndexExists(t, pool, "idx_school_provinsi_category_name_id")
 
 	var category, provinsiID, kotaID *string
 	require.NoError(t, pool.QueryRow(ctx,
@@ -70,11 +72,19 @@ func TestMigration0064_PusdatinSchoolMetadata(t *testing.T) {
 	)
 	require.Error(t, err)
 
-	applyMigrationFile(t, pool, "0064_pusdatin_school_metadata.down.sql")
+	applyMigrationFile(t, pool, "0064_school_search_metadata.down.sql")
 
 	requireColumnExists(t, pool, "school", "category", false)
 	requireColumnExists(t, pool, "school", "provinsi_id", false)
 	requireColumnExists(t, pool, "school", "kota_id", false)
+	requireSchoolSearchIndexExists(t, pool, "idx_school_active_name_trgm", false)
+	requireSchoolSearchIndexExists(t, pool, "idx_school_provinsi_category_name_id", false)
+
+	var pgTrgmExists bool
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')`,
+	).Scan(&pgTrgmExists))
+	require.True(t, pgTrgmExists, "down migration must not drop shared pg_trgm extension")
 
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT school_id FROM users WHERE id = $1`, userID,
@@ -94,4 +104,18 @@ func requireColumnExists(t *testing.T, pool *pgxpool.Pool, table, column string,
 		table, column,
 	).Scan(&exists))
 	require.Equal(t, want, exists, "%s.%s existence", table, column)
+}
+
+func requireSchoolSearchIndexExists(t *testing.T, pool *pgxpool.Pool, indexName string, want ...bool) {
+	t.Helper()
+	expected := true
+	if len(want) > 0 {
+		expected = want[0]
+	}
+	var exists bool
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = $1)`,
+		indexName,
+	).Scan(&exists))
+	require.Equal(t, expected, exists, "index %s existence", indexName)
 }

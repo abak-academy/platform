@@ -148,25 +148,3 @@ func TestCountSchoolsAdmin_matchesFilteredTotal(t *testing.T) {
 	require.Equal(t, 2, counts.Active)
 }
 
-func TestListSchoolOptions_excludesDeactivated(t *testing.T) {
-	pool := newGradingTestPool(t)
-	repo := New(pool)
-	ctx := context.Background()
-
-	suffix := uuid.New().String()[:8]
-	activeID := seedSchoolRow(t, repo, "Option Active "+suffix, "oa_"+uuid.New().String()[:10], "active")
-	deactivatedID := seedSchoolRow(t, repo, "Option Deactivated "+suffix, "od_"+uuid.New().String()[:10], "deactivated")
-
-	options, err := repo.ListSchoolOptions(ctx)
-	require.NoError(t, err)
-
-	byID := map[string]SchoolOption{}
-	for _, o := range options {
-		byID[o.ID] = o
-	}
-	active, ok := byID[activeID.String()]
-	require.True(t, ok, "active school should be in options")
-	require.Equal(t, []string{"SMA"}, active.SchoolTypes, "school_types should be carried through for the jenjang picker")
-	_, ok = byID[deactivatedID.String()]
-	require.False(t, ok, "deactivated school should not be in options")
-}
