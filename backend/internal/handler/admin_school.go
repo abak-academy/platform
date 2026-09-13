@@ -45,8 +45,7 @@ func (h *Handler) AdminListSchools(c echo.Context) error {
 	})
 }
 
-// AdminListSchoolOptions returns every active school (id/name/code) for
-// picker dropdowns, unpaginated — see Service.SchoolOptions.
+// AdminListSchoolOptions returns a bounded school search page for picker dropdowns.
 func (h *Handler) AdminListSchoolOptions(c echo.Context) error {
 	params, err := schoolSearchParamsFromRequest(c)
 	if err != nil {

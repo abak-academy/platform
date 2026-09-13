@@ -1,5 +1,7 @@
 # Production Pusdatin school import plan — 2026-09-06
 
+> Historical note: this 2026-09-06 plan predated the bounded search and direct-import implementation. PR 2 now imports directly into `school` by normalized NPSN only; use `docs/runbooks/pusdatin-school-import.md` for the current operator flow.
+
 ## Current evidence
 
 - Source: `docs/Data Induk Satuan Pendidikan  - DAFTAR Nasional 360 - ASC - 17 Agustus 2026.csv`.

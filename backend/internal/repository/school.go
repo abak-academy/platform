@@ -206,42 +206,6 @@ func decodeSchoolSearchCursor(raw string, filter SchoolSearchFilter) (string, uu
 	return c.Name, id, nil
 }
 
-// ListSchoolOptions returns every active school with picker metadata,
-// ordered by name, for use in picker dropdowns. Unlike ListSchoolsAdmin this
-// is not paginated: pickers need the full active registry to let users select
-// any school, not just the first page (see school-bulk-list-pagination
-// backlog, "picker" gap — GET /admin/schools with no cursor/limit was
-// silently truncating every picker in the app to 20 alphabetically-first
-// schools).
-func (r *Repository) ListSchoolOptions(ctx context.Context) ([]SchoolOption, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT s.id, s.name, s.code, s.npsn, s.school_types, s.alamat, s.status,
-			s.category, s.city_id, c.name, p.id, p.name
-		FROM school s
-		LEFT JOIN city c ON c.id = s.city_id
-		LEFT JOIN province p ON p.id = c.province_id
-		WHERE s.status = 'active'
-		ORDER BY s.name ASC`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	options := []SchoolOption{}
-	for rows.Next() {
-		var o SchoolOption
-		if err := rows.Scan(
-			&o.ID, &o.Name, &o.Code, &o.NPSN, &o.SchoolTypes, &o.Alamat, &o.Status,
-			&o.Category, &o.CityID, &o.CityName, &o.ProvinceID, &o.ProvinceName,
-		); err != nil {
-			return nil, err
-		}
-		options = append(options, o)
-	}
-	return options, rows.Err()
-}
-
 func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearchFilter) ([]SchoolOption, string, error) {
 	if filter.Limit <= 0 {
 		filter.Limit = 20
