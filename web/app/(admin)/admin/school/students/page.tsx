@@ -49,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { BulkImportModal } from "@/components/admin/BulkImportModal";
 import { StatCard } from "@/components/admin/StatCard";
 import { SchoolPicker } from "@/components/SchoolPicker";
+import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
 import {
   useAdminStudents,
   useRegisterStudent,
@@ -56,7 +57,6 @@ import {
   useReissueStudentCredentials,
   useSetStudentPassword,
 } from "@/lib/hooks/admin-students";
-import { useSchoolOptions } from "@/lib/hooks/admin-schools";
 import { useSchoolById } from "@/lib/hooks/students";
 import { useProvinces, useCitiesByProvince, useDistrictsByCity } from "@/lib/hooks/regions";
 import { useAuthStore } from "@/stores/auth";
@@ -67,10 +67,6 @@ import type {
   StudentCredentials,
   SchoolOption,
 } from "@/lib/types";
-
-// Radix Select forbids an empty-string item value, so "every school" needs its
-// own sentinel; it maps back to "" (no school_id param) for the query.
-const ALL_SCHOOLS_VALUE = "_all_";
 
 // Search is sent to the server (q param), so it must be debounced the same
 // way the schools page debounces school search — otherwise every keystroke
@@ -128,7 +124,6 @@ export default function SchoolStudentsPage() {
   // Role-gated school picker (super_admin only)
   const currentRole = useAuthStore((s) => s.user?.role);
   const isSuperAdmin = currentRole === "super_admin";
-  const { data: schoolsData, isLoading: schoolsLoading } = useSchoolOptions();
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
 
   // Filters
@@ -546,8 +541,7 @@ export default function SchoolStudentsPage() {
               size="sm"
               className="rounded-full"
               onClick={() => {
-                const selected = (schoolsData?.data ?? []).find((school) => school.id === selectedSchoolId) ?? null;
-                setRegisterSelectedSchool(selected);
+                setRegisterSelectedSchool(null);
                 setRegisterSchoolId(selectedSchoolId);
                 setRegisterUnlistedSchoolName("");
                 setRegisterOpen(true);
@@ -564,26 +558,12 @@ export default function SchoolStudentsPage() {
       {isSuperAdmin && (
         <div className="mb-6">
           <p className="text-xs text-ink-500">{t("select_school")}</p>
-          {schoolsLoading ? (
-            <div className="mt-1 h-9 w-[240px] animate-pulse rounded-md bg-surface-2" />
-          ) : (
-            <Select
-              value={selectedSchoolId || ALL_SCHOOLS_VALUE}
-              onValueChange={(v) => setSelectedSchoolId(v === ALL_SCHOOLS_VALUE ? "" : v)}
-            >
-              <SelectTrigger className="mt-1 h-9 w-[240px] text-xs" aria-label={t("select_school")}>
-                <SelectValue placeholder={t("students_all_schools")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_SCHOOLS_VALUE}>{t("students_all_schools")}</SelectItem>
-                {(schoolsData?.data ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          <SchoolFilterPicker
+            value={selectedSchoolId}
+            onChange={setSelectedSchoolId}
+            label={t("select_school")}
+            allLabel={t("students_all_schools")}
+          />
         </div>
       )}
 

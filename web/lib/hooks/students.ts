@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
-import type { Dashboard, School, SchoolOption, User } from "@/lib/types";
+import type { Dashboard, SchoolOption, User } from "@/lib/types";
 
 export const studentsKeys = {
   all: ["students"] as const,
@@ -46,14 +46,6 @@ export interface UpdateProfileInput {
   kota_id?: string;
   kecamatan_id?: string;
   kode_pos?: string;
-}
-
-export function useSchools(enabled = true) {
-  return useQuery({
-    queryKey: [...studentsKeys.all, "schools"],
-    queryFn: () => authFetch<School[]>(`/schools`),
-    enabled,
-  });
 }
 
 export interface SchoolSearchParams {
