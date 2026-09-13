@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"akademi-bimbel/internal/model"
 	"github.com/jackc/pgx/v5"
@@ -104,4 +105,115 @@ func (r *Repository) ApplyPusdatinSchools(ctx context.Context, rows []model.Pusd
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+func (r *Repository) LoadPusdatinSchoolImages(ctx context.Context, npsns []string) (map[string]model.PusdatinSchoolImage, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT UPPER(BTRIM(npsn)), id, npsn, name, alamat, school_types, category, city_id
+		FROM school
+		WHERE npsn IS NOT NULL AND UPPER(BTRIM(npsn)) = ANY($1)`,
+		npsns,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[string]model.PusdatinSchoolImage{}
+	for rows.Next() {
+		var normalized string
+		var image model.PusdatinSchoolImage
+		if err := rows.Scan(&normalized, &image.ID, &image.NPSN, &image.Name, &image.Alamat, &image.SchoolTypes, &image.Category, &image.CityID); err != nil {
+			return nil, err
+		}
+		out[normalized] = image
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) RollbackPusdatinImport(ctx context.Context, manifest model.PusdatinImportManifest) error {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	for _, row := range manifest.Rows {
+		current, err := loadPusdatinImageTx(ctx, tx, row.After.ID)
+		if err != nil {
+			return err
+		}
+		if current == nil || !pusdatinImageEqual(*current, row.After) {
+			return fmt.Errorf("pusdatin rollback blocked: school %s changed after import", row.After.ID)
+		}
+		if row.Inserted {
+			var refs int
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE school_id = $1`, row.After.ID).Scan(&refs); err != nil {
+				return err
+			}
+			if refs != 0 {
+				return fmt.Errorf("pusdatin rollback blocked: inserted school %s has references", row.After.ID)
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM school WHERE id = $1`, row.After.ID); err != nil {
+				return err
+			}
+			continue
+		}
+		if row.Before == nil {
+			return fmt.Errorf("pusdatin rollback blocked: missing before image for %s", row.After.ID)
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE school
+			SET name = $1, alamat = $2, school_types = $3, category = $4, city_id = $5, updated_at = now()
+			WHERE id = $6`,
+			row.Before.Name, row.Before.Alamat, row.Before.SchoolTypes, row.Before.Category, row.Before.CityID, row.After.ID,
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func loadPusdatinImageTx(ctx context.Context, tx pgx.Tx, id string) (*model.PusdatinSchoolImage, error) {
+	var image model.PusdatinSchoolImage
+	err := tx.QueryRow(ctx,
+		`SELECT id, npsn, name, alamat, school_types, category, city_id FROM school WHERE id = $1`,
+		id,
+	).Scan(&image.ID, &image.NPSN, &image.Name, &image.Alamat, &image.SchoolTypes, &image.Category, &image.CityID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &image, nil
+}
+
+func pusdatinImageEqual(a, b model.PusdatinSchoolImage) bool {
+	return a.ID == b.ID &&
+		stringPtrEqualRepo(a.NPSN, b.NPSN) &&
+		a.Name == b.Name &&
+		stringPtrEqualRepo(a.Alamat, b.Alamat) &&
+		slicesEqual(a.SchoolTypes, b.SchoolTypes) &&
+		stringPtrEqualRepo(a.Category, b.Category) &&
+		stringPtrEqualRepo(a.CityID, b.CityID)
+}
+
+func stringPtrEqualRepo(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

@@ -135,27 +135,94 @@ func (s *Service) DryRunPusdatinImport(ctx context.Context, r io.Reader, opts mo
 }
 
 func (s *Service) ApplyPusdatinImport(ctx context.Context, r io.Reader, opts model.PusdatinTransformOptions, reviewedChecksum string) (*model.PusdatinImportReport, error) {
+	report, _, err := s.ApplyPusdatinImportWithManifest(ctx, r, opts, reviewedChecksum)
+	return report, err
+}
+
+func (s *Service) ApplyPusdatinImportWithManifest(ctx context.Context, r io.Reader, opts model.PusdatinTransformOptions, reviewedChecksum string) (*model.PusdatinImportReport, model.PusdatinImportManifest, error) {
 	if err := s.storeRepo.VerifySchoolNPSNImportIndex(ctx); err != nil {
-		return nil, err
+		return nil, model.PusdatinImportManifest{}, err
 	}
 	transform, err := TransformPusdatinSource(r, opts)
 	if err != nil {
-		return nil, err
+		return nil, model.PusdatinImportManifest{}, err
 	}
 	report, err := s.buildPusdatinImportReport(ctx, transform)
 	if err != nil {
-		return nil, err
+		return nil, model.PusdatinImportManifest{}, err
 	}
 	if len(report.Blockers) > 0 {
-		return report, ErrPusdatinImportBlocked
+		return report, model.PusdatinImportManifest{}, ErrPusdatinImportBlocked
 	}
 	if reviewedChecksum == "" || reviewedChecksum != report.ReviewedChecksum {
-		return nil, ErrPusdatinReviewedPreviewMismatch
+		return nil, model.PusdatinImportManifest{}, ErrPusdatinReviewedPreviewMismatch
+	}
+	npsns := pusdatinTransformedNPSNs(transform.Transformed)
+	before, err := s.storeRepo.LoadPusdatinSchoolImages(ctx, npsns)
+	if err != nil {
+		return nil, model.PusdatinImportManifest{}, err
 	}
 	if err := s.storeRepo.ApplyPusdatinSchools(ctx, transform.Transformed); err != nil {
-		return nil, err
+		return nil, model.PusdatinImportManifest{}, err
 	}
-	return report, nil
+	after, err := s.storeRepo.LoadPusdatinSchoolImages(ctx, npsns)
+	if err != nil {
+		return nil, model.PusdatinImportManifest{}, err
+	}
+	manifest := model.PusdatinImportManifest{ReviewedChecksum: reviewedChecksum}
+	for _, row := range transform.Transformed {
+		afterImage := after[row.NPSN]
+		manifestRow := model.PusdatinImportManifestRow{
+			NPSN:     row.NPSN,
+			Inserted: before[row.NPSN].ID == "",
+			After:    afterImage,
+		}
+		if image, ok := before[row.NPSN]; ok {
+			manifestRow.Before = &image
+		}
+		manifest.Rows = append(manifest.Rows, manifestRow)
+	}
+	return report, manifest, nil
+}
+
+func (s *Service) VerifyPusdatinImport(ctx context.Context, manifest model.PusdatinImportManifest) error {
+	npsns := make([]string, 0, len(manifest.Rows))
+	for _, row := range manifest.Rows {
+		npsns = append(npsns, row.NPSN)
+	}
+	current, err := s.storeRepo.LoadPusdatinSchoolImages(ctx, npsns)
+	if err != nil {
+		return err
+	}
+	for _, row := range manifest.Rows {
+		image, ok := current[row.NPSN]
+		if !ok || !pusdatinManifestImageEqual(image, row.After) {
+			return fmt.Errorf("pusdatin verify failed for %s", row.NPSN)
+		}
+	}
+	return nil
+}
+
+func (s *Service) RollbackPusdatinImport(ctx context.Context, manifest model.PusdatinImportManifest) error {
+	return s.storeRepo.RollbackPusdatinImport(ctx, manifest)
+}
+
+func pusdatinTransformedNPSNs(rows []model.PusdatinTransformedSchool) []string {
+	npsns := make([]string, 0, len(rows))
+	for _, row := range rows {
+		npsns = append(npsns, row.NPSN)
+	}
+	return npsns
+}
+
+func pusdatinManifestImageEqual(a, b model.PusdatinSchoolImage) bool {
+	return a.ID == b.ID &&
+		pusdatinStringPtrEqual(a.NPSN, b.NPSN) &&
+		a.Name == b.Name &&
+		pusdatinStringPtrEqual(a.Alamat, b.Alamat) &&
+		slices.Equal(a.SchoolTypes, b.SchoolTypes) &&
+		pusdatinStringPtrEqual(a.Category, b.Category) &&
+		pusdatinStringPtrEqual(a.CityID, b.CityID)
 }
 
 func (s *Service) buildPusdatinImportReport(ctx context.Context, transform *model.PusdatinTransformReport) (*model.PusdatinImportReport, error) {

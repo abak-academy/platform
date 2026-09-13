@@ -135,3 +135,25 @@ type PusdatinImportReport struct {
 	Counts              PusdatinImportCounts       `json:"counts"`
 	Blockers            []PusdatinTransformBlocker `json:"blockers"`
 }
+
+type PusdatinSchoolImage struct {
+	ID          string   `json:"id"`
+	NPSN        *string  `json:"npsn"`
+	Name        string   `json:"name"`
+	Alamat      *string  `json:"alamat"`
+	SchoolTypes []string `json:"school_types"`
+	Category    *string  `json:"category"`
+	CityID      *string  `json:"city_id"`
+}
+
+type PusdatinImportManifestRow struct {
+	NPSN     string               `json:"npsn"`
+	Inserted bool                 `json:"inserted"`
+	Before   *PusdatinSchoolImage `json:"before,omitempty"`
+	After    PusdatinSchoolImage  `json:"after"`
+}
+
+type PusdatinImportManifest struct {
+	ReviewedChecksum string                      `json:"reviewed_checksum"`
+	Rows             []PusdatinImportManifestRow `json:"rows"`
+}
