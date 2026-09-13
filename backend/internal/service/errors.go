@@ -208,10 +208,12 @@ var (
 
 // --- from pusdatin_import.go ---
 var (
-	ErrPusdatinSourceChecksum     = errors.New("pusdatin source checksum mismatch")
-	ErrPusdatinHeaderMismatch     = errors.New("pusdatin source header mismatch")
-	ErrPusdatinResolutionMismatch = errors.New("pusdatin duplicate resolution mismatch")
-	ErrPusdatinGeographyDrift     = errors.New("pusdatin geography mapping drift")
+	ErrPusdatinSourceChecksum          = errors.New("pusdatin source checksum mismatch")
+	ErrPusdatinHeaderMismatch          = errors.New("pusdatin source header mismatch")
+	ErrPusdatinResolutionMismatch      = errors.New("pusdatin duplicate resolution mismatch")
+	ErrPusdatinGeographyDrift          = errors.New("pusdatin geography mapping drift")
+	ErrPusdatinImportBlocked           = errors.New("pusdatin import has blockers")
+	ErrPusdatinReviewedPreviewMismatch = errors.New("pusdatin reviewed preview mismatch")
 )
 
 // --- from shipping_rates.go ---

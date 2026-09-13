@@ -121,3 +121,17 @@ type PusdatinTransformReport struct {
 	TransformedChecksum     string                      `json:"transformed_checksum"`
 	Blockers                []PusdatinTransformBlocker  `json:"blockers"`
 }
+
+type PusdatinImportCounts struct {
+	Inserted  int `json:"inserted"`
+	Updated   int `json:"updated"`
+	Unchanged int `json:"unchanged"`
+}
+
+type PusdatinImportReport struct {
+	SourceSHA256        string                     `json:"source_sha256"`
+	TransformedChecksum string                     `json:"transformed_checksum"`
+	ReviewedChecksum    string                     `json:"reviewed_checksum"`
+	Counts              PusdatinImportCounts       `json:"counts"`
+	Blockers            []PusdatinTransformBlocker `json:"blockers"`
+}

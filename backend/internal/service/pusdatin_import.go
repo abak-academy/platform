@@ -2,16 +2,20 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
 )
 
 var pusdatinExpectedHeader = []string{
@@ -120,6 +124,110 @@ func TransformPusdatinSource(r io.Reader, opts model.PusdatinTransformOptions) (
 	}
 	report.TransformedChecksum = checksum
 	return report, nil
+}
+
+func (s *Service) DryRunPusdatinImport(ctx context.Context, r io.Reader, opts model.PusdatinTransformOptions) (*model.PusdatinImportReport, error) {
+	transform, err := TransformPusdatinSource(r, opts)
+	if err != nil {
+		return nil, err
+	}
+	return s.buildPusdatinImportReport(ctx, transform)
+}
+
+func (s *Service) ApplyPusdatinImport(ctx context.Context, r io.Reader, opts model.PusdatinTransformOptions, reviewedChecksum string) (*model.PusdatinImportReport, error) {
+	if err := s.storeRepo.VerifySchoolNPSNImportIndex(ctx); err != nil {
+		return nil, err
+	}
+	transform, err := TransformPusdatinSource(r, opts)
+	if err != nil {
+		return nil, err
+	}
+	report, err := s.buildPusdatinImportReport(ctx, transform)
+	if err != nil {
+		return nil, err
+	}
+	if len(report.Blockers) > 0 {
+		return report, ErrPusdatinImportBlocked
+	}
+	if reviewedChecksum == "" || reviewedChecksum != report.ReviewedChecksum {
+		return nil, ErrPusdatinReviewedPreviewMismatch
+	}
+	if err := s.storeRepo.ApplyPusdatinSchools(ctx, transform.Transformed); err != nil {
+		return nil, err
+	}
+	return report, nil
+}
+
+func (s *Service) buildPusdatinImportReport(ctx context.Context, transform *model.PusdatinTransformReport) (*model.PusdatinImportReport, error) {
+	report := &model.PusdatinImportReport{
+		SourceSHA256:        transform.SourceSHA256,
+		TransformedChecksum: transform.TransformedChecksum,
+		Blockers:            append([]model.PusdatinTransformBlocker{}, transform.Blockers...),
+	}
+	npsns := make([]string, 0, len(transform.Transformed))
+	for _, row := range transform.Transformed {
+		npsns = append(npsns, row.NPSN)
+	}
+	targets, err := s.storeRepo.LoadPusdatinSchoolTargets(ctx, npsns)
+	if err != nil {
+		if errors.Is(err, repository.ErrAmbiguousSchoolIdentity) {
+			report.Blockers = append(report.Blockers, model.PusdatinTransformBlocker{Code: "target_npsn_ambiguous", Message: "target has duplicate normalized NPSN"})
+			return finalizePusdatinImportReport(report)
+		}
+		return nil, err
+	}
+	for _, row := range transform.Transformed {
+		target, exists := targets[row.NPSN]
+		if !exists {
+			report.Counts.Inserted++
+			continue
+		}
+		if pusdatinTargetMatches(row, target) {
+			report.Counts.Unchanged++
+		} else {
+			report.Counts.Updated++
+		}
+	}
+	return finalizePusdatinImportReport(report)
+}
+
+func finalizePusdatinImportReport(report *model.PusdatinImportReport) (*model.PusdatinImportReport, error) {
+	payload := struct {
+		SourceSHA256        string
+		TransformedChecksum string
+		Counts              model.PusdatinImportCounts
+		Blockers            []model.PusdatinTransformBlocker
+	}{
+		SourceSHA256:        report.SourceSHA256,
+		TransformedChecksum: report.TransformedChecksum,
+		Counts:              report.Counts,
+		Blockers:            report.Blockers,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	report.ReviewedChecksum = sha256Hex(data)
+	return report, nil
+}
+
+func pusdatinTargetMatches(row model.PusdatinTransformedSchool, target repository.PusdatinSchoolTarget) bool {
+	return target.Name == row.Name &&
+		pusdatinStringPtrEqual(target.Alamat, row.Alamat) &&
+		slices.Equal(target.SchoolTypes, row.SchoolTypes) &&
+		stringPtrValueEqual(target.Category, row.Category) &&
+		stringPtrValueEqual(target.CityID, row.CityID)
+}
+
+func pusdatinStringPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func stringPtrValueEqual(ptr *string, value string) bool {
+	return ptr != nil && *ptr == value
 }
 
 func parsePusdatinRow(recordNumber int, record []string, geo pusdatinGeographyResolver, report *model.PusdatinTransformReport) (pusdatinSourceRow, bool) {
