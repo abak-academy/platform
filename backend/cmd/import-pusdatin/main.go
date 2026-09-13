@@ -157,7 +157,7 @@ func loadCityReferences(ctx context.Context, repo *repository.Repository) []mode
 	var out []model.PusdatinCityReference
 	for rows.Next() {
 		var city model.PusdatinCityReference
-		if err := rows.Scan(&city.ID, &city.Name, &city.ProvinceID, &city.ProvinceName); err != nil {
+		if err := rows.Scan(&city.ID, &city.Name, &city.ProvinsiID, &city.ProvinsiName); err != nil {
 			exitf("scan city references: %v", err)
 		}
 		out = append(out, city)

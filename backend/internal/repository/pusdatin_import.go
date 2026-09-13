@@ -21,7 +21,8 @@ type PusdatinSchoolTarget struct {
 	Alamat      *string
 	SchoolTypes []string
 	Category    *string
-	CityID      *string
+	ProvinsiID  *string
+	KotaID      *string
 }
 
 func (r *Repository) VerifySchoolNPSNImportIndex(ctx context.Context) error {
@@ -52,7 +53,7 @@ func (r *Repository) VerifySchoolNPSNImportIndex(ctx context.Context) error {
 
 func (r *Repository) LoadPusdatinSchoolTargets(ctx context.Context, npsns []string) (map[string]PusdatinSchoolTarget, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT UPPER(BTRIM(npsn)), id, npsn, name, alamat, school_types, category, city_id
+		`SELECT UPPER(BTRIM(npsn)), id, npsn, name, alamat, school_types, category, provinsi_id, kota_id
 		FROM school
 		WHERE npsn IS NOT NULL AND UPPER(BTRIM(npsn)) = ANY($1)`,
 		npsns,
@@ -66,7 +67,7 @@ func (r *Repository) LoadPusdatinSchoolTargets(ctx context.Context, npsns []stri
 	for rows.Next() {
 		var normalized string
 		var row PusdatinSchoolTarget
-		if err := rows.Scan(&normalized, &row.ID, &row.NPSN, &row.Name, &row.Alamat, &row.SchoolTypes, &row.Category, &row.CityID); err != nil {
+		if err := rows.Scan(&normalized, &row.ID, &row.NPSN, &row.Name, &row.Alamat, &row.SchoolTypes, &row.Category, &row.ProvinsiID, &row.KotaID); err != nil {
 			return nil, err
 		}
 		if _, exists := out[normalized]; exists {
@@ -86,22 +87,24 @@ func (r *Repository) ApplyPusdatinSchools(ctx context.Context, rows []model.Pusd
 
 	for _, row := range rows {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO school (name, code, npsn, school_types, alamat, status, category, city_id)
-			VALUES ($1, $2, $3, $4, $5, 'active', $6, $7)
+			`INSERT INTO school (name, code, npsn, school_types, alamat, status, category, provinsi_id, kota_id)
+			VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8)
 			ON CONFLICT (UPPER(BTRIM(npsn))) WHERE npsn IS NOT NULL
 			DO UPDATE SET
 				name = EXCLUDED.name,
 				alamat = EXCLUDED.alamat,
 				school_types = EXCLUDED.school_types,
 				category = EXCLUDED.category,
-				city_id = EXCLUDED.city_id,
+				provinsi_id = EXCLUDED.provinsi_id,
+				kota_id = EXCLUDED.kota_id,
 				updated_at = now()
 			WHERE school.name IS DISTINCT FROM EXCLUDED.name
 				OR school.alamat IS DISTINCT FROM EXCLUDED.alamat
 				OR school.school_types IS DISTINCT FROM EXCLUDED.school_types
 				OR school.category IS DISTINCT FROM EXCLUDED.category
-				OR school.city_id IS DISTINCT FROM EXCLUDED.city_id`,
-			row.Name, "PUSDATIN-"+row.NPSN, row.NPSN, row.SchoolTypes, row.Alamat, row.Category, row.CityID,
+				OR school.provinsi_id IS DISTINCT FROM EXCLUDED.provinsi_id
+				OR school.kota_id IS DISTINCT FROM EXCLUDED.kota_id`,
+			row.Name, "PUSDATIN-"+row.NPSN, row.NPSN, row.SchoolTypes, row.Alamat, row.Category, row.ProvinsiID, row.KotaID,
 		)
 		if err != nil {
 			return err
@@ -112,7 +115,7 @@ func (r *Repository) ApplyPusdatinSchools(ctx context.Context, rows []model.Pusd
 
 func (r *Repository) LoadPusdatinSchoolImages(ctx context.Context, npsns []string) (map[string]model.PusdatinSchoolImage, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT UPPER(BTRIM(npsn)), id, npsn, name, alamat, school_types, category, city_id
+		`SELECT UPPER(BTRIM(npsn)), id, npsn, name, alamat, school_types, category, provinsi_id, kota_id
 		FROM school
 		WHERE npsn IS NOT NULL AND UPPER(BTRIM(npsn)) = ANY($1)`,
 		npsns,
@@ -126,7 +129,7 @@ func (r *Repository) LoadPusdatinSchoolImages(ctx context.Context, npsns []strin
 	for rows.Next() {
 		var normalized string
 		var image model.PusdatinSchoolImage
-		if err := rows.Scan(&normalized, &image.ID, &image.NPSN, &image.Name, &image.Alamat, &image.SchoolTypes, &image.Category, &image.CityID); err != nil {
+		if err := rows.Scan(&normalized, &image.ID, &image.NPSN, &image.Name, &image.Alamat, &image.SchoolTypes, &image.Category, &image.ProvinsiID, &image.KotaID); err != nil {
 			return nil, err
 		}
 		out[normalized] = image
@@ -167,9 +170,9 @@ func (r *Repository) RollbackPusdatinImport(ctx context.Context, manifest model.
 		}
 		if _, err := tx.Exec(ctx,
 			`UPDATE school
-			SET name = $1, alamat = $2, school_types = $3, category = $4, city_id = $5, updated_at = now()
-			WHERE id = $6`,
-			row.Before.Name, row.Before.Alamat, row.Before.SchoolTypes, row.Before.Category, row.Before.CityID, row.After.ID,
+			SET name = $1, alamat = $2, school_types = $3, category = $4, provinsi_id = $5, kota_id = $6, updated_at = now()
+			WHERE id = $7`,
+			row.Before.Name, row.Before.Alamat, row.Before.SchoolTypes, row.Before.Category, row.Before.ProvinsiID, row.Before.KotaID, row.After.ID,
 		); err != nil {
 			return err
 		}
@@ -180,9 +183,9 @@ func (r *Repository) RollbackPusdatinImport(ctx context.Context, manifest model.
 func loadPusdatinImageTx(ctx context.Context, tx pgx.Tx, id string) (*model.PusdatinSchoolImage, error) {
 	var image model.PusdatinSchoolImage
 	err := tx.QueryRow(ctx,
-		`SELECT id, npsn, name, alamat, school_types, category, city_id FROM school WHERE id = $1`,
+		`SELECT id, npsn, name, alamat, school_types, category, provinsi_id, kota_id FROM school WHERE id = $1`,
 		id,
-	).Scan(&image.ID, &image.NPSN, &image.Name, &image.Alamat, &image.SchoolTypes, &image.Category, &image.CityID)
+	).Scan(&image.ID, &image.NPSN, &image.Name, &image.Alamat, &image.SchoolTypes, &image.Category, &image.ProvinsiID, &image.KotaID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -199,7 +202,8 @@ func pusdatinImageEqual(a, b model.PusdatinSchoolImage) bool {
 		stringPtrEqualRepo(a.Alamat, b.Alamat) &&
 		slicesEqual(a.SchoolTypes, b.SchoolTypes) &&
 		stringPtrEqualRepo(a.Category, b.Category) &&
-		stringPtrEqualRepo(a.CityID, b.CityID)
+		stringPtrEqualRepo(a.ProvinsiID, b.ProvinsiID) &&
+		stringPtrEqualRepo(a.KotaID, b.KotaID)
 }
 
 func stringPtrEqualRepo(a, b *string) bool {

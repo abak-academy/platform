@@ -99,10 +99,10 @@ func TransformPusdatinSource(r io.Reader, opts model.PusdatinTransformOptions) (
 			Category:           chosen.category,
 			SchoolTypes:        []string{chosen.category},
 			Alamat:             chosen.alamat,
-			CityID:             chosen.city.ID,
-			CityName:           chosen.city.Name,
-			ProvinceID:         chosen.city.ProvinceID,
-			ProvinceName:       chosen.city.ProvinceName,
+			KotaID:             chosen.city.ID,
+			KotaName:           chosen.city.Name,
+			ProvinsiID:         chosen.city.ProvinsiID,
+			ProvinsiName:       chosen.city.ProvinsiName,
 		})
 	}
 	report.Schools = report.Transformed
@@ -222,7 +222,8 @@ func pusdatinManifestImageEqual(a, b model.PusdatinSchoolImage) bool {
 		pusdatinStringPtrEqual(a.Alamat, b.Alamat) &&
 		slices.Equal(a.SchoolTypes, b.SchoolTypes) &&
 		pusdatinStringPtrEqual(a.Category, b.Category) &&
-		pusdatinStringPtrEqual(a.CityID, b.CityID)
+		pusdatinStringPtrEqual(a.ProvinsiID, b.ProvinsiID) &&
+		pusdatinStringPtrEqual(a.KotaID, b.KotaID)
 }
 
 func (s *Service) buildPusdatinImportReport(ctx context.Context, transform *model.PusdatinTransformReport) (*model.PusdatinImportReport, error) {
@@ -283,7 +284,8 @@ func pusdatinTargetMatches(row model.PusdatinTransformedSchool, target repositor
 		pusdatinStringPtrEqual(target.Alamat, row.Alamat) &&
 		slices.Equal(target.SchoolTypes, row.SchoolTypes) &&
 		stringPtrValueEqual(target.Category, row.Category) &&
-		stringPtrValueEqual(target.CityID, row.CityID)
+		stringPtrValueEqual(target.ProvinsiID, row.ProvinsiID) &&
+		stringPtrValueEqual(target.KotaID, row.KotaID)
 }
 
 func pusdatinStringPtrEqual(a, b *string) bool {
@@ -413,8 +415,8 @@ func newPusdatinGeographyResolver(cities []model.PusdatinCityReference, aliases 
 		resolver.exact[normalizePusdatinRegionLabel(city.Name)] = city
 	}
 	for _, alias := range aliases {
-		city, ok := byID[alias.TargetCityID]
-		if !ok || city.Name != alias.TargetCityName || city.ProvinceID != alias.TargetProvinceID || city.ProvinceName != alias.TargetProvinceName {
+		city, ok := byID[alias.TargetKotaID]
+		if !ok || city.Name != alias.TargetKotaName || city.ProvinsiID != alias.TargetProvinsiID || city.ProvinsiName != alias.TargetProvinsiName {
 			return pusdatinGeographyResolver{}, ErrPusdatinGeographyDrift
 		}
 		resolver.alias[normalizePusdatinRegionLabel(alias.SourceLabel)] = city

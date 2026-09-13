@@ -16,7 +16,8 @@ func TestMigration0064_PusdatinSchoolMetadata(t *testing.T) {
 	applyMigrationsUpTo(t, pool, "0063_exam_session_active_index.up.sql")
 
 	requireColumnExists(t, pool, "school", "category", false)
-	requireColumnExists(t, pool, "school", "city_id", false)
+	requireColumnExists(t, pool, "school", "provinsi_id", false)
+	requireColumnExists(t, pool, "school", "kota_id", false)
 
 	var schoolID, userID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx,
@@ -32,14 +33,16 @@ func TestMigration0064_PusdatinSchoolMetadata(t *testing.T) {
 	applyMigrationFile(t, pool, "0064_pusdatin_school_metadata.up.sql")
 
 	requireColumnExists(t, pool, "school", "category", true)
-	requireColumnExists(t, pool, "school", "city_id", true)
+	requireColumnExists(t, pool, "school", "provinsi_id", true)
+	requireColumnExists(t, pool, "school", "kota_id", true)
 
-	var category, cityID *string
+	var category, provinsiID, kotaID *string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT category, city_id FROM school WHERE id = $1`, schoolID,
-	).Scan(&category, &cityID))
+		`SELECT category, provinsi_id, kota_id FROM school WHERE id = $1`, schoolID,
+	).Scan(&category, &provinsiID, &kotaID))
 	require.Nil(t, category)
-	require.Nil(t, cityID)
+	require.Nil(t, provinsiID)
+	require.Nil(t, kotaID)
 
 	var linkedSchoolID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx,
@@ -47,16 +50,22 @@ func TestMigration0064_PusdatinSchoolMetadata(t *testing.T) {
 	).Scan(&linkedSchoolID))
 	require.Equal(t, schoolID, linkedSchoolID)
 
-	var validCityID string
-	require.NoError(t, pool.QueryRow(ctx, `SELECT id FROM city ORDER BY id LIMIT 1`).Scan(&validCityID))
+	var validProvinsiID, validKotaID string
+	require.NoError(t, pool.QueryRow(ctx, `SELECT province_id, id FROM city ORDER BY id LIMIT 1`).Scan(&validProvinsiID, &validKotaID))
 	_, err := pool.Exec(ctx,
-		`UPDATE school SET category = $1, city_id = $2 WHERE id = $3`,
-		"SMA", validCityID, schoolID,
+		`UPDATE school SET category = $1, provinsi_id = $2, kota_id = $3 WHERE id = $4`,
+		"SMA", validProvinsiID, validKotaID, schoolID,
 	)
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx,
-		`UPDATE school SET city_id = $1 WHERE id = $2`,
+		`UPDATE school SET provinsi_id = $1 WHERE id = $2`,
+		"invalid-province-id", schoolID,
+	)
+	require.Error(t, err)
+
+	_, err = pool.Exec(ctx,
+		`UPDATE school SET kota_id = $1 WHERE id = $2`,
 		"invalid-city-id", schoolID,
 	)
 	require.Error(t, err)
@@ -64,7 +73,8 @@ func TestMigration0064_PusdatinSchoolMetadata(t *testing.T) {
 	applyMigrationFile(t, pool, "0064_pusdatin_school_metadata.down.sql")
 
 	requireColumnExists(t, pool, "school", "category", false)
-	requireColumnExists(t, pool, "school", "city_id", false)
+	requireColumnExists(t, pool, "school", "provinsi_id", false)
+	requireColumnExists(t, pool, "school", "kota_id", false)
 
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT school_id FROM users WHERE id = $1`, userID,

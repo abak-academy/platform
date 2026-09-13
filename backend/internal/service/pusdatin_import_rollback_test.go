@@ -34,7 +34,7 @@ func TestPusdatinImport_VerifyAndRollback(t *testing.T) {
 	opts := model.PusdatinTransformOptions{
 		ExpectedSourceSHA256: hex.EncodeToString(sum[:]),
 		Cities: []model.PusdatinCityReference{{
-			ID: cityID, Name: cityName, ProvinceID: provinceID, ProvinceName: provinceName,
+			ID: cityID, Name: cityName, ProvinsiID: provinceID, ProvinsiName: provinceName,
 		}},
 	}
 

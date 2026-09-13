@@ -17,16 +17,16 @@ type School struct {
 type PusdatinCityReference struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
-	ProvinceID   string `json:"province_id"`
-	ProvinceName string `json:"province_name"`
+	ProvinsiID   string `json:"provinsi_id"`
+	ProvinsiName string `json:"provinsi_name"`
 }
 
 type PusdatinGeographicAlias struct {
 	SourceLabel        string `json:"source_label"`
-	TargetCityID       string `json:"target_city_id"`
-	TargetCityName     string `json:"target_city_name"`
-	TargetProvinceID   string `json:"target_province_id"`
-	TargetProvinceName string `json:"target_province_name"`
+	TargetKotaID       string `json:"target_kota_id"`
+	TargetKotaName     string `json:"target_kota_name"`
+	TargetProvinsiID   string `json:"target_provinsi_id"`
+	TargetProvinsiName string `json:"target_provinsi_name"`
 	ReferenceEvidence  string `json:"reference_evidence"`
 }
 
@@ -59,10 +59,10 @@ type PusdatinTransformedSchool struct {
 	Category           string   `json:"category"`
 	SchoolTypes        []string `json:"school_types"`
 	Alamat             *string  `json:"alamat"`
-	CityID             string   `json:"city_id"`
-	CityName           string   `json:"city_name"`
-	ProvinceID         string   `json:"province_id"`
-	ProvinceName       string   `json:"province_name"`
+	KotaID             string   `json:"kota_id"`
+	KotaName           string   `json:"kota_name"`
+	ProvinsiID         string   `json:"provinsi_id"`
+	ProvinsiName       string   `json:"provinsi_name"`
 }
 
 type PusdatinDuplicateStatus string
@@ -126,7 +126,8 @@ type PusdatinSchoolImage struct {
 	Alamat      *string  `json:"alamat"`
 	SchoolTypes []string `json:"school_types"`
 	Category    *string  `json:"category"`
-	CityID      *string  `json:"city_id"`
+	ProvinsiID  *string  `json:"provinsi_id"`
+	KotaID      *string  `json:"kota_id"`
 }
 
 type PusdatinImportManifestRow struct {

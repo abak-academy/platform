@@ -24,11 +24,11 @@ func TestTransformPusdatinSource_ParsesMapsAndReportsDuplicateConflict(t *testin
 	report, err := TransformPusdatinSource(strings.NewReader(csvData), model.PusdatinTransformOptions{
 		ExpectedSourceSHA256: hex.EncodeToString(sum[:]),
 		Cities: []model.PusdatinCityReference{
-			{ID: "3507", Name: "KABUPATEN MALANG", ProvinceID: "35", ProvinceName: "JAWA TIMUR"},
-			{ID: "3173", Name: "KOTA JAKARTA PUSAT", ProvinceID: "31", ProvinceName: "DKI JAKARTA"},
+			{ID: "3507", Name: "KABUPATEN MALANG", ProvinsiID: "35", ProvinsiName: "JAWA TIMUR"},
+			{ID: "3173", Name: "KOTA JAKARTA PUSAT", ProvinsiID: "31", ProvinsiName: "DKI JAKARTA"},
 		},
 		Aliases: []model.PusdatinGeographicAlias{
-			{SourceLabel: "KOTA ADM. JAKARTA PUSAT", TargetCityID: "3173", TargetCityName: "KOTA JAKARTA PUSAT", TargetProvinceID: "31", TargetProvinceName: "DKI JAKARTA", ReferenceEvidence: "seed city 3173"},
+			{SourceLabel: "KOTA ADM. JAKARTA PUSAT", TargetKotaID: "3173", TargetKotaName: "KOTA JAKARTA PUSAT", TargetProvinsiID: "31", TargetProvinsiName: "DKI JAKARTA", ReferenceEvidence: "seed city 3173"},
 		},
 	})
 	if err != nil {
@@ -70,12 +70,12 @@ func TestTransformPusdatinSource_ParsesMapsAndReportsDuplicateConflict(t *testin
 	if len(first.SchoolTypes) != 1 || first.SchoolTypes[0] != "SD" {
 		t.Fatalf("SchoolTypes: want [SD], got %+v", first.SchoolTypes)
 	}
-	if first.CityID != "3507" || first.ProvinceID != "35" {
+	if first.KotaID != "3507" || first.ProvinsiID != "35" {
 		t.Fatalf("city/province mapping drifted: %+v", first)
 	}
 
 	second := report.Transformed[1]
-	if second.CityID != "3173" || second.ProvinceID != "31" {
+	if second.KotaID != "3173" || second.ProvinsiID != "31" {
 		t.Fatalf("alias city/province mapping drifted: %+v", second)
 	}
 	if second.Alamat == nil || *second.Alamat != "Jalan Kenanga" {
@@ -97,7 +97,7 @@ func TestTransformPusdatinSource_ExplicitResolutionAndChecksum(t *testing.T) {
 	opts := model.PusdatinTransformOptions{
 		ExpectedSourceSHA256: hex.EncodeToString(sum[:]),
 		Cities: []model.PusdatinCityReference{
-			{ID: "3507", Name: "KABUPATEN MALANG", ProvinceID: "35", ProvinceName: "JAWA TIMUR"},
+			{ID: "3507", Name: "KABUPATEN MALANG", ProvinsiID: "35", ProvinsiName: "JAWA TIMUR"},
 		},
 	}
 	blocked, err := TransformPusdatinSource(strings.NewReader(csvData), opts)
@@ -164,10 +164,10 @@ func TestTransformPusdatinSource_RejectsMalformedSourceAndAliasDrift(t *testing.
 		}, "\n")
 		report, err := TransformPusdatinSource(strings.NewReader(csvData), model.PusdatinTransformOptions{
 			Cities: []model.PusdatinCityReference{
-				{ID: "3173", Name: "KOTA JAKARTA PUSAT", ProvinceID: "31", ProvinceName: "DKI JAKARTA"},
+				{ID: "3173", Name: "KOTA JAKARTA PUSAT", ProvinsiID: "31", ProvinsiName: "DKI JAKARTA"},
 			},
 			Aliases: []model.PusdatinGeographicAlias{
-				{SourceLabel: "KOTA ADM. JAKARTA PUSAT", TargetCityID: "3173", TargetCityName: "KOTA JAKARTA RAYA", TargetProvinceID: "31", TargetProvinceName: "DKI JAKARTA", ReferenceEvidence: "bad fixture"},
+				{SourceLabel: "KOTA ADM. JAKARTA PUSAT", TargetKotaID: "3173", TargetKotaName: "KOTA JAKARTA RAYA", TargetProvinsiID: "31", TargetProvinsiName: "DKI JAKARTA", ReferenceEvidence: "bad fixture"},
 			},
 		})
 		if err == nil || report != nil {

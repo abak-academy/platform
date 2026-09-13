@@ -33,7 +33,7 @@ func TestPusdatinImport_DryRunApplyAndIdempotentRepeat(t *testing.T) {
 	opts := model.PusdatinTransformOptions{
 		ExpectedSourceSHA256: hex.EncodeToString(sum[:]),
 		Cities: []model.PusdatinCityReference{{
-			ID: cityID, Name: cityName, ProvinceID: provinceID, ProvinceName: provinceName,
+			ID: cityID, Name: cityName, ProvinsiID: provinceID, ProvinsiName: provinceName,
 		}},
 	}
 
@@ -53,8 +53,8 @@ func TestPusdatinImport_DryRunApplyAndIdempotentRepeat(t *testing.T) {
 	if applied.Counts.Inserted != 1 || applied.Counts.Updated != 1 {
 		t.Fatalf("apply counts: %+v", applied.Counts)
 	}
-	requirePusdatinSchool(t, repo, existingNPSN, "Updated Pusdatin "+existingNPSN, "SMA", cityID)
-	requirePusdatinSchool(t, repo, newNPSN, "New Pusdatin "+newNPSN, "MI", cityID)
+	requirePusdatinSchool(t, repo, existingNPSN, "Updated Pusdatin "+existingNPSN, "SMA", provinceID, cityID)
+	requirePusdatinSchool(t, repo, newNPSN, "New Pusdatin "+newNPSN, "MI", provinceID, cityID)
 
 	repeatPreview, err := svc.DryRunPusdatinImport(ctx, strings.NewReader(csvData), opts)
 	if err != nil {
@@ -86,7 +86,7 @@ func TestPusdatinImport_ApplyRequiresExternalNPSNIndex(t *testing.T) {
 	opts := model.PusdatinTransformOptions{
 		ExpectedSourceSHA256: hex.EncodeToString(sum[:]),
 		Cities: []model.PusdatinCityReference{{
-			ID: cityID, Name: cityName, ProvinceID: provinceID, ProvinceName: provinceName,
+			ID: cityID, Name: cityName, ProvinsiID: provinceID, ProvinsiName: provinceName,
 		}},
 	}
 	preview, err := svc.DryRunPusdatinImport(ctx, strings.NewReader(csvData), opts)
@@ -116,18 +116,18 @@ func pusdatinApplyCSV(existingNPSN, newNPSN, cityName string) string {
 	}, "\n")
 }
 
-func requirePusdatinSchool(t *testing.T, repo *repository.Repository, npsn, name, category, cityID string) {
+func requirePusdatinSchool(t *testing.T, repo *repository.Repository, npsn, name, category, provinceID, cityID string) {
 	t.Helper()
-	var gotName, gotCategory, gotCityID string
+	var gotName, gotCategory, gotProvinsiID, gotKotaID string
 	var schoolTypes []string
 	if err := repo.Pool().QueryRow(context.Background(),
-		`SELECT name, category, city_id, school_types FROM school WHERE UPPER(BTRIM(npsn)) = $1`,
+		`SELECT name, category, provinsi_id, kota_id, school_types FROM school WHERE UPPER(BTRIM(npsn)) = $1`,
 		npsn,
-	).Scan(&gotName, &gotCategory, &gotCityID, &schoolTypes); err != nil {
+	).Scan(&gotName, &gotCategory, &gotProvinsiID, &gotKotaID, &schoolTypes); err != nil {
 		t.Fatalf("load imported school %s: %v", npsn, err)
 	}
-	if gotName != name || gotCategory != category || gotCityID != cityID || len(schoolTypes) != 1 || schoolTypes[0] != category {
-		t.Fatalf("school %s mismatch: name=%q category=%q city=%q types=%+v", npsn, gotName, gotCategory, gotCityID, schoolTypes)
+	if gotName != name || gotCategory != category || gotProvinsiID != provinceID || gotKotaID != cityID || len(schoolTypes) != 1 || schoolTypes[0] != category {
+		t.Fatalf("school %s mismatch: name=%q category=%q provinsi=%q kota=%q types=%+v", npsn, gotName, gotCategory, gotProvinsiID, gotKotaID, schoolTypes)
 	}
 }
 

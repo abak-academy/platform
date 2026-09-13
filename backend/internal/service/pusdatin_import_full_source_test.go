@@ -106,9 +106,9 @@ func loadProvinceCitySQL(t *testing.T, path string, provinces map[string]string,
 	for _, match := range cityRE.FindAllStringSubmatch(string(data), -1) {
 		cities[match[1]] = model.PusdatinCityReference{
 			ID:           match[1],
-			ProvinceID:   match[2],
+			ProvinsiID:   match[2],
 			Name:         match[3],
-			ProvinceName: provinces[match[2]],
+			ProvinsiName: provinces[match[2]],
 		}
 	}
 }
