@@ -1,0 +1,3 @@
+ALTER TABLE school
+    DROP COLUMN IF EXISTS city_id,
+    DROP COLUMN IF EXISTS category;

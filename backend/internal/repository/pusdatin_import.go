@@ -9,7 +9,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-var ErrMissingSchoolNPSNIndex = errors.New("missing externally managed school NPSN index")
+var (
+	ErrMissingSchoolNPSNIndex  = errors.New("missing externally managed school NPSN index")
+	ErrAmbiguousSchoolIdentity = errors.New("ambiguous school identity")
+)
 
 type PusdatinSchoolTarget struct {
 	ID          string

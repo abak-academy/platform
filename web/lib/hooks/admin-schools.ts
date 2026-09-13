@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import type { AdminSchoolInput, AdminSchoolUpdateInput, School, SchoolOption } from "@/lib/types";
-import type { SchoolOptionsEnvelope, SchoolSearchParams } from "@/lib/hooks/students";
 
 export interface AdminSchoolsParams {
   q?: string;
@@ -33,7 +32,7 @@ export const adminSchoolsKeys = {
     ] as const,
   // Prefixed by `all`, so invalidateQueries({ queryKey: adminSchoolsKeys.all })
   // from the mutations below already covers this key too.
-  options: (params?: SchoolSearchParams) => [...adminSchoolsKeys.all, "options", params ?? {}] as const,
+  options: () => [...adminSchoolsKeys.all, "options"] as const,
 };
 
 export function useAdminSchools(params?: AdminSchoolsParams) {
@@ -53,25 +52,18 @@ export function useAdminSchools(params?: AdminSchoolsParams) {
   });
 }
 
-// Bounded school option search for picker and filter surfaces.
+// useSchoolOptions backs picker dropdowns (school filters/facets) with the
+// full active-school registry rather than a single 20-row page — see
+// SchoolOption. Options change rarely, so a longer staleTime avoids
+// refetching every time a picker mounts; mutations below still invalidate it
+// immediately when a school is created/edited/(de)activated.
 const SCHOOL_OPTIONS_STALE_TIME_MS = 5 * 60 * 1000;
 
-export function useSchoolOptions(params?: SchoolSearchParams, enabled = true) {
+export function useSchoolOptions() {
   return useQuery({
-    queryKey: adminSchoolsKeys.options(params),
+    queryKey: adminSchoolsKeys.options(),
     staleTime: SCHOOL_OPTIONS_STALE_TIME_MS,
-    enabled,
-    queryFn: () => {
-      const search = new URLSearchParams();
-      if (params?.q) search.set("q", params.q);
-      if (params?.province_id) search.set("province_id", params.province_id);
-      if (params?.category) search.set("category", params.category);
-      if (params?.npsn) search.set("npsn", params.npsn);
-      if (params?.cursor) search.set("cursor", params.cursor);
-      if (params?.limit) search.set("limit", String(params.limit));
-      const query = search.toString();
-      return authFetch<SchoolOptionsEnvelope>(`/admin/schools/options${query ? `?${query}` : ""}`);
-    },
+    queryFn: () => authFetch<{ data: SchoolOption[] }>("/admin/schools/options"),
   });
 }
 

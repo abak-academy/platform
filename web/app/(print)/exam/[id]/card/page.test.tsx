@@ -34,7 +34,7 @@ vi.mock("@/lib/hooks/exam", () => ({
 
 vi.mock("@/lib/hooks/students", () => ({
   useProfile: () => profileState,
-  useSchoolById: () => ({ data: null, isLoading: false }),
+  useSchools: () => ({ data: [] }),
 }));
 
 const registration: RegistrationDetail = {

@@ -198,12 +198,11 @@ var (
 
 // --- from school.go ---
 var (
-	ErrSchoolNotFound      = errors.New("school not found")
-	ErrSchoolCodeTaken     = errors.New("school code already taken")
-	ErrSchoolNPSNTaken     = errors.New("school NPSN already taken")
-	ErrInvalidSchoolNPSN   = errors.New("school NPSN must be exactly 8 ASCII letters or digits")
-	ErrInvalidSchoolName   = errors.New("school name must contain at least one letter or digit")
-	ErrInvalidSchoolSearch = errors.New("invalid school search")
+	ErrSchoolNotFound    = errors.New("school not found")
+	ErrSchoolCodeTaken   = errors.New("school code already taken")
+	ErrSchoolNPSNTaken   = errors.New("school NPSN already taken")
+	ErrInvalidSchoolNPSN = errors.New("school NPSN must be exactly 8 ASCII letters or digits")
+	ErrInvalidSchoolName = errors.New("school name must contain at least one letter or digit")
 )
 
 // --- from pusdatin_import.go ---

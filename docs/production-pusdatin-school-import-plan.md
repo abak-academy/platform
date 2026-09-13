@@ -1,6 +1,6 @@
 # Production Pusdatin school import plan — 2026-09-06
 
-> Historical note: this 2026-09-06 plan predated the bounded search and direct-import implementation. PR 2 now imports directly into `school` by normalized NPSN only; use `docs/runbooks/pusdatin-school-import.md` for the current operator flow.
+> Historical note: this 2026-09-06 plan proposed a broader product/runtime shape. PR 2 is now limited to a manual one-time Pusdatin sync into `school` by normalized NPSN only; use `docs/runbooks/pusdatin-school-import.md` for the current operator flow.
 
 ## Current evidence
 

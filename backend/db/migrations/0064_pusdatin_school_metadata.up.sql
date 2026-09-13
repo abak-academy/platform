@@ -1,0 +1,3 @@
+ALTER TABLE school
+    ADD COLUMN IF NOT EXISTS category TEXT,
+    ADD COLUMN IF NOT EXISTS city_id TEXT REFERENCES city(id);

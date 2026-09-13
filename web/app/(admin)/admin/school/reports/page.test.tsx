@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import SchoolReportsPage from "./page";
-import type { Product, AdminResultRow, AdminResultDetail } from "@/lib/types";
+import type { Product, AdminResultRow, AdminResultDetail, School } from "@/lib/types";
 
 const mockExport = vi.fn();
 
@@ -34,6 +34,13 @@ let authStore: {
   user: { role: "admin_school" },
 };
 
+// Schools mock
+let schoolsState = {
+  data: null as { data: School[]; next_cursor?: string } | null,
+  isLoading: false,
+  isError: false,
+};
+
 vi.mock("@/lib/hooks/products", () => ({
   useProducts: () => mockProducts(),
 }));
@@ -48,15 +55,8 @@ vi.mock("@/stores/auth", () => ({
   useAuthStore: (selector: (s: typeof authStore) => unknown) => selector(authStore),
 }));
 
-
-vi.mock("@/components/SchoolFilterPicker", () => ({
-  SchoolFilterPicker: ({ value, onChange, label, allLabel }: { value: string; onChange: (value: string) => void; label: string; allLabel: string }) => (
-    <select aria-label={label} value={value || ""} onChange={(event) => onChange(event.target.value)}>
-      <option value="">{allLabel}</option>
-      <option value="sch-1">SMAN 1 Jakarta</option>
-      <option value="s2">SMAN 2 Bandung</option>
-    </select>
-  ),
+vi.mock("@/lib/hooks/admin-schools", () => ({
+  useSchoolOptions: () => schoolsState,
 }));
 
 const sampleExamProducts = [
@@ -141,6 +141,11 @@ describe("SchoolReportsPage", () => {
     authStore = {
       token: "t",
       user: { role: "admin_school" },
+    };
+    schoolsState = {
+      data: { data: [{ id: "s1", name: "SMAN 1 Jakarta" }, { id: "s2", name: "SMAN 2 Bandung" }], next_cursor: undefined },
+      isLoading: false,
+      isError: false,
     };
     mockProducts.mockReturnValue({ data: sampleExamProducts, isLoading: false });
     mockExport.mockReset();

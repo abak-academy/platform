@@ -75,39 +75,9 @@ HAVING COUNT(*) > 1;
 
 The duplicate query must return no rows before apply. The importer also checks the expected external unique index on normalized NPSN before writing.
 
-## Source-scale query behavior check
+## Operator scope
 
-School picker traffic must remain bounded before and after import:
-
-- `GET /api/v1/schools` with no filters returns an empty `{data,next_cursor}` envelope.
-- Name search requires province and at least three name characters; limit is capped at 50.
-- NPSN search uses exact normalized NPSN and returns at most one school.
-- Single-school display uses `GET /api/v1/schools/:id`.
-
-After loading a staging-size dataset in a non-production environment, run `EXPLAIN (ANALYZE, BUFFERS)` for representative searches and keep the output with the dry-run evidence:
-
-```sql
-EXPLAIN (ANALYZE, BUFFERS)
-SELECT s.id, s.name, s.code, s.npsn
-FROM school s
-WHERE s.status = 'active'
-  AND UPPER(BTRIM(s.npsn)) = '12345678'
-ORDER BY s.name ASC, s.id ASC
-LIMIT 2;
-
-EXPLAIN (ANALYZE, BUFFERS)
-SELECT s.id, s.name, s.code, s.npsn
-FROM school s
-JOIN city c ON c.id = s.city_id
-JOIN province p ON p.id = c.province_id
-WHERE s.status = 'active'
-  AND p.id = '<province_id>'
-  AND LOWER(s.name) LIKE '%sma%' ESCAPE '\\'
-ORDER BY s.name ASC, s.id ASC
-LIMIT 51;
-```
-
-The evidence must show bounded result counts and no browser path that loads the full registry.
+This import command is a one-time operator tool. It is run manually and has no background process or user-facing flow.
 
 ## Apply
 
