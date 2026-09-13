@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
 import { studentsKeys } from "@/lib/hooks/students";
 import { isProfileComplete } from "@/lib/profile";
+import { useTranslation } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,6 +28,7 @@ const GRADES = ["7", "8", "9", "10", "11", "12"];
 export default function CompleteProfilePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const { data: profile, isLoading } = useProfile();
@@ -128,7 +130,7 @@ export default function CompleteProfilePage() {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="onboard-school" className="text-xs font-semibold text-ink-600">
-              Sekolah
+              {t("school")}
             </Label>
             <SchoolPicker
               id="onboard-school"
@@ -146,14 +148,14 @@ export default function CompleteProfilePage() {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="onboard-grade" className="text-xs font-semibold text-ink-600">
-              Kelas
+              {t("grade")}
             </Label>
             <Select value={grade || "_empty_"} onValueChange={(v) => setGrade(v === "_empty_" ? "" : v)}>
               <SelectTrigger id="onboard-grade" className="h-11 rounded-md">
-                <SelectValue placeholder="Pilih kelas" />
+                <SelectValue placeholder={t("select_grade")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_empty_">Pilih kelas</SelectItem>
+                <SelectItem value="_empty_">{t("select_grade")}</SelectItem>
                 {GRADES.map((g) => (
                   <SelectItem key={g} value={g}>
                     {g}
@@ -167,7 +169,7 @@ export default function CompleteProfilePage() {
             {submitting ? (
               <Loader2 className="mr-2 size-4 animate-spin" />
             ) : null}
-            {submitting ? "Menyimpan…" : "Lanjutkan"}
+            {submitting ? t("saving") : t("complete_profile_continue")}
           </Button>
         </form>
       </Card>

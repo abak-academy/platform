@@ -60,6 +60,25 @@ function Harness() {
   );
 }
 
+function HarnessWithExistingUnlisted() {
+  const [school, setSchool] = React.useState<SchoolOption | null>(null);
+  const [unlisted, setUnlisted] = React.useState("SMA Lama Manual");
+  return (
+    <>
+      <SchoolPicker
+        value={school?.id ?? ""}
+        selectedSchool={school}
+        onChange={setSchool}
+        allowUnlisted
+        unlistedName={unlisted}
+        onUnlistedNameChange={setUnlisted}
+      />
+      <output data-testid="school-id">{school?.id ?? ""}</output>
+      <output data-testid="unlisted">{unlisted}</output>
+    </>
+  );
+}
+
 describe("SchoolPicker", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -96,5 +115,25 @@ describe("SchoolPicker", () => {
 
     expect(screen.getByTestId("school-id")).toHaveTextContent("");
     expect(screen.getByTestId("unlisted")).toHaveTextContent("SMA Baru Manual");
+  });
+
+  it("can switch from existing unlisted fallback back to searchable schools", async () => {
+    render(<HarnessWithExistingUnlisted />);
+
+    expect(screen.getByPlaceholderText("Tulis nama sekolah")).toHaveValue("SMA Lama Manual");
+
+    fireEvent.click(screen.getByRole("button", { name: "Nama" }));
+    expect(screen.getByTestId("unlisted")).toHaveTextContent("");
+    expect(screen.getByPlaceholderText("Cari nama sekolah")).toBeInTheDocument();
+
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "province-1" } });
+    fireEvent.change(screen.getByPlaceholderText("Cari nama sekolah"), { target: { value: "sma negeri" } });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+
+    fireEvent.click(screen.getByText("SMA Negeri 1 Jakarta"));
+    expect(screen.getByTestId("school-id")).toHaveTextContent("school-1");
+    expect(screen.getByTestId("unlisted")).toHaveTextContent("");
   });
 });

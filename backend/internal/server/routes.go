@@ -101,9 +101,13 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Public config (client key is safe to expose)
 	v1.GET("/config/payment-client-key", h.GetPaymentClientKey)
 
-	// Public school list
+	// Public school search
 	v1.GET("/schools", h.ListSchools)
-	v1.GET("/schools/:id", h.GetSchool)
+
+	// School hydration is authenticated because it can return inactive school details.
+	schoolAuth := v1.Group("/schools")
+	schoolAuth.Use(handler.JWTMiddleware(svc, jwtSigner))
+	schoolAuth.GET("/:id", h.GetSchool)
 
 	// Public region reference data (no auth, mirrors GET /schools)
 	v1.GET("/provinces", h.ListProvinces)

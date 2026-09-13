@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Search } from "lucide-react";
 import { useProvinces } from "@/lib/hooks/regions";
+import { useTranslation } from "@/lib/i18n";
 import { useSchoolById, useSchoolSearch } from "@/lib/hooks/students";
 import type { SchoolOption } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -49,9 +50,10 @@ export function SchoolPicker({
   const [npsnInput, setNpsnInput] = useState("");
   const [cursor, setCursor] = useState("");
   const [unlistedActive, setUnlistedActive] = useState(Boolean(unlistedName));
+  const { t } = useTranslation();
 
   const { data: provinces } = useProvinces();
-  const hydrate = useSchoolById(value);
+  const hydrate = useSchoolById(selectedSchool ? "" : value);
   const selected = selectedSchool ?? hydrate.data ?? null;
 
   useEffect(() => {
@@ -89,6 +91,12 @@ export function SchoolPicker({
   const search = useSchoolSearch(params, enabled);
   const results = search.data?.data ?? [];
 
+  function activateSearchMode(nextMode: "name" | "npsn") {
+    setMode(nextMode);
+    setUnlistedActive(false);
+    onUnlistedNameChange?.("");
+  }
+
   return (
     <div className={className}>
       <div className="mb-2 flex gap-2">
@@ -96,19 +104,19 @@ export function SchoolPicker({
           type="button"
           variant={mode === "name" ? "default" : "outline"}
           size="sm"
-          onClick={() => setMode("name")}
+          onClick={() => activateSearchMode("name")}
           disabled={disabled}
         >
-          Nama
+          {t("school_picker_mode_name")}
         </Button>
         <Button
           type="button"
           variant={mode === "npsn" ? "default" : "outline"}
           size="sm"
-          onClick={() => setMode("npsn")}
+          onClick={() => activateSearchMode("npsn")}
           disabled={disabled}
         >
-          NPSN
+          {t("school_picker_mode_npsn")}
         </Button>
         {allowUnlisted ? (
           <Button
@@ -122,7 +130,7 @@ export function SchoolPicker({
             }}
             disabled={disabled}
           >
-            Sekolah tidak ditemukan
+            {t("school_picker_unlisted")}
           </Button>
         ) : null}
       </div>
@@ -135,7 +143,7 @@ export function SchoolPicker({
             onChange(null);
             onUnlistedNameChange?.(e.target.value);
           }}
-          placeholder="Tulis nama sekolah"
+          placeholder={t("school_picker_unlisted_placeholder")}
           disabled={disabled}
         />
       ) : (
@@ -144,10 +152,10 @@ export function SchoolPicker({
             <div className="grid gap-2 sm:grid-cols-[1fr_120px]">
               <Select value={provinceId || "_empty_"} onValueChange={(v) => setProvinceId(v === "_empty_" ? "" : v)} disabled={disabled}>
                 <SelectTrigger id={`${id}-province`}>
-                  <SelectValue placeholder="Provinsi" />
+                  <SelectValue placeholder={t("school_picker_province")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="_empty_">Provinsi</SelectItem>
+                  <SelectItem value="_empty_">{t("school_picker_province")}</SelectItem>
                   {(provinces ?? []).map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
@@ -157,10 +165,10 @@ export function SchoolPicker({
               </Select>
               <Select value={category || ALL_CATEGORY} onValueChange={(v) => setCategory(v === ALL_CATEGORY ? "" : v)} disabled={disabled}>
                 <SelectTrigger id={`${id}-category`}>
-                  <SelectValue placeholder="Kategori" />
+                  <SelectValue placeholder={t("school_picker_category")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL_CATEGORY}>Semua</SelectItem>
+                  <SelectItem value={ALL_CATEGORY}>{t("school_picker_all_categories")}</SelectItem>
                   {CATEGORIES.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c}
@@ -174,7 +182,7 @@ export function SchoolPicker({
                   id={id}
                   value={qInput}
                   onChange={(e) => setQInput(e.target.value)}
-                  placeholder="Cari nama sekolah"
+                  placeholder={t("school_picker_search_name_placeholder")}
                   disabled={disabled}
                   className="pl-9"
                 />
@@ -185,7 +193,7 @@ export function SchoolPicker({
               id={id}
               value={npsnInput}
               onChange={(e) => setNpsnInput(e.target.value)}
-              placeholder="Masukkan NPSN"
+              placeholder={t("school_picker_npsn_placeholder")}
               disabled={disabled}
             />
           )}
@@ -201,10 +209,10 @@ export function SchoolPicker({
             {search.isFetching ? (
               <div className="flex items-center gap-2 text-xs text-ink-500">
                 <Loader2 className="size-3 animate-spin" />
-                Mencari sekolah…
+                {t("school_picker_searching")}
               </div>
             ) : enabled && results.length === 0 ? (
-              <div className="text-xs text-ink-500">Sekolah tidak ditemukan.</div>
+              <div className="text-xs text-ink-500">{t("school_picker_no_results")}</div>
             ) : null}
             {results.map((school) => (
               <button
@@ -232,7 +240,7 @@ export function SchoolPicker({
                 onClick={() => setCursor(search.data?.next_cursor ?? "")}
                 disabled={disabled || search.isFetching}
               >
-                Halaman berikutnya
+                {t("school_picker_next_page")}
               </Button>
             ) : null}
           </div>

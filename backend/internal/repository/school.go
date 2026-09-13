@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -153,6 +154,8 @@ func (r *Repository) CountSchoolsAdmin(ctx context.Context, filter SchoolAdminFi
 	err := r.pool.QueryRow(ctx, query, args...).Scan(&counts.Total, &counts.Active, &counts.Students)
 	return counts, err
 }
+
+var ErrAmbiguousSchoolIdentity = errors.New("ambiguous school identity")
 
 type SchoolOption = model.SchoolOption
 
