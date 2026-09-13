@@ -18,6 +18,11 @@
 #   IMAGE_TAG=<commit-sha> docker compose -f deploy/compose/production.yml up -d
 # (IMAGE_TAG comes from a hand-placed deploy/.env — see .env.example.)
 #
+# Replica counts live in `deploy.replicas` below so a plain `up -d` keeps them.
+# Compose v2 honours that outside swarm — BUT a `--scale` flag on the CLI
+# overrides it silently, which is how a 2-vCPU box once met 3,300 students with
+# one web replica. Don't pass --scale; change the manifest.
+#
 # Rollback: IMAGE_TAG=<older-commit-sha> docker compose -f deploy/compose/production.yml up -d
 #
 # Postgres and PgBouncer are native on vm-db (10.20.0.10), not containers here —
@@ -43,12 +48,14 @@ services:
       timeout: 3s
       retries: 5
 
-  # Provisioned for PR #44 (certificate/card rendering). Idles until that
-  # lands and api's config gains a GotenbergURL field.
+  # Certificate/card rendering (PR #44, now live). Runs headless Chromium per
+  # conversion. The outbox loop handles CertificateNeeded events sequentially,
+  # so concurrency is 1 from the worker — but an admin preview can add a second
+  # render. Render peak is NOT yet measured; 768m is reasoned, not observed.
   gotenberg:
     image: gotenberg/gotenberg:8
     restart: unless-stopped
-    mem_limit: 1g
+    mem_limit: 768m
     logging:
       driver: json-file
       options:
@@ -70,7 +77,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    mem_limit: 1g
+    # Peak 53 MiB measured under IKLC event load; Go memory is predictable.
+    mem_limit: 768m
+    deploy:
+      replicas: 2
     logging:
       driver: json-file
       options:
@@ -99,7 +109,12 @@ services:
     restart: unless-stopped
     depends_on:
       - api
-    mem_limit: 1g
+    # Peak 242 MiB measured under IKLC event load with a single replica.
+    # next-server is one single-threaded Node process per container, so extra
+    # replicas buy resilience against a blocked event loop, not extra cores.
+    mem_limit: 512m
+    deploy:
+      replicas: 3
     logging:
       driver: json-file
       options:
@@ -117,7 +132,10 @@ services:
     depends_on:
       - api
       - web
-    mem_limit: 128m
+    # Raised from 128m: hit 98 MiB (77%) during the IKLC event, and nginx
+    # memory scales with concurrent TLS connections. An OOM here is a full
+    # outage. Exactly one replica — this is the only service publishing ports.
+    mem_limit: 256m
     logging:
       driver: json-file
       options:

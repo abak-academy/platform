@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-function loadScript(responses, random = 0.5, env = {}) {
+function loadScript(responses, random = 0.5, env = {}, advanceClock = false) {
   const metrics = new Map();
+  let clock = Date.now();
   const sleeps = [];
   const requests = [];
   const metric = (name) => ({
@@ -32,6 +33,7 @@ function loadScript(responses, random = 0.5, env = {}) {
     check: (response, checks) => Object.values(checks).every((check) => check(response)),
     console: { error() {} },
     encoding: { b64decode: (value) => Buffer.from(value, "base64url").toString() },
+    Date: { now: () => clock },
     exec: { vu: { idInTest: 1 } },
     http: {
       request(...args) {
@@ -42,6 +44,7 @@ function loadScript(responses, random = 0.5, env = {}) {
     Math: math,
     sleep(seconds) {
       sleeps.push(seconds);
+      if (advanceClock) clock += seconds * 1000;
     },
   };
   let source = readFileSync(new URL("./exam-lifecycle.js", import.meta.url), "utf8")
@@ -49,9 +52,9 @@ function loadScript(responses, random = 0.5, env = {}) {
     .replace("export const options", "const options")
     .replace("export function setup", "function setup")
     .replace("export default function (test)", "function examLifecycle(test)");
-  source += `\nglobalThis.__test = { loginWithTransportRetry, request, saveWithRetry, authenticatedRequest };`;
+  source += `\nglobalThis.__test = { loginWithTransportRetry, request, saveWithRetry, authenticatedRequest, submitDeadlineFor, adaptiveDelay, waitWithHeartbeat };`;
   vm.runInNewContext(source, context);
-  return { ...context.__test, metrics, requests, sleeps };
+  return { ...context.__test, metrics, requests, sleeps, now: () => clock };
 }
 
 test("retries a transport failure and records recovery separately", () => {
@@ -239,4 +242,83 @@ test("one-time 401 refresh still rotates tokens and preserves device identity", 
     for (const request of harness.requests) assert.equal(request[3].headers["X-Forwarded-For"], headers["X-Forwarded-For"]);
     assert.deepEqual(harness.sleeps, []);
   }
+});
+
+test("LOGIN_RETRY_LIMIT bounds login attempts", () => {
+  const transport = { status: 0, error: "dial: i/o timeout" };
+
+  const dflt = loadScript([transport, transport, transport, transport]);
+  dflt.loginWithTransportRetry({}, {});
+  assert.equal(dflt.requests.length, 4, "default limit 3 must give 4 attempts");
+
+  const five = loadScript(
+    [transport, transport, transport, transport, transport, transport],
+    0.5,
+    { LOGIN_RETRY_LIMIT: "5" },
+  );
+  five.loginWithTransportRetry({}, {});
+  assert.equal(five.requests.length, 6, "limit 5 must give 6 attempts");
+  assert.deepEqual(five.metrics.get("login_final_failed"), [true]);
+});
+
+const WINDOW_ENV = {
+  SUBMIT_AT_SECONDS: "2700",
+  SUBMIT_WINDOW_START_SECONDS: "1800",
+  SUBMIT_BURST_SECONDS: "600",
+  SUBMIT_BURST_SHARE: "0.7",
+};
+
+test("submit deadline lands in the burst when the draw is under the share", () => {
+  // random 0.5 < share 0.7 -> burst arm; burst spans 2100..2700s
+  const h = loadScript([], 0.5, WINDOW_ENV);
+  const start = 1_000_000;
+  const at = (h.submitDeadlineFor(start) - start) / 1000;
+  assert.ok(at >= 2100 && at <= 2700, `expected burst window 2100..2700, got ${at}`);
+});
+
+test("submit deadline lands before the burst when the draw is over the share", () => {
+  // random 0.9 > share 0.7 -> early arm; spans 1800..2100s
+  const h = loadScript([], 0.9, WINDOW_ENV);
+  const start = 1_000_000;
+  const at = (h.submitDeadlineFor(start) - start) / 1000;
+  assert.ok(at >= 1800 && at < 2100, `expected early window 1800..2100, got ${at}`);
+});
+
+test("submit deadline keeps the fixed global time when no window is configured", () => {
+  const h = loadScript([], 0.5, { SUBMIT_AT_SECONDS: "3000" });
+  const start = 1_000_000;
+  assert.equal(h.submitDeadlineFor(start), start + 3_000_000);
+});
+
+test("adaptive pacing spreads answers across the remaining exam time", () => {
+  const h = loadScript([], 0.5, { ADAPTIVE_PACING: "true", ANSWER_JITTER_SECONDS: "0" }, true);
+  const submitAt = h.now() + 1000 * 1000; // 1000s left
+  // 25 questions left, one slot reserved as margin -> 1000/26
+  assert.ok(Math.abs(h.adaptiveDelay(submitAt, 25) - 1000 / 26) < 0.01);
+  // fewer questions left -> longer gaps
+  assert.ok(h.adaptiveDelay(submitAt, 4) > h.adaptiveDelay(submitAt, 25));
+});
+
+test("adaptive pacing falls back to the fixed interval when disabled", () => {
+  const h = loadScript([], 0.5, { ANSWER_INTERVAL_SECONDS: "45", ANSWER_JITTER_SECONDS: "0" }, true);
+  assert.equal(h.adaptiveDelay(h.now() + 1000 * 1000, 25), 45);
+});
+
+test("heartbeat polls the session instead of one long sleep", () => {
+  const ok = { status: 200 };
+  const h = loadScript([ok, ok, ok, ok, ok, ok], 0.5, { IDLE_POLL_SECONDS: "60" }, true);
+  const auth = { accessToken: "a", refreshToken: "r", expiresAt: h.now() + 3_600_000 };
+  h.waitWithHeartbeat(h.now() + 300 * 1000, "sess-1", auth, {});
+
+  assert.ok(h.requests.length >= 3, `expected repeated polls, got ${h.requests.length}`);
+  assert.ok(h.sleeps.length >= 3, `expected repeated naps, got ${h.sleeps.length}`);
+  assert.ok(Math.max(...h.sleeps) <= 90, `no nap may swallow the window: ${h.sleeps}`);
+  assert.ok(h.requests.every(([, url]) => url.includes("/exam/sessions/sess-1")));
+});
+
+test("heartbeat keeps the single sleep when polling is disabled", () => {
+  const h = loadScript([], 0.5, { IDLE_POLL_SECONDS: "0" }, true);
+  h.waitWithHeartbeat(h.now() + 300 * 1000, "sess-1", {}, {});
+  assert.deepEqual(h.sleeps, [300]);
+  assert.equal(h.requests.length, 0);
 });
