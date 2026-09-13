@@ -150,20 +150,9 @@ func (r *Repository) CountSchoolsAdmin(ctx context.Context, filter SchoolAdminFi
 	return counts, err
 }
 
-// SchoolOption is the minimal shape used to populate school picker
-// dropdowns — deliberately excludes student_count (a correlated subquery per
-// row) and other fields the pickers never render. SchoolTypes is included
-// because the student-registration picker constrains its jenjang options to
-// the selected school's types; unlike student_count it's a plain column, not
-// a subquery, so it's cheap to carry here.
-type SchoolOption struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Code        string   `json:"code"`
-	SchoolTypes []string `json:"school_types"`
-}
+type SchoolOption = model.SchoolOption
 
-// ListSchoolOptions returns every active school (id, name, code, school_types),
+// ListSchoolOptions returns every active school with picker metadata,
 // ordered by name, for use in picker dropdowns. Unlike ListSchoolsAdmin this
 // is not paginated: pickers need the full active registry to let users select
 // any school, not just the first page (see school-bulk-list-pagination
@@ -172,7 +161,13 @@ type SchoolOption struct {
 // schools).
 func (r *Repository) ListSchoolOptions(ctx context.Context) ([]SchoolOption, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, name, code, school_types FROM school WHERE status = 'active' ORDER BY name ASC`,
+		`SELECT s.id, s.name, s.code, s.npsn, s.school_types, s.alamat, s.status,
+			s.category, s.city_id, c.name, p.id, p.name
+		FROM school s
+		LEFT JOIN city c ON c.id = s.city_id
+		LEFT JOIN province p ON p.id = c.province_id
+		WHERE s.status = 'active'
+		ORDER BY s.name ASC`,
 	)
 	if err != nil {
 		return nil, err
@@ -182,7 +177,10 @@ func (r *Repository) ListSchoolOptions(ctx context.Context) ([]SchoolOption, err
 	options := []SchoolOption{}
 	for rows.Next() {
 		var o SchoolOption
-		if err := rows.Scan(&o.ID, &o.Name, &o.Code, &o.SchoolTypes); err != nil {
+		if err := rows.Scan(
+			&o.ID, &o.Name, &o.Code, &o.NPSN, &o.SchoolTypes, &o.Alamat, &o.Status,
+			&o.Category, &o.CityID, &o.CityName, &o.ProvinceID, &o.ProvinceName,
+		); err != nil {
 			return nil, err
 		}
 		options = append(options, o)
