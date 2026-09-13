@@ -37,16 +37,20 @@ export interface School {
   updated_at?: string;
 }
 
-// SchoolOption is the minimal shape used to populate school picker
-// dropdowns (GET /admin/schools/options) — active schools only, no
-// student_count. See docs/backlog/school-bulk-list-pagination.md: pickers
-// that called useAdminSchools() with no cursor/limit were silently truncated
-// to the first page (20 schools, alphabetically).
+// SchoolOption is the bounded picker/hydration shape returned by school search endpoints.
 export interface SchoolOption {
   id: string;
   name: string;
   code: string;
+  npsn?: string | null;
   school_types?: string[];
+  alamat?: string | null;
+  status?: string;
+  category?: string | null;
+  city_id?: string | null;
+  city_name?: string | null;
+  province_id?: string | null;
+  province_name?: string | null;
 }
 
 export interface AdminSchoolInput {
@@ -104,6 +108,7 @@ export interface StudentRegistrationInput {
   kecamatan_id?: string;
   kode_pos?: string;
   password?: string;
+  unlisted_school_name?: string;
 }
 
 export interface StudentRegistrationResult extends AdminStudent {

@@ -5,6 +5,7 @@ import { Search, Check, Loader2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -14,7 +15,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAdminStudents } from "@/lib/hooks/admin-students";
-import { useSchoolOptions } from "@/lib/hooks/admin-schools";
 import { useSearchStudentsAcrossSchools } from "@/lib/hooks/admin-exam-grants";
 import { cn } from "@/lib/utils";
 import type { AdminStudent } from "@/lib/types";
@@ -329,7 +329,7 @@ export function ParticipantPicker({
   );
 }
 
-// ── School facet (placeholder for cross-school mode) ──────────────────────
+// ── School facet (cross-school mode) ─────────────────────────────────────
 
 function SchoolFacetSelect({
   value,
@@ -339,28 +339,16 @@ function SchoolFacetSelect({
   onValueChange: (v: string) => void;
 }) {
   const { t } = useTranslation();
-  const { data: schoolsData } = useSchoolOptions();
-  const schools = useMemo(() => schoolsData?.data ?? [], [schoolsData]);
 
   return (
-    <Select
-      value={value || ALL_FILTER_VALUE}
-      onValueChange={(next) => onValueChange(next === ALL_FILTER_VALUE ? "" : next)}
-    >
-      <SelectTrigger className="h-9 w-[180px] text-xs">
-        <SelectValue placeholder={t("select_school")} />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL_FILTER_VALUE}>
-          <span className="text-ink-500">{t("select_school")}</span>
-        </SelectItem>
-        <SelectItem value="none">{t("students_school_facet_none")}</SelectItem>
-        {schools.map((s) => (
-          <SelectItem key={s.id} value={s.id}>
-            {s.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="min-w-[260px] flex-1">
+      <SchoolFilterPicker
+        value={value}
+        onChange={onValueChange}
+        label={t("select_school")}
+        allLabel={t("students_all_schools")}
+        noneLabel={t("students_school_facet_none")}
+      />
+    </div>
   );
 }

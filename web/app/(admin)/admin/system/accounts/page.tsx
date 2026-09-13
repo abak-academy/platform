@@ -40,6 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatCard } from "@/components/admin/StatCard";
+import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
 import {
   useAdminAccounts,
   useCreateAdminAccount,
@@ -47,7 +48,6 @@ import {
   useChangeAccountStatus,
   useResetAccountPassword,
 } from "@/lib/hooks/admin-accounts";
-import { useSchools } from "@/lib/hooks/students";
 import type { AdminAccount, AdminAccountRole, AdminAccountStatus } from "@/lib/types";
 
 const ROLE_TONE: Record<AdminAccountRole, string> = {
@@ -106,7 +106,6 @@ export default function SystemAccountsPage() {
   const changeRole = useChangeAccountRole();
   const changeStatus = useChangeAccountStatus();
   const resetPwd = useResetAccountPassword();
-  const { data: schools = [] } = useSchools();
 
   const rows = useMemo(() => {
     if (search.trim() === "") return accounts;
@@ -428,24 +427,12 @@ export default function SystemAccountsPage() {
               </Select>
             </div>
             {createForm.role === "admin_school" && (
-              <div>
-                <Label>{t("accounts_field_school")}</Label>
-                <Select
-                  value={createForm.school_id}
-                  onValueChange={(v) => setCreateForm((f) => ({ ...f, school_id: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t("accounts_placeholder_pick_school")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {schools.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <SchoolFilterPicker
+                value={createForm.school_id}
+                onChange={(schoolId) => setCreateForm((f) => ({ ...f, school_id: schoolId }))}
+                label={t("accounts_field_school")}
+                allLabel={t("accounts_placeholder_pick_school")}
+              />
             )}
             <div>
               <Label>{t("accounts_field_password")}</Label>
@@ -508,24 +495,12 @@ export default function SystemAccountsPage() {
               </Select>
             </div>
             {roleChangeRole === "admin_school" && (
-              <div>
-                <Label>{t("accounts_field_school")}</Label>
-                <Select
-                  value={roleChangeSchoolId}
-                  onValueChange={setRoleChangeSchoolId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t("accounts_placeholder_pick_school")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {schools.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <SchoolFilterPicker
+                value={roleChangeSchoolId}
+                onChange={setRoleChangeSchoolId}
+                label={t("accounts_field_school")}
+                allLabel={t("accounts_placeholder_pick_school")}
+              />
             )}
           </div>
           <DialogFooter className="mt-4">

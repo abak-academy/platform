@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { useRegistration } from "@/lib/hooks/exam";
-import { useProfile, useSchools } from "@/lib/hooks/students";
+import { useProfile, useSchoolById } from "@/lib/hooks/students";
 import { API_BASE, ApiError, fileUrl } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { ExamCardPrintable } from "@/components/exam/ExamCardPrintable";
@@ -72,7 +72,7 @@ export default function ExamCardPrintPage() {
   const { data: reg, isLoading: regLoading, isError: regError } =
     useRegistration(id);
   const { data: student, isLoading: profileLoading } = useProfile();
-  const { data: schools } = useSchools();
+  const { data: school } = useSchoolById(student?.school_id ?? "");
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -108,7 +108,7 @@ export default function ExamCardPrintPage() {
 
   const schoolName =
     student?.unlisted_school_name?.trim() ||
-    schools?.find((s) => s.id === student?.school_id)?.name ||
+    school?.name ||
     DASH;
 
   const participantNumber = reg.participant_no || DASH;

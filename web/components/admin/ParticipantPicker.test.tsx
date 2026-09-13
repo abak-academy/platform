@@ -47,6 +47,16 @@ vi.mock("@/lib/api", () => ({
   }),
 }));
 
+
+vi.mock("@/components/SchoolFilterPicker", () => ({
+  SchoolFilterPicker: ({ value, onChange, noneLabel }: { value: string; onChange: (value: string) => void; noneLabel?: string }) => (
+    <select aria-label="school-filter" value={value || ""} onChange={(event) => onChange(event.target.value)}>
+      <option value="">Semua sekolah</option>
+      {noneLabel ? <option value="none">{noneLabel}</option> : null}
+      <option value="sch-1">SMA Negeri 1</option>
+    </select>
+  ),
+}));
 vi.mock("@/components/ui/select", () => ({
   Select: ({
     children,

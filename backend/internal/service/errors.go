@@ -198,11 +198,22 @@ var (
 
 // --- from school.go ---
 var (
-	ErrSchoolNotFound    = errors.New("school not found")
-	ErrSchoolCodeTaken   = errors.New("school code already taken")
-	ErrSchoolNPSNTaken   = errors.New("school NPSN already taken")
-	ErrInvalidSchoolNPSN = errors.New("school NPSN must be exactly 8 ASCII letters or digits")
-	ErrInvalidSchoolName = errors.New("school name must contain at least one letter or digit")
+	ErrSchoolNotFound      = errors.New("school not found")
+	ErrSchoolCodeTaken     = errors.New("school code already taken")
+	ErrSchoolNPSNTaken     = errors.New("school NPSN already taken")
+	ErrInvalidSchoolNPSN   = errors.New("school NPSN must be exactly 8 ASCII letters or digits")
+	ErrInvalidSchoolName   = errors.New("school name must contain at least one letter or digit")
+	ErrInvalidSchoolSearch = errors.New("invalid school search")
+)
+
+// --- from pusdatin_import.go ---
+var (
+	ErrPusdatinSourceChecksum          = errors.New("pusdatin source checksum mismatch")
+	ErrPusdatinHeaderMismatch          = errors.New("pusdatin source header mismatch")
+	ErrPusdatinResolutionMismatch      = errors.New("pusdatin duplicate resolution mismatch")
+	ErrPusdatinGeographyDrift          = errors.New("pusdatin geography mapping drift")
+	ErrPusdatinImportBlocked           = errors.New("pusdatin import has blockers")
+	ErrPusdatinReviewedPreviewMismatch = errors.New("pusdatin reviewed preview mismatch")
 )
 
 // --- from shipping_rates.go ---
