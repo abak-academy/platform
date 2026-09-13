@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
 
@@ -30,9 +29,9 @@ func TestPusdatinImport_DryRunApplyAndIdempotentRepeat(t *testing.T) {
 	newNPSN := "9" + strings.ToUpper(suffix[:7])
 	csvData := pusdatinApplyCSV(existingNPSN, newNPSN, cityName)
 	sum := sha256.Sum256([]byte(csvData))
-	opts := model.PusdatinTransformOptions{
+	opts := PusdatinTransformOptions{
 		ExpectedSourceSHA256: hex.EncodeToString(sum[:]),
-		Cities: []model.PusdatinCityReference{{
+		Cities: []PusdatinCityReference{{
 			ID: cityID, Name: cityName, ProvinsiID: provinceID, ProvinsiName: provinceName,
 		}},
 	}
@@ -83,9 +82,9 @@ func TestPusdatinImport_ApplyRequiresExternalNPSNIndex(t *testing.T) {
 	npsn := "7" + strings.ToUpper(suffix[:7])
 	csvData := pusdatinApplyCSV(npsn, "6"+strings.ToUpper(suffix[:7]), cityName)
 	sum := sha256.Sum256([]byte(csvData))
-	opts := model.PusdatinTransformOptions{
+	opts := PusdatinTransformOptions{
 		ExpectedSourceSHA256: hex.EncodeToString(sum[:]),
-		Cities: []model.PusdatinCityReference{{
+		Cities: []PusdatinCityReference{{
 			ID: cityID, Name: cityName, ProvinsiID: provinceID, ProvinsiName: provinceName,
 		}},
 	}

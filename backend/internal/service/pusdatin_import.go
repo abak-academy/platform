@@ -14,9 +14,136 @@ import (
 	"sort"
 	"strings"
 
-	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
+
+type PusdatinCityReference struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	ProvinsiID   string `json:"provinsi_id"`
+	ProvinsiName string `json:"provinsi_name"`
+}
+
+type PusdatinGeographicAlias struct {
+	SourceLabel        string `json:"source_label"`
+	TargetKotaID       string `json:"target_kota_id"`
+	TargetKotaName     string `json:"target_kota_name"`
+	TargetProvinsiID   string `json:"target_provinsi_id"`
+	TargetProvinsiName string `json:"target_provinsi_name"`
+	ReferenceEvidence  string `json:"reference_evidence"`
+}
+
+type PusdatinDuplicateResolution struct {
+	SourceSHA256 string `json:"source_sha256"`
+	NPSN         string `json:"npsn"`
+	RecordNumber int    `json:"record_number"`
+	RowHash      string `json:"row_hash"`
+}
+
+type PusdatinTransformOptions struct {
+	ExpectedSourceSHA256 string
+	Cities               []PusdatinCityReference
+	Aliases              []PusdatinGeographicAlias
+	Resolutions          []PusdatinDuplicateResolution
+}
+
+type PusdatinTransformStats struct {
+	RawRecords           int `json:"raw_records"`
+	UniqueNormalizedNPSN int `json:"unique_normalized_npsn"`
+	InvalidRows          int `json:"invalid_rows"`
+	BlankOrDashAddresses int `json:"blank_or_dash_addresses"`
+}
+
+type PusdatinTransformedSchool struct {
+	SourceRecordNumber int      `json:"source_record_number"`
+	SourceRowHash      string   `json:"source_row_hash"`
+	NPSN               string   `json:"npsn"`
+	Name               string   `json:"name"`
+	Category           string   `json:"category"`
+	SchoolTypes        []string `json:"school_types"`
+	Alamat             *string  `json:"alamat"`
+	KotaID             string   `json:"kota_id"`
+	KotaName           string   `json:"kota_name"`
+	ProvinsiID         string   `json:"provinsi_id"`
+	ProvinsiName       string   `json:"provinsi_name"`
+}
+
+type PusdatinDuplicateStatus string
+
+const (
+	PusdatinDuplicateIdentical PusdatinDuplicateStatus = "identical"
+	PusdatinDuplicateConflict  PusdatinDuplicateStatus = "conflict"
+)
+
+type PusdatinDuplicateRow struct {
+	RecordNumber int    `json:"record_number"`
+	RowHash      string `json:"row_hash"`
+}
+
+type PusdatinDuplicateGroup struct {
+	NPSN      string                  `json:"npsn"`
+	Status    PusdatinDuplicateStatus `json:"status"`
+	Identical bool                    `json:"identical"`
+	Rows      []PusdatinDuplicateRow  `json:"rows"`
+}
+
+type PusdatinTransformBlocker struct {
+	Code         string `json:"code"`
+	NPSN         string `json:"npsn,omitempty"`
+	RecordNumber int    `json:"record_number,omitempty"`
+	Message      string `json:"message"`
+}
+
+type PusdatinTransformReport struct {
+	SourceSHA256            string                      `json:"source_sha256"`
+	Stats                   PusdatinTransformStats      `json:"stats"`
+	RecordCount             int                         `json:"record_count"`
+	UniqueNormalizedNPSN    int                         `json:"unique_normalized_npsn"`
+	InvalidRows             int                         `json:"invalid_rows"`
+	BlankOrDashAddressCount int                         `json:"blank_or_dash_address_count"`
+	DuplicateGroups         []PusdatinDuplicateGroup    `json:"duplicate_groups"`
+	Transformed             []PusdatinTransformedSchool `json:"transformed"`
+	Schools                 []PusdatinTransformedSchool `json:"schools"`
+	TransformedChecksum     string                      `json:"transformed_checksum"`
+	Blockers                []PusdatinTransformBlocker  `json:"blockers"`
+}
+
+type PusdatinImportCounts struct {
+	Inserted  int `json:"inserted"`
+	Updated   int `json:"updated"`
+	Unchanged int `json:"unchanged"`
+}
+
+type PusdatinImportReport struct {
+	SourceSHA256        string                     `json:"source_sha256"`
+	TransformedChecksum string                     `json:"transformed_checksum"`
+	ReviewedChecksum    string                     `json:"reviewed_checksum"`
+	Counts              PusdatinImportCounts       `json:"counts"`
+	Blockers            []PusdatinTransformBlocker `json:"blockers"`
+}
+
+type PusdatinSchoolImage struct {
+	ID          string   `json:"id"`
+	NPSN        *string  `json:"npsn"`
+	Name        string   `json:"name"`
+	Alamat      *string  `json:"alamat"`
+	SchoolTypes []string `json:"school_types"`
+	Category    *string  `json:"category"`
+	ProvinsiID  *string  `json:"provinsi_id"`
+	KotaID      *string  `json:"kota_id"`
+}
+
+type PusdatinImportManifestRow struct {
+	NPSN     string               `json:"npsn"`
+	Inserted bool                 `json:"inserted"`
+	Before   *PusdatinSchoolImage `json:"before,omitempty"`
+	After    PusdatinSchoolImage  `json:"after"`
+}
+
+type PusdatinImportManifest struct {
+	ReviewedChecksum string                      `json:"reviewed_checksum"`
+	Rows             []PusdatinImportManifestRow `json:"rows"`
+}
 
 var pusdatinExpectedHeader = []string{
 	"NPSN", "Nama", "Bentuk", "Jenis", "Status", "Jenjang",
@@ -30,10 +157,10 @@ type pusdatinSourceRow struct {
 	name         string
 	category     string
 	alamat       *string
-	city         model.PusdatinCityReference
+	city         PusdatinCityReference
 }
 
-func TransformPusdatinSource(r io.Reader, opts model.PusdatinTransformOptions) (*model.PusdatinTransformReport, error) {
+func TransformPusdatinSource(r io.Reader, opts PusdatinTransformOptions) (*PusdatinTransformReport, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
@@ -62,7 +189,7 @@ func TransformPusdatinSource(r io.Reader, opts model.PusdatinTransformOptions) (
 		return nil, err
 	}
 
-	report := &model.PusdatinTransformReport{SourceSHA256: sourceSHA}
+	report := &PusdatinTransformReport{SourceSHA256: sourceSHA}
 	byNPSN := map[string][]pusdatinSourceRow{}
 	for recordNumber := 1; ; recordNumber++ {
 		record, err := reader.Read()
@@ -91,7 +218,7 @@ func TransformPusdatinSource(r io.Reader, opts model.PusdatinTransformOptions) (
 		if !include {
 			continue
 		}
-		report.Transformed = append(report.Transformed, model.PusdatinTransformedSchool{
+		report.Transformed = append(report.Transformed, PusdatinTransformedSchool{
 			SourceRecordNumber: chosen.recordNumber,
 			SourceRowHash:      chosen.rowHash,
 			NPSN:               chosen.npsn,
@@ -126,7 +253,7 @@ func TransformPusdatinSource(r io.Reader, opts model.PusdatinTransformOptions) (
 	return report, nil
 }
 
-func (s *Service) DryRunPusdatinImport(ctx context.Context, r io.Reader, opts model.PusdatinTransformOptions) (*model.PusdatinImportReport, error) {
+func (s *Service) DryRunPusdatinImport(ctx context.Context, r io.Reader, opts PusdatinTransformOptions) (*PusdatinImportReport, error) {
 	transform, err := TransformPusdatinSource(r, opts)
 	if err != nil {
 		return nil, err
@@ -134,58 +261,59 @@ func (s *Service) DryRunPusdatinImport(ctx context.Context, r io.Reader, opts mo
 	return s.buildPusdatinImportReport(ctx, transform)
 }
 
-func (s *Service) ApplyPusdatinImport(ctx context.Context, r io.Reader, opts model.PusdatinTransformOptions, reviewedChecksum string) (*model.PusdatinImportReport, error) {
+func (s *Service) ApplyPusdatinImport(ctx context.Context, r io.Reader, opts PusdatinTransformOptions, reviewedChecksum string) (*PusdatinImportReport, error) {
 	report, _, err := s.ApplyPusdatinImportWithManifest(ctx, r, opts, reviewedChecksum)
 	return report, err
 }
 
-func (s *Service) ApplyPusdatinImportWithManifest(ctx context.Context, r io.Reader, opts model.PusdatinTransformOptions, reviewedChecksum string) (*model.PusdatinImportReport, model.PusdatinImportManifest, error) {
+func (s *Service) ApplyPusdatinImportWithManifest(ctx context.Context, r io.Reader, opts PusdatinTransformOptions, reviewedChecksum string) (*PusdatinImportReport, PusdatinImportManifest, error) {
 	if err := s.storeRepo.VerifySchoolNPSNImportIndex(ctx); err != nil {
-		return nil, model.PusdatinImportManifest{}, err
+		return nil, PusdatinImportManifest{}, err
 	}
 	transform, err := TransformPusdatinSource(r, opts)
 	if err != nil {
-		return nil, model.PusdatinImportManifest{}, err
+		return nil, PusdatinImportManifest{}, err
 	}
 	report, err := s.buildPusdatinImportReport(ctx, transform)
 	if err != nil {
-		return nil, model.PusdatinImportManifest{}, err
+		return nil, PusdatinImportManifest{}, err
 	}
 	if len(report.Blockers) > 0 {
-		return report, model.PusdatinImportManifest{}, ErrPusdatinImportBlocked
+		return report, PusdatinImportManifest{}, ErrPusdatinImportBlocked
 	}
 	if reviewedChecksum == "" || reviewedChecksum != report.ReviewedChecksum {
-		return nil, model.PusdatinImportManifest{}, ErrPusdatinReviewedPreviewMismatch
+		return nil, PusdatinImportManifest{}, ErrPusdatinReviewedPreviewMismatch
 	}
 	npsns := pusdatinTransformedNPSNs(transform.Transformed)
 	before, err := s.storeRepo.LoadPusdatinSchoolImages(ctx, npsns)
 	if err != nil {
-		return nil, model.PusdatinImportManifest{}, err
+		return nil, PusdatinImportManifest{}, err
 	}
-	if err := s.storeRepo.ApplyPusdatinSchools(ctx, transform.Transformed); err != nil {
-		return nil, model.PusdatinImportManifest{}, err
+	if err := s.storeRepo.ApplyPusdatinSchools(ctx, pusdatinRepositoryInputs(transform.Transformed)); err != nil {
+		return nil, PusdatinImportManifest{}, err
 	}
 	after, err := s.storeRepo.LoadPusdatinSchoolImages(ctx, npsns)
 	if err != nil {
-		return nil, model.PusdatinImportManifest{}, err
+		return nil, PusdatinImportManifest{}, err
 	}
-	manifest := model.PusdatinImportManifest{ReviewedChecksum: reviewedChecksum}
+	manifest := PusdatinImportManifest{ReviewedChecksum: reviewedChecksum}
 	for _, row := range transform.Transformed {
-		afterImage := after[row.NPSN]
-		manifestRow := model.PusdatinImportManifestRow{
+		afterImage := pusdatinServiceImage(after[row.NPSN])
+		manifestRow := PusdatinImportManifestRow{
 			NPSN:     row.NPSN,
 			Inserted: before[row.NPSN].ID == "",
 			After:    afterImage,
 		}
 		if image, ok := before[row.NPSN]; ok {
-			manifestRow.Before = &image
+			beforeImage := pusdatinServiceImage(image)
+			manifestRow.Before = &beforeImage
 		}
 		manifest.Rows = append(manifest.Rows, manifestRow)
 	}
 	return report, manifest, nil
 }
 
-func (s *Service) VerifyPusdatinImport(ctx context.Context, manifest model.PusdatinImportManifest) error {
+func (s *Service) VerifyPusdatinImport(ctx context.Context, manifest PusdatinImportManifest) error {
 	npsns := make([]string, 0, len(manifest.Rows))
 	for _, row := range manifest.Rows {
 		npsns = append(npsns, row.NPSN)
@@ -196,18 +324,77 @@ func (s *Service) VerifyPusdatinImport(ctx context.Context, manifest model.Pusda
 	}
 	for _, row := range manifest.Rows {
 		image, ok := current[row.NPSN]
-		if !ok || !pusdatinManifestImageEqual(image, row.After) {
+		if !ok || !pusdatinManifestImageEqual(pusdatinServiceImage(image), row.After) {
 			return fmt.Errorf("pusdatin verify failed for %s", row.NPSN)
 		}
 	}
 	return nil
 }
 
-func (s *Service) RollbackPusdatinImport(ctx context.Context, manifest model.PusdatinImportManifest) error {
-	return s.storeRepo.RollbackPusdatinImport(ctx, manifest)
+func (s *Service) RollbackPusdatinImport(ctx context.Context, manifest PusdatinImportManifest) error {
+	return s.storeRepo.RollbackPusdatinImport(ctx, pusdatinRepositoryManifest(manifest))
 }
 
-func pusdatinTransformedNPSNs(rows []model.PusdatinTransformedSchool) []string {
+func pusdatinRepositoryInputs(rows []PusdatinTransformedSchool) []repository.PusdatinSchoolInput {
+	out := make([]repository.PusdatinSchoolInput, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, repository.PusdatinSchoolInput{
+			NPSN:        row.NPSN,
+			Name:        row.Name,
+			Alamat:      row.Alamat,
+			SchoolTypes: row.SchoolTypes,
+			Category:    row.Category,
+			ProvinsiID:  row.ProvinsiID,
+			KotaID:      row.KotaID,
+		})
+	}
+	return out
+}
+
+func pusdatinServiceImage(image repository.PusdatinSchoolImage) PusdatinSchoolImage {
+	return PusdatinSchoolImage{
+		ID:          image.ID,
+		NPSN:        image.NPSN,
+		Name:        image.Name,
+		Alamat:      image.Alamat,
+		SchoolTypes: image.SchoolTypes,
+		Category:    image.Category,
+		ProvinsiID:  image.ProvinsiID,
+		KotaID:      image.KotaID,
+	}
+}
+
+func pusdatinRepositoryImage(image PusdatinSchoolImage) repository.PusdatinSchoolImage {
+	return repository.PusdatinSchoolImage{
+		ID:          image.ID,
+		NPSN:        image.NPSN,
+		Name:        image.Name,
+		Alamat:      image.Alamat,
+		SchoolTypes: image.SchoolTypes,
+		Category:    image.Category,
+		ProvinsiID:  image.ProvinsiID,
+		KotaID:      image.KotaID,
+	}
+}
+
+func pusdatinRepositoryManifest(manifest PusdatinImportManifest) repository.PusdatinImportManifest {
+	out := repository.PusdatinImportManifest{ReviewedChecksum: manifest.ReviewedChecksum}
+	for _, row := range manifest.Rows {
+		repoRow := repository.PusdatinImportManifestRow{
+			NPSN:     row.NPSN,
+			Inserted: row.Inserted,
+			After:    pusdatinRepositoryImage(row.After),
+		}
+		if row.Before != nil {
+			before := pusdatinRepositoryImage(*row.Before)
+			repoRow.Before = &before
+		}
+		out.Rows = append(out.Rows, repoRow)
+	}
+	return out
+}
+
+func pusdatinTransformedNPSNs(rows []PusdatinTransformedSchool) []string {
 	npsns := make([]string, 0, len(rows))
 	for _, row := range rows {
 		npsns = append(npsns, row.NPSN)
@@ -215,7 +402,7 @@ func pusdatinTransformedNPSNs(rows []model.PusdatinTransformedSchool) []string {
 	return npsns
 }
 
-func pusdatinManifestImageEqual(a, b model.PusdatinSchoolImage) bool {
+func pusdatinManifestImageEqual(a, b PusdatinSchoolImage) bool {
 	return a.ID == b.ID &&
 		pusdatinStringPtrEqual(a.NPSN, b.NPSN) &&
 		a.Name == b.Name &&
@@ -226,11 +413,11 @@ func pusdatinManifestImageEqual(a, b model.PusdatinSchoolImage) bool {
 		pusdatinStringPtrEqual(a.KotaID, b.KotaID)
 }
 
-func (s *Service) buildPusdatinImportReport(ctx context.Context, transform *model.PusdatinTransformReport) (*model.PusdatinImportReport, error) {
-	report := &model.PusdatinImportReport{
+func (s *Service) buildPusdatinImportReport(ctx context.Context, transform *PusdatinTransformReport) (*PusdatinImportReport, error) {
+	report := &PusdatinImportReport{
 		SourceSHA256:        transform.SourceSHA256,
 		TransformedChecksum: transform.TransformedChecksum,
-		Blockers:            append([]model.PusdatinTransformBlocker{}, transform.Blockers...),
+		Blockers:            append([]PusdatinTransformBlocker{}, transform.Blockers...),
 	}
 	npsns := make([]string, 0, len(transform.Transformed))
 	for _, row := range transform.Transformed {
@@ -239,7 +426,7 @@ func (s *Service) buildPusdatinImportReport(ctx context.Context, transform *mode
 	targets, err := s.storeRepo.LoadPusdatinSchoolTargets(ctx, npsns)
 	if err != nil {
 		if errors.Is(err, repository.ErrAmbiguousSchoolIdentity) {
-			report.Blockers = append(report.Blockers, model.PusdatinTransformBlocker{Code: "target_npsn_ambiguous", Message: "target has duplicate normalized NPSN"})
+			report.Blockers = append(report.Blockers, PusdatinTransformBlocker{Code: "target_npsn_ambiguous", Message: "target has duplicate normalized NPSN"})
 			return finalizePusdatinImportReport(report)
 		}
 		return nil, err
@@ -259,12 +446,12 @@ func (s *Service) buildPusdatinImportReport(ctx context.Context, transform *mode
 	return finalizePusdatinImportReport(report)
 }
 
-func finalizePusdatinImportReport(report *model.PusdatinImportReport) (*model.PusdatinImportReport, error) {
+func finalizePusdatinImportReport(report *PusdatinImportReport) (*PusdatinImportReport, error) {
 	payload := struct {
 		SourceSHA256        string
 		TransformedChecksum string
-		Counts              model.PusdatinImportCounts
-		Blockers            []model.PusdatinTransformBlocker
+		Counts              PusdatinImportCounts
+		Blockers            []PusdatinTransformBlocker
 	}{
 		SourceSHA256:        report.SourceSHA256,
 		TransformedChecksum: report.TransformedChecksum,
@@ -279,7 +466,7 @@ func finalizePusdatinImportReport(report *model.PusdatinImportReport) (*model.Pu
 	return report, nil
 }
 
-func pusdatinTargetMatches(row model.PusdatinTransformedSchool, target repository.PusdatinSchoolTarget) bool {
+func pusdatinTargetMatches(row PusdatinTransformedSchool, target repository.PusdatinSchoolTarget) bool {
 	return target.Name == row.Name &&
 		pusdatinStringPtrEqual(target.Alamat, row.Alamat) &&
 		slices.Equal(target.SchoolTypes, row.SchoolTypes) &&
@@ -299,7 +486,7 @@ func stringPtrValueEqual(ptr *string, value string) bool {
 	return ptr != nil && *ptr == value
 }
 
-func parsePusdatinRow(recordNumber int, record []string, geo pusdatinGeographyResolver, report *model.PusdatinTransformReport) (pusdatinSourceRow, bool) {
+func parsePusdatinRow(recordNumber int, record []string, geo pusdatinGeographyResolver, report *PusdatinTransformReport) (pusdatinSourceRow, bool) {
 	npsn, err := normalizeSchoolNPSN(&record[0])
 	if err != nil || npsn == nil {
 		return pusdatinSourceRow{}, false
@@ -310,7 +497,7 @@ func parsePusdatinRow(recordNumber int, record []string, geo pusdatinGeographyRe
 	}
 	category := strings.ToUpper(collapseSpace(record[2]))
 	if category == "" || category == "-" {
-		report.Blockers = append(report.Blockers, model.PusdatinTransformBlocker{Code: "invalid_category", RecordNumber: recordNumber, Message: fmt.Sprintf("row %d has empty Bentuk", recordNumber)})
+		report.Blockers = append(report.Blockers, PusdatinTransformBlocker{Code: "invalid_category", RecordNumber: recordNumber, Message: fmt.Sprintf("row %d has empty Bentuk", recordNumber)})
 		return pusdatinSourceRow{}, false
 	}
 	alamatRaw := strings.TrimSpace(record[9])
@@ -323,7 +510,7 @@ func parsePusdatinRow(recordNumber int, record []string, geo pusdatinGeographyRe
 	}
 	city, ok := geo.resolve(record[6])
 	if !ok {
-		report.Blockers = append(report.Blockers, model.PusdatinTransformBlocker{Code: "geography_unresolved", RecordNumber: recordNumber, Message: fmt.Sprintf("row %d has unresolved Kabupaten %q", recordNumber, record[6])})
+		report.Blockers = append(report.Blockers, PusdatinTransformBlocker{Code: "geography_unresolved", RecordNumber: recordNumber, Message: fmt.Sprintf("row %d has unresolved Kabupaten %q", recordNumber, record[6])})
 		return pusdatinSourceRow{}, false
 	}
 	return pusdatinSourceRow{
@@ -337,28 +524,28 @@ func parsePusdatinRow(recordNumber int, record []string, geo pusdatinGeographyRe
 	}, true
 }
 
-func choosePusdatinRow(npsn string, rows []pusdatinSourceRow, resolutions map[pusdatinResolutionKey]model.PusdatinDuplicateResolution, report *model.PusdatinTransformReport) (pusdatinSourceRow, bool) {
+func choosePusdatinRow(npsn string, rows []pusdatinSourceRow, resolutions map[pusdatinResolutionKey]PusdatinDuplicateResolution, report *PusdatinTransformReport) (pusdatinSourceRow, bool) {
 	if len(rows) == 1 {
 		return rows[0], true
 	}
 
-	status := model.PusdatinDuplicateIdentical
+	status := PusdatinDuplicateIdentical
 	firstHash := rows[0].rowHash
 	for _, row := range rows[1:] {
 		if row.rowHash != firstHash {
-			status = model.PusdatinDuplicateConflict
+			status = PusdatinDuplicateConflict
 			break
 		}
 	}
-	group := model.PusdatinDuplicateGroup{NPSN: npsn, Status: status, Identical: status == model.PusdatinDuplicateIdentical}
+	group := PusdatinDuplicateGroup{NPSN: npsn, Status: status, Identical: status == PusdatinDuplicateIdentical}
 	for _, row := range rows {
-		group.Rows = append(group.Rows, model.PusdatinDuplicateRow{
+		group.Rows = append(group.Rows, PusdatinDuplicateRow{
 			RecordNumber: row.recordNumber,
 			RowHash:      row.rowHash,
 		})
 	}
 	report.DuplicateGroups = append(report.DuplicateGroups, group)
-	if status == model.PusdatinDuplicateIdentical {
+	if status == PusdatinDuplicateIdentical {
 		return rows[0], true
 	}
 
@@ -369,12 +556,12 @@ func choosePusdatinRow(npsn string, rows []pusdatinSourceRow, resolutions map[pu
 			continue
 		}
 		if resolution.RowHash != row.rowHash {
-			report.Blockers = append(report.Blockers, model.PusdatinTransformBlocker{Code: "duplicate_resolution_invalid", NPSN: npsn, RecordNumber: row.recordNumber, Message: fmt.Sprintf("duplicate resolution for NPSN %s has stale row hash", npsn)})
+			report.Blockers = append(report.Blockers, PusdatinTransformBlocker{Code: "duplicate_resolution_invalid", NPSN: npsn, RecordNumber: row.recordNumber, Message: fmt.Sprintf("duplicate resolution for NPSN %s has stale row hash", npsn)})
 			return pusdatinSourceRow{}, false
 		}
 		return row, true
 	}
-	report.Blockers = append(report.Blockers, model.PusdatinTransformBlocker{Code: "duplicate_conflict", NPSN: npsn, Message: fmt.Sprintf("conflicting duplicate NPSN %s requires explicit resolution", npsn)})
+	report.Blockers = append(report.Blockers, PusdatinTransformBlocker{Code: "duplicate_conflict", NPSN: npsn, Message: fmt.Sprintf("conflicting duplicate NPSN %s requires explicit resolution", npsn)})
 	return pusdatinSourceRow{}, false
 }
 
@@ -383,8 +570,8 @@ type pusdatinResolutionKey struct {
 	recordNumber int
 }
 
-func normalizePusdatinResolutions(sourceSHA string, resolutions []model.PusdatinDuplicateResolution) (map[pusdatinResolutionKey]model.PusdatinDuplicateResolution, error) {
-	out := map[pusdatinResolutionKey]model.PusdatinDuplicateResolution{}
+func normalizePusdatinResolutions(sourceSHA string, resolutions []PusdatinDuplicateResolution) (map[pusdatinResolutionKey]PusdatinDuplicateResolution, error) {
+	out := map[pusdatinResolutionKey]PusdatinDuplicateResolution{}
 	for _, resolution := range resolutions {
 		if resolution.SourceSHA256 != sourceSHA {
 			return nil, ErrPusdatinResolutionMismatch
@@ -400,15 +587,15 @@ func normalizePusdatinResolutions(sourceSHA string, resolutions []model.Pusdatin
 }
 
 type pusdatinGeographyResolver struct {
-	exact map[string]model.PusdatinCityReference
-	alias map[string]model.PusdatinCityReference
+	exact map[string]PusdatinCityReference
+	alias map[string]PusdatinCityReference
 }
 
-func newPusdatinGeographyResolver(cities []model.PusdatinCityReference, aliases []model.PusdatinGeographicAlias) (pusdatinGeographyResolver, error) {
-	byID := map[string]model.PusdatinCityReference{}
+func newPusdatinGeographyResolver(cities []PusdatinCityReference, aliases []PusdatinGeographicAlias) (pusdatinGeographyResolver, error) {
+	byID := map[string]PusdatinCityReference{}
 	resolver := pusdatinGeographyResolver{
-		exact: map[string]model.PusdatinCityReference{},
-		alias: map[string]model.PusdatinCityReference{},
+		exact: map[string]PusdatinCityReference{},
+		alias: map[string]PusdatinCityReference{},
 	}
 	for _, city := range cities {
 		byID[city.ID] = city
@@ -424,7 +611,7 @@ func newPusdatinGeographyResolver(cities []model.PusdatinCityReference, aliases 
 	return resolver, nil
 }
 
-func (r pusdatinGeographyResolver) resolve(label string) (model.PusdatinCityReference, bool) {
+func (r pusdatinGeographyResolver) resolve(label string) (PusdatinCityReference, bool) {
 	normalized := normalizePusdatinRegionLabel(label)
 	if city, ok := r.exact[normalized]; ok {
 		return city, true
@@ -462,7 +649,7 @@ func pusdatinRowHash(record []string) string {
 	return sha256Hex(data)
 }
 
-func checksumPusdatinTransformed(rows []model.PusdatinTransformedSchool) (string, error) {
+func checksumPusdatinTransformed(rows []PusdatinTransformedSchool) (string, error) {
 	data, err := json.Marshal(rows)
 	if err != nil {
 		return "", err

@@ -9,7 +9,6 @@ import (
 
 	"akademi-bimbel/config"
 	"akademi-bimbel/internal/infra"
-	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 )
@@ -87,19 +86,19 @@ func main() {
 		exitf("load resolutions: %v", err)
 	}
 
-	opts := model.PusdatinTransformOptions{
+	opts := service.PusdatinTransformOptions{
 		ExpectedSourceSHA256: *expectedSHA,
 		Cities:               loadCityReferences(ctx, repo),
 		Aliases:              aliases,
 		Resolutions:          resolutions,
 	}
 
-	var report *model.PusdatinImportReport
+	var report *service.PusdatinImportReport
 	switch *mode {
 	case "dry-run":
 		report, err = svc.DryRunPusdatinImport(ctx, source, opts)
 	case "apply":
-		var manifest model.PusdatinImportManifest
+		var manifest service.PusdatinImportManifest
 		report, manifest, err = svc.ApplyPusdatinImportWithManifest(ctx, source, opts, *reviewedChecksum)
 		if err == nil && *manifestOutPath != "" {
 			writeJSONFile(*manifestOutPath, manifest)
@@ -116,12 +115,12 @@ func main() {
 	encodeJSON(report)
 }
 
-func loadManifest(path string) model.PusdatinImportManifest {
+func loadManifest(path string) service.PusdatinImportManifest {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		exitf("read manifest: %v", err)
 	}
-	var manifest model.PusdatinImportManifest
+	var manifest service.PusdatinImportManifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		exitf("decode manifest: %v", err)
 	}
@@ -145,7 +144,7 @@ func encodeJSON(value any) {
 	}
 }
 
-func loadCityReferences(ctx context.Context, repo *repository.Repository) []model.PusdatinCityReference {
+func loadCityReferences(ctx context.Context, repo *repository.Repository) []service.PusdatinCityReference {
 	rows, err := repo.Pool().Query(ctx,
 		`SELECT c.id, c.name, p.id, p.name FROM city c JOIN province p ON p.id = c.province_id`,
 	)
@@ -154,9 +153,9 @@ func loadCityReferences(ctx context.Context, repo *repository.Repository) []mode
 	}
 	defer rows.Close()
 
-	var out []model.PusdatinCityReference
+	var out []service.PusdatinCityReference
 	for rows.Next() {
-		var city model.PusdatinCityReference
+		var city service.PusdatinCityReference
 		if err := rows.Scan(&city.ID, &city.Name, &city.ProvinsiID, &city.ProvinsiName); err != nil {
 			exitf("scan city references: %v", err)
 		}
@@ -168,19 +167,19 @@ func loadCityReferences(ctx context.Context, repo *repository.Repository) []mode
 	return out
 }
 
-func loadAliases(path string) ([]model.PusdatinGeographicAlias, error) {
+func loadAliases(path string) ([]service.PusdatinGeographicAlias, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var aliases []model.PusdatinGeographicAlias
+	var aliases []service.PusdatinGeographicAlias
 	if err := json.Unmarshal(data, &aliases); err != nil {
 		return nil, err
 	}
 	return aliases, nil
 }
 
-func loadResolutions(path string) ([]model.PusdatinDuplicateResolution, error) {
+func loadResolutions(path string) ([]service.PusdatinDuplicateResolution, error) {
 	if path == "" {
 		return nil, nil
 	}
@@ -188,7 +187,7 @@ func loadResolutions(path string) ([]model.PusdatinDuplicateResolution, error) {
 	if err != nil {
 		return nil, err
 	}
-	var resolutions []model.PusdatinDuplicateResolution
+	var resolutions []service.PusdatinDuplicateResolution
 	if err := json.Unmarshal(data, &resolutions); err != nil {
 		return nil, err
 	}

@@ -5,8 +5,6 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
-
-	"akademi-bimbel/internal/model"
 )
 
 func TestTransformPusdatinSource_ParsesMapsAndReportsDuplicateConflict(t *testing.T) {
@@ -21,13 +19,13 @@ func TestTransformPusdatinSource_ParsesMapsAndReportsDuplicateConflict(t *testin
 	}, "\n")
 
 	sum := sha256.Sum256([]byte(csvData))
-	report, err := TransformPusdatinSource(strings.NewReader(csvData), model.PusdatinTransformOptions{
+	report, err := TransformPusdatinSource(strings.NewReader(csvData), PusdatinTransformOptions{
 		ExpectedSourceSHA256: hex.EncodeToString(sum[:]),
-		Cities: []model.PusdatinCityReference{
+		Cities: []PusdatinCityReference{
 			{ID: "3507", Name: "KABUPATEN MALANG", ProvinsiID: "35", ProvinsiName: "JAWA TIMUR"},
 			{ID: "3173", Name: "KOTA JAKARTA PUSAT", ProvinsiID: "31", ProvinsiName: "DKI JAKARTA"},
 		},
-		Aliases: []model.PusdatinGeographicAlias{
+		Aliases: []PusdatinGeographicAlias{
 			{SourceLabel: "KOTA ADM. JAKARTA PUSAT", TargetKotaID: "3173", TargetKotaName: "KOTA JAKARTA PUSAT", TargetProvinsiID: "31", TargetProvinsiName: "DKI JAKARTA", ReferenceEvidence: "seed city 3173"},
 		},
 	})
@@ -47,10 +45,10 @@ func TestTransformPusdatinSource_ParsesMapsAndReportsDuplicateConflict(t *testin
 	if len(report.DuplicateGroups) != 2 {
 		t.Fatalf("DuplicateGroups: want 2, got %d", len(report.DuplicateGroups))
 	}
-	if report.DuplicateGroups[0].Status != model.PusdatinDuplicateIdentical {
+	if report.DuplicateGroups[0].Status != PusdatinDuplicateIdentical {
 		t.Fatalf("first duplicate group should be identical: %+v", report.DuplicateGroups[0])
 	}
-	if report.DuplicateGroups[1].Status != model.PusdatinDuplicateConflict {
+	if report.DuplicateGroups[1].Status != PusdatinDuplicateConflict {
 		t.Fatalf("second duplicate group should be conflicting: %+v", report.DuplicateGroups[1])
 	}
 	if len(report.Blockers) != 1 || report.Blockers[0].NPSN != "87654321" {
@@ -94,9 +92,9 @@ func TestTransformPusdatinSource_ExplicitResolutionAndChecksum(t *testing.T) {
 		"",
 	}, "\n")
 	sum := sha256.Sum256([]byte(csvData))
-	opts := model.PusdatinTransformOptions{
+	opts := PusdatinTransformOptions{
 		ExpectedSourceSHA256: hex.EncodeToString(sum[:]),
-		Cities: []model.PusdatinCityReference{
+		Cities: []PusdatinCityReference{
 			{ID: "3507", Name: "KABUPATEN MALANG", ProvinsiID: "35", ProvinsiName: "JAWA TIMUR"},
 		},
 	}
@@ -109,7 +107,7 @@ func TestTransformPusdatinSource_ExplicitResolutionAndChecksum(t *testing.T) {
 	}
 	chosen := blocked.DuplicateGroups[0].Rows[1]
 
-	opts.Resolutions = []model.PusdatinDuplicateResolution{
+	opts.Resolutions = []PusdatinDuplicateResolution{
 		{SourceSHA256: opts.ExpectedSourceSHA256, NPSN: "87654321", RecordNumber: chosen.RecordNumber, RowHash: chosen.RowHash},
 	}
 	resolved, err := TransformPusdatinSource(strings.NewReader(csvData), opts)
@@ -143,14 +141,14 @@ func TestTransformPusdatinSource_ExplicitResolutionAndChecksum(t *testing.T) {
 
 func TestTransformPusdatinSource_RejectsMalformedSourceAndAliasDrift(t *testing.T) {
 	t.Run("wrong checksum", func(t *testing.T) {
-		_, err := TransformPusdatinSource(strings.NewReader("x"), model.PusdatinTransformOptions{ExpectedSourceSHA256: strings.Repeat("0", 64)})
+		_, err := TransformPusdatinSource(strings.NewReader("x"), PusdatinTransformOptions{ExpectedSourceSHA256: strings.Repeat("0", 64)})
 		if err == nil {
 			t.Fatal("wrong checksum should fail")
 		}
 	})
 
 	t.Run("bad header", func(t *testing.T) {
-		_, err := TransformPusdatinSource(strings.NewReader("NPSN,Nama\n12345678,Sekolah\n"), model.PusdatinTransformOptions{})
+		_, err := TransformPusdatinSource(strings.NewReader("NPSN,Nama\n12345678,Sekolah\n"), PusdatinTransformOptions{})
 		if err == nil {
 			t.Fatal("bad header should fail")
 		}
@@ -162,11 +160,11 @@ func TestTransformPusdatinSource_RejectsMalformedSourceAndAliasDrift(t *testing.
 			"ABCDEFGH,Madrasah Satu,MI,SWASTA,SWASTA,MI,KOTA ADM. JAKARTA PUSAT,KEC. GAMBIR,GAMBIR,Jalan Kenanga,FORMAL,KEMENAG",
 			"",
 		}, "\n")
-		report, err := TransformPusdatinSource(strings.NewReader(csvData), model.PusdatinTransformOptions{
-			Cities: []model.PusdatinCityReference{
+		report, err := TransformPusdatinSource(strings.NewReader(csvData), PusdatinTransformOptions{
+			Cities: []PusdatinCityReference{
 				{ID: "3173", Name: "KOTA JAKARTA PUSAT", ProvinsiID: "31", ProvinsiName: "DKI JAKARTA"},
 			},
-			Aliases: []model.PusdatinGeographicAlias{
+			Aliases: []PusdatinGeographicAlias{
 				{SourceLabel: "KOTA ADM. JAKARTA PUSAT", TargetKotaID: "3173", TargetKotaName: "KOTA JAKARTA RAYA", TargetProvinsiID: "31", TargetProvinsiName: "DKI JAKARTA", ReferenceEvidence: "bad fixture"},
 			},
 		})

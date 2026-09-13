@@ -5,9 +5,41 @@ import (
 	"errors"
 	"fmt"
 
-	"akademi-bimbel/internal/model"
 	"github.com/jackc/pgx/v5"
 )
+
+type PusdatinSchoolInput struct {
+	NPSN        string
+	Name        string
+	Alamat      *string
+	SchoolTypes []string
+	Category    string
+	ProvinsiID  string
+	KotaID      string
+}
+
+type PusdatinSchoolImage struct {
+	ID          string   `json:"id"`
+	NPSN        *string  `json:"npsn"`
+	Name        string   `json:"name"`
+	Alamat      *string  `json:"alamat"`
+	SchoolTypes []string `json:"school_types"`
+	Category    *string  `json:"category"`
+	ProvinsiID  *string  `json:"provinsi_id"`
+	KotaID      *string  `json:"kota_id"`
+}
+
+type PusdatinImportManifestRow struct {
+	NPSN     string               `json:"npsn"`
+	Inserted bool                 `json:"inserted"`
+	Before   *PusdatinSchoolImage `json:"before,omitempty"`
+	After    PusdatinSchoolImage  `json:"after"`
+}
+
+type PusdatinImportManifest struct {
+	ReviewedChecksum string                      `json:"reviewed_checksum"`
+	Rows             []PusdatinImportManifestRow `json:"rows"`
+}
 
 var (
 	ErrMissingSchoolNPSNIndex  = errors.New("missing externally managed school NPSN index")
@@ -78,7 +110,7 @@ func (r *Repository) LoadPusdatinSchoolTargets(ctx context.Context, npsns []stri
 	return out, rows.Err()
 }
 
-func (r *Repository) ApplyPusdatinSchools(ctx context.Context, rows []model.PusdatinTransformedSchool) error {
+func (r *Repository) ApplyPusdatinSchools(ctx context.Context, rows []PusdatinSchoolInput) error {
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -113,7 +145,7 @@ func (r *Repository) ApplyPusdatinSchools(ctx context.Context, rows []model.Pusd
 	return tx.Commit(ctx)
 }
 
-func (r *Repository) LoadPusdatinSchoolImages(ctx context.Context, npsns []string) (map[string]model.PusdatinSchoolImage, error) {
+func (r *Repository) LoadPusdatinSchoolImages(ctx context.Context, npsns []string) (map[string]PusdatinSchoolImage, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT UPPER(BTRIM(npsn)), id, npsn, name, alamat, school_types, category, provinsi_id, kota_id
 		FROM school
@@ -125,10 +157,10 @@ func (r *Repository) LoadPusdatinSchoolImages(ctx context.Context, npsns []strin
 	}
 	defer rows.Close()
 
-	out := map[string]model.PusdatinSchoolImage{}
+	out := map[string]PusdatinSchoolImage{}
 	for rows.Next() {
 		var normalized string
-		var image model.PusdatinSchoolImage
+		var image PusdatinSchoolImage
 		if err := rows.Scan(&normalized, &image.ID, &image.NPSN, &image.Name, &image.Alamat, &image.SchoolTypes, &image.Category, &image.ProvinsiID, &image.KotaID); err != nil {
 			return nil, err
 		}
@@ -137,7 +169,7 @@ func (r *Repository) LoadPusdatinSchoolImages(ctx context.Context, npsns []strin
 	return out, rows.Err()
 }
 
-func (r *Repository) RollbackPusdatinImport(ctx context.Context, manifest model.PusdatinImportManifest) error {
+func (r *Repository) RollbackPusdatinImport(ctx context.Context, manifest PusdatinImportManifest) error {
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -180,8 +212,8 @@ func (r *Repository) RollbackPusdatinImport(ctx context.Context, manifest model.
 	return tx.Commit(ctx)
 }
 
-func loadPusdatinImageTx(ctx context.Context, tx pgx.Tx, id string) (*model.PusdatinSchoolImage, error) {
-	var image model.PusdatinSchoolImage
+func loadPusdatinImageTx(ctx context.Context, tx pgx.Tx, id string) (*PusdatinSchoolImage, error) {
+	var image PusdatinSchoolImage
 	err := tx.QueryRow(ctx,
 		`SELECT id, npsn, name, alamat, school_types, category, provinsi_id, kota_id FROM school WHERE id = $1`,
 		id,
@@ -195,7 +227,7 @@ func loadPusdatinImageTx(ctx context.Context, tx pgx.Tx, id string) (*model.Pusd
 	return &image, nil
 }
 
-func pusdatinImageEqual(a, b model.PusdatinSchoolImage) bool {
+func pusdatinImageEqual(a, b PusdatinSchoolImage) bool {
 	return a.ID == b.ID &&
 		stringPtrEqualRepo(a.NPSN, b.NPSN) &&
 		a.Name == b.Name &&

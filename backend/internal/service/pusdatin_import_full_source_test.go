@@ -7,8 +7,6 @@ import (
 	"os"
 	"regexp"
 	"testing"
-
-	"akademi-bimbel/internal/model"
 )
 
 const pusdatinFullSourcePath = "/Users/Panca/Documents/MyBook/Project/akademi-bimbel/docs/Data Induk Satuan Pendidikan  - DAFTAR Nasional 360 - ASC - 17 Agustus 2026.csv"
@@ -23,7 +21,7 @@ func TestTransformPusdatinSource_FullSourceAudit(t *testing.T) {
 	}
 	defer f.Close()
 
-	report, err := TransformPusdatinSource(f, model.PusdatinTransformOptions{
+	report, err := TransformPusdatinSource(f, PusdatinTransformOptions{
 		ExpectedSourceSHA256: "ebaf0e05b047d87270f78b4a44f7c35ddb586bc888672280df303f15dcc22887",
 		Cities:               cities,
 		Aliases:              aliases,
@@ -47,10 +45,10 @@ func TestTransformPusdatinSource_FullSourceAudit(t *testing.T) {
 	if len(report.DuplicateGroups) != 3 {
 		t.Fatalf("DuplicateGroups: want 3, got %d", len(report.DuplicateGroups))
 	}
-	wantDuplicateStatus := map[string]model.PusdatinDuplicateStatus{
-		"69931346": model.PusdatinDuplicateConflict,
-		"70005045": model.PusdatinDuplicateIdentical,
-		"70005078": model.PusdatinDuplicateIdentical,
+	wantDuplicateStatus := map[string]PusdatinDuplicateStatus{
+		"69931346": PusdatinDuplicateConflict,
+		"70005045": PusdatinDuplicateIdentical,
+		"70005078": PusdatinDuplicateIdentical,
 	}
 	for _, group := range report.DuplicateGroups {
 		if wantDuplicateStatus[group.NPSN] != group.Status {
@@ -66,33 +64,33 @@ func TestTransformPusdatinSource_FullSourceAudit(t *testing.T) {
 	}
 }
 
-func loadPusdatinAuditAliases(t *testing.T) []model.PusdatinGeographicAlias {
+func loadPusdatinAuditAliases(t *testing.T) []PusdatinGeographicAlias {
 	t.Helper()
 	data, err := os.ReadFile("../../../docs/pusdatin-geographic-aliases.json")
 	if err != nil {
 		t.Fatalf("read alias file: %v", err)
 	}
-	var aliases []model.PusdatinGeographicAlias
+	var aliases []PusdatinGeographicAlias
 	if err := json.Unmarshal(data, &aliases); err != nil {
 		t.Fatalf("decode alias file: %v", err)
 	}
 	return aliases
 }
 
-func loadPusdatinAuditCities(t *testing.T) []model.PusdatinCityReference {
+func loadPusdatinAuditCities(t *testing.T) []PusdatinCityReference {
 	t.Helper()
 	provinces := map[string]string{}
-	cities := map[string]model.PusdatinCityReference{}
+	cities := map[string]PusdatinCityReference{}
 	loadProvinceCitySQL(t, "../../../backend/db/migrations/0029_seed_province_city_district.up.sql", provinces, cities)
 	loadProvinceCitySQL(t, "../../../backend/db/migrations/0046_papua_2022_regions.up.sql", provinces, cities)
-	out := make([]model.PusdatinCityReference, 0, len(cities))
+	out := make([]PusdatinCityReference, 0, len(cities))
 	for _, city := range cities {
 		out = append(out, city)
 	}
 	return out
 }
 
-func loadProvinceCitySQL(t *testing.T, path string, provinces map[string]string, cities map[string]model.PusdatinCityReference) {
+func loadProvinceCitySQL(t *testing.T, path string, provinces map[string]string, cities map[string]PusdatinCityReference) {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -104,7 +102,7 @@ func loadProvinceCitySQL(t *testing.T, path string, provinces map[string]string,
 	}
 	cityRE := regexp.MustCompile(`INSERT INTO city \(id, province_id, name\) VALUES \('([^']+)', '([^']+)', '([^']+)'\);`)
 	for _, match := range cityRE.FindAllStringSubmatch(string(data), -1) {
-		cities[match[1]] = model.PusdatinCityReference{
+		cities[match[1]] = PusdatinCityReference{
 			ID:           match[1],
 			ProvinsiID:   match[2],
 			Name:         match[3],

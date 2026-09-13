@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
-
-	"akademi-bimbel/internal/model"
 )
 
 func TestPusdatinImport_VerifyAndRollback(t *testing.T) {
@@ -31,9 +29,9 @@ func TestPusdatinImport_VerifyAndRollback(t *testing.T) {
 	newNPSN := "4" + strings.ToUpper(suffix[:7])
 	csvData := pusdatinApplyCSV(existingNPSN, newNPSN, cityName)
 	sum := sha256.Sum256([]byte(csvData))
-	opts := model.PusdatinTransformOptions{
+	opts := PusdatinTransformOptions{
 		ExpectedSourceSHA256: hex.EncodeToString(sum[:]),
-		Cities: []model.PusdatinCityReference{{
+		Cities: []PusdatinCityReference{{
 			ID: cityID, Name: cityName, ProvinsiID: provinceID, ProvinsiName: provinceName,
 		}},
 	}
