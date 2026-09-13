@@ -103,6 +103,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	// Public school list
 	v1.GET("/schools", h.ListSchools)
+	v1.GET("/schools/:id", h.GetSchool)
 
 	// Public region reference data (no auth, mirrors GET /schools)
 	v1.GET("/provinces", h.ListProvinces)

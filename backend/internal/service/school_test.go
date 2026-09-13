@@ -610,11 +610,13 @@ func TestSchoolOptions_Integration(t *testing.T) {
 	ctx := context.Background()
 
 	suffix := uniqueSuffix()
-	active, err := svc.CreateSchool(ctx, "Option Active "+suffix, "oa_"+suffix, nil, nil, nil)
+	activeNPSN := "A" + strings.ToUpper(suffix[:7])
+	deactivatedNPSN := "B" + strings.ToUpper(suffix[:7])
+	active, err := svc.CreateSchool(ctx, "Option Active "+suffix, "oa_"+suffix, &activeNPSN, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
-	deactivated, err := svc.CreateSchool(ctx, "Option Deactivated "+suffix, "od_"+suffix, nil, nil, nil)
+	deactivated, err := svc.CreateSchool(ctx, "Option Deactivated "+suffix, "od_"+suffix, &deactivatedNPSN, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
@@ -622,24 +624,20 @@ func TestSchoolOptions_Integration(t *testing.T) {
 		t.Fatalf("ChangeSchoolStatus: %v", err)
 	}
 
-	options, err := svc.SchoolOptions(ctx)
+	options, err := svc.SchoolOptions(ctx, SchoolSearchParams{NPSN: strings.ToLower(activeNPSN)})
 	if err != nil {
 		t.Fatalf("SchoolOptions: %v", err)
 	}
-	var sawActive, sawDeactivated bool
-	for _, o := range options {
-		if o.ID == active.ID {
-			sawActive = true
-		}
-		if o.ID == deactivated.ID {
-			sawDeactivated = true
-		}
+	if len(options.Data) != 1 || options.Data[0].ID != active.ID {
+		t.Fatalf("active school option: want %s, got %+v", active.ID, options.Data)
 	}
-	if !sawActive {
-		t.Error("want active school in options")
+
+	options, err = svc.SchoolOptions(ctx, SchoolSearchParams{NPSN: strings.ToLower(deactivatedNPSN)})
+	if err != nil {
+		t.Fatalf("SchoolOptions deactivated: %v", err)
 	}
-	if sawDeactivated {
-		t.Error("deactivated school should not be in options")
+	if len(options.Data) != 0 {
+		t.Fatalf("deactivated school should not be in options, got %+v", options.Data)
 	}
 }
 

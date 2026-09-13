@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,11 +71,42 @@ func (h *Handler) StudentDashboard(c echo.Context) error {
 }
 
 func (h *Handler) ListSchools(c echo.Context) error {
-	schools, err := h.svc.ListSchools(c.Request().Context())
+	params, err := schoolSearchParamsFromRequest(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	schools, err := h.svc.SchoolOptions(c.Request().Context(), params)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, schools)
+}
+
+func (h *Handler) GetSchool(c echo.Context) error {
+	school, err := h.svc.GetSchoolOption(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, school)
+}
+
+func schoolSearchParamsFromRequest(c echo.Context) (service.SchoolSearchParams, error) {
+	limit := 0
+	if raw := c.QueryParam("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			return service.SchoolSearchParams{}, service.ErrInvalidSchoolSearch
+		}
+		limit = n
+	}
+	return service.SchoolSearchParams{
+		Q:          c.QueryParam("q"),
+		ProvinceID: c.QueryParam("province_id"),
+		Category:   c.QueryParam("category"),
+		NPSN:       c.QueryParam("npsn"),
+		Cursor:     c.QueryParam("cursor"),
+		Limit:      limit,
+	}, nil
 }
 
 func (h *Handler) StudentProfile(c echo.Context) error {

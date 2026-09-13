@@ -2,9 +2,13 @@ package repository
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"akademi-bimbel/internal/model"
+	"github.com/google/uuid"
 )
 
 // SchoolAdminRow is the school row returned in admin list responses,
@@ -152,6 +156,56 @@ func (r *Repository) CountSchoolsAdmin(ctx context.Context, filter SchoolAdminFi
 
 type SchoolOption = model.SchoolOption
 
+type SchoolSearchFilter struct {
+	Q          string
+	ProvinceID string
+	Category   string
+	NPSN       string
+	Cursor     string
+	Limit      int
+}
+
+type schoolSearchCursor struct {
+	Q          string `json:"q"`
+	ProvinceID string `json:"province_id"`
+	Category   string `json:"category"`
+	Name       string `json:"name"`
+	ID         string `json:"id"`
+}
+
+func encodeSchoolSearchCursor(filter SchoolSearchFilter, last SchoolOption) string {
+	payload, _ := json.Marshal(schoolSearchCursor{
+		Q:          filter.Q,
+		ProvinceID: filter.ProvinceID,
+		Category:   filter.Category,
+		Name:       last.Name,
+		ID:         last.ID,
+	})
+	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func decodeSchoolSearchCursor(raw string, filter SchoolSearchFilter) (string, uuid.UUID, error) {
+	if len(raw) > 2048 {
+		return "", uuid.Nil, ErrInvalidCursor
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return "", uuid.Nil, ErrInvalidCursor
+	}
+	var c schoolSearchCursor
+	if err := json.Unmarshal(decoded, &c); err != nil {
+		return "", uuid.Nil, ErrInvalidCursor
+	}
+	if c.Q != filter.Q || c.ProvinceID != filter.ProvinceID || c.Category != filter.Category {
+		return "", uuid.Nil, ErrInvalidCursor
+	}
+	id, err := uuid.Parse(c.ID)
+	if err != nil {
+		return "", uuid.Nil, ErrInvalidCursor
+	}
+	return c.Name, id, nil
+}
+
 // ListSchoolOptions returns every active school with picker metadata,
 // ordered by name, for use in picker dropdowns. Unlike ListSchoolsAdmin this
 // is not paginated: pickers need the full active registry to let users select
@@ -186,6 +240,105 @@ func (r *Repository) ListSchoolOptions(ctx context.Context) ([]SchoolOption, err
 		options = append(options, o)
 	}
 	return options, rows.Err()
+}
+
+func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearchFilter) ([]SchoolOption, string, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = 20
+	}
+	if filter.Limit > 50 {
+		filter.Limit = 50
+	}
+
+	if filter.NPSN != "" {
+		rows, err := r.querySchoolOptions(ctx,
+			`WHERE s.status = 'active' AND UPPER(BTRIM(s.npsn)) = $1 ORDER BY s.name ASC, s.id ASC LIMIT 2`,
+			filter.NPSN,
+		)
+		if err != nil {
+			return nil, "", err
+		}
+		if len(rows) > 1 {
+			return nil, "", ErrAmbiguousSchoolIdentity
+		}
+		return rows, "", nil
+	}
+
+	query := `WHERE s.status = 'active' AND p.id = $1 AND LOWER(s.name) LIKE $2 ESCAPE '\'`
+	args := []any{filter.ProvinceID, "%" + escapeLike(strings.ToLower(filter.Q)) + "%"}
+	argNum := 3
+	if filter.Category != "" {
+		query += fmt.Sprintf(` AND s.category = $%d`, argNum)
+		args = append(args, filter.Category)
+		argNum++
+	}
+	if filter.Cursor != "" {
+		lastName, lastID, err := decodeSchoolSearchCursor(filter.Cursor, filter)
+		if err != nil {
+			return nil, "", err
+		}
+		query += fmt.Sprintf(` AND (s.name, s.id) > ($%d, $%d::uuid)`, argNum, argNum+1)
+		args = append(args, lastName, lastID.String())
+		argNum += 2
+	}
+	query += fmt.Sprintf(` ORDER BY s.name ASC, s.id ASC LIMIT $%d`, argNum)
+	args = append(args, filter.Limit+1)
+
+	rows, err := r.querySchoolOptions(ctx, query, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	nextCursor := ""
+	if len(rows) > filter.Limit {
+		rows = rows[:filter.Limit]
+		nextCursor = encodeSchoolSearchCursor(filter, rows[len(rows)-1])
+	}
+	return rows, nextCursor, nil
+}
+
+func (r *Repository) querySchoolOptions(ctx context.Context, where string, args ...any) ([]SchoolOption, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT s.id, s.name, s.code, s.npsn, s.school_types, s.alamat, s.status,
+			s.category, s.city_id, c.name, p.id, p.name
+		FROM school s
+		LEFT JOIN city c ON c.id = s.city_id
+		LEFT JOIN province p ON p.id = c.province_id
+		`+where,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	options := []SchoolOption{}
+	for rows.Next() {
+		var o SchoolOption
+		if err := rows.Scan(
+			&o.ID, &o.Name, &o.Code, &o.NPSN, &o.SchoolTypes, &o.Alamat, &o.Status,
+			&o.Category, &o.CityID, &o.CityName, &o.ProvinceID, &o.ProvinceName,
+		); err != nil {
+			return nil, err
+		}
+		options = append(options, o)
+	}
+	return options, rows.Err()
+}
+
+func (r *Repository) GetSchoolOptionByID(ctx context.Context, id string) (*SchoolOption, error) {
+	rows, err := r.querySchoolOptions(ctx, `WHERE s.id = $1`, id)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return &rows[0], nil
+}
+
+func escapeLike(s string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(s)
 }
 
 // GetSchoolByID returns a school by ID. Returns nil, nil when not found.

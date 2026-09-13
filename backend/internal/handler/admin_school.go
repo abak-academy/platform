@@ -48,11 +48,15 @@ func (h *Handler) AdminListSchools(c echo.Context) error {
 // AdminListSchoolOptions returns every active school (id/name/code) for
 // picker dropdowns, unpaginated — see Service.SchoolOptions.
 func (h *Handler) AdminListSchoolOptions(c echo.Context) error {
-	options, err := h.svc.SchoolOptions(c.Request().Context())
+	params, err := schoolSearchParamsFromRequest(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	options, err := h.svc.SchoolOptions(c.Request().Context(), params)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": options})
+	return c.JSON(http.StatusOK, options)
 }
 
 // AdminCreateSchool creates a new school.
