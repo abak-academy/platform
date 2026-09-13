@@ -48,6 +48,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { BulkImportModal } from "@/components/admin/BulkImportModal";
 import { StatCard } from "@/components/admin/StatCard";
+import { SchoolPicker } from "@/components/SchoolPicker";
 import {
   useAdminStudents,
   useRegisterStudent,
@@ -56,7 +57,7 @@ import {
   useSetStudentPassword,
 } from "@/lib/hooks/admin-students";
 import { useSchoolOptions } from "@/lib/hooks/admin-schools";
-import { useSchools } from "@/lib/hooks/students";
+import { useSchoolById } from "@/lib/hooks/students";
 import { useProvinces, useCitiesByProvince, useDistrictsByCity } from "@/lib/hooks/regions";
 import { useAuthStore } from "@/stores/auth";
 import type {
@@ -64,15 +65,12 @@ import type {
   StudentRegistrationInput,
   StudentRegistrationResult,
   StudentCredentials,
+  SchoolOption,
 } from "@/lib/types";
 
 // Radix Select forbids an empty-string item value, so "every school" needs its
 // own sentinel; it maps back to "" (no school_id param) for the query.
 const ALL_SCHOOLS_VALUE = "_all_";
-
-// Radix Select forbids an empty-string item value, so "no school" needs its own
-// sentinel too; it maps back to "" (registered without a school).
-const NO_SCHOOL_VALUE = "_none_";
 
 // Search is sent to the server (q param), so it must be debounced the same
 // way the schools page debounces school search — otherwise every keystroke
@@ -104,6 +102,8 @@ function compactStudentRegistration(
   if (kodePos) payload.kode_pos = kodePos;
   const password = form.password?.trim();
   if (password) payload.password = password;
+  const unlistedSchoolName = form.unlisted_school_name?.trim();
+  if (unlistedSchoolName) payload.unlisted_school_name = unlistedSchoolName;
   return payload;
 }
 
@@ -224,6 +224,8 @@ export default function SchoolStudentsPage() {
   // picking a school for this registration doesn't silently change which
   // students you're browsing.
   const [registerSchoolId, setRegisterSchoolId] = useState<string>("");
+  const [registerSelectedSchool, setRegisterSelectedSchool] = useState<SchoolOption | null>(null);
+  const [registerUnlistedSchoolName, setRegisterUnlistedSchoolName] = useState("");
 
   // Reissue dialog
   const [reissueTarget, setReissueTarget] = useState<AdminStudent | null>(null);
@@ -252,10 +254,10 @@ export default function SchoolStudentsPage() {
 
   // Jenjang options from target school's school_types
   const currentUser = useAuthStore((s) => s.user);
-  const { data: publicSchools } = useSchools();
-  const adminOwnSchool = publicSchools?.find((s) => s.id === currentUser?.school_id);
+  const { data: adminOwnSchool } = useSchoolById(currentUser?.school_id ?? "");
+  const { data: hydratedRegisterSchool } = useSchoolById(registerSchoolId);
   const adminOwnSchoolTypes = adminOwnSchool?.school_types ?? [];
-  const registerSchoolObj = schoolsData?.data?.find((s) => s.id === registerSchoolId);
+  const registerSchoolObj = registerSelectedSchool?.id === registerSchoolId ? registerSelectedSchool : hydratedRegisterSchool;
   const superAdminSchoolTypes = registerSchoolObj?.school_types ?? [];
   const schoolJenjangTypes = isSuperAdmin ? superAdminSchoolTypes : adminOwnSchoolTypes;
   // With no school chosen there are no school_types to constrain jenjang, but
@@ -270,9 +272,13 @@ export default function SchoolStudentsPage() {
       return;
     }
     try {
+      const input = compactStudentRegistration({
+        ...registerForm,
+        unlisted_school_name: isSuperAdmin && !registerSchoolId ? registerUnlistedSchoolName : undefined,
+      });
       const result = await registerStudent.mutateAsync({
-        input: compactStudentRegistration(registerForm),
-        schoolId: isSuperAdmin ? registerSchoolId : undefined,
+        input,
+        schoolId: isSuperAdmin && registerSchoolId ? registerSchoolId : undefined,
       });
       toast.success(t("students_register_success"));
       setRegisterResult(result);
@@ -361,6 +367,8 @@ export default function SchoolStudentsPage() {
   const handleCloseRegister = () => {
     setRegisterOpen(false);
     setRegisterSchoolId("");
+    setRegisterSelectedSchool(null);
+    setRegisterUnlistedSchoolName("");
     // Discard plaintext credentials
     setRegisterResult(null);
     setRegisterForm({
@@ -538,7 +546,10 @@ export default function SchoolStudentsPage() {
               size="sm"
               className="rounded-full"
               onClick={() => {
+                const selected = (schoolsData?.data ?? []).find((school) => school.id === selectedSchoolId) ?? null;
+                setRegisterSelectedSchool(selected);
                 setRegisterSchoolId(selectedSchoolId);
+                setRegisterUnlistedSchoolName("");
                 setRegisterOpen(true);
               }}
             >
@@ -854,29 +865,19 @@ export default function SchoolStudentsPage() {
               >
                 {isSuperAdmin && (
                   <FormField label={t("school")} hint={t("students_school_optional_hint")}>
-                    <Select
-                      value={registerSchoolId || NO_SCHOOL_VALUE}
-                      onValueChange={(v) => {
-                        setRegisterSchoolId(v === NO_SCHOOL_VALUE ? "" : v);
-                        // Jenjang options depend on the chosen school — a
-                        // previously picked jenjang may no longer be valid.
+                    <SchoolPicker
+                      id="register-school"
+                      value={registerSchoolId}
+                      selectedSchool={registerSelectedSchool}
+                      onChange={(school) => {
+                        setRegisterSelectedSchool(school);
+                        setRegisterSchoolId(school?.id ?? "");
                         setRegisterForm((f) => ({ ...f, jenjang: "" }));
                       }}
-                    >
-                      <SelectTrigger aria-label={t("school")}>
-                        <SelectValue placeholder={t("students_school_none_option")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NO_SCHOOL_VALUE}>
-                          {t("students_school_none_option")}
-                        </SelectItem>
-                        {(schoolsData?.data ?? []).map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      allowUnlisted
+                      unlistedName={registerUnlistedSchoolName}
+                      onUnlistedNameChange={setRegisterUnlistedSchoolName}
+                    />
                   </FormField>
                 )}
                 <div className="grid grid-cols-2 gap-4">

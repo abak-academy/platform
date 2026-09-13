@@ -46,7 +46,15 @@ export interface SchoolOption {
   id: string;
   name: string;
   code: string;
+  npsn?: string | null;
   school_types?: string[];
+  alamat?: string | null;
+  status?: string;
+  category?: string | null;
+  city_id?: string | null;
+  city_name?: string | null;
+  province_id?: string | null;
+  province_name?: string | null;
 }
 
 export interface AdminSchoolInput {
@@ -104,6 +112,7 @@ export interface StudentRegistrationInput {
   kecamatan_id?: string;
   kode_pos?: string;
   password?: string;
+  unlisted_school_name?: string;
 }
 
 export interface StudentRegistrationResult extends AdminStudent {
