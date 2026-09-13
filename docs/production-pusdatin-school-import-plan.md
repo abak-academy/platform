@@ -1,7 +1,5 @@
 # Production Pusdatin school import plan — 2026-09-06
 
-> Historical note: this 2026-09-06 plan proposed a broader product/runtime shape. PR 2 is now limited to a manual one-time Pusdatin sync into `school` by normalized NPSN only; use `docs/runbooks/pusdatin-school-import.md` for the current operator flow.
-
 ## Current evidence
 
 - Source: `docs/Data Induk Satuan Pendidikan  - DAFTAR Nasional 360 - ASC - 17 Agustus 2026.csv`.
