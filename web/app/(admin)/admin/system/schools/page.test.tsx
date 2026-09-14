@@ -54,6 +54,23 @@ vi.mock("@/lib/hooks/admin-schools", () => ({
   adminSchoolsKeys: { all: ["admin", "schools"] },
 }));
 
+vi.mock("@/lib/hooks/regions", () => ({
+  useProvinces: () => ({
+    data: [
+      { id: "31", name: "DKI JAKARTA" },
+      { id: "32", name: "JAWA BARAT" },
+    ],
+  }),
+  useCitiesByProvince: (provinceId?: string) => ({
+    data:
+      provinceId === "31"
+        ? [{ id: "3171", province_id: "31", name: "KOTA JAKARTA SELATAN" }]
+        : provinceId === "32"
+          ? [{ id: "3273", province_id: "32", name: "KOTA BANDUNG" }]
+          : [],
+  }),
+}));
+
 // SchoolBulkImportModal is always mounted (Dialog just stays closed) — its
 // hooks need mocking here too, same as BulkImportModal on the students page.
 const bulkPresignMutateAsync = vi.fn();
@@ -93,6 +110,9 @@ const sampleSchools: School[] = [
     npsn: "12345678",
     school_types: ["Negeri"],
     alamat: "Jl. Merdeka No.1",
+    category: "SMA",
+    provinsi_id: "31",
+    kota_id: "3171",
     status: "active",
     student_count: 500,
   },
@@ -103,6 +123,9 @@ const sampleSchools: School[] = [
     npsn: "87654321",
     school_types: ["Negeri", "SMA"],
     alamat: "Jl. Sudirman No.5",
+    category: "SMA",
+    provinsi_id: "31",
+    kota_id: "3171",
     status: "deactivated",
   },
 ];
@@ -259,12 +282,28 @@ describe("SystemSchoolsPage", () => {
     const codeInput = screen.getByPlaceholderText("Kode Sekolah");
     fireEvent.input(codeInput, { target: { value: "SMAN3JKT" } });
 
+    fireEvent.change(screen.getByTestId("create-school-province"), {
+      target: { value: "31" },
+    });
+    fireEvent.change(screen.getByTestId("create-school-city"), {
+      target: { value: "3171" },
+    });
+    fireEvent.change(screen.getByTestId("create-school-category"), {
+      target: { value: "SMA" },
+    });
+
     const saveButton = screen.getByRole("button", { name: /^buat$/i });
     fireEvent.click(saveButton);
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "SMAN 3 Jakarta", code: "SMAN3JKT" }),
+        expect.objectContaining({
+          name: "SMAN 3 Jakarta",
+          code: "SMAN3JKT",
+          category: "SMA",
+          provinsi_id: "31",
+          kota_id: "3171",
+        }),
       );
       expect(toast.success).toHaveBeenCalledWith("Perubahan disimpan.");
     });
@@ -349,6 +388,37 @@ describe("SystemSchoolsPage", () => {
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({ id: "s1", name: "SMAN 1 Jakarta Baru" });
       expect(toast.success).toHaveBeenCalledWith("Perubahan disimpan.");
+    });
+  });
+
+  it("updates school location and category", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ id: "s1" });
+    renderPage(<SystemSchoolsPage />);
+
+    await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
+    const row = schoolRecord("SMAN 1 Jakarta");
+    fireEvent.pointerDown(within(row).getByRole("button", { name: "" }), { button: 0 });
+    fireEvent.click(await screen.findByText("Edit"));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByTestId("edit-school-province"), {
+      target: { value: "32" },
+    });
+    fireEvent.change(within(dialog).getByTestId("edit-school-city"), {
+      target: { value: "3273" },
+    });
+    fireEvent.change(within(dialog).getByTestId("edit-school-category"), {
+      target: { value: "SMK" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        id: "s1",
+        category: "SMK",
+        provinsi_id: "32",
+        kota_id: "3273",
+      });
     });
   });
 

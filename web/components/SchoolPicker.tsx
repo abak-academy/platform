@@ -147,9 +147,13 @@ export function SchoolPicker({
       ) : (
         <>
           {mode === "name" ? (
-            <div className="grid gap-2 sm:grid-cols-3">
+            <>
+              <div
+                data-testid="school-picker-location-filters"
+                className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))]"
+              >
               <Select value={provinceId || "_empty_"} onValueChange={(v) => setProvinceId(v === "_empty_" ? "" : v)} disabled={disabled}>
-                <SelectTrigger id={`${id}-province`}>
+                <SelectTrigger id={`${id}-province`} className="w-full min-w-0">
                   <SelectValue placeholder={t("school_picker_province")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -162,7 +166,7 @@ export function SchoolPicker({
                 </SelectContent>
               </Select>
               <Select value={cityId || "_empty_"} onValueChange={(v) => setCityId(v === "_empty_" ? "" : v)} disabled={disabled || !provinceId}>
-                <SelectTrigger id={`${id}-city`}>
+                <SelectTrigger id={`${id}-city`} className="w-full min-w-0">
                   <SelectValue placeholder={t("school_picker_city")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -175,7 +179,7 @@ export function SchoolPicker({
                 </SelectContent>
               </Select>
               <Select value={category || "_empty_"} onValueChange={(v) => setCategory(v === "_empty_" ? "" : v)} disabled={disabled}>
-                <SelectTrigger id={`${id}-category`}>
+                <SelectTrigger id={`${id}-category`} className="w-full min-w-0">
                   <SelectValue placeholder={t("school_picker_category")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -187,7 +191,8 @@ export function SchoolPicker({
                   ))}
                 </SelectContent>
               </Select>
-              <div className="relative sm:col-span-3">
+              </div>
+              <div className="relative mt-2">
                 <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-400" />
                 <Input
                   id={id}
@@ -198,7 +203,7 @@ export function SchoolPicker({
                   className="pl-9"
                 />
               </div>
-            </div>
+            </>
           ) : (
             <Input
               id={id}

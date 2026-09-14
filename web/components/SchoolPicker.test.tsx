@@ -105,6 +105,14 @@ describe("SchoolPicker", () => {
     vi.useRealTimers();
   });
 
+  it("keeps location filters readable in narrow containers", () => {
+    render(<Harness />);
+
+    expect(screen.getByTestId("school-picker-location-filters")).toHaveClass(
+      "[grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))]",
+    );
+  });
+
   it("fetches by province and city, then filters typed school name locally", async () => {
     render(<Harness />);
 

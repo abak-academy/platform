@@ -31,6 +31,9 @@ export interface School {
   npsn?: string;
   school_types?: string[];
   alamat?: string;
+  category?: string | null;
+  provinsi_id?: string | null;
+  kota_id?: string | null;
   status?: string;
   student_count?: number;
   created_at?: string;
@@ -59,6 +62,9 @@ export interface AdminSchoolInput {
   npsn?: string;
   school_types?: string[];
   alamat?: string;
+  category?: string;
+  provinsi_id?: string;
+  kota_id?: string;
 }
 
 export interface AdminSchoolUpdateInput {
@@ -67,6 +73,9 @@ export interface AdminSchoolUpdateInput {
   npsn?: string;
   school_types?: string[];
   alamat?: string;
+  category?: string;
+  provinsi_id?: string;
+  kota_id?: string;
 }
 
 export interface AdminStudent {
