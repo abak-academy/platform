@@ -146,7 +146,7 @@ describe("SystemSchoolsPage", () => {
     vi.useRealTimers();
   });
 
-  it("uses the full dashboard width and a plain table", async () => {
+  it("uses the full dashboard width with the white workspace and detail panel", async () => {
     renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
@@ -154,7 +154,20 @@ describe("SystemSchoolsPage", () => {
     const table = screen.getByTestId("schools-table");
     expect(table).not.toHaveClass("md-card-outlined");
     expect(table.closest(".max-w-6xl")).toBeNull();
-    expect(screen.queryByRole("complementary", { name: "Detail sekolah" })).not.toBeInTheDocument();
+    expect(table.closest(".school-management-workspace")).toHaveClass("bg-surface");
+    expect(screen.getByRole("complementary", { name: "Detail sekolah" })).toBeInTheDocument();
+  });
+
+  it("updates the detail panel when a school name is selected", async () => {
+    renderPage(<SystemSchoolsPage />);
+
+    const detail = await screen.findByRole("complementary", { name: "Detail sekolah" });
+    expect(within(detail).getByRole("heading", { name: "SMAN 1 Jakarta" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Lihat detail SMAN 2 Jakarta" }));
+
+    expect(within(detail).getByRole("heading", { name: "SMAN 2 Jakarta" })).toBeInTheDocument();
+    expect(within(detail).getByText("NPSN 87654321")).toBeInTheDocument();
   });
 
   it("renders loading state when data is loading and no schools exist", async () => {

@@ -77,6 +77,7 @@ export default function SystemSchoolsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<School | null>(null);
+  const [inspectedSchoolId, setInspectedSchoolId] = useState("");
   const queryClient = useQueryClient();
   const [createForm, setCreateForm] = useState<SchoolForm>({ ...EMPTY_FORM });
   const [editForm, setEditForm] = useState<SchoolForm>({ ...EMPTY_FORM });
@@ -141,6 +142,9 @@ export default function SystemSchoolsPage() {
   }, [data]);
 
   const rows = schools;
+  const inspectedSchool =
+    schools.find((school) => school.id === inspectedSchoolId) ?? schools[0] ?? null;
+  const inspectorLabel = lang === "en" ? "School details" : "Detail sekolah";
 
   function resetPagination() {
     setSchools([]);
@@ -259,10 +263,20 @@ export default function SystemSchoolsPage() {
       key: "school",
       header: t("schools_field_name"),
       cell: (school) => (
-        <div className="min-w-0">
-          <div className="font-medium text-ink-900">{school.name}</div>
-          <div className="mt-1 font-mono text-xs text-brand-700">{school.code || "—"}</div>
-        </div>
+        <button
+          type="button"
+          aria-label={lang === "en" ? `View details for ${school.name}` : `Lihat detail ${school.name}`}
+          className="min-w-0 text-left"
+          onClick={() => setInspectedSchoolId(school.id)}
+        >
+          <span className={cn(
+            "block font-medium",
+            inspectedSchool?.id === school.id ? "text-brand-700" : "text-ink-900",
+          )}>
+            {school.name}
+          </span>
+          <span className="mt-1 block font-mono text-xs text-brand-700">{school.code || "—"}</span>
+        </button>
       ),
     },
     {
@@ -363,8 +377,8 @@ export default function SystemSchoolsPage() {
         </div>
       </header>
 
-      <section aria-label={lang === "en" ? "School list" : "Daftar sekolah"}>
-        <div className="flex flex-col gap-3 border-b border-line pb-4 lg:flex-row lg:items-center">
+      <div className="school-management-workspace overflow-hidden rounded-[20px] border border-line bg-surface shadow-[var(--md-sys-elevation-1)]">
+        <div className="flex flex-col gap-3 border-b border-line bg-surface p-4 lg:flex-row lg:items-center">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
             <Input
@@ -396,40 +410,97 @@ export default function SystemSchoolsPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-[-0.035em] text-ink-900">
-              {stats.total.toLocaleString(numberLocale)} {lang === "en" ? "matching schools" : "sekolah ditemukan"}
-            </h2>
-            <p className="mt-1 text-xs text-ink-500">
-              {lang === "en" ? "Sorted by school name" : "Diurutkan berdasarkan nama sekolah"}
-            </p>
-          </div>
-          <div className="flex gap-5 text-xs text-ink-500">
-            <span><strong className="text-base text-ink-900">{stats.active}</strong> {t("status_label_active")}</span>
-            <span><strong className="text-base text-ink-900">{stats.students.toLocaleString(numberLocale)}</strong> {t("schools_stat_students")}</span>
-          </div>
-        </div>
+        <div className="grid xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <section
+            aria-label={lang === "en" ? "School list" : "Daftar sekolah"}
+            className="min-w-0 px-5 py-6 md:px-7"
+          >
+            <div className="mb-4 flex flex-col gap-3 border-b border-line pb-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold tracking-[-0.035em] text-ink-900">
+                  {stats.total.toLocaleString(numberLocale)} {lang === "en" ? "matching schools" : "sekolah ditemukan"}
+                </h2>
+                <p className="mt-1 text-xs text-ink-500">
+                  {lang === "en" ? "Sorted by school name" : "Diurutkan berdasarkan nama sekolah"}
+                </p>
+              </div>
+              <div className="flex gap-5 text-xs text-ink-500">
+                <span><strong className="text-base text-ink-900">{stats.active}</strong> {t("status_label_active")}</span>
+                <span><strong className="text-base text-ink-900">{stats.students.toLocaleString(numberLocale)}</strong> {t("schools_stat_students")}</span>
+              </div>
+            </div>
 
-        <div className="border-y border-line">
-          <DataTable
-            columns={columns}
-            rows={rows}
-            rowKey={(school) => school.id}
-            empty={tableEmpty}
-            surface="plain"
-            data-testid="schools-table"
-          />
-        </div>
+            <div className="border-y border-line">
+              <DataTable
+                columns={columns}
+                rows={rows}
+                rowKey={(school) => school.id}
+                empty={tableEmpty}
+                surface="plain"
+                data-testid="schools-table"
+              />
+            </div>
 
-        {nextCursor && (
-          <div className="mt-4 text-center">
-            <Button variant="outline" size="sm" className="rounded-sm" onClick={handleLoadMore} disabled={isLoading}>
-              {isLoading ? t("sys_loading") : lang === "en" ? "Load more" : "Muat lebih banyak"}
-            </Button>
-          </div>
-        )}
-      </section>
+            {nextCursor && (
+              <div className="mt-4 text-center">
+                <Button variant="outline" size="sm" className="rounded-sm" onClick={handleLoadMore} disabled={isLoading}>
+                  {isLoading ? t("sys_loading") : lang === "en" ? "Load more" : "Muat lebih banyak"}
+                </Button>
+              </div>
+            )}
+          </section>
+
+          <aside
+            aria-label={inspectorLabel}
+            className="border-t border-line bg-surface p-6 xl:border-l xl:border-t-0"
+          >
+            {inspectedSchool ? (
+              <>
+                <div className="rounded-[16px] border border-line bg-surface p-5">
+                  <span className="text-xs font-bold tracking-[0.04em] text-brand-700">
+                    {inspectedSchool.npsn ? `NPSN ${inspectedSchool.npsn}` : "NPSN —"}
+                  </span>
+                  <h2
+                    aria-label={inspectedSchool.name}
+                    className="mt-3 text-2xl font-bold leading-tight tracking-[-0.035em] text-ink-900"
+                  >
+                    {inspectedSchool.name.split(" ").map((part, index) => (
+                      <span key={`${part}-${index}`}>{part} </span>
+                    ))}
+                  </h2>
+                  <p className="mt-3 text-xs leading-5 text-ink-500">
+                    {inspectedSchool.alamat ?? (lang === "en" ? "Address not provided" : "Alamat belum tersedia")}
+                  </p>
+                  <Button className="mt-5 rounded-md" onClick={() => handleEditOpen(inspectedSchool)}>
+                    <Edit className="mr-2 size-4" />
+                    {lang === "en" ? "Edit school record" : "Edit data sekolah"}
+                  </Button>
+                </div>
+                <div className="mt-6 border-t border-line pt-5">
+                  <h3 className="text-sm font-semibold text-ink-900">
+                    {lang === "en" ? "School identity" : "Identitas sekolah"}
+                  </h3>
+                  {[
+                    [t("accounts_th_status"), inspectedSchool.status === "active" ? t("status_label_active") : t("status_label_inactive")],
+                    [t("schools_field_code"), inspectedSchool.code ? `#${inspectedSchool.code}` : "—"],
+                    [t("schools_field_school_types"), inspectedSchool.school_types?.join(", ") || "—"],
+                    [t("schools_field_student_count"), (inspectedSchool.student_count ?? 0).toLocaleString(numberLocale)],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="mt-3 flex items-start justify-between gap-4 text-xs">
+                      <span className="text-ink-500">{label}</span>
+                      <strong className="max-w-[11rem] text-right text-ink-900">{value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-ink-500">
+                {lang === "en" ? "Select a school to inspect its record." : "Pilih sekolah untuk melihat detailnya."}
+              </p>
+            )}
+          </aside>
+        </div>
+      </div>
 
       <SchoolBulkImportModal
         open={bulkOpen}
