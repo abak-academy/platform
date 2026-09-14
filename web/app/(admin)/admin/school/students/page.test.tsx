@@ -715,7 +715,7 @@ describe("SchoolStudentsPage", () => {
     expect(within(filters).getByPlaceholderText(/cari nama|search name/i)).toBeInTheDocument();
   });
 
-  it("uses one shared dashboard surface across the student workspace", async () => {
+  it("uses the full dashboard content width", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
 
     render(<SchoolStudentsPage />);
@@ -725,7 +725,7 @@ describe("SchoolStudentsPage", () => {
     expect(filters).toHaveClass("bg-surface");
     expect(filters).not.toHaveClass("bg-surface-2");
     expect(filters.parentElement).toHaveClass("rounded-[20px]");
-    expect(filters.closest(".max-w-6xl")).toBeTruthy();
+    expect(filters.closest(".max-w-6xl")).toBeNull();
   });
 
   it("places the roster title above its totals and renders the table without a card shell", async () => {

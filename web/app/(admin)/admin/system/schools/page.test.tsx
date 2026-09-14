@@ -11,9 +11,7 @@ function renderPage(ui: React.ReactNode) {
 }
 
 function schoolRecord(name: string) {
-  const record = screen
-    .getByRole("button", { name: `Lihat detail ${name}` })
-    .closest("article");
+  const record = screen.getByText(name).closest("tr");
   expect(record).toBeTruthy();
   return record as HTMLElement;
 }
@@ -148,16 +146,15 @@ describe("SystemSchoolsPage", () => {
     vi.useRealTimers();
   });
 
-  it("uses one shared dashboard surface across the school workspace", async () => {
+  it("uses the full dashboard width and a plain table", async () => {
     renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
-    const inspector = screen.getByRole("complementary", { name: "Detail sekolah" });
-    expect(inspector).toHaveClass("bg-surface");
-    expect(inspector).not.toHaveClass("bg-surface-2");
-    expect(inspector.closest(".school-management-workspace")).toHaveClass("rounded-[20px]");
-    expect(inspector.closest(".max-w-6xl")).toBeTruthy();
+    const table = screen.getByTestId("schools-table");
+    expect(table).not.toHaveClass("md-card-outlined");
+    expect(table.closest(".max-w-6xl")).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Detail sekolah" })).not.toBeInTheDocument();
   });
 
   it("renders loading state when data is loading and no schools exist", async () => {
@@ -205,26 +202,6 @@ describe("SystemSchoolsPage", () => {
     expect(screen.getByText("87654321")).toBeInTheDocument();
     expect(screen.getAllByText("Aktif").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Nonaktif").length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("updates the record inspector when a school is selected", async () => {
-    renderPage(<SystemSchoolsPage />);
-
-    const inspector = await screen.findByRole("complementary", {
-      name: "Detail sekolah",
-    });
-    expect(
-      within(inspector).getByRole("heading", { name: "SMAN 1 Jakarta" }),
-    ).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Lihat detail SMAN 2 Jakarta" }),
-    );
-
-    expect(
-      within(inspector).getByRole("heading", { name: "SMAN 2 Jakarta" }),
-    ).toBeInTheDocument();
-    expect(within(inspector).getByText(/87654321/)).toBeInTheDocument();
   });
 
   it("shows total, active, and student counts", async () => {

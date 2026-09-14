@@ -1617,7 +1617,9 @@ export const DICT = {
     bulk_format_school_guide_title: "Panduan format impor sekolah",
     bulk_format_student_name: "Wajib. Nama lengkap siswa.",
     bulk_format_student_school_npsn:
-      "Wajib. Tepat 8 huruf atau angka; spasi tepi dihapus dan huruf dinormalkan menjadi kapital. NPSN harus milik sekolah aktif yang sudah ada. Admin sekolah hanya dapat memakai NPSN sekolahnya sendiri. Selama rollout NPSN masih berlangsung, sekolah yang belum memiliki NPSN boleh mengganti header `school_npsn` dengan `school` dan mengisi nama sekolah yang terdaftar. Ini satu-satunya pengecualian untuk aturan jangan mengubah nama header di bawah. Jangan sertakan kedua header tersebut sekaligus; jika keduanya ada, nilai `school_npsn` yang akan digunakan.",
+      "Khusus super admin. Isi `school_npsn` atau `school_code`. NPSN harus tepat 8 huruf atau angka dan milik sekolah aktif yang sudah ada. Jika keduanya diisi, `school_npsn` digunakan.",
+    bulk_format_student_school_code:
+      "Khusus super admin. Gunakan kode internal sekolah untuk yayasan atau sekolah tanpa NPSN. Kode harus cocok persis dengan sekolah aktif yang sudah ada.",
     bulk_format_student_jenjang:
       "Wajib. Isi dengan nilai jenjang, disarankan huruf besar: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. Jika sekolah punya school_types, jenjang harus cocok dengan salah satu jenis itu.",
     bulk_format_student_email: "Opsional. Jika diisi, tidak boleh sudah terdaftar di sistem.",
@@ -3263,7 +3265,9 @@ export const DICT = {
     bulk_format_school_guide_title: "School bulk import format guide",
     bulk_format_student_name: "Required. Student's full name.",
     bulk_format_student_school_npsn:
-      "Required. Exactly 8 letters or digits; surrounding spaces are trimmed and letters normalized to uppercase. The NPSN must belong to an existing active school. School admins may only use their own school's NPSN. While the NPSN rollout is pending, a school without an NPSN may replace the `school_npsn` header with `school` and provide the registered school name. This is the sole exception to the do-not-rename-headers rule below. Do not include both headers; when both are present, the `school_npsn` value will be used.",
+      "Super admin only. Provide either `school_npsn` or `school_code`. NPSN must be exactly 8 letters or digits and belong to an existing active school. When both are set, `school_npsn` is used.",
+    bulk_format_student_school_code:
+      "Super admin only. Use the internal school code for a foundation or school without an NPSN. The code must exactly match an existing active school.",
     bulk_format_student_jenjang:
       "Required. Use a jenjang value, preferably uppercase: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. If the school has school_types, jenjang must match one of them.",
     bulk_format_student_email: "Optional. If set, must not already be registered.",

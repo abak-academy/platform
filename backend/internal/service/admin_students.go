@@ -126,14 +126,14 @@ func jenjangInSchoolTypes(jenjang string, types []string) bool {
 // jenjang is required; provinsiID/kotaID/kecamatanID are optional but must be
 // all-or-nothing (FR-REG-02a). kodePos is independently optional.
 func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*StudentRegistrationResponse, error) {
-	return s.registerStudent(ctx, schoolID, nil, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil)
+	return s.registerStudent(ctx, schoolID, nil, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil, false)
 }
 
 func (s *Service) RegisterStudentWithPassword(ctx context.Context, actorRole, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
 	if actorRole != RoleSuperAdmin {
 		return nil, ErrForbidden
 	}
-	return s.registerStudent(ctx, schoolID, nil, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password)
+	return s.registerStudent(ctx, schoolID, nil, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password, false)
 }
 
 func (s *Service) RegisterStudentUnlisted(ctx context.Context, actorRole, unlistedSchoolName, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*StudentRegistrationResponse, error) {
@@ -144,7 +144,7 @@ func (s *Service) RegisterStudentUnlisted(ctx context.Context, actorRole, unlist
 	if unlistedSchoolName == "" {
 		return nil, ErrMissingField
 	}
-	return s.registerStudent(ctx, "", &unlistedSchoolName, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil)
+	return s.registerStudent(ctx, "", &unlistedSchoolName, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil, false)
 }
 
 func (s *Service) RegisterStudentUnlistedWithPassword(ctx context.Context, actorRole, unlistedSchoolName, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
@@ -155,10 +155,10 @@ func (s *Service) RegisterStudentUnlistedWithPassword(ctx context.Context, actor
 	if unlistedSchoolName == "" {
 		return nil, ErrMissingField
 	}
-	return s.registerStudent(ctx, "", &unlistedSchoolName, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password)
+	return s.registerStudent(ctx, "", &unlistedSchoolName, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password, false)
 }
 
-func (s *Service) registerStudent(ctx context.Context, schoolID string, unlistedSchoolName *string, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password *string) (*StudentRegistrationResponse, error) {
+func (s *Service) registerStudent(ctx context.Context, schoolID string, unlistedSchoolName *string, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password *string, allowNPSNLessSchool bool) (*StudentRegistrationResponse, error) {
 	name = strings.TrimSpace(stripFormatRunes(name))
 	if name == "" || jenjang == "" {
 		return nil, ErrMissingField
@@ -187,7 +187,19 @@ func (s *Service) registerStudent(ctx context.Context, schoolID string, unlisted
 	// one is given it is still validated; when it is omitted an operator
 	// confirms the school after registration.
 	if schoolID != "" {
-		school, err := s.validateSelectedSchool(ctx, schoolID)
+		var school *model.School
+		var err error
+		if allowNPSNLessSchool {
+			school, err = s.storeRepo.GetSchoolByID(ctx, schoolID)
+			if err == nil && school == nil {
+				err = ErrSchoolNotFound
+			}
+			if err == nil && school.Status != "active" {
+				err = ErrSchoolDeactivated
+			}
+		} else {
+			school, err = s.validateSelectedSchool(ctx, schoolID)
+		}
 		if err != nil {
 			return nil, err
 		}

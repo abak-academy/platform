@@ -8,14 +8,15 @@ import {
 } from "./bulk-import-format";
 
 describe("bulk-import-format templates", () => {
-  it("uses required school_npsn identity instead of school name", () => {
+  it("omits school identity from the admin-school template", () => {
     const csv = buildStudentTemplateCSV();
-    expect(csv.split("\n")[0]).toContain("name,school_npsn,jenjang");
-    expect(csv.split("\n")[0]).not.toContain("name,school,jenjang");
+    expect(csv.split("\n")[0]).toContain("name,jenjang");
+    expect(csv.split("\n")[0]).not.toContain("school_npsn");
+    expect(csv.split("\n")[0]).not.toContain("school_code");
 
     const t = (key: I18nKey) => key;
-    expect(buildStudentGuideText(t)).toContain("bulk_format_student_school_npsn");
-    expect(buildStudentGuideText(t)).not.toContain("bulk_format_student_school\n");
+    expect(buildStudentGuideText(t)).not.toContain("bulk_format_student_school_npsn");
+    expect(buildStudentGuideText(t)).not.toContain("bulk_format_student_school_code");
   });
 
   it("student template has Kemendagri region names and uppercase jenjang", () => {
@@ -25,18 +26,22 @@ describe("bulk-import-format templates", () => {
     expect(csv.split("\n").filter(Boolean)).toHaveLength(3);
   });
 
-  it("scoped student template uses school_npsn and has no password column", () => {
+  it("scoped student template derives school from the authenticated admin", () => {
     expect(buildStudentTemplateCSV(false)).toBe(
-      "name,school_npsn,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
-        'Budi Santoso,20100001,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n' +
-        "Siti Aminah,P1234567,SMA,,,,,,,,,,\n",
+      "name,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
+        'Budi Santoso,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n' +
+        "Siti Aminah,SMA,,,,,,,,,,\n",
     );
     expect(buildStudentTemplateCSV(false)).not.toContain("password");
   });
 
-  it("super-admin student template adds a blank optional password column", () => {
+  it("super-admin template supports NPSN or internal school code", () => {
     const csv = buildStudentTemplateCSV(true);
     const rows = csv.trimEnd().split("\n");
+    expect(rows[0]).toContain("name,school_npsn,school_code,jenjang");
+    expect(rows[1]).toContain("Budi Santoso,20100001,,SMA");
+    expect(rows[2]).toContain("Siti Aminah,,YAYASANBIAN,SMA");
+    expect(rows[2].split(",")).toHaveLength(rows[0].split(",").length);
     expect(rows[0]).toMatch(/,password$/);
     expect(rows[1]).toMatch(/,$/);
     expect(rows[2]).toMatch(/,$/);
@@ -54,7 +59,8 @@ describe("bulk-import-format templates", () => {
 
   it("guides include field rules from the translator", () => {
     const t = (key: I18nKey) => key;
-    expect(buildStudentGuideText(t)).toContain("bulk_format_student_school_npsn");
+    expect(buildStudentGuideText(t)).toContain("bulk_format_student_jenjang");
+    expect(buildStudentGuideText(t, true)).toContain("bulk_format_student_school_npsn");
     expect(buildSchoolGuideText(t)).toContain("bulk_format_school_code");
   });
 
@@ -65,19 +71,11 @@ describe("bulk-import-format templates", () => {
     expect(DICT.en.bulk_format_school_npsn.toLowerCase()).toContain("unique");
   });
 
-  it("student NPSN guide explains the transitional legacy school header", () => {
-    expect(DICT.id.bulk_format_student_school_npsn).toContain(
-      "Selama rollout NPSN masih berlangsung, sekolah yang belum memiliki NPSN boleh mengganti header `school_npsn` dengan `school` dan mengisi nama sekolah yang terdaftar. Ini satu-satunya pengecualian untuk aturan jangan mengubah nama header di bawah.",
-    );
-    expect(DICT.id.bulk_format_student_school_npsn).toContain(
-      "Jangan sertakan kedua header tersebut sekaligus; jika keduanya ada, nilai `school_npsn` yang akan digunakan.",
-    );
-    expect(DICT.en.bulk_format_student_school_npsn).toContain(
-      "While the NPSN rollout is pending, a school without an NPSN may replace the `school_npsn` header with `school` and provide the registered school name. This is the sole exception to the do-not-rename-headers rule below.",
-    );
-    expect(DICT.en.bulk_format_student_school_npsn).toContain(
-      "Do not include both headers; when both are present, the `school_npsn` value will be used.",
-    );
+  it("super-admin guide documents the NPSN and school-code alternatives", () => {
+    expect(DICT.id.bulk_format_student_school_npsn).toContain("school_code");
+    expect(DICT.id.bulk_format_student_school_code).toContain("tanpa NPSN");
+    expect(DICT.en.bulk_format_student_school_npsn).toContain("school_code");
+    expect(DICT.en.bulk_format_student_school_code).toContain("without an NPSN");
   });
 
   it("student guide includes password only for super admin", () => {

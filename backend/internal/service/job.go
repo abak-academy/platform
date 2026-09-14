@@ -79,7 +79,7 @@ func (s *Service) fetchPrivateObject(ctx context.Context, key string) ([]byte, e
 // to enqueueStudentBulkJobFromData. For admin_school, schoolID is the JWT
 // school. For super_admin it is the presign folder UUID (not a real school);
 // row school is resolved later from the CSV.
-func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy, fileKey string) (string, error) {
+func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy, actorRole, fileKey string) (string, error) {
 	if !strings.HasPrefix(fileKey, fmt.Sprintf("student-bulk/%s/", schoolID)) {
 		return "", ErrUploadNotFound
 	}
@@ -96,16 +96,20 @@ func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy
 		return "", err
 	}
 
-	return s.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, data)
+	return s.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, actorRole, fileKey, data)
 }
 
 // enqueueStudentBulkJobFromData validates the CSV and inserts the job row.
 // schoolID is unused here — row-scoping is enforced by the caller passing
 // claims.SchoolID, and a future job type might need it in this signature.
-func (s *Service) enqueueStudentBulkJobFromData(ctx context.Context, schoolID, createdBy, fileKey string, data []byte) (string, error) {
+func (s *Service) enqueueStudentBulkJobFromData(ctx context.Context, schoolID, createdBy, actorRole, fileKey string, data []byte) (string, error) {
 	parseCSV := ParseStudentBulkCSV
-	if s.cfg == nil || !s.cfg.EnforceSchoolNPSNRegistration {
-		parseCSV = ParseStudentBulkCSVForWorker
+	if actorRole == RoleAdminSchool {
+		parseCSV = ParseSchoolBoundStudentBulkCSV
+	} else if s.cfg == nil || !s.cfg.EnforceSchoolNPSNRegistration {
+		parseCSV = func(data []byte) ([]StudentBulkRow, error) {
+			return ParseStudentBulkCSVForWorker(data, true)
+		}
 	}
 	if _, err := parseCSV(data); err != nil {
 		return "", err
