@@ -127,7 +127,7 @@ describe("SchoolPicker", () => {
     expect(latestBeforeTyping.params).not.toHaveProperty("q");
     const callsAfterLocationFetch = searchCalls.length;
 
-    fireEvent.change(screen.getByPlaceholderText("Cari nama sekolah"), { target: { value: "negeri" } });
+    fireEvent.change(screen.getByPlaceholderText("Nama sekolah"), { target: { value: "negeri" } });
     await act(async () => {
       vi.advanceTimersByTime(300);
     });
@@ -156,13 +156,13 @@ describe("SchoolPicker", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Nama" }));
     expect(screen.getByTestId("unlisted")).toHaveTextContent("");
-    expect(screen.getByPlaceholderText("Cari nama sekolah")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Nama sekolah")).toBeInTheDocument();
 
     const [provinceSelect, citySelect, categorySelect] = screen.getAllByRole("combobox");
     fireEvent.change(provinceSelect, { target: { value: "province-1" } });
     fireEvent.change(citySelect, { target: { value: "city-1" } });
     fireEvent.change(categorySelect, { target: { value: "SMA" } });
-    fireEvent.change(screen.getByPlaceholderText("Cari nama sekolah"), { target: { value: "sma negeri" } });
+    fireEvent.change(screen.getByPlaceholderText("Nama sekolah"), { target: { value: "sma negeri" } });
     await act(async () => {
       vi.advanceTimersByTime(300);
     });
