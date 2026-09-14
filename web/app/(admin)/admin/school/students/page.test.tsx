@@ -280,8 +280,8 @@ describe("SchoolStudentsPage", () => {
 
     expect(screen.getByText(/@budi/)).toBeInTheDocument();
     expect(screen.getByText(/@siti/)).toBeInTheDocument();
-    expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByText("11")).toBeInTheDocument();
+    expect(screen.getByText("Kelas 12")).toBeInTheDocument();
+    expect(screen.getByText("Kelas 11")).toBeInTheDocument();
     expect(screen.getAllByText("Aktif").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Nonaktif").length).toBeGreaterThanOrEqual(1);
   });
@@ -739,6 +739,26 @@ describe("SchoolStudentsPage", () => {
     const total = within(roster).getByText("Total akun");
     expect(title.compareDocumentPosition(total) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(roster).getByTestId("school-students-table")).not.toHaveClass("md-card-outlined");
+  });
+
+  it("keeps username with the student name, grade with the school, and omits created date", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    expect(screen.queryByRole("columnheader", { name: "Username" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Kelas" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Dibuat" })).not.toBeInTheDocument();
+
+    const row = screen.getByRole("row", { name: /Budi Santoso/ });
+    const cells = within(row).getAllByRole("cell");
+    expect(cells).toHaveLength(5);
+    expect(cells[0]).toHaveTextContent("Budi Santoso");
+    expect(cells[0]).toHaveTextContent("@budi");
+    expect(cells[2]).toHaveTextContent("Belum ada sekolah");
+    expect(cells[2]).toHaveTextContent("12");
+    expect(row).not.toHaveTextContent("15 Jan 2026");
   });
 
   it("shows the selected school as the active roster context", async () => {

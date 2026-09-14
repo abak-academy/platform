@@ -116,7 +116,6 @@ function initials(name: string) {
 
 export default function SchoolStudentsPage() {
   const { t, lang } = useTranslation();
-  const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
   // Role-gated school picker (super_admin only)
   const currentRole = useAuthStore((s) => s.user?.role);
@@ -408,15 +407,14 @@ export default function SchoolStudentsPage() {
               {initials(s.name)}
             </AvatarFallback>
           </Avatar>
-          <div className="font-medium text-ink-900">{s.name}</div>
+          <div className="min-w-0">
+            <div className="font-medium text-ink-900">{s.name}</div>
+            <div className="mt-1 font-mono text-xs text-brand-700">
+              {s.username ? `@${s.username}` : "—"}
+            </div>
+          </div>
         </div>
       ),
-    },
-    {
-      key: "username",
-      header: t("students_credential_username"),
-      className: "font-mono text-xs text-brand-700",
-      cell: (s) => (s.username ? `@${s.username}` : "—"),
     },
     {
       key: "email",
@@ -428,16 +426,22 @@ export default function SchoolStudentsPage() {
       key: "school",
       header: t("students_field_school"),
       className: "text-xs",
-      cell: (s) =>
-        s.school_name ? (
-          <span className="text-ink-600">{s.school_name}</span>
-        ) : s.unlisted_school_name ? (
-          <span className="text-warn" title={t("students_school_unconfirmed")}>
-            {s.unlisted_school_name}
-          </span>
-        ) : (
-          <span className="text-ink-400">{t("students_school_none")}</span>
-        ),
+      cell: (s) => (
+        <div>
+          {s.school_name ? (
+            <span className="text-ink-600">{s.school_name}</span>
+          ) : s.unlisted_school_name ? (
+            <span className="text-warn" title={t("students_school_unconfirmed")}>
+              {s.unlisted_school_name}
+            </span>
+          ) : (
+            <span className="text-ink-400">{t("students_school_none")}</span>
+          )}
+          <div className="mt-1 text-[11px] text-ink-400">
+            {t("students_field_grade")} {s.grade || "—"}
+          </div>
+        </div>
+      ),
     },
     {
       key: "status",
@@ -453,25 +457,6 @@ export default function SchoolStudentsPage() {
           {s.status === "active" ? t("status_label_active") : t("status_label_inactive")}
         </Badge>
       ),
-    },
-    {
-      key: "grade",
-      header: t("students_field_grade"),
-      className: "text-xs text-ink-600",
-      cell: (s) => s.grade || "—",
-    },
-    {
-      key: "created",
-      header: t("accounts_th_created"),
-      className: "text-xs text-ink-600",
-      cell: (s) =>
-        s.created_at
-          ? new Date(s.created_at).toLocaleString(dateLocale, {
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-            })
-          : "—",
     },
     {
       key: "actions",

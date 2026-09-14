@@ -15,7 +15,6 @@ import {
   BarChart,
   Users,
   Calendar,
-  FileText,
   Building,
   Settings,
   ShieldCheck,
@@ -89,7 +88,6 @@ const EXAM_NAV_ITEMS: NavItem[] = [
 
 const SCHOOL_NAV_ITEMS: NavItem[] = [
   { labelKey: "students", href: "/admin/school/students", icon: Users },
-  { labelKey: "reports", href: "/admin/school/reports", icon: FileText },
 ];
 
 export const CONTENT_MANAGER_NAV: RoleNavConfig = [
@@ -159,13 +157,19 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   SUPER_ADMIN_STORE_ITEMS,
   {
     titleKey: "nav_group_exam",
-    items: [...EXAM_NAV_ITEMS, ...SCHOOL_NAV_ITEMS],
+    items: [...EXAM_NAV_ITEMS],
+  },
+  {
+    titleKey: "nav_group_school",
+    items: [
+      { labelKey: "schools", href: "/admin/system/schools", icon: Building },
+      ...SCHOOL_NAV_ITEMS,
+    ],
   },
   {
     titleKey: "system",
     items: [
       { labelKey: "accounts", href: "/admin/system/accounts", icon: Users },
-      { labelKey: "schools", href: "/admin/system/schools", icon: Building },
       { labelKey: "config", href: "/admin/system/config", icon: Settings },
       { labelKey: "audit", href: "/admin/system/audit", icon: ShieldCheck },
     ],
