@@ -283,8 +283,8 @@ export default function SystemSchoolsPage() {
         </div>
       </header>
 
-      <div className="border border-line bg-surface">
-        <div className="flex flex-col gap-3 border-b border-line bg-surface-2 p-4 lg:flex-row lg:items-center">
+      <div className="school-management-workspace overflow-hidden rounded-[20px] border border-line bg-surface shadow-[var(--md-sys-elevation-1)]">
+        <div className="flex flex-col gap-3 border-b border-line bg-surface p-4 lg:flex-row lg:items-center">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
             <Input
@@ -318,7 +318,7 @@ export default function SystemSchoolsPage() {
 
         <div className="grid xl:grid-cols-[minmax(0,1fr)_20rem]">
           <section className="min-w-0 px-5 py-6 md:px-7">
-            <div className="mb-4 flex flex-col gap-3 border-t-4 border-t-ink-900 pt-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="mb-4 flex flex-col gap-3 border-b border-line pb-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-2xl font-bold tracking-[-0.035em] text-ink-900">
                   {stats.total.toLocaleString(numberLocale)} {lang === "en" ? "matching schools" : "sekolah ditemukan"}
@@ -413,11 +413,11 @@ export default function SystemSchoolsPage() {
 
           <aside
             aria-label={inspectorLabel}
-            className="border-t border-line bg-surface-2 p-6 xl:border-l xl:border-t-0"
+            className="border-t border-line bg-surface p-6 xl:border-l xl:border-t-0"
           >
             {inspectedSchool ? (
               <>
-                <div className="border-t-4 border-brand-600 bg-surface p-5">
+                <div className="rounded-[16px] border border-line bg-surface p-5">
                   <span className="text-xs font-bold tracking-[0.04em] text-brand-700">
                     {inspectedSchool.npsn ? `NPSN ${inspectedSchool.npsn}` : "NPSN —"}
                   </span>

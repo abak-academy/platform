@@ -573,13 +573,13 @@ export default function SchoolStudentsPage() {
         </div>
       </header>
 
-      <div className="overflow-hidden border border-line bg-surface lg:grid lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <div className="overflow-hidden rounded-[20px] border border-line bg-surface shadow-[var(--md-sys-elevation-1)] lg:grid lg:grid-cols-[20rem_minmax(0,1fr)]">
         <aside
           role="region"
           aria-label={filterPanelLabel}
-          className="border-b border-line bg-surface-2 px-5 py-6 lg:min-h-[680px] lg:border-b-0 lg:border-r"
+          className="border-b border-line bg-surface px-5 py-6 lg:min-h-[680px] lg:border-b-0 lg:border-r"
         >
-          <div className="border-t-4 border-t-brand-600 pt-4">
+          <div className="border-b border-line pb-4">
             <h2 className="text-xl font-bold tracking-[-0.025em] text-ink-900">
               {filterPanelLabel}
             </h2>
@@ -611,8 +611,8 @@ export default function SchoolStudentsPage() {
                 </p>
               )}
 
-              <div className="mt-4 border border-line bg-surface p-4">
-                <p className="text-[11px] font-semibold text-brand-700">{activeSchoolLabel}</p>
+              <div className="mt-4 rounded-[12px] border border-line bg-surface p-4">
+                <p className="text-[11px] font-semibold text-ink-500">{activeSchoolLabel}</p>
                 <h3 className="mt-2 text-lg font-bold leading-tight text-ink-900">
                   {rosterSchool?.name ?? t("students_all_schools")}
                 </h3>
@@ -678,7 +678,7 @@ export default function SchoolStudentsPage() {
         </aside>
 
         <section className="min-w-0 px-5 py-6 md:px-7">
-          <div className="mb-7 grid border-y border-line border-t-4 border-t-ink-900 sm:grid-cols-3">
+          <div className="mb-7 grid overflow-hidden rounded-[16px] border border-line bg-surface sm:grid-cols-3">
             {[
               [stats.total, t("accounts_stat_total")],
               [stats.active, t("status_label_active")],

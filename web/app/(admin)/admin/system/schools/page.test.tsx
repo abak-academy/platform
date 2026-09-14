@@ -148,6 +148,17 @@ describe("SystemSchoolsPage", () => {
     vi.useRealTimers();
   });
 
+  it("uses one shared dashboard surface across the school workspace", async () => {
+    renderPage(<SystemSchoolsPage />);
+
+    await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
+
+    const inspector = screen.getByRole("complementary", { name: "Detail sekolah" });
+    expect(inspector).toHaveClass("bg-surface");
+    expect(inspector).not.toHaveClass("bg-surface-2");
+    expect(inspector.closest(".school-management-workspace")).toHaveClass("rounded-[20px]");
+  });
+
   it("renders loading state when data is loading and no schools exist", async () => {
     schoolsState = {
       data: null,

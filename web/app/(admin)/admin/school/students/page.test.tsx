@@ -715,6 +715,18 @@ describe("SchoolStudentsPage", () => {
     expect(within(filters).getByPlaceholderText(/cari nama|search name/i)).toBeInTheDocument();
   });
 
+  it("uses one shared dashboard surface across the student workspace", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    const filters = screen.getByRole("region", { name: "Filter siswa" });
+    expect(filters).toHaveClass("bg-surface");
+    expect(filters).not.toHaveClass("bg-surface-2");
+    expect(filters.parentElement).toHaveClass("rounded-[20px]");
+  });
+
   it("shows the selected school as the active roster context", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
 
