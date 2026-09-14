@@ -702,6 +702,23 @@ describe("SchoolStudentsPage", () => {
     expect(screen.getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
   });
 
+  it("shows the selected school as the active roster context", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("option", { name: "SMAN 2 Bandung" }));
+
+    const context = screen.getByRole("region", { name: "Sekolah aktif" });
+    expect(
+      within(context).getByRole("heading", { name: "SMAN 2 Bandung" }),
+    ).toBeInTheDocument();
+    expect(useAdminStudentsCalls.at(-1)).toEqual(
+      expect.objectContaining({ schoolId: "s2" }),
+    );
+  });
+
   it("does not show school filter for admin_school role", async () => {
     authStore = { token: "t", user: { role: "admin_school" } };
 

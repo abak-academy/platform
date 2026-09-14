@@ -17,7 +17,6 @@ import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +46,6 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { BulkImportModal } from "@/components/admin/BulkImportModal";
-import { StatCard } from "@/components/admin/StatCard";
 import { SchoolPicker } from "@/components/SchoolPicker";
 import {
   useAdminStudents,
@@ -520,26 +518,47 @@ export default function SchoolStudentsPage() {
         ? t("sys_loading_data")
         : t("students_empty");
 
+  const rosterSchool = isSuperAdmin ? selectedSchoolFilter : adminOwnSchool;
+  const activeSchoolLabel = lang === "en" ? "Active school" : "Sekolah aktif";
+  const rosterLabel = lang === "en" ? "School roster" : "Daftar siswa";
+  const rosterDescription = rosterSchool
+    ? lang === "en"
+      ? `Students registered to ${rosterSchool.name}`
+      : `Siswa yang terdaftar di ${rosterSchool.name}`
+    : lang === "en"
+      ? "Students across all partner schools"
+      : "Siswa dari seluruh sekolah mitra";
+  const rosterSchoolLocation = isSuperAdmin
+    ? [selectedSchoolFilter?.kota_name, selectedSchoolFilter?.provinsi_name]
+        .filter(Boolean)
+        .join(", ")
+    : "";
+  const rosterSchoolTypes = rosterSchool?.school_types?.join(" / ") ?? "";
+
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <AdminPageHeader
-        icon={UserRound}
-        title={t("school_students_title")}
-        description={t("students_subtitle")}
-        actions={
-          <>
+    <div className="mx-auto max-w-[1400px] px-4 py-7 md:px-6 md:py-9 fade-in">
+      <header className="mb-7 flex flex-col gap-6 border-b border-line pb-7 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-4xl font-bold tracking-[-0.045em] text-ink-900 md:text-5xl">
+            {t("school_students_title")}
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-ink-600">
+            {lang === "en"
+              ? "Choose a partner school, then manage its students. The roster follows the active school."
+              : "Pilih sekolah mitra, lalu kelola siswanya. Daftar siswa mengikuti sekolah yang aktif."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
             <Button
-              size="sm"
               variant="outline"
-              className="rounded-full"
+              className="rounded-md"
               onClick={() => setBulkImportOpen(true)}
             >
               <FileUp className="mr-1 size-4" />
               {t("bulk_register_title")}
             </Button>
             <Button
-              size="sm"
-              className="rounded-full"
+              className="rounded-md"
               onClick={() => {
                 setRegisterSelectedSchool(selectedSchoolFilter);
                 setRegisterSchoolId(selectedSchoolId);
@@ -550,31 +569,66 @@ export default function SchoolStudentsPage() {
               <Plus className="mr-1 size-4" />
               {t("students_register_title")}
             </Button>
-          </>
-        }
-      />
+        </div>
+      </header>
 
-      {/* School picker (super_admin only) */}
-      {isSuperAdmin && (
-        <div className="mb-6 max-w-xl">
-          <p className="text-xs text-ink-500">{t("select_school")}</p>
-          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-start">
-            <SchoolPicker
-              id="student-school-filter"
-              value={selectedSchoolId}
-              selectedSchool={selectedSchoolFilter}
-              onChange={(school) => {
-                setSelectedSchoolFilter(school);
-                setSelectedSchoolId(school?.id ?? "");
-              }}
-              className="flex-1"
-            />
+      <div className="overflow-hidden border border-line bg-surface lg:grid lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <aside
+          role="region"
+          aria-label={activeSchoolLabel}
+          className="relative overflow-hidden bg-brand-700 px-6 py-7 text-white lg:min-h-[680px]"
+        >
+          <div className="pointer-events-none absolute -right-20 -top-20 size-56 rounded-full border-[28px] border-white/7" />
+          <div className="relative">
+            <p className="flex items-center gap-3 text-xs font-semibold before:h-[3px] before:w-7 before:bg-white">
+              {activeSchoolLabel}
+            </p>
+            <h2 className="mt-5 max-w-[16rem] text-3xl font-bold leading-[1.02] tracking-[-0.04em]">
+              {rosterSchool?.name ?? t("students_all_schools")}
+            </h2>
+            {(rosterSchoolLocation || rosterSchoolTypes) && (
+              <p className="mt-3 text-xs leading-5 text-white/70">
+                {[rosterSchoolLocation, rosterSchoolTypes].filter(Boolean).join(" · ")}
+              </p>
+            )}
+            {rosterSchool?.npsn && (
+              <div className="mt-5 inline-flex items-baseline gap-2 border border-white/40 px-3 py-2 text-[11px]">
+                <span>NPSN</span>
+                <strong className="text-sm tracking-[0.08em]">{rosterSchool.npsn}</strong>
+              </div>
+            )}
+
+            <div className="mt-7 border-t border-white/30 pt-6">
+              {isSuperAdmin ? (
+                <>
+                  <p className="mb-3 text-sm font-semibold">
+                    {lang === "en" ? "Change school context" : "Ganti sekolah aktif"}
+                  </p>
+                  <SchoolPicker
+                    id="student-school-filter"
+                    value={selectedSchoolId}
+                    selectedSchool={selectedSchoolFilter}
+                    onChange={(school) => {
+                      setSelectedSchoolFilter(school);
+                      setSelectedSchoolId(school?.id ?? "");
+                    }}
+                    tone="inverse"
+                  />
+                </>
+              ) : (
+                <p className="text-xs leading-5 text-white/70">
+                  {lang === "en"
+                    ? "This roster is bound to your administrator account's school."
+                    : "Daftar siswa ini terikat ke sekolah pada akun admin Anda."}
+                </p>
+              )}
+            </div>
             {selectedSchoolId ? (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="rounded-full"
+                className="mt-4 rounded-md border-white/40 bg-transparent text-white shadow-none hover:bg-white/10 hover:text-white"
                 onClick={() => {
                   setSelectedSchoolFilter(null);
                   setSelectedSchoolId("");
@@ -584,98 +638,86 @@ export default function SchoolStudentsPage() {
               </Button>
             ) : null}
           </div>
-        </div>
-      )}
+        </aside>
 
-      {/* Stats */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label={t("accounts_stat_total")}
-          value={String(stats.total)}
-        />
-        <StatCard
-          label={t("status_label_active")}
-          value={String(stats.active)}
-        />
-        <StatCard
-          label={t("status_label_inactive")}
-          value={String(stats.deactivated)}
-        />
-      </div>
-
-      {/* Filters */}
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="flex flex-wrap gap-2">
-          <FilterChip
-            active={statusFilter === "all"}
-            onClick={() => setStatusFilter("all")}
-          >
-            {t("tab_all")}
-          </FilterChip>
-          <FilterChip
-            active={statusFilter === "active"}
-            onClick={() => setStatusFilter("active")}
-          >
-            {t("status_label_active")}
-          </FilterChip>
-          <FilterChip
-            active={statusFilter === "deactivated"}
-            onClick={() => setStatusFilter("deactivated")}
-          >
-            {t("status_label_inactive")}
-          </FilterChip>
-        </div>
-        <div className="flex items-center gap-2 lg:ml-auto">
-          <Select
-            value={statusFilter}
-            onValueChange={(v) => setStatusFilter(v)}
-          >
-            <SelectTrigger className="h-9 w-[140px] text-xs">
-              <SelectValue placeholder={t("accounts_status_placeholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("accounts_status_all")}</SelectItem>
-              <SelectItem value="active">
-                {t("status_label_active")}
-              </SelectItem>
-              <SelectItem value="deactivated">
-                {t("status_label_inactive")}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <Search className="size-4 text-ink-400" />
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t("students_search_placeholder")}
-            className="h-9 w-[200px] text-xs"
-          />
-        </div>
-      </div>
-
-      {/* Table */}
-      <DataTable
-        columns={columns}
-        rows={accumulated}
-        rowKey={(s) => s.id}
-        empty={tableEmpty}
-        data-testid="school-students-table"
-        footer={
-          nextCursor ? (
-            <div className="border-t border-line px-4 py-3 text-center">
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-full"
-                onClick={handleLoadMore}
-                disabled={query.isFetching}
+        <section className="min-w-0 px-5 py-6 md:px-7">
+          <div className="mb-7 grid border-y border-line border-t-4 border-t-ink-900 sm:grid-cols-3">
+            {[
+              [stats.total, t("accounts_stat_total")],
+              [stats.active, t("status_label_active")],
+              [stats.deactivated, t("status_label_inactive")],
+            ].map(([value, label], index) => (
+              <div
+                key={String(label)}
+                className={cn(
+                  "flex min-h-24 items-center gap-3 px-5 py-4",
+                  index > 0 && "border-t border-line sm:border-l sm:border-t-0",
+                )}
               >
-                {query.isFetching ? t("sys_loading") : t("load_more")}
-              </Button>
+                <strong className="text-3xl font-bold tracking-[-0.04em] text-ink-900">
+                  {value}
+                </strong>
+                <span className="text-xs leading-4 text-ink-500">{label}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mb-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 className="text-xl font-bold tracking-[-0.025em] text-ink-900">
+                {rosterLabel}
+              </h2>
+              <p className="mt-1 text-xs text-ink-500">{rosterDescription}</p>
             </div>
-          ) : undefined
-        }
-      />
+            <div className="flex gap-2">
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v)}>
+                <SelectTrigger className="h-9 w-[140px] rounded-sm text-xs">
+                  <SelectValue placeholder={t("accounts_status_placeholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("accounts_status_all")}</SelectItem>
+                  <SelectItem value="active">{t("status_label_active")}</SelectItem>
+                  <SelectItem value="deactivated">{t("status_label_inactive")}</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="relative min-w-0">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+                <Input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder={t("students_search_placeholder")}
+                  className="h-9 w-full rounded-sm pl-9 text-xs sm:w-[220px]"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="student-roster-table">
+            <DataTable
+              columns={columns}
+              rows={accumulated}
+              rowKey={(s) => s.id}
+              empty={tableEmpty}
+              data-testid="school-students-table"
+              footer={
+                nextCursor ? (
+                  <div className="border-t border-line px-4 py-3 text-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-sm"
+                      onClick={handleLoadMore}
+                      disabled={query.isFetching}
+                    >
+                      {query.isFetching ? t("sys_loading") : t("load_more")}
+                    </Button>
+                  </div>
+                ) : undefined
+              }
+            />
+          </div>
+        </section>
+      </div>
 
       <BulkImportModal open={bulkImportOpen} onOpenChange={setBulkImportOpen} allowExplicitPassword={isSuperAdmin} />
 
@@ -1230,30 +1272,6 @@ export default function SchoolStudentsPage() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "rounded-lg border px-3 py-[7px] text-xs font-semibold transition-colors",
-        active
-          ? "border-brand-600 bg-brand-600 text-white"
-          : "border-line bg-surface text-ink-600 hover:text-ink-900"
-      )}
-    >
-      {children}
-    </button>
   );
 }
 

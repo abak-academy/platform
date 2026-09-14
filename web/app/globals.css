@@ -298,3 +298,49 @@ html[data-theme="dark"] {
   max-width: 100%;
   height: auto;
 }
+
+[data-school-picker-tone="inverse"] [data-slot="select-trigger"] {
+  border-color: color-mix(in srgb, white 34%, transparent);
+  background: color-mix(in srgb, var(--color-brand-900) 55%, transparent);
+  color: white;
+  box-shadow: none;
+}
+
+[data-school-picker-tone="inverse"] [data-slot="input"] {
+  border-color: white;
+  background: white;
+  color: var(--color-ink-900);
+  box-shadow: none;
+}
+
+[data-school-picker-tone="inverse"] [data-variant="outline"] {
+  border-color: color-mix(in srgb, white 42%, transparent);
+  background: transparent;
+  color: white;
+  box-shadow: none;
+}
+
+[data-school-picker-tone="inverse"] [data-variant="default"] {
+  background: white;
+  color: var(--color-brand-800);
+}
+
+[data-school-picker-tone="inverse"] .bg-surface-2 {
+  border-color: color-mix(in srgb, white 28%, transparent);
+  background: color-mix(in srgb, var(--color-brand-900) 42%, transparent);
+}
+
+[data-school-picker-tone="inverse"] .text-ink-900 {
+  color: white;
+}
+
+[data-school-picker-tone="inverse"] .text-ink-500 {
+  color: color-mix(in srgb, white 70%, transparent);
+}
+
+.student-roster-table .md-card-outlined {
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+  box-shadow: none;
+}

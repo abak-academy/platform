@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Plus,
-  Building,
   Users,
   MoreHorizontal,
   Edit,
@@ -33,8 +32,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { StatCard } from "@/components/admin/StatCard";
 import { SchoolBulkImportModal } from "@/components/admin/SchoolBulkImportModal";
 import {
   useAdminSchools,
@@ -46,11 +43,6 @@ import {
 import type { School } from "@/lib/types";
 
 type SchoolStatus = "active" | "deactivated";
-
-const STATUS_TONE: Record<SchoolStatus, string> = {
-  active: "bg-success-bg text-success border-success",
-  deactivated: "bg-danger-bg text-danger border-danger",
-};
 
 interface SchoolForm {
   name: string;
@@ -85,6 +77,7 @@ export default function SystemSchoolsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<School | null>(null);
+  const [inspectedSchoolId, setInspectedSchoolId] = useState<string>("");
   const queryClient = useQueryClient();
   const [createForm, setCreateForm] = useState<SchoolForm>({ ...EMPTY_FORM });
   const [editForm, setEditForm] = useState<SchoolForm>({ ...EMPTY_FORM });
@@ -149,6 +142,9 @@ export default function SystemSchoolsPage() {
   }, [data]);
 
   const rows = schools;
+  const inspectedSchool =
+    schools.find((school) => school.id === inspectedSchoolId) ?? schools[0] ?? null;
+  const inspectorLabel = lang === "en" ? "School details" : "Detail sekolah";
 
   function resetPagination() {
     setSchools([]);
@@ -263,39 +259,42 @@ export default function SystemSchoolsPage() {
           : "Tidak ada sekolah ditemukan.";
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <AdminPageHeader
-        icon={Building}
-        title={t("schools_title")}
-        description={t("schools_subtitle")}
-        actions={
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
-              <Upload className="mr-1 size-4" />
-              {t("bulk_school_import_button")}
-            </Button>
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-1 size-4" />
-              {t("create")}
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label={t("schools_stat_total")} value={String(stats.total)} />
-        <StatCard
-          label={t("status_label_active")}
-          value={String(stats.active)}
-        />
-        <StatCard
-          label={t("schools_stat_students")}
-          value={stats.students.toLocaleString(numberLocale)}
-        />
-      </div>
-
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+    <div className="mx-auto max-w-[1400px] px-4 py-7 md:px-6 md:py-9 fade-in">
+      <header className="mb-7 flex flex-col gap-6 border-b border-line pb-7 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-4xl font-bold tracking-[-0.045em] text-ink-900 md:text-5xl">
+            {t("schools_title")}
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-ink-600">
+            {lang === "en"
+              ? "Find a registry record, check its identity, then manage the school without leaving the index."
+              : "Cari data sekolah, periksa identitasnya, lalu kelola sekolah tanpa meninggalkan daftar."}
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
+          <Button className="rounded-md" variant="outline" onClick={() => setBulkOpen(true)}>
+            <Upload className="mr-1 size-4" />
+            {t("bulk_school_import_button")}
+          </Button>
+          <Button className="rounded-md" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-1 size-4" />
+            {t("create")}
+          </Button>
+        </div>
+      </header>
+
+      <div className="border border-line bg-surface">
+        <div className="flex flex-col gap-3 border-b border-line bg-surface-2 p-4 lg:flex-row lg:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+            <Input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder={t("schools_search_placeholder")}
+              className="h-10 rounded-sm bg-surface pl-9 text-xs"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
           <FilterChip
             active={statusFilter === "all"}
             onClick={() => setStatusFilter("all")}
@@ -314,103 +313,66 @@ export default function SystemSchoolsPage() {
           >
             {t("status_label_inactive")}
           </FilterChip>
+          </div>
         </div>
-        <div className="flex items-center gap-2 lg:ml-auto">
-          <Search className="size-4 text-ink-400" />
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t("schools_search_placeholder")}
-            className="h-9 w-[200px] text-xs"
-          />
-        </div>
-      </div>
 
-      <div className="md-card-outlined">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
-              <tr>
-                <th className="px-4 py-3">{t("schools_th_school")}</th>
-                <th className="px-4 py-3">{t("schools_field_code")}</th>
-                <th className="px-4 py-3">NPSN</th>
-                <th className="px-4 py-3">{t("schools_field_school_types")}</th>
-                <th className="px-4 py-3">{t("schools_field_alamat")}</th>
-                <th className="px-4 py-3">{t("accounts_th_status")}</th>
-                <th className="px-4 py-3">{t("schools_field_student_count")}</th>
-                <th className="px-4 py-3 text-right" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
+        <div className="grid xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <section className="min-w-0 px-5 py-6 md:px-7">
+            <div className="mb-4 flex flex-col gap-3 border-t-4 border-t-ink-900 pt-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold tracking-[-0.035em] text-ink-900">
+                  {stats.total.toLocaleString(numberLocale)} {lang === "en" ? "matching schools" : "sekolah ditemukan"}
+                </h2>
+                <p className="mt-1 text-xs text-ink-500">
+                  {lang === "en" ? "Sorted by school name" : "Diurutkan berdasarkan nama sekolah"}
+                </p>
+              </div>
+              <div className="flex gap-5 text-xs text-ink-500">
+                <span><strong className="text-base text-ink-900">{stats.active}</strong> {t("status_label_active")}</span>
+                <span><strong className="text-base text-ink-900">{stats.students.toLocaleString(numberLocale)}</strong> {t("schools_stat_students")}</span>
+              </div>
+            </div>
+
+            <div className="border-b border-line">
               {rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="px-4 py-8 text-center text-sm text-ink-500"
-                  >
-                    {tableEmpty}
-                  </td>
-                </tr>
+                <div className="border-t border-line px-4 py-10 text-center text-sm text-ink-500">
+                  {tableEmpty}
+                </div>
               )}
-              {rows.map((s) => (
-                <tr key={s.id} className="group hover:bg-surface-2">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 font-medium text-ink-900">
-                      <Building className="size-4 shrink-0 text-brand-600" />
-                      <span className="max-w-[160px] truncate">{s.name}</span>
-                    </div>
-                    <div className="font-mono text-[11px] text-ink-500">
-                      {s.id}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-xs text-ink-700">
-                      {s.code ?? "—"}
+              {rows.map((s) => {
+                const selected = inspectedSchool?.id === s.id;
+                return (
+                  <article
+                    key={s.id}
+                    className={cn(
+                      "grid min-h-20 grid-cols-[5.5rem_minmax(0,1fr)_auto_2rem] items-center gap-3 border-t border-line px-2 py-3 md:grid-cols-[6rem_minmax(11rem,1.4fr)_minmax(8rem,1fr)_5rem_5rem_2rem]",
+                      selected && "-ml-2 border-l-4 border-l-brand-600 bg-surface-2 pl-3",
+                    )}
+                  >
+                    <span className="text-xs font-bold tracking-[0.04em] text-brand-700">
+                      {s.npsn ?? "—"}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    {s.npsn ?? "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {s.school_types && s.school_types.length > 0
-                        ? s.school_types.map((st) => (
-                            <Badge
-                              key={st}
-                              variant="outline"
-                              className="bg-surface-2 text-[11px] text-ink-700"
-                            >
-                              {st}
-                            </Badge>
-                          ))
-                        : (
-                            <span className="text-xs text-ink-400">—</span>
-                          )}
-                    </div>
-                  </td>
-                  <td className="max-w-[160px] truncate px-4 py-3 text-xs text-ink-600">
-                    {s.alamat ?? "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[11px] font-semibold capitalize",
-                        STATUS_TONE[s.status as SchoolStatus],
-                      )}
+                    <button
+                      type="button"
+                      aria-label={lang === "en" ? `View details for ${s.name}` : `Lihat detail ${s.name}`}
+                      className="min-w-0 text-left"
+                      onClick={() => setInspectedSchoolId(s.id)}
                     >
-                      {s.status === "active"
-                        ? t("status_label_active")
-                        : t("status_label_inactive")}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    <span className="inline-flex items-center gap-1">
+                      <span className="block truncate text-sm font-semibold text-ink-900">{s.name}</span>
+                      <span className="mt-1 block truncate text-[11px] text-ink-500">{s.code ?? "—"}</span>
+                    </button>
+                    <span className="hidden truncate text-xs leading-5 text-ink-500 md:block">{s.alamat ?? "—"}</span>
+                    <span className="hidden text-center md:block">
+                      {(s.school_types ?? []).slice(0, 1).map((type) => (
+                        <Badge key={type} variant="outline" className="rounded-sm bg-surface text-[10px]">{type}</Badge>
+                      ))}
+                    </span>
+                    <span className="hidden items-center gap-1 text-xs text-ink-500 md:inline-flex">
                       <Users className="size-3" />
                       {(s.student_count ?? 0).toLocaleString(numberLocale)}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <span className={cn("size-2 rounded-full", s.status === "active" ? "bg-success" : "bg-ink-400")} aria-label={s.status === "active" ? t("status_label_active") : t("status_label_inactive")} />
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon-xs">
@@ -434,30 +396,72 @@ export default function SystemSchoolsPage() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            {nextCursor && (
+              <div className="mt-4 text-center">
+                <Button variant="outline" size="sm" className="rounded-sm" onClick={handleLoadMore} disabled={isLoading}>
+                  {isLoading ? t("sys_loading") : lang === "en" ? "Load more" : "Muat lebih banyak"}
+                </Button>
+              </div>
+            )}
+          </section>
+
+          <aside
+            aria-label={inspectorLabel}
+            className="border-t border-line bg-surface-2 p-6 xl:border-l xl:border-t-0"
+          >
+            {inspectedSchool ? (
+              <>
+                <div className="border-t-4 border-brand-600 bg-surface p-5">
+                  <span className="text-xs font-bold tracking-[0.04em] text-brand-700">
+                    {inspectedSchool.npsn ? `NPSN ${inspectedSchool.npsn}` : "NPSN —"}
+                  </span>
+                  <h2
+                    aria-label={inspectedSchool.name}
+                    className="mt-3 text-2xl font-bold leading-tight tracking-[-0.035em] text-ink-900"
+                  >
+                    {inspectedSchool.name.split(" ").map((part, index) => (
+                      <span key={`${part}-${index}`}>{part} </span>
+                    ))}
+                  </h2>
+                  <p className="mt-3 text-xs leading-5 text-ink-500">
+                    {inspectedSchool.alamat ?? (lang === "en" ? "Address not provided" : "Alamat belum tersedia")}
+                  </p>
+                  <Button className="mt-5 rounded-md" onClick={() => handleEditOpen(inspectedSchool)}>
+                    <Edit className="mr-2 size-4" />
+                    {lang === "en" ? "Edit school record" : "Edit data sekolah"}
+                  </Button>
+                </div>
+                <div className="mt-6 border-t border-line pt-5">
+                  <h3 className="text-sm font-semibold text-ink-900">
+                    {lang === "en" ? "School identity" : "Identitas sekolah"}
+                  </h3>
+                  {[
+                    [t("accounts_th_status"), inspectedSchool.status === "active" ? t("status_label_active") : t("status_label_inactive")],
+                    [t("schools_field_code"), inspectedSchool.code ? `#${inspectedSchool.code}` : "—"],
+                    [t("schools_field_school_types"), inspectedSchool.school_types?.join(", ") || "—"],
+                    [t("schools_field_student_count"), (inspectedSchool.student_count ?? 0).toLocaleString(numberLocale)],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="mt-3 flex items-start justify-between gap-4 text-xs">
+                      <span className="text-ink-500">{label}</span>
+                      <strong className="max-w-[11rem] text-right text-ink-900">{value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-ink-500">
+                {lang === "en" ? "Select a school to inspect its record." : "Pilih sekolah untuk melihat detailnya."}
+              </p>
+            )}
+          </aside>
         </div>
       </div>
-
-      {nextCursor && (
-        <div className="mt-4 text-center">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleLoadMore}
-            disabled={isLoading}
-          >
-            {isLoading
-              ? t("sys_loading")
-              : lang === "en"
-              ? "Load more"
-              : "Muat lebih banyak"}
-          </Button>
-        </div>
-      )}
 
       <SchoolBulkImportModal
         open={bulkOpen}

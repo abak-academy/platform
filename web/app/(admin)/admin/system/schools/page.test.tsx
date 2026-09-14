@@ -10,6 +10,14 @@ function renderPage(ui: React.ReactNode) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
+function schoolRecord(name: string) {
+  const record = screen
+    .getByRole("button", { name: `Lihat detail ${name}` })
+    .closest("article");
+  expect(record).toBeTruthy();
+  return record as HTMLElement;
+}
+
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
 
@@ -187,13 +195,32 @@ describe("SystemSchoolsPage", () => {
     expect(screen.getAllByText("Nonaktif").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows stat cards with total, active, and student counts", async () => {
+  it("updates the record inspector when a school is selected", async () => {
     renderPage(<SystemSchoolsPage />);
 
-    await waitFor(() => {
-      expect(screen.getByText("2")).toBeInTheDocument();
+    const inspector = await screen.findByRole("complementary", {
+      name: "Detail sekolah",
     });
-    // 500 appears both in stat card and student count column
+    expect(
+      within(inspector).getByRole("heading", { name: "SMAN 1 Jakarta" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Lihat detail SMAN 2 Jakarta" }),
+    );
+
+    expect(
+      within(inspector).getByRole("heading", { name: "SMAN 2 Jakarta" }),
+    ).toBeInTheDocument();
+    expect(within(inspector).getByText(/87654321/)).toBeInTheDocument();
+  });
+
+  it("shows total, active, and student counts", async () => {
+    renderPage(<SystemSchoolsPage />);
+
+    expect(
+      await screen.findByRole("heading", { name: "2 sekolah ditemukan" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("500").length).toBeGreaterThanOrEqual(1);
   });
 
@@ -303,11 +330,9 @@ describe("SystemSchoolsPage", () => {
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
-    const rows = screen.getAllByRole("row");
-    const s1Row = rows.find((r) => within(r).queryByText("SMAN 1 Jakarta"));
-    expect(s1Row).toBeTruthy();
+    const s1Row = schoolRecord("SMAN 1 Jakarta");
     fireEvent.pointerDown(
-      within(s1Row as HTMLElement).getByRole("button", { name: "" }),
+      within(s1Row).getByRole("button", { name: "" }),
       { button: 0 }
     );
 
@@ -330,8 +355,8 @@ describe("SystemSchoolsPage", () => {
     renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
-    const row = screen.getAllByRole("row").find((item) => within(item).queryByText("SMAN 1 Jakarta"));
-    fireEvent.pointerDown(within(row as HTMLElement).getByRole("button", { name: "" }), { button: 0 });
+    const row = schoolRecord("SMAN 1 Jakarta");
+    fireEvent.pointerDown(within(row).getByRole("button", { name: "" }), { button: 0 });
     fireEvent.click(await screen.findByText("Edit"));
 
     const dialog = await screen.findByRole("dialog");
@@ -352,8 +377,8 @@ describe("SystemSchoolsPage", () => {
     expect(within(dialog).getByPlaceholderText("8 karakter, mis. 20100001")).toHaveAttribute("maxlength", "8");
     fireEvent.click(within(dialog).getByRole("button", { name: /^batal$/i }));
 
-    const row = screen.getAllByRole("row").find((item) => within(item).queryByText("SMAN 1 Jakarta"));
-    fireEvent.pointerDown(within(row as HTMLElement).getByRole("button", { name: "" }), { button: 0 });
+    const row = schoolRecord("SMAN 1 Jakarta");
+    fireEvent.pointerDown(within(row).getByRole("button", { name: "" }), { button: 0 });
     fireEvent.click(await screen.findByText("Edit"));
     dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByPlaceholderText("8 karakter, mis. 20100001")).toHaveAttribute("maxlength", "8");
@@ -366,11 +391,9 @@ describe("SystemSchoolsPage", () => {
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
-    const rows = screen.getAllByRole("row");
-    const s1Row = rows.find((r) => within(r).queryByText("SMAN 1 Jakarta"));
-    expect(s1Row).toBeTruthy();
+    const s1Row = schoolRecord("SMAN 1 Jakarta");
     fireEvent.pointerDown(
-      within(s1Row as HTMLElement).getByRole("button", { name: "" }),
+      within(s1Row).getByRole("button", { name: "" }),
       { button: 0 }
     );
 
@@ -387,14 +410,11 @@ describe("SystemSchoolsPage", () => {
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
-    const rows = screen.getAllByRole("row");
-    const s1Row = rows.find((r) => within(r).queryByText("SMAN 1 Jakarta"));
-    const s2Row = rows.find((r) => within(r).queryByText("SMAN 2 Jakarta"));
-    expect(s1Row).toBeTruthy();
-    expect(s2Row).toBeTruthy();
+    const s1Row = schoolRecord("SMAN 1 Jakarta");
+    const s2Row = schoolRecord("SMAN 2 Jakarta");
 
     fireEvent.pointerDown(
-      within(s1Row as HTMLElement).getByRole("button", { name: "" }),
+      within(s1Row).getByRole("button", { name: "" }),
       { button: 0 }
     );
     fireEvent.click(await screen.findByText("Edit"));
@@ -408,7 +428,7 @@ describe("SystemSchoolsPage", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
     fireEvent.pointerDown(
-      within(s2Row as HTMLElement).getByRole("button", { name: "" }),
+      within(s2Row).getByRole("button", { name: "" }),
       { button: 0 }
     );
     fireEvent.click(await screen.findByText("Edit"));
