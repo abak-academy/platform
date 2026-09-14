@@ -28,7 +28,6 @@ export interface SchoolPickerProps {
   onUnlistedNameChange?: (value: string) => void;
   disabled?: boolean;
   className?: string;
-  tone?: "default" | "inverse";
 }
 
 export function SchoolPicker({
@@ -41,7 +40,6 @@ export function SchoolPicker({
   onUnlistedNameChange,
   disabled,
   className,
-  tone = "default",
 }: SchoolPickerProps) {
   const [mode, setMode] = useState<"name" | "npsn">("name");
   const [provinceId, setProvinceId] = useState("");
@@ -98,7 +96,7 @@ export function SchoolPicker({
   }
 
   return (
-    <div className={className} data-school-picker-tone={tone}>
+    <div className={className}>
       <div className="mb-2 flex gap-2">
         <Button
           type="button"

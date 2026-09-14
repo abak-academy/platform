@@ -520,6 +520,7 @@ export default function SchoolStudentsPage() {
 
   const rosterSchool = isSuperAdmin ? selectedSchoolFilter : adminOwnSchool;
   const activeSchoolLabel = lang === "en" ? "Active school" : "Sekolah aktif";
+  const filterPanelLabel = lang === "en" ? "Student filters" : "Filter siswa";
   const rosterLabel = lang === "en" ? "School roster" : "Daftar siswa";
   const rosterDescription = rosterSchool
     ? lang === "en"
@@ -575,68 +576,104 @@ export default function SchoolStudentsPage() {
       <div className="overflow-hidden border border-line bg-surface lg:grid lg:grid-cols-[20rem_minmax(0,1fr)]">
         <aside
           role="region"
-          aria-label={activeSchoolLabel}
-          className="relative overflow-hidden bg-brand-700 px-6 py-7 text-white lg:min-h-[680px]"
+          aria-label={filterPanelLabel}
+          className="border-b border-line bg-surface-2 px-5 py-6 lg:min-h-[680px] lg:border-b-0 lg:border-r"
         >
-          <div className="pointer-events-none absolute -right-20 -top-20 size-56 rounded-full border-[28px] border-white/7" />
-          <div className="relative">
-            <p className="flex items-center gap-3 text-xs font-semibold before:h-[3px] before:w-7 before:bg-white">
-              {activeSchoolLabel}
-            </p>
-            <h2 className="mt-5 max-w-[16rem] text-3xl font-bold leading-[1.02] tracking-[-0.04em]">
-              {rosterSchool?.name ?? t("students_all_schools")}
+          <div className="border-t-4 border-t-brand-600 pt-4">
+            <h2 className="text-xl font-bold tracking-[-0.025em] text-ink-900">
+              {filterPanelLabel}
             </h2>
-            {(rosterSchoolLocation || rosterSchoolTypes) && (
-              <p className="mt-3 text-xs leading-5 text-white/70">
-                {[rosterSchoolLocation, rosterSchoolTypes].filter(Boolean).join(" · ")}
-              </p>
-            )}
-            {rosterSchool?.npsn && (
-              <div className="mt-5 inline-flex items-baseline gap-2 border border-white/40 px-3 py-2 text-[11px]">
-                <span>NPSN</span>
-                <strong className="text-sm tracking-[0.08em]">{rosterSchool.npsn}</strong>
-              </div>
-            )}
+            <p className="mt-1 text-xs leading-5 text-ink-500">
+              {lang === "en"
+                ? "Narrow the roster by school, status, or student name."
+                : "Saring daftar berdasarkan sekolah, status, atau nama siswa."}
+            </p>
+          </div>
 
-            <div className="mt-7 border-t border-white/30 pt-6">
+          <div className="mt-6 space-y-6">
+            <div>
+              <p className="mb-2 text-xs font-semibold text-ink-700">{t("select_school")}</p>
               {isSuperAdmin ? (
-                <>
-                  <p className="mb-3 text-sm font-semibold">
-                    {lang === "en" ? "Change school context" : "Ganti sekolah aktif"}
-                  </p>
-                  <SchoolPicker
-                    id="student-school-filter"
-                    value={selectedSchoolId}
-                    selectedSchool={selectedSchoolFilter}
-                    onChange={(school) => {
-                      setSelectedSchoolFilter(school);
-                      setSelectedSchoolId(school?.id ?? "");
-                    }}
-                    tone="inverse"
-                  />
-                </>
+                <SchoolPicker
+                  id="student-school-filter"
+                  value={selectedSchoolId}
+                  selectedSchool={selectedSchoolFilter}
+                  onChange={(school) => {
+                    setSelectedSchoolFilter(school);
+                    setSelectedSchoolId(school?.id ?? "");
+                  }}
+                />
               ) : (
-                <p className="text-xs leading-5 text-white/70">
+                <p className="text-xs leading-5 text-ink-500">
                   {lang === "en"
                     ? "This roster is bound to your administrator account's school."
                     : "Daftar siswa ini terikat ke sekolah pada akun admin Anda."}
                 </p>
               )}
+
+              <div className="mt-4 border border-line bg-surface p-4">
+                <p className="text-[11px] font-semibold text-brand-700">{activeSchoolLabel}</p>
+                <h3 className="mt-2 text-lg font-bold leading-tight text-ink-900">
+                  {rosterSchool?.name ?? t("students_all_schools")}
+                </h3>
+                {(rosterSchoolLocation || rosterSchoolTypes) && (
+                  <p className="mt-2 text-xs leading-5 text-ink-500">
+                    {[rosterSchoolLocation, rosterSchoolTypes].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+                {rosterSchool?.npsn && (
+                  <p className="mt-3 text-xs text-ink-500">
+                    NPSN <strong className="ml-1 tracking-[0.06em] text-ink-900">{rosterSchool.npsn}</strong>
+                  </p>
+                )}
+              </div>
+              {selectedSchoolId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 w-full rounded-sm"
+                  onClick={() => {
+                    setSelectedSchoolFilter(null);
+                    setSelectedSchoolId("");
+                  }}
+                >
+                  {t("students_all_schools")}
+                </Button>
+              ) : null}
             </div>
-            {selectedSchoolId ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-4 rounded-md border-white/40 bg-transparent text-white shadow-none hover:bg-white/10 hover:text-white"
-                onClick={() => {
-                  setSelectedSchoolFilter(null);
-                  setSelectedSchoolId("");
-                }}
-              >
-                {t("students_all_schools")}
-              </Button>
-            ) : null}
+
+            <div className="border-t border-line pt-5">
+              <p className="mb-2 text-xs font-semibold text-ink-700">{t("accounts_th_status")}</p>
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v)}>
+                <SelectTrigger
+                  aria-label={t("accounts_status_placeholder")}
+                  className="h-10 w-full rounded-sm bg-surface text-xs"
+                >
+                  <SelectValue placeholder={t("accounts_status_placeholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("accounts_status_all")}</SelectItem>
+                  <SelectItem value="active">{t("status_label_active")}</SelectItem>
+                  <SelectItem value="deactivated">{t("status_label_inactive")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold text-ink-700">
+                {lang === "en" ? "Search student" : "Cari siswa"}
+              </p>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+                <Input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder={t("students_search_placeholder")}
+                  className="h-10 w-full rounded-sm bg-surface pl-9 text-xs"
+                />
+              </div>
+            </div>
           </div>
         </aside>
 
@@ -662,33 +699,12 @@ export default function SchoolStudentsPage() {
             ))}
           </div>
 
-          <div className="mb-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="mb-3">
             <div>
               <h2 className="text-xl font-bold tracking-[-0.025em] text-ink-900">
                 {rosterLabel}
               </h2>
               <p className="mt-1 text-xs text-ink-500">{rosterDescription}</p>
-            </div>
-            <div className="flex gap-2">
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v)}>
-                <SelectTrigger className="h-9 w-[140px] rounded-sm text-xs">
-                  <SelectValue placeholder={t("accounts_status_placeholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("accounts_status_all")}</SelectItem>
-                  <SelectItem value="active">{t("status_label_active")}</SelectItem>
-                  <SelectItem value="deactivated">{t("status_label_inactive")}</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="relative min-w-0">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
-                <Input
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder={t("students_search_placeholder")}
-                  className="h-9 w-full rounded-sm pl-9 text-xs sm:w-[220px]"
-                />
-              </div>
             </div>
           </div>
 

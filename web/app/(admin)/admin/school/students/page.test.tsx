@@ -702,6 +702,19 @@ describe("SchoolStudentsPage", () => {
     expect(screen.getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
   });
 
+  it("groups school, status, and student search in a neutral filter panel", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    const filters = screen.getByRole("region", { name: "Filter siswa" });
+    expect(filters).not.toHaveClass("bg-brand-700");
+    expect(within(filters).getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
+    expect(within(filters).getByRole("combobox", { name: /status/i })).toBeInTheDocument();
+    expect(within(filters).getByPlaceholderText(/cari nama|search name/i)).toBeInTheDocument();
+  });
+
   it("shows the selected school as the active roster context", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
 
@@ -710,7 +723,7 @@ describe("SchoolStudentsPage", () => {
 
     fireEvent.click(screen.getByRole("option", { name: "SMAN 2 Bandung" }));
 
-    const context = screen.getByRole("region", { name: "Sekolah aktif" });
+    const context = screen.getByRole("region", { name: "Filter siswa" });
     expect(
       within(context).getByRole("heading", { name: "SMAN 2 Bandung" }),
     ).toBeInTheDocument();
