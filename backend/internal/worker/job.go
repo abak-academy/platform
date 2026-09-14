@@ -77,6 +77,8 @@ func (w *Worker) pollJobs(ctx context.Context) {
 		w.runSchoolBulkJob(ctx, *job)
 	case "exam_grant_bulk":
 		w.runExamGrantBulkJob(ctx, *job)
+	case "exam_revoke_bulk":
+		w.runExamRevokeBulkJob(ctx, *job)
 	default:
 		msg := "unknown job type: " + job.Type
 		if err := w.jobRepo.FinishJob(ctx, job.ID, "failed", job.Progress, nil, &msg); err != nil {

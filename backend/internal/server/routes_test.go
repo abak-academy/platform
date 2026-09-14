@@ -105,6 +105,35 @@ func TestRegisterRoutes_ExamGrantBulkRoutesRegistered(t *testing.T) {
 	}
 }
 
+// TestRegisterRoutes_ExamRevokeRoutesRegistered asserts the three exam-revoke
+// routes (manual + CSV presign + CSV enqueue) are present in the production
+// registerRoutes function, under the super-admin-only /admin/exam-grants group.
+func TestRegisterRoutes_ExamRevokeRoutesRegistered(t *testing.T) {
+	signer, svc, _ := newTestDeps(t)
+	e := echo.New()
+	e.HideBanner = true
+	h := handler.New(svc)
+
+	RegisterRoutesForTest(e, h, svc, signer)
+
+	want := []string{
+		"/api/v1/admin/exam-grants/revoke",
+		"/api/v1/admin/exam-grants/revoke/bulk/presign",
+		"/api/v1/admin/exam-grants/revoke/bulk",
+	}
+	registered := map[string]bool{}
+	for _, r := range e.Routes() {
+		if r.Method == http.MethodPost {
+			registered[r.Path] = true
+		}
+	}
+	for _, path := range want {
+		if !registered[path] {
+			t.Errorf("route POST %s not registered", path)
+		}
+	}
+}
+
 func TestRegisterRoutes_ResultsWorkspaceRoutesRegistered(t *testing.T) {
 	signer, svc, _ := newTestDeps(t)
 	e := echo.New()

@@ -128,3 +128,75 @@ export function useEnqueueExamGrantBulk() {
       }),
   });
 }
+
+// ── Revoke (inverse of grant) ─────────────────────────────────────────────
+
+export interface RevokeExamAccessInput {
+  exam_id: string;
+  student_ids: string[];
+}
+
+export interface ExamRevokeRowResult {
+  student_id: string;
+  name: string;
+  username: string;
+  status: "revoked" | "skipped" | "failed";
+  message: string;
+}
+
+export interface RevokeExamAccessResponse {
+  revoked_count: number;
+  results: ExamRevokeRowResult[];
+}
+
+/**
+ * Soft-revoke exam registrations for selected students (super_admin only).
+ * POST /admin/exam-grants/revoke
+ */
+export function useRevokeExamAccess() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RevokeExamAccessInput) =>
+      authFetch<RevokeExamAccessResponse>("/admin/exam-grants/revoke", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: examGrantKeys.all });
+    },
+  });
+}
+
+/**
+ * Request a presigned MinIO PUT URL for a super_admin exam-revoke bulk CSV
+ * upload (super_admin only).
+ * POST /admin/exam-grants/revoke/bulk/presign?exam_id=&filename=&content_type=
+ */
+export function usePresignExamRevokeBulkUpload(examId: string) {
+  return useMutation({
+    mutationFn: ({ filename, contentType }: { filename: string; contentType: string }) => {
+      const qs = new URLSearchParams({
+        exam_id: examId,
+        filename,
+        content_type: contentType,
+      }).toString();
+      return authFetch<PresignedUpload>(`/admin/exam-grants/revoke/bulk/presign?${qs}`, {
+        method: "POST",
+      });
+    },
+  });
+}
+
+/**
+ * Enqueue an exam-revoke-bulk job for an already-uploaded CSV (super_admin only).
+ * POST /admin/exam-grants/revoke/bulk {exam_id, file_key} -> {job_id}
+ */
+export function useEnqueueExamRevokeBulk() {
+  return useMutation({
+    mutationFn: ({ examId, fileKey }: { examId: string; fileKey: string }) =>
+      authFetch<EnqueueBulkResult>("/admin/exam-grants/revoke/bulk", {
+        method: "POST",
+        body: JSON.stringify({ exam_id: examId, file_key: fileKey }),
+      }),
+  });
+}

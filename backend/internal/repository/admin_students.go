@@ -123,7 +123,7 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 
 	if filter.ExamID != "" {
 		query += fmt.Sprintf(` AND u.status = 'active'
-			AND NOT EXISTS (SELECT 1 FROM exam_registration er WHERE er.student_id = u.id AND er.exam_id = $%d::uuid)`, argNum)
+			AND NOT EXISTS (SELECT 1 FROM exam_registration er WHERE er.student_id = u.id AND er.exam_id = $%d::uuid AND er.status <> 'revoked')`, argNum)
 		args = append(args, filter.ExamID)
 		argNum++
 	}
@@ -340,7 +340,7 @@ func (r *Repository) SearchStudentsAcrossSchools(ctx context.Context, filter Stu
 	}
 	if filter.ExamID != "" {
 		query += fmt.Sprintf(` AND u.status = 'active'
-			AND NOT EXISTS (SELECT 1 FROM exam_registration er WHERE er.student_id = u.id AND er.exam_id = $%d::uuid)`, argNum)
+			AND NOT EXISTS (SELECT 1 FROM exam_registration er WHERE er.student_id = u.id AND er.exam_id = $%d::uuid AND er.status <> 'revoked')`, argNum)
 		args = append(args, filter.ExamID)
 		argNum++
 	}

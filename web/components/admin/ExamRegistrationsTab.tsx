@@ -28,6 +28,10 @@ import {
   useGrantExamAccess,
   usePresignExamGrantBulkUpload,
   useEnqueueExamGrantBulk,
+  useRevokeExamAccess,
+  usePresignExamRevokeBulkUpload,
+  useEnqueueExamRevokeBulk,
+  type RevokeExamAccessResponse,
 } from "@/lib/hooks/admin-exam-grants";
 import { putFileToPresignedURL } from "@/lib/hooks/admin-students-bulk";
 import { useJobStatus } from "@/lib/hooks/jobs";
@@ -56,12 +60,19 @@ interface ExamRegistrationsTabProps {
 
 function ExamRosterSection({ examId, action }: { examId: string; action?: ReactNode }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const role = useAuthStore((s) => s.user?.role);
+  const isSuperAdmin = role === "super_admin";
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [cursor, setCursor] = useState<string | undefined>();
   const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [rows, setRows] = useState<ExamRosterEntry[]>([]);
   const [exporting, setExporting] = useState(false);
   const [revealedTokens, setRevealedTokens] = useState<Set<string>>(new Set());
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [confirmRevokeOpen, setConfirmRevokeOpen] = useState(false);
+  const [revokeResult, setRevokeResult] = useState<RevokeExamAccessResponse | null>(null);
+  const revokeMutation = useRevokeExamAccess();
   const query = useExamRoster(examId, { cursor, limit: 20, sort: sortDir });
 
   useEffect(() => {
@@ -75,11 +86,28 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
     setNextCursor(query.data.next_cursor);
   }, [cursor, query.data]);
 
+  const selectableRows = rows.filter((row) => row.status !== "revoked");
+  const allSelectableSelected =
+    selectableRows.length > 0 &&
+    selectableRows.every((row) => selectedStudentIds.includes(row.student_id));
+
   const toggleSort = () => {
     setRows([]);
     setCursor(undefined);
     setNextCursor(undefined);
     setSortDir((direction) => direction === "asc" ? "desc" : "asc");
+  };
+
+  const toggleRowSelection = (studentId: string) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId],
+    );
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedStudentIds(allSelectableSelected ? [] : selectableRows.map((row) => row.student_id));
   };
 
   const handleExport = async () => {
@@ -91,6 +119,27 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
     } finally {
       setExporting(false);
     }
+  };
+
+  const handleRevoke = () => {
+    revokeMutation.mutate(
+      { exam_id: examId, student_ids: selectedStudentIds },
+      {
+        onSuccess: (result) => {
+          setConfirmRevokeOpen(false);
+          setRevokeResult(result);
+          setSelectedStudentIds([]);
+          if (result.revoked_count > 0) {
+            toast.success(t("exam_roster_revoke_success").replace("{n}", String(result.revoked_count)));
+          }
+          queryClient.invalidateQueries({ queryKey: [...adminExamsKeys.rosters(), examId] });
+        },
+        onError: (err) => {
+          setConfirmRevokeOpen(false);
+          toast.error(err instanceof Error ? err.message : t("exam_roster_revoke_failed"));
+        },
+      },
+    );
   };
 
   const toggleToken = (registrationId: string) => {
@@ -106,6 +155,33 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
   };
 
   const columns: DataTableColumn<ExamRosterEntry>[] = [
+    ...(isSuperAdmin
+      ? [
+          {
+            key: "select",
+            header: (
+              <input
+                type="checkbox"
+                data-testid="roster-select-all"
+                aria-label={t("exam_roster_select_all")}
+                checked={allSelectableSelected}
+                onChange={toggleSelectAll}
+                disabled={selectableRows.length === 0}
+              />
+            ),
+            cell: (r: ExamRosterEntry) =>
+              r.status === "revoked" ? null : (
+                <input
+                  type="checkbox"
+                  data-testid={`roster-select-${r.student_id}`}
+                  aria-label={t("exam_roster_select_row").replace("{name}", r.student_name)}
+                  checked={selectedStudentIds.includes(r.student_id)}
+                  onChange={() => toggleRowSelection(r.student_id)}
+                />
+              ),
+          } satisfies DataTableColumn<ExamRosterEntry>,
+        ]
+      : []),
     {
       key: "participant_no",
       header: (
@@ -179,6 +255,18 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
         </h3>
         <div className="flex items-center gap-2">
           {action}
+          {isSuperAdmin && selectedStudentIds.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              data-testid="roster-revoke-button"
+              disabled={revokeMutation.isPending}
+              onClick={() => setConfirmRevokeOpen(true)}
+            >
+              {t("exam_roster_revoke").replace("{n}", String(selectedStudentIds.length))}
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -217,6 +305,64 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
           }
         />
       )}
+
+      <Dialog open={confirmRevokeOpen} onOpenChange={setConfirmRevokeOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("exam_roster_revoke_confirm_title")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-ink-600">
+            {t("exam_roster_revoke_confirm_desc").replace("{n}", String(selectedStudentIds.length))}
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              className="rounded-full"
+              data-testid="roster-revoke-cancel"
+              disabled={revokeMutation.isPending}
+              onClick={() => setConfirmRevokeOpen(false)}
+            >
+              {t("exam_roster_revoke_cancel")}
+            </Button>
+            <Button
+              className="rounded-full"
+              data-testid="roster-revoke-confirm"
+              disabled={revokeMutation.isPending}
+              onClick={handleRevoke}
+            >
+              {revokeMutation.isPending ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : null}
+              {revokeMutation.isPending ? t("sys_loading") : t("exam_roster_revoke")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={revokeResult !== null} onOpenChange={(open) => !open && setRevokeResult(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("exam_roster_revoke_result_title")}</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[240px] space-y-1 overflow-y-auto rounded-lg border border-line p-2">
+            {(revokeResult?.results ?? []).map((r) => (
+              <div key={r.student_id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
+                <span className="font-medium text-ink-900">{r.name || r.student_id}</span>
+                <span className="text-ink-500">{r.username ? `@${r.username}` : ""}</span>
+                <span className="ml-auto text-xs text-ink-500">
+                  {r.status}
+                  {r.message ? ` — ${r.message}` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button variant="outline" className="rounded-full" onClick={() => setRevokeResult(null)}>
+              {t("exam_roster_revoke_cancel")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -239,7 +385,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
     granted_count: number;
     granted_students: Array<{ id: string; name: string; username: string }>;
   } | null>(null);
-  const [grantMode, setGrantMode] = useState<"manual" | "csv">("manual");
+  const [grantMode, setGrantMode] = useState<"manual" | "csv" | "revoke_csv">("manual");
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvJobId, setCsvJobId] = useState<string | null>(null);
   const flowGenerationRef = useRef(0);
@@ -247,8 +393,12 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
   const previewMutation = usePreviewBulkExamOrder();
   const createMutation = useCreateBulkExamOrder();
   const grantMutation = useGrantExamAccess();
-  const csvPresignMutation = usePresignExamGrantBulkUpload(examId);
-  const csvEnqueueMutation = useEnqueueExamGrantBulk();
+  const grantPresignMutation = usePresignExamGrantBulkUpload(examId);
+  const grantEnqueueMutation = useEnqueueExamGrantBulk();
+  const revokePresignMutation = usePresignExamRevokeBulkUpload(examId);
+  const revokeEnqueueMutation = useEnqueueExamRevokeBulk();
+  const csvPresignMutation = grantMode === "revoke_csv" ? revokePresignMutation : grantPresignMutation;
+  const csvEnqueueMutation = grantMode === "revoke_csv" ? revokeEnqueueMutation : grantEnqueueMutation;
   const csvJob = useJobStatus(csvJobId);
 
   const previewInput = useMemo(() => {
@@ -325,6 +475,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
       toast.error(t("exam_grant_bulk_no_file"));
       return;
     }
+    const isRevoke = grantMode === "revoke_csv";
     const flowGeneration = flowGenerationRef.current;
     try {
       const presignResp = await csvPresignMutation.mutateAsync({
@@ -336,7 +487,11 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
         await putFileToPresignedURL(presignResp.url, csvFile, csvFile.type || "text/csv");
       } catch (err) {
         if (flowGeneration !== flowGenerationRef.current) return;
-        toast.error(err instanceof Error ? err.message : t("exam_grant_bulk_put_failed"));
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : t(isRevoke ? "exam_revoke_bulk_put_failed" : "exam_grant_bulk_put_failed"),
+        );
         return;
       }
       if (flowGeneration !== flowGenerationRef.current) return;
@@ -348,7 +503,11 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
       setCsvJobId(enqueueResp.job_id);
     } catch (err) {
       if (flowGeneration !== flowGenerationRef.current) return;
-      toast.error(err instanceof Error ? err.message : t("exam_grant_bulk_enqueue_failed"));
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t(isRevoke ? "exam_revoke_bulk_enqueue_failed" : "exam_grant_bulk_enqueue_failed"),
+      );
     }
   };
 
@@ -390,9 +549,11 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
     }
   };
 
-  const modalTitle = isSuperAdmin
-    ? t("exam_registrations_grant_modal_title")
-    : t("bulk_exam_order_pick_participants");
+  const modalTitle = grantMode === "revoke_csv"
+    ? t("exam_revoke_bulk_title")
+    : isSuperAdmin
+      ? t("exam_registrations_grant_modal_title")
+      : t("bulk_exam_order_pick_participants");
 
   // ── Main roster + action modal ──────────────────────────────────────────
 
@@ -505,14 +666,24 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                     >
                       {t("exam_grant_mode_csv")}
                     </Button>
+                    <Button
+                      type="button"
+                      variant={grantMode === "revoke_csv" ? "default" : "outline"}
+                      size="sm"
+                      className="rounded-full"
+                      data-testid="grant-mode-revoke-csv"
+                      onClick={() => setGrantMode("revoke_csv")}
+                    >
+                      {t("exam_grant_mode_revoke_csv")}
+                    </Button>
                   </div>
                 )}
 
-                {isSuperAdmin && grantMode === "csv" ? (
+                {isSuperAdmin && (grantMode === "csv" || grantMode === "revoke_csv") ? (
                   <div className="space-y-6">
                     <section>
                       <h3 className="text-sm font-semibold text-ink-900">
-                        1. {t("exam_grant_bulk_download_template")}
+                        1. {t(grantMode === "revoke_csv" ? "exam_revoke_bulk_download_template" : "exam_grant_bulk_download_template")}
                       </h3>
                       <div className="mt-2">
                         <Button
@@ -524,19 +695,19 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                           onClick={downloadExamGrantBulkTemplate}
                         >
                           <Download className="mr-2 size-4" />
-                          {t("exam_grant_bulk_download_template")}
+                          {t(grantMode === "revoke_csv" ? "exam_revoke_bulk_download_template" : "exam_grant_bulk_download_template")}
                         </Button>
                       </div>
                     </section>
 
                     <section>
                       <h3 className="text-sm font-semibold text-ink-900">
-                        2. {t("exam_grant_bulk_upload")}
+                        2. {t(grantMode === "revoke_csv" ? "exam_revoke_bulk_upload" : "exam_grant_bulk_upload")}
                       </h3>
                       <div className="mt-2 space-y-3">
                         <div className="grid gap-2">
                           <Label htmlFor="exam-grant-bulk-file">
-                            {t("exam_grant_bulk_choose_file")}
+                            {t(grantMode === "revoke_csv" ? "exam_revoke_bulk_choose_file" : "exam_grant_bulk_choose_file")}
                           </Label>
                           <Input
                             id="exam-grant-bulk-file"
@@ -563,7 +734,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                           {csvPresignMutation.isPending || csvEnqueueMutation.isPending ? (
                             <Loader2 className="mr-2 size-4 animate-spin" />
                           ) : null}
-                          {t("exam_grant_bulk_upload")}
+                          {t(grantMode === "revoke_csv" ? "exam_revoke_bulk_upload" : "exam_grant_bulk_upload")}
                         </Button>
                       </div>
                     </section>
@@ -574,7 +745,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                           <div className="flex items-center gap-2">
                             <CheckCircle className="size-5 text-success" />
                             <h4 className="text-sm font-semibold text-ink-900">
-                              {t("exam_grant_bulk_success")}
+                              {t(grantMode === "revoke_csv" ? "exam_revoke_bulk_success" : "exam_grant_bulk_success")}
                             </h4>
                           </div>
                         )}
@@ -582,7 +753,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                         {!csvIsTerminalSuccess && !csvIsTerminalFailed && (
                           <div className="space-y-2">
                             <p className="text-sm font-medium text-ink-900">
-                              {t("exam_grant_bulk_progress").replace(
+                              {t(grantMode === "revoke_csv" ? "exam_revoke_bulk_progress" : "exam_grant_bulk_progress").replace(
                                 "{pct}",
                                 String(Math.round(csvJobData.progress ?? 0)),
                               )}
@@ -601,7 +772,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                         {csvIsTerminalFailed && (
                           <div className="space-y-2">
                             <h4 className="text-sm font-semibold text-danger">
-                              {t("exam_grant_bulk_failed")}
+                              {t(grantMode === "revoke_csv" ? "exam_revoke_bulk_failed" : "exam_grant_bulk_failed")}
                             </h4>
                             {csvJobData.error && (
                               <p className="text-sm text-danger">{csvJobData.error}</p>
@@ -613,10 +784,10 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                           <a
                             href={csvJobData.result_url}
                             className="inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"
-                            download="exam_grant_bulk_result.csv"
+                            download={grantMode === "revoke_csv" ? "exam_revoke_bulk_result.csv" : "exam_grant_bulk_result.csv"}
                           >
                             <Download className="size-4" />
-                            {t("exam_grant_bulk_download_result")}
+                            {t(grantMode === "revoke_csv" ? "exam_revoke_bulk_download_result" : "exam_grant_bulk_download_result")}
                           </a>
                         )}
                       </section>

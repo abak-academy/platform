@@ -22,6 +22,7 @@ type bulkProcessor interface {
 	studentBulkProcessor
 	schoolBulkProcessor
 	examGrantBulkProcessor
+	examRevokeBulkProcessor
 }
 
 // runSchoolBulkJob downloads the job's input CSV, creates each school through

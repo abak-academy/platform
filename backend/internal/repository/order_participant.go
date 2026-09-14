@@ -67,15 +67,17 @@ func (r *Repository) GetOrderParticipants(ctx context.Context, orderID uuid.UUID
 }
 
 // FilterAlreadyRegistered returns the subset of studentIDs that already have
-// an exam_registration row for the given examID. Returns an empty slice when
-// none are registered.
+// a live (non-revoked) exam_registration row for the given examID. Revoked
+// registrations don't count as access — re-ordering an exam whose access was
+// revoked must re-grant it, mirroring the grant-search NOT EXISTS filter.
+// Returns an empty slice when none are registered.
 func (r *Repository) FilterAlreadyRegistered(ctx context.Context, examID uuid.UUID, studentIDs []uuid.UUID) ([]uuid.UUID, error) {
 	if len(studentIDs) == 0 {
 		return []uuid.UUID{}, nil
 	}
 
 	rows, err := r.pool.Query(ctx,
-		`SELECT student_id FROM exam_registration WHERE exam_id = $1 AND student_id = ANY($2)`,
+		`SELECT student_id FROM exam_registration WHERE exam_id = $1 AND student_id = ANY($2) AND status <> 'revoked'`,
 		examID, studentIDs,
 	)
 	if err != nil {
