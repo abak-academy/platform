@@ -41,7 +41,7 @@ describe("school search hooks", () => {
 
   it("useSchoolSearch sends bounded search params", async () => {
     const schools: SchoolOption[] = [{ id: "s1", name: "SMAN 1 Jakarta", code: "SMAN1JKT" }];
-    mockAuthFetch.mockResolvedValueOnce({ data: schools, next_cursor: "next" });
+    mockAuthFetch.mockResolvedValueOnce({ data: schools });
 
     const { wrapper } = wrapperFactory();
     const { result } = renderHook(
@@ -52,7 +52,7 @@ describe("school search hooks", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(mockAuthFetch).toHaveBeenCalledWith("/schools?q=sman&province_id=p1&category=SMA&limit=20");
-    expect(result.current.data).toEqual({ data: schools, next_cursor: "next" });
+    expect(result.current.data).toEqual({ data: schools });
   });
 
   it("useSchoolSearch issues no request when disabled", async () => {

@@ -13,6 +13,6 @@ CREATE INDEX IF NOT EXISTS idx_school_active_name_trgm
     ON school USING GIN (LOWER(name) gin_trgm_ops)
     WHERE status = 'active';
 
-CREATE INDEX IF NOT EXISTS idx_school_provinsi_name_id
-    ON school (provinsi_id, name, id)
+CREATE INDEX IF NOT EXISTS idx_school_provinsi_kota_category_name_id
+    ON school (provinsi_id, kota_id, category, name, id)
     WHERE status = 'active';

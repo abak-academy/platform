@@ -5,6 +5,7 @@ import { SchoolPicker } from "./SchoolPicker";
 import type { SchoolOption } from "@/lib/types";
 
 const searchCalls: Array<{ params: Record<string, unknown>; enabled: boolean }> = [];
+let lastSearchKey = "";
 const schools: SchoolOption[] = [
   {
     id: "school-1",
@@ -15,17 +16,31 @@ const schools: SchoolOption[] = [
     kota_name: "KOTA JAKARTA PUSAT",
     provinsi_name: "DKI JAKARTA",
   },
+  {
+    id: "school-2",
+    name: "SMA Bina Bangsa",
+    code: "SMABB",
+    npsn: "87654321",
+    category: "SMA",
+    kota_name: "KOTA JAKARTA PUSAT",
+    provinsi_name: "DKI JAKARTA",
+  },
 ];
 
 vi.mock("@/lib/hooks/regions", () => ({
   useProvinces: () => ({ data: [{ id: "province-1", name: "DKI JAKARTA" }] }),
+  useCitiesByProvince: () => ({ data: [{ id: "city-1", province_id: "province-1", name: "KOTA JAKARTA PUSAT" }] }),
 }));
 
 vi.mock("@/lib/hooks/students", () => ({
   useSchoolById: () => ({ data: null }),
   useSchoolSearch: (params: Record<string, unknown>, enabled: boolean) => {
-    searchCalls.push({ params, enabled });
-    return { data: enabled ? { data: schools, next_cursor: "" } : { data: [], next_cursor: "" }, isFetching: false };
+    const key = JSON.stringify({ params, enabled });
+    if (key !== lastSearchKey) {
+      searchCalls.push({ params, enabled });
+      lastSearchKey = key;
+    }
+    return { data: enabled ? { data: schools } : { data: [] }, isFetching: false };
   },
 }));
 
@@ -83,26 +98,35 @@ describe("SchoolPicker", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     searchCalls.length = 0;
+    lastSearchKey = "";
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("searches by province, optional category, and name without loading all schools", async () => {
+  it("fetches by province and city, then filters typed school name locally", async () => {
     render(<Harness />);
 
-    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "province-1" } });
-    fireEvent.change(screen.getByPlaceholderText("Cari nama sekolah"), { target: { value: "sma negeri" } });
+    const [provinceSelect, citySelect, categorySelect] = screen.getAllByRole("combobox");
+    fireEvent.change(provinceSelect, { target: { value: "province-1" } });
+    fireEvent.change(citySelect, { target: { value: "city-1" } });
+    fireEvent.change(categorySelect, { target: { value: "SMA" } });
+
+    const latestBeforeTyping = searchCalls[searchCalls.length - 1];
+    expect(latestBeforeTyping.enabled).toBe(true);
+    expect(latestBeforeTyping.params).toMatchObject({ province_id: "province-1", city_id: "city-1", category: "SMA", limit: 1000 });
+    expect(latestBeforeTyping.params).not.toHaveProperty("q");
+    const callsAfterLocationFetch = searchCalls.length;
+
+    fireEvent.change(screen.getByPlaceholderText("Cari nama sekolah"), { target: { value: "negeri" } });
     await act(async () => {
       vi.advanceTimersByTime(300);
     });
 
-    const latest = searchCalls[searchCalls.length - 1];
-    expect(latest.enabled).toBe(true);
-    expect(latest.params).toMatchObject({ province_id: "province-1", q: "sma negeri", limit: 20 });
-    expect(latest.params).not.toHaveProperty("cursor");
+    expect(searchCalls).toHaveLength(callsAfterLocationFetch);
     expect(screen.getByText("SMA Negeri 1 Jakarta")).toBeInTheDocument();
+    expect(screen.queryByText("SMA Bina Bangsa")).toBeNull();
   });
 
   it("activates explicit unlisted fallback without inventing a school", () => {
@@ -126,7 +150,10 @@ describe("SchoolPicker", () => {
     expect(screen.getByTestId("unlisted")).toHaveTextContent("");
     expect(screen.getByPlaceholderText("Cari nama sekolah")).toBeInTheDocument();
 
-    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "province-1" } });
+    const [provinceSelect, citySelect, categorySelect] = screen.getAllByRole("combobox");
+    fireEvent.change(provinceSelect, { target: { value: "province-1" } });
+    fireEvent.change(citySelect, { target: { value: "city-1" } });
+    fireEvent.change(categorySelect, { target: { value: "SMA" } });
     fireEvent.change(screen.getByPlaceholderText("Cari nama sekolah"), { target: { value: "sma negeri" } });
     await act(async () => {
       vi.advanceTimersByTime(300);

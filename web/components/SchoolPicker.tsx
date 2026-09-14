@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Search } from "lucide-react";
-import { useProvinces } from "@/lib/hooks/regions";
+import { useCitiesByProvince, useProvinces } from "@/lib/hooks/regions";
 import { useTranslation } from "@/lib/i18n";
 import { useSchoolById, useSchoolSearch } from "@/lib/hooks/students";
 import type { SchoolOption } from "@/lib/types";
@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/select";
 
 const CATEGORIES = ["SD", "MI", "SMP", "MTS", "SMA", "MA", "SMK"];
-const ALL_CATEGORY = "_all_";
 
 export interface SchoolPickerProps {
   id?: string;
@@ -44,15 +43,15 @@ export function SchoolPicker({
 }: SchoolPickerProps) {
   const [mode, setMode] = useState<"name" | "npsn">("name");
   const [provinceId, setProvinceId] = useState("");
+  const [cityId, setCityId] = useState("");
   const [category, setCategory] = useState("");
   const [qInput, setQInput] = useState("");
-  const [q, setQ] = useState("");
   const [npsnInput, setNpsnInput] = useState("");
-  const [cursor, setCursor] = useState("");
   const [unlistedActive, setUnlistedActive] = useState(Boolean(unlistedName));
   const { t } = useTranslation();
 
   const { data: provinces } = useProvinces();
+  const { data: cities } = useCitiesByProvince(provinceId);
   const hydrate = useSchoolById(selectedSchool ? "" : value);
   const selected = selectedSchool ?? hydrate.data ?? null;
 
@@ -61,13 +60,8 @@ export function SchoolPicker({
   }, [unlistedName]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setQ(qInput.trim()), 300);
-    return () => clearTimeout(timer);
-  }, [qInput]);
-
-  useEffect(() => {
-    setCursor("");
-  }, [mode, provinceId, category, q, npsnInput]);
+    setCityId("");
+  }, [provinceId]);
 
   const normalizedNPSN = npsnInput.trim().toUpperCase();
   const params = useMemo(() => {
@@ -75,21 +69,25 @@ export function SchoolPicker({
       return { npsn: normalizedNPSN, limit: 20 };
     }
     return {
-      q,
       province_id: provinceId,
-      ...(category ? { category } : {}),
-      ...(cursor ? { cursor } : {}),
-      limit: 20,
+      city_id: cityId,
+      category,
+      limit: 1000,
     };
-  }, [category, cursor, mode, normalizedNPSN, provinceId, q]);
+  }, [category, cityId, mode, normalizedNPSN, provinceId]);
 
   const enabled =
     !disabled &&
     (mode === "npsn"
       ? /^[A-Z0-9]{8}$/.test(normalizedNPSN)
-      : Boolean(provinceId && q.length >= 3));
+      : Boolean(provinceId && cityId && category));
   const search = useSchoolSearch(params, enabled);
   const results = search.data?.data ?? [];
+  const nameFilter = qInput.trim().toLowerCase();
+  const displayedResults =
+    mode === "name" && nameFilter
+      ? results.filter((school) => school.name.toLowerCase().includes(nameFilter))
+      : results;
 
   function activateSearchMode(nextMode: "name" | "npsn") {
     setMode(nextMode);
@@ -149,7 +147,7 @@ export function SchoolPicker({
       ) : (
         <>
           {mode === "name" ? (
-            <div className="grid gap-2 sm:grid-cols-[1fr_120px]">
+            <div className="grid gap-2 sm:grid-cols-3">
               <Select value={provinceId || "_empty_"} onValueChange={(v) => setProvinceId(v === "_empty_" ? "" : v)} disabled={disabled}>
                 <SelectTrigger id={`${id}-province`}>
                   <SelectValue placeholder={t("school_picker_province")} />
@@ -163,12 +161,25 @@ export function SchoolPicker({
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={category || ALL_CATEGORY} onValueChange={(v) => setCategory(v === ALL_CATEGORY ? "" : v)} disabled={disabled}>
+              <Select value={cityId || "_empty_"} onValueChange={(v) => setCityId(v === "_empty_" ? "" : v)} disabled={disabled || !provinceId}>
+                <SelectTrigger id={`${id}-city`}>
+                  <SelectValue placeholder={t("school_picker_city")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_empty_">{t("school_picker_city")}</SelectItem>
+                  {(cities ?? []).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={category || "_empty_"} onValueChange={(v) => setCategory(v === "_empty_" ? "" : v)} disabled={disabled}>
                 <SelectTrigger id={`${id}-category`}>
                   <SelectValue placeholder={t("school_picker_category")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL_CATEGORY}>{t("school_picker_all_categories")}</SelectItem>
+                  <SelectItem value="_empty_">{t("school_picker_category")}</SelectItem>
                   {CATEGORIES.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c}
@@ -176,7 +187,7 @@ export function SchoolPicker({
                   ))}
                 </SelectContent>
               </Select>
-              <div className="relative sm:col-span-2">
+              <div className="relative sm:col-span-3">
                 <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-400" />
                 <Input
                   id={id}
@@ -211,10 +222,10 @@ export function SchoolPicker({
                 <Loader2 className="size-3 animate-spin" />
                 {t("school_picker_searching")}
               </div>
-            ) : enabled && results.length === 0 ? (
+            ) : enabled && displayedResults.length === 0 ? (
               <div className="text-xs text-ink-500">{t("school_picker_no_results")}</div>
             ) : null}
-            {results.map((school) => (
+            {displayedResults.map((school) => (
               <button
                 key={school.id}
                 type="button"
@@ -232,17 +243,6 @@ export function SchoolPicker({
                 </span>
               </button>
             ))}
-            {search.data?.next_cursor ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setCursor(search.data?.next_cursor ?? "")}
-                disabled={disabled || search.isFetching}
-              >
-                {t("school_picker_next_page")}
-              </Button>
-            ) : null}
           </div>
         </>
       )}

@@ -3,6 +3,7 @@ package handler_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,6 +35,9 @@ func TestListSchools_SearchEnvelope(t *testing.T) {
 	insertSearchSchool(t, env, "SMA Search Alpha "+suffix, "SMA", firstNPSN, provinceID, cityID)
 	insertSearchSchool(t, env, "SMA Search Beta "+suffix, "SMA", secondNPSN, provinceID, cityID)
 	insertSearchSchool(t, env, "SMK Search Hidden "+suffix, "SMK", "4"+strings.ToUpper(suffix[:7]), provinceID, cityID)
+	for i := 0; i < 55; i++ {
+		insertSearchSchool(t, env, fmt.Sprintf("SMA Search Bulk %02d %s", i, suffix), "SMA", fmt.Sprintf("7%s%02d", strings.ToUpper(suffix[:5]), i), provinceID, cityID)
+	}
 
 	t.Run("no filters returns bounded empty envelope", func(t *testing.T) {
 		rec := httptest.NewRecorder()
@@ -45,37 +49,45 @@ func TestListSchools_SearchEnvelope(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 			t.Fatalf("decode envelope: %v body=%s", err, rec.Body.String())
 		}
-		if len(resp.Data) != 0 || resp.NextCursor != "" {
+		if len(resp.Data) != 0 {
 			t.Fatalf("no-filter response: want empty envelope, got %+v", resp)
 		}
 	})
 
-	t.Run("province category name search is bounded and cursor paged", func(t *testing.T) {
+	t.Run("province category name search is bounded to requested limit", func(t *testing.T) {
 		path := "/api/v1/schools?q=Search&province_id=" + provinceID + "&category=SMA&limit=1"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK {
-			t.Fatalf("first page: want 200, got %d body=%s", rec.Code, rec.Body.String())
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 		}
-		var first schoolOptionsEnvelope
-		if err := json.Unmarshal(rec.Body.Bytes(), &first); err != nil {
-			t.Fatalf("decode first page: %v", err)
+		var resp schoolOptionsEnvelope
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
 		}
-		if len(first.Data) != 1 || first.Data[0].Category == nil || *first.Data[0].Category != "SMA" || first.NextCursor == "" {
-			t.Fatalf("first page: unexpected response %+v", first)
+		if len(resp.Data) != 1 || resp.Data[0].Category == nil || *resp.Data[0].Category != "SMA" {
+			t.Fatalf("unexpected response %+v", resp)
 		}
+	})
 
-		rec = httptest.NewRecorder()
-		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path+"&cursor="+first.NextCursor, nil))
+	t.Run("province city category browse works without name query", func(t *testing.T) {
+		path := "/api/v1/schools?province_id=" + provinceID + "&city_id=" + cityID + "&category=SMA&limit=1000"
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK {
-			t.Fatalf("second page: want 200, got %d body=%s", rec.Code, rec.Body.String())
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 		}
-		var second schoolOptionsEnvelope
-		if err := json.Unmarshal(rec.Body.Bytes(), &second); err != nil {
-			t.Fatalf("decode second page: %v", err)
+		var resp schoolOptionsEnvelope
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode browse response: %v", err)
 		}
-		if len(second.Data) != 1 || second.Data[0].ID == first.Data[0].ID || second.NextCursor != "" {
-			t.Fatalf("second page: unexpected response %+v after %+v", second, first)
+		if len(resp.Data) < 57 || len(resp.Data) > 1000 {
+			t.Fatalf("browse response: want bounded scoped SMA schools including seeded rows, got %d", len(resp.Data))
+		}
+		for _, school := range resp.Data {
+			if school.KotaID == nil || *school.KotaID != cityID || school.Category == nil || *school.Category != "SMA" {
+				t.Fatalf("browse school not scoped to city/category: %+v", school)
+			}
 		}
 	})
 
@@ -90,7 +102,7 @@ func TestListSchools_SearchEnvelope(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 			t.Fatalf("decode npsn response: %v", err)
 		}
-		if len(resp.Data) != 1 || resp.Data[0].NPSN == nil || *resp.Data[0].NPSN != firstNPSN || resp.NextCursor != "" {
+		if len(resp.Data) != 1 || resp.Data[0].NPSN == nil || *resp.Data[0].NPSN != firstNPSN {
 			t.Fatalf("npsn response: unexpected %+v", resp)
 		}
 	})
@@ -138,8 +150,7 @@ func TestGetSchool_HydratesLegacyInactiveSchool(t *testing.T) {
 }
 
 type schoolOptionsEnvelope struct {
-	Data       []schoolOptionResponse `json:"data"`
-	NextCursor string                 `json:"next_cursor"`
+	Data []schoolOptionResponse `json:"data"`
 }
 
 type schoolOptionResponse struct {

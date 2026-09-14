@@ -37,7 +37,7 @@ func TestMigration0064_SchoolSearchMetadata(t *testing.T) {
 	requireColumnExists(t, pool, "school", "kota_id", true)
 	requireSchoolSearchIndexExists(t, pool, "idx_school_active_npsn")
 	requireSchoolSearchIndexExists(t, pool, "idx_school_active_name_trgm")
-	requireSchoolSearchIndexExists(t, pool, "idx_school_provinsi_name_id")
+	requireSchoolSearchIndexExists(t, pool, "idx_school_provinsi_kota_category_name_id")
 
 	var category, provinsiID, kotaID *string
 	require.NoError(t, pool.QueryRow(ctx,
@@ -80,7 +80,7 @@ func TestMigration0064_SchoolSearchMetadata(t *testing.T) {
 	requireColumnExists(t, pool, "school", "kota_id", false)
 	requireSchoolSearchIndexExists(t, pool, "idx_school_active_npsn", false)
 	requireSchoolSearchIndexExists(t, pool, "idx_school_active_name_trgm", false)
-	requireSchoolSearchIndexExists(t, pool, "idx_school_provinsi_name_id", false)
+	requireSchoolSearchIndexExists(t, pool, "idx_school_provinsi_kota_category_name_id", false)
 
 	var pgTrgmExists bool
 	require.NoError(t, pool.QueryRow(ctx,

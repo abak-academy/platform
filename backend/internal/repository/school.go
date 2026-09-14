@@ -2,14 +2,11 @@ package repository
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"akademi-bimbel/internal/model"
-	"github.com/google/uuid"
 )
 
 // SchoolAdminRow is the school row returned in admin list responses,
@@ -162,59 +159,22 @@ type SchoolOption = model.SchoolOption
 type SchoolSearchFilter struct {
 	Q          string
 	ProvinceID string
+	CityID     string
 	Category   string
 	NPSN       string
-	Cursor     string
 	Limit      int
 }
 
-type schoolSearchCursor struct {
-	Q          string `json:"q"`
-	ProvinceID string `json:"province_id"`
-	Category   string `json:"category"`
-	Name       string `json:"name"`
-	ID         string `json:"id"`
-}
-
-func encodeSchoolSearchCursor(filter SchoolSearchFilter, last SchoolOption) string {
-	payload, _ := json.Marshal(schoolSearchCursor{
-		Q:          filter.Q,
-		ProvinceID: filter.ProvinceID,
-		Category:   filter.Category,
-		Name:       last.Name,
-		ID:         last.ID,
-	})
-	return base64.RawURLEncoding.EncodeToString(payload)
-}
-
-func decodeSchoolSearchCursor(raw string, filter SchoolSearchFilter) (string, uuid.UUID, error) {
-	if len(raw) > 2048 {
-		return "", uuid.Nil, ErrInvalidCursor
-	}
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return "", uuid.Nil, ErrInvalidCursor
-	}
-	var c schoolSearchCursor
-	if err := json.Unmarshal(decoded, &c); err != nil {
-		return "", uuid.Nil, ErrInvalidCursor
-	}
-	if c.Q != filter.Q || c.ProvinceID != filter.ProvinceID || c.Category != filter.Category {
-		return "", uuid.Nil, ErrInvalidCursor
-	}
-	id, err := uuid.Parse(c.ID)
-	if err != nil {
-		return "", uuid.Nil, ErrInvalidCursor
-	}
-	return c.Name, id, nil
-}
-
-func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearchFilter) ([]SchoolOption, string, error) {
+func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearchFilter) ([]SchoolOption, error) {
 	if filter.Limit <= 0 {
 		filter.Limit = 20
 	}
-	if filter.Limit > 50 {
-		filter.Limit = 50
+	maxLimit := 50
+	if filter.Q == "" && filter.CityID != "" && filter.Category != "" {
+		maxLimit = 1000
+	}
+	if filter.Limit > maxLimit {
+		filter.Limit = maxLimit
 	}
 
 	if filter.NPSN != "" {
@@ -223,44 +183,40 @@ func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearc
 			filter.NPSN,
 		)
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		if len(rows) > 1 {
-			return nil, "", ErrAmbiguousSchoolIdentity
+			return nil, ErrAmbiguousSchoolIdentity
 		}
-		return rows, "", nil
+		return rows, nil
 	}
 
-	query := `WHERE s.status = 'active' AND s.provinsi_id = $1 AND LOWER(s.name) LIKE $2 ESCAPE '\'`
-	args := []any{filter.ProvinceID, "%" + escapeLike(strings.ToLower(filter.Q)) + "%"}
-	argNum := 3
+	query := `WHERE s.status = 'active' AND s.provinsi_id = $1`
+	args := []any{filter.ProvinceID}
+	argNum := 2
+	if filter.CityID != "" {
+		query += fmt.Sprintf(` AND s.kota_id = $%d`, argNum)
+		args = append(args, filter.CityID)
+		argNum++
+	}
 	if filter.Category != "" {
 		query += fmt.Sprintf(` AND s.category = $%d`, argNum)
 		args = append(args, filter.Category)
 		argNum++
 	}
-	if filter.Cursor != "" {
-		lastName, lastID, err := decodeSchoolSearchCursor(filter.Cursor, filter)
-		if err != nil {
-			return nil, "", err
-		}
-		query += fmt.Sprintf(` AND (s.name, s.id) > ($%d, $%d::uuid)`, argNum, argNum+1)
-		args = append(args, lastName, lastID.String())
-		argNum += 2
+	if filter.Q != "" {
+		query += fmt.Sprintf(` AND LOWER(s.name) LIKE $%d ESCAPE '\'`, argNum)
+		args = append(args, "%"+escapeLike(strings.ToLower(filter.Q))+"%")
+		argNum++
 	}
 	query += fmt.Sprintf(` ORDER BY s.name ASC, s.id ASC LIMIT $%d`, argNum)
-	args = append(args, filter.Limit+1)
+	args = append(args, filter.Limit)
 
 	rows, err := r.querySchoolOptions(ctx, query, args...)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	nextCursor := ""
-	if len(rows) > filter.Limit {
-		rows = rows[:filter.Limit]
-		nextCursor = encodeSchoolSearchCursor(filter, rows[len(rows)-1])
-	}
-	return rows, nextCursor, nil
+	return rows, nil
 }
 
 func (r *Repository) querySchoolOptions(ctx context.Context, where string, args ...any) ([]SchoolOption, error) {

@@ -65,9 +65,9 @@ export function useSchoolOptions(params?: SchoolSearchParams, enabled = true) {
       const search = new URLSearchParams();
       if (params?.q) search.set("q", params.q);
       if (params?.province_id) search.set("province_id", params.province_id);
+      if (params?.city_id) search.set("city_id", params.city_id);
       if (params?.category) search.set("category", params.category);
       if (params?.npsn) search.set("npsn", params.npsn);
-      if (params?.cursor) search.set("cursor", params.cursor);
       if (params?.limit) search.set("limit", String(params.limit));
       const query = search.toString();
       return authFetch<SchoolOptionsEnvelope>(`/admin/schools/options${query ? `?${query}` : ""}`);
