@@ -537,7 +537,7 @@ export default function SchoolStudentsPage() {
   const rosterSchoolTypes = rosterSchool?.school_types?.join(" / ") ?? "";
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 py-7 md:px-6 md:py-9 fade-in">
+    <div className="mx-auto max-w-[1400px] px-4 py-7 md:px-6 md:py-9 xl:pl-10 fade-in">
       <header className="mb-7 flex flex-col gap-6 border-b border-line pb-7 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-4xl font-bold tracking-[-0.045em] text-ink-900 md:text-5xl">
