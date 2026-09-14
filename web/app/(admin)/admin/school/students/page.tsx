@@ -49,7 +49,6 @@ import { cn } from "@/lib/utils";
 import { BulkImportModal } from "@/components/admin/BulkImportModal";
 import { StatCard } from "@/components/admin/StatCard";
 import { SchoolPicker } from "@/components/SchoolPicker";
-import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
 import {
   useAdminStudents,
   useRegisterStudent,
@@ -125,6 +124,7 @@ export default function SchoolStudentsPage() {
   const currentRole = useAuthStore((s) => s.user?.role);
   const isSuperAdmin = currentRole === "super_admin";
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
+  const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<SchoolOption | null>(null);
 
   // Filters
   // searchInput is the raw input value; debouncedSearch is what actually goes
@@ -541,7 +541,7 @@ export default function SchoolStudentsPage() {
               size="sm"
               className="rounded-full"
               onClick={() => {
-                setRegisterSelectedSchool(null);
+                setRegisterSelectedSchool(selectedSchoolFilter);
                 setRegisterSchoolId(selectedSchoolId);
                 setRegisterUnlistedSchoolName("");
                 setRegisterOpen(true);
@@ -556,14 +556,34 @@ export default function SchoolStudentsPage() {
 
       {/* School picker (super_admin only) */}
       {isSuperAdmin && (
-        <div className="mb-6">
+        <div className="mb-6 max-w-xl">
           <p className="text-xs text-ink-500">{t("select_school")}</p>
-          <SchoolFilterPicker
-            value={selectedSchoolId}
-            onChange={setSelectedSchoolId}
-            label={t("select_school")}
-            allLabel={t("students_all_schools")}
-          />
+          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-start">
+            <SchoolPicker
+              id="student-school-filter"
+              value={selectedSchoolId}
+              selectedSchool={selectedSchoolFilter}
+              onChange={(school) => {
+                setSelectedSchoolFilter(school);
+                setSelectedSchoolId(school?.id ?? "");
+              }}
+              className="flex-1"
+            />
+            {selectedSchoolId ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() => {
+                  setSelectedSchoolFilter(null);
+                  setSelectedSchoolId("");
+                }}
+              >
+                {t("students_all_schools")}
+              </Button>
+            ) : null}
+          </div>
         </div>
       )}
 

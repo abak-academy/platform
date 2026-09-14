@@ -95,7 +95,7 @@ vi.mock("@/components/SchoolPicker", () => {
         );
       }
       return (
-        <div>
+        <div data-testid={`school-picker-${id}`}>
           <button type="button" role="combobox" aria-label="Sekolah">
             {schools.find((school) => school.id === value)?.name ?? "Pilih sekolah"}
           </button>
@@ -132,7 +132,7 @@ vi.mock("@/components/SchoolPicker", () => {
 
 vi.mock("@/components/SchoolFilterPicker", () => ({
   SchoolFilterPicker: ({ value, onChange, label, allLabel }: { value: string; onChange: (value: string) => void; label: string; allLabel: string }) => (
-    <select aria-label={label} value={value || ""} onChange={(event) => onChange(event.target.value)}>
+    <select data-testid="legacy-school-filter-dropdown" aria-label={label} value={value || ""} onChange={(event) => onChange(event.target.value)}>
       <option value="">{allLabel}</option>
       <option value="sch-1">SMAN 1 Jakarta</option>
       <option value="s2">SMAN 2 Bandung</option>
@@ -687,9 +687,9 @@ describe("SchoolStudentsPage", () => {
     expect(screen.queryByDisplayValue("chosenPass123")).not.toBeInTheDocument();
   });
 
-  // ── School dropdown (Bug B) ──
+  // ── Page-level school filter (super_admin only) ──
 
-  it("shows school dropdown for super_admin role", async () => {
+  it("uses a school picker, not the legacy dropdown, for the super_admin page filter", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
 
     render(<SchoolStudentsPage />);
@@ -698,12 +698,11 @@ describe("SchoolStudentsPage", () => {
       expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
     });
 
-    // The school combobox should appear
-    const schoolPicker = screen.getByRole("combobox", { name: /sekolah/i });
-    expect(schoolPicker).toBeInTheDocument();
+    expect(screen.queryByTestId("legacy-school-filter-dropdown")).not.toBeInTheDocument();
+    expect(screen.getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
   });
 
-  it("does not show school dropdown for admin_school role", async () => {
+  it("does not show school filter for admin_school role", async () => {
     authStore = { token: "t", user: { role: "admin_school" } };
 
     render(<SchoolStudentsPage />);
@@ -712,8 +711,8 @@ describe("SchoolStudentsPage", () => {
       expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
     });
 
-    // No school combobox should exist
-    expect(screen.queryByRole("combobox", { name: /sekolah/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("legacy-school-filter-dropdown")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("school-picker-student-school-filter")).not.toBeInTheDocument();
   });
 
   // ── School picker inside the Register Student dialog (super_admin) ──
