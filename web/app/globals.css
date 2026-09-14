@@ -298,10 +298,3 @@ html[data-theme="dark"] {
   max-width: 100%;
   height: auto;
 }
-
-.student-roster-table .md-card-outlined {
-  border-right: 0;
-  border-left: 0;
-  border-radius: 0;
-  box-shadow: none;
-}

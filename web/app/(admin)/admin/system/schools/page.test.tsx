@@ -157,6 +157,7 @@ describe("SystemSchoolsPage", () => {
     expect(inspector).toHaveClass("bg-surface");
     expect(inspector).not.toHaveClass("bg-surface-2");
     expect(inspector.closest(".school-management-workspace")).toHaveClass("rounded-[20px]");
+    expect(inspector.closest(".max-w-6xl")).toBeTruthy();
   });
 
   it("renders loading state when data is loading and no schools exist", async () => {

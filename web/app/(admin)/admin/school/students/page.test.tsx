@@ -725,6 +725,20 @@ describe("SchoolStudentsPage", () => {
     expect(filters).toHaveClass("bg-surface");
     expect(filters).not.toHaveClass("bg-surface-2");
     expect(filters.parentElement).toHaveClass("rounded-[20px]");
+    expect(filters.closest(".max-w-6xl")).toBeTruthy();
+  });
+
+  it("places the roster title above its totals and renders the table without a card shell", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    const roster = screen.getByRole("region", { name: "Daftar siswa" });
+    const title = within(roster).getByRole("heading", { name: "Daftar siswa" });
+    const total = within(roster).getByText("Total akun");
+    expect(title.compareDocumentPosition(total) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(roster).getByTestId("school-students-table")).not.toHaveClass("md-card-outlined");
   });
 
   it("shows the selected school as the active roster context", async () => {

@@ -537,7 +537,7 @@ export default function SchoolStudentsPage() {
   const rosterSchoolTypes = rosterSchool?.school_types?.join(" / ") ?? "";
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 py-7 md:px-6 md:py-9 xl:pl-10 fade-in">
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 xl:pl-10 fade-in">
       <header className="mb-7 flex flex-col gap-6 border-b border-line pb-7 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-4xl font-bold tracking-[-0.045em] text-ink-900 md:text-5xl">
@@ -677,8 +677,15 @@ export default function SchoolStudentsPage() {
           </div>
         </aside>
 
-        <section className="min-w-0 px-5 py-6 md:px-7">
-          <div className="mb-7 grid overflow-hidden rounded-[16px] border border-line bg-surface sm:grid-cols-3">
+        <section aria-label={rosterLabel} className="min-w-0 px-5 py-6 md:px-7">
+          <div className="border-b border-line pb-4">
+            <h2 className="text-xl font-bold tracking-[-0.025em] text-ink-900">
+              {rosterLabel}
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-ink-500">{rosterDescription}</p>
+          </div>
+
+          <div className="mb-7 mt-6 grid overflow-hidden rounded-[16px] border border-line bg-surface sm:grid-cols-3">
             {[
               [stats.total, t("accounts_stat_total")],
               [stats.active, t("status_label_active")],
@@ -699,21 +706,13 @@ export default function SchoolStudentsPage() {
             ))}
           </div>
 
-          <div className="mb-3">
-            <div>
-              <h2 className="text-xl font-bold tracking-[-0.025em] text-ink-900">
-                {rosterLabel}
-              </h2>
-              <p className="mt-1 text-xs text-ink-500">{rosterDescription}</p>
-            </div>
-          </div>
-
-          <div className="student-roster-table">
+          <div className="border-y border-line">
             <DataTable
               columns={columns}
               rows={accumulated}
               rowKey={(s) => s.id}
               empty={tableEmpty}
+              surface="plain"
               data-testid="school-students-table"
               footer={
                 nextCursor ? (
