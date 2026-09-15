@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMigration0064_SchoolSearchMetadata(t *testing.T) {
+func TestMigration0064_SchoolFields(t *testing.T) {
 	ctx := context.Background()
 	pool := newMigration0025Pool(t)
 
@@ -23,14 +23,14 @@ func TestMigration0064_SchoolSearchMetadata(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO school (name, code, npsn, school_types, alamat, status)
 		VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
-		"Metadata Migration School", "metadata-migration", "12345678", []string{"SMA"}, "Jl. Lama",
+		"School Fields Migration School", "school-fields-migration", "12345678", []string{"SMA"}, "Jl. Lama",
 	).Scan(&schoolID))
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO users (email, role, name, school_id) VALUES ($1, 'student', $2, $3) RETURNING id`,
 		"migration-0064@test.local", "Migration Student", schoolID,
 	).Scan(&userID))
 
-	applyMigrationFile(t, pool, "0064_school_search_metadata.up.sql")
+	applyMigrationFile(t, pool, "0064_school_fields.up.sql")
 
 	requireColumnExists(t, pool, "school", "category", true)
 	requireColumnExists(t, pool, "school", "provinsi_id", true)
@@ -73,7 +73,7 @@ func TestMigration0064_SchoolSearchMetadata(t *testing.T) {
 	)
 	require.Error(t, err)
 
-	applyMigrationFile(t, pool, "0064_school_search_metadata.down.sql")
+	applyMigrationFile(t, pool, "0064_school_fields.down.sql")
 
 	requireColumnExists(t, pool, "school", "category", false)
 	requireColumnExists(t, pool, "school", "provinsi_id", false)

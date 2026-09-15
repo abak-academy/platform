@@ -18,7 +18,7 @@ func TestEnqueueStudentBulkJobFromData_LegacyHeaderFollowsNPSNEnforcement(t *tes
 	ctx := context.Background()
 	svc.cfg = &config.Config{}
 	code := "legacy_enqueue_" + uniqueSuffix()
-	school, err := svc.CreateSchool(ctx, "Legacy Enqueue School "+code, code, nil, []string{"sma"}, nil)
+	school, err := svc.CreateSchool(ctx, "Legacy Enqueue School "+code, code, nil, []string{"sma"}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestEnqueueStudentBulkJobFromData_AdminSchoolDoesNotRequireSchoolIdentity(t
 	ctx := context.Background()
 	svc.cfg = &config.Config{}
 	code := "scoped_enqueue_" + uniqueSuffix()
-	school, err := svc.CreateSchool(ctx, "Scoped Enqueue School "+code, code, nil, []string{"sma"}, nil)
+	school, err := svc.CreateSchool(ctx, "Scoped Enqueue School "+code, code, nil, []string{"sma"}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}

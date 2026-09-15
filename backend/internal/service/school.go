@@ -298,11 +298,7 @@ func (s *Service) GetSchoolOption(ctx context.Context, id string) (*model.School
 }
 
 // CreateSchool creates a new school with status='active' and student_count=0.
-func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *string, schoolTypes []string, alamat *string) (*SchoolResponse, error) {
-	return s.CreateSchoolWithMetadata(ctx, name, code, npsn, schoolTypes, alamat, nil, nil, nil)
-}
-
-func (s *Service) CreateSchoolWithMetadata(ctx context.Context, name, code string, npsn *string, schoolTypes []string, alamat, category, provinceID, cityID *string) (*SchoolResponse, error) {
+func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *string, schoolTypes []string, alamat, category, provinceID, cityID *string) (*SchoolResponse, error) {
 	if code == "" {
 		return nil, ErrMissingField
 	}
@@ -371,11 +367,7 @@ func (s *Service) CreateSchoolWithMetadata(ctx context.Context, name, code strin
 
 // UpdateSchool patches school fields. Nil pointers leave the corresponding
 // column unchanged.
-func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alamat *string, schoolTypes []string, code *string) (*SchoolResponse, error) {
-	return s.UpdateSchoolWithMetadata(ctx, id, name, npsn, alamat, schoolTypes, code, nil, nil, nil)
-}
-
-func (s *Service) UpdateSchoolWithMetadata(ctx context.Context, id string, name, npsn, alamat *string, schoolTypes []string, code, category, provinceID, cityID *string) (*SchoolResponse, error) {
+func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alamat *string, schoolTypes []string, code, category, provinceID, cityID *string) (*SchoolResponse, error) {
 	if name != nil && !validSchoolName(*name) {
 		return nil, ErrInvalidSchoolName
 	}

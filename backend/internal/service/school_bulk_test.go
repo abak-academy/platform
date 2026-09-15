@@ -249,7 +249,7 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 
 	t.Run("duplicate code fails at row level, later row still succeeds, order preserved", func(t *testing.T) {
 		existingCode := "sb_" + uniqueSuffix()
-		if _, err := svc.CreateSchool(ctx, "Existing School", existingCode, nil, nil, nil); err != nil {
+		if _, err := svc.CreateSchool(ctx, "Existing School", existingCode, nil, nil, nil, nil, nil, nil); err != nil {
 			t.Fatalf("seed CreateSchool: %v", err)
 		}
 		newCode := "sb_" + uniqueSuffix()
@@ -361,7 +361,7 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 
 	t.Run("rejects duplicate normalized NPSN and continues later rows", func(t *testing.T) {
 		takenNPSN := "Y" + uniqueSuffix()[:7]
-		created, err := svc.CreateSchool(ctx, "Bulk Duplicate Seed", "sb_"+uniqueSuffix(), &takenNPSN, nil, nil)
+		created, err := svc.CreateSchool(ctx, "Bulk Duplicate Seed", "sb_"+uniqueSuffix(), &takenNPSN, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool seed: %v", err)
 		}

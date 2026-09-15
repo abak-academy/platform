@@ -195,7 +195,7 @@ func (s *Service) ProcessSchoolBulkRows(ctx context.Context, rows []SchoolBulkRo
 
 		var created *SchoolResponse
 		if err == nil {
-			created, err = s.CreateSchoolWithMetadata(ctx, r.Name, r.Code, r.NPSN, r.SchoolTypes, r.Alamat, r.Category, provinceID, cityID)
+			created, err = s.CreateSchool(ctx, r.Name, r.Code, r.NPSN, r.SchoolTypes, r.Alamat, r.Category, provinceID, cityID)
 		}
 		if err == nil {
 			result.Status = "success"
