@@ -23,7 +23,10 @@ export type BulkFieldSpec = {
     | "bulk_format_school_code"
     | "bulk_format_school_npsn"
     | "bulk_format_school_school_types"
-    | "bulk_format_school_alamat";
+    | "bulk_format_school_alamat"
+    | "bulk_format_school_category"
+    | "bulk_format_school_provinsi"
+    | "bulk_format_school_kota";
   example: string;
 };
 
@@ -43,11 +46,11 @@ export const SUPER_ADMIN_STUDENT_TEMPLATE_ROWS = [
   "Siti Aminah,,YAYASANBIAN,SMA,,,,,,,,,,,",
 ];
 
-export const SCHOOL_TEMPLATE_HEADER = "name,code,npsn,school_types,alamat";
+export const SCHOOL_TEMPLATE_HEADER = "name,code,npsn,school_types,alamat,category,provinsi,kota";
 
 export const SCHOOL_TEMPLATE_ROWS = [
-  'SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,"Jl. Sudirman No. 1"',
-  "SMPN 5 Bandung,SMPN5BDG,,SMP,",
+  'SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,"Jl. Sudirman No. 1",SMA,DKI JAKARTA,KOTA JAKARTA PUSAT',
+  "SMPN 5 Bandung,SMPN5BDG,,SMP,,SMP,JAWA BARAT,KOTA BANDUNG",
 ];
 
 export const STUDENT_BULK_FIELDS: BulkFieldSpec[] = [
@@ -84,6 +87,9 @@ export const SCHOOL_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "npsn", required: false, ruleKey: "bulk_format_school_npsn", example: "20100001" },
   { column: "school_types", required: false, ruleKey: "bulk_format_school_school_types", example: "SMA|SMK" },
   { column: "alamat", required: false, ruleKey: "bulk_format_school_alamat", example: "Jl. Sudirman No. 1" },
+  { column: "category", required: false, ruleKey: "bulk_format_school_category", example: "SMA" },
+  { column: "provinsi", required: false, ruleKey: "bulk_format_school_provinsi", example: "DKI JAKARTA" },
+  { column: "kota", required: false, ruleKey: "bulk_format_school_kota", example: "KOTA JAKARTA PUSAT" },
 ];
 
 export const STUDENT_GUIDE_PITFALL_KEYS = [

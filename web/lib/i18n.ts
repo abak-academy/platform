@@ -1647,6 +1647,12 @@ export const DICT = {
     bulk_format_school_school_types:
       "Opsional. Satu atau lebih jenjang, dipisah | atau koma. Disarankan huruf besar (contoh SMA|SMK) agar cocok dengan jenjang siswa.",
     bulk_format_school_alamat: "Opsional. Teks bebas.",
+    bulk_format_school_category:
+      "Opsional. Gunakan salah satu: SD, MI, SMP, MTS, SMA, MA, atau SMK.",
+    bulk_format_school_provinsi:
+      "Opsional, tetapi wajib diisi bersama kota. Gunakan nama resmi lengkap yang sudah ada di database (contoh DKI JAKARTA).",
+    bulk_format_school_kota:
+      "Opsional, tetapi wajib diisi bersama provinsi. Gunakan nama resmi lengkap dalam provinsi tersebut (contoh KOTA JAKARTA PUSAT).",
     bulk_format_pitfall_csv: "Simpan sebagai CSV biasa. Jangan unggah file Excel (.xlsx).",
     bulk_format_pitfall_header: "Jangan ubah nama kolom pada baris header.",
     bulk_format_pitfall_comma: "Jika nilai berisi koma, bungkus dengan tanda kutip.",
@@ -3295,6 +3301,12 @@ export const DICT = {
     bulk_format_school_school_types:
       "Optional. One or more jenjang values, separated by | or comma. Prefer uppercase (example SMA|SMK) so student jenjang matches.",
     bulk_format_school_alamat: "Optional. Free text.",
+    bulk_format_school_category:
+      "Optional. Use one of: SD, MI, SMP, MTS, SMA, MA, or SMK.",
+    bulk_format_school_provinsi:
+      "Optional, but must be provided with kota. Use the full official name already in the database (example DKI JAKARTA).",
+    bulk_format_school_kota:
+      "Optional, but must be provided with provinsi. Use the full official name within that province (example KOTA JAKARTA PUSAT).",
     bulk_format_pitfall_csv: "Save as a plain CSV. Do not upload an Excel (.xlsx) file.",
     bulk_format_pitfall_header: "Do not rename the header columns.",
     bulk_format_pitfall_comma: "Quote any value that contains a comma.",

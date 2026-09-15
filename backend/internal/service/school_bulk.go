@@ -15,6 +15,9 @@ type SchoolBulkRow struct {
 	Code        string
 	NPSN        *string
 	Alamat      *string
+	Category    *string
+	Provinsi    *string
+	Kota        *string
 	SchoolTypes []string
 }
 
@@ -25,6 +28,9 @@ type SchoolBulkResultRow struct {
 	NPSN        string
 	SchoolTypes string
 	Alamat      string
+	Category    string
+	Provinsi    string
+	Kota        string
 	Status      string
 	Error       string
 }
@@ -48,7 +54,7 @@ func parseSchoolTypes(cell string) []string {
 }
 
 // ParseSchoolBulkCSV reads a school-bulk upload. name and code are required;
-// npsn/school_types/alamat are optional. Mirrors ParseStudentBulkCSV.
+// npsn/school_types/alamat/category/provinsi/kota are optional. Mirrors ParseStudentBulkCSV.
 func ParseSchoolBulkCSV(data []byte) ([]SchoolBulkRow, error) {
 	r := newBulkCSVReader(data)
 
@@ -61,6 +67,7 @@ func ParseSchoolBulkCSV(data []byte) ([]SchoolBulkRow, error) {
 	}
 
 	nameIdx, codeIdx, npsnIdx, schoolTypesIdx, alamatIdx := -1, -1, -1, -1, -1
+	categoryIdx, provinsiIdx, kotaIdx := -1, -1, -1
 	for i, h := range header {
 		switch normalizeCSVHeader(h) {
 		case "name":
@@ -73,6 +80,12 @@ func ParseSchoolBulkCSV(data []byte) ([]SchoolBulkRow, error) {
 			schoolTypesIdx = i
 		case "alamat":
 			alamatIdx = i
+		case "category":
+			categoryIdx = i
+		case "provinsi":
+			provinsiIdx = i
+		case "kota":
+			kotaIdx = i
 		}
 	}
 	if nameIdx == -1 || codeIdx == -1 {
@@ -103,6 +116,9 @@ func ParseSchoolBulkCSV(data []byte) ([]SchoolBulkRow, error) {
 			Code:        bulkCell(record, codeIdx),
 			NPSN:        bulkOptionalCell(record, npsnIdx),
 			Alamat:      bulkOptionalCell(record, alamatIdx),
+			Category:    bulkOptionalCell(record, categoryIdx),
+			Provinsi:    bulkOptionalCell(record, provinsiIdx),
+			Kota:        bulkOptionalCell(record, kotaIdx),
 			SchoolTypes: parseSchoolTypes(bulkCell(record, schoolTypesIdx)),
 		})
 	}
@@ -137,10 +153,57 @@ func (s *Service) ProcessSchoolBulkRows(ctx context.Context, rows []SchoolBulkRo
 		if r.Alamat != nil {
 			result.Alamat = *r.Alamat
 		}
+		if r.Category != nil {
+			result.Category = *r.Category
+		}
+		if r.Provinsi != nil {
+			result.Provinsi = *r.Provinsi
+		}
+		if r.Kota != nil {
+			result.Kota = *r.Kota
+		}
 
-		created, err := s.CreateSchool(ctx, r.Name, r.Code, r.NPSN, r.SchoolTypes, r.Alamat)
+		var provinceID, cityID *string
+		var err error
+		if (r.Provinsi == nil) != (r.Kota == nil) {
+			err = ErrIncompleteSchoolLocation
+		}
+		if err == nil && r.Provinsi != nil {
+			province, lookupErr := s.storeRepo.GetProvinceByName(ctx, *r.Provinsi)
+			switch {
+			case lookupErr != nil:
+				err = lookupErr
+			case province == nil:
+				err = ErrInvalidProvinsi
+			default:
+				provinceID = &province.ID
+				result.Provinsi = province.Name
+			}
+		}
+		if err == nil && r.Kota != nil {
+			city, lookupErr := s.storeRepo.GetCityByNameInProvince(ctx, *r.Kota, *provinceID)
+			switch {
+			case lookupErr != nil:
+				err = lookupErr
+			case city == nil:
+				err = ErrInvalidKota
+			default:
+				cityID = &city.ID
+				result.Kota = city.Name
+			}
+		}
+
+		var created *SchoolResponse
+		if err == nil {
+			created, err = s.CreateSchoolWithMetadata(ctx, r.Name, r.Code, r.NPSN, r.SchoolTypes, r.Alamat, r.Category, provinceID, cityID)
+		}
 		if err == nil {
 			result.Status = "success"
+			if created.Category != nil {
+				result.Category = *created.Category
+			} else {
+				result.Category = ""
+			}
 			if created.NPSN != nil {
 				result.NPSN = *created.NPSN
 			} else {
@@ -170,9 +233,9 @@ func (s *Service) ProcessSchoolBulkRows(ctx context.Context, rows []SchoolBulkRo
 func BuildSchoolBulkResultCSV(results []SchoolBulkResultRow) []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"row", "name", "code", "npsn", "school_types", "alamat", "status", "error"})
+	_ = w.Write([]string{"row", "name", "code", "npsn", "school_types", "alamat", "category", "provinsi", "kota", "status", "error"})
 	for _, r := range results {
-		_ = w.Write(csvSafeRow(strconv.Itoa(r.Row), r.Name, r.Code, r.NPSN, r.SchoolTypes, r.Alamat, r.Status, r.Error))
+		_ = w.Write(csvSafeRow(strconv.Itoa(r.Row), r.Name, r.Code, r.NPSN, r.SchoolTypes, r.Alamat, r.Category, r.Provinsi, r.Kota, r.Status, r.Error))
 	}
 	w.Flush()
 	return buf.Bytes()
