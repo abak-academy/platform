@@ -320,7 +320,7 @@ func TestParseStudentBulkCSV(t *testing.T) {
 }
 
 func TestParseStudentBulkCSVForWorker_AcceptsLegacySchoolHeader(t *testing.T) {
-	rows, err := ParseStudentBulkCSVForWorker([]byte("name,school,jenjang\nBudi,SMAN 1 Jakarta,sma\n"))
+	rows, err := ParseStudentBulkCSVForWorker([]byte("name,school,jenjang\nBudi,SMAN 1 Jakarta,sma\n"), true)
 	if err != nil {
 		t.Fatalf("ParseStudentBulkCSVForWorker: %v", err)
 	}
@@ -330,7 +330,7 @@ func TestParseStudentBulkCSVForWorker_AcceptsLegacySchoolHeader(t *testing.T) {
 }
 
 func TestParseStudentBulkCSVForWorker_PrefersNPSNHeader(t *testing.T) {
-	rows, err := ParseStudentBulkCSVForWorker([]byte("name,school_npsn,school,jenjang\nBudi,20100001,Legacy School,sma\n"))
+	rows, err := ParseStudentBulkCSVForWorker([]byte("name,school_npsn,school,jenjang\nBudi,20100001,Legacy School,sma\n"), true)
 	if err != nil {
 		t.Fatalf("ParseStudentBulkCSVForWorker: %v", err)
 	}

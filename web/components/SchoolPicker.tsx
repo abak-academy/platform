@@ -85,8 +85,10 @@ export function SchoolPicker({
   const results = search.data?.data ?? [];
   const nameFilter = qInput.trim().toLowerCase();
   const displayedResults =
-    mode === "name" && nameFilter
-      ? results.filter((school) => school.name.toLowerCase().includes(nameFilter))
+    mode === "name"
+      ? nameFilter
+        ? results.filter((school) => school.name.toLowerCase().includes(nameFilter)).slice(0, 50)
+        : []
       : results;
 
   function activateSearchMode(nextMode: "name" | "npsn") {

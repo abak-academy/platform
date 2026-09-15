@@ -1,5 +1,4 @@
 DROP INDEX IF EXISTS idx_school_provinsi_kota_category_name_id;
-DROP INDEX IF EXISTS idx_school_active_name_trgm;
 DROP INDEX IF EXISTS idx_school_active_npsn;
 
 ALTER TABLE school

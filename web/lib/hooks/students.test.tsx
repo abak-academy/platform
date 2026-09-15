@@ -45,19 +45,19 @@ describe("school search hooks", () => {
 
     const { wrapper } = wrapperFactory();
     const { result } = renderHook(
-      () => useSchoolSearch({ province_id: "p1", q: "sman", category: "SMA", limit: 20 }),
+      () => useSchoolSearch({ province_id: "p1", city_id: "c1", category: "SMA", limit: 20 }),
       { wrapper },
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(mockAuthFetch).toHaveBeenCalledWith("/schools?q=sman&province_id=p1&category=SMA&limit=20");
+    expect(mockAuthFetch).toHaveBeenCalledWith("/schools?province_id=p1&city_id=c1&category=SMA&limit=20");
     expect(result.current.data).toEqual({ data: schools });
   });
 
   it("useSchoolSearch issues no request when disabled", async () => {
     const { wrapper } = wrapperFactory();
-    const { result } = renderHook(() => useSchoolSearch({ q: "sman" }, false), { wrapper });
+    const { result } = renderHook(() => useSchoolSearch({ province_id: "p1" }, false), { wrapper });
 
     expect(result.current.isPending).toBe(true);
     expect(result.current.fetchStatus).toBe("idle");

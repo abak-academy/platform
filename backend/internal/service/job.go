@@ -96,13 +96,10 @@ func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy
 		return "", err
 	}
 
-	return s.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, actorRole, fileKey, data)
+	return s.enqueueStudentBulkJobFromData(ctx, createdBy, actorRole, fileKey, data)
 }
 
-// enqueueStudentBulkJobFromData validates the CSV and inserts the job row.
-// schoolID is unused here — row-scoping is enforced by the caller passing
-// claims.SchoolID, and a future job type might need it in this signature.
-func (s *Service) enqueueStudentBulkJobFromData(ctx context.Context, schoolID, createdBy, actorRole, fileKey string, data []byte) (string, error) {
+func (s *Service) enqueueStudentBulkJobFromData(ctx context.Context, createdBy, actorRole, fileKey string, data []byte) (string, error) {
 	parseCSV := ParseStudentBulkCSV
 	if actorRole == RoleAdminSchool {
 		parseCSV = ParseSchoolBoundStudentBulkCSV

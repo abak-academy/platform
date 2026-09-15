@@ -2,8 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { AdminSchoolInput, AdminSchoolUpdateInput, School, SchoolOption } from "@/lib/types";
-import type { SchoolOptionsEnvelope, SchoolSearchParams } from "@/lib/hooks/students";
+import type { AdminSchoolInput, AdminSchoolUpdateInput, School } from "@/lib/types";
 
 export interface AdminSchoolsParams {
   q?: string;
@@ -31,9 +30,6 @@ export const adminSchoolsKeys = {
       params?.cursor ?? "initial",
       params?.limit ?? 20,
     ] as const,
-  // Prefixed by `all`, so invalidateQueries({ queryKey: adminSchoolsKeys.all })
-  // from the mutations below already covers this key too.
-  options: (params?: SchoolSearchParams) => [...adminSchoolsKeys.all, "options", params ?? {}] as const,
 };
 
 export function useAdminSchools(params?: AdminSchoolsParams) {
@@ -49,28 +45,6 @@ export function useAdminSchools(params?: AdminSchoolsParams) {
       const query = search.toString();
       const path = query ? `/admin/schools?${query}` : "/admin/schools";
       return authFetch<AdminSchoolsResponse>(path);
-    },
-  });
-}
-
-// Bounded school option search for picker and filter surfaces.
-const SCHOOL_OPTIONS_STALE_TIME_MS = 5 * 60 * 1000;
-
-export function useSchoolOptions(params?: SchoolSearchParams, enabled = true) {
-  return useQuery({
-    queryKey: adminSchoolsKeys.options(params),
-    staleTime: SCHOOL_OPTIONS_STALE_TIME_MS,
-    enabled,
-    queryFn: () => {
-      const search = new URLSearchParams();
-      if (params?.q) search.set("q", params.q);
-      if (params?.province_id) search.set("province_id", params.province_id);
-      if (params?.city_id) search.set("city_id", params.city_id);
-      if (params?.category) search.set("category", params.category);
-      if (params?.npsn) search.set("npsn", params.npsn);
-      if (params?.limit) search.set("limit", String(params.limit));
-      const query = search.toString();
-      return authFetch<SchoolOptionsEnvelope>(`/admin/schools/options${query ? `?${query}` : ""}`);
     },
   });
 }

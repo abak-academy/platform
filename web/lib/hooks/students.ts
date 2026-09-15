@@ -49,7 +49,6 @@ export interface UpdateProfileInput {
 }
 
 export interface SchoolSearchParams {
-  q?: string;
   province_id?: string;
   city_id?: string;
   category?: string;
@@ -63,7 +62,6 @@ export interface SchoolOptionsEnvelope {
 
 function schoolSearchPath(base: string, params: SchoolSearchParams) {
   const search = new URLSearchParams();
-  if (params.q) search.set("q", params.q);
   if (params.province_id) search.set("province_id", params.province_id);
   if (params.city_id) search.set("city_id", params.city_id);
   if (params.category) search.set("category", params.category);

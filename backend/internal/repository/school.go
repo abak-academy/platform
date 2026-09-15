@@ -157,7 +157,6 @@ var ErrAmbiguousSchoolIdentity = errors.New("ambiguous school identity")
 type SchoolOption = model.SchoolOption
 
 type SchoolSearchFilter struct {
-	Q          string
 	ProvinceID string
 	CityID     string
 	Category   string
@@ -170,7 +169,7 @@ func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearc
 		filter.Limit = 20
 	}
 	maxLimit := 50
-	if filter.Q == "" && filter.CityID != "" && filter.Category != "" {
+	if filter.NPSN == "" && filter.CityID != "" && filter.Category != "" {
 		maxLimit = 1000
 	}
 	if filter.Limit > maxLimit {
@@ -202,11 +201,6 @@ func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearc
 	if filter.Category != "" {
 		query += fmt.Sprintf(` AND s.category = $%d`, argNum)
 		args = append(args, filter.Category)
-		argNum++
-	}
-	if filter.Q != "" {
-		query += fmt.Sprintf(` AND LOWER(s.name) LIKE $%d ESCAPE '\'`, argNum)
-		args = append(args, "%"+escapeLike(strings.ToLower(filter.Q))+"%")
 		argNum++
 	}
 	query += fmt.Sprintf(` ORDER BY s.name ASC, s.id ASC LIMIT $%d`, argNum)
@@ -259,11 +253,6 @@ func (r *Repository) GetSchoolOptionByID(ctx context.Context, id string) (*Schoo
 	return &rows[0], nil
 }
 
-func escapeLike(s string) string {
-	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return replacer.Replace(s)
-}
-
 // GetSchoolByID returns a school by ID. Returns nil, nil when not found.
 func (r *Repository) GetSchoolByID(ctx context.Context, id string) (*model.School, error) {
 	s := &model.School{}
@@ -287,8 +276,8 @@ func (r *Repository) GetSchoolByID(ctx context.Context, id string) (*model.Schoo
 // SchoolCodeExists checks whether a given code already exists in the school table.
 // excludeID optionally excludes a specific school ID (for update checks).
 func (r *Repository) SchoolCodeExists(ctx context.Context, code string, excludeID *string) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM school WHERE code = $1`
-	args := []any{code}
+	query := `SELECT EXISTS(SELECT 1 FROM school WHERE UPPER(BTRIM(code)) = $1`
+	args := []any{strings.ToUpper(strings.TrimSpace(code))}
 	if excludeID != nil {
 		query += ` AND id != $2`
 		args = append(args, *excludeID)
@@ -382,22 +371,37 @@ func (r *Repository) GetSchoolByNPSN(ctx context.Context, npsn string) (*model.S
 }
 
 func (r *Repository) GetSchoolByCode(ctx context.Context, code string) (*model.School, error) {
-	s := &model.School{}
-	err := r.pool.QueryRow(ctx,
+	rows, err := r.pool.Query(ctx,
 		`SELECT id, name, code, npsn, school_types, alamat, status, created_at, updated_at
-		FROM school WHERE code = $1`,
-		code,
-	).Scan(
-		&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
-		&s.Status, &s.CreatedAt, &s.UpdatedAt,
+		FROM school WHERE UPPER(BTRIM(code)) = $1 ORDER BY id LIMIT 2`,
+		strings.ToUpper(strings.TrimSpace(code)),
 	)
 	if err != nil {
-		if isNotFound(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	return s, nil
+	defer rows.Close()
+
+	schools := []*model.School{}
+	for rows.Next() {
+		s := &model.School{}
+		if err := rows.Scan(
+			&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
+			&s.Status, &s.CreatedAt, &s.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		schools = append(schools, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(schools) == 0 {
+		return nil, nil
+	}
+	if len(schools) > 1 {
+		return nil, ErrAmbiguousSchoolIdentity
+	}
+	return schools[0], nil
 }
 
 // CountStudentsBySchool returns the number of non-deleted students for a school.

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SchoolFilterPicker } from "./SchoolFilterPicker";
 
@@ -21,15 +21,17 @@ vi.mock("@/lib/hooks/regions", () => ({
 }));
 
 vi.mock("@/lib/hooks/students", () => ({
-  useSchoolById: () => ({ data: null }),
+  useSchoolById: (id: string) => ({
+    data: id === "school-outside" ? { id, name: "SMAN Outside Current Page", code: "OUTSIDE" } : null,
+  }),
   useSchoolSearch: () => ({ data: { data: [] }, isFetching: false }),
 }));
 
-function renderFilter() {
+function renderFilter(value = "") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <SchoolFilterPicker value="" onChange={() => undefined} label="Sekolah" allLabel="Semua sekolah" />
+      <SchoolFilterPicker value={value} onChange={() => undefined} label="Sekolah" allLabel="Semua sekolah" />
     </QueryClientProvider>,
   );
 }
@@ -53,5 +55,14 @@ describe("SchoolFilterPicker", () => {
     renderFilter();
 
     expect(useAdminSchoolsCalls.at(-1)).toEqual({ q: undefined, status: "active", limit: 20 });
+  });
+
+  it("hydrates a selected school outside the current result page", () => {
+    renderFilter("school-outside");
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Sekolah" }));
+
+    expect(screen.getByRole("option", { name: "SMAN Outside Current Page" })).toBeInTheDocument();
+    expect(screen.queryByText("school-outside")).toBeNull();
   });
 });

@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
 ALTER TABLE school
     ADD COLUMN IF NOT EXISTS category TEXT,
     ADD COLUMN IF NOT EXISTS provinsi_id TEXT REFERENCES province(id),
@@ -7,10 +5,6 @@ ALTER TABLE school
 
 CREATE INDEX IF NOT EXISTS idx_school_active_npsn
     ON school (UPPER(BTRIM(npsn)))
-    WHERE status = 'active';
-
-CREATE INDEX IF NOT EXISTS idx_school_active_name_trgm
-    ON school USING GIN (LOWER(name) gin_trgm_ops)
     WHERE status = 'active';
 
 CREATE INDEX IF NOT EXISTS idx_school_provinsi_kota_category_name_id

@@ -6,7 +6,7 @@ import type { SchoolOption } from "@/lib/types";
 
 const searchCalls: Array<{ params: Record<string, unknown>; enabled: boolean }> = [];
 let lastSearchKey = "";
-const schools: SchoolOption[] = [
+const defaultSchools: SchoolOption[] = [
   {
     id: "school-1",
     name: "SMA Negeri 1 Jakarta",
@@ -26,6 +26,7 @@ const schools: SchoolOption[] = [
     provinsi_name: "DKI JAKARTA",
   },
 ];
+let schools = defaultSchools;
 
 vi.mock("@/lib/hooks/regions", () => ({
   useProvinces: () => ({ data: [{ id: "province-1", name: "DKI JAKARTA" }] }),
@@ -99,6 +100,7 @@ describe("SchoolPicker", () => {
     vi.useFakeTimers();
     searchCalls.length = 0;
     lastSearchKey = "";
+    schools = defaultSchools;
   });
 
   afterEach(() => {
@@ -135,6 +137,27 @@ describe("SchoolPicker", () => {
     expect(searchCalls).toHaveLength(callsAfterLocationFetch);
     expect(screen.getByText("SMA Negeri 1 Jakarta")).toBeInTheDocument();
     expect(screen.queryByText("SMA Bina Bangsa")).toBeNull();
+  });
+
+  it("waits for a school name and renders at most 50 local matches", () => {
+    schools = Array.from({ length: 60 }, (_, index) => ({
+      id: `school-result-${index}`,
+      name: `School Result ${index}`,
+      code: `RESULT${index}`,
+      category: "SMA",
+    }));
+    render(<Harness />);
+
+    const [provinceSelect, citySelect, categorySelect] = screen.getAllByRole("combobox");
+    fireEvent.change(provinceSelect, { target: { value: "province-1" } });
+    fireEvent.change(citySelect, { target: { value: "city-1" } });
+    fireEvent.change(categorySelect, { target: { value: "SMA" } });
+
+    expect(screen.queryAllByRole("button", { name: /School Result/ })).toHaveLength(0);
+
+    fireEvent.change(screen.getByPlaceholderText("Nama sekolah"), { target: { value: "result" } });
+
+    expect(screen.getAllByRole("button", { name: /School Result/ })).toHaveLength(50);
   });
 
   it("activates explicit unlisted fallback without inventing a school", () => {

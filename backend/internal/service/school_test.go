@@ -231,6 +231,17 @@ func TestCreateSchool_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("duplicate normalized code returns ErrSchoolCodeTaken", func(t *testing.T) {
+		code := "cs_" + uniqueSuffix()
+		if _, err := svc.CreateSchool(ctx, "First Normalized Code", code, nil, nil, nil, nil, nil, nil); err != nil {
+			t.Fatalf("CreateSchool (first): %v", err)
+		}
+		_, err := svc.CreateSchool(ctx, "Second Normalized Code", " "+strings.ToUpper(code)+" ", nil, nil, nil, nil, nil, nil)
+		if !errors.Is(err, ErrSchoolCodeTaken) {
+			t.Errorf("want ErrSchoolCodeTaken, got %v", err)
+		}
+	})
+
 	t.Run("normalizes NPSN and stores blank as null", func(t *testing.T) {
 		code := "cs_" + uniqueSuffix()
 		npsn := " p1234567 "

@@ -38,7 +38,6 @@ type SchoolOptionsResponse struct {
 }
 
 type SchoolSearchParams struct {
-	Q          string
 	ProvinceID string
 	CityID     string
 	Category   string
@@ -173,31 +172,20 @@ func (s *Service) buildSchoolSearchFilter(ctx context.Context, params SchoolSear
 		return repository.SchoolSearchFilter{NPSN: *normalized, Limit: limit}, false, nil
 	}
 
-	q := strings.TrimSpace(params.Q)
 	provinceID := strings.TrimSpace(params.ProvinceID)
 	cityID := strings.TrimSpace(params.CityID)
 	category := strings.ToUpper(strings.TrimSpace(params.Category))
-	if q == "" && provinceID == "" && cityID == "" && category == "" {
+	if provinceID == "" && cityID == "" && category == "" {
 		return repository.SchoolSearchFilter{}, true, nil
-	}
-	if q != "" && len([]rune(q)) < 3 {
-		return repository.SchoolSearchFilter{}, true, nil
-	}
-	if len([]rune(q)) > 100 {
-		return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
 	}
 	if category != "" && !allowedSchoolSearchCategory(category) {
 		return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
 	}
-	if provinceID == "" || (q == "" && (cityID == "" || category == "")) {
+	if provinceID == "" || cityID == "" || category == "" {
 		return repository.SchoolSearchFilter{}, true, nil
 	}
-	if q == "" && cityID != "" && category != "" {
-		if limit <= 0 || limit > 1000 {
-			limit = 1000
-		}
-	} else if limit <= 0 || limit > 50 {
-		limit = 50
+	if limit <= 0 || limit > 1000 {
+		limit = 1000
 	}
 	province, err := s.storeRepo.GetProvinceByID(ctx, provinceID)
 	if err != nil {
@@ -217,7 +205,6 @@ func (s *Service) buildSchoolSearchFilter(ctx context.Context, params SchoolSear
 	}
 
 	return repository.SchoolSearchFilter{
-		Q:          q,
 		ProvinceID: provinceID,
 		CityID:     cityID,
 		Category:   category,

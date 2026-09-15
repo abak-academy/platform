@@ -54,8 +54,8 @@ func TestListSchools_SearchEnvelope(t *testing.T) {
 		}
 	})
 
-	t.Run("province category name search is bounded to requested limit", func(t *testing.T) {
-		path := "/api/v1/schools?q=Search&province_id=" + provinceID + "&category=SMA&limit=1"
+	t.Run("province city category search is bounded to requested limit", func(t *testing.T) {
+		path := "/api/v1/schools?province_id=" + provinceID + "&city_id=" + cityID + "&category=SMA&limit=1"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK {
@@ -92,7 +92,7 @@ func TestListSchools_SearchEnvelope(t *testing.T) {
 	})
 
 	t.Run("npsn search ignores stale filters", func(t *testing.T) {
-		path := "/api/v1/schools?npsn=" + strings.ToLower(firstNPSN) + "&q=nope&province_id=bad-province&category=SMK"
+		path := "/api/v1/schools?npsn=" + strings.ToLower(firstNPSN) + "&province_id=bad-province&category=SMK"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK {

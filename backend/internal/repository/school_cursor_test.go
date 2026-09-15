@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -148,3 +149,21 @@ func TestCountSchoolsAdmin_matchesFilteredTotal(t *testing.T) {
 	require.Equal(t, 2, counts.Active)
 }
 
+func TestGetSchoolByCode_normalizesAndRejectsAmbiguousIdentity(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	suffix := uuid.New().String()[:8]
+	code := "foundation_" + suffix
+	firstID := seedSchoolRow(t, repo, "Foundation One "+suffix, " "+strings.ToLower(code)+" ", "active")
+
+	school, err := repo.GetSchoolByCode(ctx, strings.ToUpper(code))
+	require.NoError(t, err)
+	require.NotNil(t, school)
+	require.Equal(t, firstID.String(), school.ID)
+
+	seedSchoolRow(t, repo, "Foundation Two "+suffix, strings.ToUpper(code), "active")
+	_, err = repo.GetSchoolByCode(ctx, code)
+	require.ErrorIs(t, err, ErrAmbiguousSchoolIdentity)
+}

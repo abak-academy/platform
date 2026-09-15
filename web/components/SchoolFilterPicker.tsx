@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAdminSchools } from "@/lib/hooks/admin-schools";
-import type { School } from "@/lib/types";
+import { useSchoolById } from "@/lib/hooks/students";
 
 export interface SchoolFilterPickerProps {
   value: string;
@@ -35,7 +35,6 @@ export function SchoolFilterPicker({
 }: SchoolFilterPickerProps) {
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const isNone = value === "none";
 
   useEffect(() => {
@@ -49,15 +48,10 @@ export function SchoolFilterPicker({
     limit: 20,
   });
   const schools = useMemo(() => schoolsQuery.data?.data ?? [], [schoolsQuery.data?.data]);
-
-  useEffect(() => {
-    if (!value || isNone) {
-      setSelectedSchool(null);
-      return;
-    }
-    const match = schools.find((school) => school.id === value);
-    if (match) setSelectedSchool(match);
-  }, [isNone, schools, value]);
+  const selectedSchoolOnPage = schools.find((school) => school.id === value) ?? null;
+  const hydratedSchool = useSchoolById(value && !isNone && !selectedSchoolOnPage ? value : "");
+  const selectedSchool: { id: string; name: string } | null =
+    !value || isNone ? null : selectedSchoolOnPage ?? hydratedSchool.data ?? null;
 
   const selectValue = !value ? ALL_VALUE : isNone ? NONE_VALUE : value;
   const selectedSchoolMissing = Boolean(value && !isNone && !schools.some((school) => school.id === value));
@@ -77,17 +71,13 @@ export function SchoolFilterPicker({
           value={selectValue}
           onValueChange={(next) => {
             if (next === ALL_VALUE) {
-              setSelectedSchool(null);
               onChange("");
               return;
             }
             if (next === NONE_VALUE) {
-              setSelectedSchool(null);
               onChange("none");
               return;
             }
-            const picked = schools.find((school) => school.id === next) ?? null;
-            setSelectedSchool(picked);
             onChange(next);
           }}
         >
@@ -98,7 +88,7 @@ export function SchoolFilterPicker({
             <SelectItem value={ALL_VALUE}>{allLabel}</SelectItem>
             {noneLabel ? <SelectItem value={NONE_VALUE}>{noneLabel}</SelectItem> : null}
             {selectedSchoolMissing ? (
-              <SelectItem value={value}>{selectedSchool?.id === value ? selectedSchool.name : value}</SelectItem>
+              <SelectItem value={value}>{selectedSchool?.id === value ? selectedSchool.name : allLabel}</SelectItem>
             ) : null}
             {schools.map((school) => (
               <SelectItem key={school.id} value={school.id}>

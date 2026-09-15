@@ -36,8 +36,14 @@ func TestMigration0064_SchoolFields(t *testing.T) {
 	requireColumnExists(t, pool, "school", "provinsi_id", true)
 	requireColumnExists(t, pool, "school", "kota_id", true)
 	requireSchoolSearchIndexExists(t, pool, "idx_school_active_npsn")
-	requireSchoolSearchIndexExists(t, pool, "idx_school_active_name_trgm")
+	requireSchoolSearchIndexExists(t, pool, "idx_school_active_name_trgm", false)
 	requireSchoolSearchIndexExists(t, pool, "idx_school_provinsi_kota_category_name_id")
+
+	var pgTrgmExists bool
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')`,
+	).Scan(&pgTrgmExists))
+	require.False(t, pgTrgmExists, "school fields migration must not require pg_trgm")
 
 	var category, provinsiID, kotaID *string
 	require.NoError(t, pool.QueryRow(ctx,
@@ -81,12 +87,6 @@ func TestMigration0064_SchoolFields(t *testing.T) {
 	requireSchoolSearchIndexExists(t, pool, "idx_school_active_npsn", false)
 	requireSchoolSearchIndexExists(t, pool, "idx_school_active_name_trgm", false)
 	requireSchoolSearchIndexExists(t, pool, "idx_school_provinsi_kota_category_name_id", false)
-
-	var pgTrgmExists bool
-	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')`,
-	).Scan(&pgTrgmExists))
-	require.True(t, pgTrgmExists, "down migration must not drop shared pg_trgm extension")
 
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT school_id FROM users WHERE id = $1`, userID,

@@ -62,12 +62,8 @@ func ParseSchoolBoundStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 
 // ParseStudentBulkCSVForWorker also accepts the pre-NPSN school header so
 // jobs queued before deployment can finish processing.
-func ParseStudentBulkCSVForWorker(data []byte, requireSchoolIdentity ...bool) ([]StudentBulkRow, error) {
-	required := true
-	if len(requireSchoolIdentity) > 0 {
-		required = requireSchoolIdentity[0]
-	}
-	return parseStudentBulkCSV(data, true, required)
+func ParseStudentBulkCSVForWorker(data []byte, requireSchoolIdentity bool) ([]StudentBulkRow, error) {
+	return parseStudentBulkCSV(data, true, requireSchoolIdentity)
 }
 
 func parseStudentBulkCSV(data []byte, allowLegacySchool, requireSchoolIdentity bool) ([]StudentBulkRow, error) {
@@ -180,6 +176,11 @@ func parseStudentBulkCSV(data []byte, allowLegacySchool, requireSchoolIdentity b
 func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, actorRole string, rows []StudentBulkRow, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
 	results := make([]StudentBulkResultRow, len(rows))
 	successCount := 0
+	var boundSchool *model.School
+	var boundSchoolErr error
+	if schoolBound != nil && len(rows) > 0 {
+		boundSchool, boundSchoolErr = s.storeRepo.GetSchoolByID(ctx, *schoolBound)
+	}
 
 	checkpoint := len(rows) / 10
 	if checkpoint < 1 {
@@ -195,7 +196,7 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 		var school *model.School
 		var err error
 		if schoolBound != nil {
-			school, err = s.storeRepo.GetSchoolByID(ctx, *schoolBound)
+			school, err = boundSchool, boundSchoolErr
 		} else if strings.TrimSpace(rawNPSN) != "" {
 			npsn, normalizeErr := normalizeSchoolNPSN(&rawNPSN)
 			if normalizeErr != nil {
