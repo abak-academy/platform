@@ -38,12 +38,11 @@ type SchoolBulkResultRow struct {
 // parseSchoolTypes splits a school_types cell on both '|' and ',' per §D-4:
 // pipe is the unquoted-friendly template encoding, comma is accepted because
 // the admin UI displays school_types comma-joined and a copy-paste from there
-// is the likely user error. Always returns a non-nil slice.
+// is the likely user error. Returns nil when nothing parses out: pgx encodes a
+// non-nil empty slice as '{}', not NULL, which would defeat the COALESCE in the
+// repository UPDATE and blank the stored jenjang list.
 func parseSchoolTypes(cell string) []string {
-	out := []string{}
-	if cell == "" {
-		return out
-	}
+	var out []string
 	for _, part := range strings.Split(strings.ReplaceAll(cell, "|", ","), ",") {
 		part = strings.TrimSpace(part)
 		if part != "" {

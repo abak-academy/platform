@@ -98,28 +98,37 @@ func TestParseSchoolBulkCSV(t *testing.T) {
 		}
 	})
 
-	t.Run("empty school_types cell is empty slice not nil", func(t *testing.T) {
+	// Nil, not empty: an empty slice reaches Postgres as '{}' and defeats COALESCE.
+	t.Run("empty school_types cell is nil", func(t *testing.T) {
 		data := []byte("name,code,school_types\nS,c1,\n")
 		rows, err := ParseSchoolBulkCSV(data)
 		if err != nil {
 			t.Fatalf("ParseSchoolBulkCSV: %v", err)
 		}
-		if rows[0].SchoolTypes == nil {
-			t.Error("want empty slice, got nil")
-		}
-		if len(rows[0].SchoolTypes) != 0 {
-			t.Errorf("want empty, got %v", rows[0].SchoolTypes)
+		if rows[0].SchoolTypes != nil {
+			t.Errorf("want nil, got %v", rows[0].SchoolTypes)
 		}
 	})
 
-	t.Run("school_types column absent is empty slice not nil", func(t *testing.T) {
+	t.Run("separator-only school_types cell is nil", func(t *testing.T) {
+		data := []byte("name,code,school_types\nS,c1,|\n")
+		rows, err := ParseSchoolBulkCSV(data)
+		if err != nil {
+			t.Fatalf("ParseSchoolBulkCSV: %v", err)
+		}
+		if rows[0].SchoolTypes != nil {
+			t.Errorf("want nil, got %v", rows[0].SchoolTypes)
+		}
+	})
+
+	t.Run("school_types column absent is nil", func(t *testing.T) {
 		data := []byte("name,code\nS,c1\n")
 		rows, err := ParseSchoolBulkCSV(data)
 		if err != nil {
 			t.Fatalf("ParseSchoolBulkCSV: %v", err)
 		}
-		if rows[0].SchoolTypes == nil || len(rows[0].SchoolTypes) != 0 {
-			t.Errorf("want empty slice, got %v", rows[0].SchoolTypes)
+		if rows[0].SchoolTypes != nil {
+			t.Errorf("want nil, got %v", rows[0].SchoolTypes)
 		}
 	})
 
@@ -325,6 +334,59 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 		}
 		if repeated := findSchoolByCode(t, svc, existingCode); repeated.ID != existing.ID {
 			t.Fatalf("repeat import changed school ID: want %s, got %s", existing.ID, repeated.ID)
+		}
+	})
+
+	// A wipe here would silently disable the len(SchoolTypes) > 0 jenjang guards.
+	t.Run("update preserves stored school_types when the CSV omits the column", func(t *testing.T) {
+		existingCode := "sb_" + uniqueSuffix()
+		existing, err := svc.CreateSchool(ctx, "Typed School", existingCode, nil, []string{"SMA", "SMK"}, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("seed CreateSchool: %v", err)
+		}
+
+		rows, err := ParseSchoolBulkCSV([]byte("name,code,category,provinsi,kota\nTyped School," + existingCode + ",SMA,SULAWESI SELATAN,KOTA MAKASSAR\n"))
+		if err != nil {
+			t.Fatalf("ParseSchoolBulkCSV: %v", err)
+		}
+		results, successCount, err := svc.ProcessSchoolBulkRows(ctx, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessSchoolBulkRows: %v", err)
+		}
+		if successCount != 1 || results[0].Status != "success" {
+			t.Fatalf("want the metadata refresh to succeed, count=%d result=%+v", successCount, results[0])
+		}
+
+		updated := findSchoolByCode(t, svc, existingCode)
+		if updated.ID != existing.ID {
+			t.Fatalf("school ID changed: want %s, got %s", existing.ID, updated.ID)
+		}
+		if updated.Category == nil || *updated.Category != "SMA" || updated.ProvinsiID == nil || updated.KotaID == nil {
+			t.Fatalf("metadata not refreshed: %+v", updated)
+		}
+		if len(updated.SchoolTypes) != 2 || updated.SchoolTypes[0] != "SMA" || updated.SchoolTypes[1] != "SMK" {
+			t.Fatalf("school_types wiped by a CSV without that column: %+v", updated.SchoolTypes)
+		}
+	})
+
+	// Blank means "not supplied", matching every other optional bulk column.
+	t.Run("update preserves stored school_types when the cell is blank", func(t *testing.T) {
+		existingCode := "sb_" + uniqueSuffix()
+		if _, err := svc.CreateSchool(ctx, "Blank Cell School", existingCode, nil, []string{"SMA"}, nil, nil, nil, nil); err != nil {
+			t.Fatalf("seed CreateSchool: %v", err)
+		}
+
+		rows, err := ParseSchoolBulkCSV([]byte("name,code,school_types\nBlank Cell School," + existingCode + ",\n"))
+		if err != nil {
+			t.Fatalf("ParseSchoolBulkCSV: %v", err)
+		}
+		if _, successCount, err := svc.ProcessSchoolBulkRows(ctx, rows, nil); err != nil || successCount != 1 {
+			t.Fatalf("ProcessSchoolBulkRows: count=%d err=%v", successCount, err)
+		}
+
+		updated := findSchoolByCode(t, svc, existingCode)
+		if len(updated.SchoolTypes) != 1 || updated.SchoolTypes[0] != "SMA" {
+			t.Fatalf("blank school_types cell should preserve, got %+v", updated.SchoolTypes)
 		}
 	})
 
