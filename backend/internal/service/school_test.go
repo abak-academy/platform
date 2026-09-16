@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"akademi-bimbel/internal/model"
@@ -47,12 +48,17 @@ func TestNormalizeSchoolNPSN(t *testing.T) {
 	}
 }
 
-func TestMapSchoolWriteError_OnlyNamedUniqueViolation(t *testing.T) {
+func TestMapSchoolWriteError(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
 		want error
 	}{
+		{
+			name: "repository school-code conflict",
+			err:  repository.ErrSchoolCodeConflict,
+			want: ErrSchoolCodeTaken,
+		},
 		{
 			name: "named NPSN unique violation",
 			err:  &pgconn.PgError{Code: "23505", ConstraintName: schoolNPSNUniqueIndex},
@@ -139,7 +145,7 @@ func TestCreateSchool_Integration(t *testing.T) {
 		code := "cs_" + uniqueSuffix()
 		npsn := "20000001"
 		alamat := "Jl. Test No.1"
-		resp, err := svc.CreateSchool(ctx, "Test School "+code, code, &npsn, []string{"SMA"}, &alamat)
+		resp, err := svc.CreateSchool(ctx, "Test School "+code, code, &npsn, []string{"SMA"}, &alamat, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -159,7 +165,7 @@ func TestCreateSchool_Integration(t *testing.T) {
 
 	t.Run("omitted school_types defaults to empty slice not null", func(t *testing.T) {
 		code := "cs_" + uniqueSuffix()
-		resp, err := svc.CreateSchool(ctx, "No Types School "+code, code, nil, nil, nil)
+		resp, err := svc.CreateSchool(ctx, "No Types School "+code, code, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool with omitted school_types: %v", err)
 		}
@@ -178,14 +184,14 @@ func TestCreateSchool_Integration(t *testing.T) {
 	})
 
 	t.Run("missing name returns ErrInvalidSchoolName", func(t *testing.T) {
-		_, err := svc.CreateSchool(ctx, "", "somecode", nil, nil, nil)
+		_, err := svc.CreateSchool(ctx, "", "somecode", nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrInvalidSchoolName) {
 			t.Errorf("want ErrInvalidSchoolName, got %v", err)
 		}
 	})
 
 	t.Run("missing code returns ErrMissingField", func(t *testing.T) {
-		_, err := svc.CreateSchool(ctx, "Some School", "", nil, nil, nil)
+		_, err := svc.CreateSchool(ctx, "Some School", "", nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrMissingField) {
 			t.Errorf("want ErrMissingField, got %v", err)
 		}
@@ -200,7 +206,7 @@ func TestCreateSchool_Integration(t *testing.T) {
 			{name: "   ", want: ErrInvalidSchoolName},
 			{name: " ...--- ", want: ErrInvalidSchoolName},
 		} {
-			_, err := svc.CreateSchool(ctx, tc.name, "cs_"+uniqueSuffix(), nil, nil, nil)
+			_, err := svc.CreateSchool(ctx, tc.name, "cs_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
 			if !errors.Is(err, tc.want) {
 				t.Errorf("CreateSchool(%q): want %v, got %v", tc.name, tc.want, err)
 			}
@@ -210,7 +216,7 @@ func TestCreateSchool_Integration(t *testing.T) {
 	t.Run("accepts names with digits punctuation and unicode letters", func(t *testing.T) {
 		for _, name := range []string{"12345", "SMA Harapan-1", "Al-Ma'ruf", "École Internationale", "東京学園"} {
 			code := "cs_" + uniqueSuffix()
-			resp, err := svc.CreateSchool(ctx, name, code, nil, nil, nil)
+			resp, err := svc.CreateSchool(ctx, name, code, nil, nil, nil, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("CreateSchool(%q): %v", name, err)
 			}
@@ -222,19 +228,70 @@ func TestCreateSchool_Integration(t *testing.T) {
 
 	t.Run("duplicate code returns ErrSchoolCodeTaken", func(t *testing.T) {
 		code := "cs_" + uniqueSuffix()
-		if _, err := svc.CreateSchool(ctx, "First", code, nil, nil, nil); err != nil {
+		if _, err := svc.CreateSchool(ctx, "First", code, nil, nil, nil, nil, nil, nil); err != nil {
 			t.Fatalf("CreateSchool (first): %v", err)
 		}
-		_, err := svc.CreateSchool(ctx, "Second", code, nil, nil, nil)
+		_, err := svc.CreateSchool(ctx, "Second", code, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolCodeTaken) {
 			t.Errorf("want ErrSchoolCodeTaken, got %v", err)
+		}
+	})
+
+	t.Run("duplicate normalized code returns ErrSchoolCodeTaken", func(t *testing.T) {
+		code := "cs_" + uniqueSuffix()
+		if _, err := svc.CreateSchool(ctx, "First Normalized Code", code, nil, nil, nil, nil, nil, nil); err != nil {
+			t.Fatalf("CreateSchool (first): %v", err)
+		}
+		_, err := svc.CreateSchool(ctx, "Second Normalized Code", " "+strings.ToUpper(code)+" ", nil, nil, nil, nil, nil, nil)
+		if !errors.Is(err, ErrSchoolCodeTaken) {
+			t.Errorf("want ErrSchoolCodeTaken, got %v", err)
+		}
+	})
+
+	t.Run("concurrent normalized code creates exactly one school", func(t *testing.T) {
+		const attempts = 8
+		code := "cc_" + uniqueSuffix()
+		start := make(chan struct{})
+		errs := make(chan error, attempts)
+		var wg sync.WaitGroup
+		for i := range attempts {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				<-start
+				candidate := code
+				if i%2 == 1 {
+					candidate = " " + strings.ToUpper(code) + " "
+				}
+				_, err := svc.CreateSchool(ctx, "Concurrent School", candidate, nil, nil, nil, nil, nil, nil)
+				errs <- err
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+		close(errs)
+
+		succeeded := 0
+		conflicted := 0
+		for err := range errs {
+			switch {
+			case err == nil:
+				succeeded++
+			case errors.Is(err, ErrSchoolCodeTaken):
+				conflicted++
+			default:
+				t.Fatalf("unexpected create error: %v", err)
+			}
+		}
+		if succeeded != 1 || conflicted != attempts-1 {
+			t.Fatalf("want 1 success and %d conflicts, got %d successes and %d conflicts", attempts-1, succeeded, conflicted)
 		}
 	})
 
 	t.Run("normalizes NPSN and stores blank as null", func(t *testing.T) {
 		code := "cs_" + uniqueSuffix()
 		npsn := " p1234567 "
-		created, err := svc.CreateSchool(ctx, "Normalized NPSN School", code, &npsn, nil, nil)
+		created, err := svc.CreateSchool(ctx, "Normalized NPSN School", code, &npsn, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -243,7 +300,7 @@ func TestCreateSchool_Integration(t *testing.T) {
 		}
 
 		blank := "  "
-		cleared, err := svc.UpdateSchool(ctx, created.ID, nil, &blank, nil, nil, nil)
+		cleared, err := svc.UpdateSchool(ctx, created.ID, nil, &blank, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("UpdateSchool blank NPSN: %v", err)
 		}
@@ -255,7 +312,7 @@ func TestCreateSchool_Integration(t *testing.T) {
 	t.Run("rejects malformed NPSN before create", func(t *testing.T) {
 		code := "cs_" + uniqueSuffix()
 		invalid := "1234-678"
-		_, err := svc.CreateSchool(ctx, "Invalid NPSN School", code, &invalid, nil, nil)
+		_, err := svc.CreateSchool(ctx, "Invalid NPSN School", code, &invalid, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrInvalidSchoolNPSN) {
 			t.Fatalf("want ErrInvalidSchoolNPSN, got %v", err)
 		}
@@ -268,16 +325,16 @@ func TestCreateSchool_Integration(t *testing.T) {
 
 	t.Run("rejects duplicate normalized NPSN and allows multiple nulls", func(t *testing.T) {
 		npsn := "Q1234567"
-		if _, err := svc.CreateSchool(ctx, "First NPSN", "cs_"+uniqueSuffix(), &npsn, nil, nil); err != nil {
+		if _, err := svc.CreateSchool(ctx, "First NPSN", "cs_"+uniqueSuffix(), &npsn, nil, nil, nil, nil, nil); err != nil {
 			t.Fatalf("CreateSchool first: %v", err)
 		}
 		duplicate := " q1234567 "
-		_, err := svc.CreateSchool(ctx, "Duplicate NPSN", "cs_"+uniqueSuffix(), &duplicate, nil, nil)
+		_, err := svc.CreateSchool(ctx, "Duplicate NPSN", "cs_"+uniqueSuffix(), &duplicate, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolNPSNTaken) {
 			t.Fatalf("want ErrSchoolNPSNTaken, got %v", err)
 		}
 		for _, name := range []string{"Null NPSN One", "Null NPSN Two"} {
-			if _, err := svc.CreateSchool(ctx, name, "cs_"+uniqueSuffix(), nil, nil, nil); err != nil {
+			if _, err := svc.CreateSchool(ctx, name, "cs_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil); err != nil {
 				t.Fatalf("CreateSchool %q with nil NPSN: %v", name, err)
 			}
 		}
@@ -307,12 +364,12 @@ func TestUpdateSchool_Integration(t *testing.T) {
 
 	t.Run("happy path patches fields", func(t *testing.T) {
 		code := "us_" + uniqueSuffix()
-		created, err := svc.CreateSchool(ctx, "Before Update", code, nil, nil, nil)
+		created, err := svc.CreateSchool(ctx, "Before Update", code, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
 		newName := "After Update"
-		updated, err := svc.UpdateSchool(ctx, created.ID, &newName, nil, nil, nil, nil)
+		updated, err := svc.UpdateSchool(ctx, created.ID, &newName, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("UpdateSchool: %v", err)
 		}
@@ -326,12 +383,12 @@ func TestUpdateSchool_Integration(t *testing.T) {
 
 	t.Run("omitted name leaves existing name unchanged", func(t *testing.T) {
 		code := "us_" + uniqueSuffix()
-		created, err := svc.CreateSchool(ctx, "Name Stays", code, nil, nil, nil)
+		created, err := svc.CreateSchool(ctx, "Name Stays", code, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
 		alamat := "Jl. Updated"
-		updated, err := svc.UpdateSchool(ctx, created.ID, nil, nil, &alamat, nil, nil)
+		updated, err := svc.UpdateSchool(ctx, created.ID, nil, nil, &alamat, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("UpdateSchool: %v", err)
 		}
@@ -345,12 +402,12 @@ func TestUpdateSchool_Integration(t *testing.T) {
 
 	t.Run("normalizes NPSN on update", func(t *testing.T) {
 		code := "us_" + uniqueSuffix()
-		created, err := svc.CreateSchool(ctx, "Normalize Update", code, nil, nil, nil)
+		created, err := svc.CreateSchool(ctx, "Normalize Update", code, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
 		npsn := " u" + uniqueSuffix()[:7] + " "
-		updated, err := svc.UpdateSchool(ctx, created.ID, nil, &npsn, nil, nil, nil)
+		updated, err := svc.UpdateSchool(ctx, created.ID, nil, &npsn, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("UpdateSchool: %v", err)
 		}
@@ -367,12 +424,12 @@ func TestUpdateSchool_Integration(t *testing.T) {
 	t.Run("rejects malformed NPSN before update and preserves the row", func(t *testing.T) {
 		code := "us_" + uniqueSuffix()
 		npsn := "V" + uniqueSuffix()[:7]
-		created, err := svc.CreateSchool(ctx, "Invalid NPSN Update", code, &npsn, nil, nil)
+		created, err := svc.CreateSchool(ctx, "Invalid NPSN Update", code, &npsn, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
 		invalid := "1234-678"
-		_, err = svc.UpdateSchool(ctx, created.ID, nil, &invalid, nil, nil, nil)
+		_, err = svc.UpdateSchool(ctx, created.ID, nil, &invalid, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrInvalidSchoolNPSN) {
 			t.Fatalf("want ErrInvalidSchoolNPSN, got %v", err)
 		}
@@ -384,17 +441,17 @@ func TestUpdateSchool_Integration(t *testing.T) {
 
 	t.Run("rejects duplicate normalized NPSN on update and preserves the row", func(t *testing.T) {
 		takenNPSN := "W" + uniqueSuffix()[:7]
-		taken, err := svc.CreateSchool(ctx, "Taken NPSN", "us_"+uniqueSuffix(), &takenNPSN, nil, nil)
+		taken, err := svc.CreateSchool(ctx, "Taken NPSN", "us_"+uniqueSuffix(), &takenNPSN, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool taken: %v", err)
 		}
 		originalNPSN := "X" + uniqueSuffix()[:7]
-		target, err := svc.CreateSchool(ctx, "Duplicate Update Target", "us_"+uniqueSuffix(), &originalNPSN, nil, nil)
+		target, err := svc.CreateSchool(ctx, "Duplicate Update Target", "us_"+uniqueSuffix(), &originalNPSN, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool target: %v", err)
 		}
 		duplicate := " " + strings.ToLower(*taken.NPSN) + " "
-		_, err = svc.UpdateSchool(ctx, target.ID, nil, &duplicate, nil, nil, nil)
+		_, err = svc.UpdateSchool(ctx, target.ID, nil, &duplicate, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolNPSNTaken) {
 			t.Fatalf("want ErrSchoolNPSNTaken, got %v", err)
 		}
@@ -406,13 +463,13 @@ func TestUpdateSchool_Integration(t *testing.T) {
 
 	t.Run("invalid name is rejected and row remains unchanged", func(t *testing.T) {
 		code := "us_" + uniqueSuffix()
-		created, err := svc.CreateSchool(ctx, "Still Valid", code, nil, nil, nil)
+		created, err := svc.CreateSchool(ctx, "Still Valid", code, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
 		invalidName := "..."
 		newCode := "us_" + uniqueSuffix()
-		_, err = svc.UpdateSchool(ctx, created.ID, &invalidName, nil, nil, nil, &newCode)
+		_, err = svc.UpdateSchool(ctx, created.ID, &invalidName, nil, nil, nil, &newCode, nil, nil, nil)
 		if !errors.Is(err, ErrInvalidSchoolName) {
 			t.Fatalf("want ErrInvalidSchoolName, got %v", err)
 		}
@@ -427,7 +484,7 @@ func TestUpdateSchool_Integration(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		newName := "Doesn't Matter"
-		_, err := svc.UpdateSchool(ctx, "00000000-0000-0000-0000-000000000000", &newName, nil, nil, nil, nil)
+		_, err := svc.UpdateSchool(ctx, "00000000-0000-0000-0000-000000000000", &newName, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolNotFound) {
 			t.Errorf("want ErrSchoolNotFound, got %v", err)
 		}
@@ -436,14 +493,14 @@ func TestUpdateSchool_Integration(t *testing.T) {
 	t.Run("code uniqueness on update", func(t *testing.T) {
 		codeA := "us_" + uniqueSuffix()
 		codeB := "us_" + uniqueSuffix()
-		if _, err := svc.CreateSchool(ctx, "School A", codeA, nil, nil, nil); err != nil {
+		if _, err := svc.CreateSchool(ctx, "School A", codeA, nil, nil, nil, nil, nil, nil); err != nil {
 			t.Fatalf("CreateSchool A: %v", err)
 		}
-		schoolB, err := svc.CreateSchool(ctx, "School B", codeB, nil, nil, nil)
+		schoolB, err := svc.CreateSchool(ctx, "School B", codeB, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool B: %v", err)
 		}
-		_, err = svc.UpdateSchool(ctx, schoolB.ID, nil, nil, nil, nil, &codeA)
+		_, err = svc.UpdateSchool(ctx, schoolB.ID, nil, nil, nil, nil, &codeA, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolCodeTaken) {
 			t.Errorf("want ErrSchoolCodeTaken, got %v", err)
 		}
@@ -452,7 +509,7 @@ func TestUpdateSchool_Integration(t *testing.T) {
 	t.Run("code change succeeds when students exist (lock removed)", func(t *testing.T) {
 		code := "us_" + uniqueSuffix()
 		npsn := "S" + uniqueSuffix()[:7]
-		school, err := svc.CreateSchool(ctx, "School With Students", code, &npsn, nil, nil)
+		school, err := svc.CreateSchool(ctx, "School With Students", code, &npsn, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -460,7 +517,7 @@ func TestUpdateSchool_Integration(t *testing.T) {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
 		newCode := "us_" + uniqueSuffix()
-		updated, err := svc.UpdateSchool(ctx, school.ID, nil, nil, nil, nil, &newCode)
+		updated, err := svc.UpdateSchool(ctx, school.ID, nil, nil, nil, nil, &newCode, nil, nil, nil)
 		if err != nil {
 			t.Errorf("code change should succeed (lock removed), got %v", err)
 		}
@@ -472,19 +529,19 @@ func TestUpdateSchool_Integration(t *testing.T) {
 	t.Run("code uniqueness still enforced on update", func(t *testing.T) {
 		codeA := "us_" + uniqueSuffix()
 		codeB := "us_" + uniqueSuffix()
-		_, err := svc.CreateSchool(ctx, "School A", codeA, nil, nil, nil)
+		_, err := svc.CreateSchool(ctx, "School A", codeA, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool A: %v", err)
 		}
 		npsn := "S" + uniqueSuffix()[:7]
-		schoolB, err := svc.CreateSchool(ctx, "School B", codeB, &npsn, nil, nil)
+		schoolB, err := svc.CreateSchool(ctx, "School B", codeB, &npsn, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool B: %v", err)
 		}
 		if _, err := svc.RegisterStudent(ctx, schoolB.ID, "Stu Dent", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
-		_, err = svc.UpdateSchool(ctx, schoolB.ID, nil, nil, nil, nil, &codeA)
+		_, err = svc.UpdateSchool(ctx, schoolB.ID, nil, nil, nil, nil, &codeA, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolCodeTaken) {
 			t.Errorf("want ErrSchoolCodeTaken, got %v", err)
 		}
@@ -497,7 +554,7 @@ func TestChangeSchoolStatus_Integration(t *testing.T) {
 
 	t.Run("happy path toggles status", func(t *testing.T) {
 		code := "st_" + uniqueSuffix()
-		school, err := svc.CreateSchool(ctx, "Status School", code, nil, nil, nil)
+		school, err := svc.CreateSchool(ctx, "Status School", code, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -519,7 +576,7 @@ func TestChangeSchoolStatus_Integration(t *testing.T) {
 
 	t.Run("invalid status value", func(t *testing.T) {
 		code := "st_" + uniqueSuffix()
-		school, err := svc.CreateSchool(ctx, "Invalid Status School", code, nil, nil, nil)
+		school, err := svc.CreateSchool(ctx, "Invalid Status School", code, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -544,7 +601,7 @@ func TestAdminListSchools_Integration(t *testing.T) {
 	code := "ls_" + uniqueSuffix()
 	name := "Listable School " + code
 	npsn := "S" + uniqueSuffix()[:7]
-	school, err := svc.CreateSchool(ctx, name, code, &npsn, nil, nil)
+	school, err := svc.CreateSchool(ctx, name, code, &npsn, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
@@ -569,11 +626,11 @@ func TestAdminListSchools_QAndStatusFilter_Integration(t *testing.T) {
 
 	suffix := uniqueSuffix()
 	q := "qfilt_" + suffix
-	active, err := svc.CreateSchool(ctx, "Active "+q, "qa_"+suffix, nil, nil, nil)
+	active, err := svc.CreateSchool(ctx, "Active "+q, "qa_"+suffix, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool active: %v", err)
 	}
-	deactivated, err := svc.CreateSchool(ctx, "Deactivated "+q, "qd_"+suffix, nil, nil, nil)
+	deactivated, err := svc.CreateSchool(ctx, "Deactivated "+q, "qd_"+suffix, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool deactivated: %v", err)
 	}
@@ -610,11 +667,13 @@ func TestSchoolOptions_Integration(t *testing.T) {
 	ctx := context.Background()
 
 	suffix := uniqueSuffix()
-	active, err := svc.CreateSchool(ctx, "Option Active "+suffix, "oa_"+suffix, nil, nil, nil)
+	activeNPSN := "A" + strings.ToUpper(suffix[:7])
+	deactivatedNPSN := "B" + strings.ToUpper(suffix[:7])
+	active, err := svc.CreateSchool(ctx, "Option Active "+suffix, "oa_"+suffix, &activeNPSN, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
-	deactivated, err := svc.CreateSchool(ctx, "Option Deactivated "+suffix, "od_"+suffix, nil, nil, nil)
+	deactivated, err := svc.CreateSchool(ctx, "Option Deactivated "+suffix, "od_"+suffix, &deactivatedNPSN, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
@@ -622,24 +681,20 @@ func TestSchoolOptions_Integration(t *testing.T) {
 		t.Fatalf("ChangeSchoolStatus: %v", err)
 	}
 
-	options, err := svc.SchoolOptions(ctx)
+	options, err := svc.SchoolOptions(ctx, SchoolSearchParams{NPSN: strings.ToLower(activeNPSN)})
 	if err != nil {
 		t.Fatalf("SchoolOptions: %v", err)
 	}
-	var sawActive, sawDeactivated bool
-	for _, o := range options {
-		if o.ID == active.ID {
-			sawActive = true
-		}
-		if o.ID == deactivated.ID {
-			sawDeactivated = true
-		}
+	if len(options.Data) != 1 || options.Data[0].ID != active.ID {
+		t.Fatalf("active school option: want %s, got %+v", active.ID, options.Data)
 	}
-	if !sawActive {
-		t.Error("want active school in options")
+
+	options, err = svc.SchoolOptions(ctx, SchoolSearchParams{NPSN: strings.ToLower(deactivatedNPSN)})
+	if err != nil {
+		t.Fatalf("SchoolOptions deactivated: %v", err)
 	}
-	if sawDeactivated {
-		t.Error("deactivated school should not be in options")
+	if len(options.Data) != 0 {
+		t.Fatalf("deactivated school should not be in options, got %+v", options.Data)
 	}
 }
 

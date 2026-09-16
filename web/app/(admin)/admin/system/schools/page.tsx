@@ -3,8 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Plus,
-  Building,
-  Users,
   MoreHorizontal,
   Edit,
   Lock,
@@ -16,6 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -33,8 +32,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { StatCard } from "@/components/admin/StatCard";
 import { SchoolBulkImportModal } from "@/components/admin/SchoolBulkImportModal";
 import {
   useAdminSchools,
@@ -43,14 +40,10 @@ import {
   useChangeSchoolStatus,
   adminSchoolsKeys,
 } from "@/lib/hooks/admin-schools";
+import { useCitiesByProvince, useProvinces } from "@/lib/hooks/regions";
 import type { School } from "@/lib/types";
 
 type SchoolStatus = "active" | "deactivated";
-
-const STATUS_TONE: Record<SchoolStatus, string> = {
-  active: "bg-success-bg text-success border-success",
-  deactivated: "bg-danger-bg text-danger border-danger",
-};
 
 interface SchoolForm {
   name: string;
@@ -58,6 +51,9 @@ interface SchoolForm {
   npsn: string;
   school_types: string;
   alamat: string;
+  category: string;
+  provinsi_id: string;
+  kota_id: string;
 }
 
 const EMPTY_FORM: SchoolForm = {
@@ -66,7 +62,12 @@ const EMPTY_FORM: SchoolForm = {
   npsn: "",
   school_types: "",
   alamat: "",
+  category: "",
+  provinsi_id: "",
+  kota_id: "",
 };
+
+const SCHOOL_CATEGORIES = ["SD", "MI", "SMP", "MTS", "SMA", "MA", "SMK"];
 
 // Search is sent to the server (q param), so it must be debounced the same
 // way OrdersToolbar debounces order search — otherwise every keystroke fires
@@ -85,9 +86,13 @@ export default function SystemSchoolsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<School | null>(null);
+  const [inspectedSchoolId, setInspectedSchoolId] = useState("");
   const queryClient = useQueryClient();
   const [createForm, setCreateForm] = useState<SchoolForm>({ ...EMPTY_FORM });
   const [editForm, setEditForm] = useState<SchoolForm>({ ...EMPTY_FORM });
+  const { data: provinces } = useProvinces();
+  const { data: createCities } = useCitiesByProvince(createForm.provinsi_id);
+  const { data: editCities } = useCitiesByProvince(editForm.provinsi_id);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
@@ -149,6 +154,9 @@ export default function SystemSchoolsPage() {
   }, [data]);
 
   const rows = schools;
+  const inspectedSchool =
+    schools.find((school) => school.id === inspectedSchoolId) ?? schools[0] ?? null;
+  const inspectorLabel = lang === "en" ? "School details" : "Detail sekolah";
 
   function resetPagination() {
     setSchools([]);
@@ -157,7 +165,7 @@ export default function SystemSchoolsPage() {
   }
 
   const handleCreate = async () => {
-    if (!createForm.name || !createForm.code) {
+    if (!createForm.name || !createForm.code || Boolean(createForm.provinsi_id) !== Boolean(createForm.kota_id)) {
       toast.error(t("accounts_toast_required"));
       return;
     }
@@ -173,6 +181,9 @@ export default function SystemSchoolsPage() {
               .filter(Boolean)
           : undefined,
         alamat: createForm.alamat || undefined,
+        category: createForm.category || undefined,
+        provinsi_id: createForm.provinsi_id || undefined,
+        kota_id: createForm.kota_id || undefined,
       });
       toast.success(t("changes_saved"));
       setCreateOpen(false);
@@ -191,11 +202,18 @@ export default function SystemSchoolsPage() {
       npsn: school.npsn ?? "",
       school_types: (school.school_types ?? []).join(", "),
       alamat: school.alamat ?? "",
+      category: school.category ?? "",
+      provinsi_id: school.provinsi_id ?? "",
+      kota_id: school.kota_id ?? "",
     });
   };
 
   const handleEdit = async () => {
     if (!editTarget) return;
+    if (Boolean(editForm.provinsi_id) !== Boolean(editForm.kota_id)) {
+      toast.error(t("accounts_toast_required"));
+      return;
+    }
     try {
       const payload: Record<string, unknown> = {};
 
@@ -214,6 +232,12 @@ export default function SystemSchoolsPage() {
 
       if (editForm.alamat !== (editTarget.alamat ?? ""))
         payload.alamat = editForm.alamat || undefined;
+      if (editForm.category !== (editTarget.category ?? ""))
+        payload.category = editForm.category;
+      if (editForm.provinsi_id !== (editTarget.provinsi_id ?? ""))
+        payload.provinsi_id = editForm.provinsi_id;
+      if (editForm.kota_id !== (editTarget.kota_id ?? ""))
+        payload.kota_id = editForm.kota_id;
 
       if (Object.keys(payload).length === 0) {
         setEditTarget(null);
@@ -262,202 +286,249 @@ export default function SystemSchoolsPage() {
           ? "No schools found."
           : "Tidak ada sekolah ditemukan.";
 
+  const columns: DataTableColumn<School>[] = [
+    {
+      key: "school",
+      header: t("schools_field_name"),
+      cell: (school) => (
+        <button
+          type="button"
+          aria-label={lang === "en" ? `View details for ${school.name}` : `Lihat detail ${school.name}`}
+          className="min-w-0 text-left"
+          onClick={() => setInspectedSchoolId(school.id)}
+        >
+          <span className={cn(
+            "block font-medium",
+            inspectedSchool?.id === school.id ? "text-brand-700" : "text-ink-900",
+          )}>
+            {school.name}
+          </span>
+          <span className="mt-1 block font-mono text-xs text-brand-700">{school.code || "—"}</span>
+        </button>
+      ),
+    },
+    {
+      key: "npsn",
+      header: t("schools_field_npsn"),
+      className: "font-mono text-xs text-ink-600",
+      cell: (school) => school.npsn || "—",
+    },
+    {
+      key: "address",
+      header: t("schools_field_alamat"),
+      className: "max-w-xs text-xs text-ink-600",
+      cell: (school) => school.alamat || "—",
+    },
+    {
+      key: "type",
+      header: t("schools_field_school_types"),
+      cell: (school) =>
+        school.school_types?.length ? (
+          <span className="text-xs text-ink-600">{school.school_types.join(" / ")}</span>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      key: "students",
+      header: t("schools_field_student_count"),
+      className: "text-xs text-ink-600",
+      cell: (school) => (school.student_count ?? 0).toLocaleString(numberLocale),
+    },
+    {
+      key: "status",
+      header: t("accounts_th_status"),
+      cell: (school) => (
+        <Badge
+          variant="outline"
+          className={cn(
+            "text-[11px] font-semibold",
+            school.status === "active"
+              ? "border-success bg-success-bg text-success"
+              : "border-danger bg-danger-bg text-danger",
+          )}
+        >
+          {school.status === "active" ? t("status_label_active") : t("status_label_inactive")}
+        </Badge>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (school) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-xs" className="rounded-full">
+              <MoreHorizontal className="size-4 text-ink-500" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleEditOpen(school)}>
+              <Edit className="mr-2 size-4" />
+              {t("schools_action_edit")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleStatusToggle(school)}>
+              <Lock className="mr-2 size-4" />
+              {school.status === "active"
+                ? t("accounts_action_deactivate")
+                : t("accounts_action_activate")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <AdminPageHeader
-        icon={Building}
-        title={t("schools_title")}
-        description={t("schools_subtitle")}
-        actions={
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
-              <Upload className="mr-1 size-4" />
-              {t("bulk_school_import_button")}
-            </Button>
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-1 size-4" />
-              {t("create")}
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label={t("schools_stat_total")} value={String(stats.total)} />
-        <StatCard
-          label={t("status_label_active")}
-          value={String(stats.active)}
-        />
-        <StatCard
-          label={t("schools_stat_students")}
-          value={stats.students.toLocaleString(numberLocale)}
-        />
-      </div>
-
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+    <div className="space-y-6 fade-in">
+      <header className="mb-7 flex flex-col gap-6 border-b border-line pb-7 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-4xl font-bold tracking-[-0.045em] text-ink-900 md:text-5xl">
+            {t("schools_title")}
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-ink-600">
+            {lang === "en"
+              ? "Find a registry record, check its identity, then manage the school without leaving the index."
+              : "Cari data sekolah, periksa identitasnya, lalu kelola sekolah tanpa meninggalkan daftar."}
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
-          <FilterChip
-            active={statusFilter === "all"}
-            onClick={() => setStatusFilter("all")}
-          >
-            {t("tab_all")}
-          </FilterChip>
-          <FilterChip
-            active={statusFilter === "active"}
-            onClick={() => setStatusFilter("active")}
-          >
-            {t("status_label_active")}
-          </FilterChip>
-          <FilterChip
-            active={statusFilter === "deactivated"}
-            onClick={() => setStatusFilter("deactivated")}
-          >
-            {t("status_label_inactive")}
-          </FilterChip>
-        </div>
-        <div className="flex items-center gap-2 lg:ml-auto">
-          <Search className="size-4 text-ink-400" />
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t("schools_search_placeholder")}
-            className="h-9 w-[200px] text-xs"
-          />
-        </div>
-      </div>
-
-      <div className="md-card-outlined">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
-              <tr>
-                <th className="px-4 py-3">{t("schools_th_school")}</th>
-                <th className="px-4 py-3">{t("schools_field_code")}</th>
-                <th className="px-4 py-3">NPSN</th>
-                <th className="px-4 py-3">{t("schools_field_school_types")}</th>
-                <th className="px-4 py-3">{t("schools_field_alamat")}</th>
-                <th className="px-4 py-3">{t("accounts_th_status")}</th>
-                <th className="px-4 py-3">{t("schools_field_student_count")}</th>
-                <th className="px-4 py-3 text-right" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="px-4 py-8 text-center text-sm text-ink-500"
-                  >
-                    {tableEmpty}
-                  </td>
-                </tr>
-              )}
-              {rows.map((s) => (
-                <tr key={s.id} className="group hover:bg-surface-2">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 font-medium text-ink-900">
-                      <Building className="size-4 shrink-0 text-brand-600" />
-                      <span className="max-w-[160px] truncate">{s.name}</span>
-                    </div>
-                    <div className="font-mono text-[11px] text-ink-500">
-                      {s.id}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-xs text-ink-700">
-                      {s.code ?? "—"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    {s.npsn ?? "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {s.school_types && s.school_types.length > 0
-                        ? s.school_types.map((st) => (
-                            <Badge
-                              key={st}
-                              variant="outline"
-                              className="bg-surface-2 text-[11px] text-ink-700"
-                            >
-                              {st}
-                            </Badge>
-                          ))
-                        : (
-                            <span className="text-xs text-ink-400">—</span>
-                          )}
-                    </div>
-                  </td>
-                  <td className="max-w-[160px] truncate px-4 py-3 text-xs text-ink-600">
-                    {s.alamat ?? "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[11px] font-semibold capitalize",
-                        STATUS_TONE[s.status as SchoolStatus],
-                      )}
-                    >
-                      {s.status === "active"
-                        ? t("status_label_active")
-                        : t("status_label_inactive")}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    <span className="inline-flex items-center gap-1">
-                      <Users className="size-3" />
-                      {(s.student_count ?? 0).toLocaleString(numberLocale)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-xs">
-                          <MoreHorizontal className="size-4 text-ink-500" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => handleEditOpen(s)}
-                        >
-                          <Edit className="mr-2 size-4" />
-                          {t("schools_action_edit")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleStatusToggle(s)}
-                        >
-                          <Lock className="mr-2 size-4" />
-                          {s.status === "active"
-                            ? t("accounts_action_deactivate")
-                            : t("accounts_action_activate")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {nextCursor && (
-        <div className="mt-4 text-center">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleLoadMore}
-            disabled={isLoading}
-          >
-            {isLoading
-              ? t("sys_loading")
-              : lang === "en"
-              ? "Load more"
-              : "Muat lebih banyak"}
+          <Button className="rounded-md" variant="outline" onClick={() => setBulkOpen(true)}>
+            <Upload className="mr-1 size-4" />
+            {t("bulk_school_import_button")}
+          </Button>
+          <Button className="rounded-md" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-1 size-4" />
+            {t("create")}
           </Button>
         </div>
-      )}
+      </header>
+
+      <div className="school-management-workspace overflow-hidden rounded-[20px] border border-line bg-surface shadow-[var(--md-sys-elevation-1)]">
+        <div className="flex flex-col gap-3 border-b border-line bg-surface p-4 lg:flex-row lg:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+            <Input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder={t("schools_search_placeholder")}
+              className="h-10 rounded-sm bg-surface pl-9 text-xs"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <FilterChip
+              active={statusFilter === "all"}
+              onClick={() => setStatusFilter("all")}
+            >
+              {t("tab_all")}
+            </FilterChip>
+            <FilterChip
+              active={statusFilter === "active"}
+              onClick={() => setStatusFilter("active")}
+            >
+              {t("status_label_active")}
+            </FilterChip>
+            <FilterChip
+              active={statusFilter === "deactivated"}
+              onClick={() => setStatusFilter("deactivated")}
+            >
+              {t("status_label_inactive")}
+            </FilterChip>
+          </div>
+        </div>
+
+        <div className="grid xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <section
+            aria-label={lang === "en" ? "School list" : "Daftar sekolah"}
+            className="min-w-0 px-5 py-6 md:px-7"
+          >
+            <div className="mb-4 flex flex-col gap-3 border-b border-line pb-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold tracking-[-0.035em] text-ink-900">
+                  {stats.total.toLocaleString(numberLocale)} {lang === "en" ? "matching schools" : "sekolah ditemukan"}
+                </h2>
+                <p className="mt-1 text-xs text-ink-500">
+                  {lang === "en" ? "Sorted by school name" : "Diurutkan berdasarkan nama sekolah"}
+                </p>
+              </div>
+              <div className="flex gap-5 text-xs text-ink-500">
+                <span><strong className="text-base text-ink-900">{stats.active}</strong> {t("status_label_active")}</span>
+                <span><strong className="text-base text-ink-900">{stats.students.toLocaleString(numberLocale)}</strong> {t("schools_stat_students")}</span>
+              </div>
+            </div>
+
+            <div className="border-y border-line">
+              <DataTable
+                columns={columns}
+                rows={rows}
+                rowKey={(school) => school.id}
+                empty={tableEmpty}
+                surface="plain"
+                data-testid="schools-table"
+              />
+            </div>
+
+            {nextCursor && (
+              <div className="mt-4 text-center">
+                <Button variant="outline" size="sm" className="rounded-sm" onClick={handleLoadMore} disabled={isLoading}>
+                  {isLoading ? t("sys_loading") : lang === "en" ? "Load more" : "Muat lebih banyak"}
+                </Button>
+              </div>
+            )}
+          </section>
+
+          <aside
+            aria-label={inspectorLabel}
+            className="border-t border-line bg-surface p-6 xl:border-l xl:border-t-0"
+          >
+            {inspectedSchool ? (
+              <>
+                <div className="rounded-[16px] border border-line bg-surface p-5">
+                  <span className="text-xs font-bold tracking-[0.04em] text-brand-700">
+                    {inspectedSchool.npsn ? `NPSN ${inspectedSchool.npsn}` : "NPSN —"}
+                  </span>
+                  <h2
+                    aria-label={inspectedSchool.name}
+                    className="mt-3 text-2xl font-bold leading-tight tracking-[-0.035em] text-ink-900"
+                  >
+                    {inspectedSchool.name.split(" ").map((part, index) => (
+                      <span key={`${part}-${index}`}>{part} </span>
+                    ))}
+                  </h2>
+                  <p className="mt-3 text-xs leading-5 text-ink-500">
+                    {inspectedSchool.alamat ?? (lang === "en" ? "Address not provided" : "Alamat belum tersedia")}
+                  </p>
+                  <Button className="mt-5 rounded-md" onClick={() => handleEditOpen(inspectedSchool)}>
+                    <Edit className="mr-2 size-4" />
+                    {lang === "en" ? "Edit school record" : "Edit data sekolah"}
+                  </Button>
+                </div>
+                <div className="mt-6 border-t border-line pt-5">
+                  <h3 className="text-sm font-semibold text-ink-900">
+                    {lang === "en" ? "School identity" : "Identitas sekolah"}
+                  </h3>
+                  {[
+                    [t("accounts_th_status"), inspectedSchool.status === "active" ? t("status_label_active") : t("status_label_inactive")],
+                    [t("schools_field_code"), inspectedSchool.code ? `#${inspectedSchool.code}` : "—"],
+                    [t("schools_field_school_types"), inspectedSchool.school_types?.join(", ") || "—"],
+                    [t("schools_field_student_count"), (inspectedSchool.student_count ?? 0).toLocaleString(numberLocale)],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="mt-3 flex items-start justify-between gap-4 text-xs">
+                      <span className="text-ink-500">{label}</span>
+                      <strong className="max-w-[11rem] text-right text-ink-900">{value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-ink-500">
+                {lang === "en" ? "Select a school to inspect its record." : "Pilih sekolah untuk melihat detailnya."}
+              </p>
+            )}
+          </aside>
+        </div>
+      </div>
 
       <SchoolBulkImportModal
         open={bulkOpen}
@@ -510,6 +581,55 @@ export default function SystemSchoolsPage() {
                 placeholder={t("schools_placeholder_npsn")}
                 maxLength={8}
               />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="create-school-province">{t("school_picker_province")}</Label>
+                <select
+                  id="create-school-province"
+                  data-testid="create-school-province"
+                  value={createForm.provinsi_id}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({ ...f, provinsi_id: e.target.value, kota_id: "" }))}
+                  className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50"
+                >
+                  <option value="">{t("school_picker_province")}</option>
+                  {(provinces ?? []).map((province) => (
+                    <option key={province.id} value={province.id}>{province.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="create-school-city">{t("school_picker_city")}</Label>
+                <select
+                  id="create-school-city"
+                  data-testid="create-school-city"
+                  value={createForm.kota_id}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, kota_id: e.target.value }))}
+                  disabled={!createForm.provinsi_id}
+                  className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">{t("school_picker_city")}</option>
+                  {(createCities ?? []).map((city) => (
+                    <option key={city.id} value={city.id}>{city.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="create-school-category">{t("school_picker_category")}</Label>
+              <select
+                id="create-school-category"
+                data-testid="create-school-category"
+                value={createForm.category}
+                onChange={(e) => setCreateForm((f) => ({ ...f, category: e.target.value }))}
+                className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50"
+              >
+                <option value="">{t("school_picker_category")}</option>
+                {SCHOOL_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
             </div>
             <div>
               <Label>{t("schools_field_school_types")}</Label>
@@ -588,6 +708,55 @@ export default function SystemSchoolsPage() {
                 placeholder={t("schools_placeholder_npsn")}
                 maxLength={8}
               />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="edit-school-province">{t("school_picker_province")}</Label>
+                <select
+                  id="edit-school-province"
+                  data-testid="edit-school-province"
+                  value={editForm.provinsi_id}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, provinsi_id: e.target.value, kota_id: "" }))}
+                  className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50"
+                >
+                  <option value="">{t("school_picker_province")}</option>
+                  {(provinces ?? []).map((province) => (
+                    <option key={province.id} value={province.id}>{province.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="edit-school-city">{t("school_picker_city")}</Label>
+                <select
+                  id="edit-school-city"
+                  data-testid="edit-school-city"
+                  value={editForm.kota_id}
+                  onChange={(e) => setEditForm((f) => ({ ...f, kota_id: e.target.value }))}
+                  disabled={!editForm.provinsi_id}
+                  className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">{t("school_picker_city")}</option>
+                  {(editCities ?? []).map((city) => (
+                    <option key={city.id} value={city.id}>{city.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="edit-school-category">{t("school_picker_category")}</Label>
+              <select
+                id="edit-school-category"
+                data-testid="edit-school-category"
+                value={editForm.category}
+                onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
+                className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50"
+              >
+                <option value="">{t("school_picker_category")}</option>
+                {SCHOOL_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
             </div>
             <div>
               <Label>{t("schools_field_school_types")}</Label>

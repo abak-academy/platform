@@ -15,6 +15,7 @@ export interface DataTableProps<T> {
   rows: T[];
   rowKey: (row: T) => string;
   empty: React.ReactNode;
+  surface?: "card" | "plain";
   stickyHeader?: boolean;
   footer?: React.ReactNode;
   "data-testid"?: string;
@@ -25,12 +26,13 @@ export function DataTable<T>({
   rows,
   rowKey,
   empty,
+  surface = "card",
   stickyHeader = false,
   footer,
   "data-testid": dataTestId,
 }: DataTableProps<T>) {
   return (
-    <div className="md-card-outlined" data-testid={dataTestId}>
+    <div className={surface === "card" ? "md-card-outlined" : undefined} data-testid={dataTestId}>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

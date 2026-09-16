@@ -186,26 +186,6 @@ func (r *Repository) UpdateUserPhoto(ctx context.Context, userID, photoURL strin
 	return err
 }
 
-// ListSchools returns active schools ordered by name.
-func (r *Repository) ListSchools(ctx context.Context) ([]*model.School, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, name, code, school_types FROM school WHERE status = 'active' ORDER BY name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	schools := []*model.School{}
-	for rows.Next() {
-		s := &model.School{}
-		if err := rows.Scan(&s.ID, &s.Name, &s.Code, &s.SchoolTypes); err != nil {
-			return nil, err
-		}
-		schools = append(schools, s)
-	}
-	return schools, rows.Err()
-}
-
 // GetUsersByIDs returns only users with role='student' for the given IDs.
 // Used by the direct exam grant path to batch-validate existence + role
 // (no school-boundary filter — super_admin has none).

@@ -166,6 +166,7 @@ func TestPollJobsDispatchesStudentBulkJob(t *testing.T) {
 }
 
 const validBulkCSV = "name,school_npsn,jenjang\nAli,20100001,sma\nBudi,20100001,sma\n"
+const validScopedBulkCSV = "name,jenjang\nAli,sma\nBudi,sma\n"
 
 func TestRunStudentBulkJobAcceptsQueuedLegacySchoolCSV(t *testing.T) {
 	ctx := context.Background()
@@ -213,7 +214,7 @@ func TestRunStudentBulkJobSucceedsUploadsReportAndFinishesSucceeded(t *testing.T
 	}
 	store := &fakeObjectStore{
 		getObjectBytesFn: func(ctx context.Context, bucket, key string) ([]byte, error) {
-			return []byte(validBulkCSV), nil
+			return []byte(validScopedBulkCSV), nil
 		},
 		deleteObjectFn: func(ctx context.Context, bucket, key string) error {
 			if len(repo.finishCalls) != 1 {
@@ -229,6 +230,9 @@ func TestRunStudentBulkJobSucceedsUploadsReportAndFinishesSucceeded(t *testing.T
 			}
 			if actorRole != service.RoleAdminSchool {
 				t.Errorf("expected actorRole admin_school, got %s", actorRole)
+			}
+			if len(rows) != 2 || rows[0].SchoolNPSN != "" || rows[0].SchoolCode != "" {
+				t.Errorf("expected school-bound rows without CSV school identity, got %+v", rows)
 			}
 			if len(rows) != 2 {
 				t.Fatalf("expected 2 parsed rows, got %d", len(rows))

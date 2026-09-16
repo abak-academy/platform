@@ -45,14 +45,17 @@ func (h *Handler) AdminListSchools(c echo.Context) error {
 	})
 }
 
-// AdminListSchoolOptions returns every active school (id/name/code) for
-// picker dropdowns, unpaginated — see Service.SchoolOptions.
+// AdminListSchoolOptions returns a bounded school search page for picker dropdowns.
 func (h *Handler) AdminListSchoolOptions(c echo.Context) error {
-	options, err := h.svc.SchoolOptions(c.Request().Context())
+	params, err := schoolSearchParamsFromRequest(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	options, err := h.svc.SchoolOptions(c.Request().Context(), params)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": options})
+	return c.JSON(http.StatusOK, options)
 }
 
 // AdminCreateSchool creates a new school.
@@ -63,6 +66,9 @@ func (h *Handler) AdminCreateSchool(c echo.Context) error {
 		NPSN        *string  `json:"npsn"`
 		SchoolTypes []string `json:"school_types"`
 		Alamat      *string  `json:"alamat"`
+		Category    *string  `json:"category"`
+		ProvinsiID  *string  `json:"provinsi_id"`
+		KotaID      *string  `json:"kota_id"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -71,7 +77,7 @@ func (h *Handler) AdminCreateSchool(c echo.Context) error {
 		return badRequest(c, "code is required")
 	}
 
-	school, err := h.svc.CreateSchool(c.Request().Context(), req.Name, req.Code, req.NPSN, req.SchoolTypes, req.Alamat)
+	school, err := h.svc.CreateSchool(c.Request().Context(), req.Name, req.Code, req.NPSN, req.SchoolTypes, req.Alamat, req.Category, req.ProvinsiID, req.KotaID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -88,12 +94,15 @@ func (h *Handler) AdminUpdateSchool(c echo.Context) error {
 		NPSN        *string  `json:"npsn"`
 		SchoolTypes []string `json:"school_types"`
 		Alamat      *string  `json:"alamat"`
+		Category    *string  `json:"category"`
+		ProvinsiID  *string  `json:"provinsi_id"`
+		KotaID      *string  `json:"kota_id"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
 
-	school, err := h.svc.UpdateSchool(c.Request().Context(), id, req.Name, req.NPSN, req.Alamat, req.SchoolTypes, req.Code)
+	school, err := h.svc.UpdateSchool(c.Request().Context(), id, req.Name, req.NPSN, req.Alamat, req.SchoolTypes, req.Code, req.Category, req.ProvinsiID, req.KotaID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

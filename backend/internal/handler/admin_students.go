@@ -4,6 +4,7 @@ import (
 	"akademi-bimbel/internal/service"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -79,19 +80,20 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 	}
 
 	var req struct {
-		Name           string  `json:"name"`
-		Jenjang        string  `json:"jenjang"`
-		Email          *string `json:"email"`
-		DOB            *string `json:"dob"`
-		Gender         *string `json:"gender"`
-		Grade          *int    `json:"grade"`
-		AlamatDomisili *string `json:"alamat_domisili"`
-		TargetExam     *string `json:"target_exam"`
-		ProvinsiID     *string `json:"provinsi_id"`
-		KotaID         *string `json:"kota_id"`
-		KecamatanID    *string `json:"kecamatan_id"`
-		KodePos        *string `json:"kode_pos"`
-		Password       *string `json:"password"`
+		Name               string  `json:"name"`
+		Jenjang            string  `json:"jenjang"`
+		Email              *string `json:"email"`
+		DOB                *string `json:"dob"`
+		Gender             *string `json:"gender"`
+		Grade              *int    `json:"grade"`
+		AlamatDomisili     *string `json:"alamat_domisili"`
+		TargetExam         *string `json:"target_exam"`
+		ProvinsiID         *string `json:"provinsi_id"`
+		KotaID             *string `json:"kota_id"`
+		KecamatanID        *string `json:"kecamatan_id"`
+		KodePos            *string `json:"kode_pos"`
+		Password           *string `json:"password"`
+		UnlistedSchoolName *string `json:"unlisted_school_name"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -109,11 +111,34 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 		dob = &parsed
 	}
 
+	var unlistedSchoolName *string
+	if req.UnlistedSchoolName != nil {
+		if claims.Role != service.RoleSuperAdmin {
+			return mapServiceError(c, service.ErrForbidden)
+		}
+		name := strings.TrimSpace(*req.UnlistedSchoolName)
+		if name == "" {
+			return badRequest(c, "unlisted_school_name is required")
+		}
+		if schoolID != "" {
+			return badRequest(c, "choose either school_id or unlisted_school_name")
+		}
+		unlistedSchoolName = &name
+	}
+
 	var resp *service.StudentRegistrationResponse
 	if req.Password != nil && *req.Password != "" {
-		resp, err = h.svc.RegisterStudentWithPassword(c.Request().Context(), claims.Role, schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos, *req.Password)
+		if unlistedSchoolName != nil {
+			resp, err = h.svc.RegisterStudentUnlistedWithPassword(c.Request().Context(), claims.Role, *unlistedSchoolName, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos, *req.Password)
+		} else {
+			resp, err = h.svc.RegisterStudentWithPassword(c.Request().Context(), claims.Role, schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos, *req.Password)
+		}
 	} else {
-		resp, err = h.svc.RegisterStudent(c.Request().Context(), schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos)
+		if unlistedSchoolName != nil {
+			resp, err = h.svc.RegisterStudentUnlisted(c.Request().Context(), claims.Role, *unlistedSchoolName, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos)
+		} else {
+			resp, err = h.svc.RegisterStudent(c.Request().Context(), schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos)
+		}
 	}
 	if err != nil {
 		return mapServiceError(c, err)

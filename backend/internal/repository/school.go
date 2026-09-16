@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"akademi-bimbel/internal/model"
 )
@@ -60,7 +62,7 @@ func (r *Repository) ListSchoolsAdmin(ctx context.Context, filter SchoolAdminFil
 	}
 
 	query := `SELECT s.id, s.name, s.code, s.npsn, s.school_types, s.alamat,
-		s.status, s.created_at, s.updated_at,
+		s.category, s.provinsi_id, s.kota_id, s.status, s.created_at, s.updated_at,
 		(SELECT COUNT(*) FROM users WHERE school_id = s.id AND role = 'student' AND status != 'deleted') AS student_count
 		FROM school s WHERE 1=1`
 	args := []any{}
@@ -97,7 +99,7 @@ func (r *Repository) ListSchoolsAdmin(ctx context.Context, filter SchoolAdminFil
 		var s SchoolAdminRow
 		if err := rows.Scan(
 			&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
-			&s.Status, &s.CreatedAt, &s.UpdatedAt, &s.StudentCount,
+			&s.Category, &s.ProvinsiID, &s.KotaID, &s.Status, &s.CreatedAt, &s.UpdatedAt, &s.StudentCount,
 		); err != nil {
 			return nil, "", err
 		}
@@ -150,29 +152,79 @@ func (r *Repository) CountSchoolsAdmin(ctx context.Context, filter SchoolAdminFi
 	return counts, err
 }
 
-// SchoolOption is the minimal shape used to populate school picker
-// dropdowns — deliberately excludes student_count (a correlated subquery per
-// row) and other fields the pickers never render. SchoolTypes is included
-// because the student-registration picker constrains its jenjang options to
-// the selected school's types; unlike student_count it's a plain column, not
-// a subquery, so it's cheap to carry here.
-type SchoolOption struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Code        string   `json:"code"`
-	SchoolTypes []string `json:"school_types"`
+var (
+	ErrAmbiguousSchoolIdentity = errors.New("ambiguous school identity")
+	ErrSchoolCodeConflict      = errors.New("school code already exists")
+)
+
+type SchoolOption = model.SchoolOption
+
+type SchoolSearchFilter struct {
+	ProvinceID string
+	CityID     string
+	Category   string
+	NPSN       string
+	Limit      int
 }
 
-// ListSchoolOptions returns every active school (id, name, code, school_types),
-// ordered by name, for use in picker dropdowns. Unlike ListSchoolsAdmin this
-// is not paginated: pickers need the full active registry to let users select
-// any school, not just the first page (see school-bulk-list-pagination
-// backlog, "picker" gap — GET /admin/schools with no cursor/limit was
-// silently truncating every picker in the app to 20 alphabetically-first
-// schools).
-func (r *Repository) ListSchoolOptions(ctx context.Context) ([]SchoolOption, error) {
+func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearchFilter) ([]SchoolOption, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = 20
+	}
+	maxLimit := 50
+	if filter.NPSN == "" && filter.CityID != "" && filter.Category != "" {
+		maxLimit = 1000
+	}
+	if filter.Limit > maxLimit {
+		filter.Limit = maxLimit
+	}
+
+	if filter.NPSN != "" {
+		rows, err := r.querySchoolOptions(ctx,
+			`WHERE s.status = 'active' AND UPPER(BTRIM(s.npsn)) = $1 ORDER BY s.name ASC, s.id ASC LIMIT 2`,
+			filter.NPSN,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) > 1 {
+			return nil, ErrAmbiguousSchoolIdentity
+		}
+		return rows, nil
+	}
+
+	query := `WHERE s.status = 'active' AND s.provinsi_id = $1`
+	args := []any{filter.ProvinceID}
+	argNum := 2
+	if filter.CityID != "" {
+		query += fmt.Sprintf(` AND s.kota_id = $%d`, argNum)
+		args = append(args, filter.CityID)
+		argNum++
+	}
+	if filter.Category != "" {
+		query += fmt.Sprintf(` AND s.category = $%d`, argNum)
+		args = append(args, filter.Category)
+		argNum++
+	}
+	query += fmt.Sprintf(` ORDER BY s.name ASC, s.id ASC LIMIT $%d`, argNum)
+	args = append(args, filter.Limit)
+
+	rows, err := r.querySchoolOptions(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *Repository) querySchoolOptions(ctx context.Context, where string, args ...any) ([]SchoolOption, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, name, code, school_types FROM school WHERE status = 'active' ORDER BY name ASC`,
+		`SELECT s.id, s.name, s.code, s.npsn, s.school_types, s.alamat, s.status,
+			s.category, s.provinsi_id, s.kota_id, c.name, p.name
+		FROM school s
+		LEFT JOIN city c ON c.id = s.kota_id
+		LEFT JOIN province p ON p.id = s.provinsi_id
+		`+where,
+		args...,
 	)
 	if err != nil {
 		return nil, err
@@ -182,7 +234,10 @@ func (r *Repository) ListSchoolOptions(ctx context.Context) ([]SchoolOption, err
 	options := []SchoolOption{}
 	for rows.Next() {
 		var o SchoolOption
-		if err := rows.Scan(&o.ID, &o.Name, &o.Code, &o.SchoolTypes); err != nil {
+		if err := rows.Scan(
+			&o.ID, &o.Name, &o.Code, &o.NPSN, &o.SchoolTypes, &o.Alamat, &o.Status,
+			&o.Category, &o.ProvinsiID, &o.KotaID, &o.KotaName, &o.ProvinsiName,
+		); err != nil {
 			return nil, err
 		}
 		options = append(options, o)
@@ -190,16 +245,27 @@ func (r *Repository) ListSchoolOptions(ctx context.Context) ([]SchoolOption, err
 	return options, rows.Err()
 }
 
+func (r *Repository) GetSchoolOptionByID(ctx context.Context, id string) (*SchoolOption, error) {
+	rows, err := r.querySchoolOptions(ctx, `WHERE s.id = $1`, id)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return &rows[0], nil
+}
+
 // GetSchoolByID returns a school by ID. Returns nil, nil when not found.
 func (r *Repository) GetSchoolByID(ctx context.Context, id string) (*model.School, error) {
 	s := &model.School{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, name, code, npsn, school_types, alamat, status, created_at, updated_at
+		`SELECT id, name, code, npsn, school_types, alamat, category, provinsi_id, kota_id, status, created_at, updated_at
 		FROM school WHERE id = $1`,
 		id,
 	).Scan(
 		&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
-		&s.Status, &s.CreatedAt, &s.UpdatedAt,
+		&s.Category, &s.ProvinsiID, &s.KotaID, &s.Status, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -213,8 +279,8 @@ func (r *Repository) GetSchoolByID(ctx context.Context, id string) (*model.Schoo
 // SchoolCodeExists checks whether a given code already exists in the school table.
 // excludeID optionally excludes a specific school ID (for update checks).
 func (r *Repository) SchoolCodeExists(ctx context.Context, code string, excludeID *string) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM school WHERE code = $1`
-	args := []any{code}
+	query := `SELECT EXISTS(SELECT 1 FROM school WHERE UPPER(BTRIM(code)) = $1`
+	args := []any{strings.ToUpper(strings.TrimSpace(code))}
 	if excludeID != nil {
 		query += ` AND id != $2`
 		args = append(args, *excludeID)
@@ -229,29 +295,81 @@ func (r *Repository) SchoolCodeExists(ctx context.Context, code string, excludeI
 // CreateSchool inserts a new school with status='active' and scans back
 // id, created_at, updated_at.
 func (r *Repository) CreateSchool(ctx context.Context, s *model.School) error {
-	return r.pool.QueryRow(ctx,
-		`INSERT INTO school (name, code, npsn, school_types, alamat, status)
-		VALUES ($1, $2, $3, $4, $5, 'active')
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	normalizedCode := strings.ToUpper(strings.TrimSpace(s.Code))
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, normalizedCode); err != nil {
+		return err
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM school WHERE UPPER(BTRIM(code)) = $1)`,
+		normalizedCode,
+	).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return ErrSchoolCodeConflict
+	}
+
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO school (name, code, npsn, school_types, alamat, category, provinsi_id, kota_id, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
 		RETURNING id, created_at, updated_at`,
-		s.Name, s.Code, s.NPSN, s.SchoolTypes, s.Alamat,
-	).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt)
+		s.Name, s.Code, s.NPSN, s.SchoolTypes, s.Alamat, s.Category, s.ProvinsiID, s.KotaID,
+	).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // UpdateSchool patches editable fields. npsnSet distinguishes an omitted NPSN
 // from an explicit blank value normalized to NULL by the service.
-func (r *Repository) UpdateSchool(ctx context.Context, id string, name *string, npsnSet bool, npsn, alamat *string, schoolTypes []string, code *string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE school
+func (r *Repository) UpdateSchool(ctx context.Context, id string, name *string, npsnSet bool, npsn, alamat *string, schoolTypes []string, code *string, categorySet bool, category *string, provinsiSet bool, provinsiID *string, kotaSet bool, kotaID *string) error {
+	const query = `UPDATE school
 		SET name = COALESCE($1, name),
 			npsn = CASE WHEN $2 THEN $3 ELSE npsn END,
 			alamat = COALESCE($4, alamat),
 			school_types = COALESCE($5, school_types),
 			code = COALESCE($6, code),
+			category = CASE WHEN $7 THEN $8 ELSE category END,
+			provinsi_id = CASE WHEN $9 THEN $10 ELSE provinsi_id END,
+			kota_id = CASE WHEN $11 THEN $12 ELSE kota_id END,
 			updated_at = now()
-		WHERE id = $7`,
-		name, npsnSet, npsn, alamat, schoolTypes, code, id,
-	)
-	return err
+		WHERE id = $13`
+	args := []any{name, npsnSet, npsn, alamat, schoolTypes, code, categorySet, category, provinsiSet, provinsiID, kotaSet, kotaID, id}
+	if code == nil {
+		_, err := r.pool.Exec(ctx, query, args...)
+		return err
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	normalizedCode := strings.ToUpper(strings.TrimSpace(*code))
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, normalizedCode); err != nil {
+		return err
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM school WHERE UPPER(BTRIM(code)) = $1 AND id != $2)`,
+		normalizedCode, id,
+	).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return ErrSchoolCodeConflict
+	}
+	if _, err := tx.Exec(ctx, query, args...); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // UpdateSchoolStatus sets the status of a school.
@@ -285,22 +403,71 @@ func (r *Repository) GetSchoolByNameCI(ctx context.Context, name string) (*model
 }
 
 func (r *Repository) GetSchoolByNPSN(ctx context.Context, npsn string) (*model.School, error) {
-	s := &model.School{}
-	err := r.pool.QueryRow(ctx,
+	rows, err := r.pool.Query(ctx,
 		`SELECT id, name, code, npsn, school_types, alamat, status, created_at, updated_at
-		FROM school WHERE UPPER(BTRIM(npsn)) = $1`,
+		FROM school WHERE UPPER(BTRIM(npsn)) = $1 ORDER BY id LIMIT 2`,
 		npsn,
-	).Scan(
-		&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
-		&s.Status, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
-		if isNotFound(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	return s, nil
+	defer rows.Close()
+
+	schools := []*model.School{}
+	for rows.Next() {
+		s := &model.School{}
+		if err := rows.Scan(
+			&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
+			&s.Status, &s.CreatedAt, &s.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		schools = append(schools, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(schools) == 0 {
+		return nil, nil
+	}
+	if len(schools) > 1 {
+		return nil, ErrAmbiguousSchoolIdentity
+	}
+	return schools[0], nil
+}
+
+func (r *Repository) GetSchoolByCode(ctx context.Context, code string) (*model.School, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, name, code, npsn, school_types, alamat, status, created_at, updated_at
+		FROM school WHERE UPPER(BTRIM(code)) = $1 ORDER BY id LIMIT 2`,
+		strings.ToUpper(strings.TrimSpace(code)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	schools := []*model.School{}
+	for rows.Next() {
+		s := &model.School{}
+		if err := rows.Scan(
+			&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
+			&s.Status, &s.CreatedAt, &s.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		schools = append(schools, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(schools) == 0 {
+		return nil, nil
+	}
+	if len(schools) > 1 {
+		return nil, ErrAmbiguousSchoolIdentity
+	}
+	return schools[0], nil
 }
 
 // CountStudentsBySchool returns the number of non-deleted students for a school.

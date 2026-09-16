@@ -4,13 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Download, Eye, Loader2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +18,6 @@ import {
   useAdminResultDetail,
   exportAdminResults,
 } from "@/lib/hooks/admin-results";
-import { useSchools } from "@/lib/hooks/students";
 import { useAuthStore } from "@/stores/auth";
 import { toast } from "sonner";
 import type { AdminResultRow, AdminResultDetail } from "@/lib/types";
@@ -33,10 +26,6 @@ interface ExamResultsTabProps {
   examId: string;
 }
 
-// Radix Select forbids an empty-string item value, so "every school" needs its
-// own sentinel; it maps back to "" (no school_id param, meaning "all schools").
-const ALL_SCHOOLS_VALUE = "_all_";
-
 export function ExamResultsTab({ examId }: ExamResultsTabProps) {
   const { t, lang } = useTranslation();
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
@@ -44,7 +33,6 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
   const role = useAuthStore((s) => s.user?.role);
   const canScopeAllSchools = role === "super_admin" || role === "admin_exam";
 
-  const { data: schoolsData } = useSchools(canScopeAllSchools);
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
 
   const [search, setSearch] = useState("");
@@ -161,25 +149,13 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         {canScopeAllSchools && (
-          <div>
-            <p className="text-xs text-ink-500">{t("select_school")}</p>
-            <Select
-              value={selectedSchoolId || ALL_SCHOOLS_VALUE}
-              onValueChange={(v) => setSelectedSchoolId(v === ALL_SCHOOLS_VALUE ? "" : v)}
-            >
-              <SelectTrigger className="mt-1 h-9 w-[240px] text-xs" aria-label={t("select_school")}>
-                <SelectValue placeholder={t("students_all_schools")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_SCHOOLS_VALUE}>{t("students_all_schools")}</SelectItem>
-                {(schoolsData ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SchoolFilterPicker
+            value={selectedSchoolId}
+            onChange={setSelectedSchoolId}
+            label={t("select_school")}
+            allLabel={t("students_all_schools")}
+            className="min-w-[260px]"
+          />
         )}
         <Button
           size="sm"

@@ -135,6 +135,12 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidSchoolName):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidSchoolSearch):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidSchoolCategory):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_school_category", Message: err.Error()}
+	case errors.Is(err, service.ErrIncompleteSchoolLocation):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "incomplete_school_location", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolRequired):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "school_required", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolNotAllowed):

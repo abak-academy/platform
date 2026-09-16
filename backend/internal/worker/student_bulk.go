@@ -53,7 +53,7 @@ func (w *Worker) runStudentBulkJob(ctx context.Context, job model.Job) {
 		return
 	}
 
-	rows, err := service.ParseStudentBulkCSVForWorker(data)
+	rows, err := service.ParseStudentBulkCSVForWorker(data, schoolBound == nil)
 	if err != nil {
 		w.failStudentBulkJob(ctx, job, fmt.Sprintf("parse csv: %v", err))
 		return

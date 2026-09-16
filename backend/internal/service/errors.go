@@ -198,11 +198,15 @@ var (
 
 // --- from school.go ---
 var (
-	ErrSchoolNotFound    = errors.New("school not found")
-	ErrSchoolCodeTaken   = errors.New("school code already taken")
-	ErrSchoolNPSNTaken   = errors.New("school NPSN already taken")
-	ErrInvalidSchoolNPSN = errors.New("school NPSN must be exactly 8 ASCII letters or digits")
-	ErrInvalidSchoolName = errors.New("school name must contain at least one letter or digit")
+	ErrSchoolNotFound           = errors.New("school not found")
+	ErrSchoolNotFoundByCode     = errors.New("school not found by code")
+	ErrSchoolCodeTaken          = errors.New("school code already taken")
+	ErrSchoolNPSNTaken          = errors.New("school NPSN already taken")
+	ErrInvalidSchoolNPSN        = errors.New("school NPSN must be exactly 8 ASCII letters or digits")
+	ErrInvalidSchoolName        = errors.New("school name must contain at least one letter or digit")
+	ErrInvalidSchoolSearch      = errors.New("invalid school search")
+	ErrInvalidSchoolCategory    = errors.New("invalid school category")
+	ErrIncompleteSchoolLocation = errors.New("province and city must be provided together")
 )
 
 // --- from shipping_rates.go ---
@@ -253,14 +257,13 @@ var (
 
 // --- from student_bulk.go ---
 var (
-	ErrInvalidCSV                    = errors.New("invalid csv")
-	ErrMissingCSVHeader              = errors.New("csv missing required name/jenjang/school_npsn header")
-	ErrRowLimitExceeded              = errors.New("row limit exceeded")
-	ErrStudentBulkSchoolNPSNRequired = errors.New("school_npsn is required")
-	ErrSchoolNotFoundByNPSN          = errors.New("school not found by NPSN")
-	ErrCrossSchoolBound              = errors.New("school mismatch: row school_npsn differs from bound school")
-	ErrInvalidDOBFormat              = errors.New("invalid dob format, expected YYYY-MM-DD")
-	ErrInvalidGradeFormat            = errors.New("invalid grade, expected an integer")
+	ErrInvalidCSV                        = errors.New("invalid csv")
+	ErrMissingCSVHeader                  = errors.New("csv missing required student bulk header")
+	ErrRowLimitExceeded                  = errors.New("row limit exceeded")
+	ErrStudentBulkSchoolIdentityRequired = errors.New("school_npsn or school_code is required")
+	ErrSchoolNotFoundByNPSN              = errors.New("school not found by NPSN")
+	ErrInvalidDOBFormat                  = errors.New("invalid dob format, expected YYYY-MM-DD")
+	ErrInvalidGradeFormat                = errors.New("invalid grade, expected an integer")
 )
 
 // --- from school_bulk.go ---

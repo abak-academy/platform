@@ -110,3 +110,27 @@ for (const viewport of VIEWPORTS) {
     await assertTableIsTheScroller(page, "school-students-table", viewport.width === 390);
   });
 }
+
+test("school/students workspace keeps a clear desktop gutter from the app sidebar", async ({
+  page,
+  context,
+}) => {
+  await seedSession(context, {
+    token: "e2e-fake-token",
+    refreshToken: "e2e-fake-refresh",
+    user: FAKE_ADMIN_USER,
+  });
+  await mockStudentsBackend(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/admin/school/students");
+  await expect(page.getByText(STUDENT_ROWS[0].name)).toBeVisible();
+
+  const sidebarBox = await page.getByRole("complementary").first().boundingBox();
+  const workspaceBox = await page
+    .getByRole("region", { name: "Filter siswa" })
+    .boundingBox();
+
+  expect(sidebarBox).not.toBeNull();
+  expect(workspaceBox).not.toBeNull();
+  expect(workspaceBox!.x - (sidebarBox!.x + sidebarBox!.width)).toBeGreaterThanOrEqual(72);
+});

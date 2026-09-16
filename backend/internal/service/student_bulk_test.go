@@ -29,6 +29,26 @@ func TestParseStudentBulkCSV(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts exact school code as the super-admin identity", func(t *testing.T) {
+		rows, err := ParseStudentBulkCSV([]byte("name,school_code,jenjang\nBudi,YAYASANBIAN,sma\n"))
+		if err != nil {
+			t.Fatalf("ParseStudentBulkCSV: %v", err)
+		}
+		if len(rows) != 1 || rows[0].SchoolCode != "YAYASANBIAN" {
+			t.Fatalf("unexpected school-code row: %+v", rows)
+		}
+	})
+
+	t.Run("school-bound format does not require a school identity", func(t *testing.T) {
+		rows, err := ParseSchoolBoundStudentBulkCSV([]byte("name,jenjang\nBudi,sma\n"))
+		if err != nil {
+			t.Fatalf("ParseSchoolBoundStudentBulkCSV: %v", err)
+		}
+		if len(rows) != 1 || rows[0].Name != "Budi" {
+			t.Fatalf("unexpected school-bound row: %+v", rows)
+		}
+	})
+
 	t.Run("valid CSV with jenjang, school_npsn, and email", func(t *testing.T) {
 		data := []byte("name,school_npsn,jenjang,email\nBudi,20100001,sma,budi@example.com\nSiti,P1234567,sma,\n")
 		rows, err := ParseStudentBulkCSV(data)
@@ -300,7 +320,7 @@ func TestParseStudentBulkCSV(t *testing.T) {
 }
 
 func TestParseStudentBulkCSVForWorker_AcceptsLegacySchoolHeader(t *testing.T) {
-	rows, err := ParseStudentBulkCSVForWorker([]byte("name,school,jenjang\nBudi,SMAN 1 Jakarta,sma\n"))
+	rows, err := ParseStudentBulkCSVForWorker([]byte("name,school,jenjang\nBudi,SMAN 1 Jakarta,sma\n"), true)
 	if err != nil {
 		t.Fatalf("ParseStudentBulkCSVForWorker: %v", err)
 	}
@@ -310,7 +330,7 @@ func TestParseStudentBulkCSVForWorker_AcceptsLegacySchoolHeader(t *testing.T) {
 }
 
 func TestParseStudentBulkCSVForWorker_PrefersNPSNHeader(t *testing.T) {
-	rows, err := ParseStudentBulkCSVForWorker([]byte("name,school_npsn,school,jenjang\nBudi,20100001,Legacy School,sma\n"))
+	rows, err := ParseStudentBulkCSVForWorker([]byte("name,school_npsn,school,jenjang\nBudi,20100001,Legacy School,sma\n"), true)
 	if err != nil {
 		t.Fatalf("ParseStudentBulkCSVForWorker: %v", err)
 	}
@@ -319,12 +339,12 @@ func TestParseStudentBulkCSVForWorker_PrefersNPSNHeader(t *testing.T) {
 	}
 }
 
-const frontendStudentBulkTemplateCSV = "name,school_npsn,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
-	"Budi Santoso,20100001,SMA,budi@example.com,2008-05-14,male,11,UTBK,\"Jl. Melati No. 3, RT 04\",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n" +
-	"Siti Aminah,P1234567,SMA,,,,,,,,,,\n"
+const frontendStudentBulkTemplateCSV = "name,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
+	"Budi Santoso,SMA,budi@example.com,2008-05-14,male,11,UTBK,\"Jl. Melati No. 3, RT 04\",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n" +
+	"Siti Aminah,SMA,,,,,,,,,,\n"
 
 func TestFrontendStudentTemplateParsesUnmodified(t *testing.T) {
-	rows, err := ParseStudentBulkCSV([]byte(frontendStudentBulkTemplateCSV))
+	rows, err := ParseSchoolBoundStudentBulkCSV([]byte(frontendStudentBulkTemplateCSV))
 	if err != nil {
 		t.Fatalf("the frontend template must parse: %v", err)
 	}
@@ -360,19 +380,19 @@ func TestBuildStudentBulkResultCSV(t *testing.T) {
 	if len(records) != 3 {
 		t.Fatalf("want 3 records (header + 2 rows), got %d", len(records))
 	}
-	wantHeader := []string{"row", "name", "school_npsn", "school", "email", "status", "username", "temp_password", "error"}
+	wantHeader := []string{"row", "name", "school_npsn", "school_code", "school", "email", "status", "username", "temp_password", "error"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
 		}
 	}
-	wantRow1 := []string{"2", "Budi", "20100001", "SMAN 1 Jakarta", "budi@example.com", "success", "budi123", "abc123", ""}
+	wantRow1 := []string{"2", "Budi", "20100001", "", "SMAN 1 Jakarta", "budi@example.com", "success", "budi123", "abc123", ""}
 	for i, v := range wantRow1 {
 		if records[1][i] != v {
 			t.Errorf("row1[%d]: want %s, got %s", i, v, records[1][i])
 		}
 	}
-	wantRow2 := []string{"3", "Siti", "20100001", "SMAN 1 Jakarta", "", "failed", "", "", "some error"}
+	wantRow2 := []string{"3", "Siti", "20100001", "", "SMAN 1 Jakarta", "", "failed", "", "", "some error"}
 	for i, v := range wantRow2 {
 		if records[2][i] != v {
 			t.Errorf("row2[%d]: want %s, got %s", i, v, records[2][i])
@@ -426,7 +446,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		t.Cleanup(func() { svc.cfg = previousConfig })
 
 		code := "legacy_bulk_" + uniqueSuffix()
-		school, err := svc.CreateSchool(ctx, "Legacy Bulk School "+code, code, nil, []string{"sma"}, nil)
+		school, err := svc.CreateSchool(ctx, "Legacy Bulk School "+code, code, nil, []string{"sma"}, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -438,6 +458,46 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		}
 		if successCount != 1 || results[0].Status != "success" || results[0].SchoolName != school.Name {
 			t.Fatalf("legacy row: count=%d result=%+v", successCount, results[0])
+		}
+	})
+
+	t.Run("admin-school row derives an NPSN-less foundation from its bound school", func(t *testing.T) {
+		code := "foundation_" + uniqueSuffix()
+		school, err := svc.CreateSchool(ctx, "Foundation "+code, code, nil, []string{"sma"}, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		rows := []StudentBulkRow{{Row: 2, Name: "Foundation Student", Jenjang: "sma"}}
+
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, &school.ID, RoleAdminSchool, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if successCount != 1 || results[0].Status != "success" {
+			t.Fatalf("want bound foundation row to succeed, got %+v", results)
+		}
+		if results[0].SchoolCode != code || results[0].SchoolName != school.Name {
+			t.Fatalf("want canonical bound school, got %+v", results[0])
+		}
+	})
+
+	t.Run("super-admin resolves an NPSN-less foundation by exact school code", func(t *testing.T) {
+		code := "foundation_" + uniqueSuffix()
+		school, err := svc.CreateSchool(ctx, "Foundation "+code, code, nil, []string{"sma"}, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		rows := []StudentBulkRow{{Row: 2, Name: "Foundation Student", SchoolCode: code, Jenjang: "sma"}}
+
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if successCount != 1 || results[0].Status != "success" {
+			t.Fatalf("want exact school-code row to succeed, got %+v", results)
+		}
+		if results[0].SchoolCode != code || results[0].SchoolName != school.Name {
+			t.Fatalf("want canonical school, got %+v", results[0])
 		}
 	})
 
@@ -458,7 +518,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		if successCount != 1 || results[0].Status != "success" || results[0].SchoolNPSN != npsn {
 			t.Fatalf("normalized row: want one success with %q, got count=%d row=%+v", npsn, successCount, results[0])
 		}
-		wantErrors := []error{ErrStudentBulkSchoolNPSNRequired, ErrInvalidSchoolNPSN, ErrSchoolNotFoundByNPSN}
+		wantErrors := []error{ErrStudentBulkSchoolIdentityRequired, ErrInvalidSchoolNPSN, ErrSchoolNotFoundByNPSN}
 		for i, wantErr := range wantErrors {
 			result := results[i+1]
 			if result.Row != rows[i+1].Row || result.Status != "failed" || result.Error != wantErr.Error() {
@@ -470,7 +530,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 	t.Run("does not resolve NPSN-shaped school name or create a school", func(t *testing.T) {
 		name := "Z8765432"
 		npsn := "Y" + uniqueSuffix()[:7]
-		if _, err := svc.CreateSchool(ctx, name, "sb_"+uniqueSuffix(), &npsn, []string{"sma"}, nil); err != nil {
+		if _, err := svc.CreateSchool(ctx, name, "sb_"+uniqueSuffix(), &npsn, []string{"sma"}, nil, nil, nil, nil); err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
 		var before int
@@ -781,8 +841,9 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 
 	// --- Task 27: School resolution tests ---
 
-	t.Run("admin_school: row with unknown school fails with school-not-found", func(t *testing.T) {
+	t.Run("admin_school ignores an uploaded school identity and uses its bound school", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		boundNPSN := schoolNPSNByID(t, repo, schoolID)
 		schoolBound := &schoolID
 		rows := []StudentBulkRow{
 			{Name: "NoSchool", SchoolNPSN: "Z9999999", Jenjang: "sma"},
@@ -791,19 +852,20 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
-		if successCount != 0 {
-			t.Errorf("want successCount=0 for unknown school, got %d", successCount)
+		if successCount != 1 {
+			t.Errorf("want successCount=1 for bound school, got %d", successCount)
 		}
-		if results[0].Status != "failed" || results[0].Error != ErrSchoolNotFoundByNPSN.Error() {
-			t.Errorf("want failed with ErrSchoolNotFoundByNPSN, got %+v", results[0])
+		if results[0].Status != "success" {
+			t.Errorf("want bound school success, got %+v", results[0])
 		}
-		if results[0].SchoolNPSN != "Z9999999" {
-			t.Errorf("want raw CSV school value in result, got %q", results[0].SchoolNPSN)
+		if results[0].SchoolNPSN != boundNPSN {
+			t.Errorf("want canonical bound-school NPSN %q, got %q", boundNPSN, results[0].SchoolNPSN)
 		}
 	})
 
-	t.Run("admin_school: row with different school fails with cross-school error", func(t *testing.T) {
+	t.Run("admin_school cannot redirect a row to a different existing school", func(t *testing.T) {
 		schoolA := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		schoolANPSN := schoolNPSNByID(t, repo, schoolA)
 		schoolB := createTestSchool(t, svc)
 		schoolBName := schoolNPSNByID(t, repo, schoolB)
 		schoolBound := &schoolA
@@ -815,14 +877,14 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
-		if successCount != 0 {
-			t.Errorf("want successCount=0 for cross-school, got %d", successCount)
+		if successCount != 1 {
+			t.Errorf("want successCount=1 for bound school, got %d", successCount)
 		}
-		if results[0].Status != "failed" || results[0].Error != ErrCrossSchoolBound.Error() {
-			t.Errorf("want failed with ErrCrossSchoolBound, got %+v", results[0])
+		if results[0].Status != "success" {
+			t.Errorf("want bound-school success, got %+v", results[0])
 		}
-		if results[0].SchoolNPSN != schoolBName {
-			t.Errorf("want raw CSV school value, got %q", results[0].SchoolNPSN)
+		if results[0].SchoolNPSN != schoolANPSN {
+			t.Errorf("want bound school %q instead of uploaded %q, got %q", schoolANPSN, schoolBName, results[0].SchoolNPSN)
 		}
 	})
 

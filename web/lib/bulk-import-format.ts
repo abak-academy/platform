@@ -6,6 +6,7 @@ export type BulkFieldSpec = {
   ruleKey:
     | "bulk_format_student_name"
     | "bulk_format_student_school_npsn"
+    | "bulk_format_student_school_code"
     | "bulk_format_student_jenjang"
     | "bulk_format_student_email"
     | "bulk_format_student_dob"
@@ -22,32 +23,38 @@ export type BulkFieldSpec = {
     | "bulk_format_school_code"
     | "bulk_format_school_npsn"
     | "bulk_format_school_school_types"
-    | "bulk_format_school_alamat";
+    | "bulk_format_school_alamat"
+    | "bulk_format_school_category"
+    | "bulk_format_school_provinsi"
+    | "bulk_format_school_kota";
   example: string;
 };
 
 export const STUDENT_TEMPLATE_HEADER =
-  "name,school_npsn,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos";
+  "name,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos";
 
 export const STUDENT_TEMPLATE_ROWS = [
-  'Budi Santoso,20100001,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132',
-  "Siti Aminah,P1234567,SMA,,,,,,,,,,",
+  'Budi Santoso,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132',
+  "Siti Aminah,SMA,,,,,,,,,,",
 ];
 
-export const SUPER_ADMIN_STUDENT_TEMPLATE_HEADER = `${STUDENT_TEMPLATE_HEADER},password`;
+export const SUPER_ADMIN_STUDENT_TEMPLATE_HEADER =
+  "name,school_npsn,school_code,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos,password";
 
-export const SUPER_ADMIN_STUDENT_TEMPLATE_ROWS = STUDENT_TEMPLATE_ROWS.map((row) => `${row},`);
+export const SUPER_ADMIN_STUDENT_TEMPLATE_ROWS = [
+  'Budi Santoso,20100001,,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132,',
+  "Siti Aminah,,YAYASANBIAN,SMA,,,,,,,,,,,",
+];
 
-export const SCHOOL_TEMPLATE_HEADER = "name,code,npsn,school_types,alamat";
+export const SCHOOL_TEMPLATE_HEADER = "name,code,npsn,school_types,alamat,category,provinsi,kota";
 
 export const SCHOOL_TEMPLATE_ROWS = [
-  'SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,"Jl. Sudirman No. 1"',
-  "SMPN 5 Bandung,SMPN5BDG,,SMP,",
+  'SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,"Jl. Sudirman No. 1",SMA,DKI JAKARTA,KOTA JAKARTA PUSAT',
+  "SMPN 5 Bandung,SMPN5BDG,,SMP,,SMP,JAWA BARAT,KOTA BANDUNG",
 ];
 
 export const STUDENT_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "name", required: true, ruleKey: "bulk_format_student_name", example: "Budi Santoso" },
-  { column: "school_npsn", required: true, ruleKey: "bulk_format_student_school_npsn", example: "20100001" },
   { column: "jenjang", required: true, ruleKey: "bulk_format_student_jenjang", example: "SMA" },
   { column: "email", required: false, ruleKey: "bulk_format_student_email", example: "budi@example.com" },
   { column: "dob", required: false, ruleKey: "bulk_format_student_dob", example: "2008-05-14" },
@@ -67,7 +74,10 @@ export const STUDENT_BULK_FIELDS: BulkFieldSpec[] = [
 ];
 
 export const SUPER_ADMIN_STUDENT_BULK_FIELDS: BulkFieldSpec[] = [
-  ...STUDENT_BULK_FIELDS,
+  STUDENT_BULK_FIELDS[0],
+  { column: "school_npsn", required: false, ruleKey: "bulk_format_student_school_npsn", example: "20100001" },
+  { column: "school_code", required: false, ruleKey: "bulk_format_student_school_code", example: "YAYASANBIAN" },
+  ...STUDENT_BULK_FIELDS.slice(1),
   { column: "password", required: false, ruleKey: "bulk_format_student_password", example: "" },
 ];
 
@@ -77,6 +87,9 @@ export const SCHOOL_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "npsn", required: false, ruleKey: "bulk_format_school_npsn", example: "20100001" },
   { column: "school_types", required: false, ruleKey: "bulk_format_school_school_types", example: "SMA|SMK" },
   { column: "alamat", required: false, ruleKey: "bulk_format_school_alamat", example: "Jl. Sudirman No. 1" },
+  { column: "category", required: false, ruleKey: "bulk_format_school_category", example: "SMA" },
+  { column: "provinsi", required: false, ruleKey: "bulk_format_school_provinsi", example: "DKI JAKARTA" },
+  { column: "kota", required: false, ruleKey: "bulk_format_school_kota", example: "KOTA JAKARTA PUSAT" },
 ];
 
 export const STUDENT_GUIDE_PITFALL_KEYS = [

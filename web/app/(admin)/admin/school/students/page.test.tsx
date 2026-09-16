@@ -65,15 +65,79 @@ vi.mock("@/stores/auth", () => ({
   useAuthStore: (selector: (s: typeof authStore) => unknown) => selector(authStore),
 }));
 
-vi.mock("@/lib/hooks/admin-schools", () => ({
-  useSchoolOptions: () => schoolsState,
-}));
-
 vi.mock("@/lib/hooks/students", () => ({
-  useSchools: () => ({
-    data: [{ id: "s1", name: "SMAN 1 Jakarta", school_types: ["SMA", "SMK"] }],
+  useSchoolById: (id?: string) => ({
+    data: id ? { id, name: "SMAN 1 Jakarta", school_types: ["SMA", "SMK"] } : null,
     isLoading: false,
   }),
+}));
+
+
+vi.mock("@/components/SchoolPicker", () => {
+  const schools = [
+    { id: "school-1", name: "School One", school_types: ["SMA", "SMK"] },
+    { id: "s1", name: "SMAN 1 Jakarta", school_types: ["SMA", "SMK"] },
+    { id: "s2", name: "SMAN 2 Bandung", school_types: ["SMP", "SMA"] },
+  ];
+  return {
+    SchoolPicker: ({ id = "school", value = "", onChange, allowUnlisted, unlistedName = "", onUnlistedNameChange }: { id?: string; value?: string; onChange: (school: { id: string; name: string; school_types?: string[] } | null) => void; allowUnlisted?: boolean; unlistedName?: string; onUnlistedNameChange?: (value: string) => void }) => {
+      if (allowUnlisted && unlistedName) {
+        return (
+          <input
+            id={id}
+            aria-label="Tulis nama sekolah Anda"
+            value={unlistedName.trimStart()}
+            onChange={(event) => {
+              onChange(null);
+              onUnlistedNameChange?.(event.target.value);
+            }}
+          />
+        );
+      }
+      return (
+        <div data-testid={`school-picker-${id}`}>
+          <button type="button" role="combobox" aria-label="Sekolah">
+            {schools.find((school) => school.id === value)?.name ?? "Pilih sekolah"}
+          </button>
+          {schools.map((school) => (
+            <button
+              key={school.id}
+              type="button"
+              role="option"
+              onClick={() => {
+                onUnlistedNameChange?.("");
+                onChange(school);
+              }}
+            >
+              {school.name}
+            </button>
+          ))}
+          {allowUnlisted ? (
+            <button
+              type="button"
+              role="option"
+              onClick={() => {
+                onChange(null);
+                onUnlistedNameChange?.(" ");
+              }}
+            >
+              Sekolah tidak ditemukan / tidak ada di daftar
+            </button>
+          ) : null}
+        </div>
+      );
+    },
+  };
+});
+
+vi.mock("@/components/SchoolFilterPicker", () => ({
+  SchoolFilterPicker: ({ value, onChange, label, allLabel }: { value: string; onChange: (value: string) => void; label: string; allLabel: string }) => (
+    <select data-testid="legacy-school-filter-dropdown" aria-label={label} value={value || ""} onChange={(event) => onChange(event.target.value)}>
+      <option value="">{allLabel}</option>
+      <option value="sch-1">SMAN 1 Jakarta</option>
+      <option value="s2">SMAN 2 Bandung</option>
+    </select>
+  ),
 }));
 
 vi.mock("@/lib/hooks/regions", () => ({
@@ -216,8 +280,8 @@ describe("SchoolStudentsPage", () => {
 
     expect(screen.getByText(/@budi/)).toBeInTheDocument();
     expect(screen.getByText(/@siti/)).toBeInTheDocument();
-    expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByText("11")).toBeInTheDocument();
+    expect(screen.getByText("Kelas 12")).toBeInTheDocument();
+    expect(screen.getByText("Kelas 11")).toBeInTheDocument();
     expect(screen.getAllByText("Aktif").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Nonaktif").length).toBeGreaterThanOrEqual(1);
   });
@@ -623,9 +687,9 @@ describe("SchoolStudentsPage", () => {
     expect(screen.queryByDisplayValue("chosenPass123")).not.toBeInTheDocument();
   });
 
-  // ── School dropdown (Bug B) ──
+  // ── Page-level school filter (super_admin only) ──
 
-  it("shows school dropdown for super_admin role", async () => {
+  it("uses a school picker, not the legacy dropdown, for the super_admin page filter", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
 
     render(<SchoolStudentsPage />);
@@ -634,12 +698,100 @@ describe("SchoolStudentsPage", () => {
       expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
     });
 
-    // The school combobox should appear
-    const schoolPicker = screen.getByRole("combobox", { name: /sekolah/i });
-    expect(schoolPicker).toBeInTheDocument();
+    expect(screen.queryByTestId("legacy-school-filter-dropdown")).not.toBeInTheDocument();
+    expect(screen.getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
   });
 
-  it("does not show school dropdown for admin_school role", async () => {
+  it("groups school, status, and student search in a neutral filter panel", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    const filters = screen.getByRole("region", { name: "Filter siswa" });
+    expect(filters).not.toHaveClass("bg-brand-700");
+    expect(within(filters).getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
+    expect(within(filters).getByRole("combobox", { name: /status/i })).toBeInTheDocument();
+    expect(within(filters).getByPlaceholderText(/cari nama|search name/i)).toBeInTheDocument();
+  });
+
+  it("uses the full dashboard content width", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    const filters = screen.getByRole("region", { name: "Filter siswa" });
+    expect(filters).toHaveClass("bg-surface");
+    expect(filters).not.toHaveClass("bg-surface-2");
+    expect(filters.parentElement).toHaveClass("rounded-[20px]");
+    expect(filters.closest(".max-w-6xl")).toBeNull();
+  });
+
+  it("places the roster title above its totals and renders the table without a card shell", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    const roster = screen.getByRole("region", { name: "Daftar siswa" });
+    const title = within(roster).getByRole("heading", { name: "Daftar siswa" });
+    const total = within(roster).getByText("Total akun");
+    expect(title.compareDocumentPosition(total) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(roster).getByTestId("school-students-table")).not.toHaveClass("md-card-outlined");
+  });
+
+  it("keeps username with the student name, grade with the school, and omits created date", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    expect(screen.queryByRole("columnheader", { name: "Username" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Kelas" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Dibuat" })).not.toBeInTheDocument();
+
+    const row = screen.getByRole("row", { name: /Budi Santoso/ });
+    const cells = within(row).getAllByRole("cell");
+    expect(cells).toHaveLength(5);
+    expect(cells[0]).toHaveTextContent("Budi Santoso");
+    expect(cells[0]).toHaveTextContent("@budi");
+    expect(cells[2]).toHaveTextContent("Belum ada sekolah");
+    expect(cells[2]).toHaveTextContent("12");
+    expect(row).not.toHaveTextContent("15 Jan 2026");
+  });
+
+  it("shows the selected school as the active roster context", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("option", { name: "SMAN 2 Bandung" }));
+
+    const context = screen.getByRole("region", { name: "Filter siswa" });
+    expect(
+      within(context).getByRole("heading", { name: "SMAN 2 Bandung" }),
+    ).toBeInTheDocument();
+    expect(useAdminStudentsCalls.at(-1)).toEqual(
+      expect.objectContaining({ schoolId: "s2" }),
+    );
+  });
+
+  it("can clear a selected school and return to the all-schools roster", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("option", { name: "SMAN 2 Bandung" }));
+    fireEvent.click(screen.getByRole("button", { name: "Semua sekolah" }));
+
+    expect(useAdminStudentsCalls.at(-1)).not.toHaveProperty("schoolId");
+    expect(screen.getByRole("heading", { name: "Semua sekolah" })).toBeInTheDocument();
+  });
+
+  it("does not show school filter for admin_school role", async () => {
     authStore = { token: "t", user: { role: "admin_school" } };
 
     render(<SchoolStudentsPage />);
@@ -648,8 +800,8 @@ describe("SchoolStudentsPage", () => {
       expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
     });
 
-    // No school combobox should exist
-    expect(screen.queryByRole("combobox", { name: /sekolah/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("legacy-school-filter-dropdown")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("school-picker-student-school-filter")).not.toBeInTheDocument();
   });
 
   // ── School picker inside the Register Student dialog (super_admin) ──
@@ -688,7 +840,7 @@ describe("SchoolStudentsPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           input: expect.objectContaining({ name: "Peserta Umum", jenjang: "SMP" }),
-          schoolId: "",
+          schoolId: undefined,
         }),
       );
     });
@@ -723,7 +875,7 @@ describe("SchoolStudentsPage", () => {
 
     const dialogSchoolPicker = within(dialog).getByRole("combobox", { name: /sekolah/i });
     fireEvent.click(dialogSchoolPicker);
-    fireEvent.click(await screen.findByText("SMAN 2 Bandung"));
+    fireEvent.click(within(dialog).getByRole("option", { name: "SMAN 2 Bandung" }));
 
     expect(jenjangTrigger).not.toBeDisabled();
     fireEvent.click(jenjangTrigger);
