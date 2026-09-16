@@ -778,6 +778,19 @@ describe("SchoolStudentsPage", () => {
     );
   });
 
+  it("can clear a selected school and return to the all-schools roster", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("option", { name: "SMAN 2 Bandung" }));
+    fireEvent.click(screen.getByRole("button", { name: "Semua sekolah" }));
+
+    expect(useAdminStudentsCalls.at(-1)).not.toHaveProperty("schoolId");
+    expect(screen.getByRole("heading", { name: "Semua sekolah" })).toBeInTheDocument();
+  });
+
   it("does not show school filter for admin_school role", async () => {
     authStore = { token: "t", user: { role: "admin_school" } };
 

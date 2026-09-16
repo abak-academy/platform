@@ -167,3 +167,29 @@ func TestGetSchoolByCode_normalizesAndRejectsAmbiguousIdentity(t *testing.T) {
 	_, err = repo.GetSchoolByCode(ctx, code)
 	require.ErrorIs(t, err, ErrAmbiguousSchoolIdentity)
 }
+
+func TestGetSchoolByNPSN_rejectsAmbiguousIdentity(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	suffix := uuid.New().String()[:8]
+	npsn := strings.ToUpper(suffix)
+	firstID := seedSchoolRow(t, repo, "NPSN One "+suffix, "npsn_one_"+suffix, "active")
+	require.NoError(t, setSchoolNPSN(ctx, repo, firstID, " "+strings.ToLower(npsn)+" "))
+
+	school, err := repo.GetSchoolByNPSN(ctx, npsn)
+	require.NoError(t, err)
+	require.NotNil(t, school)
+	require.Equal(t, firstID.String(), school.ID)
+
+	secondID := seedSchoolRow(t, repo, "NPSN Two "+suffix, "npsn_two_"+suffix, "active")
+	require.NoError(t, setSchoolNPSN(ctx, repo, secondID, npsn))
+	_, err = repo.GetSchoolByNPSN(ctx, npsn)
+	require.ErrorIs(t, err, ErrAmbiguousSchoolIdentity)
+}
+
+func setSchoolNPSN(ctx context.Context, repo *Repository, id uuid.UUID, npsn string) error {
+	_, err := repo.pool.Exec(ctx, `UPDATE school SET npsn = $1 WHERE id = $2`, npsn, id)
+	return err
+}

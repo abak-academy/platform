@@ -247,15 +247,33 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 		}
 	})
 
-	t.Run("duplicate code fails at row level, later row still succeeds, order preserved", func(t *testing.T) {
+	t.Run("existing code updates the school in place and later rows still succeed", func(t *testing.T) {
 		existingCode := "sb_" + uniqueSuffix()
-		if _, err := svc.CreateSchool(ctx, "Existing School", existingCode, nil, nil, nil, nil, nil, nil); err != nil {
+		existing, err := svc.CreateSchool(ctx, "Existing School", existingCode, nil, []string{"SD"}, stringPtr("Old address"), nil, nil, nil)
+		if err != nil {
 			t.Fatalf("seed CreateSchool: %v", err)
 		}
+		if err := repo.UpdateSchoolStatus(ctx, existing.ID, "deactivated"); err != nil {
+			t.Fatalf("deactivate existing school: %v", err)
+		}
+		refreshedNPSN := strings.ToUpper("U" + uniqueSuffix()[:7])
+		category := "SMA"
+		province := "SULAWESI SELATAN"
+		city := "KOTA MAKASSAR"
+		address := "Refreshed address"
 		newCode := "sb_" + uniqueSuffix()
 		rows := []SchoolBulkRow{
 			{Name: "First", Code: "sb_first_" + uniqueSuffix()},
-			{Name: "Duplicate", Code: existingCode},
+			{
+				Name:        "Refreshed Existing School",
+				Code:        " " + strings.ToUpper(existingCode) + " ",
+				NPSN:        &refreshedNPSN,
+				Alamat:      &address,
+				Category:    &category,
+				Provinsi:    &province,
+				Kota:        &city,
+				SchoolTypes: []string{"SMA", "SMK"},
+			},
 			{Name: "Later", Code: newCode},
 		}
 		results, successCount, err := svc.ProcessSchoolBulkRows(ctx, rows, nil)
@@ -268,17 +286,45 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 		if results[0].Status != "success" || results[0].Error != "" {
 			t.Errorf("want row0 success, got %+v", results[0])
 		}
-		if results[1].Status != "failed" || results[1].Error != ErrSchoolCodeTaken.Error() {
-			t.Errorf("want row1 failed with ErrSchoolCodeTaken, got %+v", results[1])
+		if results[1].Status != "success" || results[1].Error != "" {
+			t.Errorf("want row1 update success, got %+v", results[1])
 		}
 		if results[2].Status != "success" || results[2].Error != "" {
-			t.Errorf("want row2 success (batch continues after row1 failure), got %+v", results[2])
+			t.Errorf("want row2 success after the update row, got %+v", results[2])
 		}
-		if results[0].Name != "First" || results[1].Name != "Duplicate" || results[2].Name != "Later" {
+		if results[0].Name != "First" || results[1].Name != "Refreshed Existing School" || results[2].Name != "Later" {
 			t.Errorf("order not preserved: %+v", results)
 		}
-		if successCount != 2 {
-			t.Errorf("want successCount=2, got %d", successCount)
+		if successCount != 3 {
+			t.Errorf("want successCount=3, got %d", successCount)
+		}
+
+		updated := findSchoolByCode(t, svc, existingCode)
+		if updated.ID != existing.ID {
+			t.Fatalf("school ID changed: want %s, got %s", existing.ID, updated.ID)
+		}
+		if updated.Code != existingCode || updated.Status != "deactivated" {
+			t.Fatalf("code/status changed: %+v", updated)
+		}
+		if updated.Name != "Refreshed Existing School" || updated.NPSN == nil || *updated.NPSN != refreshedNPSN {
+			t.Fatalf("name/NPSN not refreshed: %+v", updated)
+		}
+		if updated.Alamat == nil || *updated.Alamat != address || updated.Category == nil || *updated.Category != category {
+			t.Fatalf("address/category not refreshed: %+v", updated)
+		}
+		if len(updated.SchoolTypes) != 2 || updated.SchoolTypes[0] != "SMA" || updated.SchoolTypes[1] != "SMK" {
+			t.Fatalf("school types not refreshed: %+v", updated.SchoolTypes)
+		}
+		if updated.ProvinsiID == nil || updated.KotaID == nil {
+			t.Fatalf("school location not refreshed: %+v", updated)
+		}
+
+		repeatedResults, repeatedCount, err := svc.ProcessSchoolBulkRows(ctx, rows, nil)
+		if err != nil || repeatedCount != 3 {
+			t.Fatalf("repeat import: count=%d err=%v results=%+v", repeatedCount, err, repeatedResults)
+		}
+		if repeated := findSchoolByCode(t, svc, existingCode); repeated.ID != existing.ID {
+			t.Fatalf("repeat import changed school ID: want %s, got %s", existing.ID, repeated.ID)
 		}
 	})
 

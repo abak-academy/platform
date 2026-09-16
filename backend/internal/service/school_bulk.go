@@ -126,11 +126,7 @@ func ParseSchoolBulkCSV(data []byte) ([]SchoolBulkRow, error) {
 	return rows, nil
 }
 
-// ProcessSchoolBulkRows creates each row through Service.CreateSchool so that
-// code-uniqueness and school_types NOT NULL coercion are not reimplemented. A
-// row-level failure (e.g. ErrSchoolCodeTaken) does not abort the batch.
-// Mirrors ProcessStudentBulkRows; there is no schoolBound parameter — schools
-// are global (invariant 5).
+// ProcessSchoolBulkRows creates new codes and refreshes existing codes through the main school service methods.
 func (s *Service) ProcessSchoolBulkRows(ctx context.Context, rows []SchoolBulkRow, onProgress func(pct int)) ([]SchoolBulkResultRow, int, error) {
 	results := make([]SchoolBulkResultRow, len(rows))
 	successCount := 0
@@ -193,19 +189,27 @@ func (s *Service) ProcessSchoolBulkRows(ctx context.Context, rows []SchoolBulkRo
 			}
 		}
 
-		var created *SchoolResponse
+		var saved *SchoolResponse
 		if err == nil {
-			created, err = s.CreateSchool(ctx, r.Name, r.Code, r.NPSN, r.SchoolTypes, r.Alamat, r.Category, provinceID, cityID)
+			existing, lookupErr := s.storeRepo.GetSchoolByCode(ctx, r.Code)
+			if lookupErr != nil {
+				err = lookupErr
+			} else if existing == nil {
+				saved, err = s.CreateSchool(ctx, r.Name, r.Code, r.NPSN, r.SchoolTypes, r.Alamat, r.Category, provinceID, cityID)
+			} else {
+				name := r.Name
+				saved, err = s.UpdateSchool(ctx, existing.ID, &name, r.NPSN, r.Alamat, r.SchoolTypes, nil, r.Category, provinceID, cityID)
+			}
 		}
 		if err == nil {
 			result.Status = "success"
-			if created.Category != nil {
-				result.Category = *created.Category
+			if saved.Category != nil {
+				result.Category = *saved.Category
 			} else {
 				result.Category = ""
 			}
-			if created.NPSN != nil {
-				result.NPSN = *created.NPSN
+			if saved.NPSN != nil {
+				result.NPSN = *saved.NPSN
 			} else {
 				result.NPSN = ""
 			}

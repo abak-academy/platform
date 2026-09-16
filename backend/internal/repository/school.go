@@ -152,7 +152,10 @@ func (r *Repository) CountSchoolsAdmin(ctx context.Context, filter SchoolAdminFi
 	return counts, err
 }
 
-var ErrAmbiguousSchoolIdentity = errors.New("ambiguous school identity")
+var (
+	ErrAmbiguousSchoolIdentity = errors.New("ambiguous school identity")
+	ErrSchoolCodeConflict      = errors.New("school code already exists")
+)
 
 type SchoolOption = model.SchoolOption
 
@@ -292,19 +295,42 @@ func (r *Repository) SchoolCodeExists(ctx context.Context, code string, excludeI
 // CreateSchool inserts a new school with status='active' and scans back
 // id, created_at, updated_at.
 func (r *Repository) CreateSchool(ctx context.Context, s *model.School) error {
-	return r.pool.QueryRow(ctx,
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	normalizedCode := strings.ToUpper(strings.TrimSpace(s.Code))
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, normalizedCode); err != nil {
+		return err
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM school WHERE UPPER(BTRIM(code)) = $1)`,
+		normalizedCode,
+	).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return ErrSchoolCodeConflict
+	}
+
+	if err := tx.QueryRow(ctx,
 		`INSERT INTO school (name, code, npsn, school_types, alamat, category, provinsi_id, kota_id, status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
 		RETURNING id, created_at, updated_at`,
 		s.Name, s.Code, s.NPSN, s.SchoolTypes, s.Alamat, s.Category, s.ProvinsiID, s.KotaID,
-	).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt)
+	).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // UpdateSchool patches editable fields. npsnSet distinguishes an omitted NPSN
 // from an explicit blank value normalized to NULL by the service.
 func (r *Repository) UpdateSchool(ctx context.Context, id string, name *string, npsnSet bool, npsn, alamat *string, schoolTypes []string, code *string, categorySet bool, category *string, provinsiSet bool, provinsiID *string, kotaSet bool, kotaID *string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE school
+	const query = `UPDATE school
 		SET name = COALESCE($1, name),
 			npsn = CASE WHEN $2 THEN $3 ELSE npsn END,
 			alamat = COALESCE($4, alamat),
@@ -314,11 +340,36 @@ func (r *Repository) UpdateSchool(ctx context.Context, id string, name *string, 
 			provinsi_id = CASE WHEN $9 THEN $10 ELSE provinsi_id END,
 			kota_id = CASE WHEN $11 THEN $12 ELSE kota_id END,
 			updated_at = now()
-		WHERE id = $13`,
-		name, npsnSet, npsn, alamat, schoolTypes, code,
-		categorySet, category, provinsiSet, provinsiID, kotaSet, kotaID, id,
-	)
-	return err
+		WHERE id = $13`
+	args := []any{name, npsnSet, npsn, alamat, schoolTypes, code, categorySet, category, provinsiSet, provinsiID, kotaSet, kotaID, id}
+	if code == nil {
+		_, err := r.pool.Exec(ctx, query, args...)
+		return err
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	normalizedCode := strings.ToUpper(strings.TrimSpace(*code))
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, normalizedCode); err != nil {
+		return err
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM school WHERE UPPER(BTRIM(code)) = $1 AND id != $2)`,
+		normalizedCode, id,
+	).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return ErrSchoolCodeConflict
+	}
+	if _, err := tx.Exec(ctx, query, args...); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // UpdateSchoolStatus sets the status of a school.
@@ -352,22 +403,37 @@ func (r *Repository) GetSchoolByNameCI(ctx context.Context, name string) (*model
 }
 
 func (r *Repository) GetSchoolByNPSN(ctx context.Context, npsn string) (*model.School, error) {
-	s := &model.School{}
-	err := r.pool.QueryRow(ctx,
+	rows, err := r.pool.Query(ctx,
 		`SELECT id, name, code, npsn, school_types, alamat, status, created_at, updated_at
-		FROM school WHERE UPPER(BTRIM(npsn)) = $1`,
+		FROM school WHERE UPPER(BTRIM(npsn)) = $1 ORDER BY id LIMIT 2`,
 		npsn,
-	).Scan(
-		&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
-		&s.Status, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
-		if isNotFound(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	return s, nil
+	defer rows.Close()
+
+	schools := []*model.School{}
+	for rows.Next() {
+		s := &model.School{}
+		if err := rows.Scan(
+			&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
+			&s.Status, &s.CreatedAt, &s.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		schools = append(schools, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(schools) == 0 {
+		return nil, nil
+	}
+	if len(schools) > 1 {
+		return nil, ErrAmbiguousSchoolIdentity
+	}
+	return schools[0], nil
 }
 
 func (r *Repository) GetSchoolByCode(ctx context.Context, code string) (*model.School, error) {

@@ -93,6 +93,9 @@ func normalizeSchoolNPSN(npsn *string) (*string, error) {
 }
 
 func mapSchoolWriteError(err error) error {
+	if errors.Is(err, repository.ErrSchoolCodeConflict) {
+		return ErrSchoolCodeTaken
+	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == schoolNPSNUniqueIndex {
 		return ErrSchoolNPSNTaken

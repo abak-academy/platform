@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"akademi-bimbel/internal/model"
@@ -47,12 +48,17 @@ func TestNormalizeSchoolNPSN(t *testing.T) {
 	}
 }
 
-func TestMapSchoolWriteError_OnlyNamedUniqueViolation(t *testing.T) {
+func TestMapSchoolWriteError(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
 		want error
 	}{
+		{
+			name: "repository school-code conflict",
+			err:  repository.ErrSchoolCodeConflict,
+			want: ErrSchoolCodeTaken,
+		},
 		{
 			name: "named NPSN unique violation",
 			err:  &pgconn.PgError{Code: "23505", ConstraintName: schoolNPSNUniqueIndex},
@@ -239,6 +245,46 @@ func TestCreateSchool_Integration(t *testing.T) {
 		_, err := svc.CreateSchool(ctx, "Second Normalized Code", " "+strings.ToUpper(code)+" ", nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolCodeTaken) {
 			t.Errorf("want ErrSchoolCodeTaken, got %v", err)
+		}
+	})
+
+	t.Run("concurrent normalized code creates exactly one school", func(t *testing.T) {
+		const attempts = 8
+		code := "cc_" + uniqueSuffix()
+		start := make(chan struct{})
+		errs := make(chan error, attempts)
+		var wg sync.WaitGroup
+		for i := range attempts {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				<-start
+				candidate := code
+				if i%2 == 1 {
+					candidate = " " + strings.ToUpper(code) + " "
+				}
+				_, err := svc.CreateSchool(ctx, "Concurrent School", candidate, nil, nil, nil, nil, nil, nil)
+				errs <- err
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+		close(errs)
+
+		succeeded := 0
+		conflicted := 0
+		for err := range errs {
+			switch {
+			case err == nil:
+				succeeded++
+			case errors.Is(err, ErrSchoolCodeTaken):
+				conflicted++
+			default:
+				t.Fatalf("unexpected create error: %v", err)
+			}
+		}
+		if succeeded != 1 || conflicted != attempts-1 {
+			t.Fatalf("want 1 success and %d conflicts, got %d successes and %d conflicts", attempts-1, succeeded, conflicted)
 		}
 	})
 
