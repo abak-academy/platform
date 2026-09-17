@@ -446,7 +446,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		t.Cleanup(func() { svc.cfg = previousConfig })
 
 		code := "legacy_bulk_" + uniqueSuffix()
-		school, err := svc.CreateSchool(ctx, "Legacy Bulk School "+code, code, nil, []string{"sma"}, nil, nil, nil, nil)
+		school, err := svc.CreateSchool(ctx, "Legacy Bulk School "+code, code, nil, []string{"sma"}, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -463,7 +463,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 
 	t.Run("admin-school row derives an NPSN-less foundation from its bound school", func(t *testing.T) {
 		code := "foundation_" + uniqueSuffix()
-		school, err := svc.CreateSchool(ctx, "Foundation "+code, code, nil, []string{"sma"}, nil, nil, nil, nil)
+		school, err := svc.CreateSchool(ctx, "Foundation "+code, code, nil, []string{"sma"}, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -483,7 +483,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 
 	t.Run("super-admin resolves an NPSN-less foundation by exact school code", func(t *testing.T) {
 		code := "foundation_" + uniqueSuffix()
-		school, err := svc.CreateSchool(ctx, "Foundation "+code, code, nil, []string{"sma"}, nil, nil, nil, nil)
+		school, err := svc.CreateSchool(ctx, "Foundation "+code, code, nil, []string{"sma"}, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -530,7 +530,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 	t.Run("does not resolve NPSN-shaped school name or create a school", func(t *testing.T) {
 		name := "Z8765432"
 		npsn := "Y" + uniqueSuffix()[:7]
-		if _, err := svc.CreateSchool(ctx, name, "sb_"+uniqueSuffix(), &npsn, []string{"sma"}, nil, nil, nil, nil); err != nil {
+		if _, err := svc.CreateSchool(ctx, name, "sb_"+uniqueSuffix(), &npsn, []string{"sma"}, nil, nil, nil); err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
 		var before int

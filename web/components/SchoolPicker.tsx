@@ -5,6 +5,7 @@ import { Loader2, Search } from "lucide-react";
 import { useCitiesByProvince, useProvinces } from "@/lib/hooks/regions";
 import { useTranslation } from "@/lib/i18n";
 import { useSchoolById, useSchoolSearch } from "@/lib/hooks/students";
+import { SCHOOL_TYPE_OPTIONS } from "@/lib/school-types";
 import type { SchoolOption } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,8 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-const CATEGORIES = ["SD", "MI", "SMP", "MTS", "SMA", "MA", "SMK"];
 
 export interface SchoolPickerProps {
   id?: string;
@@ -44,7 +43,7 @@ export function SchoolPicker({
   const [mode, setMode] = useState<"name" | "npsn">("name");
   const [provinceId, setProvinceId] = useState("");
   const [cityId, setCityId] = useState("");
-  const [category, setCategory] = useState("");
+  const [schoolType, setSchoolType] = useState("");
   const [qInput, setQInput] = useState("");
   const [npsnInput, setNpsnInput] = useState("");
   const [unlistedActive, setUnlistedActive] = useState(Boolean(unlistedName));
@@ -71,16 +70,16 @@ export function SchoolPicker({
     return {
       province_id: provinceId,
       city_id: cityId,
-      category,
+      school_type: schoolType,
       limit: 1000,
     };
-  }, [category, cityId, mode, normalizedNPSN, provinceId]);
+  }, [schoolType, cityId, mode, normalizedNPSN, provinceId]);
 
   const enabled =
     !disabled &&
     (mode === "npsn"
       ? /^[A-Z0-9]{8}$/.test(normalizedNPSN)
-      : Boolean(provinceId && cityId && category));
+      : Boolean(provinceId && cityId && schoolType));
   const search = useSchoolSearch(params, enabled);
   const results = search.data?.data ?? [];
   const nameFilter = qInput.trim().toLowerCase();
@@ -180,13 +179,13 @@ export function SchoolPicker({
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={category || "_empty_"} onValueChange={(v) => setCategory(v === "_empty_" ? "" : v)} disabled={disabled}>
-                <SelectTrigger id={`${id}-category`} className="w-full min-w-0">
-                  <SelectValue placeholder={t("school_picker_category")} />
+              <Select value={schoolType || "_empty_"} onValueChange={(v) => setSchoolType(v === "_empty_" ? "" : v)} disabled={disabled}>
+                <SelectTrigger id={`${id}-school-type`} className="w-full min-w-0">
+                  <SelectValue placeholder={t("schools_field_school_types")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="_empty_">{t("school_picker_category")}</SelectItem>
-                  {CATEGORIES.map((c) => (
+                  <SelectItem value="_empty_">{t("schools_field_school_types")}</SelectItem>
+                  {SCHOOL_TYPE_OPTIONS.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c}
                     </SelectItem>
@@ -219,7 +218,7 @@ export function SchoolPicker({
           {selected ? (
             <div className="mt-2 rounded-md border border-line bg-surface-2 px-3 py-2 text-xs text-ink-700">
               <div className="font-medium text-ink-900">{selected.name}</div>
-              <div>{[selected.npsn, selected.category, selected.kota_name, selected.provinsi_name].filter(Boolean).join(" · ")}</div>
+              <div>{[selected.npsn, selected.school_types?.join(" / "), selected.kota_name, selected.provinsi_name].filter(Boolean).join(" · ")}</div>
             </div>
           ) : null}
 
@@ -246,7 +245,7 @@ export function SchoolPicker({
               >
                 <span className="block font-medium text-ink-900">{school.name}</span>
                 <span className="block text-xs text-ink-500">
-                  {[school.npsn, school.category, school.kota_name, school.provinsi_name].filter(Boolean).join(" · ")}
+                  {[school.npsn, school.school_types?.join(" / "), school.kota_name, school.provinsi_name].filter(Boolean).join(" · ")}
                 </span>
               </button>
             ))}

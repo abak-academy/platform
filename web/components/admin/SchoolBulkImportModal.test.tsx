@@ -133,12 +133,12 @@ describe("SchoolBulkImportModal", () => {
 
     const lines = (lastDownloadedCSV ?? "").split(/\r?\n/).filter(Boolean);
     expect(lines.length).toBe(3);
-    expect(lines[0]).toBe("name,code,npsn,school_types,alamat,category,provinsi,kota");
+    expect(lines[0]).toBe("name,code,npsn,school_types,alamat,provinsi,kota");
 
     expect(lastDownloadedCSV).toBe(
-      "name,code,npsn,school_types,alamat,category,provinsi,kota\n" +
-        'SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,"Jl. Sudirman No. 1",SMA,DKI JAKARTA,KOTA JAKARTA PUSAT\n' +
-        "SMPN 5 Bandung,SMPN5BDG,,SMP,,SMP,JAWA BARAT,KOTA BANDUNG\n",
+      "name,code,npsn,school_types,alamat,provinsi,kota\n" +
+        'SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,"Jl. Sudirman No. 1",DKI JAKARTA,KOTA JAKARTA PUSAT\n' +
+        "SMPN 5 Bandung,SMPN5BDG,,SMP,,JAWA BARAT,KOTA BANDUNG\n",
     );
 
     expect(presignMutateAsync).not.toHaveBeenCalled();
@@ -153,7 +153,6 @@ describe("SchoolBulkImportModal", () => {
 
     expect(screen.getByText("bulk_format_show")).toBeInTheDocument();
     expect(screen.getByText("school_types")).toBeInTheDocument();
-    expect(screen.getByText("category")).toBeInTheDocument();
     expect(screen.getByText("provinsi")).toBeInTheDocument();
     expect(screen.getByText("kota")).toBeInTheDocument();
     expect(screen.getByText("bulk_format_school_code")).toBeInTheDocument();

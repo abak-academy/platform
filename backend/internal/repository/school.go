@@ -62,7 +62,7 @@ func (r *Repository) ListSchoolsAdmin(ctx context.Context, filter SchoolAdminFil
 	}
 
 	query := `SELECT s.id, s.name, s.code, s.npsn, s.school_types, s.alamat,
-		s.category, s.provinsi_id, s.kota_id, s.status, s.created_at, s.updated_at,
+		s.provinsi_id, s.kota_id, s.status, s.created_at, s.updated_at,
 		(SELECT COUNT(*) FROM users WHERE school_id = s.id AND role = 'student' AND status != 'deleted') AS student_count
 		FROM school s WHERE 1=1`
 	args := []any{}
@@ -99,7 +99,7 @@ func (r *Repository) ListSchoolsAdmin(ctx context.Context, filter SchoolAdminFil
 		var s SchoolAdminRow
 		if err := rows.Scan(
 			&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
-			&s.Category, &s.ProvinsiID, &s.KotaID, &s.Status, &s.CreatedAt, &s.UpdatedAt, &s.StudentCount,
+			&s.ProvinsiID, &s.KotaID, &s.Status, &s.CreatedAt, &s.UpdatedAt, &s.StudentCount,
 		); err != nil {
 			return nil, "", err
 		}
@@ -162,7 +162,7 @@ type SchoolOption = model.SchoolOption
 type SchoolSearchFilter struct {
 	ProvinceID string
 	CityID     string
-	Category   string
+	SchoolType string
 	NPSN       string
 	Limit      int
 }
@@ -172,7 +172,7 @@ func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearc
 		filter.Limit = 20
 	}
 	maxLimit := 50
-	if filter.NPSN == "" && filter.CityID != "" && filter.Category != "" {
+	if filter.NPSN == "" && filter.CityID != "" && filter.SchoolType != "" {
 		maxLimit = 1000
 	}
 	if filter.Limit > maxLimit {
@@ -201,9 +201,9 @@ func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearc
 		args = append(args, filter.CityID)
 		argNum++
 	}
-	if filter.Category != "" {
-		query += fmt.Sprintf(` AND s.category = $%d`, argNum)
-		args = append(args, filter.Category)
+	if filter.SchoolType != "" {
+		query += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM unnest(s.school_types) AS school_type WHERE UPPER(BTRIM(school_type)) = $%d)`, argNum)
+		args = append(args, filter.SchoolType)
 		argNum++
 	}
 	query += fmt.Sprintf(` ORDER BY s.name ASC, s.id ASC LIMIT $%d`, argNum)
@@ -219,7 +219,7 @@ func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearc
 func (r *Repository) querySchoolOptions(ctx context.Context, where string, args ...any) ([]SchoolOption, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT s.id, s.name, s.code, s.npsn, s.school_types, s.alamat, s.status,
-			s.category, s.provinsi_id, s.kota_id, c.name, p.name
+			s.provinsi_id, s.kota_id, c.name, p.name
 		FROM school s
 		LEFT JOIN city c ON c.id = s.kota_id
 		LEFT JOIN province p ON p.id = s.provinsi_id
@@ -236,7 +236,7 @@ func (r *Repository) querySchoolOptions(ctx context.Context, where string, args 
 		var o SchoolOption
 		if err := rows.Scan(
 			&o.ID, &o.Name, &o.Code, &o.NPSN, &o.SchoolTypes, &o.Alamat, &o.Status,
-			&o.Category, &o.ProvinsiID, &o.KotaID, &o.KotaName, &o.ProvinsiName,
+			&o.ProvinsiID, &o.KotaID, &o.KotaName, &o.ProvinsiName,
 		); err != nil {
 			return nil, err
 		}
@@ -260,12 +260,12 @@ func (r *Repository) GetSchoolOptionByID(ctx context.Context, id string) (*Schoo
 func (r *Repository) GetSchoolByID(ctx context.Context, id string) (*model.School, error) {
 	s := &model.School{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, name, code, npsn, school_types, alamat, category, provinsi_id, kota_id, status, created_at, updated_at
+		`SELECT id, name, code, npsn, school_types, alamat, provinsi_id, kota_id, status, created_at, updated_at
 		FROM school WHERE id = $1`,
 		id,
 	).Scan(
 		&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
-		&s.Category, &s.ProvinsiID, &s.KotaID, &s.Status, &s.CreatedAt, &s.UpdatedAt,
+		&s.ProvinsiID, &s.KotaID, &s.Status, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -317,10 +317,10 @@ func (r *Repository) CreateSchool(ctx context.Context, s *model.School) error {
 	}
 
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO school (name, code, npsn, school_types, alamat, category, provinsi_id, kota_id, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+		`INSERT INTO school (name, code, npsn, school_types, alamat, provinsi_id, kota_id, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
 		RETURNING id, created_at, updated_at`,
-		s.Name, s.Code, s.NPSN, s.SchoolTypes, s.Alamat, s.Category, s.ProvinsiID, s.KotaID,
+		s.Name, s.Code, s.NPSN, s.SchoolTypes, s.Alamat, s.ProvinsiID, s.KotaID,
 	).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt); err != nil {
 		return err
 	}
@@ -329,19 +329,18 @@ func (r *Repository) CreateSchool(ctx context.Context, s *model.School) error {
 
 // UpdateSchool patches editable fields. npsnSet distinguishes an omitted NPSN
 // from an explicit blank value normalized to NULL by the service.
-func (r *Repository) UpdateSchool(ctx context.Context, id string, name *string, npsnSet bool, npsn, alamat *string, schoolTypes []string, code *string, categorySet bool, category *string, provinsiSet bool, provinsiID *string, kotaSet bool, kotaID *string) error {
+func (r *Repository) UpdateSchool(ctx context.Context, id string, name *string, npsnSet bool, npsn, alamat *string, schoolTypes []string, code *string, provinsiSet bool, provinsiID *string, kotaSet bool, kotaID *string) error {
 	const query = `UPDATE school
 		SET name = COALESCE($1, name),
 			npsn = CASE WHEN $2 THEN $3 ELSE npsn END,
 			alamat = COALESCE($4, alamat),
 			school_types = COALESCE($5, school_types),
 			code = COALESCE($6, code),
-			category = CASE WHEN $7 THEN $8 ELSE category END,
-			provinsi_id = CASE WHEN $9 THEN $10 ELSE provinsi_id END,
-			kota_id = CASE WHEN $11 THEN $12 ELSE kota_id END,
+			provinsi_id = CASE WHEN $7 THEN $8 ELSE provinsi_id END,
+			kota_id = CASE WHEN $9 THEN $10 ELSE kota_id END,
 			updated_at = now()
-		WHERE id = $13`
-	args := []any{name, npsnSet, npsn, alamat, schoolTypes, code, categorySet, category, provinsiSet, provinsiID, kotaSet, kotaID, id}
+		WHERE id = $11`
+	args := []any{name, npsnSet, npsn, alamat, schoolTypes, code, provinsiSet, provinsiID, kotaSet, kotaID, id}
 	if code == nil {
 		_, err := r.pool.Exec(ctx, query, args...)
 		return err

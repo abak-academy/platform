@@ -110,7 +110,6 @@ const sampleSchools: School[] = [
     npsn: "12345678",
     school_types: ["Negeri"],
     alamat: "Jl. Merdeka No.1",
-    category: "SMA",
     provinsi_id: "31",
     kota_id: "3171",
     status: "active",
@@ -123,7 +122,6 @@ const sampleSchools: School[] = [
     npsn: "87654321",
     school_types: ["Negeri", "SMA"],
     alamat: "Jl. Sudirman No.5",
-    category: "SMA",
     provinsi_id: "31",
     kota_id: "3171",
     status: "deactivated",
@@ -288,7 +286,7 @@ describe("SystemSchoolsPage", () => {
     fireEvent.change(screen.getByTestId("create-school-city"), {
       target: { value: "3171" },
     });
-    fireEvent.change(screen.getByTestId("create-school-category"), {
+    fireEvent.change(screen.getByPlaceholderText("Jenis Sekolah"), {
       target: { value: "SMA" },
     });
 
@@ -300,7 +298,7 @@ describe("SystemSchoolsPage", () => {
         expect.objectContaining({
           name: "SMAN 3 Jakarta",
           code: "SMAN3JKT",
-          category: "SMA",
+          school_types: ["SMA"],
           provinsi_id: "31",
           kota_id: "3171",
         }),
@@ -391,7 +389,7 @@ describe("SystemSchoolsPage", () => {
     });
   });
 
-  it("updates school location and category", async () => {
+  it("updates school location and school types", async () => {
     mockMutateAsync.mockResolvedValueOnce({ id: "s1" });
     renderPage(<SystemSchoolsPage />);
 
@@ -407,7 +405,7 @@ describe("SystemSchoolsPage", () => {
     fireEvent.change(within(dialog).getByTestId("edit-school-city"), {
       target: { value: "3273" },
     });
-    fireEvent.change(within(dialog).getByTestId("edit-school-category"), {
+    fireEvent.change(within(dialog).getByPlaceholderText("Jenis Sekolah"), {
       target: { value: "SMK" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: /^simpan$/i }));
@@ -415,7 +413,7 @@ describe("SystemSchoolsPage", () => {
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
         id: "s1",
-        category: "SMK",
+        school_types: ["SMK"],
         provinsi_id: "32",
         kota_id: "3273",
       });

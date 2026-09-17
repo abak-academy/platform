@@ -63,7 +63,6 @@ export const DICT = {
     school_picker_mode_npsn: "NPSN",
     school_picker_province: "Provinsi",
     school_picker_city: "Kota/Kabupaten",
-    school_picker_category: "Kategori",
     school_picker_search_name_placeholder: "Nama sekolah",
     school_picker_npsn_placeholder: "Masukkan NPSN",
     school_picker_unlisted: "Sekolah tidak ditemukan",
@@ -1640,13 +1639,11 @@ export const DICT = {
       "Opsional untuk super admin. Minimal 8 karakter jika diisi; kosongkan untuk dibuat otomatis.",
     bulk_format_school_name: "Wajib. Nama sekolah.",
     bulk_format_school_code:
-      "Wajib. Harus belum ada di database (unik). Mengunggah ulang file yang sama akan gagal karena kode sudah terpakai.",
+      "Wajib. Kode baru membuat sekolah; kode yang sudah ada memperbarui sekolah yang sama tanpa mengubah ID atau relasi siswa.",
     bulk_format_school_npsn: "Opsional. Jika diisi, harus tepat 8 huruf atau angka; spasi tepi dihapus, huruf dinormalkan menjadi kapital, dan nilainya harus unik.",
     bulk_format_school_school_types:
       "Opsional. Satu atau lebih jenjang, dipisah | atau koma. Disarankan huruf besar (contoh SMA|SMK) agar cocok dengan jenjang siswa.",
     bulk_format_school_alamat: "Opsional. Teks bebas.",
-    bulk_format_school_category:
-      "Opsional. Gunakan salah satu: SD, MI, SMP, MTS, SMA, MA, atau SMK.",
     bulk_format_school_provinsi:
       "Opsional, tetapi wajib diisi bersama kota. Gunakan nama resmi lengkap yang sudah ada di database (contoh DKI JAKARTA).",
     bulk_format_school_kota:
@@ -1659,7 +1656,7 @@ export const DICT = {
     bulk_format_student_nis: "Kolom nis (jika ada) diabaikan.",
     bulk_format_max_rows: "Maksimal 1000 baris data.",
     bulk_format_school_reupload:
-      "Mengunggah ulang file yang sama akan gagal karena code sudah terpakai.",
+      "Unggah ulang dengan code yang sama untuk memperbarui sekolah. school_types yang kosong atau tidak disertakan tetap mempertahankan nilai tersimpan.",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -1719,7 +1716,6 @@ export const DICT = {
     school_picker_mode_npsn: "NPSN",
     school_picker_province: "Province",
     school_picker_city: "City/Regency",
-    school_picker_category: "Category",
     school_picker_search_name_placeholder: "School name",
     school_picker_npsn_placeholder: "Enter NPSN",
     school_picker_unlisted: "School not found",
@@ -3292,13 +3288,11 @@ export const DICT = {
       "Optional for super admins. Minimum 8 characters when filled; leave blank to generate automatically.",
     bulk_format_school_name: "Required. School name.",
     bulk_format_school_code:
-      "Required. Must not already exist in the database (unique). Re-uploading the same file will fail because the code is taken.",
+      "Required. A new code creates a school; an existing code updates the same school without changing its ID or student relationships.",
     bulk_format_school_npsn: "Optional. If set, it must be exactly 8 letters or digits; surrounding spaces are trimmed, letters are normalized to uppercase, and the value must be unique.",
     bulk_format_school_school_types:
       "Optional. One or more jenjang values, separated by | or comma. Prefer uppercase (example SMA|SMK) so student jenjang matches.",
     bulk_format_school_alamat: "Optional. Free text.",
-    bulk_format_school_category:
-      "Optional. Use one of: SD, MI, SMP, MTS, SMA, MA, or SMK.",
     bulk_format_school_provinsi:
       "Optional, but must be provided with kota. Use the full official name already in the database (example DKI JAKARTA).",
     bulk_format_school_kota:
@@ -3311,7 +3305,7 @@ export const DICT = {
     bulk_format_student_nis: "A nis column, if present, is ignored.",
     bulk_format_max_rows: "Maximum 1000 data rows.",
     bulk_format_school_reupload:
-      "Re-uploading the same file will fail because code is already taken.",
+      "Re-upload with the same code to update a school. Blank or omitted school_types preserve the stored values.",
   },
 };
 

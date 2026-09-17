@@ -12,7 +12,7 @@ const defaultSchools: SchoolOption[] = [
     name: "SMA Negeri 1 Jakarta",
     code: "SMAN1JKT",
     npsn: "12345678",
-    category: "SMA",
+    school_types: ["SMA"],
     kota_name: "KOTA JAKARTA PUSAT",
     provinsi_name: "DKI JAKARTA",
   },
@@ -21,7 +21,7 @@ const defaultSchools: SchoolOption[] = [
     name: "SMA Bina Bangsa",
     code: "SMABB",
     npsn: "87654321",
-    category: "SMA",
+    school_types: ["SMA"],
     kota_name: "KOTA JAKARTA PUSAT",
     provinsi_name: "DKI JAKARTA",
   },
@@ -125,7 +125,7 @@ describe("SchoolPicker", () => {
 
     const latestBeforeTyping = searchCalls[searchCalls.length - 1];
     expect(latestBeforeTyping.enabled).toBe(true);
-    expect(latestBeforeTyping.params).toMatchObject({ province_id: "province-1", city_id: "city-1", category: "SMA", limit: 1000 });
+    expect(latestBeforeTyping.params).toMatchObject({ province_id: "province-1", city_id: "city-1", school_type: "SMA", limit: 1000 });
     expect(latestBeforeTyping.params).not.toHaveProperty("q");
     const callsAfterLocationFetch = searchCalls.length;
 
@@ -144,7 +144,7 @@ describe("SchoolPicker", () => {
       id: `school-result-${index}`,
       name: `School Result ${index}`,
       code: `RESULT${index}`,
-      category: "SMA",
+      school_types: ["SMA"],
     }));
     render(<Harness />);
 

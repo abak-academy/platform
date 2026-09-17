@@ -179,9 +179,9 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 
-	t.Run("resolves province and city names and persists school category", func(t *testing.T) {
+	t.Run("resolves province and city names and persists school types", func(t *testing.T) {
 		code := "sb_" + uniqueSuffix()
-		rows, err := ParseSchoolBulkCSV([]byte("name,code,category,provinsi,kota\nBulk Location School," + code + ", sma , sulawesi selatan , kota makassar \n"))
+		rows, err := ParseSchoolBulkCSV([]byte("name,code,school_types,provinsi,kota\nBulk Location School," + code + ", SMA , sulawesi selatan , kota makassar \n"))
 		if err != nil {
 			t.Fatalf("ParseSchoolBulkCSV: %v", err)
 		}
@@ -203,8 +203,8 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 			t.Fatalf("seeded city lookup: city=%+v err=%v", city, err)
 		}
 		created := findSchoolByCode(t, svc, code)
-		if created.Category == nil || *created.Category != "SMA" {
-			t.Fatalf("category: want SMA, got %v", created.Category)
+		if len(created.SchoolTypes) != 1 || created.SchoolTypes[0] != "SMA" {
+			t.Fatalf("school types: want SMA, got %v", created.SchoolTypes)
 		}
 		if created.ProvinsiID == nil || *created.ProvinsiID != province.ID {
 			t.Fatalf("province: want %s, got %v", province.ID, created.ProvinsiID)
@@ -258,7 +258,7 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 
 	t.Run("existing code updates the school in place and later rows still succeed", func(t *testing.T) {
 		existingCode := "sb_" + uniqueSuffix()
-		existing, err := svc.CreateSchool(ctx, "Existing School", existingCode, nil, []string{"SD"}, stringPtr("Old address"), nil, nil, nil)
+		existing, err := svc.CreateSchool(ctx, "Existing School", existingCode, nil, []string{"SD"}, stringPtr("Old address"), nil, nil)
 		if err != nil {
 			t.Fatalf("seed CreateSchool: %v", err)
 		}
@@ -266,7 +266,6 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 			t.Fatalf("deactivate existing school: %v", err)
 		}
 		refreshedNPSN := strings.ToUpper("U" + uniqueSuffix()[:7])
-		category := "SMA"
 		province := "SULAWESI SELATAN"
 		city := "KOTA MAKASSAR"
 		address := "Refreshed address"
@@ -278,7 +277,6 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 				Code:        " " + strings.ToUpper(existingCode) + " ",
 				NPSN:        &refreshedNPSN,
 				Alamat:      &address,
-				Category:    &category,
 				Provinsi:    &province,
 				Kota:        &city,
 				SchoolTypes: []string{"SMA", "SMK"},
@@ -318,8 +316,8 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 		if updated.Name != "Refreshed Existing School" || updated.NPSN == nil || *updated.NPSN != refreshedNPSN {
 			t.Fatalf("name/NPSN not refreshed: %+v", updated)
 		}
-		if updated.Alamat == nil || *updated.Alamat != address || updated.Category == nil || *updated.Category != category {
-			t.Fatalf("address/category not refreshed: %+v", updated)
+		if updated.Alamat == nil || *updated.Alamat != address {
+			t.Fatalf("address not refreshed: %+v", updated)
 		}
 		if len(updated.SchoolTypes) != 2 || updated.SchoolTypes[0] != "SMA" || updated.SchoolTypes[1] != "SMK" {
 			t.Fatalf("school types not refreshed: %+v", updated.SchoolTypes)
@@ -340,12 +338,12 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 	// A wipe here would silently disable the len(SchoolTypes) > 0 jenjang guards.
 	t.Run("update preserves stored school_types when the CSV omits the column", func(t *testing.T) {
 		existingCode := "sb_" + uniqueSuffix()
-		existing, err := svc.CreateSchool(ctx, "Typed School", existingCode, nil, []string{"SMA", "SMK"}, nil, nil, nil, nil)
+		existing, err := svc.CreateSchool(ctx, "Typed School", existingCode, nil, []string{"SMA", "SMK"}, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("seed CreateSchool: %v", err)
 		}
 
-		rows, err := ParseSchoolBulkCSV([]byte("name,code,category,provinsi,kota\nTyped School," + existingCode + ",SMA,SULAWESI SELATAN,KOTA MAKASSAR\n"))
+		rows, err := ParseSchoolBulkCSV([]byte("name,code,provinsi,kota\nTyped School," + existingCode + ",SULAWESI SELATAN,KOTA MAKASSAR\n"))
 		if err != nil {
 			t.Fatalf("ParseSchoolBulkCSV: %v", err)
 		}
@@ -361,18 +359,21 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 		if updated.ID != existing.ID {
 			t.Fatalf("school ID changed: want %s, got %s", existing.ID, updated.ID)
 		}
-		if updated.Category == nil || *updated.Category != "SMA" || updated.ProvinsiID == nil || updated.KotaID == nil {
+		if updated.ProvinsiID == nil || updated.KotaID == nil {
 			t.Fatalf("metadata not refreshed: %+v", updated)
 		}
 		if len(updated.SchoolTypes) != 2 || updated.SchoolTypes[0] != "SMA" || updated.SchoolTypes[1] != "SMK" {
 			t.Fatalf("school_types wiped by a CSV without that column: %+v", updated.SchoolTypes)
+		}
+		if results[0].SchoolTypes != "SMA|SMK" {
+			t.Fatalf("result must report saved school types, got %q", results[0].SchoolTypes)
 		}
 	})
 
 	// Blank means "not supplied", matching every other optional bulk column.
 	t.Run("update preserves stored school_types when the cell is blank", func(t *testing.T) {
 		existingCode := "sb_" + uniqueSuffix()
-		if _, err := svc.CreateSchool(ctx, "Blank Cell School", existingCode, nil, []string{"SMA"}, nil, nil, nil, nil); err != nil {
+		if _, err := svc.CreateSchool(ctx, "Blank Cell School", existingCode, nil, []string{"SMA"}, nil, nil, nil); err != nil {
 			t.Fatalf("seed CreateSchool: %v", err)
 		}
 
@@ -469,7 +470,7 @@ func TestProcessSchoolBulkRows_Integration(t *testing.T) {
 
 	t.Run("rejects duplicate normalized NPSN and continues later rows", func(t *testing.T) {
 		takenNPSN := "Y" + uniqueSuffix()[:7]
-		created, err := svc.CreateSchool(ctx, "Bulk Duplicate Seed", "sb_"+uniqueSuffix(), &takenNPSN, nil, nil, nil, nil, nil)
+		created, err := svc.CreateSchool(ctx, "Bulk Duplicate Seed", "sb_"+uniqueSuffix(), &takenNPSN, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool seed: %v", err)
 		}
@@ -508,11 +509,11 @@ func TestBuildSchoolBulkResultCSV(t *testing.T) {
 	if len(records) != 4 {
 		t.Fatalf("want 4 records (header + 3 rows), got %d", len(records))
 	}
-	wantHeader := "row,name,code,npsn,school_types,alamat,category,provinsi,kota,status,error"
+	wantHeader := "row,name,code,npsn,school_types,alamat,provinsi,kota,status,error"
 	if got := strings.Join(records[0], ","); got != wantHeader {
 		t.Errorf("header: want %s, got %s", wantHeader, got)
 	}
-	wantRow1 := []string{"2", "SMAN 1 Jakarta", "sman1", "2000", "sma|smk", "Jl. X", "", "", "", "success", ""}
+	wantRow1 := []string{"2", "SMAN 1 Jakarta", "sman1", "2000", "sma|smk", "Jl. X", "", "", "success", ""}
 	for i, v := range wantRow1 {
 		if records[1][i] != v {
 			t.Errorf("row1[%d]: want %s, got %s", i, v, records[1][i])
@@ -526,8 +527,8 @@ func TestBuildSchoolBulkResultCSV(t *testing.T) {
 	if records[2][1] != "'=cmd|'/c calc'!A1" {
 		t.Errorf("want neutralised name, got %q", records[2][1])
 	}
-	if records[3][10] != ErrInvalidSchoolName.Error() {
-		t.Errorf("want invalid name error in error column, got %q", records[3][10])
+	if records[3][9] != ErrInvalidSchoolName.Error() {
+		t.Errorf("want invalid name error in error column, got %q", records[3][9])
 	}
 }
 
@@ -537,9 +538,9 @@ func TestBuildSchoolBulkResultCSV(t *testing.T) {
 // TEMPLATE_EXAMPLE_ROW, joined with "\n" and newline-terminated by
 // buildTemplateCSV). That file's matching test asserts the same literal and
 // names this constant, so a divergence fails on one side or the other.
-const frontendSchoolBulkTemplateCSV = "name,code,npsn,school_types,alamat,category,provinsi,kota\n" +
-	"SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,\"Jl. Sudirman No. 1\",SMA,DKI JAKARTA,KOTA JAKARTA PUSAT\n" +
-	"SMPN 5 Bandung,SMPN5BDG,,SMP,,SMP,JAWA BARAT,KOTA BANDUNG\n"
+const frontendSchoolBulkTemplateCSV = "name,code,npsn,school_types,alamat,provinsi,kota\n" +
+	"SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,\"Jl. Sudirman No. 1\",DKI JAKARTA,KOTA JAKARTA PUSAT\n" +
+	"SMPN 5 Bandung,SMPN5BDG,,SMP,,JAWA BARAT,KOTA BANDUNG\n"
 
 // TestFrontendTemplateParsesUnmodified is FR-31: the template as downloaded and
 // re-uploaded untouched must parse cleanly — never a header error, never a

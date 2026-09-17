@@ -66,7 +66,6 @@ func (h *Handler) AdminCreateSchool(c echo.Context) error {
 		NPSN        *string  `json:"npsn"`
 		SchoolTypes []string `json:"school_types"`
 		Alamat      *string  `json:"alamat"`
-		Category    *string  `json:"category"`
 		ProvinsiID  *string  `json:"provinsi_id"`
 		KotaID      *string  `json:"kota_id"`
 	}
@@ -77,7 +76,7 @@ func (h *Handler) AdminCreateSchool(c echo.Context) error {
 		return badRequest(c, "code is required")
 	}
 
-	school, err := h.svc.CreateSchool(c.Request().Context(), req.Name, req.Code, req.NPSN, req.SchoolTypes, req.Alamat, req.Category, req.ProvinsiID, req.KotaID)
+	school, err := h.svc.CreateSchool(c.Request().Context(), req.Name, req.Code, req.NPSN, req.SchoolTypes, req.Alamat, req.ProvinsiID, req.KotaID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -94,7 +93,6 @@ func (h *Handler) AdminUpdateSchool(c echo.Context) error {
 		NPSN        *string  `json:"npsn"`
 		SchoolTypes []string `json:"school_types"`
 		Alamat      *string  `json:"alamat"`
-		Category    *string  `json:"category"`
 		ProvinsiID  *string  `json:"provinsi_id"`
 		KotaID      *string  `json:"kota_id"`
 	}
@@ -102,7 +100,7 @@ func (h *Handler) AdminUpdateSchool(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	school, err := h.svc.UpdateSchool(c.Request().Context(), id, req.Name, req.NPSN, req.Alamat, req.SchoolTypes, req.Code, req.Category, req.ProvinsiID, req.KotaID)
+	school, err := h.svc.UpdateSchool(c.Request().Context(), id, req.Name, req.NPSN, req.Alamat, req.SchoolTypes, req.Code, req.ProvinsiID, req.KotaID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

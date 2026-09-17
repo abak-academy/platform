@@ -51,9 +51,9 @@ describe("bulk-import-format templates", () => {
   it("school template uses pipe-separated uppercase school_types", () => {
     const csv = buildSchoolTemplateCSV();
     expect(csv).toBe(
-      "name,code,npsn,school_types,alamat,category,provinsi,kota\n" +
-        'SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,"Jl. Sudirman No. 1",SMA,DKI JAKARTA,KOTA JAKARTA PUSAT\n' +
-        "SMPN 5 Bandung,SMPN5BDG,,SMP,,SMP,JAWA BARAT,KOTA BANDUNG\n",
+      "name,code,npsn,school_types,alamat,provinsi,kota\n" +
+        'SMAN 1 Jakarta,SMAN1JKT,20100001,SMA|SMK,"Jl. Sudirman No. 1",DKI JAKARTA,KOTA JAKARTA PUSAT\n' +
+        "SMPN 5 Bandung,SMPN5BDG,,SMP,,JAWA BARAT,KOTA BANDUNG\n",
     );
   });
 
@@ -62,7 +62,6 @@ describe("bulk-import-format templates", () => {
     expect(buildStudentGuideText(t)).toContain("bulk_format_student_jenjang");
     expect(buildStudentGuideText(t, true)).toContain("bulk_format_student_school_npsn");
     expect(buildSchoolGuideText(t)).toContain("bulk_format_school_code");
-    expect(buildSchoolGuideText(t)).toContain("bulk_format_school_category");
     expect(buildSchoolGuideText(t)).toContain("bulk_format_school_provinsi");
     expect(buildSchoolGuideText(t)).toContain("bulk_format_school_kota");
   });

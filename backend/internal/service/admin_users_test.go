@@ -205,7 +205,7 @@ func TestChangeAccountRole_SchoolBinding_Integration(t *testing.T) {
 	newSchool := func(t *testing.T) string {
 		t.Helper()
 		code := "acc_" + uniqueSuffix()
-		school, err := svc.CreateSchool(ctx, "Binding School "+code, code, nil, nil, nil, nil, nil, nil)
+		school, err := svc.CreateSchool(ctx, "Binding School "+code, code, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}

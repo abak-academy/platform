@@ -45,13 +45,13 @@ describe("school search hooks", () => {
 
     const { wrapper } = wrapperFactory();
     const { result } = renderHook(
-      () => useSchoolSearch({ province_id: "p1", city_id: "c1", category: "SMA", limit: 20 }),
+      () => useSchoolSearch({ province_id: "p1", city_id: "c1", school_type: "SMA", limit: 20 }),
       { wrapper },
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(mockAuthFetch).toHaveBeenCalledWith("/schools?province_id=p1&city_id=c1&category=SMA&limit=20");
+    expect(mockAuthFetch).toHaveBeenCalledWith("/schools?province_id=p1&city_id=c1&school_type=SMA&limit=20");
     expect(result.current.data).toEqual({ data: schools });
   });
 

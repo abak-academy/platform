@@ -51,7 +51,6 @@ interface SchoolForm {
   npsn: string;
   school_types: string;
   alamat: string;
-  category: string;
   provinsi_id: string;
   kota_id: string;
 }
@@ -62,12 +61,10 @@ const EMPTY_FORM: SchoolForm = {
   npsn: "",
   school_types: "",
   alamat: "",
-  category: "",
   provinsi_id: "",
   kota_id: "",
 };
 
-const SCHOOL_CATEGORIES = ["SD", "MI", "SMP", "MTS", "SMA", "MA", "SMK"];
 
 // Search is sent to the server (q param), so it must be debounced the same
 // way OrdersToolbar debounces order search — otherwise every keystroke fires
@@ -181,7 +178,6 @@ export default function SystemSchoolsPage() {
               .filter(Boolean)
           : undefined,
         alamat: createForm.alamat || undefined,
-        category: createForm.category || undefined,
         provinsi_id: createForm.provinsi_id || undefined,
         kota_id: createForm.kota_id || undefined,
       });
@@ -202,7 +198,6 @@ export default function SystemSchoolsPage() {
       npsn: school.npsn ?? "",
       school_types: (school.school_types ?? []).join(", "),
       alamat: school.alamat ?? "",
-      category: school.category ?? "",
       provinsi_id: school.provinsi_id ?? "",
       kota_id: school.kota_id ?? "",
     });
@@ -232,8 +227,6 @@ export default function SystemSchoolsPage() {
 
       if (editForm.alamat !== (editTarget.alamat ?? ""))
         payload.alamat = editForm.alamat || undefined;
-      if (editForm.category !== (editTarget.category ?? ""))
-        payload.category = editForm.category;
       if (editForm.provinsi_id !== (editTarget.provinsi_id ?? ""))
         payload.provinsi_id = editForm.provinsi_id;
       if (editForm.kota_id !== (editTarget.kota_id ?? ""))
@@ -617,21 +610,6 @@ export default function SystemSchoolsPage() {
               </div>
             </div>
             <div>
-              <Label htmlFor="create-school-category">{t("school_picker_category")}</Label>
-              <select
-                id="create-school-category"
-                data-testid="create-school-category"
-                value={createForm.category}
-                onChange={(e) => setCreateForm((f) => ({ ...f, category: e.target.value }))}
-                className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50"
-              >
-                <option value="">{t("school_picker_category")}</option>
-                {SCHOOL_CATEGORIES.map((category) => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
-            </div>
-            <div>
               <Label>{t("schools_field_school_types")}</Label>
               <Input
                 value={createForm.school_types}
@@ -742,21 +720,6 @@ export default function SystemSchoolsPage() {
                   ))}
                 </select>
               </div>
-            </div>
-            <div>
-              <Label htmlFor="edit-school-category">{t("school_picker_category")}</Label>
-              <select
-                id="edit-school-category"
-                data-testid="edit-school-category"
-                value={editForm.category}
-                onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
-                className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50"
-              >
-                <option value="">{t("school_picker_category")}</option>
-                {SCHOOL_CATEGORIES.map((category) => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
             </div>
             <div>
               <Label>{t("schools_field_school_types")}</Label>

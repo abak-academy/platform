@@ -319,24 +319,26 @@ func TestAdminSchoolLocationMetadata_Integration(t *testing.T) {
 	superUserID := seedUser(t, env, "super_admin", "active", false)
 	superToken := authToken(t, env, superUserID, "super_admin")
 	resp, body := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/schools", map[string]any{
-		"name":        "School With Location",
-		"code":        "school-location",
-		"category":    "sma",
-		"provinsi_id": provinceID,
-		"kota_id":     cityID,
+		"name":         "School With Location",
+		"code":         "school-location",
+		"school_types": []string{"SMA", "SMK"},
+		"provinsi_id":  provinceID,
+		"kota_id":      cityID,
 	}, superToken)
 	require.Equal(t, http.StatusCreated, resp.StatusCode, "body: %v", body)
-	require.Equal(t, "SMA", body["category"])
+	require.Equal(t, []any{"SMA", "SMK"}, body["school_types"])
+	require.NotContains(t, body, "category")
 	require.Equal(t, provinceID, body["provinsi_id"])
 	require.Equal(t, cityID, body["kota_id"])
 
 	schoolID := body["id"].(string)
-	var storedCategory, storedProvinceID, storedCityID string
+	var storedTypes []string
+	var storedProvinceID, storedCityID string
 	err = env.pool.QueryRow(ctx,
-		`SELECT category, provinsi_id, kota_id FROM school WHERE id = $1`, schoolID,
-	).Scan(&storedCategory, &storedProvinceID, &storedCityID)
+		`SELECT school_types, provinsi_id, kota_id FROM school WHERE id = $1`, schoolID,
+	).Scan(&storedTypes, &storedProvinceID, &storedCityID)
 	require.NoError(t, err)
-	require.Equal(t, "SMA", storedCategory)
+	require.Equal(t, []string{"SMA", "SMK"}, storedTypes)
 	require.Equal(t, provinceID, storedProvinceID)
 	require.Equal(t, cityID, storedCityID)
 
@@ -345,15 +347,15 @@ func TestAdminSchoolLocationMetadata_Integration(t *testing.T) {
 	listed := body["data"].([]any)
 	require.Len(t, listed, 1)
 	listedSchool := listed[0].(map[string]any)
-	require.Equal(t, "SMA", listedSchool["category"])
+	require.Equal(t, []any{"SMA", "SMK"}, listedSchool["school_types"])
 	require.Equal(t, provinceID, listedSchool["provinsi_id"])
 	require.Equal(t, cityID, listedSchool["kota_id"])
 
 	resp, body = doJSONBody(t, env, http.MethodPut, "/api/v1/admin/schools/"+schoolID, map[string]any{
-		"category": "smk",
+		"school_types": []string{"SMK"},
 	}, superToken)
 	require.Equal(t, http.StatusOK, resp.StatusCode, "body: %v", body)
-	require.Equal(t, "SMK", body["category"])
+	require.Equal(t, []any{"SMK"}, body["school_types"])
 
 	resp, body = doJSONBody(t, env, http.MethodPost, "/api/v1/admin/schools", map[string]any{
 		"name":        "School With Partial Location",

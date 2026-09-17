@@ -54,8 +54,8 @@ func TestListSchools_SearchEnvelope(t *testing.T) {
 		}
 	})
 
-	t.Run("province city category search is bounded to requested limit", func(t *testing.T) {
-		path := "/api/v1/schools?province_id=" + provinceID + "&city_id=" + cityID + "&category=SMA&limit=1"
+	t.Run("province city school_type search is bounded to requested limit", func(t *testing.T) {
+		path := "/api/v1/schools?province_id=" + provinceID + "&city_id=" + cityID + "&school_type=SMA&limit=1"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK {
@@ -65,13 +65,13 @@ func TestListSchools_SearchEnvelope(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
-		if len(resp.Data) != 1 || resp.Data[0].Category == nil || *resp.Data[0].Category != "SMA" {
+		if len(resp.Data) != 1 || len(resp.Data[0].SchoolTypes) != 1 || resp.Data[0].SchoolTypes[0] != "SMA" {
 			t.Fatalf("unexpected response %+v", resp)
 		}
 	})
 
-	t.Run("province city category browse works without name query", func(t *testing.T) {
-		path := "/api/v1/schools?province_id=" + provinceID + "&city_id=" + cityID + "&category=SMA&limit=1000"
+	t.Run("province city school_type browse works without name query", func(t *testing.T) {
+		path := "/api/v1/schools?province_id=" + provinceID + "&city_id=" + cityID + "&school_type=SMA&limit=1000"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK {
@@ -85,14 +85,14 @@ func TestListSchools_SearchEnvelope(t *testing.T) {
 			t.Fatalf("browse response: want bounded scoped SMA schools including seeded rows, got %d", len(resp.Data))
 		}
 		for _, school := range resp.Data {
-			if school.KotaID == nil || *school.KotaID != cityID || school.Category == nil || *school.Category != "SMA" {
-				t.Fatalf("browse school not scoped to city/category: %+v", school)
+			if school.KotaID == nil || *school.KotaID != cityID || len(school.SchoolTypes) != 1 || school.SchoolTypes[0] != "SMA" {
+				t.Fatalf("browse school not scoped to city/school_type: %+v", school)
 			}
 		}
 	})
 
 	t.Run("npsn search ignores stale filters", func(t *testing.T) {
-		path := "/api/v1/schools?npsn=" + strings.ToLower(firstNPSN) + "&province_id=bad-province&category=SMK"
+		path := "/api/v1/schools?npsn=" + strings.ToLower(firstNPSN) + "&province_id=bad-province&school_type=SMK"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK {
@@ -104,6 +104,49 @@ func TestListSchools_SearchEnvelope(t *testing.T) {
 		}
 		if len(resp.Data) != 1 || resp.Data[0].NPSN == nil || *resp.Data[0].NPSN != firstNPSN {
 			t.Fatalf("npsn response: unexpected %+v", resp)
+		}
+	})
+
+	t.Run("array membership matches every type once and preserves stored values", func(t *testing.T) {
+		var schoolID string
+		types := []string{"SD", " smp ", "SMP", "TK", "SLB", "PONDOK PESANTREN"}
+		if err := env.pool.QueryRow(ctx,
+			`INSERT INTO school (name, code, school_types, provinsi_id, kota_id)
+			VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+			"Array School "+suffix, "array_"+suffix, types, provinceID, cityID,
+		).Scan(&schoolID); err != nil {
+			t.Fatal(err)
+		}
+		for _, schoolType := range []string{"SD", "smp", "TK", "SLB", "PONDOK%20PESANTREN", "SMK"} {
+			path := "/api/v1/schools?province_id=" + provinceID + "&city_id=" + cityID + "&school_type=" + schoolType + "&limit=1000"
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("%s: status=%d body=%s", schoolType, rec.Code, rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), `"category"`) {
+				t.Fatal("school response must not expose category")
+			}
+			var resp schoolOptionsEnvelope
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatal(err)
+			}
+			matches := 0
+			for _, school := range resp.Data {
+				if school.ID == schoolID {
+					matches++
+					if strings.Join(school.SchoolTypes, "|") != strings.Join(types, "|") {
+						t.Fatalf("stored types changed: %+v", school.SchoolTypes)
+					}
+				}
+			}
+			want := 1
+			if schoolType == "SMK" {
+				want = 0
+			}
+			if matches != want {
+				t.Fatalf("%s: want %d school result, got %d", schoolType, want, matches)
+			}
 		}
 	})
 }
@@ -154,22 +197,22 @@ type schoolOptionsEnvelope struct {
 }
 
 type schoolOptionResponse struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	Code       string  `json:"code"`
-	NPSN       *string `json:"npsn"`
-	Status     string  `json:"status"`
-	Category   *string `json:"category"`
-	ProvinsiID *string `json:"provinsi_id"`
-	KotaID     *string `json:"kota_id"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Code        string   `json:"code"`
+	NPSN        *string  `json:"npsn"`
+	Status      string   `json:"status"`
+	SchoolTypes []string `json:"school_types"`
+	ProvinsiID  *string  `json:"provinsi_id"`
+	KotaID      *string  `json:"kota_id"`
 }
 
-func insertSearchSchool(t *testing.T, env *adminStuDBTestEnv, name, category, npsn, provinceID, kotaID string) {
+func insertSearchSchool(t *testing.T, env *adminStuDBTestEnv, name, school_type, npsn, provinceID, kotaID string) {
 	t.Helper()
 	if _, err := env.pool.Exec(context.Background(),
-		`INSERT INTO school (name, code, npsn, school_types, alamat, status, category, provinsi_id, kota_id)
-		VALUES ($1, $2, $3, ARRAY[$4], $5, 'active', $4, $6, $7)`,
-		name, "search_"+uuid.NewString()[:8], npsn, category, "Jl. Search", provinceID, kotaID,
+		`INSERT INTO school (name, code, npsn, school_types, alamat, status, provinsi_id, kota_id)
+		VALUES ($1, $2, $3, ARRAY[$4], $5, 'active', $6, $7)`,
+		name, "search_"+uuid.NewString()[:8], npsn, school_type, "Jl. Search", provinceID, kotaID,
 	); err != nil {
 		t.Fatalf("insert search school: %v", err)
 	}

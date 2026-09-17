@@ -31,7 +31,6 @@ export interface School {
   npsn?: string;
   school_types?: string[];
   alamat?: string;
-  category?: string | null;
   provinsi_id?: string | null;
   kota_id?: string | null;
   status?: string;
@@ -49,7 +48,6 @@ export interface SchoolOption {
   school_types?: string[];
   alamat?: string | null;
   status?: string;
-  category?: string | null;
   provinsi_id?: string | null;
   kota_id?: string | null;
   kota_name?: string | null;
@@ -62,7 +60,6 @@ export interface AdminSchoolInput {
   npsn?: string;
   school_types?: string[];
   alamat?: string;
-  category?: string;
   provinsi_id?: string;
   kota_id?: string;
 }
@@ -73,7 +70,6 @@ export interface AdminSchoolUpdateInput {
   npsn?: string;
   school_types?: string[];
   alamat?: string;
-  category?: string;
   provinsi_id?: string;
   kota_id?: string;
 }

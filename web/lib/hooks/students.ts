@@ -51,7 +51,7 @@ export interface UpdateProfileInput {
 export interface SchoolSearchParams {
   province_id?: string;
   city_id?: string;
-  category?: string;
+  school_type?: string;
   npsn?: string;
   limit?: number;
 }
@@ -64,7 +64,7 @@ function schoolSearchPath(base: string, params: SchoolSearchParams) {
   const search = new URLSearchParams();
   if (params.province_id) search.set("province_id", params.province_id);
   if (params.city_id) search.set("city_id", params.city_id);
-  if (params.category) search.set("category", params.category);
+  if (params.school_type) search.set("school_type", params.school_type);
   if (params.npsn) search.set("npsn", params.npsn);
   if (params.limit) search.set("limit", String(params.limit));
   const query = search.toString();

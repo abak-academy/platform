@@ -20,7 +20,7 @@ func TestRegisterStudent_AllowsLegacySchoolWhenNPSNEnforcementDisabled(t *testin
 	t.Cleanup(func() { svc.cfg = previousConfig })
 
 	code := "legacy_no_npsn_" + uniqueSuffix()
-	school, err := svc.CreateSchool(context.Background(), "Legacy School "+code, code, nil, []string{"sma"}, nil, nil, nil, nil)
+	school, err := svc.CreateSchool(context.Background(), "Legacy School "+code, code, nil, []string{"sma"}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestUpdateProfile_AllowsLegacySchoolWhenNPSNEnforcementDisabled(t *testing.
 	originalSchoolID := createTestSchool(t, svc)
 	userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
 	code := "legacy_profile_" + uniqueSuffix()
-	legacySchool, err := svc.CreateSchool(ctx, "Legacy Profile School "+code, code, nil, []string{"sma"}, nil, nil, nil, nil)
+	legacySchool, err := svc.CreateSchool(ctx, "Legacy Profile School "+code, code, nil, []string{"sma"}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
@@ -170,7 +170,7 @@ func createTestSchool(t *testing.T, svc *Service) string {
 	t.Helper()
 	code := "stu_" + uniqueSuffix()
 	npsn := "T" + uniqueSuffix()[:7]
-	resp, err := svc.CreateSchool(context.Background(), "Student Test School "+code, code, &npsn, nil, nil, nil, nil, nil)
+	resp, err := svc.CreateSchool(context.Background(), "Student Test School "+code, code, &npsn, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 
 	t.Run("NPSN-less school blocks registration", func(t *testing.T) {
 		code := "no_npsn_" + uniqueSuffix()
-		school, err := svc.CreateSchool(ctx, "NPSN-less Registration School "+code, code, nil, []string{"sma"}, nil, nil, nil, nil)
+		school, err := svc.CreateSchool(ctx, "NPSN-less Registration School "+code, code, nil, []string{"sma"}, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -1133,7 +1133,7 @@ func TestUpdateProfile_SelectedSchoolValidation(t *testing.T) {
 		originalSchoolID := createTestSchool(t, svc)
 		userID := createTestStudentWithSchool(t, svc, originalSchoolID, "sma")
 		code := "no_npsn_" + uniqueSuffix()
-		selected, err := svc.CreateSchool(ctx, "NPSN-less School "+code, code, nil, nil, nil, nil, nil, nil)
+		selected, err := svc.CreateSchool(ctx, "NPSN-less School "+code, code, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}

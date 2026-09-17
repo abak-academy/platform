@@ -102,7 +102,7 @@ func schoolSearchParamsFromRequest(c echo.Context) (service.SchoolSearchParams, 
 	return service.SchoolSearchParams{
 		ProvinceID: c.QueryParam("province_id"),
 		CityID:     c.QueryParam("city_id"),
-		Category:   c.QueryParam("category"),
+		SchoolType: c.QueryParam("school_type"),
 		NPSN:       c.QueryParam("npsn"),
 		Limit:      limit,
 	}, nil

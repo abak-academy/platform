@@ -9,7 +9,6 @@ type School struct {
 	NPSN        *string   `json:"npsn"`
 	SchoolTypes []string  `json:"school_types"`
 	Alamat      *string   `json:"alamat"`
-	Category    *string   `json:"category"`
 	ProvinsiID  *string   `json:"provinsi_id"`
 	KotaID      *string   `json:"kota_id"`
 	Status      string    `json:"status"`
@@ -25,7 +24,6 @@ type SchoolOption struct {
 	SchoolTypes  []string `json:"school_types"`
 	Alamat       *string  `json:"alamat"`
 	Status       string   `json:"status"`
-	Category     *string  `json:"category"`
 	ProvinsiID   *string  `json:"provinsi_id"`
 	KotaID       *string  `json:"kota_id"`
 	KotaName     *string  `json:"kota_name"`
