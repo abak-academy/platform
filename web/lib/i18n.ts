@@ -24,6 +24,7 @@ export const DICT = {
     role_super_admin: "Super Admin",
     nav_group_store: "Toko",
     nav_group_exam: "Ujian",
+    nav_group_school: "Sekolah",
     nav_group_catalog: "Katalog",
     search: "Cari…",
     logout: "Keluar",
@@ -58,6 +59,17 @@ export const DICT = {
     saving: "Menyimpan…",
     change_password: "Ubah kata sandi",
     select_school: "Pilih sekolah",
+    school_picker_mode_name: "Nama",
+    school_picker_mode_npsn: "NPSN",
+    school_picker_province: "Provinsi",
+    school_picker_city: "Kota/Kabupaten",
+    school_picker_search_name_placeholder: "Nama sekolah",
+    school_picker_npsn_placeholder: "Masukkan NPSN",
+    school_picker_unlisted: "Sekolah tidak ditemukan",
+    school_picker_unlisted_placeholder: "Tulis nama sekolah",
+    school_picker_searching: "Mencari sekolah…",
+    school_picker_no_results: "Sekolah tidak ditemukan.",
+    complete_profile_continue: "Lanjutkan",
     select_grade: "Pilih kelas",
     select_topic: "Pilih topik",
     edit_disabled_hint: "Ketuk Ubah profil untuk mengubah data",
@@ -1602,7 +1614,9 @@ export const DICT = {
     bulk_format_school_guide_title: "Panduan format impor sekolah",
     bulk_format_student_name: "Wajib. Nama lengkap siswa.",
     bulk_format_student_school_npsn:
-      "Wajib. Tepat 8 huruf atau angka; spasi tepi dihapus dan huruf dinormalkan menjadi kapital. NPSN harus milik sekolah aktif yang sudah ada. Admin sekolah hanya dapat memakai NPSN sekolahnya sendiri. Selama rollout NPSN masih berlangsung, sekolah yang belum memiliki NPSN boleh mengganti header `school_npsn` dengan `school` dan mengisi nama sekolah yang terdaftar. Ini satu-satunya pengecualian untuk aturan jangan mengubah nama header di bawah. Jangan sertakan kedua header tersebut sekaligus; jika keduanya ada, nilai `school_npsn` yang akan digunakan.",
+      "Khusus super admin. Isi `school_npsn` atau `school_code`. NPSN harus tepat 8 huruf atau angka dan milik sekolah aktif yang sudah ada. Jika keduanya diisi, `school_npsn` digunakan.",
+    bulk_format_student_school_code:
+      "Khusus super admin. Gunakan kode internal sekolah untuk yayasan atau sekolah tanpa NPSN. Kode harus cocok persis dengan sekolah aktif yang sudah ada.",
     bulk_format_student_jenjang:
       "Wajib. Isi dengan nilai jenjang, disarankan huruf besar: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. Jika sekolah punya school_types, jenjang harus cocok dengan salah satu jenis itu.",
     bulk_format_student_email: "Opsional. Jika diisi, tidak boleh sudah terdaftar di sistem.",
@@ -1625,11 +1639,15 @@ export const DICT = {
       "Opsional untuk super admin. Minimal 8 karakter jika diisi; kosongkan untuk dibuat otomatis.",
     bulk_format_school_name: "Wajib. Nama sekolah.",
     bulk_format_school_code:
-      "Wajib. Harus belum ada di database (unik). Mengunggah ulang file yang sama akan gagal karena kode sudah terpakai.",
+      "Wajib. Kode baru membuat sekolah; kode yang sudah ada memperbarui sekolah yang sama tanpa mengubah ID atau relasi siswa.",
     bulk_format_school_npsn: "Opsional. Jika diisi, harus tepat 8 huruf atau angka; spasi tepi dihapus, huruf dinormalkan menjadi kapital, dan nilainya harus unik.",
     bulk_format_school_school_types:
       "Opsional. Satu atau lebih jenjang, dipisah | atau koma. Disarankan huruf besar (contoh SMA|SMK) agar cocok dengan jenjang siswa.",
     bulk_format_school_alamat: "Opsional. Teks bebas.",
+    bulk_format_school_provinsi:
+      "Opsional, tetapi wajib diisi bersama kota. Gunakan nama resmi lengkap yang sudah ada di database (contoh DKI JAKARTA).",
+    bulk_format_school_kota:
+      "Opsional, tetapi wajib diisi bersama provinsi. Gunakan nama resmi lengkap dalam provinsi tersebut (contoh KOTA JAKARTA PUSAT).",
     bulk_format_pitfall_csv: "Simpan sebagai CSV biasa. Jangan unggah file Excel (.xlsx).",
     bulk_format_pitfall_header: "Jangan ubah nama kolom pada baris header.",
     bulk_format_pitfall_comma: "Jika nilai berisi koma, bungkus dengan tanda kutip.",
@@ -1638,7 +1656,7 @@ export const DICT = {
     bulk_format_student_nis: "Kolom nis (jika ada) diabaikan.",
     bulk_format_max_rows: "Maksimal 1000 baris data.",
     bulk_format_school_reupload:
-      "Mengunggah ulang file yang sama akan gagal karena code sudah terpakai.",
+      "Unggah ulang dengan code yang sama untuk memperbarui sekolah. school_types yang kosong atau tidak disertakan tetap mempertahankan nilai tersimpan.",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -1659,6 +1677,7 @@ export const DICT = {
     role_super_admin: "Super Admin",
     nav_group_store: "Store",
     nav_group_exam: "Exam",
+    nav_group_school: "Schools",
     nav_group_catalog: "Catalog",
     search: "Search…",
     logout: "Log out",
@@ -1693,6 +1712,17 @@ export const DICT = {
     saving: "Saving…",
     change_password: "Change password",
     select_school: "Select school",
+    school_picker_mode_name: "Name",
+    school_picker_mode_npsn: "NPSN",
+    school_picker_province: "Province",
+    school_picker_city: "City/Regency",
+    school_picker_search_name_placeholder: "School name",
+    school_picker_npsn_placeholder: "Enter NPSN",
+    school_picker_unlisted: "School not found",
+    school_picker_unlisted_placeholder: "Type school name",
+    school_picker_searching: "Searching schools…",
+    school_picker_no_results: "School not found.",
+    complete_profile_continue: "Continue",
     select_grade: "Select grade",
     select_topic: "Select topic",
     edit_disabled_hint: "Tap Edit profile to change your data",
@@ -3233,7 +3263,9 @@ export const DICT = {
     bulk_format_school_guide_title: "School bulk import format guide",
     bulk_format_student_name: "Required. Student's full name.",
     bulk_format_student_school_npsn:
-      "Required. Exactly 8 letters or digits; surrounding spaces are trimmed and letters normalized to uppercase. The NPSN must belong to an existing active school. School admins may only use their own school's NPSN. While the NPSN rollout is pending, a school without an NPSN may replace the `school_npsn` header with `school` and provide the registered school name. This is the sole exception to the do-not-rename-headers rule below. Do not include both headers; when both are present, the `school_npsn` value will be used.",
+      "Super admin only. Provide either `school_npsn` or `school_code`. NPSN must be exactly 8 letters or digits and belong to an existing active school. When both are set, `school_npsn` is used.",
+    bulk_format_student_school_code:
+      "Super admin only. Use the internal school code for a foundation or school without an NPSN. The code must exactly match an existing active school.",
     bulk_format_student_jenjang:
       "Required. Use a jenjang value, preferably uppercase: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. If the school has school_types, jenjang must match one of them.",
     bulk_format_student_email: "Optional. If set, must not already be registered.",
@@ -3256,11 +3288,15 @@ export const DICT = {
       "Optional for super admins. Minimum 8 characters when filled; leave blank to generate automatically.",
     bulk_format_school_name: "Required. School name.",
     bulk_format_school_code:
-      "Required. Must not already exist in the database (unique). Re-uploading the same file will fail because the code is taken.",
+      "Required. A new code creates a school; an existing code updates the same school without changing its ID or student relationships.",
     bulk_format_school_npsn: "Optional. If set, it must be exactly 8 letters or digits; surrounding spaces are trimmed, letters are normalized to uppercase, and the value must be unique.",
     bulk_format_school_school_types:
       "Optional. One or more jenjang values, separated by | or comma. Prefer uppercase (example SMA|SMK) so student jenjang matches.",
     bulk_format_school_alamat: "Optional. Free text.",
+    bulk_format_school_provinsi:
+      "Optional, but must be provided with kota. Use the full official name already in the database (example DKI JAKARTA).",
+    bulk_format_school_kota:
+      "Optional, but must be provided with provinsi. Use the full official name within that province (example KOTA JAKARTA PUSAT).",
     bulk_format_pitfall_csv: "Save as a plain CSV. Do not upload an Excel (.xlsx) file.",
     bulk_format_pitfall_header: "Do not rename the header columns.",
     bulk_format_pitfall_comma: "Quote any value that contains a comma.",
@@ -3269,7 +3305,7 @@ export const DICT = {
     bulk_format_student_nis: "A nis column, if present, is ignored.",
     bulk_format_max_rows: "Maximum 1000 data rows.",
     bulk_format_school_reupload:
-      "Re-uploading the same file will fail because code is already taken.",
+      "Re-upload with the same code to update a school. Blank or omitted school_types preserve the stored values.",
   },
 };
 

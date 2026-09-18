@@ -18,7 +18,7 @@ func TestEnqueueStudentBulkJobFromData_LegacyHeaderFollowsNPSNEnforcement(t *tes
 	ctx := context.Background()
 	svc.cfg = &config.Config{}
 	code := "legacy_enqueue_" + uniqueSuffix()
-	school, err := svc.CreateSchool(ctx, "Legacy Enqueue School "+code, code, nil, []string{"sma"}, nil)
+	school, err := svc.CreateSchool(ctx, "Legacy Enqueue School "+code, code, nil, []string{"sma"}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestEnqueueStudentBulkJobFromData_LegacyHeaderFollowsNPSNEnforcement(t *tes
 	csv := []byte("name,school,jenjang\nBudi," + school.Name + ",sma\n")
 	fileKey := "student-bulk/" + school.ID + "/" + uniqueSuffix() + "-students.csv"
 
-	jobID, err := svc.enqueueStudentBulkJobFromData(ctx, school.ID, creator.ID, fileKey, csv)
+	jobID, err := svc.enqueueStudentBulkJobFromData(ctx, creator.ID, RoleSuperAdmin, fileKey, csv)
 	if err != nil {
 		t.Fatalf("enqueue with enforcement disabled: %v", err)
 	}
@@ -38,8 +38,36 @@ func TestEnqueueStudentBulkJobFromData_LegacyHeaderFollowsNPSNEnforcement(t *tes
 	}
 
 	svc.cfg = &config.Config{EnforceSchoolNPSNRegistration: true}
-	if _, err := svc.enqueueStudentBulkJobFromData(ctx, school.ID, creator.ID, fileKey, csv); !errors.Is(err, ErrMissingCSVHeader) {
+	if _, err := svc.enqueueStudentBulkJobFromData(ctx, creator.ID, RoleSuperAdmin, fileKey, csv); !errors.Is(err, ErrMissingCSVHeader) {
 		t.Fatalf("enqueue with enforcement enabled: want ErrMissingCSVHeader, got %v", err)
+	}
+}
+
+func TestEnqueueStudentBulkJobFromData_AdminSchoolDoesNotRequireSchoolIdentity(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+	svc.cfg = &config.Config{}
+	code := "scoped_enqueue_" + uniqueSuffix()
+	school, err := svc.CreateSchool(ctx, "Scoped Enqueue School "+code, code, nil, []string{"sma"}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool: %v", err)
+	}
+	creator, err := svc.RegisterStudent(ctx, school.ID, "Scoped Enqueue Admin "+uniqueSuffix(), "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+	csv := []byte("name,jenjang\nBudi,sma\n")
+	fileKey := "student-bulk/" + school.ID + "/" + uniqueSuffix() + "-students.csv"
+
+	for _, enforcement := range []bool{false, true} {
+		svc.cfg = &config.Config{EnforceSchoolNPSNRegistration: enforcement}
+		jobID, err := svc.enqueueStudentBulkJobFromData(ctx, creator.ID, RoleAdminSchool, fileKey, csv)
+		if err != nil {
+			t.Fatalf("enforcement=%v: %v", enforcement, err)
+		}
+		if jobID == "" {
+			t.Fatalf("enforcement=%v: empty job id", enforcement)
+		}
 	}
 }
 
@@ -57,7 +85,7 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 
 	t.Run("valid csv creates a queued job pointing at the file key", func(t *testing.T) {
 		csv := []byte("name,school_npsn,jenjang\nBudi,20100001,sma\n")
-		jobID, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, csv)
+		jobID, err := svc.enqueueStudentBulkJobFromData(ctx, createdBy, RoleSuperAdmin, fileKey, csv)
 		if err != nil {
 			t.Fatalf("enqueueStudentBulkJobFromData: %v", err)
 		}
@@ -88,7 +116,7 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 
 	t.Run("csv missing required headers propagates ErrMissingCSVHeader, no job created", func(t *testing.T) {
 		csv := []byte("foo,bar\nx,y\n")
-		_, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, csv)
+		_, err := svc.enqueueStudentBulkJobFromData(ctx, createdBy, RoleSuperAdmin, fileKey, csv)
 		if !errors.Is(err, ErrMissingCSVHeader) {
 			t.Errorf("want ErrMissingCSVHeader, got %v", err)
 		}
@@ -99,7 +127,7 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 		for i := 0; i < maxBulkRows+1; i++ {
 			csv += "Student,20100001,sma\n"
 		}
-		_, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, []byte(csv))
+		_, err := svc.enqueueStudentBulkJobFromData(ctx, createdBy, RoleSuperAdmin, fileKey, []byte(csv))
 		if !errors.Is(err, ErrRowLimitExceeded) {
 			t.Errorf("want ErrRowLimitExceeded, got %v", err)
 		}
@@ -118,7 +146,7 @@ func TestEnqueueStudentBulkJob_RejectsFileKeyOutsideCallersSchool_Integration(t 
 	}
 
 	otherSchoolsFileKey := "student-bulk/" + schoolB + "/" + uniqueSuffix() + "-students.csv"
-	_, err = svc.EnqueueStudentBulkJob(ctx, schoolA, reg.ID, otherSchoolsFileKey)
+	_, err = svc.EnqueueStudentBulkJob(ctx, schoolA, reg.ID, RoleAdminSchool, otherSchoolsFileKey)
 	if !errors.Is(err, ErrUploadNotFound) {
 		t.Errorf("want ErrUploadNotFound for a file_key outside the caller's own school prefix, got %v", err)
 	}

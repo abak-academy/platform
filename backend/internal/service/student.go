@@ -182,10 +182,6 @@ func (s *Service) getPendingOrder(ctx context.Context, studentID uuid.UUID) (*Da
 	}, nil
 }
 
-func (s *Service) ListSchools(ctx context.Context) ([]*model.School, error) {
-	return s.repo.ListSchools(ctx)
-}
-
 func (s *Service) validateSelectedSchool(ctx context.Context, schoolID string) (*model.School, error) {
 	school, err := s.storeRepo.GetSchoolByID(ctx, schoolID)
 	if err != nil {

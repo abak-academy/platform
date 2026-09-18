@@ -91,7 +91,7 @@ func seedJobOwner(t *testing.T, env *adminJobsTestEnv, nis string) string {
 	t.Helper()
 	ctx := context.Background()
 	npsn := strings.ToUpper(strings.ReplaceAll(uuid.NewString(), "-", "")[:8])
-	school, err := env.svc.CreateSchool(ctx, "Job Test School "+nis, "job_"+nis, &npsn, nil, nil)
+	school, err := env.svc.CreateSchool(ctx, "Job Test School "+nis, "job_"+nis, &npsn, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}

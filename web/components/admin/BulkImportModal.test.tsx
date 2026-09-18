@@ -131,9 +131,9 @@ describe("BulkImportModal", () => {
 
     expect(lastDownloadedFilename).toBe("bulk_register_template.csv");
     expect(lastDownloadedCSV).toBe(
-      "name,school_npsn,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
-        'Budi Santoso,20100001,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n' +
-        "Siti Aminah,P1234567,SMA,,,,,,,,,,\n",
+      "name,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos\n" +
+        'Budi Santoso,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132\n' +
+        "Siti Aminah,SMA,,,,,,,,,,\n",
     );
 
     expect(presignMutateAsync).not.toHaveBeenCalled();
@@ -155,7 +155,7 @@ describe("BulkImportModal", () => {
     await waitFor(() => expect(lastDownloadedFilename).toBe("bulk_register_guide.txt"));
     await waitFor(() => expect(lastDownloadedCSV).not.toBeNull());
     expect(lastDownloadedCSV).toContain("bulk_format_student_guide_title");
-    expect(lastDownloadedCSV).toContain("bulk_format_student_school_npsn");
+    expect(lastDownloadedCSV).not.toContain("bulk_format_student_school_npsn");
   });
 
   it("includes password guidance and blank password template cells when allowed", async () => {
@@ -165,6 +165,8 @@ describe("BulkImportModal", () => {
 
     expect(screen.getByText("password")).toBeInTheDocument();
     expect(screen.getByText("bulk_format_student_password")).toBeInTheDocument();
+    expect(screen.getByText("school_npsn")).toBeInTheDocument();
+    expect(screen.getByText("school_code")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /bulk_register_download_template/i }));
     await waitFor(() => expect(lastDownloadedCSV).not.toBeNull());

@@ -135,12 +135,15 @@ func TestListSchools(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	var resp []any
+	var resp struct {
+		Data       []any  `json:"data"`
+		NextCursor string `json:"next_cursor"`
+	}
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode schools: %v", err)
 	}
-	if resp != nil {
-		t.Error("schools: want null (empty repo), got non-nil")
+	if len(resp.Data) != 0 || resp.NextCursor != "" {
+		t.Errorf("schools: want empty bounded envelope, got %+v", resp)
 	}
 }
 

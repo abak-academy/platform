@@ -10,6 +10,7 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -23,10 +24,24 @@ type SchoolResponse struct {
 	NPSN         *string  `json:"npsn"`
 	SchoolTypes  []string `json:"school_types"`
 	Alamat       *string  `json:"alamat"`
+	ProvinsiID   *string  `json:"provinsi_id"`
+	KotaID       *string  `json:"kota_id"`
 	Status       string   `json:"status"`
 	StudentCount int      `json:"student_count"`
 	CreatedAt    string   `json:"created_at"`
 	UpdatedAt    string   `json:"updated_at"`
+}
+
+type SchoolOptionsResponse struct {
+	Data []model.SchoolOption `json:"data"`
+}
+
+type SchoolSearchParams struct {
+	ProvinceID string
+	CityID     string
+	SchoolType string
+	NPSN       string
+	Limit      int
 }
 
 func toSchoolResponse(row repository.SchoolAdminRow) SchoolResponse {
@@ -37,6 +52,8 @@ func toSchoolResponse(row repository.SchoolAdminRow) SchoolResponse {
 		NPSN:         row.NPSN,
 		SchoolTypes:  row.SchoolTypes,
 		Alamat:       row.Alamat,
+		ProvinsiID:   row.ProvinsiID,
+		KotaID:       row.KotaID,
 		Status:       row.Status,
 		StudentCount: row.StudentCount,
 		CreatedAt:    row.CreatedAt.Format(time.RFC3339),
@@ -74,6 +91,9 @@ func normalizeSchoolNPSN(npsn *string) (*string, error) {
 }
 
 func mapSchoolWriteError(err error) error {
+	if errors.Is(err, repository.ErrSchoolCodeConflict) {
+		return ErrSchoolCodeTaken
+	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == schoolNPSNUniqueIndex {
 		return ErrSchoolNPSNTaken
@@ -122,14 +142,144 @@ func (s *Service) AdminListSchools(ctx context.Context, params AdminListSchoolsP
 	return schools, nextCursor, counts, nil
 }
 
-// SchoolOptions returns the full active school registry (id/name/code) for
-// picker dropdowns. See ListSchoolOptions for why this is unpaginated.
-func (s *Service) SchoolOptions(ctx context.Context) ([]repository.SchoolOption, error) {
-	return s.storeRepo.ListSchoolOptions(ctx)
+// SchoolOptions returns a bounded active school search page for picker dropdowns.
+func (s *Service) SchoolOptions(ctx context.Context, params SchoolSearchParams) (SchoolOptionsResponse, error) {
+	filter, empty, err := s.buildSchoolSearchFilter(ctx, params)
+	if err != nil || empty {
+		return SchoolOptionsResponse{Data: []model.SchoolOption{}}, err
+	}
+	rows, err := s.storeRepo.SearchSchoolOptions(ctx, filter)
+	if err != nil {
+		if errors.Is(err, repository.ErrAmbiguousSchoolIdentity) {
+			return SchoolOptionsResponse{}, ErrInvalidSchoolSearch
+		}
+		return SchoolOptionsResponse{}, err
+	}
+	return SchoolOptionsResponse{Data: rows}, nil
+}
+
+func (s *Service) buildSchoolSearchFilter(ctx context.Context, params SchoolSearchParams) (repository.SchoolSearchFilter, bool, error) {
+	limit := params.Limit
+	if limit == 0 {
+		limit = 20
+	}
+
+	npsn := strings.TrimSpace(params.NPSN)
+	if npsn != "" {
+		normalized, err := normalizeSchoolNPSN(&npsn)
+		if err != nil {
+			return repository.SchoolSearchFilter{}, false, err
+		}
+		return repository.SchoolSearchFilter{NPSN: *normalized, Limit: limit}, false, nil
+	}
+
+	provinceID := strings.TrimSpace(params.ProvinceID)
+	cityID := strings.TrimSpace(params.CityID)
+	schoolType := strings.ToUpper(strings.TrimSpace(params.SchoolType))
+	if provinceID == "" && cityID == "" && schoolType == "" {
+		return repository.SchoolSearchFilter{}, true, nil
+	}
+	if schoolType != "" && !allowedSchoolSearchType(schoolType) {
+		return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
+	}
+	if provinceID == "" || cityID == "" || schoolType == "" {
+		return repository.SchoolSearchFilter{}, true, nil
+	}
+	if limit <= 0 || limit > 1000 {
+		limit = 1000
+	}
+	province, err := s.storeRepo.GetProvinceByID(ctx, provinceID)
+	if err != nil {
+		return repository.SchoolSearchFilter{}, false, err
+	}
+	if province == nil {
+		return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
+	}
+	if cityID != "" {
+		city, err := s.storeRepo.GetCityByID(ctx, cityID)
+		if err != nil {
+			return repository.SchoolSearchFilter{}, false, err
+		}
+		if city == nil || city.ProvinceID != provinceID {
+			return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
+		}
+	}
+
+	return repository.SchoolSearchFilter{
+		ProvinceID: provinceID,
+		CityID:     cityID,
+		SchoolType: schoolType,
+		Limit:      limit,
+	}, false, nil
+}
+
+func allowedSchoolSearchType(schoolType string) bool {
+	switch schoolType {
+	case "SD", "MI", "SMP", "MTS", "SMA", "MA", "SMK",
+		"ADI WIDYALAYA", "KB", "KURSUS", "MADYAMA WIDYALAYA", "MAK", "MULA DHAMMASEKHA", "NAVA DHAMMASEKHA",
+		"PAUDQ", "PDF ULA", "PDF ULYA", "PDF WUSTHA", "PKBM", "PONDOK PESANTREN", "PRATAMA WIDYALAYA",
+		"RA", "SDLB", "SDTK", "SKB", "SLB", "SMAG.K", "SMAK",
+		"SMPTK", "SMTK", "SPK KB", "SPK SD", "SPK SMA", "SPK SMP", "SPK TK",
+		"SPM ULA", "SPM ULYA", "SPM WUSTHA", "SPS", "TAMAN SEMINARI", "TK", "TPA",
+		"UTAMA WIDYALAYA", "UTAMA WIDYALAYA KEJURUAN", "UTTAMA DHAMMASEKHA", "LKP", "D1", "D2", "D3",
+		"S1", "S2":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeOptionalSchoolLocationID(id *string) *string {
+	if id == nil {
+		return nil
+	}
+	normalized := strings.TrimSpace(*id)
+	if normalized == "" {
+		return nil
+	}
+	return &normalized
+}
+
+func (s *Service) validateSchoolLocation(ctx context.Context, provinceID, cityID *string) error {
+	if (provinceID == nil) != (cityID == nil) {
+		return ErrIncompleteSchoolLocation
+	}
+	if provinceID == nil {
+		return nil
+	}
+	province, err := s.storeRepo.GetProvinceByID(ctx, *provinceID)
+	if err != nil {
+		return err
+	}
+	if province == nil {
+		return ErrInvalidProvinsi
+	}
+	city, err := s.storeRepo.GetCityByID(ctx, *cityID)
+	if err != nil {
+		return err
+	}
+	if city == nil || city.ProvinceID != *provinceID {
+		return ErrInvalidKota
+	}
+	return nil
+}
+
+func (s *Service) GetSchoolOption(ctx context.Context, id string) (*model.SchoolOption, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, ErrInvalidUUID
+	}
+	school, err := s.storeRepo.GetSchoolOptionByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if school == nil {
+		return nil, ErrSchoolNotFound
+	}
+	return school, nil
 }
 
 // CreateSchool creates a new school with status='active' and student_count=0.
-func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *string, schoolTypes []string, alamat *string) (*SchoolResponse, error) {
+func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *string, schoolTypes []string, alamat, provinceID, cityID *string) (*SchoolResponse, error) {
 	if code == "" {
 		return nil, ErrMissingField
 	}
@@ -138,6 +288,11 @@ func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *str
 	}
 	npsn, err := normalizeSchoolNPSN(npsn)
 	if err != nil {
+		return nil, err
+	}
+	provinceID = normalizeOptionalSchoolLocationID(provinceID)
+	cityID = normalizeOptionalSchoolLocationID(cityID)
+	if err := s.validateSchoolLocation(ctx, provinceID, cityID); err != nil {
 		return nil, err
 	}
 
@@ -162,6 +317,8 @@ func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *str
 		NPSN:        npsn,
 		SchoolTypes: schoolTypes,
 		Alamat:      alamat,
+		ProvinsiID:  provinceID,
+		KotaID:      cityID,
 	}
 	if err := s.storeRepo.CreateSchool(ctx, school); err != nil {
 		return nil, mapSchoolWriteError(err)
@@ -174,6 +331,8 @@ func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *str
 		NPSN:         school.NPSN,
 		SchoolTypes:  school.SchoolTypes,
 		Alamat:       school.Alamat,
+		ProvinsiID:   school.ProvinsiID,
+		KotaID:       school.KotaID,
 		Status:       "active",
 		StudentCount: 0,
 		CreatedAt:    school.CreatedAt.Format(time.RFC3339),
@@ -183,7 +342,7 @@ func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *str
 
 // UpdateSchool patches school fields. Nil pointers leave the corresponding
 // column unchanged.
-func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alamat *string, schoolTypes []string, code *string) (*SchoolResponse, error) {
+func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alamat *string, schoolTypes []string, code, provinceID, cityID *string) (*SchoolResponse, error) {
 	if name != nil && !validSchoolName(*name) {
 		return nil, ErrInvalidSchoolName
 	}
@@ -201,6 +360,24 @@ func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alama
 		return nil, ErrSchoolNotFound
 	}
 
+	provinceSet := provinceID != nil
+	citySet := cityID != nil
+	provinceID = normalizeOptionalSchoolLocationID(provinceID)
+	cityID = normalizeOptionalSchoolLocationID(cityID)
+	locationProvinceID := school.ProvinsiID
+	locationCityID := school.KotaID
+	if provinceSet {
+		locationProvinceID = provinceID
+	}
+	if citySet {
+		locationCityID = cityID
+	}
+	if provinceSet || citySet {
+		if err := s.validateSchoolLocation(ctx, locationProvinceID, locationCityID); err != nil {
+			return nil, err
+		}
+	}
+
 	if code != nil && *code != school.Code {
 		exists, err := s.storeRepo.SchoolCodeExists(ctx, *code, &id)
 		if err != nil {
@@ -211,7 +388,7 @@ func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alama
 		}
 	}
 
-	if err := s.storeRepo.UpdateSchool(ctx, id, name, npsnSet, npsn, alamat, schoolTypes, code); err != nil {
+	if err := s.storeRepo.UpdateSchool(ctx, id, name, npsnSet, npsn, alamat, schoolTypes, code, provinceSet, provinceID, citySet, cityID); err != nil {
 		return nil, mapSchoolWriteError(err)
 	}
 
@@ -235,6 +412,8 @@ func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alama
 		NPSN:         updated.NPSN,
 		SchoolTypes:  updated.SchoolTypes,
 		Alamat:       updated.Alamat,
+		ProvinsiID:   updated.ProvinsiID,
+		KotaID:       updated.KotaID,
 		Status:       updated.Status,
 		StudentCount: count,
 		CreatedAt:    updated.CreatedAt.Format(time.RFC3339),
@@ -289,6 +468,8 @@ func (s *Service) ChangeSchoolStatus(ctx context.Context, id, status string) (*S
 		NPSN:         updated.NPSN,
 		SchoolTypes:  updated.SchoolTypes,
 		Alamat:       updated.Alamat,
+		ProvinsiID:   updated.ProvinsiID,
+		KotaID:       updated.KotaID,
 		Status:       updated.Status,
 		StudentCount: count,
 		CreatedAt:    updated.CreatedAt.Format(time.RFC3339),

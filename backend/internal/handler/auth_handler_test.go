@@ -168,10 +168,6 @@ func (f *fakeRepo) UpdateUserPhoto(_ context.Context, userID, photoURL string) e
 	return nil
 }
 
-func (f *fakeRepo) ListSchools(_ context.Context) ([]*model.School, error) {
-	return nil, nil
-}
-
 func (f *fakeRepo) ActivateUser(_ context.Context, userID string) (bool, error) {
 	u, ok := f.byID[userID]
 	if !ok {
