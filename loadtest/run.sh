@@ -53,6 +53,10 @@ case "${1:-}" in
 
     set +e
     docker run --rm \
+      --ulimit nofile=1048576:1048576 \
+      --sysctl net.ipv4.ip_local_port_range="1024 65535" \
+      --sysctl net.ipv4.tcp_tw_reuse=1 \
+      --sysctl net.ipv4.tcp_fin_timeout=15 \
       -v "$repo_root/loadtest:/scripts:ro" \
       -v "$repo_root/loadtest/results:/results" \
       -e NON_PRODUCTION_CONFIRM \
@@ -70,6 +74,12 @@ case "${1:-}" in
       -e MAX_DURATION \
       -e REQUIRES_CHECKIN \
       -e CONTINUE_TRANSPORT_ERRORS \
+      -e LOGIN_RETRY_LIMIT \
+      -e ADAPTIVE_PACING \
+      -e IDLE_POLL_SECONDS \
+      -e SUBMIT_WINDOW_START_SECONDS \
+      -e SUBMIT_BURST_SECONDS \
+      -e SUBMIT_BURST_SHARE \
       -e LOGIN_P95_MS \
       -e START_P95_MS \
       -e AUTOSAVE_P95_MS \
@@ -77,7 +87,7 @@ case "${1:-}" in
       -e SUBMIT_P95_MS \
       -e K6_DNS \
       -e K6_NO_CONNECTION_REUSE \
-      -e K6_WEB_DASHBOARD=true \
+      -e K6_WEB_DASHBOARD="${K6_WEB_DASHBOARD:-true}" \
       -e K6_WEB_DASHBOARD_PORT=-1 \
       -e K6_WEB_DASHBOARD_EXPORT="/results/$report_name.html" \
       grafana/k6:latest run \

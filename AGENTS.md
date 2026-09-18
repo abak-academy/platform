@@ -51,13 +51,13 @@ If the task is unclear or has real trade-offs, stop and ask before editing.
 - Deploy and runtime manifests: `deploy/`
 - Agent context packs: `docs/agent/`
 
-Read [repo-map.md](docs/agent/repo-map.md) before broad scans or cross-layer work.
+Read [repo-map.md](agent/repo-map.md) before broad scans or cross-layer work.
 
 ## Required Context Packs
 
-- Backend Go pattern, cleanup, or refactor work: [go-pattern-cleanup.md](docs/agent/context-packs/go-pattern-cleanup.md)
-- Any implementation or review work: [workflows.md](docs/agent/workflows.md)
-- Any test/build claim: [verification.md](docs/agent/verification.md)
+- Backend Go pattern, cleanup, or refactor work: [go-pattern-cleanup.md](agent/context-packs/go-pattern-cleanup.md)
+- Any implementation or review work: [workflows.md](agent/workflows.md)
+- Any test/build claim: [verification.md](agent/verification.md)
 
 ## Boundaries
 
