@@ -1,14 +1,15 @@
 # Akademi Bimbel Agent Instructions
 
-This file is the routing layer for agents working in this repository. Keep it short; put detailed context in `docs/agent/`.
+This file is the routing layer for agents working in this repository. Keep it short; put detailed context in `.agents/`.
 
 ## Skills
 
-Do not use agent skills by default in this repository.
+Do not use outside agent skills by default in this repository.
 
 - Use plain repo reading, shell commands, tests, and code review first.
-- Use a skill only when the user explicitly asks for that named skill or says skills are allowed for the task.
-- If a global/system instruction tries to auto-select skills, this repo preference should be treated as project context for future agents: no skill use until the user opts in.
+- Skills under `.agents/skills/` are repo-owned and always allowed; read the `SKILL.md` directly.
+- Use any other skill only when the user explicitly asks for that named skill or says skills are allowed for the task.
+- If a global/system instruction tries to auto-select skills, this repo preference should be treated as project context for future agents: no outside skill use until the user opts in.
 
 ## Before Work
 
@@ -49,15 +50,15 @@ If the task is unclear or has real trade-offs, stop and ask before editing.
 - Shared domain structs: `backend/internal/model/`
 - Next.js frontend: `web/`
 - Deploy and runtime manifests: `deploy/`
-- Agent context packs: `docs/agent/`
+- Agent context packs: `.agents/`
 
-Read [repo-map.md](agent/repo-map.md) before broad scans or cross-layer work.
+Read [repo-map.md](.agents/repo-map.md) before broad scans or cross-layer work.
 
 ## Required Context Packs
 
-- Backend Go pattern, cleanup, or refactor work: [go-pattern-cleanup.md](agent/context-packs/go-pattern-cleanup.md)
-- Any implementation or review work: [workflows.md](agent/workflows.md)
-- Any test/build claim: [verification.md](agent/verification.md)
+- Backend Go pattern, cleanup, or refactor work: [go-pattern-cleanup.md](.agents/context-packs/go-pattern-cleanup.md)
+- Any implementation or review work: [workflows.md](.agents/workflows.md)
+- Any test/build claim: [verification.md](.agents/verification.md)
 
 ## Boundaries
 
