@@ -150,18 +150,28 @@ describe("SchoolPicker", () => {
     expect(screen.queryByRole("option", { name: /SMA Negeri/ })).toBeNull();
   });
 
-  it("reflects a keyboard selection immediately and clears its ID on editing", () => {
+  it("replaces search with one selected school and the clear button restores a focused empty search", () => {
     render(<Harness />);
     typeName("negeri");
     const input = screen.getByPlaceholderText("Nama sekolah");
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.getByTestId("school-id")).toHaveTextContent("school-1");
-    expect(input).toHaveValue("SMA Negeri 1 Jakarta");
-    expect(input).toHaveAttribute("aria-expanded", "false");
+    expect(input).not.toBeInTheDocument();
+    expect(screen.getAllByText("SMA Negeri 1 Jakarta")).toHaveLength(1);
+    expect(screen.getByRole("group", { name: "Sekolah terpilih" })).toHaveTextContent("12345678");
     expect(screen.queryByRole("listbox")).toBeNull();
-    fireEvent.change(input, { target: { value: "another" } });
+    const clear = screen.getByRole("button", { name: "Ganti sekolah" });
+    expect(clear).toHaveFocus();
+    fireEvent.click(clear);
     expect(screen.getByTestId("school-id")).toBeEmptyDOMElement();
+    expect(screen.queryByRole("group", { name: "Sekolah terpilih" })).toBeNull();
+    expect(screen.getByPlaceholderText("Nama sekolah")).toHaveValue("");
+    expect(screen.getByPlaceholderText("Nama sekolah")).toHaveFocus();
+    expect(screen.getAllByRole("combobox")[2]).toHaveValue("_empty_");
+    typeName("bina");
+    fireEvent.click(screen.getByRole("option", { name: /SMA Bina Bangsa/ }));
+    expect(screen.getByTestId("school-id")).toHaveTextContent("school-2");
   });
 
   it("loads more matching schools without dropping the query", () => {
@@ -189,7 +199,8 @@ describe("SchoolPicker", () => {
     fireEvent.click(screen.getByRole("option", { name: /SMA Negeri 1 Jakarta/ }));
     expect(screen.getByTestId("school-id")).toHaveTextContent("school-1");
     fireEvent.click(screen.getByRole("button", { name: "Nama" }));
-    expect(screen.getByPlaceholderText("Nama sekolah")).toHaveValue("SMA Negeri 1 Jakarta");
+    expect(screen.queryByPlaceholderText("Nama sekolah")).toBeNull();
+    expect(screen.getByRole("group", { name: "Sekolah terpilih" })).toHaveTextContent("SMA Negeri 1 Jakarta");
   });
 
   it("reflects legacy type labels in the filter without changing the selected record", () => {
@@ -205,7 +216,8 @@ describe("SchoolPicker", () => {
     const { rerender } = render(<SchoolPicker value="school-1" onChange={vi.fn()} />);
     hydratedSchool = defaultSchools[0];
     rerender(<SchoolPicker value="school-1" onChange={vi.fn()} />);
-    expect(screen.getByPlaceholderText("Nama sekolah")).toHaveValue(defaultSchools[0].name);
+    expect(screen.queryByPlaceholderText("Nama sekolah")).toBeNull();
+    expect(screen.getByRole("group", { name: "Sekolah terpilih" })).toHaveTextContent(defaultSchools[0].name);
     expect(screen.getByText(defaultSchools[0].name)).toBeInTheDocument();
     expect(screen.queryByRole("listbox")).toBeNull();
   });
@@ -218,6 +230,15 @@ describe("SchoolPicker", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(screen.getByPlaceholderText("Nama sekolah")).toBeDisabled();
     expect(searchCalls.at(-1)?.enabled).toBe(false);
+  });
+
+  it("cannot clear a disabled selected school", () => {
+    const onChange = vi.fn();
+    render(<SchoolPicker value="school-1" selectedSchool={defaultSchools[0]} disabled onChange={onChange} />);
+    const clear = screen.getByRole("button", { name: "Ganti sekolah" });
+    expect(clear).toBeDisabled();
+    fireEvent.click(clear);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("Escape dismisses suggestions without choosing a school", () => {
