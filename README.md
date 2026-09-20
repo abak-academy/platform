@@ -132,7 +132,7 @@ cd deploy && docker compose --profile observability up -d   # or: make obs-up
 - Dashboard: `http://localhost:3002` → Abak folder → *"Exam day — where is the time going?"* (provisioned from `deploy/grafana/dashboards/`)
 - Prometheus UI `:9090` · Loki API `:3100` · Alloy UI `:12345`
 
-Known gap: there is no PgBouncer locally, so the `pgbouncer` scrape target stays DOWN and its panels show no data. Rollout to production (Grafana Cloud credentials, vm-db exporter, alerts) is a separate, human-driven path: `docs/runbooks/monitoring-deployment.md`.
+Known gap: there is no PgBouncer locally, so the `pgbouncer` scrape target stays DOWN and its panels show no data. Rollout to production (Grafana Cloud credentials, database-host exporter, alerts) is a separate, human-driven path documented in the private ops runbooks.
 
 ## Local development (without Docker)
 
@@ -167,6 +167,6 @@ cd web && npx vitest run
 
 ## Operations
 
-- `docs/runbooks/monitoring-deployment.md` — pre/post-deploy checklist for the Grafana Cloud rollout (issue #98)
-- `docs/runbooks/` — PostgreSQL 16→17 data migration, repository migration to the client org
+- `docs/runbooks/` — PostgreSQL 16→17 data migration, RBAC matrix
+- Operational runbooks (production access, deploy, database, incident, monitoring rollout) are kept privately, outside this repository
 - `docs/backlog/` — accepted tech debt, with the reasoning for deferring it

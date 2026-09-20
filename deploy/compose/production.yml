@@ -147,7 +147,7 @@ services:
   # version-pinned — nothing here is built from this repo. Adding them is
   # additive: `docker compose up -d` creates only these services and never
   # touches the six above. Combined footprint is bounded by the mem_limits;
-  # actual measured numbers belong in docs/runbooks/monitoring-deployment.md.
+  # actual measured numbers belong in the private ops runbooks.
   #
   # Credentials come from deploy/.env (hand-placed on the box, gitignored) —
   # see deploy/.env.example for where each value lives in the Grafana Cloud

@@ -2,7 +2,7 @@
 
 Applies to any environment whose `pgdata` volume was created while the compose file pinned
 `postgres:16-alpine` — today that is **local dev** and **staging**. Production is unaffected:
-Postgres there is native 17.10 on `vm-db` and its data directory was created by 17.
+Postgres there is native 17.10 on the dedicated database host and its data directory was created by 17.
 
 ## Why this is needed
 

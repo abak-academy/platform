@@ -16,7 +16,7 @@
 //
 // Token needs products(exam):write (PUT) and products(exam):read (GET).
 //
-// Operator guide with examples: docs/runbooks/admin-scripts.md.
+// Operator guide with examples: the private ops runbooks.
 //
 //	go run scripts/add_exam_tests/main.go
 package main

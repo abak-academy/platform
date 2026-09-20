@@ -8,13 +8,13 @@
 // Input CSV (header required):
 //
 //	exam_id,username
-//	<exam-uuid>,zalf6539
+//	<exam-uuid>,student-a
 //	<exam-uuid>,"user-a,user-b"
 //
 // Output CSV: exam_id,username,student_id,status,http_status,name,error with
 // status granted | skipped | failed (skipped = already registered).
 //
-// Operator guide with examples: docs/runbooks/admin-scripts.md.
+// Operator guide with examples: the private ops runbooks.
 //
 //	go run scripts/grant_exam/main.go
 package main
