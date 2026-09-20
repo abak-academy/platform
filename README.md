@@ -174,12 +174,26 @@ git tag v1.4.0 && git push origin v1.4.0
 ```
 
 That builds `api`, `worker` and `web` once and pushes each under two tags
-pointing at the same digest — the version (`api:v1.4.0`) and the commit SHA
-(`api:<sha>`). The version is for humans and changelogs; the SHA is the image's
-identity, because it cannot be moved and it is what `docker ps` on the host
-shows when you are diffing a production report against `git log`.
+pointing at the same digest — the version and the commit SHA:
 
-Deploy by setting `IMAGE_TAG` to either. To ship a commit without cutting a
+| component | version tag | SHA tag |
+|---|---|---|
+| `api` | `api:v1.4.0` | `api:<sha>` |
+| `worker` | `worker:v1.4.0` | `worker:<sha>` |
+| `web` | `web:prod-v1.4.0` | `web:prod-<sha>` |
+
+The version is for humans and changelogs; the SHA is the image's identity,
+because it cannot be moved and it is what `docker ps` on the host shows when
+you are diffing a production report against `git log`.
+
+`web` carries an environment prefix because `NEXT_PUBLIC_*` is inlined into the
+client bundle at build time, so it is not promotable between environments;
+`api` and `worker` bake in no environment and stay bare.
+
+**`IMAGE_TAG` is one value for all three — compose adds the `prod-` itself**
+(`web:prod-${IMAGE_TAG}`). Set `IMAGE_TAG=v1.4.0`, not `prod-v1.4.0`: copying
+the web tag straight out of `docker ps` yields `web:prod-prod-v1.4.0` and
+`api:prod-v1.4.0`, neither of which exists. To ship a commit without cutting a
 version — a hotfix — run the pipeline manually from the Actions tab
 (`workflow_dispatch`); that builds the SHA tag alone and invents no version.
 
