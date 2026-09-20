@@ -7,6 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +21,7 @@ import (
 	"akademi-bimbel/internal/server"
 	"akademi-bimbel/internal/service"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
@@ -32,44 +37,110 @@ type testEnv struct {
 	server *httptest.Server
 }
 
+// One Postgres and one Redis container serve the whole package. Migrations run
+// once into akademi_test, which then acts purely as a CREATE DATABASE template:
+// each test gets a private, already-migrated database for the cost of a file
+// copy instead of a container start plus a full migration replay.
+//
+// RunMigrations closes its own pool (infra/migrate.go), and nothing pools against
+// the template afterwards — CREATE DATABASE ... TEMPLATE refuses while any other
+// session is connected to the source.
+const templateDB = "akademi_test"
+
+var (
+	sharedInfraOnce sync.Once
+	sharedMaintDSN  string
+	sharedRedisAddr string
+	sharedInfraErr  error
+	testDatabaseSeq atomic.Int64
+)
+
+// withDatabase rewrites the database name in a postgres URL, keeping credentials,
+// host, port and query string intact.
+func withDatabase(dsn, name string) (string, error) {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return "", err
+	}
+	u.Path = "/" + name
+	return u.String(), nil
+}
+
+func sharedTestInfra(t *testing.T) (maintDSN, redisAddr string) {
+	t.Helper()
+	sharedInfraOnce.Do(func() {
+		ctx := context.Background()
+
+		pgContainer, err := tcpostgres.Run(ctx,
+			"postgres:17-alpine",
+			tcpostgres.WithDatabase(templateDB),
+			tcpostgres.WithUsername("test"),
+			tcpostgres.WithPassword("test"),
+			tcpostgres.BasicWaitStrategies(),
+		)
+		if err != nil {
+			sharedInfraErr = fmt.Errorf("start postgres container: %w", err)
+			return
+		}
+
+		templateDSN, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+		if err != nil {
+			sharedInfraErr = fmt.Errorf("postgres connection string: %w", err)
+			return
+		}
+		if err := infra.RunMigrations(ctx, templateDSN); err != nil {
+			sharedInfraErr = fmt.Errorf("run migrations: %w", err)
+			return
+		}
+		if sharedMaintDSN, err = withDatabase(templateDSN, "postgres"); err != nil {
+			sharedInfraErr = fmt.Errorf("maintenance dsn: %w", err)
+			return
+		}
+
+		redisContainer, err := tcredis.Run(ctx, "redis:7-alpine")
+		if err != nil {
+			sharedInfraErr = fmt.Errorf("start redis container: %w", err)
+			return
+		}
+		addr, err := redisContainer.ConnectionString(ctx)
+		if err != nil {
+			sharedInfraErr = fmt.Errorf("redis connection string: %w", err)
+			return
+		}
+		sharedRedisAddr = strings.TrimPrefix(addr, "redis://")
+	})
+	if sharedInfraErr != nil {
+		t.Fatalf("shared test infra: %v", sharedInfraErr)
+	}
+	return sharedMaintDSN, sharedRedisAddr
+}
+
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 	ctx := context.Background()
 
-	// --- Postgres ---
-	pgContainer, err := tcpostgres.Run(ctx,
-		"postgres:17-alpine",
-		tcpostgres.WithDatabase("akademi_test"),
-		tcpostgres.WithUsername("test"),
-		tcpostgres.WithPassword("test"),
-		tcpostgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgContainer.Terminate(ctx) })
+	maintDSN, redisAddr := sharedTestInfra(t)
 
-	pgDSN, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+	dbName := fmt.Sprintf("it_%d", testDatabaseSeq.Add(1))
+	maint, err := pgxpool.New(ctx, maintDSN)
+	require.NoError(t, err)
+	_, err = maint.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{dbName}.Sanitize()+" TEMPLATE "+templateDB)
+	maint.Close()
 	require.NoError(t, err)
 
-	// --- Redis ---
-	redisContainer, err := tcredis.Run(ctx, "redis:7-alpine")
+	pgDSN, err := withDatabase(maintDSN, dbName)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = redisContainer.Terminate(ctx) })
 
-	redisAddr, err := redisContainer.ConnectionString(ctx)
-	require.NoError(t, err)
-	// ConnectionString returns "redis://host:port"; strip the prefix
-	redisAddr = redisAddr[len("redis://"):]
-
-	// --- Migrations ---
-	require.NoError(t, infra.RunMigrations(ctx, pgDSN))
+	// The package is sequential (no t.Parallel), so one Redis keyspace is enough
+	// as long as each test starts from empty.
+	rdb := infra.NewRedis(redisAddr, "")
+	require.NoError(t, rdb.FlushAll(ctx).Err())
+	t.Cleanup(func() { _ = rdb.Close() })
 
 	// --- Wiring ---
 	pool, err := infra.NewPool(ctx, pgDSN)
 	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
-
-	rdb := infra.NewRedis(redisAddr, "")
-	t.Cleanup(func() { _ = rdb.Close() })
 
 	repo := repository.New(pool)
 	signer := infra.NewJWTSigner("test-secret-32-bytes-0000000000!", 15*time.Minute)
