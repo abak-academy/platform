@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Loader2, Search, X } from "lucide-react";
 import { useSchoolCities, useProvinces } from "@/lib/hooks/regions";
 import { useTranslation } from "@/lib/i18n";
 import { useSchoolById, useSchoolAutocomplete } from "@/lib/hooks/students";
@@ -50,12 +50,22 @@ export function SchoolPicker({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [debouncedQ, setDebouncedQ] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const clearRef = useRef<HTMLButtonElement>(null);
+  const focusAfterSelection = useRef(false);
   const { t } = useTranslation();
 
   const { data: provinces } = useProvinces();
   const { data: cities } = useSchoolCities(provinceId);
   const hydrate = useSchoolById(selectedSchool ? "" : value);
   const selected = selectedSchool ?? hydrate.data ?? null;
+
+  useEffect(() => {
+    if (!focusAfterSelection.current) return;
+    focusAfterSelection.current = false;
+    if (selected) clearRef.current?.focus();
+    else inputRef.current?.focus();
+  }, [selected]);
 
   useEffect(() => {
     if (unlistedName) setUnlistedActive(true);
@@ -92,7 +102,20 @@ export function SchoolPicker({
     setActiveIndex(-1);
     setUnlistedActive(false);
     onUnlistedNameChange?.("");
+    focusAfterSelection.current = true;
     onChange(school);
+  }
+
+  function clearSchool() {
+    setQInput("");
+    setNpsnInput("");
+    setDebouncedQ("");
+    setProvinceId("");
+    setCityId("");
+    setSchoolType("");
+    setActiveIndex(-1);
+    focusAfterSelection.current = true;
+    onChange(null);
   }
 
   function changeFilter() {
@@ -215,6 +238,17 @@ export function SchoolPicker({
             </>
           ) : null}
 
+          {selected ? (
+            <div id={id} role="group" aria-label={t("school_picker_selected")} className="mt-2 flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <div className="break-words font-medium text-ink-900">{selected.name}</div>
+                <div className="break-words text-xs text-ink-500">{[selected.npsn, selected.school_types?.join(" / "), selected.kota_name, selected.provinsi_name].filter(Boolean).join(" · ")}</div>
+              </div>
+              <Button ref={clearRef} type="button" variant="ghost" size="icon" className="shrink-0" aria-label={t("school_picker_change")} onClick={clearSchool} disabled={disabled}>
+                <X className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+          ) : (
           <div
             className="relative mt-2"
             onBlur={(event) => {
@@ -223,6 +257,7 @@ export function SchoolPicker({
           >
             <Search className="pointer-events-none absolute top-3 left-3 size-4 text-ink-400" />
             <Input
+              ref={inputRef}
               id={id}
               role="combobox"
               aria-label={t(mode === "name" ? "school_picker_search_name_placeholder" : "school_picker_npsn_placeholder")}
@@ -294,14 +329,8 @@ export function SchoolPicker({
               </div>
             ) : null}
           </div>
-          {mode === "name" ? <p className="mt-1 text-xs text-ink-500">{t("school_picker_optional_filters")}</p> : null}
-
-          {selected ? (
-            <div className="mt-2 rounded-md border border-line bg-surface-2 px-3 py-2 text-xs text-ink-700">
-              <div className="font-medium text-ink-900">{selected.name}</div>
-              <div>{[selected.npsn, selected.school_types?.join(" / "), selected.kota_name, selected.provinsi_name].filter(Boolean).join(" · ")}</div>
-            </div>
-          ) : null}
+          )}
+          {!selected && mode === "name" ? <p className="mt-1 text-xs text-ink-500">{t("school_picker_optional_filters")}</p> : null}
         </>
       )}
     </div>

@@ -40,7 +40,9 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await page.screenshot({ path: testInfo.outputPath("autocomplete.png"), fullPage: true });
     await input.press("ArrowDown");
     await input.press("Enter");
-    await expect(input).toHaveValue(school.name);
+    await expect(input).toHaveCount(0);
+    await expect(page.getByRole("group", { name: "Sekolah terpilih" })).toContainText(school.name);
+    await expect(page.getByRole("button", { name: "Ganti sekolah" })).toBeFocused();
     await expect(page.getByRole("listbox")).toHaveCount(0);
     await expect(page.getByText("20561417 · TK · KOTA SURABAYA · JAWA TIMUR", { exact: true })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Provinsi", exact: true })).toHaveText("JAWA TIMUR");
@@ -82,6 +84,9 @@ test("city alone narrows autocomplete and selecting a new name clears the old ch
   expect(searches.at(-1)?.has("province_id")).toBe(false);
   expect(searches.at(-1)?.has("school_type")).toBe(false);
   await page.getByRole("option", { name: /TK TAMAN BELAJAR/ }).click();
+  await page.getByRole("button", { name: "Ganti sekolah" }).click();
+  await expect(input).toHaveValue("");
+  await expect(input).toBeFocused();
   await input.fill("unknown");
   await expect(page.getByText("Sekolah tidak ditemukan.", { exact: true })).toBeVisible();
   await expect(page.getByText("20561417 · TK · KOTA SURABAYA · JAWA TIMUR", { exact: true })).toHaveCount(0);
