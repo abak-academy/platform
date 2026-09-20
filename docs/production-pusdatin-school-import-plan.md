@@ -1,43 +1,101 @@
 # Manual Pusdatin school import
 
-## Objective
+`backend/cmd/import-pusdatin` is a standalone operator command. It never runs through migrations, API startup, deployment hooks, or a scheduler. Deploy PR #171's schema/application changes before importing. No Pusdatin metadata is added to `school`.
 
-Import the complete Pusdatin dataset into the existing `school` registry, including school type, province, and city. Preserve existing schools and student relationships. Do not add a second registry, Pusdatin-specific school fields, automatic synchronization, or automatic cleanup.
+## Contract
 
-The import is a separate operation run explicitly by an operator or agent. It must not run in a database migration, API startup, deployment hook, or scheduled job. Deploying PR #171 only prepares the schema and application behavior. Migration 0064 is retained for databases that already applied it; migration 0065 removes its category column and replaces the location index. Neither migration imports Pusdatin records or rewrites `school_types` or student links. Rolling back 0065 restores an empty category column, not its former values.
+- Match only by normalized NPSN, including inactive schools. Never match or merge by school name.
+- Insert missing NPSNs with code `NPSN-<NPSN>`, active application status, source name/address, `school_types = [UPPER(Bentuk)]`, and resolved city/province. Source `Status` is public/private ownership, not the application's active/deactivated status, and is not imported.
+- Preserve existing school ID, name, code, NPSN representation, status, populated address, and student links. Fill empty address, location, and type fields. Retain an existing multi-type array if it contains the source type; otherwise report a conflict. Do not infer additional student levels from `Bentuk` or replace existing types.
+- Resolve `Kabupaten` against `city.name`, preserving the distinction between a kabupaten and a kota. Matching normalizes case/whitespace and expands `KAB.`/`KAB` to `KABUPATEN`. Derive province from the selected city's current `province_id`.
+- Unknown/ambiguous cities, conflicting existing locations/types, multiple NPSN owners, invalid NPSNs/names/types, generated-code collisions, and conflicting source rows block the entire apply. No partial-success mode.
+- Collapse byte-equivalent decoded duplicate CSV rows. If any column differs for one NPSN, hold that identity. `source_rows` refers to CSV record numbers, including the header, rather than physical lines within quoted multiline fields.
+- All database writes happen in one transaction. Apply takes a school write lock and region read locks before recomputing the plan. School writes from the app may wait until it completes; use a maintenance window and serialize with other school cleanup/import operations. Lock acquisition times out after 5 seconds, SQL statements after 10 minutes, and the command after 30 minutes.
+- Apply requires the exact SHA256 of a reviewed dry-run plan. A changed source or changed affected school/location plan invalidates approval. A retry must use a fresh dry-run; repeating an already imported, unchanged dataset yields only `unchanged` rows.
 
-## Source and unresolved decisions
+The admin school bulk uploader remains a separate feature that matches by school code and accepts at most 1,000 rows.
 
-- Source: workspace `docs/Data Induk Satuan Pendidikan  - DAFTAR Nasional 360 - ASC - 17 Agustus 2026.csv` (outside the Git repository).
-- Verified on 17 September 2026: 554,885 rows and 554,882 distinct NPSNs.
-- The source contains `Bentuk` and `Kabupaten`, but no province column. Resolve the city against the application's region master, then derive its province. Report unknown or ambiguous region matches instead of guessing.
-- Duplicate NPSNs: `69931346`, `70005045`, and `70005078`. Exact duplicates may be collapsed; conflicting rows require an explicit resolution. `69931346` has conflicting address/locality values.
-- `school_types` remains an array and is the only school-type field. There is no separate `category`. The 17 September production audit found five multi-type schools linked to 34 students; retain their arrays and existing student eligibility. New Pusdatin schools use the reviewed source-to-type mapping.
-- `Bentuk` must be mapped deliberately to the school-type contract because `school_types` currently also validates student `jenjang`. Do not infer that a school such as an SLB serves only one student level.
+## Source
 
-## Matching and preservation
+Workspace source (outside Git): `docs/Data Induk Satuan Pendidikan  - DAFTAR Nasional 360 - ASC - 17 Agustus 2026.csv` in the parent project directory.
 
-1. Match by normalized NPSN, never by school-name similarity.
-2. Insert NPSNs absent from the registry with complete resolved location and type fields.
-3. For exactly one existing NPSN owner, report proposed field changes in the dry-run. Preserve its ID, code, status, and all student relationships. Conflicting existing school types need an explicit resolution before replacement.
-4. Leave schools without a matching NPSN unchanged, including similarly named records.
-5. Report ambiguous NPSN ownership, conflicting source rows, code collisions, and missing location/type mappings. Unresolved exceptions must remain visible; do not call a partial import complete.
+The 17 September 2026 audit counted 554,885 rows and 554,882 distinct NPSNs. There is no province column. Duplicate NPSNs are `69931346`, `70005045`, and `70005078`; `69931346` has conflicting address/locality values. Keep the original file unchanged. Resolve disputed rows in a reviewed copy, retaining a separate record of the resolution and supporting evidence.
 
-The admin school bulk uploader is not the national Pusdatin importer: it updates by normalized school code and accepts at most 1,000 rows. A separate manual import command remains to be implemented as a separate operational deliverable; this document is not an executable importer.
+The importer uses the type catalog from PR #171. It does not infer that SLB, PKBM, or a foundation serves only one student level, nor change student eligibility rules. A school-type label in the source is imported literally as the corresponding uppercase catalog value.
 
-## Execution order
+## Prerequisites
 
-1. Prepare and validate the dataset and proposed mappings; produce a read-only dry-run with insert/update/unchanged/conflict counts and an exact proposed change report.
-2. Verify the final schema and picker behavior in staging. Run the manual importer there and verify that repeating it creates no duplicate schools.
-3. Deploy the reviewed application/schema changes. Verify the location fields, indexes, and the existing normalized-NPSN uniqueness prerequisite before the production import.
-4. Re-run the production dry-run against fresh state. Serialize the import with other school cleanup/import operations.
-5. Execute the separately reviewed production import manually, then verify independently. Keep the source checksum, dry-run, before-images of changed schools, and result report as operational artifacts outside the school model.
+- Reviewed PR #171 schema, including `provinsi_id`, `kota_id`, and removal of `category`.
+- Existing normalized-NPSN unique index on `UPPER(BTRIM(npsn))`, either unfiltered or filtered by `npsn IS NOT NULL`. The command checks the actual index definition and validity; it does not create indexes or alter schema.
+- Database region master populated and reviewed. Resolve missing locations explicitly; never guess a province from a school name.
+- `DATABASE_URL` injected securely for the intended database. No database URL fallback. Use a read-only database role for initial dry-runs where available. Apply additionally needs school writes, temporary table creation, and the stated locks.
+- A writable parent directory for reports. Each invocation requires a **new** output directory; existing reports are never overwritten. Reports include school before-images and proposed values, so retain them privately. The command creates directories with mode `0700` and files with mode `0600`.
 
-## Completion checks
+## Build and dry-run
 
-- Every distinct source NPSN is accounted for exactly once as imported, unchanged, or explicitly unresolved.
-- Every imported school has the expected type, city, and province; each city belongs to its assigned province.
-- Existing school IDs, codes, statuses, and student school references are unchanged.
-- Repeating the same resolved dataset inserts zero additional identities and yields zero expected-field differences.
-- Picker searches can find sampled imported schools by NPSN and by location/type.
-- Zero unresolved records are required before claiming the complete dataset was imported.
+From `app/backend`, build once:
+
+```sh
+go build -o /tmp/import-pusdatin ./cmd/import-pusdatin
+```
+
+With `DATABASE_URL` already supplied through the operator's normal secure environment:
+
+```sh
+/tmp/import-pusdatin \
+  --csv '/absolute/path/to/reviewed-pusdatin.csv' \
+  --out '/absolute/path/to/reports/dry-run-01'
+```
+
+No `--apply` means a read-only database transaction. Reports:
+
+- `plan.jsonl`: source checksum followed by one action per distinct normalized NPSN, source record numbers, source city, before-image, proposed school, and conflict reason where applicable. Insert IDs/timestamps are assigned by PostgreSQL at apply time, so they are empty in the plan.
+- `result.json`: source checksum, plan checksum, source/distinct counts, insert/update/unchanged/conflict counts, and operation status. The plan SHA256 is the SHA256 of `plan.jsonl` itself.
+
+Any conflict exits nonzero after writing the report. Review all conflicts, fix the reviewed source or provide reviewed city aliases, and dry-run again. Zero conflicts means the plan is executable, not that every source fact has been independently verified.
+
+For city names that require explicit resolution, prepare a CSV containing the **source** name and reviewed application city ID:
+
+```csv
+kabupaten,kota_id
+SOURCE CITY NAME,REVIEWED_CITY_ID
+```
+
+Pass `--city-map '/absolute/path/to/reviewed-city-map.csv'` to both dry-run and apply. IDs must already exist in the database. Do not use aliases to conceal a real location conflict. The command never mutates the region master.
+
+## Apply and verify
+
+First apply and repeat the process against staging. Before production, verify the deployed schema/picker and rerun dry-run against fresh production state. Review the exact plan and obtain the operator's production-execution authorization.
+
+```sh
+/tmp/import-pusdatin \
+  --csv '/absolute/path/to/reviewed-pusdatin.csv' \
+  --out '/absolute/path/to/reports/apply-01' \
+  --expect-plan '<plan_sha256 from reviewed dry-run>' \
+  --apply
+```
+
+Include the same `--city-map` when used. The command recomputes the plan under locks, rejects stale hashes, bulk-loads changed rows through a temporary table, checks affected counts and persisted values, then commits. It does not delete schools, reassign users/students, or activate existing deactivated schools.
+
+`applied` confirms commit. `prepared` does not confirm a commit. `commit_unknown` means commit confirmation is missing; inspect the database through a fresh dry-run before deciding what to retry. An error after commit explicitly states that the database committed but final report writing failed. Preserve all artifacts; never assume an interrupted apply wrote nothing.
+
+Run another read-only dry-run with a new output directory. Expect zero inserts, updates, and conflicts, with every distinct source NPSN counted as unchanged. Independently verify existing school IDs/statuses/student links against before-images and sample picker searches by NPSN and location/type. Only call the national import complete when the entire reviewed source is accounted for and zero exceptions remain. This command does not automate a destructive rollback after a successful commit.
+
+## Verification
+
+```sh
+go test -race -count=1 ./cmd/import-pusdatin
+go vet ./cmd/import-pusdatin
+```
+
+Tests use an isolated PostgreSQL container and the real application migrations. They cover identity preservation, source and mapping conflicts, stale plans, rollback after a failed insert, preserved student links and multi-type schools, and a 10,000-school import followed by a dry-run with zero changes.
+
+To additionally dry-run the real national CSV against that disposable test database:
+
+```sh
+PUSDATIN_TEST_CSV='/absolute/path/to/source.csv' \
+PUSDATIN_TEST_REPORT='/absolute/path/to/new-report-directory' \
+go test -race -count=1 -v ./cmd/import-pusdatin
+```
+
+This is parser/mapping validation on a test database, not a production dry-run or proof that production conflicts are resolved.
