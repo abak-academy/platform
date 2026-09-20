@@ -33,10 +33,13 @@ type SchoolResponse struct {
 }
 
 type SchoolOptionsResponse struct {
-	Data []model.SchoolOption `json:"data"`
+	Data       []model.SchoolOption `json:"data"`
+	NextCursor string               `json:"next_cursor,omitempty"`
 }
 
 type SchoolSearchParams struct {
+	Q          string
+	Cursor     string
 	ProvinceID string
 	CityID     string
 	SchoolType string
@@ -155,7 +158,13 @@ func (s *Service) SchoolOptions(ctx context.Context, params SchoolSearchParams) 
 		}
 		return SchoolOptionsResponse{}, err
 	}
-	return SchoolOptionsResponse{Data: rows}, nil
+	response := SchoolOptionsResponse{Data: rows}
+	if filter.NPSN == "" && len(rows) > filter.Limit {
+		response.Data = rows[:filter.Limit]
+		last := response.Data[len(response.Data)-1]
+		response.NextCursor = repository.EncodeNameCursor(last.Name, last.ID)
+	}
+	return response, nil
 }
 
 func (s *Service) buildSchoolSearchFilter(ctx context.Context, params SchoolSearchParams) (repository.SchoolSearchFilter, bool, error) {
@@ -176,39 +185,49 @@ func (s *Service) buildSchoolSearchFilter(ctx context.Context, params SchoolSear
 	provinceID := strings.TrimSpace(params.ProvinceID)
 	cityID := strings.TrimSpace(params.CityID)
 	schoolType := strings.ToUpper(strings.TrimSpace(params.SchoolType))
-	if provinceID == "" && cityID == "" && schoolType == "" {
-		return repository.SchoolSearchFilter{}, true, nil
-	}
-	if schoolType != "" && !allowedSchoolSearchType(schoolType) {
+	q := strings.TrimSpace(params.Q)
+	if len([]rune(q)) > 200 || (schoolType != "" && !allowedSchoolSearchType(schoolType)) {
 		return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
 	}
-	if provinceID == "" || cityID == "" || schoolType == "" {
-		return repository.SchoolSearchFilter{}, true, nil
+	if params.Cursor != "" {
+		if _, _, err := repository.DecodeNameCursor(params.Cursor); err != nil {
+			return repository.SchoolSearchFilter{}, false, err
+		}
 	}
-	if limit <= 0 || limit > 1000 {
-		limit = 1000
-	}
-	province, err := s.storeRepo.GetProvinceByID(ctx, provinceID)
-	if err != nil {
-		return repository.SchoolSearchFilter{}, false, err
-	}
-	if province == nil {
-		return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
+	if provinceID != "" {
+		province, err := s.storeRepo.GetProvinceByID(ctx, provinceID)
+		if err != nil {
+			return repository.SchoolSearchFilter{}, false, err
+		}
+		if province == nil {
+			return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
+		}
 	}
 	if cityID != "" {
 		city, err := s.storeRepo.GetCityByID(ctx, cityID)
 		if err != nil {
 			return repository.SchoolSearchFilter{}, false, err
 		}
-		if city == nil || city.ProvinceID != provinceID {
+		if city == nil || (provinceID != "" && city.ProvinceID != provinceID) {
 			return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
 		}
 	}
-
+	if (q != "" && len([]rune(q)) < 2) || (q == "" && provinceID == "" && cityID == "" && schoolType == "") {
+		return repository.SchoolSearchFilter{}, true, nil
+	}
+	maxLimit := 50
+	if q == "" && provinceID != "" && cityID != "" && schoolType != "" {
+		maxLimit = 1000
+	}
+	if limit <= 0 || limit > maxLimit {
+		limit = maxLimit
+	}
 	return repository.SchoolSearchFilter{
 		ProvinceID: provinceID,
 		CityID:     cityID,
 		SchoolType: schoolType,
+		Q:          q,
+		Cursor:     params.Cursor,
 		Limit:      limit,
 	}, false, nil
 }

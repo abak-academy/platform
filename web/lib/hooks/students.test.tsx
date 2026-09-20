@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useSchoolById, useSchoolSearch, useUpdatePhoto, usePresignUpload, studentsKeys } from "./students";
+import { useSchoolById, useSchoolAutocomplete, useSchoolSearch, useUpdatePhoto, usePresignUpload, studentsKeys } from "./students";
 import type { SchoolOption, User } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
@@ -62,6 +62,25 @@ describe("school search hooks", () => {
     expect(result.current.isPending).toBe(true);
     expect(result.current.fetchStatus).toBe("idle");
     expect(mockAuthFetch).not.toHaveBeenCalled();
+  });
+
+  it("paginates autocomplete with the same name and partial filters, then resets on a new query", async () => {
+    const school = { id: "s1", name: "Needle, Academy", code: "N1" };
+    mockAuthFetch.mockResolvedValueOnce({ data: [school], next_cursor: "Needle, Academy,s1" })
+      .mockResolvedValueOnce({ data: [{ ...school, id: "s2" }] })
+      .mockResolvedValueOnce({ data: [] });
+    const { wrapper } = wrapperFactory();
+    const { result, rerender } = renderHook(({ q }) => useSchoolAutocomplete({ q, city_id: "3578", limit: 20 }), { wrapper, initialProps: { q: "needle" } });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.pages).toHaveLength(1);
+    await act(async () => { await result.current.fetchNextPage(); });
+    expect(mockAuthFetch).toHaveBeenNthCalledWith(2, "/schools?q=needle&cursor=Needle%2C+Academy%2Cs1&city_id=3578&limit=20");
+    await waitFor(() => expect(result.current.data?.pages.flatMap(page => page.data)).toHaveLength(2));
+    expect(result.current.hasNextPage).toBe(false);
+    rerender({ q: "other" });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockAuthFetch).toHaveBeenLastCalledWith("/schools?q=other&city_id=3578&limit=20");
+    expect(result.current.data?.pages).toHaveLength(1);
   });
 
   it("useSchoolById hydrates one school", async () => {

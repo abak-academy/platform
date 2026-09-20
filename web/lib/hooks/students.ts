@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import type { Dashboard, SchoolOption, User } from "@/lib/types";
@@ -49,6 +49,8 @@ export interface UpdateProfileInput {
 }
 
 export interface SchoolSearchParams {
+  q?: string;
+  cursor?: string;
   province_id?: string;
   city_id?: string;
   school_type?: string;
@@ -57,11 +59,14 @@ export interface SchoolSearchParams {
 }
 
 export interface SchoolOptionsEnvelope {
+  next_cursor?: string;
   data: SchoolOption[];
 }
 
 function schoolSearchPath(base: string, params: SchoolSearchParams) {
   const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.cursor) search.set("cursor", params.cursor);
   if (params.province_id) search.set("province_id", params.province_id);
   if (params.city_id) search.set("city_id", params.city_id);
   if (params.school_type) search.set("school_type", params.school_type);
@@ -76,6 +81,16 @@ export function useSchoolSearch(params: SchoolSearchParams, enabled = true) {
     queryKey: studentsKeys.schoolSearch(params),
     enabled,
     queryFn: () => authFetch<SchoolOptionsEnvelope>(schoolSearchPath("/schools", params)),
+  });
+}
+
+export function useSchoolAutocomplete(params: SchoolSearchParams, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...studentsKeys.schoolSearch(params), "autocomplete"],
+    enabled,
+    initialPageParam: "",
+    queryFn: ({ pageParam }) => authFetch<SchoolOptionsEnvelope>(schoolSearchPath("/schools", { ...params, cursor: pageParam })),
+    getNextPageParam: (page) => page.next_cursor || undefined,
   });
 }
 
