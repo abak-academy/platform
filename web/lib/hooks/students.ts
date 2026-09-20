@@ -1,14 +1,17 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
-import type { Dashboard, School, User } from "@/lib/types";
+import type { Dashboard, SchoolOption, User } from "@/lib/types";
 
 export const studentsKeys = {
   all: ["students"] as const,
   dashboard: () => [...studentsKeys.all, "dashboard"] as const,
   profile: () => [...studentsKeys.all, "profile"] as const,
+  schoolSearch: (params: SchoolSearchParams) =>
+    [...studentsKeys.all, "school-search", params] as const,
+  schoolById: (id?: string) => [...studentsKeys.all, "school", id ?? ""] as const,
 };
 
 export function useDashboard() {
@@ -45,11 +48,59 @@ export interface UpdateProfileInput {
   kode_pos?: string;
 }
 
-export function useSchools(enabled = true) {
+export interface SchoolSearchParams {
+  q?: string;
+  cursor?: string;
+  province_id?: string;
+  city_id?: string;
+  school_type?: string;
+  npsn?: string;
+  limit?: number;
+}
+
+export interface SchoolOptionsEnvelope {
+  next_cursor?: string;
+  data: SchoolOption[];
+}
+
+function schoolSearchPath(base: string, params: SchoolSearchParams) {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.cursor) search.set("cursor", params.cursor);
+  if (params.province_id) search.set("province_id", params.province_id);
+  if (params.city_id) search.set("city_id", params.city_id);
+  if (params.school_type) search.set("school_type", params.school_type);
+  if (params.npsn) search.set("npsn", params.npsn);
+  if (params.limit) search.set("limit", String(params.limit));
+  const query = search.toString();
+  return query ? `${base}?${query}` : base;
+}
+
+export function useSchoolSearch(params: SchoolSearchParams, enabled = true) {
   return useQuery({
-    queryKey: [...studentsKeys.all, "schools"],
-    queryFn: () => authFetch<School[]>(`/schools`),
+    queryKey: studentsKeys.schoolSearch(params),
     enabled,
+    queryFn: () => authFetch<SchoolOptionsEnvelope>(schoolSearchPath("/schools", params)),
+  });
+}
+
+export function useSchoolAutocomplete(params: SchoolSearchParams, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...studentsKeys.schoolSearch(params), "autocomplete"],
+    enabled,
+    initialPageParam: "",
+    staleTime: 5 * 60 * 1000,
+    gcTime: typeof window === "undefined" ? undefined : 30 * 60 * 1000,
+    queryFn: ({ pageParam, signal }) => authFetch<SchoolOptionsEnvelope>(schoolSearchPath("/schools", { ...params, cursor: pageParam }), { signal }),
+    getNextPageParam: (page) => page.next_cursor || undefined,
+  });
+}
+
+export function useSchoolById(id?: string | null) {
+  return useQuery({
+    queryKey: studentsKeys.schoolById(id ?? ""),
+    enabled: Boolean(id),
+    queryFn: () => authFetch<SchoolOption>(`/schools/${encodeURIComponent(id!)}`),
   });
 }
 

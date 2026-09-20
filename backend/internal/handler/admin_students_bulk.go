@@ -14,7 +14,7 @@ import (
 // Object keys are student-bulk/{folder-uuid}/{file-uuid}-filename. For
 // admin_school the folder is the JWT school. For super_admin the folder is a
 // random UUID (storage namespace only — not a real school); row school comes
-// from the CSV name column, same as enqueue.
+// from the CSV identity columns, same as enqueue.
 func (h *Handler) AdminPresignStudentBulkUpload(c echo.Context) error {
 	claims := ClaimsFromContext(c)
 	schoolID, err := h.resolveSchoolScope(c, claims)
@@ -26,7 +26,7 @@ func (h *Handler) AdminPresignStudentBulkUpload(c echo.Context) error {
 	}
 	// super_admin with no school: folder UUID is a storage namespace, not a
 	// real school. Enqueue UUID-parses the second path segment for the prefix
-	// check only. Row school still comes from the CSV name column.
+	// check only. Row school still comes from the CSV identity columns.
 	if schoolID == "" {
 		schoolID = uuid.New().String()
 	}
@@ -82,7 +82,7 @@ func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 	// For super_admin, extract the folder UUID from the fileKey prefix (the
 	// presign endpoint already encoded it). This is only needed for
 	// storage-level validation in EnqueueStudentBulkJob; it is not a school
-	// id. Row school comes from the CSV name column.
+	// id. Row school comes from the CSV identity columns.
 	if claims.Role == "super_admin" {
 		parts := strings.SplitN(req.FileKey, "/", 3)
 		if len(parts) < 3 || parts[0] != "student-bulk" {
@@ -94,7 +94,7 @@ func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 		}
 	}
 
-	jobID, err := h.svc.EnqueueStudentBulkJob(c.Request().Context(), schoolID, claims.Sub, req.FileKey)
+	jobID, err := h.svc.EnqueueStudentBulkJob(c.Request().Context(), schoolID, claims.Sub, claims.Role, req.FileKey)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

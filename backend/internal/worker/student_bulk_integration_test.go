@@ -60,7 +60,7 @@ func TestRunStudentBulkJob_RealSuperAdminCanSetExplicitPassword(t *testing.T) {
 	password := "chosenPass123"
 	store := &fakeObjectStore{
 		getObjectBytesFn: func(context.Context, string, string) ([]byte, error) {
-			return []byte("name,school,jenjang,password\nExplicit Student,Worker Bulk School,SMA," + password + "\n"), nil
+			return []byte("name,school_npsn,jenjang,password\nExplicit Student,20100001,SMA," + password + "\n"), nil
 		},
 	}
 	svc := service.NewWithStore(repo, repo, nil, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, nil, nil, nil)
@@ -93,7 +93,7 @@ func seedWorkerBulkSchool(t *testing.T, ctx context.Context, pool *pgxpool.Pool)
 	t.Helper()
 	var schoolID string
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO school (name, code, school_types, status) VALUES ('Worker Bulk School', 'worker-bulk', ARRAY['SMA'], 'active') RETURNING id`,
+		`INSERT INTO school (name, code, npsn, school_types, status) VALUES ('Worker Bulk School', 'worker-bulk', '20100001', ARRAY['SMA'], 'active') RETURNING id`,
 	).Scan(&schoolID); err != nil {
 		t.Fatalf("seed school: %v", err)
 	}

@@ -3,13 +3,12 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   useAdminSchools,
-  useSchoolOptions,
   useCreateSchool,
   useUpdateSchool,
   useChangeSchoolStatus,
   adminSchoolsKeys,
 } from "./admin-schools";
-import type { School, SchoolOption } from "@/lib/types";
+import type { School } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 
@@ -80,19 +79,6 @@ describe("admin-schools hooks", () => {
         "/admin/schools?q=sman&status=active",
       ),
     );
-  });
-
-  it("useSchoolOptions fetches GET /admin/schools/options", async () => {
-    const options: SchoolOption[] = [{ id: "s1", name: "SMAN 1 Jakarta", code: "SMAN1JKT" }];
-    mockAuthFetch.mockResolvedValueOnce({ data: options });
-
-    const { wrapper } = wrapperFactory();
-    const { result } = renderHook(() => useSchoolOptions(), { wrapper });
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/schools/options");
-    expect(result.current.data).toEqual({ data: options });
   });
 
   it("useCreateSchool posts to /admin/schools and invalidates list", async () => {

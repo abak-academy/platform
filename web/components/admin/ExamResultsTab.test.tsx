@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ExamResultsTab } from "./ExamResultsTab";
-import type { AdminResultRow, AdminResultDetail, School } from "@/lib/types";
+import type { AdminResultRow, AdminResultDetail } from "@/lib/types";
 
 const mockExport = vi.fn();
 const mockAuthFetch = vi.fn();
@@ -51,10 +51,14 @@ vi.mock("@/stores/auth", () => ({
   useAuthStore: (selector: (s: typeof authStore) => unknown) => selector(authStore),
 }));
 
-const sampleSchools: School[] = [
-  { id: "s1", name: "SMAN 1 Jakarta" },
-  { id: "s2", name: "SMAN 2 Bandung" },
-];
+vi.mock("@/components/SchoolFilterPicker", () => ({
+  SchoolFilterPicker: ({ value, onChange, allLabel }: { value: string; onChange: (value: string) => void; allLabel: string }) => (
+    <select aria-label="school-filter" value={value || ""} onChange={(event) => onChange(event.target.value)}>
+      <option value="">{allLabel}</option>
+      <option value="s2">SMAN 2 Bandung</option>
+    </select>
+  ),
+}));
 
 const sampleResultRows: AdminResultRow[] = [
   {
@@ -114,7 +118,6 @@ describe("ExamResultsTab", () => {
     mockUseAdminResults.mockReset();
     resolveResultsState = () => resultsState;
     mockAuthFetch.mockReset();
-    mockAuthFetch.mockResolvedValue(sampleSchools);
   });
 
   afterEach(() => {
@@ -201,13 +204,9 @@ describe("ExamResultsTab", () => {
     renderTab();
     await screen.findByText("Budi Santoso");
 
-    const selectTrigger = screen.getByRole("combobox");
-    fireEvent.click(selectTrigger);
-
-    // Table rows already show "SMAN 2 Bandung" as a per-row school_name, so
-    // disambiguate the dropdown item by its option role.
-    const schoolOption = await screen.findByRole("option", { name: "SMAN 2 Bandung" });
-    fireEvent.click(schoolOption);
+    fireEvent.change(screen.getByRole("combobox", { name: "school-filter" }), {
+      target: { value: "s2" },
+    });
 
     await waitFor(() => {
       const lastCall = mockUseAdminResults.mock.calls.at(-1)?.[0];
@@ -221,10 +220,12 @@ describe("ExamResultsTab", () => {
     renderTab();
     await screen.findByText("Budi Santoso");
 
-    fireEvent.click(screen.getByRole("combobox"));
-    fireEvent.click(await screen.findByRole("option", { name: "SMAN 2 Bandung" }));
-    fireEvent.click(screen.getByRole("combobox"));
-    fireEvent.click(await screen.findByRole("option", { name: /semua sekolah/i }));
+    fireEvent.change(screen.getByRole("combobox", { name: "school-filter" }), {
+      target: { value: "s2" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "school-filter" }), {
+      target: { value: "" },
+    });
 
     expect(await screen.findByText("Budi Santoso")).toBeInTheDocument();
   });
@@ -270,13 +271,11 @@ describe("ExamResultsTab", () => {
     renderTab();
     await screen.findByText("Budi Santoso");
 
-    expect(screen.getByRole("combobox")).toBeInTheDocument();
-    await waitFor(() => expect(mockAuthFetch).toHaveBeenCalledWith("/schools"));
+    expect(screen.getByRole("combobox", { name: "school-filter" })).toBeInTheDocument();
 
-    const selectTrigger = screen.getByRole("combobox");
-    fireEvent.click(selectTrigger);
-    const schoolOption = await screen.findByRole("option", { name: "SMAN 2 Bandung" });
-    fireEvent.click(schoolOption);
+    fireEvent.change(screen.getByRole("combobox", { name: "school-filter" }), {
+      target: { value: "s2" },
+    });
 
     await waitFor(() => {
       const lastCall = mockUseAdminResults.mock.calls.at(-1)?.[0];
@@ -290,7 +289,7 @@ describe("ExamResultsTab", () => {
     renderTab();
     await screen.findByText("Budi Santoso");
 
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    expect(mockAuthFetch).not.toHaveBeenCalledWith("/schools");
+    expect(screen.queryByRole("combobox", { name: "school-filter" })).not.toBeInTheDocument();
+    expect(mockAuthFetch).not.toHaveBeenCalled();
   });
 });

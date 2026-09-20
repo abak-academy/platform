@@ -6,33 +6,40 @@ import (
 	"encoding/csv"
 	"io"
 	"strconv"
+	"strings"
 	"time"
+
+	"akademi-bimbel/internal/model"
 )
 
 const maxBulkRows = 1000
 
 type StudentBulkRow struct {
-	Row            int
-	Name           string
-	School         string
-	Email          *string
-	Jenjang        string
-	DOB            *string
-	Gender         *string
-	Grade          *string
-	AlamatDomisili *string
-	TargetExam     *string
-	Provinsi       *string
-	Kota           *string
-	Kecamatan      *string
-	KodePos        *string
-	Password       *string
+	Row              int
+	Name             string
+	SchoolNPSN       string
+	SchoolCode       string
+	LegacySchoolName string
+	Email            *string
+	Jenjang          string
+	DOB              *string
+	Gender           *string
+	Grade            *string
+	AlamatDomisili   *string
+	TargetExam       *string
+	Provinsi         *string
+	Kota             *string
+	Kecamatan        *string
+	KodePos          *string
+	Password         *string
 }
 
 type StudentBulkResultRow struct {
 	Row          int
 	Name         string
-	School       string
+	SchoolNPSN   string
+	SchoolCode   string
+	SchoolName   string
 	Email        string
 	Status       string
 	Username     string
@@ -40,12 +47,26 @@ type StudentBulkResultRow struct {
 	Error        string
 }
 
-// ParseStudentBulkCSV reads a student-bulk upload. jenjang and school are
-// required; nis is ignored if present; email/dob/gender/grade/
+// ParseStudentBulkCSV reads a super-admin student-bulk upload. Name, jenjang,
+// and a school_npsn or school_code header are required; nis is ignored; email/dob/gender/grade/
 // alamat_domisili/target_exam/provinsi/kota/kecamatan/kode_pos are all
 // optional — same field set as single registration (RegisterStudent), minus
 // the region-name-vs-ID resolution which happens in ProcessStudentBulkRows.
 func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
+	return parseStudentBulkCSV(data, false, true)
+}
+
+func ParseSchoolBoundStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
+	return parseStudentBulkCSV(data, true, false)
+}
+
+// ParseStudentBulkCSVForWorker also accepts the pre-NPSN school header so
+// jobs queued before deployment can finish processing.
+func ParseStudentBulkCSVForWorker(data []byte, requireSchoolIdentity bool) ([]StudentBulkRow, error) {
+	return parseStudentBulkCSV(data, true, requireSchoolIdentity)
+}
+
+func parseStudentBulkCSV(data []byte, allowLegacySchool, requireSchoolIdentity bool) ([]StudentBulkRow, error) {
 	r := newBulkCSVReader(data)
 
 	header, err := r.Read()
@@ -56,7 +77,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 		return nil, ErrInvalidCSV
 	}
 
-	nameIdx, jenjangIdx, schoolIdx, emailIdx := -1, -1, -1, -1
+	nameIdx, jenjangIdx, schoolNPSNIdx, schoolCodeIdx, legacySchoolIdx, emailIdx := -1, -1, -1, -1, -1, -1
 	dobIdx, genderIdx, gradeIdx, alamatIdx, targetExamIdx := -1, -1, -1, -1, -1
 	provinsiIdx, kotaIdx, kecamatanIdx, kodePosIdx, passwordIdx := -1, -1, -1, -1, -1
 	for i, h := range header {
@@ -65,8 +86,14 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 			nameIdx = i
 		case "jenjang":
 			jenjangIdx = i
+		case "school_npsn":
+			schoolNPSNIdx = i
+		case "school_code":
+			schoolCodeIdx = i
 		case "school":
-			schoolIdx = i
+			if allowLegacySchool {
+				legacySchoolIdx = i
+			}
 		case "email":
 			emailIdx = i
 		case "dob":
@@ -92,8 +119,12 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 			// "nis" is intentionally ignored
 		}
 	}
-	if nameIdx == -1 || jenjangIdx == -1 || schoolIdx == -1 {
+	missingSchoolIdentity := schoolNPSNIdx == -1 && schoolCodeIdx == -1 && legacySchoolIdx == -1
+	if nameIdx == -1 || jenjangIdx == -1 || (requireSchoolIdentity && missingSchoolIdentity) {
 		return nil, ErrMissingCSVHeader
+	}
+	if schoolNPSNIdx != -1 || schoolCodeIdx != -1 {
+		legacySchoolIdx = -1
 	}
 
 	line := 1
@@ -115,21 +146,23 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 		}
 
 		rows = append(rows, StudentBulkRow{
-			Row:            line,
-			Name:           bulkCell(record, nameIdx),
-			School:         bulkCell(record, schoolIdx),
-			Jenjang:        bulkCell(record, jenjangIdx),
-			Email:          bulkOptionalCell(record, emailIdx),
-			DOB:            bulkOptionalCell(record, dobIdx),
-			Gender:         bulkOptionalCell(record, genderIdx),
-			Grade:          bulkOptionalCell(record, gradeIdx),
-			AlamatDomisili: bulkOptionalCell(record, alamatIdx),
-			TargetExam:     bulkOptionalCell(record, targetExamIdx),
-			Provinsi:       bulkOptionalCell(record, provinsiIdx),
-			Kota:           bulkOptionalCell(record, kotaIdx),
-			Kecamatan:      bulkOptionalCell(record, kecamatanIdx),
-			KodePos:        bulkOptionalCell(record, kodePosIdx),
-			Password:       bulkOptionalCell(record, passwordIdx),
+			Row:              line,
+			Name:             bulkCell(record, nameIdx),
+			SchoolNPSN:       bulkCell(record, schoolNPSNIdx),
+			SchoolCode:       bulkCell(record, schoolCodeIdx),
+			LegacySchoolName: bulkCell(record, legacySchoolIdx),
+			Jenjang:          bulkCell(record, jenjangIdx),
+			Email:            bulkOptionalCell(record, emailIdx),
+			DOB:              bulkOptionalCell(record, dobIdx),
+			Gender:           bulkOptionalCell(record, genderIdx),
+			Grade:            bulkOptionalCell(record, gradeIdx),
+			AlamatDomisili:   bulkOptionalCell(record, alamatIdx),
+			TargetExam:       bulkOptionalCell(record, targetExamIdx),
+			Provinsi:         bulkOptionalCell(record, provinsiIdx),
+			Kota:             bulkOptionalCell(record, kotaIdx),
+			Kecamatan:        bulkOptionalCell(record, kecamatanIdx),
+			KodePos:          bulkOptionalCell(record, kodePosIdx),
+			Password:         bulkOptionalCell(record, passwordIdx),
 		})
 	}
 
@@ -143,6 +176,11 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, actorRole string, rows []StudentBulkRow, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
 	results := make([]StudentBulkResultRow, len(rows))
 	successCount := 0
+	var boundSchool *model.School
+	var boundSchoolErr error
+	if schoolBound != nil && len(rows) > 0 {
+		boundSchool, boundSchoolErr = s.storeRepo.GetSchoolByID(ctx, *schoolBound)
+	}
 
 	checkpoint := len(rows) / 10
 	if checkpoint < 1 {
@@ -150,12 +188,41 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 	}
 
 	for i, r := range rows {
-		result := StudentBulkResultRow{Row: r.Row, Name: r.Name, School: r.School}
+		rawNPSN := r.SchoolNPSN
+		result := StudentBulkResultRow{Row: r.Row, Name: r.Name, SchoolNPSN: rawNPSN, SchoolCode: r.SchoolCode}
 		if r.Email != nil {
 			result.Email = *r.Email
 		}
-		// Resolve School name to school_id.
-		school, err := s.storeRepo.GetSchoolByNameCI(ctx, r.School)
+		var school *model.School
+		var err error
+		if schoolBound != nil {
+			school, err = boundSchool, boundSchoolErr
+		} else if strings.TrimSpace(rawNPSN) != "" {
+			npsn, normalizeErr := normalizeSchoolNPSN(&rawNPSN)
+			if normalizeErr != nil {
+				result.Status = "failed"
+				result.Error = normalizeErr.Error()
+				results[i] = result
+				if onProgress != nil && (i+1)%checkpoint == 0 {
+					onProgress((i + 1) * 100 / len(rows))
+				}
+				continue
+			}
+			result.SchoolNPSN = *npsn
+			school, err = s.storeRepo.GetSchoolByNPSN(ctx, *npsn)
+		} else if r.SchoolCode != "" {
+			school, err = s.storeRepo.GetSchoolByCode(ctx, r.SchoolCode)
+		} else if r.LegacySchoolName != "" {
+			school, err = s.storeRepo.GetSchoolByNameCI(ctx, r.LegacySchoolName)
+		} else {
+			result.Status = "failed"
+			result.Error = ErrStudentBulkSchoolIdentityRequired.Error()
+			results[i] = result
+			if onProgress != nil && (i+1)%checkpoint == 0 {
+				onProgress((i + 1) * 100 / len(rows))
+			}
+			continue
+		}
 		if err != nil {
 			result.Status = "failed"
 			result.Error = err.Error()
@@ -167,18 +234,28 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 		}
 		if school == nil {
 			result.Status = "failed"
-			result.Error = ErrSchoolNotFoundByName.Error()
+			if r.SchoolCode != "" {
+				result.Error = ErrSchoolNotFoundByCode.Error()
+			} else if r.LegacySchoolName != "" {
+				result.Error = ErrSchoolNotFound.Error()
+			} else {
+				result.Error = ErrSchoolNotFoundByNPSN.Error()
+			}
 			results[i] = result
 			if onProgress != nil && (i+1)%checkpoint == 0 {
 				onProgress((i + 1) * 100 / len(rows))
 			}
 			continue
 		}
-
-		// Check school bound.
-		if schoolBound != nil && school.ID != *schoolBound {
+		allowNPSNLessSchool := schoolBound != nil || r.SchoolCode != ""
+		if school.Status != "active" {
+			err = ErrSchoolDeactivated
+		} else if !allowNPSNLessSchool {
+			school, err = s.validateSelectedSchool(ctx, school.ID)
+		}
+		if err != nil {
 			result.Status = "failed"
-			result.Error = ErrCrossSchoolBound.Error()
+			result.Error = err.Error()
 			results[i] = result
 			if onProgress != nil && (i+1)%checkpoint == 0 {
 				onProgress((i + 1) * 100 / len(rows))
@@ -187,8 +264,11 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 		}
 
 		schoolID := school.ID
-		// Update result School with resolved name (captures canonical casing).
-		result.School = school.Name
+		result.SchoolName = school.Name
+		result.SchoolCode = school.Code
+		if school.NPSN != nil {
+			result.SchoolNPSN = *school.NPSN
+		}
 
 		// Resolve address names to IDs (all-or-nothing).
 		var provinsiID, kotaID, kecamatanID, kodePos *string
@@ -309,11 +389,16 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 			grade = &parsed
 		}
 
+		if r.Password != nil && actorRole != RoleSuperAdmin {
+			err = ErrForbidden
+		}
+		var password *string
+		if err == nil {
+			password = r.Password
+		}
 		var resp *StudentRegistrationResponse
-		if r.Password != nil {
-			resp, err = s.RegisterStudentWithPassword(ctx, actorRole, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, *r.Password)
-		} else {
-			resp, err = s.RegisterStudent(ctx, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos)
+		if err == nil {
+			resp, err = s.registerStudent(ctx, schoolID, nil, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, password, allowNPSNLessSchool)
 		}
 		if err == nil {
 			result.Status = "success"
@@ -343,9 +428,9 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 func BuildStudentBulkResultCSV(results []StudentBulkResultRow) []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"row", "name", "school", "email", "status", "username", "temp_password", "error"})
+	_ = w.Write([]string{"row", "name", "school_npsn", "school_code", "school", "email", "status", "username", "temp_password", "error"})
 	for _, r := range results {
-		_ = w.Write(csvSafeRow(strconv.Itoa(r.Row), r.Name, r.School, r.Email, r.Status, r.Username, r.TempPassword, r.Error))
+		_ = w.Write(csvSafeRow(strconv.Itoa(r.Row), r.Name, r.SchoolNPSN, r.SchoolCode, r.SchoolName, r.Email, r.Status, r.Username, r.TempPassword, r.Error))
 	}
 	w.Flush()
 	return buf.Bytes()

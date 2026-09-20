@@ -15,11 +15,17 @@ const ANSWER_JITTER_SECONDS = numberEnv("ANSWER_JITTER_SECONDS", 10);
 const MAX_QUESTIONS = integerEnv("MAX_QUESTIONS", 0);
 const SAVE_RETRIES = integerEnv("SAVE_RETRIES", 3);
 const SUBMIT_AT_SECONDS = numberEnv("SUBMIT_AT_SECONDS", 0);
+const SUBMIT_WINDOW_START_SECONDS = numberEnv("SUBMIT_WINDOW_START_SECONDS", 0);
+const SUBMIT_BURST_SECONDS = numberEnv("SUBMIT_BURST_SECONDS", 0);
+const SUBMIT_BURST_SHARE = numberEnv("SUBMIT_BURST_SHARE", 0);
+const IDLE_POLL_SECONDS = numberEnv("IDLE_POLL_SECONDS", 0);
+const ADAPTIVE_PACING = __ENV.ADAPTIVE_PACING === "true";
 const MAX_DURATION = __ENV.MAX_DURATION || "2h";
 const REQUIRES_CHECKIN = (__ENV.REQUIRES_CHECKIN || "false") === "true";
 const CONTINUE_TRANSPORT_ERRORS = __ENV.CONTINUE_TRANSPORT_ERRORS === "true";
 const REFRESH_BEFORE_MS = 60 * 1000;
 const TRANSPORT_RETRY_LIMIT = 3;
+const LOGIN_RETRY_LIMIT = integerEnv("LOGIN_RETRY_LIMIT", 3);
 const LOGIN_RETRY_JITTER_SECONDS = 0.5;
 
 const lifecycleFailed = new Rate("lifecycle_failed");
@@ -29,6 +35,7 @@ const loginFirstAttemptFailed = new Rate("login_first_attempt_failed");
 const loginFinalFailed = new Rate("login_final_failed");
 const loginTransportRetries = new Counter("login_transport_retries");
 const transportRetries = new Counter("transport_retries");
+const heartbeatFailed = new Rate("heartbeat_failed");
 
 export const options = {
   scenarios: {
@@ -71,7 +78,7 @@ export function setup() {
   }
 
   return {
-    submitAt: SUBMIT_AT_SECONDS > 0 ? Date.now() + SUBMIT_AT_SECONDS * 1000 : 0,
+    startedAt: Date.now(),
   };
 }
 
@@ -81,6 +88,7 @@ export default function (test) {
   const identifier = `lt_${RUN_ID}_${suffix}`;
   const registrationToken = `lt-${RUN_ID}-${EXAM_ID}-${suffix}`;
   const clientHeaders = { "X-Forwarded-For": virtualUserIP(index) };
+  const submitAt = submitDeadlineFor(test.startedAt || Date.now());
 
   sleep(Math.random() * LOGIN_SPREAD_SECONDS);
 
@@ -133,7 +141,8 @@ export default function (test) {
 
     for (const question of testSection.questions) {
       if (MAX_QUESTIONS > 0 && answered >= MAX_QUESTIONS) break;
-      sleep(humanDelay());
+      const remaining = (MAX_QUESTIONS > 0 ? MAX_QUESTIONS : questionCount) - answered;
+      sleep(adaptiveDelay(submitAt, remaining));
 
       const answer = answerFor(question);
       const input = {
@@ -170,10 +179,7 @@ export default function (test) {
   if (!reconnect || !expectStatus(reconnect, 200, "reconnect")) return failLifecycle();
   if (!answersPersisted(responseJSON(reconnect), answers)) return failLifecycle();
 
-  if (test.submitAt > 0) {
-    const waitSeconds = (test.submitAt - Date.now()) / 1000;
-    if (waitSeconds > 0) sleep(waitSeconds);
-  }
+  waitWithHeartbeat(submitAt, sessionID, auth, clientHeaders);
 
   const submit = authenticatedRequest("POST", `/exam/sessions/${sessionID}/submit`, null, auth, clientHeaders, "submit");
   if (!submit || !expectStatus(submit, 200, "submit")) return failLifecycle();
@@ -184,14 +190,14 @@ export default function (test) {
 
 function loginWithTransportRetry(body, clientHeaders) {
   let response = null;
-  for (let attempt = 0; attempt <= TRANSPORT_RETRY_LIMIT; attempt++) {
+  for (let attempt = 0; attempt <= LOGIN_RETRY_LIMIT; attempt++) {
     response = request("POST", "/auth/login", body, clientHeaders, "login");
     if (attempt === 0) loginFirstAttemptFailed.add(!response || response.status !== 200);
     if (response && response.status !== 0) {
       loginFinalFailed.add(response.status !== 200);
       return response;
     }
-    if (attempt < TRANSPORT_RETRY_LIMIT) {
+    if (attempt < LOGIN_RETRY_LIMIT) {
       loginTransportRetries.add(1);
       transportRetries.add(1, { phase: "login" });
       sleep(Math.min(2 ** attempt, 30) + Math.random() * LOGIN_RETRY_JITTER_SECONDS);
@@ -352,6 +358,47 @@ function json(response, selector) {
 
 function failLifecycle() {
   lifecycleFailed.add(true);
+}
+
+function submitDeadlineFor(startMs) {
+  if (SUBMIT_AT_SECONDS <= 0) return 0;
+  if (SUBMIT_WINDOW_START_SECONDS <= 0 || SUBMIT_WINDOW_START_SECONDS >= SUBMIT_AT_SECONDS) {
+    return startMs + SUBMIT_AT_SECONDS * 1000;
+  }
+  const burst = Math.min(Math.max(SUBMIT_BURST_SECONDS, 0), SUBMIT_AT_SECONDS - SUBMIT_WINDOW_START_SECONDS);
+  const burstStart = SUBMIT_AT_SECONDS - burst;
+  const seconds = burst > 0 && Math.random() < SUBMIT_BURST_SHARE
+    ? burstStart + Math.random() * burst
+    : SUBMIT_WINDOW_START_SECONDS + Math.random() * (burstStart - SUBMIT_WINDOW_START_SECONDS);
+  return startMs + seconds * 1000;
+}
+
+// Pace to the VU's own deadline so it is still answering when its token expires,
+// instead of idling and refreshing in one synchronized herd at the gate.
+function adaptiveDelay(submitAtMs, remaining) {
+  if (!ADAPTIVE_PACING || submitAtMs <= 0 || remaining <= 0) return humanDelay();
+  const secondsLeft = (submitAtMs - Date.now()) / 1000;
+  if (secondsLeft <= 0) return 0;
+  const jitter = (Math.random() * 2 - 1) * ANSWER_JITTER_SECONDS;
+  return Math.max(0, secondsLeft / (remaining + 1) + jitter);
+}
+
+function waitWithHeartbeat(submitAtMs, sessionID, auth, clientHeaders) {
+  if (submitAtMs <= 0) return;
+  if (IDLE_POLL_SECONDS <= 0) {
+    const waitSeconds = (submitAtMs - Date.now()) / 1000;
+    if (waitSeconds > 0) sleep(waitSeconds);
+    return;
+  }
+  for (;;) {
+    const remaining = (submitAtMs - Date.now()) / 1000;
+    if (remaining <= 0) return;
+    const jitter = (Math.random() * 2 - 1) * Math.min(IDLE_POLL_SECONDS / 2, 15);
+    sleep(Math.min(Math.max(1, IDLE_POLL_SECONDS + jitter), remaining));
+    if (Date.now() >= submitAtMs) return;
+    const beat = authenticatedRequest("GET", `/exam/sessions/${sessionID}`, null, auth, clientHeaders, "heartbeat");
+    heartbeatFailed.add(!beat || beat.status !== 200);
+  }
 }
 
 function humanDelay() {

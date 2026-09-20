@@ -39,6 +39,7 @@ object_storage_public_endpoint: "minio.public:9000"
 object_storage_use_ssl: true
 object_storage_bucket_name: "test-bucket"
 object_storage_private_bucket_name: "test-private-bucket"
+enforce_school_npsn_registration: true
 `)
 	writeYAML(t, envDir, "secrets.yaml", `
 database_url: "postgres://u:p@host/db"
@@ -85,6 +86,9 @@ midtrans_client_key: "mt-ck"
 	}
 	if len(cfg.CORSOrigins) != 2 || cfg.CORSOrigins[0] != "http://localhost:3000" {
 		t.Errorf("CORSOrigins: got %v", cfg.CORSOrigins)
+	}
+	if !cfg.EnforceSchoolNPSNRegistration {
+		t.Error("EnforceSchoolNPSNRegistration: got false want true")
 	}
 }
 

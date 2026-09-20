@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ResultsWorkspaceTab } from "./ResultsWorkspaceTab";
-import type { ResultsWorkspaceResponse, School } from "@/lib/types";
+import type { ResultsWorkspaceResponse } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 const toastError = vi.fn();
@@ -16,13 +16,20 @@ vi.mock("sonner", () => ({
   toast: { error: (...args: Parameters<typeof toastError>) => toastError(...args) },
 }));
 
+vi.mock("@/components/SchoolFilterPicker", () => ({
+  SchoolFilterPicker: ({ value, onChange, allLabel }: { value: string; onChange: (value: string) => void; allLabel: string }) => (
+    <select aria-label="school-filter" value={value || ""} onChange={(event) => onChange(event.target.value)}>
+      <option value="">{allLabel}</option>
+      <option value="school-1">SMAN 1</option>
+    </select>
+  ),
+}));
+
 vi.mock("@/stores/auth", () => ({
   useAuthStore: {
     getState: () => ({ token: "token-1" }),
   },
 }));
-
-const schools: School[] = [{ id: "school-1", name: "SMAN 1" }];
 
 const summary = {
   total_registered: 2,
@@ -111,7 +118,6 @@ describe("ResultsWorkspaceTab", () => {
     mockAuthFetch.mockReset();
     toastError.mockReset();
     mockAuthFetch.mockImplementation((url: string) => {
-      if (url === "/schools") return Promise.resolve(schools);
       if (url.startsWith("/admin/exams/exam-1/results-workspace/reg-1/attempts")) {
         return Promise.resolve({
           data: [
@@ -196,7 +202,6 @@ describe("ResultsWorkspaceTab", () => {
   it("accumulates unique rows and keeps summary mounted while loading more", async () => {
     const page2Deferred = deferred<ResultsWorkspaceResponse>();
     mockAuthFetch.mockImplementation((url: string) => {
-      if (url === "/schools") return Promise.resolve(schools);
       if (url.includes("cursor=cursor-2")) return page2Deferred.promise;
       if (url.startsWith("/admin/exams/exam-1/results-workspace")) return Promise.resolve(page1);
       return Promise.reject(new Error(`Unhandled authFetch ${url}`));

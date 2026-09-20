@@ -53,6 +53,11 @@ func newRealDBService(t *testing.T) (*Service, *repository.Repository) {
 		if err != nil {
 			t.Fatalf("new pool: %v", err)
 		}
+		// Production installs this prerequisite externally; keep the real-DB fixture aligned.
+		_, err = pool.Exec(ctx, `CREATE UNIQUE INDEX uq_school_npsn_normalized ON school (UPPER(BTRIM(npsn))) WHERE npsn IS NOT NULL`)
+		if err != nil {
+			t.Fatalf("create school NPSN index: %v", err)
+		}
 		repo := repository.New(pool)
 		redisServer, err := miniredis.Run()
 		if err != nil {

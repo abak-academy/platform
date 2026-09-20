@@ -509,7 +509,7 @@
         "name": "env",
         "label": "Environment",
         "type": "custom",
-        "query": "local,prod",
+        "query": "local,prod,loadtest",
         "current": { "selected": false, "text": "local", "value": "local" },
         "includeAll": true,
         "multi": true,

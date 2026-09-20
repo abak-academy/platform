@@ -263,10 +263,11 @@ func newAdminStuDBEnv(t *testing.T) *adminStuDBTestEnv {
 		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 		cfg := &config.Config{
-			JWTSecret:       "test-secret",
-			AccessTokenTTL:  15 * time.Minute,
-			RefreshTokenTTL: 168 * time.Hour,
-			OTPTTL:          5 * time.Minute,
+			JWTSecret:                     "test-secret",
+			AccessTokenTTL:                15 * time.Minute,
+			RefreshTokenTTL:               168 * time.Hour,
+			OTPTTL:                        5 * time.Minute,
+			EnforceSchoolNPSNRegistration: true,
 		}
 		signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 		svc := service.NewWithStore(
@@ -315,12 +316,25 @@ func seedSchoolForStu(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
 	ctx := context.Background()
 	var id string
+	npsn := "T" + strings.ToUpper(strings.ReplaceAll(uuid.NewString(), "-", "")[:7])
 	err := pool.QueryRow(ctx,
-		`INSERT INTO school (name, code) VALUES ($1, $2) RETURNING id`,
-		"Stu School", "stu_"+time.Now().Format("150405"),
+		`INSERT INTO school (name, code, npsn) VALUES ($1, $2, $3) RETURNING id`,
+		"Stu School", "stu_"+uuid.NewString()[:8], npsn,
 	).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert school: %v", err)
+	}
+	return id
+}
+
+func seedNPSNLessSchoolForStu(t *testing.T, pool *pgxpool.Pool) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(),
+		`INSERT INTO school (name, code) VALUES ($1, $2) RETURNING id`,
+		"NPSN-less Stu School", "stu_"+uuid.NewString()[:8],
+	).Scan(&id); err != nil {
+		t.Fatalf("insert NPSN-less school: %v", err)
 	}
 	return id
 }
@@ -743,6 +757,253 @@ func TestAdminRegisterStudent_SuperAdmin_WithoutSchool(t *testing.T) {
 	}
 	if schoolID != nil {
 		t.Errorf("school_id should be NULL when no school was given, got %q", *schoolID)
+	}
+}
+
+func TestAdminRegisterStudent_SuperAdmin_UnlistedSchoolFallback(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+
+	register := func(t *testing.T, token, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	assertNoStudentNamed := func(t *testing.T, name string) {
+		t.Helper()
+		var count int
+		if err := env.pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM users WHERE role = 'student' AND name = $1`,
+			name,
+		).Scan(&count); err != nil {
+			t.Fatalf("count students named %q: %v", name, err)
+		}
+		if count != 0 {
+			t.Fatalf("registration for %q left %d student row(s)", name, count)
+		}
+	}
+
+	t.Run("generated password persists fallback without creating a school", func(t *testing.T) {
+		token := mintSuperAdminStuToken(t, env, uuid.NewString())
+		body := `{"name":"Generated Unlisted","jenjang":"SMA","unlisted_school_name":"  Sekolah Tidak Ada  "}`
+		rec := register(t, token, "/api/v1/admin/students", body)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("want 201, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var created struct {
+			ID           string `json:"id"`
+			TempPassword string `json:"temp_password"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if created.TempPassword == "" {
+			t.Fatal("generated registration should still return a temp password")
+		}
+
+		var schoolID, unlisted *string
+		if err := env.pool.QueryRow(ctx,
+			`SELECT school_id, unlisted_school_name FROM users WHERE id = $1`,
+			created.ID,
+		).Scan(&schoolID, &unlisted); err != nil {
+			t.Fatalf("read created student: %v", err)
+		}
+		if schoolID != nil {
+			t.Fatalf("school_id: want NULL, got %v", *schoolID)
+		}
+		if unlisted == nil || *unlisted != "Sekolah Tidak Ada" {
+			t.Fatalf("unlisted_school_name: want trimmed fallback, got %v", unlisted)
+		}
+
+		var schoolCount int
+		if err := env.pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM school WHERE name = $1`,
+			"Sekolah Tidak Ada",
+		).Scan(&schoolCount); err != nil {
+			t.Fatalf("count school rows: %v", err)
+		}
+		if schoolCount != 0 {
+			t.Fatalf("fallback must not create school rows, got %d", schoolCount)
+		}
+	})
+
+	t.Run("explicit password persists fallback and omits temp password", func(t *testing.T) {
+		token := mintSuperAdminStuToken(t, env, uuid.NewString())
+		body := `{"name":"Explicit Unlisted","jenjang":"SMA","password":"chosenPass123","unlisted_school_name":"Madrasah Manual"}`
+		rec := register(t, token, "/api/v1/admin/students", body)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("want 201, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), "temp_password") {
+			t.Fatalf("explicit-password fallback response must not include temp_password: %s", rec.Body.String())
+		}
+
+		var created struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		var schoolID, unlisted *string
+		if err := env.pool.QueryRow(ctx,
+			`SELECT school_id, unlisted_school_name FROM users WHERE id = $1`,
+			created.ID,
+		).Scan(&schoolID, &unlisted); err != nil {
+			t.Fatalf("read created student: %v", err)
+		}
+		if schoolID != nil {
+			t.Fatalf("school_id: want NULL, got %v", *schoolID)
+		}
+		if unlisted == nil || *unlisted != "Madrasah Manual" {
+			t.Fatalf("unlisted_school_name: want fallback, got %v", unlisted)
+		}
+	})
+
+	t.Run("blank fallback is rejected without a student row", func(t *testing.T) {
+		token := mintSuperAdminStuToken(t, env, uuid.NewString())
+		rec := register(t, token, "/api/v1/admin/students", `{"name":"Blank Fallback","jenjang":"SMA","unlisted_school_name":"   "}`)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":"invalid_request"`) {
+			t.Fatalf("want 400 invalid_request, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		assertNoStudentNamed(t, "Blank Fallback")
+	})
+
+	t.Run("school and fallback conflict is rejected without a student row", func(t *testing.T) {
+		schoolID := seedSchoolForStu(t, env.pool)
+		token := mintSuperAdminStuToken(t, env, uuid.NewString())
+		rec := register(t, token, "/api/v1/admin/students?school_id="+schoolID, `{"name":"Conflicting Fallback","jenjang":"SMA","unlisted_school_name":"Manual School"}`)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":"invalid_request"`) {
+			t.Fatalf("want 400 invalid_request, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		assertNoStudentNamed(t, "Conflicting Fallback")
+	})
+
+	t.Run("admin school fallback is forbidden without a student row", func(t *testing.T) {
+		schoolID := seedSchoolForStu(t, env.pool)
+		token := mintAdminStuToken(t, env, uuid.NewString(), service.RoleAdminSchool, &schoolID)
+		rec := register(t, token, "/api/v1/admin/students", `{"name":"Forbidden Fallback","jenjang":"SMA","unlisted_school_name":"Manual School"}`)
+		if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"code":"forbidden"`) {
+			t.Fatalf("want 403 forbidden, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		assertNoStudentNamed(t, "Forbidden Fallback")
+	})
+
+	t.Run("admin school fallback with scope mismatch is forbidden without a student row", func(t *testing.T) {
+		boundSchoolID := seedSchoolForStu(t, env.pool)
+		forgedSchoolID := seedSchoolForStu(t, env.pool)
+		token := mintAdminStuToken(t, env, uuid.NewString(), service.RoleAdminSchool, &boundSchoolID)
+		rec := register(t, token, "/api/v1/admin/students?school_id="+forgedSchoolID, `{"name":"Mismatched Fallback","jenjang":"SMA","unlisted_school_name":"Manual School"}`)
+		if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"code":"forbidden"`) {
+			t.Fatalf("want 403 forbidden, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		assertNoStudentNamed(t, "Mismatched Fallback")
+	})
+}
+
+func TestAdminRegisterStudent_SelectedSchoolValidation(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+
+	register := func(t *testing.T, token, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	assertCreatedAtSchool := func(t *testing.T, rec *httptest.ResponseRecorder, wantSchoolID string) {
+		t.Helper()
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("want 201, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var created struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		var gotSchoolID *string
+		if err := env.pool.QueryRow(ctx, `SELECT school_id FROM users WHERE id = $1`, created.ID).Scan(&gotSchoolID); err != nil {
+			t.Fatalf("read created student: %v", err)
+		}
+		if gotSchoolID == nil || *gotSchoolID != wantSchoolID {
+			t.Fatalf("school_id: want %s, got %v", wantSchoolID, gotSchoolID)
+		}
+	}
+
+	t.Run("super admin accepts an active NPSN-backed school", func(t *testing.T) {
+		schoolID := seedSchoolForStu(t, env.pool)
+		token := mintSuperAdminStuToken(t, env, uuid.NewString())
+		rec := register(t, token, "/api/v1/admin/students?school_id="+schoolID, `{"name":"Valid Super Student","jenjang":"SMA"}`)
+		assertCreatedAtSchool(t, rec, schoolID)
+	})
+
+	t.Run("super admin rejects an NPSN-less school", func(t *testing.T) {
+		schoolID := seedNPSNLessSchoolForStu(t, env.pool)
+		token := mintSuperAdminStuToken(t, env, uuid.NewString())
+		rec := register(t, token, "/api/v1/admin/students?school_id="+schoolID, `{"name":"Invalid Super Student","jenjang":"SMA"}`)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":"invalid_request"`) {
+			t.Fatalf("want 400 invalid_request, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("admin school uses its authenticated school despite forged body input", func(t *testing.T) {
+		boundSchoolID := seedSchoolForStu(t, env.pool)
+		forgedSchoolID := seedSchoolForStu(t, env.pool)
+		token := mintAdminStuToken(t, env, uuid.NewString(), service.RoleAdminSchool, &boundSchoolID)
+		body := `{"name":"Bound Admin Student","jenjang":"SMA","school_id":"` + forgedSchoolID + `"}`
+		rec := register(t, token, "/api/v1/admin/students", body)
+		assertCreatedAtSchool(t, rec, boundSchoolID)
+	})
+
+	for _, tc := range []struct {
+		name       string
+		prepare    func(t *testing.T) string
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name:       "missing authenticated school",
+			prepare:    func(t *testing.T) string { return uuid.NewString() },
+			wantStatus: http.StatusNotFound,
+			wantCode:   "school_not_found",
+		},
+		{
+			name: "deactivated authenticated school",
+			prepare: func(t *testing.T) string {
+				id := seedSchoolForStu(t, env.pool)
+				if _, err := env.pool.Exec(ctx, `UPDATE school SET status = 'deactivated' WHERE id = $1`, id); err != nil {
+					t.Fatalf("deactivate school: %v", err)
+				}
+				return id
+			},
+			wantStatus: http.StatusConflict,
+			wantCode:   "school_deactivated",
+		},
+		{
+			name:       "NPSN-less authenticated school",
+			prepare:    func(t *testing.T) string { return seedNPSNLessSchoolForStu(t, env.pool) },
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "invalid_request",
+		},
+	} {
+		t.Run("admin school rejects "+tc.name, func(t *testing.T) {
+			schoolID := tc.prepare(t)
+			token := mintAdminStuToken(t, env, uuid.NewString(), service.RoleAdminSchool, &schoolID)
+			rec := register(t, token, "/api/v1/admin/students", `{"name":"Rejected Admin Student","jenjang":"SMA"}`)
+			if rec.Code != tc.wantStatus || !strings.Contains(rec.Body.String(), `"code":"`+tc.wantCode+`"`) {
+				t.Fatalf("want %d %s, got %d body=%s", tc.wantStatus, tc.wantCode, rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
 

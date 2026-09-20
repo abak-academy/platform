@@ -34,13 +34,67 @@ let profileState: { data: ProfileData; isLoading: boolean } = {
 vi.mock("@/lib/hooks/students", () => ({
   studentsKeys: { profile: () => ["students", "profile"] },
   useProfile: () => profileState,
-  useSchools: () => ({
-    data: [{ id: "school-1", name: "School One" }],
-    isLoading: false,
-  }),
+  useSchoolById: () => ({ data: null, isLoading: false }),
   useUpdateProfile: () => ({ mutateAsync }),
 }));
 
+
+vi.mock("@/components/SchoolPicker", () => {
+  const schools = [
+    { id: "school-1", name: "School One", school_types: ["SMA", "SMK"] },
+    { id: "s1", name: "SMAN 1 Jakarta", school_types: ["SMA", "SMK"] },
+    { id: "s2", name: "SMAN 2 Bandung", school_types: ["SMP", "SMA"] },
+  ];
+  return {
+    SchoolPicker: ({ id = "school", value = "", onChange, allowUnlisted, unlistedName = "", onUnlistedNameChange }: { id?: string; value?: string; onChange: (school: { id: string; name: string; school_types?: string[] } | null) => void; allowUnlisted?: boolean; unlistedName?: string; onUnlistedNameChange?: (value: string) => void }) => {
+      if (allowUnlisted && unlistedName) {
+        return (
+          <input
+            id={id}
+            aria-label="Tulis nama sekolah Anda"
+            value={unlistedName.trimStart()}
+            onChange={(event) => {
+              onChange(null);
+              onUnlistedNameChange?.(event.target.value);
+            }}
+          />
+        );
+      }
+      return (
+        <div>
+          <button type="button" role="combobox" aria-label="Sekolah">
+            {schools.find((school) => school.id === value)?.name ?? "Pilih sekolah"}
+          </button>
+          {schools.map((school) => (
+            <button
+              key={school.id}
+              type="button"
+              role="option"
+              onClick={() => {
+                onUnlistedNameChange?.("");
+                onChange(school);
+              }}
+            >
+              {school.name}
+            </button>
+          ))}
+          {allowUnlisted ? (
+            <button
+              type="button"
+              role="option"
+              onClick={() => {
+                onChange(null);
+                onUnlistedNameChange?.(" ");
+              }}
+            >
+              Sekolah tidak ditemukan / tidak ada di daftar
+            </button>
+          ) : null}
+        </div>
+      );
+    },
+  };
+});
 vi.mock("@/components/ui/select", () => ({
   Select: ({
     children,
@@ -89,8 +143,8 @@ describe("CompleteProfilePage", () => {
     vi.spyOn(queryClient, "invalidateQueries").mockReturnValue(invalidation.promise);
     renderPage(queryClient);
 
-    const [school, grade] = screen.getAllByRole("combobox");
-    fireEvent.change(school, { target: { value: "school-1" } });
+    const [, grade] = screen.getAllByRole("combobox");
+    fireEvent.click(screen.getByRole("option", { name: "School One" }));
     fireEvent.change(grade, { target: { value: "12" } });
     fireEvent.click(screen.getByRole("button", { name: "Lanjutkan" }));
 
@@ -98,6 +152,7 @@ describe("CompleteProfilePage", () => {
       expect(mutateAsync).toHaveBeenCalledWith({
         name: "Google Student",
         school_id: "school-1",
+        unlisted_school_name: "",
         grade: 12,
       }),
     );
@@ -129,8 +184,7 @@ describe("CompleteProfilePage", () => {
   it("swaps the school select for a free-text input when the unlisted option is chosen", () => {
     renderPage();
 
-    const [school] = screen.getAllByRole("combobox");
-    fireEvent.change(school, { target: { value: "_unlisted_" } });
+    fireEvent.click(screen.getByRole("option", { name: /sekolah tidak ditemukan/i }));
 
     // Select should be gone (or hidden), replaced by a free-text input.
     expect(screen.queryByRole("combobox", { name: /sekolah/i })).toBeNull();
@@ -142,8 +196,8 @@ describe("CompleteProfilePage", () => {
   it("submits unlisted_school_name (and never school_id) when the unlisted option is used", async () => {
     renderPage();
 
-    const [school, grade] = screen.getAllByRole("combobox");
-    fireEvent.change(school, { target: { value: "_unlisted_" } });
+    const [, grade] = screen.getAllByRole("combobox");
+    fireEvent.click(screen.getByRole("option", { name: /sekolah tidak ditemukan/i }));
     fireEvent.change(grade, { target: { value: "11" } });
     const freeText = screen.getByLabelText("Tulis nama sekolah Anda");
     fireEvent.change(freeText, { target: { value: "SMA Maju Bersama" } });
@@ -152,13 +206,13 @@ describe("CompleteProfilePage", () => {
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
         name: "Google Student",
+        school_id: "",
         unlisted_school_name: "SMA Maju Bersama",
         grade: 11,
       }),
     );
-    // The "real school" path must not also be sent on the unlisted path.
     const callArg = mutateAsync.mock.calls[0][0] as Record<string, unknown>;
-    expect(callArg).not.toHaveProperty("school_id");
+    expect(callArg.school_id).toBe("");
   });
 });
 

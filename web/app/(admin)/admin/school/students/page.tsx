@@ -17,7 +17,6 @@ import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +46,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { BulkImportModal } from "@/components/admin/BulkImportModal";
-import { StatCard } from "@/components/admin/StatCard";
+import { SchoolPicker } from "@/components/SchoolPicker";
 import {
   useAdminStudents,
   useRegisterStudent,
@@ -55,8 +54,7 @@ import {
   useReissueStudentCredentials,
   useSetStudentPassword,
 } from "@/lib/hooks/admin-students";
-import { useSchoolOptions } from "@/lib/hooks/admin-schools";
-import { useSchools } from "@/lib/hooks/students";
+import { useSchoolById } from "@/lib/hooks/students";
 import { useProvinces, useCitiesByProvince, useDistrictsByCity } from "@/lib/hooks/regions";
 import { useAuthStore } from "@/stores/auth";
 import type {
@@ -64,15 +62,8 @@ import type {
   StudentRegistrationInput,
   StudentRegistrationResult,
   StudentCredentials,
+  SchoolOption,
 } from "@/lib/types";
-
-// Radix Select forbids an empty-string item value, so "every school" needs its
-// own sentinel; it maps back to "" (no school_id param) for the query.
-const ALL_SCHOOLS_VALUE = "_all_";
-
-// Radix Select forbids an empty-string item value, so "no school" needs its own
-// sentinel too; it maps back to "" (registered without a school).
-const NO_SCHOOL_VALUE = "_none_";
 
 // Search is sent to the server (q param), so it must be debounced the same
 // way the schools page debounces school search — otherwise every keystroke
@@ -104,6 +95,8 @@ function compactStudentRegistration(
   if (kodePos) payload.kode_pos = kodePos;
   const password = form.password?.trim();
   if (password) payload.password = password;
+  const unlistedSchoolName = form.unlisted_school_name?.trim();
+  if (unlistedSchoolName) payload.unlisted_school_name = unlistedSchoolName;
   return payload;
 }
 
@@ -123,13 +116,12 @@ function initials(name: string) {
 
 export default function SchoolStudentsPage() {
   const { t, lang } = useTranslation();
-  const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
   // Role-gated school picker (super_admin only)
   const currentRole = useAuthStore((s) => s.user?.role);
   const isSuperAdmin = currentRole === "super_admin";
-  const { data: schoolsData, isLoading: schoolsLoading } = useSchoolOptions();
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
+  const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<SchoolOption | null>(null);
 
   // Filters
   // searchInput is the raw input value; debouncedSearch is what actually goes
@@ -224,6 +216,8 @@ export default function SchoolStudentsPage() {
   // picking a school for this registration doesn't silently change which
   // students you're browsing.
   const [registerSchoolId, setRegisterSchoolId] = useState<string>("");
+  const [registerSelectedSchool, setRegisterSelectedSchool] = useState<SchoolOption | null>(null);
+  const [registerUnlistedSchoolName, setRegisterUnlistedSchoolName] = useState("");
 
   // Reissue dialog
   const [reissueTarget, setReissueTarget] = useState<AdminStudent | null>(null);
@@ -252,10 +246,10 @@ export default function SchoolStudentsPage() {
 
   // Jenjang options from target school's school_types
   const currentUser = useAuthStore((s) => s.user);
-  const { data: publicSchools } = useSchools();
-  const adminOwnSchool = publicSchools?.find((s) => s.id === currentUser?.school_id);
+  const { data: adminOwnSchool } = useSchoolById(currentUser?.school_id ?? "");
+  const { data: hydratedRegisterSchool } = useSchoolById(registerSchoolId);
   const adminOwnSchoolTypes = adminOwnSchool?.school_types ?? [];
-  const registerSchoolObj = schoolsData?.data?.find((s) => s.id === registerSchoolId);
+  const registerSchoolObj = registerSelectedSchool?.id === registerSchoolId ? registerSelectedSchool : hydratedRegisterSchool;
   const superAdminSchoolTypes = registerSchoolObj?.school_types ?? [];
   const schoolJenjangTypes = isSuperAdmin ? superAdminSchoolTypes : adminOwnSchoolTypes;
   // With no school chosen there are no school_types to constrain jenjang, but
@@ -270,9 +264,13 @@ export default function SchoolStudentsPage() {
       return;
     }
     try {
+      const input = compactStudentRegistration({
+        ...registerForm,
+        unlisted_school_name: isSuperAdmin && !registerSchoolId ? registerUnlistedSchoolName : undefined,
+      });
       const result = await registerStudent.mutateAsync({
-        input: compactStudentRegistration(registerForm),
-        schoolId: isSuperAdmin ? registerSchoolId : undefined,
+        input,
+        schoolId: isSuperAdmin && registerSchoolId ? registerSchoolId : undefined,
       });
       toast.success(t("students_register_success"));
       setRegisterResult(result);
@@ -361,6 +359,8 @@ export default function SchoolStudentsPage() {
   const handleCloseRegister = () => {
     setRegisterOpen(false);
     setRegisterSchoolId("");
+    setRegisterSelectedSchool(null);
+    setRegisterUnlistedSchoolName("");
     // Discard plaintext credentials
     setRegisterResult(null);
     setRegisterForm({
@@ -407,15 +407,14 @@ export default function SchoolStudentsPage() {
               {initials(s.name)}
             </AvatarFallback>
           </Avatar>
-          <div className="font-medium text-ink-900">{s.name}</div>
+          <div className="min-w-0">
+            <div className="font-medium text-ink-900">{s.name}</div>
+            <div className="mt-1 font-mono text-xs text-brand-700">
+              {s.username ? `@${s.username}` : "—"}
+            </div>
+          </div>
         </div>
       ),
-    },
-    {
-      key: "username",
-      header: t("students_credential_username"),
-      className: "font-mono text-xs text-brand-700",
-      cell: (s) => (s.username ? `@${s.username}` : "—"),
     },
     {
       key: "email",
@@ -427,16 +426,22 @@ export default function SchoolStudentsPage() {
       key: "school",
       header: t("students_field_school"),
       className: "text-xs",
-      cell: (s) =>
-        s.school_name ? (
-          <span className="text-ink-600">{s.school_name}</span>
-        ) : s.unlisted_school_name ? (
-          <span className="text-warn" title={t("students_school_unconfirmed")}>
-            {s.unlisted_school_name}
-          </span>
-        ) : (
-          <span className="text-ink-400">{t("students_school_none")}</span>
-        ),
+      cell: (s) => (
+        <div>
+          {s.school_name ? (
+            <span className="text-ink-600">{s.school_name}</span>
+          ) : s.unlisted_school_name ? (
+            <span className="text-warn" title={t("students_school_unconfirmed")}>
+              {s.unlisted_school_name}
+            </span>
+          ) : (
+            <span className="text-ink-400">{t("students_school_none")}</span>
+          )}
+          <div className="mt-1 text-[11px] text-ink-400">
+            {t("students_field_grade")} {s.grade || "—"}
+          </div>
+        </div>
+      ),
     },
     {
       key: "status",
@@ -452,25 +457,6 @@ export default function SchoolStudentsPage() {
           {s.status === "active" ? t("status_label_active") : t("status_label_inactive")}
         </Badge>
       ),
-    },
-    {
-      key: "grade",
-      header: t("students_field_grade"),
-      className: "text-xs text-ink-600",
-      cell: (s) => s.grade || "—",
-    },
-    {
-      key: "created",
-      header: t("accounts_th_created"),
-      className: "text-xs text-ink-600",
-      cell: (s) =>
-        s.created_at
-          ? new Date(s.created_at).toLocaleString(dateLocale, {
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-            })
-          : "—",
     },
     {
       key: "actions",
@@ -517,154 +503,221 @@ export default function SchoolStudentsPage() {
         ? t("sys_loading_data")
         : t("students_empty");
 
+  const rosterSchool = isSuperAdmin ? selectedSchoolFilter : adminOwnSchool;
+  const activeSchoolLabel = lang === "en" ? "Active school" : "Sekolah aktif";
+  const filterPanelLabel = lang === "en" ? "Student filters" : "Filter siswa";
+  const rosterLabel = lang === "en" ? "School roster" : "Daftar siswa";
+  const rosterDescription = rosterSchool
+    ? lang === "en"
+      ? `Students registered to ${rosterSchool.name}`
+      : `Siswa yang terdaftar di ${rosterSchool.name}`
+    : lang === "en"
+      ? "Students across all partner schools"
+      : "Siswa dari seluruh sekolah mitra";
+  const rosterSchoolLocation = isSuperAdmin
+    ? [selectedSchoolFilter?.kota_name, selectedSchoolFilter?.provinsi_name]
+        .filter(Boolean)
+        .join(", ")
+    : "";
+  const rosterSchoolTypes = rosterSchool?.school_types?.join(" / ") ?? "";
+
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <AdminPageHeader
-        icon={UserRound}
-        title={t("school_students_title")}
-        description={t("students_subtitle")}
-        actions={
-          <>
+    <div className="space-y-6 fade-in">
+      <header className="mb-7 flex flex-col gap-6 border-b border-line pb-7 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-4xl font-bold tracking-[-0.045em] text-ink-900 md:text-5xl">
+            {t("school_students_title")}
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-ink-600">
+            {lang === "en"
+              ? "Choose a partner school, then manage its students. The roster follows the active school."
+              : "Pilih sekolah mitra, lalu kelola siswanya. Daftar siswa mengikuti sekolah yang aktif."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
             <Button
-              size="sm"
               variant="outline"
-              className="rounded-full"
+              className="rounded-md"
               onClick={() => setBulkImportOpen(true)}
             >
               <FileUp className="mr-1 size-4" />
               {t("bulk_register_title")}
             </Button>
             <Button
-              size="sm"
-              className="rounded-full"
+              className="rounded-md"
               onClick={() => {
+                setRegisterSelectedSchool(selectedSchoolFilter);
                 setRegisterSchoolId(selectedSchoolId);
+                setRegisterUnlistedSchoolName("");
                 setRegisterOpen(true);
               }}
             >
               <Plus className="mr-1 size-4" />
               {t("students_register_title")}
             </Button>
-          </>
-        }
-      />
-
-      {/* School picker (super_admin only) */}
-      {isSuperAdmin && (
-        <div className="mb-6">
-          <p className="text-xs text-ink-500">{t("select_school")}</p>
-          {schoolsLoading ? (
-            <div className="mt-1 h-9 w-[240px] animate-pulse rounded-md bg-surface-2" />
-          ) : (
-            <Select
-              value={selectedSchoolId || ALL_SCHOOLS_VALUE}
-              onValueChange={(v) => setSelectedSchoolId(v === ALL_SCHOOLS_VALUE ? "" : v)}
-            >
-              <SelectTrigger className="mt-1 h-9 w-[240px] text-xs" aria-label={t("select_school")}>
-                <SelectValue placeholder={t("students_all_schools")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_SCHOOLS_VALUE}>{t("students_all_schools")}</SelectItem>
-                {(schoolsData?.data ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
         </div>
-      )}
+      </header>
 
-      {/* Stats */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label={t("accounts_stat_total")}
-          value={String(stats.total)}
-        />
-        <StatCard
-          label={t("status_label_active")}
-          value={String(stats.active)}
-        />
-        <StatCard
-          label={t("status_label_inactive")}
-          value={String(stats.deactivated)}
-        />
-      </div>
+      <div className="overflow-hidden rounded-[20px] border border-line bg-surface shadow-[var(--md-sys-elevation-1)] lg:grid lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <aside
+          role="region"
+          aria-label={filterPanelLabel}
+          className="border-b border-line bg-surface px-5 py-6 lg:min-h-[680px] lg:border-b-0 lg:border-r"
+        >
+          <div className="border-b border-line pb-4">
+            <h2 className="text-xl font-bold tracking-[-0.025em] text-ink-900">
+              {filterPanelLabel}
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-ink-500">
+              {lang === "en"
+                ? "Narrow the roster by school, status, or student name."
+                : "Saring daftar berdasarkan sekolah, status, atau nama siswa."}
+            </p>
+          </div>
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="flex flex-wrap gap-2">
-          <FilterChip
-            active={statusFilter === "all"}
-            onClick={() => setStatusFilter("all")}
-          >
-            {t("tab_all")}
-          </FilterChip>
-          <FilterChip
-            active={statusFilter === "active"}
-            onClick={() => setStatusFilter("active")}
-          >
-            {t("status_label_active")}
-          </FilterChip>
-          <FilterChip
-            active={statusFilter === "deactivated"}
-            onClick={() => setStatusFilter("deactivated")}
-          >
-            {t("status_label_inactive")}
-          </FilterChip>
-        </div>
-        <div className="flex items-center gap-2 lg:ml-auto">
-          <Select
-            value={statusFilter}
-            onValueChange={(v) => setStatusFilter(v)}
-          >
-            <SelectTrigger className="h-9 w-[140px] text-xs">
-              <SelectValue placeholder={t("accounts_status_placeholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("accounts_status_all")}</SelectItem>
-              <SelectItem value="active">
-                {t("status_label_active")}
-              </SelectItem>
-              <SelectItem value="deactivated">
-                {t("status_label_inactive")}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <Search className="size-4 text-ink-400" />
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t("students_search_placeholder")}
-            className="h-9 w-[200px] text-xs"
-          />
-        </div>
-      </div>
+          <div className="mt-6 space-y-6">
+            <div>
+              <p className="mb-2 text-xs font-semibold text-ink-700">{t("select_school")}</p>
+              {isSuperAdmin ? (
+                <SchoolPicker
+                  id="student-school-filter"
+                  value={selectedSchoolId}
+                  selectedSchool={selectedSchoolFilter}
+                  onChange={(school) => {
+                    setSelectedSchoolFilter(school);
+                    setSelectedSchoolId(school?.id ?? "");
+                  }}
+                />
+              ) : (
+                <p className="text-xs leading-5 text-ink-500">
+                  {lang === "en"
+                    ? "This roster is bound to your administrator account's school."
+                    : "Daftar siswa ini terikat ke sekolah pada akun admin Anda."}
+                </p>
+              )}
 
-      {/* Table */}
-      <DataTable
-        columns={columns}
-        rows={accumulated}
-        rowKey={(s) => s.id}
-        empty={tableEmpty}
-        data-testid="school-students-table"
-        footer={
-          nextCursor ? (
-            <div className="border-t border-line px-4 py-3 text-center">
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-full"
-                onClick={handleLoadMore}
-                disabled={query.isFetching}
-              >
-                {query.isFetching ? t("sys_loading") : t("load_more")}
-              </Button>
+              <div className="mt-4 rounded-[12px] border border-line bg-surface p-4">
+                <p className="text-[11px] font-semibold text-ink-500">{activeSchoolLabel}</p>
+                <h3 className="mt-2 text-lg font-bold leading-tight text-ink-900">
+                  {rosterSchool?.name ?? t("students_all_schools")}
+                </h3>
+                {(rosterSchoolLocation || rosterSchoolTypes) && (
+                  <p className="mt-2 text-xs leading-5 text-ink-500">
+                    {[rosterSchoolLocation, rosterSchoolTypes].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+                {rosterSchool?.npsn && (
+                  <p className="mt-3 text-xs text-ink-500">
+                    NPSN <strong className="ml-1 tracking-[0.06em] text-ink-900">{rosterSchool.npsn}</strong>
+                  </p>
+                )}
+              </div>
+              {selectedSchoolId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 w-full rounded-sm"
+                  onClick={() => {
+                    setSelectedSchoolFilter(null);
+                    setSelectedSchoolId("");
+                  }}
+                >
+                  {t("students_all_schools")}
+                </Button>
+              ) : null}
             </div>
-          ) : undefined
-        }
-      />
+
+            <div className="border-t border-line pt-5">
+              <p className="mb-2 text-xs font-semibold text-ink-700">{t("accounts_th_status")}</p>
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v)}>
+                <SelectTrigger
+                  aria-label={t("accounts_status_placeholder")}
+                  className="h-10 w-full rounded-sm bg-surface text-xs"
+                >
+                  <SelectValue placeholder={t("accounts_status_placeholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("accounts_status_all")}</SelectItem>
+                  <SelectItem value="active">{t("status_label_active")}</SelectItem>
+                  <SelectItem value="deactivated">{t("status_label_inactive")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold text-ink-700">
+                {lang === "en" ? "Search student" : "Cari siswa"}
+              </p>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+                <Input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder={t("students_search_placeholder")}
+                  className="h-10 w-full rounded-sm bg-surface pl-9 text-xs"
+                />
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section aria-label={rosterLabel} className="min-w-0 px-5 py-6 md:px-7">
+          <div className="border-b border-line pb-4">
+            <h2 className="text-xl font-bold tracking-[-0.025em] text-ink-900">
+              {rosterLabel}
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-ink-500">{rosterDescription}</p>
+          </div>
+
+          <div className="mb-7 mt-6 grid overflow-hidden rounded-[16px] border border-line bg-surface sm:grid-cols-3">
+            {[
+              [stats.total, t("accounts_stat_total")],
+              [stats.active, t("status_label_active")],
+              [stats.deactivated, t("status_label_inactive")],
+            ].map(([value, label], index) => (
+              <div
+                key={String(label)}
+                className={cn(
+                  "flex min-h-24 items-center gap-3 px-5 py-4",
+                  index > 0 && "border-t border-line sm:border-l sm:border-t-0",
+                )}
+              >
+                <strong className="text-3xl font-bold tracking-[-0.04em] text-ink-900">
+                  {value}
+                </strong>
+                <span className="text-xs leading-4 text-ink-500">{label}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-y border-line">
+            <DataTable
+              columns={columns}
+              rows={accumulated}
+              rowKey={(s) => s.id}
+              empty={tableEmpty}
+              surface="plain"
+              data-testid="school-students-table"
+              footer={
+                nextCursor ? (
+                  <div className="border-t border-line px-4 py-3 text-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-sm"
+                      onClick={handleLoadMore}
+                      disabled={query.isFetching}
+                    >
+                      {query.isFetching ? t("sys_loading") : t("load_more")}
+                    </Button>
+                  </div>
+                ) : undefined
+              }
+            />
+          </div>
+        </section>
+      </div>
 
       <BulkImportModal open={bulkImportOpen} onOpenChange={setBulkImportOpen} allowExplicitPassword={isSuperAdmin} />
 
@@ -854,29 +907,19 @@ export default function SchoolStudentsPage() {
               >
                 {isSuperAdmin && (
                   <FormField label={t("school")} hint={t("students_school_optional_hint")}>
-                    <Select
-                      value={registerSchoolId || NO_SCHOOL_VALUE}
-                      onValueChange={(v) => {
-                        setRegisterSchoolId(v === NO_SCHOOL_VALUE ? "" : v);
-                        // Jenjang options depend on the chosen school — a
-                        // previously picked jenjang may no longer be valid.
+                    <SchoolPicker
+                      id="register-school"
+                      value={registerSchoolId}
+                      selectedSchool={registerSelectedSchool}
+                      onChange={(school) => {
+                        setRegisterSelectedSchool(school);
+                        setRegisterSchoolId(school?.id ?? "");
                         setRegisterForm((f) => ({ ...f, jenjang: "" }));
                       }}
-                    >
-                      <SelectTrigger aria-label={t("school")}>
-                        <SelectValue placeholder={t("students_school_none_option")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NO_SCHOOL_VALUE}>
-                          {t("students_school_none_option")}
-                        </SelectItem>
-                        {(schoolsData?.data ?? []).map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      allowUnlisted
+                      unlistedName={registerUnlistedSchoolName}
+                      onUnlistedNameChange={setRegisterUnlistedSchoolName}
+                    />
                   </FormField>
                 )}
                 <div className="grid grid-cols-2 gap-4">
@@ -1229,30 +1272,6 @@ export default function SchoolStudentsPage() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "rounded-lg border px-3 py-[7px] text-xs font-semibold transition-colors",
-        active
-          ? "border-brand-600 bg-brand-600 text-white"
-          : "border-line bg-surface text-ink-600 hover:text-ink-900"
-      )}
-    >
-      {children}
-    </button>
   );
 }
 

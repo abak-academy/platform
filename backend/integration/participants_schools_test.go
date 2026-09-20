@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"testing"
@@ -14,11 +15,13 @@ import (
 // seedE4School inserts an active school row and returns its id.
 func seedE4School(t *testing.T, env *testEnv, name, code string, types []string) string {
 	t.Helper()
+	npsnHash := sha256.Sum256([]byte(code))
+	npsn := fmt.Sprintf("%X", npsnHash[:4])
 	var id string
 	err := env.pool.QueryRow(context.Background(),
 		`INSERT INTO school (name, code, npsn, school_types, alamat, status)
 		 VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
-		name, code, "20999999", types, "Jl. Contoh No. 1",
+		name, code, npsn, types, "Jl. Contoh No. 1",
 	).Scan(&id)
 	require.NoError(t, err)
 	return id

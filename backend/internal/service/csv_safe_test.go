@@ -115,7 +115,9 @@ func TestBuildStudentBulkResultCSV_neutralisesFormulaLead(t *testing.T) {
 	out := BuildStudentBulkResultCSV([]StudentBulkResultRow{{
 		Row:          2,
 		Name:         evilName,
-		School:       "=SUM(A1)",
+		SchoolNPSN:   "+1234567",
+		SchoolCode:   "-foundation",
+		SchoolName:   "=SUM(A1)",
 		Email:        "budi@example.com",
 		Status:       "ok",
 		Username:     "budi",
@@ -127,11 +129,11 @@ func TestBuildStudentBulkResultCSV_neutralisesFormulaLead(t *testing.T) {
 	if rec[1] != "'"+evilName {
 		t.Errorf("name not neutralised: got %q", rec[1])
 	}
-	if rec[2] != "'=SUM(A1)" {
-		t.Errorf("school not neutralised: got %q", rec[2])
+	if rec[2] != "'+1234567" || rec[3] != "'-foundation" || rec[4] != "'=SUM(A1)" {
+		t.Errorf("school identity not neutralised: got %q, %q, %q", rec[2], rec[3], rec[4])
 	}
-	if rec[3] != "budi@example.com" {
-		t.Errorf("benign email was altered: got %q", rec[3])
+	if rec[5] != "budi@example.com" {
+		t.Errorf("benign email was altered: got %q", rec[5])
 	}
 }
 

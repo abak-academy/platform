@@ -62,11 +62,71 @@ vi.mock("@/lib/hooks/students", () => ({
   useProfile: () => profileState,
   useUpdateProfile: () => ({ mutate: mutateMock, isPending: false }),
   useChangePassword: () => ({ mutate: vi.fn(), isPending: false }),
-  useSchools: () => ({ data: schoolsData, isLoading: false }),
+  useSchoolById: (id?: string) => ({
+    data: schoolsData.find((school) => school.id === id) ?? null,
+    isLoading: false,
+  }),
   usePresignUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdatePhoto: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
+
+vi.mock("@/components/SchoolPicker", () => {
+  const schools = [
+    { id: "school-1", name: "School One", school_types: ["SMA", "SMK"] },
+    { id: "s1", name: "SMAN 1 Jakarta", school_types: ["SMA", "SMK"] },
+    { id: "s2", name: "SMAN 2 Bandung", school_types: ["SMP", "SMA"] },
+  ];
+  return {
+    SchoolPicker: ({ id = "school", value = "", onChange, allowUnlisted, unlistedName = "", onUnlistedNameChange }: { id?: string; value?: string; onChange: (school: { id: string; name: string; school_types?: string[] } | null) => void; allowUnlisted?: boolean; unlistedName?: string; onUnlistedNameChange?: (value: string) => void }) => {
+      if (allowUnlisted && unlistedName) {
+        return (
+          <input
+            id={id}
+            aria-label="Tulis nama sekolah Anda"
+            value={unlistedName.trimStart()}
+            onChange={(event) => {
+              onChange(null);
+              onUnlistedNameChange?.(event.target.value);
+            }}
+          />
+        );
+      }
+      return (
+        <div>
+          <button type="button" role="combobox" aria-label="Sekolah">
+            {schools.find((school) => school.id === value)?.name ?? "Pilih sekolah"}
+          </button>
+          {schools.map((school) => (
+            <button
+              key={school.id}
+              type="button"
+              role="option"
+              onClick={() => {
+                onUnlistedNameChange?.("");
+                onChange(school);
+              }}
+            >
+              {school.name}
+            </button>
+          ))}
+          {allowUnlisted ? (
+            <button
+              type="button"
+              role="option"
+              onClick={() => {
+                onChange(null);
+                onUnlistedNameChange?.(" ");
+              }}
+            >
+              Sekolah tidak ditemukan / tidak ada di daftar
+            </button>
+          ) : null}
+        </div>
+      );
+    },
+  };
+});
 const provincesData = [
   { id: "p1", name: "DKI Jakarta" },
   { id: "p2", name: "Jawa Barat" },
@@ -255,9 +315,9 @@ describe("ProfilePage — new optional biodata fields (FR-FE-24..27)", () => {
     // completed). Without this wait, jenjangOptions may briefly fall back to
     // the generic list because the useEffect that sets schoolId hasn't run yet.
     await waitFor(() => {
-      const schoolSelect = screen.getByLabelText(/sekolah/i) as HTMLButtonElement;
+      const schoolInput = screen.getByLabelText(/sekolah/i) as HTMLInputElement;
       // SMAN 1 Jakarta is the name of s1.
-      expect(schoolSelect.textContent).toContain("SMAN 1 Jakarta");
+      expect(schoolInput.value).toContain("SMAN 1 Jakarta");
     });
 
     enterEditMode();

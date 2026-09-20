@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -148,25 +149,47 @@ func TestCountSchoolsAdmin_matchesFilteredTotal(t *testing.T) {
 	require.Equal(t, 2, counts.Active)
 }
 
-func TestListSchoolOptions_excludesDeactivated(t *testing.T) {
+func TestGetSchoolByCode_normalizesAndRejectsAmbiguousIdentity(t *testing.T) {
 	pool := newGradingTestPool(t)
 	repo := New(pool)
 	ctx := context.Background()
 
 	suffix := uuid.New().String()[:8]
-	activeID := seedSchoolRow(t, repo, "Option Active "+suffix, "oa_"+uuid.New().String()[:10], "active")
-	deactivatedID := seedSchoolRow(t, repo, "Option Deactivated "+suffix, "od_"+uuid.New().String()[:10], "deactivated")
+	code := "foundation_" + suffix
+	firstID := seedSchoolRow(t, repo, "Foundation One "+suffix, " "+strings.ToLower(code)+" ", "active")
 
-	options, err := repo.ListSchoolOptions(ctx)
+	school, err := repo.GetSchoolByCode(ctx, strings.ToUpper(code))
 	require.NoError(t, err)
+	require.NotNil(t, school)
+	require.Equal(t, firstID.String(), school.ID)
 
-	byID := map[string]SchoolOption{}
-	for _, o := range options {
-		byID[o.ID] = o
-	}
-	active, ok := byID[activeID.String()]
-	require.True(t, ok, "active school should be in options")
-	require.Equal(t, []string{"SMA"}, active.SchoolTypes, "school_types should be carried through for the jenjang picker")
-	_, ok = byID[deactivatedID.String()]
-	require.False(t, ok, "deactivated school should not be in options")
+	seedSchoolRow(t, repo, "Foundation Two "+suffix, strings.ToUpper(code), "active")
+	_, err = repo.GetSchoolByCode(ctx, code)
+	require.ErrorIs(t, err, ErrAmbiguousSchoolIdentity)
+}
+
+func TestGetSchoolByNPSN_rejectsAmbiguousIdentity(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	suffix := uuid.New().String()[:8]
+	npsn := strings.ToUpper(suffix)
+	firstID := seedSchoolRow(t, repo, "NPSN One "+suffix, "npsn_one_"+suffix, "active")
+	require.NoError(t, setSchoolNPSN(ctx, repo, firstID, " "+strings.ToLower(npsn)+" "))
+
+	school, err := repo.GetSchoolByNPSN(ctx, npsn)
+	require.NoError(t, err)
+	require.NotNil(t, school)
+	require.Equal(t, firstID.String(), school.ID)
+
+	secondID := seedSchoolRow(t, repo, "NPSN Two "+suffix, "npsn_two_"+suffix, "active")
+	require.NoError(t, setSchoolNPSN(ctx, repo, secondID, npsn))
+	_, err = repo.GetSchoolByNPSN(ctx, npsn)
+	require.ErrorIs(t, err, ErrAmbiguousSchoolIdentity)
+}
+
+func setSchoolNPSN(ctx context.Context, repo *Repository, id uuid.UUID, npsn string) error {
+	_, err := repo.pool.Exec(ctx, `UPDATE school SET npsn = $1 WHERE id = $2`, npsn, id)
+	return err
 }

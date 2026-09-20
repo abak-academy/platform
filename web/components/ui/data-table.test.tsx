@@ -80,4 +80,19 @@ describe("DataTable", () => {
     expect(scroller).not.toBeNull();
     expect(scroller?.querySelector("table")).not.toBeNull();
   });
+
+  it("can render as a plain table without the card shell", () => {
+    render(
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => r.id}
+        empty="No rows"
+        surface="plain"
+        data-testid="plain-table"
+      />
+    );
+
+    expect(screen.getByTestId("plain-table")).not.toHaveClass("md-card-outlined");
+  });
 });

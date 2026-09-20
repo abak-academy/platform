@@ -11,15 +11,16 @@ import (
 )
 
 type Config struct {
-	Env                  string
-	HTTPPort             string
-	DatabaseURL          string
-	MigrationDatabaseURL string
-	RedisAddr            string
-	RedisPassword        string
-	WorkerPollInterval   time.Duration
-	CORSOrigins          []string
-	DBMaxConns           int32
+	Env                           string
+	HTTPPort                      string
+	DatabaseURL                   string
+	MigrationDatabaseURL          string
+	RedisAddr                     string
+	RedisPassword                 string
+	WorkerPollInterval            time.Duration
+	CORSOrigins                   []string
+	DBMaxConns                    int32
+	EnforceSchoolNPSNRegistration bool
 
 	JWTSecret           string
 	AccessTokenTTL      time.Duration
@@ -61,6 +62,7 @@ type fileConfig struct {
 	WorkerPollInterval             string   `yaml:"worker_poll_interval"`
 	CORSOrigins                    []string `yaml:"cors_origins"`
 	DBMaxConns                     int32    `yaml:"db_max_conns"`
+	EnforceSchoolNPSNRegistration  bool     `yaml:"enforce_school_npsn_registration"`
 	AccessTokenTTL                 string   `yaml:"access_token_ttl"`
 	RefreshTokenTTL                string   `yaml:"refresh_token_ttl"`
 	OTPTTL                         string   `yaml:"otp_ttl"`
@@ -203,12 +205,13 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 	}
 
 	return Config{
-		Env:                env,
-		HTTPPort:           fc.HTTPPort,
-		RedisAddr:          fc.RedisAddr,
-		WorkerPollInterval: workerPoll,
-		CORSOrigins:        fc.CORSOrigins,
-		DBMaxConns:         fc.DBMaxConns,
+		Env:                           env,
+		HTTPPort:                      fc.HTTPPort,
+		RedisAddr:                     fc.RedisAddr,
+		WorkerPollInterval:            workerPoll,
+		CORSOrigins:                   fc.CORSOrigins,
+		DBMaxConns:                    fc.DBMaxConns,
+		EnforceSchoolNPSNRegistration: fc.EnforceSchoolNPSNRegistration,
 
 		AccessTokenTTL:  accessTTL,
 		RefreshTokenTTL: refreshTTL,

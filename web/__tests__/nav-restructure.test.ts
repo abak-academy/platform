@@ -26,6 +26,11 @@ describe("FR-FE-15: nav group i18n keys are distinct from role-badge keys", () =
     expect(enDict["nav_group_exam"]).toBe("Exam");
   });
 
+  it("nav_group_school exists in both id and en", () => {
+    expect(idDict["nav_group_school"]).toBe("Sekolah");
+    expect(enDict["nav_group_school"]).toBe("Schools");
+  });
+
   it("nav_group_store value is distinct from role_admin_store", () => {
     // role_admin_store is "Store Manager" (role badge), nav_group_store is "Store" (nav title)
     expect(idDict["nav_group_store"]).not.toBe(idDict["role_admin_store"]);
@@ -100,10 +105,10 @@ describe("FR-FE-16: admin_school sees school items + a scoped Exams link under E
     expect(schoolNav).toHaveLength(1);
   });
 
-  it("contains school items (students, reports) plus the exam list", () => {
+  it("contains students plus the exam list without reports", () => {
     const hrefs = schoolItems.map((i) => i.href);
     expect(hrefs).toContain("/admin/school/students");
-    expect(hrefs).toContain("/admin/school/reports");
+    expect(hrefs).not.toContain("/admin/school/reports");
     expect(hrefs).toContain("/admin/exam/packages");
   });
 
@@ -115,35 +120,41 @@ describe("FR-FE-16: admin_school sees school items + a scoped Exams link under E
   });
 });
 
-describe("FR-FE-16: super_admin sees all six items under one Exam group", () => {
+describe("super_admin separates exam, school, and system navigation", () => {
   const saNav = NAV_CONFIG["super_admin"];
   const examGroup = saNav.find((g) => g.titleKey === "nav_group_exam");
+  const schoolGroup = saNav.find((g) => g.titleKey === "nav_group_school");
+  const systemGroup = saNav.find((g) => g.titleKey === "system");
 
   it("has a single Exam nav group (not two separate groups)", () => {
     const examGroups = saNav.filter((g) => g.titleKey === "nav_group_exam");
     expect(examGroups).toHaveLength(1);
   });
 
-  it("contains all six exam+school items", () => {
+  it("keeps only exam destinations in Exam", () => {
     expect(examGroup).toBeDefined();
     const hrefs = examGroup!.items.map((i) => i.href);
-    // Exam items
-    expect(hrefs).toContain("/admin/exam/tests");
-    expect(hrefs).toContain("/admin/exam/packages");
-    expect(hrefs).toContain("/admin/exam/questions");
-    expect(hrefs).toContain("/admin/exam/monitor");
-    // School items
-    expect(hrefs).toContain("/admin/school/students");
-    expect(hrefs).toContain("/admin/school/reports");
+    expect(hrefs).toEqual([
+      "/admin/exam/questions",
+      "/admin/exam/tests",
+      "/admin/exam/packages",
+      "/admin/exam/monitor",
+    ]);
   });
 
-  it("has exactly six items — bulk-exam-order/grant/bulk-register were merged into the exam detail page, not separate nav items", () => {
-    expect(examGroup).toBeDefined();
-    const hrefs = examGroup!.items.map((i) => i.href);
-    expect(hrefs).not.toContain("/admin/exam-grants");
-    expect(hrefs).not.toContain("/admin/school/bulk-exam-order");
-    expect(hrefs).not.toContain("/admin/school/bulk-register");
-    expect(examGroup!.items).toHaveLength(6);
+  it("groups schools and students without reports", () => {
+    expect(schoolGroup?.items.map((i) => i.href)).toEqual([
+      "/admin/system/schools",
+      "/admin/school/students",
+    ]);
+  });
+
+  it("keeps System ordered and limited to platform administration", () => {
+    expect(systemGroup?.items.map((i) => i.href)).toEqual([
+      "/admin/system/accounts",
+      "/admin/system/config",
+      "/admin/system/audit",
+    ]);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { act, render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import { useParams } from "next/navigation";
 import ExamPackageDetailPage from "./page";
 import type {
@@ -1143,27 +1143,38 @@ describe("ExamPackageDetailPage — Tes Tersedia picker", () => {
       isFetching: false,
     };
 
-    await openTestsTab();
+    vi.useFakeTimers();
+    try {
+      render(<ExamPackageDetailPage />);
+      fireEvent.click(screen.getByRole("button", { name: /^tes$/i }));
+      fireEvent.change(screen.getByPlaceholderText("Cari…"), {
+        target: { value: "  optik  " },
+      });
 
-    fireEvent.change(screen.getByPlaceholderText("Cari…"), {
-      target: { value: "  optik  " },
-    });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(299);
+      });
+      expect(useAdminTestsSpy).toHaveBeenLastCalledWith(
+        { q: undefined, cursor: undefined },
+        true,
+      );
 
-    await waitFor(() => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
       expect(useAdminTestsSpy).toHaveBeenLastCalledWith(
         { q: "optik", cursor: undefined },
         true,
       );
-    });
 
-    fireEvent.click(screen.getByRole("button", { name: /muat lebih banyak/i }));
-
-    await waitFor(() => {
+      fireEvent.click(screen.getByRole("button", { name: /muat lebih banyak/i }));
       expect(useAdminTestsSpy).toHaveBeenLastCalledWith(
         { q: "optik", cursor: "cursor-2" },
         true,
       );
-    });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("omits the load-more control when no next_cursor remains", async () => {

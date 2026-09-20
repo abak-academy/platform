@@ -8,7 +8,7 @@ import {
   useChangePassword,
   usePresignUpload,
   useProfile,
-  useSchools,
+  useSchoolById,
   useUpdatePhoto,
   useUpdateProfile,
 } from "@/lib/hooks/students";
@@ -41,11 +41,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SchoolPicker } from "@/components/SchoolPicker";
+import type { SchoolOption } from "@/lib/types";
 import { toast } from "sonner";
 
 const GRADES = ["7", "8", "9", "10", "11", "12"];
-
-const UNLISTED_SCHOOL_VALUE = "_unlisted_";
 
 const PROFILE_INPUT_CLASS =
   "h-11 w-full rounded-md border border-line bg-surface px-3.5 text-sm text-ink-900 shadow-none transition-[border-color,box-shadow] outline-none placeholder:text-ink-400 focus-visible:border-brand-400 focus-visible:ring-[3px] focus-visible:ring-brand-50 disabled:cursor-not-allowed disabled:bg-surface-2/60 disabled:text-ink-500 read-only:bg-surface-2/60";
@@ -273,7 +273,6 @@ function ChangePasswordDialog({
 export default function ProfilePage() {
   const { t, lang } = useTranslation();
   const { data: profile, isLoading, isError, error, refetch } = useProfile();
-  const { data: schools, isLoading: schoolsLoading } = useSchools();
   const updateProfile = useUpdateProfile();
   const presign = usePresignUpload();
   const updatePhoto = useUpdatePhoto();
@@ -290,6 +289,7 @@ export default function ProfilePage() {
   const [dob, setDob] = useState("");
   const [schoolId, setSchoolId] = useState<string>("");
   const [unlistedSchoolName, setUnlistedSchoolName] = useState("");
+  const [selectedSchool, setSelectedSchool] = useState<SchoolOption | null>(null);
   const [jenjang, setJenjang] = useState("");
   const [provinsiId, setProvinsiId] = useState("");
   const [kotaId, setKotaId] = useState("");
@@ -310,21 +310,16 @@ export default function ProfilePage() {
   // schoolId; when in read-only mode, fall back to the profile's stored
   // school_id or unlisted_school_name. This makes the read-only display
   // correct on the first render without depending on the sync useEffect.
-  const isUnlistedSchool = schoolId === UNLISTED_SCHOOL_VALUE;
-  const displayedSchoolId = editMode
-    ? schoolId
-    : schoolId || profile?.school_id || (profile?.unlisted_school_name ? UNLISTED_SCHOOL_VALUE : "");
-  const displayedIsUnlisted = displayedSchoolId === UNLISTED_SCHOOL_VALUE;
+  const displayedSchoolId = editMode ? schoolId : schoolId || profile?.school_id || "";
+  const displayedIsUnlisted = !editMode && Boolean(profile?.unlisted_school_name);
   // Same pattern for the cascade of optional biodata fields.
   const displayedJenjang = editMode ? jenjang : jenjang || (profile?.jenjang ?? "");
   const displayedProvinsiId = editMode ? provinsiId : provinsiId || (profile?.provinsi_id ?? "");
   const displayedKotaId = editMode ? kotaId : kotaId || (profile?.kota_id ?? "");
   const displayedKecamatanId = editMode ? kecamatanId : kecamatanId || (profile?.kecamatan_id ?? "");
   const displayedKodePos = editMode ? kodePos : kodePos || (profile?.kode_pos ?? "");
-  const ownSchool = useMemo(() => {
-    if (displayedIsUnlisted) return undefined;
-    return schools?.find((s) => s.id === displayedSchoolId);
-  }, [schools, displayedSchoolId, displayedIsUnlisted]);
+  const { data: hydratedSchool } = useSchoolById(displayedIsUnlisted ? "" : displayedSchoolId);
+  const ownSchool = selectedSchool?.id === displayedSchoolId ? selectedSchool : hydratedSchool;
   const jenjangOptions = ownSchool?.school_types?.length
     ? ownSchool.school_types
     : JENJANG_OPTIONS;
@@ -341,15 +336,9 @@ export default function ProfilePage() {
     setTargetExam(profile.target_exam ?? "");
     setDob(profile.dob ? profile.dob.slice(0, 10) : "");
     setGrade(profile.grade != null ? String(profile.grade) : "");
-    // Map a stored unlisted_school_name back to the synthetic value so the
-    // school selector opens on the free-text input.
-    if (profile.unlisted_school_name) {
-      setSchoolId(UNLISTED_SCHOOL_VALUE);
-      setUnlistedSchoolName(profile.unlisted_school_name);
-    } else {
-      setSchoolId(profile.school_id ?? "");
-      setUnlistedSchoolName("");
-    }
+    setSchoolId(profile.school_id ?? "");
+    setSelectedSchool(null);
+    setUnlistedSchoolName(profile.unlisted_school_name ?? "");
     setJenjang(profile.jenjang ?? "");
     setProvinsiId(profile.provinsi_id ?? "");
     setKotaId(profile.kota_id ?? "");
@@ -373,15 +362,11 @@ export default function ProfilePage() {
       setPhone(profile.phone ?? "");
       setAddress(profile.alamat_domisili ?? "");
       setTargetExam(profile.target_exam ?? "");
-    setDob(profile.dob ? profile.dob.slice(0, 10) : "");
+      setDob(profile.dob ? profile.dob.slice(0, 10) : "");
       setGrade(profile.grade != null ? String(profile.grade) : "");
-      if (profile.unlisted_school_name) {
-        setSchoolId(UNLISTED_SCHOOL_VALUE);
-        setUnlistedSchoolName(profile.unlisted_school_name);
-      } else {
-        setSchoolId(profile.school_id ?? "");
-        setUnlistedSchoolName("");
-      }
+      setSchoolId(profile.school_id ?? "");
+      setSelectedSchool(null);
+      setUnlistedSchoolName(profile.unlisted_school_name ?? "");
       setJenjang(profile.jenjang ?? "");
       setProvinsiId(profile.provinsi_id ?? "");
       setKotaId(profile.kota_id ?? "");
@@ -409,12 +394,17 @@ export default function ProfilePage() {
       target_exam: targetExam || undefined,
       grade: gradeNum,
     };
-    if (isUnlistedSchool) {
-      payload.school_id = "";
-      payload.unlisted_school_name = unlistedSchoolName.trim();
-    } else if (schoolId) {
-      payload.school_id = schoolId;
-      payload.unlisted_school_name = "";
+    const trimmedUnlistedSchoolName = unlistedSchoolName.trim();
+    const initialSchoolId = profile?.school_id ?? "";
+    const initialUnlistedSchoolName = (profile?.unlisted_school_name ?? "").trim();
+    const schoolChanged = schoolId !== initialSchoolId || trimmedUnlistedSchoolName !== initialUnlistedSchoolName;
+    if (schoolChanged) {
+      if (!schoolId && !trimmedUnlistedSchoolName) {
+        toast.error("Sekolah belum dipilih.");
+        return;
+      }
+      payload.school_id = schoolId || "";
+      payload.unlisted_school_name = schoolId ? "" : trimmedUnlistedSchoolName;
     }
     if (dob) payload.dob = dob;
     if (jenjang) payload.jenjang = jenjang;
@@ -653,47 +643,28 @@ export default function ProfilePage() {
                   </Label>
                   {isLoading ? (
                     <Skeleton className="h-11 w-full rounded-md" />
-                  ) : displayedIsUnlisted ? (
-                    <Input
+                  ) : editMode ? (
+                    <SchoolPicker
                       id="school"
-                      value={unlistedSchoolName || profile?.unlisted_school_name || ""}
-                      onChange={(e) => setUnlistedSchoolName(e.target.value)}
-                      placeholder={t("complete_profile_school_unlisted_placeholder")}
-                      className={PROFILE_INPUT_CLASS}
-                      aria-label={t("complete_profile_school_unlisted_placeholder")}
-                      readOnly={!editMode}
-                      disabled={!editMode}
+                      value={schoolId}
+                      selectedSchool={selectedSchool}
+                      onChange={(school) => {
+                        setSelectedSchool(school);
+                        setSchoolId(school?.id ?? "");
+                      }}
+                      allowUnlisted
+                      unlistedName={unlistedSchoolName}
+                      onUnlistedNameChange={setUnlistedSchoolName}
                     />
                   ) : (
-                    <Select
-                      value={displayedSchoolId || "_empty_"}
-                      onValueChange={(v) => {
-                        if (v === "_empty_") {
-                          setSchoolId("");
-                        } else {
-                          setSchoolId(v);
-                          setUnlistedSchoolName("");
-                        }
-                      }}
-                      disabled={!editMode || schoolsLoading}
-                    >
-                      <SelectTrigger id="school" className={PROFILE_INPUT_CLASS}>
-                        <SelectValue placeholder={t("select_school")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_empty_">
-                          {t("select_school")}
-                        </SelectItem>
-                        {schools?.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value={UNLISTED_SCHOOL_VALUE}>
-                          {t("complete_profile_school_unlisted_label")}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      id="school"
+                      value={displayedIsUnlisted ? profile?.unlisted_school_name ?? "" : ownSchool?.name ?? ""}
+                      placeholder={t("select_school")}
+                      className={PROFILE_INPUT_CLASS}
+                      readOnly
+                      disabled
+                    />
                   )}
                 </div>
 
