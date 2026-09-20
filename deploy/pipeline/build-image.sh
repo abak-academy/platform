@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
-: "${REGISTRY:?e.g. ghcr.io/panca1093/bimbel-abak-academy}"
+: "${REGISTRY:?e.g. asia-southeast2-docker.pkg.dev/abak-academy-platform/app}"
 : "${TAG:?commit SHA — never 'latest'}"
 
 # api/worker are byte-identical across environments; web is not. Splitting them lets CI

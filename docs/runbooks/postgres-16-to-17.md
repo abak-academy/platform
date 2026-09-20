@@ -1,7 +1,7 @@
 # Runbook: PostgreSQL 16 → 17 data migration
 
 Applies to any environment whose `pgdata` volume was created while the compose file pinned
-`postgres:16-alpine` — today that is **local dev** and **staging**. Production is unaffected:
+`postgres:16-alpine` — today that is **local dev** only, since staging was retired. Production is unaffected:
 Postgres there is native 17.10 on the dedicated database host and its data directory was created by 17.
 
 ## Why this is needed
@@ -29,8 +29,7 @@ is the whole environment down, with the real cause buried in the postgres contai
 ## Steps
 
 Run from the directory containing the compose file. Substitute the right file and credentials:
-local dev uses `deploy/compose/local.yml` with user/db `akademi`; staging uses
-`deploy/compose/staging.yml` with the `POSTGRES_*` values from its hand-placed `.env`.
+local dev uses `deploy/compose/local.yml` with user/db `akademi`.
 
 **1 — Dump, while the 16 container is still running.**
 

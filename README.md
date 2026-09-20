@@ -42,7 +42,7 @@ app/
 │   └── public/fonts/       certificate typefaces for the design editor (mirrors the backend's embedded copy)
 ├── deploy/               everything build- and run-related
 │   ├── alloy/                config.alloy — the single collector config shared by local repro and production
-│   ├── compose/              local.yml, staging.yml, production.yml
+│   ├── compose/              local.yml, production.yml
 │   ├── grafana/              dashboard JSONs + provisioning for the local observability stack
 │   ├── images/               Dockerfile.api, Dockerfile.worker
 │   ├── nginx/                staging.conf, production.conf
@@ -65,9 +65,9 @@ Only `compose/local.yml` runs on your machine — `make up` wraps it. The other 
 the nginx configs are **hand-placed on the VMs**; there is no git clone on the staging or production
 boxes, so editing them here does not update a running environment.
 
-> **Compose paths are relative to the compose file.** `compose/staging.yml` mounts
-> `../nginx/staging.conf` and `../secrets/staging-secrets.yaml`, so a box needs `compose/`, `nginx/`
-> and `secrets/` as siblings — copying a single yaml somewhere flat will not start.
+> **Compose paths are relative to the compose file.** `compose/production.yml` mounts
+> `../nginx/production.conf` and `../secrets/`, so a box needs `compose/`, `nginx/` and `secrets/`
+> as siblings — copying a single yaml somewhere flat will not start.
 
 ## Stack
 
