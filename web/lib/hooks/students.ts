@@ -90,7 +90,7 @@ export function useSchoolAutocomplete(params: SchoolSearchParams, enabled = true
     enabled,
     initialPageParam: "",
     staleTime: 5 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+    gcTime: typeof window === "undefined" ? undefined : 30 * 60 * 1000,
     queryFn: ({ pageParam, signal }) => authFetch<SchoolOptionsEnvelope>(schoolSearchPath("/schools", { ...params, cursor: pageParam }), { signal }),
     getNextPageParam: (page) => page.next_cursor || undefined,
   });
