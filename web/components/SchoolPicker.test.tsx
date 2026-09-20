@@ -45,7 +45,7 @@ vi.mock("@/lib/hooks/students", () => ({
       searchCalls.push({ params, enabled });
       lastSearchKey = key;
     }
-    return { data: { pages: [{ data: enabled ? schools : [] }] }, isFetching: false, isError: searchError, hasNextPage: hasMore, fetchNextPage, refetch: vi.fn() };
+    return { data: { pages: [{ data: schools }] }, isFetching: false, isError: searchError, hasNextPage: hasMore, fetchNextPage, refetch: vi.fn() };
   },
 }));
 
@@ -148,6 +148,32 @@ describe("SchoolPicker", () => {
     expect(city).toHaveValue("_empty_");
     expect(searchCalls.at(-1)?.params.city_id).toBe("");
     if (nextProvince === "_empty_") expect(city).toBeDisabled();
+  });
+
+  it.each(["ne", "𠮷a"])("does not search fewer than three characters: %s", (query) => {
+    render(<Harness />);
+    typeName(query);
+    expect(searchCalls.at(-1)?.enabled).toBe(false);
+    expect(screen.queryByRole("option", { name: /SMA Negeri/ })).toBeNull();
+    expect(screen.getByText("Ketik minimal 3 karakter nama sekolah.")).toBeInTheDocument();
+    typeName(query + "g");
+    expect(searchCalls.at(-1)?.enabled).toBe(true);
+  });
+
+  it.each([[0, "province-2"], [1, "city-1"], [2, "SMK"]])("keeps a selected school until explicitly cleared despite filter %s events", (index, value) => {
+    render(<Harness />);
+    typeName("negeri");
+    fireEvent.click(screen.getByRole("option", { name: /SMA Negeri 1 Jakarta/ }));
+    const filters = screen.getAllByRole("combobox");
+    fireEvent.change(filters[index as number], { target: { value } });
+    expect(screen.getByTestId("school-id")).toHaveTextContent("school-1");
+    expect(screen.getByRole("group", { name: "Sekolah terpilih" })).toHaveTextContent("SMA Negeri 1 Jakarta");
+    expect(filters.every(filter => (filter as HTMLSelectElement).disabled)).toBe(true);
+    expect(searchCalls.at(-1)?.enabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Ganti sekolah" }));
+    expect(screen.getByTestId("school-id")).toBeEmptyDOMElement();
+    expect(screen.getAllByRole("combobox")[0]).not.toBeDisabled();
+    expect(screen.getAllByRole("combobox")[2]).not.toBeDisabled();
   });
 
   it("debounces global name search and hides old results while typing", () => {

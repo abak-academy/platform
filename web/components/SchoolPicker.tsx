@@ -82,11 +82,11 @@ export function SchoolPicker({
   const pendingName = nameValue.trim() !== debouncedQ;
   const validSearch = mode === "npsn"
     ? /^[A-Z0-9]{8}$/.test(normalizedNPSN)
-    : !pendingName && (debouncedQ.length >= 2 || (!debouncedQ && Boolean(provinceId || schoolType)));
+    : !pendingName && (Array.from(debouncedQ).length >= 3 || (!debouncedQ && Boolean(provinceId || schoolType)));
   const params = mode === "npsn"
     ? { npsn: normalizedNPSN, limit: 20 }
     : { province_id: provinceId, city_id: cityId, school_type: schoolType, q: debouncedQ, limit: 20 };
-  const enabled = !disabled && !unlistedActive && open && validSearch;
+  const enabled = !selected && !disabled && !unlistedActive && open && validSearch;
   const search = useSchoolAutocomplete(params, enabled);
   const results = enabled && !search.isError ? search.data?.pages.flatMap((page) => page.data) ?? [] : [];
   const showDropdown = open && !disabled;
@@ -119,10 +119,7 @@ export function SchoolPicker({
   }
 
   function changeFilter() {
-    if (selected) {
-      setQInput(selected.name);
-      onChange(null);
-    }
+    if (selected) return;
     setActiveIndex(-1);
     setOpen(true);
   }
@@ -195,7 +192,7 @@ export function SchoolPicker({
                 data-testid="school-picker-location-filters"
                 className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))]"
               >
-              <Select value={provinceId || "_empty_"} onValueChange={(v) => { setProvinceId(v === "_empty_" ? "" : v); setCityId(""); changeFilter(); }} disabled={disabled}>
+              <Select value={provinceId || "_empty_"} onValueChange={(v) => { setProvinceId(v === "_empty_" ? "" : v); setCityId(""); changeFilter(); }} disabled={disabled || Boolean(selected)}>
                 <SelectTrigger id={`${id}-province`} aria-label={t("school_picker_province")} className="w-full min-w-0">
                   <SelectValue placeholder={t("school_picker_province")} />
                 </SelectTrigger>
@@ -213,7 +210,7 @@ export function SchoolPicker({
                 if (!v) return;
                 setCityId(v === "_empty_" ? "" : v);
                 changeFilter();
-              }} disabled={disabled || !provinceId}>
+              }} disabled={disabled || Boolean(selected) || !provinceId}>
                 <SelectTrigger id={`${id}-city`} aria-label={t("school_picker_city")} className="w-full min-w-0">
                   <SelectValue placeholder={t("school_picker_city")} />
                 </SelectTrigger>
@@ -226,7 +223,7 @@ export function SchoolPicker({
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={schoolType || "_empty_"} onValueChange={(v) => { setSchoolType(v === "_empty_" ? "" : v); changeFilter(); }} disabled={disabled}>
+              <Select value={schoolType || "_empty_"} onValueChange={(v) => { setSchoolType(v === "_empty_" ? "" : v); changeFilter(); }} disabled={disabled || Boolean(selected)}>
                 <SelectTrigger id={`${id}-school-type`} aria-label={t("schools_field_school_types")} className="w-full min-w-0">
                   <SelectValue placeholder={t("schools_field_school_types")} />
                 </SelectTrigger>

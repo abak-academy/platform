@@ -47,7 +47,7 @@ func TestSchoolAutocomplete_Integration(t *testing.T) {
 		{"combined", "q=needle&province_id=33&city_id=3374&school_type=SD", 1},
 		{"filter without name", "school_type=SMP", 1},
 		{"bounded province without name", "province_id=35&limit=2", 2},
-		{"literal wildcard", "q=100%25", 1}, {"short unscoped query", "q=n", 0}, {"empty unscoped", "", 0},
+		{"literal wildcard", "q=100%25", 1}, {"short unscoped query", "q=n", 0}, {"two characters", "q=ne", 0}, {"two characters with filter", "q=ne&province_id=35", 0}, {"three characters", "q=nee", 3}, {"empty unscoped", "", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) { p := get("/schools?"+tc.query, 200); require.Len(t, p.Data, tc.count) })
 	}

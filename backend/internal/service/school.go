@@ -212,7 +212,7 @@ func (s *Service) buildSchoolSearchFilter(ctx context.Context, params SchoolSear
 			return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
 		}
 	}
-	if (q != "" && len([]rune(q)) < 2) || (q == "" && provinceID == "" && cityID == "" && schoolType == "") {
+	if (q != "" && len([]rune(q)) < 3) || (q == "" && provinceID == "" && cityID == "" && schoolType == "") {
 		return repository.SchoolSearchFilter{}, true, nil
 	}
 	maxLimit := 50

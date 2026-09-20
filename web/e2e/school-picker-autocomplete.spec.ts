@@ -32,6 +32,9 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     });
     await page.goto("/complete-profile");
     const input = page.getByRole("combobox", { name: "Nama sekolah", exact: true });
+    await input.fill("ta");
+    await expect(page.getByText("Ketik minimal 3 karakter nama sekolah.")).toBeVisible();
+    expect(searches).toHaveLength(0);
     await input.fill("taman belajar");
     const option = page.getByRole("option", { name: /TK TAMAN BELAJAR/ });
     await expect(option).toBeVisible();
@@ -47,6 +50,9 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await expect(page.getByText("20561417 · TK · KOTA SURABAYA · JAWA TIMUR", { exact: true })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Provinsi", exact: true })).toHaveText("JAWA TIMUR");
     await expect(page.getByRole("combobox", { name: "Kota/Kabupaten", exact: true })).toHaveText("KOTA SURABAYA");
+    for (const name of ["Provinsi", "Kota/Kabupaten", "Jenis Sekolah"]) {
+      await expect(page.getByRole("combobox", { name, exact: true })).toBeDisabled();
+    }
     expect(saved).toBeUndefined();
     await page.screenshot({ path: testInfo.outputPath("selected.png"), fullPage: true });
     await page.locator("#onboard-grade").click();
