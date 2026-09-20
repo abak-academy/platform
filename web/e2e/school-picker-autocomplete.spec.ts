@@ -22,7 +22,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
         body = user;
       } else if (url.pathname.endsWith("/provinces")) {
         body = [{ id: "35", name: "JAWA TIMUR" }];
-      } else if (url.pathname.endsWith("/cities")) {
+      } else if (url.pathname.endsWith("/provinces/35/cities")) {
         body = [{ id: "3578", province_id: "35", name: "KOTA SURABAYA" }];
       } else if (url.pathname.endsWith("/schools")) {
         searches.push(url.searchParams);
@@ -32,6 +32,9 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     });
     await page.goto("/complete-profile");
     const input = page.getByRole("combobox", { name: "Nama sekolah", exact: true });
+    await input.fill("ta");
+    await expect(page.getByText("Ketik minimal 3 karakter nama sekolah.")).toBeVisible();
+    expect(searches).toHaveLength(0);
     await input.fill("taman belajar");
     const option = page.getByRole("option", { name: /TK TAMAN BELAJAR/ });
     await expect(option).toBeVisible();
@@ -47,6 +50,9 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     await expect(page.getByText("20561417 · TK · KOTA SURABAYA · JAWA TIMUR", { exact: true })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Provinsi", exact: true })).toHaveText("JAWA TIMUR");
     await expect(page.getByRole("combobox", { name: "Kota/Kabupaten", exact: true })).toHaveText("KOTA SURABAYA");
+    for (const name of ["Provinsi", "Kota/Kabupaten", "Jenis Sekolah"]) {
+      await expect(page.getByRole("combobox", { name, exact: true })).toBeDisabled();
+    }
     expect(saved).toBeUndefined();
     await page.screenshot({ path: testInfo.outputPath("selected.png"), fullPage: true });
     await page.locator("#onboard-grade").click();
@@ -58,16 +64,18 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
   });
 }
 
-test("city alone narrows autocomplete and selecting a new name clears the old choice", async ({ page, context }) => {
+test("province and city narrow autocomplete and selecting a new name clears the old choice", async ({ page, context }) => {
   const user = { id: "student", role: "student", name: "Picker Test", auth_provider: "google" };
   await seedSession(context, { token: "test-token", refreshToken: "", user });
   const searches: URLSearchParams[] = [];
+  const cityRequests: string[] = [];
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
     let body: unknown = {};
+    if (url.pathname.endsWith("/cities")) cityRequests.push(url.pathname);
     if (url.pathname.endsWith("/students/profile")) body = user;
     else if (url.pathname.endsWith("/provinces")) body = [{ id: "35", name: "JAWA TIMUR" }];
-    else if (url.pathname.endsWith("/cities")) body = [{ id: "3578", province_id: "35", name: "KOTA SURABAYA" }];
+    else if (url.pathname.endsWith("/provinces/35/cities")) body = [{ id: "3578", province_id: "35", name: "KOTA SURABAYA" }];
     else if (url.pathname.endsWith("/schools")) {
       searches.push(url.searchParams);
       body = { data: url.searchParams.get("q") === "unknown" ? [] : [school] };
@@ -75,18 +83,32 @@ test("city alone narrows autocomplete and selecting a new name clears the old ch
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.goto("/complete-profile");
+  await expect(page.getByRole("combobox", { name: "Kota/Kabupaten", exact: true })).toBeDisabled();
+  expect(cityRequests).not.toContain("/api/v1/cities");
+  await page.getByRole("combobox", { name: "Provinsi", exact: true }).click();
+  await page.getByRole("option", { name: "JAWA TIMUR", exact: true }).click();
   await page.getByRole("combobox", { name: "Kota/Kabupaten", exact: true }).click();
   await page.getByRole("option", { name: "KOTA SURABAYA", exact: true }).click();
   const input = page.getByRole("combobox", { name: "Nama sekolah", exact: true });
   await input.fill("taman");
   await expect(page.getByRole("option", { name: /TK TAMAN BELAJAR/ })).toBeVisible();
   expect(searches.at(-1)?.get("city_id")).toBe("3578");
-  expect(searches.at(-1)?.has("province_id")).toBe(false);
+  expect(searches.at(-1)?.get("province_id")).toBe("35");
+  expect(cityRequests).toEqual(["/api/v1/provinces/35/cities"]);
   expect(searches.at(-1)?.has("school_type")).toBe(false);
   await page.getByRole("option", { name: /TK TAMAN BELAJAR/ }).click();
   await page.getByRole("button", { name: "Ganti sekolah" }).click();
   await expect(input).toHaveValue("");
   await expect(input).toBeFocused();
+  await expect(page.getByRole("combobox", { name: "Kota/Kabupaten", exact: true })).toBeDisabled();
+  expect(cityRequests).not.toContain("/api/v1/cities");
+  await page.getByRole("combobox", { name: "Provinsi", exact: true }).click();
+  await page.getByRole("option", { name: "JAWA TIMUR", exact: true }).click();
+  await page.getByRole("combobox", { name: "Kota/Kabupaten", exact: true }).click();
+  await page.getByRole("option", { name: "KOTA SURABAYA", exact: true }).click();
+  await input.fill("taman");
+  await expect(page.getByRole("option", { name: /TK TAMAN BELAJAR/ })).toBeVisible();
+  expect(searches.filter(query => query.get("q") === "taman" && query.get("city_id") === "3578")).toHaveLength(1);
   await input.fill("unknown");
   await expect(page.getByText("Sekolah tidak ditemukan.", { exact: true })).toBeVisible();
   await expect(page.getByText("20561417 · TK · KOTA SURABAYA · JAWA TIMUR", { exact: true })).toHaveCount(0);

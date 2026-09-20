@@ -186,7 +186,7 @@ func (s *Service) buildSchoolSearchFilter(ctx context.Context, params SchoolSear
 	cityID := strings.TrimSpace(params.CityID)
 	schoolType := strings.ToUpper(strings.TrimSpace(params.SchoolType))
 	q := strings.TrimSpace(params.Q)
-	if len([]rune(q)) > 200 || (schoolType != "" && !allowedSchoolSearchType(schoolType)) {
+	if (cityID != "" && provinceID == "") || len([]rune(q)) > 200 || (schoolType != "" && !allowedSchoolSearchType(schoolType)) {
 		return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
 	}
 	if params.Cursor != "" {
@@ -208,11 +208,11 @@ func (s *Service) buildSchoolSearchFilter(ctx context.Context, params SchoolSear
 		if err != nil {
 			return repository.SchoolSearchFilter{}, false, err
 		}
-		if city == nil || (provinceID != "" && city.ProvinceID != provinceID) {
+		if city == nil || city.ProvinceID != provinceID {
 			return repository.SchoolSearchFilter{}, false, ErrInvalidSchoolSearch
 		}
 	}
-	if (q != "" && len([]rune(q)) < 2) || (q == "" && provinceID == "" && cityID == "" && schoolType == "") {
+	if (q != "" && len([]rune(q)) < 3) || (q == "" && provinceID == "" && cityID == "" && schoolType == "") {
 		return repository.SchoolSearchFilter{}, true, nil
 	}
 	maxLimit := 50

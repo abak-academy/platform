@@ -70,17 +70,69 @@ describe("school search hooks", () => {
       .mockResolvedValueOnce({ data: [{ ...school, id: "s2" }] })
       .mockResolvedValueOnce({ data: [] });
     const { wrapper } = wrapperFactory();
-    const { result, rerender } = renderHook(({ q }) => useSchoolAutocomplete({ q, city_id: "3578", limit: 20 }), { wrapper, initialProps: { q: "needle" } });
+    const { result, rerender } = renderHook(({ q }) => useSchoolAutocomplete({ q, province_id: "35", city_id: "3578", limit: 20 }), { wrapper, initialProps: { q: "needle" } });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.pages).toHaveLength(1);
     await act(async () => { await result.current.fetchNextPage(); });
-    expect(mockAuthFetch).toHaveBeenNthCalledWith(2, "/schools?q=needle&cursor=Needle%2C+Academy%2Cs1&city_id=3578&limit=20");
+    expect(mockAuthFetch).toHaveBeenNthCalledWith(2, "/schools?q=needle&cursor=Needle%2C+Academy%2Cs1&province_id=35&city_id=3578&limit=20", { signal: expect.any(AbortSignal) });
     await waitFor(() => expect(result.current.data?.pages.flatMap(page => page.data)).toHaveLength(2));
     expect(result.current.hasNextPage).toBe(false);
     rerender({ q: "other" });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockAuthFetch).toHaveBeenLastCalledWith("/schools?q=other&city_id=3578&limit=20");
+    expect(mockAuthFetch).toHaveBeenLastCalledWith("/schools?q=other&province_id=35&city_id=3578&limit=20", { signal: expect.any(AbortSignal) });
     expect(result.current.data?.pages).toHaveLength(1);
+  });
+
+  it("reuses a recently cached search when returning to it", async () => {
+    mockAuthFetch.mockImplementation(async (path: string) => ({ data: [{ id: path, name: path, code: "cached" }] }));
+    const { wrapper, queryClient } = wrapperFactory();
+    const params = { q: "bina", province_id: "35", city_id: "3578", limit: 20 };
+    const key = [...studentsKeys.schoolSearch(params), "autocomplete"];
+    queryClient.setQueryData(key, { pages: [{ data: [{ id: "cached", name: "Bina", code: "cached" }] }], pageParams: [""] }, { updatedAt: Date.now() - 60_000 });
+    const { result, rerender } = renderHook(({ q }) => useSchoolAutocomplete({ ...params, q }), { wrapper, initialProps: { q: "bina" } });
+    expect(result.current.data?.pages[0].data[0].id).toBe("cached");
+    expect(mockAuthFetch).not.toHaveBeenCalled();
+    rerender({ q: "negeri" });
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+    rerender({ q: "bina" });
+    expect(result.current.data?.pages[0].data[0].id).toBe("cached");
+    expect(result.current.isFetching).toBe(false);
+    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes a cached search older than five minutes and isolates filters", async () => {
+    mockAuthFetch.mockResolvedValue({ data: [] });
+    const { wrapper, queryClient } = wrapperFactory();
+    const params = { q: "bina", province_id: "35", city_id: "3578", limit: 20 };
+    queryClient.setQueryData([...studentsKeys.schoolSearch(params), "autocomplete"], { pages: [{ data: [] }], pageParams: [""] }, { updatedAt: Date.now() - 5 * 60_000 - 1 });
+    const { result, rerender } = renderHook(({ city_id }) => useSchoolAutocomplete({ ...params, city_id }), { wrapper, initialProps: { city_id: "3578" } });
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+    rerender({ city_id: "3573" });
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(mockAuthFetch).toHaveBeenCalledTimes(2);
+    expect(mockAuthFetch.mock.calls[1][0]).toContain("city_id=3573");
+  });
+
+  it("aborts superseded and unmounted searches without caching their late results", async () => {
+    const requests: Array<{ signal: AbortSignal; resolve: (data: unknown) => void }> = [];
+    mockAuthFetch.mockImplementation((_path: string, options?: RequestInit) => new Promise(resolve => {
+      requests.push({ signal: options?.signal as AbortSignal, resolve });
+    }));
+    const { wrapper, queryClient } = wrapperFactory();
+    const { result, rerender, unmount } = renderHook(({ q }) => useSchoolAutocomplete({ q, limit: 20 }), { wrapper, initialProps: { q: "old" } });
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0].signal).toBeInstanceOf(AbortSignal);
+    expect(requests[0].signal.aborted).toBe(false);
+    rerender({ q: "new" });
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[0].signal.aborted).toBe(true);
+    await act(async () => { requests[0].resolve({ data: [{ id: "old" }] }); });
+    expect(result.current.data).toBeUndefined();
+    expect(queryClient.getQueryData([...studentsKeys.schoolSearch({ q: "old", limit: 20 }), "autocomplete"])).toBeUndefined();
+    unmount();
+    expect(requests[1].signal.aborted).toBe(true);
   });
 
   it("useSchoolById hydrates one school", async () => {
