@@ -165,6 +165,24 @@ cd backend && go test -tags gotenberg_integration ./internal/service/
 cd web && npx vitest run
 ```
 
+## Releasing
+
+Merging to `main` runs the tests; it does **not** build an image. A `v*` tag does:
+
+```sh
+git tag v1.4.0 && git push origin v1.4.0
+```
+
+That builds `api`, `worker` and `web` once and pushes each under two tags
+pointing at the same digest — the version (`api:v1.4.0`) and the commit SHA
+(`api:<sha>`). The version is for humans and changelogs; the SHA is the image's
+identity, because it cannot be moved and it is what `docker ps` on the host
+shows when you are diffing a production report against `git log`.
+
+Deploy by setting `IMAGE_TAG` to either. To ship a commit without cutting a
+version — a hotfix — run the pipeline manually from the Actions tab
+(`workflow_dispatch`); that builds the SHA tag alone and invents no version.
+
 ## Operations
 
 - `docs/runbooks/` — PostgreSQL 16→17 data migration, RBAC matrix
