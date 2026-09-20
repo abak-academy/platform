@@ -26,13 +26,6 @@ export function useCitiesByProvince(provinceId?: string | null) {
   });
 }
 
-export function useSchoolCities(provinceId: string) {
-  return useQuery({
-    queryKey: [...regionsKeys.all, "school-cities", provinceId],
-    queryFn: () => apiFetch<City[]>(provinceId ? `/provinces/${encodeURIComponent(provinceId)}/cities` : "/cities"),
-  });
-}
-
 export function useDistrictsByCity(cityId?: string | null) {
   return useQuery({
     queryKey: regionsKeys.districtsByCity(cityId ?? ""),

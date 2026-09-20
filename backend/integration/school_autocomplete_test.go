@@ -43,7 +43,7 @@ func TestSchoolAutocomplete_Integration(t *testing.T) {
 		count       int
 	}{
 		{"global", "q=needle", 3}, {"province only", "q=needle&province_id=35", 2},
-		{"city only", "q=needle&city_id=3578", 2}, {"type only", "q=needle&school_type=SMP", 1},
+		{"province and city", "q=needle&province_id=35&city_id=3578", 2}, {"type only", "q=needle&school_type=SMP", 1},
 		{"combined", "q=needle&province_id=33&city_id=3374&school_type=SD", 1},
 		{"filter without name", "school_type=SMP", 1},
 		{"bounded province without name", "province_id=35&limit=2", 2},
@@ -51,15 +51,18 @@ func TestSchoolAutocomplete_Integration(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) { p := get("/schools?"+tc.query, 200); require.Len(t, p.Data, tc.count) })
 	}
-	first := get("/schools?q=needle&city_id=3578&limit=1", 200)
+	first := get("/schools?q=needle&province_id=35&city_id=3578&limit=1", 200)
 	require.Len(t, first.Data, 1)
 	require.NotEmpty(t, first.NextCursor)
-	second := get("/schools?q=needle&city_id=3578&limit=1&cursor="+url.QueryEscape(first.NextCursor), 200)
+	second := get("/schools?q=needle&province_id=35&city_id=3578&limit=1&cursor="+url.QueryEscape(first.NextCursor), 200)
 	require.Len(t, second.Data, 1)
 	require.NotEqual(t, first.Data[0].ID, second.Data[0].ID)
 	require.Empty(t, second.NextCursor)
 	get("/schools?q=needle&province_id=33&city_id=3578", 400)
-	get("/schools?q=needle&city_id=missing", 400)
+	for _, query := range []string{"city_id=3578", "q=needle&city_id=3578", "city_id=3578&school_type=SD", "province_id=%20&city_id=3578"} {
+		get("/schools?"+query, 400)
+	}
+	get("/schools?q=needle&province_id=35&city_id=missing", 400)
 	get("/schools?q=needle&school_type=invalid", 400)
 	get("/schools?q=needle&cursor=bad", 400)
 	exact := get("/schools?npsn=X9000001", 200)
@@ -68,8 +71,5 @@ func TestSchoolAutocomplete_Integration(t *testing.T) {
 	resp, err := http.Get(env.server.URL + "/api/v1/cities")
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	require.Equal(t, 200, resp.StatusCode)
-	var cities []model.City
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&cities))
-	require.Len(t, cities, 514)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 }

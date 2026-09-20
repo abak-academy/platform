@@ -112,7 +112,6 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Public region reference data (no auth, mirrors GET /schools)
 	v1.GET("/provinces", h.ListProvinces)
 	v1.GET("/provinces/:id/cities", h.ListCitiesByProvince)
-	v1.GET("/cities", h.ListCitiesByProvince)
 	v1.GET("/cities/:id/districts", h.ListDistrictsByCity)
 
 	// Avatar read-proxy (no auth; service restricts to the avatars/ prefix)

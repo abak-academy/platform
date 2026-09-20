@@ -33,8 +33,8 @@ let hasMore = false;
 const fetchNextPage = vi.fn();
 
 vi.mock("@/lib/hooks/regions", () => ({
-  useProvinces: () => ({ data: [{ id: "province-1", name: "DKI JAKARTA" }] }),
-  useSchoolCities: () => ({ data: [{ id: "city-1", province_id: "province-1", name: "KOTA JAKARTA PUSAT" }] }),
+  useProvinces: () => ({ data: [{ id: "province-1", name: "DKI JAKARTA" }, { id: "province-2", name: "JAWA TIMUR" }] }),
+  useCitiesByProvince: () => ({ data: [{ id: "city-1", province_id: "province-1", name: "KOTA JAKARTA PUSAT" }] }),
 }));
 
 vi.mock("@/lib/hooks/students", () => ({
@@ -125,7 +125,6 @@ describe("SchoolPicker", () => {
 
   it.each([
     [0, "province-1", { province_id: "province-1", city_id: "", school_type: "" }],
-    [1, "city-1", { province_id: "", city_id: "city-1", school_type: "" }],
     [2, "SMA", { province_id: "", city_id: "", school_type: "SMA" }],
   ])("searches with only filter %s selected", (index, value, params) => {
     render(<Harness />);
@@ -135,6 +134,20 @@ describe("SchoolPicker", () => {
     typeName("negeri");
     expect(searchCalls.at(-1)).toMatchObject({ enabled: true, params: { ...params, q: "negeri", limit: 20 } });
     expect(screen.getByRole("option", { name: /SMA Negeri 1 Jakarta/ })).toBeInTheDocument();
+  });
+
+  it.each(["province-2", "_empty_"])("requires a province for cities and resets city when province becomes %s", (nextProvince) => {
+    render(<Harness />);
+    const [province, city] = screen.getAllByRole("combobox");
+    expect(city).toBeDisabled();
+    fireEvent.change(province, { target: { value: "province-1" } });
+    expect(city).not.toBeDisabled();
+    fireEvent.change(city, { target: { value: "city-1" } });
+    expect(searchCalls.at(-1)).toMatchObject({ enabled: true, params: { province_id: "province-1", city_id: "city-1", school_type: "" } });
+    fireEvent.change(province, { target: { value: nextProvince } });
+    expect(city).toHaveValue("_empty_");
+    expect(searchCalls.at(-1)?.params.city_id).toBe("");
+    if (nextProvince === "_empty_") expect(city).toBeDisabled();
   });
 
   it("debounces global name search and hides old results while typing", () => {

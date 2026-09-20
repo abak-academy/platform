@@ -31,10 +31,9 @@ func (r *Repository) ListProvinces(ctx context.Context) ([]model.Province, error
 	return provinces, nil
 }
 
-// An empty province ID includes all cities so school filters can be selected independently.
 func (r *Repository) ListCitiesByProvince(ctx context.Context, provinceID string) ([]model.City, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, province_id, name FROM city WHERE ($1 = '' OR province_id = $1) ORDER BY name ASC`,
+		`SELECT id, province_id, name FROM city WHERE province_id = $1 ORDER BY name ASC`,
 		provinceID,
 	)
 	if err != nil {
