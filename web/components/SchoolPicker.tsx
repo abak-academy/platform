@@ -74,7 +74,7 @@ export function SchoolPicker({
   const nameValue = selected?.name ?? qInput;
   const npsnValue = selected?.npsn ?? npsnInput;
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQ(nameValue.trim()), 300);
+    const timer = setTimeout(() => setDebouncedQ(nameValue.trim()), 500);
     return () => clearTimeout(timer);
   }, [nameValue]);
 

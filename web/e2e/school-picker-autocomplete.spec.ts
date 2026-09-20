@@ -87,6 +87,11 @@ test("city alone narrows autocomplete and selecting a new name clears the old ch
   await page.getByRole("button", { name: "Ganti sekolah" }).click();
   await expect(input).toHaveValue("");
   await expect(input).toBeFocused();
+  await page.getByRole("combobox", { name: "Kota/Kabupaten", exact: true }).click();
+  await page.getByRole("option", { name: "KOTA SURABAYA", exact: true }).click();
+  await input.fill("taman");
+  await expect(page.getByRole("option", { name: /TK TAMAN BELAJAR/ })).toBeVisible();
+  expect(searches.filter(query => query.get("q") === "taman" && query.get("city_id") === "3578")).toHaveLength(1);
   await input.fill("unknown");
   await expect(page.getByText("Sekolah tidak ditemukan.", { exact: true })).toBeVisible();
   await expect(page.getByText("20561417 · TK · KOTA SURABAYA · JAWA TIMUR", { exact: true })).toHaveCount(0);

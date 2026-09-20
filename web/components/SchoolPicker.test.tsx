@@ -143,7 +143,9 @@ describe("SchoolPicker", () => {
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "negeri" } });
     expect(searchCalls.at(-1)?.enabled).toBe(false);
-    act(() => { vi.advanceTimersByTime(300); });
+    act(() => { vi.advanceTimersByTime(499); });
+    expect(searchCalls.at(-1)?.enabled).toBe(false);
+    act(() => { vi.advanceTimersByTime(1); });
     expect(searchCalls.at(-1)).toMatchObject({ enabled: true, params: { q: "negeri", limit: 20 } });
     expect(screen.getByRole("listbox")).toBeInTheDocument();
     fireEvent.change(input, { target: { value: "bina" } });
@@ -277,7 +279,7 @@ describe("SchoolPicker", () => {
     fireEvent.focus(screen.getByPlaceholderText("Nama sekolah"));
     fireEvent.change(screen.getByPlaceholderText("Nama sekolah"), { target: { value: "sma negeri" } });
     await act(async () => {
-      vi.advanceTimersByTime(300);
+      vi.advanceTimersByTime(500);
     });
 
     fireEvent.click(screen.getByText("SMA Negeri 1 Jakarta"));
@@ -290,5 +292,5 @@ function typeName(value: string) {
   const input = screen.getByPlaceholderText("Nama sekolah");
   fireEvent.focus(input);
   fireEvent.change(input, { target: { value } });
-  act(() => { vi.advanceTimersByTime(300); });
+  act(() => { vi.advanceTimersByTime(500); });
 }

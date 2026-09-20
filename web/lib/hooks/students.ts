@@ -89,7 +89,9 @@ export function useSchoolAutocomplete(params: SchoolSearchParams, enabled = true
     queryKey: [...studentsKeys.schoolSearch(params), "autocomplete"],
     enabled,
     initialPageParam: "",
-    queryFn: ({ pageParam }) => authFetch<SchoolOptionsEnvelope>(schoolSearchPath("/schools", { ...params, cursor: pageParam })),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    queryFn: ({ pageParam, signal }) => authFetch<SchoolOptionsEnvelope>(schoolSearchPath("/schools", { ...params, cursor: pageParam }), { signal }),
     getNextPageParam: (page) => page.next_cursor || undefined,
   });
 }
