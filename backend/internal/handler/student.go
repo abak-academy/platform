@@ -100,6 +100,8 @@ func schoolSearchParamsFromRequest(c echo.Context) (service.SchoolSearchParams, 
 		limit = n
 	}
 	return service.SchoolSearchParams{
+		Q:          c.QueryParam("q"),
+		Cursor:     c.QueryParam("cursor"),
 		ProvinceID: c.QueryParam("province_id"),
 		CityID:     c.QueryParam("city_id"),
 		SchoolType: c.QueryParam("school_type"),

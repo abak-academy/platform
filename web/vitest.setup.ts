@@ -2,8 +2,10 @@ import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
 
 // JSDOM stubs for Radix UI components
-Element.prototype.scrollIntoView = vi.fn();
-Element.prototype.hasPointerCapture = vi.fn();
+if (typeof Element !== "undefined") {
+  Element.prototype.scrollIntoView = vi.fn();
+  Element.prototype.hasPointerCapture = vi.fn();
+}
 
 // JSDOM does not implement Range layout measurement at all (unlike Element,
 // which at least stubs zero rects) — https://github.com/jsdom/jsdom/issues/3729.

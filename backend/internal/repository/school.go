@@ -160,6 +160,8 @@ var (
 type SchoolOption = model.SchoolOption
 
 type SchoolSearchFilter struct {
+	Q          string
+	Cursor     string
 	ProvinceID string
 	CityID     string
 	SchoolType string
@@ -168,17 +170,6 @@ type SchoolSearchFilter struct {
 }
 
 func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearchFilter) ([]SchoolOption, error) {
-	if filter.Limit <= 0 {
-		filter.Limit = 20
-	}
-	maxLimit := 50
-	if filter.NPSN == "" && filter.CityID != "" && filter.SchoolType != "" {
-		maxLimit = 1000
-	}
-	if filter.Limit > maxLimit {
-		filter.Limit = maxLimit
-	}
-
 	if filter.NPSN != "" {
 		rows, err := r.querySchoolOptions(ctx,
 			`WHERE s.status = 'active' AND UPPER(BTRIM(s.npsn)) = $1 ORDER BY s.name ASC, s.id ASC LIMIT 2`,
@@ -193,9 +184,14 @@ func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearc
 		return rows, nil
 	}
 
-	query := `WHERE s.status = 'active' AND s.provinsi_id = $1`
-	args := []any{filter.ProvinceID}
-	argNum := 2
+	query := `WHERE s.status = 'active'`
+	args := []any{}
+	argNum := 1
+	if filter.ProvinceID != "" {
+		query += fmt.Sprintf(` AND s.provinsi_id = $%d`, argNum)
+		args = append(args, filter.ProvinceID)
+		argNum++
+	}
 	if filter.CityID != "" {
 		query += fmt.Sprintf(` AND s.kota_id = $%d`, argNum)
 		args = append(args, filter.CityID)
@@ -206,8 +202,23 @@ func (r *Repository) SearchSchoolOptions(ctx context.Context, filter SchoolSearc
 		args = append(args, filter.SchoolType)
 		argNum++
 	}
+	if filter.Q != "" {
+		query += fmt.Sprintf(` AND s.name ILIKE $%d`, argNum)
+		pattern := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(filter.Q)
+		args = append(args, "%"+pattern+"%")
+		argNum++
+	}
+	if filter.Cursor != "" {
+		name, id, err := DecodeNameCursor(filter.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		query += fmt.Sprintf(` AND (s.name, s.id) > ($%d, $%d)`, argNum, argNum+1)
+		args = append(args, name, id)
+		argNum += 2
+	}
 	query += fmt.Sprintf(` ORDER BY s.name ASC, s.id ASC LIMIT $%d`, argNum)
-	args = append(args, filter.Limit)
+	args = append(args, filter.Limit+1)
 
 	rows, err := r.querySchoolOptions(ctx, query, args...)
 	if err != nil {
