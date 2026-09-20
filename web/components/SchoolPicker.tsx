@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Search } from "lucide-react";
-import { useCitiesByProvince, useProvinces } from "@/lib/hooks/regions";
+import { useSchoolCities, useProvinces } from "@/lib/hooks/regions";
 import { useTranslation } from "@/lib/i18n";
-import { useSchoolById, useSchoolSearch } from "@/lib/hooks/students";
+import { useSchoolById, useSchoolAutocomplete } from "@/lib/hooks/students";
 import { SCHOOL_TYPE_OPTIONS } from "@/lib/school-types";
 import type { SchoolOption } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -47,10 +47,13 @@ export function SchoolPicker({
   const [qInput, setQInput] = useState("");
   const [npsnInput, setNpsnInput] = useState("");
   const [unlistedActive, setUnlistedActive] = useState(Boolean(unlistedName));
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [debouncedQ, setDebouncedQ] = useState("");
   const { t } = useTranslation();
 
   const { data: provinces } = useProvinces();
-  const { data: cities } = useCitiesByProvince(provinceId);
+  const { data: cities } = useSchoolCities(provinceId);
   const hydrate = useSchoolById(selectedSchool ? "" : value);
   const selected = selectedSchool ?? hydrate.data ?? null;
 
@@ -58,47 +61,60 @@ export function SchoolPicker({
     if (unlistedName) setUnlistedActive(true);
   }, [unlistedName]);
 
+  const nameValue = selected?.name ?? qInput;
+  const npsnValue = selected?.npsn ?? npsnInput;
   useEffect(() => {
-    setCityId("");
-  }, [provinceId]);
+    const timer = setTimeout(() => setDebouncedQ(nameValue.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [nameValue]);
 
-  const normalizedNPSN = npsnInput.trim().toUpperCase();
-  const params = useMemo(() => {
-    if (mode === "npsn") {
-      return { npsn: normalizedNPSN, limit: 20 };
+  const normalizedNPSN = npsnValue.trim().toUpperCase();
+  const pendingName = nameValue.trim() !== debouncedQ;
+  const validSearch = mode === "npsn"
+    ? /^[A-Z0-9]{8}$/.test(normalizedNPSN)
+    : !pendingName && (debouncedQ.length >= 2 || (!debouncedQ && Boolean(provinceId || cityId || schoolType)));
+  const params = mode === "npsn"
+    ? { npsn: normalizedNPSN, limit: 20 }
+    : { province_id: provinceId, city_id: cityId, school_type: schoolType, q: debouncedQ, limit: 20 };
+  const enabled = !disabled && !unlistedActive && open && validSearch;
+  const search = useSchoolAutocomplete(params, enabled);
+  const results = enabled && !search.isError ? search.data?.pages.flatMap((page) => page.data) ?? [] : [];
+  const showDropdown = open && !disabled;
+
+  function pickSchool(school: SchoolOption) {
+    setQInput(school.name);
+    setNpsnInput(school.npsn ?? "");
+    setProvinceId(school.provinsi_id ?? "");
+    setCityId(school.kota_id ?? "");
+    const types = (school.school_types ?? []).map((type) => type.trim().toUpperCase()).filter((type) => SCHOOL_TYPE_OPTIONS.some((option) => option === type));
+    setSchoolType(types.includes(schoolType) ? schoolType : types[0] ?? "");
+    setOpen(false);
+    setActiveIndex(-1);
+    setUnlistedActive(false);
+    onUnlistedNameChange?.("");
+    onChange(school);
+  }
+
+  function changeFilter() {
+    if (selected) {
+      setQInput(selected.name);
+      onChange(null);
     }
-    return {
-      province_id: provinceId,
-      city_id: cityId,
-      school_type: schoolType,
-      limit: 1000,
-    };
-  }, [schoolType, cityId, mode, normalizedNPSN, provinceId]);
-
-  const enabled =
-    !disabled &&
-    (mode === "npsn"
-      ? /^[A-Z0-9]{8}$/.test(normalizedNPSN)
-      : Boolean(provinceId && cityId && schoolType));
-  const search = useSchoolSearch(params, enabled);
-  const results = search.data?.data ?? [];
-  const nameFilter = qInput.trim().toLowerCase();
-  const displayedResults =
-    mode === "name"
-      ? nameFilter
-        ? results.filter((school) => school.name.toLowerCase().includes(nameFilter)).slice(0, 50)
-        : []
-      : results;
+    setActiveIndex(-1);
+    setOpen(true);
+  }
 
   function activateSearchMode(nextMode: "name" | "npsn") {
     setMode(nextMode);
+    setOpen(false);
+    setActiveIndex(-1);
     setUnlistedActive(false);
     onUnlistedNameChange?.("");
   }
 
   return (
     <div className={className}>
-      <div className="mb-2 flex gap-2">
+      <div className="mb-2 flex flex-wrap gap-2">
         <Button
           type="button"
           variant={mode === "name" ? "default" : "outline"}
@@ -124,6 +140,9 @@ export function SchoolPicker({
             size="sm"
             onClick={() => {
               setUnlistedActive(true);
+              setOpen(false);
+              setQInput("");
+              setNpsnInput("");
               onChange(null);
               onUnlistedNameChange?.("");
             }}
@@ -153,8 +172,8 @@ export function SchoolPicker({
                 data-testid="school-picker-location-filters"
                 className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))]"
               >
-              <Select value={provinceId || "_empty_"} onValueChange={(v) => setProvinceId(v === "_empty_" ? "" : v)} disabled={disabled}>
-                <SelectTrigger id={`${id}-province`} className="w-full min-w-0">
+              <Select value={provinceId || "_empty_"} onValueChange={(v) => { setProvinceId(v === "_empty_" ? "" : v); setCityId(""); changeFilter(); }} disabled={disabled}>
+                <SelectTrigger id={`${id}-province`} aria-label={t("school_picker_province")} className="w-full min-w-0">
                   <SelectValue placeholder={t("school_picker_province")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -166,8 +185,8 @@ export function SchoolPicker({
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={cityId || "_empty_"} onValueChange={(v) => setCityId(v === "_empty_" ? "" : v)} disabled={disabled || !provinceId}>
-                <SelectTrigger id={`${id}-city`} className="w-full min-w-0">
+              <Select value={cityId || "_empty_"} onValueChange={(v) => { setCityId(v === "_empty_" ? "" : v); changeFilter(); }} disabled={disabled}>
+                <SelectTrigger id={`${id}-city`} aria-label={t("school_picker_city")} className="w-full min-w-0">
                   <SelectValue placeholder={t("school_picker_city")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -179,8 +198,8 @@ export function SchoolPicker({
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={schoolType || "_empty_"} onValueChange={(v) => setSchoolType(v === "_empty_" ? "" : v)} disabled={disabled}>
-                <SelectTrigger id={`${id}-school-type`} className="w-full min-w-0">
+              <Select value={schoolType || "_empty_"} onValueChange={(v) => { setSchoolType(v === "_empty_" ? "" : v); changeFilter(); }} disabled={disabled}>
+                <SelectTrigger id={`${id}-school-type`} aria-label={t("schools_field_school_types")} className="w-full min-w-0">
                   <SelectValue placeholder={t("schools_field_school_types")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -193,27 +212,89 @@ export function SchoolPicker({
                 </SelectContent>
               </Select>
               </div>
-              <div className="relative mt-2">
-                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-400" />
-                <Input
-                  id={id}
-                  value={qInput}
-                  onChange={(e) => setQInput(e.target.value)}
-                  placeholder={t("school_picker_search_name_placeholder")}
-                  disabled={disabled}
-                  className="pl-9"
-                />
-              </div>
             </>
-          ) : (
+          ) : null}
+
+          <div
+            className="relative mt-2"
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+            }}
+          >
+            <Search className="pointer-events-none absolute top-3 left-3 size-4 text-ink-400" />
             <Input
               id={id}
-              value={npsnInput}
-              onChange={(e) => setNpsnInput(e.target.value)}
-              placeholder={t("school_picker_npsn_placeholder")}
+              role="combobox"
+              aria-label={t(mode === "name" ? "school_picker_search_name_placeholder" : "school_picker_npsn_placeholder")}
+              aria-autocomplete="list"
+              aria-expanded={showDropdown}
+              aria-controls={showDropdown ? `${id}-results` : undefined}
+              aria-activedescendant={showDropdown && results[activeIndex] ? `${id}-option-${results[activeIndex].id}` : undefined}
+              autoComplete="off"
+              value={mode === "name" ? nameValue : npsnValue}
+              onFocus={() => { setOpen(true); setActiveIndex(-1); }}
+              onChange={(event) => {
+                if (selected) onChange(null);
+                if (mode === "name") setQInput(event.target.value);
+                else setNpsnInput(event.target.value);
+                setOpen(true);
+                setActiveIndex(-1);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") { setOpen(false); setActiveIndex(-1); }
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setOpen(true);
+                  const next = event.key === "ArrowDown" ? Math.min(activeIndex + 1, results.length - 1) : Math.max(activeIndex - 1, 0);
+                  setActiveIndex(next);
+                  if (results[next]) document.getElementById(`${id}-option-${results[next].id}`)?.scrollIntoView({ block: "nearest" });
+                }
+                if (event.key === "Enter" && showDropdown) {
+                  event.preventDefault();
+                  if (results[activeIndex]) pickSchool(results[activeIndex]);
+                }
+              }}
+              placeholder={t(mode === "name" ? "school_picker_search_name_placeholder" : "school_picker_npsn_placeholder")}
               disabled={disabled}
+              className="pl-9"
             />
-          )}
+            {showDropdown ? (
+              <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-md border border-line bg-surface p-1 shadow-lg">
+                <div id={`${id}-results`} role="listbox" aria-label={t("school_picker_search_results")}>
+                  {results.map((school, index) => (
+                    <div
+                      key={school.id}
+                      id={`${id}-option-${school.id}`}
+                      role="option"
+                      aria-selected={index === activeIndex}
+                      className={`cursor-pointer rounded-md px-3 py-2 text-sm hover:bg-surface-2 ${index === activeIndex ? "bg-surface-2" : ""}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => pickSchool(school)}
+                    >
+                      <span className="block font-medium text-ink-900">{school.name}</span>
+                      <span className="block text-xs text-ink-500">{[school.npsn, school.school_types?.join(" / "), school.kota_name, school.provinsi_name].filter(Boolean).join(" · ")}</span>
+                    </div>
+                  ))}
+                </div>
+                {search.isError && enabled ? (
+                  <div role="alert" className="px-3 py-2 text-xs text-ink-700">
+                    {t("school_picker_search_error")}
+                    <Button type="button" variant="ghost" size="sm" onClick={() => search.refetch()}>{t("school_picker_retry")}</Button>
+                  </div>
+                ) : search.isFetching || (mode === "name" && pendingName) ? (
+                  <div role="status" className="flex items-center gap-2 px-3 py-2 text-xs text-ink-500"><Loader2 className="size-3 animate-spin" />{t("school_picker_searching")}</div>
+                ) : !validSearch ? (
+                  <div className="px-3 py-2 text-xs text-ink-500">{t(mode === "name" ? "school_picker_search_hint" : "school_picker_npsn_placeholder")}</div>
+                ) : results.length === 0 ? (
+                  <div role="status" className="px-3 py-2 text-xs text-ink-500">{t("school_picker_no_results")}</div>
+                ) : null}
+                {enabled && search.hasNextPage ? (
+                  <Button type="button" variant="ghost" size="sm" className="w-full" disabled={search.isFetching} onClick={() => search.fetchNextPage()}>{t("school_picker_load_more")}</Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          {mode === "name" ? <p className="mt-1 text-xs text-ink-500">{t("school_picker_optional_filters")}</p> : null}
 
           {selected ? (
             <div className="mt-2 rounded-md border border-line bg-surface-2 px-3 py-2 text-xs text-ink-700">
@@ -221,35 +302,6 @@ export function SchoolPicker({
               <div>{[selected.npsn, selected.school_types?.join(" / "), selected.kota_name, selected.provinsi_name].filter(Boolean).join(" · ")}</div>
             </div>
           ) : null}
-
-          <div className="mt-2 space-y-1">
-            {search.isFetching ? (
-              <div className="flex items-center gap-2 text-xs text-ink-500">
-                <Loader2 className="size-3 animate-spin" />
-                {t("school_picker_searching")}
-              </div>
-            ) : enabled && displayedResults.length === 0 ? (
-              <div className="text-xs text-ink-500">{t("school_picker_no_results")}</div>
-            ) : null}
-            {displayedResults.map((school) => (
-              <button
-                key={school.id}
-                type="button"
-                className="block w-full rounded-md border border-line px-3 py-2 text-left text-sm hover:border-brand-300 disabled:opacity-60"
-                disabled={disabled}
-                onClick={() => {
-                  setUnlistedActive(false);
-                  onUnlistedNameChange?.("");
-                  onChange(school);
-                }}
-              >
-                <span className="block font-medium text-ink-900">{school.name}</span>
-                <span className="block text-xs text-ink-500">
-                  {[school.npsn, school.school_types?.join(" / "), school.kota_name, school.provinsi_name].filter(Boolean).join(" · ")}
-                </span>
-              </button>
-            ))}
-          </div>
         </>
       )}
     </div>

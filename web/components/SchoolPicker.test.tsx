@@ -27,21 +27,25 @@ const defaultSchools: SchoolOption[] = [
   },
 ];
 let schools = defaultSchools;
+let hydratedSchool: SchoolOption | null = null;
+let searchError = false;
+let hasMore = false;
+const fetchNextPage = vi.fn();
 
 vi.mock("@/lib/hooks/regions", () => ({
   useProvinces: () => ({ data: [{ id: "province-1", name: "DKI JAKARTA" }] }),
-  useCitiesByProvince: () => ({ data: [{ id: "city-1", province_id: "province-1", name: "KOTA JAKARTA PUSAT" }] }),
+  useSchoolCities: () => ({ data: [{ id: "city-1", province_id: "province-1", name: "KOTA JAKARTA PUSAT" }] }),
 }));
 
 vi.mock("@/lib/hooks/students", () => ({
-  useSchoolById: () => ({ data: null }),
-  useSchoolSearch: (params: Record<string, unknown>, enabled: boolean) => {
+  useSchoolById: () => ({ data: hydratedSchool }),
+  useSchoolAutocomplete: (params: Record<string, unknown>, enabled: boolean) => {
     const key = JSON.stringify({ params, enabled });
     if (key !== lastSearchKey) {
       searchCalls.push({ params, enabled });
       lastSearchKey = key;
     }
-    return { data: enabled ? { data: schools } : { data: [] }, isFetching: false };
+    return { data: { pages: [{ data: enabled ? schools : [] }] }, isFetching: false, isError: searchError, hasNextPage: hasMore, fetchNextPage, refetch: vi.fn() };
   },
 }));
 
@@ -101,6 +105,10 @@ describe("SchoolPicker", () => {
     searchCalls.length = 0;
     lastSearchKey = "";
     schools = defaultSchools;
+    searchError = false;
+    hydratedSchool = null;
+    hasMore = false;
+    fetchNextPage.mockClear();
   });
 
   afterEach(() => {
@@ -115,49 +123,109 @@ describe("SchoolPicker", () => {
     );
   });
 
-  it("fetches by province and city, then filters typed school name locally", async () => {
+  it.each([
+    [0, "province-1", { province_id: "province-1", city_id: "", school_type: "" }],
+    [1, "city-1", { province_id: "", city_id: "city-1", school_type: "" }],
+    [2, "SMA", { province_id: "", city_id: "", school_type: "SMA" }],
+  ])("searches with only filter %s selected", (index, value, params) => {
     render(<Harness />);
-
-    const [provinceSelect, citySelect, categorySelect] = screen.getAllByRole("combobox");
-    fireEvent.change(provinceSelect, { target: { value: "province-1" } });
-    fireEvent.change(citySelect, { target: { value: "city-1" } });
-    fireEvent.change(categorySelect, { target: { value: "SMA" } });
-
-    const latestBeforeTyping = searchCalls[searchCalls.length - 1];
-    expect(latestBeforeTyping.enabled).toBe(true);
-    expect(latestBeforeTyping.params).toMatchObject({ province_id: "province-1", city_id: "city-1", school_type: "SMA", limit: 1000 });
-    expect(latestBeforeTyping.params).not.toHaveProperty("q");
-    const callsAfterLocationFetch = searchCalls.length;
-
-    fireEvent.change(screen.getByPlaceholderText("Nama sekolah"), { target: { value: "negeri" } });
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-    });
-
-    expect(searchCalls).toHaveLength(callsAfterLocationFetch);
-    expect(screen.getByText("SMA Negeri 1 Jakarta")).toBeInTheDocument();
-    expect(screen.queryByText("SMA Bina Bangsa")).toBeNull();
+    const select = screen.getAllByRole("combobox")[index as number];
+    expect(select).not.toBeDisabled();
+    fireEvent.change(select, { target: { value } });
+    typeName("negeri");
+    expect(searchCalls.at(-1)).toMatchObject({ enabled: true, params: { ...params, q: "negeri", limit: 20 } });
+    expect(screen.getByRole("option", { name: /SMA Negeri 1 Jakarta/ })).toBeInTheDocument();
   });
 
-  it("waits for a school name and renders at most 50 local matches", () => {
-    schools = Array.from({ length: 60 }, (_, index) => ({
-      id: `school-result-${index}`,
-      name: `School Result ${index}`,
-      code: `RESULT${index}`,
-      school_types: ["SMA"],
-    }));
+  it("debounces global name search and hides old results while typing", () => {
     render(<Harness />);
+    const input = screen.getByPlaceholderText("Nama sekolah");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "negeri" } });
+    expect(searchCalls.at(-1)?.enabled).toBe(false);
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(searchCalls.at(-1)).toMatchObject({ enabled: true, params: { q: "negeri", limit: 20 } });
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "bina" } });
+    expect(screen.queryByRole("option", { name: /SMA Negeri/ })).toBeNull();
+  });
 
-    const [provinceSelect, citySelect, categorySelect] = screen.getAllByRole("combobox");
-    fireEvent.change(provinceSelect, { target: { value: "province-1" } });
-    fireEvent.change(citySelect, { target: { value: "city-1" } });
-    fireEvent.change(categorySelect, { target: { value: "SMA" } });
+  it("reflects a keyboard selection immediately and clears its ID on editing", () => {
+    render(<Harness />);
+    typeName("negeri");
+    const input = screen.getByPlaceholderText("Nama sekolah");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByTestId("school-id")).toHaveTextContent("school-1");
+    expect(input).toHaveValue("SMA Negeri 1 Jakarta");
+    expect(input).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.change(input, { target: { value: "another" } });
+    expect(screen.getByTestId("school-id")).toBeEmptyDOMElement();
+  });
 
-    expect(screen.queryAllByRole("button", { name: /School Result/ })).toHaveLength(0);
+  it("loads more matching schools without dropping the query", () => {
+    hasMore = true;
+    render(<Harness />);
+    typeName("negeri");
+    fireEvent.click(screen.getByRole("button", { name: "Tampilkan lebih banyak" }));
+    expect(fetchNextPage).toHaveBeenCalledOnce();
+  });
 
-    fireEvent.change(screen.getByPlaceholderText("Nama sekolah"), { target: { value: "result" } });
+  it("distinguishes search errors from an empty result", () => {
+    searchError = true;
+    render(<Harness />);
+    typeName("negeri");
+    expect(screen.getByRole("alert")).toHaveTextContent("Gagal mencari sekolah");
+    expect(screen.queryByText("Sekolah tidak ditemukan.")).toBeNull();
+  });
 
-    expect(screen.getAllByRole("button", { name: /School Result/ })).toHaveLength(50);
+  it("keeps exact NPSN lookup and reflects the selected school when switching modes", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "NPSN" }));
+    const input = screen.getByPlaceholderText("Masukkan NPSN");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "12345678" } });
+    fireEvent.click(screen.getByRole("option", { name: /SMA Negeri 1 Jakarta/ }));
+    expect(screen.getByTestId("school-id")).toHaveTextContent("school-1");
+    fireEvent.click(screen.getByRole("button", { name: "Nama" }));
+    expect(screen.getByPlaceholderText("Nama sekolah")).toHaveValue("SMA Negeri 1 Jakarta");
+  });
+
+  it("reflects legacy type labels in the filter without changing the selected record", () => {
+    schools = [{ ...defaultSchools[0], school_types: [" smp "] }];
+    render(<Harness />);
+    typeName("negeri");
+    fireEvent.click(screen.getByRole("option", { name: /SMA Negeri 1 Jakarta/ }));
+    expect(screen.getAllByRole("combobox")[2]).toHaveValue("SMP");
+    expect(schools[0].school_types).toEqual([" smp "]);
+  });
+
+  it("shows an existing school immediately after hydration", () => {
+    const { rerender } = render(<SchoolPicker value="school-1" onChange={vi.fn()} />);
+    hydratedSchool = defaultSchools[0];
+    rerender(<SchoolPicker value="school-1" onChange={vi.fn()} />);
+    expect(screen.getByPlaceholderText("Nama sekolah")).toHaveValue(defaultSchools[0].name);
+    expect(screen.getByText(defaultSchools[0].name)).toBeInTheDocument();
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("does not search or show suggestions when disabled", () => {
+    const { rerender } = render(<SchoolPicker onChange={vi.fn()} />);
+    typeName("negeri");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    rerender(<SchoolPicker disabled onChange={vi.fn()} />);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.getByPlaceholderText("Nama sekolah")).toBeDisabled();
+    expect(searchCalls.at(-1)?.enabled).toBe(false);
+  });
+
+  it("Escape dismisses suggestions without choosing a school", () => {
+    render(<Harness />);
+    typeName("negeri");
+    fireEvent.keyDown(screen.getByPlaceholderText("Nama sekolah"), { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.getByTestId("school-id")).toBeEmptyDOMElement();
   });
 
   it("activates explicit unlisted fallback without inventing a school", () => {
@@ -185,6 +253,7 @@ describe("SchoolPicker", () => {
     fireEvent.change(provinceSelect, { target: { value: "province-1" } });
     fireEvent.change(citySelect, { target: { value: "city-1" } });
     fireEvent.change(categorySelect, { target: { value: "SMA" } });
+    fireEvent.focus(screen.getByPlaceholderText("Nama sekolah"));
     fireEvent.change(screen.getByPlaceholderText("Nama sekolah"), { target: { value: "sma negeri" } });
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -195,3 +264,10 @@ describe("SchoolPicker", () => {
     expect(screen.getByTestId("unlisted")).toHaveTextContent("");
   });
 });
+
+function typeName(value: string) {
+  const input = screen.getByPlaceholderText("Nama sekolah");
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value } });
+  act(() => { vi.advanceTimersByTime(300); });
+}
