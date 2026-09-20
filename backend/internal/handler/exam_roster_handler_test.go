@@ -376,3 +376,84 @@ func decodeRosterData(t *testing.T, body []byte) []any {
 	}
 	return data
 }
+
+// The ?q= name/username filter must narrow the roster to matching students
+// while the empty value keeps the full scoped roster.
+func TestAdminListExamRegistrations_NameSearchFiltersRows(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, service.RoleSuperAdmin, "Roster Search Admin")
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleSuperAdmin)
+	examID := seedExam(t, env.pool, "Roster Search Exam", false, "hidden", "classic")
+
+	seedRegistration(t, env.pool, seedUser(t, env.pool, service.RoleStudent, "Andi Saputra"), examID)
+	seedRegistration(t, env.pool, seedUser(t, env.pool, service.RoleStudent, "Budi Santoso"), examID)
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/registrations?q=saputra", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	data := decodeRosterData(t, rec.Body.Bytes())
+	if len(data) != 1 {
+		t.Fatalf("want 1 row for q=saputra, got %d body=%s", len(data), rec.Body.String())
+	}
+	if name := data[0].(map[string]any)["student_name"]; name != "Andi Saputra" {
+		t.Fatalf("student_name: want Andi Saputra, got %v", name)
+	}
+
+	rec = getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/registrations", token)
+	if data := decodeRosterData(t, rec.Body.Bytes()); len(data) != 2 {
+		t.Fatalf("empty q must return the full roster, got %d rows", len(data))
+	}
+}
+
+// The counts endpoint must mirror the roster's tenant scoping: admin_school
+// sees only its school's registrations, super_admin sees everything.
+func TestAdminExamRegistrationCounts_ScopesLikeRoster(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	ctx := context.Background()
+	school := seedSchool(t, env.pool)
+
+	schoolAdmin := seedUser(t, env.pool, service.RoleAdminSchool, "Counts School Admin")
+	if _, err := env.pool.Exec(ctx, `UPDATE users SET school_id = $1 WHERE id = $2`, school, schoolAdmin); err != nil {
+		t.Fatalf("set admin school: %v", err)
+	}
+	schoolToken := mintSchoolTokenForEnv(t, env, schoolAdmin.String(), service.RoleAdminSchool, school)
+	superToken := mintTokenForEnv(t, env, seedUser(t, env.pool, service.RoleSuperAdmin, "Counts Super Admin").String(), service.RoleSuperAdmin)
+
+	examID := seedExam(t, env.pool, "Roster Counts Exam", false, "hidden", "classic")
+	inside := seedUser(t, env.pool, service.RoleStudent, "Inside Student")
+	if _, err := env.pool.Exec(ctx, `UPDATE users SET school_id = $1 WHERE id = $2`, school, inside); err != nil {
+		t.Fatalf("set student school: %v", err)
+	}
+	outside := seedUser(t, env.pool, service.RoleStudent, "Outside Student")
+
+	insideReg := seedRegistration(t, env.pool, inside, examID)
+	seedRegistration(t, env.pool, outside, examID)
+	if _, err := env.pool.Exec(ctx, `UPDATE exam_registration SET status = 'checked_in' WHERE id = $1`, insideReg); err != nil {
+		t.Fatalf("set status: %v", err)
+	}
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/registrations/counts", schoolToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var scoped map[string]float64
+	if err := json.Unmarshal(rec.Body.Bytes(), &scoped); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if scoped["total"] != 1 || scoped["checked_in"] != 1 || scoped["registered"] != 0 {
+		t.Fatalf("scoped counts: got %v", scoped)
+	}
+
+	rec = getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/registrations/counts", superToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var full map[string]float64
+	if err := json.Unmarshal(rec.Body.Bytes(), &full); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if full["total"] != 2 || full["registered"] != 1 || full["checked_in"] != 1 {
+		t.Fatalf("unscoped counts: got %v", full)
+	}
+}

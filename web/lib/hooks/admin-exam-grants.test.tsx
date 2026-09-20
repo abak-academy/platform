@@ -5,6 +5,9 @@ import {
   useSearchStudentsAcrossSchools,
   usePresignExamGrantBulkUpload,
   useEnqueueExamGrantBulk,
+  useRevokeExamAccess,
+  usePresignExamRevokeBulkUpload,
+  useEnqueueExamRevokeBulk,
 } from "./admin-exam-grants";
 
 const mockAuthFetch = vi.fn();
@@ -100,5 +103,97 @@ describe("useEnqueueExamGrantBulk", () => {
       }),
     });
     expect(returned).toEqual({ job_id: "job-42" });
+  });
+});
+
+describe("useRevokeExamAccess", () => {
+  it("posts {exam_id, student_ids} to /admin/exam-grants/revoke and returns per-row results", async () => {
+    const revokeResp = {
+      revoked_count: 1,
+      results: [
+        {
+          student_id: "s1",
+          name: "Andi Saputra",
+          username: "andi123",
+          status: "revoked",
+          message: "",
+        },
+      ],
+    };
+    mockAuthFetch.mockResolvedValueOnce(revokeResp);
+
+    const { result } = renderHook(() => useRevokeExamAccess(), {
+      wrapper: wrapperFactory(),
+    });
+
+    let returned: typeof revokeResp | undefined;
+    await act(async () => {
+      returned = await result.current.mutateAsync({
+        exam_id: "exam-1",
+        student_ids: ["s1"],
+      });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exam-grants/revoke", {
+      method: "POST",
+      body: JSON.stringify({ exam_id: "exam-1", student_ids: ["s1"] }),
+    });
+    expect(returned).toEqual(revokeResp);
+  });
+});
+
+describe("usePresignExamRevokeBulkUpload", () => {
+  it("posts to /admin/exam-grants/revoke/bulk/presign with exam_id, filename and content_type", async () => {
+    const presignResp = {
+      url: "http://minio.local/exam-revoke-bulk/exam-1/uuid-x.csv?sig=abc",
+      method: "PUT",
+      key: "exam-revoke-bulk/exam-1/uuid-x.csv",
+    };
+    mockAuthFetch.mockResolvedValueOnce(presignResp);
+
+    const { result } = renderHook(() => usePresignExamRevokeBulkUpload("exam-1"), {
+      wrapper: wrapperFactory(),
+    });
+
+    let returned: typeof presignResp | undefined;
+    await act(async () => {
+      returned = await result.current.mutateAsync({
+        filename: "revokes.csv",
+        contentType: "text/csv",
+      });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/admin/exam-grants/revoke/bulk/presign?exam_id=exam-1&filename=revokes.csv&content_type=text%2Fcsv",
+      { method: "POST" },
+    );
+    expect(returned).toEqual(presignResp);
+  });
+});
+
+describe("useEnqueueExamRevokeBulk", () => {
+  it("posts {exam_id, file_key} to /admin/exam-grants/revoke/bulk and returns the job", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ job_id: "job-43" });
+
+    const { result } = renderHook(() => useEnqueueExamRevokeBulk(), {
+      wrapper: wrapperFactory(),
+    });
+
+    let returned: { job_id: string } | undefined;
+    await act(async () => {
+      returned = await result.current.mutateAsync({
+        examId: "exam-1",
+        fileKey: "exam-revoke-bulk/exam-1/uuid-x.csv",
+      });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exam-grants/revoke/bulk", {
+      method: "POST",
+      body: JSON.stringify({
+        exam_id: "exam-1",
+        file_key: "exam-revoke-bulk/exam-1/uuid-x.csv",
+      }),
+    });
+    expect(returned).toEqual({ job_id: "job-43" });
   });
 });

@@ -370,21 +370,24 @@ func toCrossSchoolStudentResponse(row repository.CrossSchoolStudentRow) CrossSch
 
 // SearchStudentsAcrossSchools searches students across all schools with optional
 // filters. Thin pass-through to the repository with bounded default limit.
-// This is the super_admin cross-school search (FR-SEARCH-01/03).
-func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, schoolID *string, noSchool bool, grade *int, jenjang string, limit int, cursor string, examIDs ...string) ([]CrossSchoolStudentResponse, string, error) {
+// This is the super_admin cross-school search (FR-SEARCH-01/03). registered
+// flips the exam predicate to "has a live registration for this exam" for the
+// revoke picker (default stays "not yet registered" for the grant picker).
+func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, schoolID *string, noSchool bool, grade *int, jenjang string, limit int, cursor string, registered bool, examIDs ...string) ([]CrossSchoolStudentResponse, string, error) {
 	examID := ""
 	if len(examIDs) > 0 {
 		examID = examIDs[0]
 	}
 	rows, nextCursor, err := s.storeRepo.SearchStudentsAcrossSchools(ctx, repository.StudentFilter{
-		Cursor:   cursor,
-		Limit:    limit,
-		Q:        q,
-		SchoolID: schoolID,
-		NoSchool: noSchool,
-		Grade:    grade,
-		Jenjang:  jenjang,
-		ExamID:   examID,
+		Cursor:         cursor,
+		Limit:          limit,
+		Q:              q,
+		SchoolID:       schoolID,
+		NoSchool:       noSchool,
+		Grade:          grade,
+		Jenjang:        jenjang,
+		ExamID:         examID,
+		ExamRegistered: registered,
 	})
 	if err != nil {
 		return nil, "", err

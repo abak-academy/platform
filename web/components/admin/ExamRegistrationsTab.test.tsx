@@ -69,14 +69,21 @@ vi.mock("@/lib/hooks/admin-bulk-exam-orders", () => ({
 let rosterData: { data: unknown[]; next_cursor?: string } | undefined = { data: [] };
 let rosterIsLoading = false;
 let rosterIsError = false;
+let rosterCounts: {
+  total: number;
+  registered: number;
+  checked_in: number;
+  submitted: number;
+  revoked: number;
+} | null = null;
 const rosterHookSpy = vi.fn();
 const exportRosterSpy = vi.fn().mockResolvedValue(undefined);
-let resolveRosterData: (filter: { cursor?: string; limit: number; sort: "asc" | "desc" }) =>
+let resolveRosterData: (filter: { cursor?: string; limit: number; sort: "asc" | "desc"; q?: string }) =>
   | { data: unknown[]; next_cursor?: string }
   | undefined = () => rosterData;
 
 vi.mock("@/lib/hooks/admin-exams", () => ({
-  useExamRoster: (examId: string, filter: { cursor?: string; limit: number; sort: "asc" | "desc" }) => {
+  useExamRoster: (examId: string, filter: { cursor?: string; limit: number; sort: "asc" | "desc"; q?: string }) => {
     rosterHookSpy(examId, filter);
     return {
       data: resolveRosterData(filter),
@@ -85,6 +92,11 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
       isError: rosterIsError,
     };
   },
+  useExamRegistrationCounts: () => ({
+    data: rosterCounts,
+    isLoading: false,
+    isError: false,
+  }),
   exportExamRoster: (...args: unknown[]) => exportRosterSpy(...args),
   adminExamsKeys: {
     all: ["adminExams"] as const,
@@ -95,6 +107,14 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
 const csvPresignMutateAsync = vi.fn();
 const csvEnqueueMutateAsync = vi.fn();
 const csvPutFile = vi.fn();
+
+const revokeMutateSpy = vi.fn();
+let revokeShouldError = false;
+let revokeErrorMessage = "";
+let revokeMockResult: any = null;
+
+const revokeCsvPresignMutateAsync = vi.fn();
+const revokeCsvEnqueueMutateAsync = vi.fn();
 
 const csvJobStatusState: {
   data: {
@@ -133,6 +153,27 @@ vi.mock("@/lib/hooks/admin-exam-grants", () => ({
   }),
   useEnqueueExamGrantBulk: () => ({
     mutateAsync: csvEnqueueMutateAsync,
+    isPending: false,
+  }),
+  useRevokeExamAccess: () => ({
+    isPending: false,
+    isError: false,
+    reset: vi.fn(),
+    mutate: (input: any, opts?: any) => {
+      revokeMutateSpy(input, opts);
+      if (revokeShouldError) {
+        opts?.onError?.(new Error(revokeErrorMessage));
+      } else {
+        opts?.onSuccess?.(revokeMockResult);
+      }
+    },
+  }),
+  usePresignExamRevokeBulkUpload: (examId: string) => ({
+    mutateAsync: (args: unknown) => revokeCsvPresignMutateAsync(examId, args),
+    isPending: false,
+  }),
+  useEnqueueExamRevokeBulk: () => ({
+    mutateAsync: revokeCsvEnqueueMutateAsync,
     isPending: false,
   }),
 }));
@@ -187,15 +228,21 @@ beforeEach(() => {
   rosterData = { data: [] };
   rosterIsLoading = false;
   rosterIsError = false;
+  rosterCounts = null;
   rosterHookSpy.mockClear();
   exportRosterSpy.mockClear();
   resolveRosterData = () => rosterData;
   csvPresignMutateAsync.mockReset();
   csvEnqueueMutateAsync.mockReset();
   csvPutFile.mockReset();
+  revokeCsvPresignMutateAsync.mockReset();
+  revokeCsvEnqueueMutateAsync.mockReset();
   csvJobStatusState.data = null;
   holdGrantMutation = false;
   heldGrantOptions = null;
+  revokeShouldError = false;
+  revokeErrorMessage = "";
+  revokeMockResult = null;
 });
 
 function wrapperFactory() {
@@ -214,6 +261,11 @@ function openGrantModal() {
 
 function openOrderModal() {
   fireEvent.click(screen.getByTestId("open-order-modal"));
+  return within(screen.getByRole("dialog"));
+}
+
+function openRevokeModal() {
+  fireEvent.click(screen.getByTestId("open-revoke-modal"));
   return within(screen.getByRole("dialog"));
 }
 
@@ -758,6 +810,305 @@ describe("ExamRegistrationsTab — super_admin CSV bulk grant flow (Frontend B2)
     expect(csvPutFile).not.toHaveBeenCalled();
     expect(csvEnqueueMutateAsync).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("ExamRegistrationsTab — super_admin standalone revoke modal", () => {
+  let lastDownloadedFilename: string | null = null;
+  let lastCapturedBlob: Blob | null = null;
+  const originalCreateElement = document.createElement.bind(document);
+
+  beforeEach(() => {
+    authUser = { role: "super_admin" };
+    rosterIsLoading = false;
+    rosterIsError = false;
+    revokeShouldError = false;
+    revokeErrorMessage = "";
+    revokeMockResult = null;
+    lastDownloadedFilename = null;
+    lastCapturedBlob = null;
+
+    document.createElement = ((tag: string) => {
+      const el = originalCreateElement(tag);
+      if (tag === "a") {
+        (el as HTMLAnchorElement).click = vi.fn(function (this: HTMLAnchorElement) {
+          lastDownloadedFilename = this.download;
+        });
+      }
+      return el;
+    }) as typeof document.createElement;
+
+    URL.createObjectURL = vi.fn().mockImplementation((blob: Blob) => {
+      lastCapturedBlob = blob;
+      return "blob:mock" as unknown as string;
+    }) as typeof URL.createObjectURL;
+
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  const rosterRows = [
+    {
+      registration_id: "reg-1",
+      student_id: "s1",
+      student_name: "Andi Saputra",
+      student_username: "andi123",
+      participant_number: 1,
+      participant_no: "250620-0042-000001",
+      status: "registered",
+      checked_in_at: null,
+      token: "TOKEN-ANDI-001",
+    },
+    {
+      registration_id: "reg-2",
+      student_id: "s2",
+      student_name: "Budi Santoso",
+      student_username: "budi456",
+      participant_number: 2,
+      participant_no: "250620-0042-000002",
+      status: "registered",
+      checked_in_at: null,
+      token: "TOKEN-BUDI-002",
+    },
+  ];
+
+  it("shows the revoke button always visible for super_admin, without roster checkboxes", () => {
+    rosterData = { data: rosterRows };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.getByTestId("open-revoke-modal")).toBeInTheDocument();
+    expect(screen.queryByTestId("roster-select-all")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("roster-select-s1")).not.toBeInTheDocument();
+  });
+
+  it("hides the revoke button for admin_school", () => {
+    authUser = { role: "admin_school", school_id: "school-1" };
+    rosterData = { data: rosterRows };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.queryByTestId("open-revoke-modal")).not.toBeInTheDocument();
+  });
+
+  it("opens its own modal with a manual/csv toggle and no revoke entry in the grant modal", () => {
+    rosterData = { data: rosterRows };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const grantDialog = openGrantModal();
+    expect(grantDialog.queryByTestId("grant-mode-revoke-csv")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    const dialog = openRevokeModal();
+    expect(dialog.getByTestId("revoke-mode-manual")).toBeInTheDocument();
+    expect(dialog.getByTestId("revoke-mode-csv")).toBeInTheDocument();
+    expect(dialog.getByTestId("participant-add")).toBeInTheDocument();
+  });
+
+  it("revokes the picked students after confirm and shows the per-row result view", async () => {
+    rosterData = { data: rosterRows };
+    revokeMockResult = {
+      revoked_count: 1,
+      results: [
+        { student_id: "student-1", name: "Andi Saputra", username: "andi123", status: "revoked", message: "" },
+        { student_id: "student-2", name: "Budi Santoso", username: "budi456", status: "failed", message: "has an in-progress session: force-submit first" },
+      ],
+    };
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const dialog = openRevokeModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
+    fireEvent.click(dialog.getByTestId("revoke-submit"));
+    fireEvent.click(screen.getByTestId("revoke-confirm"));
+
+    expect(revokeMutateSpy).toHaveBeenCalledWith(
+      { exam_id: "exam-1", student_ids: ["student-1", "student-2"] },
+      expect.any(Object),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("exam_roster_revoke_result_title")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("failed — has an in-progress session: force-submit first"),
+    ).toBeInTheDocument();
+    expect(toast.success).toHaveBeenCalledWith("exam_roster_revoke_success".replace("{n}", "1"));
+  });
+
+  it("shows an error toast when the revoke request fails", async () => {
+    rosterData = { data: rosterRows };
+    revokeShouldError = true;
+    revokeErrorMessage = "registration has an in-progress session";
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const dialog = openRevokeModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
+    fireEvent.click(dialog.getByTestId("revoke-submit"));
+    fireEvent.click(screen.getByTestId("revoke-confirm"));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("registration has an in-progress session");
+    });
+    expect(screen.queryByText("exam_roster_revoke_result_title")).not.toBeInTheDocument();
+  });
+
+  it("runs the revoke CSV flow with the revoke presign/enqueue endpoints and the revoke template filename", async () => {
+    rosterData = { data: [] };
+    revokeCsvPresignMutateAsync.mockResolvedValueOnce({
+      url: "http://minio.local/exam-revoke-bulk/exam-1/uuid.csv?sig=abc",
+      method: "PUT",
+      key: "exam-revoke-bulk/exam-1/uuid.csv",
+    });
+    csvPutFile.mockResolvedValueOnce(undefined);
+    revokeCsvEnqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-r1" });
+
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const dialog = openRevokeModal();
+    fireEvent.click(dialog.getByTestId("revoke-mode-csv"));
+    expect(dialog.getByTestId("revoke-csv-file-input")).toBeInTheDocument();
+
+    fireEvent.click(dialog.getByTestId("revoke-csv-download-template"));
+    await waitFor(() => expect(lastDownloadedFilename).toBe("exam_revoke_bulk_template.csv"));
+
+    fireEvent.change(dialog.getByTestId("revoke-csv-file-input"), {
+      target: { files: [new File(["username\nandi123\n"], "revokes.csv", { type: "text/csv" })] },
+    });
+    fireEvent.click(dialog.getByTestId("revoke-csv-upload-submit"));
+
+    await waitFor(() => {
+      expect(revokeCsvPresignMutateAsync).toHaveBeenCalledWith("exam-1", {
+        filename: "revokes.csv",
+        contentType: "text/csv",
+      });
+    });
+    await waitFor(() => {
+      expect(csvPutFile).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(revokeCsvEnqueueMutateAsync).toHaveBeenCalledWith({
+        examId: "exam-1",
+        fileKey: "exam-revoke-bulk/exam-1/uuid.csv",
+      });
+    });
+  });
+});
+
+describe("ExamRegistrationsTab — roster search and status counts", () => {
+  beforeEach(() => {
+    authUser = { role: "super_admin" };
+    rosterIsLoading = false;
+    rosterIsError = false;
+  });
+
+  it("shows the per-status registration summary as stat cards", () => {
+    rosterData = { data: [] };
+    rosterCounts = { total: 5, registered: 3, checked_in: 1, submitted: 0, revoked: 1 };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.getByTestId("roster-count-total")).toHaveTextContent("exam_roster_stat_total");
+    expect(screen.getByTestId("roster-count-total")).toHaveTextContent("5");
+    expect(screen.getByTestId("roster-count-registered")).toHaveTextContent(
+      "exam_roster_stat_registered",
+    );
+    expect(screen.getByTestId("roster-count-registered")).toHaveTextContent("3");
+    expect(screen.getByTestId("roster-count-checked-in")).toHaveTextContent(
+      "exam_roster_stat_checkedin",
+    );
+    expect(screen.getByTestId("roster-count-checked-in")).toHaveTextContent("1");
+    expect(screen.getByTestId("roster-count-submitted")).toHaveTextContent(
+      "exam_roster_stat_submitted",
+    );
+    expect(screen.getByTestId("roster-count-submitted")).toHaveTextContent("0");
+    expect(screen.getByTestId("roster-count-revoked")).toHaveTextContent("exam_roster_stat_revoked");
+    expect(screen.getByTestId("roster-count-revoked")).toHaveTextContent("1");
+  });
+
+  it("renders the summary above the search+action row, without a roster title heading", () => {
+    rosterData = { data: [] };
+    rosterCounts = { total: 1, registered: 1, checked_in: 0, submitted: 0, revoked: 0 };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.queryByText("exam_roster_title")).not.toBeInTheDocument();
+    const controlsRow = screen.getByTestId("roster-search").closest(".justify-between");
+    expect(controlsRow).not.toBeNull();
+    expect(
+      within(controlsRow as HTMLElement).getByTestId("open-grant-modal"),
+    ).toBeInTheDocument();
+    expect(
+      within(controlsRow as HTMLElement).getByTestId("open-revoke-modal"),
+    ).toBeInTheDocument();
+  });
+
+  it("restores the full roster after the student-name search is cleared", async () => {
+    vi.useFakeTimers();
+    try {
+      const andiRows = [
+        {
+          registration_id: "reg-a",
+          student_id: "sa",
+          student_name: "Andi Saputra",
+          student_username: "andi123",
+          participant_number: 1,
+          participant_no: "250620-0042-000001",
+          status: "registered",
+          checked_in_at: null,
+          token: "T1",
+        },
+      ];
+      const allRows = [...andiRows, {
+        registration_id: "reg-b",
+        student_id: "sb",
+        student_name: "Budi Santoso",
+        student_username: "budi456",
+        participant_number: 2,
+        participant_no: "250620-0042-000002",
+        status: "registered",
+        checked_in_at: null,
+        token: "T2",
+      }];
+      rosterData = { data: allRows };
+      resolveRosterData = (filter) =>
+        filter.q ? { data: andiRows } : { data: allRows };
+
+      render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+        wrapper: wrapperFactory(),
+      });
+
+      expect(screen.getByText("Andi Saputra")).toBeInTheDocument();
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+
+      fireEvent.change(screen.getByTestId("roster-search"), { target: { value: "andi" } });
+      await act(async () => {
+        vi.advanceTimersByTime(350);
+      });
+      expect((rosterHookSpy.mock.calls.at(-1)![1] as { q?: string }).q).toBe("andi");
+      expect(screen.queryByText("Budi Santoso")).not.toBeInTheDocument();
+      expect(screen.getByText("Andi Saputra")).toBeInTheDocument();
+
+      fireEvent.change(screen.getByTestId("roster-search"), { target: { value: "" } });
+      await act(async () => {
+        vi.advanceTimersByTime(350);
+      });
+      expect((rosterHookSpy.mock.calls.at(-1)![1] as { q?: string }).q).toBeUndefined();
+      expect(screen.getByText("Andi Saputra")).toBeInTheDocument();
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+      resolveRosterData = () => rosterData;
+    }
   });
 });
 

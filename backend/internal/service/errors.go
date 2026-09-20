@@ -156,6 +156,17 @@ var (
 	ErrInvalidGrantStudent = errors.New("one or more student IDs are invalid or not students")
 )
 
+// --- from exam_revoke.go ---
+var (
+	// ErrRegistrationRevoked is returned when a revoked registration is used on
+	// a student-facing gate (check-in, start session, card download).
+	ErrRegistrationRevoked = errors.New("registration has been revoked")
+	// ErrRegistrationHasActiveSession is returned when a revoke targets a
+	// student with an in_progress exam session; the admin must force-submit
+	// (or let it finish) first, then revoke.
+	ErrRegistrationHasActiveSession = errors.New("registration has an in-progress session")
+)
+
 // --- from exam_topic.go ---
 var (
 	// ErrTopicNotFound is returned when a topic lookup fails.

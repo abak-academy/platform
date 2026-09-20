@@ -131,8 +131,11 @@ func (s *Service) GrantExamAccess(ctx context.Context, actorID, examID string, s
 
 // insertExamRegistrationRow inserts a single exam registration for studentID
 // within an existing transaction, shared by GrantExamAccess and
-// GrantExamAccessBulk so both paths carry identical business logic. Returns
-// (nil, nil) if the student was already registered (ON CONFLICT DO NOTHING).
+// GrantExamAccessBulk so both paths carry identical business logic. The
+// conditional conflict branch only fires for a revoked row (revive it with a
+// fresh token, same semantics as repository.CreateExamRegistration); a live
+// registration yields no RETURNING row → (nil, nil) = "already registered"
+// skip preserved (FR-GRANT-03).
 func insertExamRegistrationRow(ctx context.Context, tx pgx.Tx, studentID, examID uuid.UUID) (*model.ExamRegistration, error) {
 	// Same advisory lock as CreateExamRegistration (exam.go:1120-1124) — its
 	// comment already names "admin grant" as a caller sharing this MAX+1
@@ -157,7 +160,10 @@ func insertExamRegistrationRow(ctx context.Context, tx pgx.Tx, studentID, examID
 		 VALUES ($1, $2, $3, $4,
 			(SELECT COALESCE(MAX(participant_number), 0) + 1
 			 FROM exam_registration WHERE exam_id = $2))
-		 ON CONFLICT (student_id, exam_id) DO NOTHING
+		 ON CONFLICT (student_id, exam_id) DO UPDATE
+		 SET status = 'registered', token = EXCLUDED.token, checked_in_at = NULL,
+		     revoked_at = NULL, revoked_by = NULL
+		 WHERE exam_registration.status = 'revoked'
 		 RETURNING id, student_id, exam_id, token, card_key, checked_in_at, attempts_used, status, created_at`,
 		studentID, examID, repository.GenerateExamToken(), "registered",
 	).Scan(

@@ -8,8 +8,8 @@ import type { CrossSchoolStudent } from "@/lib/types";
 
 export const examGrantKeys = {
   all: ["admin", "examGrants"] as const,
-  search: (q?: string, schoolId?: string, jenjang?: string, grade?: string, examId?: string, cursor?: string, limit?: number) =>
-    [...examGrantKeys.all, "search", q ?? "", schoolId ?? "", jenjang ?? "", grade ?? "", examId ?? "", cursor ?? "initial", limit ?? 20] as const,
+  search: (q?: string, schoolId?: string, jenjang?: string, grade?: string, examId?: string, cursor?: string, limit?: number, registered?: boolean) =>
+    [...examGrantKeys.all, "search", q ?? "", schoolId ?? "", jenjang ?? "", grade ?? "", examId ?? "", cursor ?? "initial", limit ?? 20, registered ?? false] as const,
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -23,6 +23,9 @@ export interface SearchStudentsAcrossSchoolsOpts {
   cursor?: string;
   limit?: number;
   enabled?: boolean;
+  // registered=true lists students WITH a live registration for examId —
+  // the revoke picker's source list (default lists the unregistered).
+  registered?: boolean;
 }
 
 export interface GrantExamAccessInput {
@@ -57,9 +60,9 @@ export interface EnqueueBulkResult {
  * All filter params are optional.
  */
 export function useSearchStudentsAcrossSchools(opts?: SearchStudentsAcrossSchoolsOpts) {
-  const { q, schoolId, jenjang, grade, examId, cursor, limit, enabled } = opts ?? {};
+  const { q, schoolId, jenjang, grade, examId, cursor, limit, enabled, registered } = opts ?? {};
   return useQuery({
-    queryKey: examGrantKeys.search(q, schoolId, jenjang, grade, examId, cursor, limit),
+    queryKey: examGrantKeys.search(q, schoolId, jenjang, grade, examId, cursor, limit, registered),
     enabled: enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -68,6 +71,7 @@ export function useSearchStudentsAcrossSchools(opts?: SearchStudentsAcrossSchool
       if (jenjang) params.set("jenjang", jenjang);
       if (grade) params.set("grade", grade);
       if (examId) params.set("exam_id", examId);
+      if (registered) params.set("registered", "true");
       if (cursor) params.set("cursor", cursor);
       if (limit) params.set("limit", String(limit));
       const query = params.toString();
@@ -123,6 +127,78 @@ export function useEnqueueExamGrantBulk() {
   return useMutation({
     mutationFn: ({ examId, fileKey }: { examId: string; fileKey: string }) =>
       authFetch<EnqueueBulkResult>("/admin/exam-grants/bulk", {
+        method: "POST",
+        body: JSON.stringify({ exam_id: examId, file_key: fileKey }),
+      }),
+  });
+}
+
+// ── Revoke (inverse of grant) ─────────────────────────────────────────────
+
+export interface RevokeExamAccessInput {
+  exam_id: string;
+  student_ids: string[];
+}
+
+export interface ExamRevokeRowResult {
+  student_id: string;
+  name: string;
+  username: string;
+  status: "revoked" | "skipped" | "failed";
+  message: string;
+}
+
+export interface RevokeExamAccessResponse {
+  revoked_count: number;
+  results: ExamRevokeRowResult[];
+}
+
+/**
+ * Soft-revoke exam registrations for selected students (super_admin only).
+ * POST /admin/exam-grants/revoke
+ */
+export function useRevokeExamAccess() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RevokeExamAccessInput) =>
+      authFetch<RevokeExamAccessResponse>("/admin/exam-grants/revoke", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: examGrantKeys.all });
+    },
+  });
+}
+
+/**
+ * Request a presigned MinIO PUT URL for a super_admin exam-revoke bulk CSV
+ * upload (super_admin only).
+ * POST /admin/exam-grants/revoke/bulk/presign?exam_id=&filename=&content_type=
+ */
+export function usePresignExamRevokeBulkUpload(examId: string) {
+  return useMutation({
+    mutationFn: ({ filename, contentType }: { filename: string; contentType: string }) => {
+      const qs = new URLSearchParams({
+        exam_id: examId,
+        filename,
+        content_type: contentType,
+      }).toString();
+      return authFetch<PresignedUpload>(`/admin/exam-grants/revoke/bulk/presign?${qs}`, {
+        method: "POST",
+      });
+    },
+  });
+}
+
+/**
+ * Enqueue an exam-revoke-bulk job for an already-uploaded CSV (super_admin only).
+ * POST /admin/exam-grants/revoke/bulk {exam_id, file_key} -> {job_id}
+ */
+export function useEnqueueExamRevokeBulk() {
+  return useMutation({
+    mutationFn: ({ examId, fileKey }: { examId: string; fileKey: string }) =>
+      authFetch<EnqueueBulkResult>("/admin/exam-grants/revoke/bulk", {
         method: "POST",
         body: JSON.stringify({ exam_id: examId, file_key: fileKey }),
       }),

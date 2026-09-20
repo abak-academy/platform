@@ -260,6 +260,13 @@ func (s *Service) CheckIn(ctx context.Context, studentID, token, fp string) (Che
 		return CheckInResult{}, err
 	}
 
+	// A revoked registration must not reach check-in; the repo query doesn't
+	// filter on status because the token lookup doubles as the student's
+	// credential check.
+	if reg.Status == "revoked" {
+		return CheckInResult{}, ErrRegistrationRevoked
+	}
+
 	exam, err := s.storeRepo.GetExamForSession(ctx, reg.ExamID)
 	if err != nil {
 		return CheckInResult{}, err
@@ -341,6 +348,10 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 			return SessionStartPayload{}, ErrRegistrationNotFound
 		}
 		return SessionStartPayload{}, err
+	}
+
+	if detail.ExamRegistration.Status == "revoked" {
+		return SessionStartPayload{}, ErrRegistrationRevoked
 	}
 
 	exam, err := s.storeRepo.GetExamForSession(ctx, detail.ExamID)

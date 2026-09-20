@@ -199,6 +199,10 @@ type ExamRegistration struct {
 	// ParticipantNumber is a per-exam sequence assigned at registration (nil for
 	// rows predating the column until backfilled). Displayed as ParticipantNo.
 	ParticipantNumber *int `json:"participant_number"`
+	// RevokedAt/RevokedBy are set when an admin revokes the registration (soft
+	// revoke — the row is kept so sessions/history stay referentially intact).
+	RevokedAt *time.Time `json:"revoked_at"`
+	RevokedBy *string    `json:"revoked_by"`
 }
 
 // ExamSession is one in-flight attempt by a student; multiple sessions per registration
@@ -414,6 +418,19 @@ type ExamRosterFilter struct {
 	Cursor string
 	Limit  int
 	Sort   string
+	// Q is the optional free-text student filter (name or username ILIKE).
+	Q string
+}
+
+// ExamRegistrationCounts is the per-status breakdown of an exam's
+// registrations (GET /admin/exams/:id/registrations/counts), scoped like the
+// roster (admin_school sees only its school). Total includes revoked rows.
+type ExamRegistrationCounts struct {
+	Total      int `json:"total"`
+	Registered int `json:"registered"`
+	CheckedIn  int `json:"checked_in"`
+	Submitted  int `json:"submitted"`
+	Revoked    int `json:"revoked"`
 }
 
 // SessionResult is the read shape for GET /api/v1/exam/sessions/:id/result. State is the

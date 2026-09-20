@@ -305,6 +305,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamsRead.GET("", h.AdminListExams)
 	adminExamsRead.GET("/:id", h.AdminGetExam)
 	adminExamsRead.GET("/:id/registrations", h.AdminListExamRegistrations)
+	adminExamsRead.GET("/:id/registrations/counts", h.AdminExamRegistrationCounts)
 	adminExamsRead.GET("/:id/registrations/export", h.AdminExportExamRegistrations)
 
 	// Admin exam results workspace (Issue 124) — super_admin only. "results-workspace:read"
@@ -327,9 +328,12 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamGrants := admin.Group("/exam-grants")
 	adminExamGrants.Use(handler.RBACMiddleware("exam-grants:write"))
 	adminExamGrants.POST("", h.AdminGrantExamAccess)
+	adminExamGrants.POST("/revoke", h.AdminRevokeExamAccess)
 	adminExamGrants.GET("/students/search", h.AdminSearchGrantStudents)
 	adminExamGrants.POST("/bulk/presign", h.AdminPresignExamGrantBulkUpload)
 	adminExamGrants.POST("/bulk", h.AdminEnqueueExamGrantBulk)
+	adminExamGrants.POST("/revoke/bulk/presign", h.AdminPresignExamRevokeBulkUpload)
+	adminExamGrants.POST("/revoke/bulk", h.AdminEnqueueExamRevokeBulk)
 
 	// Admin bulk-exam-order routes (FR-BULK-01..07). admin_school +
 	// super_admin + admin_store may all order exams; capability is

@@ -1277,6 +1277,11 @@ func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID stri
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrRegistrationNotFound
 	}
+	// Shared by the student detail route and card download; a revoked
+	// registration is unreachable from both.
+	if err == nil && detail.ExamRegistration.Status == "revoked" {
+		return nil, ErrRegistrationRevoked
+	}
 	if err == nil && detail != nil {
 		if detail.ParticipantNumber != nil {
 			// Prefix by the exam's scheduled date (WIB), falling back to the
@@ -1337,6 +1342,10 @@ func (s *Service) AdminListExamRoster(ctx context.Context, examID uuid.UUID, sch
 	}
 	formatExamRosterRows(rows)
 	return rows, nextCursor, nil
+}
+
+func (s *Service) AdminExamRegistrationCounts(ctx context.Context, examID uuid.UUID, schoolFilter *string) (model.ExamRegistrationCounts, error) {
+	return s.storeRepo.CountExamRegistrationsByStatus(ctx, examID, schoolFilter)
 }
 
 func formatExamRosterRows(rows []model.ExamRosterEntry) {

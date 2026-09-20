@@ -43,6 +43,10 @@ type StudentFilter struct {
 	Jenjang  string  // optional jenjang filter
 	SchoolID *string // optional school_id filter (cross-school search only)
 	ExamID   string
+	// ExamRegistered flips the ExamID predicate in SearchStudentsAcrossSchools
+	// to "has a live registration for this exam" — the revoke picker's source
+	// list. Default (false) keeps the grant picker's "not yet registered".
+	ExamRegistered bool
 	// AllSchools drops the school scope entirely, returning every student
 	// including those with no school on file. It is deliberately an explicit
 	// opt-in rather than "empty schoolID means all": the exam-participant and
@@ -123,7 +127,7 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 
 	if filter.ExamID != "" {
 		query += fmt.Sprintf(` AND u.status = 'active'
-			AND NOT EXISTS (SELECT 1 FROM exam_registration er WHERE er.student_id = u.id AND er.exam_id = $%d::uuid)`, argNum)
+			AND NOT EXISTS (SELECT 1 FROM exam_registration er WHERE er.student_id = u.id AND er.exam_id = $%d::uuid AND er.status <> 'revoked')`, argNum)
 		args = append(args, filter.ExamID)
 		argNum++
 	}
@@ -339,8 +343,12 @@ func (r *Repository) SearchStudentsAcrossSchools(ctx context.Context, filter Stu
 		argNum++
 	}
 	if filter.ExamID != "" {
+		predicate := "NOT EXISTS"
+		if filter.ExamRegistered {
+			predicate = "EXISTS"
+		}
 		query += fmt.Sprintf(` AND u.status = 'active'
-			AND NOT EXISTS (SELECT 1 FROM exam_registration er WHERE er.student_id = u.id AND er.exam_id = $%d::uuid)`, argNum)
+			AND %s (SELECT 1 FROM exam_registration er WHERE er.student_id = u.id AND er.exam_id = $%d::uuid AND er.status <> 'revoked')`, predicate, argNum)
 		args = append(args, filter.ExamID)
 		argNum++
 	}
