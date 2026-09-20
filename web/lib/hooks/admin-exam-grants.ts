@@ -8,8 +8,8 @@ import type { CrossSchoolStudent } from "@/lib/types";
 
 export const examGrantKeys = {
   all: ["admin", "examGrants"] as const,
-  search: (q?: string, schoolId?: string, jenjang?: string, grade?: string, examId?: string, cursor?: string, limit?: number) =>
-    [...examGrantKeys.all, "search", q ?? "", schoolId ?? "", jenjang ?? "", grade ?? "", examId ?? "", cursor ?? "initial", limit ?? 20] as const,
+  search: (q?: string, schoolId?: string, jenjang?: string, grade?: string, examId?: string, cursor?: string, limit?: number, registered?: boolean) =>
+    [...examGrantKeys.all, "search", q ?? "", schoolId ?? "", jenjang ?? "", grade ?? "", examId ?? "", cursor ?? "initial", limit ?? 20, registered ?? false] as const,
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -23,6 +23,9 @@ export interface SearchStudentsAcrossSchoolsOpts {
   cursor?: string;
   limit?: number;
   enabled?: boolean;
+  // registered=true lists students WITH a live registration for examId —
+  // the revoke picker's source list (default lists the unregistered).
+  registered?: boolean;
 }
 
 export interface GrantExamAccessInput {
@@ -57,9 +60,9 @@ export interface EnqueueBulkResult {
  * All filter params are optional.
  */
 export function useSearchStudentsAcrossSchools(opts?: SearchStudentsAcrossSchoolsOpts) {
-  const { q, schoolId, jenjang, grade, examId, cursor, limit, enabled } = opts ?? {};
+  const { q, schoolId, jenjang, grade, examId, cursor, limit, enabled, registered } = opts ?? {};
   return useQuery({
-    queryKey: examGrantKeys.search(q, schoolId, jenjang, grade, examId, cursor, limit),
+    queryKey: examGrantKeys.search(q, schoolId, jenjang, grade, examId, cursor, limit, registered),
     enabled: enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -68,6 +71,7 @@ export function useSearchStudentsAcrossSchools(opts?: SearchStudentsAcrossSchool
       if (jenjang) params.set("jenjang", jenjang);
       if (grade) params.set("grade", grade);
       if (examId) params.set("exam_id", examId);
+      if (registered) params.set("registered", "true");
       if (cursor) params.set("cursor", cursor);
       if (limit) params.set("limit", String(limit));
       const query = params.toString();

@@ -38,6 +38,7 @@ export const adminExamsKeys = {
   rosters: () => [...adminExamsKeys.all, "roster"] as const,
   roster: (examId: string, filter?: ExamRosterFilters) =>
     [...adminExamsKeys.rosters(), examId, filter ?? {}] as const,
+  rosterCounts: (examId: string) => [...adminExamsKeys.rosters(), examId, "counts"] as const,
 };
 
 export interface GradeEssayInput {
@@ -57,6 +58,7 @@ export interface ExamRosterFilters {
   cursor?: string;
   limit?: number;
   sort?: "asc" | "desc";
+  q?: string;
 }
 
 function buildListPath(filters?: AdminExamsFilters): string {
@@ -292,11 +294,31 @@ export function useExamRoster(
       if (filter?.cursor) params.set("cursor", filter.cursor);
       if (filter?.limit !== undefined) params.set("limit", String(filter.limit));
       if (filter?.sort) params.set("sort", filter.sort);
+      if (filter?.q) params.set("q", filter.q);
       const query = params.toString();
       return authFetch<{ data: ExamRosterEntry[]; next_cursor?: string }>(
         `/admin/exams/${encodeURIComponent(examId!)}/registrations${query ? `?${query}` : ""}`,
       );
     },
+    enabled: Boolean(examId) && enabled,
+  });
+}
+
+export interface ExamRegistrationCounts {
+  total: number;
+  registered: number;
+  checked_in: number;
+  submitted: number;
+  revoked: number;
+}
+
+export function useExamRegistrationCounts(examId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: adminExamsKeys.rosterCounts(examId ?? ""),
+    queryFn: () =>
+      authFetch<ExamRegistrationCounts>(
+        `/admin/exams/${encodeURIComponent(examId!)}/registrations/counts`,
+      ),
     enabled: Boolean(examId) && enabled,
   });
 }

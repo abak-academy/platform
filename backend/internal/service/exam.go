@@ -1344,6 +1344,10 @@ func (s *Service) AdminListExamRoster(ctx context.Context, examID uuid.UUID, sch
 	return rows, nextCursor, nil
 }
 
+func (s *Service) AdminExamRegistrationCounts(ctx context.Context, examID uuid.UUID, schoolFilter *string) (model.ExamRegistrationCounts, error) {
+	return s.storeRepo.CountExamRegistrationsByStatus(ctx, examID, schoolFilter)
+}
+
 func formatExamRosterRows(rows []model.ExamRosterEntry) {
 	wib, _ := time.LoadLocation("Asia/Jakarta")
 	for i := range rows {

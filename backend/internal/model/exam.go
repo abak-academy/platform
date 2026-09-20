@@ -418,6 +418,19 @@ type ExamRosterFilter struct {
 	Cursor string
 	Limit  int
 	Sort   string
+	// Q is the optional free-text student filter (name or username ILIKE).
+	Q string
+}
+
+// ExamRegistrationCounts is the per-status breakdown of an exam's
+// registrations (GET /admin/exams/:id/registrations/counts), scoped like the
+// roster (admin_school sees only its school). Total includes revoked rows.
+type ExamRegistrationCounts struct {
+	Total      int `json:"total"`
+	Registered int `json:"registered"`
+	CheckedIn  int `json:"checked_in"`
+	Submitted  int `json:"submitted"`
+	Revoked    int `json:"revoked"`
 }
 
 // SessionResult is the read shape for GET /api/v1/exam/sessions/:id/result. State is the

@@ -41,6 +41,9 @@ export interface ParticipantPickerProps {
   schoolId?: string;
   selected: string[];
   onChange: (ids: string[]) => void;
+  // "grant" lists students not yet registered for the exam (default);
+  // "revoke" lists students with a live registration for it.
+  mode?: "grant" | "revoke";
 }
 
 export function ParticipantPicker({
@@ -48,6 +51,7 @@ export function ParticipantPicker({
   schoolId,
   selected,
   onChange,
+  mode = "grant",
 }: ParticipantPickerProps) {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
@@ -76,6 +80,7 @@ export function ParticipantPicker({
     grade: gradeFilter || undefined,
     schoolId: schoolFilter || undefined,
     examId,
+    registered: mode === "revoke",
     cursor,
     limit: 20,
     enabled: !schoolId,
@@ -168,18 +173,19 @@ export function ParticipantPicker({
 
   return (
     <div className="space-y-4">
-      {/* Search + Filter row */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("students_search_placeholder")}
-            className="h-9 pl-9 text-xs"
-          />
-        </div>
+      {/* Search row */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t("students_search_placeholder")}
+          className="h-9 pl-9 text-xs"
+        />
+      </div>
 
+      {/* Jenjang/grade/school facet row */}
+      <div className="flex flex-wrap items-center gap-3">
         <Select
           value={jenjangFilter || ALL_FILTER_VALUE}
           onValueChange={(value) => setJenjangFilter(value === ALL_FILTER_VALUE ? "" : value)}
@@ -341,8 +347,9 @@ function SchoolFacetSelect({
   const { t } = useTranslation();
 
   return (
-    <div className="min-w-[260px] flex-1">
+    <div className="min-w-[220px] flex-1">
       <SchoolFilterPicker
+        compact
         value={value}
         onChange={onValueChange}
         label={t("select_school")}

@@ -379,7 +379,7 @@ func TestRevokedRegistration_ExcludedFromStudentListCountAndEligibility(t *testi
 	})
 
 	t.Run("grant search offers revoked student again", func(t *testing.T) {
-		rows, _, err := svc.SearchStudentsAcrossSchools(ctx, "", nil, false, nil, "", 50, "", examID.String())
+		rows, _, err := svc.SearchStudentsAcrossSchools(ctx, "", nil, false, nil, "", 50, "", false, examID.String())
 		require.NoError(t, err)
 		ids := map[string]bool{}
 		for _, r := range rows {
@@ -387,6 +387,17 @@ func TestRevokedRegistration_ExcludedFromStudentListCountAndEligibility(t *testi
 		}
 		require.True(t, ids[revoked.String()], "revoked student must reappear as grantable")
 		require.False(t, ids[live.String()], "live student must stay filtered out")
+	})
+
+	t.Run("registered search lists only live registrations", func(t *testing.T) {
+		rows, _, err := svc.SearchStudentsAcrossSchools(ctx, "", nil, false, nil, "", 50, "", true, examID.String())
+		require.NoError(t, err)
+		ids := map[string]bool{}
+		for _, r := range rows {
+			ids[r.ID] = true
+		}
+		require.True(t, ids[live.String()], "live registered student must appear for the revoke picker")
+		require.False(t, ids[revoked.String()], "revoked student must not appear for the revoke picker")
 	})
 }
 

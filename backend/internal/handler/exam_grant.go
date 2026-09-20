@@ -58,8 +58,9 @@ func (h *Handler) AdminSearchGrantStudents(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "exam_id must be a valid UUID"})
 		}
 	}
+	registered := c.QueryParam("registered") == "true"
 
-	students, nextCursor, err := h.svc.SearchStudentsAcrossSchools(c.Request().Context(), q, schoolID, noSchool, grade, jenjang, limit, cursor, examID)
+	students, nextCursor, err := h.svc.SearchStudentsAcrossSchools(c.Request().Context(), q, schoolID, noSchool, grade, jenjang, limit, cursor, registered, examID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

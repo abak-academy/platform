@@ -1910,13 +1910,15 @@ func (r *Repository) ListExamRoster(ctx context.Context, examID uuid.UUID, schoo
 						(reg.participant_number = $5::integer AND reg.id < $6)))
 				))
 			)
+			AND ($9::text = '' OR u.name ILIKE '%' || $9::text || '%'
+				OR COALESCE(u.username, '') ILIKE '%' || $9::text || '%')
 		ORDER BY
 			CASE WHEN $7 = 'asc' THEN reg.participant_number END ASC NULLS LAST,
 			CASE WHEN $7 = 'desc' THEN reg.participant_number END DESC NULLS LAST,
 			CASE WHEN $7 = 'asc' THEN reg.id END ASC,
 			CASE WHEN $7 = 'desc' THEN reg.id END DESC
 		LIMIT NULLIF($8, 0)`,
-		examID, schoolFilter, filter.Cursor != "", cursorIsNull, cursorNumber, cursorID, sortDirection, limit,
+		examID, schoolFilter, filter.Cursor != "", cursorIsNull, cursorNumber, cursorID, sortDirection, limit, filter.Q,
 	)
 	if err != nil {
 		return nil, "", err
@@ -1948,6 +1950,28 @@ func (r *Repository) ListExamRoster(ctx context.Context, examID uuid.UUID, schoo
 		items = []model.ExamRosterEntry{}
 	}
 	return items, nextCursor, nil
+}
+
+// CountExamRegistrationsByStatus aggregates an exam's registrations by status
+// plus the total, scoped like ListExamRoster (schoolFilter non-nil constrains
+// rows to that school's students).
+func (r *Repository) CountExamRegistrationsByStatus(ctx context.Context, examID uuid.UUID, schoolFilter *string) (model.ExamRegistrationCounts, error) {
+	var counts model.ExamRegistrationCounts
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*),
+			COUNT(*) FILTER (WHERE reg.status = 'registered'),
+			COUNT(*) FILTER (WHERE reg.status = 'checked_in'),
+			COUNT(*) FILTER (WHERE reg.status = 'submitted'),
+			COUNT(*) FILTER (WHERE reg.status = 'revoked')
+		FROM exam_registration reg
+		JOIN users u ON u.id = reg.student_id
+		WHERE reg.exam_id = $1 AND ($2::uuid IS NULL OR u.school_id = $2)`,
+		examID, schoolFilter,
+	).Scan(&counts.Total, &counts.Registered, &counts.CheckedIn, &counts.Submitted, &counts.Revoked)
+	if err != nil {
+		return model.ExamRegistrationCounts{}, err
+	}
+	return counts, nil
 }
 
 func encodeExamRosterCursor(participantNumber *int, registrationID uuid.UUID) string {

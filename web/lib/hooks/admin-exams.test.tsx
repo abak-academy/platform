@@ -6,6 +6,7 @@ import {
   useSessionEssays,
   useGradeEssay,
   useExamRoster,
+  useExamRegistrationCounts,
   exportExamRoster,
   useExams,
   adminExamsKeys,
@@ -136,6 +137,46 @@ describe("admin-exams grading hooks", () => {
       "/admin/exams/e1/registrations?cursor=cursor-2&limit=20&sort=desc",
     );
     expect(result.current.data?.data).toEqual(rows);
+  });
+
+  it("useExamRoster forwards the student-name search filter", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(
+      () => useExamRoster("e1", { sort: "asc", limit: 20, q: "andi" }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/admin/exams/e1/registrations?limit=20&sort=asc&q=andi",
+    );
+  });
+
+  it("useExamRegistrationCounts requests the per-status counts endpoint", async () => {
+    mockAuthFetch.mockResolvedValueOnce({
+      total: 3,
+      registered: 2,
+      checked_in: 0,
+      submitted: 0,
+      revoked: 1,
+    });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useExamRegistrationCounts("e1"), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/exams/e1/registrations/counts");
+    expect(result.current.data).toEqual({
+      total: 3,
+      registered: 2,
+      checked_in: 0,
+      submitted: 0,
+      revoked: 1,
+    });
   });
 
   it("useExams() with no argument still requests GET /admin/exams — monitor/ProductModal call sites are unaffected", async () => {

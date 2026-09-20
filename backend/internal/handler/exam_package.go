@@ -105,7 +105,7 @@ func (h *Handler) AdminListExamRegistrations(c echo.Context) error {
 		}
 		schoolFilter = claims.SchoolID
 	}
-	filter := model.ExamRosterFilter{Cursor: c.QueryParam("cursor"), Sort: c.QueryParam("sort")}
+	filter := model.ExamRosterFilter{Cursor: c.QueryParam("cursor"), Sort: c.QueryParam("sort"), Q: c.QueryParam("q")}
 	if filter.Sort == "" {
 		filter.Sort = "asc"
 	}
@@ -126,6 +126,32 @@ func (h *Handler) AdminListExamRegistrations(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows, "next_cursor": nextCursor})
+}
+
+// AdminExamRegistrationCounts returns the per-status registration breakdown
+// for an exam (GET /admin/exams/:id/registrations/counts), scoped like the
+// roster: admin_school sees only its own school's participants.
+func (h *Handler) AdminExamRegistrationCounts(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	var schoolFilter *string
+	if claims.Role == "admin_school" {
+		if claims.SchoolID == nil {
+			return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+		}
+		schoolFilter = claims.SchoolID
+	}
+	counts, err := h.svc.AdminExamRegistrationCounts(c.Request().Context(), id, schoolFilter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, counts)
 }
 
 func (h *Handler) AdminExportExamRegistrations(c echo.Context) error {
