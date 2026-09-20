@@ -18,10 +18,8 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
 // webhookSigTestHexKey is a fixed 32-byte AES key used only to encrypt the
@@ -35,36 +33,8 @@ const webhookSigTestHexKey = "4c73650bf4ff750b4676412888747ed94bef9d8bba98802702
 // for 841cd84).
 func newWebhookSignatureTestEnv(t *testing.T) (*echo.Echo, *repository.Repository) {
 	t.Helper()
-	ctx := context.Background()
 
-	pgContainer, err := tcpostgres.Run(ctx,
-		"postgres:17-alpine",
-		tcpostgres.WithDatabase("akademi_webhook_sig_test"),
-		tcpostgres.WithUsername("test"),
-		tcpostgres.WithPassword("test"),
-		tcpostgres.BasicWaitStrategies(),
-	)
-	if err != nil {
-		t.Fatalf("start postgres container: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := pgContainer.Terminate(ctx); err != nil {
-			t.Logf("terminate postgres container: %v", err)
-		}
-	})
-
-	dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("connection string: %v", err)
-	}
-	if err := infra.RunMigrations(ctx, dsn); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("open pool: %v", err)
-	}
+	pool := newTemplatedPool(t)
 	t.Cleanup(pool.Close)
 
 	repo := repository.New(pool)

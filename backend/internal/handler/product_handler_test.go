@@ -22,7 +22,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
 func TestListProducts_Unauthenticated_OnlyPublishedVisible(t *testing.T) {
@@ -104,12 +103,11 @@ func TestAdminPublishProduct_AdminStoreToken_DraftProduct_Returns200(t *testing.
 // reaching `id > $n` against a uuid column. A fake repo can't reproduce that.
 
 type productListDBTestEnv struct {
-	pool        *pgxpool.Pool
-	pgContainer *tcpostgres.PostgresContainer
-	rdb         *redis.Client
-	e           *echo.Echo
-	signer      *infra.JWTSigner
-	store       *repository.Repository
+	pool   *pgxpool.Pool
+	rdb    *redis.Client
+	e      *echo.Echo
+	signer *infra.JWTSigner
+	store  *repository.Repository
 }
 
 var (
@@ -120,29 +118,8 @@ var (
 func newProductListDBEnv(t *testing.T) *productListDBTestEnv {
 	t.Helper()
 	productListDBOnce.Do(func() {
-		ctx := context.Background()
 
-		pgContainer, err := tcpostgres.Run(ctx,
-			"postgres:17-alpine",
-			tcpostgres.WithDatabase("akademi_product_list_test"),
-			tcpostgres.WithUsername("test"),
-			tcpostgres.WithPassword("test"),
-			tcpostgres.BasicWaitStrategies(),
-		)
-		if err != nil {
-			t.Fatalf("start postgres container: %v", err)
-		}
-		dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-		if err != nil {
-			t.Fatalf("connection string: %v", err)
-		}
-		if err := infra.RunMigrations(ctx, dsn); err != nil {
-			t.Fatalf("run migrations: %v", err)
-		}
-		pool, err := pgxpool.New(ctx, dsn)
-		if err != nil {
-			t.Fatalf("new pool: %v", err)
-		}
+		pool := newTemplatedPool(t)
 		store := repository.New(pool)
 
 		mr, err := miniredis.Run()
@@ -176,7 +153,7 @@ func newProductListDBEnv(t *testing.T) *productListDBTestEnv {
 		adminProducts.GET("", h.AdminListProducts)
 
 		productListDBEnv = &productListDBTestEnv{
-			pool: pool, pgContainer: pgContainer, rdb: rdb, e: e, signer: signer, store: store,
+			pool: pool, rdb: rdb, e: e, signer: signer, store: store,
 		}
 	})
 	if productListDBEnv == nil {

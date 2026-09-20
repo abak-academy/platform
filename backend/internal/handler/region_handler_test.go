@@ -19,7 +19,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
 // regionTestDBEnv is a shared singleton DB-backed environment for region handler tests.
@@ -29,41 +28,19 @@ var (
 )
 
 type regionTestDBEnv struct {
-	pool        *pgxpool.Pool
-	pgContainer *tcpostgres.PostgresContainer
-	rdb         *redis.Client
-	e           *echo.Echo
-	svc         *service.Service
-	signer      *infra.JWTSigner
-	mr          *miniredis.Miniredis
+	pool   *pgxpool.Pool
+	rdb    *redis.Client
+	e      *echo.Echo
+	svc    *service.Service
+	signer *infra.JWTSigner
+	mr     *miniredis.Miniredis
 }
 
 func newRegionTestDBEnv(t *testing.T) *regionTestDBEnv {
 	t.Helper()
 	regionDBOnce.Do(func() {
-		ctx := context.Background()
 
-		pgContainer, err := tcpostgres.Run(ctx,
-			"postgres:17-alpine",
-			tcpostgres.WithDatabase("akademi_region_handler_test"),
-			tcpostgres.WithUsername("test"),
-			tcpostgres.WithPassword("test"),
-			tcpostgres.BasicWaitStrategies(),
-		)
-		if err != nil {
-			t.Fatalf("start postgres container: %v", err)
-		}
-		dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-		if err != nil {
-			t.Fatalf("connection string: %v", err)
-		}
-		if err := infra.RunMigrations(ctx, dsn); err != nil {
-			t.Fatalf("run migrations: %v", err)
-		}
-		pool, err := pgxpool.New(ctx, dsn)
-		if err != nil {
-			t.Fatalf("new pool: %v", err)
-		}
+		pool := newTemplatedPool(t)
 		store := repository.New(pool)
 
 		mr, err := miniredis.Run()
@@ -97,13 +74,12 @@ func newRegionTestDBEnv(t *testing.T) *regionTestDBEnv {
 		v1.GET("/cities/:id/districts", h.ListDistrictsByCity)
 
 		regionDBEnv = &regionTestDBEnv{
-			pool:        pool,
-			pgContainer: pgContainer,
-			rdb:         rdb,
-			e:           e,
-			svc:         svc,
-			signer:      signer,
-			mr:          mr,
+			pool:   pool,
+			rdb:    rdb,
+			e:      e,
+			svc:    svc,
+			signer: signer,
+			mr:     mr,
 		}
 	})
 	if regionDBEnv == nil {
