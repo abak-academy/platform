@@ -1,91 +1,34 @@
 package handler_test
 
 import (
-	"context"
 	"os"
 	"testing"
 )
 
-// TestMain terminates the shared testcontainers Postgres instances created by
-// the DB-backed admin student/results test envs. sync.Once keeps each container
-// alive across tests in the package; without this they leak after the run.
+// The DB-backed envs in this package share one Postgres container
+// (sharedpg_test.go); each holds a pool on its own database cloned from the
+// template. Close the pools and fake-redis instances each env owns, then
+// terminate the single container — without that it leaks after the run.
 func TestMain(m *testing.M) {
 	code := m.Run()
 
-	ctx := context.Background()
 	if adminStuDBEnv != nil {
-		if adminStuDBEnv.pool != nil {
-			adminStuDBEnv.pool.Close()
-		}
-		if adminStuDBEnv.rdb != nil {
-			adminStuDBEnv.rdb.Close()
-		}
-		if adminStuDBEnv.mr != nil {
-			adminStuDBEnv.mr.Close()
-		}
-		if adminStuDBEnv.pgContainer != nil {
-			_ = adminStuDBEnv.pgContainer.Terminate(ctx)
-		}
+		closeEnv(adminStuDBEnv.pool, adminStuDBEnv.rdb, adminStuDBEnv.mr)
 	}
 	if adminResultsDBEnv != nil {
-		if adminResultsDBEnv.pool != nil {
-			adminResultsDBEnv.pool.Close()
-		}
-		if adminResultsDBEnv.rdb != nil {
-			adminResultsDBEnv.rdb.Close()
-		}
-		if adminResultsDBEnv.mr != nil {
-			adminResultsDBEnv.mr.Close()
-		}
-		if adminResultsDBEnv.pgContainer != nil {
-			_ = adminResultsDBEnv.pgContainer.Terminate(ctx)
-		}
+		closeEnv(adminResultsDBEnv.pool, adminResultsDBEnv.rdb, adminResultsDBEnv.mr)
 	}
-
 	if adminProductDBEnv != nil {
-		if adminProductDBEnv.pool != nil {
-			adminProductDBEnv.pool.Close()
-		}
-		if adminProductDBEnv.rdb != nil {
-			adminProductDBEnv.rdb.Close()
-		}
-		if adminProductDBEnv.mr != nil {
-			adminProductDBEnv.mr.Close()
-		}
-		if adminProductDBEnv.pgContainer != nil {
-			_ = adminProductDBEnv.pgContainer.Terminate(ctx)
-		}
+		closeEnv(adminProductDBEnv.pool, adminProductDBEnv.rdb, adminProductDBEnv.mr)
 	}
-
 	if regionDBEnv != nil {
-		if regionDBEnv.pool != nil {
-			regionDBEnv.pool.Close()
-		}
-		if regionDBEnv.rdb != nil {
-			regionDBEnv.rdb.Close()
-		}
-		if regionDBEnv.mr != nil {
-			regionDBEnv.mr.Close()
-		}
-		if regionDBEnv.pgContainer != nil {
-			_ = regionDBEnv.pgContainer.Terminate(ctx)
-		}
+		closeEnv(regionDBEnv.pool, regionDBEnv.rdb, regionDBEnv.mr)
+	}
+	if searchGrantDBEnv != nil {
+		closeEnv(searchGrantDBEnv.pool, searchGrantDBEnv.rdb, searchGrantDBEnv.mr)
 	}
 
-	if searchGrantDBEnv != nil {
-		if searchGrantDBEnv.pool != nil {
-			searchGrantDBEnv.pool.Close()
-		}
-		if searchGrantDBEnv.rdb != nil {
-			searchGrantDBEnv.rdb.Close()
-		}
-		if searchGrantDBEnv.mr != nil {
-			searchGrantDBEnv.mr.Close()
-		}
-		if searchGrantDBEnv.pgContainer != nil {
-			_ = searchGrantDBEnv.pgContainer.Terminate(ctx)
-		}
-	}
+	terminateSharedPG()
 
 	os.Exit(code)
 }

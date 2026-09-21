@@ -19,7 +19,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
 func TestAdminRefundOrder_BasicCompilation(t *testing.T) {
@@ -78,28 +77,7 @@ var (
 func shipHandlerRepoFixture(t *testing.T) *repository.Repository {
 	t.Helper()
 	shipHandlerEnvOnce.Do(func() {
-		ctx := context.Background()
-		pgContainer, err := tcpostgres.Run(ctx,
-			"postgres:17-alpine",
-			tcpostgres.WithDatabase("akademi_test"),
-			tcpostgres.WithUsername("test"),
-			tcpostgres.WithPassword("test"),
-			tcpostgres.BasicWaitStrategies(),
-		)
-		if err != nil {
-			t.Fatalf("start postgres container: %v", err)
-		}
-		dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-		if err != nil {
-			t.Fatalf("connection string: %v", err)
-		}
-		if err := infra.RunMigrations(ctx, dsn); err != nil {
-			t.Fatalf("run migrations: %v", err)
-		}
-		pool, err := infra.NewPool(ctx, dsn)
-		if err != nil {
-			t.Fatalf("new pool: %v", err)
-		}
+		pool := newTemplatedPool(t)
 		shipHandlerRepo = repository.New(pool)
 	})
 	if shipHandlerRepo == nil {

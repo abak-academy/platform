@@ -21,7 +21,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
 // This file exercises the NF-2 active-public-promo listing at the HTTP
@@ -45,29 +44,8 @@ type promoActiveTestEnv struct {
 func newPromoActiveDBEnv(t *testing.T) *promoActiveTestEnv {
 	t.Helper()
 	promoActiveDBOnce.Do(func() {
-		ctx := context.Background()
 
-		pgContainer, err := tcpostgres.Run(ctx,
-			"postgres:17-alpine",
-			tcpostgres.WithDatabase("akademi_promo_active_test"),
-			tcpostgres.WithUsername("test"),
-			tcpostgres.WithPassword("test"),
-			tcpostgres.BasicWaitStrategies(),
-		)
-		if err != nil {
-			t.Fatalf("start postgres container: %v", err)
-		}
-		dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-		if err != nil {
-			t.Fatalf("connection string: %v", err)
-		}
-		if err := infra.RunMigrations(ctx, dsn); err != nil {
-			t.Fatalf("run migrations: %v", err)
-		}
-		pool, err := pgxpool.New(ctx, dsn)
-		if err != nil {
-			t.Fatalf("new pool: %v", err)
-		}
+		pool := newTemplatedPool(t)
 		store := repository.New(pool)
 
 		mr, err := miniredis.Run()

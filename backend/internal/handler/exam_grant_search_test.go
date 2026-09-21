@@ -21,7 +21,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
 // ---------------------------------------------------------------------------
@@ -91,41 +90,19 @@ var (
 )
 
 type searchGrantDBTestEnv struct {
-	pool        *pgxpool.Pool
-	pgContainer *tcpostgres.PostgresContainer
-	rdb         *redis.Client
-	e           *echo.Echo
-	svc         *service.Service
-	signer      *infra.JWTSigner
-	mr          *miniredis.Miniredis
+	pool   *pgxpool.Pool
+	rdb    *redis.Client
+	e      *echo.Echo
+	svc    *service.Service
+	signer *infra.JWTSigner
+	mr     *miniredis.Miniredis
 }
 
 func newSearchGrantDBEnv(t *testing.T) *searchGrantDBTestEnv {
 	t.Helper()
 	searchGrantDBOnce.Do(func() {
-		ctx := context.Background()
 
-		pgContainer, err := tcpostgres.Run(ctx,
-			"postgres:17-alpine",
-			tcpostgres.WithDatabase("akademi_search_grant_test"),
-			tcpostgres.WithUsername("test"),
-			tcpostgres.WithPassword("test"),
-			tcpostgres.BasicWaitStrategies(),
-		)
-		if err != nil {
-			t.Fatalf("start postgres container: %v", err)
-		}
-		dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-		if err != nil {
-			t.Fatalf("connection string: %v", err)
-		}
-		if err := infra.RunMigrations(ctx, dsn); err != nil {
-			t.Fatalf("run migrations: %v", err)
-		}
-		pool, err := pgxpool.New(ctx, dsn)
-		if err != nil {
-			t.Fatalf("new pool: %v", err)
-		}
+		pool := newTemplatedPool(t)
 		store := repository.New(pool)
 
 		mr, err := miniredis.Run()
@@ -161,13 +138,12 @@ func newSearchGrantDBEnv(t *testing.T) *searchGrantDBTestEnv {
 		adminExamGrants.GET("/students/search", h.AdminSearchGrantStudents)
 
 		searchGrantDBEnv = &searchGrantDBTestEnv{
-			pool:        pool,
-			pgContainer: pgContainer,
-			rdb:         rdb,
-			e:           e,
-			svc:         svc,
-			signer:      signer,
-			mr:          mr,
+			pool:   pool,
+			rdb:    rdb,
+			e:      e,
+			svc:    svc,
+			signer: signer,
+			mr:     mr,
 		}
 	})
 	if searchGrantDBEnv == nil {

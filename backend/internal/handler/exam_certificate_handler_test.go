@@ -28,7 +28,6 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/redis/go-redis/v9"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
 // ---------------------------------------------------------------------------
@@ -188,7 +187,6 @@ func newTestEnvWithStoreAndStorage(t *testing.T) *testEnvWithStore {
 
 func newTestEnvWithStoreCfg(t *testing.T, storage *minio.Client, cfg *config.Config) *testEnvWithStore {
 	t.Helper()
-	ctx := context.Background()
 
 	// No live Gotenberg sidecar runs in the test environment; point the
 	// renderer at a fake one unless a caller already configured a URL.
@@ -199,35 +197,7 @@ func newTestEnvWithStoreCfg(t *testing.T, storage *minio.Client, cfg *config.Con
 		cfg.GotenbergURL = srv.URL
 	}
 
-	pgContainer, err := tcpostgres.Run(ctx,
-		"postgres:17-alpine",
-		tcpostgres.WithDatabase("akademi_handler_test"),
-		tcpostgres.WithUsername("test"),
-		tcpostgres.WithPassword("test"),
-		tcpostgres.BasicWaitStrategies(),
-	)
-	if err != nil {
-		t.Fatalf("start postgres container: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := pgContainer.Terminate(ctx); err != nil {
-			t.Logf("terminate postgres container: %v", err)
-		}
-	})
-
-	dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("connection string: %v", err)
-	}
-
-	if err := infra.RunMigrations(ctx, dsn); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("open pool: %v", err)
-	}
+	pool := newTemplatedPool(t)
 	t.Cleanup(pool.Close)
 
 	store := repository.New(pool)
