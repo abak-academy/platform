@@ -15,15 +15,20 @@
 #     hub.crt/hub.key from provisioning; rename/copy them to those two names.
 #
 # Deploy:
-#   IMAGE_TAG=<commit-sha> docker compose -f deploy/compose/production.yml up -d
+#   IMAGE_TAG=<version-or-commit-sha> docker compose -f deploy/compose/production.yml up -d
 # (IMAGE_TAG comes from a hand-placed deploy/.env — see .env.example.)
+#
+# Images are built by a v* tag, and carry both that version and the commit SHA
+# pointing at the same digest. Either works here. Prefer the version when
+# deploying deliberately; the SHA is what `docker ps` shows and what you diff
+# against `git log` when a production report comes in.
 #
 # Replica counts live in `deploy.replicas` below so a plain `up -d` keeps them.
 # Compose v2 honours that outside swarm — BUT a `--scale` flag on the CLI
 # overrides it silently, which is how a 2-vCPU box once met 3,300 students with
 # one web replica. Don't pass --scale; change the manifest.
 #
-# Rollback: IMAGE_TAG=<older-commit-sha> docker compose -f deploy/compose/production.yml up -d
+# Rollback: IMAGE_TAG=<older-version-or-sha> docker compose -f deploy/compose/production.yml up -d
 #
 # Postgres and PgBouncer are native on vm-db (10.20.0.10), not containers here —
 # there is no postgres service or pgdata volume in this manifest. Object storage
@@ -68,7 +73,7 @@ services:
       retries: 5
 
   api:
-    image: asia-southeast2-docker.pkg.dev/abak-academy-platform/app/api:${IMAGE_TAG:?set IMAGE_TAG to the deployed commit SHA}
+    image: asia-southeast2-docker.pkg.dev/abak-academy-platform/app/api:${IMAGE_TAG:?set IMAGE_TAG to the deployed version tag or commit SHA}
     restart: unless-stopped
     environment:
       APP_ENV: prod
@@ -88,7 +93,7 @@ services:
         max-file: "3"
 
   worker:
-    image: asia-southeast2-docker.pkg.dev/abak-academy-platform/app/worker:${IMAGE_TAG:?set IMAGE_TAG to the deployed commit SHA}
+    image: asia-southeast2-docker.pkg.dev/abak-academy-platform/app/worker:${IMAGE_TAG:?set IMAGE_TAG to the deployed version tag or commit SHA}
     restart: unless-stopped
     environment:
       APP_ENV: prod
@@ -105,7 +110,7 @@ services:
         max-file: "3"
 
   web:
-    image: asia-southeast2-docker.pkg.dev/abak-academy-platform/app/web:prod-${IMAGE_TAG:?set IMAGE_TAG to the deployed commit SHA}
+    image: asia-southeast2-docker.pkg.dev/abak-academy-platform/app/web:prod-${IMAGE_TAG:?set IMAGE_TAG to the deployed version tag or commit SHA}
     restart: unless-stopped
     depends_on:
       - api

@@ -5,6 +5,12 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 : "${REGISTRY:?e.g. asia-southeast2-docker.pkg.dev/abak-academy-platform/app}"
 : "${TAG:?commit SHA — never 'latest'}"
 
+# VERSION_TAG is the optional human-facing name for the same image, e.g. v1.4.0.
+# The commit SHA stays the image's identity: it is immutable and it is what
+# `docker ps` on vm-app is diffed against when a production report comes in.
+# A version tag can be moved; a SHA cannot, so both are pushed and never one.
+VERSION_TAG="${VERSION_TAG:-}"
+
 # api/worker are byte-identical across environments; web is not. Splitting them lets CI
 # build the pair once and push it to both registries, and build the two webs in parallel.
 COMPONENTS="${COMPONENTS:-api worker web}"
@@ -21,6 +27,10 @@ for component in $COMPONENTS; do
         -f "deploy/images/Dockerfile.${component}" \
         -t "${REGISTRY}/${component}:${TAG}" backend
       built+=("${REGISTRY}/${component}:${TAG}")
+      if [ -n "$VERSION_TAG" ]; then
+        docker tag "${REGISTRY}/${component}:${TAG}" "${REGISTRY}/${component}:${VERSION_TAG}"
+        built+=("${REGISTRY}/${component}:${VERSION_TAG}")
+      fi
       ;;
     web)
       : "${TARGET_ENV:?staging|prod}"
@@ -33,6 +43,10 @@ for component in $COMPONENTS; do
         --build-arg "NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}" \
         -t "${REGISTRY}/web:${TARGET_ENV}-${TAG}" web
       built+=("${REGISTRY}/web:${TARGET_ENV}-${TAG}")
+      if [ -n "$VERSION_TAG" ]; then
+        docker tag "${REGISTRY}/web:${TARGET_ENV}-${TAG}" "${REGISTRY}/web:${TARGET_ENV}-${VERSION_TAG}"
+        built+=("${REGISTRY}/web:${TARGET_ENV}-${VERSION_TAG}")
+      fi
       ;;
     *)
       echo "unknown component: ${component}" >&2

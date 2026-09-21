@@ -8,7 +8,12 @@ on:
   # needed for main, which is where the images/images-prod jobs are gated anyway.
   push:
     branches: [main]
+    # A v* tag is what ships. Merging to main verifies; it no longer builds an image.
+    tags: ['v*']
   pull_request:
+  # Escape hatch: build an arbitrary commit without cutting a version, for a
+  # hotfix. The image gets its SHA tag only — no version tag is invented.
+  workflow_dispatch:
 
 # Without this, three pushes in a row leave six runs racing and none cancelled,
 # even though only the newest ref matters. Not on main: those runs publish images to
@@ -73,7 +78,7 @@ jobs:
   # build-image.sh call is a docker layer-cache hit and only re-tags.
   # Requires GitHub-side setup: vars.GCP_WORKLOAD_IDENTITY_PROVIDER, vars.GCP_DEPLOY_SERVICE_ACCOUNT.
   images-backend:
-    if: github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: [backend, render-gate, frontend]
     runs-on: ubuntu-latest
     permissions:
@@ -98,13 +103,14 @@ jobs:
         env:
           REGISTRY: asia-southeast2-docker.pkg.dev/abak-academy-platform/app
           TAG: ${{ github.sha }}
+          VERSION_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
           PUSH: '1'
           COMPONENTS: api worker
         run: ./deploy/pipeline/build-image.sh
 
   # vars.PROD_GOOGLE_CLIENT_ID and secrets.MIDTRANS_CLIENT_KEY_PROD are go-live slots, still empty.
   images-web-prod:
-    if: github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: [backend, render-gate, frontend]
     runs-on: ubuntu-latest
     permissions:
@@ -123,6 +129,7 @@ jobs:
         env:
           REGISTRY: asia-southeast2-docker.pkg.dev/abak-academy-platform/app
           TAG: ${{ github.sha }}
+          VERSION_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
           PUSH: '1'
           COMPONENTS: web
           TARGET_ENV: prod
