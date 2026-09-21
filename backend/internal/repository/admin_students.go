@@ -203,18 +203,19 @@ func (r *Repository) CountStudentsAdmin(ctx context.Context, schoolID string, fi
 }
 
 // CreateStudent inserts a new user with role='student', otp_enabled=false,
-// and scans back id, created_at, updated_at.
+// password_temporary=true (password was chosen by the admin), and scans
+// back id, created_at, updated_at.
 func (r *Repository) CreateStudent(ctx context.Context, u *model.User) error {
 	u.Email = normalizeOptionalEmail(u.Email)
 	return r.pool.QueryRow(ctx,
 		`INSERT INTO users (
 			email, username, password_hash, role, name,
-			school_id, unlisted_school_name, status, otp_enabled,
+			school_id, unlisted_school_name, status, otp_enabled, password_temporary,
 			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
 			dob, gender, grade, alamat_domisili, target_exam
 		) VALUES (
 			$1, $2, $3, 'student', $4,
-			$5, $6, 'active', false,
+			$5, $6, 'active', false, true,
 			$7, $8, $9, $10, $11,
 			$12, $13, $14, $15, $16
 		) RETURNING id, created_at, updated_at`,
@@ -390,10 +391,11 @@ func (r *Repository) SearchStudentsAcrossSchools(ctx context.Context, filter Stu
 	return students, nextCursor, nil
 }
 
-// ResetStudentPasswordHash overwrites the password hash for a student.
+// ResetStudentPasswordHash overwrites the password hash for a student and
+// flags the account as password_temporary so the student is prompted to set their own password.
 // schoolID empty skips the school predicate (super_admin, id-only).
 func (r *Repository) ResetStudentPasswordHash(ctx context.Context, id, schoolID, hash string) error {
-	query := `UPDATE users SET password_hash = $1, updated_at = now()
+	query := `UPDATE users SET password_hash = $1, password_temporary = true, updated_at = now()
 			WHERE id = $2 AND role = 'student' AND status != 'deleted'`
 	args := []any{hash, id}
 	if schoolID != "" {

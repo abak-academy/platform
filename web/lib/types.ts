@@ -138,6 +138,7 @@ export interface User {
   auth_provider?: "password" | "google";
   status?: string;
   otp_enabled?: boolean;
+  password_temporary?: boolean;
   phone?: string;
   nis?: string;
   grade?: number;

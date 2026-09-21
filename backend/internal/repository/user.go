@@ -56,7 +56,7 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*model.U
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
+			school_id, photo_url, status, otp_enabled, auth_provider, password_temporary, created_at, updated_at,
 			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
 			unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
@@ -64,7 +64,7 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*model.U
 		email,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.PasswordTemporary, &u.CreatedAt, &u.UpdatedAt,
 		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
 		&u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
@@ -81,7 +81,7 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*m
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
+			school_id, photo_url, status, otp_enabled, auth_provider, password_temporary, created_at, updated_at,
 			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
 			unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
@@ -89,7 +89,7 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*m
 		username,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.PasswordTemporary, &u.CreatedAt, &u.UpdatedAt,
 		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
 		&u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
@@ -106,7 +106,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (*model.User, e
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
+			school_id, photo_url, status, otp_enabled, auth_provider, password_temporary, created_at, updated_at,
 			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
 			unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
@@ -114,7 +114,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (*model.User, e
 		id,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.PasswordTemporary, &u.CreatedAt, &u.UpdatedAt,
 		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
 		&u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
@@ -129,7 +129,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (*model.User, e
 
 func (r *Repository) UpdatePasswordHash(ctx context.Context, userID, hash string) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`,
+		`UPDATE users SET password_hash = $1, password_temporary = false, updated_at = now() WHERE id = $2`,
 		hash, userID,
 	)
 	return err

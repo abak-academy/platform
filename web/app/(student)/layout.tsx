@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth";
+import { useMe } from "@/lib/hooks/auth";
 import { useProfile } from "@/lib/hooks/students";
 import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { isProfileComplete } from "@/lib/profile";
 import { AppShell } from "@/components/shell/AppShell";
+import { PasswordTemporaryModal } from "@/components/auth/PasswordTemporaryModal";
 import { ADMIN_ROLES } from "@/lib/nav-config";
 
 const SNAP_SRC =
@@ -43,6 +45,14 @@ export default function StudentLayout({
   // a blank form.
   const profilePending =
     profileLoading || profileError || (profileFetching && profile?.auth_provider === "google");
+
+  // Admin-created/admin-reset password notice. Server truth from /auth/me,
+  // falling back to the persisted login user until the fetch lands.
+  const authUser = useAuthStore((s) => s.user);
+  const { data: me } = useMe({ enabled: hydrated && !!token && !meIsError });
+  const [pwNoticeDismissed, setPwNoticeDismissed] = useState(false);
+  const mustChangePassword =
+    me?.password_temporary ?? authUser?.password_temporary ?? false;
 
   useEffect(() => {
     if (!hydrated) return;
@@ -126,5 +136,17 @@ export default function StudentLayout({
     );
   }
 
-  return <AppShell role="student">{children}</AppShell>;
+  return (
+    <>
+      <AppShell role="student">{children}</AppShell>
+      {mustChangePassword && !pwNoticeDismissed && (
+        <PasswordTemporaryModal
+          open
+          onOpenChange={(v) => {
+            if (!v) setPwNoticeDismissed(true);
+          }}
+        />
+      )}
+    </>
+  );
 }
