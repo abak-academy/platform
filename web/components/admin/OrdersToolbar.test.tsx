@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { OrdersToolbar } from "./OrdersToolbar";
 import type { AdminOrderQuery, OrderBucketCounts } from "@/lib/types";
 
@@ -182,7 +182,9 @@ describe("OrdersToolbar search", () => {
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "rani" } });
     expect(onChange).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(400);
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ q: "rani" }));
     vi.useRealTimers();
   });

@@ -17,10 +17,9 @@ import {
   useDeleteTest,
 } from "@/lib/hooks/admin-tests";
 import { useTopics } from "@/lib/hooks/admin-topics";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useTranslation } from "@/lib/i18n";
 import type { Test, AdminCreateTestInput, AdminUpdateTestInput } from "@/lib/types";
-
-const SEARCH_DEBOUNCE_MS = 300;
 
 export default function TestsPage() {
   const { t } = useTranslation();
@@ -32,12 +31,7 @@ export default function TestsPage() {
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
   const [search, setSearch] = useState("");
-  const [q, setQ] = useState("");
-
-  useEffect(() => {
-    const id = setTimeout(() => setQ(search.trim()), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(id);
-  }, [search]);
+  const q = useDebouncedValue(search).trim();
 
   const allTopics = useTopics();
   const topicsForSubject = useTopics(subject || undefined);

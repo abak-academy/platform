@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { SchoolBulkImportModal } from "@/components/admin/SchoolBulkImportModal";
 import {
   useAdminSchools,
@@ -69,7 +70,6 @@ const EMPTY_FORM: SchoolForm = {
 // Search is sent to the server (q param), so it must be debounced the same
 // way OrdersToolbar debounces order search — otherwise every keystroke fires
 // a new paginated request and resets the accumulated list.
-const SEARCH_DEBOUNCE_MS = 300;
 
 export default function SystemSchoolsPage() {
   const { t, lang } = useTranslation();
@@ -78,7 +78,7 @@ export default function SystemSchoolsPage() {
   // to the server (q param) and into filterKey below, so pagination doesn't
   // reset and refetch on every keystroke.
   const [searchInput, setSearchInput] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(searchInput).trim();
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -90,11 +90,6 @@ export default function SystemSchoolsPage() {
   const { data: provinces } = useProvinces();
   const { data: createCities } = useCitiesByProvince(createForm.provinsi_id);
   const { data: editCities } = useCitiesByProvince(editForm.provinsi_id);
-
-  useEffect(() => {
-    const id = setTimeout(() => setDebouncedSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(id);
-  }, [searchInput]);
 
   // Cursor-based pagination
   const [schools, setSchools] = useState<School[]>([]);

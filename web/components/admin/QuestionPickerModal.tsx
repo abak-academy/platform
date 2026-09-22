@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useBankQuestions } from "@/lib/hooks/admin-bank-questions";
 import { useTopics } from "@/lib/hooks/admin-topics";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import type { QuestionFormat, QuestionWithOptions } from "@/lib/types";
@@ -73,6 +74,9 @@ export function QuestionPickerModal({
 }: QuestionPickerModalProps) {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
+  // Search is a server filter, so it must be debounced — otherwise every
+  // keystroke fires a new request for a full bank page.
+  const debouncedSearch = useDebouncedValue(search);
   const [format, setFormat] = useState<QuestionFormat | "all">("all");
   const [topicId, setTopicId] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -80,12 +84,12 @@ export function QuestionPickerModal({
 
   const filters = useMemo(
     () => ({
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       format: format === "all" ? undefined : format,
       topic_id: topicId === "all" ? undefined : topicId,
       limit: 50,
     }),
-    [search, format, topicId]
+    [debouncedSearch, format, topicId]
   );
 
   const bank = useBankQuestions(filters);

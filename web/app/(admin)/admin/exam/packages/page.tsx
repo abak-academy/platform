@@ -10,11 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useExams } from "@/lib/hooks/admin-exams";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useTranslation } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
 import type { ExamListItem } from "@/lib/types";
 
-const SEARCH_DEBOUNCE_MS = 300;
 const STATUS_OPTIONS = ["", "draft", "published"] as const;
 
 // Selling an exam (price/status/publish) is managed on the attached Product(s)
@@ -38,22 +38,18 @@ export default function ExamPackagesPage() {
 
   const [status, setStatus] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [q, setQ] = useState("");
+  const q = useDebouncedValue(searchInput).trim();
   const [cursor, setCursor] = useState<string | undefined>();
   const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [items, setItems] = useState<ExamListItem[]>([]);
 
+  // A debounced search commit must restart pagination at page 1 — same as the
+  // status select does inline below.
   useEffect(() => {
-    const id = setTimeout(() => {
-      const nextQ = searchInput.trim();
-      if (nextQ === q) return;
-      setItems([]);
-      setCursor(undefined);
-      setNextCursor(undefined);
-      setQ(nextQ);
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(id);
-  }, [q, searchInput]);
+    setItems([]);
+    setCursor(undefined);
+    setNextCursor(undefined);
+  }, [q]);
 
   const filters = useMemo(
     () => ({ cursor, limit: 20, q: q || undefined, status: status || undefined }),

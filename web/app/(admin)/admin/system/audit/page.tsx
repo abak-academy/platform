@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { useAdminAuditLog } from "@/lib/hooks/admin-audit";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import type { AuditLogEntry } from "@/lib/types";
 
 function actionLabel(action: string): string {
@@ -38,10 +39,13 @@ function initials(name: string) {
 export default function SystemAuditPage() {
   const { t, lang } = useTranslation();
   const [search, setSearch] = useState("");
+  // Search is a server filter, so it must be debounced — otherwise every
+  // keystroke fires a new request.
+  const debouncedSearch = useDebouncedValue(search);
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
   const { data: entries = [], isLoading, error } = useAdminAuditLog(
-    search.trim() ? { q: search } : undefined
+    debouncedSearch.trim() ? { q: debouncedSearch } : undefined
   );
 
   if (isLoading) {

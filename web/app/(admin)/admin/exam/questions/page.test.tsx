@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import QuestionBankPage from "./page";
 import type { BankQuestionListItem, BankQuestionListResponse, ExamTopic } from "@/lib/types";
@@ -67,8 +67,13 @@ let topicsState = {
 
 const mockDeleteMutateAsync = vi.fn();
 
+const bankFilterCalls: Array<Record<string, unknown> | undefined> = [];
+
 vi.mock("@/lib/hooks/admin-bank-questions", () => ({
-  useBankQuestions: () => bankState,
+  useBankQuestions: (filters?: Record<string, unknown>) => {
+    bankFilterCalls.push(filters);
+    return bankState;
+  },
   useCreateBankQuestion: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateBankQuestion: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteBankQuestion: () => ({ mutateAsync: mockDeleteMutateAsync, isPending: false }),
@@ -144,6 +149,7 @@ describe("QuestionBankPage", () => {
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
     (toast.info as ReturnType<typeof vi.fn>).mockReset();
     mockDeleteMutateAsync.mockReset();
+    bankFilterCalls.length = 0;
   });
 
   it("renders title, subtitle, toolbar and table with used-in column", async () => {
@@ -301,6 +307,24 @@ describe("QuestionBankPage", () => {
     await waitFor(() => {
       expect(formatSelect).toHaveValue("mcq");
     });
+  });
+
+  it("debounces the search box before it reaches the bank query", () => {
+    vi.useFakeTimers();
+    renderWithClient(<QuestionBankPage />);
+
+    const search = screen.getByPlaceholderText("search");
+    fireEvent.change(search, { target: { value: "photosynthesis" } });
+
+    expect(bankFilterCalls.some((filters) => filters?.search !== undefined)).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(bankFilterCalls.at(-1)?.search).toBe("photosynthesis");
+
+    vi.useRealTimers();
   });
 
   it("lets the user select a topic filter", async () => {

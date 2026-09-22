@@ -18,6 +18,7 @@ import {
   useAdminResultDetail,
   exportAdminResults,
 } from "@/lib/hooks/admin-results";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useAuthStore } from "@/stores/auth";
 import { toast } from "sonner";
 import type { AdminResultRow, AdminResultDetail } from "@/lib/types";
@@ -36,11 +37,14 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
 
   const [search, setSearch] = useState("");
+  // Search is a server filter, so it must be debounced — otherwise every
+  // keystroke fires a new paginated request and resets the accumulated list.
+  const debouncedSearch = useDebouncedValue(search);
   const [accumulated, setAccumulated] = useState<AdminResultRow[]>([]);
   const [activeCursor, setActiveCursor] = useState<string | undefined>(undefined);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
 
-  const filterKey = `${examId}:${search}:${selectedSchoolId}`;
+  const filterKey = `${examId}:${debouncedSearch}:${selectedSchoolId}`;
   const filterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -54,7 +58,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
 
   const query = useAdminResults({
     examId,
-    q: search || undefined,
+    q: debouncedSearch || undefined,
     cursor: activeCursor,
     limit: 20,
     ...(canScopeAllSchools && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
@@ -87,7 +91,7 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
     if (!examId) return;
     setExporting(true);
     try {
-      await exportAdminResults(examId, canScopeAllSchools ? selectedSchoolId : undefined, search || undefined);
+      await exportAdminResults(examId, canScopeAllSchools ? selectedSchoolId : undefined, debouncedSearch || undefined);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("sys_error_load"));
     } finally {

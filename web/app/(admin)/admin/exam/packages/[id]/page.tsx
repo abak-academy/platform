@@ -40,6 +40,7 @@ import {
   useSetCardEnabled,
 } from "@/lib/hooks/admin-exams";
 import { useAdminTests } from "@/lib/hooks/admin-tests";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import { useAuthStore } from "@/stores/auth";
@@ -52,8 +53,6 @@ import type {
 
 // admin_school gets scoped operational tabs, never content-management tabs.
 const SCHOOL_SCOPED_TABS: Tab[] = ["overview", "registrations", "results"];
-
-const SEARCH_DEBOUNCE_MS = 300;
 
 // Price/status/publish for an exam-type product live on the attached Product(s),
 // managed via /admin/products (mirrors Course) — not here.
@@ -145,14 +144,9 @@ export default function ExamPackageDetailPage() {
     }
   }
   const [testSearch, setTestSearch] = useState("");
-  const [testQ, setTestQ] = useState("");
+  const testQ = useDebouncedValue(testSearch).trim();
   const [testCursor, setTestCursor] = useState<string | undefined>(undefined);
   const [testEntries, setTestEntries] = useState<Test[]>([]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setTestQ(testSearch.trim()), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [testSearch]);
 
   const {
     data: availableResp,

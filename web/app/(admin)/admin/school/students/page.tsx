@@ -19,6 +19,7 @@ import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -70,7 +71,6 @@ import type {
 // Search is sent to the server (q param), so it must be debounced the same
 // way the schools page debounces school search — otherwise every keystroke
 // fires a new paginated request and resets the accumulated list.
-const SEARCH_DEBOUNCE_MS = 300;
 
 function compactStudentRegistration(
   form: StudentRegistrationInput,
@@ -130,13 +130,8 @@ export default function SchoolStudentsPage() {
   // to the server (q param) and into filterKey below, so pagination doesn't
   // reset and refetch on every keystroke.
   const [searchInput, setSearchInput] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(searchInput).trim();
   const [statusFilter, setStatusFilter] = useState<string>("all");
-
-  useEffect(() => {
-    const id = setTimeout(() => setDebouncedSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(id);
-  }, [searchInput]);
 
   // Cursor pagination
   const [accumulated, setAccumulated] = useState<AdminStudent[]>([]);
