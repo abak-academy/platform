@@ -15,8 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 
 // Shown to students whose password was created or reset by an admin
 // (password_temporary from /auth/me). Dismissible — it reappears on the
@@ -95,9 +95,8 @@ export function PasswordTemporaryModal({
           </p>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="must-current-password">{t("current_password")}</Label>
-            <Input
+            <PasswordInput
               id="must-current-password"
-              type="password"
               value={current}
               onChange={(e) => setCurrent(e.target.value)}
               autoComplete="current-password"
@@ -106,9 +105,8 @@ export function PasswordTemporaryModal({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="must-new-password">{t("new_password")}</Label>
-            <Input
+            <PasswordInput
               id="must-new-password"
-              type="password"
               value={next}
               onChange={(e) => setNext(e.target.value)}
               autoComplete="new-password"
@@ -117,9 +115,8 @@ export function PasswordTemporaryModal({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="must-confirm-password">{t("confirm_password")}</Label>
-            <Input
+            <PasswordInput
               id="must-confirm-password"
-              type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               autoComplete="new-password"
