@@ -263,29 +263,31 @@ func (h *Handler) Me(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{
-		"id":            user.ID,
-		"email":         derefStr(user.Email),
-		"username":      derefStr(user.Username),
-		"name":          user.Name,
-		"role":          user.Role,
-		"school_id":     user.SchoolID,
-		"auth_provider": user.AuthProvider,
-		"status":        user.Status,
-		"photo_url":     derefStr(user.PhotoURL),
+		"id":                 user.ID,
+		"email":              derefStr(user.Email),
+		"username":           derefStr(user.Username),
+		"name":               user.Name,
+		"role":               user.Role,
+		"school_id":          user.SchoolID,
+		"auth_provider":      user.AuthProvider,
+		"status":             user.Status,
+		"photo_url":          derefStr(user.PhotoURL),
+		"password_temporary": user.PasswordTemporary,
 	})
 }
 
 func userPayload(user *model.User) map[string]any {
 	return map[string]any{
-		"id":            user.ID,
-		"role":          user.Role,
-		"name":          user.Name,
-		"email":         derefStr(user.Email),
-		"username":      derefStr(user.Username),
-		"auth_provider": user.AuthProvider,
-		"school_id":     user.SchoolID,
-		"grade":         user.Grade,
-		"photo_url":     derefStr(user.PhotoURL),
+		"id":                 user.ID,
+		"role":               user.Role,
+		"name":               user.Name,
+		"email":              derefStr(user.Email),
+		"username":           derefStr(user.Username),
+		"auth_provider":      user.AuthProvider,
+		"school_id":          user.SchoolID,
+		"grade":              user.Grade,
+		"photo_url":          derefStr(user.PhotoURL),
+		"password_temporary": user.PasswordTemporary,
 	}
 }
 

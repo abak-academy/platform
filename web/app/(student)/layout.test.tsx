@@ -52,11 +52,35 @@ vi.mock("@/lib/hooks/use-capability", () => ({
   useResolvedRole: () => roleState,
 }));
 
+let meState = {
+  data: undefined as { password_temporary?: boolean } | undefined,
+};
+
+vi.mock("@/lib/hooks/auth", () => ({
+  useMe: () => meState,
+}));
+
+const PasswordTemporaryModal = vi.fn(
+  ({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) =>
+    open ? (
+      <button data-testid="pw-notice" onClick={() => onOpenChange(false)}>
+        notice
+      </button>
+    ) : null
+);
+
+vi.mock("@/components/auth/PasswordTemporaryModal", () => ({
+  PasswordTemporaryModal: (props: { open: boolean; onOpenChange: (v: boolean) => void }) =>
+    PasswordTemporaryModal(props),
+}));
+
 describe("StudentLayout", () => {
   beforeEach(() => {
     replace.mockClear();
+    PasswordTemporaryModal.mockClear();
     authStore = { token: null, user: null };
     roleState = { role: undefined, hydrated: true, meIsError: false };
+    meState = { data: undefined };
     profileState = {
       data: undefined,
       isLoading: false,
@@ -186,5 +210,44 @@ describe("StudentLayout", () => {
     // has no reason to unmount them — and unmounting cost them whatever they had
     // typed on the page.
     await waitFor(() => expect(queryByTestId("shell")).toBeInTheDocument());
+  });
+
+  it("shows the change-password notice for a flagged student", async () => {
+    authStore = { token: "t", user: { role: "student" } };
+    roleState = { role: "student", hydrated: true, meIsError: false };
+    meState = { data: { password_temporary: true } };
+
+    const { getByTestId } = render(<StudentLayout>protected</StudentLayout>);
+
+    await waitFor(() => expect(getByTestId("pw-notice")).toBeInTheDocument());
+  });
+
+  it("hides the notice after it is dismissed, but keeps the shell", async () => {
+    authStore = { token: "t", user: { role: "student" } };
+    roleState = { role: "student", hydrated: true, meIsError: false };
+    meState = { data: { password_temporary: true } };
+
+    const { getByTestId, queryByTestId } = render(
+      <StudentLayout>protected</StudentLayout>
+    );
+
+    await waitFor(() => expect(getByTestId("pw-notice")).toBeInTheDocument());
+    getByTestId("pw-notice").click();
+
+    await waitFor(() =>
+      expect(queryByTestId("pw-notice")).not.toBeInTheDocument()
+    );
+    expect(getByTestId("shell")).toBeInTheDocument();
+  });
+
+  it("does not show the notice when the server clears the flag", async () => {
+    authStore = { token: "t", user: { role: "student" } };
+    roleState = { role: "student", hydrated: true, meIsError: false };
+    meState = { data: { password_temporary: false } };
+
+    const { queryByTestId } = render(<StudentLayout>protected</StudentLayout>);
+
+    await waitFor(() => expect(queryByTestId("shell")).toBeInTheDocument());
+    expect(queryByTestId("pw-notice")).not.toBeInTheDocument();
   });
 });

@@ -8,6 +8,8 @@ import {
   Search,
   Copy,
   Check,
+  Eye,
+  EyeOff,
   FileUp,
   UserRound,
   GraduationCap,
@@ -194,6 +196,7 @@ export default function SchoolStudentsPage() {
 
   // Register dialog
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [registerForm, setRegisterForm] = useState<StudentRegistrationInput>({
     name: "",
     jenjang: "",
@@ -230,6 +233,8 @@ export default function SchoolStudentsPage() {
     newPassword: "",
     confirmPassword: "",
   });
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Copy-to-clipboard state
   const [copied, setCopied] = useState<"username" | "password" | null>(null);
@@ -885,17 +890,28 @@ export default function SchoolStudentsPage() {
                 </FormField>
                 {isSuperAdmin && (
                   <FormField label={t("students_password_optional")} hint={t("students_password_optional_hint")}>
-                    <Input
-                      type="password"
-                      value={registerForm.password ?? ""}
-                      onChange={(e) =>
-                        setRegisterForm((f) => ({
-                          ...f,
-                          password: e.target.value,
-                        }))
-                      }
-                      placeholder={t("students_password_optional")}
-                    />
+                    <div className="relative">
+                      <Input
+                        type={showRegisterPassword ? "text" : "password"}
+                        value={registerForm.password ?? ""}
+                        onChange={(e) =>
+                          setRegisterForm((f) => ({
+                            ...f,
+                            password: e.target.value,
+                          }))
+                        }
+                        placeholder={t("students_password_optional")}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegisterPassword((p) => !p)}
+                        aria-label={showRegisterPassword ? t("auth_hide_password") : t("auth_show_password")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
+                      >
+                        {showRegisterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </FormField>
                 )}
               </RegisterSection>
@@ -1229,30 +1245,52 @@ export default function SchoolStudentsPage() {
           </DialogHeader>
           <div className="space-y-4">
             <FormField label={t("students_new_password")} required>
-              <Input
-                type="password"
-                value={passwordForm.newPassword}
-                onChange={(e) =>
-                  setPasswordForm((f) => ({
-                    ...f,
-                    newPassword: e.target.value,
-                  }))
-                }
-                placeholder={t("students_new_password")}
-              />
+              <div className="relative">
+                <Input
+                  type={showNewPassword ? "text" : "password"}
+                  value={passwordForm.newPassword}
+                  onChange={(e) =>
+                    setPasswordForm((f) => ({
+                      ...f,
+                      newPassword: e.target.value,
+                    }))
+                  }
+                  placeholder={t("students_new_password")}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword((p) => !p)}
+                  aria-label={showNewPassword ? t("auth_hide_password") : t("auth_show_password")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
+                >
+                  {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </FormField>
             <FormField label={t("students_confirm_password")} required>
-              <Input
-                type="password"
-                value={passwordForm.confirmPassword}
-                onChange={(e) =>
-                  setPasswordForm((f) => ({
-                    ...f,
-                    confirmPassword: e.target.value,
-                  }))
-                }
-                placeholder={t("students_confirm_password")}
-              />
+              <div className="relative">
+                <Input
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={passwordForm.confirmPassword}
+                  onChange={(e) =>
+                    setPasswordForm((f) => ({
+                      ...f,
+                      confirmPassword: e.target.value,
+                    }))
+                  }
+                  placeholder={t("students_confirm_password")}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((p) => !p)}
+                  aria-label={showConfirmPassword ? t("auth_hide_password") : t("auth_show_password")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
+                >
+                  {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </FormField>
           </div>
           <DialogFooter className="mt-4">

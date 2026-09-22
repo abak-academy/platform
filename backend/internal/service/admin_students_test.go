@@ -228,6 +228,9 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		if u.Role != RoleStudent || u.Status != "active" || u.OTPEnabled {
 			t.Errorf("unexpected defaults: role=%s status=%s otp=%v", u.Role, u.Status, u.OTPEnabled)
 		}
+		if !u.PasswordTemporary {
+			t.Error("admin-registered student must be flagged password_temporary")
+		}
 		if u.Jenjang == nil || *u.Jenjang != jenjang {
 			t.Errorf("persisted Jenjang: want %s, got %v", jenjang, u.Jenjang)
 		}
@@ -617,6 +620,9 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 		if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(reg.TempPassword)) == nil {
 			t.Error("old temp password should no longer validate against the persisted hash")
 		}
+		if !u.PasswordTemporary {
+			t.Error("credential reissue must flag password_temporary")
+		}
 		if !svc.SessionActive(ctx, accessJTI) {
 			t.Error("credential reissue must preserve the live access session")
 		}
@@ -705,6 +711,13 @@ func TestSetStudentPassword_Integration(t *testing.T) {
 			if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
 				t.Fatalf("hash does not match new password: %v", err)
 			}
+			var mustChange bool
+			if err := repo.Pool().QueryRow(ctx, `SELECT password_temporary FROM users WHERE id = $1`, studentID).Scan(&mustChange); err != nil {
+				t.Fatalf("read password_temporary: %v", err)
+			}
+			if !mustChange {
+				t.Error("admin set password must flag password_temporary")
+			}
 		})
 	}
 	if svc.SessionActive(ctx, accessJTI) {
@@ -761,6 +774,39 @@ func TestSetStudentPassword_Integration(t *testing.T) {
 			t.Fatal("non-student target must not mutate hash")
 		}
 	})
+}
+
+func TestChangePassword_ClearsPasswordTemporary_Integration(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+	resp, err := svc.RegisterStudent(ctx, schoolID, "Change PW Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+	u, err := repo.GetUserByID(ctx, resp.ID)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if u == nil {
+		t.Fatal("student not persisted")
+	}
+	if !u.PasswordTemporary {
+		t.Fatal("registered student should start flagged password_temporary")
+	}
+	if err := svc.ChangePassword(ctx, resp.ID, resp.TempPassword, "BrandNew123", "jti-self"); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+	after, err := repo.GetUserByID(ctx, resp.ID)
+	if err != nil {
+		t.Fatalf("GetUserByID after change: %v", err)
+	}
+	if after.PasswordTemporary {
+		t.Error("self-service change password must clear password_temporary")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(after.PasswordHash), []byte("BrandNew123")); err != nil {
+		t.Errorf("persisted hash does not match the self-set password: %v", err)
+	}
 }
 
 func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {

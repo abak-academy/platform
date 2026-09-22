@@ -15,6 +15,9 @@ type User struct {
 	Status       string     `json:"status"`
 	AuthProvider string     `json:"auth_provider"`
 	OTPEnabled   bool       `json:"otp_enabled"`
+	// true while the password in place was created or reset by an admin and
+	// the user has not set their own password since.
+	PasswordTemporary bool `json:"password_temporary"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	// student-only

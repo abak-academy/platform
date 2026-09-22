@@ -618,6 +618,52 @@ func TestMeHandler_ValidToken(t *testing.T) {
 	if got := resp["school_id"]; got != dbSchoolID {
 		t.Errorf("school_id: want DB value %s, got %v", dbSchoolID, got)
 	}
+	if got, ok := resp["password_temporary"].(bool); !ok || got {
+		t.Errorf("password_temporary: want false (DB default), got %v", resp["password_temporary"])
+	}
+}
+
+// TestLoginAndMe_PasswordTemporary verifies the admin-set-password flag is
+// surfaced to the client in both the login response and /auth/me.
+func TestLoginAndMe_PasswordTemporary(t *testing.T) {
+	env := newTestEnv(t)
+	email := "flagged@example.com"
+	env.repo.seed(&model.User{
+		ID:                 "u-flag",
+		Email:              &email,
+		PasswordHash:       mustHash("tempPass123"),
+		Role:               service.RoleStudent,
+		Status:             "active",
+		PasswordTemporary: true,
+	})
+
+	loginRec := postJSON(t, env.e, "/api/v1/auth/login", map[string]string{
+		"identifier": email,
+		"password":   "tempPass123",
+	})
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", loginRec.Code, loginRec.Body.String())
+	}
+	var loginResp map[string]any
+	json.NewDecoder(loginRec.Body).Decode(&loginResp)
+	user, _ := loginResp["user"].(map[string]any)
+	if user == nil {
+		t.Fatalf("want user object in login response, got %v", loginResp)
+	}
+	if flagged, ok := user["password_temporary"].(bool); !ok || !flagged {
+		t.Errorf("login user.password_temporary: want true, got %v", user["password_temporary"])
+	}
+
+	accessToken, _ := loginResp["access_token"].(string)
+	rec := getWithToken(t, env.e, "/api/v1/auth/me", accessToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var meResp map[string]any
+	json.NewDecoder(rec.Body).Decode(&meResp)
+	if flagged, ok := meResp["password_temporary"].(bool); !ok || !flagged {
+		t.Errorf("me.password_temporary: want true, got %v", meResp["password_temporary"])
+	}
 }
 
 type googleTokenInfoTransport struct {

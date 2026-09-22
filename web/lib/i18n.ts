@@ -92,6 +92,12 @@ export const DICT = {
     passwords_do_not_match: "Kata sandi baru tidak cocok.",
     password_changed: "Kata sandi berhasil diubah.",
     change_password_failed: "Gagal mengubah kata sandi.",
+    password_temporary_title: "Ganti kata sandi kamu",
+    password_temporary_body:
+      "Kata sandi akun ini dibuat atau diatur ulang oleh admin. Untuk keamanan, segera ganti dengan kata sandi pilihanmu sendiri.",
+    password_temporary_hint:
+      "Masukkan kata sandi sementara dari admin pada kolom kata sandi saat ini, lalu buat kata sandi baru.",
+    password_temporary_later: "Nanti saja",
     notif_prefs: "Preferensi notifikasi",
     email_notif: "Notifikasi email",
     wa_notif: "Notifikasi WhatsApp",
@@ -1778,6 +1784,12 @@ export const DICT = {
     passwords_do_not_match: "New passwords do not match.",
     password_changed: "Password changed successfully.",
     change_password_failed: "Failed to change password.",
+    password_temporary_title: "Change your password",
+    password_temporary_body:
+      "This account's password was created or reset by an admin. For security, replace it with your own password now.",
+    password_temporary_hint:
+      "Enter the temporary password from the admin in the current password field, then create a new password.",
+    password_temporary_later: "Later",
     notif_prefs: "Notification preferences",
     email_notif: "Email notifications",
     wa_notif: "WhatsApp notifications",

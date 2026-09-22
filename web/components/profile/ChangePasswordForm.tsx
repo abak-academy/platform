@@ -4,8 +4,8 @@ import { useState } from "react";
 import { KeyRound } from "lucide-react";
 import { useChangePassword } from "@/lib/hooks/students";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { toast } from "sonner";
 
 interface FieldErrors {
@@ -69,9 +69,8 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void } = {}) {
     <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
       <div className="flex flex-col gap-2">
         <Label htmlFor="old_password">Kata sandi lama</Label>
-        <Input
+        <PasswordInput
           id="old_password"
-          type="password"
           autoComplete="current-password"
           value={oldPassword}
           onChange={(e) => {
@@ -87,9 +86,8 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void } = {}) {
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="new_password">Kata sandi baru</Label>
-        <Input
+        <PasswordInput
           id="new_password"
-          type="password"
           autoComplete="new-password"
           value={newPassword}
           onChange={(e) => {
@@ -118,9 +116,8 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void } = {}) {
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="confirm_password">Konfirmasi kata sandi baru</Label>
-        <Input
+        <PasswordInput
           id="confirm_password"
-          type="password"
           autoComplete="new-password"
           value={confirm}
           onChange={(e) => {

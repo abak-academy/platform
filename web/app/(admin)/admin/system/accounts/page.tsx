@@ -14,6 +14,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -436,8 +437,7 @@ export default function SystemAccountsPage() {
             )}
             <div>
               <Label>{t("accounts_field_password")}</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 value={createForm.password}
                 onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
                 placeholder={t("accounts_placeholder_min_8")}

@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import {
   Select,
   SelectContent,
@@ -224,27 +225,24 @@ function ChangePasswordDialog({
         <form onSubmit={submit} className="flex flex-col gap-4 py-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="current-password">{t("current_password")}</Label>
-            <Input
+            <PasswordInput
               id="current-password"
-              type="password"
               value={current}
               onChange={(e) => setCurrent(e.target.value)}
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="new-password">{t("new_password")}</Label>
-            <Input
+            <PasswordInput
               id="new-password"
-              type="password"
               value={next}
               onChange={(e) => setNext(e.target.value)}
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="confirm-password">{t("confirm_password")}</Label>
-            <Input
+            <PasswordInput
               id="confirm-password"
-              type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
             />
