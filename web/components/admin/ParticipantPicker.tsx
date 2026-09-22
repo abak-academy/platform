@@ -16,23 +16,13 @@ import {
 } from "@/components/ui/select";
 import { useAdminStudents } from "@/lib/hooks/admin-students";
 import { useSearchStudentsAcrossSchools } from "@/lib/hooks/admin-exam-grants";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { cn } from "@/lib/utils";
 import type { AdminStudent } from "@/lib/types";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
 
 const ALL_FILTER_VALUE = "__all__";
 const GRADE_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1));
-
-// ── Debounce helper ───────────────────────────────────────────────────────
-
-function useDebouncedValue(value: string, delay: number): string {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(id);
-  }, [value, delay]);
-  return debounced;
-}
 
 // ── ParticipantPicker ─────────────────────────────────────────────────────
 
@@ -60,7 +50,7 @@ export function ParticipantPicker({
   const [schoolFilter, setSchoolFilter] = useState("");
   const [selectingAllKey, setSelectingAllKey] = useState<string | null>(null);
 
-  const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedSearch = useDebouncedValue(search);
 
   // Track selected IDs across search/filter changes via a ref
   const selectedRef = useRef(selected);

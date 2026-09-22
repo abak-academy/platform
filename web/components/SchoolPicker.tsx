@@ -5,6 +5,7 @@ import { Loader2, Search, X } from "lucide-react";
 import { useCitiesByProvince, useProvinces } from "@/lib/hooks/regions";
 import { useTranslation } from "@/lib/i18n";
 import { useSchoolById, useSchoolAutocomplete } from "@/lib/hooks/students";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { SCHOOL_TYPE_OPTIONS } from "@/lib/school-types";
 import type { SchoolOption } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -49,7 +50,6 @@ export function SchoolPicker({
   const [unlistedActive, setUnlistedActive] = useState(Boolean(unlistedName));
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [debouncedQ, setDebouncedQ] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const clearRef = useRef<HTMLButtonElement>(null);
   const focusAfterSelection = useRef(false);
@@ -73,10 +73,7 @@ export function SchoolPicker({
 
   const nameValue = selected?.name ?? qInput;
   const npsnValue = selected?.npsn ?? npsnInput;
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQ(nameValue.trim()), 500);
-    return () => clearTimeout(timer);
-  }, [nameValue]);
+  const debouncedQ = useDebouncedValue(nameValue).trim();
 
   const normalizedNPSN = npsnValue.trim().toUpperCase();
   const pendingName = nameValue.trim() !== debouncedQ;
@@ -109,7 +106,6 @@ export function SchoolPicker({
   function clearSchool() {
     setQInput("");
     setNpsnInput("");
-    setDebouncedQ("");
     setProvinceId("");
     setCityId("");
     setSchoolType("");

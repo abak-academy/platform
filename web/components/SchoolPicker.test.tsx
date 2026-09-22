@@ -182,7 +182,7 @@ describe("SchoolPicker", () => {
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "negeri" } });
     expect(searchCalls.at(-1)?.enabled).toBe(false);
-    act(() => { vi.advanceTimersByTime(499); });
+    act(() => { vi.advanceTimersByTime(299); });
     expect(searchCalls.at(-1)?.enabled).toBe(false);
     act(() => { vi.advanceTimersByTime(1); });
     expect(searchCalls.at(-1)).toMatchObject({ enabled: true, params: { q: "negeri", limit: 20 } });

@@ -19,6 +19,7 @@ import {
   adminBankQuestionsKeys,
 } from "@/lib/hooks/admin-bank-questions";
 import { useTopics } from "@/lib/hooks/admin-topics";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { QuestionImportModal } from "@/components/admin/QuestionImportModal";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,9 @@ export default function QuestionBankPage() {
   const [format, setFormat] = useState<QuestionFormat | "all">("all");
   const [topicId, setTopicId] = useState<string>("");
   const [search, setSearch] = useState("");
+  // Search is a server filter, so it must be debounced — otherwise every
+  // keystroke fires a new paginated request.
+  const debouncedSearch = useDebouncedValue(search);
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewItem, setPreviewItem] = useState<BankQuestionListItem | null>(null);
@@ -81,17 +85,17 @@ export default function QuestionBankPage() {
   // would show an arbitrary window of the new one.
   useEffect(() => {
     setPage(1);
-  }, [format, topicId, search]);
+  }, [format, topicId, debouncedSearch]);
 
   const filters = useMemo(
     () => ({
       format: format === "all" ? undefined : format,
       topic_id: topicId || undefined,
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       page,
       limit: PAGE_SIZE,
     }),
-    [format, topicId, search, page]
+    [format, topicId, debouncedSearch, page]
   );
 
   const bank = useBankQuestions(filters);

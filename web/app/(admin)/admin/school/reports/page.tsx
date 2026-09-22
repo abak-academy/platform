@@ -34,6 +34,7 @@ import {
   useAdminResultDetail,
   exportAdminResults,
 } from "@/lib/hooks/admin-results";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useAuthStore } from "@/stores/auth";
 import { RichContent } from "@/components/admin/RichContent";
 import { formatChoiceAnswer } from "@/lib/option-key";
@@ -55,6 +56,9 @@ export default function SchoolReportsPage() {
 
   // Search
   const [search, setSearch] = useState("");
+  // Search is a server filter, so it must be debounced — otherwise every
+  // keystroke fires a new paginated request and resets the accumulated list.
+  const debouncedSearch = useDebouncedValue(search);
 
   // Cursor pagination
   const [accumulated, setAccumulated] = useState<AdminResultRow[]>([]);
@@ -62,7 +66,7 @@ export default function SchoolReportsPage() {
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
 
   // Guard: reset pagination on filter change
-  const filterKey = `${selectedExamId}:${search}:${selectedSchoolId}`;
+  const filterKey = `${selectedExamId}:${debouncedSearch}:${selectedSchoolId}`;
   const pageFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -76,7 +80,7 @@ export default function SchoolReportsPage() {
 
   const query = useAdminResults({
     examId: selectedExamId,
-    q: search || undefined,
+    q: debouncedSearch || undefined,
     cursor: activeCursor,
     limit: 20,
     ...(isSuperAdmin && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
@@ -121,7 +125,7 @@ export default function SchoolReportsPage() {
     if (!selectedExamId) return;
     setExporting(true);
     try {
-      await exportAdminResults(selectedExamId, isSuperAdmin ? selectedSchoolId : undefined, search || undefined);
+      await exportAdminResults(selectedExamId, isSuperAdmin ? selectedSchoolId : undefined, debouncedSearch || undefined);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("sys_error_load"));
     } finally {

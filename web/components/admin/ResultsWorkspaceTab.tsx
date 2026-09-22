@@ -17,22 +17,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { useTranslation } from "@/lib/i18n";
 import { useResultsWorkspace, useResultsWorkspaceAttempts, useResultsWorkspaceDetail } from "@/lib/hooks/admin-results-workspace";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { exportAdminResults } from "@/lib/hooks/admin-results";
 import { formatChoiceAnswer } from "@/lib/option-key";
 import type { AdminResultDetail, ResultsWorkspaceAttempt, ResultsWorkspaceRow, ResultsWorkspaceSummary } from "@/lib/types";
 
 interface ResultsWorkspaceTabProps {
   examId: string;
-}
-
-
-function useDebouncedValue(value: string, delay: number): string {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(id);
-  }, [value, delay]);
-  return debounced;
 }
 
 function statusLabelKey(status: string): "results_workspace_status_completed" | "results_workspace_status_in_progress" | "results_workspace_status_not_started" {
@@ -47,7 +38,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
 
   const [selectedSchoolId, setSelectedSchoolId] = useState("");
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedSearch = useDebouncedValue(search);
 
   const [accumulated, setAccumulated] = useState<ResultsWorkspaceRow[]>([]);
   const [activeCursor, setActiveCursor] = useState<string | undefined>(undefined);

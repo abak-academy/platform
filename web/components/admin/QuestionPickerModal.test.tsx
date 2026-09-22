@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { QuestionPickerModal } from "./QuestionPickerModal";
 import type { BankQuestionListItem, QuestionWithOptions, ExamTopic } from "@/lib/types";
@@ -33,8 +33,13 @@ let topicsState = {
   isLoading: false,
 };
 
+const bankFilterCalls: Array<Record<string, unknown> | undefined> = [];
+
 vi.mock("@/lib/hooks/admin-bank-questions", () => ({
-  useBankQuestions: () => bankState,
+  useBankQuestions: (filters?: Record<string, unknown>) => {
+    bankFilterCalls.push(filters);
+    return bankState;
+  },
 }));
 
 vi.mock("@/lib/hooks/admin-topics", () => ({
@@ -65,6 +70,7 @@ describe("QuestionPickerModal", () => {
       data: { data: [] },
       isLoading: false,
     };
+    bankFilterCalls.length = 0;
   });
 
   it("strips HTML tags from question body in the picker row", async () => {
@@ -88,5 +94,25 @@ describe("QuestionPickerModal", () => {
     const row = screen.getByText("bold text").closest("button") as HTMLElement;
     expect(row).toBeTruthy();
     expect(row.innerHTML).not.toContain("<b>");
+  });
+
+  it("debounces the search box before it reaches the bank query", () => {
+    vi.useFakeTimers();
+    renderWithClient(
+      <QuestionPickerModal open={true} onOpenChange={vi.fn()} testId="test-1" attached={[]} onAttach={vi.fn()} />
+    );
+
+    const search = screen.getByPlaceholderText("tests_picker_search");
+    fireEvent.change(search, { target: { value: "bold" } });
+
+    expect(bankFilterCalls.some((filters) => filters?.search !== undefined)).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(bankFilterCalls.at(-1)?.search).toBe("bold");
+
+    vi.useRealTimers();
   });
 });

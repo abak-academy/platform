@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import type { AdminOrderFilterStatus, AdminOrderQueue, AdminOrderQuery, OrderBucketCounts } from "@/lib/types";
 
 // One flat dropdown mixing real statuses and queues — the admin picks a
@@ -30,8 +31,6 @@ const FILTER_OPTIONS: FilterOption[] = [
   "failed",
   "cancelled",
 ];
-
-const SEARCH_DEBOUNCE_MS = 300;
 
 type DateMode = "single" | "range";
 
@@ -105,13 +104,12 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
     setSearch(value.q ?? "");
   }, [value.q]);
 
+  const debouncedSearch = useDebouncedValue(search);
+
   useEffect(() => {
-    if (search === (latest.current.value.q ?? "")) return;
-    const id = setTimeout(() => {
-      latest.current.onChange({ ...latest.current.value, q: search || undefined });
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(id);
-  }, [search]);
+    if (debouncedSearch === (latest.current.value.q ?? "")) return;
+    latest.current.onChange({ ...latest.current.value, q: debouncedSearch || undefined });
+  }, [debouncedSearch]);
 
   // The selected option is whichever dimension is currently set — the two
   // are mutually exclusive on the query, but the dropdown only shows one.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { useAdminSchools } from "@/lib/hooks/admin-schools";
 import { useSchoolById } from "@/lib/hooks/students";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { cn } from "@/lib/utils";
 
 export interface SchoolFilterPickerProps {
@@ -28,7 +29,6 @@ export interface SchoolFilterPickerProps {
 
 const ALL_VALUE = "__all_schools__";
 const NONE_VALUE = "__no_school__";
-const SCHOOL_FILTER_DEBOUNCE_MS = 300;
 
 export function SchoolFilterPicker({
   value,
@@ -40,13 +40,8 @@ export function SchoolFilterPicker({
   compact,
 }: SchoolFilterPickerProps) {
   const [searchInput, setSearchInput] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(searchInput).trim();
   const isNone = value === "none";
-
-  useEffect(() => {
-    const id = setTimeout(() => setDebouncedSearch(searchInput.trim()), SCHOOL_FILTER_DEBOUNCE_MS);
-    return () => clearTimeout(id);
-  }, [searchInput]);
 
   const schoolsQuery = useAdminSchools({
     q: debouncedSearch || undefined,

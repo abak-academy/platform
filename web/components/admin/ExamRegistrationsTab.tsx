@@ -36,19 +36,11 @@ import {
 import { putFileToPresignedURL } from "@/lib/hooks/admin-students-bulk";
 import { useJobStatus } from "@/lib/hooks/jobs";
 import { adminExamsKeys, exportExamRoster, useExamRegistrationCounts, useExamRoster } from "@/lib/hooks/admin-exams";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useAuthStore } from "@/stores/auth";
 import type { ExamRosterEntry } from "@/lib/types";
 
 const EXAM_GRANT_BULK_TEMPLATE = "username\nandi123\nbudi456\n";
-
-function useDebouncedValue(value: string, delay: number): string {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(id);
-  }, [value, delay]);
-  return debounced;
-}
 
 function downloadExamBulkTemplate(filename: string): void {
   const blob = new Blob([EXAM_GRANT_BULK_TEMPLATE], { type: "text/csv;charset=utf-8" });
@@ -76,7 +68,7 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
   const [exporting, setExporting] = useState(false);
   const [revealedTokens, setRevealedTokens] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedSearch = useDebouncedValue(search);
   const counts = useExamRegistrationCounts(examId);
 
   const filterKey = `${examId}:${sortDir}:${debouncedSearch}`;

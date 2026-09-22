@@ -4,6 +4,7 @@ import SchoolReportsPage from "./page";
 import type { Product, AdminResultRow, AdminResultDetail } from "@/lib/types";
 
 const mockExport = vi.fn();
+const mockUseAdminResults = vi.fn();
 
 // Mock the exam products hook
 const mockProducts = vi.fn();
@@ -39,7 +40,10 @@ vi.mock("@/lib/hooks/products", () => ({
 }));
 
 vi.mock("@/lib/hooks/admin-results", () => ({
-  useAdminResults: () => resultsState,
+  useAdminResults: (opts: unknown) => {
+    mockUseAdminResults(opts);
+    return resultsState;
+  },
   useAdminResultDetail: (sessionId: string) => detailState,
   exportAdminResults: (...args: Parameters<typeof mockExport>) => mockExport(...args),
 }));
@@ -144,6 +148,7 @@ describe("SchoolReportsPage", () => {
     };
     mockProducts.mockReturnValue({ data: sampleExamProducts, isLoading: false });
     mockExport.mockReset();
+    mockUseAdminResults.mockReset();
 
     resultsState = {
       data: paginatedResponse(sampleResultRows),
@@ -274,6 +279,15 @@ describe("SchoolReportsPage", () => {
     expect(searchInput).toBeInTheDocument();
 
     fireEvent.input(searchInput, { target: { value: "Budi" } });
+
+    // Debounced: the raw keystroke must not reach the backend query.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(mockUseAdminResults.mock.calls.some(([opts]) => opts?.q !== undefined)).toBe(false);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitFor(() => {
+      expect(mockUseAdminResults.mock.calls.some(([opts]) => opts?.q === "Budi")).toBe(true);
+    });
 
     await waitFor(() => {
       expect(searchInput).toHaveValue("Budi");
