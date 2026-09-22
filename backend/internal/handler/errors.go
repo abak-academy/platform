@@ -249,6 +249,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_biteship_booking", Message: err.Error()}
 	case errors.Is(err, service.ErrNoCarrierCode):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_carrier_code", Message: err.Error()}
+	case errors.Is(err, service.ErrSenderConfigIncomplete):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "sender_config_incomplete", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotShippable):
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_shippable", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotRefundable):

@@ -263,6 +263,10 @@ var (
 	// recorded against a status where money was actually taken. Maps to 422.
 	ErrOrderNotRefundable = errors.New("order not in refundable status")
 	ErrNoCarrierCode      = errors.New("order has no persisted courier code")
+
+	// ErrSenderConfigIncomplete gates AdminShipOrder: Biteship needs a sender
+	// (origin) profile from system_config before a courier can be booked.
+	ErrSenderConfigIncomplete = errors.New("sender configuration incomplete: set app_name, app_contact_phone, app_address, app_kode_pos")
 )
 
 // --- from student_bulk.go ---

@@ -222,6 +222,9 @@ services:
     volumes:
       - ../alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Same persistent positions dir as production.yml so restarts do not
+      # re-tail logs from the beginning.
+      - alloy-data:/var/lib/alloy/data
     depends_on:
       - api
       - worker
@@ -233,3 +236,4 @@ services:
 volumes:
   pgdata:
   miniodata:
+  alloy-data:

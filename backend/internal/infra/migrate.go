@@ -19,6 +19,28 @@ func RunMigrations(ctx context.Context, databaseURL string) error {
 	}
 	defer pool.Close()
 
+	// Two api replicas run this at startup (main.go), so serialize the whole
+	// run with a session-level advisory lock or concurrent runners race the
+	// same migration — seen as 23505 on pg_extension_name_index from 0066's
+	// CREATE EXTENSION.
+	lockConn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration lock connection: %w", err)
+	}
+	defer lockConn.Release()
+
+	const lockKey = `hashtext('akademi-bimbel-migrations')`
+	if _, err = lockConn.Exec(ctx, `SELECT pg_advisory_lock(`+lockKey+`)`); err != nil {
+		return fmt.Errorf("take migration advisory lock: %w", err)
+	}
+	defer func() {
+		// Unlock must run before Release (LIFO) so the lock never stays on a
+		// returned pooled connection, and must ignore a cancelled ctx.
+		if _, err := lockConn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(`+lockKey+`)`); err != nil {
+			slog.ErrorContext(ctx, "release migration advisory lock", "err", err)
+		}
+	}()
+
 	_, err = pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			filename TEXT PRIMARY KEY,
