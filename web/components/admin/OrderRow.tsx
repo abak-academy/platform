@@ -12,6 +12,7 @@ import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { isShipmentFailure, shipmentStatusLabel } from "@/lib/shipment-status";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
+import { formatGrade } from "@/lib/grade";
 import { cn } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/lib/types";
 
@@ -63,7 +64,10 @@ function buyerLabel(order: Order): string {
 
 /** "SMAN 3 Bogor · Kelas 12" — whichever parts exist, never a stray separator. */
 function buyerContextLabel(order: Order): string {
-  return [order.student_school?.trim(), order.student_grade ? `Kelas ${order.student_grade}` : ""]
+  return [
+    order.student_school?.trim(),
+    order.student_grade != null ? `Kelas ${formatGrade(order.student_grade)}` : "",
+  ]
     .filter(Boolean)
     .join(" · ");
 }

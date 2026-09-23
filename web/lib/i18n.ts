@@ -1657,12 +1657,13 @@ export const DICT = {
     bulk_format_student_school_code:
       "Khusus super admin. Gunakan kode internal sekolah untuk yayasan atau sekolah tanpa NPSN. Kode harus cocok persis dengan sekolah aktif yang sudah ada.",
     bulk_format_student_jenjang:
-      "Wajib. Isi dengan nilai jenjang, disarankan huruf besar: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. Jika sekolah punya school_types, jenjang harus cocok dengan salah satu jenis itu.",
+      "Wajib. Isi dengan nilai jenjang, disarankan huruf besar: TK, SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S3. Jika sekolah punya school_types, jenjang harus cocok dengan salah satu jenis itu.",
     bulk_format_student_email: "Opsional. Jika diisi, tidak boleh sudah terdaftar di sistem.",
     bulk_format_student_dob:
       "Opsional. Format YYYY-MM-DD (contoh 2008-05-14). Jangan biarkan Excel mengubahnya jadi tanggal lain.",
     bulk_format_student_gender: "Opsional. Hanya male / m atau female / f.",
-    bulk_format_student_grade: "Opsional. Bilangan bulat (contoh 11).",
+    bulk_format_student_grade:
+      "Opsional. Bilangan bulat: 0 = TK, 1–6 SD, 7–9 SMP, 10–12 SMA/SMK, 13–15 = S1/S2/S3 (contoh 11).",
     bulk_format_student_target_exam: "Opsional. Teks bebas (contoh UTBK).",
     bulk_format_student_alamat_domisili:
       "Opsional. Teks bebas. Jika ada koma, bungkus dengan tanda kutip.",
@@ -3345,12 +3346,13 @@ export const DICT = {
     bulk_format_student_school_code:
       "Super admin only. Use the internal school code for a foundation or school without an NPSN. The code must exactly match an existing active school.",
     bulk_format_student_jenjang:
-      "Required. Use a jenjang value, preferably uppercase: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. If the school has school_types, jenjang must match one of them.",
+      "Required. Use a jenjang value, preferably uppercase: TK, SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S3. If the school has school_types, jenjang must match one of them.",
     bulk_format_student_email: "Optional. If set, must not already be registered.",
     bulk_format_student_dob:
       "Optional. Format YYYY-MM-DD (example 2008-05-14). Do not let Excel rewrite the date.",
     bulk_format_student_gender: "Optional. Only male / m or female / f.",
-    bulk_format_student_grade: "Optional. Integer (example 11).",
+    bulk_format_student_grade:
+      "Optional. Integer: 0 = TK, 1–6 SD, 7–9 SMP, 10–12 SMA/SMK, 13–15 = S1/S2/S3 (example 11).",
     bulk_format_student_target_exam: "Optional. Free text (example UTBK).",
     bulk_format_student_alamat_domisili:
       "Optional. Free text. Quote the value if it contains a comma.",

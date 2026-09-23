@@ -20,9 +20,10 @@ import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { cn } from "@/lib/utils";
 import type { AdminStudent } from "@/lib/types";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
+import { formatGrade, GRADE_GROUPS } from "@/lib/grade";
 
 const ALL_FILTER_VALUE = "__all__";
-const GRADE_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1));
+const GRADE_OPTIONS = GRADE_GROUPS.flatMap((group) => group.values);
 
 // ── ParticipantPicker ─────────────────────────────────────────────────────
 
@@ -132,9 +133,7 @@ export function ParticipantPicker({
 
   const facetedGrade = useMemo(() => {
     const set = new Set([
-      ...students
-        .map((s) => (s.grade != null ? String(s.grade) : ""))
-        .filter(Boolean),
+      ...students.map((s) => s.grade).filter((g) => g != null),
       ...GRADE_OPTIONS,
     ]);
     return [...set].sort((a, b) => Number(a) - Number(b));
@@ -211,8 +210,8 @@ export function ParticipantPicker({
               <span className="text-ink-500">{t("students_field_grade")}</span>
             </SelectItem>
             {facetedGrade.map((g) => (
-              <SelectItem key={g} value={g}>
-                {t("school")} {g}
+              <SelectItem key={g} value={String(g)}>
+                {formatGrade(g)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -300,7 +299,7 @@ export function ParticipantPicker({
                 </div>
                 <div className="truncate text-[11px] text-ink-500">
                   @{s.username}
-                  {s.grade ? ` · ${t("school")} ${s.grade}` : ""}
+                  {s.grade != null ? ` · ${t("students_field_grade")} ${formatGrade(s.grade)}` : ""}
                   {s.jenjang ? ` · ${s.jenjang}` : ""}
                   {schoolLabel ? ` · ${schoolLabel}` : ""}
                 </div>
