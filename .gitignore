@@ -41,3 +41,6 @@ backend/repo_cov.out
 .hermes/
 .superpowers/
 .worktrees/
+
+# Local issue workflow state
+.agents/work/
