@@ -16,15 +16,18 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { SchoolPicker } from "@/components/SchoolPicker";
 import type { SchoolOption } from "@/lib/types";
+import { formatGrade, GRADE_GROUPS, gradeOptionsForJenjang } from "@/lib/grade";
+import { JENJANG_OPTIONS } from "@/lib/jenjang";
 import { toast } from "sonner";
 
-const GRADES = ["7", "8", "9", "10", "11", "12"];
 export default function CompleteProfilePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -37,9 +40,15 @@ export default function CompleteProfilePage() {
   const [schoolId, setSchoolId] = useState("");
   const [unlistedSchoolName, setUnlistedSchoolName] = useState("");
   const [selectedSchool, setSelectedSchool] = useState<SchoolOption | null>(null);
+  const [jenjang, setJenjang] = useState("");
   const [grade, setGrade] = useState("");
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const jenjangOptions = selectedSchool?.school_types?.length
+    ? selectedSchool.school_types
+    : JENJANG_OPTIONS;
+  const gradeOptions = gradeOptionsForJenjang(jenjang);
 
   // Prefill name from the stored user (Google-provided).
   useEffect(() => {
@@ -75,6 +84,7 @@ export default function CompleteProfilePage() {
         school_id: schoolId || "",
         unlisted_school_name: schoolId ? "" : trimmedUnlisted,
         grade: parseInt(grade, 10),
+        jenjang: jenjang || undefined,
       });
       // Invalidate the profile query so the gate re-evaluates with fresh data.
       await queryClient.invalidateQueries({ queryKey: studentsKeys.profile() });
@@ -147,6 +157,34 @@ export default function CompleteProfilePage() {
           </div>
 
           <div className="flex flex-col gap-1.5">
+            <Label htmlFor="onboard-jenjang" className="text-xs font-semibold text-ink-600">
+              {t("students_field_jenjang")}
+            </Label>
+            <Select
+              value={jenjang || "_empty_"}
+              onValueChange={(v) => {
+                const next = v === "_empty_" ? "" : v;
+                setJenjang(next);
+                if (grade && !gradeOptionsForJenjang(next).includes(Number(grade))) {
+                  setGrade("");
+                }
+              }}
+            >
+              <SelectTrigger id="onboard-jenjang" className="h-11 rounded-md">
+                <SelectValue placeholder={t("students_field_jenjang")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_empty_">{t("students_field_jenjang")}</SelectItem>
+                {jenjangOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>
+                    {opt}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="onboard-grade" className="text-xs font-semibold text-ink-600">
               {t("grade")}
             </Label>
@@ -156,11 +194,22 @@ export default function CompleteProfilePage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="_empty_">{t("select_grade")}</SelectItem>
-                {GRADES.map((g) => (
-                  <SelectItem key={g} value={g}>
-                    {g}
-                  </SelectItem>
-                ))}
+                {gradeOptions.length > 0
+                  ? gradeOptions.map((g) => (
+                      <SelectItem key={g} value={String(g)}>
+                        {formatGrade(g)}
+                      </SelectItem>
+                    ))
+                  : GRADE_GROUPS.map((group) => (
+                      <SelectGroup key={group.label}>
+                        <SelectLabel>{group.label}</SelectLabel>
+                        {group.values.map((g) => (
+                          <SelectItem key={g} value={String(g)}>
+                            {formatGrade(g)}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))}
               </SelectContent>
             </Select>
           </div>

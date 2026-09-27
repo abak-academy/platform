@@ -10,6 +10,7 @@
 // register, and the exam participant filter), which is why a student could hold
 // a jenjang the profile form could not set.
 export const JENJANG_OPTIONS = [
+  "TK",
   "SD",
   "SMP",
   "SMA",
@@ -23,4 +24,5 @@ export const JENJANG_OPTIONS = [
   "D3",
   "S1",
   "S2",
+  "S3",
 ];
