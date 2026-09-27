@@ -1429,6 +1429,8 @@ export const DICT = {
     exam_start_button: "Mulai Ujian",
     not_started: "Belum dimulai",
     start_at: "Mulai {t}",
+    exam_not_ready_start: "Ujian belum memiliki soal. Hubungi penyelenggara.",
+    session_no_questions: "Ujian ini belum memiliki soal.",
 
     // Exam session — session UI
     session_question: "Soal",
@@ -3119,6 +3121,8 @@ export const DICT = {
     exam_start_button: "Start Exam",
     not_started: "Not started",
     start_at: "Starts {t}",
+    exam_not_ready_start: "This exam has no questions yet. Contact the organizer.",
+    session_no_questions: "This exam has no questions.",
 
     // Exam session — session UI
     session_question: "Question",

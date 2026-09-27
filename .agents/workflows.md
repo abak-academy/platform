@@ -1,5 +1,10 @@
 # Agent Workflows
 
+For any feature, bugfix, refactor, or GitHub issue that changes the repository, follow
+[`development-workflow`](skills/development-workflow/SKILL.md). Its size gate decides whether the
+change needs the full alignment-to-PR lifecycle or only the small-change path. The workflows below
+are focused procedures used inside either path.
+
 ## Broad Scan
 
 Goal: produce a read-only verdict with concrete findings, verification status, and residual risk.
