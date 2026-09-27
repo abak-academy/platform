@@ -153,8 +153,9 @@ export default function SessionPage() {
   const [expiryRecoveryFailed, setExpiryRecoveryFailed] = useState(false);
   const [showViolationOverlay, setShowViolationOverlay] = useState(false);
   const [violationType, setViolationType] = useState<
-    "fullscreen_exit" | "tab_switch" | null
+    "fullscreen_exit" | "tab_switch" | "screenshot_attempt" | null
   >(null);
+  const [contentMasked, setContentMasked] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">(
     "saved",
   );
@@ -166,7 +167,12 @@ export default function SessionPage() {
   const autoAdvanceRef = useRef(false);
   const violationCountRef = useRef(0);
   const violationTimersRef = useRef<
-    Partial<Record<"fullscreen_exit" | "tab_switch", ReturnType<typeof setTimeout>>>
+    Partial<
+      Record<
+        "fullscreen_exit" | "tab_switch" | "screenshot_attempt",
+        ReturnType<typeof setTimeout>
+      >
+    >
   >({});
   const keyboardFullscreenExitRef = useRef(false);
   const keyboardFullscreenRecoveryRef = useRef<{
@@ -175,8 +181,13 @@ export default function SessionPage() {
   } | null>(null);
   const keyboardFullscreenGestureRetryRef = useRef<(() => void) | null>(null);
   const lastViolationAtRef = useRef<
-    Partial<Record<"fullscreen_exit" | "tab_switch", number>>
+    Partial<
+      Record<"fullscreen_exit" | "tab_switch" | "screenshot_attempt", number>
+    >
   >({});
+  const windowBlurredRef = useRef(false);
+  const blurAtRef = useRef(0);
+  const fullscreenExitAtRef = useRef(0);
   const answersRef = useRef(answers);
   answersRef.current = answers;
   const flaggedRef = useRef(flagged);
@@ -685,33 +696,29 @@ export default function SessionPage() {
     void runExpiryRecovery();
   }, [remaining <= 0, isSectioned, runExpiryRecovery, session, hasTimer]);
 
-  const clearPendingViolation = useCallback(
-    (type: "fullscreen_exit" | "tab_switch") => {
-      const timer = violationTimersRef.current[type];
-      if (timer) {
-        clearTimeout(timer);
-        delete violationTimersRef.current[type];
-      }
-    },
-    [],
-  );
+  type ViolationType = "fullscreen_exit" | "tab_switch" | "screenshot_attempt";
 
-  const showTrackedViolation = useCallback(
-    (type: "fullscreen_exit" | "tab_switch") => {
-      const now = Date.now();
-      const last = lastViolationAtRef.current[type];
-      if (last != null && now - last < VIOLATION_DUPLICATE_SUPPRESS_MS) return;
-      lastViolationAtRef.current[type] = now;
-      logViolationRef.current.mutate(type);
-      violationCountRef.current += 1;
-      setViolationType(type);
-      setShowViolationOverlay(true);
-    },
-    [],
-  );
+  const clearPendingViolation = useCallback((type: ViolationType) => {
+    const timer = violationTimersRef.current[type];
+    if (timer) {
+      clearTimeout(timer);
+      delete violationTimersRef.current[type];
+    }
+  }, []);
+
+  const showTrackedViolation = useCallback((type: ViolationType) => {
+    const now = Date.now();
+    const last = lastViolationAtRef.current[type];
+    if (last != null && now - last < VIOLATION_DUPLICATE_SUPPRESS_MS) return;
+    lastViolationAtRef.current[type] = now;
+    logViolationRef.current.mutate(type);
+    violationCountRef.current += 1;
+    setViolationType(type);
+    setShowViolationOverlay(true);
+  }, []);
 
   const scheduleViolation = useCallback(
-    (type: "fullscreen_exit" | "tab_switch", stillViolating: () => boolean) => {
+    (type: ViolationType, stillViolating: () => boolean) => {
       if (violationTimersRef.current[type]) return;
       violationTimersRef.current[type] = setTimeout(() => {
         delete violationTimersRef.current[type];
@@ -770,6 +777,7 @@ export default function SessionPage() {
     };
     const onFullscreen = () => {
       if (!document.fullscreenElement) {
+        fullscreenExitAtRef.current = Date.now();
         const activeElement = document.activeElement;
         if (
           (activeElement instanceof HTMLInputElement ||
@@ -798,10 +806,13 @@ export default function SessionPage() {
           "fullscreen_exit",
           () =>
             !document.fullscreenElement &&
-            !answerFieldIsFocused() &&
-            !keyboardFullscreenExitRef.current,
+            // Blur voids the field/keyboard exemptions so an episode whose
+            // screenshot was suppressed still records fullscreen_exit.
+            (windowBlurredRef.current ||
+              (!answerFieldIsFocused() && !keyboardFullscreenExitRef.current)),
         );
       } else {
+        fullscreenExitAtRef.current = 0;
         keyboardFullscreenExitRef.current = false;
         clearKeyboardRecovery();
         clearKeyboardGestureRetry();
@@ -815,20 +826,78 @@ export default function SessionPage() {
         clearPendingViolation("tab_switch");
       }
     };
-    const onCopy = () => logViolation.mutate("copy_attempt");
+    // OS-level screenshot tools (PrintScreen, Snipping Tool, macOS capture)
+    // are intercepted by the OS before the page sees them, so detection is
+    // best-effort: delivered shortcut keys and window blur without a tab
+    // switch.
+    const isScreenshotShortcut = (event: KeyboardEvent) => {
+      if (event.key === "PrintScreen") return true;
+      const meta = event.metaKey || event.ctrlKey;
+      const shift = event.shiftKey;
+      return meta && shift && ["3", "4", "5", "S", "s"].includes(event.key);
+    };
+    const onKeydown = (event: KeyboardEvent) => {
+      if (!isScreenshotShortcut(event)) return;
+      event.preventDefault();
+      showTrackedViolation("screenshot_attempt");
+    };
+    const onKeyup = (event: KeyboardEvent) => {
+      if (event.key === "PrintScreen") {
+        showTrackedViolation("screenshot_attempt");
+      }
+    };
+    const updateContentMask = () => {
+      setContentMasked(windowBlurredRef.current);
+    };
+    const onBlur = () => {
+      windowBlurredRef.current = true;
+      blurAtRef.current = Date.now();
+      updateContentMask();
+      if (!document.hidden) {
+        scheduleViolation(
+          "screenshot_attempt",
+          () =>
+            windowBlurredRef.current &&
+            !document.hidden &&
+            // A fullscreen exit in this blur episode already logs
+            // fullscreen_exit; logging here would double-count one action.
+            !(
+              fullscreenExitAtRef.current > 0 &&
+              fullscreenExitAtRef.current >= blurAtRef.current - 200
+            ),
+        );
+      }
+    };
+    const onFocus = () => {
+      windowBlurredRef.current = false;
+      updateContentMask();
+      clearPendingViolation("screenshot_attempt");
+    };
+    const onCopy = () => logViolationRef.current.mutate("copy_attempt");
     document.addEventListener("fullscreenchange", onFullscreen);
     document.addEventListener("visibilitychange", onVisibility);
     document.addEventListener("copy", onCopy);
+    document.addEventListener("keydown", onKeydown);
+    document.addEventListener("keyup", onKeyup);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
     return () => {
       document.removeEventListener("fullscreenchange", onFullscreen);
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("copy", onCopy);
+      document.removeEventListener("keydown", onKeydown);
+      document.removeEventListener("keyup", onKeyup);
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
       clearKeyboardRecovery();
       clearKeyboardGestureRetry();
       clearPendingViolation("fullscreen_exit");
       clearPendingViolation("tab_switch");
+      clearPendingViolation("screenshot_attempt");
+      windowBlurredRef.current = false;
+      setContentMasked(false);
     };
-  }, [sessionId, session?.status, scheduleViolation, clearPendingViolation]);
+  }, [sessionId, session?.status, scheduleViolation, clearPendingViolation, showTrackedViolation]);
 
   // Request fullscreen
   const enterFullscreen = useCallback(async () => {
@@ -1131,7 +1200,8 @@ export default function SessionPage() {
       <div
         ref={examBodyRef}
         data-testid="exam-body"
-        className="grid flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_280px] lg:overflow-hidden"
+        data-content-masked={contentMasked ? "true" : "false"}
+        className={`grid flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_280px] lg:overflow-hidden ${contentMasked ? "blur-sm select-none pointer-events-none" : ""}`}
       >
         {/* Question pane */}
         <div
@@ -1452,7 +1522,9 @@ export default function SessionPage() {
                 {t(
                   violationType === "tab_switch"
                     ? "violation_warning_tab_switch_body"
-                    : "violation_warning_fullscreen_exit_body",
+                    : violationType === "screenshot_attempt"
+                      ? "violation_warning_screenshot_attempt_body"
+                      : "violation_warning_fullscreen_exit_body",
                 )}
               </p>
               <p

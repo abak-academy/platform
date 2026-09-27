@@ -123,9 +123,10 @@ func fingerprint(ip, ua string) string {
 
 // validViolationTypes is the set of allowed violation_type values.
 var validViolationTypes = map[string]bool{
-	"fullscreen_exit": true,
-	"tab_switch":      true,
-	"copy_attempt":    true,
+	"fullscreen_exit":    true,
+	"tab_switch":         true,
+	"copy_attempt":       true,
+	"screenshot_attempt": true,
 }
 
 // ---------- Shared helpers ----------

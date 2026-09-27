@@ -2269,7 +2269,77 @@ describe("SessionPage", () => {
 
     await advanceViolationGrace(2000);
     expect(logViolationMutate).toHaveBeenCalledWith("fullscreen_exit");
+  });
+
+  it("logs fullscreen_exit, not screenshot_attempt, when window blur accompanies a fullscreen exit", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    logViolationMutate.mockClear();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      fireEvent.blur(window);
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).toHaveBeenCalledWith("fullscreen_exit");
+    expect(logViolationMutate).not.toHaveBeenCalledWith("screenshot_attempt");
     expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
+  });
+
+  it("logs fullscreen_exit when a blurred window accompanies an exit while an answer field is focused", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const input = screen
+      .getAllByRole("textbox")
+      .find((field) => field.tagName === "INPUT") as HTMLInputElement;
+    input.focus();
+
+    logViolationMutate.mockClear();
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      fireEvent.blur(window);
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).toHaveBeenCalledWith("fullscreen_exit");
+    expect(logViolationMutate).not.toHaveBeenCalledWith("screenshot_attempt");
+  });
+
+  it("still logs fullscreen_exit when returning to the window within grace without re-entering fullscreen", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    logViolationMutate.mockClear();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      fireEvent.blur(window);
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace(1000);
+    act(() => {
+      fireEvent.focus(window);
+    });
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).toHaveBeenCalledWith("fullscreen_exit");
+    expect(logViolationMutate).not.toHaveBeenCalledWith("screenshot_attempt");
   });
 
   it("increments violation counter and shows count after grace (FR13, FR18)", async () => {
@@ -2496,6 +2566,129 @@ describe("SessionPage", () => {
       await Promise.resolve();
     });
     expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+  });
+
+  it("logs screenshot_attempt immediately on PrintScreen keyup and shows overlay", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    logViolationMutate.mockClear();
+
+    act(() => {
+      fireEvent.keyUp(document, { key: "PrintScreen" });
+    });
+
+    expect(logViolationMutate).toHaveBeenCalledWith("screenshot_attempt");
+    expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Anda mencoba mengambil screenshot/),
+    ).toBeInTheDocument();
+  });
+
+  it("logs screenshot_attempt immediately on screenshot shortcut keydown", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    logViolationMutate.mockClear();
+
+    act(() => {
+      fireEvent.keyDown(document, { key: "3", metaKey: true, shiftKey: true });
+    });
+
+    expect(logViolationMutate).toHaveBeenCalledWith("screenshot_attempt");
+    expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
+  });
+
+  it("does not log screenshot_attempt for non-screenshot keys", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    logViolationMutate.mockClear();
+
+    act(() => {
+      fireEvent.keyDown(document, { key: "s", ctrlKey: true });
+      fireEvent.keyUp(document, { key: "a" });
+    });
+
+    expect(logViolationMutate).not.toHaveBeenCalled();
+  });
+
+  it("masks exam content on window blur and logs screenshot_attempt after grace", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    logViolationMutate.mockClear();
+
+    act(() => {
+      fireEvent.blur(window);
+    });
+    expect(
+      screen
+        .getByTestId("exam-body")
+        .getAttribute("data-content-masked"),
+    ).toBe("true");
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).toHaveBeenCalledWith("screenshot_attempt");
+    expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.focus(window);
+    });
+    expect(
+      screen
+        .getByTestId("exam-body")
+        .getAttribute("data-content-masked"),
+    ).toBe("false");
+  });
+
+  it("cancels pending screenshot_attempt when window refocuses within grace", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    logViolationMutate.mockClear();
+
+    act(() => {
+      fireEvent.blur(window);
+    });
+    await advanceViolationGrace(1000);
+    act(() => {
+      fireEvent.focus(window);
+    });
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).not.toHaveBeenCalledWith("screenshot_attempt");
+    expect(
+      screen
+        .getByTestId("exam-body")
+        .getAttribute("data-content-masked"),
+    ).toBe("false");
+  });
+
+  it("does not log screenshot_attempt for window blur during a tab switch", async () => {
+    vi.useFakeTimers();
+    render(<SessionPage />);
+    await enterFullscreenWithFakeTimers();
+    logViolationMutate.mockClear();
+
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      Object.defineProperty(document, "hidden", {
+        value: true,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      fireEvent.blur(window);
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await advanceViolationGrace();
+
+    expect(logViolationMutate).not.toHaveBeenCalledWith("screenshot_attempt");
+    expect(logViolationMutate).toHaveBeenCalledWith("tab_switch");
+    expect(logViolationMutate).toHaveBeenCalledWith("fullscreen_exit");
   });
 
   it("timer continues running while violation overlay is shown (FR16)", async () => {

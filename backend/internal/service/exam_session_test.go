@@ -1882,6 +1882,11 @@ func TestLogViolation_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Errorf("LogViolation: %v", err)
 	}
+
+	err = svc.LogViolation(ctx, regDetail.StudentID.String(), sess.SessionID.String(), "screenshot_attempt")
+	if err != nil {
+		t.Errorf("LogViolation screenshot_attempt: %v", err)
+	}
 }
 
 func TestLogViolation_InvalidType(t *testing.T) {
