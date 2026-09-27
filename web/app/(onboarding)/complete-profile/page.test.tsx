@@ -112,6 +112,8 @@ vi.mock("@/components/ui/select", () => ({
   SelectTrigger: () => null,
   SelectValue: () => null,
   SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectLabel: () => null,
   SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
     <option value={value}>{children}</option>
   ),
@@ -130,11 +132,37 @@ describe("CompleteProfilePage", () => {
     profileState = { data: { auth_provider: "google" }, isLoading: false };
   });
 
-  it("renders school and grade fields for an incomplete Google student", () => {
+  it("renders school, jenjang, and grade fields for an incomplete Google student", () => {
     renderPage();
 
     expect(screen.getByLabelText("Nama")).toHaveValue("Google Student");
-    expect(screen.getAllByRole("combobox")).toHaveLength(2);
+    expect(screen.getAllByRole("combobox")).toHaveLength(3);
+  });
+
+  it("offers the full TK–S3 grade span before jenjang is chosen and narrows after", async () => {
+    renderPage();
+
+    const [, jenjang, grade] = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    const optionsBefore = Array.from(grade.options).map((o) => o.text);
+    expect(optionsBefore).toContain("TK");
+    expect(optionsBefore).toContain("12");
+    expect(optionsBefore).toContain("S1");
+    expect(optionsBefore).toContain("S3");
+
+    fireEvent.change(jenjang, { target: { value: "TK" } });
+    const optionsAfter = Array.from(grade.options).map((o) => o.text);
+    expect(optionsAfter).toContain("TK");
+    expect(optionsAfter).not.toContain("12");
+
+    fireEvent.click(screen.getByRole("option", { name: "School One" }));
+    fireEvent.change(grade, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lanjutkan" }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ grade: 0, jenjang: "TK" }),
+      ),
+    );
   });
 
   it("waits for profile invalidation before reopening the student app", async () => {
@@ -143,7 +171,7 @@ describe("CompleteProfilePage", () => {
     vi.spyOn(queryClient, "invalidateQueries").mockReturnValue(invalidation.promise);
     renderPage(queryClient);
 
-    const [, grade] = screen.getAllByRole("combobox");
+    const [, , grade] = screen.getAllByRole("combobox");
     fireEvent.click(screen.getByRole("option", { name: "School One" }));
     fireEvent.change(grade, { target: { value: "12" } });
     fireEvent.click(screen.getByRole("button", { name: "Lanjutkan" }));
@@ -196,7 +224,7 @@ describe("CompleteProfilePage", () => {
   it("submits unlisted_school_name (and never school_id) when the unlisted option is used", async () => {
     renderPage();
 
-    const [, grade] = screen.getAllByRole("combobox");
+    const [, , grade] = screen.getAllByRole("combobox");
     fireEvent.click(screen.getByRole("option", { name: /sekolah tidak ditemukan/i }));
     fireEvent.change(grade, { target: { value: "11" } });
     const freeText = screen.getByLabelText("Tulis nama sekolah Anda");

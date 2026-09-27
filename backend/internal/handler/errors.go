@@ -183,6 +183,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "already_attempted", Message: err.Error()}
 	case errors.Is(err, service.ErrExamNotStarted):
 		status, apiErr = http.StatusConflict, APIError{Code: "exam_not_started", Message: err.Error()}
+	case errors.Is(err, service.ErrExamNotReady):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "exam_not_ready", Message: err.Error()}
 	case errors.Is(err, service.ErrDeviceMismatch):
 		status, apiErr = http.StatusForbidden, APIError{Code: "device_mismatch", Message: err.Error()}
 	case errors.Is(err, service.ErrCheckinWindowClosed):

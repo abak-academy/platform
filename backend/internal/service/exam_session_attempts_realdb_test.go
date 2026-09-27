@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
 )
 
 // TestStartSession_RealDB_MaxAttempts exercises the production Service.StartSession
@@ -37,6 +38,7 @@ func TestStartSession_RealDB_MaxAttempts(t *testing.T) {
 	if err := repo.CreateExam(ctx, exam); err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
+	seedRealDBAttachedQuestion(t, repo, exam.ID)
 
 	var regID uuid.UUID
 	err = repo.Pool().QueryRow(ctx,
@@ -104,6 +106,7 @@ func TestStartSession_RealDB_NilMaxAttemptsUnlimited(t *testing.T) {
 	if err := repo.CreateExam(ctx, exam); err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
+	seedRealDBAttachedQuestion(t, repo, exam.ID)
 
 	var regID uuid.UUID
 	err = repo.Pool().QueryRow(ctx,
@@ -243,5 +246,48 @@ func TestSubmitSession_RealDB_GradesAnswerCommittedBeforeSessionLock(t *testing.
 	}
 	if got == nil || *got != lateAnswer {
 		t.Fatalf("final graded answer = %v, want %q", got, lateAnswer)
+	}
+}
+
+// seedRealDBAttachedQuestion attaches one mcq question to the exam via a new
+// test — StartSession now rejects questionless exams (ErrExamNotReady), so
+// attempts-flow fixtures need a startable exam.
+func seedRealDBAttachedQuestion(t *testing.T, repo *repository.Repository, examID uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+
+	var testID uuid.UUID
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO test (title, subject, topic, duration_minutes) VALUES ($1, 'math', 'attempts', 20) RETURNING id`,
+		"Attempts Test "+uniqueSuffix(),
+	).Scan(&testID); err != nil {
+		t.Fatalf("insert test: %v", err)
+	}
+	var questionID uuid.UUID
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO question (format, body, correct_answer, point_correct, point_wrong)
+		VALUES ('mcq', 'attempts question', 'a', 1, 0)
+		RETURNING id`,
+	).Scan(&questionID); err != nil {
+		t.Fatalf("insert question: %v", err)
+	}
+	if _, err := repo.Pool().Exec(ctx,
+		`INSERT INTO question_option (question_id, key, text, is_correct, sort_order)
+		VALUES ($1, 'a', 'A', true, 1), ($1, 'b', 'B', false, 2)`,
+		questionID,
+	); err != nil {
+		t.Fatalf("insert question options: %v", err)
+	}
+	if _, err := repo.Pool().Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, 1)`,
+		testID, questionID,
+	); err != nil {
+		t.Fatalf("insert test_question: %v", err)
+	}
+	if _, err := repo.Pool().Exec(ctx,
+		`INSERT INTO exam_test (exam_id, test_id, sort_order) VALUES ($1, $2, 1)`,
+		examID, testID,
+	); err != nil {
+		t.Fatalf("insert exam_test: %v", err)
 	}
 }

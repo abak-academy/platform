@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useRegistration } from "@/lib/hooks/exam";
 import { useProfile, useSchoolById } from "@/lib/hooks/students";
 import { API_BASE, ApiError, fileUrl } from "@/lib/api";
+import { formatGrade } from "@/lib/grade";
 import { useAuthStore } from "@/stores/auth";
 import { ExamCardPrintable } from "@/components/exam/ExamCardPrintable";
 import styles from "@/components/exam/ExamCardPrintable.module.css";
@@ -171,7 +172,7 @@ export default function ExamCardPrintPage() {
         fullName={student?.name?.trim() || DASH}
         participantNumber={participantNumber}
         school={schoolName}
-        grade={student?.grade != null ? String(student.grade) : DASH}
+        grade={student?.grade != null ? formatGrade(student.grade) || DASH : DASH}
         dob={fmtDate(student?.dob)}
         photoUrl={fileUrl(student?.photo_url)}
         examName={exam.title || DASH}

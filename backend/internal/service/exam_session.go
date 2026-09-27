@@ -123,9 +123,10 @@ func fingerprint(ip, ua string) string {
 
 // validViolationTypes is the set of allowed violation_type values.
 var validViolationTypes = map[string]bool{
-	"fullscreen_exit": true,
-	"tab_switch":      true,
-	"copy_attempt":    true,
+	"fullscreen_exit":    true,
+	"tab_switch":         true,
+	"copy_attempt":       true,
+	"screenshot_attempt": true,
 }
 
 // ---------- Shared helpers ----------
@@ -136,7 +137,11 @@ var validViolationTypes = map[string]bool{
 // question (FR-26). Populates audio_url from the question and blanks (ordered
 // indices only, never correct_answer) for multi_blank questions.
 func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
-	var out []SessionTestPayload
+	// Empty (not nil) slices are the contract: encoding/json marshals a nil
+	// slice as `null`, and the session page iterates tests/options directly —
+	// `tests: null` crashes the page at render, `options: null` crashes it
+	// mid-exam on an mcq/multi_answer question without options.
+	out := []SessionTestPayload{}
 	for _, td := range tests {
 		st := SessionTestPayload{
 			ID:        td.Test.ID,
@@ -152,6 +157,7 @@ func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
 				Body:      q.Question.Body,
 				AudioURL:  q.Question.AudioURL,
 				SortOrder: q.SortOrder,
+				Options:   make([]SessionOption, 0, len(q.Options)),
 			}
 			for _, o := range q.Options {
 				sq.Options = append(sq.Options, SessionOption{
@@ -400,6 +406,17 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 	}
 	if !errors.Is(err, repository.ErrNotFound) {
 		return SessionStartPayload{}, err
+	}
+
+	// An exam with no attached questions cannot be sat — reject the NEW start
+	// before creating a session so the attempt is not consumed. Resuming an
+	// in_progress sitting stays allowed (tests may be attached mid-session).
+	totalQuestions, err := s.storeRepo.GetExamQuestionTotal(ctx, exam.ID)
+	if err != nil {
+		return SessionStartPayload{}, err
+	}
+	if totalQuestions == 0 {
+		return SessionStartPayload{}, ErrExamNotReady
 	}
 
 	// nil max_attempts is unlimited. 0 or 1 is a single sitting. >= 2 is that

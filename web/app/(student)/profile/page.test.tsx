@@ -568,6 +568,40 @@ describe("ProfilePage — new optional biodata fields (FR-FE-24..27)", () => {
     expect(payload).not.toHaveProperty("unlisted_school_name");
   });
 
+  it("narrows grade options to the chosen jenjang and submits the mapped grade", async () => {
+    profileState = {
+      ...profileState,
+      data: {
+        ...(profileState.data as object),
+        school_id: null,
+        unlisted_school_name: null,
+      },
+    };
+    renderPage();
+    enterEditMode();
+
+    fireEvent.click(screen.getByLabelText(/jenjang/i));
+    fireEvent.click(await screen.findByRole("option", { name: "SMA" }));
+
+    // With jenjang SMA the grade select only offers the SMA range.
+    fireEvent.click(screen.getByLabelText("Kelas"));
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "10" })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("option", { name: "12" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "TK" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "S3" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "10" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan perubahan|save changes/i }));
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalled();
+    });
+    const payload = mutateMock.mock.calls[0][0];
+    expect(payload.grade).toBe(10);
+    expect(payload.jenjang).toBe("SMA");
+  });
+
   it("surfaces the server's incomplete_address error when only provinsi_id is submitted", async () => {
     mutateMock.mockImplementation((_payload, opts) => {
       opts?.onError?.(Object.assign(new Error("incomplete address"), { code: "incomplete_address" }));

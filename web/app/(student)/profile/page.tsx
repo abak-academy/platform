@@ -37,16 +37,17 @@ import { PasswordInput } from "@/components/ui/password-input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SchoolPicker } from "@/components/SchoolPicker";
 import type { SchoolOption } from "@/lib/types";
+import { formatGrade, GRADE_GROUPS, gradeOptionsForJenjang } from "@/lib/grade";
 import { toast } from "sonner";
-
-const GRADES = ["7", "8", "9", "10", "11", "12"];
 
 const PROFILE_INPUT_CLASS =
   "h-11 w-full rounded-md border border-line bg-surface px-3.5 text-sm text-ink-900 shadow-none transition-[border-color,box-shadow] outline-none placeholder:text-ink-400 focus-visible:border-brand-400 focus-visible:ring-[3px] focus-visible:ring-brand-50 disabled:cursor-not-allowed disabled:bg-surface-2/60 disabled:text-ink-500 read-only:bg-surface-2/60";
@@ -321,6 +322,9 @@ export default function ProfilePage() {
   const jenjangOptions = ownSchool?.school_types?.length
     ? ownSchool.school_types
     : JENJANG_OPTIONS;
+  const gradeOptions = gradeOptionsForJenjang(displayedJenjang);
+  const gradeInOptions =
+    grade === "" || (gradeOptions.length > 0 && gradeOptions.includes(Number(grade)));
 
   const syncedVersion = useRef<string | null>(null);
   useEffect(() => {
@@ -680,7 +684,13 @@ export default function ProfilePage() {
                     ) : (
                       <Select
                         value={displayedJenjang || "_empty_"}
-                        onValueChange={(v) => setJenjang(v === "_empty_" ? "" : v)}
+                        onValueChange={(v) => {
+                          const next = v === "_empty_" ? "" : v;
+                          setJenjang(next);
+                          if (grade && !gradeOptionsForJenjang(next).includes(Number(grade))) {
+                            setGrade("");
+                          }
+                        }}
                         disabled={!editMode}
                       >
                         <SelectTrigger id="jenjang" className={PROFILE_INPUT_CLASS}>
@@ -718,11 +728,22 @@ export default function ProfilePage() {
                           <SelectItem value="_empty_">
                             {t("select_grade")}
                           </SelectItem>
-                          {GRADES.map((g) => (
-                            <SelectItem key={g} value={g}>
-                              {g}
-                            </SelectItem>
-                          ))}
+                          {gradeOptions.length > 0 && gradeInOptions
+                            ? gradeOptions.map((g) => (
+                                <SelectItem key={g} value={String(g)}>
+                                  {formatGrade(g)}
+                                </SelectItem>
+                              ))
+                            : GRADE_GROUPS.map((group) => (
+                                <SelectGroup key={group.label}>
+                                  <SelectLabel>{group.label}</SelectLabel>
+                                  {group.values.map((g) => (
+                                    <SelectItem key={g} value={String(g)}>
+                                      {formatGrade(g)}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              ))}
                         </SelectContent>
                       </Select>
                     )}

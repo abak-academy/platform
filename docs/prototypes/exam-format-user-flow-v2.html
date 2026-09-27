@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Abak Academy — Flexible Exam Current-UI Prototype</title>
+  <style>
+    :root {
+      --paper:#f4f5fd; --surface:#fff; --surface-2:#fafafe;
+      --ink:#15183a; --ink-2:#353a60; --muted:#767da2; --line:#e7e9f5; --line-strong:#cfd4ea;
+      --brand:#3d4ddb; --brand-dark:#2e3bb8; --brand-soft:#eef0fe;
+      --success:#147a4b; --success-soft:#e5f5ec; --warn:#8a4c0b; --warn-soft:#fbf1e2;
+      --danger:#c9332a; --danger-soft:#fbeae8;
+      --r-sm:9px; --r-md:13px; --r-lg:18px;
+      --shadow:0 8px 24px rgba(40,46,110,.08),0 1px 3px rgba(40,46,110,.05);
+      font-family:"Public Sans","Avenir Next","Segoe UI",sans-serif;
+      color:var(--ink); background:var(--paper);
+    }
+    *{box-sizing:border-box} html{min-width:320px;background:var(--paper)} body{margin:0;min-height:100vh;background:var(--paper);color:var(--ink)}
+    button,input,select,textarea{font:inherit} button{cursor:pointer} h1,h2,h3,h4,p{margin-top:0} p{text-wrap:pretty}
+    button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid rgba(61,77,219,.22);outline-offset:2px}
+
+    .proto-bar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:16px;min-height:66px;padding:10px 20px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.97);backdrop-filter:blur(10px)}
+    .brand{display:flex;align-items:center;gap:10px;min-width:205px}.brand-mark{width:38px;height:38px;display:grid;place-items:center;border-radius:11px;background:var(--brand);color:white;font-weight:900}.brand strong{display:block;font-size:13px}.brand span{display:block;margin-top:2px;color:var(--muted);font-size:10px}
+    .tabs{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+    .tabs button{min-height:38px;padding:0 14px;border:0;border-radius:9px;background:transparent;color:var(--muted);font-size:12px;font-weight:800}.tabs button.active{background:white;color:var(--brand);box-shadow:0 1px 5px rgba(40,46,110,.10)}
+    .proto-note{margin-left:auto;color:var(--muted);font-size:11px;text-align:right}.view{display:none}.view.active{display:block;animation:enter .2s ease-out}@keyframes enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+    .admin-shell{max-width:1230px;margin:0 auto;padding:28px 28px 60px}.back{display:inline-flex;align-items:center;gap:6px;margin-bottom:18px;color:var(--muted);font-size:12px}.page-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:22px}.page-head h1{margin:0 0 6px;font-size:30px;letter-spacing:-.025em}.page-head p{margin:0;color:var(--muted);font-size:13px}.head-actions{display:flex;gap:8px}.eyebrow{color:var(--brand);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.11em}
+    .button{min-height:40px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 16px;border:1px solid transparent;border-radius:10px;font-size:12px;font-weight:800;transition:.15s ease}.button:hover{transform:translateY(-1px)}.button.primary{background:var(--brand);color:white;box-shadow:0 5px 13px rgba(61,77,219,.18)}.button.primary:hover{background:var(--brand-dark)}.button.outline{border-color:var(--line-strong);background:white;color:var(--ink-2)}.button.soft{border-color:#d5d9f5;background:var(--brand-soft);color:var(--brand)}.button.small{min-height:32px;padding:0 10px;font-size:10px}.button:disabled{cursor:not-allowed;opacity:.45;transform:none;box-shadow:none}
+    .card{border:1px solid var(--line);border-radius:var(--r-lg);background:white;box-shadow:0 1px 2px rgba(40,46,110,.03)}.card-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:18px 20px;border-bottom:1px solid var(--line)}.card-head h2,.card-head h3{margin:0 0 4px;font-size:16px}.card-head p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}.card-body{padding:20px}
+    .field{display:grid;gap:7px}.field label{color:var(--ink-2);font-size:11px;font-weight:800}.field small{color:var(--muted);font-size:10px;line-height:1.45}.input,select,textarea{width:100%;min-height:40px;padding:8px 11px;border:1px solid var(--line-strong);border-radius:9px;background:white;color:var(--ink)}textarea{min-height:105px;resize:vertical;line-height:1.5}.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.gap{height:16px}.pill{display:inline-flex;align-items:center;gap:6px;min-height:27px;padding:0 9px;border-radius:99px;background:var(--surface-2);color:var(--muted);font-size:10px;font-weight:800}.pill.success{background:var(--success-soft);color:var(--success)}
+
+    /* Existing Test detail posture */
+    .test-layout{display:grid;grid-template-columns:360px minmax(0,1fr);gap:22px;align-items:start}.sticky-form{position:sticky;top:88px}.form-stack{display:grid;gap:16px}.section-divider{padding-top:15px;border-top:1px solid var(--line)}.section-divider h3{margin:0 0 4px;font-size:12px}.section-divider p{margin:0 0 12px;color:var(--muted);font-size:10px;line-height:1.5}
+    .material-preview{overflow:hidden;border:1px solid var(--line);border-radius:11px;background:var(--surface-2)}.material-toolbar{display:flex;gap:5px;padding:8px;border-bottom:1px solid var(--line);background:white}.tool{min-width:28px;height:27px;border:1px solid var(--line);border-radius:7px;background:white;color:var(--ink-2);font-size:10px;font-weight:800}.material-copy{padding:13px;color:var(--ink-2);font-family:Georgia,serif;font-size:12px;line-height:1.65}.material-media{display:flex;align-items:center;gap:9px;margin:0 13px 13px;padding:10px;border-radius:9px;background:white;border:1px solid var(--line);font-family:var(--font-sans);font-size:10px}.media-thumb{width:42px;height:34px;display:grid;place-items:center;border-radius:7px;background:var(--brand-soft);color:var(--brand);font-weight:900}
+    .questions-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:11px}.questions-head h3{margin:0;font-size:14px}.question-list{overflow:hidden;border:1px solid var(--line);border-radius:var(--r-lg);background:white;box-shadow:0 1px 2px rgba(40,46,110,.03)}.question-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:11px;align-items:flex-start;padding:14px;border-bottom:1px solid var(--line)}.question-row:last-child{border-bottom:0}.order{display:grid;place-items:center;color:var(--muted);font-size:10px}.order strong{color:var(--ink);font-size:12px}.question-row h4{margin:0 0 7px;font-size:12px;font-weight:600}.badges{display:flex;flex-wrap:wrap;gap:5px}.badge{padding:4px 7px;border-radius:7px;background:var(--brand-soft);color:var(--brand);font-size:9px;font-weight:800}.badge.gray{background:var(--surface-2);color:var(--muted)}.badge.warn{background:var(--warn-soft);color:var(--warn)}.trash{width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:var(--danger);font-size:15px}
+
+    /* Existing package/editor posture */
+    .modal-stage{min-height:calc(100vh - 66px);padding:35px 18px;background:rgba(21,24,58,.22)}.modal{width:min(820px,100%);margin:0 auto;overflow:hidden;border-radius:18px;background:white;box-shadow:0 22px 60px rgba(21,24,58,.24)}.modal-title{padding:20px 22px;border-bottom:1px solid var(--line)}.modal-title h1{margin:0 0 5px;font-size:21px}.modal-title p{margin:0;color:var(--muted);font-size:11px}.modal-content{max-height:calc(100vh - 225px);overflow:auto;padding:20px 22px}.modal-footer{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:13px 22px;border-top:1px solid var(--line);background:var(--surface-2)}.save-copy{color:var(--muted);font-size:10px}.form-section{padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid var(--line)}.form-section:last-child{margin-bottom:0;border-bottom:0}.form-section h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+    .choice-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.choice{position:relative}.choice input{position:absolute;opacity:0}.choice span{min-height:65px;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:11px;border:1px solid var(--line-strong);border-radius:10px;color:var(--ink-2);cursor:pointer}.choice strong{font-size:11px}.choice small{color:var(--muted);font-size:9px;line-height:1.4}.choice input:checked+span{border-color:var(--brand);box-shadow:inset 0 0 0 1px var(--brand);background:var(--brand-soft);color:var(--brand)}
+    .section-card{padding:14px;border:1px solid var(--line);border-radius:12px;background:white}.section-card+.section-card{margin-top:9px}.section-top{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.section-top h3{margin:0 0 4px;font-size:13px}.section-top p{margin:0;color:var(--muted);font-size:9px}.section-config{display:grid;grid-template-columns:1.1fr .7fr 1fr;gap:10px}.audio-row{display:none;margin-top:10px}.audio-row.show{display:grid;grid-template-columns:1fr 130px;gap:10px}.effective{margin-top:12px;padding:11px 13px;border-radius:10px;background:var(--brand-soft);color:var(--brand-dark);font-size:10px;line-height:1.5}.validation-error{display:none;margin-top:10px;padding:10px 12px;border:1px solid #edbcb7;border-radius:9px;background:var(--danger-soft);color:var(--danger);font-size:10px;line-height:1.5}.validation-error.show{display:block}
+
+    /* Current student shell posture */
+    .student-shell{height:calc(100vh - 66px);display:flex;flex-direction:column;background:white}.student-top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;align-items:center;padding:9px 18px;border-bottom:1px solid var(--line);background:white}.student-brand{display:flex;align-items:center;gap:9px;min-width:0}.student-icon{width:31px;height:31px;display:grid;place-items:center;border-radius:8px;background:var(--brand);color:white;font-weight:900}.student-title{min-width:0}.student-title strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.student-title span{display:block;margin-top:2px;color:var(--muted);font-size:9px}.student-meta{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:10px}.timer{padding:6px 10px;border-radius:8px;background:var(--brand-soft);color:var(--brand-dark);font-family:ui-monospace,monospace;font-weight:900;font-size:15px}.student-body{min-height:0;flex:1;display:grid;grid-template-columns:minmax(0,1fr) 270px}.question-pane{min-width:0;overflow:auto;padding:18px 24px}.question-inner{max-width:940px;margin:0 auto}.section-rail{display:flex;gap:6px;overflow:auto;margin-bottom:13px}.rail-pill{flex:none;padding:6px 10px;border-radius:7px;background:var(--surface-2);color:var(--muted);font-size:9px;font-weight:800}.rail-pill.done{color:var(--success);background:var(--success-soft)}.rail-pill.active{color:white;background:var(--brand)}.audio-player{display:flex;align-items:center;gap:10px;margin-bottom:13px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}.play{width:30px;height:30px;border:0;border-radius:50%;background:var(--brand);color:white}.audio-track{height:5px;flex:1;border-radius:99px;background:var(--line)}.audio-track::before{content:"";display:block;width:42%;height:100%;border-radius:inherit;background:var(--brand)}.audio-player span{color:var(--muted);font-size:9px}
+    .work-area.one{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(340px,1.2fr);gap:14px;align-items:start}.shared-panel{position:sticky;top:0;border:1px solid var(--line);border-radius:13px;background:var(--surface-2)}.shared-head{padding:12px 14px;border-bottom:1px solid var(--line)}.shared-head strong{display:block;font-size:11px}.shared-head span{display:block;margin-top:3px;color:var(--muted);font-size:9px}.shared-body{padding:15px;color:var(--ink-2);font-family:Georgia,serif;font-size:12px;line-height:1.7}.shared-image{height:115px;display:grid;place-items:center;margin-bottom:12px;border-radius:9px;background:linear-gradient(135deg,#dfe4fd,#f5f6fe);color:var(--brand-dark);font-family:"Public Sans",sans-serif;font-size:10px;font-weight:800}
+    .question-card{border:1px solid var(--line);border-radius:13px;background:white;box-shadow:0 1px 2px rgba(40,46,110,.03)}.question-card+.question-card{margin-top:11px}.q-head{display:flex;justify-content:space-between;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}.q-head strong{font-size:11px}.q-head span{color:var(--muted);font-size:9px}.q-body{padding:15px}.q-body h3{margin:0 0 12px;font-size:12px;line-height:1.45}.question-material{display:none;margin-bottom:12px;padding:11px;border:1px solid #e0c99f;border-radius:9px;background:var(--warn-soft);color:var(--ink-2);font-size:10px;line-height:1.5}.question-material.show{display:block}.question-material strong{display:block;margin-bottom:5px;color:var(--warn)}.mini-audio{display:flex;align-items:center;gap:8px;margin-top:8px}.mini-play{width:27px;height:27px;border:0;border-radius:50%;background:var(--warn);color:white}.mini-track{height:4px;flex:1;border-radius:99px;background:#ead5b7}.options{display:grid;gap:7px}.option{position:relative}.option input{position:absolute;opacity:0}.option span{min-height:40px;display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--line-strong);border-radius:9px;color:var(--ink-2);font-size:10px;cursor:pointer}.option span::before{content:"";width:14px;height:14px;flex:none;border:1px solid #a8aecb;border-radius:50%}.option input:checked+span{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-dark)}.option input:checked+span::before{border:4px solid var(--brand)}.blank{width:115px;min-height:32px;padding:4px 7px;border:1px solid var(--line-strong);border-radius:7px}.essay{min-height:120px}.all-stack{max-width:760px;margin:0 auto}.all-material{margin-bottom:13px}.nav-rail{min-height:0;overflow:auto;padding:14px;border-left:1px solid var(--line);background:var(--surface-2)}.nav-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.nav-head strong{font-size:10px}.nav-head span{color:var(--muted);font-size:9px}.nav-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.nav-cell{aspect-ratio:1;border:1px solid var(--line-strong);border-radius:8px;background:white;color:var(--ink-2);font-size:9px;font-weight:800}.nav-cell.active{border-color:var(--brand);background:var(--brand);color:white}.nav-cell.answered{border-color:#9dd0b4;background:var(--success-soft);color:var(--success)}.student-footer{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 18px;border-top:1px solid var(--line);background:white}.save-state{color:var(--success);font-size:9px;font-weight:800}.renderer-switch{display:flex;gap:5px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}.renderer-switch button{min-height:30px;padding:0 9px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-size:9px;font-weight:800}.renderer-switch button.active{background:white;color:var(--brand);box-shadow:0 1px 3px rgba(40,46,110,.08)}
+    .one-render,.all-render{display:none}.one-render.active,.all-render.active{display:block}.toast{position:fixed;right:20px;bottom:20px;z-index:90;display:none;max-width:350px;padding:12px 15px;border-radius:10px;background:var(--ink);color:white;box-shadow:var(--shadow);font-size:11px}.toast.show{display:block;animation:enter .2s ease-out}
+
+    @media(max-width:900px){.test-layout{grid-template-columns:1fr}.sticky-form{position:static}.student-body{grid-template-columns:1fr}.nav-rail{display:none}.work-area.one{grid-template-columns:1fr}.shared-panel{position:static}.section-config{grid-template-columns:1fr}.audio-row.show{grid-template-columns:1fr}.proto-note{display:none}}
+    @media(max-width:640px){.proto-bar{flex-wrap:wrap;padding:9px 12px}.brand{min-width:0}.brand div:last-child{display:none}.tabs{flex:1}.tabs button{flex:1;padding:0 7px;font-size:10px}.admin-shell{padding:20px 14px 45px}.page-head{display:block}.head-actions{margin-top:13px}.grid-2,.grid-3,.choice-grid{grid-template-columns:1fr}.modal-stage{padding:12px}.modal-content{max-height:calc(100vh - 190px)}.student-top{padding:8px 11px}.student-meta>span:first-child{display:none}.question-pane{padding:12px}.student-footer{padding:9px 11px}.renderer-switch{order:2}.page-head h1{font-size:24px}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+  </style>
+</head>
+<body>
+  <header class="proto-bar">
+    <div class="brand"><div class="brand-mark">A</div><div><strong>Abak Academy</strong><span>Current-UI extension prototype</span></div></div>
+    <nav class="tabs" aria-label="Prototype screens">
+      <button class="active" data-view="test">Test detail</button>
+      <button data-view="exam">Exam config</button>
+      <button data-view="student">Student runtime</button>
+    </nav>
+    <div class="proto-note">V2 · no Page/Group entity · prototype only</div>
+  </header>
+
+  <main>
+    <section class="view active" id="view-test">
+      <div class="admin-shell">
+        <div class="back">← Tests</div>
+        <div class="page-head">
+          <div><div class="eyebrow">Existing Test detail + minimal additions</div><h1>Reading — Urban Public Space</h1><p>English · Reading comprehension · 60 min</p></div>
+          <div class="head-actions"><button class="button outline" data-open-student>Preview</button><button class="button primary" data-toast="Test draft saved.">Save</button></div>
+        </div>
+
+        <div class="test-layout">
+          <aside class="card sticky-form">
+            <div class="card-head"><div><h2>Test details</h2><p>Struktur current form dipertahankan.</p></div><span class="pill success">Draft</span></div>
+            <div class="card-body form-stack">
+              <div class="field"><label>Title</label><input class="input" value="Reading — Urban Public Space" /></div>
+              <div class="grid-2"><div class="field"><label>Subject</label><input class="input" value="English" /></div><div class="field"><label>Topic</label><select><option>Reading comprehension</option></select></div></div>
+              <div class="field"><label>Duration</label><input class="input" type="number" value="60" /></div>
+
+              <div class="section-divider">
+                <h3>Shared material</h3>
+                <p>Ditampilkan bersama seluruh questions. Kalau content hanya untuk satu question, letakkan di Question Editor.</p>
+                <div class="material-preview">
+                  <div class="material-toolbar"><button class="tool">B</button><button class="tool">I</button><button class="tool">Image</button><button class="tool">Table</button></div>
+                  <div class="material-copy">Cities around the world are redesigning public spaces to support walking, cycling, and social activity. Advocates argue that these changes improve health and local commerce.</div>
+                  <div class="material-media"><div class="media-thumb">IMG</div><div><strong>Optional supporting image</strong><br><span style="color:var(--muted)">Embedded in sanitized rich content</span></div></div>
+                </div>
+              </div>
+
+              <div class="section-divider">
+                <h3>Instructions</h3>
+                <p>Shown before or above the section questions.</p>
+                <textarea>Read the material and answer all questions.</textarea>
+              </div>
+
+              <div class="section-divider">
+                <h3>Section audio</h3>
+                <p>Audio tetap typed field; tidak dicampur ke rich HTML.</p>
+                <div class="field"><label>Audio URL</label><input class="input" placeholder="Optional for Listening" /></div>
+              </div>
+            </div>
+          </aside>
+
+          <section>
+            <div class="questions-head"><h3>Questions in this Test <span style="color:var(--muted);font-weight:400">· 5</span></h3><div><button class="button outline small">From bank</button> <button class="button primary small">New question</button></div></div>
+            <div class="question-list">
+              <div class="question-row"><div class="order">▲<strong>1</strong>▼</div><div><h4>What is the main purpose of the passage?</h4><div class="badges"><span class="badge">MCQ</span><span class="badge gray">Medium</span></div></div><button class="trash">×</button></div>
+              <div class="question-row"><div class="order">▲<strong>2</strong>▼</div><div><h4>Which concern is mentioned by critics?</h4><div class="badges"><span class="badge">MCQ</span><span class="badge gray">Easy</span><span class="badge warn">Own material: audio</span></div></div><button class="trash">×</button></div>
+              <div class="question-row"><div class="order">▲<strong>3</strong>▼</div><div><h4>Complete the summary using words from the material.</h4><div class="badges"><span class="badge">Multi blank</span><span class="badge gray">Medium</span></div></div><button class="trash">×</button></div>
+              <div class="question-row"><div class="order">▲<strong>4</strong>▼</div><div><h4>Identify two benefits described by advocates.</h4><div class="badges"><span class="badge">Multi answer</span><span class="badge gray">Medium</span></div></div><button class="trash">×</button></div>
+              <div class="question-row"><div class="order">▲<strong>5</strong>▼</div><div><h4>Explain whether temporary trials are useful.</h4><div class="badges"><span class="badge">Essay</span><span class="badge gray">Hard</span></div></div><button class="trash">×</button></div>
+            </div>
+            <div class="effective"><strong>Boundary:</strong> one Test = one section = one shared context. A second independent passage should be another Test/section.</div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-exam">
+      <div class="modal-stage">
+        <div class="modal">
+          <div class="modal-title"><div class="eyebrow">Existing Exam modal + section configuration</div><h1>Create Exam</h1><p>No mode or preset selector. Effective policies are configured directly.</p></div>
+          <div class="modal-content">
+            <div class="form-section">
+              <h2>Exam details</h2>
+              <div class="grid-2"><div class="field"><label>Title</label><input class="input" value="Academic English Assessment" /></div><div class="field"><label>Result</label><select><option>Grouped by section</option><option>Overall</option><option>Hidden</option></select></div></div>
+            </div>
+
+            <div class="form-section">
+              <h2>Exam behavior</h2>
+              <div class="grid-2">
+                <div class="field"><label>Navigation</label><div class="choice-grid"><label class="choice"><input type="radio" name="navigation" /><span><strong>Free</strong><small>Move between available sections.</small></span></label><label class="choice"><input type="radio" name="navigation" checked /><span><strong>Sequential</strong><small>Only active section can be answered.</small></span></label></div></div>
+                <div class="field"><label>Timer</label><div class="choice-grid"><label class="choice"><input type="radio" name="timer" /><span><strong>Whole exam</strong><small>One countdown.</small></span></label><label class="choice"><input type="radio" name="timer" checked /><span><strong>Per section</strong><small>Each Test has duration.</small></span></label></div></div>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:11px"><h2 style="margin:0">Sections / attached Tests</h2><button class="button soft small" id="add-section">Add Test</button></div>
+              <div id="section-list">
+                <article class="section-card">
+                  <div class="section-top"><div><h3>Listening</h3><p>Test: Listening Practice A · 12 questions</p></div><span class="pill">Section 1</span></div>
+                  <div class="section-config"><div class="field"><label>Presentation</label><select class="presentation"><option value="all">All questions on one page</option><option value="one">One question per page</option></select></div><div class="field"><label>Duration</label><input class="input" type="number" value="30" /></div><div class="field"><label>Audio</label><select class="audio-policy"><option value="required">Required · 1 play</option><option value="none">None</option></select></div></div>
+                  <div class="audio-row show"><div class="field"><label>Audio file</label><input class="input" value="listening-practice-a.mp3" /></div><div class="field"><label>Play limit</label><select><option>1×</option><option>2×</option><option>Unlimited</option></select></div></div>
+                </article>
+                <article class="section-card" data-has-question-material="true">
+                  <div class="section-top"><div><h3>Reading</h3><p>Test: Urban Public Space · 5 questions · shared material</p></div><span class="pill">Section 2</span></div>
+                  <div class="section-config"><div class="field"><label>Presentation</label><select class="presentation" id="reading-presentation"><option value="all">All questions on one page</option><option value="one">One question per page</option></select></div><div class="field"><label>Duration</label><input class="input" type="number" value="60" /></div><div class="field"><label>Audio</label><select class="audio-policy"><option value="none">None</option><option value="required">Required</option></select></div></div>
+                </article>
+                <article class="section-card">
+                  <div class="section-top"><div><h3>Writing</h3><p>Test: Community Project · essay + multi blank</p></div><span class="pill">Section 3</span></div>
+                  <div class="section-config"><div class="field"><label>Presentation</label><select class="presentation"><option value="all">All questions on one page</option><option value="one">One question per page</option></select></div><div class="field"><label>Duration</label><input class="input" type="number" value="60" /></div><div class="field"><label>Audio</label><select class="audio-policy"><option value="none">None</option><option value="required">Required</option></select></div></div>
+                </article>
+              </div>
+              <div class="effective" id="effective-summary"><strong>Effective behavior:</strong> Sequential · per-section timer · 3 sections · all sections currently use all-on-page.</div>
+              <div class="validation-error" id="material-conflict"><strong>Publish blocked:</strong> Reading uses all-on-page, but Question 2 has its own audio material. Remove/move that material or switch Reading to one-question-per-page.</div>
+            </div>
+
+            <div class="form-section">
+              <h2>Question order</h2>
+              <label class="choice" style="display:block"><input type="checkbox" id="randomize" /><span><strong>Randomize question order</strong><small>Independent from presentation. On all-on-page, questions are shuffled and still rendered together.</small></span></label>
+            </div>
+          </div>
+          <div class="modal-footer"><span class="save-copy" id="save-copy">Draft · validation runs before publish</span><div><button class="button outline">Cancel</button> <button class="button primary" id="save-exam" data-toast="Exam draft saved with explicit policies.">Save Exam</button></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-student">
+      <div class="student-shell">
+        <header class="student-top">
+          <div class="student-brand"><div class="student-icon">A</div><div class="student-title"><strong>Academic English Assessment</strong><span>Reading — Urban Public Space</span></div></div>
+          <div class="student-meta"><span>3/5 answered</span><span>Saved</span><div class="timer">47:18</div></div>
+        </header>
+        <div class="student-body">
+          <main class="question-pane">
+            <div class="question-inner">
+              <div class="section-rail"><span class="rail-pill done">Listening ✓</span><span class="rail-pill active">Reading ●</span><span class="rail-pill">Writing ○</span></div>
+
+              <div class="one-render active">
+                <div class="work-area one">
+                  <div id="one-shared-material"><shared-material></shared-material></div>
+                  <article class="question-card">
+                    <div class="q-head"><strong>Question <span id="current-q">1</span> of 5</strong><span>MCQ</span></div>
+                    <div class="q-body"><div class="question-material" id="question-material"><strong>Question-specific material</strong><span>This audio replaces the shared reading material for Question 2 only.</span><div class="mini-audio"><button class="mini-play">▶</button><div class="mini-track"></div><span>00:24</span></div></div><h3 id="one-question-text">What is the main purpose of the material?</h3><div class="options"><label class="option"><input type="radio" name="one-q" /><span>To compare transportation prices</span></label><label class="option"><input type="radio" name="one-q" /><span>To discuss redesigning public spaces</span></label><label class="option"><input type="radio" name="one-q" /><span>To discourage local commerce</span></label></div></div>
+                  </article>
+                </div>
+              </div>
+
+              <div class="all-render">
+                <div class="all-stack">
+                  <div class="all-material"><shared-material></shared-material></div>
+                  <article class="question-card" id="all-q-1"><div class="q-head"><strong>Question 1</strong><span>MCQ</span></div><div class="q-body"><h3>What is the main purpose of the material?</h3><div class="options"><label class="option"><input type="radio" name="all-q1" /><span>To compare transportation prices</span></label><label class="option"><input type="radio" name="all-q1" /><span>To discuss redesigning public spaces</span></label><label class="option"><input type="radio" name="all-q1" /><span>To discourage local commerce</span></label></div></div></article>
+                  <article class="question-card" id="all-q-2"><div class="q-head"><strong>Question 2</strong><span>MCQ</span></div><div class="q-body"><h3>Which concern is mentioned by critics?</h3><div class="options"><label class="option"><input type="radio" name="all-q2" /><span>Displaced traffic and accessibility</span></label><label class="option"><input type="radio" name="all-q2" /><span>Higher bicycle prices</span></label><label class="option"><input type="radio" name="all-q2" /><span>Fewer public trials</span></label></div></div></article>
+                  <article class="question-card" id="all-q-3"><div class="q-head"><strong>Question 3</strong><span>Multi blank</span></div><div class="q-body"><h3>Complete the summary.</h3><p style="color:var(--ink-2);font-size:11px;line-height:2">Projects often begin as <input class="blank" placeholder="answer" /> trials and collect <input class="blank" placeholder="answer" /> before becoming permanent.</p></div></article>
+                  <article class="question-card" id="all-q-4"><div class="q-head"><strong>Question 4</strong><span>Multi answer</span></div><div class="q-body"><h3>Identify two benefits described by advocates.</h3><div class="options"><label class="option"><input type="checkbox" /><span>Improved health</span></label><label class="option"><input type="checkbox" /><span>Local commerce</span></label><label class="option"><input type="checkbox" /><span>Lower school fees</span></label></div></div></article>
+                  <article class="question-card" id="all-q-5"><div class="q-head"><strong>Question 5</strong><span>Essay</span></div><div class="q-body"><h3>Explain whether temporary trials are useful.</h3><textarea class="essay" placeholder="Write your answer..."></textarea></div></article>
+                </div>
+              </div>
+            </div>
+          </main>
+
+          <aside class="nav-rail"><div class="nav-head"><strong>Questions</strong><span>3 answered</span></div><div class="nav-grid"><button class="nav-cell active" data-q="1">1</button><button class="nav-cell answered" data-q="2">2</button><button class="nav-cell answered" data-q="3">3</button><button class="nav-cell" data-q="4">4</button><button class="nav-cell" data-q="5">5</button></div><div class="effective" style="margin-top:13px"><strong>Same shell:</strong> only the center renderer and navigator behavior change.</div></aside>
+        </div>
+        <footer class="student-footer">
+          <button class="button outline" id="prev-q">Previous</button>
+          <div class="renderer-switch"><button class="active" data-render="one">One per page</button><button data-render="all">All on page</button></div>
+          <div style="display:flex;align-items:center;gap:10px"><span class="save-state">All changes saved</span><button class="button primary" id="next-q">Next</button></div>
+        </footer>
+      </div>
+    </section>
+  </main>
+
+  <template id="shared-material-template">
+    <aside class="shared-panel">
+      <div class="shared-head"><strong>Shared reading material</strong><span>Used only when the current Question has no own material</span></div>
+      <div class="shared-body"><div class="shared-image">Supporting image / table</div><p>Cities around the world are redesigning public spaces to support walking, cycling, and social activity.</p><p>Advocates argue that these changes improve health and local commerce, while critics worry about access and displaced traffic.</p></div>
+    </aside>
+  </template>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script>
+    (() => {
+      const $ = (s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+      let currentQ=1;
+      const questionTexts=[
+        "What is the main purpose of the material?",
+        "Which concern is mentioned by critics?",
+        "Complete the summary using words from the material.",
+        "Identify two benefits described by advocates.",
+        "Explain whether temporary trials are useful."
+      ];
+
+      // Standalone custom element keeps shared material identical in both renderers.
+      customElements.define('shared-material',class extends HTMLElement{connectedCallback(){const t=$('#shared-material-template');this.replaceWith(t.content.cloneNode(true));}});
+
+      function toast(message){const node=$('#toast');node.textContent=message;node.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>node.classList.remove('show'),2400)}
+      function setView(name){$$('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${name}`));$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));window.scrollTo({top:0,behavior:'smooth'})}
+      $$('[data-view]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
+      $$('[data-toast]').forEach(b=>b.addEventListener('click',()=>toast(b.dataset.toast)));
+      $$('[data-open-student]').forEach(b=>b.addEventListener('click',()=>setView('student')));
+
+      function updateEffective(){const values=$$('.presentation').map(s=>s.value);const all=values.filter(v=>v==='all').length;const conflict=$('#reading-presentation').value==='all';$('#effective-summary').innerHTML=`<strong>Effective behavior:</strong> Sequential · per-section timer · ${values.length} sections · ${all} all-on-page · ${values.length-all} one-per-page.`;$('#material-conflict').classList.toggle('show',conflict);$('#save-exam').disabled=conflict;$('#save-copy').textContent=conflict?'Draft · resolve 1 material conflict before publish':'Draft · validation passed'}
+      $$('.presentation').forEach(s=>s.addEventListener('change',updateEffective));
+      $$('.audio-policy').forEach(s=>s.addEventListener('change',()=>{const row=s.closest('.section-card').querySelector('.audio-row');if(row)row.classList.toggle('show',s.value==='required')}));
+      $('#randomize').addEventListener('change',e=>toast(e.target.checked?'Questions may be shuffled independently of presentation.':'Fixed question order restored.'));
+      $('#add-section').addEventListener('click',()=>toast('Current attach-Test picker would open here.'));
+
+      function setRenderer(mode){$$('[data-render]').forEach(b=>b.classList.toggle('active',b.dataset.render===mode));$('.one-render').classList.toggle('active',mode==='one');$('.all-render').classList.toggle('active',mode==='all');$('#prev-q').style.visibility=mode==='one'?'visible':'hidden';$('#next-q').textContent=mode==='one'?'Next':'Finish section';$$('.nav-cell').forEach((b,i)=>b.classList.toggle('active',mode==='one'&&i===currentQ-1));toast(mode==='one'?'One effective material per Question: own material overrides shared.':'All-on-page renders shared material only; authoring validation blocks conflicts.')}
+      $$('[data-render]').forEach(b=>b.addEventListener('click',()=>setRenderer(b.dataset.render)));
+      function renderQ(){currentQ=Math.max(1,Math.min(5,currentQ));const hasOwnMaterial=currentQ===2;$('#current-q').textContent=currentQ;$('#one-question-text').textContent=questionTexts[currentQ-1];$('#one-shared-material').style.display=hasOwnMaterial?'none':'block';$('#question-material').classList.toggle('show',hasOwnMaterial);$$('.nav-cell').forEach((b,i)=>b.classList.toggle('active',i===currentQ-1));$('#prev-q').disabled=currentQ===1;$('#next-q').textContent=currentQ===5?'Finish section':'Next'}
+      $('#prev-q').addEventListener('click',()=>{if($('.one-render').classList.contains('active')){currentQ--;renderQ()}});
+      $('#next-q').addEventListener('click',()=>{if($('.all-render').classList.contains('active')){toast('Save barrier then section confirmation.');return}if(currentQ<5){currentQ++;renderQ()}else toast('Save barrier then section confirmation.')});
+      $$('.nav-cell').forEach(b=>b.addEventListener('click',()=>{const q=Number(b.dataset.q);if($('.all-render').classList.contains('active')){$(`#all-q-${q}`).scrollIntoView({behavior:'smooth',block:'start'})}else{currentQ=q;renderQ()}}));
+      $$('input,textarea,select').forEach(el=>el.addEventListener('change',()=>{if($('#view-student').classList.contains('active'))toast('Answer saved.')}));
+      renderQ();updateEffective();
+    })();
+  </script>
+</body>
+</html>

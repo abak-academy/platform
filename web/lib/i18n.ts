@@ -1429,6 +1429,8 @@ export const DICT = {
     exam_start_button: "Mulai Ujian",
     not_started: "Belum dimulai",
     start_at: "Mulai {t}",
+    exam_not_ready_start: "Ujian belum memiliki soal. Hubungi penyelenggara.",
+    session_no_questions: "Ujian ini belum memiliki soal.",
 
     // Exam session — session UI
     session_question: "Soal",
@@ -1455,6 +1457,8 @@ export const DICT = {
       "Anda keluar dari mode layar penuh. Kembali ke mode layar penuh untuk melanjutkan ujian.",
     violation_warning_tab_switch_body:
       "Anda berpindah tab atau jendela. Kembali ke halaman ujian untuk melanjutkan.",
+    violation_warning_screenshot_attempt_body:
+      "Anda mencoba mengambil screenshot. Ujian tetap berjalan dan kejadian ini tercatat.",
     violation_warning_body: "Anda keluar dari mode ujian aktif. Kejadian ini tercatat.",
     violation_warning_count: "Total pelanggaran tercatat: {n}",
     return_to_exam: "Kembali ke ujian",
@@ -1657,12 +1661,13 @@ export const DICT = {
     bulk_format_student_school_code:
       "Khusus super admin. Gunakan kode internal sekolah untuk yayasan atau sekolah tanpa NPSN. Kode harus cocok persis dengan sekolah aktif yang sudah ada.",
     bulk_format_student_jenjang:
-      "Wajib. Isi dengan nilai jenjang, disarankan huruf besar: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. Jika sekolah punya school_types, jenjang harus cocok dengan salah satu jenis itu.",
+      "Wajib. Isi dengan nilai jenjang, disarankan huruf besar: TK, SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S3. Jika sekolah punya school_types, jenjang harus cocok dengan salah satu jenis itu.",
     bulk_format_student_email: "Opsional. Jika diisi, tidak boleh sudah terdaftar di sistem.",
     bulk_format_student_dob:
       "Opsional. Format YYYY-MM-DD (contoh 2008-05-14). Jangan biarkan Excel mengubahnya jadi tanggal lain.",
     bulk_format_student_gender: "Opsional. Hanya male / m atau female / f.",
-    bulk_format_student_grade: "Opsional. Bilangan bulat (contoh 11).",
+    bulk_format_student_grade:
+      "Opsional. Bilangan bulat: 0 = TK, 1–6 SD, 7–9 SMP, 10–12 SMA/SMK, 13–15 = S1/S2/S3 (contoh 11).",
     bulk_format_student_target_exam: "Opsional. Teks bebas (contoh UTBK).",
     bulk_format_student_alamat_domisili:
       "Opsional. Teks bebas. Jika ada koma, bungkus dengan tanda kutip.",
@@ -3118,6 +3123,8 @@ export const DICT = {
     exam_start_button: "Start Exam",
     not_started: "Not started",
     start_at: "Starts {t}",
+    exam_not_ready_start: "This exam has no questions yet. Contact the organizer.",
+    session_no_questions: "This exam has no questions.",
 
     // Exam session — session UI
     session_question: "Question",
@@ -3144,6 +3151,8 @@ export const DICT = {
       "You exited fullscreen mode. Return to fullscreen mode to continue the exam.",
     violation_warning_tab_switch_body:
       "You switched tabs or windows. Return to the exam page to continue.",
+    violation_warning_screenshot_attempt_body:
+      "You attempted to take a screenshot. The exam continues and this incident has been recorded.",
     violation_warning_body: "You left the active exam mode. This incident has been recorded.",
     violation_warning_count: "Total recorded violations: {n}",
     return_to_exam: "Return to exam",
@@ -3345,12 +3354,13 @@ export const DICT = {
     bulk_format_student_school_code:
       "Super admin only. Use the internal school code for a foundation or school without an NPSN. The code must exactly match an existing active school.",
     bulk_format_student_jenjang:
-      "Required. Use a jenjang value, preferably uppercase: SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S2. If the school has school_types, jenjang must match one of them.",
+      "Required. Use a jenjang value, preferably uppercase: TK, SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S3. If the school has school_types, jenjang must match one of them.",
     bulk_format_student_email: "Optional. If set, must not already be registered.",
     bulk_format_student_dob:
       "Optional. Format YYYY-MM-DD (example 2008-05-14). Do not let Excel rewrite the date.",
     bulk_format_student_gender: "Optional. Only male / m or female / f.",
-    bulk_format_student_grade: "Optional. Integer (example 11).",
+    bulk_format_student_grade:
+      "Optional. Integer: 0 = TK, 1–6 SD, 7–9 SMP, 10–12 SMA/SMK, 13–15 = S1/S2/S3 (example 11).",
     bulk_format_student_target_exam: "Optional. Free text (example UTBK).",
     bulk_format_student_alamat_domisili:
       "Optional. Free text. Quote the value if it contains a comma.",
