@@ -185,8 +185,9 @@ export default function SessionPage() {
       Record<"fullscreen_exit" | "tab_switch" | "screenshot_attempt", number>
     >
   >({});
-  const pointerOutsideRef = useRef(false);
   const windowBlurredRef = useRef(false);
+  const blurAtRef = useRef(0);
+  const fullscreenExitAtRef = useRef(0);
   const answersRef = useRef(answers);
   answersRef.current = answers;
   const flaggedRef = useRef(flagged);
@@ -776,6 +777,7 @@ export default function SessionPage() {
     };
     const onFullscreen = () => {
       if (!document.fullscreenElement) {
+        fullscreenExitAtRef.current = Date.now();
         const activeElement = document.activeElement;
         if (
           (activeElement instanceof HTMLInputElement ||
@@ -804,10 +806,13 @@ export default function SessionPage() {
           "fullscreen_exit",
           () =>
             !document.fullscreenElement &&
-            !answerFieldIsFocused() &&
-            !keyboardFullscreenExitRef.current,
+            // Blur voids the field/keyboard exemptions so an episode whose
+            // screenshot was suppressed still records fullscreen_exit.
+            (windowBlurredRef.current ||
+              (!answerFieldIsFocused() && !keyboardFullscreenExitRef.current)),
         );
       } else {
+        fullscreenExitAtRef.current = 0;
         keyboardFullscreenExitRef.current = false;
         clearKeyboardRecovery();
         clearKeyboardGestureRetry();
@@ -823,8 +828,8 @@ export default function SessionPage() {
     };
     // OS-level screenshot tools (PrintScreen, Snipping Tool, macOS capture)
     // are intercepted by the OS before the page sees them, so detection is
-    // best-effort: delivered shortcut keys, the pointer leaving the viewport,
-    // and window blur without a tab switch.
+    // best-effort: delivered shortcut keys and window blur without a tab
+    // switch.
     const isScreenshotShortcut = (event: KeyboardEvent) => {
       if (event.key === "PrintScreen") return true;
       const meta = event.metaKey || event.ctrlKey;
@@ -846,34 +851,27 @@ export default function SessionPage() {
     };
     const onBlur = () => {
       windowBlurredRef.current = true;
+      blurAtRef.current = Date.now();
       updateContentMask();
       if (!document.hidden) {
         scheduleViolation(
           "screenshot_attempt",
-          () => windowBlurredRef.current && !document.hidden,
+          () =>
+            windowBlurredRef.current &&
+            !document.hidden &&
+            // A fullscreen exit in this blur episode already logs
+            // fullscreen_exit; logging here would double-count one action.
+            !(
+              fullscreenExitAtRef.current > 0 &&
+              fullscreenExitAtRef.current >= blurAtRef.current - 200
+            ),
         );
       }
     };
     const onFocus = () => {
       windowBlurredRef.current = false;
-      pointerOutsideRef.current = false;
       updateContentMask();
       clearPendingViolation("screenshot_attempt");
-    };
-    const onPointerOut = (event: MouseEvent) => {
-      if (event.relatedTarget != null) return;
-      pointerOutsideRef.current = true;
-      scheduleViolation(
-        "screenshot_attempt",
-        () => pointerOutsideRef.current || windowBlurredRef.current,
-      );
-    };
-    const onPointerOver = () => {
-      if (!pointerOutsideRef.current) return;
-      pointerOutsideRef.current = false;
-      if (!windowBlurredRef.current) {
-        clearPendingViolation("screenshot_attempt");
-      }
     };
     const onCopy = () => logViolationRef.current.mutate("copy_attempt");
     document.addEventListener("fullscreenchange", onFullscreen);
@@ -883,8 +881,6 @@ export default function SessionPage() {
     document.addEventListener("keyup", onKeyup);
     window.addEventListener("blur", onBlur);
     window.addEventListener("focus", onFocus);
-    document.addEventListener("mouseout", onPointerOut);
-    document.addEventListener("mouseover", onPointerOver);
     return () => {
       document.removeEventListener("fullscreenchange", onFullscreen);
       document.removeEventListener("visibilitychange", onVisibility);
@@ -893,15 +889,12 @@ export default function SessionPage() {
       document.removeEventListener("keyup", onKeyup);
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("focus", onFocus);
-      document.removeEventListener("mouseout", onPointerOut);
-      document.removeEventListener("mouseover", onPointerOver);
       clearKeyboardRecovery();
       clearKeyboardGestureRetry();
       clearPendingViolation("fullscreen_exit");
       clearPendingViolation("tab_switch");
       clearPendingViolation("screenshot_attempt");
       windowBlurredRef.current = false;
-      pointerOutsideRef.current = false;
       setContentMasked(false);
     };
   }, [sessionId, session?.status, scheduleViolation, clearPendingViolation, showTrackedViolation]);
