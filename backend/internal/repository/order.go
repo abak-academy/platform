@@ -276,7 +276,13 @@ func (r *Repository) fetchItems(ctx context.Context, orderID uuid.UUID) ([]model
 		}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []model.OrderItem{}
+	}
+	return items, nil
 }
 
 // fetchItemsTx is fetchItems scoped to the caller's transaction, so a reader
@@ -305,7 +311,13 @@ func (r *Repository) fetchItemsTx(ctx context.Context, tx pgx.Tx, orderID uuid.U
 		}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []model.OrderItem{}
+	}
+	return items, nil
 }
 
 func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (model.Order, bool, error) {

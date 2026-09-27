@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import SessionPage from "./page";
 import { ApiError } from "@/lib/api";
-import type { SessionState } from "@/lib/types";
+import type { SessionQuestionOption, SessionState } from "@/lib/types";
 import {
   AUTOSAVE_DEBOUNCE_MS,
   backoffDelayMs,
@@ -431,6 +431,51 @@ describe("SessionPage", () => {
     };
     render(<SessionPage />);
     expect(screen.getByText(/gagal memuat data/i)).toBeInTheDocument();
+  });
+
+  // ── No questions (tests null / empty) ──────────────────────────────────
+
+  it("shows a friendly empty state instead of crashing when tests is null (exam without tests)", () => {
+    sessionState = {
+      ...sessionState,
+      data: { ...sampleSession, tests: null as unknown as SessionState["tests"] },
+    };
+    render(<SessionPage />);
+    expect(screen.getByText(/Ujian ini belum memiliki soal\./i)).toBeInTheDocument();
+  });
+
+  it("shows the empty state instead of crashing when tests is an empty array", () => {
+    sessionState = { ...sessionState, data: { ...sampleSession, tests: [] } };
+    render(<SessionPage />);
+    expect(screen.getByText(/Ujian ini belum memiliki soal\./i)).toBeInTheDocument();
+  });
+
+  it("renders an mcq whose options are null without crashing (exam mid-render)", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        tests: [
+          {
+            id: "test-1",
+            title: "Tes Matematika",
+            subject: "Matematika",
+            questions: [
+              {
+                id: "q-mcq-null-options",
+                test_id: "test-1",
+                format: "mcq",
+                body: "Soal tanpa opsi?",
+                sort_order: 1,
+                options: null as unknown as SessionQuestionOption[],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Soal tanpa opsi\?/);
   });
 
   // ── Submitted state ─────────────────────────────────────────────────────
