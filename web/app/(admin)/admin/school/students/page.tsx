@@ -19,6 +19,7 @@ import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
+import { formatGrade, GRADE_GROUPS, gradeOptionsForJenjang } from "@/lib/grade";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -255,6 +258,7 @@ export default function SchoolStudentsPage() {
   // With no school chosen there are no school_types to constrain jenjang, but
   // jenjang is still required — fall back rather than leaving the field unusable.
   const jenjangOptions = schoolJenjangTypes.length ? schoolJenjangTypes : JENJANG_OPTIONS;
+  const registerGradeOptions = gradeOptionsForJenjang(registerForm.jenjang);
 
   const handleRegister = async () => {
     // School is deliberately not required: not every registrant is a school
@@ -438,7 +442,7 @@ export default function SchoolStudentsPage() {
             <span className="text-ink-400">{t("students_school_none")}</span>
           )}
           <div className="mt-1 text-[11px] text-ink-400">
-            {t("students_field_grade")} {s.grade || "—"}
+            {t("students_field_grade")} {s.grade != null ? formatGrade(s.grade) : "—"}
           </div>
         </div>
       ),
@@ -925,7 +929,7 @@ export default function SchoolStudentsPage() {
                       onChange={(school) => {
                         setRegisterSelectedSchool(school);
                         setRegisterSchoolId(school?.id ?? "");
-                        setRegisterForm((f) => ({ ...f, jenjang: "" }));
+                        setRegisterForm((f) => ({ ...f, jenjang: "", grade: undefined }));
                       }}
                       allowUnlisted
                       unlistedName={registerUnlistedSchoolName}
@@ -941,6 +945,10 @@ export default function SchoolStudentsPage() {
                         setRegisterForm((f) => ({
                           ...f,
                           jenjang: v,
+                          grade:
+                            f.grade != null && !gradeOptionsForJenjang(v).includes(f.grade)
+                              ? undefined
+                              : f.grade,
                         }))
                       }
                     >
@@ -963,16 +971,38 @@ export default function SchoolStudentsPage() {
                     </Select>
                   </FormField>
                   <FormField label={t("students_field_grade")}>
-                    <Input
-                      value={registerForm.grade ?? ""}
-                      onChange={(e) =>
+                    <Select
+                      value={registerForm.grade != null ? String(registerForm.grade) : "_empty_"}
+                      onValueChange={(v) =>
                         setRegisterForm((f) => ({
                           ...f,
-                          grade: e.target.value ? Number(e.target.value) : undefined,
+                          grade: v === "_empty_" ? undefined : Number(v),
                         }))
                       }
-                      placeholder={t("students_field_grade")}
-                    />
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("students_field_grade")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_empty_">{t("students_field_grade")}</SelectItem>
+                        {registerGradeOptions.length > 0
+                          ? registerGradeOptions.map((g) => (
+                              <SelectItem key={g} value={String(g)}>
+                                {formatGrade(g)}
+                              </SelectItem>
+                            ))
+                          : GRADE_GROUPS.map((group) => (
+                              <SelectGroup key={group.label}>
+                                <SelectLabel>{group.label}</SelectLabel>
+                                {group.values.map((g) => (
+                                  <SelectItem key={g} value={String(g)}>
+                                    {formatGrade(g)}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            ))}
+                      </SelectContent>
+                    </Select>
                   </FormField>
                 </div>
                 <FormField label={t("students_field_target_exam")}>

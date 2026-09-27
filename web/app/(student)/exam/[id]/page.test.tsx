@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 
 import ExamDetailPage from "./page";
+import { ApiError } from "@/lib/api";
 import type { RegistrationDetail } from "@/lib/types";
 
 const { mockPush } = vi.hoisted(() => ({ mockPush: vi.fn() }));
@@ -227,6 +228,34 @@ describe("ExamDetailPage", () => {
         screen.getByText(/gagal memuat data ujian/i)
       ).toBeInTheDocument();
     });
+  });
+
+  // ── Start gate: exam_not_ready (exam without integrated questions) ────────
+
+  it("shows a localized toast and stays on the page when start is rejected with exam_not_ready", async () => {
+    registrationState = {
+      ...registrationState,
+      data: {
+        ...sampleWithCheckin,
+        status: "checked_in",
+        checked_in_at: "2026-07-15T08:45:00Z",
+      },
+    };
+    vi.setSystemTime("2026-07-15T09:00:00Z");
+
+    startSessionMutate.mockRejectedValue(
+      new ApiError("exam_not_ready", "exam not ready", 422),
+    );
+
+    render(<ExamDetailPage />);
+    fireEvent.click(screen.getByRole("button", { name: /mulai ujian/i }));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Ujian belum memiliki soal. Hubungi penyelenggara.",
+      );
+    });
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
 

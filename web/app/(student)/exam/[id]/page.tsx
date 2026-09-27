@@ -75,6 +75,10 @@ export default function ExamDetailPage() {
       const result = await startSessionMutation.mutateAsync(reg.id);
       router.push(`/exam/sessions/${result.session_id}`);
     } catch (err) {
+      if (err instanceof ApiError && err.code === "exam_not_ready") {
+        toast.error(t("exam_not_ready_start"));
+        return;
+      }
       const msg =
         err instanceof Error ? err.message : t("competition_error");
       toast.error(msg);

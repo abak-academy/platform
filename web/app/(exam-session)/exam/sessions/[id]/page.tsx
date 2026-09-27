@@ -458,14 +458,15 @@ export default function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const allQuestions = session
-    ? session.tests.flatMap((t) => t.questions)
-    : [];
+  // Nil slices from the API arrive as JSON null despite the non-nullable
+  // types — an exam without attached questions serializes "tests": null.
+  const tests = session?.tests ?? [];
+  const allQuestions = session ? tests.flatMap((t) => t.questions) : [];
 
   const isSectioned =
     session?.mode === "utbk" || session?.mode === "ielts";
   const activeTest = isSectioned
-    ? session?.tests.find((t) => t.id === session.active_test_id)
+    ? tests.find((t) => t.id === session?.active_test_id)
     : null;
   const activeQuestions =
     isSectioned && activeTest ? activeTest.questions : allQuestions;
@@ -509,7 +510,7 @@ export default function SessionPage() {
     lastSavedPositionRef.current = savedPosition;
     setCurrentQIndex(savedPosition);
     if (isSectioned && session.active_test_id) {
-      const sec = session.tests.find((t) => t.id === session.active_test_id);
+      const sec = tests.find((t) => t.id === session.active_test_id);
       const nextRemaining = sec?.remaining_seconds ?? 0;
       remainingRef.current = nextRemaining;
       setRemaining(nextRemaining);
@@ -1064,6 +1065,31 @@ export default function SessionPage() {
     );
   }
 
+  // ── No questions (tests null or empty) ────────────────────────────────
+
+  if (allQuestions.length === 0) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-8">
+        <Card className="border-warning/30 bg-warning-bg px-5 py-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-warning" />
+            <p className="flex-1 text-sm text-ink-700">
+              {t("session_no_questions")}
+            </p>
+          </div>
+        </Card>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-4"
+          onClick={() => router.push("/exam")}
+        >
+          {t("competition_detail_back")}
+        </Button>
+      </div>
+    );
+  }
+
   // ── Fullscreen gate ───────────────────────────────────────────────────
 
   if (!fullscreenGranted) {
@@ -1092,8 +1118,8 @@ export default function SessionPage() {
   const isFlagged = currentQ ? flagged[currentQ.id] ?? false : false;
   const timerExpired = hasTimer && remaining <= 0;
   const currentTest =
-    session.tests.find((t) => t.id === currentQ?.test_id) ??
-    session.tests[0];
+    tests.find((t) => t.id === currentQ?.test_id) ??
+    tests[0];
   const currentTestTitle = currentTest?.title ?? "";
   // In sectioned mode (utbk/ielts), use the mode label for the top bar title
   // to avoid duplicating the first section's title (which appears as the section label below).
@@ -1197,7 +1223,7 @@ export default function SessionPage() {
                 data-testid="section-rail"
                 className="mb-4 flex gap-2 overflow-x-auto"
               >
-                {session.tests.map((test, i) => {
+                {tests.map((test, i) => {
                   const isActive = test.id === session.active_test_id;
                   const isSubmitted = test.status === "submitted";
                   let railClass =
@@ -1787,7 +1813,9 @@ function renderAnswerInput(
   onChange: (val: string) => void,
   disabled: boolean,
 ) {
-  const { format, options, blanks } = question;
+  const { format } = question;
+  const options = question.options ?? [];
+  const { blanks } = question;
 
   if (format === "mcq") {
     return (

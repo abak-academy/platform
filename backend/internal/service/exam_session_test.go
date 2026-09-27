@@ -187,6 +187,60 @@ func TestGroupQuestionsByTest_trueFalse_populatesStatementsWithoutIsTrue_NFR5(t 
 	}
 }
 
+// A nil tests list (exam with no exam_test rows) must serialise as `[]`, not
+// `null` — encoding/json marshals a nil slice as null and the session page
+// iterates tests directly at render, so null crashes the whole page.
+func TestGroupQuestionsByTest_EmptyExam_MarshalsAsEmptyArray(t *testing.T) {
+	grouped := groupQuestionsByTest(nil)
+	raw, err := json.Marshal(grouped)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(raw) != "[]" {
+		t.Errorf("nil input: want [], got %s", string(raw))
+	}
+
+	grouped = groupQuestionsByTest([]model.TestDetail{})
+	raw, err = json.Marshal(grouped)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(raw) != "[]" {
+		t.Errorf("empty input: want [], got %s", string(raw))
+	}
+}
+
+// An mcq/multi_answer question without option rows must serialise
+// `"options": []` — a nil slice becomes null and `options.map` on the session
+// page crashes mid-exam. queryOptionsForQuestions already seeds [] for the
+// admin payloads; this transform is where the shape was being lost.
+func TestGroupQuestionsByTest_McqWithoutOptions_MarshalsOptionsAsEmptyArray(t *testing.T) {
+	tests := []model.TestDetail{
+		{
+			Test: model.Test{ID: uuid.New(), Title: "T1"},
+			Questions: []model.QuestionWithOptions{
+				{
+					Question:  model.Question{ID: uuid.New(), Format: "mcq", Body: "stem"},
+					SortOrder: 1,
+				},
+			},
+		},
+	}
+
+	grouped := groupQuestionsByTest(tests)
+	raw, err := json.Marshal(grouped)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	payload := string(raw)
+	if strings.Contains(payload, `"options":null`) {
+		t.Errorf("serialised session payload must never contain options:null, got %s", payload)
+	}
+	if !strings.Contains(payload, `"options":[]`) {
+		t.Errorf("serialised session payload must contain options:[], got %s", payload)
+	}
+}
+
 // ---------- fakeSessionRepo ----------
 
 type fakeSessionRepo struct {

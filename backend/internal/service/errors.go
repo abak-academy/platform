@@ -9,8 +9,12 @@ var (
 	ErrStorageNotConfigured = errors.New("storage not configured")
 	ErrIncompleteSchedule   = errors.New("delivery_date and delivery_time must be given together")
 
-	ErrAlreadyAttempted     = errors.New("already attempted")
-	ErrExamNotStarted       = errors.New("exam not started")
+	ErrAlreadyAttempted = errors.New("already attempted")
+	ErrExamNotStarted   = errors.New("exam not started")
+	// ErrExamNotReady gates StartSession on exams with no attached questions:
+	// a new sitting is rejected so the attempt is not consumed, while resuming
+	// an in_progress session stays allowed.
+	ErrExamNotReady         = errors.New("exam not ready")
 	ErrDeviceMismatch       = errors.New("device mismatch")
 	ErrCheckinWindowClosed  = errors.New("check-in window closed")
 	ErrExamWindowClosed     = errors.New("exam availability window closed")
