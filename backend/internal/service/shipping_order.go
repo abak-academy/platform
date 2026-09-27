@@ -153,7 +153,7 @@ func (s *Service) AdminShipOrder(ctx context.Context, orderID, deliveryDate, del
 	senderAddress := cfg["app_address"]
 	senderPostal := cfg["app_kode_pos"]
 	if senderName == "" || senderPhone == "" || senderAddress == "" || senderPostal == "" {
-		return errors.New("sender configuration incomplete: set app_name, app_contact_phone, app_address, app_kode_pos")
+		return ErrSenderConfigIncomplete
 	}
 
 	attempt := nextBookingAttempt(order)

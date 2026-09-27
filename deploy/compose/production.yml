@@ -220,9 +220,16 @@ services:
     volumes:
       - ../alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persistent tailer positions: without this every alloy restart re-reads
+      # container logs from the beginning and Grafana Cloud rejects entries
+      # older than 7 days ("timestamp too old", dropped batch).
+      - alloy-data:/var/lib/alloy/data
     mem_limit: 384m
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  alloy-data:
