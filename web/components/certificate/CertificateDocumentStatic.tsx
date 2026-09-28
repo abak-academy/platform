@@ -26,7 +26,11 @@ export type CertificateDocumentStaticProps = Omit<CertificateDocumentCoreProps, 
 function renderStaticTextValue({ field, content, style }: RenderTextValueArgs) {
   const baseSize = (field.size_pt || 12) * 0.3528 * (96 / 25.4);
   return (
-    <span data-testid={`certificate-field-value-${field.id}`} className="block size-full overflow-hidden" style={{ ...style, fontSize: `${baseSize}px` }}>
+    <span
+      data-testid={`certificate-field-value-${field.id}`}
+      className="block size-full overflow-hidden"
+      style={{ ...style, display: "block", width: "100%", height: "100%", overflow: "hidden", fontSize: `${baseSize}px` }}
+    >
       {content}
     </span>
   );

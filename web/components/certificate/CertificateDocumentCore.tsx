@@ -15,6 +15,11 @@ import type { CertificateLayout, CertificateLayoutField } from "@/lib/types";
 // sizing) lives here exactly once; only the ~15 lines of DOM-measurement
 // shrink-to-fit sizing (which cannot run without a browser regardless of
 // this split) differ between the two callers.
+//
+// Every layout-critical style must be an INLINE style, never a Tailwind
+// class: the serialized HTML ships no stylesheet (only embedded fonts), so
+// class-based layout silently vanishes in the Gotenberg PDF render — that
+// was the "centered text renders left + 2-page PDF" production bug.
 
 // CSS absolute units are fixed at 96px/in regardless of device DPI, so 1mm
 // is always 96/25.4 CSS px - this lets a print-context caller (no measured
@@ -86,10 +91,10 @@ export function CertificateDocumentCore({
     <div
       data-testid="certificate-document-page"
       className="relative select-none overflow-hidden bg-[#FAF9F5]"
-      style={{ width: `${normalizedLayout.page.width_mm}mm`, height: `${normalizedLayout.page.height_mm}mm` }}
+      style={{ position: "relative", overflow: "hidden", backgroundColor: "#FAF9F5", width: `${normalizedLayout.page.width_mm}mm`, height: `${normalizedLayout.page.height_mm}mm` }}
     >
       <style>{`@page { size: ${normalizedLayout.page.width_mm}mm ${normalizedLayout.page.height_mm}mm; margin: 0; }`}</style>
-      {backgroundUrl && <img src={backgroundUrl} alt="" data-testid="certificate-field-editor-background" className="pointer-events-none absolute inset-0 h-full w-full object-cover" />}
+      {backgroundUrl && <img src={backgroundUrl} alt="" data-testid="certificate-field-editor-background" className="pointer-events-none absolute inset-0 h-full w-full object-cover" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }} />}
       {normalizedLayout.fields.filter((field) => field.visible).map((field) => {
         const interaction = getFieldInteraction?.(field);
         const isImage = field.kind === "image";
@@ -99,6 +104,7 @@ export function CertificateDocumentCore({
           top: `${field.y_mm}mm`,
           width: `${field.w_mm}mm`,
           height: `${fieldHeightMm(field)}mm`,
+          whiteSpace: "nowrap",
         };
         const textStyle: CSSProperties = {
           color: safeColor(field.color),
@@ -119,7 +125,7 @@ export function CertificateDocumentCore({
             onClick={interaction?.onClick}
           >
             {isImage ? (
-              assetUrls[field.id] ? <img src={assetUrls[field.id]} alt={field.name || ""} className="pointer-events-none size-full object-contain" /> : <span className="flex size-full items-center justify-center border border-dashed border-[#C99A3D] bg-white/70 text-[10px] text-[#17213B]">{field.name || "Image"}</span>
+              assetUrls[field.id] ? <img src={assetUrls[field.id]} alt={field.name || ""} className="pointer-events-none size-full object-contain" style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} /> : <span className="flex size-full items-center justify-center border border-dashed border-[#C99A3D] bg-white/70 text-[10px] text-[#17213B]">{field.name || "Image"}</span>
             ) : (
               renderTextValue({ field, content: previewContent(field.content || "", values), pxPerMm, style: textStyle })
             )}
