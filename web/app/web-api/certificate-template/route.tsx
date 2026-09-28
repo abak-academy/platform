@@ -1,7 +1,6 @@
-import fs from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
 import { CertificateDocumentStatic } from "@/components/certificate/CertificateDocumentStatic";
+import { fontFaceCSS, usedFontCssVars } from "@/lib/certificate-fonts";
 import { normalizeCertificateLayout } from "@/lib/certificate-studio";
 import type { CertificateLayout } from "@/lib/types";
 
@@ -26,39 +25,6 @@ import type { CertificateLayout } from "@/lib/types";
 // backgroundUrl/assetUrls are set to their own {{certificate_*}} tokens
 // below instead.
 export const runtime = "nodejs";
-
-const FONT_FILES: Record<string, string> = {
-  "--font-certificate-public-sans": "public_sans/PublicSans-Regular.ttf",
-  "--font-certificate-source-serif": "source_serif_4/SourceSerif4-SemiBold.ttf",
-  "--font-certificate-cinzel": "cinzel/Cinzel-Bold.ttf",
-  "--font-certificate-playfair-display": "playfair_display/PlayfairDisplay-Bold.ttf",
-  "--font-certificate-cormorant-garamond": "cormorant_garamond/CormorantGaramond-SemiBold.ttf",
-  "--font-certificate-great-vibes": "great_vibes/GreatVibes-Regular.ttf",
-  "--font-certificate-poppins": "poppins/Poppins-SemiBold.ttf",
-  "--font-certificate-libre-baskerville": "libre_baskerville/LibreBaskerville-Variable.ttf",
-  "--font-certificate-allura": "allura/Allura-Regular.ttf",
-  "--font-certificate-parisienne": "parisienne/Parisienne-Regular.ttf",
-};
-
-// fontFaceCSS embeds every certificate font as a base64 data: URI so the
-// stored template is genuinely self-contained — the worker's Gotenberg call
-// makes no network request for typography (only for the {{certificate_*}}
-// image tokens it substitutes with presigned object-storage URLs).
-function fontFaceCSS(): string {
-  const publicDir = path.join(process.cwd(), "public", "fonts");
-  const rules: string[] = [];
-  for (const [cssVar, relPath] of Object.entries(FONT_FILES)) {
-    const abs = path.join(publicDir, relPath);
-    const bytes = fs.readFileSync(abs);
-    const base64 = bytes.toString("base64");
-    const family = cssVar;
-    rules.push(
-      `@font-face{font-family:"${family}";src:url(data:font/ttf;base64,${base64}) format("truetype");font-display:swap;}`
-    );
-    rules.push(`:root{${cssVar}:"${family}";}`);
-  }
-  return rules.join("\n");
-}
 
 export async function POST(req: Request) {
   let body: { layout?: CertificateLayout };
@@ -101,7 +67,7 @@ export async function POST(req: Request) {
 <head>
 <meta charset="utf-8">
 <style>
-${fontFaceCSS()}
+${fontFaceCSS(usedFontCssVars(layout))}
 </style>
 </head>
 <body style="margin:0">
