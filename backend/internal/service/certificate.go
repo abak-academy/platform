@@ -580,7 +580,7 @@ func (s *Service) GenerateCertificatePDF(ctx context.Context, sessionID uuid.UUI
 // straight to PDF for the live preview panel. The FE has already serialized
 // the (possibly unsaved) layout to self-contained HTML with placeholder
 // preview values baked in via the same in-browser preview path the editor
-// canvas itself uses (web/app/api/admin/certificate-template +
+// canvas itself uses (web/app/web-api/certificate-template +
 // lib/certificate-studio's previewContent) — this is a thin pass-through to
 // Gotenberg, no DB write, no object-store write, no field substitution. The
 // exam lookup exists only to 404 an unknown id before spending a Gotenberg

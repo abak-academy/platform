@@ -20,7 +20,7 @@ COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 # public/fonts/**/*.ttf is read directly off disk at request time by
-# app/api/admin/certificate-template/route.ts (certificate design save,
+# app/web-api/certificate-template/route.tsx (certificate design save,
 # async redesign 2026-08-02) to embed fonts as data URIs in the
 # self-contained template HTML — next/font/local's build-time processing
 # alone doesn't cover this runtime read.

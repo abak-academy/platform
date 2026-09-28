@@ -924,7 +924,7 @@ func (h *Handler) AdminGetExamAnalytics(c echo.Context) error {
 // AdminGetExamCertificatePreview streams a preview certificate PDF (async
 // redesign 2026-08-02). The FE has already serialized the (possibly unsaved)
 // layout to self-contained HTML with placeholder preview values baked in
-// (web/app/api/admin/certificate-template + the editor's own preview
+// (web/app/web-api/certificate-template + the editor's own preview
 // values) — this handler is a thin pass-through to Gotenberg, never a stored
 // PDF.
 func (h *Handler) AdminGetExamCertificatePreview(c echo.Context) error {
@@ -951,7 +951,7 @@ func (h *Handler) AdminGetExamCertificatePreview(c echo.Context) error {
 // certificateDesignRequest is the PUT body for AdminUpdateExamCertificateDesign:
 // the full certificate design, replaced wholesale — unlike AdminUpdateExam's
 // PATCH, there is no partial-overlay semantics here. TemplateHTML is the FE's
-// self-contained serialization of Layout (web/app/api/admin/certificate-template,
+// self-contained serialization of Layout (web/app/web-api/certificate-template,
 // async redesign 2026-08-02) — the worker substitutes verified DB values into
 // its {{token}} spots at generation time; nothing here is ever trusted as a
 // finished document on its own.

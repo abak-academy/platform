@@ -13,6 +13,10 @@ import type { CertificateLayout } from "@/lib/types";
 // substitutes {{token}} placeholders from verified DB values at generation
 // time, so nothing rendered here ever needs a real student's data.
 //
+// It must stay OUTSIDE the /api/ path namespace: the nginx front door sends
+// every /api/* request to the Go API, so a /api/ route handler is unreachable
+// there (silent 404 behind the proxy).
+//
 // {{score}}, {{student_name}}, etc. are left literal because
 // CertificateDocument's previewContent (lib/certificate-studio.ts) replaces
 // only tokens present in the `values` map and falls back to the original

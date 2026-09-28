@@ -3016,7 +3016,7 @@ func TestGetCertificateDesign_Integration_NoCustomBackground_ReturnsNilKey(t *te
 
 // TestGetCertificatePreviewPDF_Integration_EmptyHTML_ReturnsValidationError
 // covers the async redesign's replacement preview contract (2026-08-02): the
-// FE now sends fully-serialized HTML (web/app/api/admin/certificate-template
+// FE now sends fully-serialized HTML (web/app/web-api/certificate-template
 // + the editor's own preview values), so there is no server-side layout to
 // validate here — only that html was actually sent.
 func TestGetCertificatePreviewPDF_Integration_EmptyHTML_ReturnsValidationError(t *testing.T) {

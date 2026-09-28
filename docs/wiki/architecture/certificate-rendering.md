@@ -103,7 +103,7 @@ the server-side Gotenberg render — never fetched by Gotenberg.
 
 `GetCertificatePreviewPDF` (`certificate.go:588-599`) is a thin pass-through: the FE has already
 serialized the in-progress (possibly unsaved) design to self-contained HTML with placeholder preview
-values baked in (`web/app/api/admin/certificate-template/route.tsx`, `PREVIEW_VALUES`) — the handler
+values baked in (`web/app/web-api/certificate-template/route.tsx`, `PREVIEW_VALUES`) — the handler
 only 404s an unknown exam id, then calls `RenderHTML` directly. No DB write, no object-store write, no
 token substitution — a different code path from `GenerateCertificatePDF`, so a preview and a real
 render can diverge if the two builders drift.
