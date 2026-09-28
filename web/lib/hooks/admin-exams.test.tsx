@@ -10,9 +10,15 @@ import {
   exportExamRoster,
   useExams,
   adminExamsKeys,
+  serializeCertificateTemplate,
 } from "./admin-exams";
 import { examKeys } from "./exam";
-import type { GradingSessionItem, GradingEssayItem, ExamRosterEntry } from "@/lib/types";
+import type {
+  GradingSessionItem,
+  GradingEssayItem,
+  ExamRosterEntry,
+  CertificateLayout,
+} from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 
@@ -266,6 +272,57 @@ describe("exportExamRoster", () => {
     });
     expect(blob).not.toHaveBeenCalled();
     expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+});
+
+describe("serializeCertificateTemplate", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("posts the layout to the web-server serializer route and returns its html", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ html: "<html></html>" }),
+    });
+    const layout: CertificateLayout = {
+      page: { width_mm: 297, height_mm: 210 },
+      background: { kind: "builtin", ref: "classic" },
+      fields: [],
+    };
+
+    await expect(serializeCertificateTemplate(layout)).resolves.toBe("<html></html>");
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/web-api/certificate-template",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ layout }),
+      },
+    );
+  });
+
+  it("rejects a failed serialization response", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+    });
+    const layout: CertificateLayout = {
+      page: { width_mm: 297, height_mm: 210 },
+      background: { kind: "builtin", ref: "classic" },
+      fields: [],
+    };
+
+    await expect(serializeCertificateTemplate(layout)).rejects.toMatchObject({
+      code: "HTTP_500",
+      status: 500,
+    });
   });
 });
 

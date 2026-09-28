@@ -9,7 +9,7 @@ import {
 // (Next.js: "Attempted to call CertificateDocument() from the server but
 // CertificateDocument is on the client") — verified empirically against
 // CertificateDocument.tsx before this split existed. This sibling exists so
-// app/api/admin/certificate-template/route.tsx can call
+// app/web-api/certificate-template/route.tsx can call
 // react-dom/server's renderToStaticMarkup directly, once per admin design
 // save, to produce the self-contained HTML stored in
 // exam.certificate_template_html.

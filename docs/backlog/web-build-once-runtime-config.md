@@ -48,7 +48,7 @@ It is a consequence of choosing `NEXT_PUBLIC_*`. Amartha's own Next app,
 
 The decision then was "accept build args, revisit later". Two facts are now different:
 
-- **There is a server-side surface.** `web/app/api/admin/certificate-template/route.tsx`
+- **There is a server-side surface.** `web/app/web-api/certificate-template/route.tsx`
   is a route handler. The old note that `web/` has *zero* route handlers is stale.
 - **One of the four values is already fetched at runtime.** Per
   the private ops runbooks, the

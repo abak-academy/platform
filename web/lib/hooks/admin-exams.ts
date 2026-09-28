@@ -161,13 +161,13 @@ export function useCertificateDesign(examId: string | undefined) {
   });
 }
 
-// serializeCertificateTemplate asks the Next.js server (app/api/admin/certificate-template)
+// serializeCertificateTemplate asks the Next.js server (app/web-api/certificate-template)
 // to render layout to self-contained HTML with {{token}} placeholders (async
 // redesign 2026-08-02) — the FE remains the single source of markup, but the
 // actual react-dom/server call only runs in a Node context, not the browser
 // bundle. Called once per design save, right before the PUT that persists it.
 export async function serializeCertificateTemplate(layout: CertificateLayout): Promise<string> {
-  const res = await fetch("/api/admin/certificate-template", {
+  const res = await fetch("/web-api/certificate-template", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ layout }),

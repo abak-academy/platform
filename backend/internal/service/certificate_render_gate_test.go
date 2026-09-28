@@ -95,7 +95,7 @@ func renderGateService(t *testing.T) *Service {
 }
 
 // gateCertificateTemplateHTML is a hand-authored stand-in for the FE
-// serializer's real output (web/app/api/admin/certificate-template): same
+// serializer's real output (web/app/web-api/certificate-template): same
 // {{token}} contract (previewContent leaves unrecognized/unsubstituted
 // tokens literal, certificateBackgroundURL/certificateImageAssetURLs supply
 // the certificate_background_url/certificate_asset_* tokens), same absolute
