@@ -1,6 +1,10 @@
 package service
 
-import "errors"
+import (
+	"errors"
+
+	"akademi-bimbel/internal/model"
+)
 
 var (
 	// ErrStorageNotConfigured replaces eight separate inline allocations of the
@@ -185,7 +189,23 @@ var (
 	// ErrInvalidQty is returned for a non-positive quantity. There is no generic
 	// validation sentinel in this package, so the rule owns its own.
 	ErrInvalidQty = errors.New("invalid quantity")
+	// ErrDigitalTargetConflict is returned when a student would buy a course or
+	// exam they already own, are already buying, or have twice in one cart.
+	ErrDigitalTargetConflict = errors.New("digital product already owned or being purchased")
 )
+
+// DigitalTargetConflictError names each target and order-line product that
+// caused the conflict so the client can tell the student what to remove. It
+// satisfies errors.Is(err, ErrDigitalTargetConflict).
+type DigitalTargetConflictError struct {
+	Conflicts []model.DigitalTargetConflict
+}
+
+func (e *DigitalTargetConflictError) Error() string { return ErrDigitalTargetConflict.Error() }
+
+func (e *DigitalTargetConflictError) Is(target error) bool {
+	return target == ErrDigitalTargetConflict
+}
 
 // --- from job.go ---
 var (

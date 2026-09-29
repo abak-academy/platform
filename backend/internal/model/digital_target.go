@@ -22,6 +22,17 @@ type DigitalTarget struct {
 	TargetID    uuid.UUID `json:"target_id"`
 }
 
+// DigitalTargetKey identifies a course or exam regardless of which product
+// or order line reached it.
+type DigitalTargetKey struct {
+	Kind     string
+	TargetID uuid.UUID
+}
+
+func (t DigitalTarget) Key() DigitalTargetKey {
+	return DigitalTargetKey{Kind: t.Kind, TargetID: t.TargetID}
+}
+
 // OrderDigitalSnapshot is the set of targets checkout reserved for an order.
 // Taken is false for orders placed before snapshots existed, whose fulfilment
 // still resolves the product's live links.
