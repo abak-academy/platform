@@ -5,6 +5,10 @@ For any feature, bugfix, refactor, or GitHub issue that changes the repository, 
 change needs the full alignment-to-PR lifecycle or only the small-change path. The workflows below
 are focused procedures used inside either path.
 
+## New Issue Intake (manual)
+
+The issue creator or maintainer owns adding a new issue to `docs/backlog/open-issue-map.md` as `unassessed` through a reviewed documentation PR; no bot updates the map. Record the issue link and `updatedAt`, but make no code-status claim before inspection. If an agent is asked to create an issue, remind the human that the map needs that manual entry. Before starting work on any issue, check for its entry; if missing, add it to the issue's own PR and replace `unassessed` with evidence before handoff. Do not claim the map is complete while a new entry is awaiting merge.
+
 ## Broad Scan
 
 Goal: produce a read-only verdict with concrete findings, verification status, and residual risk.
