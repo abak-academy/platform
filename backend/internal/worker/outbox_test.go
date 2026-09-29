@@ -31,6 +31,7 @@ type mockRepository struct {
 	createExamRegistrationFn  func(context.Context, pgx.Tx, model.ExamRegistration) error
 	stampOrderItemFulfilledFn func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 	getOrderParticipantsFn    func(context.Context, uuid.UUID) ([]uuid.UUID, error)
+	getOrderDigitalSnapshotFn func(context.Context, uuid.UUID) (model.OrderDigitalSnapshot, error)
 }
 
 func (m *mockRepository) ClaimOutboxEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
@@ -91,6 +92,13 @@ func (m *mockRepository) GetOrderParticipants(ctx context.Context, orderID uuid.
 		return []uuid.UUID{}, nil
 	}
 	return m.getOrderParticipantsFn(ctx, orderID)
+}
+
+func (m *mockRepository) GetOrderDigitalSnapshot(ctx context.Context, orderID uuid.UUID) (model.OrderDigitalSnapshot, error) {
+	if m.getOrderDigitalSnapshotFn == nil {
+		return model.OrderDigitalSnapshot{}, nil
+	}
+	return m.getOrderDigitalSnapshotFn(ctx, orderID)
 }
 
 type mockTx struct {

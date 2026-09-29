@@ -41,6 +41,7 @@ type outboxRepository interface {
 	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
 	StampOrderItemFulfilledAt(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 	GetOrderParticipants(context.Context, uuid.UUID) ([]uuid.UUID, error)
+	GetOrderDigitalSnapshot(context.Context, uuid.UUID) (model.OrderDigitalSnapshot, error)
 }
 
 type Worker struct {
