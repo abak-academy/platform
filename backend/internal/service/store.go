@@ -594,6 +594,11 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 		Qty:         qty,
 		WeightGrams: product.WeightGrams,
 	}
+	if !isPhysicalType(product.Type) {
+		if err := s.checkDigitalCandidate(ctx, sID, order.Items, item); err != nil {
+			return err
+		}
+	}
 	clearShipping := isPhysicalType(product.Type)
 	if err := s.storeRepo.AddItem(ctx, oID, item, clearShipping); err != nil {
 		if errors.Is(err, repository.ErrOrderNotEditable) {
@@ -1145,18 +1150,23 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	// Biodata gate: a student registering for an exam for themselves must have
 	// complete biodata (school, class, dob). Bulk/admin orders (order_participant
 	// rows present) are exempt — those students' biodata is admin-managed.
-	hasExam := false
+	hasExam, hasDigital := false, false
 	for _, item := range order.Items {
 		if item.ProductType == "exam" {
 			hasExam = true
-			break
+		}
+		if !isPhysicalType(item.ProductType) {
+			hasDigital = true
 		}
 	}
-	if hasExam {
-		participants, err := s.storeRepo.GetOrderParticipants(ctx, oID)
+	var participants []uuid.UUID
+	if hasDigital {
+		participants, err = s.storeRepo.GetOrderParticipants(ctx, oID)
 		if err != nil {
 			return CheckoutResult{}, err
 		}
+	}
+	if hasExam {
 		if len(participants) == 0 { // self-purchase
 			u, err := s.repo.GetUserByID(ctx, order.StudentID.String())
 			if err != nil {
@@ -1164,6 +1174,18 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 			}
 			if missing := biodataMissingFields(u); len(missing) > 0 {
 				return CheckoutResult{}, &BiodataIncompleteError{Missing: missing}
+			}
+		}
+	}
+
+	if hasDigital && len(participants) == 0 {
+		claims, err := s.claimsDigitalTargets(ctx, order.StudentID)
+		if err != nil {
+			return CheckoutResult{}, err
+		}
+		if claims {
+			if err := s.reserveDigitalTargets(ctx, tx, order); err != nil {
+				return CheckoutResult{}, err
 			}
 		}
 	}
@@ -1721,6 +1743,9 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID, refund
 	// registrations must not outlive the refund (the course side revokes,
 	// leaving exams live would let refunded students keep sitting exams).
 	if err := s.revokeOrderExamRegistrationsTx(ctx, tx, id, order.StudentID, order.Items, actorID); err != nil {
+		return err
+	}
+	if err := s.storeRepo.ReleaseDigitalTargetsTx(ctx, tx, id, "refunded"); err != nil {
 		return err
 	}
 	if err := s.storeRepo.ClearOrderTracking(ctx, tx, id); err != nil {

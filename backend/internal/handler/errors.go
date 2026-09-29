@@ -241,6 +241,12 @@ func mapServiceError(c echo.Context, err error) error {
 		}
 	case errors.Is(err, service.ErrShippingUnavailable):
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_unavailable", Message: "shipping is not available right now"}
+	case errors.Is(err, service.ErrDigitalTargetConflict):
+		status, apiErr = http.StatusConflict, APIError{Code: "digital_target_conflict", Message: err.Error()}
+		var conflictErr *service.DigitalTargetConflictError
+		if errors.As(err, &conflictErr) {
+			apiErr.Details = map[string]any{"conflicts": conflictErr.Conflicts}
+		}
 	case errors.Is(err, service.ErrDigitalQtyLimit):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_qty", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidQty):

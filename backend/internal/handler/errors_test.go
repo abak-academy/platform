@@ -9,9 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -193,5 +195,47 @@ func TestBadRequest(t *testing.T) {
 	}
 	if apiErr.Message != "something is wrong" {
 		t.Errorf("message: want %q, got %q", "something is wrong", apiErr.Message)
+	}
+}
+
+func TestMapServiceError_DigitalTargetConflict_BodyCarriesConflicts(t *testing.T) {
+	e := echo.New()
+	rec := httptest.NewRecorder()
+	c := e.NewContext(httptest.NewRequest(http.MethodPost, "/", nil), rec)
+	productID, targetID := uuid.New(), uuid.New()
+
+	_ = mapServiceError(c, fmt.Errorf("checkout: %w", &service.DigitalTargetConflictError{
+		Conflicts: []model.DigitalTargetConflict{
+			{ProductID: productID, Kind: model.DigitalTargetCourse, TargetID: targetID, Reason: model.DigitalConflictOwned},
+		},
+	}))
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status: want 409, got %d", rec.Code)
+	}
+	var body struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Details struct {
+			Conflicts []struct {
+				ProductID string `json:"product_id"`
+				Kind      string `json:"kind"`
+				TargetID  string `json:"target_id"`
+				Reason    string `json:"reason"`
+			} `json:"conflicts"`
+		} `json:"details"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Code != "digital_target_conflict" || body.Message == "" {
+		t.Errorf("code/message = %q/%q, want digital_target_conflict and a message", body.Code, body.Message)
+	}
+	if len(body.Details.Conflicts) != 1 {
+		t.Fatalf("conflicts = %+v, want 1", body.Details.Conflicts)
+	}
+	got := body.Details.Conflicts[0]
+	if got.ProductID != productID.String() || got.TargetID != targetID.String() || got.Kind != "course" || got.Reason != "owned" {
+		t.Errorf("conflict = %+v", got)
 	}
 }

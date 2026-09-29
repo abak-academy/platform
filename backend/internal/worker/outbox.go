@@ -181,41 +181,47 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 	}
 	defer tx.Rollback(ctx)
 
+	snapshot, err := w.repo.GetOrderDigitalSnapshot(ctx, payload.OrderID)
+	if err != nil {
+		slog.Error("get order digital snapshot", "order_id", payload.OrderID, "err", err)
+		return
+	}
+
 	// Provision access for each item; track whether any physical item requires shipping.
 	hasPhysicalItem := false
 	for _, item := range payload.Items {
 		switch item.ProductType {
 		case "course":
-			courses, err := w.repo.GetCoursesByProductID(ctx, item.ProductID)
+			courseIDs, err := w.digitalTargetIDs(ctx, snapshot, item, model.DigitalTargetCourse)
 			if err != nil {
-				slog.Error("get courses by product id", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
+				slog.Error("resolve course targets", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
 				return
 			}
-			if len(courses) == 0 {
+			if len(courseIDs) == 0 {
 				slog.Warn("no courses linked to product, skipping", "order_id", payload.OrderID, "product_id", item.ProductID)
 				continue
 			}
-			for _, course := range courses {
+			for _, courseID := range courseIDs {
 				session := model.CourseSession{
 					StudentID:  order.StudentID,
-					CourseID:   course.ID,
+					CourseID:   courseID,
 					OrderID:    &payload.OrderID,
 					Status:     "active",
 					Source:     "order",
 					EnrolledAt: time.Now(),
 				}
 				if err := w.repo.CreateCourseSession(ctx, tx, session); err != nil {
-					slog.Error("create course session", "order_id", payload.OrderID, "course_id", course.ID, "err", err)
+					slog.Error("create course session", "order_id", payload.OrderID, "course_id", courseID, "err", err)
 					return
 				}
 			}
 		case "exam":
-			exams, err := w.repo.GetExamsByProductID(ctx, item.ProductID)
+			examIDs, err := w.digitalTargetIDs(ctx, snapshot, item, model.DigitalTargetExam)
 			if err != nil {
-				slog.Error("get exams by product id", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
+				slog.Error("resolve exam targets", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
 				return
 			}
-			if len(exams) == 0 {
+			if len(examIDs) == 0 {
 				slog.Warn("no exams linked to product, skipping", "order_id", payload.OrderID, "product_id", item.ProductID)
 				continue
 			}
@@ -231,15 +237,15 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 			if len(participants) > 0 {
 				registerIDs = participants
 			}
-			for _, exam := range exams {
+			for _, examID := range examIDs {
 				for _, sid := range registerIDs {
 					if err := w.repo.CreateExamRegistration(ctx, tx, model.ExamRegistration{
 						StudentID: sid,
-						ExamID:    exam.ID,
+						ExamID:    examID,
 						Token:     repository.GenerateExamToken(),
 						Status:    "registered",
 					}); err != nil {
-						slog.Error("create exam registration", "order_id", payload.OrderID, "exam_id", exam.ID, "err", err)
+						slog.Error("create exam registration", "order_id", payload.OrderID, "exam_id", examID, "err", err)
 						return
 					}
 				}
@@ -279,6 +285,39 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 	}
 
 	slog.Info("order paid processed", "order_id", payload.OrderID, "event_id", event.ID)
+}
+
+// digitalTargetIDs returns the courses or exams an order line grants: the
+// targets checkout reserved when the order has a snapshot, otherwise the
+// product's live links (orders placed before snapshots existed).
+func (w *Worker) digitalTargetIDs(ctx context.Context, snapshot model.OrderDigitalSnapshot, item OrderItemMini, kind string) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
+	if snapshot.Taken {
+		for _, t := range snapshot.Targets {
+			if t.ProductID == item.ProductID && t.Kind == kind {
+				ids = append(ids, t.TargetID)
+			}
+		}
+		return ids, nil
+	}
+	if kind == model.DigitalTargetCourse {
+		courses, err := w.repo.GetCoursesByProductID(ctx, item.ProductID)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range courses {
+			ids = append(ids, c.ID)
+		}
+		return ids, nil
+	}
+	exams, err := w.repo.GetExamsByProductID(ctx, item.ProductID)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range exams {
+		ids = append(ids, e.ID)
+	}
+	return ids, nil
 }
 
 func (w *Worker) sweepStalePayments(ctx context.Context) {
