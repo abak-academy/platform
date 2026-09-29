@@ -37,12 +37,13 @@ Before opening the PR:
 
 1. Every accepted criterion has evidence.
 2. Every task is `done`.
-3. Focused and required broad checks pass.
-4. Browser E2E or operational evidence passes when relevant.
-5. Local review has no unresolved `blocker` or `changes_needed` finding.
-6. `git diff --check` passes.
-7. `git status --short` contains only scoped files and known pre-existing work.
-8. The committed spec still matches the implementation; update it if an approved implementation discovery changed the contract.
+3. For an issue-related PR, the affected entry in `docs/backlog/open-issue-map.md` is added, updated, or removed with evidence in the same diff; no unrelated issue entries change. This also applies to the small-change path.
+4. Focused and required broad checks pass.
+5. Browser E2E or operational evidence passes when relevant.
+6. Local review has no unresolved `blocker` or `changes_needed` finding.
+7. `git diff --check` passes.
+8. `git status --short` contains only scoped files and known pre-existing work.
+9. The committed spec still matches the implementation; update it if an approved implementation discovery changed the contract.
 
 Do not include `.agents/work/` in commits.
 
@@ -54,6 +55,7 @@ Open the PR with:
 - spec path;
 - meaningful acceptance changes from the original issue;
 - implementation summary by user outcome;
+- affected open-issue-map entries added/updated/removed, with evidence for any removal;
 - verification commands and observed results;
 - migration and rollback notes when relevant;
 - knowledge reflection result;
