@@ -242,6 +242,51 @@ func TestCheckout_CachedReplayNeverOffersAnExpiredOrAnotherStudentsOrder(t *test
 	}
 }
 
+func TestCheckout_OneKeyUsedOnTwoOrdersNeverHandsOutTheOtherOrdersReference(t *testing.T) {
+	svc, repo, _ := newLifecycleService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	orderA := cartOf(t, svc, student, seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)))
+	key := checkoutKey()
+	first, err := svc.Checkout(ctx, student.String(), orderA.String(), key)
+	if err != nil {
+		t.Fatalf("Checkout A: %v", err)
+	}
+	orderB, _, _ := pendingCourseOrder(t, svc, repo, student)
+
+	got, err := svc.Checkout(ctx, student.String(), orderB.String(), key)
+
+	if got.GatewayRef != "" || got.GatewayRef == first.GatewayRef {
+		t.Errorf("order B was handed reference %q, which belongs to order A", got.GatewayRef)
+	}
+	if !errors.Is(err, ErrOrderNotEditable) {
+		t.Errorf("err = %v, want ErrOrderNotEditable: order B is already checked out", err)
+	}
+}
+
+func TestCheckout_OneKeyUsedByTwoStudentsNeverHandsOutTheOtherStudentsReference(t *testing.T) {
+	svc, repo, _ := newLifecycleService(t)
+	ctx := context.Background()
+	studentA := newDigitalStudent(t, repo)
+	orderA := cartOf(t, svc, studentA, seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)))
+	studentB := newDigitalStudent(t, repo)
+	orderB, _, _ := pendingCourseOrder(t, svc, repo, studentB)
+	key := checkoutKey()
+	first, err := svc.Checkout(ctx, studentA.String(), orderA.String(), key)
+	if err != nil {
+		t.Fatalf("Checkout A: %v", err)
+	}
+
+	got, err := svc.Checkout(ctx, studentB.String(), orderB.String(), key)
+
+	if got.GatewayRef != "" || got.GatewayRef == first.GatewayRef {
+		t.Errorf("student B was handed reference %q, which belongs to student A's order", got.GatewayRef)
+	}
+	if !errors.Is(err, ErrOrderNotEditable) {
+		t.Errorf("err = %v, want ErrOrderNotEditable: order B is already checked out", err)
+	}
+}
+
 func TestCheckout_FreeOrderReplayStillReturnsFreeWithoutGateway(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
 	ctx := context.Background()

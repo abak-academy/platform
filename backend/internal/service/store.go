@@ -1089,7 +1089,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, err
 	}
 
-	cacheKey := "idempotency:checkout:" + key
+	cacheKey := "idempotency:checkout:" + sID.String() + ":" + oID.String() + ":" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
 		if cached == freeCheckoutSentinel {
@@ -1368,7 +1368,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 		return CheckoutResult{}, err
 	}
 
-	cacheKey := "idempotency:retry:" + key
+	cacheKey := "idempotency:retry:" + sID.String() + ":" + oID.String() + ":" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
 		return CheckoutResult{GatewayRef: cached}, nil
