@@ -12,8 +12,9 @@ const (
 	LiveTargetInFlight = "in_flight"
 )
 
-// Conflict reasons the API sends to clients. "claimed" is the wire name for a
-// live target of another order and is kept so clients need no change.
+// Conflict reasons the API sends to clients. "claimed" is a target another live
+// order of the same student holds, shown as "already being bought in another
+// unfinished order".
 const (
 	DigitalConflictOwned           = "owned"
 	DigitalConflictClaimed         = "claimed"
