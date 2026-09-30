@@ -169,6 +169,9 @@ export function useRetryPayment() {
       qc.invalidateQueries({ queryKey: ordersKeys.detail(orderId) });
       qc.invalidateQueries({ queryKey: ordersKeys.list() });
     },
+    onError: (_err, orderId) => {
+      qc.invalidateQueries({ queryKey: ordersKeys.detail(orderId) });
+    },
   });
 }
 

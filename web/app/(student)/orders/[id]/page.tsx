@@ -18,9 +18,10 @@ import {
 import { toast } from "sonner";
 
 import { useOrder, useRetryPayment } from "@/lib/hooks/orders";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import { ApiError } from "@/lib/api";
+import { digitalConflictMessage } from "@/lib/digital-conflict";
 import type { Order, OrderItem, OrderStatus } from "@/lib/types";
 
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
@@ -181,6 +182,12 @@ function summaryRows(t: (key: any) => string): { key: keyof Order; labelKey: any
   ];
 }
 
+function retryErrorMessage(err: unknown, t: (key: I18nKey) => string): string {
+  if (!(err instanceof ApiError)) return t("order_retry_failed_desc");
+  if (err.code === "payment_expired") return t("order_retry_expired");
+  return err.message;
+}
+
 export default function OrderDetailPage({
   params,
 }: {
@@ -208,7 +215,7 @@ export default function OrderDetailPage({
       },
       onError: (err) => {
         setRetrying(false);
-        const msg = err instanceof ApiError ? err.message : t("order_retry_failed_desc");
+        const msg = digitalConflictMessage(err, t) ?? retryErrorMessage(err, t);
         toast.error(t("order_retry_failed_title"), { description: msg });
       },
     });
