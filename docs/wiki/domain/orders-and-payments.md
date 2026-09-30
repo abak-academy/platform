@@ -1,7 +1,7 @@
 ---
 title: Orders & Payments
 updated: 2026-09-30
-verified_against: bf23fb47
+verified_against: 1bd76008
 ---
 
 See also: [../architecture/system-overview.md](../architecture/system-overview.md), [../architecture/shipping-biteship.md](../architecture/shipping-biteship.md), [./exam-lifecycle-and-scoring.md](./exam-lifecycle-and-scoring.md).
@@ -9,9 +9,9 @@ See also: [../architecture/system-overview.md](../architecture/system-overview.m
 ## Catalog & product
 
 - `model.Product` (`backend/internal/model/product.go`): `type` ∈ `book|merchandise|medal|course|exam`, `status` ∈ `draft|published|hidden|archived` (constraint `product_status_check`, `backend/db/migrations/0009_schema_fixes.up.sql:6-8`).
-- `isPhysicalType(t string) bool` (`backend/internal/service/store.go:2040`) — only `book`, `merchandise`, `medal` count as physical (shipped, stock-tracked). `course`/`exam` are digital, unlimited, no stock.
+- `isPhysicalType(t string) bool` (`backend/internal/service/store.go:2043`) — only `book`, `merchandise`, `medal` count as physical (shipped, stock-tracked). `course`/`exam` are digital, unlimited, no stock.
 - `AvailableFrom`/`AvailableUntil` bound marketplace visibility (nullable = unbounded side); `*Set` flags on the struct distinguish "field omitted" from "field cleared" on partial updates.
-- RBAC on product mutation is per-type: `checkTypeRBAC` (`store.go:2043`) — `admin_store` may touch price/visibility on any type including `exam`, but never exam content (owned by `admin_exam`).
+- RBAC on product mutation is per-type: `checkTypeRBAC` (`store.go:2046`) — `admin_store` may touch price/visibility on any type including `exam`, but never exam content (owned by `admin_exam`).
 
 ## Cart
 
@@ -51,9 +51,9 @@ Observed transitions and where each is written:
 |---|---|---|
 | `cart → payment_pending` | `Checkout` (`store.go:1077`), gateway path | **Guarded**: `GetOrderByIDForUpdateTx` locks the row and re-checks `locked.Status != "cart"` (`store.go:1129`) before `CheckoutOrder` writes the status in the same tx. |
 | `cart → paid` | `Checkout`, zero-total/free path (`store.go:1199`) | Same lock as above; the free path skips the gateway and emits `OrderPaid` in the same tx. |
-| `payment_pending → paid` | `HandlePaymentWebhook` (`store.go:1922`, Midtrans settlement/capture) | **Guarded**: the order is read under its row lock (`store.go:1967`). A settlement for an order that is then not `payment_pending` is logged and acknowledged, not fulfilled; recording it is #196. |
+| `payment_pending → paid` | `HandlePaymentWebhook` (`store.go:1922`, Midtrans settlement/capture) | **Guarded**: the order is read under its row lock (`store.go:1967`). Every validated settlement writes a `webhook_log` row (`payment_success`, `InsertWebhookLog`, `store.go:1975`) before the status is judged, so one for an order that is then not `payment_pending` still leaves a durable row; it is acknowledged, not fulfilled. Flagging that row as late (`payment_late`) is #197. |
 | `payment_pending → paid` | `AdminConfirmOrder` (`store.go:1566`, manual proof) / `AdminReconcileOrder` (`store.go:1787`, gateway query), both via shared `markOrderPaidTx` (`store.go:1544`) | **Guarded at the callers, and differently**: confirm locks the order and, when it is not `payment_pending`, returns `order_not_payable` (`store.go:1592-1602`); reconcile locks the order and answers 409 `order_not_payable`, without marking it paid, for one that is neither `payment_pending` nor already settled (`store.go:1818-1856`). `markOrderPaidTx` itself is still a bare write, so any future caller must bring its own guard. |
-| `paid → processing` or `paid → completed` | `Worker.handleOrderPaid` (`backend/internal/worker/outbox.go:164`) consuming the `OrderPaid` outbox event | **Guarded**: the order is read with `GetOrderByIDForUpdateTx` inside the fulfilment tx, and a `cancelled` or `payment_expired` order is marked processed and skipped (`outbox.go:181-203`). `paid`, `processing`, `shipped` and `completed` orders are granted (idempotently) because an admin can ship a mixed order before the event is consumed, but the status is only set when it is still `paid`, so a shipped order is never walked back (`outbox.go:281`). A refund or expiry that committed first is seen here; one that commits later waits for this commit and then revokes what was granted. |
+| `paid → processing` or `paid → completed` | `Worker.handleOrderPaid` (`backend/internal/worker/outbox.go:164`) consuming the `OrderPaid` outbox event | **Guarded**: the order is read with `GetOrderByIDForUpdateTx` inside the fulfilment tx (`outbox.go:181`), and only a `cancelled` (refunded) order is marked processed and skipped (`outbox.go:190-202`). Every other status is granted, idempotently: `paid`, `processing`, `shipped` and `completed` because an admin can ship a mixed order before the event is consumed, and `payment_expired` because nothing on this branch moves an expired order to `paid` (webhook, reconcile and confirm all refuse it), so an `OrderPaid` event for one can only mean the sweeper overwrote a `paid` a webhook had just committed — the money is in, so access is given, as on `main`. The status is only set while it is still `paid` (`outbox.go:281`), so a shipped order is never walked back and an expired one stays `payment_expired`. A refund that committed first is seen here. The sweeper revokes nothing. |
 | `payment_pending → payment_expired` | `Worker.sweepStalePayments` (`backend/internal/worker/outbox.go:307`) | **Partially guarded**: the sweeper selects orders past `payment_expires_at`, re-reads the status without a lock and writes a plain `SetOrderStatus`, restoring stock per line; a settlement that commits between its read and its write is not closed. |
 | `processing`/`shipped` → `completed` | `AdminCompleteOrder` (`store.go:1660`) | **Partially guarded**: a Go-level `switch order.Status` (`shipped` always ok; `processing` only if no physical items) gates the call, but the order is read *without* a lock and the write is a plain `SetOrderStatus` (`store.go:1693`) with no SQL-level status predicate — a concurrent status change between the read and the write is not closed the way `Checkout` closes it. |
 | `paid/processing/shipped/completed → cancelled` (refund) | `AdminRefundOrder` (`store.go:1721`) | **Guarded**: refundability is judged under the order row lock (`store.go:1741-1749`) against `refundableStatuses` (`store.go:1708`), so a concurrent refund or fulfilment cannot slip between the check and the status change. |
@@ -63,10 +63,18 @@ Observed transitions and where each is written:
 
 `paid_at` / `completed_at` / `cancelled_at` are stamped inside `SetOrderStatus` itself via `CASE WHEN $1 = '...'` (`order.go:812-814`) — they are side effects of the status value passed, not separately settable, and only ever move forward (nothing clears them on a later transition).
 
+### Payment window — split across #196 and #197
+
+This branch (#193) is the duplicate-purchase guard only. The bounded payment window, final expiry and flagging of late settlements are #196, implemented by #197, which stacks on this branch. What that leaves open here:
+
+- **Orders without a deadline.** A checkout whose gateway call fails leaves a `payment_pending` order with no `payment_expires_at`. `GetExpiredPaymentOrders` (`backend/internal/repository/order.go:967`) compares that column to `now()`, so the sweeper never selects it and the order keeps holding its target.
+- **Retry is the only way out.** Nothing lets a student or admin cancel a `payment_pending` order: `cancelled` is written only by `AdminRefundOrder` (`store.go:1752`), which accepts `paid` and later statuses (`refundableStatuses`, `store.go:1708`). Releasing the target therefore takes a retry that succeeds, and a retry can be refused by its twin: when two live orders hold one target, the digital guard rejects the retry of each because of the other.
+- **Retry race.** Retry reopens a `payment_expired` order without being serialized against another cart's checkout for the same target, so both can end up `payment_pending` and payable. The spec walks through the interleaving; #197 closes it by making expiry final.
+
 ## Payment gateway (Midtrans)
 
-- `PaymentClient` port: `CreatePayment`, `QueryStatus`, `VerifySignature` (`backend/internal/service/ports_payment.go:52-56`); `MidtransClient` is the real implementation (`backend/internal/adapter/midtrans.go`), `NoopPaymentClient` the fallback when unconfigured.
-- Webhook signature: `VerifySignature` (`midtrans.go:124`) recomputes `sha512(order_id + status_code + gross_amount + server_key)` and compares with `subtle.ConstantTimeCompare`. Verified **before** the idempotency check and before any DB read in `HandlePaymentWebhook`.
+- `PaymentClient` port: `CreatePayment`, `QueryStatus`, `VerifySignature` (`backend/internal/service/ports_payment.go:47-51`); `MidtransClient` is the real implementation (`backend/internal/adapter/midtrans.go`), `NoopPaymentClient` the fallback when unconfigured.
+- Webhook signature: `VerifySignature` (`backend/internal/adapter/midtrans.go:111-123`) recomputes `sha512(order_id + status_code + gross_amount + server_key)` and compares with `subtle.ConstantTimeCompare`. Verified **before** the idempotency check and before any DB read in `HandlePaymentWebhook`.
 - Only `transaction_status ∈ {settlement, capture}` is treated as paid; everything else (`pending`, `deny`, `expire`, `cancel`, Midtrans's own test-button notifications) is logged and dropped.
 - `AdminReconcileOrder` refuses to call the gateway at all when `order.GatewayRef == ""` — an order that never reached the gateway has nothing to reconcile against.
 - Free/zero-total orders (`order.Total == 0`) skip the gateway entirely inside `Checkout` and self-mark `paid` in the same tx as the cart→order flip (`store.go:1199`).
@@ -90,7 +98,7 @@ Observed transitions and where each is written:
 
 ## Order → access / shipping fan-out
 
-`Worker.handleOrderPaid` (`backend/internal/worker/outbox.go:164`), consuming the `OrderPaid` outbox event emitted by every paid path above, in one tx that skips an order no longer `paid`:
+`Worker.handleOrderPaid` (`backend/internal/worker/outbox.go:164`), consuming the `OrderPaid` outbox event emitted by every paid path above, in one tx that skips only a `cancelled` order:
 
 - `course` line items → `CreateCourseSession` per course the product links **at fulfilment time**, `status: "active"`, `source: "order"`.
 - `exam` line items → `CreateExamRegistration` per exam the product links at fulfilment time. If `order_participant` rows exist (bulk purchase, `backend/db/migrations/0031_order_participant.up.sql`), each participant is registered instead of the buyer — fan-out semantics live entirely in presence/absence of those rows.
