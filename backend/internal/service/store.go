@@ -2118,6 +2118,7 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 
 	if err := s.storeRepo.InsertWebhookLog(ctx, tx, "payment_success", payload, notif.OrderID); err != nil {
 		return err
+	}
 
 	// No grace after the deadline: a pending order whose deadline has passed is
 	// expired here, under the lock and with the sweeper's own transition (stock

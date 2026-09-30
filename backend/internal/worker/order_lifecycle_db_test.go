@@ -79,6 +79,17 @@ type lifecycleEnv struct {
 	w    *Worker
 }
 
+// stock is this branch's own helper: the guard branch removed it as unused, and
+// the expiry tests here need it.
+func (e *lifecycleEnv) stock(t *testing.T, productID uuid.UUID) int {
+	t.Helper()
+	var n int
+	if err := e.repo.Pool().QueryRow(context.Background(), `SELECT stock FROM product WHERE id = $1`, productID).Scan(&n); err != nil {
+		t.Fatalf("stock: %v", err)
+	}
+	return n
+}
+
 func newLifecycleEnv(t *testing.T) *lifecycleEnv {
 	t.Helper()
 	repo := lifecycleDB(t)
