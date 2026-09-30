@@ -277,8 +277,8 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 		}
 	}
 
-	// An admin can ship a mixed order before this event runs; only "paid" moves on.
-	if order.Status == "paid" {
+	// payment_expired advances too (the sweeper overwrote a settled payment); processing/shipped/completed are never walked back.
+	if order.Status == "paid" || order.Status == "payment_expired" {
 		// Digital-only orders complete immediately; physical orders need admin to ship.
 		nextStatus := "completed"
 		if hasPhysicalItem {
