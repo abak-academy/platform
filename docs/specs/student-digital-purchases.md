@@ -48,7 +48,7 @@ The original issue included a school marketplace and exam bulk ordering. Those a
 
 ## Rollout and operator audit (migration 0068)
 
-Facts the rollout plan rests on: `RunMigrations` runs at API startup (`backend/cmd/api/main.go`), takes no advisory lock, and applies each migration file in one transaction. `deploy/compose/production.yml` runs 2 API replicas plus a worker, and a plain `up -d` replaces them container by container, so old and new API versions can serve traffic at the same time. The migration is additive: the previous binary keeps running against it, but it neither creates claims nor releases them.
+Facts the rollout plan rests on: `RunMigrations` runs at API startup (`backend/cmd/api/main.go`), takes no advisory lock, and applies each migration file in one transaction. `deploy/compose/production.yml` runs 2 API replicas plus a worker, and a plain `up -d` recreates containers without a documented guarantee that every old replica stops first, so old and new API versions may serve traffic at the same time. The migration is additive: the previous binary keeps running against it, but it neither creates claims nor releases them.
 
 ### What the migration does to existing data
 
@@ -61,7 +61,7 @@ Facts the rollout plan rests on: `RunMigrations` runs at API startup (`backend/c
 
 1. **Drain old API replicas before 0068 can serve new traffic.** After 0068 commits, no old-version API replica may serve `POST /orders/:id/checkout`. An old replica's checkout creates a `payment_pending` order with no claim, which the uniqueness guarantee cannot see. The backfill does not run again. Stop the old `api` containers (or take checkout offline at nginx) before starting the first new API replica, and keep them stopped. `up -d` alone does not guarantee this.
 2. **Upgrade the worker no later than the API.** An old worker ignores the snapshot and grants from live links, which loses the link-edit protection for orders placed by new replicas. It does not break fulfilment. A new worker handles orders without a snapshot by the fallback, so upgrading it first is safe.
-3. **Expect one transient startup failure if two new API replicas start together.** The second replica's migration blocks on the first, then its backfill fails on the unique claim index and it exits; after a restart it sees the migration recorded and continues. The backfill insert deliberately has no `ON CONFLICT DO NOTHING`, so a claim created by a new-version checkout in between is never skipped silently.
+3. **Expect one transient startup failure if two new API replicas start together.** The second replica's migration blocks on the first, then fails (on the claim index if the backfill had rows, otherwise on the `schema_migrations` key) and it exits; after a restart it sees the migration recorded and continues. The backfill insert deliberately has no `ON CONFLICT DO NOTHING`, so a claim created by a new-version checkout in between is never skipped silently.
 4. **Run the pre-deploy audit below and review contested targets before the deploy window.** No shared-database migration or data operation is performed by this repository's tests or by these documents.
 5. **Rollback** to the previous image is schema-safe (0068 is additive), but checkouts served by the old binary create no claims and refunds by the old binary release none. Repeat audit query 3 after any rollback and after rolling forward again, because the backfill does not re-run. The `.down.sql` drops the audit table and claims; do not run it once orders depend on them.
 
