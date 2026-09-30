@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -53,6 +54,10 @@ type PaymentClient interface {
 	QueryStatus(ctx context.Context, reference string) (PaymentStatus, error)
 	VerifySignature(payload []byte, signature string) bool
 }
+
+// ErrPaymentDeadlineTooClose means the order has under a minute left, the
+// shortest session the gateway can be asked for without outliving the order.
+var ErrPaymentDeadlineTooClose = errors.New("less than a minute left before the payment deadline")
 
 type NoopPaymentClient struct{}
 

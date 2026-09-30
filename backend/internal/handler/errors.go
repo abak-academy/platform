@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	"akademi-bimbel/internal/adapter"
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
@@ -266,7 +265,7 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_refundable", Message: err.Error()}
 	case errors.Is(err, service.ErrPaymentExpired):
 		status, apiErr = http.StatusConflict, APIError{Code: "payment_expired", Message: err.Error()}
-	case errors.Is(err, adapter.ErrPaymentDeadlineTooClose):
+	case errors.Is(err, service.ErrPaymentDeadlineTooClose):
 		status, apiErr = http.StatusConflict, APIError{Code: "payment_deadline_too_close", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotPayable):
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_payable", Message: err.Error()}

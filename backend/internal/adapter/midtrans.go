@@ -6,7 +6,6 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"strings"
 	"time"
 
@@ -17,9 +16,6 @@ import (
 	"github.com/midtrans/midtrans-go/snap"
 )
 
-// ErrPaymentDeadlineTooClose means the order has under a minute left, the
-// shortest session Snap can be asked for without outliving the order.
-var ErrPaymentDeadlineTooClose = errors.New("midtrans: less than a minute left before the payment deadline")
 
 // MidtransClient wraps Midtrans Snap and CoreAPI clients.
 type MidtransClient struct {
@@ -92,7 +88,7 @@ func (m *MidtransClient) CreatePayment(ctx context.Context, req service.PaymentR
 	}
 	minutes := int64(deadline.Sub(start) / time.Minute)
 	if minutes < 1 {
-		return service.PaymentResponse{}, ErrPaymentDeadlineTooClose
+		return service.PaymentResponse{}, service.ErrPaymentDeadlineTooClose
 	}
 	snapReq.Expiry = &snap.ExpiryDetails{
 		StartTime: start.Format("2006-01-02 15:04:05 -0700"),

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"akademi-bimbel/internal/adapter"
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
@@ -258,7 +257,7 @@ func TestMapServiceError_PaymentDeadlineTooClose_Is409(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(httptest.NewRequest(http.MethodPost, "/", nil), rec)
 
-	_ = mapServiceError(c, fmt.Errorf("retry: %w", adapter.ErrPaymentDeadlineTooClose))
+	_ = mapServiceError(c, fmt.Errorf("retry: %w", service.ErrPaymentDeadlineTooClose))
 
 	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"payment_deadline_too_close"`) {
 		t.Fatalf("got %d %s, want 409 payment_deadline_too_close", rec.Code, rec.Body.String())
