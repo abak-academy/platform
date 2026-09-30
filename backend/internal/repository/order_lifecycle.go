@@ -43,19 +43,7 @@ func (r *Repository) ExpirePaymentOrderTx(ctx context.Context, tx pgx.Tx, orderI
 	return true, nil
 }
 
-// RecordLatePaymentTx durably flags a payment that the gateway reports for an
-// order that can no longer be fulfilled (expired, cancelled, refunded), for an
-// operator to reconcile or refund by hand: webhook_log rows of event_type
-// 'payment_late', keyed by the order id in gateway_ref. One flag exists per
-// order and payment, so redelivered webhooks and repeated reconciles do not
-// pile up rows; the caller's row lock on the order serializes concurrent
-// writers. A reference equal to detail["gateway_ref"] means the gateway's
-// transaction id is unknown (reconcile never learns it): such a flag is
-// skipped when the order already has any, and is attributed to the transaction
-// id in place when a webhook later names it, on the assumption that a gateway
-// order settles once. Distinct transaction ids stay distinct flags. It reports whether a new
-// flag was written. audit_log cannot carry the flag because it requires an
-// actor and a webhook has none.
+// RecordLatePaymentTx writes one payment_late flag per order and payment; a reference equal to detail["gateway_ref"] is an unknown transaction id (see the spec).
 func (r *Repository) RecordLatePaymentTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, reference string, detail map[string]any) (bool, error) {
 	// Copy before adding the reference: the caller's map is not ours to mutate.
 	withReference := make(map[string]any, len(detail)+1)
@@ -111,10 +99,7 @@ func (r *Repository) RecordLatePaymentTx(ctx context.Context, tx pgx.Tx, orderID
 	return err == nil, err
 }
 
-// PaymentDeadlineElapsedTx judges the deadline on the database clock, the same
-// one the sweeper's guarded UPDATE uses, so a retry and the sweeper cannot
-// disagree about whether an order is still payable. An order with no deadline
-// (gateway creation never succeeded) has not elapsed.
+// PaymentDeadlineElapsedTx judges the deadline on the database clock, like the sweeper; NULL (a legacy order) has not elapsed.
 func (r *Repository) PaymentDeadlineElapsedTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) (bool, error) {
 	var elapsed bool
 	err := tx.QueryRow(ctx,

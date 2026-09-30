@@ -2141,9 +2141,7 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		}
 		return s.cacheWebhookDone(ctx, cacheKey)
 	default:
-		// Answering 2xx on purpose: the payment is durably flagged for an
-		// operator, and a non-2xx would only make the gateway redeliver the
-		// same settlement until it gives up.
+		// Flagged for an operator, so acknowledge with 2xx; a failed flag write returns the error and the gateway redelivers.
 		fresh, err := s.storeRepo.RecordLatePaymentTx(ctx, tx, orderID, latePaymentReference(notif, order), map[string]any{
 			"source":       "webhook",
 			"order_status": order.Status,
