@@ -283,25 +283,39 @@ func (s *Service) clearExamDeviceLock(ctx context.Context, regID uuid.UUID) {
 // revokeOrderExamRegistrationsTx revokes the exam registrations created by a
 // refunded order — the exam-side twin of RevokeEnrollmentsByOrder: exams
 // linked to each exam-type order item × the order's participants (or the
-// buyer for self-purchases). Runs inside the refund's transaction.
+// buyer for self-purchases). Orders with a checkout snapshot revoke the
+// snapshotted exams, not whatever the product links to now. Runs inside the
+// refund's transaction.
 func (s *Service) revokeOrderExamRegistrationsTx(ctx context.Context, tx pgx.Tx, orderID, buyer uuid.UUID, items []model.OrderItem, actorID string) error {
+	snapshot, err := s.storeRepo.GetOrderDigitalSnapshot(ctx, orderID)
+	if err != nil {
+		return err
+	}
 	examsByProduct := make(map[uuid.UUID][]uuid.UUID)
-	for _, item := range items {
-		if item.ProductType != "exam" {
-			continue
+	if snapshot.Taken {
+		for _, t := range snapshot.Targets {
+			if t.Kind == model.DigitalTargetExam {
+				examsByProduct[t.ProductID] = append(examsByProduct[t.ProductID], t.TargetID)
+			}
 		}
-		exams, err := s.storeRepo.GetExamsByProductID(ctx, item.ProductID)
-		if err != nil {
-			return err
+	} else {
+		for _, item := range items {
+			if item.ProductType != "exam" {
+				continue
+			}
+			exams, err := s.storeRepo.GetExamsByProductID(ctx, item.ProductID)
+			if err != nil {
+				return err
+			}
+			if len(exams) == 0 {
+				continue
+			}
+			examIDs := make([]uuid.UUID, 0, len(exams))
+			for _, exam := range exams {
+				examIDs = append(examIDs, exam.ID)
+			}
+			examsByProduct[item.ProductID] = examIDs
 		}
-		if len(exams) == 0 {
-			continue
-		}
-		examIDs := make([]uuid.UUID, 0, len(exams))
-		for _, exam := range exams {
-			examIDs = append(examIDs, exam.ID)
-		}
-		examsByProduct[item.ProductID] = examIDs
 	}
 	if len(examsByProduct) == 0 {
 		return nil
