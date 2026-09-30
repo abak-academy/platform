@@ -263,3 +263,43 @@ func TestCheckout_FreeOrderReplayStillReturnsFreeWithoutGateway(t *testing.T) {
 		t.Errorf("gateway calls = %d, want 0", got)
 	}
 }
+
+func askedDeadline(t *testing.T, pay *lifecyclePayments) time.Time {
+	t.Helper()
+	got, _ := pay.lastExpiresAt.Load().(time.Time)
+	return got
+}
+
+// The gateway session is pinned to the order's own database deadline, not to a
+// duration counted from whenever the customer later charges.
+func TestCheckout_AsksTheGatewayToEndAtTheOrderDeadline(t *testing.T) {
+	svc, repo, pay := newLifecycleService(t)
+	student := newDigitalStudent(t, repo)
+	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+
+	deadline := deadlineOf(t, repo, orderID)
+	if deadline == nil {
+		t.Fatal("payment_expires_at is NULL after checkout")
+	}
+	if got := askedDeadline(t, pay); !got.Equal(*deadline) {
+		t.Errorf("gateway asked to end at %v, order deadline is %v", got, *deadline)
+	}
+}
+
+func TestRetryPayment_AsksTheGatewayToEndAtTheOriginalDeadline(t *testing.T) {
+	svc, repo, pay := newLifecycleService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+	setDeadline(t, repo, orderID, "2 hours 30 seconds")
+	original := *deadlineOf(t, repo, orderID)
+
+	for i := 0; i < 2; i++ {
+		if _, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey()); err != nil {
+			t.Fatalf("retry #%d: %v", i, err)
+		}
+		if got := askedDeadline(t, pay); !got.Equal(original) {
+			t.Errorf("retry #%d asked the gateway to end at %v, original deadline is %v", i, got, original)
+		}
+	}
+}

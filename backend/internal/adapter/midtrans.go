@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -15,6 +16,10 @@ import (
 	"github.com/midtrans/midtrans-go/coreapi"
 	"github.com/midtrans/midtrans-go/snap"
 )
+
+// ErrPaymentDeadlineTooClose means the order has under a minute left, the
+// shortest session Snap can be asked for without outliving the order.
+var ErrPaymentDeadlineTooClose = errors.New("midtrans: less than a minute left before the payment deadline")
 
 // MidtransClient wraps Midtrans Snap and CoreAPI clients.
 type MidtransClient struct {
@@ -77,15 +82,22 @@ func (m *MidtransClient) CreatePayment(ctx context.Context, req service.PaymentR
 		snapReq.Callbacks = &snap.Callbacks{Finish: req.CallbackURL}
 	}
 
-	// Whole minutes rounded down, at least one: the link may end early but must
-	// not outlive the order's own deadline the caller derived ExpiresIn from.
-	minutes := int64(req.ExpiresIn / time.Minute)
+	// Snap counts expiry from the customer's charge unless start_time is given,
+	// so pin it to now: the session then ends at start+whole minutes rounded
+	// down, never past the order's own deadline.
+	start := time.Now().Truncate(time.Second)
+	deadline := req.ExpiresAt
+	if deadline.IsZero() {
+		deadline = start.Add(req.ExpiresIn)
+	}
+	minutes := int64(deadline.Sub(start) / time.Minute)
 	if minutes < 1 {
-		minutes = 1
+		return service.PaymentResponse{}, ErrPaymentDeadlineTooClose
 	}
 	snapReq.Expiry = &snap.ExpiryDetails{
-		Duration: minutes,
-		Unit:     "minute",
+		StartTime: start.Format("2006-01-02 15:04:05 -0700"),
+		Duration:  minutes,
+		Unit:      "minute",
 	}
 
 	resp, err := m.snap.CreateTransaction(snapReq)
@@ -97,7 +109,7 @@ func (m *MidtransClient) CreatePayment(ctx context.Context, req service.PaymentR
 		GatewayRef: req.OrderID,
 		SnapToken:  resp.Token,
 		PaymentURL: resp.RedirectURL,
-		ExpiresAt:  time.Now().Add(time.Duration(minutes) * time.Minute),
+		ExpiresAt:  start.Add(time.Duration(minutes) * time.Minute),
 	}, nil
 }
 

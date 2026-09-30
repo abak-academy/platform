@@ -20,10 +20,13 @@ type CustomerInfo struct {
 }
 
 type PaymentRequest struct {
-	OrderID     string
-	Reference   string
-	Amount      int64
-	ExpiresIn   time.Duration
+	OrderID   string
+	Reference string
+	Amount    int64
+	ExpiresIn time.Duration
+	// ExpiresAt is the order's absolute payment deadline; the gateway session
+	// must not outlive it. Zero means only ExpiresIn bounds the session.
+	ExpiresAt   time.Time
 	Items       []ItemDetail
 	Customer    CustomerInfo
 	CallbackURL string

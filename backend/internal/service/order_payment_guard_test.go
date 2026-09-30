@@ -29,6 +29,7 @@ type lifecyclePayments struct {
 	// lasts; lastExpiresIn records what ABAK asked for.
 	expiresAfter  time.Duration
 	lastExpiresIn atomic.Int64
+	lastExpiresAt atomic.Value
 }
 
 func (p *lifecyclePayments) CreatePayment(ctx context.Context, req PaymentRequest) (PaymentResponse, error) {
@@ -40,6 +41,7 @@ func (p *lifecyclePayments) CreatePayment(ctx context.Context, req PaymentReques
 		return PaymentResponse{}, errors.New("gateway down")
 	}
 	p.lastExpiresIn.Store(int64(req.ExpiresIn))
+	p.lastExpiresAt.Store(req.ExpiresAt)
 	resp, err := p.countingPaymentClient.CreatePayment(ctx, req)
 	if err == nil && p.expiresAfter > 0 {
 		resp.ExpiresAt = time.Now().Add(p.expiresAfter)

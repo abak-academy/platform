@@ -1266,8 +1266,15 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, err
 	}
 
+	pending, err := s.validatePendingOrder(ctx, oID, sID)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
 	customer := fetchCustomerInfo(ctx, s, order.StudentID.String())
 	paymentReq := buildPaymentRequest(oID.String(), order, customer)
+	if err := bindPaymentDeadline(&paymentReq, pending.PaymentExpiresAt); err != nil {
+		return CheckoutResult{}, err
+	}
 	paymentResp, err := s.payment.CreatePayment(ctx, paymentReq)
 	if err != nil {
 		return CheckoutResult{}, err
@@ -1320,6 +1327,24 @@ func (s *Service) attachPayment(ctx context.Context, orderID, studentID uuid.UUI
 	return deadline, nil
 }
 
+// bindPaymentDeadline pins the gateway session to the order's own deadline so a
+// link opened late never buys more time than the order has left. Under a minute
+// left, the whole-minute session granularity could outlive the order: refuse. A
+// nil deadline (order placed before checkout set one) gets the standard window.
+func bindPaymentDeadline(req *PaymentRequest, deadline *time.Time) error {
+	at := time.Now().Add(paymentWindow)
+	if deadline != nil {
+		at = *deadline
+	}
+	remaining := time.Until(at)
+	if remaining < time.Minute {
+		return ErrPaymentExpired
+	}
+	req.ExpiresAt = at
+	req.ExpiresIn = remaining
+	return nil
+}
+
 func earlier(a, b time.Time) time.Time {
 	if a.IsZero() || b.Before(a) {
 		return b
@@ -1354,20 +1379,11 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 		return CheckoutResult{GatewayRef: cached}, nil
 	}
 
-	// The gateway link is asked to expire no later than the order does, so a
-	// retry never buys more time than the order has left. Under a minute left,
-	// the whole-minute link granularity could outlive the order: refuse.
-	remaining := paymentWindow
-	if order.PaymentExpiresAt != nil {
-		remaining = time.Until(*order.PaymentExpiresAt)
-	}
-	if remaining < time.Minute {
-		return CheckoutResult{}, ErrPaymentExpired
-	}
-
 	customer := fetchCustomerInfo(ctx, s, order.StudentID.String())
 	paymentReq := buildPaymentRequest(oID.String(), order, customer)
-	paymentReq.ExpiresIn = remaining
+	if err := bindPaymentDeadline(&paymentReq, order.PaymentExpiresAt); err != nil {
+		return CheckoutResult{}, err
+	}
 	paymentResp, err := s.payment.CreatePayment(ctx, paymentReq)
 	if err != nil {
 		return CheckoutResult{}, err
