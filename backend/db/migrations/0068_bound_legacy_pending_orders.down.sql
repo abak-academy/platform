@@ -1,3 +1,0 @@
--- 0068_bound_legacy_pending_orders.down.sql
--- Intentionally a no-op: the up migration only sets a missing deadline. Restoring
--- NULL would bring back orders that never expire, which is the defect it fixes.

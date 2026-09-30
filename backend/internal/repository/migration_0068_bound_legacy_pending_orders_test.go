@@ -11,7 +11,7 @@ import (
 
 // TestMigration0068_BoundsLegacyStudentDigitalOrders proves 0068 gives a
 // deadline-less payment_pending student digital order one 24h window and leaves
-// every other order alone; the down migration must not undo it.
+// every other order alone.
 func TestMigration0068_BoundsLegacyStudentDigitalOrders(t *testing.T) {
 	ctx := context.Background()
 	pool := newMigration0025Pool(t)
@@ -80,8 +80,4 @@ func TestMigration0068_BoundsLegacyStudentDigitalOrders(t *testing.T) {
 		require.Nil(t, deadlineOf(id), "%s order must stay untouched", name)
 	}
 	require.True(t, existing.Equal(*deadlineOf(withDeadline)), "an existing deadline must not move")
-
-	bounded := *deadlineOf(courseOrder)
-	applyMigrationFile(t, pool, "0068_bound_legacy_pending_orders.down.sql")
-	require.True(t, bounded.Equal(*deadlineOf(courseOrder)), "down must not put the defect back")
 }
