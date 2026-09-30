@@ -3,13 +3,13 @@ package service
 import (
 	"context"
 	"errors"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 
 	"akademi-bimbel/internal/model"
@@ -476,90 +476,150 @@ func TestDigitalPurchase_PhysicalOnlyOrderTakesNoSnapshot(t *testing.T) {
 	}
 }
 
-// The claim primitive is what a second order of the same student (a payment
-// retry, or a cart minted the instant the first checkout commits) must win
-// through: whichever transaction commits first holds the target, and the
-// loser is told which targets it lost instead of erroring.
-func TestDigitalPurchase_ConcurrentClaimsForOneTargetHaveExactlyOneWinner(t *testing.T) {
+// waitForLockWaiters polls until at least want backends wait on a lock. Checkout
+// reaching the unique claim insert while a rival's claim is still uncommitted
+// shows up here, so the tests below know it is blocked from observed DB state
+// rather than a guessed delay.
+func waitForLockWaiters(t *testing.T, repo *repository.Repository, want int) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		var n int
+		if err := repo.Pool().QueryRow(context.Background(),
+			`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+		).Scan(&n); err != nil {
+			t.Fatalf("read lock waiters: %v", err)
+		}
+		if n >= want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("lock waiters = %d, want %d: checkout never blocked on the rival's uncommitted claim", n, want)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// openRivalClaim holds an uncommitted claim on course for the student, the way a
+// second order of theirs (a payment retry) would mid-transaction. The returned
+// tx must be committed or rolled back by the caller.
+func openRivalClaim(t *testing.T, repo *repository.Repository, student, course uuid.UUID) pgx.Tx {
+	t.Helper()
+	ctx := context.Background()
+	rivalProduct := seedDigitalProduct(t, repo, "course", 40000, course)
+	var rivalOrder, rivalItem uuid.UUID
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total)
+		 VALUES ($1, 'payment_expired', 40000, 0, 0, 40000) RETURNING id`, student,
+	).Scan(&rivalOrder); err != nil {
+		t.Fatalf("insert rival order: %v", err)
+	}
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah)
+		 VALUES ($1, $2, 'course', 'rival', 40000, 1, 40000) RETURNING id`, rivalOrder, rivalProduct,
+	).Scan(&rivalItem); err != nil {
+		t.Fatalf("insert rival item: %v", err)
+	}
+	tx, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin rival tx: %v", err)
+	}
+	lost, err := repo.ClaimDigitalTargetsTx(ctx, tx, rivalOrder, student, []model.DigitalTarget{
+		{OrderItemID: rivalItem, ProductID: rivalProduct, Kind: model.DigitalTargetCourse, TargetID: course},
+	})
+	if err != nil || len(lost) != 0 {
+		tx.Rollback(ctx)
+		t.Fatalf("rival claim = lost %v, err %v; want a clean uncommitted claim", lost, err)
+	}
+	return tx
+}
+
+// The claim is the unique index, not the eligibility read: Checkout's read
+// cannot see the rival's uncommitted claim, so only blocking on the index
+// insert and then losing when the rival commits keeps the target single-owner.
+func TestDigitalPurchase_CheckoutBlocksOnUncommittedRivalClaimAndLosesWhenItCommits(t *testing.T) {
 	svc, repo, pay := newDigitalPurchaseService(t)
 	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	course := seedCourseTarget(t, repo)
+	product := seedDigitalProduct(t, repo, "course", 50000, course)
+	cartID := cartOf(t, svc, student, product)
 
-	const trials = 6
-	for i := 0; i < trials; i++ {
-		student := newDigitalStudent(t, repo)
-		course := seedCourseTarget(t, repo)
-		product := seedDigitalProduct(t, repo, "course", 50000, course)
-		rival := seedDigitalProduct(t, repo, "course", 40000, course)
+	rival := openRivalClaim(t, repo, student, course)
+	defer rival.Rollback(ctx)
 
-		cartID := cartOf(t, svc, student, product)
-		var rivalOrder, rivalItem uuid.UUID
-		if err := repo.Pool().QueryRow(ctx,
-			`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total)
-			 VALUES ($1, 'payment_expired', 40000, 0, 0, 40000) RETURNING id`, student,
-		).Scan(&rivalOrder); err != nil {
-			t.Fatalf("insert rival order: %v", err)
-		}
-		if err := repo.Pool().QueryRow(ctx,
-			`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah)
-			 VALUES ($1, $2, 'course', 'rival', 40000, 1, 40000) RETURNING id`, rivalOrder, rival,
-		).Scan(&rivalItem); err != nil {
-			t.Fatalf("insert rival item: %v", err)
-		}
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.Checkout(ctx, student.String(), cartID.String(), checkoutKey())
+		done <- err
+	}()
 
-		before := pay.creates.Load()
-		start := make(chan struct{})
-		var wg sync.WaitGroup
-		var checkoutWon, claimWon atomic.Bool
-		wg.Add(2)
+	waitForLockWaiters(t, repo, 1)
+	select {
+	case err := <-done:
+		t.Fatalf("Checkout returned %v before the rival claim resolved", err)
+	default:
+	}
+	if err := rival.Commit(ctx); err != nil {
+		t.Fatalf("commit rival: %v", err)
+	}
+
+	wantConflict(t, <-done, model.DigitalConflictClaimed)
+	if got := orderStatusOf(t, repo, cartID); got != "cart" {
+		t.Errorf("order status = %q, want cart", got)
+	}
+	if n := liveClaimsOf(t, repo, student); n != 1 {
+		t.Errorf("live claims = %d, want 1 (the rival's)", n)
+	}
+	if n := pay.creates.Load(); n != 0 {
+		t.Errorf("gateway calls = %d, want 0 for the loser", n)
+	}
+}
+
+// When the rival rolls back, the blocked checkout wins. A second submit of the
+// same cart waits on the order row and must not create a second claim or payment.
+func TestDigitalPurchase_CheckoutWinsWhenRivalRollsBackAndDoubleSubmitPaysOnce(t *testing.T) {
+	svc, repo, pay := newDigitalPurchaseService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	course := seedCourseTarget(t, repo)
+	product := seedDigitalProduct(t, repo, "course", 50000, course)
+	cartID := cartOf(t, svc, student, product)
+
+	rival := openRivalClaim(t, repo, student, course)
+	defer rival.Rollback(ctx)
+
+	done := make(chan error, 2)
+	for i := 0; i < 2; i++ {
 		go func() {
-			defer wg.Done()
-			<-start
-			if _, err := svc.Checkout(ctx, student.String(), cartID.String(), checkoutKey()); err == nil {
-				checkoutWon.Store(true)
-			} else if !errors.Is(err, ErrDigitalTargetConflict) {
-				t.Errorf("Checkout: unexpected error %v", err)
-			}
+			_, err := svc.Checkout(ctx, student.String(), cartID.String(), checkoutKey())
+			done <- err
 		}()
-		go func() {
-			defer wg.Done()
-			<-start
-			tx, err := repo.BeginTx(ctx)
-			if err != nil {
-				t.Errorf("begin: %v", err)
-				return
-			}
-			defer tx.Rollback(ctx)
-			lost, err := repo.ClaimDigitalTargetsTx(ctx, tx, rivalOrder, student, []model.DigitalTarget{
-				{OrderItemID: rivalItem, ProductID: rival, Kind: model.DigitalTargetCourse, TargetID: course},
-			})
-			if err != nil {
-				t.Errorf("claim: %v", err)
-				return
-			}
-			if len(lost) == 0 {
-				if err := tx.Commit(ctx); err != nil {
-					t.Errorf("commit: %v", err)
-					return
-				}
-				claimWon.Store(true)
-			}
-		}()
-		close(start)
-		wg.Wait()
+	}
+	waitForLockWaiters(t, repo, 2)
+	if err := rival.Rollback(ctx); err != nil {
+		t.Fatalf("rollback rival: %v", err)
+	}
 
-		if checkoutWon.Load() == claimWon.Load() {
-			t.Fatalf("trial %d: checkoutWon=%v claimWon=%v, want exactly one winner", i, checkoutWon.Load(), claimWon.Load())
+	var succeeded, notEditable int
+	for i := 0; i < 2; i++ {
+		switch err := <-done; {
+		case err == nil:
+			succeeded++
+		case errors.Is(err, ErrOrderNotEditable):
+			notEditable++
+		default:
+			t.Errorf("unexpected Checkout error: %v", err)
 		}
-		if n := liveClaimsOf(t, repo, student); n != 1 {
-			t.Fatalf("trial %d: live claims = %d, want 1", i, n)
-		}
-		wantCalls := before
-		if checkoutWon.Load() {
-			wantCalls++
-		}
-		if got := pay.creates.Load(); got != wantCalls {
-			t.Fatalf("trial %d: gateway calls = %d, want %d (loser never reaches the gateway)", i, got, wantCalls)
-		}
+	}
+	if succeeded != 1 || notEditable != 1 {
+		t.Errorf("succeeded=%d notEditable=%d, want 1 and 1", succeeded, notEditable)
+	}
+	if n := liveClaimsOf(t, repo, student); n != 1 {
+		t.Errorf("live claims = %d, want 1", n)
+	}
+	if n := pay.creates.Load(); n != 1 {
+		t.Errorf("gateway calls = %d, want 1", n)
 	}
 }
 
