@@ -201,7 +201,9 @@ func TestOrderPaid_WaitsForRefundHoldingTheOrderAndGrantsNothing(t *testing.T) {
 	if err := refundTx.Commit(ctx); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
-	<-pollDone
+	if err := <-pollDone; err != nil {
+		t.Fatalf("poll outbox: %v", err)
+	}
 
 	if got := env.activeEnrollments(t, student, course); got != 0 {
 		t.Errorf("active enrollments = %d, want 0: worker fulfilled an order refunded while it was handling the event", got)
@@ -292,14 +294,14 @@ func TestOrderPaid_FulfilledTargetIsOwnedUntilRefundedThenCanBeRepurchased(t *te
 	orderID := env.paidOrder(t, student, digital)
 	env.pollAll(t, ctx)
 
-	if _, _, err := env.svc.MintCart(ctx, student.String()); err != nil {
+	cart, _, err := env.svc.MintCart(ctx, student.String())
+	if err != nil {
 		t.Fatalf("MintCart: %v", err)
 	}
-	cart, _, _ := env.svc.MintCart(ctx, student.String())
 	if got := env.status(t, orderID); got != "completed" {
 		t.Fatalf("status = %q, want completed before the repurchase attempt", got)
 	}
-	err := env.svc.AddItem(ctx, student.String(), cart.ID.String(), other.String(), 1)
+	err = env.svc.AddItem(ctx, student.String(), cart.ID.String(), other.String(), 1)
 	var conflict *service.DigitalTargetConflictError
 	if !errors.As(err, &conflict) || len(conflict.Conflicts) != 1 || conflict.Conflicts[0].Reason != model.DigitalConflictOwned {
 		t.Fatalf("AddItem while the access is live: err = %v, want one %q conflict", err, model.DigitalConflictOwned)
