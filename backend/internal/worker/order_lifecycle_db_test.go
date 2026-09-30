@@ -193,15 +193,6 @@ func (e *lifecycleEnv) status(t *testing.T, orderID uuid.UUID) string {
 	return s
 }
 
-func (e *lifecycleEnv) stock(t *testing.T, productID uuid.UUID) int {
-	t.Helper()
-	var n int
-	if err := e.repo.Pool().QueryRow(context.Background(), `SELECT stock FROM product WHERE id = $1`, productID).Scan(&n); err != nil {
-		t.Fatalf("stock: %v", err)
-	}
-	return n
-}
-
 func (e *lifecycleEnv) count(t *testing.T, sql string, args ...any) int {
 	t.Helper()
 	var n int

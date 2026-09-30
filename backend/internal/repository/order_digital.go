@@ -64,27 +64,26 @@ func (r *Repository) ListProductDigitalTargets(ctx context.Context, tx pgx.Tx, p
 func (r *Repository) ListLiveDigitalTargets(ctx context.Context, tx pgx.Tx, studentID, excludeOrderID uuid.UUID) ([]model.LiveDigitalTarget, error) {
 	rows, err := r.digitalQueryer(tx).Query(ctx, `
 		WITH in_flight AS (
-		    SELECT o.id AS order_id, 'course'::text AS kind, pc.course_id AS target_id
+		    SELECT 'course'::text AS kind, pc.course_id AS target_id
 		      FROM orders o
 		      JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'course'
 		      JOIN product_course pc ON pc.product_id = oi.product_id
 		     WHERE o.student_id = $1 AND o.id <> $2
 		       AND o.status NOT IN ('cart', 'cancelled', 'payment_expired')
 		    UNION ALL
-		    SELECT o.id, 'exam'::text, pe.exam_id
+		    SELECT 'exam'::text, pe.exam_id
 		      FROM orders o
 		      JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'exam'
 		      JOIN product_exam pe ON pe.product_id = oi.product_id
 		     WHERE o.student_id = $1 AND o.id <> $2
 		       AND o.status NOT IN ('cart', 'cancelled', 'payment_expired')
 		)
-		SELECT f.kind, f.target_id, 'in_flight' AS reason, (array_agg(f.order_id ORDER BY f.order_id))[1] AS order_id
-		  FROM in_flight f GROUP BY f.kind, f.target_id
+		SELECT f.kind, f.target_id, 'in_flight' AS reason FROM in_flight f
 		UNION
-		SELECT 'course', cs.course_id, 'owned', NULL::uuid FROM course_session cs
+		SELECT 'course', cs.course_id, 'owned' FROM course_session cs
 		 WHERE cs.student_id = $1 AND cs.status = 'active'
 		UNION
-		SELECT 'exam', er.exam_id, 'owned', NULL::uuid FROM exam_registration er
+		SELECT 'exam', er.exam_id, 'owned' FROM exam_registration er
 		 WHERE er.student_id = $1 AND er.status <> 'revoked'`,
 		studentID, excludeOrderID,
 	)
@@ -96,7 +95,7 @@ func (r *Repository) ListLiveDigitalTargets(ctx context.Context, tx pgx.Tx, stud
 	var live []model.LiveDigitalTarget
 	for rows.Next() {
 		var t model.LiveDigitalTarget
-		if err := rows.Scan(&t.Kind, &t.TargetID, &t.Reason, &t.OrderID); err != nil {
+		if err := rows.Scan(&t.Kind, &t.TargetID, &t.Reason); err != nil {
 			return nil, err
 		}
 		live = append(live, t)

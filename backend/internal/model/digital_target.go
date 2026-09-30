@@ -7,10 +7,7 @@ const (
 	DigitalTargetExam   = "exam"
 )
 
-const (
-	LiveTargetOwned    = "owned"
-	LiveTargetInFlight = "in_flight"
-)
+const LiveTargetOwned = "owned"
 
 // Conflict reasons the API sends to clients. "claimed" is a target another live
 // order of the same student holds, shown as "already being bought in another
@@ -42,12 +39,11 @@ func (t DigitalTarget) Key() DigitalTargetKey {
 }
 
 // LiveDigitalTarget is a course or exam a student already holds access to or is
-// buying in another live order. OrderID is set only for the latter.
+// buying in another live order.
 type LiveDigitalTarget struct {
 	Kind     string
 	TargetID uuid.UUID
 	Reason   string
-	OrderID  *uuid.UUID
 }
 
 // DigitalTargetConflict names a target a student cannot buy again and why.
