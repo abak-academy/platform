@@ -21,7 +21,7 @@ Outcome: every pending order has one bounded deadline set at checkout, the gatew
 
 - **One deadline, set by ABAK (Panca, 2026-09-30).** `orders.payment_expires_at` is written at checkout, in the transaction that moves the cart to `payment_pending`, before any gateway call. A gateway response or a retry never moves it.
 - **No grace.** A settlement after the deadline never fulfils the order and never moves it back out of `payment_expired`. `payment_expired` is final; a new attempt starts from a fresh cart.
-- **Flag, do not grant.** The `payment_late` flag is an operator signal. It gives no access. Whether to flag at all is still to be agreed, which is why this spec is `proposed`.
+- **Flag, do not grant.** The `payment_late` flag is an operator signal. It gives no access. Whether the flag is used at all is still open, which is why this spec is `proposed`; this change implements it as a database row with a read-only operator query, and it grants nothing either way.
 - Refund stays manual: `PaymentClient` has no refund operation, so an operator refunds in the gateway dashboard using the reference the flag carries.
 
 ## Required behaviour
@@ -38,7 +38,7 @@ Outcome: every pending order has one bounded deadline set at checkout, the gatew
 **Settlement at or after the deadline**
 
 - A settlement for a `payment_pending` order past its deadline expires the order under the row lock, with the sweeper's own transition (stock released once), and is then treated as a settlement for an expired order.
-- A settlement reported for an order that is `payment_expired` or `cancelled` (a refund is `cancelled` with `cancellation_reason = 'refunded'`) writes a flag with the order id in `gateway_ref` and the reported reference in the payload. No entitlement is written and the order status does not change. The webhook still answers 2xx, so the gateway stops redelivering.
+- A settlement reported for an order that is `payment_expired` or `cancelled` (a refund is `cancelled` with `cancellation_reason = 'refunded'`) writes a flag with the order id in `gateway_ref` and the reported reference in the payload. No entitlement is written and the order status does not change. The webhook answers 2xx once the flag is written, so the gateway stops redelivering; if the flag cannot be written it answers 5xx and the gateway redelivers.
 - A settlement for an order still inside its window behaves as before (fulfilment under the order's row lock).
 - Repeated notifications for the same settlement do not duplicate flags, records or refunds.
 - The reconcile path follows the same rule as the webhook: it expires an overdue order under the lock and, for an order that can no longer be fulfilled, flags the payment and answers 409 `order_not_payable` without marking it paid. Admin confirm of an order that is not `payment_pending`, or whose deadline has elapsed, answers `order_not_payable` and leaves the transition to the sweeper.
@@ -72,7 +72,7 @@ Outcome: every pending order has one bounded deadline set at checkout, the gatew
 
 ## Rollout and operator audit
 
-- **One data-only migration, no down file.** `0068_bound_legacy_pending_orders` gives a `payment_pending` student digital order with `payment_expires_at IS NULL` — its gateway creation never finished — one standard 24h window from migration time, so it expires like any other. Physical-only, bulk (`order_participant`) and non-student orders are untouched. The runner only reads `*.up.sql`, and restoring `NULL` would bring the defect back, so no down migration ships. `TestMigration0068_BoundsLegacyStudentDigitalOrders` runs the statement against fixtures:
+- **One data-only migration, no down file.** `0068_bound_legacy_pending_orders` gives a `payment_pending` student digital order with `payment_expires_at IS NULL` — its gateway creation never finished — one standard 24h window from migration time, so it expires like any other. Physical-only, bulk (`order_participant`) and non-student orders are untouched on purpose: they still hold stock with no deadline and are for a human to resolve, and the query below does not list them. The runner only reads `*.up.sql`, and restoring `NULL` would bring the defect back, so no down migration ships. `TestMigration0068_BoundsLegacyStudentDigitalOrders` runs the statement against fixtures:
 
 ```sql
 UPDATE orders o SET payment_expires_at = now() + interval '24 hours'
@@ -85,7 +85,7 @@ UPDATE orders o SET payment_expires_at = now() + interval '24 hours'
 
 The window is set at migration time rather than at placement so no student is expired before they can retry, and a retry never moves it. Before this change a deadline-less order was never expired at all, which was a defect rather than a documented behaviour.
 
-- **Rolling deploy.** An old replica's checkout that fails at the gateway still leaves an order with no deadline, so a row can appear after the migration ran.
+- **Rolling deploy.** While old replicas still serve traffic, expiry is not final. An old replica's checkout that fails at the gateway still leaves an order with no deadline, so a row can appear after the migration ran. Its retry can reopen a `payment_expired` order, its `SetPaymentRef` write to the pool can move the deadline, and its webhook still fulfils a pending order past its deadline. Treat an order as settled-as-expired only once every replica runs this version.
 
 Run the queries below against the shared database only with explicit authorization; they change nothing.
 
