@@ -103,10 +103,13 @@ async function checkoutToPaymentPending(
     }
     const failure = (await itemRes.json().catch(() => ({}))) as { code?: string };
     lastFailure = `${itemRes.status()} ${failure.code ?? "unknown"}`;
-    // 409 is the expected rerun case — the student owns the course or holds a
-    // live claim on it from an unfinished order. 429 is a rate limit a rerun can
-    // trip. Both mean "try the next course"; anything else is a real failure.
-    if (itemRes.status() === 409 || itemRes.status() === 429) continue;
+    // 409 is the expected rerun case: the student owns the course or holds a
+    // live claim on it, so try the next one. 429 is the limiter, not ownership —
+    // fail here rather than drain the catalog and blame ownership for it.
+    if (itemRes.status() === 409) continue;
+    if (itemRes.status() === 429) {
+      throw new Error("real-backend setup: adding a course to the cart hit the rate limiter (429)");
+    }
     expect(
       itemRes.ok(),
       `adding a priced course to the cart failed unexpectedly (${lastFailure})`
@@ -145,58 +148,61 @@ async function checkoutToPaymentPending(
   return cart.id;
 }
 
-/**
- * Refund the order this spec confirmed, so the course it consumed goes back to
- * the catalog. A refund revokes the enrollment and releases the digital claim;
- * there is no cheaper way to hand a purchased course back.
- *
- * This runs after the spec's own assertions, and a cleanup problem is reported
- * as a warning rather than a failure: the spec is about the manual-confirm flow,
- * and a refund that cannot run (storage not configured, for instance) is not
- * evidence that the flow is broken. It does mean the next run needs another
- * course.
- */
+// Set once the order and an admin token exist, so cleanup runs even when an
+// assertion fails: a broken run must not silently consume a course.
+let cleanup: { adminToken: string; orderId: string } | null = null;
+
+/** Refund a confirmed order, so the course it consumed goes back to the catalog. */
 async function refundOrder(
   request: APIRequestContext,
   adminToken: string,
   orderId: string
 ): Promise<void> {
   const auth = { Authorization: `Bearer ${adminToken}` };
-  try {
-    const presignRes = await request.get(
-      `${API_BASE}/uploads/presign?kind=refund_proof&filename=e2e-refund.png&content_type=image/png`,
-      { headers: auth }
-    );
-    if (!presignRes.ok()) {
-      throw new Error(`presigning the refund proof failed (${presignRes.status()})`);
-    }
-    const presigned = (await presignRes.json()) as { url: string; key: string };
+  // POST, not GET: the presign route is registered as POST and reads the query string.
+  const presignRes = await request.post(
+    `${API_BASE}/uploads/presign?kind=refund_proof&filename=e2e-refund.png&content_type=image/png`,
+    { headers: auth }
+  );
+  if (!presignRes.ok()) {
+    throw new Error(`presigning the refund proof failed (${presignRes.status()})`);
+  }
+  const presigned = (await presignRes.json()) as { url: string; key: string };
 
-    // A well-formed key is not enough: the refund path checks that the object
-    // exists, so the fixture has to be uploaded for real.
-    const putRes = await request.put(presigned.url, {
-      headers: { "Content-Type": "image/png" },
-      data: PNG_1X1,
-    });
-    if (!putRes.ok()) {
-      throw new Error(`uploading the refund proof failed (${putRes.status()})`);
-    }
+  // A well-formed key is not enough: the refund path checks the object exists.
+  const putRes = await request.put(presigned.url, {
+    headers: { "Content-Type": "image/png" },
+    data: PNG_1X1,
+  });
+  if (!putRes.ok()) {
+    throw new Error(`uploading the refund proof failed (${putRes.status()})`);
+  }
 
-    const refundRes = await request.post(`${API_BASE}/admin/orders/${orderId}/refund`, {
-      headers: auth,
-      data: { refund_proof_url: presigned.key },
-    });
-    if (!refundRes.ok()) {
-      throw new Error(`refunding failed (${refundRes.status()}) ${await refundRes.text()}`);
-    }
-  } catch (err) {
-    console.warn(
-      `[e5-admin-orders] could not refund ${orderId} after the assertions: ${(err as Error).message}`
-    );
+  const refundRes = await request.post(`${API_BASE}/admin/orders/${orderId}/refund`, {
+    headers: auth,
+    data: { refund_proof_url: presigned.key },
+  });
+  if (!refundRes.ok()) {
+    throw new Error(`refunding failed (${refundRes.status()}) ${await refundRes.text()}`);
   }
 }
 
 test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name", () => {
+  test.afterEach(async ({ request }) => {
+    const pending = cleanup;
+    cleanup = null;
+    if (!pending) return;
+    try {
+      await refundOrder(request, pending.adminToken, pending.orderId);
+    } catch (err) {
+      const message = `[e5-admin-orders] could not refund ${pending.orderId}: ${(err as Error).message}`;
+      // A clean run that cannot hand the course back is a real failure; after an
+      // earlier failure it stays a warning, so the original error is reported.
+      if (test.info().errors.length === 0) throw new Error(message);
+      console.warn(message);
+    }
+  });
+
   test("upload a proof, confirm manually, reopen and see the mark and the proof", async ({ page, context, request }) => {
     // The student session is only needed for the API setup below, but both
     // helpers seed the SAME localStorage key — so the last login wins in the
@@ -209,6 +215,7 @@ test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name"
     const orderNumber = `#${orderId.slice(-8)}`;
 
     const adminToken = await loginRealAdmin(context, request);
+    cleanup = { adminToken, orderId };
 
     await page.goto("/admin/orders");
 
@@ -282,8 +289,5 @@ test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name"
     const proofFileRes = await request.get(proofURL);
     expect(proofFileRes.ok(), "the payment proof must be reachable from the detail view").toBeTruthy();
     await proofTab.close();
-
-    // Hand the course back, so a second run has something to buy.
-    await refundOrder(request, adminToken, orderId);
   });
 });
