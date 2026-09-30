@@ -292,7 +292,7 @@ func (s *Service) clearExamDeviceLock(ctx context.Context, regID uuid.UUID) {
 // snapshotted exams, not whatever the product links to now. Runs inside the
 // refund's transaction.
 func (s *Service) revokeOrderExamRegistrationsTx(ctx context.Context, tx pgx.Tx, orderID, buyer uuid.UUID, items []model.OrderItem, actorID string) error {
-	snapshot, err := s.storeRepo.GetOrderDigitalSnapshot(ctx, orderID)
+	snapshot, err := s.storeRepo.GetOrderDigitalSnapshot(ctx, tx, orderID)
 	if err != nil {
 		return err
 	}

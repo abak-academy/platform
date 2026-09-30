@@ -13,7 +13,11 @@ import (
 // claimsDigitalTargets reports whether digital lines bought by this user are
 // protected by per-target claims. School and other non-student buyers keep
 // their existing behaviour.
-func (s *Service) claimsDigitalTargets(ctx context.Context, buyerID uuid.UUID) (bool, error) {
+func (s *Service) claimsDigitalTargets(ctx context.Context, tx pgx.Tx, buyerID uuid.UUID) (bool, error) {
+	if tx != nil {
+		role, err := s.storeRepo.GetUserRoleTx(ctx, tx, buyerID)
+		return role == RoleStudent, err
+	}
 	buyer, err := s.repo.GetUserByID(ctx, buyerID.String())
 	if err != nil {
 		return false, err
@@ -82,7 +86,7 @@ func (s *Service) unavailableDigitalTargets(ctx context.Context, tx pgx.Tx, stud
 // checkDigitalCandidate is the cart-time early warning for adding one product:
 // checkout stays authoritative, since a cart reserves nothing.
 func (s *Service) checkDigitalCandidate(ctx context.Context, studentID uuid.UUID, existing []model.OrderItem, candidate model.OrderItem) error {
-	claims, err := s.claimsDigitalTargets(ctx, studentID)
+	claims, err := s.claimsDigitalTargets(ctx, nil, studentID)
 	if err != nil || !claims {
 		return err
 	}
@@ -187,12 +191,12 @@ func (s *Service) recheckDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 	if len(participants) > 0 {
 		return nil
 	}
-	claims, err := s.claimsDigitalTargets(ctx, order.StudentID)
+	claims, err := s.claimsDigitalTargets(ctx, tx, order.StudentID)
 	if err != nil || !claims {
 		return err
 	}
 
-	snapshot, err := s.storeRepo.GetOrderDigitalSnapshot(ctx, order.ID)
+	snapshot, err := s.storeRepo.GetOrderDigitalSnapshot(ctx, tx, order.ID)
 	if err != nil {
 		return err
 	}

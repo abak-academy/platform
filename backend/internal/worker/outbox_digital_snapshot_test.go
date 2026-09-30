@@ -23,7 +23,7 @@ func snapshotWorkerRepo(orderID, studentID uuid.UUID, items []OrderItemMini, sna
 		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
 			return model.Order{ID: orderID, StudentID: studentID, Status: "paid"}, nil
 		},
-		getOrderDigitalSnapshotFn: func(ctx context.Context, id uuid.UUID) (model.OrderDigitalSnapshot, error) {
+		getOrderDigitalSnapshotFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (model.OrderDigitalSnapshot, error) {
 			return snapshot, nil
 		},
 		setOrderStatusFn:      func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error { return nil },
@@ -135,5 +135,23 @@ func TestOrderPaidHandler_OrderWithoutSnapshotStillFulfilsFromLiveLinks(t *testi
 
 	if len(sessions) != 1 || sessions[0].CourseID != liveCourse {
 		t.Fatalf("legacy order sessions = %+v, want one for live course %v", sessions, liveCourse)
+	}
+}
+
+func TestOrderPaidHandler_ReadsTheSnapshotOnTheFulfilmentTransaction(t *testing.T) {
+	orderID, studentID := uuid.New(), uuid.New()
+	repo := snapshotWorkerRepo(orderID, studentID, nil, model.OrderDigitalSnapshot{})
+	fulfilmentTx := &mockTx{commitFn: func(ctx context.Context) error { return nil }, rollbackFn: func(ctx context.Context) error { return nil }}
+	repo.beginTxFn = func(ctx context.Context) (pgx.Tx, error) { return fulfilmentTx, nil }
+	var readOn pgx.Tx
+	repo.getOrderDigitalSnapshotFn = func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (model.OrderDigitalSnapshot, error) {
+		readOn = tx
+		return model.OrderDigitalSnapshot{}, nil
+	}
+
+	(&Worker{repo: repo}).pollOutbox(context.Background())
+
+	if readOn != pgx.Tx(fulfilmentTx) {
+		t.Fatalf("snapshot read on tx %v, want the fulfilment transaction %v: a pool read would need a second connection", readOn, fulfilmentTx)
 	}
 }

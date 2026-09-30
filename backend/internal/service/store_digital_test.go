@@ -436,7 +436,7 @@ func TestDigitalPurchase_SnapshotKeepsCheckoutTargetsAfterProductLinkEdit(t *tes
 		t.Fatalf("relink: %v", err)
 	}
 
-	snapshot, err := repo.GetOrderDigitalSnapshot(ctx, orderID)
+	snapshot, err := repo.GetOrderDigitalSnapshot(ctx, nil, orderID)
 	if err != nil {
 		t.Fatalf("GetOrderDigitalSnapshot: %v", err)
 	}
@@ -467,7 +467,7 @@ func TestDigitalPurchase_PhysicalOnlyOrderTakesNoSnapshot(t *testing.T) {
 		t.Fatalf("Checkout: %v", err)
 	}
 
-	snapshot, err := repo.GetOrderDigitalSnapshot(ctx, orderID)
+	snapshot, err := repo.GetOrderDigitalSnapshot(ctx, nil, orderID)
 	if err != nil {
 		t.Fatalf("GetOrderDigitalSnapshot: %v", err)
 	}
@@ -736,7 +736,7 @@ func TestDigitalPurchase_ProductWithNoLinkedTargetsIsNotCharged(t *testing.T) {
 			if n := pay.creates.Load(); n != 0 {
 				t.Errorf("gateway calls = %d, want 0", n)
 			}
-			if snapshot, err := repo.GetOrderDigitalSnapshot(ctx, orderID); err != nil || snapshot.Taken {
+			if snapshot, err := repo.GetOrderDigitalSnapshot(ctx, nil, orderID); err != nil || snapshot.Taken {
 				t.Errorf("snapshot = %+v, err %v; want none", snapshot, err)
 			}
 		})

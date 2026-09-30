@@ -1190,7 +1190,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	}
 
 	if hasDigital && len(participants) == 0 {
-		claims, err := s.claimsDigitalTargets(ctx, order.StudentID)
+		claims, err := s.claimsDigitalTargets(ctx, tx, order.StudentID)
 		if err != nil {
 			return CheckoutResult{}, err
 		}

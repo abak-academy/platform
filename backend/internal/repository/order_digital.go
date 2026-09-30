@@ -12,6 +12,7 @@ import (
 
 type queryer interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 // digitalQueryer runs on the caller's transaction when there is one, so a
@@ -145,11 +146,26 @@ func (r *Repository) ClaimDigitalTargetsTx(ctx context.Context, tx pgx.Tx, order
 	return conflicted, nil
 }
 
+// GetUserRoleTx reads the user's role on the caller's transaction, so a
+// checkout does not need a second pool connection while it holds one. An
+// unknown user has no role.
+func (r *Repository) GetUserRoleTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) (string, error) {
+	var role string
+	if err := tx.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, userID).Scan(&role); err != nil {
+		if isNotFound(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return role, nil
+}
+
 // GetOrderDigitalSnapshot returns the targets checkout reserved for the order.
 // Taken is false for orders placed before snapshots existed.
-func (r *Repository) GetOrderDigitalSnapshot(ctx context.Context, orderID uuid.UUID) (model.OrderDigitalSnapshot, error) {
+func (r *Repository) GetOrderDigitalSnapshot(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) (model.OrderDigitalSnapshot, error) {
+	q := r.digitalQueryer(tx)
 	var snapshot model.OrderDigitalSnapshot
-	if err := r.pool.QueryRow(ctx,
+	if err := q.QueryRow(ctx,
 		`SELECT digital_targets_snapshot_at IS NOT NULL FROM orders WHERE id = $1`, orderID,
 	).Scan(&snapshot.Taken); err != nil {
 		if isNotFound(err) {
@@ -161,7 +177,7 @@ func (r *Repository) GetOrderDigitalSnapshot(ctx context.Context, orderID uuid.U
 		return snapshot, nil
 	}
 
-	rows, err := r.pool.Query(ctx,
+	rows, err := q.Query(ctx,
 		`SELECT t.order_item_id, oi.product_id, t.target_kind, t.target_id
 		 FROM order_digital_target t
 		 JOIN order_item oi ON oi.id = t.order_item_id

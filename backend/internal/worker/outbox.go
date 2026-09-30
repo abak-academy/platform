@@ -42,7 +42,7 @@ type outboxRepository interface {
 	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
 	StampOrderItemFulfilledAt(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 	GetOrderParticipants(context.Context, uuid.UUID) ([]uuid.UUID, error)
-	GetOrderDigitalSnapshot(context.Context, uuid.UUID) (model.OrderDigitalSnapshot, error)
+	GetOrderDigitalSnapshot(context.Context, pgx.Tx, uuid.UUID) (model.OrderDigitalSnapshot, error)
 }
 
 type Worker struct {
@@ -203,7 +203,7 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 		return
 	}
 
-	snapshot, err := w.repo.GetOrderDigitalSnapshot(ctx, payload.OrderID)
+	snapshot, err := w.repo.GetOrderDigitalSnapshot(ctx, tx, payload.OrderID)
 	if err != nil {
 		slog.Error("get order digital snapshot", "order_id", payload.OrderID, "err", err)
 		return
