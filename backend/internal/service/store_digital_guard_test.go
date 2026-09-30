@@ -42,10 +42,11 @@ func TestDigitalPurchase_OnlyLiveOrdersBlockTheirTargetThroughAnotherSKU(t *test
 		{"payment_pending", "payment_pending", "", true},
 		{"paid", "paid", "", true},
 		{"processing", "processing", "", true},
+		{"shipped", "shipped", "", true},
+		{"completed", "completed", "", true},
 		{"payment_expired", "payment_expired", "", false},
 		{"cancelled", "cancelled", "", false},
 		{"refunded", "cancelled", "refunded", false},
-		{"completed", "completed", "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, repo, pay := newDigitalPurchaseService(t)
@@ -82,6 +83,29 @@ func TestDigitalPurchase_OnlyLiveOrdersBlockTheirTargetThroughAnotherSKU(t *test
 				t.Errorf("gateway calls = %d, want 0 for the refused order", n)
 			}
 		})
+	}
+}
+
+func TestDigitalPurchase_LiveOrderBlocksTheSameSKUAgain(t *testing.T) {
+	svc, repo, pay := newDigitalPurchaseService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	product := seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo))
+	first := cartOf(t, svc, student, product)
+	if _, err := svc.Checkout(ctx, student.String(), first.String(), checkoutKey()); err != nil {
+		t.Fatalf("first Checkout: %v", err)
+	}
+
+	second, created, err := svc.MintCart(ctx, student.String())
+	if err != nil || !created || second.ID == first {
+		t.Fatalf("MintCart = %v, created=%v, err=%v; want a new cart after checkout", second.ID, created, err)
+	}
+	wantConflict(t, svc.AddItem(ctx, student.String(), second.ID.String(), product.String(), 1), model.DigitalConflictClaimed)
+	forceLine(t, repo, second.ID, product, "course", 50000)
+	_, err = svc.Checkout(ctx, student.String(), second.ID.String(), checkoutKey())
+	wantConflict(t, err, model.DigitalConflictClaimed)
+	if n := pay.creates.Load(); n != 1 {
+		t.Errorf("gateway calls = %d, want 1 (the first order only)", n)
 	}
 }
 
@@ -189,6 +213,8 @@ func waitForWaitersBehind(t *testing.T, repo *repository.Repository, holder pgx.
 	}
 }
 
+// Serialization proof only: the loser fails on the cart's status, so this does
+// not exercise the guard; the guard is covered by the MintCart test below.
 func TestDigitalPurchase_ConcurrentCheckoutsForOneStudentCreateOneOrderAndOnePayment(t *testing.T) {
 	svc, repo, pay := newDigitalPurchaseService(t)
 	ctx := context.Background()
@@ -236,5 +262,62 @@ func TestDigitalPurchase_ConcurrentCheckoutsForOneStudentCreateOneOrderAndOnePay
 	}
 	if n := pay.creates.Load(); n != 1 {
 		t.Errorf("gateway calls = %d, want 1", n)
+	}
+}
+
+// The holder stands in for a checkout transaction: it has moved the cart to
+// payment_pending and not committed. A concurrent MintCart must wait on that
+// row and then get a new cart, which only the guard can refuse for the target.
+func TestDigitalPurchase_MintCartWaitsForCheckoutThenGuardRefusesTheSameTarget(t *testing.T) {
+	svc, repo, pay := newDigitalPurchaseService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	product := seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo))
+	first := cartOf(t, svc, student, product)
+
+	holder, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer holder.Rollback(ctx)
+	if _, err := holder.Exec(ctx,
+		`UPDATE orders SET status = 'payment_pending', payment_expires_at = now() + interval '1 hour' WHERE id = $1`, first,
+	); err != nil {
+		t.Fatalf("move cart to payment_pending: %v", err)
+	}
+
+	type minted struct {
+		order   model.Order
+		created bool
+		err     error
+	}
+	done := make(chan minted, 1)
+	go func() {
+		order, created, err := svc.MintCart(ctx, student.String())
+		done <- minted{order, created, err}
+	}()
+	waitForWaitersBehind(t, repo, holder, 1)
+	select {
+	case m := <-done:
+		t.Fatalf("MintCart returned %v before the checkout committed", m.order.ID)
+	default:
+	}
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	m := <-done
+	if m.err != nil || !m.created || m.order.ID == first {
+		t.Fatalf("MintCart = %v, created=%v, err=%v; want a new cart once the order committed", m.order.ID, m.created, m.err)
+	}
+	wantConflict(t, svc.AddItem(ctx, student.String(), m.order.ID.String(), product.String(), 1), model.DigitalConflictClaimed)
+	forceLine(t, repo, m.order.ID, product, "course", 50000)
+	_, err = svc.Checkout(ctx, student.String(), m.order.ID.String(), checkoutKey())
+	wantConflict(t, err, model.DigitalConflictClaimed)
+	if got := orderStatusOf(t, repo, m.order.ID); got != "cart" {
+		t.Errorf("second order status = %q, want cart", got)
+	}
+	if n := pay.creates.Load(); n != 0 {
+		t.Errorf("gateway calls = %d, want 0", n)
 	}
 }
