@@ -92,6 +92,30 @@ func TestRetryPayment_RefusesOrderWithALineThatNoLongerLinksAnything(t *testing.
 	}
 }
 
+func TestRetryPayment_BulkOrderIsLeftToItsOwnFlow(t *testing.T) {
+	svc, repo, pay := newLifecycleService(t)
+	ctx := context.Background()
+	buyer, participant := newDigitalStudent(t, repo), newDigitalStudent(t, repo)
+	exam := seedExamTarget(t, repo)
+	product := seedDigitalProduct(t, repo, "exam", 50000, exam)
+	orderID := cartOf(t, svc, buyer, product)
+	if _, err := svc.Checkout(ctx, buyer.String(), orderID.String(), checkoutKey()); err != nil {
+		t.Fatalf("Checkout: %v", err)
+	}
+	if _, err := repo.Pool().Exec(ctx, `INSERT INTO order_participant (order_id, student_id) VALUES ($1, $2)`, orderID, participant); err != nil {
+		t.Fatalf("seed participant: %v", err)
+	}
+	registerForExam(t, repo, buyer, exam, "registered")
+	before := pay.creates.Load()
+
+	if _, err := svc.RetryPayment(ctx, buyer.String(), orderID.String(), retryKey()); err != nil {
+		t.Fatalf("RetryPayment on a bulk order the buyer already owns the exam of: %v", err)
+	}
+	if got := pay.creates.Load() - before; got != 1 {
+		t.Errorf("gateway calls = %d, want 1", got)
+	}
+}
+
 func TestRetryPayment_IsNotBlockedByTheOrdersOwnLines(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
 	ctx := context.Background()
