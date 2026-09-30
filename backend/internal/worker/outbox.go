@@ -187,10 +187,9 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 		slog.Error("order for OrderPaid event not found", "order_id", payload.OrderID, "event_id", event.ID)
 		return
 	}
-	if order.Status != "paid" {
-		// A refunded, expired or cancelled order must not be granted access, and
-		// a fulfilled one already was; either way the event is spent.
-		slog.Warn("OrderPaid event skipped: order is not awaiting fulfilment",
+	if order.Status == "cancelled" || order.Status == "payment_expired" {
+		// Money that is not held must not grant access, so the event is spent.
+		slog.Warn("OrderPaid event skipped: order no longer holds its payment",
 			"order_id", payload.OrderID, "event_id", event.ID, "status", order.Status)
 		if err := w.repo.MarkOutboxProcessed(ctx, tx, event.ID); err != nil {
 			slog.Error("mark outbox processed", "event_id", event.ID, "err", err)
@@ -278,14 +277,17 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 		}
 	}
 
-	// Digital-only orders complete immediately; physical orders need admin to ship.
-	nextStatus := "completed"
-	if hasPhysicalItem {
-		nextStatus = "processing"
-	}
-	if err := w.repo.SetOrderStatus(ctx, tx, payload.OrderID, nextStatus, ""); err != nil {
-		slog.Error("set order status", "order_id", payload.OrderID, "err", err)
-		return
+	// An admin can ship a mixed order before this event runs; only "paid" moves on.
+	if order.Status == "paid" {
+		// Digital-only orders complete immediately; physical orders need admin to ship.
+		nextStatus := "completed"
+		if hasPhysicalItem {
+			nextStatus = "processing"
+		}
+		if err := w.repo.SetOrderStatus(ctx, tx, payload.OrderID, nextStatus, ""); err != nil {
+			slog.Error("set order status", "order_id", payload.OrderID, "err", err)
+			return
+		}
 	}
 
 	// Mark outbox event processed
