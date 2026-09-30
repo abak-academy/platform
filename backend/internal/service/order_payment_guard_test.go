@@ -490,4 +490,3 @@ func TestWebhook_SettlementBeforeDeadlineIsStillFulfilled(t *testing.T) {
 		t.Errorf("status = %q, want paid", got)
 	}
 }
-
