@@ -192,6 +192,9 @@ var (
 	// ErrDigitalTargetConflict is returned when a student would buy a course or
 	// exam they already own, are already buying, or have twice in one cart.
 	ErrDigitalTargetConflict = errors.New("digital product already owned or being purchased")
+	// ErrDigitalProductNoTargets is returned at checkout when a course or exam
+	// product links nothing to grant, so charging for it would deliver nothing.
+	ErrDigitalProductNoTargets = errors.New("digital product has no linked course or exam")
 )
 
 // DigitalTargetConflictError names each target and order-line product that

@@ -119,6 +119,15 @@ func (s *Service) reserveDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 	if err != nil {
 		return err
 	}
+	resolved := make(map[uuid.UUID]bool, len(targets))
+	for _, t := range targets {
+		resolved[t.OrderItemID] = true
+	}
+	for _, item := range order.Items {
+		if !isPhysicalType(item.ProductType) && !resolved[item.ID] {
+			return ErrDigitalProductNoTargets
+		}
+	}
 	conflicts := repeatedDigitalTargets(targets)
 	unavailable, err := s.unavailableDigitalTargets(ctx, tx, order.StudentID, targets)
 	if err != nil {

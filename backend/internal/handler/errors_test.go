@@ -239,3 +239,15 @@ func TestMapServiceError_DigitalTargetConflict_BodyCarriesConflicts(t *testing.T
 		t.Errorf("conflict = %+v", got)
 	}
 }
+
+func TestMapServiceError_DigitalProductNoTargets_Is409(t *testing.T) {
+	e := echo.New()
+	rec := httptest.NewRecorder()
+	c := e.NewContext(httptest.NewRequest(http.MethodPost, "/", nil), rec)
+
+	_ = mapServiceError(c, fmt.Errorf("checkout: %w", service.ErrDigitalProductNoTargets))
+
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"digital_product_unavailable"`) {
+		t.Fatalf("got %d %s, want 409 digital_product_unavailable", rec.Code, rec.Body.String())
+	}
+}

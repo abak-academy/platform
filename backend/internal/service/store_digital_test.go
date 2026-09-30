@@ -716,3 +716,41 @@ func TestDigitalPurchase_RefundRevokesSnapshotExamNotRelinkedExam(t *testing.T) 
 		t.Errorf("live claims = %d, want 0 after refund", n)
 	}
 }
+
+func TestDigitalPurchase_ProductWithNoLinkedTargetsIsNotCharged(t *testing.T) {
+	for _, productType := range []string{"course", "exam"} {
+		t.Run(productType, func(t *testing.T) {
+			svc, repo, pay := newDigitalPurchaseService(t)
+			ctx := context.Background()
+			student := newDigitalStudent(t, repo)
+			unlinked := seedDigitalProduct(t, repo, productType, 50000)
+
+			orderID := cartOf(t, svc, student, unlinked)
+			_, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey())
+			if !errors.Is(err, ErrDigitalProductNoTargets) {
+				t.Fatalf("Checkout err = %v, want ErrDigitalProductNoTargets", err)
+			}
+			if got := orderStatusOf(t, repo, orderID); got != "cart" {
+				t.Errorf("order status = %q, want cart", got)
+			}
+			if n := pay.creates.Load(); n != 0 {
+				t.Errorf("gateway calls = %d, want 0", n)
+			}
+			if snapshot, err := repo.GetOrderDigitalSnapshot(ctx, orderID); err != nil || snapshot.Taken {
+				t.Errorf("snapshot = %+v, err %v; want none", snapshot, err)
+			}
+		})
+	}
+}
+
+// linkFreshCourse gives a course product something to grant; checkout refuses
+// digital products that link nothing.
+func linkFreshCourse(t *testing.T, repo *repository.Repository, productID string) {
+	t.Helper()
+	course := seedCourseTarget(t, repo)
+	if _, err := repo.Pool().Exec(context.Background(),
+		`INSERT INTO product_course (product_id, course_id) VALUES ($1, $2)`, productID, course,
+	); err != nil {
+		t.Fatalf("link course: %v", err)
+	}
+}
