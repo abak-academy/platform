@@ -1,7 +1,7 @@
 ---
 title: Orders & Payments
-updated: 2026-09-25
-verified_against: e6cf227c
+updated: 2026-09-30
+verified_against: 7965649d
 ---
 
 See also: [../architecture/system-overview.md](../architecture/system-overview.md), [../architecture/shipping-biteship.md](../architecture/shipping-biteship.md), [./exam-lifecycle-and-scoring.md](./exam-lifecycle-and-scoring.md).
@@ -9,17 +9,32 @@ See also: [../architecture/system-overview.md](../architecture/system-overview.m
 ## Catalog & product
 
 - `model.Product` (`backend/internal/model/product.go`): `type` ∈ `book|merchandise|medal|course|exam`, `status` ∈ `draft|published|hidden|archived` (constraint `product_status_check`, `backend/db/migrations/0009_schema_fixes.up.sql:6-8`).
-- `isPhysicalType(t string) bool` (`backend/internal/service/store.go:1953`) — only `book`, `merchandise`, `medal` count as physical (shipped, stock-tracked). `course`/`exam` are digital, unlimited, no stock.
+- `isPhysicalType(t string) bool` (`backend/internal/service/store.go:2226`) — only `book`, `merchandise`, `medal` count as physical (shipped, stock-tracked). `course`/`exam` are digital, unlimited, no stock.
 - `AvailableFrom`/`AvailableUntil` bound marketplace visibility (nullable = unbounded side); `*Set` flags on the struct distinguish "field omitted" from "field cleared" on partial updates.
-- RBAC on product mutation is per-type: `checkTypeRBAC` (`store.go:1955`) — `admin_store` may touch price/visibility on any type including `exam`, but never exam content (owned by `admin_exam`).
+- RBAC on product mutation is per-type: `checkTypeRBAC` (`store.go:2229`) — `admin_store` may touch price/visibility on any type including `exam`, but never exam content (owned by `admin_exam`).
 
 ## Cart
 
 - `MintCart` (`store.go:532`) gets-or-creates the student's single `cart`-status order.
-- `AddItem` / `RemoveItem` / `UpdateItemQty` (`store.go:540,610,652`) each re-check `order.Status == "cart"` at the service layer, then the repository (`AddItem`/`RemoveItem`/`UpdateItemQty` in `backend/internal/repository/order.go:598-720`) takes `GetOrderByIDForUpdateTx` (a row lock) and re-checks `status = 'cart'` again before writing — see comment at `order.go:592-597`. This closes the TOCTOU window an unlocked service-layer check alone would leave open.
-- Digital items (`course`/`exam`) are capped at qty 1 and unique per cart — enforced twice: `ValidateItemQty` (`backend/internal/service/item_qty.go:16`) at the service layer, and a locked re-check inside `AddItem`'s transaction (`order.go:614-623`, `ErrDuplicateDigitalItem`) that catches two concurrent `AddItem` calls racing past the first check.
+- `AddItem` / `RemoveItem` / `UpdateItemQty` (`store.go:540,615,657`) each re-check `order.Status == "cart"` at the service layer, then the repository (`AddItem`/`RemoveItem`/`UpdateItemQty` in `backend/internal/repository/order.go:610,669,710`) takes `GetOrderByIDForUpdateTx` (a row lock) and re-checks `status = 'cart'` again before writing — see comment at `order.go:592-597`. This closes the TOCTOU window an unlocked service-layer check alone would leave open.
+- Digital items (`course`/`exam`) are capped at qty 1 and unique per cart — enforced twice: `ValidateItemQty` (`backend/internal/service/item_qty.go:16`) at the service layer, and a locked re-check inside `AddItem`'s transaction (`ErrDuplicateDigitalItem`) that catches two concurrent `AddItem` calls racing past the first check. Checkout re-validates qty under its own lock (`store.go:1155`), because a row written before those guards existed can still carry qty > 1 on a digital line.
+- Adding a digital line for a course/exam the student already owns, or that another live order claims, is refused at add time with a `DigitalTargetConflictError` (`checkDigitalCandidate`, `backend/internal/service/store_digital.go:84`). That is an early warning only — a cart reserves nothing — and checkout decides again inside its own transaction.
 - Adding/removing a physical item clears `shipping_cost`/`selected_courier`/`selected_service` (`clearShipping`) — the quote goes stale the moment the parcel's weight/contents change.
-- `PatchCart` (`store.go:750`) writes the shipping address/courier/promo; `validateAddressHierarchy` (`store.go:723`) enforces province→city→district FK consistency before it's persisted or priced.
+- `PatchCart` (`store.go:755`) writes the shipping address/courier/promo; `validateAddressHierarchy` (`store.go:728`) enforces province→city→district FK consistency before it's persisted or priced.
+
+## Digital purchases — per-target claims (students only)
+
+A digital purchase is protected by a durable claim on the course/exam it grants, not by the SKU it was bought through. The scope gate is the buyer's role — `claimsDigitalTargets` (`store_digital.go:16`) is true only for `student` — so school/bulk purchase paths keep their previous behaviour and their races are tracked separately (#192).
+
+- `order_digital_target` (`backend/db/migrations/0068_order_digital_target.up.sql`): one row per granted course/exam, carrying `order_id`, `order_item_id`, `student_id`, `target_kind`, `target_id`, and a nullable `released_at`/`release_reason`. The partial unique index `uq_order_digital_target_live` permits exactly one live claim per `(student_id, target_kind, target_id)` — across SKUs and bundles, so two different products resolving to the same exam collide. Two lines in the *same* cart reaching one target are caught before that by `repeatedDigitalTargets` (`store_digital.go:51`, reason `duplicate_in_cart`).
+- Checkout claims them inside its transaction: `reserveDigitalTargets` (`store_digital.go:117`) → `ClaimDigitalTargetsTx` (`backend/internal/repository/order_digital.go:116`). Any conflict — duplicate in cart, already owned by the student, or held by another live order — rejects the **whole** order before a payment exists, so a mixed digital+physical cart does not have its physical stock taken either. A digital line whose product links no course/exam is refused outright (`ErrDigitalProductNoTargets`, `store_digital.go:126-130`) rather than charged for nothing.
+- The same rows are the snapshot fulfilment reads. `orders.digital_targets_snapshot_at` marks orders whose targets were resolved at checkout; `Worker.digitalTargetIDs` (`backend/internal/worker/outbox.go:315`) returns those snapshotted targets when the marker is set and falls back to the product's live links for older orders. Remapping a product's course/exam links after checkout therefore cannot change what a paid order grants.
+- Claims are freed by writing `released_at`: on expiry (`ExpirePaymentOrderTx`, `backend/internal/repository/order_lifecycle.go:18`, reason `expired`), on refund (`store.go:1889`, reason `refunded`), and when an admin revokes exam access that came from a purchase (`ReleaseExamClaimsAfterRevokeTx`, `order_digital.go:202`) — so a student whose access was revoked can buy that exam again.
+- Detection is `ListProductDigitalTargets`/`FindUnavailableDigitalTargets` (`order_digital.go:28,61`); the `reason` values surface to the client in the 409 detail.
+- 0068 also backfills claims for historical orders — paid orders win — and records every loser in `order_digital_target_backfill_conflict` instead of dropping it: an operator must resolve each row (usually by refunding or cancelling the losing order). Student `payment_pending` digital orders that had no `payment_expires_at` (a checkout whose gateway call never completed) get a standard 24h window from migration time so they can still expire and release; physical-only, bulk (`order_participant`) and non-student orders are deliberately untouched.
+- `RetryPayment` re-checks ownership for orders carrying no snapshot (`recheckDigitalTargets`, `store_digital.go:163`): a legacy bundle whose backfill claimed only some of its targets must not be paid for on the strength of the claims it kept.
+- API surface: a conflict is HTTP 409 `digital_target_conflict` with a `conflicts` detail list; a digital product with no target is 409 `digital_product_unavailable` (`backend/internal/handler/errors.go:245-251`). The student cart and checkout show the reason instead of opening a payment page.
+- Pre-deploy and post-rollback audit queries (deadline-less pending orders, in-flight orders for an already-owned target, `payment_late` rows) live in `docs/specs/student-digital-purchases.md`, which is the accepted contract for this feature.
 
 ## Order status machine
 
@@ -35,57 +50,68 @@ Observed transitions and where each is written:
 
 | From → To | Trigger | Guard on the write |
 |---|---|---|
-| `cart → payment_pending` | `Checkout` (`store.go:1072`), gateway path | **Guarded**: `GetOrderByIDForUpdateTx` locks the row, re-checks `locked.Status != "cart"` (`store.go:1114-1126`) before `CheckoutOrder` + `SetOrderStatus` in the same tx. |
-| `cart → paid` | `Checkout`, zero-total/free path (`store.go:1181-1195`) | Same lock as above; free path skips the gateway and emits `OrderPaid` in the same tx. |
-| `payment_pending → paid` | `HandlePaymentWebhook` (`store.go:1915`, Midtrans settlement/capture) | **Unguarded**: reads `order` once, then calls `SetOrderStatus(..., "paid", "")` with no re-check of current status and no row lock. |
-| `(any) → paid` | `AdminConfirmOrder` (`store.go:1532`, manual proof) / `AdminReconcileOrder` (`store.go:1748`, gateway query) via shared `markOrderPaidTx` (`store.go:1510`) | **Unguarded**: neither caller checks `order.Status` before flipping to `paid`; idempotency keys dedupe *repeat calls with the same key*, not concurrent/late calls with a fresh key against an order already `completed` or `cancelled`. |
-| `paid → processing` or `paid → completed` | `Worker.handleOrderPaid` (`backend/internal/worker/outbox.go:163-267`), consuming the `OrderPaid` outbox event | **Unguarded**: grants course/exam access and writes `nextStatus` (`completed` if all-digital, else `processing`) with a plain `SetOrderStatus`, no check that the order is still `paid` at consume time. Outbox delivery is async and can run after a refund has already moved the order to `cancelled`. |
-| `payment_pending → payment_expired` | `Worker.sweepStalePayments` (`outbox.go:283-315`) | **Guarded**: re-fetches the order inside its own tx and skips unless `currentOrder.Status == "payment_pending"` (`outbox.go:305-308`) before writing and restoring stock. |
-| `processing`/`shipped` → `completed` | `AdminCompleteOrder` (`store.go:1623`) | **Partially guarded**: a Go-level `switch order.Status` (`shipped` always ok; `processing` only if no physical items) gates the call, but the write itself is a plain `SetOrderStatus` with no row lock or SQL-level status predicate — a concurrent status change between the read and the write is not closed the way `Checkout` closes it. |
-| `paid/processing/shipped/completed → cancelled` (refund) | `AdminRefundOrder` (`store.go:1684`) | **Guarded** by `refundableStatuses` map check (`store.go:1671-1676`) before the write, but — like `AdminCompleteOrder` — no row lock, so a same-moment webhook or admin-confirm could theoretically land `paid` after the refund's read and before its write. |
-| `payment_pending → payment_pending` (retry) | `RetryPayment` (`store.go:1261`) | Go-level check `order.Status != "payment_pending" && != "payment_expired"` (`store.go:1284`), no row lock. |
+| `cart → payment_pending` | `Checkout` (`store.go:1082`), gateway path | **Guarded**: `GetOrderByIDForUpdateTx` locks the row and re-checks `locked.Status != "cart"` (`store.go:1140`) before `CheckoutOrder` writes the status and the payment deadline in the same tx. |
+| `cart → paid` | `Checkout`, zero-total/free path (`store.go:1214`) | Same lock as above; the free path skips the gateway and emits `OrderPaid` in the same tx. |
+| `payment_pending → paid` | `HandlePaymentWebhook` (`store.go:2074`, Midtrans settlement/capture) | **Guarded**: the order is read under its row lock (`store.go:2116`), and a pending order past `payment_expires_at` is expired under that same lock before the paid branch is considered (`store.go:2131-2139`). |
+| `(any) → paid` | `AdminConfirmOrder` (`store.go:1683`, manual proof) / `AdminReconcileOrder` (`store.go:1914`, gateway query) via shared `markOrderPaidTx` (`store.go:1661`) | **Guarded at the callers**: both lock the order and require `payment_pending` with an unelapsed deadline (`store.go:1709-1725`); `markOrderPaidTx` itself is still a bare write, so any future caller must bring its own guard. |
+| `paid → processing` or `paid → completed` | `Worker.handleOrderPaid` (`backend/internal/worker/outbox.go:165`) consuming the `OrderPaid` outbox event | **Guarded**: the order is read with `GetOrderByIDForUpdateTx` inside the fulfilment tx, and anything other than `paid` is marked processed and skipped (`outbox.go:182-204`). A refund or expiry that committed first is seen here; one that commits later waits for this commit and then revokes what was granted. |
+| `payment_pending → payment_expired` | `Worker.sweepStalePayments` (`outbox.go:345`) and the same `ExpirePaymentOrderTx` under the lock from the webhook, confirm and reconcile paths | **Guarded**: one SQL statement carries `status = 'payment_pending' AND payment_expires_at <= now()` itself (`order_lifecycle.go:18-26`), so only the first caller sees true and stock/claims are released once. |
+| `processing`/`shipped` → `completed` | `AdminCompleteOrder` (`store.go:1784`) | **Partially guarded**: a Go-level `switch order.Status` (`shipped` always ok; `processing` only if no physical items) gates the call, but the order is read *without* a lock and the write is a plain `SetOrderStatus` (`store.go:1817`) with no SQL-level status predicate — a concurrent status change between the read and the write is not closed the way `Checkout` closes it. |
+| `paid/processing/shipped/completed → cancelled` (refund) | `AdminRefundOrder` (`store.go:1845`) | **Guarded**: refundability is judged under the order row lock (`store.go:1865-1873`) against `refundableStatuses` (`store.go:1832`), so a concurrent refund or fulfilment cannot slip between the check and the status change. |
+| `payment_pending → payment_pending` (re-issue a payment link) | `RetryPayment` (`store.go:1361`) | **Guarded**: the order is re-validated under its row lock and must still be `payment_pending` inside its deadline. Retrying an *expired* order no longer exists at all — expiry is **final**, so the student checks out again, which re-prices and re-claims. |
 
-`SetOrderStatus` itself (`backend/internal/repository/order.go:796-812`) is a bare `UPDATE ... WHERE id = $3` — it carries **no status-transition guard of its own**; every caller is individually responsible for checking the prior state, and `Checkout`/`sweepStalePayments` are the only two that actually close the race with a row lock or a tx-scoped re-read immediately before the write. The rest rely on a single unlocked read, which is a real (if narrow) gap given `AdminRefundOrder`, `AdminConfirmOrder`/`AdminReconcileOrder`, and the async `handleOrderPaid` consumer can all touch the same order from different processes.
+`SetOrderStatus` itself (`backend/internal/repository/order.go:808`) is a bare `UPDATE ... WHERE id = $3` — it carries **no status-transition guard of its own**; every caller is individually responsible for checking the prior state, and `Checkout`, `ExpirePaymentOrderTx` and `handleOrderPaid` are the ones that close the race with a row lock or a SQL predicate immediately before the write.
 
-`paid_at` / `completed_at` / `cancelled_at` are stamped inside `SetOrderStatus` itself via `CASE WHEN $1 = '...'` (`order.go:800-802`) — they are side effects of the status value passed, not separately settable, and only ever move forward (nothing clears them on a later transition).
+`paid_at` / `completed_at` / `cancelled_at` are stamped inside `SetOrderStatus` itself via `CASE WHEN $1 = '...'` (`order.go:812-814`) — they are side effects of the status value passed, not separately settable, and only ever move forward (nothing clears them on a later transition).
 
 ## Payment gateway (Midtrans)
 
-- `PaymentClient` port: `CreatePayment`, `QueryStatus`, `VerifySignature` (`backend/internal/service/ports_payment.go:44-48`); `MidtransClient` is the real implementation (`backend/internal/adapter/midtrans.go`), `NoopPaymentClient` the fallback when unconfigured.
-- Webhook signature: `VerifySignature` (`midtrans.go:111-124`) recomputes `sha512(order_id + status_code + gross_amount + server_key)` and compares with `subtle.ConstantTimeCompare`. Verified **before** the idempotency check and before any DB read in `HandlePaymentWebhook` (`store.go:1861-1864`).
-- Only `transaction_status ∈ {settlement, capture}` is treated as paid; everything else (`pending`, `deny`, `expire`, `cancel`, Midtrans's own test-button notifications) is logged and dropped (`store.go:1877-1883`).
-- `AdminReconcileOrder` refuses to call the gateway at all when `order.GatewayRef == ""` (`store.go:1770-1772`) — an order that never reached the gateway has nothing to reconcile against.
-- Free/zero-total orders (`order.Total == 0`) skip the gateway entirely inside `Checkout` and self-mark `paid` in the same tx as the cart→order flip (`store.go:1181`).
+- `PaymentClient` port: `CreatePayment`, `QueryStatus`, `VerifySignature` (`backend/internal/service/ports_payment.go:51-55`); `MidtransClient` is the real implementation (`backend/internal/adapter/midtrans.go`), `NoopPaymentClient` the fallback when unconfigured.
+- Webhook signature: `VerifySignature` (`midtrans.go:129`) recomputes `sha512(order_id + status_code + gross_amount + server_key)` and compares with `subtle.ConstantTimeCompare`. Verified **before** the idempotency check and before any DB read in `HandlePaymentWebhook`.
+- Only `transaction_status ∈ {settlement, capture}` is treated as paid; everything else (`pending`, `deny`, `expire`, `cancel`, Midtrans's own test-button notifications) is logged and dropped.
+- `AdminReconcileOrder` refuses to call the gateway at all when `order.GatewayRef == ""` — an order that never reached the gateway has nothing to reconcile against.
+- Free/zero-total orders (`order.Total == 0`) skip the gateway entirely inside `Checkout` and self-mark `paid` in the same tx as the cart→order flip (`store.go:1214`).
+
+### Payment window — one deadline, no grace
+
+- `paymentWindow = 24 * time.Hour` (`store.go:1050`) is written to `orders.payment_expires_at` by `CheckoutOrder` (`backend/internal/repository/order.go:997`) inside the checkout transaction, *before* the gateway is called; `SetPaymentRefTx` attaches a gateway reference only while the order is still an unexpired `payment_pending` row, and the reference handed to the client is always the earlier of the session end and the order deadline (`store.go:1295`).
+- The gateway session is pinned to that same absolute deadline: `bindPaymentDeadline` (`store.go:1334`) reads the deadline the database set and passes it to the adapter, which sends Midtrans `expiry.start_time` = session creation and `duration` = whole minutes to the deadline, rounded down (`midtrans.go:85-101`). Midtrans otherwise counts expiry from the moment the customer *charges*, so a link opened late would mint a virtual account outliving the order. Under a minute left refuses instead of rounding up (`ErrPaymentExpired`).
+- The deadline is judged on the **database** clock (`PaymentDeadlineElapsedTx`, `order_lifecycle.go:118`), not the app clock; `bindPaymentDeadline` compares the app clock against the DB deadline, so host clock skew shifts the session end by that much.
+- The sweeper runs every 5 minutes (`backend/cmd/worker/main.go:85`), so the stored `payment_expired` status can lag the deadline by up to one tick. That lag grants **no** extra time to pay: every path that could settle or attach a payment re-checks the deadline itself under the lock.
+
+### Late settlement — flagged for a human, never fulfilled
+
+A settlement arriving for an order that can no longer be fulfilled (`payment_expired`, `cancelled`, `refunded`) is not honoured and not silently dropped: `RecordLatePaymentTx` (`order_lifecycle.go:64`) writes a `webhook_log` row of `event_type = 'payment_late'` keyed by order id in `gateway_ref`, and the webhook still answers 2xx so the gateway stops redelivering. One flag exists per payment — a redelivered webhook or a repeated reconcile finds the existing row, the caller's order lock serializes writers, and a reconcile flag (which never learns the gateway's transaction id) is attributed in place when a webhook later names one. An operator refunds the student by hand; the audit query is in the spec. This is a deliberate trade-off: money that arrives after the deadline is a manual reconciliation, never an automatic grant.
 
 ## Refunds — no money moves
 
-- `AdminRefundOrder` (`store.go:1684-1746`) is a manual bank-transfer record, **not** a real refund: `PaymentClient` has no refund method, so nothing reaches Midtrans, stock is not restored, and no `OrderRefunded` event is emitted (comment cites issue #72 as the real flow, `store.go:1678-1682`).
-- What it does do, atomically in one tx: flip `status → cancelled` with `cancellation_reason = 'refunded'`, revoke course enrollments (`RevokeEnrollmentsByOrder`) and exam registrations (`revokeOrderExamRegistrationsTx`), clear shipment tracking (`ClearOrderTracking`), store the transfer receipt (`refund_proof_url`, added in `backend/db/migrations/0058_order_refund_proof.up.sql`), and write an audit row.
-- Only orders in `refundableStatuses = {paid, processing, shipped, completed}` are eligible (`store.go:1671-1676`) — refunding a `cart` or an already-`cancelled` order is rejected with `ErrOrderNotRefundable`.
-- `RefundProofURL`/`PaymentProofURL` are read back only through presigned URLs (`PresignRefundProofURL`/`PresignPaymentProofURL`, `store.go:1472-1503`) scoped to the fixed field on the order row — never an arbitrary storage key from the caller.
+- `AdminRefundOrder` (`store.go:1845`) is a manual bank-transfer record, **not** a real refund: `PaymentClient` has no refund method, so nothing reaches Midtrans, stock is not restored, and no `OrderRefunded` event is emitted (comment cites issue #72 as the real flow).
+- What it does do, atomically in one tx: flip `status → cancelled` with `cancellation_reason = 'refunded'`, revoke course enrollments (`RevokeEnrollmentsByOrder`, `backend/internal/repository/course.go:339`) and exam registrations (`revokeOrderExamRegistrationsTx`, which revokes the snapshotted targets for orders that carry a snapshot rather than whatever the product links to now), release the order's digital claims (`ReleaseDigitalTargetsTx`, `store.go:1889`), clear shipment tracking (`ClearOrderTracking`, `order.go:1067`), store the transfer receipt (`refund_proof_url`, added in `backend/db/migrations/0058_order_refund_proof.up.sql`), and write an audit row.
+- Only orders in `refundableStatuses = {paid, processing, shipped, completed}` are eligible (`store.go:1832`) — refunding a `cart` or an already-`cancelled` order is rejected with `ErrOrderNotRefundable`.
+- `RefundProofURL`/`PaymentProofURL` are read back only through presigned URLs (`PresignRefundProofURL`/`PresignPaymentProofURL`, `store.go:1623,1642`) scoped to the fixed field on the order row — never an arbitrary storage key from the caller.
 
 ## Revenue — signed ledger on `paid_at`
 
-- `revenueEventCTE` (`backend/internal/repository/dashboard_series.go:53-65`) is the single source every revenue query builds on:
+- `revenueEventCTE` (`backend/internal/repository/dashboard_series.go:53`) is the single source every revenue query builds on:
   - `+1` row per order where `paid_at IS NOT NULL`, timestamped at `paid_at`.
   - `-1` row per order where `cancellation_reason = 'refunded' AND cancelled_at IS NOT NULL`, timestamped at `cancelled_at`.
-- `GetRevenue` (`backend/internal/repository/order.go:1065-1126`) sums `sign * total/shipping_cost/discount` over that union — a paid-then-refunded order nets to zero in the window that contains both events, and a refund landing in a *later* window shows as negative revenue there while the original window keeps its positive figure (bucket boundaries are not retroactively adjusted).
-- Order counts are **not** signed: `COUNT(*) FILTER (WHERE sign = 1)` (`order.go:1075`) and `COUNT(DISTINCT e.id) FILTER (WHERE e.sign = 1)` (`order.go:1087`) — a refund reduces revenue but does not decrement the count of orders that were paid.
-- `DashboardSeries` buckets in `Asia/Jakarta`, anchored to the query's `from` (not calendar week/month boundaries) — see comment block at `dashboard_series.go:78-89`.
-- The digital/physical split sums `order_item.jumlah` per line, deliberately separate from the per-order `total` sum, to avoid multiplying a multi-item order's revenue by its item count (comment references the PR #80 fan-out fix, `dashboard_series.go:90-93`).
+- `GetRevenue` (`order.go:1083`) sums `sign * total/shipping_cost/discount` over that union — a paid-then-refunded order nets to zero in the window that contains both events, and a refund landing in a *later* window shows as negative revenue there while the original window keeps its positive figure (bucket boundaries are not retroactively adjusted).
+- Order counts are **not** signed: a refund reduces revenue but does not decrement the count of orders that were paid.
+- `DashboardSeries` buckets in `Asia/Jakarta`, anchored to the query's `from` (not calendar week/month boundaries) — see the comment block in `dashboard_series.go`.
+- The digital/physical split sums `order_item.jumlah` per line, deliberately separate from the per-order `total` sum, to avoid multiplying a multi-item order's revenue by its item count (comment references the PR #80 fan-out fix).
 
 ## Order → access / shipping fan-out
 
-`Worker.handleOrderPaid` (`backend/internal/worker/outbox.go:163-267`), consuming the `OrderPaid` outbox event emitted by every paid path above, in one tx:
+`Worker.handleOrderPaid` (`backend/internal/worker/outbox.go:165`), consuming the `OrderPaid` outbox event emitted by every paid path above, in one tx that skips an order no longer `paid`:
 
-- `course` line items → `CreateCourseSession` per linked course, `status: "active"`, `source: "order"`.
-- `exam` line items → `CreateExamRegistration` per linked exam. If `order_participant` rows exist (bulk purchase, `backend/db/migrations/0031_order_participant.up.sql`), each participant is registered instead of the buyer — fan-out semantics live entirely in presence/absence of those rows.
+- `course` line items → `CreateCourseSession` per target from `digitalTargetIDs` (snapshot when the order has one, live product links otherwise), `status: "active"`, `source: "order"`.
+- `exam` line items → `CreateExamRegistration` per target, same snapshot rule. If `order_participant` rows exist (bulk purchase, `backend/db/migrations/0031_order_participant.up.sql`), each participant is registered instead of the buyer — fan-out semantics live entirely in presence/absence of those rows.
 - `book`/`merchandise`/`medal` line items set `hasPhysicalItem = true`, which decides the resulting status: `completed` if none, else `processing`.
-- Course/exam items are stamped `fulfilled_at` via `StampOrderItemFulfilledAt` as they're granted (`outbox.go:246`).
+- Course/exam items are stamped `fulfilled_at` via `StampOrderItemFulfilledAt` as they're granted.
 
 Physical fulfillment then runs entirely under admin action, not automatically: `AdminShipOrder`/`AdminShipOrderManual` (`backend/internal/service/shipping_order.go:113,212`) gate on `shippable(order)` (`shipping_order.go:47-52`) — true for `paid`/`processing`, or for `shipped` if the last known `shipment_status` is a failure state (`isShipmentFailureStatus`, `backend/internal/service/shipment_status.go:61`), which is the only escape hatch for a dead booking since `orders.status` is never walked back from `shipped` (FR-C-15). `AdminCompleteOrder` is the only path from `shipped`/digital-only-`processing` to `completed` — see the status table above for its guard gap.
 
-Biteship's shipping webhook (`HandleShippingWebhook`, `backend/internal/service/shipping_webhook.go:52-87`) verifies `X-Biteship-Signature` against a configured shared secret with `subtle.ConstantTimeCompare`, refusing outright when the secret is unset (an empty-vs-empty compare would otherwise pass — the exact fail-open bug commit `841cd84` shipped once, per the comment at `shipping_webhook.go:44-47`). On a verified ping it only re-fetches authoritative state from Biteship (`GetOrder`) and writes `shipment_status`/tracking/`order_shipment_events` — **`orders.status` itself is never advanced by this webhook** (FR-C-12/FR-C-15).
+Biteship's shipping webhook (`HandleShippingWebhook`, `backend/internal/service/shipping_webhook.go:52`) verifies `X-Biteship-Signature` against a configured shared secret with `subtle.ConstantTimeCompare`, refusing outright when the secret is unset (an empty-vs-empty compare would otherwise pass — the exact fail-open bug commit `841cd84` shipped once, per the comment in that file). On a verified ping it only re-fetches authoritative state from Biteship (`GetOrder`) and writes `shipment_status`/tracking/`order_shipment_events` — **`orders.status` itself is never advanced by this webhook** (FR-C-12/FR-C-15).
 
 ## Dropped from source material
 
@@ -94,5 +120,6 @@ Biteship's shipping webhook (`HandleShippingWebhook`, `backend/internal/service/
 
 ## Unverified
 
-- Whether a same-millisecond race between `AdminRefundOrder` and the async `handleOrderPaid` consumer (or a late webhook retry) has ever actually re-granted access after a refund in production — the code path exists as described above, but no incident evidence was reviewed here.
-- `AdminCompleteOrder` and `AdminRefundOrder`'s lack of a row lock is a real TOCTOU gap by inspection; whether it has manifested is unverified.
+- Whether a same-millisecond race between `AdminRefundOrder` and the async `handleOrderPaid` consumer (or a late webhook retry) has ever actually re-granted access after a refund in production — both now take the order row lock, but no incident evidence was reviewed here.
+- `AdminCompleteOrder`'s read-without-lock is still a narrow TOCTOU gap by inspection; whether it has manifested is unverified.
+- Late-payment flagging assumes a gateway order settles once: a reconcile flag (which carries no transaction id) is absorbed by the first webhook that names one, so a second settlement of the *same* order under a different id would be recorded against the first flag. Not verified against Midtrans behaviour.
