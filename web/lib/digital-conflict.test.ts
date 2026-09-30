@@ -23,9 +23,9 @@ function conflict(kind: string, reason: string) {
 }
 
 describe("digitalConflictMessage", () => {
-  it("tells the student to remove an item they already own", () => {
+  it("tells the student they already own the target", () => {
     const msg = messageFor("id", conflictError([conflict("course", "owned")]));
-    expect(msg).toBe("Kamu sudah memiliki kursus ini. Hapus produk yang sudah dimiliki dari keranjang.");
+    expect(msg).toBe("Kamu sudah memiliki kursus ini.");
   });
 
   it("tells the student to finish or wait for another pending order when the target is claimed", () => {
@@ -42,7 +42,7 @@ describe("digitalConflictMessage", () => {
 
   it("localizes to English", () => {
     const msg = messageFor("en", conflictError([conflict("exam", "owned")]));
-    expect(msg).toBe("You already have this exam. Remove the item you already own from your cart.");
+    expect(msg).toBe("You already have this exam.");
   });
 
   it("reports each distinct reason once and never leaks target or product ids", () => {

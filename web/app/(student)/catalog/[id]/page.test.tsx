@@ -210,7 +210,7 @@ describe("ProductDetailPage", () => {
       expect(toastError).toHaveBeenCalledTimes(1);
       const [, opts] = toastError.mock.calls[0];
       expect(opts.description).toBe(
-        "Kamu sudah memiliki kursus ini. Hapus produk yang sudah dimiliki dari keranjang.",
+        "Kamu sudah memiliki kursus ini.",
       );
       expect(opts.description).not.toContain(TARGET);
     });
