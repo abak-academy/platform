@@ -176,8 +176,8 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 	defer tx.Rollback(ctx)
 
 	// The order is read under its row lock inside the fulfilment transaction,
-	// so a refund or expiry that commits first is seen here and one that comes
-	// later waits for this commit and then revokes what it granted.
+	// so a refund that commits first is seen here and one that comes later
+	// waits for this commit and then revokes what it granted.
 	order, err := w.repo.GetOrderByIDForUpdateTx(ctx, tx, payload.OrderID)
 	if err != nil {
 		slog.Error("get order by id", "order_id", payload.OrderID, "err", err)
@@ -187,9 +187,9 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 		slog.Error("order for OrderPaid event not found", "order_id", payload.OrderID, "event_id", event.ID)
 		return
 	}
-	if order.Status == "cancelled" || order.Status == "payment_expired" {
-		// Money that is not held must not grant access, so the event is spent.
-		slog.Warn("OrderPaid event skipped: order no longer holds its payment",
+	if order.Status == "cancelled" {
+		// A payment_expired order still grants: it means the sweeper won a race against a settled payment, which #197 closes at the source.
+		slog.Warn("OrderPaid event skipped: order was refunded",
 			"order_id", payload.OrderID, "event_id", event.ID, "status", order.Status)
 		if err := w.repo.MarkOutboxProcessed(ctx, tx, event.ID); err != nil {
 			slog.Error("mark outbox processed", "event_id", event.ID, "err", err)

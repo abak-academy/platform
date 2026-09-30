@@ -138,7 +138,9 @@ func TestOrderPaid_RefundedBeforeFulfilmentGrantsNoAccessAndStaysCancelled(t *te
 	}
 }
 
-func TestOrderPaid_EventForExpiredOrderGrantsNothing(t *testing.T) {
+// The sweeper can overwrite a status a webhook just committed as paid; the money
+// is in, so the event must still grant access.
+func TestOrderPaid_EventForExpiredOrderStillGrantsAccess(t *testing.T) {
 	env := newLifecycleEnv(t)
 	ctx := context.Background()
 	student := env.student(t)
@@ -148,6 +150,9 @@ func TestOrderPaid_EventForExpiredOrderGrantsNothing(t *testing.T) {
 	course := env.enrollmentCourse(t, orderID)
 	env.expireDeadline(t, orderID)
 	env.w.sweepStalePayments(ctx)
+	if got := env.status(t, orderID); got != "payment_expired" {
+		t.Fatalf("status = %q, want payment_expired before the event runs", got)
+	}
 	env.exec(t,
 		`INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload) VALUES ('order', $1, 'OrderPaid', $2::jsonb)`,
 		orderID, `{"order_id":"`+orderID.String()+`","items":[{"product_id":"`+digital.String()+`","product_type":"course","qty":1}]}`,
@@ -155,11 +160,8 @@ func TestOrderPaid_EventForExpiredOrderGrantsNothing(t *testing.T) {
 
 	env.pollAll(t, ctx)
 
-	if got := env.activeEnrollments(t, student, course); got != 0 {
-		t.Errorf("active enrollments = %d, want 0 for an expired order", got)
-	}
-	if got := env.status(t, orderID); got != "payment_expired" {
-		t.Errorf("status = %q, want payment_expired", got)
+	if got := env.activeEnrollments(t, student, course); got != 1 {
+		t.Errorf("active enrollments = %d, want 1: a settled payment must grant access even when the sweeper expired the order first", got)
 	}
 	if got := env.unprocessedEvents(t, orderID); got != 0 {
 		t.Errorf("unprocessed outbox events = %d, want 0", got)
