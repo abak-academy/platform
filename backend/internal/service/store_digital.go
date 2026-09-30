@@ -111,6 +111,22 @@ func (s *Service) checkDigitalCandidate(ctx context.Context, studentID uuid.UUID
 	return nil
 }
 
+// requireTargetsForDigitalLines refuses an order with a digital line that
+// resolves to nothing, since the customer would pay for a line that grants
+// nothing.
+func requireTargetsForDigitalLines(items []model.OrderItem, targets []model.DigitalTarget) error {
+	resolved := make(map[uuid.UUID]bool, len(targets))
+	for _, t := range targets {
+		resolved[t.OrderItemID] = true
+	}
+	for _, item := range items {
+		if !isPhysicalType(item.ProductType) && !resolved[item.ID] {
+			return ErrDigitalProductNoTargets
+		}
+	}
+	return nil
+}
+
 // reserveDigitalTargets validates and claims every digital target of the order
 // inside the checkout transaction. Any conflict rejects the whole order, so the
 // caller's rollback also undoes physical stock changes.
@@ -119,14 +135,8 @@ func (s *Service) reserveDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 	if err != nil {
 		return err
 	}
-	resolved := make(map[uuid.UUID]bool, len(targets))
-	for _, t := range targets {
-		resolved[t.OrderItemID] = true
-	}
-	for _, item := range order.Items {
-		if !isPhysicalType(item.ProductType) && !resolved[item.ID] {
-			return ErrDigitalProductNoTargets
-		}
+	if err := requireTargetsForDigitalLines(order.Items, targets); err != nil {
+		return err
 	}
 	conflicts := repeatedDigitalTargets(targets)
 	unavailable, err := s.unavailableDigitalTargets(ctx, tx, order.StudentID, uuid.Nil, targets)
@@ -198,8 +208,8 @@ func (s *Service) recheckDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 		if err != nil {
 			return err
 		}
-		if len(targets) == 0 {
-			return ErrDigitalProductNoTargets
+		if err := requireTargetsForDigitalLines(order.Items, targets); err != nil {
+			return err
 		}
 	}
 	conflicts, err := s.unavailableDigitalTargets(ctx, tx, order.StudentID, order.ID, targets)

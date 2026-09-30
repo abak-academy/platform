@@ -252,9 +252,62 @@ func TestRetryPayment_LegacyBundleWithOnlyOneTargetClaimedStillChecksTheLostOne(
 	}
 }
 
-func pendingCourseOrderFor(t *testing.T, svc *Service, student, product uuid.UUID) uuid.UUID {
+func unsnapshotLegacyOrder(t *testing.T, repo *repository.Repository, orderID uuid.UUID) {
 	t.Helper()
-	orderID := cartOf(t, svc, student, product)
+	ctx := context.Background()
+	if _, err := repo.Pool().Exec(ctx, `DELETE FROM order_digital_target WHERE order_id = $1`, orderID); err != nil {
+		t.Fatalf("drop claims: %v", err)
+	}
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET digital_targets_snapshot_at = NULL WHERE id = $1`, orderID); err != nil {
+		t.Fatalf("drop snapshot: %v", err)
+	}
+}
+
+func TestRetryPayment_LegacyOrderWithALineThatNoLongerLinksAnythingIsRefused(t *testing.T) {
+	svc, repo, pay := newLifecycleService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	courseA, courseB := seedCourseTarget(t, repo), seedCourseTarget(t, repo)
+	productA := seedDigitalProduct(t, repo, "course", 50000, courseA)
+	productB := seedDigitalProduct(t, repo, "course", 40000, courseB)
+	legacy := pendingCourseOrderFor(t, svc, student, productA, productB)
+	unsnapshotLegacyOrder(t, repo, legacy)
+	if _, err := repo.Pool().Exec(ctx, `DELETE FROM product_course WHERE product_id = $1`, productB); err != nil {
+		t.Fatalf("unlink product: %v", err)
+	}
+	before := pay.creates.Load()
+
+	_, err := svc.RetryPayment(ctx, student.String(), legacy.String(), retryKey())
+
+	if !errors.Is(err, ErrDigitalProductNoTargets) {
+		t.Fatalf("err = %v, want ErrDigitalProductNoTargets", err)
+	}
+	if got := pay.creates.Load() - before; got != 0 {
+		t.Errorf("gateway calls = %d, want 0", got)
+	}
+}
+
+func TestRetryPayment_LegacyOrderWhoseLinesAllResolveCanStillRetry(t *testing.T) {
+	svc, repo, pay := newLifecycleService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	productA := seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo))
+	productB := seedDigitalProduct(t, repo, "course", 40000, seedCourseTarget(t, repo))
+	legacy := pendingCourseOrderFor(t, svc, student, productA, productB)
+	unsnapshotLegacyOrder(t, repo, legacy)
+	before := pay.creates.Load()
+
+	if _, err := svc.RetryPayment(ctx, student.String(), legacy.String(), retryKey()); err != nil {
+		t.Fatalf("RetryPayment: %v", err)
+	}
+	if got := pay.creates.Load() - before; got != 1 {
+		t.Errorf("gateway calls = %d, want 1", got)
+	}
+}
+
+func pendingCourseOrderFor(t *testing.T, svc *Service, student uuid.UUID, products ...uuid.UUID) uuid.UUID {
+	t.Helper()
+	orderID := cartOf(t, svc, student, products...)
 	if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey()); err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
