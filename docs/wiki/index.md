@@ -37,4 +37,4 @@ _None yet._
 
 - [Exam lifecycle and scoring](domain/exam-lifecycle-and-scoring.md) — question formats, sanitisation, access, session lifecycle, grading, proctoring
 - [RBAC and accounts](domain/rbac-and-accounts.md) — roles, capabilities, school scope, auth, sessions, passwords, login rate limit
-- [Orders and payments](domain/orders-and-payments.md) — cart, checkout, digital purchase claims, order statuses, payment window, payment webhook, refunds, revenue ledger
+- [Orders and payments](domain/orders-and-payments.md) — cart, checkout, digital purchase guard, order statuses, payment window, payment webhook, refunds, revenue ledger
