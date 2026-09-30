@@ -29,7 +29,7 @@ Fulfillment then silently skips the existing enrollment/registration: money take
 
 - Digital product types are `course` and `exam`, one per line; physical types `book`, `merchandise`, `medal` keep their stock, quantity, shipping and fulfillment behaviour. Mixed carts are allowed.
 - A student's live course enrollment or non-revoked exam registration, **or a live order for any linked target**, makes an entire digital product ineligible. Compare target IDs, not SKU IDs. No partial bundle price or grant.
-- A **live order** is one that still holds its targets: `payment_pending`, `paid`, or `processing` (paid, fulfillment not completed). `payment_expired`, `cancelled`, `refunded` and `completed` orders stop counting — for a completed order the access check covers it through the enrollment/registration it granted.
+- A **live order** of the student is one that still owes or holds its targets: every status except `cart`, `cancelled` and `payment_expired` (`payment_pending`, `paid`, `processing`, `shipped`, `completed`). The set is excluded rather than listed so a status added later blocks instead of silently reopening a double purchase. `shipped` and `completed` stay in because a mixed order can be shipped before its `OrderPaid` event grants access, and a completed order's lines may never have been granted. A refund is `cancelled` with `cancellation_reason = 'refunded'`, so it drops out.
 - Cart-add and any item replacement/update that could introduce a digital target give early validation, but checkout is authoritative. **A cart is not a reservation.**
 - If any target is ineligible or repeated across cart lines, checkout rejects the whole order before gateway interaction or durable stock decrement. Return a stable, actionable conflict to the client.
 - `payment_expired` is final: the worker sets it on its next five-minute sweep after `payment_expires_at`, with no grace window. Retry is allowed only for a still-valid `payment_pending` order, never reopens an expired one, and never moves the deadline. A new attempt starts from a fresh cart.
@@ -48,14 +48,14 @@ WITH in_flight AS (
       JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'course'
       JOIN product_course pc ON pc.product_id = oi.product_id
      WHERE o.student_id = $1 AND o.id <> $2
-       AND o.status IN ('payment_pending', 'paid', 'processing')
+       AND o.status NOT IN ('cart', 'cancelled', 'payment_expired')
     UNION ALL
     SELECT o.id, 'exam'::text, pe.exam_id
       FROM orders o
       JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'exam'
       JOIN product_exam pe ON pe.product_id = oi.product_id
      WHERE o.student_id = $1 AND o.id <> $2
-       AND o.status IN ('payment_pending', 'paid', 'processing')
+       AND o.status NOT IN ('cart', 'cancelled', 'payment_expired')
 )
 SELECT f.kind, f.target_id, 'in_flight' AS reason, min(f.order_id) AS order_id
   FROM in_flight f GROUP BY f.kind, f.target_id
@@ -119,7 +119,7 @@ WITH in_flight AS (
       JOIN users u ON u.id = o.student_id AND u.role = 'student'
       JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'course'
       JOIN product_course pc ON pc.product_id = oi.product_id
-     WHERE o.status IN ('payment_pending', 'paid', 'processing')
+     WHERE o.status NOT IN ('cart', 'cancelled', 'payment_expired')
        AND NOT EXISTS (SELECT 1 FROM order_participant op WHERE op.order_id = o.id)
     UNION ALL
     SELECT o.id, o.student_id, 'exam'::text, pe.exam_id
@@ -127,7 +127,7 @@ WITH in_flight AS (
       JOIN users u ON u.id = o.student_id AND u.role = 'student'
       JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'exam'
       JOIN product_exam pe ON pe.product_id = oi.product_id
-     WHERE o.status IN ('payment_pending', 'paid', 'processing')
+     WHERE o.status NOT IN ('cart', 'cancelled', 'payment_expired')
        AND NOT EXISTS (SELECT 1 FROM order_participant op WHERE op.order_id = o.id)
 )
 SELECT student_id, kind, target_id, count(*) AS live_lines, array_agg(order_id ORDER BY order_id) AS orders
@@ -160,7 +160,7 @@ WITH in_flight AS (
       JOIN users u ON u.id = o.student_id AND u.role = 'student'
       JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'course'
       JOIN product_course pc ON pc.product_id = oi.product_id
-     WHERE o.status IN ('payment_pending', 'paid', 'processing')
+     WHERE o.status NOT IN ('cart', 'cancelled', 'payment_expired')
        AND NOT EXISTS (SELECT 1 FROM order_participant op WHERE op.order_id = o.id)
     UNION ALL
     SELECT o.id, o.status, o.student_id, 'exam'::text, pe.exam_id
@@ -168,7 +168,7 @@ WITH in_flight AS (
       JOIN users u ON u.id = o.student_id AND u.role = 'student'
       JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'exam'
       JOIN product_exam pe ON pe.product_id = oi.product_id
-     WHERE o.status IN ('payment_pending', 'paid', 'processing')
+     WHERE o.status NOT IN ('cart', 'cancelled', 'payment_expired')
        AND NOT EXISTS (SELECT 1 FROM order_participant op WHERE op.order_id = o.id)
 )
 SELECT f.order_id, f.status, f.student_id, f.kind, f.target_id
