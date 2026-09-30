@@ -20,7 +20,7 @@ A student can be charged for a course/exam entitlement they already own or are b
 - If any target is ineligible or repeated across cart lines, checkout rejects the entire order before gateway interaction or durable stock decrement. Return a stable, actionable conflict to the client.
 - Checkout atomically reserves each `(student, target kind, target ID)` for digital lines; a paid/fulfilled purchase keeps its claim while access remains live. Cancelled, expired, or refunded orders release reservations, with refund revocation atomic with release. Revoked/refunded course access can be bought again.
 - `payment_expired` is final: the worker sets this order status on its next five-minute sweep after `payment_expires_at`; there is no additional grace window. Retry is allowed only for a still-valid `payment_pending` order and must not reopen an expired order. A new attempt starts from a fresh cart and checkout. Late success for an expired/cancelled/refunded order must not resurrect it or fulfill entitlements; record/flag it for reconciliation or manual refund. Free checkouts follow the same uniqueness rules.
-- A manual exam grant that conflicts with a student's in-flight purchase must cancel the *entire* unpaid order, including physical items, and release all reservations; never silently grant the exam and fulfill only the physical portion. Reject checkout/retry of an already-owned exam before a new payment. Show the failed/cancelled order and an actionable reason to the student when they try to pay or view the order; do not add email or an in-app notification feed. Do not cancel the Midtrans Snap session/transaction: an existing link can still take payment outside ABAK. A late success must not reactivate or fulfill any part of the cancelled order and must be durably flagged for manual refund and operator reconciliation.
+- If the student already has access from any source when they reach checkout, reject their entire mixed order before requesting payment and show an actionable conflict. Coordinating a *later* manual exam grant or bulk exam order with an already-pending student purchase is deferred to the cross-flow follow-up; #167 must not claim protection against those writers.
 - The targets that checkout reserves are the targets fulfillment grants even if an administrator later edits product links. Previously placed orders without a snapshot must remain fulfillable.
 
 ## Technical contract
@@ -36,17 +36,16 @@ A student can be charged for a course/exam entitlement they already own or are b
 1. Existing ownership or an earlier pending/paid purchase rejects same-SKU, different-SKU, and any-target-of-bundle purchases; focused DB-backed service/handler tests must fail without this guard.
 2. Concurrent separate student carts/checkouts for the same target cannot both reserve/pay; assert one committed claim and no gateway request for the loser.
 3. Duplicate targets among cart lines reject at mutation or checkout before payment, including mixed physical+digital rollback; existing physical-only tests stay green.
-4. Expiry/cancellation/refund/revocation allow legitimate repurchase; expired-order retry is rejected and delayed webhook/outbox events cannot bypass the invariant. Exercise free orders and product-link edits between checkout and fulfillment.
-5. A manual exam grant conflicting with a pending mixed order cancels the whole order in ABAK, restores physical stock, releases all claims, and shows the failure reason in the student's order/payment flow. Existing Midtrans links are not revoked; a late settlement never fulfills the cancelled order and is recorded for manual refund. Exercise grant-versus-checkout and grant-versus-settlement races with DB-backed tests.
-6. Targeted Go tests and repository backend pipeline pass, or blockers are reported accurately. Frontend typecheck, tests, build, and relevant browser behavior are verified if the UI changes.
+4. Expiry/refund/revocation allow legitimate repurchase; expired-order retry is rejected and delayed webhook/outbox events cannot bypass the invariant. Exercise free orders and product-link edits between checkout and fulfillment.
+5. Targeted Go tests and repository backend pipeline pass, or blockers are reported accurately. Frontend typecheck, tests, build, and relevant browser behavior are verified if the UI changes.
 
 The original issue included a school marketplace and exam bulk ordering. Those acceptance criteria moved to #192; #167 alone does not prove cross-flow protection against school/bulk checkouts.
 
 ## Scope
 
 - In scope: student cart/checkout, reservation persistence and lifecycle, payment retry/webhook safety, fulfillment snapshot, focused client conflict handling, migration files and tests.
-- Out of scope: admin-school marketplace, participant pricing/fulfillment, changing existing exam bulk behavior, shipping redesign, partial bundle repricing, and running a live migration/deployment.
-- Residual risks: existing orders may contain duplicate active targets and require an audited rollout; gateway settlement arriving after release may require a manual refund because `PaymentClient` has no refund operation. #192 must adapt school/bulk paths to the same claim invariant before cross-flow safety can be claimed.
+- Out of scope: manual exam grant versus an in-flight purchase, admin-school marketplace, participant pricing/fulfillment, changing existing exam bulk behavior, shipping redesign, partial bundle repricing, and running a live migration/deployment.
+- Residual risks: existing orders may contain duplicate active targets and require an audited rollout; gateway settlement arriving after release may require a manual refund because `PaymentClient` has no refund operation. A manual grant after checkout but before payment can still make the paid exam fulfillment a no-op, and school/bulk flows can race with student purchases. Both need coordination in the cross-flow follow-up before cross-flow safety can be claimed.
 
 ## Rollout and operator audit (migration 0068)
 
