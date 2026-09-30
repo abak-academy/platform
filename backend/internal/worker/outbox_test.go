@@ -47,7 +47,7 @@ func (m *mockRepository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID 
 	return m.setOrderStatusFn(ctx, tx, orderID, status, reason)
 }
 
-func (m *mockRepository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Order, error) {
+func (m *mockRepository) GetOrderByIDForUpdateTx(ctx context.Context, _ pgx.Tx, id uuid.UUID) (model.Order, error) {
 	return m.getOrderByIDFn(ctx, id)
 }
 

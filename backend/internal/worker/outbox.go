@@ -31,7 +31,7 @@ type OrderItemMini struct {
 type outboxRepository interface {
 	ClaimOutboxEvents(context.Context, int) ([]model.OutboxEvent, error)
 	MarkOutboxProcessed(context.Context, pgx.Tx, int64) error
-	GetOrderByID(context.Context, uuid.UUID) (model.Order, error)
+	GetOrderByIDForUpdateTx(context.Context, pgx.Tx, uuid.UUID) (model.Order, error)
 	SetOrderStatus(context.Context, pgx.Tx, uuid.UUID, string, string) error
 	CreateCourseSession(context.Context, pgx.Tx, model.CourseSession) error
 	GetCoursesByProductID(context.Context, uuid.UUID) ([]model.Course, error)
@@ -169,18 +169,39 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 		return
 	}
 
-	order, err := w.repo.GetOrderByID(ctx, payload.OrderID)
-	if err != nil {
-		slog.Error("get order by id", "order_id", payload.OrderID, "err", err)
-		return
-	}
-
 	tx, err := w.repo.BeginTx(ctx)
 	if err != nil {
 		slog.Error("begin tx", "err", err)
 		return
 	}
 	defer tx.Rollback(ctx)
+
+	// The order is read under its row lock inside the fulfilment transaction,
+	// so a refund or expiry that commits first is seen here and one that comes
+	// later waits for this commit and then revokes what it granted.
+	order, err := w.repo.GetOrderByIDForUpdateTx(ctx, tx, payload.OrderID)
+	if err != nil {
+		slog.Error("get order by id", "order_id", payload.OrderID, "err", err)
+		return
+	}
+	if order.ID == uuid.Nil {
+		slog.Error("order for OrderPaid event not found", "order_id", payload.OrderID, "event_id", event.ID)
+		return
+	}
+	if order.Status != "paid" {
+		// A refunded, expired or cancelled order must not be granted access, and
+		// a fulfilled one already was; either way the event is spent.
+		slog.Warn("OrderPaid event skipped: order is not awaiting fulfilment",
+			"order_id", payload.OrderID, "event_id", event.ID, "status", order.Status)
+		if err := w.repo.MarkOutboxProcessed(ctx, tx, event.ID); err != nil {
+			slog.Error("mark outbox processed", "event_id", event.ID, "err", err)
+			return
+		}
+		if err := tx.Commit(ctx); err != nil {
+			slog.Error("commit tx", "err", err)
+		}
+		return
+	}
 
 	snapshot, err := w.repo.GetOrderDigitalSnapshot(ctx, payload.OrderID)
 	if err != nil {
