@@ -8,6 +8,7 @@ import (
 	"akademi-bimbel/internal/model"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 func normalizeEmail(email string) string {
@@ -102,23 +103,31 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*m
 	return u, nil
 }
 
-func (r *Repository) GetUserByID(ctx context.Context, id string) (*model.User, error) {
-	u := &model.User{}
-	err := r.pool.QueryRow(ctx,
-		`SELECT id, email, username, phone, password_hash, role, name,
+const userByIDSelect = `SELECT id, email, username, phone, password_hash, role, name,
 			school_id, photo_url, status, otp_enabled, auth_provider, password_temporary, created_at, updated_at,
 			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
 			unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
-		WHERE id = $1`,
-		id,
-	).Scan(
+		WHERE id = $1`
+
+func (r *Repository) GetUserByID(ctx context.Context, id string) (*model.User, error) {
+	return scanUser(r.pool.QueryRow(ctx, userByIDSelect, id))
+}
+
+// GetUserByIDTx reads the user on the caller's transaction, so a checkout that
+// holds a connection does not need a second pool connection for biodata.
+func (r *Repository) GetUserByIDTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*model.User, error) {
+	return scanUser(tx.QueryRow(ctx, userByIDSelect, id))
+}
+
+func scanUser(row pgx.Row) (*model.User, error) {
+	u := &model.User{}
+	if err := row.Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
 		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.PasswordTemporary, &u.CreatedAt, &u.UpdatedAt,
 		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
 		&u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
-	)
-	if err != nil {
+	); err != nil {
 		if isNotFound(err) {
 			return nil, nil
 		}
