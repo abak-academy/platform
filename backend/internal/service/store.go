@@ -1972,22 +1972,25 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		return ErrOrderNotFound
 	}
 
+	if err := s.storeRepo.InsertWebhookLog(ctx, tx, "payment_success", payload, notif.OrderID); err != nil {
+		return err
+	}
+
 	switch {
 	case order.Status == "payment_pending":
 	case orderSettled(order.Status):
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
 		return s.cacheWebhookDone(ctx, cacheKey)
 	default:
-		// 2xx on purpose, or the gateway redelivers; recording this payment is #196.
+		// 2xx on purpose, or the gateway redelivers; flagging this payment as late is #197.
 		slog.Warn("payment settled for an order that can no longer be fulfilled",
 			"order_id", orderID, "order_status", order.Status, "transaction_id", notif.TransactionID)
 		if err := tx.Commit(ctx); err != nil {
 			return err
 		}
 		return s.cacheWebhookDone(ctx, cacheKey)
-	}
-
-	if err := s.storeRepo.InsertWebhookLog(ctx, tx, "payment_success", payload, notif.OrderID); err != nil {
-		return err
 	}
 
 	if err := s.storeRepo.SetOrderStatus(ctx, tx, orderID, "paid", ""); err != nil {

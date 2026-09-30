@@ -87,6 +87,17 @@ func orderPaidEvents(t *testing.T, repo *repository.Repository, orderID uuid.UUI
 	return n
 }
 
+func webhookLogRows(t *testing.T, repo *repository.Repository, orderID uuid.UUID) int {
+	t.Helper()
+	var n int
+	if err := repo.Pool().QueryRow(context.Background(),
+		`SELECT count(*) FROM webhook_log WHERE event_type = 'payment_success' AND gateway_ref = $1`, orderID.String(),
+	).Scan(&n); err != nil {
+		t.Fatalf("count webhook_log: %v", err)
+	}
+	return n
+}
+
 func TestWebhook_SettlementOnExpiredOrderIsAcknowledgedAndNotFulfilled(t *testing.T) {
 	svc, repo, _ := newLifecycleService(t)
 	ctx := context.Background()
@@ -101,10 +112,13 @@ func TestWebhook_SettlementOnExpiredOrderIsAcknowledgedAndNotFulfilled(t *testin
 	}
 
 	if got := orderStatusOf(t, repo, orderID); got != "payment_expired" {
-		t.Errorf("status = %q, want payment_expired (final)", got)
+		t.Errorf("status = %q, want payment_expired", got)
 	}
 	if got := orderPaidEvents(t, repo, orderID); got != 0 {
 		t.Errorf("OrderPaid events = %d, want 0", got)
+	}
+	if got := webhookLogRows(t, repo, orderID); got != 2 {
+		t.Errorf("webhook_log rows = %d, want 2: each late settlement must leave a durable row", got)
 	}
 }
 
@@ -130,6 +144,9 @@ func TestWebhook_SettlementOnRefundedOrderIsAcknowledgedAndNotResurrected(t *tes
 	}
 	if got := orderPaidEvents(t, repo, orderID); got != 1 {
 		t.Errorf("OrderPaid events = %d, want the original 1 only", got)
+	}
+	if got := webhookLogRows(t, repo, orderID); got != 2 {
+		t.Errorf("webhook_log rows = %d, want 2: the redelivery after the refund must still be logged", got)
 	}
 }
 
