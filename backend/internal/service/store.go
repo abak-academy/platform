@@ -1634,6 +1634,13 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key, 
 	if order.Status != "payment_pending" {
 		return ErrOrderNotPayable
 	}
+	elapsed, err := s.storeRepo.PaymentDeadlineElapsedTx(ctx, tx, order.ID)
+	if err != nil {
+		return err
+	}
+	if elapsed {
+		return ErrOrderNotPayable
+	}
 
 	// Manual settlement — a human asserting payment arrived, with proof, without
 	// gateway confirmation. The proof write, status flip and audit row all share
@@ -1871,6 +1878,15 @@ func (s *Service) AdminReconcileOrder(ctx context.Context, actorID, orderID, key
 			return ErrOrderNotFound
 		}
 		actor := &actorID
+		if locked.Status == "payment_pending" {
+			expired, err := s.storeRepo.ExpirePaymentOrderTx(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			if expired {
+				locked.Status = "payment_expired"
+			}
+		}
 		switch {
 		case locked.Status == "payment_pending":
 			if err := s.markOrderPaidTx(ctx, tx, locked, actor, "order.reconcile", map[string]any{
@@ -2024,6 +2040,20 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 	}
 	if order.ID == uuid.Nil {
 		return ErrOrderNotFound
+	}
+
+	// No grace after the deadline: a pending order whose deadline has passed is
+	// expired here, under the lock and with the sweeper's own transition (stock
+	// and claims released once), instead of being fulfilled because the worker
+	// has not ticked yet. The settlement then falls into the late-payment path.
+	if order.Status == "payment_pending" {
+		expired, err := s.storeRepo.ExpirePaymentOrderTx(ctx, tx, orderID)
+		if err != nil {
+			return err
+		}
+		if expired {
+			order.Status = "payment_expired"
+		}
 	}
 
 	switch {

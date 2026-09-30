@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
@@ -23,6 +24,11 @@ type lifecyclePayments struct {
 	paid       atomic.Bool
 	failCreate atomic.Bool
 	onCreate   func()
+
+	// expiresAfter, when set, is how long from now the gateway claims its link
+	// lasts; lastExpiresIn records what ABAK asked for.
+	expiresAfter  time.Duration
+	lastExpiresIn atomic.Int64
 }
 
 func (p *lifecyclePayments) CreatePayment(ctx context.Context, req PaymentRequest) (PaymentResponse, error) {
@@ -33,7 +39,12 @@ func (p *lifecyclePayments) CreatePayment(ctx context.Context, req PaymentReques
 		p.creates.Add(1)
 		return PaymentResponse{}, errors.New("gateway down")
 	}
-	return p.countingPaymentClient.CreatePayment(ctx, req)
+	p.lastExpiresIn.Store(int64(req.ExpiresIn))
+	resp, err := p.countingPaymentClient.CreatePayment(ctx, req)
+	if err == nil && p.expiresAfter > 0 {
+		resp.ExpiresAt = time.Now().Add(p.expiresAfter)
+	}
+	return resp, err
 }
 
 func (p *lifecyclePayments) QueryStatus(context.Context, string) (PaymentStatus, error) {
@@ -198,30 +209,6 @@ func TestWebhook_RepeatedSettlementEmitsOneOrderPaid(t *testing.T) {
 	}
 }
 
-func TestWebhook_SettlementAfterDeadlineButBeforeSweepIsStillAccepted(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET payment_expires_at = now() - interval '1 minute' WHERE id = $1`, orderID); err != nil {
-		t.Fatalf("elapse deadline: %v", err)
-	}
-
-	if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-edge"), "sig", uuid.NewString()); err != nil {
-		t.Fatalf("webhook: %v", err)
-	}
-
-	if got := orderStatusOf(t, repo, orderID); got != "paid" {
-		t.Errorf("status = %q, want paid: money was taken while the order was still pending", got)
-	}
-	tx, _ := repo.BeginTx(ctx)
-	expired, err := repo.ExpirePaymentOrderTx(ctx, tx, orderID)
-	_ = tx.Rollback(ctx)
-	if err != nil || expired {
-		t.Errorf("sweeper transition on a paid order = %v, %v; want false, nil", expired, err)
-	}
-}
-
 func TestWebhook_UnknownOrderIsNotFound(t *testing.T) {
 	svc, _, _ := newLifecycleService(t)
 	err := svc.HandlePaymentWebhook(context.Background(), settlementBody(uuid.New(), "tx-none"), "sig", uuid.NewString())
@@ -374,5 +361,185 @@ func TestWebhook_ConcurrentDeliveriesEmitOneOrderPaid(t *testing.T) {
 
 	if got := orderPaidEvents(t, repo, orderID); got != 1 {
 		t.Errorf("OrderPaid events = %d, want 1", got)
+	}
+}
+
+func elapseDeadline(t *testing.T, repo *repository.Repository, orderID uuid.UUID) {
+	t.Helper()
+	if _, err := repo.Pool().Exec(context.Background(),
+		`UPDATE orders SET payment_expires_at = now() - interval '1 second' WHERE id = $1`, orderID,
+	); err != nil {
+		t.Fatalf("elapse deadline: %v", err)
+	}
+}
+
+func stockOf(t *testing.T, repo *repository.Repository, productID uuid.UUID) int {
+	t.Helper()
+	var n int
+	if err := repo.Pool().QueryRow(context.Background(), `SELECT stock FROM product WHERE id = $1`, productID).Scan(&n); err != nil {
+		t.Fatalf("stock: %v", err)
+	}
+	return n
+}
+
+// pendingMixedOrder checks out 2 books plus a paid course, so expiry has stock
+// to give back and a claim to release.
+func pendingMixedOrder(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) (orderID, book uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status, weight_grams) VALUES ('book', $1, 30000, 5, 'published', 300) RETURNING id`,
+		"Book "+uuid.NewString(),
+	).Scan(&book); err != nil {
+		t.Fatalf("create book: %v", err)
+	}
+	course := seedCourseTarget(t, repo)
+	digital := seedDigitalProduct(t, repo, "course", 50000, course)
+	order, _, err := svc.MintCart(ctx, student.String())
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, student.String(), order.ID.String(), book.String(), 2); err != nil {
+		t.Fatalf("AddItem book: %v", err)
+	}
+	if err := svc.AddItem(ctx, student.String(), order.ID.String(), digital.String(), 1); err != nil {
+		t.Fatalf("AddItem course: %v", err)
+	}
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET shipping_cost = 18000, selected_courier = 'JNE' WHERE id = $1`, order.ID); err != nil {
+		t.Fatalf("set shipping: %v", err)
+	}
+	if _, err := svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey()); err != nil {
+		t.Fatalf("Checkout: %v", err)
+	}
+	return order.ID, book
+}
+
+func TestWebhook_SettlementPastDeadlineBeforeSweepExpiresOrderInsteadOfFulfilling(t *testing.T) {
+	svc, repo, _ := newLifecycleService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	orderID, book := pendingMixedOrder(t, svc, repo, student)
+	elapseDeadline(t, repo, orderID)
+
+	for i := 0; i < 2; i++ {
+		if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-past"), "sig", uuid.NewString()); err != nil {
+			t.Fatalf("webhook #%d must be acknowledged, got %v", i, err)
+		}
+	}
+
+	if got := orderStatusOf(t, repo, orderID); got != "payment_expired" {
+		t.Errorf("status = %q, want payment_expired: no grace after the deadline", got)
+	}
+	if got := orderPaidEvents(t, repo, orderID); got != 0 {
+		t.Errorf("OrderPaid events = %d, want 0", got)
+	}
+	if got := latePaymentFlags(t, repo, orderID); got != 1 {
+		t.Errorf("late payment flags = %d, want 1", got)
+	}
+	if got := stockOf(t, repo, book); got != 5 {
+		t.Errorf("book stock = %d, want 5 (restored once)", got)
+	}
+	if got := liveClaimsOf(t, repo, student); got != 0 {
+		t.Errorf("live claims = %d, want 0", got)
+	}
+
+	tx, _ := repo.BeginTx(ctx)
+	expired, err := repo.ExpirePaymentOrderTx(ctx, tx, orderID)
+	_ = tx.Rollback(ctx)
+	if err != nil || expired {
+		t.Errorf("sweeper transition afterwards = %v, %v; want false, nil (no second restock)", expired, err)
+	}
+	if got := stockOf(t, repo, book); got != 5 {
+		t.Errorf("book stock after sweep = %d, want 5", got)
+	}
+}
+
+func TestWebhook_LateFlagCarriesOrderAndTransactionContext(t *testing.T) {
+	svc, repo, _ := newLifecycleService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+	elapseDeadline(t, repo, orderID)
+
+	if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-ctx"), "sig", uuid.NewString()); err != nil {
+		t.Fatalf("webhook: %v", err)
+	}
+
+	var reference, status, source string
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT payload->>'reference', payload->>'order_status', payload->>'source'
+		 FROM webhook_log WHERE event_type = 'payment_late' AND gateway_ref = $1`, orderID.String(),
+	).Scan(&reference, &status, &source); err != nil {
+		t.Fatalf("read late flag: %v", err)
+	}
+	if reference != "tx-ctx" || status != "payment_expired" || source != "webhook" {
+		t.Errorf("flag = reference %q, status %q, source %q; want tx-ctx, payment_expired, webhook", reference, status, source)
+	}
+}
+
+func TestAdminReconcileOrder_GatewayPaidPastDeadlineExpiresOrderAndFlags(t *testing.T) {
+	svc, repo, pay := newLifecycleService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	actor := insertAdminActor(t, repo, "reconcilepast_")
+	orderID, book := pendingMixedOrder(t, svc, repo, student)
+	elapseDeadline(t, repo, orderID)
+	pay.paid.Store(true)
+
+	for i := 0; i < 2; i++ {
+		err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix())
+		if !errors.Is(err, ErrOrderNotPayable) {
+			t.Fatalf("reconcile #%d err = %v, want ErrOrderNotPayable", i, err)
+		}
+	}
+
+	if got := orderStatusOf(t, repo, orderID); got != "payment_expired" {
+		t.Errorf("status = %q, want payment_expired", got)
+	}
+	if got := orderPaidEvents(t, repo, orderID); got != 0 {
+		t.Errorf("OrderPaid events = %d, want 0", got)
+	}
+	if got := latePaymentFlags(t, repo, orderID); got != 1 {
+		t.Errorf("late payment flags = %d, want 1", got)
+	}
+	if got := stockOf(t, repo, book); got != 5 {
+		t.Errorf("book stock = %d, want 5 (restored once)", got)
+	}
+	if got := liveClaimsOf(t, repo, student); got != 0 {
+		t.Errorf("live claims = %d, want 0", got)
+	}
+}
+
+func TestAdminConfirmOrder_RejectsPendingOrderPastDeadlineBeforeSweep(t *testing.T) {
+	svc, repo, _ := newLifecycleService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	actor := insertAdminActor(t, repo, "confirmpast_")
+	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+	elapseDeadline(t, repo, orderID)
+
+	err := svc.AdminConfirmOrder(ctx, actor, orderID.String(), "confirm-"+uniqueSuffix(), "payment_proof/"+actor+"/"+uniqueSuffix()+".jpg")
+
+	if !errors.Is(err, ErrOrderNotPayable) {
+		t.Fatalf("err = %v, want ErrOrderNotPayable", err)
+	}
+	if got := orderStatusOf(t, repo, orderID); got == "paid" {
+		t.Error("order past its deadline was marked paid by admin confirm")
+	}
+	if got := orderPaidEvents(t, repo, orderID); got != 0 {
+		t.Errorf("OrderPaid events = %d, want 0", got)
+	}
+}
+
+func TestWebhook_SettlementBeforeDeadlineIsStillFulfilled(t *testing.T) {
+	svc, repo, _ := newLifecycleService(t)
+	student := newDigitalStudent(t, repo)
+	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+
+	if err := svc.HandlePaymentWebhook(context.Background(), settlementBody(orderID, "tx-ok"), "sig", uuid.NewString()); err != nil {
+		t.Fatalf("webhook: %v", err)
+	}
+	if got := orderStatusOf(t, repo, orderID); got != "paid" {
+		t.Errorf("status = %q, want paid", got)
 	}
 }
