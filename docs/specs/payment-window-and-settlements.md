@@ -61,7 +61,7 @@ Outcome: every pending order has one bounded deadline set at checkout, the gatew
 4. A settlement after the deadline, before the sweeper has run, expires the order once and fulfils nothing, including under concurrent webhook and sweeper.
 5. Settlement after the deadline: order stays `payment_expired`, no course/exam access is written, one `payment_late` flag is recorded with the reference. A settlement just before the deadline still fulfils.
 6. Duplicate notifications, and a reconcile after a webhook, are idempotent — one flag per order and payment.
-7. A flagged `payment_expired` order cannot be refunded through the admin path because the app holds no payment to reverse — the operator refunds the flagged reference in the gateway. A flag on a `cancelled` order that had already been refunded is a redelivery and needs nothing. No access is revoked that was never granted, and the target stays purchasable after the flag.
+7. A flagged `payment_expired` order cannot be refunded through the admin path because the app holds no payment to reverse — the operator refunds the flagged reference in the gateway. A flag on an order that was paid and then refunded (`cancelled`, `cancellation_reason = 'refunded'`, `paid_at` set) may be a redelivery of the refunded payment or a second payment; the operator checks the gateway before refunding anything. No access is revoked that was never granted, and the target stays purchasable after the flag.
 8. Targeted Go tests pass, including the race-detector run the backend pipeline uses.
 
 ## Scope
@@ -113,13 +113,11 @@ SELECT o.id AS order_id, o.status AS order_status, o.student_id, o.total,
        w.payload->'notification'->>'payment_type' AS payment_type,
        w.payload->'notification'->>'gross_amount' AS gross_amount,
        w.created_at AS flagged_at,
-       EXISTS (SELECT 1 FROM webhook_log s
-                WHERE s.event_type = 'payment_success' AND s.gateway_ref = w.gateway_ref
-                  AND s.payload->>'transaction_id' = w.payload->>'reference') AS fulfilled_before
+       (o.cancellation_reason = 'refunded' AND o.paid_at IS NOT NULL) AS refunded_after_paid
   FROM webhook_log w
   JOIN orders o ON o.id::text = w.gateway_ref
  WHERE w.event_type = 'payment_late'
  ORDER BY w.created_at, o.id;
 ```
 
-Read a row as follows. `fulfilled_before = true` on a `cancelled` order is a redelivery of a payment that was fulfilled and then refunded through the admin flow: nothing to do. Otherwise the customer paid for an order that will not be fulfilled: refund `payment_reference` in the gateway. A `payment_reference` equal to `order_gateway_ref` came from a reconcile and has no transaction id; find the transaction in the gateway by that order id. The table keeps no "resolved" state, so track handled rows outside the database.
+Read a row as follows. `refunded_after_paid = true` means the order was paid and then refunded through the admin flow, which records only a transfer receipt and moves no money at the gateway. The flag is then either a redelivery of the payment that was already refunded or a second payment: look the order up in the gateway and refund `payment_reference` only if it is a different transaction from the one already refunded. Do not infer this from `webhook_log`: fulfilment through reconcile or admin confirm writes no `payment_success` row, so its absence proves nothing. Otherwise the customer paid for an order that will not be fulfilled: refund `payment_reference` in the gateway. A `payment_reference` equal to `order_gateway_ref` came from a reconcile and has no transaction id; find the transaction in the gateway by that order id. The table keeps no "resolved" state, so track handled rows outside the database.
