@@ -552,3 +552,101 @@ func TestWebhook_SettlementBeforeDeadlineIsStillFulfilled(t *testing.T) {
 		t.Errorf("status = %q, want paid", got)
 	}
 }
+
+func lateFlagReferences(t *testing.T, repo *repository.Repository, orderID uuid.UUID) []string {
+	t.Helper()
+	rows, err := repo.Pool().Query(context.Background(),
+		`SELECT payload->>'reference' FROM webhook_log
+		 WHERE event_type = 'payment_late' AND gateway_ref = $1 ORDER BY payload->>'reference'`, orderID.String())
+	if err != nil {
+		t.Fatalf("read late flags: %v", err)
+	}
+	defer rows.Close()
+	var refs []string
+	for rows.Next() {
+		var ref string
+		if err := rows.Scan(&ref); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		refs = append(refs, ref)
+	}
+	return refs
+}
+
+func expiredOrderWithLateGatewayPayment(t *testing.T) (*Service, *repository.Repository, uuid.UUID, string) {
+	t.Helper()
+	svc, repo, pay := newLifecycleService(t)
+	student := newDigitalStudent(t, repo)
+	actor := insertAdminActor(t, repo, "lateflag_")
+	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+	expireOrderNow(t, repo, orderID)
+	pay.paid.Store(true)
+	return svc, repo, orderID, actor
+}
+
+// Reconcile cannot learn the gateway's transaction id, so it flags under the
+// order's gateway reference; that must not double-count a payment the webhook
+// already flagged under its transaction id.
+func TestLatePayment_ReconcileAfterWebhookDoesNotFlagTheSamePaymentTwice(t *testing.T) {
+	svc, repo, orderID, actor := expiredOrderWithLateGatewayPayment(t)
+	ctx := context.Background()
+	if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-a"), "sig", uuid.NewString()); err != nil {
+		t.Fatalf("webhook: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix()); !errors.Is(err, ErrOrderNotPayable) {
+			t.Fatalf("reconcile #%d err = %v, want ErrOrderNotPayable", i, err)
+		}
+	}
+
+	if refs := lateFlagReferences(t, repo, orderID); len(refs) != 1 || refs[0] != "tx-a" {
+		t.Errorf("late flag references = %v, want only [tx-a]", refs)
+	}
+}
+
+func TestLatePayment_WebhookAfterReconcileAttributesTheExistingFlag(t *testing.T) {
+	svc, repo, orderID, actor := expiredOrderWithLateGatewayPayment(t)
+	ctx := context.Background()
+	if err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix()); !errors.Is(err, ErrOrderNotPayable) {
+		t.Fatalf("reconcile err = %v, want ErrOrderNotPayable", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-b"), "sig", uuid.NewString()); err != nil {
+			t.Fatalf("webhook #%d: %v", i, err)
+		}
+	}
+
+	refs := lateFlagReferences(t, repo, orderID)
+	if len(refs) != 1 || refs[0] != "tx-b" {
+		t.Fatalf("late flag references = %v, want the reconcile flag attributed to [tx-b]", refs)
+	}
+	var source, notified string
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT payload->>'source', payload->'notification'->>'transaction_id' FROM webhook_log
+		 WHERE event_type = 'payment_late' AND gateway_ref = $1`, orderID.String(),
+	).Scan(&source, &notified); err != nil {
+		t.Fatalf("read flag: %v", err)
+	}
+	if notified != "tx-b" {
+		t.Errorf("flag carries notification transaction %q, want tx-b so an operator can refund it", notified)
+	}
+}
+
+func TestLatePayment_DistinctTransactionsAreFlaggedSeparately(t *testing.T) {
+	svc, repo, orderID, actor := expiredOrderWithLateGatewayPayment(t)
+	ctx := context.Background()
+	for _, tx := range []string{"tx-one", "tx-two", "tx-one"} {
+		if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, tx), "sig", uuid.NewString()); err != nil {
+			t.Fatalf("webhook %s: %v", tx, err)
+		}
+	}
+	if err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix()); !errors.Is(err, ErrOrderNotPayable) {
+		t.Fatalf("reconcile err = %v, want ErrOrderNotPayable", err)
+	}
+
+	if refs := lateFlagReferences(t, repo, orderID); len(refs) != 2 || refs[0] != "tx-one" || refs[1] != "tx-two" {
+		t.Errorf("late flag references = %v, want [tx-one tx-two]", refs)
+	}
+}
