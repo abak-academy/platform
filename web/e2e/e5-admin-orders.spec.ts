@@ -21,15 +21,41 @@ import { API_BASE, loginRealAdmin, loginRealStudent } from "./helpers/session";
  * below fails with a clear "real-backend setup" message rather than a mystery
  * timeout. A course product is used deliberately — it has no shipping/courier
  * prerequisite, unlike a physical product.
+ *
+ * A passing run leaves the student owning the course it bought, so the spec
+ * refunds the order at the end: the refund revokes the enrollment and releases
+ * the digital claim, which is what keeps a second run possible. Discovery also
+ * pages through the whole catalog, so a run that died before that refund can
+ * still find another course to buy.
  */
 
+/** Minimal valid 1x1 PNG — no real payment data, purely a fixture. */
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64"
+);
+
 async function findPricedCourseProductIds(request: APIRequestContext): Promise<string[]> {
-  const res = await request.get(`${API_BASE}/products?type=course`);
-  if (!res.ok()) {
-    throw new Error(`real-backend setup: listing course products failed (${res.status()})`);
-  }
-  const body = (await res.json()) as { data?: Array<{ id: string; price: number }> };
-  const ids = (body.data ?? []).filter((p) => p.price > 0).map((p) => p.id);
+  // The catalog is cursor-paginated, so one page is not the whole catalog: a
+  // rerun that already consumed the first page's courses must be able to reach
+  // the remaining pages before concluding there is nothing left to buy.
+  const ids: string[] = [];
+  let cursor = "";
+  do {
+    const query = new URLSearchParams({ type: "course" });
+    if (cursor) query.set("cursor", cursor);
+    const res = await request.get(`${API_BASE}/products?${query.toString()}`);
+    if (!res.ok()) {
+      throw new Error(`real-backend setup: listing course products failed (${res.status()})`);
+    }
+    const body = (await res.json()) as {
+      data?: Array<{ id: string; price: number }>;
+      next_cursor?: string | null;
+    };
+    ids.push(...(body.data ?? []).filter((p) => p.price > 0).map((p) => p.id));
+    cursor = body.next_cursor ?? "";
+  } while (cursor);
+
   if (ids.length === 0) {
     throw new Error(
       "real-backend setup: no priced course product exists in the catalog — " +
@@ -65,6 +91,7 @@ async function checkoutToPaymentPending(
   // refused with 409 digital_target_conflict, so a rerun (or a run that died
   // before confirm) cannot reuse the same course. Take the first one that adds.
   let added = false;
+  let lastFailure = "no candidate product was tried";
   for (const productId of productIds) {
     const itemRes = await request.post(`${API_BASE}/orders/${cart.id}/items`, {
       headers: { Authorization: `Bearer ${studentToken}` },
@@ -75,14 +102,20 @@ async function checkoutToPaymentPending(
       break;
     }
     const failure = (await itemRes.json().catch(() => ({}))) as { code?: string };
+    lastFailure = `${itemRes.status()} ${failure.code ?? "unknown"}`;
+    // 409 is the expected rerun case — the student owns the course or holds a
+    // live claim on it from an unfinished order. 429 is a rate limit a rerun can
+    // trip. Both mean "try the next course"; anything else is a real failure.
+    if (itemRes.status() === 409 || itemRes.status() === 429) continue;
     expect(
-      itemRes.status() === 409 && failure.code === "digital_target_conflict",
-      `adding the item to the cart should succeed or conflict on ownership (got ${itemRes.status()})`
+      itemRes.ok(),
+      `adding a priced course to the cart failed unexpectedly (${lastFailure})`
     ).toBeTruthy();
   }
   if (!added) {
     throw new Error(
-      "real-backend setup: the student already owns or holds every priced course in the catalog — " +
+      `real-backend setup: no priced course could be added to the cart (last failure: ${lastFailure}) — ` +
+        "the student already owns or holds a live claim on every one of them: " +
         "refund the previous run's order, or publish another priced course via /admin/products."
     );
   }
@@ -112,6 +145,57 @@ async function checkoutToPaymentPending(
   return cart.id;
 }
 
+/**
+ * Refund the order this spec confirmed, so the course it consumed goes back to
+ * the catalog. A refund revokes the enrollment and releases the digital claim;
+ * there is no cheaper way to hand a purchased course back.
+ *
+ * This runs after the spec's own assertions, and a cleanup problem is reported
+ * as a warning rather than a failure: the spec is about the manual-confirm flow,
+ * and a refund that cannot run (storage not configured, for instance) is not
+ * evidence that the flow is broken. It does mean the next run needs another
+ * course.
+ */
+async function refundOrder(
+  request: APIRequestContext,
+  adminToken: string,
+  orderId: string
+): Promise<void> {
+  const auth = { Authorization: `Bearer ${adminToken}` };
+  try {
+    const presignRes = await request.get(
+      `${API_BASE}/uploads/presign?kind=refund_proof&filename=e2e-refund.png&content_type=image/png`,
+      { headers: auth }
+    );
+    if (!presignRes.ok()) {
+      throw new Error(`presigning the refund proof failed (${presignRes.status()})`);
+    }
+    const presigned = (await presignRes.json()) as { url: string; key: string };
+
+    // A well-formed key is not enough: the refund path checks that the object
+    // exists, so the fixture has to be uploaded for real.
+    const putRes = await request.put(presigned.url, {
+      headers: { "Content-Type": "image/png" },
+      data: PNG_1X1,
+    });
+    if (!putRes.ok()) {
+      throw new Error(`uploading the refund proof failed (${putRes.status()})`);
+    }
+
+    const refundRes = await request.post(`${API_BASE}/admin/orders/${orderId}/refund`, {
+      headers: auth,
+      data: { refund_proof_url: presigned.key },
+    });
+    if (!refundRes.ok()) {
+      throw new Error(`refunding failed (${refundRes.status()}) ${await refundRes.text()}`);
+    }
+  } catch (err) {
+    console.warn(
+      `[e5-admin-orders] could not refund ${orderId} after the assertions: ${(err as Error).message}`
+    );
+  }
+}
+
 test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name", () => {
   test("upload a proof, confirm manually, reopen and see the mark and the proof", async ({ page, context, request }) => {
     // The student session is only needed for the API setup below, but both
@@ -124,7 +208,7 @@ test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name"
     const orderId = await checkoutToPaymentPending(request, studentToken, productIds);
     const orderNumber = `#${orderId.slice(-8)}`;
 
-    await loginRealAdmin(context, request);
+    const adminToken = await loginRealAdmin(context, request);
 
     await page.goto("/admin/orders");
 
@@ -158,11 +242,7 @@ test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name"
     await confirmDialog.locator('input[data-testid="confirm-order-proof-input"]').setInputFiles({
       name: "bukti-transfer.png",
       mimeType: "image/png",
-      // Minimal valid 1x1 PNG — no real payment data, purely a fixture.
-      buffer: Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-        "base64"
-      ),
+      buffer: PNG_1X1,
     });
 
     await expect(confirmDialog.getByRole("link", { name: "Lihat bukti yang diunggah" })).toBeVisible({
@@ -202,5 +282,8 @@ test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name"
     const proofFileRes = await request.get(proofURL);
     expect(proofFileRes.ok(), "the payment proof must be reachable from the detail view").toBeTruthy();
     await proofTab.close();
+
+    // Hand the course back, so a second run has something to buy.
+    await refundOrder(request, adminToken, orderId);
   });
 });
