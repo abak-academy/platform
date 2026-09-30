@@ -77,9 +77,15 @@ func (m *MidtransClient) CreatePayment(ctx context.Context, req service.PaymentR
 		snapReq.Callbacks = &snap.Callbacks{Finish: req.CallbackURL}
 	}
 
+	// Whole minutes rounded down, at least one: the link may end early but must
+	// not outlive the order's own deadline the caller derived ExpiresIn from.
+	minutes := int64(req.ExpiresIn / time.Minute)
+	if minutes < 1 {
+		minutes = 1
+	}
 	snapReq.Expiry = &snap.ExpiryDetails{
-		Duration: int64(req.ExpiresIn.Hours()),
-		Unit:     "hour",
+		Duration: minutes,
+		Unit:     "minute",
 	}
 
 	resp, err := m.snap.CreateTransaction(snapReq)
@@ -91,7 +97,7 @@ func (m *MidtransClient) CreatePayment(ctx context.Context, req service.PaymentR
 		GatewayRef: req.OrderID,
 		SnapToken:  resp.Token,
 		PaymentURL: resp.RedirectURL,
-		ExpiresAt:  time.Now().Add(req.ExpiresIn),
+		ExpiresAt:  time.Now().Add(time.Duration(minutes) * time.Minute),
 	}, nil
 }
 

@@ -104,6 +104,38 @@ func TestMidtransClient_CreatePayment(t *testing.T) {
 	}
 }
 
+// The gateway link must not outlive the order it pays for, so the requested
+// expiry is whole minutes rounded down, never hours rounded to zero or up.
+func TestMidtransClient_CreatePayment_ExpiryIsWholeMinutesRoundedDown(t *testing.T) {
+	var body struct {
+		Expiry struct {
+			Duration int64  `json:"duration"`
+			Unit     string `json:"unit"`
+		} `json:"expiry"`
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"token": "t", "redirect_url": "https://pay.example.com/r"})
+	}))
+	defer ts.Close()
+
+	client := newTestMidtransClient("test-server-key", ts)
+	resp, err := client.CreatePayment(context.Background(), service.PaymentRequest{
+		OrderID: "order-exp", Amount: 100000, ExpiresIn: 150*time.Minute + 40*time.Second,
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment: %v", err)
+	}
+
+	if body.Expiry.Unit != "minute" || body.Expiry.Duration != 150 {
+		t.Errorf("expiry = %d %s, want 150 minute", body.Expiry.Duration, body.Expiry.Unit)
+	}
+	if limit := time.Now().Add(150 * time.Minute); resp.ExpiresAt.After(limit.Add(time.Second)) {
+		t.Errorf("ExpiresAt %v is past the requested window %v", resp.ExpiresAt, limit)
+	}
+}
+
 func TestMidtransClient_CreatePayment_APIError(t *testing.T) {
 	serverKey := "test-server-key"
 
