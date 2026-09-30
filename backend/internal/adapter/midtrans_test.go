@@ -104,6 +104,38 @@ func TestMidtransClient_CreatePayment(t *testing.T) {
 	}
 }
 
+// The gateway link must not outlive the order it pays for, so the requested
+// expiry is whole minutes rounded down, never hours rounded to zero or up.
+func TestMidtransClient_CreatePayment_ExpiryIsWholeMinutesRoundedDown(t *testing.T) {
+	var body struct {
+		Expiry struct {
+			Duration int64  `json:"duration"`
+			Unit     string `json:"unit"`
+		} `json:"expiry"`
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"token": "t", "redirect_url": "https://pay.example.com/r"})
+	}))
+	defer ts.Close()
+
+	client := newTestMidtransClient("test-server-key", ts)
+	resp, err := client.CreatePayment(context.Background(), service.PaymentRequest{
+		OrderID: "order-exp", Amount: 100000, ExpiresIn: 150*time.Minute + 40*time.Second,
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment: %v", err)
+	}
+
+	if body.Expiry.Unit != "minute" || body.Expiry.Duration != 150 {
+		t.Errorf("expiry = %d %s, want 150 minute", body.Expiry.Duration, body.Expiry.Unit)
+	}
+	if limit := time.Now().Add(150 * time.Minute); resp.ExpiresAt.After(limit.Add(time.Second)) {
+		t.Errorf("ExpiresAt %v is past the requested window %v", resp.ExpiresAt, limit)
+	}
+}
+
 func TestMidtransClient_CreatePayment_APIError(t *testing.T) {
 	serverKey := "test-server-key"
 
@@ -211,5 +243,86 @@ func TestMidtransClient_QueryStatus(t *testing.T) {
 	}
 	if pending.Reference != "order-pending" {
 		t.Errorf("Reference: got %q, want %q", pending.Reference, "order-pending")
+	}
+}
+
+type snapExpiryBody struct {
+	Expiry struct {
+		StartTime string `json:"start_time"`
+		Duration  int64  `json:"duration"`
+		Unit      string `json:"unit"`
+	} `json:"expiry"`
+}
+
+func captureSnapExpiry(t *testing.T) (*MidtransClient, *snapExpiryBody, *int) {
+	t.Helper()
+	var body snapExpiryBody
+	calls := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"token": "t", "redirect_url": "https://pay.example.com/r"})
+	}))
+	t.Cleanup(ts.Close)
+	return newTestMidtransClient("test-server-key", ts), &body, &calls
+}
+
+// Without an explicit start_time Midtrans counts expiry from the moment the
+// customer charges, so a link opened late would outlive the order's deadline.
+func TestMidtransClient_CreatePayment_PinsExpiryToTheOrderDeadline(t *testing.T) {
+	client, body, _ := captureSnapExpiry(t)
+	deadline := time.Now().Add(90*time.Minute + 40*time.Second)
+
+	resp, err := client.CreatePayment(context.Background(), service.PaymentRequest{
+		OrderID: "order-deadline", Amount: 100000, ExpiresIn: 24 * time.Hour, ExpiresAt: deadline,
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment: %v", err)
+	}
+
+	if body.Expiry.StartTime == "" {
+		t.Fatal("snap request has no expiry.start_time: expiry would start when the customer charges")
+	}
+	start, err := time.Parse("2006-01-02 15:04:05 -0700", body.Expiry.StartTime)
+	if err != nil {
+		t.Fatalf("start_time %q is not yyyy-MM-dd HH:mm:ss Z: %v", body.Expiry.StartTime, err)
+	}
+	if body.Expiry.Unit != "minute" || body.Expiry.Duration < 1 {
+		t.Fatalf("expiry = %d %s, want a positive count of minutes", body.Expiry.Duration, body.Expiry.Unit)
+	}
+	if since := time.Since(start); since < 0 || since > 5*time.Second {
+		t.Errorf("start_time %v is not the session creation time", start)
+	}
+	end := start.Add(time.Duration(body.Expiry.Duration) * time.Minute)
+	if end.After(deadline) {
+		t.Errorf("gateway session ends %v, past the order deadline %v", end, deadline)
+	}
+	if deadline.Sub(end) >= time.Minute {
+		t.Errorf("gateway session ends %v, more than a minute short of the deadline %v", end, deadline)
+	}
+	if resp.ExpiresAt.After(deadline) {
+		t.Errorf("advertised ExpiresAt %v is past the order deadline %v", resp.ExpiresAt, deadline)
+	}
+	if !resp.ExpiresAt.Equal(end) {
+		t.Errorf("advertised ExpiresAt %v, gateway session ends %v", resp.ExpiresAt, end)
+	}
+}
+
+func TestMidtransClient_CreatePayment_RefusesWhenUnderAMinuteRemains(t *testing.T) {
+	client, _, calls := captureSnapExpiry(t)
+
+	resp, err := client.CreatePayment(context.Background(), service.PaymentRequest{
+		OrderID: "order-late", Amount: 100000, ExpiresIn: 24 * time.Hour, ExpiresAt: time.Now().Add(45 * time.Second),
+	})
+
+	if err == nil {
+		t.Fatal("CreatePayment with under a minute to the deadline succeeded")
+	}
+	if resp != (service.PaymentResponse{}) {
+		t.Errorf("resp = %+v, want no payment link", resp)
+	}
+	if *calls != 0 {
+		t.Errorf("gateway calls = %d, want 0", *calls)
 	}
 }

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -94,7 +95,7 @@ func TestCheckoutOrder_NullWeightGramsDoesNotError(t *testing.T) {
 	// leave the transaction open, or the later ALTER TABLE deadlocks on its
 	// ACCESS SHARE lock on order_item.
 	defer func() { _ = tx.Rollback(ctx) }()
-	err = repo.CheckoutOrder(ctx, tx, orderID)
+	err = repo.CheckoutOrder(ctx, tx, orderID, time.Hour)
 	require.NoError(t, err, "a NULL weight_grams must not error CheckoutOrder's scan")
 	require.NoError(t, tx.Commit(ctx))
 }

@@ -77,9 +77,22 @@ func (m *MidtransClient) CreatePayment(ctx context.Context, req service.PaymentR
 		snapReq.Callbacks = &snap.Callbacks{Finish: req.CallbackURL}
 	}
 
+	// Snap counts expiry from the customer's charge unless start_time is given,
+	// so pin it to now: the session then ends at start+whole minutes rounded
+	// down, never past the order's own deadline.
+	start := time.Now().Truncate(time.Second)
+	deadline := req.ExpiresAt
+	if deadline.IsZero() {
+		deadline = start.Add(req.ExpiresIn)
+	}
+	minutes := int64(deadline.Sub(start) / time.Minute)
+	if minutes < 1 {
+		return service.PaymentResponse{}, service.ErrPaymentDeadlineTooClose
+	}
 	snapReq.Expiry = &snap.ExpiryDetails{
-		Duration: int64(req.ExpiresIn.Hours()),
-		Unit:     "hour",
+		StartTime: start.Format("2006-01-02 15:04:05 -0700"),
+		Duration:  minutes,
+		Unit:      "minute",
 	}
 
 	resp, err := m.snap.CreateTransaction(snapReq)
@@ -91,7 +104,7 @@ func (m *MidtransClient) CreatePayment(ctx context.Context, req service.PaymentR
 		GatewayRef: req.OrderID,
 		SnapToken:  resp.Token,
 		PaymentURL: resp.RedirectURL,
-		ExpiresAt:  time.Now().Add(req.ExpiresIn),
+		ExpiresAt:  start.Add(time.Duration(minutes) * time.Minute),
 	}, nil
 }
 
