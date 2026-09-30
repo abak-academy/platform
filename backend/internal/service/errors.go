@@ -290,6 +290,11 @@ var (
 	// recorded against a status where money was actually taken. Maps to 422.
 	ErrOrderNotRefundable = errors.New("order not in refundable status")
 	ErrNoCarrierCode      = errors.New("order has no persisted courier code")
+
+	// ErrOrderNotPayable gates manual confirmation and reconciliation: only an
+	// order still awaiting payment can be marked paid. Expired, cancelled,
+	// refunded and already-paid orders stay as they are. Maps to 409.
+	ErrOrderNotPayable = errors.New("order is not awaiting payment")
 )
 
 // --- from student_bulk.go ---

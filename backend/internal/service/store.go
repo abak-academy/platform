@@ -1571,19 +1571,22 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key, 
 		return err
 	}
 
-	order, err := s.storeRepo.GetOrderByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	if order.ID.String() == "" {
-		return ErrOrderNotFound
-	}
-
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	order, err := s.storeRepo.GetOrderByIDForUpdateTx(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if order.ID == uuid.Nil {
+		return ErrOrderNotFound
+	}
+	if order.Status != "payment_pending" {
+		return ErrOrderNotPayable
+	}
 
 	// Manual settlement — a human asserting payment arrived, with proof, without
 	// gateway confirmation. The proof write, status flip and audit row all share
@@ -1715,22 +1718,24 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID, refund
 		return err
 	}
 
-	order, err := s.storeRepo.GetOrderByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	if order.ID.String() == "" {
-		return ErrOrderNotFound
-	}
-	if !refundableStatuses[order.Status] {
-		return ErrOrderNotRefundable
-	}
-
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	// Refundability is judged under the row lock so a concurrent refund or
+	// fulfilment cannot slip between the check and the status change.
+	order, err := s.storeRepo.GetOrderByIDForUpdateTx(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if order.ID == uuid.Nil {
+		return ErrOrderNotFound
+	}
+	if !refundableStatuses[order.Status] {
+		return ErrOrderNotRefundable
+	}
 
 	if err := s.storeRepo.SetOrderStatus(ctx, tx, id, "cancelled", "refunded"); err != nil {
 		return err
@@ -1786,7 +1791,7 @@ func (s *Service) AdminReconcileOrder(ctx context.Context, actorID, orderID, key
 	if err != nil {
 		return err
 	}
-	if order.ID.String() == "" {
+	if order.ID == uuid.Nil {
 		return ErrOrderNotFound
 	}
 	// Invariant 7: querying the gateway without a gateway_ref asks about no
@@ -1801,6 +1806,7 @@ func (s *Service) AdminReconcileOrder(ctx context.Context, actorID, orderID, key
 		return err
 	}
 
+	var notPayable error
 	if status.Paid {
 		tx, err := s.storeRepo.BeginTx(ctx)
 		if err != nil {
@@ -1808,16 +1814,53 @@ func (s *Service) AdminReconcileOrder(ctx context.Context, actorID, orderID, key
 		}
 		defer tx.Rollback(ctx)
 
-		actor := &actorID
-		if err := s.markOrderPaidTx(ctx, tx, order, actor, "order.reconcile", map[string]any{
-			"gateway_ref": order.GatewayRef,
-		}); err != nil {
+		// The pre-gateway read is stale by now; the order is judged again under
+		// its lock.
+		locked, err := s.storeRepo.GetOrderByIDForUpdateTx(ctx, tx, id)
+		if err != nil {
 			return err
+		}
+		if locked.ID == uuid.Nil {
+			return ErrOrderNotFound
+		}
+		actor := &actorID
+		switch {
+		case locked.Status == "payment_pending":
+			if err := s.markOrderPaidTx(ctx, tx, locked, actor, "order.reconcile", map[string]any{
+				"gateway_ref": locked.GatewayRef,
+			}); err != nil {
+				return err
+			}
+		case orderSettled(locked.Status):
+		default:
+			fresh, err := s.storeRepo.RecordLatePaymentTx(ctx, tx, id, locked.GatewayRef, map[string]any{
+				"source":       "reconcile",
+				"order_status": locked.Status,
+				"gateway_ref":  locked.GatewayRef,
+				"actor_id":     actorID,
+			})
+			if err != nil {
+				return err
+			}
+			if fresh {
+				if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, actor, "order", id.String(), "order.reconcile_late", map[string]any{
+					"gateway_ref":  locked.GatewayRef,
+					"order_status": locked.Status,
+				}); err != nil {
+					return err
+				}
+			}
+			slog.Warn("reconcile: gateway reports payment for an order that can no longer be fulfilled",
+				"order_id", id, "order_status", locked.Status)
+			notPayable = ErrOrderNotPayable
 		}
 
 		if err := tx.Commit(ctx); err != nil {
 			return err
 		}
+	}
+	if notPayable != nil {
+		return notPayable
 	}
 
 	if err := s.rdb.Set(ctx, cacheKey, "ok", 24*time.Hour).Err(); err != nil {
@@ -1919,19 +1962,49 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		return ErrOrderNotFound
 	}
 
-	order, err := s.storeRepo.GetOrderByID(ctx, orderID)
-	if err != nil {
-		return err
-	}
-	if order.ID.String() == "" {
-		return ErrOrderNotFound
-	}
-
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	// The order is judged under its row lock: a sweeper, refund or duplicate
+	// delivery that got there first has already changed what this settlement
+	// may do.
+	order, err := s.storeRepo.GetOrderByIDForUpdateTx(ctx, tx, orderID)
+	if err != nil {
+		return err
+	}
+	if order.ID == uuid.Nil {
+		return ErrOrderNotFound
+	}
+
+	switch {
+	case order.Status == "payment_pending":
+	case orderSettled(order.Status):
+		return s.cacheWebhookDone(ctx, cacheKey)
+	default:
+		// Answering 2xx on purpose: the payment is durably flagged for an
+		// operator, and a non-2xx would only make the gateway redeliver the
+		// same settlement until it gives up.
+		fresh, err := s.storeRepo.RecordLatePaymentTx(ctx, tx, orderID, latePaymentReference(notif, order), map[string]any{
+			"source":       "webhook",
+			"order_status": order.Status,
+			"gateway_ref":  order.GatewayRef,
+			"notification": json.RawMessage(payload),
+		})
+		if err != nil {
+			return err
+		}
+		if fresh {
+			slog.Warn("payment settled for an order that can no longer be fulfilled; flagged for reconciliation",
+				"order_id", orderID, "order_status", order.Status, "transaction_id", notif.TransactionID)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+		return s.cacheWebhookDone(ctx, cacheKey)
+	}
 
 	if err := s.storeRepo.InsertWebhookLog(ctx, tx, "payment_success", payload, notif.OrderID); err != nil {
 		return err
@@ -1966,11 +2039,27 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		return err
 	}
 
-	if err := s.rdb.Set(ctx, cacheKey, "ok", 24*time.Hour).Err(); err != nil {
-		return err
-	}
+	return s.cacheWebhookDone(ctx, cacheKey)
+}
 
-	return nil
+func (s *Service) cacheWebhookDone(ctx context.Context, cacheKey string) error {
+	return s.rdb.Set(ctx, cacheKey, "ok", 24*time.Hour).Err()
+}
+
+// orderSettled reports statuses an order only reaches after being paid.
+func orderSettled(status string) bool {
+	switch status {
+	case "paid", "processing", "shipped", "completed":
+		return true
+	}
+	return false
+}
+
+func latePaymentReference(notif MidtransNotification, order model.Order) string {
+	if notif.TransactionID != "" {
+		return notif.TransactionID
+	}
+	return order.GatewayRef
 }
 
 // isPhysicalType reports whether a product type is shipped physical inventory
