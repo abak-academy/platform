@@ -45,3 +45,78 @@ The original issue included a school marketplace and exam bulk ordering. Those a
 - In scope: student cart/checkout, reservation persistence and lifecycle, payment retry/webhook safety, fulfillment snapshot, focused client conflict handling, migration files and tests.
 - Out of scope: admin-school marketplace, participant pricing/fulfillment, changing existing exam bulk behavior, shipping redesign, partial bundle repricing, and running a live migration/deployment.
 - Residual risks: existing orders may contain duplicate active targets and require an audited rollout; gateway settlement arriving after release may require a manual refund because `PaymentClient` has no refund operation. #192 must adapt school/bulk paths to the same claim invariant before cross-flow safety can be claimed.
+
+## Rollout and operator audit (migration 0068)
+
+Facts the rollout plan rests on: `RunMigrations` runs at API startup (`backend/cmd/api/main.go`), takes no advisory lock, and applies each migration file in one transaction. `deploy/compose/production.yml` runs 2 API replicas plus a worker, and a plain `up -d` replaces them container by container, so old and new API versions can serve traffic at the same time. The migration is additive: the previous binary keeps running against it, but it neither creates claims nor releases them.
+
+### What the migration does to existing data
+
+- Creates `order_digital_target`, `order_digital_target_backfill_conflict` and `orders.digital_targets_snapshot_at`; no existing row is updated or deleted.
+- Backfills live claims only for student-buyer orders in `payment_pending` or `paid` that have digital lines and no `order_participant` rows. A `paid` order wins a contested target over an unpaid one; ties go to the earliest placed order, then order id, then item id. Every loser is written to `order_digital_target_backfill_conflict` with the winning order id. Nothing is refunded, cancelled or auto-resolved.
+- Backfilled orders get no snapshot marker, so the worker keeps fulfilling them from the product's live links.
+- Fulfilled orders (`processing`, `shipped`, `completed`) are not claimed; their live `course_session` / `exam_registration` already blocks a repurchase.
+
+### Preconditions
+
+1. **Drain old API replicas before 0068 can serve new traffic.** After 0068 commits, no old-version API replica may serve `POST /orders/:id/checkout`. An old replica's checkout creates a `payment_pending` order with no claim, which the uniqueness guarantee cannot see. The backfill does not run again. Stop the old `api` containers (or take checkout offline at nginx) before starting the first new API replica, and keep them stopped. `up -d` alone does not guarantee this.
+2. **Upgrade the worker no later than the API.** An old worker ignores the snapshot and grants from live links, which loses the link-edit protection for orders placed by new replicas. It does not break fulfilment. A new worker handles orders without a snapshot by the fallback, so upgrading it first is safe.
+3. **Expect one transient startup failure if two new API replicas start together.** The second replica's migration blocks on the first, then its backfill fails on the unique claim index and it exits; after a restart it sees the migration recorded and continues. The backfill insert deliberately has no `ON CONFLICT DO NOTHING`, so a claim created by a new-version checkout in between is never skipped silently.
+4. **Run the pre-deploy audit below and review contested targets before the deploy window.** No shared-database migration or data operation is performed by this repository's tests or by these documents.
+5. **Rollback** to the previous image is schema-safe (0068 is additive), but checkouts served by the old binary create no claims and refunds by the old binary release none. Repeat audit query 3 after any rollback and after rolling forward again, because the backfill does not re-run. The `.down.sql` drops the audit table and claims; do not run it once orders depend on them.
+
+### Operator audit (read-only queries)
+
+Run against the shared database only with explicit authorization; the queries change nothing.
+
+**1. Before deploy: contested in-flight targets.** Each row is a student with two or more in-flight lines for one course or exam. Every row will produce at least one conflict-table row.
+
+```sql
+WITH in_flight AS (
+    SELECT o.id AS order_id, o.student_id, 'course'::text AS kind, pc.course_id AS target_id
+      FROM orders o
+      JOIN users u ON u.id = o.student_id AND u.role = 'student'
+      JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'course'
+      JOIN product_course pc ON pc.product_id = oi.product_id
+     WHERE o.status IN ('payment_pending', 'paid')
+       AND NOT EXISTS (SELECT 1 FROM order_participant op WHERE op.order_id = o.id)
+    UNION ALL
+    SELECT o.id, o.student_id, 'exam'::text, pe.exam_id
+      FROM orders o
+      JOIN users u ON u.id = o.student_id AND u.role = 'student'
+      JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'exam'
+      JOIN product_exam pe ON pe.product_id = oi.product_id
+     WHERE o.status IN ('payment_pending', 'paid')
+       AND NOT EXISTS (SELECT 1 FROM order_participant op WHERE op.order_id = o.id)
+)
+SELECT student_id, kind, target_id, count(*) AS in_flight_lines, array_agg(order_id ORDER BY order_id) AS orders
+  FROM in_flight
+ GROUP BY student_id, kind, target_id
+HAVING count(*) > 1
+ ORDER BY student_id, kind, target_id;
+```
+
+**2. After deploy: backfill conflicts to resolve.** Each row is an in-flight order that lost a contested target. Decide per row (for example refund or cancel the loser through the existing admin flow); the losing order holds no claim, so its refund releases nothing.
+
+```sql
+SELECT * FROM order_digital_target_backfill_conflict ORDER BY detected_at, order_id;
+```
+
+**3. After deploy, after old replicas are gone, and after any rollback: in-flight digital orders with no live claim.** Expected rows are the backfill losers from query 2. Any other row was checked out by an old-version replica (or by a product with no linked targets) and needs the same manual review.
+
+```sql
+SELECT o.id AS order_id, o.status, o.student_id, oi.id AS order_item_id, oi.product_id, oi.product_type
+  FROM orders o
+  JOIN users u ON u.id = o.student_id AND u.role = 'student'
+  JOIN order_item oi ON oi.order_id = o.id AND oi.product_type IN ('course', 'exam')
+ WHERE o.status IN ('payment_pending', 'paid')
+   AND NOT EXISTS (SELECT 1 FROM order_participant op WHERE op.order_id = o.id)
+   AND NOT EXISTS (SELECT 1 FROM order_digital_target t
+                    WHERE t.order_item_id = oi.id AND t.released_at IS NULL)
+ ORDER BY o.id, oi.id;
+```
+
+### Residual risk
+
+- Until the old replicas are drained, duplicate purchases from an old replica are possible; the audit detects them but nothing repairs them automatically.
+- The order of a rolling replace across replicas is decided by the operator, not by the migration. If the drain in precondition 1 cannot be guaranteed, a maintenance window for checkout is the only safe choice, and that is a deploy decision for the owners rather than a code change.
