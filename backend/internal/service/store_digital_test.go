@@ -476,25 +476,35 @@ func TestDigitalPurchase_PhysicalOnlyOrderTakesNoSnapshot(t *testing.T) {
 	}
 }
 
-// waitForLockWaiters polls until at least want backends wait on a lock. Checkout
-// reaching the unique claim insert while a rival's claim is still uncommitted
-// shows up here, so the tests below know it is blocked from observed DB state
-// rather than a guessed delay.
-func waitForLockWaiters(t *testing.T, repo *repository.Repository, want int) {
+// waitForWaitersBehind polls until at least want backends are blocked, directly
+// or through another waiter, by holder's transaction. Scoping the wait to the
+// holder means an unrelated lock waiter in the shared database cannot satisfy
+// it, and a checkout that never reaches the lock fails the test instead of
+// slipping past the ordering it describes.
+func waitForWaitersBehind(t *testing.T, repo *repository.Repository, holder pgx.Tx, want int) {
 	t.Helper()
+	ctx := context.Background()
+	var holderPID int
+	if err := holder.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&holderPID); err != nil {
+		t.Fatalf("read holder pid: %v", err)
+	}
 	deadline := time.Now().Add(15 * time.Second)
 	for {
 		var n int
-		if err := repo.Pool().QueryRow(context.Background(),
-			`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+		if err := repo.Pool().QueryRow(ctx,
+			`WITH RECURSIVE blocked AS (
+			     SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))
+			     UNION
+			     SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid = ANY(pg_blocking_pids(a.pid))
+			 ) SELECT count(*) FROM blocked`, holderPID,
 		).Scan(&n); err != nil {
-			t.Fatalf("read lock waiters: %v", err)
+			t.Fatalf("read waiters: %v", err)
 		}
 		if n >= want {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("lock waiters = %d, want %d: checkout never blocked on the rival's uncommitted claim", n, want)
+			t.Fatalf("waiters behind the holder = %d, want %d: checkout never blocked on the rival's uncommitted claim", n, want)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -554,7 +564,7 @@ func TestDigitalPurchase_CheckoutBlocksOnUncommittedRivalClaimAndLosesWhenItComm
 		done <- err
 	}()
 
-	waitForLockWaiters(t, repo, 1)
+	waitForWaitersBehind(t, repo, rival, 1)
 	select {
 	case err := <-done:
 		t.Fatalf("Checkout returned %v before the rival claim resolved", err)
@@ -596,7 +606,7 @@ func TestDigitalPurchase_CheckoutWinsWhenRivalRollsBackAndDoubleSubmitPaysOnce(t
 			done <- err
 		}()
 	}
-	waitForLockWaiters(t, repo, 2)
+	waitForWaitersBehind(t, repo, rival, 2)
 	if err := rival.Rollback(ctx); err != nil {
 		t.Fatalf("rollback rival: %v", err)
 	}

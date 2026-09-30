@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 func (e *lifecycleEnv) paidOrder(t *testing.T, student uuid.UUID, products ...uuid.UUID) uuid.UUID {
@@ -40,6 +41,34 @@ func (e *lifecycleEnv) pollAll(t *testing.T, ctx context.Context) {
 			return
 		}
 		e.w.pollOutbox(ctx)
+	}
+}
+
+// waitForWaitersBehind polls until a backend is blocked, directly or through
+// another waiter, by holder's transaction, so the test knows the worker reached
+// the order row lock from observed database state instead of a guessed delay.
+func waitForWaitersBehind(t *testing.T, e *lifecycleEnv, holder pgx.Tx, want int) {
+	t.Helper()
+	ctx := context.Background()
+	var holderPID int
+	if err := holder.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&holderPID); err != nil {
+		t.Fatalf("read holder pid: %v", err)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		n := e.count(t,
+			`WITH RECURSIVE blocked AS (
+			     SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))
+			     UNION
+			     SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid = ANY(pg_blocking_pids(a.pid))
+			 ) SELECT count(*) FROM blocked`, holderPID)
+		if n >= want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waiters behind the refund = %d, want %d: the worker never blocked on the order row", n, want)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
@@ -139,7 +168,7 @@ func TestOrderPaid_WaitsForRefundHoldingTheOrderAndGrantsNothing(t *testing.T) {
 		defer close(done)
 		env.pollAll(t, ctx)
 	}()
-	time.Sleep(300 * time.Millisecond)
+	waitForWaitersBehind(t, env, refundTx, 1)
 
 	if _, err := refundTx.Exec(ctx, `UPDATE orders SET status = 'cancelled', cancellation_reason = 'refunded' WHERE id = $1`, orderID); err != nil {
 		t.Fatalf("cancel: %v", err)
