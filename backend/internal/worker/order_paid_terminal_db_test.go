@@ -45,14 +45,28 @@ func (e *lifecycleEnv) refund(t *testing.T, orderID uuid.UUID) {
 	}
 }
 
-// pollAll drains the outbox: the database is shared across tests, so events
-// queued by earlier tests come first and one poll claims only ten.
-func (e *lifecycleEnv) pollAll(t *testing.T, ctx context.Context) {
+// pollAllErr drains the outbox and reports failures instead of touching
+// *testing.T, so a goroutine other than the test's can run it. The database is
+// shared across tests, so events queued by earlier tests come first and one
+// poll claims only ten.
+func (e *lifecycleEnv) pollAllErr(ctx context.Context) error {
 	for i := 0; i < 50; i++ {
-		if e.count(t, `SELECT count(*) FROM outbox WHERE processed_at IS NULL`) == 0 {
-			return
+		var n int
+		if err := e.repo.Pool().QueryRow(ctx, `SELECT count(*) FROM outbox WHERE processed_at IS NULL`).Scan(&n); err != nil {
+			return fmt.Errorf("count pending outbox: %w", err)
+		}
+		if n == 0 {
+			return nil
 		}
 		e.w.pollOutbox(ctx)
+	}
+	return fmt.Errorf("outbox did not drain after 50 polls")
+}
+
+func (e *lifecycleEnv) pollAll(t *testing.T, ctx context.Context) {
+	t.Helper()
+	if err := e.pollAllErr(ctx); err != nil {
+		t.Fatalf("poll outbox: %v", err)
 	}
 }
 
@@ -173,10 +187,9 @@ func TestOrderPaid_WaitsForRefundHoldingTheOrderAndGrantsNothing(t *testing.T) {
 		t.Fatalf("lock order: %v", err)
 	}
 
-	done := make(chan struct{})
+	pollDone := make(chan error, 1)
 	go func() {
-		defer close(done)
-		env.pollAll(t, ctx)
+		pollDone <- env.pollAllErr(ctx)
 	}()
 	waitForWaitersBehind(t, env, refundTx, 1)
 
@@ -186,7 +199,7 @@ func TestOrderPaid_WaitsForRefundHoldingTheOrderAndGrantsNothing(t *testing.T) {
 	if err := refundTx.Commit(ctx); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
-	<-done
+	<-pollDone
 
 	if got := env.activeEnrollments(t, student, course); got != 0 {
 		t.Errorf("active enrollments = %d, want 0: worker fulfilled an order refunded while it was handling the event", got)
@@ -239,16 +252,20 @@ func TestOrderPaid_ConcurrentRefundNeverLeavesAccessOnACancelledOrder(t *testing
 
 		var wg sync.WaitGroup
 		refundDone := make(chan error, 1)
+		pollDone := make(chan error, 1)
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			env.pollAll(t, ctx)
+			pollDone <- env.pollAllErr(ctx)
 		}()
 		go func() {
 			defer wg.Done()
 			refundDone <- env.refundErr(orderID)
 		}()
 		wg.Wait()
+		if err := <-pollDone; err != nil {
+			t.Fatalf("iteration %d: poll outbox: %v", i, err)
+		}
 		if err := <-refundDone; err != nil {
 			t.Fatalf("iteration %d: %v", i, err)
 		}
