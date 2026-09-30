@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -40,6 +41,74 @@ func (r *Repository) ExpirePaymentOrderTx(ctx context.Context, tx pgx.Tx, orderI
 		return false, err
 	}
 	return true, nil
+}
+
+// RecordLatePaymentTx durably flags a payment that the gateway reports for an
+// order that can no longer be fulfilled (expired, cancelled, refunded), for an
+// operator to reconcile or refund by hand: webhook_log rows of event_type
+// 'payment_late', keyed by the order id in gateway_ref. One flag exists per
+// order and payment, so redelivered webhooks and repeated reconciles do not
+// pile up rows; the caller's row lock on the order serializes concurrent
+// writers. A reference equal to detail["gateway_ref"] means the gateway's
+// transaction id is unknown (reconcile never learns it): such a flag is
+// skipped when the order already has any, and is attributed to the transaction
+// id in place when a webhook later names it, on the assumption that a gateway
+// order settles once. Distinct transaction ids stay distinct flags. It reports whether a new
+// flag was written. audit_log cannot carry the flag because it requires an
+// actor and a webhook has none.
+func (r *Repository) RecordLatePaymentTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, reference string, detail map[string]any) (bool, error) {
+	// Copy before adding the reference: the caller's map is not ours to mutate.
+	withReference := make(map[string]any, len(detail)+1)
+	for k, v := range detail {
+		withReference[k] = v
+	}
+	withReference["reference"] = reference
+	payload, err := json.Marshal(withReference)
+	if err != nil {
+		return false, err
+	}
+	key := orderID.String()
+	gatewayRef, _ := detail["gateway_ref"].(string)
+
+	if reference == "" || reference == gatewayRef {
+		tag, err := tx.Exec(ctx,
+			`INSERT INTO webhook_log (event_type, payload, gateway_ref)
+			 SELECT 'payment_late', $1::jsonb, $2
+			 WHERE NOT EXISTS (SELECT 1 FROM webhook_log WHERE event_type = 'payment_late' AND gateway_ref = $2)`,
+			payload, key,
+		)
+		if err != nil {
+			return false, err
+		}
+		return tag.RowsAffected() > 0, nil
+	}
+
+	var known bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM webhook_log
+		     WHERE event_type = 'payment_late' AND gateway_ref = $1 AND payload->>'reference' = $2)`,
+		key, reference,
+	).Scan(&known); err != nil || known {
+		return false, err
+	}
+	if gatewayRef != "" {
+		tag, err := tx.Exec(ctx,
+			`UPDATE webhook_log SET payload = payload || $1::jsonb
+			 WHERE event_type = 'payment_late' AND gateway_ref = $2 AND payload->>'reference' = $3`,
+			payload, key, gatewayRef,
+		)
+		if err != nil {
+			return false, err
+		}
+		if tag.RowsAffected() > 0 {
+			return false, nil
+		}
+	}
+	_, err = tx.Exec(ctx,
+		`INSERT INTO webhook_log (event_type, payload, gateway_ref) VALUES ('payment_late', $1::jsonb, $2)`,
+		payload, key,
+	)
+	return err == nil, err
 }
 
 // PaymentDeadlineElapsedTx judges the deadline on the database clock, the same

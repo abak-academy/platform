@@ -9,7 +9,8 @@ import (
 )
 
 // Past the deadline there is no grace: whichever of webhook and sweeper takes
-// the order lock first expires it exactly once, and the settlement is never fulfilled.
+// the order lock first expires it exactly once, and the settlement is flagged,
+// never fulfilled.
 func TestSweepStalePayments_ConcurrentWebhookPastDeadlineAlwaysExpiresOnce(t *testing.T) {
 	env := newLifecycleEnv(t)
 	ctx := context.Background()
@@ -41,6 +42,9 @@ func TestSweepStalePayments_ConcurrentWebhookPastDeadlineAlwaysExpiresOnce(t *te
 		}
 		if got := env.count(t, `SELECT count(*) FROM outbox WHERE aggregate_id = $1 AND event_type = 'OrderPaid'`, orderID); got != 0 {
 			t.Errorf("iteration %d: OrderPaid events = %d, want 0", i, got)
+		}
+		if got := env.count(t, `SELECT count(*) FROM webhook_log WHERE event_type = 'payment_late' AND gateway_ref = $1`, orderID.String()); got > 1 {
+			t.Errorf("iteration %d: late flags = %d, want at most 1", i, got)
 		}
 	}
 }
