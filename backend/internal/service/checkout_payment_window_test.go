@@ -127,8 +127,8 @@ func TestRetryPayment_RefusedWithLessThanAMinuteLeft(t *testing.T) {
 
 	_, err := svc.RetryPayment(context.Background(), student.String(), orderID.String(), retryKey())
 
-	if !errors.Is(err, ErrPaymentExpired) {
-		t.Fatalf("err = %v, want ErrPaymentExpired", err)
+	if !errors.Is(err, ErrPaymentDeadlineTooClose) {
+		t.Fatalf("err = %v, want ErrPaymentDeadlineTooClose", err)
 	}
 	if got := pay.creates.Load() - before; got != 0 {
 		t.Errorf("gateway calls = %d, want 0", got)

@@ -1333,7 +1333,7 @@ func bindPaymentDeadline(req *PaymentRequest, deadline *time.Time) error {
 	}
 	remaining := time.Until(at)
 	if remaining < time.Minute {
-		return ErrPaymentExpired
+		return ErrPaymentDeadlineTooClose
 	}
 	req.ExpiresAt = at
 	req.ExpiresIn = remaining
