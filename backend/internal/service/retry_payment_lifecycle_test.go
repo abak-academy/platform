@@ -193,6 +193,65 @@ func TestRetryPayment_RefusesLegacyOrderWhoseTargetAnotherOrderHolds(t *testing.
 	}
 }
 
+// Migration 0068 can claim only one target of a legacy bundle and record the
+// other as a backfill conflict; the order stays unsnapshotted, so a retry must
+// still check the target it lost, not just the one it owns.
+func TestRetryPayment_LegacyBundleWithOnlyOneTargetClaimedStillChecksTheLostOne(t *testing.T) {
+	svc, repo, pay := newLifecycleService(t)
+	ctx := context.Background()
+	student := newDigitalStudent(t, repo)
+	kept, lost := seedCourseTarget(t, repo), seedCourseTarget(t, repo)
+	bundle := seedDigitalProduct(t, repo, "course", 90000, kept, lost)
+	single := seedDigitalProduct(t, repo, "course", 40000, lost)
+	legacy := pendingCourseOrderFor(t, svc, student, bundle)
+
+	var winner, winnerItem uuid.UUID
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total, checked_out_at)
+		 VALUES ($1, 'paid', 40000, 0, 0, 40000, now()) RETURNING id`, student,
+	).Scan(&winner); err != nil {
+		t.Fatalf("seed winning order: %v", err)
+	}
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah)
+		 VALUES ($1, $2, 'course', 'x', 40000, 1, 40000) RETURNING id`, winner, single,
+	).Scan(&winnerItem); err != nil {
+		t.Fatalf("seed winning item: %v", err)
+	}
+	var legacyItem uuid.UUID
+	if err := repo.Pool().QueryRow(ctx, `SELECT id FROM order_item WHERE order_id = $1`, legacy).Scan(&legacyItem); err != nil {
+		t.Fatalf("read legacy item: %v", err)
+	}
+	for _, stmt := range []struct {
+		sql  string
+		args []any
+	}{
+		{`DELETE FROM order_digital_target WHERE order_id = $1 AND target_id = $2`, []any{legacy, lost}},
+		{`UPDATE orders SET digital_targets_snapshot_at = NULL WHERE id = $1`, []any{legacy}},
+		{`INSERT INTO order_digital_target (order_id, order_item_id, student_id, target_kind, target_id)
+		  VALUES ($1, $2, $3, 'course', $4)`, []any{winner, winnerItem, student, lost}},
+		{`INSERT INTO order_digital_target_backfill_conflict (order_id, order_item_id, student_id, target_kind, target_id, winning_order_id)
+		  VALUES ($1, $2, $3, 'course', $4, $5)`, []any{legacy, legacyItem, student, lost, winner}},
+	} {
+		if _, err := repo.Pool().Exec(ctx, stmt.sql, stmt.args...); err != nil {
+			t.Fatalf("simulate partial backfill: %v", err)
+		}
+	}
+	before := pay.creates.Load()
+
+	_, err := svc.RetryPayment(ctx, student.String(), legacy.String(), retryKey())
+
+	conflict := wantConflict(t, err, model.DigitalConflictClaimed)
+	for _, c := range conflict.Conflicts {
+		if c.TargetID == kept {
+			t.Errorf("conflicts = %+v: the order's own claim on %v is its reservation, not a conflict", conflict.Conflicts, kept)
+		}
+	}
+	if got := pay.creates.Load() - before; got != 0 {
+		t.Errorf("gateway calls = %d, want 0", got)
+	}
+}
+
 func pendingCourseOrderFor(t *testing.T, svc *Service, student, product uuid.UUID) uuid.UUID {
 	t.Helper()
 	orderID := cartOf(t, svc, student, product)

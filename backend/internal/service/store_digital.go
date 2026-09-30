@@ -157,7 +157,9 @@ func (s *Service) reserveDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 // already checked out, before a new payment is created for it. The order's own
 // claims are its reservation, not a conflict; what can still block it is access
 // granted since checkout, or another order's claim on a target the order never
-// claimed (orders placed before claims existed).
+// claimed. An order without a snapshot (placed before claims existed, possibly
+// backfilled with only some of its targets) is fulfilled from live links, so all
+// of them are checked, not just the ones it owns.
 func (s *Service) recheckDigitalTargets(ctx context.Context, tx pgx.Tx, order model.Order) error {
 	digital := false
 	for _, item := range order.Items {
@@ -180,9 +182,16 @@ func (s *Service) recheckDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 		return err
 	}
 
-	targets, err := s.storeRepo.ListOrderDigitalTargetsTx(ctx, tx, order.ID)
+	snapshot, err := s.storeRepo.GetOrderDigitalSnapshot(ctx, order.ID)
 	if err != nil {
 		return err
+	}
+	var targets []model.DigitalTarget
+	if snapshot.Taken {
+		targets, err = s.storeRepo.ListOrderDigitalTargetsTx(ctx, tx, order.ID)
+		if err != nil {
+			return err
+		}
 	}
 	if len(targets) == 0 {
 		targets, err = s.resolveDigitalTargets(ctx, tx, order.Items)
