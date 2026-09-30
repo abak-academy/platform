@@ -122,18 +122,7 @@ func orderPaidEvents(t *testing.T, repo *repository.Repository, orderID uuid.UUI
 	return n
 }
 
-func latePaymentFlags(t *testing.T, repo *repository.Repository, orderID uuid.UUID) int {
-	t.Helper()
-	var n int
-	if err := repo.Pool().QueryRow(context.Background(),
-		`SELECT count(*) FROM webhook_log WHERE event_type = 'payment_late' AND gateway_ref = $1`, orderID.String(),
-	).Scan(&n); err != nil {
-		t.Fatalf("count late flags: %v", err)
-	}
-	return n
-}
-
-func TestWebhook_SettlementOnExpiredOrderIsFlaggedAndNotFulfilled(t *testing.T) {
+func TestWebhook_SettlementOnExpiredOrderIsAcknowledgedAndNotFulfilled(t *testing.T) {
 	svc, repo, _ := newLifecycleService(t)
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
@@ -152,12 +141,9 @@ func TestWebhook_SettlementOnExpiredOrderIsFlaggedAndNotFulfilled(t *testing.T) 
 	if got := orderPaidEvents(t, repo, orderID); got != 0 {
 		t.Errorf("OrderPaid events = %d, want 0", got)
 	}
-	if got := latePaymentFlags(t, repo, orderID); got != 1 {
-		t.Errorf("late payment flags = %d, want exactly 1 across repeated deliveries", got)
-	}
 }
 
-func TestWebhook_SettlementOnRefundedOrderIsFlaggedAndNotResurrected(t *testing.T) {
+func TestWebhook_SettlementOnRefundedOrderIsAcknowledgedAndNotResurrected(t *testing.T) {
 	svc, repo, _ := newLifecycleService(t)
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
@@ -180,9 +166,6 @@ func TestWebhook_SettlementOnRefundedOrderIsFlaggedAndNotResurrected(t *testing.
 	if got := orderPaidEvents(t, repo, orderID); got != 1 {
 		t.Errorf("OrderPaid events = %d, want the original 1 only", got)
 	}
-	if got := latePaymentFlags(t, repo, orderID); got != 1 {
-		t.Errorf("late payment flags = %d, want 1", got)
-	}
 }
 
 func TestWebhook_RepeatedSettlementEmitsOneOrderPaid(t *testing.T) {
@@ -202,9 +185,6 @@ func TestWebhook_RepeatedSettlementEmitsOneOrderPaid(t *testing.T) {
 	}
 	if got := orderPaidEvents(t, repo, orderID); got != 1 {
 		t.Errorf("OrderPaid events = %d, want 1", got)
-	}
-	if got := latePaymentFlags(t, repo, orderID); got != 0 {
-		t.Errorf("late payment flags = %d, want 0 for a repeat of a legitimate settlement", got)
 	}
 }
 
@@ -248,7 +228,7 @@ func TestAdminConfirmOrder_RefusesOrdersThatAreNotAwaitingPayment(t *testing.T) 
 	}
 }
 
-func TestAdminReconcileOrder_GatewayPaidOnExpiredOrderIsFlaggedNotMarkedPaid(t *testing.T) {
+func TestAdminReconcileOrder_GatewayPaidOnExpiredOrderIsRefusedNotMarkedPaid(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
@@ -269,9 +249,6 @@ func TestAdminReconcileOrder_GatewayPaidOnExpiredOrderIsFlaggedNotMarkedPaid(t *
 	}
 	if got := orderPaidEvents(t, repo, orderID); got != 0 {
 		t.Errorf("OrderPaid events = %d, want 0", got)
-	}
-	if got := latePaymentFlags(t, repo, orderID); got != 1 {
-		t.Errorf("late payment flags = %d, want 1 (durably flagged once)", got)
 	}
 }
 
@@ -438,9 +415,6 @@ func TestWebhook_SettlementPastDeadlineBeforeSweepExpiresOrderInsteadOfFulfillin
 	if got := orderPaidEvents(t, repo, orderID); got != 0 {
 		t.Errorf("OrderPaid events = %d, want 0", got)
 	}
-	if got := latePaymentFlags(t, repo, orderID); got != 1 {
-		t.Errorf("late payment flags = %d, want 1", got)
-	}
 	if got := stockOf(t, repo, book); got != 5 {
 		t.Errorf("book stock = %d, want 5 (restored once)", got)
 	}
@@ -456,30 +430,7 @@ func TestWebhook_SettlementPastDeadlineBeforeSweepExpiresOrderInsteadOfFulfillin
 	}
 }
 
-func TestWebhook_LateFlagCarriesOrderAndTransactionContext(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	elapseDeadline(t, repo, orderID)
-
-	if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-ctx"), "sig", uuid.NewString()); err != nil {
-		t.Fatalf("webhook: %v", err)
-	}
-
-	var reference, status, source string
-	if err := repo.Pool().QueryRow(ctx,
-		`SELECT payload->>'reference', payload->>'order_status', payload->>'source'
-		 FROM webhook_log WHERE event_type = 'payment_late' AND gateway_ref = $1`, orderID.String(),
-	).Scan(&reference, &status, &source); err != nil {
-		t.Fatalf("read late flag: %v", err)
-	}
-	if reference != "tx-ctx" || status != "payment_expired" || source != "webhook" {
-		t.Errorf("flag = reference %q, status %q, source %q; want tx-ctx, payment_expired, webhook", reference, status, source)
-	}
-}
-
-func TestAdminReconcileOrder_GatewayPaidPastDeadlineExpiresOrderAndFlags(t *testing.T) {
+func TestAdminReconcileOrder_GatewayPaidPastDeadlineExpiresOrderAndIsRefused(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
@@ -500,9 +451,6 @@ func TestAdminReconcileOrder_GatewayPaidPastDeadlineExpiresOrderAndFlags(t *test
 	}
 	if got := orderPaidEvents(t, repo, orderID); got != 0 {
 		t.Errorf("OrderPaid events = %d, want 0", got)
-	}
-	if got := latePaymentFlags(t, repo, orderID); got != 1 {
-		t.Errorf("late payment flags = %d, want 1", got)
 	}
 	if got := stockOf(t, repo, book); got != 5 {
 		t.Errorf("book stock = %d, want 5 (restored once)", got)
@@ -543,100 +491,3 @@ func TestWebhook_SettlementBeforeDeadlineIsStillFulfilled(t *testing.T) {
 	}
 }
 
-func lateFlagReferences(t *testing.T, repo *repository.Repository, orderID uuid.UUID) []string {
-	t.Helper()
-	rows, err := repo.Pool().Query(context.Background(),
-		`SELECT payload->>'reference' FROM webhook_log
-		 WHERE event_type = 'payment_late' AND gateway_ref = $1 ORDER BY payload->>'reference'`, orderID.String())
-	if err != nil {
-		t.Fatalf("read late flags: %v", err)
-	}
-	defer rows.Close()
-	var refs []string
-	for rows.Next() {
-		var ref string
-		if err := rows.Scan(&ref); err != nil {
-			t.Fatalf("scan: %v", err)
-		}
-		refs = append(refs, ref)
-	}
-	return refs
-}
-
-func expiredOrderWithLateGatewayPayment(t *testing.T) (*Service, *repository.Repository, uuid.UUID, string) {
-	t.Helper()
-	svc, repo, pay := newLifecycleService(t)
-	student := newDigitalStudent(t, repo)
-	actor := insertAdminActor(t, repo, "lateflag_")
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	expireOrderNow(t, repo, orderID)
-	pay.paid.Store(true)
-	return svc, repo, orderID, actor
-}
-
-// Reconcile cannot learn the gateway's transaction id, so it flags under the
-// order's gateway reference; that must not double-count a payment the webhook
-// already flagged under its transaction id.
-func TestLatePayment_ReconcileAfterWebhookDoesNotFlagTheSamePaymentTwice(t *testing.T) {
-	svc, repo, orderID, actor := expiredOrderWithLateGatewayPayment(t)
-	ctx := context.Background()
-	if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-a"), "sig", uuid.NewString()); err != nil {
-		t.Fatalf("webhook: %v", err)
-	}
-
-	for i := 0; i < 2; i++ {
-		if err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix()); !errors.Is(err, ErrOrderNotPayable) {
-			t.Fatalf("reconcile #%d err = %v, want ErrOrderNotPayable", i, err)
-		}
-	}
-
-	if refs := lateFlagReferences(t, repo, orderID); len(refs) != 1 || refs[0] != "tx-a" {
-		t.Errorf("late flag references = %v, want only [tx-a]", refs)
-	}
-}
-
-func TestLatePayment_WebhookAfterReconcileAttributesTheExistingFlag(t *testing.T) {
-	svc, repo, orderID, actor := expiredOrderWithLateGatewayPayment(t)
-	ctx := context.Background()
-	if err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix()); !errors.Is(err, ErrOrderNotPayable) {
-		t.Fatalf("reconcile err = %v, want ErrOrderNotPayable", err)
-	}
-
-	for i := 0; i < 2; i++ {
-		if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-b"), "sig", uuid.NewString()); err != nil {
-			t.Fatalf("webhook #%d: %v", i, err)
-		}
-	}
-
-	refs := lateFlagReferences(t, repo, orderID)
-	if len(refs) != 1 || refs[0] != "tx-b" {
-		t.Fatalf("late flag references = %v, want the reconcile flag attributed to [tx-b]", refs)
-	}
-	var source, notified string
-	if err := repo.Pool().QueryRow(ctx,
-		`SELECT payload->>'source', payload->'notification'->>'transaction_id' FROM webhook_log
-		 WHERE event_type = 'payment_late' AND gateway_ref = $1`, orderID.String(),
-	).Scan(&source, &notified); err != nil {
-		t.Fatalf("read flag: %v", err)
-	}
-	if notified != "tx-b" {
-		t.Errorf("flag carries notification transaction %q, want tx-b so an operator can refund it", notified)
-	}
-}
-
-func TestLatePayment_DistinctTransactionsAreFlaggedSeparately(t *testing.T) {
-	svc, repo, orderID, actor := expiredOrderWithLateGatewayPayment(t)
-	ctx := context.Background()
-	for _, tx := range []string{"tx-one", "tx-two", "tx-one"} {
-		if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, tx), "sig", uuid.NewString()); err != nil {
-			t.Fatalf("webhook %s: %v", tx, err)
-		}
-	}
-	if err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix()); !errors.Is(err, ErrOrderNotPayable) {
-		t.Fatalf("reconcile err = %v, want ErrOrderNotPayable", err)
-	}
-
-	if refs := lateFlagReferences(t, repo, orderID); len(refs) != 2 || refs[0] != "tx-one" || refs[1] != "tx-two" {
-		t.Errorf("late flag references = %v, want [tx-one tx-two]", refs)
-	}
-}

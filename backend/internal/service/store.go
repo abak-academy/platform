@@ -1970,23 +1970,7 @@ func (s *Service) AdminReconcileOrder(ctx context.Context, actorID, orderID, key
 			}
 		case orderSettled(locked.Status):
 		default:
-			fresh, err := s.storeRepo.RecordLatePaymentTx(ctx, tx, id, locked.GatewayRef, map[string]any{
-				"source":       "reconcile",
-				"order_status": locked.Status,
-				"gateway_ref":  locked.GatewayRef,
-				"actor_id":     actorID,
-			})
-			if err != nil {
-				return err
-			}
-			if fresh {
-				if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, actor, "order", id.String(), "order.reconcile_late", map[string]any{
-					"gateway_ref":  locked.GatewayRef,
-					"order_status": locked.Status,
-				}); err != nil {
-					return err
-				}
-			}
+			// Recording this payment is #196.
 			slog.Warn("reconcile: gateway reports payment for an order that can no longer be fulfilled",
 				"order_id", id, "order_status", locked.Status)
 			notPayable = ErrOrderNotPayable
@@ -2118,8 +2102,8 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 
 	// No grace after the deadline: a pending order whose deadline has passed is
 	// expired here, under the lock and with the sweeper's own transition (stock
-	// and claims released once), instead of being fulfilled because the worker
-	// has not ticked yet. The settlement then falls into the late-payment path.
+	// released once), instead of being fulfilled because the worker has not
+	// ticked yet.
 	if order.Status == "payment_pending" {
 		expired, err := s.storeRepo.ExpirePaymentOrderTx(ctx, tx, orderID)
 		if err != nil {
@@ -2135,22 +2119,9 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 	case orderSettled(order.Status):
 		return s.cacheWebhookDone(ctx, cacheKey)
 	default:
-		// Answering 2xx on purpose: the payment is durably flagged for an
-		// operator, and a non-2xx would only make the gateway redeliver the
-		// same settlement until it gives up.
-		fresh, err := s.storeRepo.RecordLatePaymentTx(ctx, tx, orderID, latePaymentReference(notif, order), map[string]any{
-			"source":       "webhook",
-			"order_status": order.Status,
-			"gateway_ref":  order.GatewayRef,
-			"notification": json.RawMessage(payload),
-		})
-		if err != nil {
-			return err
-		}
-		if fresh {
-			slog.Warn("payment settled for an order that can no longer be fulfilled; flagged for reconciliation",
-				"order_id", orderID, "order_status", order.Status, "transaction_id", notif.TransactionID)
-		}
+		// 2xx on purpose, or the gateway redelivers; recording this payment is #196.
+		slog.Warn("payment settled for an order that can no longer be fulfilled",
+			"order_id", orderID, "order_status", order.Status, "transaction_id", notif.TransactionID)
 		if err := tx.Commit(ctx); err != nil {
 			return err
 		}
@@ -2204,13 +2175,6 @@ func orderSettled(status string) bool {
 		return true
 	}
 	return false
-}
-
-func latePaymentReference(notif MidtransNotification, order model.Order) string {
-	if notif.TransactionID != "" {
-		return notif.TransactionID
-	}
-	return order.GatewayRef
 }
 
 // isPhysicalType reports whether a product type is shipped physical inventory
