@@ -48,7 +48,7 @@ func (r *Repository) GetOrderParticipants(ctx context.Context, orderID uuid.UUID
 // GetOrderParticipantsTx reads the participants on the caller's transaction, so
 // a caller holding a connection does not need a second pool connection.
 func (r *Repository) GetOrderParticipantsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) ([]uuid.UUID, error) {
-	return listOrderParticipants(ctx, r.digitalQueryer(tx), orderID)
+	return listOrderParticipants(ctx, tx, orderID)
 }
 
 func listOrderParticipants(ctx context.Context, q queryer, orderID uuid.UUID) ([]uuid.UUID, error) {
