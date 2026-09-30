@@ -155,3 +155,21 @@ func TestOrderPaidHandler_ReadsTheSnapshotOnTheFulfilmentTransaction(t *testing.
 		t.Fatalf("snapshot read on tx %v, want the fulfilment transaction %v: a pool read would need a second connection", readOn, fulfilmentTx)
 	}
 }
+
+func TestOrderPaidHandler_ReadsTheParticipantsOnTheFulfilmentTransaction(t *testing.T) {
+	orderID, studentID, productID := uuid.New(), uuid.New(), uuid.New()
+	repo := snapshotWorkerRepo(orderID, studentID,
+		[]OrderItemMini{{ProductID: productID, ProductType: "exam"}},
+		model.OrderDigitalSnapshot{Taken: true, Targets: []model.DigitalTarget{
+			{OrderItemID: uuid.New(), ProductID: productID, Kind: model.DigitalTargetExam, TargetID: uuid.New()},
+		}},
+	)
+	fulfilmentTx := &mockTx{commitFn: func(ctx context.Context) error { return nil }, rollbackFn: func(ctx context.Context) error { return nil }}
+	repo.beginTxFn = func(ctx context.Context) (pgx.Tx, error) { return fulfilmentTx, nil }
+
+	(&Worker{repo: repo}).pollOutbox(context.Background())
+
+	if repo.participantsReadTx != pgx.Tx(fulfilmentTx) {
+		t.Fatalf("participants read on tx %v, want the fulfilment transaction %v: a pool read would need a second connection", repo.participantsReadTx, fulfilmentTx)
+	}
+}

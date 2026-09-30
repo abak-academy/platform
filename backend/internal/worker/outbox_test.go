@@ -32,6 +32,7 @@ type mockRepository struct {
 	createExamRegistrationFn  func(context.Context, pgx.Tx, model.ExamRegistration) error
 	stampOrderItemFulfilledFn func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 	getOrderParticipantsFn    func(context.Context, uuid.UUID) ([]uuid.UUID, error)
+	participantsReadTx        pgx.Tx
 	getOrderDigitalSnapshotFn func(context.Context, pgx.Tx, uuid.UUID) (model.OrderDigitalSnapshot, error)
 }
 
@@ -88,7 +89,8 @@ func (m *mockRepository) StampOrderItemFulfilledAt(ctx context.Context, tx pgx.T
 	return m.stampOrderItemFulfilledFn(ctx, tx, orderID, productID)
 }
 
-func (m *mockRepository) GetOrderParticipants(ctx context.Context, orderID uuid.UUID) ([]uuid.UUID, error) {
+func (m *mockRepository) GetOrderParticipantsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) ([]uuid.UUID, error) {
+	m.participantsReadTx = tx
 	if m.getOrderParticipantsFn == nil {
 		return []uuid.UUID{}, nil
 	}

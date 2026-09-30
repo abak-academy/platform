@@ -1172,7 +1172,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	}
 	var participants []uuid.UUID
 	if hasDigital {
-		participants, err = s.storeRepo.GetOrderParticipants(ctx, oID)
+		participants, err = s.storeRepo.GetOrderParticipantsTx(ctx, tx, oID)
 		if err != nil {
 			return CheckoutResult{}, err
 		}

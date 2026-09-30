@@ -326,7 +326,7 @@ func (s *Service) revokeOrderExamRegistrationsTx(ctx context.Context, tx pgx.Tx,
 		return nil
 	}
 
-	participants, err := s.storeRepo.GetOrderParticipants(ctx, orderID)
+	participants, err := s.storeRepo.GetOrderParticipantsTx(ctx, tx, orderID)
 	if err != nil {
 		return err
 	}

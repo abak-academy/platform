@@ -145,6 +145,35 @@ func TestOrderParticipantRepositoryMethods(t *testing.T) {
 		}
 	})
 
+	t.Run("GetOrderParticipantsTx reads the caller's uncommitted rows, the pool read does not", func(t *testing.T) {
+		txBuyer := insertOrderParticipantUser(t, pool, "TxBuyer")
+		orderID := insertOrderParticipantOrder(t, pool, txBuyer)
+
+		tx, err := repo.BeginTx(ctx)
+		if err != nil {
+			t.Fatalf("BeginTx: %v", err)
+		}
+		defer tx.Rollback(ctx)
+		if err := repo.InsertOrderParticipantsTx(ctx, tx, orderID, []uuid.UUID{studentA}); err != nil {
+			t.Fatalf("InsertOrderParticipantsTx: %v", err)
+		}
+
+		inTx, err := repo.GetOrderParticipantsTx(ctx, tx, orderID)
+		if err != nil {
+			t.Fatalf("GetOrderParticipantsTx: %v", err)
+		}
+		if len(inTx) != 1 || inTx[0] != studentA {
+			t.Fatalf("GetOrderParticipantsTx = %v, want [%v] from the caller's transaction", inTx, studentA)
+		}
+		fromPool, err := repo.GetOrderParticipants(ctx, orderID)
+		if err != nil {
+			t.Fatalf("GetOrderParticipants: %v", err)
+		}
+		if len(fromPool) != 0 {
+			t.Fatalf("GetOrderParticipants = %v before commit, want none", fromPool)
+		}
+	})
+
 	t.Run("FilterAlreadyRegistered returns only the registered subset", func(t *testing.T) {
 		// Register studentA for the exam, leave studentB and studentC unregistered.
 		insertOrderParticipantRegistration(t, pool, studentA, examID)
