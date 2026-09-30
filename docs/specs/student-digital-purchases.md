@@ -53,18 +53,19 @@ Facts the rollout plan rests on: `RunMigrations` runs at API startup (`backend/c
 
 ### What the migration does to existing data
 
-- Creates `order_digital_target`, `order_digital_target_backfill_conflict` and `orders.digital_targets_snapshot_at`; no existing row is updated or deleted.
+- Creates `order_digital_target`, `order_digital_target_backfill_conflict` and `orders.digital_targets_snapshot_at`; no existing row is deleted, and the only existing rows updated are the deadline-less orders described in the last bullet.
 - Backfills live claims only for student-buyer orders in `payment_pending` or `paid` that have digital lines and no `order_participant` rows. A `paid` order wins a contested target over an unpaid one; ties go to the earliest placed order, then order id, then item id. Every loser is written to `order_digital_target_backfill_conflict` with the winning order id. Nothing is refunded, cancelled or auto-resolved.
 - Backfilled orders get no snapshot marker, so the worker keeps fulfilling them from the product's live links.
 - Fulfilled orders (`processing`, `shipped`, `completed`) are not claimed; their live `course_session` / `exam_registration` already blocks a repurchase.
+- Bounds student self-purchase orders that are `payment_pending` with `payment_expires_at IS NULL`, have at least one `course` or `exam` line and no `order_participant` rows: `payment_expires_at` becomes migration time plus 24 hours (the checkout window), so the worker expires them and releases their claims and stock like any other order. Such an order predates deadline-at-checkout (gateway creation never finished) and has no payment link, so nothing a student holds is shortened. The window starts at migration time rather than at placement so a student is not expired before they can retry; the order can still be retried until then, and a retry never moves the deadline. Mixed physical+digital student orders are included because they hold claims (their stock returns on expiry); the backfill's losing orders are included too, since they are unpaid and hold nothing. Physical-only, bulk/school (`order_participant`) and non-student orders, and orders in any other status, are not touched. Before this change a deadline-less order was never expired by the sweeper, which requires a deadline; that was a defect, not a documented behaviour.
 
 ### Preconditions
 
 1. **Drain old API replicas before 0068 can serve new traffic.** After 0068 commits, no old-version API replica may serve `POST /orders/:id/checkout`. An old replica's checkout creates a `payment_pending` order with no claim, which the uniqueness guarantee cannot see. The backfill does not run again. Stop the old `api` containers (or take checkout offline at nginx) before starting the first new API replica, and keep them stopped. `up -d` alone does not guarantee this.
 2. **Upgrade the worker no later than the API.** An old worker ignores the snapshot and grants from live links, which loses the link-edit protection for orders placed by new replicas. It does not break fulfilment. A new worker handles orders without a snapshot by the fallback, so upgrading it first is safe.
 3. **Expect one transient startup failure if two new API replicas start together.** The second replica's migration blocks on the first, then fails (on the claim index if the backfill had rows, otherwise on the `schema_migrations` key) and it exits; after a restart it sees the migration recorded and continues. The backfill insert deliberately has no `ON CONFLICT DO NOTHING`, so a claim created by a new-version checkout in between is never skipped silently.
-4. **Run the pre-deploy audit below and review contested targets before the deploy window.** No shared-database migration or data operation is performed by this repository's tests or by these documents.
-5. **Rollback** to the previous image is schema-safe (0068 is additive), but checkouts served by the old binary create no claims and refunds by the old binary release none. Repeat audit query 3 after any rollback and after rolling forward again, because the backfill does not re-run. The `.down.sql` drops the audit table and claims; do not run it once orders depend on them.
+4. **Run the pre-deploy audit below (queries 1, 4 and 5) and review contested targets, deadline-less orders and already-owned targets before the deploy window.** No shared-database migration or data operation is performed by this repository's tests or by these documents.
+5. **Rollback** to the previous image is schema-safe (0068 is additive), but checkouts served by the old binary create no claims and refunds by the old binary release none. Repeat audit queries 3 and 4 after any rollback and after rolling forward again, because neither the backfill nor the deadline bound re-runs; an old replica's checkout whose gateway call fails leaves a deadline-less order again. The `.down.sql` drops the audit table and claims; do not run it once orders depend on them.
 
 ### Operator audit (read-only queries)
 
@@ -115,6 +116,48 @@ SELECT o.id AS order_id, o.status, o.student_id, oi.id AS order_item_id, oi.prod
    AND NOT EXISTS (SELECT 1 FROM order_digital_target t
                     WHERE t.order_item_id = oi.id AND t.released_at IS NULL)
  ORDER BY o.id, oi.id;
+```
+
+**4. Before and after deploy: student digital orders with no payment deadline.** Before deploy, each row is an order 0068 will bound to 24 hours from migration time. After deploy, any row was created by an old-version replica (or a failed old checkout) and never expires until it is retried or bounded by hand.
+
+```sql
+SELECT o.id AS order_id, o.status, o.student_id, o.created_at, o.checked_out_at, o.gateway_ref
+  FROM orders o
+  JOIN users u ON u.id = o.student_id AND u.role = 'student'
+ WHERE o.status = 'payment_pending'
+   AND o.payment_expires_at IS NULL
+   AND EXISTS (SELECT 1 FROM order_item oi WHERE oi.order_id = o.id AND oi.product_type IN ('course', 'exam'))
+   AND NOT EXISTS (SELECT 1 FROM order_participant op WHERE op.order_id = o.id)
+ ORDER BY o.created_at, o.id;
+```
+
+**5. Before deploy: in-flight orders for a target the student already owns.** A `payment_pending` row will be refused at retry; a `paid` row is a double charge whose fulfilment is a no-op and needs a manual refund decision.
+
+```sql
+WITH in_flight AS (
+    SELECT o.id AS order_id, o.status, o.student_id, 'course'::text AS kind, pc.course_id AS target_id
+      FROM orders o
+      JOIN users u ON u.id = o.student_id AND u.role = 'student'
+      JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'course'
+      JOIN product_course pc ON pc.product_id = oi.product_id
+     WHERE o.status IN ('payment_pending', 'paid')
+       AND NOT EXISTS (SELECT 1 FROM order_participant op WHERE op.order_id = o.id)
+    UNION ALL
+    SELECT o.id, o.status, o.student_id, 'exam'::text, pe.exam_id
+      FROM orders o
+      JOIN users u ON u.id = o.student_id AND u.role = 'student'
+      JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'exam'
+      JOIN product_exam pe ON pe.product_id = oi.product_id
+     WHERE o.status IN ('payment_pending', 'paid')
+       AND NOT EXISTS (SELECT 1 FROM order_participant op WHERE op.order_id = o.id)
+)
+SELECT f.order_id, f.status, f.student_id, f.kind, f.target_id
+  FROM in_flight f
+ WHERE (f.kind = 'course' AND EXISTS (SELECT 1 FROM course_session cs
+            WHERE cs.student_id = f.student_id AND cs.course_id = f.target_id AND cs.status = 'active'))
+    OR (f.kind = 'exam' AND EXISTS (SELECT 1 FROM exam_registration er
+            WHERE er.student_id = f.student_id AND er.exam_id = f.target_id AND er.status <> 'revoked'))
+ ORDER BY f.status, f.order_id, f.kind, f.target_id;
 ```
 
 ### Residual risk

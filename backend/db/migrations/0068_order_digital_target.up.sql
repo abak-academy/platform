@@ -91,3 +91,17 @@ INSERT INTO order_digital_target_backfill_conflict
 SELECT order_id, order_item_id, student_id, target_kind, target_id, winning_order_id
   FROM ranked
  WHERE rn > 1;
+
+-- The sweeper expires only orders that have a deadline, and checkout now always
+-- sets one. A student digital order left payment_pending with none predates
+-- that (gateway creation never finished), holds the claim backfilled above and
+-- would keep it forever. Give exactly those orders one standard 24h window from
+-- migration time so they expire and release like any other. Physical-only, bulk
+-- (order_participant) and non-student orders are outside this feature.
+UPDATE orders o
+   SET payment_expires_at = now() + interval '24 hours', updated_at = now()
+ WHERE o.status = 'payment_pending'
+   AND o.payment_expires_at IS NULL
+   AND EXISTS (SELECT 1 FROM users u WHERE u.id = o.student_id AND u.role = 'student')
+   AND EXISTS (SELECT 1 FROM order_item oi WHERE oi.order_id = o.id AND oi.product_type IN ('course', 'exam'))
+   AND NOT EXISTS (SELECT 1 FROM order_participant op WHERE op.order_id = o.id);

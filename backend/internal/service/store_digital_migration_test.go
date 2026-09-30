@@ -131,3 +131,134 @@ func TestMigration0068_BackfillPrefersPaidOrderAndRecordsConflicts(t *testing.T)
 		t.Errorf("%d backfilled orders carry a snapshot marker; historical orders must keep live-link fulfilment", stamped)
 	}
 }
+
+// A student's digital order left payment_pending with no deadline is claimed by
+// the backfill but the sweeper only expires orders that have one, so it would
+// hold its targets (and any physical stock) forever. 0068 gives exactly those
+// orders a standard window and leaves every other flow alone. Rolled back like
+// the backfill test, since the statement touches every matching row.
+func TestMigration0068_BoundsOnlyStudentDigitalPendingOrdersWithoutADeadline(t *testing.T) {
+	_, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	raw, err := dbmigrations.FS.ReadFile("migrations/0068_order_digital_target.up.sql")
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+	start := strings.Index(string(raw), "WITH candidate AS")
+	if start < 0 {
+		t.Fatal("backfill statement not found in migration")
+	}
+	tail := string(raw)[start:]
+
+	student := newDigitalStudent(t, repo)
+	school := newDigitalStudent(t, repo)
+	if _, err := repo.Pool().Exec(ctx, `UPDATE users SET role = 'admin_school' WHERE id = $1`, school); err != nil {
+		t.Fatalf("make school buyer: %v", err)
+	}
+	digitalLine := func() [2]any {
+		return [2]any{seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)), "course"}
+	}
+	var book uuid.UUID
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status) VALUES ('book', $1, 1000, 5, 'published') RETURNING id`, "Book "+uuid.NewString(),
+	).Scan(&book); err != nil {
+		t.Fatalf("seed book: %v", err)
+	}
+
+	seed := func(buyer uuid.UUID, status string, deadline *time.Time, lines ...[2]any) uuid.UUID {
+		t.Helper()
+		var orderID uuid.UUID
+		if err := repo.Pool().QueryRow(ctx,
+			`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total, checked_out_at, payment_expires_at)
+			 VALUES ($1, $2, 1, 0, 0, 1, now() - interval '3 days', $3) RETURNING id`, buyer, status, deadline,
+		).Scan(&orderID); err != nil {
+			t.Fatalf("seed order: %v", err)
+		}
+		for _, l := range lines {
+			if _, err := repo.Pool().Exec(ctx,
+				`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah)
+				 VALUES ($1, $2, $3, 'x', 1, 1, 1)`, orderID, l[0], l[1],
+			); err != nil {
+				t.Fatalf("seed item: %v", err)
+			}
+		}
+		return orderID
+	}
+	bookLine := [2]any{book, "book"}
+
+	studentDigital := seed(student, "payment_pending", nil, digitalLine())
+	studentMixed := seed(student, "payment_pending", nil, digitalLine(), bookLine)
+	physicalOnly := seed(student, "payment_pending", nil, bookLine)
+	bulk := seed(student, "payment_pending", nil, digitalLine())
+	if _, err := repo.Pool().Exec(ctx, `INSERT INTO order_participant (order_id, student_id) VALUES ($1, $2)`, bulk, student); err != nil {
+		t.Fatalf("seed participant: %v", err)
+	}
+	schoolDigital := seed(school, "payment_pending", nil, digitalLine())
+	paidNoDeadline := seed(student, "paid", nil, digitalLine())
+	existing := time.Now().Add(90 * time.Minute).Truncate(time.Microsecond)
+	withDeadline := seed(student, "payment_pending", &existing, digitalLine())
+
+	tx, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM order_digital_target_backfill_conflict`); err != nil {
+		t.Fatalf("clear conflicts: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM order_digital_target`); err != nil {
+		t.Fatalf("clear claims: %v", err)
+	}
+
+	if expired, err := repo.ExpirePaymentOrderTx(ctx, tx, studentDigital); err != nil || expired {
+		t.Fatalf("before the migration a deadline-less order expired = %v, %v; want it stuck", expired, err)
+	}
+	if _, err := tx.Exec(ctx, tail); err != nil {
+		t.Fatalf("migration tail: %v", err)
+	}
+
+	deadlineOf := func(id uuid.UUID) *time.Time {
+		var d *time.Time
+		if err := tx.QueryRow(ctx, `SELECT payment_expires_at FROM orders WHERE id = $1`, id).Scan(&d); err != nil {
+			t.Fatalf("read deadline: %v", err)
+		}
+		return d
+	}
+	for name, id := range map[string]uuid.UUID{"student digital": studentDigital, "student mixed digital+physical": studentMixed} {
+		d := deadlineOf(id)
+		if d == nil {
+			t.Errorf("%s order still has no deadline", name)
+			continue
+		}
+		if left := time.Until(*d); left < 23*time.Hour || left > 24*time.Hour+time.Minute {
+			t.Errorf("%s order deadline is %v away, want about 24h", name, left)
+		}
+	}
+	for name, id := range map[string]uuid.UUID{
+		"physical-only": physicalOnly, "bulk participant": bulk, "non-student buyer": schoolDigital, "paid": paidNoDeadline,
+	} {
+		if d := deadlineOf(id); d != nil {
+			t.Errorf("%s order got deadline %v; the migration must not touch it", name, *d)
+		}
+	}
+	if d := deadlineOf(withDeadline); d == nil || !d.Equal(existing) {
+		t.Errorf("order with a deadline changed to %v, want %v", d, existing)
+	}
+
+	if _, err := tx.Exec(ctx, `UPDATE orders SET payment_expires_at = now() - interval '1 minute' WHERE id = $1`, studentDigital); err != nil {
+		t.Fatalf("elapse deadline: %v", err)
+	}
+	if expired, err := repo.ExpirePaymentOrderTx(ctx, tx, studentDigital); err != nil || !expired {
+		t.Fatalf("bounded order expired = %v, %v; want true", expired, err)
+	}
+	var held, live int
+	if err := tx.QueryRow(ctx,
+		`SELECT count(*), count(*) FILTER (WHERE released_at IS NULL) FROM order_digital_target WHERE order_id = $1`, studentDigital,
+	).Scan(&held, &live); err != nil {
+		t.Fatalf("count claims: %v", err)
+	}
+	if held != 1 || live != 0 {
+		t.Errorf("expired order has %d claims, %d still live; want its 1 backfilled claim released", held, live)
+	}
+}
