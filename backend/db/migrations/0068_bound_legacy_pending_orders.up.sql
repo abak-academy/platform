@@ -1,6 +1,7 @@
 -- Checkout sets a payment deadline now, and the sweeper only expires orders
 -- that have one: a student digital order left payment_pending without a
 -- deadline never expires and would hold its course/exam forever. Bound those.
+-- Physical-only, bulk and non-student orders are left alone: they still hold stock with no deadline, for a human to resolve.
 
 UPDATE orders o SET payment_expires_at = now() + interval '24 hours'
  WHERE o.status = 'payment_pending' AND o.payment_expires_at IS NULL
