@@ -90,7 +90,7 @@ INSERT INTO order_digital_target_backfill_conflict
     (order_id, order_item_id, student_id, target_kind, target_id, winning_order_id)
 SELECT order_id, order_item_id, student_id, target_kind, target_id, winning_order_id
   FROM ranked
- WHERE rn > 1;
+ WHERE rn > 1 AND winning_order_id <> order_id;
 
 -- The sweeper expires only orders that have a deadline, and checkout now always
 -- sets one. A student digital order left payment_pending with none predates

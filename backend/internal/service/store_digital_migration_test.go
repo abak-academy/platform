@@ -132,6 +132,69 @@ func TestMigration0068_BackfillPrefersPaidOrderAndRecordsConflicts(t *testing.T)
 	}
 }
 
+// Two lines of one legacy order reaching the same course rank 1 and 2 for the
+// same order: the order already holds the claim, so the second line is not a
+// conflict against another order.
+func TestMigration0068_BackfillDoesNotRecordAnOrderAsItsOwnConflict(t *testing.T) {
+	_, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	raw, err := dbmigrations.FS.ReadFile("migrations/0068_order_digital_target.up.sql")
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+	start := strings.Index(string(raw), "WITH candidate AS")
+	if start < 0 {
+		t.Fatal("backfill statement not found in migration")
+	}
+	backfill := string(raw)[start:]
+
+	student := newDigitalStudent(t, repo)
+	course := seedCourseTarget(t, repo)
+	skuA := seedDigitalProduct(t, repo, "course", 50000, course)
+	skuB := seedDigitalProduct(t, repo, "course", 40000, course)
+	var orderID uuid.UUID
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total, checked_out_at)
+		 VALUES ($1, 'payment_pending', 1, 0, 0, 1, now()) RETURNING id`, student,
+	).Scan(&orderID); err != nil {
+		t.Fatalf("seed order: %v", err)
+	}
+	for _, product := range []uuid.UUID{skuA, skuB} {
+		if _, err := repo.Pool().Exec(ctx,
+			`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah)
+			 VALUES ($1, $2, 'course', 'x', 1, 1, 1)`, orderID, product,
+		); err != nil {
+			t.Fatalf("seed item: %v", err)
+		}
+	}
+
+	tx, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	for _, stmt := range []string{`DELETE FROM order_digital_target_backfill_conflict`, `DELETE FROM order_digital_target`, backfill} {
+		if _, err := tx.Exec(ctx, stmt); err != nil {
+			t.Fatalf("backfill: %v", err)
+		}
+	}
+
+	var claims, conflicts int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM order_digital_target WHERE order_id = $1`, orderID).Scan(&claims); err != nil {
+		t.Fatalf("count claims: %v", err)
+	}
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM order_digital_target_backfill_conflict WHERE order_id = $1`, orderID).Scan(&conflicts); err != nil {
+		t.Fatalf("count conflicts: %v", err)
+	}
+	if claims != 1 {
+		t.Errorf("claims for the order = %d, want 1", claims)
+	}
+	if conflicts != 0 {
+		t.Errorf("conflict rows naming the order = %d, want 0: it already holds the target", conflicts)
+	}
+}
+
 // A student's digital order left payment_pending with no deadline is claimed by
 // the backfill but the sweeper only expires orders that have one, so it would
 // hold its targets (and any physical stock) forever. 0068 gives exactly those
