@@ -58,6 +58,7 @@ func lifecycleDB(t *testing.T) *repository.Repository {
 
 type lifecyclePayments struct {
 	creates atomic.Int32
+	paid    atomic.Bool
 }
 
 func (p *lifecyclePayments) CreatePayment(_ context.Context, req service.PaymentRequest) (service.PaymentResponse, error) {
@@ -66,7 +67,7 @@ func (p *lifecyclePayments) CreatePayment(_ context.Context, req service.Payment
 }
 
 func (p *lifecyclePayments) QueryStatus(context.Context, string) (service.PaymentStatus, error) {
-	return service.PaymentStatus{}, nil
+	return service.PaymentStatus{Paid: p.paid.Load()}, nil
 }
 
 func (p *lifecyclePayments) VerifySignature([]byte, string) bool { return true }
@@ -74,6 +75,7 @@ func (p *lifecyclePayments) VerifySignature([]byte, string) bool { return true }
 type lifecycleEnv struct {
 	repo *repository.Repository
 	svc  *service.Service
+	pay  *lifecyclePayments
 	w    *Worker
 }
 
@@ -86,9 +88,10 @@ func newLifecycleEnv(t *testing.T) *lifecycleEnv {
 	}
 	t.Cleanup(mr.Close)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	pay := &lifecyclePayments{}
 	svc := service.NewWithStore(repo, repo, rdb, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{},
-		&lifecyclePayments{}, &service.NoopLogisticsClient{}, nil, nil, nil)
-	return &lifecycleEnv{repo: repo, svc: svc, w: &Worker{repo: repo}}
+		pay, &service.NoopLogisticsClient{}, nil, nil, nil)
+	return &lifecycleEnv{repo: repo, svc: svc, pay: pay, w: &Worker{repo: repo}}
 }
 
 func (e *lifecycleEnv) exec(t *testing.T, sql string, args ...any) {
@@ -107,6 +110,19 @@ func (e *lifecycleEnv) student(t *testing.T) uuid.UUID {
 		"life_"+uuid.NewString()[:12],
 	).Scan(&id); err != nil {
 		t.Fatalf("insert student: %v", err)
+	}
+	return id
+}
+
+func (e *lifecycleEnv) admin(t *testing.T) string {
+	t.Helper()
+	var id string
+	if err := e.repo.Pool().QueryRow(context.Background(),
+		`INSERT INTO users (name, role, status, username, password_hash)
+		 VALUES ('Lifecycle Admin', 'super_admin', 'active', $1, '') RETURNING id`,
+		"lifeadmin_"+uuid.NewString()[:12],
+	).Scan(&id); err != nil {
+		t.Fatalf("insert admin: %v", err)
 	}
 	return id
 }
