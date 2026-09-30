@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"akademi-bimbel/internal/adapter"
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
@@ -249,5 +250,17 @@ func TestMapServiceError_DigitalProductNoTargets_Is409(t *testing.T) {
 
 	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"digital_product_unavailable"`) {
 		t.Fatalf("got %d %s, want 409 digital_product_unavailable", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMapServiceError_PaymentDeadlineTooClose_Is409(t *testing.T) {
+	e := echo.New()
+	rec := httptest.NewRecorder()
+	c := e.NewContext(httptest.NewRequest(http.MethodPost, "/", nil), rec)
+
+	_ = mapServiceError(c, fmt.Errorf("retry: %w", adapter.ErrPaymentDeadlineTooClose))
+
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"payment_deadline_too_close"`) {
+		t.Fatalf("got %d %s, want 409 payment_deadline_too_close", rec.Code, rec.Body.String())
 	}
 }
