@@ -60,8 +60,13 @@ func (r *Repository) ExpirePaymentOrderTx(ctx context.Context, tx pgx.Tx, orderI
 // flag was written. audit_log cannot carry the flag because it requires an
 // actor and a webhook has none.
 func (r *Repository) RecordLatePaymentTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, reference string, detail map[string]any) (bool, error) {
-	detail["reference"] = reference
-	payload, err := json.Marshal(detail)
+	// Copy before adding the reference: the caller's map is not ours to mutate.
+	withReference := make(map[string]any, len(detail)+1)
+	for k, v := range detail {
+		withReference[k] = v
+	}
+	withReference["reference"] = reference
+	payload, err := json.Marshal(withReference)
 	if err != nil {
 		return false, err
 	}
