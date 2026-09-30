@@ -382,9 +382,8 @@ func stockOf(t *testing.T, repo *repository.Repository, productID uuid.UUID) int
 	return n
 }
 
-// pendingMixedOrder checks out 2 books plus a paid course, so expiry has stock
-// to give back and a claim to release.
-func pendingMixedOrder(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) (orderID, book uuid.UUID) {
+// mixedCart builds a cart of 2 books plus a paid course without checking out.
+func mixedCart(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) (orderID, book uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 	if err := repo.Pool().QueryRow(ctx,
@@ -408,10 +407,18 @@ func pendingMixedOrder(t *testing.T, svc *Service, repo *repository.Repository, 
 	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET shipping_cost = 18000, selected_courier = 'JNE' WHERE id = $1`, order.ID); err != nil {
 		t.Fatalf("set shipping: %v", err)
 	}
-	if _, err := svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey()); err != nil {
+	return order.ID, book
+}
+
+// pendingMixedOrder checks out a mixedCart, so expiry has stock to give back
+// and a claim to release.
+func pendingMixedOrder(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) (orderID, book uuid.UUID) {
+	t.Helper()
+	orderID, book = mixedCart(t, svc, repo, student)
+	if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey()); err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
-	return order.ID, book
+	return orderID, book
 }
 
 func TestWebhook_SettlementPastDeadlineBeforeSweepExpiresOrderInsteadOfFulfilling(t *testing.T) {

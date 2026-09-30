@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -89,19 +90,29 @@ func (r *Repository) PaymentDeadlineElapsedTx(ctx context.Context, tx pgx.Tx, or
 
 // SetPaymentRefTx records a freshly created gateway payment inside the
 // caller's transaction, but only while the order is still an unexpired
-// payment_pending one. False means the order moved on (expired, paid,
-// cancelled) and the payment must not be attached or offered.
-func (r *Repository) SetPaymentRefTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, ref string, expiresAt time.Time) (bool, error) {
-	tag, err := tx.Exec(ctx,
-		`UPDATE orders SET gateway_ref = $1, payment_expires_at = $2, checked_out_at = now(), updated_at = now()
+// payment_pending one, and returns the order's deadline. The deadline is ABAK's
+// and is never moved by a gateway response or a retry; an order that has none
+// (placed before checkout set one) gets now()+window once. Not attached means
+// the order moved on (expired, paid, cancelled) and the payment must not be
+// attached or offered.
+func (r *Repository) SetPaymentRefTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, ref string, window time.Duration) (time.Time, bool, error) {
+	var deadline time.Time
+	err := tx.QueryRow(ctx,
+		`UPDATE orders SET gateway_ref = $1,
+		     payment_expires_at = COALESCE(payment_expires_at, now() + make_interval(secs => $2)),
+		     checked_out_at = now(), updated_at = now()
 		 WHERE id = $3 AND status = 'payment_pending'
-		   AND (payment_expires_at IS NULL OR payment_expires_at > now())`,
-		ref, expiresAt, orderID,
-	)
-	if err != nil {
-		return false, err
+		   AND (payment_expires_at IS NULL OR payment_expires_at > now())
+		 RETURNING payment_expires_at`,
+		ref, window.Seconds(), orderID,
+	).Scan(&deadline)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, false, nil
 	}
-	return tag.RowsAffected() > 0, nil
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return deadline, true, nil
 }
 
 // ListOrderDigitalTargetsTx returns every target the order claimed at

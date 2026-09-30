@@ -23,5 +23,5 @@ var _ interface {
 	SetOrderStatus(context.Context, pgx.Tx, uuid.UUID, string, string) error
 	SetShipped(context.Context, uuid.UUID, string) error
 	SetPaymentRef(context.Context, uuid.UUID, string, time.Time) error
-	CheckoutOrder(context.Context, pgx.Tx, uuid.UUID) error
+	CheckoutOrder(context.Context, pgx.Tx, uuid.UUID, time.Duration) error
 } = (*Repository)(nil)
