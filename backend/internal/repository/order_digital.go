@@ -55,8 +55,10 @@ func (r *Repository) ListProductDigitalTargets(ctx context.Context, tx pgx.Tx, p
 // FindUnavailableDigitalTargets reports which of targets the student already
 // has live access to (an active course_session, a non-revoked
 // exam_registration) or has reserved through another live claim. Access wins
-// over a claim when both hold.
-func (r *Repository) FindUnavailableDigitalTargets(ctx context.Context, tx pgx.Tx, studentID uuid.UUID, targets []model.DigitalTarget) (map[model.DigitalTargetKey]string, error) {
+// over a claim when both hold. A claim held by exceptOrderID does not count,
+// so an order rechecking its own targets is not blocked by its own claims;
+// uuid.Nil excepts nothing.
+func (r *Repository) FindUnavailableDigitalTargets(ctx context.Context, tx pgx.Tx, studentID uuid.UUID, targets []model.DigitalTarget, exceptOrderID uuid.UUID) (map[model.DigitalTargetKey]string, error) {
 	unavailable := map[model.DigitalTargetKey]string{}
 	for _, kind := range []string{model.DigitalTargetCourse, model.DigitalTargetExam} {
 		ids := []string{}
@@ -78,8 +80,9 @@ func (r *Repository) FindUnavailableDigitalTargets(ctx context.Context, tx pgx.T
 			accessQuery+`
 			 UNION ALL
 			 SELECT target_id, 'claimed' FROM order_digital_target
-			 WHERE student_id = $1 AND target_kind = $3 AND released_at IS NULL AND target_id = ANY($2::uuid[])`,
-			studentID, ids, kind,
+			 WHERE student_id = $1 AND target_kind = $3 AND released_at IS NULL AND target_id = ANY($2::uuid[])
+			   AND order_id <> $4`,
+			studentID, ids, kind, exceptOrderID,
 		)
 		if err != nil {
 			return nil, err

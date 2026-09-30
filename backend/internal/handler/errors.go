@@ -263,6 +263,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_shippable", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotRefundable):
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_refundable", Message: err.Error()}
+	case errors.Is(err, service.ErrPaymentExpired):
+		status, apiErr = http.StatusConflict, APIError{Code: "payment_expired", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotPayable):
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_payable", Message: err.Error()}
 	case errors.Is(err, service.ErrNoTrackingNumber):

@@ -22,9 +22,13 @@ type lifecyclePayments struct {
 	countingPaymentClient
 	paid       atomic.Bool
 	failCreate atomic.Bool
+	onCreate   func()
 }
 
 func (p *lifecyclePayments) CreatePayment(ctx context.Context, req PaymentRequest) (PaymentResponse, error) {
+	if p.onCreate != nil {
+		p.onCreate()
+	}
 	if p.failCreate.Load() {
 		p.creates.Add(1)
 		return PaymentResponse{}, errors.New("gateway down")

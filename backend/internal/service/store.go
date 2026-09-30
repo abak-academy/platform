@@ -1280,6 +1280,12 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	return result, nil
 }
 
+// RetryPayment only serves an order that is still payment_pending inside its
+// deadline: expiry is final, so an expired order (or one whose deadline has
+// passed before the worker got to it) never gets a new payment. The order is
+// validated under its row lock before the gateway call and again, together
+// with the payment reference write, after it; the lock is released in between
+// because the gateway call must not hold a DB transaction open.
 func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
@@ -1290,24 +1296,15 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 		return CheckoutResult{}, err
 	}
 
+	order, err := s.validateRetryableOrder(ctx, oID, sID)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
+
 	cacheKey := "idempotency:retry:" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
 		return CheckoutResult{GatewayRef: cached}, nil
-	}
-
-	order, err := s.storeRepo.GetOrderByID(ctx, oID)
-	if err != nil {
-		return CheckoutResult{}, err
-	}
-	if order.ID.String() == "" {
-		return CheckoutResult{}, ErrOrderNotFound
-	}
-	if order.StudentID != sID {
-		return CheckoutResult{}, ErrOrderNotFound
-	}
-	if order.Status != "payment_pending" && order.Status != "payment_expired" {
-		return CheckoutResult{}, ErrOrderNotEditable
 	}
 
 	customer := fetchCustomerInfo(ctx, s, order.StudentID.String())
@@ -1323,14 +1320,16 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.GatewayRef, paymentResp.ExpiresAt); err != nil {
+	if _, err := s.lockRetryableOrderTx(ctx, tx, oID, sID); err != nil {
 		return CheckoutResult{}, err
 	}
-
-	if err := s.storeRepo.SetOrderStatus(ctx, tx, oID, "payment_pending", ""); err != nil {
+	attached, err := s.storeRepo.SetPaymentRefTx(ctx, tx, oID, paymentResp.GatewayRef, paymentResp.ExpiresAt)
+	if err != nil {
 		return CheckoutResult{}, err
 	}
-
+	if !attached {
+		return CheckoutResult{}, ErrPaymentExpired
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return CheckoutResult{}, err
 	}
@@ -1347,6 +1346,54 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	}
 
 	return result, nil
+}
+
+func (s *Service) validateRetryableOrder(ctx context.Context, orderID, studentID uuid.UUID) (model.Order, error) {
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Order{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	order, err := s.lockRetryableOrderTx(ctx, tx, orderID, studentID)
+	if err != nil {
+		return model.Order{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return model.Order{}, err
+	}
+	return order, nil
+}
+
+// lockRetryableOrderTx locks the order and returns it only if a new payment
+// may still be created for it: owned by the student, payment_pending, deadline
+// not elapsed, and every digital target still available to it.
+func (s *Service) lockRetryableOrderTx(ctx context.Context, tx pgx.Tx, orderID, studentID uuid.UUID) (model.Order, error) {
+	order, err := s.storeRepo.GetOrderByIDForUpdateTx(ctx, tx, orderID)
+	if err != nil {
+		return model.Order{}, err
+	}
+	if order.ID == uuid.Nil || order.StudentID != studentID {
+		return model.Order{}, ErrOrderNotFound
+	}
+	switch order.Status {
+	case "payment_pending":
+	case "payment_expired":
+		return model.Order{}, ErrPaymentExpired
+	default:
+		return model.Order{}, ErrOrderNotEditable
+	}
+	elapsed, err := s.storeRepo.PaymentDeadlineElapsedTx(ctx, tx, orderID)
+	if err != nil {
+		return model.Order{}, err
+	}
+	if elapsed {
+		return model.Order{}, ErrPaymentExpired
+	}
+	if err := s.recheckDigitalTargets(ctx, tx, order); err != nil {
+		return model.Order{}, err
+	}
+	return order, nil
 }
 
 func (s *Service) ListStudentOrders(ctx context.Context, studentID string, cursor string, limit int) ([]model.Order, string, error) {

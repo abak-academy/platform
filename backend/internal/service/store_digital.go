@@ -63,8 +63,8 @@ func repeatedDigitalTargets(targets []model.DigitalTarget) []model.DigitalTarget
 	return repeated
 }
 
-func (s *Service) unavailableDigitalTargets(ctx context.Context, tx pgx.Tx, studentID uuid.UUID, targets []model.DigitalTarget) ([]model.DigitalTargetConflict, error) {
-	unavailable, err := s.storeRepo.FindUnavailableDigitalTargets(ctx, tx, studentID, targets)
+func (s *Service) unavailableDigitalTargets(ctx context.Context, tx pgx.Tx, studentID, exceptOrderID uuid.UUID, targets []model.DigitalTarget) ([]model.DigitalTargetConflict, error) {
+	unavailable, err := s.storeRepo.FindUnavailableDigitalTargets(ctx, tx, studentID, targets, exceptOrderID)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func (s *Service) checkDigitalCandidate(ctx context.Context, studentID uuid.UUID
 			conflicts = append(conflicts, c)
 		}
 	}
-	unavailable, err := s.unavailableDigitalTargets(ctx, nil, studentID, candidateTargets)
+	unavailable, err := s.unavailableDigitalTargets(ctx, nil, studentID, uuid.Nil, candidateTargets)
 	if err != nil {
 		return err
 	}
@@ -129,7 +129,7 @@ func (s *Service) reserveDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 		}
 	}
 	conflicts := repeatedDigitalTargets(targets)
-	unavailable, err := s.unavailableDigitalTargets(ctx, tx, order.StudentID, targets)
+	unavailable, err := s.unavailableDigitalTargets(ctx, tx, order.StudentID, uuid.Nil, targets)
 	if err != nil {
 		return err
 	}
@@ -146,6 +146,56 @@ func (s *Service) reserveDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 		conflicts = append(conflicts, model.DigitalTargetConflict{
 			ProductID: t.ProductID, Kind: t.Kind, TargetID: t.TargetID, Reason: model.DigitalConflictClaimed,
 		})
+	}
+	if len(conflicts) > 0 {
+		return &DigitalTargetConflictError{Conflicts: conflicts}
+	}
+	return nil
+}
+
+// recheckDigitalTargets re-runs the ownership and claim guard for an order that
+// already checked out, before a new payment is created for it. The order's own
+// claims are its reservation, not a conflict; what can still block it is access
+// granted since checkout, or another order's claim on a target the order never
+// claimed (orders placed before claims existed).
+func (s *Service) recheckDigitalTargets(ctx context.Context, tx pgx.Tx, order model.Order) error {
+	digital := false
+	for _, item := range order.Items {
+		if !isPhysicalType(item.ProductType) {
+			digital = true
+		}
+	}
+	if !digital {
+		return nil
+	}
+	participants, err := s.storeRepo.GetOrderParticipants(ctx, order.ID)
+	if err != nil {
+		return err
+	}
+	if len(participants) > 0 {
+		return nil
+	}
+	claims, err := s.claimsDigitalTargets(ctx, order.StudentID)
+	if err != nil || !claims {
+		return err
+	}
+
+	targets, err := s.storeRepo.ListOrderDigitalTargetsTx(ctx, tx, order.ID)
+	if err != nil {
+		return err
+	}
+	if len(targets) == 0 {
+		targets, err = s.resolveDigitalTargets(ctx, tx, order.Items)
+		if err != nil {
+			return err
+		}
+		if len(targets) == 0 {
+			return ErrDigitalProductNoTargets
+		}
+	}
+	conflicts, err := s.unavailableDigitalTargets(ctx, tx, order.StudentID, order.ID, targets)
+	if err != nil {
+		return err
 	}
 	if len(conflicts) > 0 {
 		return &DigitalTargetConflictError{Conflicts: conflicts}
