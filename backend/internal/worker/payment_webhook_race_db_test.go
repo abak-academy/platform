@@ -40,9 +40,6 @@ func TestSweepStalePayments_ConcurrentWebhookPastDeadlineAlwaysExpiresOnce(t *te
 		if got := env.stock(t, book); got != 5 {
 			t.Errorf("iteration %d: book stock = %d, want 5 (restored once)", i, got)
 		}
-		if got := env.liveClaims(t, orderID); got != 0 {
-			t.Errorf("iteration %d: live claims = %d, want 0", i, got)
-		}
 		if got := env.count(t, `SELECT count(*) FROM outbox WHERE aggregate_id = $1 AND event_type = 'OrderPaid'`, orderID); got != 0 {
 			t.Errorf("iteration %d: OrderPaid events = %d, want 0", i, got)
 		}

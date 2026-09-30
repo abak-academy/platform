@@ -80,7 +80,8 @@ func (e *lifecycleEnv) enrollmentCourse(t *testing.T, orderID uuid.UUID) uuid.UU
 	t.Helper()
 	var id uuid.UUID
 	if err := e.repo.Pool().QueryRow(context.Background(),
-		`SELECT target_id FROM order_digital_target WHERE order_id = $1 AND target_kind = 'course'`, orderID,
+		`SELECT pc.course_id FROM order_item oi JOIN product_course pc ON pc.product_id = oi.product_id
+		 WHERE oi.order_id = $1 AND oi.product_type = 'course'`, orderID,
 	).Scan(&id); err != nil {
 		t.Fatalf("order course: %v", err)
 	}
@@ -105,9 +106,6 @@ func TestOrderPaid_RefundedBeforeFulfilmentGrantsNoAccessAndStaysCancelled(t *te
 	}
 	if got := env.status(t, orderID); got != "cancelled" {
 		t.Errorf("status = %q, want cancelled (not processing or completed)", got)
-	}
-	if got := env.liveClaims(t, orderID); got != 0 {
-		t.Errorf("live claims = %d, want 0", got)
 	}
 	if got := env.unprocessedEvents(t, orderID); got != 0 {
 		t.Errorf("unprocessed outbox events = %d, want 0 (the stale event is consumed, not retried forever)", got)
@@ -173,9 +171,6 @@ func TestOrderPaid_WaitsForRefundHoldingTheOrderAndGrantsNothing(t *testing.T) {
 	if _, err := refundTx.Exec(ctx, `UPDATE orders SET status = 'cancelled', cancellation_reason = 'refunded' WHERE id = $1`, orderID); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
-	if _, err := refundTx.Exec(ctx, `UPDATE order_digital_target SET released_at = now(), release_reason = 'refunded' WHERE order_id = $1`, orderID); err != nil {
-		t.Fatalf("release: %v", err)
-	}
 	if err := refundTx.Commit(ctx); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
@@ -189,7 +184,7 @@ func TestOrderPaid_WaitsForRefundHoldingTheOrderAndGrantsNothing(t *testing.T) {
 	}
 }
 
-func TestOrderPaid_PaidOrderIsFulfilledOnceAndKeepsItsClaim(t *testing.T) {
+func TestOrderPaid_PaidOrderIsFulfilledOnce(t *testing.T) {
 	env := newLifecycleEnv(t)
 	ctx := context.Background()
 	student := env.student(t)
@@ -205,9 +200,6 @@ func TestOrderPaid_PaidOrderIsFulfilledOnceAndKeepsItsClaim(t *testing.T) {
 	}
 	if got := env.status(t, orderID); got != "processing" {
 		t.Errorf("status = %q, want processing (mixed order waits for shipping)", got)
-	}
-	if got := env.liveClaims(t, orderID); got != 1 {
-		t.Errorf("live claims = %d, want 1 (paid access keeps its claim)", got)
 	}
 
 	env.exec(t,
@@ -251,13 +243,10 @@ func TestOrderPaid_ConcurrentRefundNeverLeavesAccessOnACancelledOrder(t *testing
 		if got := env.activeEnrollments(t, student, course); got != 0 {
 			t.Errorf("iteration %d: active enrollments = %d, want 0 on a refunded order", i, got)
 		}
-		if got := env.liveClaims(t, orderID); got != 0 {
-			t.Errorf("iteration %d: live claims = %d, want 0", i, got)
-		}
 	}
 }
 
-func TestOrderPaid_ReleasedTargetCanBeRepurchasedAfterRefundButNotWhilePaid(t *testing.T) {
+func TestOrderPaid_RefundedTargetCanBeRepurchasedButNotWhilePaid(t *testing.T) {
 	env := newLifecycleEnv(t)
 	ctx := context.Background()
 	student := env.student(t)

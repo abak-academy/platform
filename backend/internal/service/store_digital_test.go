@@ -418,33 +418,6 @@ func TestDigitalPurchase_OtherStudentsAreUnaffected(t *testing.T) {
 	}
 }
 
-func TestDigitalPurchase_SnapshotKeepsCheckoutTargetsAfterProductLinkEdit(t *testing.T) {
-	svc, repo, _ := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	original, replacement := seedCourseTarget(t, repo), seedCourseTarget(t, repo)
-	product := seedDigitalProduct(t, repo, "course", 50000, original)
-
-	orderID := cartOf(t, svc, student, product)
-	if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey()); err != nil {
-		t.Fatalf("Checkout: %v", err)
-	}
-	if _, err := repo.Pool().Exec(ctx, `DELETE FROM product_course WHERE product_id = $1`, product); err != nil {
-		t.Fatalf("unlink: %v", err)
-	}
-	if _, err := repo.Pool().Exec(ctx, `INSERT INTO product_course (product_id, course_id) VALUES ($1, $2)`, product, replacement); err != nil {
-		t.Fatalf("relink: %v", err)
-	}
-
-	snapshot, err := repo.GetOrderDigitalSnapshot(ctx, nil, orderID)
-	if err != nil {
-		t.Fatalf("GetOrderDigitalSnapshot: %v", err)
-	}
-	if !snapshot.Taken || len(snapshot.Targets) != 1 || snapshot.Targets[0].TargetID != original || snapshot.Targets[0].ProductID != product {
-		t.Fatalf("snapshot = %+v, want the original course %v under product %v", snapshot, original, product)
-	}
-}
-
 func TestDigitalPurchase_PhysicalOnlyOrderTakesNoSnapshot(t *testing.T) {
 	svc, repo, _ := newDigitalPurchaseService(t)
 	ctx := context.Background()
@@ -688,42 +661,6 @@ func TestDigitalPurchase_RefundReleasesClaimForRepurchase(t *testing.T) {
 
 	if _, err := svc.Checkout(ctx, student.String(), cartOf(t, svc, student, product).String(), checkoutKey()); err != nil {
 		t.Fatalf("repurchase after refund: %v", err)
-	}
-}
-
-func TestDigitalPurchase_RefundRevokesSnapshotExamNotRelinkedExam(t *testing.T) {
-	svc, repo, _ := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	purchased, relinked := seedExamTarget(t, repo), seedExamTarget(t, repo)
-	product := seedDigitalProduct(t, repo, "exam", 0, purchased)
-
-	orderID := cartOf(t, svc, student, product)
-	if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey()); err != nil {
-		t.Fatalf("Checkout: %v", err)
-	}
-	registerForExam(t, repo, student, purchased, "registered")
-	registerForExam(t, repo, student, relinked, "registered")
-	if _, err := repo.Pool().Exec(ctx, `DELETE FROM product_exam WHERE product_id = $1`, product); err != nil {
-		t.Fatalf("unlink: %v", err)
-	}
-	if _, err := repo.Pool().Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, product, relinked); err != nil {
-		t.Fatalf("relink: %v", err)
-	}
-
-	actor := seedRevokeActor(t, repo)
-	if err := svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"); err != nil {
-		t.Fatalf("AdminRefundOrder: %v", err)
-	}
-
-	if status, _ := registrationStatus(t, repo, purchased, student); status != "revoked" {
-		t.Errorf("purchased exam registration = %q, want revoked", status)
-	}
-	if status, _ := registrationStatus(t, repo, relinked, student); status != "registered" {
-		t.Errorf("relinked exam registration = %q, want registered (not part of the purchase)", status)
-	}
-	if n := liveClaimsOf(t, repo, student); n != 0 {
-		t.Errorf("live claims = %d, want 0 after refund", n)
 	}
 }
 

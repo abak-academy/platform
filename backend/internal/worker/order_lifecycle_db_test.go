@@ -148,7 +148,7 @@ func (e *lifecycleEnv) book(t *testing.T, stock int) uuid.UUID {
 }
 
 // pendingOrder checks out a cart of the given products (book qty 2) so the
-// order is payment_pending with its claims and stock reservation in place.
+// order is payment_pending with its stock taken.
 func (e *lifecycleEnv) pendingOrder(t *testing.T, student uuid.UUID, products ...uuid.UUID) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
@@ -198,17 +198,6 @@ func (e *lifecycleEnv) stock(t *testing.T, productID uuid.UUID) int {
 	var n int
 	if err := e.repo.Pool().QueryRow(context.Background(), `SELECT stock FROM product WHERE id = $1`, productID).Scan(&n); err != nil {
 		t.Fatalf("stock: %v", err)
-	}
-	return n
-}
-
-func (e *lifecycleEnv) liveClaims(t *testing.T, orderID uuid.UUID) int {
-	t.Helper()
-	var n int
-	if err := e.repo.Pool().QueryRow(context.Background(),
-		`SELECT count(*) FROM order_digital_target WHERE order_id = $1 AND released_at IS NULL`, orderID,
-	).Scan(&n); err != nil {
-		t.Fatalf("live claims: %v", err)
 	}
 	return n
 }
