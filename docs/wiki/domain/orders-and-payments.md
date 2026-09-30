@@ -70,6 +70,7 @@ This branch (#193) is the duplicate-purchase guard only. The bounded payment win
 - **Orders without a deadline.** A checkout whose gateway call fails leaves a `payment_pending` order with no `payment_expires_at`. `GetExpiredPaymentOrders` (`backend/internal/repository/order.go:967`) compares that column to `now()`, so the sweeper never selects it and the order keeps holding its target.
 - **Retry is the only way out.** Nothing lets a student or admin cancel a `payment_pending` order: `cancelled` is written only by `AdminRefundOrder` (`store.go:1752`), which accepts `paid` and later statuses (`refundableStatuses`, `store.go:1708`). Releasing the target therefore takes a retry that succeeds, and a retry can be refused by its twin: when two live orders hold one target, the digital guard rejects the retry of each because of the other.
 - **Retry race.** Retry reopens a `payment_expired` order without being serialized against another cart's checkout for the same target, so both can end up `payment_pending` and payable. The spec walks through the interleaving; #197 closes it by making expiry final.
+- **A late payment found by an operator leaves no durable record.** `AdminReconcileOrder` for an order that is neither `payment_pending` nor already settled answers 409 `order_not_payable` and writes only a log line (`store.go:1845`); `AdminConfirmOrder` refuses in the same way. The ledger row and the audit entry for such a settlement are #197, so until it lands the operator's own action on live money is visible only in the log.
 
 ## Payment gateway (Midtrans)
 
