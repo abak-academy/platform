@@ -23,26 +23,26 @@ import { API_BASE, loginRealAdmin, loginRealStudent } from "./helpers/session";
  * prerequisite, unlike a physical product.
  */
 
-async function findPricedCourseProduct(request: APIRequestContext): Promise<{ id: string }> {
+async function findPricedCourseProductIds(request: APIRequestContext): Promise<string[]> {
   const res = await request.get(`${API_BASE}/products?type=course`);
   if (!res.ok()) {
     throw new Error(`real-backend setup: listing course products failed (${res.status()})`);
   }
   const body = (await res.json()) as { data?: Array<{ id: string; price: number }> };
-  const found = body.data?.find((p) => p.price > 0);
-  if (!found) {
+  const ids = (body.data ?? []).filter((p) => p.price > 0).map((p) => p.id);
+  if (ids.length === 0) {
     throw new Error(
       "real-backend setup: no priced course product exists in the catalog — " +
         "publish one via /admin/products before running this spec."
     );
   }
-  return { id: found.id };
+  return ids;
 }
 
 async function checkoutToPaymentPending(
   request: APIRequestContext,
   studentToken: string,
-  productId: string
+  productIds: string[]
 ): Promise<string> {
   const cartRes = await request.post(`${API_BASE}/orders`, {
     headers: { Authorization: `Bearer ${studentToken}` },
@@ -61,11 +61,31 @@ async function checkoutToPaymentPending(
     expect(del.ok(), "clearing a leftover cart item should succeed").toBeTruthy();
   }
 
-  const itemRes = await request.post(`${API_BASE}/orders/${cart.id}/items`, {
-    headers: { Authorization: `Bearer ${studentToken}` },
-    data: { product_id: productId, qty: 1 },
-  });
-  expect(itemRes.ok(), "adding the item to the cart should succeed").toBeTruthy();
+  // A digital product the student already owns or holds a live claim on is
+  // refused with 409 digital_target_conflict, so a rerun (or a run that died
+  // before confirm) cannot reuse the same course. Take the first one that adds.
+  let added = false;
+  for (const productId of productIds) {
+    const itemRes = await request.post(`${API_BASE}/orders/${cart.id}/items`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+      data: { product_id: productId, qty: 1 },
+    });
+    if (itemRes.ok()) {
+      added = true;
+      break;
+    }
+    const failure = (await itemRes.json().catch(() => ({}))) as { code?: string };
+    expect(
+      itemRes.status() === 409 && failure.code === "digital_target_conflict",
+      `adding the item to the cart should succeed or conflict on ownership (got ${itemRes.status()})`
+    ).toBeTruthy();
+  }
+  if (!added) {
+    throw new Error(
+      "real-backend setup: the student already owns or holds every priced course in the catalog — " +
+        "refund the previous run's order, or publish another priced course via /admin/products."
+    );
+  }
 
   const checkoutRes = await request.post(`${API_BASE}/orders/${cart.id}/checkout`, {
     headers: {
@@ -100,8 +120,8 @@ test.describe("FB-19a/b/c — admin manual confirm with proof, FR-33 buyer name"
     // redirects to the student dashboard and the row is never found.
     const studentToken = await loginRealStudent(context, request);
 
-    const product = await findPricedCourseProduct(request);
-    const orderId = await checkoutToPaymentPending(request, studentToken, product.id);
+    const productIds = await findPricedCourseProductIds(request);
+    const orderId = await checkoutToPaymentPending(request, studentToken, productIds);
     const orderNumber = `#${orderId.slice(-8)}`;
 
     await loginRealAdmin(context, request);
