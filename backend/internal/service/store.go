@@ -1842,7 +1842,7 @@ func (s *Service) AdminReconcileOrder(ctx context.Context, actorID, orderID, key
 			}
 		case orderSettled(locked.Status):
 		default:
-			// Recording this payment is #196.
+			// Recording this payment is #197.
 			slog.Warn("reconcile: gateway reports payment for an order that can no longer be fulfilled",
 				"order_id", id, "order_status", locked.Status)
 			notPayable = ErrOrderNotPayable
