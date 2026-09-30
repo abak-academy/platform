@@ -10,12 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// ExpirePaymentOrderTx moves one unpaid order to payment_expired and, in the
-// same transaction, gives back the physical stock checkout took. The UPDATE
-// guards status and deadline itself, so it takes the row lock and re-evaluates
-// against whatever a concurrent webhook, refund or sweeper committed: only one
-// caller ever sees true, which is what keeps stock from being restored twice
-// and a paid order from being expired.
+// The UPDATE carries status and deadline itself, so only one caller among sweeper, webhook and reconcile sees true and stock is restored once.
 func (r *Repository) ExpirePaymentOrderTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) (bool, error) {
 	tag, err := tx.Exec(ctx,
 		`UPDATE orders SET status = 'payment_expired', updated_at = now()
@@ -108,13 +103,7 @@ func (r *Repository) PaymentDeadlineElapsedTx(ctx context.Context, tx pgx.Tx, or
 	return elapsed, err
 }
 
-// SetPaymentRefTx records a freshly created gateway payment inside the
-// caller's transaction, but only while the order is still an unexpired
-// payment_pending one, and returns the order's deadline. The deadline is ABAK's
-// and is never moved by a gateway response or a retry; an order that has none
-// (placed before checkout set one) gets now()+window once. Not attached means
-// the order moved on (expired, paid, cancelled) and the payment must not be
-// attached or offered.
+// The deadline is ABAK's and never moves (only a legacy order with none gets one); not attached means the order moved on and no payment may be offered.
 func (r *Repository) SetPaymentRefTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, ref string, window time.Duration) (time.Time, bool, error) {
 	var deadline time.Time
 	err := tx.QueryRow(ctx,

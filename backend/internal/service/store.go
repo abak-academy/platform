@@ -1044,9 +1044,7 @@ func truncateItemName(name string) string {
 	return string(r[:midtransItemNameMax])
 }
 
-// paymentWindow is how long an order stays payable after checkout. It is the
-// order's own deadline; the gateway link is asked to last no longer than what
-// is left of it.
+// paymentWindow is how long an order stays payable after checkout; the gateway link never outlives what is left of it.
 const paymentWindow = 24 * time.Hour
 
 type OrderPaidPayload struct {
@@ -1297,8 +1295,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	return result, nil
 }
 
-// attachPayment locks the order, re-validates it and writes the gateway
-// reference in one transaction, returning the order's own deadline.
+// The gateway call ran outside any transaction, so the order is re-locked and re-checked before the reference is attached.
 func (s *Service) attachPayment(ctx context.Context, orderID, studentID uuid.UUID, resp PaymentResponse) (time.Time, error) {
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
@@ -1322,10 +1319,7 @@ func (s *Service) attachPayment(ctx context.Context, orderID, studentID uuid.UUI
 	return deadline, nil
 }
 
-// bindPaymentDeadline pins the gateway session to the order's own deadline so a
-// link opened late never buys more time than the order has left. Under a minute
-// left, the whole-minute session granularity could outlive the order: refuse. A
-// nil deadline (order placed before checkout set one) gets the standard window.
+// Under a minute left the whole-minute session granularity could outlive the order, so refuse; a nil deadline (legacy order) gets the standard window.
 func bindPaymentDeadline(req *PaymentRequest, deadline *time.Time) error {
 	at := time.Now().Add(paymentWindow)
 	if deadline != nil {
@@ -1347,12 +1341,7 @@ func earlier(a, b time.Time) time.Time {
 	return a
 }
 
-// RetryPayment only serves an order that is still payment_pending inside its
-// deadline: expiry is final, so an expired order (or one whose deadline has
-// passed before the worker got to it) never gets a new payment. The order is
-// validated under its row lock before the gateway call and again, together
-// with the payment reference write, after it; the lock is released in between
-// because the gateway call must not hold a DB transaction open.
+// Expiry is final: only a payment_pending order inside its deadline gets a new payment. The lock is released across the gateway call, so the order is re-validated when the reference is written.
 func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
@@ -1432,9 +1421,7 @@ func (s *Service) validateOrder(ctx context.Context, orderID uuid.UUID, lock fun
 	return order, nil
 }
 
-// lockPendingOrderTx locks the order and returns it only while a payment may
-// still be attached to it: owned by the student, payment_pending and inside its
-// deadline on the database clock.
+// The deadline is judged on the database clock, like the sweeper, so every path agrees on whether the order is still payable.
 func (s *Service) lockPendingOrderTx(ctx context.Context, tx pgx.Tx, orderID, studentID uuid.UUID) (model.Order, error) {
 	order, err := s.storeRepo.GetOrderByIDForUpdateTx(ctx, tx, orderID)
 	if err != nil {
@@ -1460,8 +1447,7 @@ func (s *Service) lockPendingOrderTx(ctx context.Context, tx pgx.Tx, orderID, st
 	return order, nil
 }
 
-// lockRetryableOrderTx is lockPendingOrderTx plus the digital guard recheck a
-// new payment for an already checked-out order needs.
+// Ownership or another live order may have appeared since checkout, so a new payment re-runs the digital guard.
 func (s *Service) lockRetryableOrderTx(ctx context.Context, tx pgx.Tx, orderID, studentID uuid.UUID) (model.Order, error) {
 	order, err := s.lockPendingOrderTx(ctx, tx, orderID, studentID)
 	if err != nil {
