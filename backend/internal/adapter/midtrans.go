@@ -16,7 +16,6 @@ import (
 	"github.com/midtrans/midtrans-go/snap"
 )
 
-
 // MidtransClient wraps Midtrans Snap and CoreAPI clients.
 type MidtransClient struct {
 	serverKey string
