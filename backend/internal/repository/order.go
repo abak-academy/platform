@@ -956,14 +956,6 @@ func (r *Repository) SetTrackingNumber(ctx context.Context, orderID uuid.UUID, t
 	return err
 }
 
-func (r *Repository) SetPaymentRef(ctx context.Context, orderID uuid.UUID, ref string, expiresAt time.Time) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE orders SET gateway_ref = $1, payment_expires_at = $2, checked_out_at = now(), updated_at = now() WHERE id = $3`,
-		ref, expiresAt, orderID,
-	)
-	return err
-}
-
 func (r *Repository) GetExpiredPaymentOrders(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id
