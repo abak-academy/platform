@@ -8,8 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-
-	"akademi-bimbel/internal/model"
 )
 
 // ExpirePaymentOrderTx moves one unpaid order to payment_expired and, in the
@@ -148,31 +146,4 @@ func (r *Repository) SetPaymentRefTx(ctx context.Context, tx pgx.Tx, orderID uui
 		return time.Time{}, false, err
 	}
 	return deadline, true, nil
-}
-
-// ListOrderDigitalTargetsTx returns every target the order claimed at
-// checkout, released or not, under the product line that reached it.
-func (r *Repository) ListOrderDigitalTargetsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) ([]model.DigitalTarget, error) {
-	rows, err := tx.Query(ctx,
-		`SELECT t.order_item_id, oi.product_id, t.target_kind, t.target_id
-		 FROM order_digital_target t
-		 JOIN order_item oi ON oi.id = t.order_item_id
-		 WHERE t.order_id = $1
-		 ORDER BY t.target_kind, t.target_id`,
-		orderID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var targets []model.DigitalTarget
-	for rows.Next() {
-		var t model.DigitalTarget
-		if err := rows.Scan(&t.OrderItemID, &t.ProductID, &t.Kind, &t.TargetID); err != nil {
-			return nil, err
-		}
-		targets = append(targets, t)
-	}
-	return targets, rows.Err()
 }

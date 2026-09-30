@@ -202,10 +202,7 @@ func (s *Service) recheckDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 	}
 	var targets []model.DigitalTarget
 	if snapshot.Taken {
-		targets, err = s.storeRepo.ListOrderDigitalTargetsTx(ctx, tx, order.ID)
-		if err != nil {
-			return err
-		}
+		targets = snapshot.Targets
 	}
 	if len(targets) == 0 {
 		targets, err = s.resolveDigitalTargets(ctx, tx, order.Items)
