@@ -109,6 +109,19 @@ describe("OrderDetailPage retry payment", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["payment_deadline_too_close", "kurang dari satu menit"],
+    ["order_not_payable", "tidak menunggu pembayaran"],
+  ])("explains %s in the student's language instead of the raw backend message", async (code, phrase) => {
+    await renderPageAndRetry(() => Promise.reject(apiError(code)));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    const [, options] = toastError.mock.calls[0];
+    expect(options.description).toContain(phrase);
+    expect(options.description).not.toContain(RAW);
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("opens the payment window only when the retry succeeds", async () => {
     await renderPageAndRetry(() => Promise.resolve({ payment_url: "https://pay.example/x" }));
 
