@@ -186,7 +186,9 @@ function retryErrorMessage(err: unknown, t: (key: I18nKey) => string): string {
   if (!(err instanceof ApiError)) return t("order_retry_failed_desc");
   if (err.code === "payment_expired") return t("order_retry_expired");
   if (err.code === "payment_deadline_too_close") return t("order_retry_deadline_too_close");
-  if (err.code === "order_not_payable") return t("order_retry_not_payable");
+  // A stale retry hits the order lock's "not editable" guard, not the
+  // admin-confirm "not payable" one, so map the code the API actually sends.
+  if (err.code === "order_not_editable") return t("order_retry_not_editable");
   return err.message;
 }
 
