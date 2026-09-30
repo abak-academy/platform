@@ -295,11 +295,6 @@ var (
 	// order still awaiting payment can be marked paid. Expired, cancelled,
 	// refunded and already-paid orders stay as they are. Maps to 409.
 	ErrOrderNotPayable = errors.New("order is not awaiting payment")
-
-	// ErrPaymentExpired rejects a payment retry once the order's payment
-	// deadline has passed, whether or not the worker has expired it yet.
-	// Expiry is final: the student starts over from a fresh cart. Maps to 409.
-	ErrPaymentExpired = errors.New("payment window has expired")
 )
 
 // --- from student_bulk.go ---

@@ -7,7 +7,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
@@ -17,36 +16,10 @@ import (
 )
 
 // lifecyclePayments is a gateway fake whose signature always verifies, whose
-// reconcile answer and creation failures are switchable, and which counts
-// CreatePayment calls.
+// reconcile answer is switchable, and which counts CreatePayment calls.
 type lifecyclePayments struct {
 	countingPaymentClient
-	paid       atomic.Bool
-	failCreate atomic.Bool
-	onCreate   func()
-
-	// expiresAfter, when set, is how long from now the gateway claims its link
-	// lasts; lastExpiresIn records what ABAK asked for.
-	expiresAfter  time.Duration
-	lastExpiresIn atomic.Int64
-	lastExpiresAt atomic.Value
-}
-
-func (p *lifecyclePayments) CreatePayment(ctx context.Context, req PaymentRequest) (PaymentResponse, error) {
-	if p.onCreate != nil {
-		p.onCreate()
-	}
-	if p.failCreate.Load() {
-		p.creates.Add(1)
-		return PaymentResponse{}, errors.New("gateway down")
-	}
-	p.lastExpiresIn.Store(int64(req.ExpiresIn))
-	p.lastExpiresAt.Store(req.ExpiresAt)
-	resp, err := p.countingPaymentClient.CreatePayment(ctx, req)
-	if err == nil && p.expiresAfter > 0 {
-		resp.ExpiresAt = time.Now().Add(p.expiresAfter)
-	}
-	return resp, err
+	paid atomic.Bool
 }
 
 func (p *lifecyclePayments) QueryStatus(context.Context, string) (PaymentStatus, error) {
@@ -88,16 +61,8 @@ func expireOrderNow(t *testing.T, repo *repository.Repository, orderID uuid.UUID
 	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET payment_expires_at = now() - interval '1 minute' WHERE id = $1`, orderID); err != nil {
 		t.Fatalf("elapse deadline: %v", err)
 	}
-	tx, err := repo.BeginTx(ctx)
-	if err != nil {
-		t.Fatalf("begin: %v", err)
-	}
-	expired, err := repo.ExpirePaymentOrderTx(ctx, tx, orderID)
-	if err != nil || !expired {
-		t.Fatalf("ExpirePaymentOrderTx = %v, %v; want true, nil", expired, err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		t.Fatalf("commit: %v", err)
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET status = 'payment_expired' WHERE id = $1`, orderID); err != nil {
+		t.Fatalf("expire order: %v", err)
 	}
 }
 
@@ -337,156 +302,5 @@ func TestWebhook_ConcurrentDeliveriesEmitOneOrderPaid(t *testing.T) {
 
 	if got := orderPaidEvents(t, repo, orderID); got != 1 {
 		t.Errorf("OrderPaid events = %d, want 1", got)
-	}
-}
-
-func elapseDeadline(t *testing.T, repo *repository.Repository, orderID uuid.UUID) {
-	t.Helper()
-	if _, err := repo.Pool().Exec(context.Background(),
-		`UPDATE orders SET payment_expires_at = now() - interval '1 second' WHERE id = $1`, orderID,
-	); err != nil {
-		t.Fatalf("elapse deadline: %v", err)
-	}
-}
-
-func stockOf(t *testing.T, repo *repository.Repository, productID uuid.UUID) int {
-	t.Helper()
-	var n int
-	if err := repo.Pool().QueryRow(context.Background(), `SELECT stock FROM product WHERE id = $1`, productID).Scan(&n); err != nil {
-		t.Fatalf("stock: %v", err)
-	}
-	return n
-}
-
-// mixedCart builds a cart of 2 books plus a paid course without checking out.
-func mixedCart(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) (orderID, book uuid.UUID) {
-	t.Helper()
-	ctx := context.Background()
-	if err := repo.Pool().QueryRow(ctx,
-		`INSERT INTO product (type, name, price, stock, status, weight_grams) VALUES ('book', $1, 30000, 5, 'published', 300) RETURNING id`,
-		"Book "+uuid.NewString(),
-	).Scan(&book); err != nil {
-		t.Fatalf("create book: %v", err)
-	}
-	course := seedCourseTarget(t, repo)
-	digital := seedDigitalProduct(t, repo, "course", 50000, course)
-	order, _, err := svc.MintCart(ctx, student.String())
-	if err != nil {
-		t.Fatalf("MintCart: %v", err)
-	}
-	if err := svc.AddItem(ctx, student.String(), order.ID.String(), book.String(), 2); err != nil {
-		t.Fatalf("AddItem book: %v", err)
-	}
-	if err := svc.AddItem(ctx, student.String(), order.ID.String(), digital.String(), 1); err != nil {
-		t.Fatalf("AddItem course: %v", err)
-	}
-	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET shipping_cost = 18000, selected_courier = 'JNE' WHERE id = $1`, order.ID); err != nil {
-		t.Fatalf("set shipping: %v", err)
-	}
-	return order.ID, book
-}
-
-// pendingMixedOrder checks out a mixedCart, so expiry has stock to give back.
-func pendingMixedOrder(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) (orderID, book uuid.UUID) {
-	t.Helper()
-	orderID, book = mixedCart(t, svc, repo, student)
-	if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey()); err != nil {
-		t.Fatalf("Checkout: %v", err)
-	}
-	return orderID, book
-}
-
-func TestWebhook_SettlementPastDeadlineBeforeSweepExpiresOrderInsteadOfFulfilling(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, book := pendingMixedOrder(t, svc, repo, student)
-	elapseDeadline(t, repo, orderID)
-
-	for i := 0; i < 2; i++ {
-		if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-past"), "sig", uuid.NewString()); err != nil {
-			t.Fatalf("webhook #%d must be acknowledged, got %v", i, err)
-		}
-	}
-
-	if got := orderStatusOf(t, repo, orderID); got != "payment_expired" {
-		t.Errorf("status = %q, want payment_expired: no grace after the deadline", got)
-	}
-	if got := orderPaidEvents(t, repo, orderID); got != 0 {
-		t.Errorf("OrderPaid events = %d, want 0", got)
-	}
-	if got := stockOf(t, repo, book); got != 5 {
-		t.Errorf("book stock = %d, want 5 (restored once)", got)
-	}
-
-	tx, _ := repo.BeginTx(ctx)
-	expired, err := repo.ExpirePaymentOrderTx(ctx, tx, orderID)
-	_ = tx.Rollback(ctx)
-	if err != nil || expired {
-		t.Errorf("sweeper transition afterwards = %v, %v; want false, nil (no second restock)", expired, err)
-	}
-	if got := stockOf(t, repo, book); got != 5 {
-		t.Errorf("book stock after sweep = %d, want 5", got)
-	}
-}
-
-func TestAdminReconcileOrder_GatewayPaidPastDeadlineExpiresOrderAndIsRefused(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	actor := insertAdminActor(t, repo, "reconcilepast_")
-	orderID, book := pendingMixedOrder(t, svc, repo, student)
-	elapseDeadline(t, repo, orderID)
-	pay.paid.Store(true)
-
-	for i := 0; i < 2; i++ {
-		err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix())
-		if !errors.Is(err, ErrOrderNotPayable) {
-			t.Fatalf("reconcile #%d err = %v, want ErrOrderNotPayable", i, err)
-		}
-	}
-
-	if got := orderStatusOf(t, repo, orderID); got != "payment_expired" {
-		t.Errorf("status = %q, want payment_expired", got)
-	}
-	if got := orderPaidEvents(t, repo, orderID); got != 0 {
-		t.Errorf("OrderPaid events = %d, want 0", got)
-	}
-	if got := stockOf(t, repo, book); got != 5 {
-		t.Errorf("book stock = %d, want 5 (restored once)", got)
-	}
-}
-
-func TestAdminConfirmOrder_RejectsPendingOrderPastDeadlineBeforeSweep(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	actor := insertAdminActor(t, repo, "confirmpast_")
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	elapseDeadline(t, repo, orderID)
-
-	err := svc.AdminConfirmOrder(ctx, actor, orderID.String(), "confirm-"+uniqueSuffix(), "payment_proof/"+actor+"/"+uniqueSuffix()+".jpg")
-
-	if !errors.Is(err, ErrOrderNotPayable) {
-		t.Fatalf("err = %v, want ErrOrderNotPayable", err)
-	}
-	if got := orderStatusOf(t, repo, orderID); got == "paid" {
-		t.Error("order past its deadline was marked paid by admin confirm")
-	}
-	if got := orderPaidEvents(t, repo, orderID); got != 0 {
-		t.Errorf("OrderPaid events = %d, want 0", got)
-	}
-}
-
-func TestWebhook_SettlementBeforeDeadlineIsStillFulfilled(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-
-	if err := svc.HandlePaymentWebhook(context.Background(), settlementBody(orderID, "tx-ok"), "sig", uuid.NewString()); err != nil {
-		t.Fatalf("webhook: %v", err)
-	}
-	if got := orderStatusOf(t, repo, orderID); got != "paid" {
-		t.Errorf("status = %q, want paid", got)
 	}
 }

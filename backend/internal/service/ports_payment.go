@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"time"
 )
 
@@ -21,13 +20,10 @@ type CustomerInfo struct {
 }
 
 type PaymentRequest struct {
-	OrderID   string
-	Reference string
-	Amount    int64
-	ExpiresIn time.Duration
-	// ExpiresAt is the order's absolute payment deadline; the gateway session
-	// must not outlive it. Zero means only ExpiresIn bounds the session.
-	ExpiresAt   time.Time
+	OrderID     string
+	Reference   string
+	Amount      int64
+	ExpiresIn   time.Duration
 	Items       []ItemDetail
 	Customer    CustomerInfo
 	CallbackURL string
@@ -54,10 +50,6 @@ type PaymentClient interface {
 	QueryStatus(ctx context.Context, reference string) (PaymentStatus, error)
 	VerifySignature(payload []byte, signature string) bool
 }
-
-// ErrPaymentDeadlineTooClose means the order has under a minute left, the
-// shortest session the gateway can be asked for without outliving the order.
-var ErrPaymentDeadlineTooClose = errors.New("less than a minute left before the payment deadline")
 
 type NoopPaymentClient struct{}
 

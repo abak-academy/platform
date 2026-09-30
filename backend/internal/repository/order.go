@@ -956,6 +956,14 @@ func (r *Repository) SetTrackingNumber(ctx context.Context, orderID uuid.UUID, t
 	return err
 }
 
+func (r *Repository) SetPaymentRef(ctx context.Context, orderID uuid.UUID, ref string, expiresAt time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE orders SET gateway_ref = $1, payment_expires_at = $2, checked_out_at = now(), updated_at = now() WHERE id = $3`,
+		ref, expiresAt, orderID,
+	)
+	return err
+}
+
 func (r *Repository) GetExpiredPaymentOrders(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id
@@ -982,11 +990,7 @@ func (r *Repository) GetExpiredPaymentOrders(ctx context.Context, limit int) ([]
 	return orderIDs, rows.Err()
 }
 
-// CheckoutOrder takes physical stock and moves the cart to payment_pending with
-// a payment deadline of paymentWindow from now, in the caller's transaction. The
-// deadline is set here, not after the gateway call, so an order whose gateway
-// creation fails is still bounded and the sweeper can free its stock.
-func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, paymentWindow time.Duration) error {
+func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
 	rows, err := tx.Query(ctx,
 		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, COALESCE(weight_grams, 0), fulfilled_at, created_at
 		 FROM order_item WHERE order_id = $1`,
@@ -1040,10 +1044,8 @@ func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.
 	}
 
 	_, err = tx.Exec(ctx,
-		`UPDATE orders SET status = 'payment_pending',
-		     payment_expires_at = now() + make_interval(secs => $2), updated_at = now()
-		 WHERE id = $1`,
-		orderID, paymentWindow.Seconds(),
+		`UPDATE orders SET status = 'payment_pending', updated_at = now() WHERE id = $1`,
+		orderID,
 	)
 	return err
 }

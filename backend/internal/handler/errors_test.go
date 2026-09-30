@@ -251,15 +251,3 @@ func TestMapServiceError_DigitalProductNoTargets_Is409(t *testing.T) {
 		t.Fatalf("got %d %s, want 409 digital_product_unavailable", rec.Code, rec.Body.String())
 	}
 }
-
-func TestMapServiceError_PaymentDeadlineTooClose_Is409(t *testing.T) {
-	e := echo.New()
-	rec := httptest.NewRecorder()
-	c := e.NewContext(httptest.NewRequest(http.MethodPost, "/", nil), rec)
-
-	_ = mapServiceError(c, fmt.Errorf("retry: %w", service.ErrPaymentDeadlineTooClose))
-
-	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"payment_deadline_too_close"`) {
-		t.Fatalf("got %d %s, want 409 payment_deadline_too_close", rec.Code, rec.Body.String())
-	}
-}

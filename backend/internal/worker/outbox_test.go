@@ -27,7 +27,6 @@ type mockRepository struct {
 	getCoursesByProductIDFn   func(context.Context, uuid.UUID) ([]model.Course, error)
 	beginTxFn                 func(context.Context) (pgx.Tx, error)
 	getExpiredPaymentOrdersFn func(context.Context, int) ([]uuid.UUID, error)
-	expirePaymentOrderTxFn    func(context.Context, pgx.Tx, uuid.UUID) (bool, error)
 	getExamsByProductIDFn     func(context.Context, uuid.UUID) ([]model.Exam, error)
 	createExamRegistrationFn  func(context.Context, pgx.Tx, model.ExamRegistration) error
 	stampOrderItemFulfilledFn func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
@@ -45,6 +44,10 @@ func (m *mockRepository) MarkOutboxProcessed(ctx context.Context, tx pgx.Tx, id 
 
 func (m *mockRepository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, status, reason string) error {
 	return m.setOrderStatusFn(ctx, tx, orderID, status, reason)
+}
+
+func (m *mockRepository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Order, error) {
+	return m.getOrderByIDFn(ctx, id)
 }
 
 func (m *mockRepository) GetOrderByIDForUpdateTx(ctx context.Context, _ pgx.Tx, id uuid.UUID) (model.Order, error) {
@@ -94,10 +97,6 @@ func (m *mockRepository) GetOrderParticipantsTx(ctx context.Context, tx pgx.Tx, 
 		return []uuid.UUID{}, nil
 	}
 	return m.getOrderParticipantsFn(ctx, orderID)
-}
-
-func (m *mockRepository) ExpirePaymentOrderTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) (bool, error) {
-	return m.expirePaymentOrderTxFn(ctx, tx, orderID)
 }
 
 type mockTx struct {
@@ -331,66 +330,95 @@ func TestOrderPaidHandlerIdempotentOnReplay(t *testing.T) {
 	}
 }
 
-func TestStalePaymentSweeperExpiresAndCommits(t *testing.T) {
+func TestStalePaymentSweeperUpdatesStatus(t *testing.T) {
 	ctx := context.Background()
 	orderID := uuid.New()
 
-	var expired []uuid.UUID
-	committed := 0
+	statusUpdated := false
 
 	repo := &mockRepository{
 		getExpiredPaymentOrdersFn: func(ctx context.Context, limit int) ([]uuid.UUID, error) {
 			return []uuid.UUID{orderID}, nil
 		},
-		expirePaymentOrderTxFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
-			expired = append(expired, id)
-			return true, nil
+		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
+			return model.Order{
+				ID:        orderID,
+				Status:    "payment_pending",
+				StudentID: uuid.New(),
+				Items: []model.OrderItem{
+					{
+						ProductID:   uuid.New(),
+						Qty:         2,
+						ProductType: "book",
+					},
+				},
+			}, nil
+		},
+		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
+			if id == orderID && status == "payment_expired" {
+				statusUpdated = true
+			}
+			return nil
 		},
 		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
-			return &mockTx{
-				commitFn:   func(ctx context.Context) error { committed++; return nil },
+			mockTx := &mockTx{
+				commitFn:   func(ctx context.Context) error { return nil },
 				rollbackFn: func(ctx context.Context) error { return nil },
-			}, nil
+			}
+			return mockTx, nil
 		},
 	}
 
 	w := &Worker{repo: repo, sweeperInterval: time.Minute}
 	w.sweepStalePayments(ctx)
 
-	if len(expired) != 1 || expired[0] != orderID {
-		t.Errorf("expired orders = %v, want [%v]", expired, orderID)
-	}
-	if committed != 1 {
-		t.Errorf("commits = %d, want 1", committed)
+	if !statusUpdated {
+		t.Error("expected Order status to be updated to payment_expired")
 	}
 }
 
-func TestStalePaymentSweeperSkipsOrderAnotherTransitionAlreadyResolved(t *testing.T) {
+func TestStalePaymentSweeperIdempotent(t *testing.T) {
 	ctx := context.Background()
 	orderID := uuid.New()
 
-	committed := 0
+	checkStatusCallCount := 0
 
 	repo := &mockRepository{
 		getExpiredPaymentOrdersFn: func(ctx context.Context, limit int) ([]uuid.UUID, error) {
 			return []uuid.UUID{orderID}, nil
 		},
-		expirePaymentOrderTxFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
-			return false, nil
+		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
+			return model.Order{
+				ID:        orderID,
+				Status:    "payment_pending",
+				StudentID: uuid.New(),
+				Items: []model.OrderItem{
+					{
+						ProductID:   uuid.New(),
+						Qty:         1,
+						ProductType: "book",
+					},
+				},
+			}, nil
+		},
+		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
+			checkStatusCallCount++
+			return nil
 		},
 		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
-			return &mockTx{
-				commitFn:   func(ctx context.Context) error { committed++; return nil },
+			mockTx := &mockTx{
+				commitFn:   func(ctx context.Context) error { return nil },
 				rollbackFn: func(ctx context.Context) error { return nil },
-			}, nil
+			}
+			return mockTx, nil
 		},
 	}
 
 	w := &Worker{repo: repo, sweeperInterval: time.Minute}
 	w.sweepStalePayments(ctx)
 
-	if committed != 0 {
-		t.Errorf("commits = %d, want 0 when the guarded transition did not apply", committed)
+	if checkStatusCallCount == 0 {
+		t.Error("expected SetOrderStatus to be called at least once")
 	}
 }
 
