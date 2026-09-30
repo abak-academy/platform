@@ -239,8 +239,13 @@ func (s *Service) revokeExamStudents(ctx context.Context, actorID string, examUU
 
 	if len(revoked) > 0 {
 		revokedIDs := make([]string, 0, len(revoked))
+		revokedStudents := make([]uuid.UUID, 0, len(revoked))
 		for sid := range revoked {
 			revokedIDs = append(revokedIDs, sid.String())
+			revokedStudents = append(revokedStudents, sid)
+		}
+		if err := s.storeRepo.ReleaseExamClaimsAfterRevokeTx(ctx, tx, examUUID, revokedStudents); err != nil {
+			return nil, nil, fmt.Errorf("release purchase claims: %w", err)
 		}
 		actorIDStr := actorID
 		if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actorIDStr, "exam_grant", examUUID.String(), "exam_grant.revoke", map[string]any{

@@ -193,3 +193,26 @@ func (r *Repository) ReleaseDigitalTargetsTx(ctx context.Context, tx pgx.Tx, ord
 	)
 	return err
 }
+
+// ReleaseExamClaimsAfterRevokeTx frees the purchase claims of students whose
+// registration for the exam was just revoked, so the exam can be bought again.
+// Only claims of fulfilled orders count: a payment_pending or paid-but-unfulfilled
+// order still reserves its target, and revoking other access must not undo that.
+// A claim stays while the student holds any other non-revoked registration.
+func (r *Repository) ReleaseExamClaimsAfterRevokeTx(ctx context.Context, tx pgx.Tx, examID uuid.UUID, studentIDs []uuid.UUID) error {
+	if len(studentIDs) == 0 {
+		return nil
+	}
+	_, err := tx.Exec(ctx,
+		`UPDATE order_digital_target t SET released_at = now(), release_reason = 'revoked'
+		 FROM orders o
+		 WHERE o.id = t.order_id AND o.status IN ('processing', 'shipped', 'completed')
+		   AND t.released_at IS NULL AND t.target_kind = 'exam' AND t.target_id = $1
+		   AND t.student_id = ANY($2)
+		   AND NOT EXISTS (
+		       SELECT 1 FROM exam_registration r
+		       WHERE r.exam_id = t.target_id AND r.student_id = t.student_id AND r.status <> 'revoked')`,
+		examID, studentIDs,
+	)
+	return err
+}
