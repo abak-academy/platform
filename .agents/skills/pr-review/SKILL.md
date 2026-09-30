@@ -64,6 +64,10 @@ Check each one explicitly.
 - Was a test file rewritten wholesale? Diff test names against the base — coverage silently drops.
 - Was a behaviour flipped in a unit test but not its `e2e/*.spec.ts` twin?
 
+**Issue map**
+
+- For an issue-related PR, compare the issue and comments with the diff to `docs/backlog/open-issue-map.md`. Affected entries must reflect branch behavior, evidence and remaining work; a removed entry needs proof that all agreed criteria pass. Missing or misleading map updates are `changes_needed`.
+
 ## 4. Severity
 
 | Bucket | Rule |

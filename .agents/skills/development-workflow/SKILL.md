@@ -20,6 +20,10 @@ Use the full workflow only when at least one is true:
 
 Otherwise it is a small change: skip `align`, the spec, and the task JSON. State the goal and verification, create the worktree (see Build step 0), follow [TDD implementation](../tdd-implementation/SKILL.md), and open the PR only when the human asks. If a small change grows past the gate, stop and start `align`.
 
+## Living issue map — both paths
+
+For **every PR that works on a GitHub issue**, read the issue and comments plus [`docs/backlog/open-issue-map.md`](../../../docs/backlog/open-issue-map.md) before editing. If its entry is missing, follow manual intake in [`.agents/workflows.md`](../../workflows.md): add an `unassessed` entry to the issue PR, then assess the affected code before handoff. Revalidate the affected entry when issue intent or relevant code has changed since its pinned timestamps/commit. In the **same branch and PR**, add or update that issue's entry with observed branch behavior, code/test evidence, remaining work, issue `updatedAt`, and checked commit. If all agreed criteria are proven, remove the entry in that PR and explain its removal and evidence in the PR body. Do not change unrelated entries. This applies to the small-change path as well as the full workflow; an issue-related PR is not ready for review without its map change. A branch/PR result is not evidence of merge, issue closure, or production rollout.
+
 ## Artifact contract
 
 Use two artifacts with different lifecycles and locations.
