@@ -63,7 +63,7 @@ func TestCheckout_GivesThePendingOrderABoundedDeadline(t *testing.T) {
 	}
 }
 
-func TestCheckout_GatewayFailureStillExpiresAndFreesStockAndClaims(t *testing.T) {
+func TestCheckout_GatewayFailureStillExpiresAndFreesStock(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
@@ -89,9 +89,6 @@ func TestCheckout_GatewayFailureStillExpiresAndFreesStockAndClaims(t *testing.T)
 	}
 	if got := stockOf(t, repo, book); got != 5 {
 		t.Errorf("book stock = %d, want 5", got)
-	}
-	if got := liveClaimsOf(t, repo, student); got != 0 {
-		t.Errorf("live claims = %d, want 0", got)
 	}
 }
 

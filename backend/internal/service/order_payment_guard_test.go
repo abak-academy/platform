@@ -70,7 +70,7 @@ func newLifecycleService(t *testing.T) (*Service, *repository.Repository, *lifec
 }
 
 // pendingCourseOrder checks out a paid-course cart so the order is
-// payment_pending with a live claim.
+// payment_pending.
 func pendingCourseOrder(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) (orderID, product, course uuid.UUID) {
 	t.Helper()
 	course = seedCourseTarget(t, repo)
@@ -154,9 +154,6 @@ func TestWebhook_SettlementOnExpiredOrderIsFlaggedAndNotFulfilled(t *testing.T) 
 	}
 	if got := latePaymentFlags(t, repo, orderID); got != 1 {
 		t.Errorf("late payment flags = %d, want exactly 1 across repeated deliveries", got)
-	}
-	if got := liveClaimsOf(t, repo, student); got != 0 {
-		t.Errorf("live claims = %d, want 0", got)
 	}
 }
 
@@ -412,8 +409,7 @@ func mixedCart(t *testing.T, svc *Service, repo *repository.Repository, student 
 	return order.ID, book
 }
 
-// pendingMixedOrder checks out a mixedCart, so expiry has stock to give back
-// and a claim to release.
+// pendingMixedOrder checks out a mixedCart, so expiry has stock to give back.
 func pendingMixedOrder(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) (orderID, book uuid.UUID) {
 	t.Helper()
 	orderID, book = mixedCart(t, svc, repo, student)
@@ -447,9 +443,6 @@ func TestWebhook_SettlementPastDeadlineBeforeSweepExpiresOrderInsteadOfFulfillin
 	}
 	if got := stockOf(t, repo, book); got != 5 {
 		t.Errorf("book stock = %d, want 5 (restored once)", got)
-	}
-	if got := liveClaimsOf(t, repo, student); got != 0 {
-		t.Errorf("live claims = %d, want 0", got)
 	}
 
 	tx, _ := repo.BeginTx(ctx)
@@ -513,9 +506,6 @@ func TestAdminReconcileOrder_GatewayPaidPastDeadlineExpiresOrderAndFlags(t *test
 	}
 	if got := stockOf(t, repo, book); got != 5 {
 		t.Errorf("book stock = %d, want 5 (restored once)", got)
-	}
-	if got := liveClaimsOf(t, repo, student); got != 0 {
-		t.Errorf("live claims = %d, want 0", got)
 	}
 }
 

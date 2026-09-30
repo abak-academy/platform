@@ -11,11 +11,11 @@ import (
 )
 
 // ExpirePaymentOrderTx moves one unpaid order to payment_expired and, in the
-// same transaction, gives back the physical stock checkout took and releases
-// the order's digital claims. The UPDATE guards status and deadline itself, so
-// it takes the row lock and re-evaluates against whatever a concurrent webhook,
-// refund or sweeper committed: only one caller ever sees true, which is what
-// keeps stock from being restored twice and a paid order from being expired.
+// same transaction, gives back the physical stock checkout took. The UPDATE
+// guards status and deadline itself, so it takes the row lock and re-evaluates
+// against whatever a concurrent webhook, refund or sweeper committed: only one
+// caller ever sees true, which is what keeps stock from being restored twice
+// and a paid order from being expired.
 func (r *Repository) ExpirePaymentOrderTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) (bool, error) {
 	tag, err := tx.Exec(ctx,
 		`UPDATE orders SET status = 'payment_expired', updated_at = now()
@@ -38,9 +38,6 @@ func (r *Repository) ExpirePaymentOrderTx(ctx context.Context, tx pgx.Tx, orderI
 		 WHERE p.id = i.product_id`,
 		orderID,
 	); err != nil {
-		return false, err
-	}
-	if err := r.ReleaseDigitalTargetsTx(ctx, tx, orderID, "expired"); err != nil {
 		return false, err
 	}
 	return true, nil

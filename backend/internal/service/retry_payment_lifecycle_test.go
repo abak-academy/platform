@@ -41,9 +41,6 @@ func TestRetryPayment_ExpiredOrderIsRefusedWithoutGatewayCall(t *testing.T) {
 	if got := pay.creates.Load() - before; got != 0 {
 		t.Errorf("gateway calls = %d, want 0", got)
 	}
-	if got := liveClaimsOf(t, repo, student); got != 0 {
-		t.Errorf("live claims = %d, want 0", got)
-	}
 }
 
 func TestRetryPayment_ElapsedDeadlineIsRefusedEvenBeforeTheSweeperRuns(t *testing.T) {
@@ -115,7 +112,7 @@ func studentOf(t *testing.T, repo *repository.Repository, orderID uuid.UUID) uui
 	return order.StudentID
 }
 
-func TestRetryPayment_RecoversGatewayCreationFailureAndKeepsClaims(t *testing.T) {
+func TestRetryPayment_RecoversGatewayCreationFailure(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
@@ -141,9 +138,6 @@ func TestRetryPayment_RecoversGatewayCreationFailureAndKeepsClaims(t *testing.T)
 	if got := orderStatusOf(t, repo, orderID); got != "payment_pending" {
 		t.Errorf("status = %q, want payment_pending", got)
 	}
-	if got := liveClaimsOf(t, repo, student); got != 1 {
-		t.Errorf("live claims = %d, want 1", got)
-	}
 }
 
 func TestRetryPayment_RefusesExamTheStudentWasGrantedMeanwhile(t *testing.T) {
@@ -167,7 +161,7 @@ func TestRetryPayment_RefusesExamTheStudentWasGrantedMeanwhile(t *testing.T) {
 	}
 }
 
-func TestRetryPayment_RefusesLegacyOrderWhoseTargetAnotherOrderHolds(t *testing.T) {
+func TestRetryPayment_RefusesOrderWhoseTargetAnotherLiveOrderHolds(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
@@ -181,7 +175,7 @@ func TestRetryPayment_RefusesLegacyOrderWhoseTargetAnotherOrderHolds(t *testing.
 	if _, err := repo.Pool().Exec(ctx,
 		`UPDATE orders SET status = 'payment_pending', total = 40000 WHERE id = $1`, loser,
 	); err != nil {
-		t.Fatalf("make legacy pending order: %v", err)
+		t.Fatalf("make second pending order: %v", err)
 	}
 	before := pay.creates.Load()
 
@@ -193,91 +187,20 @@ func TestRetryPayment_RefusesLegacyOrderWhoseTargetAnotherOrderHolds(t *testing.
 	}
 }
 
-// Migration 0068 can claim only one target of a legacy bundle and record the
-// other as a backfill conflict; the order stays unsnapshotted, so a retry must
-// still check the target it lost, not just the one it owns.
-func TestRetryPayment_LegacyBundleWithOnlyOneTargetClaimedStillChecksTheLostOne(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	kept, lost := seedCourseTarget(t, repo), seedCourseTarget(t, repo)
-	bundle := seedDigitalProduct(t, repo, "course", 90000, kept, lost)
-	single := seedDigitalProduct(t, repo, "course", 40000, lost)
-	legacy := pendingCourseOrderFor(t, svc, student, bundle)
-
-	var winner, winnerItem uuid.UUID
-	if err := repo.Pool().QueryRow(ctx,
-		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total, checked_out_at)
-		 VALUES ($1, 'paid', 40000, 0, 0, 40000, now()) RETURNING id`, student,
-	).Scan(&winner); err != nil {
-		t.Fatalf("seed winning order: %v", err)
-	}
-	if err := repo.Pool().QueryRow(ctx,
-		`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah)
-		 VALUES ($1, $2, 'course', 'x', 40000, 1, 40000) RETURNING id`, winner, single,
-	).Scan(&winnerItem); err != nil {
-		t.Fatalf("seed winning item: %v", err)
-	}
-	var legacyItem uuid.UUID
-	if err := repo.Pool().QueryRow(ctx, `SELECT id FROM order_item WHERE order_id = $1`, legacy).Scan(&legacyItem); err != nil {
-		t.Fatalf("read legacy item: %v", err)
-	}
-	for _, stmt := range []struct {
-		sql  string
-		args []any
-	}{
-		{`DELETE FROM order_digital_target WHERE order_id = $1 AND target_id = $2`, []any{legacy, lost}},
-		{`UPDATE orders SET digital_targets_snapshot_at = NULL WHERE id = $1`, []any{legacy}},
-		{`INSERT INTO order_digital_target (order_id, order_item_id, student_id, target_kind, target_id)
-		  VALUES ($1, $2, $3, 'course', $4)`, []any{winner, winnerItem, student, lost}},
-		{`INSERT INTO order_digital_target_backfill_conflict (order_id, order_item_id, student_id, target_kind, target_id, winning_order_id)
-		  VALUES ($1, $2, $3, 'course', $4, $5)`, []any{legacy, legacyItem, student, lost, winner}},
-	} {
-		if _, err := repo.Pool().Exec(ctx, stmt.sql, stmt.args...); err != nil {
-			t.Fatalf("simulate partial backfill: %v", err)
-		}
-	}
-	before := pay.creates.Load()
-
-	_, err := svc.RetryPayment(ctx, student.String(), legacy.String(), retryKey())
-
-	conflict := wantConflict(t, err, model.DigitalConflictClaimed)
-	for _, c := range conflict.Conflicts {
-		if c.TargetID == kept {
-			t.Errorf("conflicts = %+v: the order's own claim on %v is its reservation, not a conflict", conflict.Conflicts, kept)
-		}
-	}
-	if got := pay.creates.Load() - before; got != 0 {
-		t.Errorf("gateway calls = %d, want 0", got)
-	}
-}
-
-func unsnapshotLegacyOrder(t *testing.T, repo *repository.Repository, orderID uuid.UUID) {
-	t.Helper()
-	ctx := context.Background()
-	if _, err := repo.Pool().Exec(ctx, `DELETE FROM order_digital_target WHERE order_id = $1`, orderID); err != nil {
-		t.Fatalf("drop claims: %v", err)
-	}
-	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET digital_targets_snapshot_at = NULL WHERE id = $1`, orderID); err != nil {
-		t.Fatalf("drop snapshot: %v", err)
-	}
-}
-
-func TestRetryPayment_LegacyOrderWithALineThatNoLongerLinksAnythingIsRefused(t *testing.T) {
+func TestRetryPayment_RefusesOrderWithALineThatNoLongerLinksAnything(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
 	courseA, courseB := seedCourseTarget(t, repo), seedCourseTarget(t, repo)
 	productA := seedDigitalProduct(t, repo, "course", 50000, courseA)
 	productB := seedDigitalProduct(t, repo, "course", 40000, courseB)
-	legacy := pendingCourseOrderFor(t, svc, student, productA, productB)
-	unsnapshotLegacyOrder(t, repo, legacy)
+	pending := pendingCourseOrderFor(t, svc, student, productA, productB)
 	if _, err := repo.Pool().Exec(ctx, `DELETE FROM product_course WHERE product_id = $1`, productB); err != nil {
 		t.Fatalf("unlink product: %v", err)
 	}
 	before := pay.creates.Load()
 
-	_, err := svc.RetryPayment(ctx, student.String(), legacy.String(), retryKey())
+	_, err := svc.RetryPayment(ctx, student.String(), pending.String(), retryKey())
 
 	if !errors.Is(err, ErrDigitalProductNoTargets) {
 		t.Fatalf("err = %v, want ErrDigitalProductNoTargets", err)
@@ -287,17 +210,16 @@ func TestRetryPayment_LegacyOrderWithALineThatNoLongerLinksAnythingIsRefused(t *
 	}
 }
 
-func TestRetryPayment_LegacyOrderWhoseLinesAllResolveCanStillRetry(t *testing.T) {
+func TestRetryPayment_IsNotBlockedByTheOrdersOwnLines(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
 	productA := seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo))
 	productB := seedDigitalProduct(t, repo, "course", 40000, seedCourseTarget(t, repo))
-	legacy := pendingCourseOrderFor(t, svc, student, productA, productB)
-	unsnapshotLegacyOrder(t, repo, legacy)
+	pending := pendingCourseOrderFor(t, svc, student, productA, productB)
 	before := pay.creates.Load()
 
-	if _, err := svc.RetryPayment(ctx, student.String(), legacy.String(), retryKey()); err != nil {
+	if _, err := svc.RetryPayment(ctx, student.String(), pending.String(), retryKey()); err != nil {
 		t.Fatalf("RetryPayment: %v", err)
 	}
 	if got := pay.creates.Load() - before; got != 1 {
@@ -335,9 +257,6 @@ func TestRetryPayment_OrderExpiringDuringGatewayCallKeepsItsOldPaymentState(t *t
 	}
 	if got := gatewayRefOf(t, repo, orderID); got != originalRef {
 		t.Errorf("gateway ref = %q, want unchanged %q", got, originalRef)
-	}
-	if got := liveClaimsOf(t, repo, student); got != 0 {
-		t.Errorf("live claims = %d, want 0", got)
 	}
 }
 

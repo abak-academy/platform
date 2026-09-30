@@ -1190,14 +1190,9 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	}
 
 	if hasDigital && len(participants) == 0 {
-		claims, err := s.claimsDigitalTargets(ctx, tx, order.StudentID)
-		if err != nil {
+		// Load-bearing: one open cart per student (idx_orders_student_cart) plus the cart lock above make this read race-safe.
+		if err := s.checkDigitalTargets(ctx, tx, order); err != nil {
 			return CheckoutResult{}, err
-		}
-		if claims {
-			if err := s.reserveDigitalTargets(ctx, tx, order); err != nil {
-				return CheckoutResult{}, err
-			}
 		}
 	}
 
@@ -1465,8 +1460,8 @@ func (s *Service) lockPendingOrderTx(ctx context.Context, tx pgx.Tx, orderID, st
 	return order, nil
 }
 
-// lockRetryableOrderTx is lockPendingOrderTx plus the digital ownership and
-// claim recheck a new payment for an already checked-out order needs.
+// lockRetryableOrderTx is lockPendingOrderTx plus the digital guard recheck a
+// new payment for an already checked-out order needs.
 func (s *Service) lockRetryableOrderTx(ctx context.Context, tx pgx.Tx, orderID, studentID uuid.UUID) (model.Order, error) {
 	order, err := s.lockPendingOrderTx(ctx, tx, orderID, studentID)
 	if err != nil {
@@ -1884,9 +1879,6 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID, refund
 	// registrations must not outlive the refund (the course side revokes,
 	// leaving exams live would let refunded students keep sitting exams).
 	if err := s.revokeOrderExamRegistrationsTx(ctx, tx, id, order.StudentID, order.Items, actorID); err != nil {
-		return err
-	}
-	if err := s.storeRepo.ReleaseDigitalTargetsTx(ctx, tx, id, "refunded"); err != nil {
 		return err
 	}
 	if err := s.storeRepo.ClearOrderTracking(ctx, tx, id); err != nil {

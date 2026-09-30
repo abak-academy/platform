@@ -10,21 +10,6 @@ import (
 	"akademi-bimbel/internal/model"
 )
 
-// claimsDigitalTargets reports whether digital lines bought by this user are
-// protected by per-target claims. School and other non-student buyers keep
-// their existing behaviour.
-func (s *Service) claimsDigitalTargets(ctx context.Context, tx pgx.Tx, buyerID uuid.UUID) (bool, error) {
-	if tx != nil {
-		role, err := s.storeRepo.GetUserRoleTx(ctx, tx, buyerID)
-		return role == RoleStudent, err
-	}
-	buyer, err := s.repo.GetUserByID(ctx, buyerID.String())
-	if err != nil {
-		return false, err
-	}
-	return buyer != nil && buyer.Role == RoleStudent, nil
-}
-
 // resolveDigitalTargets expands digital lines into the courses or exams their
 // products link to right now. Physical lines contribute nothing.
 func (s *Service) resolveDigitalTargets(ctx context.Context, tx pgx.Tx, items []model.OrderItem) ([]model.DigitalTarget, error) {
@@ -68,9 +53,18 @@ func repeatedDigitalTargets(targets []model.DigitalTarget) []model.DigitalTarget
 }
 
 func (s *Service) unavailableDigitalTargets(ctx context.Context, tx pgx.Tx, studentID, exceptOrderID uuid.UUID, targets []model.DigitalTarget) ([]model.DigitalTargetConflict, error) {
-	unavailable, err := s.storeRepo.FindUnavailableDigitalTargets(ctx, tx, studentID, targets, exceptOrderID)
+	live, err := s.storeRepo.ListLiveDigitalTargets(ctx, tx, studentID, exceptOrderID)
 	if err != nil {
 		return nil, err
+	}
+	unavailable := make(map[model.DigitalTargetKey]string, len(live))
+	for _, l := range live {
+		key := model.DigitalTargetKey{Kind: l.Kind, TargetID: l.TargetID}
+		if l.Reason == model.LiveTargetOwned {
+			unavailable[key] = model.DigitalConflictOwned
+		} else if unavailable[key] == "" {
+			unavailable[key] = model.DigitalConflictClaimed
+		}
 	}
 	var conflicts []model.DigitalTargetConflict
 	for _, t := range targets {
@@ -84,12 +78,8 @@ func (s *Service) unavailableDigitalTargets(ctx context.Context, tx pgx.Tx, stud
 }
 
 // checkDigitalCandidate is the cart-time early warning for adding one product:
-// checkout stays authoritative, since a cart reserves nothing.
+// checkout stays authoritative, since a cart is not a reservation.
 func (s *Service) checkDigitalCandidate(ctx context.Context, studentID uuid.UUID, existing []model.OrderItem, candidate model.OrderItem) error {
-	claims, err := s.claimsDigitalTargets(ctx, nil, studentID)
-	if err != nil || !claims {
-		return err
-	}
 	candidateTargets, err := s.resolveDigitalTargets(ctx, nil, []model.OrderItem{candidate})
 	if err != nil {
 		return err
@@ -131,10 +121,12 @@ func requireTargetsForDigitalLines(items []model.OrderItem, targets []model.Digi
 	return nil
 }
 
-// reserveDigitalTargets validates and claims every digital target of the order
-// inside the checkout transaction. Any conflict rejects the whole order, so the
-// caller's rollback also undoes physical stock changes.
-func (s *Service) reserveDigitalTargets(ctx context.Context, tx pgx.Tx, order model.Order) error {
+// checkDigitalTargets refuses an order whose digital lines grant nothing,
+// repeat a target, or reach a target the student owns or is buying in another
+// live order. The order's own lines never block it, so retry passes too. Any
+// conflict rejects the whole order, so the caller's rollback also undoes
+// physical stock changes.
+func (s *Service) checkDigitalTargets(ctx context.Context, tx pgx.Tx, order model.Order) error {
 	targets, err := s.resolveDigitalTargets(ctx, tx, order.Items)
 	if err != nil {
 		return err
@@ -143,7 +135,7 @@ func (s *Service) reserveDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 		return err
 	}
 	conflicts := repeatedDigitalTargets(targets)
-	unavailable, err := s.unavailableDigitalTargets(ctx, tx, order.StudentID, uuid.Nil, targets)
+	unavailable, err := s.unavailableDigitalTargets(ctx, tx, order.StudentID, order.ID, targets)
 	if err != nil {
 		return err
 	}
@@ -151,29 +143,12 @@ func (s *Service) reserveDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 	if len(conflicts) > 0 {
 		return &DigitalTargetConflictError{Conflicts: conflicts}
 	}
-
-	lost, err := s.storeRepo.ClaimDigitalTargetsTx(ctx, tx, order.ID, order.StudentID, targets)
-	if err != nil {
-		return err
-	}
-	for _, t := range lost {
-		conflicts = append(conflicts, model.DigitalTargetConflict{
-			ProductID: t.ProductID, Kind: t.Kind, TargetID: t.TargetID, Reason: model.DigitalConflictClaimed,
-		})
-	}
-	if len(conflicts) > 0 {
-		return &DigitalTargetConflictError{Conflicts: conflicts}
-	}
 	return nil
 }
 
-// recheckDigitalTargets re-runs the ownership and claim guard for an order that
-// already checked out, before a new payment is created for it. The order's own
-// claims are its reservation, not a conflict; what can still block it is access
-// granted since checkout, or another order's claim on a target the order never
-// claimed. An order without a snapshot (placed before claims existed, possibly
-// backfilled with only some of its targets) is fulfilled from live links, so all
-// of them are checked, not just the ones it owns.
+// recheckDigitalTargets re-runs the guard for an order that already checked
+// out, before a new payment is created for it. Bulk orders are left to their
+// own flow.
 func (s *Service) recheckDigitalTargets(ctx context.Context, tx pgx.Tx, order model.Order) error {
 	digital := false
 	for _, item := range order.Items {
@@ -191,34 +166,5 @@ func (s *Service) recheckDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 	if len(participants) > 0 {
 		return nil
 	}
-	claims, err := s.claimsDigitalTargets(ctx, tx, order.StudentID)
-	if err != nil || !claims {
-		return err
-	}
-
-	snapshot, err := s.storeRepo.GetOrderDigitalSnapshot(ctx, tx, order.ID)
-	if err != nil {
-		return err
-	}
-	var targets []model.DigitalTarget
-	if snapshot.Taken {
-		targets = snapshot.Targets
-	}
-	if len(targets) == 0 {
-		targets, err = s.resolveDigitalTargets(ctx, tx, order.Items)
-		if err != nil {
-			return err
-		}
-		if err := requireTargetsForDigitalLines(order.Items, targets); err != nil {
-			return err
-		}
-	}
-	conflicts, err := s.unavailableDigitalTargets(ctx, tx, order.StudentID, order.ID, targets)
-	if err != nil {
-		return err
-	}
-	if len(conflicts) > 0 {
-		return &DigitalTargetConflictError{Conflicts: conflicts}
-	}
-	return nil
+	return s.checkDigitalTargets(ctx, tx, order)
 }

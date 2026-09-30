@@ -9,7 +9,6 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 
 	"akademi-bimbel/internal/model"
@@ -152,13 +151,13 @@ func orderStatusOf(t *testing.T, repo *repository.Repository, orderID uuid.UUID)
 	return status
 }
 
-func liveClaimsOf(t *testing.T, repo *repository.Repository, studentID uuid.UUID) int {
+func pendingOrdersOf(t *testing.T, repo *repository.Repository, studentID uuid.UUID) int {
 	t.Helper()
 	var n int
 	if err := repo.Pool().QueryRow(context.Background(),
-		`SELECT count(*) FROM order_digital_target WHERE student_id = $1 AND released_at IS NULL`, studentID,
+		`SELECT count(*) FROM orders WHERE student_id = $1 AND status = 'payment_pending'`, studentID,
 	).Scan(&n); err != nil {
-		t.Fatalf("count claims: %v", err)
+		t.Fatalf("count pending orders: %v", err)
 	}
 	return n
 }
@@ -202,9 +201,6 @@ func TestDigitalPurchase_OwnedCourse_RejectedAtCartAndCheckout(t *testing.T) {
 	if got := orderStatusOf(t, repo, order.ID); got != "cart" {
 		t.Errorf("order status = %q, want cart (checkout rolled back)", got)
 	}
-	if n := liveClaimsOf(t, repo, student); n != 0 {
-		t.Errorf("live claims = %d, want 0", n)
-	}
 	if n := pay.creates.Load(); n != 0 {
 		t.Errorf("gateway calls = %d, want 0", n)
 	}
@@ -237,8 +233,8 @@ func TestDigitalPurchase_ExamRegistration_BlocksUnlessRevoked(t *testing.T) {
 	if _, err := svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey()); err != nil {
 		t.Fatalf("Checkout after revoke: %v", err)
 	}
-	if n := liveClaimsOf(t, repo, student); n != 1 {
-		t.Errorf("live claims = %d, want 1", n)
+	if n := pendingOrdersOf(t, repo, student); n != 1 {
+		t.Errorf("pending orders = %d, want 1", n)
 	}
 }
 
@@ -268,8 +264,8 @@ func TestDigitalPurchase_PendingOrderBlocksDifferentSKUForSameTarget(t *testing.
 	if n := pay.creates.Load(); n != 1 {
 		t.Errorf("gateway calls = %d, want 1 (first order only)", n)
 	}
-	if n := liveClaimsOf(t, repo, student); n != 1 {
-		t.Errorf("live claims = %d, want 1", n)
+	if n := pendingOrdersOf(t, repo, student); n != 1 {
+		t.Errorf("pending orders = %d, want 1", n)
 	}
 }
 
@@ -290,9 +286,6 @@ func TestDigitalPurchase_BundleWithOneOwnedTargetIsRejectedWhole(t *testing.T) {
 	conflictErr := wantConflict(t, err, model.DigitalConflictOwned)
 	if len(conflictErr.Conflicts) != 1 || conflictErr.Conflicts[0].TargetID != owned || conflictErr.Conflicts[0].ProductID != bundle {
 		t.Errorf("conflicts = %+v, want only the owned target %v of bundle %v", conflictErr.Conflicts, owned, bundle)
-	}
-	if n := liveClaimsOf(t, repo, student); n != 0 {
-		t.Errorf("live claims = %d, want 0: no partial bundle reservation", n)
 	}
 	if n := pay.creates.Load(); n != 0 {
 		t.Errorf("gateway calls = %d, want 0", n)
@@ -319,63 +312,77 @@ func TestDigitalPurchase_TwoLinesSharingATargetAreRejected(t *testing.T) {
 	forceLine(t, repo, order.ID, bundle, "course", 90000)
 	_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
 	wantConflict(t, err, model.DigitalConflictDuplicateInCart)
-	if n := liveClaimsOf(t, repo, student); n != 0 {
-		t.Errorf("live claims = %d, want 0", n)
-	}
 	if n := pay.creates.Load(); n != 0 {
 		t.Errorf("gateway calls = %d, want 0", n)
 	}
 }
 
 func TestDigitalPurchase_ConflictInMixedCartRollsBackStockAndPayment(t *testing.T) {
-	svc, repo, pay := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	course := seedCourseTarget(t, repo)
-	digital := seedDigitalProduct(t, repo, "course", 50000, course)
-	enrollInCourse(t, repo, student, course)
+	for _, tc := range []struct {
+		name   string
+		reason string
+		owned  bool
+	}{
+		{"owned target", model.DigitalConflictOwned, true},
+		{"target repeated across lines", model.DigitalConflictDuplicateInCart, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, repo, pay := newDigitalPurchaseService(t)
+			ctx := context.Background()
+			student := newDigitalStudent(t, repo)
+			course := seedCourseTarget(t, repo)
+			digital := seedDigitalProduct(t, repo, "course", 50000, course)
+			sameTarget := seedDigitalProduct(t, repo, "course", 40000, course)
+			if tc.owned {
+				enrollInCourse(t, repo, student, course)
+			}
 
-	var bookID uuid.UUID
-	if err := repo.Pool().QueryRow(ctx,
-		`INSERT INTO product (type, name, price, stock, status, weight_grams) VALUES ('book', $1, 30000, 5, 'published', 300) RETURNING id`,
-		"Book "+uuid.NewString(),
-	).Scan(&bookID); err != nil {
-		t.Fatalf("create book: %v", err)
-	}
+			var bookID uuid.UUID
+			if err := repo.Pool().QueryRow(ctx,
+				`INSERT INTO product (type, name, price, stock, status, weight_grams) VALUES ('book', $1, 30000, 5, 'published', 300) RETURNING id`,
+				"Book "+uuid.NewString(),
+			).Scan(&bookID); err != nil {
+				t.Fatalf("create book: %v", err)
+			}
 
-	order, _, err := svc.MintCart(ctx, student.String())
-	if err != nil {
-		t.Fatalf("MintCart: %v", err)
-	}
-	if err := svc.AddItem(ctx, student.String(), order.ID.String(), bookID.String(), 2); err != nil {
-		t.Fatalf("AddItem book: %v", err)
-	}
-	forceLine(t, repo, order.ID, digital, "course", 50000)
-	if _, err := repo.Pool().Exec(ctx,
-		`UPDATE orders SET shipping_cost = 18000, selected_courier = 'JNE' WHERE id = $1`, order.ID,
-	); err != nil {
-		t.Fatalf("set shipping: %v", err)
-	}
+			order, _, err := svc.MintCart(ctx, student.String())
+			if err != nil {
+				t.Fatalf("MintCart: %v", err)
+			}
+			if err := svc.AddItem(ctx, student.String(), order.ID.String(), bookID.String(), 2); err != nil {
+				t.Fatalf("AddItem book: %v", err)
+			}
+			forceLine(t, repo, order.ID, digital, "course", 50000)
+			if !tc.owned {
+				forceLine(t, repo, order.ID, sameTarget, "course", 40000)
+			}
+			if _, err := repo.Pool().Exec(ctx,
+				`UPDATE orders SET shipping_cost = 18000, selected_courier = 'JNE' WHERE id = $1`, order.ID,
+			); err != nil {
+				t.Fatalf("set shipping: %v", err)
+			}
 
-	_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
-	wantConflict(t, err, model.DigitalConflictOwned)
+			_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
+			wantConflict(t, err, tc.reason)
 
-	var stock int
-	if err := repo.Pool().QueryRow(ctx, `SELECT stock FROM product WHERE id = $1`, bookID).Scan(&stock); err != nil {
-		t.Fatalf("read stock: %v", err)
-	}
-	if stock != 5 {
-		t.Errorf("book stock = %d, want 5 (decrement rolled back)", stock)
-	}
-	if got := orderStatusOf(t, repo, order.ID); got != "cart" {
-		t.Errorf("order status = %q, want cart", got)
-	}
-	if n := pay.creates.Load(); n != 0 {
-		t.Errorf("gateway calls = %d, want 0", n)
+			var stock int
+			if err := repo.Pool().QueryRow(ctx, `SELECT stock FROM product WHERE id = $1`, bookID).Scan(&stock); err != nil {
+				t.Fatalf("read stock: %v", err)
+			}
+			if stock != 5 {
+				t.Errorf("book stock = %d, want 5 (decrement rolled back)", stock)
+			}
+			if got := orderStatusOf(t, repo, order.ID); got != "cart" {
+				t.Errorf("order status = %q, want cart", got)
+			}
+			if n := pay.creates.Load(); n != 0 {
+				t.Errorf("gateway calls = %d, want 0", n)
+			}
+		})
 	}
 }
 
-func TestDigitalPurchase_FreeOrderClaimsAndBlocksAnotherSKU(t *testing.T) {
+func TestDigitalPurchase_PaidFreeOrderBlocksAnotherSKUBeforeAndAfterFulfilment(t *testing.T) {
 	svc, repo, _ := newDigitalPurchaseService(t)
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
@@ -387,9 +394,6 @@ func TestDigitalPurchase_FreeOrderClaimsAndBlocksAnotherSKU(t *testing.T) {
 	if err != nil || !result.Free {
 		t.Fatalf("free Checkout = %+v, %v; want Free", result, err)
 	}
-	if n := liveClaimsOf(t, repo, student); n != 1 {
-		t.Fatalf("live claims = %d, want 1 kept by the paid free order", n)
-	}
 
 	order, _, err := svc.MintCart(ctx, student.String())
 	if err != nil {
@@ -398,6 +402,15 @@ func TestDigitalPurchase_FreeOrderClaimsAndBlocksAnotherSKU(t *testing.T) {
 	forceLine(t, repo, order.ID, otherFree, "course", 0)
 	_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
 	wantConflict(t, err, model.DigitalConflictClaimed)
+
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE orders SET status = 'completed' WHERE student_id = $1 AND status = 'paid'`, student,
+	); err != nil {
+		t.Fatalf("complete order: %v", err)
+	}
+	enrollInCourse(t, repo, student, course)
+	_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
+	wantConflict(t, err, model.DigitalConflictOwned)
 	if got := orderStatusOf(t, repo, order.ID); got != "cart" {
 		t.Errorf("order status = %q, want cart", got)
 	}
@@ -415,252 +428,6 @@ func TestDigitalPurchase_OtherStudentsAreUnaffected(t *testing.T) {
 	}
 	if _, err := svc.Checkout(ctx, second.String(), cartOf(t, svc, second, product).String(), checkoutKey()); err != nil {
 		t.Fatalf("second student Checkout: %v", err)
-	}
-}
-
-func TestDigitalPurchase_PhysicalOnlyOrderTakesNoSnapshot(t *testing.T) {
-	svc, repo, _ := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-
-	var bookID uuid.UUID
-	if err := repo.Pool().QueryRow(ctx,
-		`INSERT INTO product (type, name, price, stock, status, weight_grams) VALUES ('book', $1, 30000, 5, 'published', 300) RETURNING id`,
-		"Book "+uuid.NewString(),
-	).Scan(&bookID); err != nil {
-		t.Fatalf("create book: %v", err)
-	}
-	orderID := cartOf(t, svc, student, bookID)
-	if _, err := repo.Pool().Exec(ctx,
-		`UPDATE orders SET shipping_cost = 18000, selected_courier = 'JNE' WHERE id = $1`, orderID,
-	); err != nil {
-		t.Fatalf("set shipping: %v", err)
-	}
-	if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey()); err != nil {
-		t.Fatalf("Checkout: %v", err)
-	}
-
-	snapshot, err := repo.GetOrderDigitalSnapshot(ctx, nil, orderID)
-	if err != nil {
-		t.Fatalf("GetOrderDigitalSnapshot: %v", err)
-	}
-	if snapshot.Taken || len(snapshot.Targets) != 0 {
-		t.Errorf("snapshot = %+v, want none for a physical-only order", snapshot)
-	}
-}
-
-// waitForWaitersBehind polls until at least want backends are blocked, directly
-// or through another waiter, by holder's transaction. Scoping the wait to the
-// holder means an unrelated lock waiter in the shared database cannot satisfy
-// it, and a checkout that never reaches the lock fails the test instead of
-// slipping past the ordering it describes.
-func waitForWaitersBehind(t *testing.T, repo *repository.Repository, holder pgx.Tx, want int) {
-	t.Helper()
-	ctx := context.Background()
-	var holderPID int
-	if err := holder.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&holderPID); err != nil {
-		t.Fatalf("read holder pid: %v", err)
-	}
-	deadline := time.Now().Add(15 * time.Second)
-	for {
-		var n int
-		if err := repo.Pool().QueryRow(ctx,
-			`WITH RECURSIVE blocked AS (
-			     SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))
-			     UNION
-			     SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid = ANY(pg_blocking_pids(a.pid))
-			 ) SELECT count(*) FROM blocked`, holderPID,
-		).Scan(&n); err != nil {
-			t.Fatalf("read waiters: %v", err)
-		}
-		if n >= want {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("waiters behind the holder = %d, want %d: checkout never blocked on the rival's uncommitted claim", n, want)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-}
-
-// openRivalClaim holds an uncommitted claim on course for the student, the way a
-// second order of theirs (a payment retry) would mid-transaction. The returned
-// tx must be committed or rolled back by the caller.
-func openRivalClaim(t *testing.T, repo *repository.Repository, student, course uuid.UUID) pgx.Tx {
-	t.Helper()
-	ctx := context.Background()
-	rivalProduct := seedDigitalProduct(t, repo, "course", 40000, course)
-	var rivalOrder, rivalItem uuid.UUID
-	if err := repo.Pool().QueryRow(ctx,
-		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total)
-		 VALUES ($1, 'payment_expired', 40000, 0, 0, 40000) RETURNING id`, student,
-	).Scan(&rivalOrder); err != nil {
-		t.Fatalf("insert rival order: %v", err)
-	}
-	if err := repo.Pool().QueryRow(ctx,
-		`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah)
-		 VALUES ($1, $2, 'course', 'rival', 40000, 1, 40000) RETURNING id`, rivalOrder, rivalProduct,
-	).Scan(&rivalItem); err != nil {
-		t.Fatalf("insert rival item: %v", err)
-	}
-	tx, err := repo.BeginTx(ctx)
-	if err != nil {
-		t.Fatalf("begin rival tx: %v", err)
-	}
-	lost, err := repo.ClaimDigitalTargetsTx(ctx, tx, rivalOrder, student, []model.DigitalTarget{
-		{OrderItemID: rivalItem, ProductID: rivalProduct, Kind: model.DigitalTargetCourse, TargetID: course},
-	})
-	if err != nil || len(lost) != 0 {
-		tx.Rollback(ctx)
-		t.Fatalf("rival claim = lost %v, err %v; want a clean uncommitted claim", lost, err)
-	}
-	return tx
-}
-
-// The claim is the unique index, not the eligibility read: Checkout's read
-// cannot see the rival's uncommitted claim, so only blocking on the index
-// insert and then losing when the rival commits keeps the target single-owner.
-func TestDigitalPurchase_CheckoutBlocksOnUncommittedRivalClaimAndLosesWhenItCommits(t *testing.T) {
-	svc, repo, pay := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	course := seedCourseTarget(t, repo)
-	product := seedDigitalProduct(t, repo, "course", 50000, course)
-	cartID := cartOf(t, svc, student, product)
-
-	rival := openRivalClaim(t, repo, student, course)
-	defer rival.Rollback(ctx)
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := svc.Checkout(ctx, student.String(), cartID.String(), checkoutKey())
-		done <- err
-	}()
-
-	waitForWaitersBehind(t, repo, rival, 1)
-	select {
-	case err := <-done:
-		t.Fatalf("Checkout returned %v before the rival claim resolved", err)
-	default:
-	}
-	if err := rival.Commit(ctx); err != nil {
-		t.Fatalf("commit rival: %v", err)
-	}
-
-	wantConflict(t, <-done, model.DigitalConflictClaimed)
-	if got := orderStatusOf(t, repo, cartID); got != "cart" {
-		t.Errorf("order status = %q, want cart", got)
-	}
-	if n := liveClaimsOf(t, repo, student); n != 1 {
-		t.Errorf("live claims = %d, want 1 (the rival's)", n)
-	}
-	if n := pay.creates.Load(); n != 0 {
-		t.Errorf("gateway calls = %d, want 0 for the loser", n)
-	}
-}
-
-// When the rival rolls back, the blocked checkout wins. A second submit of the
-// same cart waits on the order row and must not create a second claim or payment.
-func TestDigitalPurchase_CheckoutWinsWhenRivalRollsBackAndDoubleSubmitPaysOnce(t *testing.T) {
-	svc, repo, pay := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	course := seedCourseTarget(t, repo)
-	product := seedDigitalProduct(t, repo, "course", 50000, course)
-	cartID := cartOf(t, svc, student, product)
-
-	rival := openRivalClaim(t, repo, student, course)
-	defer rival.Rollback(ctx)
-
-	done := make(chan error, 2)
-	for i := 0; i < 2; i++ {
-		go func() {
-			_, err := svc.Checkout(ctx, student.String(), cartID.String(), checkoutKey())
-			done <- err
-		}()
-	}
-	waitForWaitersBehind(t, repo, rival, 2)
-	if err := rival.Rollback(ctx); err != nil {
-		t.Fatalf("rollback rival: %v", err)
-	}
-
-	var succeeded, notEditable int
-	for i := 0; i < 2; i++ {
-		switch err := <-done; {
-		case err == nil:
-			succeeded++
-		case errors.Is(err, ErrOrderNotEditable):
-			notEditable++
-		default:
-			t.Errorf("unexpected Checkout error: %v", err)
-		}
-	}
-	if succeeded != 1 || notEditable != 1 {
-		t.Errorf("succeeded=%d notEditable=%d, want 1 and 1", succeeded, notEditable)
-	}
-	if n := liveClaimsOf(t, repo, student); n != 1 {
-		t.Errorf("live claims = %d, want 1", n)
-	}
-	if n := pay.creates.Load(); n != 1 {
-		t.Errorf("gateway calls = %d, want 1", n)
-	}
-}
-
-func TestDigitalPurchase_ReleasedClaimAllowsRepurchase(t *testing.T) {
-	svc, repo, _ := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	course := seedCourseTarget(t, repo)
-	product := seedDigitalProduct(t, repo, "course", 50000, course)
-
-	orderID := cartOf(t, svc, student, product)
-	if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey()); err != nil {
-		t.Fatalf("Checkout: %v", err)
-	}
-	tx, err := repo.BeginTx(ctx)
-	if err != nil {
-		t.Fatalf("begin: %v", err)
-	}
-	if err := repo.ReleaseDigitalTargetsTx(ctx, tx, orderID, "test"); err != nil {
-		t.Fatalf("release: %v", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		t.Fatalf("commit: %v", err)
-	}
-
-	if _, err := svc.Checkout(ctx, student.String(), cartOf(t, svc, student, product).String(), checkoutKey()); err != nil {
-		t.Fatalf("repurchase after release: %v", err)
-	}
-	if n := liveClaimsOf(t, repo, student); n != 1 {
-		t.Errorf("live claims = %d, want 1 (the new order)", n)
-	}
-}
-
-func TestDigitalPurchase_RefundReleasesClaimForRepurchase(t *testing.T) {
-	svc, repo, _ := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	course := seedCourseTarget(t, repo)
-	product := seedDigitalProduct(t, repo, "course", 0, course)
-
-	orderID := cartOf(t, svc, student, product)
-	if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey()); err != nil {
-		t.Fatalf("Checkout: %v", err)
-	}
-	if n := liveClaimsOf(t, repo, student); n != 1 {
-		t.Fatalf("live claims = %d, want 1 before refund", n)
-	}
-
-	actor := seedRevokeActor(t, repo)
-	if err := svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"); err != nil {
-		t.Fatalf("AdminRefundOrder: %v", err)
-	}
-	if n := liveClaimsOf(t, repo, student); n != 0 {
-		t.Errorf("live claims = %d, want 0 after refund", n)
-	}
-
-	if _, err := svc.Checkout(ctx, student.String(), cartOf(t, svc, student, product).String(), checkoutKey()); err != nil {
-		t.Fatalf("repurchase after refund: %v", err)
 	}
 }
 
@@ -682,9 +449,6 @@ func TestDigitalPurchase_ProductWithNoLinkedTargetsIsNotCharged(t *testing.T) {
 			}
 			if n := pay.creates.Load(); n != 0 {
 				t.Errorf("gateway calls = %d, want 0", n)
-			}
-			if snapshot, err := repo.GetOrderDigitalSnapshot(ctx, nil, orderID); err != nil || snapshot.Taken {
-				t.Errorf("snapshot = %+v, err %v; want none", snapshot, err)
 			}
 		})
 	}

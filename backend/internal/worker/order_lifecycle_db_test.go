@@ -115,7 +115,7 @@ func (e *lifecycleEnv) course(t *testing.T) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
 	if err := e.repo.Pool().QueryRow(context.Background(),
-		`INSERT INTO course (title) VALUES ($1) RETURNING id`, "Course "+uuid.NewString(),
+		`INSERT INTO course (title, level, subject, instructor_name) VALUES ($1, 'sma', 'math', 'Teacher') RETURNING id`, "Course "+uuid.NewString(),
 	).Scan(&id); err != nil {
 		t.Fatalf("insert course: %v", err)
 	}
