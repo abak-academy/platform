@@ -184,8 +184,6 @@ function summaryRows(t: (key: any) => string): { key: keyof Order; labelKey: any
 
 function retryErrorMessage(err: unknown, t: (key: I18nKey) => string): string {
   if (!(err instanceof ApiError)) return t("order_retry_failed_desc");
-  if (err.code === "payment_expired") return t("order_retry_expired");
-  if (err.code === "payment_deadline_too_close") return t("order_retry_deadline_too_close");
   // A stale retry hits the order lock guard, not the admin-confirm "not payable" code.
   if (err.code === "order_not_editable") return t("order_retry_not_editable");
   return err.message;
