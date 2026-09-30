@@ -47,12 +47,14 @@ CREATE TABLE IF NOT EXISTS order_digital_target_backfill_conflict (
 -- paid-but-unfulfilled orders. Fulfilled orders are already covered by the
 -- live course_session / exam_registration they created, and cancelled or
 -- expired orders hold nothing. Bulk orders (order_participant rows) and
--- non-student buyers are left to their own flows. The earliest placed order
--- wins a contested target; the rest go to the conflict table above.
+-- non-student buyers are left to their own flows. A paid order wins a
+-- contested target over an unpaid one, then the earliest placed order (order
+-- and item id break ties); the rest go to the conflict table above.
 WITH candidate AS (
     SELECT o.id AS order_id, oi.id AS order_item_id, o.student_id,
            'course'::text AS target_kind, pc.course_id AS target_id,
-           COALESCE(o.checked_out_at, o.created_at) AS placed_at
+           COALESCE(o.checked_out_at, o.created_at) AS placed_at,
+           (o.status = 'paid') AS is_paid
       FROM orders o
       JOIN users u ON u.id = o.student_id AND u.role = 'student'
       JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'course'
@@ -62,7 +64,8 @@ WITH candidate AS (
     UNION ALL
     SELECT o.id, oi.id, o.student_id,
            'exam'::text, pe.exam_id,
-           COALESCE(o.checked_out_at, o.created_at)
+           COALESCE(o.checked_out_at, o.created_at),
+           (o.status = 'paid')
       FROM orders o
       JOIN users u ON u.id = o.student_id AND u.role = 'student'
       JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'exam'
@@ -75,7 +78,7 @@ WITH candidate AS (
            FIRST_VALUE(order_id) OVER w AS winning_order_id
       FROM candidate
     WINDOW w AS (PARTITION BY student_id, target_kind, target_id
-                 ORDER BY placed_at, order_id, order_item_id)
+                 ORDER BY is_paid DESC, placed_at, order_id, order_item_id)
 ), claimed AS (
     INSERT INTO order_digital_target (order_id, order_item_id, student_id, target_kind, target_id)
     SELECT order_id, order_item_id, student_id, target_kind, target_id
