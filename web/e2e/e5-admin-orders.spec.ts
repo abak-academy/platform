@@ -23,8 +23,8 @@ import { API_BASE, loginRealAdmin, loginRealStudent } from "./helpers/session";
  * prerequisite, unlike a physical product.
  *
  * A passing run leaves the student owning the course it bought, so the spec
- * refunds the order at the end: the refund revokes the enrollment and releases
- * the digital claim, which is what keeps a second run possible. Discovery also
+ * refunds the order at the end: the refund revokes the enrollment and takes the
+ * order out of the live set, which is what keeps a second run possible. Discovery also
  * pages through the whole catalog, so a run that died before that refund can
  * still find another course to buy.
  */
@@ -87,7 +87,7 @@ async function checkoutToPaymentPending(
     expect(del.ok(), "clearing a leftover cart item should succeed").toBeTruthy();
   }
 
-  // A digital product the student already owns or holds a live claim on is
+  // A digital product the student already owns or is already buying is
   // refused with 409 digital_target_conflict, so a rerun (or a run that died
   // before confirm) cannot reuse the same course. Take the first one that adds.
   let added = false;
@@ -103,8 +103,8 @@ async function checkoutToPaymentPending(
     }
     const failure = (await itemRes.json().catch(() => ({}))) as { code?: string };
     lastFailure = `${itemRes.status()} ${failure.code ?? "unknown"}`;
-    // 409 is the expected rerun case: the student owns the course or holds a
-    // live claim on it, so try the next one. 429 is the limiter, not ownership —
+    // 409 is the expected rerun case: the student owns the course or is already buying
+    // it in a live order, so try the next one. 429 is the limiter, not ownership —
     // fail here rather than drain the catalog and blame ownership for it.
     if (itemRes.status() === 409) continue;
     if (itemRes.status() === 429) {
@@ -118,7 +118,7 @@ async function checkoutToPaymentPending(
   if (!added) {
     throw new Error(
       `real-backend setup: no priced course could be added to the cart (last failure: ${lastFailure}) — ` +
-        "the student already owns or holds a live claim on every one of them: " +
+        "the student already owns or is already buying every one of them: " +
         "refund the previous run's order, or publish another priced course via /admin/products."
     );
   }
