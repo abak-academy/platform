@@ -54,11 +54,13 @@ func (r *Repository) ListProductDigitalTargets(ctx context.Context, tx pgx.Tx, p
 
 // ListLiveDigitalTargets returns the courses and exams the student already has
 // live access to ('owned': an active course_session, a non-revoked
-// exam_registration) or is already buying ('in_flight': a payment_pending, paid
-// or processing order, other than excludeOrderID, whose products link them).
+// exam_registration) or is already buying ('in_flight': a live order of this
+// student, other than excludeOrderID, that still owes or holds the target).
 // Nothing is stored for this: it is derived from the order and access rows, so
-// an expired, cancelled or refunded order, or a revoked access, stops counting
-// by itself. A target can come back as both.
+// a cancelled or expired order, or a revoked access, stops counting by itself.
+// A target can come back as both.
+//
+// Excluding statuses rather than listing them means a new status blocks instead of reopening a double purchase.
 func (r *Repository) ListLiveDigitalTargets(ctx context.Context, tx pgx.Tx, studentID, excludeOrderID uuid.UUID) ([]model.LiveDigitalTarget, error) {
 	rows, err := r.digitalQueryer(tx).Query(ctx, `
 		WITH in_flight AS (
@@ -67,14 +69,14 @@ func (r *Repository) ListLiveDigitalTargets(ctx context.Context, tx pgx.Tx, stud
 		      JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'course'
 		      JOIN product_course pc ON pc.product_id = oi.product_id
 		     WHERE o.student_id = $1 AND o.id <> $2
-		       AND o.status IN ('payment_pending', 'paid', 'processing')
+		       AND o.status NOT IN ('cart', 'cancelled', 'payment_expired')
 		    UNION ALL
 		    SELECT o.id, 'exam'::text, pe.exam_id
 		      FROM orders o
 		      JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'exam'
 		      JOIN product_exam pe ON pe.product_id = oi.product_id
 		     WHERE o.student_id = $1 AND o.id <> $2
-		       AND o.status IN ('payment_pending', 'paid', 'processing')
+		       AND o.status NOT IN ('cart', 'cancelled', 'payment_expired')
 		)
 		SELECT f.kind, f.target_id, 'in_flight' AS reason, (array_agg(f.order_id ORDER BY f.order_id))[1] AS order_id
 		  FROM in_flight f GROUP BY f.kind, f.target_id
