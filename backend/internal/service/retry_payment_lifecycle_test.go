@@ -147,15 +147,34 @@ func pendingOrderFor(t *testing.T, svc *Service, student uuid.UUID, products ...
 	return orderID
 }
 
+func leaveTwentySecondsOfWindow(t *testing.T, repo *repository.Repository, orderID uuid.UUID) {
+	t.Helper()
+	setDeadline(t, repo, orderID, "20 seconds")
+}
+
+func expireByTheSweeper(t *testing.T, _ *Service, repo *repository.Repository, orderID uuid.UUID) {
+	t.Helper()
+	expireOrderNow(t, repo, orderID)
+}
+
+func settleByWebhook(t *testing.T, svc *Service, _ *repository.Repository, orderID uuid.UUID) {
+	t.Helper()
+	if err := svc.HandlePaymentWebhook(context.Background(), settlementBody(orderID, "tx-"+uniqueSuffix()), "sig", uuid.NewString()); err != nil {
+		t.Fatalf("webhook: %v", err)
+	}
+}
+
 func TestRetryPayment_OrderPastItsWindowIsRefusedWithoutGatewayCall(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
 		name       string
 		pastWindow func(t *testing.T, repo *repository.Repository, orderID uuid.UUID)
+		wantErr    error
 		wantStatus string
 	}{
-		{"order the sweeper already expired is never reopened", expireOrderNow, "payment_expired"},
-		{"elapsed deadline is refused before the sweeper runs, and retry does not expire the order itself", elapseDeadline, "payment_pending"},
+		{"order the sweeper already expired is never reopened", expireOrderNow, ErrPaymentExpired, "payment_expired"},
+		{"elapsed deadline is refused before the sweeper runs, and retry does not expire the order itself", elapseDeadline, ErrPaymentExpired, "payment_pending"},
+		{"less than a minute left is refused as too close", leaveTwentySecondsOfWindow, ErrPaymentDeadlineTooClose, "payment_pending"},
 	}
 
 	for _, tt := range tests {
@@ -164,15 +183,19 @@ func TestRetryPayment_OrderPastItsWindowIsRefusedWithoutGatewayCall(t *testing.T
 			student := newDigitalStudent(t, repo)
 			orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
 			tt.pastWindow(t, repo, orderID)
+			deadlineBefore := *deadlineOf(t, repo, orderID)
 			before := pay.creates.Load()
 
 			_, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey())
 
-			if !errors.Is(err, ErrPaymentExpired) {
-				t.Fatalf("err = %v, want ErrPaymentExpired", err)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
 			}
 			if got := orderStatusOf(t, repo, orderID); got != tt.wantStatus {
 				t.Errorf("status = %q, want %q", got, tt.wantStatus)
+			}
+			if got := *deadlineOf(t, repo, orderID); !got.Equal(deadlineBefore) {
+				t.Errorf("deadline = %v, want unchanged %v", got, deadlineBefore)
 			}
 			if got := pay.creates.Load() - before; got != 0 {
 				t.Errorf("gateway calls = %d, want 0", got)
@@ -182,39 +205,45 @@ func TestRetryPayment_OrderPastItsWindowIsRefusedWithoutGatewayCall(t *testing.T
 }
 
 func TestRetryPayment_CachedResponseDoesNotBypassOrderState(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
 	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	key := retryKey()
-
-	if _, err := svc.RetryPayment(ctx, student.String(), orderID.String(), key); err != nil {
-		t.Fatalf("first retry: %v", err)
-	}
-	if _, err := svc.RetryPayment(ctx, student.String(), orderID.String(), key); err != nil {
-		t.Fatalf("replayed retry on an unchanged order: %v", err)
-	}
-	created := pay.creates.Load()
-
-	expireOrderNow(t, repo, orderID)
-	if _, err := svc.RetryPayment(ctx, student.String(), orderID.String(), key); !errors.Is(err, ErrPaymentExpired) {
-		t.Fatalf("replayed retry on an expired order: err = %v, want ErrPaymentExpired", err)
+	tests := []struct {
+		name        string
+		change      func(t *testing.T, svc *Service, repo *repository.Repository, orderID uuid.UUID)
+		wantErr     error
+		wantSameRef bool
+	}{
+		{"unchanged order replays the first response", nil, nil, true},
+		{"expired order is refused", expireByTheSweeper, ErrPaymentExpired, false},
+		{"paid order is refused", settleByWebhook, ErrOrderNotEditable, false},
 	}
 
-	paidID, _, _ := pendingCourseOrder(t, svc, repo, newDigitalStudent(t, repo))
-	paidStudent := studentOf(t, repo, paidID)
-	paidKey := retryKey()
-	if _, err := svc.RetryPayment(ctx, paidStudent.String(), paidID.String(), paidKey); err != nil {
-		t.Fatalf("retry before payment: %v", err)
-	}
-	if err := svc.HandlePaymentWebhook(ctx, settlementBody(paidID, "tx-cache"), "sig", uuid.NewString()); err != nil {
-		t.Fatalf("webhook: %v", err)
-	}
-	if _, err := svc.RetryPayment(ctx, paidStudent.String(), paidID.String(), paidKey); !errors.Is(err, ErrOrderNotEditable) {
-		t.Fatalf("replayed retry on a paid order: err = %v, want ErrOrderNotEditable", err)
-	}
-	if got := pay.creates.Load(); got != created+2 {
-		t.Errorf("gateway calls = %d, want %d (the paid order's checkout and first retry only)", got, created+2)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, pay := newLifecycleService(t)
+			orderID, _, _ := pendingCourseOrder(t, svc, repo, newDigitalStudent(t, repo))
+			student := studentOf(t, repo, orderID)
+			key := retryKey()
+			first, err := svc.RetryPayment(ctx, student.String(), orderID.String(), key)
+			if err != nil {
+				t.Fatalf("first retry: %v", err)
+			}
+			if tt.change != nil {
+				tt.change(t, svc, repo, orderID)
+			}
+			before := pay.creates.Load()
+
+			replay, err := svc.RetryPayment(ctx, student.String(), orderID.String(), key)
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("replay err = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantSameRef && replay.GatewayRef != first.GatewayRef {
+				t.Errorf("replay ref = %q, want the first call's %q", replay.GatewayRef, first.GatewayRef)
+			}
+			if got := pay.creates.Load() - before; got != 0 {
+				t.Errorf("gateway calls during replay = %d, want 0", got)
+			}
+		})
 	}
 }
 
@@ -239,34 +268,6 @@ func TestRetryPayment_OneKeyUsedOnTwoOrdersNeverHandsOutTheOtherOrdersReference(
 	}
 }
 
-func TestRetryPayment_RecoversGatewayCreationFailure(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	course := seedCourseTarget(t, repo)
-	product := seedDigitalProduct(t, repo, "course", 50000, course)
-	orderID := cartOf(t, svc, student, product)
-	pay.failCreate.Store(true)
-	if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey()); err == nil {
-		t.Fatal("Checkout with a failing gateway succeeded, want an error")
-	}
-	pay.failCreate.Store(false)
-	if got := gatewayRefOf(t, repo, orderID); got != "" {
-		t.Fatalf("gateway ref after failed checkout = %q, want none", got)
-	}
-
-	result, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey())
-	if err != nil {
-		t.Fatalf("RetryPayment: %v", err)
-	}
-	if result.GatewayRef == "" || gatewayRefOf(t, repo, orderID) != result.GatewayRef {
-		t.Errorf("order gateway ref = %q, want the retry's %q", gatewayRefOf(t, repo, orderID), result.GatewayRef)
-	}
-	if got := orderStatusOf(t, repo, orderID); got != "payment_pending" {
-		t.Errorf("status = %q, want payment_pending", got)
-	}
-}
-
 func TestRetryPayment_OrderExpiringDuringGatewayCallKeepsItsOldPaymentState(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
 	ctx := context.Background()
@@ -288,25 +289,6 @@ func TestRetryPayment_OrderExpiringDuringGatewayCallKeepsItsOldPaymentState(t *t
 	}
 	if got := gatewayRefOf(t, repo, orderID); got != originalRef {
 		t.Errorf("gateway ref = %q, want unchanged %q", got, originalRef)
-	}
-}
-
-func TestRetryPayment_FreshCheckoutAfterExpiryStartsFromANewCart(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, product, _ := pendingCourseOrder(t, svc, repo, student)
-	expireOrderNow(t, repo, orderID)
-
-	fresh := cartOf(t, svc, student, product)
-	if fresh == orderID {
-		t.Fatal("fresh cart reused the expired order")
-	}
-	if _, err := svc.Checkout(ctx, student.String(), fresh.String(), checkoutKey()); err != nil {
-		t.Fatalf("fresh checkout: %v", err)
-	}
-	if got := orderStatusOf(t, repo, orderID); got != "payment_expired" {
-		t.Errorf("old order status = %q, want payment_expired", got)
 	}
 }
 

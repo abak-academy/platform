@@ -92,73 +92,64 @@ func TestCheckout_GatewayFailureStillExpiresAndFreesStock(t *testing.T) {
 	}
 }
 
-func TestRetryPayment_NeverExtendsTheOrderDeadline(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
+func TestRetryPayment_KeepsTheOrdersDeadline(t *testing.T) {
 	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	setDeadline(t, repo, orderID, "2 hours")
-	original := *deadlineOf(t, repo, orderID)
-	pay.expiresAfter = 72 * time.Hour
-
-	for i := 0; i < 3; i++ {
-		result, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey())
-		if err != nil {
-			t.Fatalf("retry #%d: %v", i, err)
-		}
-		if got := *deadlineOf(t, repo, orderID); !got.Equal(original) {
-			t.Errorf("retry #%d moved the deadline from %v to %v", i, original, got)
-		}
-		if result.PaymentExpiresAt.After(original) {
-			t.Errorf("retry #%d advertises %v, past the order deadline %v", i, result.PaymentExpiresAt, original)
-		}
-		if asked := time.Duration(pay.lastExpiresIn.Load()); asked > 2*time.Hour {
-			t.Errorf("retry #%d asked the gateway for %v, more than the 2h left", i, asked)
-		}
-	}
-}
-
-func TestRetryPayment_RefusedWithLessThanAMinuteLeft(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	setDeadline(t, repo, orderID, "20 seconds")
-	before := pay.creates.Load()
-
-	_, err := svc.RetryPayment(context.Background(), student.String(), orderID.String(), retryKey())
-
-	if !errors.Is(err, ErrPaymentDeadlineTooClose) {
-		t.Fatalf("err = %v, want ErrPaymentDeadlineTooClose", err)
-	}
-	if got := pay.creates.Load() - before; got != 0 {
-		t.Errorf("gateway calls = %d, want 0", got)
-	}
-}
-
-func TestRetryPayment_OrderWithoutDeadlineGetsOneOnceAndKeepsIt(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET payment_expires_at = NULL, gateway_ref = NULL WHERE id = $1`, orderID); err != nil {
-		t.Fatalf("simulate a pre-deadline order: %v", err)
+	tests := []struct {
+		name     string
+		deadline string
+		maxAsked time.Duration
+		exactAsk bool
+	}{
+		{"existing deadline is never extended, even by a gateway offering 72h", "2 hours", 2 * time.Hour, true},
+		{"order without a deadline gets one on the first retry and keeps it", "", 24*time.Hour + time.Minute, false},
 	}
 
-	if _, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey()); err != nil {
-		t.Fatalf("first retry: %v", err)
-	}
-	first := deadlineOf(t, repo, orderID)
-	if first == nil {
-		t.Fatal("retry left the order without a deadline")
-	}
-	if left := time.Until(*first); left < 23*time.Hour || left > 24*time.Hour+time.Minute {
-		t.Errorf("time left = %v, want about 24h", left)
-	}
-	if _, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey()); err != nil {
-		t.Fatalf("second retry: %v", err)
-	}
-	if got := *deadlineOf(t, repo, orderID); !got.Equal(*first) {
-		t.Errorf("second retry moved the deadline from %v to %v", *first, got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, pay := newLifecycleService(t)
+			student := newDigitalStudent(t, repo)
+			orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+			if tt.deadline != "" {
+				setDeadline(t, repo, orderID, tt.deadline)
+			} else if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET payment_expires_at = NULL, gateway_ref = NULL WHERE id = $1`, orderID); err != nil {
+				t.Fatalf("simulate a pre-deadline order: %v", err)
+			}
+			original := deadlineOf(t, repo, orderID)
+			pay.expiresAfter = 72 * time.Hour
+
+			for i := 0; i < 3; i++ {
+				result, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey())
+				if err != nil {
+					t.Fatalf("retry #%d: %v", i, err)
+				}
+				got := deadlineOf(t, repo, orderID)
+				if got == nil {
+					t.Fatalf("retry #%d left the order without a deadline", i)
+				}
+				if original == nil {
+					if left := time.Until(*got); left < 23*time.Hour || left > 24*time.Hour+time.Minute {
+						t.Errorf("retry #%d: time left = %v, want about 24h", i, left)
+					}
+					original = got
+				}
+				if !got.Equal(*original) {
+					t.Errorf("retry #%d moved the deadline from %v to %v", i, *original, *got)
+				}
+				if result.PaymentExpiresAt.After(*original) {
+					t.Errorf("retry #%d advertises %v, past the order deadline %v", i, result.PaymentExpiresAt, *original)
+				}
+				if askedFor := time.Duration(pay.lastExpiresIn.Load()); askedFor > tt.maxAsked {
+					t.Errorf("retry #%d asked the gateway for %v, more than the %v left", i, askedFor, tt.maxAsked)
+				}
+				asked := askedDeadline(t, pay)
+				if tt.exactAsk && !asked.Equal(*original) {
+					t.Errorf("retry #%d asked the gateway to end at %v, order deadline is %v", i, asked, *original)
+				}
+				if asked.After(*original) {
+					t.Errorf("retry #%d asked the gateway to end at %v, past the order deadline %v", i, asked, *original)
+				}
+			}
+		})
 	}
 }
 
@@ -212,33 +203,53 @@ func TestCheckout_AdvertisedExpiryNeverExceedsTheOrderDeadline(t *testing.T) {
 }
 
 func TestCheckout_CachedReplayNeverOffersAnExpiredOrAnotherStudentsOrder(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
 	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	course := seedCourseTarget(t, repo)
-	orderID := cartOf(t, svc, student, seedDigitalProduct(t, repo, "course", 50000, course))
-	key := checkoutKey()
-
-	first, err := svc.Checkout(ctx, student.String(), orderID.String(), key)
-	if err != nil {
-		t.Fatalf("Checkout: %v", err)
-	}
-	replay, err := svc.Checkout(ctx, student.String(), orderID.String(), key)
-	if err != nil || replay.GatewayRef != first.GatewayRef {
-		t.Fatalf("replay on an unchanged order = %+v, %v; want the same ref", replay, err)
+	tests := []struct {
+		name         string
+		change       func(t *testing.T, repo *repository.Repository, orderID uuid.UUID)
+		otherStudent bool
+		wantErr      error
+		wantSameRef  bool
+	}{
+		{"unchanged order replays the first response", nil, false, nil, true},
+		{"another student replaying the key", nil, true, ErrOrderNotFound, false},
+		{"expired order is refused with no reference", expireOrderNow, false, ErrPaymentExpired, false},
 	}
 
-	if _, err := svc.Checkout(ctx, newDigitalStudent(t, repo).String(), orderID.String(), key); !errors.Is(err, ErrOrderNotFound) {
-		t.Errorf("another student replaying the key: err = %v, want ErrOrderNotFound", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, pay := newLifecycleService(t)
+			student := newDigitalStudent(t, repo)
+			orderID := cartOf(t, svc, student, seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)))
+			key := checkoutKey()
+			first, err := svc.Checkout(ctx, student.String(), orderID.String(), key)
+			if err != nil {
+				t.Fatalf("Checkout: %v", err)
+			}
+			if tt.change != nil {
+				tt.change(t, repo, orderID)
+			}
+			caller := student
+			if tt.otherStudent {
+				caller = newDigitalStudent(t, repo)
+			}
+			before := pay.creates.Load()
 
-	expireOrderNow(t, repo, orderID)
-	result, err := svc.Checkout(ctx, student.String(), orderID.String(), key)
-	if !errors.Is(err, ErrPaymentExpired) {
-		t.Fatalf("replay on an expired order: err = %v, want ErrPaymentExpired", err)
-	}
-	if result.GatewayRef != "" {
-		t.Errorf("replay returned ref %q for an expired order", result.GatewayRef)
+			replay, err := svc.Checkout(ctx, caller.String(), orderID.String(), key)
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("replay err = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantSameRef && replay.GatewayRef != first.GatewayRef {
+				t.Errorf("replay ref = %q, want the first call's %q", replay.GatewayRef, first.GatewayRef)
+			}
+			if !tt.wantSameRef && replay.GatewayRef != "" {
+				t.Errorf("replay returned ref %q, want none", replay.GatewayRef)
+			}
+			if got := pay.creates.Load() - before; got != 0 {
+				t.Errorf("gateway calls during replay = %d, want 0", got)
+			}
+		})
 	}
 }
 
@@ -318,23 +329,5 @@ func TestCheckout_AsksTheGatewayToEndAtTheOrderDeadline(t *testing.T) {
 	}
 	if got := askedDeadline(t, pay); !got.Equal(*deadline) {
 		t.Errorf("gateway asked to end at %v, order deadline is %v", got, *deadline)
-	}
-}
-
-func TestRetryPayment_AsksTheGatewayToEndAtTheOriginalDeadline(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	setDeadline(t, repo, orderID, "2 hours 30 seconds")
-	original := *deadlineOf(t, repo, orderID)
-
-	for i := 0; i < 2; i++ {
-		if _, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey()); err != nil {
-			t.Fatalf("retry #%d: %v", i, err)
-		}
-		if got := askedDeadline(t, pay); !got.Equal(original) {
-			t.Errorf("retry #%d asked the gateway to end at %v, original deadline is %v", i, got, original)
-		}
 	}
 }
