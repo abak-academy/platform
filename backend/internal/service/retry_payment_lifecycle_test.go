@@ -337,4 +337,3 @@ func studentOf(t *testing.T, repo *repository.Repository, orderID uuid.UUID) uui
 	}
 	return order.StudentID
 }
-
