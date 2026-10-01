@@ -2029,7 +2029,8 @@ func (s *Service) cacheWebhookDone(ctx context.Context, cacheKey string) error {
 	return s.rdb.Set(ctx, cacheKey, "ok", 24*time.Hour).Err()
 }
 
-// orderSettled reports statuses an order only reaches after being paid.
+// orderSettled reports statuses an order only reaches after being paid; the same
+// four as refundableStatuses, so the two lists have to move together.
 func orderSettled(status string) bool {
 	switch status {
 	case "paid", "processing", "shipped", "completed":
