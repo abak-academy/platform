@@ -95,6 +95,11 @@ func TestMapServiceError(t *testing.T) {
 			wantStatus: 409, wantCode: "digital_product_unavailable",
 		},
 		{
+			name:       "order not payable",
+			err:        fmt.Errorf("confirm: %w", service.ErrOrderNotPayable),
+			wantStatus: 409, wantCode: "order_not_payable",
+		},
+		{
 			name: "digital target conflict",
 			err: fmt.Errorf("checkout: %w", &service.DigitalTargetConflictError{
 				Conflicts: []model.DigitalTargetConflict{
