@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -185,6 +186,47 @@ func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
 		out = append(out, st)
 	}
 	return out
+}
+
+// attemptSeed is the per-attempt randomization seed: SHA-256(session_id || test_id).
+func attemptSeed(sessionID, testID uuid.UUID) [sha256.Size]byte {
+	buf := make([]byte, 0, 2*len(sessionID))
+	buf = append(buf, sessionID[:]...)
+	buf = append(buf, testID[:]...)
+	return sha256.Sum256(buf)
+}
+
+// questionOrderKey derives the per-question sort key SHA-256(seed || question_id).
+func questionOrderKey(seed [sha256.Size]byte, questionID uuid.UUID) string {
+	buf := make([]byte, 0, sha256.Size+len(questionID))
+	buf = append(buf, seed[:]...)
+	buf = append(buf, questionID[:]...)
+	h := sha256.Sum256(buf)
+	return hex.EncodeToString(h[:])
+}
+
+// orderQuestionsForAttempt orders one section deterministically from (session_id, test_id) for one attempt.
+func orderQuestionsForAttempt(sessionID, testID uuid.UUID, questions []model.QuestionWithOptions) []model.QuestionWithOptions {
+	seed := attemptSeed(sessionID, testID)
+	out := make([]model.QuestionWithOptions, len(questions))
+	copy(out, questions)
+	sort.Slice(out, func(i, j int) bool {
+		return questionOrderKey(seed, out[i].Question.ID) < questionOrderKey(seed, out[j].Question.ID)
+	})
+	return out
+}
+
+// sessionTestsPayload assembles the student-facing tests payload, applying the per-attempt order for format_version=2 randomize exams.
+func sessionTestsPayload(exam *model.Exam, sessionID uuid.UUID, tests []model.TestDetail) []SessionTestPayload {
+	if exam.FormatVersion == 2 && exam.Randomize {
+		ordered := make([]model.TestDetail, len(tests))
+		for i, td := range tests {
+			td.Questions = orderQuestionsForAttempt(sessionID, td.Test.ID, td.Questions)
+			ordered[i] = td
+		}
+		tests = ordered
+	}
+	return groupQuestionsByTest(tests)
 }
 
 // enrichSectionedTests populates the per-section fields (FR-7/FR-16) on a grouped
@@ -500,7 +542,7 @@ func (s *Service) sessionStartPayload(ctx context.Context, exam *model.Exam, ses
 	if err != nil {
 		return SessionStartPayload{}, err
 	}
-	grouped := groupQuestionsByTest(tests)
+	grouped := sessionTestsPayload(exam, sess.ID, tests)
 
 	if exam.Mode == "utbk" || exam.Mode == "ielts" {
 		sections, err := s.storeRepo.GetSessionSections(ctx, sess.ID)
@@ -570,7 +612,7 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 	if err != nil {
 		return SessionStatePayload{}, err
 	}
-	grouped := groupQuestionsByTest(tests)
+	grouped := sessionTestsPayload(exam, sess.ID, tests)
 
 	answers, err := s.storeRepo.GetSessionAnswers(ctx, sessID)
 	if err != nil {
@@ -790,7 +832,7 @@ func (s *Service) buildAdvanceResult(ctx context.Context, exam *model.Exam, sess
 	if err != nil {
 		return AdvanceSectionResult{}, err
 	}
-	grouped := groupQuestionsByTest(tests)
+	grouped := sessionTestsPayload(exam, sessID, tests)
 	activeID := enrichSectionedTests(grouped, tests, sections)
 	return AdvanceSectionResult{
 		Mode:         exam.Mode,
