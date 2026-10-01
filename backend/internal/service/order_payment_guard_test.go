@@ -98,55 +98,71 @@ func webhookLogRows(t *testing.T, repo *repository.Repository, orderID uuid.UUID
 	return n
 }
 
-func TestWebhook_SettlementOnExpiredOrderIsAcknowledgedAndNotFulfilled(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	expireOrderNow(t, repo, orderID)
-
-	for i := 0; i < 2; i++ {
-		if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-late"), "sig", uuid.NewString()); err != nil {
-			t.Fatalf("late webhook #%d must be acknowledged, got %v", i, err)
-		}
+func TestWebhook_SettlementOnTerminalOrderIsAcknowledgedAndNotFulfilled(t *testing.T) {
+	tests := []struct {
+		name        string
+		txID        string
+		park        func(t *testing.T, svc *Service, repo *repository.Repository, orderID uuid.UUID)
+		deliveries  int
+		wantStatus  string
+		wantEvents  int
+		wantLogRows int
+	}{
+		{
+			name: "expired order",
+			txID: "tx-late",
+			park: func(t *testing.T, _ *Service, repo *repository.Repository, orderID uuid.UUID) {
+				expireOrderNow(t, repo, orderID)
+			},
+			deliveries:  2,
+			wantStatus:  "payment_expired",
+			wantEvents:  0,
+			wantLogRows: 2,
+		},
+		{
+			name: "refunded order",
+			txID: "tx-1",
+			park: func(t *testing.T, svc *Service, repo *repository.Repository, orderID uuid.UUID) {
+				ctx := context.Background()
+				if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-1"), "sig", uuid.NewString()); err != nil {
+					t.Fatalf("webhook: %v", err)
+				}
+				actor := seedRevokeActor(t, repo)
+				if err := svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"); err != nil {
+					t.Fatalf("refund: %v", err)
+				}
+			},
+			deliveries:  1,
+			wantStatus:  "cancelled",
+			wantEvents:  1,
+			wantLogRows: 2,
+		},
 	}
 
-	if got := orderStatusOf(t, repo, orderID); got != "payment_expired" {
-		t.Errorf("status = %q, want payment_expired", got)
-	}
-	if got := orderPaidEvents(t, repo, orderID); got != 0 {
-		t.Errorf("OrderPaid events = %d, want 0", got)
-	}
-	if got := webhookLogRows(t, repo, orderID); got != 2 {
-		t.Errorf("webhook_log rows = %d, want 2: each late settlement must leave a durable row", got)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, _ := newLifecycleService(t)
+			ctx := context.Background()
+			student := newDigitalStudent(t, repo)
+			orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+			tt.park(t, svc, repo, orderID)
 
-func TestWebhook_SettlementOnRefundedOrderIsAcknowledgedAndNotResurrected(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-1"), "sig", uuid.NewString()); err != nil {
-		t.Fatalf("webhook: %v", err)
-	}
-	actor := seedRevokeActor(t, repo)
-	if err := svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"); err != nil {
-		t.Fatalf("refund: %v", err)
-	}
+			for i := 0; i < tt.deliveries; i++ {
+				if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, tt.txID), "sig", uuid.NewString()); err != nil {
+					t.Fatalf("webhook #%d must be acknowledged, got %v", i, err)
+				}
+			}
 
-	if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-1"), "sig", uuid.NewString()); err != nil {
-		t.Fatalf("redelivered webhook: %v", err)
-	}
-
-	if got := orderStatusOf(t, repo, orderID); got != "cancelled" {
-		t.Errorf("status = %q, want cancelled", got)
-	}
-	if got := orderPaidEvents(t, repo, orderID); got != 1 {
-		t.Errorf("OrderPaid events = %d, want the original 1 only", got)
-	}
-	if got := webhookLogRows(t, repo, orderID); got != 2 {
-		t.Errorf("webhook_log rows = %d, want 2: the redelivery after the refund must still be logged", got)
+			if got := orderStatusOf(t, repo, orderID); got != tt.wantStatus {
+				t.Errorf("status = %q, want %s", got, tt.wantStatus)
+			}
+			if got := orderPaidEvents(t, repo, orderID); got != tt.wantEvents {
+				t.Errorf("OrderPaid events = %d, want %d", got, tt.wantEvents)
+			}
+			if got := webhookLogRows(t, repo, orderID); got != tt.wantLogRows {
+				t.Errorf("webhook_log rows = %d, want %d: every delivery must leave a durable row", got, tt.wantLogRows)
+			}
+		})
 	}
 }
 
