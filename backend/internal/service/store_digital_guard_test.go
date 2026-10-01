@@ -60,15 +60,16 @@ func TestDigitalPurchase_LiveOrderBlocksItsTarget(t *testing.T) {
 		arrange          func(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) digitalAttempt
 		blocked          bool
 		wantGatewayCalls int
+		wantPending      int
 	}{
-		{"payment_pending", throughAnotherSKU("course", "payment_pending", ""), true, 0},
-		{"paid", throughAnotherSKU("course", "paid", ""), true, 0},
-		{"processing", throughAnotherSKU("course", "processing", ""), true, 0},
-		{"shipped", throughAnotherSKU("course", "shipped", ""), true, 0},
-		{"completed", throughAnotherSKU("course", "completed", ""), true, 0},
-		{"payment_expired", throughAnotherSKU("course", "payment_expired", ""), false, 1},
-		{"cancelled", throughAnotherSKU("course", "cancelled", ""), false, 1},
-		{"refunded", throughAnotherSKU("course", "cancelled", "refunded"), false, 1},
+		{"payment_pending", throughAnotherSKU("course", "payment_pending", ""), true, 0, 1},
+		{"paid", throughAnotherSKU("course", "paid", ""), true, 0, 0},
+		{"processing", throughAnotherSKU("course", "processing", ""), true, 0, 0},
+		{"shipped", throughAnotherSKU("course", "shipped", ""), true, 0, 0},
+		{"completed", throughAnotherSKU("course", "completed", ""), true, 0, 0},
+		{"payment_expired", throughAnotherSKU("course", "payment_expired", ""), false, 1, 1},
+		{"cancelled", throughAnotherSKU("course", "cancelled", ""), false, 1, 1},
+		{"refunded", throughAnotherSKU("course", "cancelled", "refunded"), false, 1, 1},
 		{
 			name: "the same SKU again after a real checkout",
 			arrange: func(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) digitalAttempt {
@@ -81,8 +82,25 @@ func TestDigitalPurchase_LiveOrderBlocksItsTarget(t *testing.T) {
 			},
 			blocked:          true,
 			wantGatewayCalls: 1,
+			wantPending:      1,
 		},
-		{"exam through another SKU", throughAnotherSKU("exam", "payment_pending", ""), true, 0},
+		{
+			name: "another SKU after a real checkout",
+			arrange: func(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) digitalAttempt {
+				course := seedCourseTarget(t, repo)
+				first := seedDigitalProduct(t, repo, "course", 50000, course)
+				second := seedDigitalProduct(t, repo, "course", 40000, course)
+				firstCart := cartOf(t, svc, student, first)
+				if _, err := svc.Checkout(context.Background(), student.String(), firstCart.String(), checkoutKey()); err != nil {
+					t.Fatalf("first Checkout: %v", err)
+				}
+				return digitalAttempt{product: second, kind: "course", price: 40000, earlier: firstCart}
+			},
+			blocked:          true,
+			wantGatewayCalls: 1,
+			wantPending:      1,
+		},
+		{"exam through another SKU", throughAnotherSKU("exam", "payment_pending", ""), true, 0, 1},
 	}
 
 	for _, tt := range tests {
@@ -97,8 +115,14 @@ func TestDigitalPurchase_LiveOrderBlocksItsTarget(t *testing.T) {
 				if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey()); err != nil {
 					t.Fatalf("Checkout while the earlier order is %s: %v", tt.name, err)
 				}
+				if got := orderStatusOf(t, repo, orderID); got != "payment_pending" {
+					t.Errorf("order status = %q, want payment_pending", got)
+				}
 				if n := pay.creates.Load(); n != int32(tt.wantGatewayCalls) {
 					t.Errorf("gateway calls = %d, want %d", n, tt.wantGatewayCalls)
+				}
+				if n := pendingOrdersOf(t, repo, student); n != tt.wantPending {
+					t.Errorf("pending orders = %d, want %d", n, tt.wantPending)
 				}
 				return
 			}
@@ -116,60 +140,6 @@ func TestDigitalPurchase_LiveOrderBlocksItsTarget(t *testing.T) {
 			}
 			if n := pay.creates.Load(); n != int32(tt.wantGatewayCalls) {
 				t.Errorf("gateway calls = %d, want %d: only the earlier order may have reached the gateway", n, tt.wantGatewayCalls)
-			}
-		})
-	}
-}
-
-func TestDigitalPurchase_OwnedCourseBlocksItsTargetUntilRevoked(t *testing.T) {
-	tests := []struct {
-		name         string
-		revoked      bool
-		wantConflict string
-	}{
-		{"owned", false, model.DigitalConflictOwned},
-		{"revoked", true, ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			svc, repo, pay := newDigitalPurchaseService(t)
-			ctx := context.Background()
-			student := newDigitalStudent(t, repo)
-			course := seedCourseTarget(t, repo)
-			product := seedDigitalProduct(t, repo, "course", 50000, course)
-			enrollInCourse(t, repo, student, course)
-			if tt.revoked {
-				if _, err := repo.Pool().Exec(ctx,
-					`UPDATE course_session SET status = 'revoked', revoked_at = now() WHERE student_id = $1 AND course_id = $2`, student, course,
-				); err != nil {
-					t.Fatalf("revoke: %v", err)
-				}
-			}
-
-			cart, _, err := svc.MintCart(ctx, student.String())
-			if err != nil {
-				t.Fatalf("MintCart: %v", err)
-			}
-			err = svc.AddItem(ctx, student.String(), cart.ID.String(), product.String(), 1)
-			if tt.wantConflict != "" {
-				wantConflict(t, err, tt.wantConflict)
-				if n := pay.creates.Load(); n != 0 {
-					t.Errorf("gateway calls = %d, want 0", n)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("AddItem after revoke: %v", err)
-			}
-			if _, err := svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey()); err != nil {
-				t.Fatalf("Checkout after revoke: %v", err)
-			}
-			if got := orderStatusOf(t, repo, cart.ID); got != "payment_pending" {
-				t.Errorf("order status = %q, want payment_pending", got)
-			}
-			if n := pay.creates.Load(); n != 1 {
-				t.Errorf("gateway calls = %d, want 1", n)
 			}
 		})
 	}
