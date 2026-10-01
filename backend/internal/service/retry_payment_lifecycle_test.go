@@ -87,44 +87,50 @@ func TestRetryPayment_RefusesWhenTheTargetBecameUnavailable(t *testing.T) {
 	}
 }
 
-func TestRetryPayment_BulkOrderIsLeftToItsOwnFlow(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
+func TestRetryPayment_ProceedsWhenTheRecheckHasNothingToRefuse(t *testing.T) {
 	ctx := context.Background()
-	buyer, participant := newDigitalStudent(t, repo), newDigitalStudent(t, repo)
-	exam := seedExamTarget(t, repo)
-	product := seedDigitalProduct(t, repo, "exam", 50000, exam)
-	orderID := cartOf(t, svc, buyer, product)
-	if _, err := svc.Checkout(ctx, buyer.String(), orderID.String(), checkoutKey()); err != nil {
-		t.Fatalf("Checkout: %v", err)
+	tests := []struct {
+		name    string
+		arrange func(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) uuid.UUID
+	}{
+		{
+			name: "bulk order the buyer already owns the exam of",
+			arrange: func(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) uuid.UUID {
+				participant := newDigitalStudent(t, repo)
+				exam := seedExamTarget(t, repo)
+				product := seedDigitalProduct(t, repo, "exam", 50000, exam)
+				orderID := pendingCourseOrderFor(t, svc, student, product)
+				if _, err := repo.Pool().Exec(ctx, `INSERT INTO order_participant (order_id, student_id) VALUES ($1, $2)`, orderID, participant); err != nil {
+					t.Fatalf("seed participant: %v", err)
+				}
+				registerForExam(t, repo, student, exam, "registered")
+				return orderID
+			},
+		},
+		{
+			name: "order whose only live claim on its targets is itself",
+			arrange: func(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) uuid.UUID {
+				productA := seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo))
+				productB := seedDigitalProduct(t, repo, "course", 40000, seedCourseTarget(t, repo))
+				return pendingCourseOrderFor(t, svc, student, productA, productB)
+			},
+		},
 	}
-	if _, err := repo.Pool().Exec(ctx, `INSERT INTO order_participant (order_id, student_id) VALUES ($1, $2)`, orderID, participant); err != nil {
-		t.Fatalf("seed participant: %v", err)
-	}
-	registerForExam(t, repo, buyer, exam, "registered")
-	before := pay.creates.Load()
 
-	if _, err := svc.RetryPayment(ctx, buyer.String(), orderID.String(), retryKey()); err != nil {
-		t.Fatalf("RetryPayment on a bulk order the buyer already owns the exam of: %v", err)
-	}
-	if got := pay.creates.Load() - before; got != 1 {
-		t.Errorf("gateway calls = %d, want 1", got)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, pay := newLifecycleService(t)
+			student := newDigitalStudent(t, repo)
+			orderID := tt.arrange(t, svc, repo, student)
+			before := pay.creates.Load()
 
-func TestRetryPayment_IsNotBlockedByTheOrdersOwnLines(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	productA := seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo))
-	productB := seedDigitalProduct(t, repo, "course", 40000, seedCourseTarget(t, repo))
-	pending := pendingCourseOrderFor(t, svc, student, productA, productB)
-	before := pay.creates.Load()
-
-	if _, err := svc.RetryPayment(ctx, student.String(), pending.String(), retryKey()); err != nil {
-		t.Fatalf("RetryPayment: %v", err)
-	}
-	if got := pay.creates.Load() - before; got != 1 {
-		t.Errorf("gateway calls = %d, want 1", got)
+			if _, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey()); err != nil {
+				t.Fatalf("RetryPayment: %v", err)
+			}
+			if got := pay.creates.Load() - before; got != 1 {
+				t.Errorf("gateway calls = %d, want 1", got)
+			}
+		})
 	}
 }
 
