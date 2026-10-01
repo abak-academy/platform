@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
@@ -16,10 +18,36 @@ import (
 )
 
 // lifecyclePayments is a gateway fake whose signature always verifies, whose
-// reconcile answer is switchable, and which counts CreatePayment calls.
+// reconcile answer and creation failures are switchable, and which counts
+// CreatePayment calls.
 type lifecyclePayments struct {
 	countingPaymentClient
-	paid atomic.Bool
+	paid       atomic.Bool
+	failCreate atomic.Bool
+	onCreate   func()
+
+	// expiresAfter, when set, is how long from now the gateway claims its link
+	// lasts; lastExpiresIn records what ABAK asked for.
+	expiresAfter  time.Duration
+	lastExpiresIn atomic.Int64
+	lastExpiresAt atomic.Value
+}
+
+func (p *lifecyclePayments) CreatePayment(ctx context.Context, req PaymentRequest) (PaymentResponse, error) {
+	if p.onCreate != nil {
+		p.onCreate()
+	}
+	if p.failCreate.Load() {
+		p.creates.Add(1)
+		return PaymentResponse{}, errors.New("gateway down")
+	}
+	p.lastExpiresIn.Store(int64(req.ExpiresIn))
+	p.lastExpiresAt.Store(req.ExpiresAt)
+	resp, err := p.countingPaymentClient.CreatePayment(ctx, req)
+	if err == nil && p.expiresAfter > 0 {
+		resp.ExpiresAt = time.Now().Add(p.expiresAfter)
+	}
+	return resp, err
 }
 
 func (p *lifecyclePayments) QueryStatus(context.Context, string) (PaymentStatus, error) {
@@ -179,6 +207,9 @@ func TestWebhook_SettlementOnTerminalOrderIsAcknowledgedAndNotFulfilled(t *testi
 			if got := webhookLogRows(t, repo, orderID); got != tt.wantLogRows {
 				t.Errorf("webhook_log rows = %d, want %d: every delivery must leave a durable row", got, tt.wantLogRows)
 			}
+			if got := latePaymentFlags(t, repo, orderID); got != 1 {
+				t.Errorf("late payment flags = %d, want exactly 1 across repeated deliveries", got)
+			}
 		})
 	}
 }
@@ -335,9 +366,10 @@ func TestAdminReconcileOrder_OutcomeDependsOnTheOrderStatusUnderItsLock(t *testi
 		wantErr    error
 		wantStatus string
 		wantEvents int
+		wantFlags  int
 	}{
-		{name: "gateway paid on an expired order is refused", actorTag: "reconcileguard_", expire: true, wantErr: ErrOrderNotPayable, wantStatus: "payment_expired", wantEvents: 0},
-		{name: "repeat on a paid order does not emit again", actorTag: "reconcilerepeat_", wantStatus: "paid", wantEvents: 1},
+		{name: "gateway paid on an expired order is refused and flagged once", actorTag: "reconcileguard_", expire: true, wantErr: ErrOrderNotPayable, wantStatus: "payment_expired", wantEvents: 0, wantFlags: 1},
+		{name: "repeat on a paid order does not emit again", actorTag: "reconcilerepeat_", wantStatus: "paid", wantEvents: 1, wantFlags: 0},
 	}
 
 	for _, tt := range tests {
@@ -367,6 +399,9 @@ func TestAdminReconcileOrder_OutcomeDependsOnTheOrderStatusUnderItsLock(t *testi
 			}
 			if got := orderPaidEvents(t, repo, orderID); got != tt.wantEvents {
 				t.Errorf("OrderPaid events = %d, want %d", got, tt.wantEvents)
+			}
+			if got := latePaymentFlags(t, repo, orderID); got != tt.wantFlags {
+				t.Errorf("late payment flags = %d, want %d", got, tt.wantFlags)
 			}
 		})
 	}
@@ -414,103 +449,6 @@ func TestAdminRefundOrder_ConcurrentRefundsApplyOnce(t *testing.T) {
 	}
 	if audits != 1 {
 		t.Errorf("refund audit rows = %d, want 1", audits)
-	}
-}
-
-func TestWebhook_SettlementOnAnOrderThatCannotTakeItIsFlaggedAndNotFulfilled(t *testing.T) {
-	tests := []struct {
-		name       string
-		txID       string
-		arrange    func(t *testing.T, svc *Service, repo *repository.Repository, orderID uuid.UUID)
-		deliveries int
-		wantStatus string
-		wantEvents int
-		wantRows   int
-	}{
-		{
-			name: "order the sweeper expired, settlement delivered twice",
-			txID: "tx-late",
-			arrange: func(t *testing.T, svc *Service, repo *repository.Repository, orderID uuid.UUID) {
-				expireOrderNow(t, repo, orderID)
-			},
-			deliveries: 2,
-			wantStatus: "payment_expired",
-			wantEvents: 0,
-			wantRows:   2,
-		},
-		{
-			name: "order refunded after its settlement, settlement redelivered",
-			txID: "tx-1",
-			arrange: func(t *testing.T, svc *Service, repo *repository.Repository, orderID uuid.UUID) {
-				if err := svc.HandlePaymentWebhook(context.Background(), settlementBody(orderID, "tx-1"), "sig", uuid.NewString()); err != nil {
-					t.Fatalf("webhook: %v", err)
-				}
-				actor := seedRevokeActor(t, repo)
-				if err := svc.AdminRefundOrder(context.Background(), actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"); err != nil {
-					t.Fatalf("refund: %v", err)
-				}
-			},
-			deliveries: 1,
-			wantStatus: "cancelled",
-			wantEvents: 1,
-			wantRows:   2,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			svc, repo, _ := newLifecycleService(t)
-			ctx := context.Background()
-			student := newDigitalStudent(t, repo)
-			orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-			tt.arrange(t, svc, repo, orderID)
-
-			for i := 0; i < tt.deliveries; i++ {
-				if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, tt.txID), "sig", uuid.NewString()); err != nil {
-					t.Fatalf("late webhook #%d must be acknowledged, got %v", i, err)
-				}
-			}
-
-			if got := orderStatusOf(t, repo, orderID); got != tt.wantStatus {
-				t.Errorf("status = %q, want %q", got, tt.wantStatus)
-			}
-			if got := orderPaidEvents(t, repo, orderID); got != tt.wantEvents {
-				t.Errorf("OrderPaid events = %d, want %d", got, tt.wantEvents)
-			}
-			if got := webhookLogRows(t, repo, orderID); got != tt.wantRows {
-				t.Errorf("webhook_log rows = %d, want %d: each late settlement must leave a durable row", got, tt.wantRows)
-			}
-			if got := latePaymentFlags(t, repo, orderID); got != 1 {
-				t.Errorf("late payment flags = %d, want exactly 1 across repeated deliveries", got)
-			}
-		})
-	}
-}
-
-func TestAdminReconcileOrder_GatewayPaidOnExpiredOrderIsFlaggedNotMarkedPaid(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	actor := insertAdminActor(t, repo, "reconcileguard_")
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	expireOrderNow(t, repo, orderID)
-	pay.paid.Store(true)
-
-	for i := 0; i < 2; i++ {
-		err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix())
-		if !errors.Is(err, ErrOrderNotPayable) {
-			t.Fatalf("reconcile #%d err = %v, want ErrOrderNotPayable", i, err)
-		}
-	}
-
-	if got := orderStatusOf(t, repo, orderID); got != "payment_expired" {
-		t.Errorf("status = %q, want payment_expired", got)
-	}
-	if got := orderPaidEvents(t, repo, orderID); got != 0 {
-		t.Errorf("OrderPaid events = %d, want 0", got)
-	}
-	if got := latePaymentFlags(t, repo, orderID); got != 1 {
-		t.Errorf("late payment flags = %d, want 1 (durably flagged once)", got)
 	}
 }
 
@@ -927,6 +865,33 @@ func latePaymentFlags(t *testing.T, repo *repository.Repository, orderID uuid.UU
 	return n
 }
 
+func mixedCart(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) (orderID, book uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status, weight_grams) VALUES ('book', $1, 30000, 5, 'published', 300) RETURNING id`,
+		"Book "+uuid.NewString(),
+	).Scan(&book); err != nil {
+		t.Fatalf("create book: %v", err)
+	}
+	course := seedCourseTarget(t, repo)
+	digital := seedDigitalProduct(t, repo, "course", 50000, course)
+	order, _, err := svc.MintCart(ctx, student.String())
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, student.String(), order.ID.String(), book.String(), 2); err != nil {
+		t.Fatalf("AddItem book: %v", err)
+	}
+	if err := svc.AddItem(ctx, student.String(), order.ID.String(), digital.String(), 1); err != nil {
+		t.Fatalf("AddItem course: %v", err)
+	}
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET shipping_cost = 18000, selected_courier = 'JNE' WHERE id = $1`, order.ID); err != nil {
+		t.Fatalf("set shipping: %v", err)
+	}
+	return order.ID, book
+}
+
 func pendingMixedOrder(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) (orderID, book uuid.UUID) {
 	t.Helper()
 	orderID, book = mixedCart(t, svc, repo, student)
@@ -946,4 +911,3 @@ func stockOf(t *testing.T, repo *repository.Repository, productID uuid.UUID) int
 }
 
 // mixedCart builds a cart of 2 books plus a paid course without checking out.
-
