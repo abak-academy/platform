@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAdminCourses } from "@/lib/hooks/admin-courses";
 import { useExams } from "@/lib/hooks/admin-exams";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { usePresignUpload } from "@/lib/hooks/students";
 import { fileUrl } from "@/lib/api";
 import { ProductSpecsEditor } from "@/components/admin/ProductSpecsEditor";
@@ -82,13 +83,16 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const [availableUntil, setAvailableUntil] = useState("");
   const [specs, setSpecs] = useState<ProductSpec[]>([]);
   const { data: courses } = useAdminCourses();
-  const { data: examsResp } = useExams();
+  const [examSearch, setExamSearch] = useState("");
+  const examQ = useDebouncedValue(examSearch).trim();
+  const { data: examsResp } = useExams(examQ ? { q: examQ } : undefined);
   const presign = usePresignUpload();
   const imageInputRef = useRef<HTMLInputElement>(null);
   const exams = examsResp?.data ?? [];
 
   useEffect(() => {
     if (open) {
+      setExamSearch("");
       if (product) {
         setName(product.name ?? "");
         setType(product.type ?? "");
@@ -365,6 +369,17 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
 
             {showExams && (
               <Section title="Ujian terkait">
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={examSearch}
+                    onChange={(e) => setExamSearch(e.target.value)}
+                    placeholder="Cari ujian..."
+                    aria-label="Cari ujian"
+                  />
+                  {!isEdit && (
+                    <span className="shrink-0 text-xs text-muted-foreground">{examIds.length} dipilih</span>
+                  )}
+                </div>
                 <div className="max-h-40 overflow-y-auto rounded-md border border-input p-2">
                   {exams.length === 0 ? (
                     <p className="px-1 py-2 text-sm text-muted-foreground">Belum ada ujian.</p>
