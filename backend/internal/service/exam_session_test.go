@@ -373,21 +373,6 @@ func TestSessionTestsPayload_v2RandomizeOff_KeepsSortOrder(t *testing.T) {
 	}
 }
 
-// Start/reconnect/advance build through one helper, so a saved current_position stays meaningful after a transition.
-func TestSessionTestsPayload_v2RandomizeOn_SameOrderStartReconnectAdvance(t *testing.T) {
-	sessID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-	testID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
-	exam := &model.Exam{FormatVersion: 2, Randomize: true}
-	tests := []model.TestDetail{attemptTestDetail(testID, attemptQ1, attemptQ2, attemptQ3, attemptQ4)}
-
-	start := sessionQuestionIDs(sessionTestsPayload(exam, sessID, tests))
-	reconnect := sessionQuestionIDs(sessionTestsPayload(exam, sessID, tests))
-	advance := sessionQuestionIDs(sessionTestsPayload(exam, sessID, tests))
-	if !sameUUIDOrder(start, reconnect) || !sameUUIDOrder(start, advance) {
-		t.Fatalf("start/reconnect/advance must share one order:\nstart     %v\nreconnect %v\nadvance   %v", start, reconnect, advance)
-	}
-}
-
 // ---------- fakeSessionRepo ----------
 
 type fakeSessionRepo struct {

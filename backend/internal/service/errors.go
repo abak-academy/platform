@@ -151,6 +151,11 @@ var (
 	// ErrCardDisabled is returned when the participant card is disabled for an
 	// exam (card_enabled = false).
 	ErrCardDisabled = errors.New("card disabled for this exam")
+	// ErrExamHasSessions is returned when a composable (format_version=2)
+	// exam's navigation_policy, randomize or attached-test list is edited after
+	// an attempt exists. Distinct from ErrValidation so the admin UI can say
+	// why, and mapped to 409 like the other state-precondition refusals.
+	ErrExamHasSessions = errors.New("exam already has attempts; navigation_policy, randomize and the attached tests are frozen")
 )
 
 // --- from exam_grant.go ---

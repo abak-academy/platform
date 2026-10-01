@@ -333,12 +333,12 @@ func TestExamFormatPolicy_V2EditSafetyRejectsPolicyChangeWithSession(t *testing.
 	navOverlay := detail.Exam
 	navOverlay.NavigationPolicy = "sequential"
 	_, err = svc.UpdateExam(ctx, examID, navOverlay, uuid.NewString())
-	require.ErrorIs(t, err, ErrValidation)
+	require.ErrorIs(t, err, ErrExamHasSessions)
 
 	randomizeOverlay := detail.Exam
 	randomizeOverlay.Randomize = !detail.Exam.Randomize
 	_, err = svc.UpdateExam(ctx, examID, randomizeOverlay, uuid.NewString())
-	require.ErrorIs(t, err, ErrValidation)
+	require.ErrorIs(t, err, ErrExamHasSessions)
 
 	titleOverlay := detail.Exam
 	titleOverlay.Title = "Renamed " + uniqueSuffix()
@@ -357,7 +357,49 @@ func TestExamFormatPolicy_V2EditSafetyRejectsTestListChangeWithSession(t *testin
 	seedExamSession(t, repo, examID)
 
 	err := svc.ReplaceExamTests(ctx, examID, []model.ExamTest{{TestID: testID, QuestionPresentation: "one_per_page"}}, uuid.NewString())
+	require.ErrorIs(t, err, ErrExamHasSessions)
+}
+
+// TestExamFormatPolicy_V2EditSafetyAllowsUnchangedTestListWithSession pins the
+// other half of examTestListChanged: re-sending the same list is not an edit,
+// even with question_presentation omitted (presentationOrDefault maps it back
+// to the stored default).
+func TestExamFormatPolicy_V2EditSafetyAllowsUnchangedTestListWithSession(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	examID := createV2Exam(t, repo, "free")
+	testID := seedTestWithQuestion(t, repo)
+	require.NoError(t, svc.ReplaceExamTests(ctx, examID, []model.ExamTest{{TestID: testID}}, uuid.NewString()))
+	seedExamSession(t, repo, examID)
+
+	require.NoError(t, svc.ReplaceExamTests(ctx, examID, []model.ExamTest{{TestID: testID}}, uuid.NewString()),
+		"an unchanged attached-test list must stay editable with a session present")
+
+	otherTestID := seedTestWithQuestion(t, repo)
+	require.ErrorIs(t, svc.ReplaceExamTests(ctx, examID, []model.ExamTest{{TestID: otherTestID}}, uuid.NewString()), ErrExamHasSessions)
+}
+
+// TestExamFormatPolicy_V2RejectedEditLeavesNoAuditRow proves validation runs
+// before the edit-safety check, so a request rejected for bad input cannot leave
+// an exam.format_policy row behind.
+func TestExamFormatPolicy_V2RejectedEditLeavesNoAuditRow(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	examID := createV2Exam(t, repo, "free")
+	seedExamRegistrationOnly(t, repo, examID)
+
+	testID := seedTestWithQuestion(t, repo)
+	actor := uuid.NewString()
+	err := svc.ReplaceExamTests(ctx, examID, []model.ExamTest{{TestID: testID, QuestionPresentation: "side_by_side"}}, actor)
 	require.ErrorIs(t, err, ErrValidation)
+
+	var auditCount int
+	require.NoError(t, repo.Pool().QueryRow(ctx,
+		`SELECT COUNT(*) FROM audit_log WHERE action = 'exam.format_policy' AND target_id = $1 AND actor_id = $2`,
+		examID.String(), actor).Scan(&auditCount))
+	require.Zero(t, auditCount)
 }
 
 // TestExamFormatPolicy_V2EditSafetyAllowsChangeWithoutSessionAndAudits proves a

@@ -570,6 +570,37 @@ func TestExam_AdminUpdateQuestion_replaces_options_atomically(t *testing.T) {
 	assert.NotContains(t, keys, "a")
 }
 
+// The question editor PATCHes without material_html (it does not know the field
+// yet), so an omitted value must preserve what the API wrote and an explicit
+// null must clear it — the same Nullable contract AdminUpdateTest uses.
+func TestExam_AdminUpdateQuestion_keeps_material_html_when_omitted(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
+	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions",
+		map[string]any{
+			"format": "essay", "body": "explain gravity", "sort_order": 1,
+			"material_html": "<p>shared passage</p>",
+		}, token)
+	require.Equal(t, http.StatusCreated, createResp.StatusCode, "body=%v", createOut)
+	created := createOut["question"].(map[string]any)
+	qID := created["id"].(string)
+	require.Equal(t, "<p>shared passage</p>", created["material_html"], "create must store material_html")
+
+	updateResp, updateOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/questions/"+qID,
+		map[string]any{"format": "essay", "body": "explain gravity again", "sort_order": 1}, token)
+	require.Equal(t, http.StatusOK, updateResp.StatusCode, "body=%v", updateOut)
+	updated := updateOut["question"].(map[string]any)
+	assert.Equal(t, "<p>shared passage</p>", updated["material_html"], "omitted material_html must preserve the stored value")
+
+	clearResp, clearOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/questions/"+qID,
+		map[string]any{"format": "essay", "body": "explain gravity again", "sort_order": 1, "material_html": nil}, token)
+	require.Equal(t, http.StatusOK, clearResp.StatusCode, "body=%v", clearOut)
+	assert.Nil(t, clearOut["question"].(map[string]any)["material_html"], "explicit null must clear it")
+}
+
 // Task 6 relaxed the old "attached to any test" refusal: a question attached
 // only to a draft test (not part of any exam, let alone a live one) is now
 // deletable, and the test_question join row goes with it via ON DELETE CASCADE.

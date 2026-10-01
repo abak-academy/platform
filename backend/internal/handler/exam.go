@@ -296,10 +296,20 @@ func (h *Handler) AdminUpdateQuestion(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
+	// PATCH replaces the fields the editor sends; material_html follows the
+	// Nullable contract so an editor that never sends it cannot wipe
+	// API-authored material (same shape as AdminUpdateTest).
+	stored, err := h.svc.GetQuestion(c.Request().Context(), qID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
 	q, err := req.toQuestion()
 	if err != nil {
 		return mapServiceError(c, err)
 	}
+	q.MaterialHTML = stored.MaterialHTML
+	applyNullable(req.MaterialHTML, &q.MaterialHTML)
 	q.ID = qID
 	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks(), req.toStatements())
 	if err != nil {
@@ -501,7 +511,7 @@ type questionRequest struct {
 	Explanation     *string            `json:"explanation,omitempty"`
 	ImageURL        *string            `json:"image_url,omitempty"`
 	AudioURL        *string            `json:"audio_url,omitempty"`
-	MaterialHTML    *string            `json:"material_html,omitempty"`
+	MaterialHTML    Nullable[string]   `json:"material_html"`
 	CorrectAnswer   *string            `json:"correct_answer,omitempty"`
 	AcceptedAnswers []string           `json:"accepted_answers,omitempty"`
 	TopicID         *string            `json:"topic_id,omitempty"`
@@ -560,6 +570,13 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		acceptedAnswers = []string{}
 	}
 
+	// Nullable: an omitted material_html leaves the column untouched on PATCH
+	// (the handler overlays the stored value) and stays NULL on create.
+	var materialHTML *string
+	if r.MaterialHTML.Set && r.MaterialHTML.Valid {
+		materialHTML = &r.MaterialHTML.Value
+	}
+
 	return model.Question{
 		Format:          r.Format,
 		Body:            r.Body,
@@ -568,7 +585,7 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		Difficulty:      r.Difficulty,
 		ImageURL:        r.ImageURL,
 		AudioURL:        r.AudioURL,
-		MaterialHTML:    r.MaterialHTML,
+		MaterialHTML:    materialHTML,
 		TopicID:         topicID,
 		PointCorrect:    pointCorrect,
 		PointWrong:      pointWrong,

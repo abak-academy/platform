@@ -527,6 +527,18 @@ func (s *Service) GetTestDetail(ctx context.Context, id uuid.UUID) (model.TestDe
 	return *d, nil
 }
 
+// GetQuestion returns one question for the PATCH overlay in AdminUpdateQuestion.
+func (s *Service) GetQuestion(ctx context.Context, id uuid.UUID) (model.Question, error) {
+	q, err := s.storeRepo.GetQuestionByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Question{}, ErrQuestionNotFound
+		}
+		return model.Question{}, err
+	}
+	return *q, nil
+}
+
 // SaveQuestion routes create vs update by q.ID == uuid.Nil.
 func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
@@ -974,11 +986,6 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam, ac
 		}
 		return model.Exam{}, err
 	}
-	if existing.FormatVersion == 2 {
-		if err := s.checkExamPolicyEditSafety(ctx, *existing, m, actorID); err != nil {
-			return model.Exam{}, err
-		}
-	}
 	designChanged := !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign)
 	if designChanged {
 		if err := validateCertificateDesign(m.CertificateDesign); err != nil {
@@ -989,6 +996,13 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam, ac
 	// A cached card PDF is only reused, never re-rendered, so edited notes would
 	// otherwise never reach a student who already downloaded one.
 	notesChanged := !slices.Equal(existing.CardNotes, m.CardNotes)
+	// After validation: the safety check audit-logs, and a request rejected for
+	// bad input must not leave an exam.format_policy row.
+	if existing.FormatVersion == 2 {
+		if err := s.checkExamPolicyEditSafety(ctx, *existing, m, actorID); err != nil {
+			return model.Exam{}, err
+		}
+	}
 	m.ID = id
 	m.CreatedAt = existing.CreatedAt
 	// C3/FR-14: bump on a change to either half of what the worker renders —
@@ -1224,12 +1238,8 @@ func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, tests 
 		}
 		return err
 	}
-	if exam.FormatVersion == 2 {
-		if err := s.checkExamTestsEditSafety(ctx, *exam, tests, actorID); err != nil {
-			return err
-		}
-	}
-
+	// Validated before the edit-safety check: that check audit-logs, and a
+	// request rejected for bad input must not leave an exam.format_policy row.
 	for _, t := range tests {
 		if t.QuestionPresentation != "" && !validQuestionPresentations[t.QuestionPresentation] {
 			return fmt.Errorf("%w: question_presentation must be one_per_page or all_on_page", ErrValidation)
@@ -1238,6 +1248,12 @@ func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, tests 
 			if errors.Is(err, repository.ErrNotFound) {
 				return ErrTestNotFound
 			}
+			return err
+		}
+	}
+
+	if exam.FormatVersion == 2 {
+		if err := s.checkExamTestsEditSafety(ctx, *exam, tests, actorID); err != nil {
 			return err
 		}
 	}
@@ -1274,7 +1290,7 @@ func (s *Service) checkExamPolicyEditSafety(ctx context.Context, existing, updat
 		return err
 	}
 	if hasSession {
-		return fmt.Errorf("%w: navigation_policy and randomize cannot change once the exam has a session", ErrValidation)
+		return ErrExamHasSessions
 	}
 	registrations, err := s.storeRepo.CountExamRegistrationsByStatus(ctx, existing.ID, nil)
 	if err != nil {
@@ -1306,7 +1322,7 @@ func (s *Service) checkExamTestsEditSafety(ctx context.Context, exam model.Exam,
 		return err
 	}
 	if hasSession {
-		return fmt.Errorf("%w: attached tests and question_presentation cannot change once the exam has a session", ErrValidation)
+		return ErrExamHasSessions
 	}
 	registrations, err := s.storeRepo.CountExamRegistrationsByStatus(ctx, exam.ID, nil)
 	if err != nil {
