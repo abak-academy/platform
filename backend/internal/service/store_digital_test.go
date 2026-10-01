@@ -180,140 +180,192 @@ func wantConflict(t *testing.T, err error, reason string) *DigitalTargetConflict
 	return nil
 }
 
-func TestDigitalPurchase_OwnedCourse_RejectedAtCartAndCheckout(t *testing.T) {
-	svc, repo, pay := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	course := seedCourseTarget(t, repo)
-	product := seedDigitalProduct(t, repo, "course", 50000, course)
-	enrollInCourse(t, repo, student, course)
-
-	order, _, err := svc.MintCart(ctx, student.String())
-	if err != nil {
-		t.Fatalf("MintCart: %v", err)
-	}
-	wantConflict(t, svc.AddItem(ctx, student.String(), order.ID.String(), product.String(), 1), model.DigitalConflictOwned)
-
-	forceLine(t, repo, order.ID, product, "course", 50000)
-	_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
-	wantConflict(t, err, model.DigitalConflictOwned)
-
-	if got := orderStatusOf(t, repo, order.ID); got != "cart" {
-		t.Errorf("order status = %q, want cart (checkout rolled back)", got)
-	}
-	if n := pay.creates.Load(); n != 0 {
-		t.Errorf("gateway calls = %d, want 0", n)
-	}
+type digitalEnv struct {
+	svc     *Service
+	repo    *repository.Repository
+	pay     *countingPaymentClient
+	student uuid.UUID
 }
 
-func TestDigitalPurchase_ExamRegistration_BlocksUnlessRevoked(t *testing.T) {
-	svc, repo, pay := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	exam := seedExamTarget(t, repo)
-	product := seedDigitalProduct(t, repo, "exam", 50000, exam)
-	registerForExam(t, repo, student, exam, "registered")
-
-	order, _, err := svc.MintCart(ctx, student.String())
-	if err != nil {
-		t.Fatalf("MintCart: %v", err)
-	}
-	forceLine(t, repo, order.ID, product, "exam", 50000)
-	_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
-	wantConflict(t, err, model.DigitalConflictOwned)
-	if n := pay.creates.Load(); n != 0 {
-		t.Fatalf("gateway calls = %d, want 0 while registration is live", n)
-	}
-
-	if _, err := repo.Pool().Exec(ctx,
-		`UPDATE exam_registration SET status = 'revoked', revoked_at = now() WHERE student_id = $1 AND exam_id = $2`, student, exam,
-	); err != nil {
-		t.Fatalf("revoke: %v", err)
-	}
-	if _, err := svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey()); err != nil {
-		t.Fatalf("Checkout after revoke: %v", err)
-	}
-	if n := pendingOrdersOf(t, repo, student); n != 1 {
-		t.Errorf("pending orders = %d, want 1", n)
-	}
+type digitalScenario struct {
+	orderID uuid.UUID
+	check   func(t *testing.T, conflictErr *DigitalTargetConflictError)
 }
 
-func TestDigitalPurchase_PendingOrderBlocksDifferentSKUForSameTarget(t *testing.T) {
-	svc, repo, pay := newDigitalPurchaseService(t)
+func TestDigitalPurchase_CheckoutByTargetOwnership(t *testing.T) {
 	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	course := seedCourseTarget(t, repo)
-	first := seedDigitalProduct(t, repo, "course", 50000, course)
-	second := seedDigitalProduct(t, repo, "course", 40000, course)
+	tests := []struct {
+		name        string
+		arrange     func(t *testing.T, e digitalEnv) digitalScenario
+		wantReason  string
+		wantStatus  string
+		wantGateway int32
+		wantPending int
+	}{
+		{
+			name: "owned course session is rejected at cart and checkout",
+			arrange: func(t *testing.T, e digitalEnv) digitalScenario {
+				course := seedCourseTarget(t, e.repo)
+				product := seedDigitalProduct(t, e.repo, "course", 50000, course)
+				enrollInCourse(t, e.repo, e.student, course)
 
-	firstOrder := cartOf(t, svc, student, first)
-	if _, err := svc.Checkout(ctx, student.String(), firstOrder.String(), checkoutKey()); err != nil {
-		t.Fatalf("first Checkout: %v", err)
+				order, _, err := e.svc.MintCart(ctx, e.student.String())
+				if err != nil {
+					t.Fatalf("MintCart: %v", err)
+				}
+				wantConflict(t, e.svc.AddItem(ctx, e.student.String(), order.ID.String(), product.String(), 1), model.DigitalConflictOwned)
+				forceLine(t, e.repo, order.ID, product, "course", 50000)
+				return digitalScenario{orderID: order.ID}
+			},
+			wantReason: model.DigitalConflictOwned,
+			wantStatus: "cart",
+		},
+		{
+			name: "live exam registration is rejected at checkout",
+			arrange: func(t *testing.T, e digitalEnv) digitalScenario {
+				exam := seedExamTarget(t, e.repo)
+				product := seedDigitalProduct(t, e.repo, "exam", 50000, exam)
+				registerForExam(t, e.repo, e.student, exam, "registered")
+
+				order, _, err := e.svc.MintCart(ctx, e.student.String())
+				if err != nil {
+					t.Fatalf("MintCart: %v", err)
+				}
+				forceLine(t, e.repo, order.ID, product, "exam", 50000)
+				return digitalScenario{orderID: order.ID}
+			},
+			wantReason: model.DigitalConflictOwned,
+			wantStatus: "cart",
+		},
+		{
+			name: "revoked exam registration stops blocking the same order",
+			arrange: func(t *testing.T, e digitalEnv) digitalScenario {
+				exam := seedExamTarget(t, e.repo)
+				product := seedDigitalProduct(t, e.repo, "exam", 50000, exam)
+				registerForExam(t, e.repo, e.student, exam, "registered")
+
+				order, _, err := e.svc.MintCart(ctx, e.student.String())
+				if err != nil {
+					t.Fatalf("MintCart: %v", err)
+				}
+				forceLine(t, e.repo, order.ID, product, "exam", 50000)
+				_, err = e.svc.Checkout(ctx, e.student.String(), order.ID.String(), checkoutKey())
+				wantConflict(t, err, model.DigitalConflictOwned)
+				if n := e.pay.creates.Load(); n != 0 {
+					t.Fatalf("gateway calls = %d, want 0 while registration is live", n)
+				}
+
+				if _, err := e.repo.Pool().Exec(ctx,
+					`UPDATE exam_registration SET status = 'revoked', revoked_at = now() WHERE student_id = $1 AND exam_id = $2`, e.student, exam,
+				); err != nil {
+					t.Fatalf("revoke: %v", err)
+				}
+				return digitalScenario{orderID: order.ID}
+			},
+			wantStatus:  "payment_pending",
+			wantGateway: 1,
+			wantPending: 1,
+		},
+		{
+			name: "pending order through another SKU is rejected at cart and checkout",
+			arrange: func(t *testing.T, e digitalEnv) digitalScenario {
+				course := seedCourseTarget(t, e.repo)
+				first := seedDigitalProduct(t, e.repo, "course", 50000, course)
+				second := seedDigitalProduct(t, e.repo, "course", 40000, course)
+
+				firstOrder := cartOf(t, e.svc, e.student, first)
+				if _, err := e.svc.Checkout(ctx, e.student.String(), firstOrder.String(), checkoutKey()); err != nil {
+					t.Fatalf("first Checkout: %v", err)
+				}
+
+				secondOrder, _, err := e.svc.MintCart(ctx, e.student.String())
+				if err != nil {
+					t.Fatalf("MintCart: %v", err)
+				}
+				wantConflict(t, e.svc.AddItem(ctx, e.student.String(), secondOrder.ID.String(), second.String(), 1), model.DigitalConflictClaimed)
+				forceLine(t, e.repo, secondOrder.ID, second, "course", 40000)
+				return digitalScenario{orderID: secondOrder.ID}
+			},
+			wantReason:  model.DigitalConflictClaimed,
+			wantStatus:  "cart",
+			wantGateway: 1,
+			wantPending: 1,
+		},
+		{
+			name: "bundle with one owned target is rejected whole",
+			arrange: func(t *testing.T, e digitalEnv) digitalScenario {
+				owned, other := seedCourseTarget(t, e.repo), seedCourseTarget(t, e.repo)
+				bundle := seedDigitalProduct(t, e.repo, "course", 90000, owned, other)
+				enrollInCourse(t, e.repo, e.student, owned)
+
+				order, _, err := e.svc.MintCart(ctx, e.student.String())
+				if err != nil {
+					t.Fatalf("MintCart: %v", err)
+				}
+				forceLine(t, e.repo, order.ID, bundle, "course", 90000)
+				return digitalScenario{
+					orderID: order.ID,
+					check: func(t *testing.T, conflictErr *DigitalTargetConflictError) {
+						if len(conflictErr.Conflicts) != 1 || conflictErr.Conflicts[0].TargetID != owned || conflictErr.Conflicts[0].ProductID != bundle {
+							t.Errorf("conflicts = %+v, want only the owned target %v of bundle %v", conflictErr.Conflicts, owned, bundle)
+						}
+					},
+				}
+			},
+			wantReason: model.DigitalConflictOwned,
+			wantStatus: "cart",
+		},
+		{
+			name: "two lines sharing a target are rejected at cart and checkout",
+			arrange: func(t *testing.T, e digitalEnv) digitalScenario {
+				shared, extra := seedCourseTarget(t, e.repo), seedCourseTarget(t, e.repo)
+				single := seedDigitalProduct(t, e.repo, "course", 50000, shared)
+				bundle := seedDigitalProduct(t, e.repo, "course", 90000, shared, extra)
+
+				order, _, err := e.svc.MintCart(ctx, e.student.String())
+				if err != nil {
+					t.Fatalf("MintCart: %v", err)
+				}
+				if err := e.svc.AddItem(ctx, e.student.String(), order.ID.String(), single.String(), 1); err != nil {
+					t.Fatalf("first AddItem: %v", err)
+				}
+				wantConflict(t, e.svc.AddItem(ctx, e.student.String(), order.ID.String(), bundle.String(), 1), model.DigitalConflictDuplicateInCart)
+				forceLine(t, e.repo, order.ID, bundle, "course", 90000)
+				return digitalScenario{orderID: order.ID}
+			},
+			wantReason: model.DigitalConflictDuplicateInCart,
+			wantStatus: "cart",
+		},
 	}
 
-	secondOrder, _, err := svc.MintCart(ctx, student.String())
-	if err != nil {
-		t.Fatalf("MintCart: %v", err)
-	}
-	wantConflict(t, svc.AddItem(ctx, student.String(), secondOrder.ID.String(), second.String(), 1), model.DigitalConflictClaimed)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, pay := newDigitalPurchaseService(t)
+			student := newDigitalStudent(t, repo)
+			scenario := tt.arrange(t, digitalEnv{svc: svc, repo: repo, pay: pay, student: student})
 
-	forceLine(t, repo, secondOrder.ID, second, "course", 40000)
-	_, err = svc.Checkout(ctx, student.String(), secondOrder.ID.String(), checkoutKey())
-	wantConflict(t, err, model.DigitalConflictClaimed)
+			_, err := svc.Checkout(ctx, student.String(), scenario.orderID.String(), checkoutKey())
+			if tt.wantReason == "" {
+				if err != nil {
+					t.Fatalf("Checkout: %v", err)
+				}
+			} else {
+				conflictErr := wantConflict(t, err, tt.wantReason)
+				if scenario.check != nil {
+					scenario.check(t, conflictErr)
+				}
+			}
 
-	if n := pay.creates.Load(); n != 1 {
-		t.Errorf("gateway calls = %d, want 1 (first order only)", n)
-	}
-	if n := pendingOrdersOf(t, repo, student); n != 1 {
-		t.Errorf("pending orders = %d, want 1", n)
-	}
-}
-
-func TestDigitalPurchase_BundleWithOneOwnedTargetIsRejectedWhole(t *testing.T) {
-	svc, repo, pay := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	owned, other := seedCourseTarget(t, repo), seedCourseTarget(t, repo)
-	bundle := seedDigitalProduct(t, repo, "course", 90000, owned, other)
-	enrollInCourse(t, repo, student, owned)
-
-	order, _, err := svc.MintCart(ctx, student.String())
-	if err != nil {
-		t.Fatalf("MintCart: %v", err)
-	}
-	forceLine(t, repo, order.ID, bundle, "course", 90000)
-	_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
-	conflictErr := wantConflict(t, err, model.DigitalConflictOwned)
-	if len(conflictErr.Conflicts) != 1 || conflictErr.Conflicts[0].TargetID != owned || conflictErr.Conflicts[0].ProductID != bundle {
-		t.Errorf("conflicts = %+v, want only the owned target %v of bundle %v", conflictErr.Conflicts, owned, bundle)
-	}
-	if n := pay.creates.Load(); n != 0 {
-		t.Errorf("gateway calls = %d, want 0", n)
-	}
-}
-
-func TestDigitalPurchase_TwoLinesSharingATargetAreRejected(t *testing.T) {
-	svc, repo, pay := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	shared, extra := seedCourseTarget(t, repo), seedCourseTarget(t, repo)
-	single := seedDigitalProduct(t, repo, "course", 50000, shared)
-	bundle := seedDigitalProduct(t, repo, "course", 90000, shared, extra)
-
-	order, _, err := svc.MintCart(ctx, student.String())
-	if err != nil {
-		t.Fatalf("MintCart: %v", err)
-	}
-	if err := svc.AddItem(ctx, student.String(), order.ID.String(), single.String(), 1); err != nil {
-		t.Fatalf("first AddItem: %v", err)
-	}
-	wantConflict(t, svc.AddItem(ctx, student.String(), order.ID.String(), bundle.String(), 1), model.DigitalConflictDuplicateInCart)
-
-	forceLine(t, repo, order.ID, bundle, "course", 90000)
-	_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
-	wantConflict(t, err, model.DigitalConflictDuplicateInCart)
-	if n := pay.creates.Load(); n != 0 {
-		t.Errorf("gateway calls = %d, want 0", n)
+			if got := orderStatusOf(t, repo, scenario.orderID); got != tt.wantStatus {
+				t.Errorf("order status = %q, want %q", got, tt.wantStatus)
+			}
+			if n := pay.creates.Load(); n != tt.wantGateway {
+				t.Errorf("gateway calls = %d, want %d", n, tt.wantGateway)
+			}
+			if n := pendingOrdersOf(t, repo, student); n != tt.wantPending {
+				t.Errorf("pending orders = %d, want %d", n, tt.wantPending)
+			}
+		})
 	}
 }
 
