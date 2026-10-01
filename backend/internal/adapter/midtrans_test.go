@@ -107,22 +107,10 @@ func TestMidtransClient_CreatePayment(t *testing.T) {
 // The gateway link must not outlive the order it pays for, so the requested
 // expiry is whole minutes rounded down, never hours rounded to zero or up.
 func TestMidtransClient_CreatePayment_ExpiryIsWholeMinutesRoundedDown(t *testing.T) {
-	var body struct {
-		Expiry struct {
-			Duration int64  `json:"duration"`
-			Unit     string `json:"unit"`
-		} `json:"expiry"`
-	}
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"token": "t", "redirect_url": "https://pay.example.com/r"})
-	}))
-	defer ts.Close()
-
-	client := newTestMidtransClient("test-server-key", ts)
+	client, body, _ := captureSnapExpiry(t)
+	expiresIn := 150*time.Minute + 40*time.Second
 	resp, err := client.CreatePayment(context.Background(), service.PaymentRequest{
-		OrderID: "order-exp", Amount: 100000, ExpiresIn: 150*time.Minute + 40*time.Second,
+		OrderID: "order-exp", Amount: 100000, ExpiresIn: expiresIn,
 	})
 	if err != nil {
 		t.Fatalf("CreatePayment: %v", err)
@@ -131,7 +119,11 @@ func TestMidtransClient_CreatePayment_ExpiryIsWholeMinutesRoundedDown(t *testing
 	if body.Expiry.Unit != "minute" || body.Expiry.Duration != 150 {
 		t.Errorf("expiry = %d %s, want 150 minute", body.Expiry.Duration, body.Expiry.Unit)
 	}
-	if limit := time.Now().Add(150 * time.Minute); resp.ExpiresAt.After(limit.Add(time.Second)) {
+	start, err := time.Parse("2006-01-02 15:04:05 -0700", body.Expiry.StartTime)
+	if err != nil {
+		t.Fatalf("start_time %q is not yyyy-MM-dd HH:mm:ss Z: %v", body.Expiry.StartTime, err)
+	}
+	if limit := start.Add(expiresIn); resp.ExpiresAt.After(limit) {
 		t.Errorf("ExpiresAt %v is past the requested window %v", resp.ExpiresAt, limit)
 	}
 }
@@ -254,6 +246,7 @@ type snapExpiryBody struct {
 	} `json:"expiry"`
 }
 
+// TODO: uncertain: the Snap reply is synthesized; no captured Midtrans response exists in the repo.
 func captureSnapExpiry(t *testing.T) (*MidtransClient, *snapExpiryBody, *int) {
 	t.Helper()
 	var body snapExpiryBody
@@ -270,6 +263,7 @@ func captureSnapExpiry(t *testing.T) (*MidtransClient, *snapExpiryBody, *int) {
 
 // Without an explicit start_time Midtrans counts expiry from the moment the
 // customer charges, so a link opened late would outlive the order's deadline.
+// TODO: uncertain: no captured exchange confirms Midtrans accepts this start_time layout.
 func TestMidtransClient_CreatePayment_PinsExpiryToTheOrderDeadline(t *testing.T) {
 	client, body, _ := captureSnapExpiry(t)
 	deadline := time.Now().Add(90*time.Minute + 40*time.Second)

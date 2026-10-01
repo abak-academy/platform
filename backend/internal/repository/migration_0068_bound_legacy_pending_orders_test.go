@@ -32,10 +32,10 @@ func TestMigration0068_BoundsLegacyStudentDigitalOrders(t *testing.T) {
 		).Scan(&id))
 		return id
 	}
-	insertOrder := func(buyer uuid.UUID, status string, deadline *time.Time, products ...uuid.UUID) uuid.UUID {
+	insertOrder := func(buyer uuid.UUID, status string, products ...uuid.UUID) uuid.UUID {
 		var id uuid.UUID
 		require.NoError(t, pool.QueryRow(ctx,
-			`INSERT INTO orders (student_id, status, payment_expires_at) VALUES ($1, $2, $3) RETURNING id`, buyer, status, deadline,
+			`INSERT INTO orders (student_id, status) VALUES ($1, $2) RETURNING id`, buyer, status,
 		).Scan(&id))
 		for _, p := range products {
 			_, err := pool.Exec(ctx,
@@ -50,21 +50,29 @@ func TestMigration0068_BoundsLegacyStudentDigitalOrders(t *testing.T) {
 	school := insertUser("school-0068@test.local", "admin_school")
 	course, exam, book := insertProduct("course"), insertProduct("exam"), insertProduct("book")
 
-	courseOrder := insertOrder(student, "payment_pending", nil, course)
-	mixedOrder := insertOrder(student, "payment_pending", nil, exam, book)
-	physicalOnly := insertOrder(student, "payment_pending", nil, book)
-	paid := insertOrder(student, "paid", nil, course)
-	schoolOrder := insertOrder(school, "payment_pending", nil, course)
-	bulk := insertOrder(student, "payment_pending", nil, exam)
+	courseOrder := insertOrder(student, "payment_pending", course)
+	mixedOrder := insertOrder(student, "payment_pending", exam, book)
+	physicalOnly := insertOrder(student, "payment_pending", book)
+	paid := insertOrder(student, "paid", course)
+	schoolOrder := insertOrder(school, "payment_pending", course)
+	bulk := insertOrder(student, "payment_pending", exam)
 	_, err := pool.Exec(ctx, `INSERT INTO order_participant (order_id, student_id) VALUES ($1, $2)`, bulk, student)
 	require.NoError(t, err)
-	existing := time.Now().Add(90 * time.Minute).Truncate(time.Microsecond)
-	withDeadline := insertOrder(student, "payment_pending", &existing, course)
+	withDeadline := insertOrder(student, "payment_pending", course)
+	var existing time.Time
+	require.NoError(t, pool.QueryRow(ctx,
+		`UPDATE orders SET payment_expires_at = created_at + interval '90 minutes' WHERE id = $1 RETURNING payment_expires_at`, withDeadline,
+	).Scan(&existing))
 
 	deadlineOf := func(id uuid.UUID) *time.Time {
 		var d *time.Time
 		require.NoError(t, pool.QueryRow(ctx, `SELECT payment_expires_at FROM orders WHERE id = $1`, id).Scan(&d))
 		return d
+	}
+	createdAtOf := func(id uuid.UUID) time.Time {
+		var c time.Time
+		require.NoError(t, pool.QueryRow(ctx, `SELECT created_at FROM orders WHERE id = $1`, id).Scan(&c))
+		return c
 	}
 
 	applyMigrationFile(t, pool, "0068_bound_legacy_pending_orders.up.sql")
@@ -72,7 +80,9 @@ func TestMigration0068_BoundsLegacyStudentDigitalOrders(t *testing.T) {
 	for name, id := range map[string]uuid.UUID{"student digital": courseOrder, "student digital + physical": mixedOrder} {
 		d := deadlineOf(id)
 		require.NotNil(t, d, "%s order must get a deadline", name)
-		require.WithinDuration(t, time.Now().Add(24*time.Hour), *d, time.Minute, "%s order window", name)
+		window := d.Sub(createdAtOf(id))
+		require.GreaterOrEqual(t, window, 24*time.Hour, "%s order window", name)
+		require.Less(t, window, 24*time.Hour+time.Minute, "%s order window", name)
 	}
 	for name, id := range map[string]uuid.UUID{
 		"physical-only": physicalOnly, "paid": paid, "non-student buyer": schoolOrder, "bulk participant": bulk,
