@@ -110,7 +110,7 @@ describe("OrderDetailPage retry payment", () => {
   });
 
   it.each([
-    ["payment_deadline_too_close", "kurang dari satu menit"],
+    ["payment_deadline_too_close", "terlalu dekat"],
     ["order_not_editable", "tidak menunggu pembayaran"],
   ])("explains %s in the student's language instead of the raw backend message", async (code, phrase) => {
     await renderPageAndRetry(() => Promise.reject(apiError(code)));

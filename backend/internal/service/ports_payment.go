@@ -55,9 +55,9 @@ type PaymentClient interface {
 	VerifySignature(payload []byte, signature string) bool
 }
 
-// ErrPaymentDeadlineTooClose means the order has under a minute left, the
-// shortest session the gateway can be asked for without outliving the order.
-var ErrPaymentDeadlineTooClose = errors.New("less than a minute left before the payment deadline")
+// ErrPaymentDeadlineTooClose means the order's deadline is too close to start a
+// gateway session that ends a safety margin before it.
+var ErrPaymentDeadlineTooClose = errors.New("the payment deadline is too close to start a payment")
 
 type NoopPaymentClient struct{}
 

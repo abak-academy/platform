@@ -1047,6 +1047,9 @@ func truncateItemName(name string) string {
 // paymentWindow is how long an order stays payable after checkout; the gateway link never outlives what is left of it.
 const paymentWindow = 24 * time.Hour
 
+// paymentSessionMargin ends the gateway session before the order deadline so a payment made inside the session is notified before the deadline.
+const paymentSessionMargin = 5 * time.Minute
+
 type OrderPaidPayload struct {
 	OrderID string                 `json:"order_id"`
 	Items   []OrderPaidPayloadItem `json:"items"`
@@ -1319,12 +1322,13 @@ func (s *Service) attachPayment(ctx context.Context, orderID, studentID uuid.UUI
 	return deadline, nil
 }
 
-// Under a minute left the whole-minute session granularity could outlive the order, so refuse; a nil deadline (legacy order) gets the standard window.
+// The session ends paymentSessionMargin before the deadline; under a minute of session left the whole-minute granularity is unusable, so refuse. A nil deadline (legacy order) gets the standard window.
 func bindPaymentDeadline(req *PaymentRequest, deadline *time.Time) error {
 	at := time.Now().Add(paymentWindow)
 	if deadline != nil {
 		at = *deadline
 	}
+	at = at.Add(-paymentSessionMargin)
 	remaining := time.Until(at)
 	if remaining < time.Minute {
 		return ErrPaymentDeadlineTooClose

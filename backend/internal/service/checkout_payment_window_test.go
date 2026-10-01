@@ -58,8 +58,8 @@ func TestCheckout_GivesThePendingOrderABoundedDeadline(t *testing.T) {
 	if left := time.Until(*deadline); left < 23*time.Hour || left > 24*time.Hour+time.Minute {
 		t.Errorf("time left = %v, want about 24h", left)
 	}
-	if asked := time.Duration(pay.lastExpiresIn.Load()); asked > 24*time.Hour || asked < 23*time.Hour {
-		t.Errorf("gateway asked to keep the link for %v, want no more than the order window", asked)
+	if asked := time.Duration(pay.lastExpiresIn.Load()); asked > 24*time.Hour-paymentSessionMargin || asked < 23*time.Hour {
+		t.Errorf("gateway asked to keep the link for %v, want no more than the order window less the %v margin", asked, paymentSessionMargin)
 	}
 }
 
@@ -92,6 +92,9 @@ func TestCheckout_GatewayFailureStillExpiresAndFreesStock(t *testing.T) {
 	}
 }
 
+// A legacy order's session end comes from the app clock before the gateway call, its deadline from the database clock after it.
+const legacyClockSkew = time.Second
+
 func TestRetryPayment_KeepsTheOrdersDeadline(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
@@ -99,9 +102,11 @@ func TestRetryPayment_KeepsTheOrdersDeadline(t *testing.T) {
 		deadline string
 		maxAsked time.Duration
 		exactAsk bool
+		skew     time.Duration
 	}{
-		{"existing deadline is never extended, even by a gateway offering 72h", "2 hours", 2 * time.Hour, true},
-		{"order without a deadline gets one on the first retry and keeps it", "", 24*time.Hour + time.Minute, false},
+		{"existing deadline is never extended, even by a gateway offering 72h", "2 hours", 2*time.Hour - paymentSessionMargin, true, 0},
+		{"deadline just outside the margin plus a minute still gets a session", "7 minutes", 7*time.Minute - paymentSessionMargin, true, 0},
+		{"order without a deadline gets one on the first retry and keeps it", "", 24*time.Hour - paymentSessionMargin, false, legacyClockSkew},
 	}
 
 	for _, tt := range tests {
@@ -142,11 +147,12 @@ func TestRetryPayment_KeepsTheOrdersDeadline(t *testing.T) {
 					t.Errorf("retry #%d asked the gateway for %v, more than the %v left", i, askedFor, tt.maxAsked)
 				}
 				asked := askedDeadline(t, pay)
-				if tt.exactAsk && !asked.Equal(*original) {
-					t.Errorf("retry #%d asked the gateway to end at %v, order deadline is %v", i, asked, *original)
+				wantEnd := original.Add(-paymentSessionMargin)
+				if tt.exactAsk && !asked.Equal(wantEnd) {
+					t.Errorf("retry #%d asked the gateway to end at %v, want the deadline %v less the %v margin", i, asked, *original, paymentSessionMargin)
 				}
-				if asked.After(*original) {
-					t.Errorf("retry #%d asked the gateway to end at %v, past the order deadline %v", i, asked, *original)
+				if asked.After(wantEnd.Add(tt.skew)) {
+					t.Errorf("retry #%d asked the gateway to end at %v, later than %v (deadline %v less the %v margin)", i, asked, wantEnd, *original, paymentSessionMargin)
 				}
 			}
 		})
@@ -316,8 +322,8 @@ func askedDeadline(t *testing.T, pay *lifecyclePayments) time.Time {
 	return got
 }
 
-// The gateway session is pinned to the order's own database deadline, not to a
-// duration counted from whenever the customer later charges.
+// The gateway session is pinned to the order's own database deadline less the
+// session margin, not to a duration counted from whenever the customer later charges.
 func TestCheckout_AsksTheGatewayToEndAtTheOrderDeadline(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
 	student := newDigitalStudent(t, repo)
@@ -327,7 +333,7 @@ func TestCheckout_AsksTheGatewayToEndAtTheOrderDeadline(t *testing.T) {
 	if deadline == nil {
 		t.Fatal("payment_expires_at is NULL after checkout")
 	}
-	if got := askedDeadline(t, pay); !got.Equal(*deadline) {
-		t.Errorf("gateway asked to end at %v, order deadline is %v", got, *deadline)
+	if got, want := askedDeadline(t, pay), deadline.Add(-paymentSessionMargin); !got.Equal(want) {
+		t.Errorf("gateway asked to end at %v, want %v (order deadline %v less the %v margin)", got, want, *deadline, paymentSessionMargin)
 	}
 }
