@@ -435,36 +435,49 @@ func TestDigitalPurchase_ConflictInMixedCartRollsBackStockAndPayment(t *testing.
 }
 
 func TestDigitalPurchase_PaidFreeOrderBlocksAnotherSKUBeforeAndAfterFulfilment(t *testing.T) {
-	svc, repo, _ := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	course := seedCourseTarget(t, repo)
-	free := seedDigitalProduct(t, repo, "course", 0, course)
-	otherFree := seedDigitalProduct(t, repo, "course", 0, course)
-
-	result, err := svc.Checkout(ctx, student.String(), cartOf(t, svc, student, free).String(), checkoutKey())
-	if err != nil || !result.Free {
-		t.Fatalf("free Checkout = %+v, %v; want Free", result, err)
+	tests := []struct {
+		name         string
+		fulfil       bool
+		wantConflict string
+	}{
+		{"before the order is fulfilled", false, model.DigitalConflictClaimed},
+		{"after the order is fulfilled", true, model.DigitalConflictOwned},
 	}
 
-	order, _, err := svc.MintCart(ctx, student.String())
-	if err != nil {
-		t.Fatalf("MintCart: %v", err)
-	}
-	forceLine(t, repo, order.ID, otherFree, "course", 0)
-	_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
-	wantConflict(t, err, model.DigitalConflictClaimed)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, _ := newDigitalPurchaseService(t)
+			ctx := context.Background()
+			student := newDigitalStudent(t, repo)
+			course := seedCourseTarget(t, repo)
+			free := seedDigitalProduct(t, repo, "course", 0, course)
+			otherFree := seedDigitalProduct(t, repo, "course", 0, course)
 
-	if _, err := repo.Pool().Exec(ctx,
-		`UPDATE orders SET status = 'completed' WHERE student_id = $1 AND status = 'paid'`, student,
-	); err != nil {
-		t.Fatalf("complete order: %v", err)
-	}
-	enrollInCourse(t, repo, student, course)
-	_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
-	wantConflict(t, err, model.DigitalConflictOwned)
-	if got := orderStatusOf(t, repo, order.ID); got != "cart" {
-		t.Errorf("order status = %q, want cart", got)
+			result, err := svc.Checkout(ctx, student.String(), cartOf(t, svc, student, free).String(), checkoutKey())
+			if err != nil || !result.Free {
+				t.Fatalf("free Checkout = %+v, %v; want Free", result, err)
+			}
+			if tt.fulfil {
+				if _, err := repo.Pool().Exec(ctx,
+					`UPDATE orders SET status = 'completed' WHERE student_id = $1 AND status = 'paid'`, student,
+				); err != nil {
+					t.Fatalf("complete order: %v", err)
+				}
+				enrollInCourse(t, repo, student, course)
+			}
+
+			order, _, err := svc.MintCart(ctx, student.String())
+			if err != nil {
+				t.Fatalf("MintCart: %v", err)
+			}
+			forceLine(t, repo, order.ID, otherFree, "course", 0)
+			_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
+			wantConflict(t, err, tt.wantConflict)
+
+			if got := orderStatusOf(t, repo, order.ID); got != "cart" {
+				t.Errorf("order status = %q, want cart", got)
+			}
+		})
 	}
 }
 

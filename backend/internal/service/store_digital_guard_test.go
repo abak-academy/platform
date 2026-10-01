@@ -121,36 +121,57 @@ func TestDigitalPurchase_LiveOrderBlocksItsTarget(t *testing.T) {
 	}
 }
 
-func TestDigitalPurchase_RevokedCourseCanBeBoughtAgain(t *testing.T) {
-	svc, repo, pay := newDigitalPurchaseService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	course := seedCourseTarget(t, repo)
-	product := seedDigitalProduct(t, repo, "course", 50000, course)
-	enrollInCourse(t, repo, student, course)
+func TestDigitalPurchase_OwnedCourseBlocksItsTargetUntilRevoked(t *testing.T) {
+	tests := []struct {
+		name         string
+		revoked      bool
+		wantConflict string
+	}{
+		{"owned", false, model.DigitalConflictOwned},
+		{"revoked", true, ""},
+	}
 
-	cart, _, err := svc.MintCart(ctx, student.String())
-	if err != nil {
-		t.Fatalf("MintCart: %v", err)
-	}
-	wantConflict(t, svc.AddItem(ctx, student.String(), cart.ID.String(), product.String(), 1), model.DigitalConflictOwned)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, pay := newDigitalPurchaseService(t)
+			ctx := context.Background()
+			student := newDigitalStudent(t, repo)
+			course := seedCourseTarget(t, repo)
+			product := seedDigitalProduct(t, repo, "course", 50000, course)
+			enrollInCourse(t, repo, student, course)
+			if tt.revoked {
+				if _, err := repo.Pool().Exec(ctx,
+					`UPDATE course_session SET status = 'revoked', revoked_at = now() WHERE student_id = $1 AND course_id = $2`, student, course,
+				); err != nil {
+					t.Fatalf("revoke: %v", err)
+				}
+			}
 
-	if _, err := repo.Pool().Exec(ctx,
-		`UPDATE course_session SET status = 'revoked', revoked_at = now() WHERE student_id = $1 AND course_id = $2`, student, course,
-	); err != nil {
-		t.Fatalf("revoke: %v", err)
-	}
-	if err := svc.AddItem(ctx, student.String(), cart.ID.String(), product.String(), 1); err != nil {
-		t.Fatalf("AddItem after revoke: %v", err)
-	}
-	if _, err := svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey()); err != nil {
-		t.Fatalf("Checkout after revoke: %v", err)
-	}
-	if got := orderStatusOf(t, repo, cart.ID); got != "payment_pending" {
-		t.Errorf("order status = %q, want payment_pending", got)
-	}
-	if n := pay.creates.Load(); n != 1 {
-		t.Errorf("gateway calls = %d, want 1", n)
+			cart, _, err := svc.MintCart(ctx, student.String())
+			if err != nil {
+				t.Fatalf("MintCart: %v", err)
+			}
+			err = svc.AddItem(ctx, student.String(), cart.ID.String(), product.String(), 1)
+			if tt.wantConflict != "" {
+				wantConflict(t, err, tt.wantConflict)
+				if n := pay.creates.Load(); n != 0 {
+					t.Errorf("gateway calls = %d, want 0", n)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("AddItem after revoke: %v", err)
+			}
+			if _, err := svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey()); err != nil {
+				t.Fatalf("Checkout after revoke: %v", err)
+			}
+			if got := orderStatusOf(t, repo, cart.ID); got != "payment_pending" {
+				t.Errorf("order status = %q, want payment_pending", got)
+			}
+			if n := pay.creates.Load(); n != 1 {
+				t.Errorf("gateway calls = %d, want 1", n)
+			}
+		})
 	}
 }
 
