@@ -114,27 +114,123 @@ func (e *lifecycleEnv) enrollmentCourse(t *testing.T, orderID uuid.UUID) uuid.UU
 	return id
 }
 
-func TestOrderPaid_RefundedBeforeFulfilmentGrantsNoAccessAndStaysCancelled(t *testing.T) {
-	env := newLifecycleEnv(t)
-	ctx := context.Background()
-	student := env.student(t)
-	book := env.book(t, 5)
-	digital := env.courseProduct(t, 50000, env.course(t))
+func TestOrderPaid_RefundWinsAndGrantsNoAccess(t *testing.T) {
+	tests := []struct {
+		name        string
+		iterations  int
+		wantDrained bool
+		cancel      func(t *testing.T, env *lifecycleEnv, student uuid.UUID) (orderID, course uuid.UUID)
+	}{
+		{
+			name:        "refunded before the event is polled",
+			iterations:  1,
+			wantDrained: true,
+			cancel: func(t *testing.T, env *lifecycleEnv, student uuid.UUID) (uuid.UUID, uuid.UUID) {
+				book := env.book(t, 5)
+				digital := env.courseProduct(t, 50000, env.course(t))
 
-	orderID := env.paidOrder(t, student, book, digital)
-	course := env.enrollmentCourse(t, orderID)
-	env.refund(t, orderID)
+				orderID := env.paidOrder(t, student, book, digital)
+				course := env.enrollmentCourse(t, orderID)
+				env.refund(t, orderID)
 
-	env.pollAll(t, ctx)
+				env.pollAll(t, context.Background())
+				return orderID, course
+			},
+		},
+		{
+			// The refund holds the order row while the worker picks up the event: the
+			// worker must wait for it and then see the cancelled order, not fulfil on the
+			// paid status it read earlier.
+			name:       "worker waits for a refund holding the order row",
+			iterations: 1,
+			cancel: func(t *testing.T, env *lifecycleEnv, student uuid.UUID) (uuid.UUID, uuid.UUID) {
+				ctx := context.Background()
+				digital := env.courseProduct(t, 50000, env.course(t))
 
-	if got := env.activeEnrollments(t, student, course); got != 0 {
-		t.Errorf("active enrollments = %d, want 0 for a refunded order", got)
+				orderID := env.paidOrder(t, student, digital)
+				course := env.enrollmentCourse(t, orderID)
+
+				refundTx, err := env.repo.BeginTx(ctx)
+				if err != nil {
+					t.Fatalf("begin: %v", err)
+				}
+				defer refundTx.Rollback(ctx)
+				if _, err := refundTx.Exec(ctx, `SELECT 1 FROM orders WHERE id = $1 FOR UPDATE`, orderID); err != nil {
+					t.Fatalf("lock order: %v", err)
+				}
+
+				pollDone := make(chan error, 1)
+				go func() {
+					pollDone <- env.pollAllErr(ctx)
+				}()
+				waitForWaitersBehind(t, env, refundTx, 1)
+
+				if _, err := refundTx.Exec(ctx, `UPDATE orders SET status = 'cancelled', cancellation_reason = 'refunded' WHERE id = $1`, orderID); err != nil {
+					t.Fatalf("cancel: %v", err)
+				}
+				if err := refundTx.Commit(ctx); err != nil {
+					t.Fatalf("commit: %v", err)
+				}
+				if err := <-pollDone; err != nil {
+					t.Fatalf("poll outbox: %v", err)
+				}
+				return orderID, course
+			},
+		},
+		{
+			name:       "poll and refund racing",
+			iterations: 6,
+			cancel: func(t *testing.T, env *lifecycleEnv, student uuid.UUID) (uuid.UUID, uuid.UUID) {
+				ctx := context.Background()
+				digital := env.courseProduct(t, 50000, env.course(t))
+				orderID := env.paidOrder(t, student, digital)
+				course := env.enrollmentCourse(t, orderID)
+
+				var wg sync.WaitGroup
+				refundDone := make(chan error, 1)
+				pollDone := make(chan error, 1)
+				wg.Add(2)
+				go func() {
+					defer wg.Done()
+					pollDone <- env.pollAllErr(ctx)
+				}()
+				go func() {
+					defer wg.Done()
+					refundDone <- env.refundErr(orderID)
+				}()
+				wg.Wait()
+				if err := <-pollDone; err != nil {
+					t.Fatalf("poll outbox: %v", err)
+				}
+				if err := <-refundDone; err != nil {
+					t.Fatal(err)
+				}
+				return orderID, course
+			},
+		},
 	}
-	if got := env.status(t, orderID); got != "cancelled" {
-		t.Errorf("status = %q, want cancelled (not processing or completed)", got)
-	}
-	if got := env.unprocessedEvents(t, orderID); got != 0 {
-		t.Errorf("unprocessed outbox events = %d, want 0 (the stale event is consumed, not retried forever)", got)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newLifecycleEnv(t)
+			student := env.student(t)
+
+			for i := 0; i < tt.iterations; i++ {
+				orderID, course := tt.cancel(t, env, student)
+
+				if got := env.activeEnrollments(t, student, course); got != 0 {
+					t.Errorf("iteration %d: active enrollments = %d, want 0 for a refunded order", i, got)
+				}
+				if got := env.status(t, orderID); got != "cancelled" {
+					t.Errorf("iteration %d: status = %q, want cancelled (not processing or completed)", i, got)
+				}
+				if tt.wantDrained {
+					if got := env.unprocessedEvents(t, orderID); got != 0 {
+						t.Errorf("iteration %d: unprocessed outbox events = %d, want 0 (the stale event is consumed, not retried forever)", i, got)
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -203,51 +299,6 @@ func TestOrderPaid_EventForExpiredMixedOrderGrantsAccessAndMovesToProcessing(t *
 	}
 }
 
-// The refund holds the order row while the worker picks up the event: the
-// worker must wait for it and then see the cancelled order, not fulfil on the
-// paid status it read earlier.
-func TestOrderPaid_WaitsForRefundHoldingTheOrderAndGrantsNothing(t *testing.T) {
-	env := newLifecycleEnv(t)
-	ctx := context.Background()
-	student := env.student(t)
-	digital := env.courseProduct(t, 50000, env.course(t))
-
-	orderID := env.paidOrder(t, student, digital)
-	course := env.enrollmentCourse(t, orderID)
-
-	refundTx, err := env.repo.BeginTx(ctx)
-	if err != nil {
-		t.Fatalf("begin: %v", err)
-	}
-	defer refundTx.Rollback(ctx)
-	if _, err := refundTx.Exec(ctx, `SELECT 1 FROM orders WHERE id = $1 FOR UPDATE`, orderID); err != nil {
-		t.Fatalf("lock order: %v", err)
-	}
-
-	pollDone := make(chan error, 1)
-	go func() {
-		pollDone <- env.pollAllErr(ctx)
-	}()
-	waitForWaitersBehind(t, env, refundTx, 1)
-
-	if _, err := refundTx.Exec(ctx, `UPDATE orders SET status = 'cancelled', cancellation_reason = 'refunded' WHERE id = $1`, orderID); err != nil {
-		t.Fatalf("cancel: %v", err)
-	}
-	if err := refundTx.Commit(ctx); err != nil {
-		t.Fatalf("commit: %v", err)
-	}
-	if err := <-pollDone; err != nil {
-		t.Fatalf("poll outbox: %v", err)
-	}
-
-	if got := env.activeEnrollments(t, student, course); got != 0 {
-		t.Errorf("active enrollments = %d, want 0: worker fulfilled an order refunded while it was handling the event", got)
-	}
-	if got := env.status(t, orderID); got != "cancelled" {
-		t.Errorf("status = %q, want cancelled", got)
-	}
-}
-
 func TestOrderPaid_PaidOrderIsFulfilledOnce(t *testing.T) {
 	env := newLifecycleEnv(t)
 	ctx := context.Background()
@@ -276,45 +327,6 @@ func TestOrderPaid_PaidOrderIsFulfilledOnce(t *testing.T) {
 	}
 	if got := env.count(t, `SELECT count(*) FROM course_session WHERE student_id = $1 AND course_id = $2`, student, course); got != 1 {
 		t.Errorf("course sessions after replay = %d, want 1", got)
-	}
-}
-
-func TestOrderPaid_ConcurrentRefundNeverLeavesAccessOnACancelledOrder(t *testing.T) {
-	env := newLifecycleEnv(t)
-	ctx := context.Background()
-	student := env.student(t)
-
-	for i := 0; i < 6; i++ {
-		digital := env.courseProduct(t, 50000, env.course(t))
-		orderID := env.paidOrder(t, student, digital)
-		course := env.enrollmentCourse(t, orderID)
-
-		var wg sync.WaitGroup
-		refundDone := make(chan error, 1)
-		pollDone := make(chan error, 1)
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			pollDone <- env.pollAllErr(ctx)
-		}()
-		go func() {
-			defer wg.Done()
-			refundDone <- env.refundErr(orderID)
-		}()
-		wg.Wait()
-		if err := <-pollDone; err != nil {
-			t.Fatalf("iteration %d: poll outbox: %v", i, err)
-		}
-		if err := <-refundDone; err != nil {
-			t.Fatalf("iteration %d: %v", i, err)
-		}
-
-		if got := env.status(t, orderID); got != "cancelled" {
-			t.Errorf("iteration %d: status = %q, want cancelled", i, got)
-		}
-		if got := env.activeEnrollments(t, student, course); got != 0 {
-			t.Errorf("iteration %d: active enrollments = %d, want 0 on a refunded order", i, got)
-		}
 	}
 }
 
