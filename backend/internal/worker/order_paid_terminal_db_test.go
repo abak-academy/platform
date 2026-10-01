@@ -349,6 +349,12 @@ func TestOrderPaid_FulfilledTargetIsOwnedUntilRefundedThenCanBeRepurchased(t *te
 	if _, err := env.svc.Checkout(ctx, student.String(), cart.ID.String(), "repurchase-"+uuid.NewString()); err != nil {
 		t.Fatalf("Checkout after refund: %v", err)
 	}
+	if got := env.status(t, cart.ID); got != "payment_pending" {
+		t.Errorf("repurchase status = %q, want payment_pending", got)
+	}
+	if got := env.status(t, orderID); got != "cancelled" {
+		t.Errorf("refunded order status = %q, want cancelled", got)
+	}
 }
 
 func TestOrderPaid_ShippedMixedOrderStillGetsItsCourseAndStaysShipped(t *testing.T) {

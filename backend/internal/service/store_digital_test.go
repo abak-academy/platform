@@ -469,17 +469,29 @@ func TestDigitalPurchase_PaidFreeOrderBlocksAnotherSKUBeforeAndAfterFulfilment(t
 }
 
 func TestDigitalPurchase_OtherStudentsAreUnaffected(t *testing.T) {
-	svc, repo, _ := newDigitalPurchaseService(t)
+	svc, repo, pay := newDigitalPurchaseService(t)
 	ctx := context.Background()
 	first, second := newDigitalStudent(t, repo), newDigitalStudent(t, repo)
 	course := seedCourseTarget(t, repo)
 	product := seedDigitalProduct(t, repo, "course", 50000, course)
 
-	if _, err := svc.Checkout(ctx, first.String(), cartOf(t, svc, first, product).String(), checkoutKey()); err != nil {
+	firstOrder := cartOf(t, svc, first, product)
+	if _, err := svc.Checkout(ctx, first.String(), firstOrder.String(), checkoutKey()); err != nil {
 		t.Fatalf("first student Checkout: %v", err)
 	}
-	if _, err := svc.Checkout(ctx, second.String(), cartOf(t, svc, second, product).String(), checkoutKey()); err != nil {
+	secondOrder := cartOf(t, svc, second, product)
+	if _, err := svc.Checkout(ctx, second.String(), secondOrder.String(), checkoutKey()); err != nil {
 		t.Fatalf("second student Checkout: %v", err)
+	}
+
+	if got := orderStatusOf(t, repo, firstOrder); got != "payment_pending" {
+		t.Errorf("first order status = %q, want payment_pending", got)
+	}
+	if got := orderStatusOf(t, repo, secondOrder); got != "payment_pending" {
+		t.Errorf("second order status = %q, want payment_pending", got)
+	}
+	if n := pay.creates.Load(); n != 2 {
+		t.Errorf("gateway calls = %d, want 2 (one per student)", n)
 	}
 }
 

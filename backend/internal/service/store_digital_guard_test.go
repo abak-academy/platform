@@ -122,7 +122,7 @@ func TestDigitalPurchase_LiveOrderBlocksItsTarget(t *testing.T) {
 }
 
 func TestDigitalPurchase_RevokedCourseCanBeBoughtAgain(t *testing.T) {
-	svc, repo, _ := newDigitalPurchaseService(t)
+	svc, repo, pay := newDigitalPurchaseService(t)
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
 	course := seedCourseTarget(t, repo)
@@ -145,6 +145,12 @@ func TestDigitalPurchase_RevokedCourseCanBeBoughtAgain(t *testing.T) {
 	}
 	if _, err := svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey()); err != nil {
 		t.Fatalf("Checkout after revoke: %v", err)
+	}
+	if got := orderStatusOf(t, repo, cart.ID); got != "payment_pending" {
+		t.Errorf("order status = %q, want payment_pending", got)
+	}
+	if n := pay.creates.Load(); n != 1 {
+		t.Errorf("gateway calls = %d, want 1", n)
 	}
 }
 
