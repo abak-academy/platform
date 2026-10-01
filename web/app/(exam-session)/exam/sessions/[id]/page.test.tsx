@@ -1053,6 +1053,24 @@ describe("SessionPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("survives Google Translate rewriting text nodes when next turns into submit (#199)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const textNodes: Node[] = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    for (const node of textNodes) {
+      if (!node.textContent?.trim()) continue;
+      const font = document.createElement("font");
+      font.textContent = `[tr] ${node.textContent}`;
+      node.parentNode?.replaceChild(font, node);
+    }
+
+    expect(() => fireEvent.click(screen.getByTestId("session-nav-4"))).not.toThrow();
+    expect(screen.getAllByRole("button", { name: /kumpulkan/i })).toHaveLength(2);
+  });
+
   // ── Answer updates state ────────────────────────────────────────────────
 
   it("updates answer state when MCQ option is selected (FR29)", async () => {
