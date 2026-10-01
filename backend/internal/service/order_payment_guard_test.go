@@ -66,6 +66,7 @@ func expireOrderNow(t *testing.T, repo *repository.Repository, orderID uuid.UUID
 	}
 }
 
+// TODO: uncertain: this payload shape is hand-written, not captured from the provider.
 func settlementBody(orderID uuid.UUID, txID string) []byte {
 	b, _ := json.Marshal(map[string]string{
 		"transaction_status": "settlement",
