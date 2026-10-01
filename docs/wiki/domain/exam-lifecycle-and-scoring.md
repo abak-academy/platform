@@ -1,7 +1,7 @@
 ---
 title: Exam lifecycle and scoring — question model, session flow, grading authority
-updated: 2026-09-25
-verified_against: e6cf227c
+updated: 2026-10-01
+verified_against: 57b2fd87
 ---
 
 What an exam/package/question actually looks like today, how a student gets access, what happens from session start to result, and where scoring authority sits. See [[system-overview]] for component boundaries, [[exam-capacity]] for the write-path/perf angle on autosave and submit, [[certificate-rendering]] for what happens after a session is graded, and [[rbac-and-accounts]] for who can call the admin endpoints below.
@@ -12,6 +12,18 @@ What an exam/package/question actually looks like today, how a student gets acce
 - Questions are bank items, not test-owned: migration 0025 drops `question.test_id`/`sort_order`, adds `test_question(test_id, question_id, sort_order)` and `question.topic_id → exam_topic` (`db/migrations/0025_question_bank.up.sql:12-45`). One question can be reused across multiple tests/exams via `test_question`.
 - `exam.mode` discriminates `standard | utbk | ielts` (`db/migrations/0021_exam_modes.up.sql:2-4`, enforced in code via `validModes`, `backend/internal/service/exam.go:37-42`). `utbk`/`ielts` are "sectioned": their attached `test`s each run as a timed section with independent state (`isSectionedMode`, `exam.go:55`).
 - `test.section_type` (`listening|reading|writing`, nullable) exists only for the sectioned modes (`0021_exam_modes.up.sql:7-9`, `validSectionTypes`, `exam.go:44-49`).
+
+## Composable exam format (`exam.format_version = 2`)
+
+Migration `db/migrations/0068_exam_format_policy.up.sql` adds the format columns; `exam.format_version` selects the runtime path (`1` = legacy mode-driven, `2` = composable). Legacy rows stay `1` and keep using `exam.mode`; format-2 exams never consult `mode`. See [[composable-exam-format]] for why the design doc's policy set was trimmed.
+
+- **Section configuration is per attachment**: `exam_test.question_presentation` (`one_per_page | all_on_page`, CHECK in 0068). The section label is `test.title`; the section duration stays `test.duration_minutes` — there is deliberately no `exam_test.duration_minutes`.
+- **Shared vs question material**: `test.shared_material_html` and `test.instructions_html` carry section-wide context; `question.material_html` carries per-question reference content (alongside the pre-existing `question.image_url`/`audio_url`). All three pass the question-body allowlist (`sanitizeQuestionBody`, `backend/internal/service/exam.go`) on every write path. `question.body` is never material.
+- **Effective material** (`hasQuestionMaterial`, `backend/internal/service/exam.go`): `one_per_page` renders question material when the question has any, otherwise the section's shared material; `all_on_page` renders shared material once and publish rejects the section if any of its questions carries its own material.
+- **Publish matrix for format 2** (`validateComposablePublishSections`, `backend/internal/service/exam.go`): at least one attached test; positive `exam.duration_minutes` when `timer_mode=overall`; positive section duration and `navigation_policy=sequential` when `timer_mode=per_test`; every section has questions; the `all_on_page` material rule. Timers need no new column because `timer_mode` (`overall | per_test`) plus durations already expresses exam timer, section timer, and no timer. Format 1 keeps the FR-19 mode/`section_type` gate unchanged (`validatePublishSections`).
+- **Edit safety**: for format 2, `navigation_policy`, `randomize`, and the attached-test list/`question_presentation` are rejected once the exam has any session (`Repository.ExamHasAnySession`) and audit-logged as `exam.format_policy` while only registrations exist (`checkExamPolicyEditSafety`/`checkExamTestsEditSafety`). Format-1 exams keep the previous latitude. There is no per-attempt policy snapshot table — the edit block is what keeps a running attempt stable.
+- **Randomization**: for format 2 with `exam.randomize`, each section's question order is a deterministic permutation seeded by `(session_id, test_id)` (`orderQuestionsForAttempt`, `backend/internal/service/exam_session.go`), so refresh/reconnect reuse the same order without storing it. Format 1 keeps `test_question.sort_order` and the toggle stays inert, as before.
+- **Session payloads**: `sessionTestsPayload` is the single assembly point for start, reconnect, and section advance, so all three agree on the order. Section timers still read the snapshot `exam_session_section.duration_minutes`, not the live Test.
 
 ## Question formats — current state
 
