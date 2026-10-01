@@ -98,10 +98,10 @@ describe("OrderDetailPage retry payment", () => {
     expect(options.description).not.toContain(RAW);
   });
 
-  it("refetches a refused order so the page stops offering payment", async () => {
+  it("refetches an order refused as expired so the page stops offering payment", async () => {
     const invalidate = vi.spyOn(client, "invalidateQueries");
 
-    await renderPageAndRetry(() => Promise.reject(apiError("order_not_editable")));
+    await renderPageAndRetry(() => Promise.reject(apiError("payment_expired")));
 
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ordersKeys.detail(ORDER_ID) }));
     const [, options] = toastError.mock.calls[0];
@@ -110,6 +110,7 @@ describe("OrderDetailPage retry payment", () => {
   });
 
   it.each([
+    ["payment_deadline_too_close", "terlalu dekat"],
     ["order_not_editable", "tidak menunggu pembayaran"],
   ])("explains %s in the student's language instead of the raw backend message", async (code, phrase) => {
     await renderPageAndRetry(() => Promise.reject(apiError(code)));

@@ -984,7 +984,7 @@ func buildPaymentRequest(orderID string, order model.Order, customer CustomerInf
 	req := PaymentRequest{
 		OrderID:   orderID,
 		Amount:    int64(order.Total),
-		ExpiresIn: 24 * time.Hour,
+		ExpiresIn: paymentWindow,
 		Customer:  customer,
 	}
 
@@ -1044,6 +1044,12 @@ func truncateItemName(name string) string {
 	return string(r[:midtransItemNameMax])
 }
 
+// paymentWindow is how long an order stays payable after checkout; the gateway link never outlives what is left of it.
+const paymentWindow = 24 * time.Hour
+
+// paymentSessionMargin ends the gateway session before the order deadline so a payment made inside the session is notified before the deadline.
+const paymentSessionMargin = 5 * time.Minute
+
 type OrderPaidPayload struct {
 	OrderID string                 `json:"order_id"`
 	Items   []OrderPaidPayloadItem `json:"items"`
@@ -1084,11 +1090,17 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, err
 	}
 
-	cacheKey := "idempotency:checkout:" + key
+	cacheKey := "idempotency:checkout:" + sID.String() + ":" + oID.String() + ":" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
 		if cached == freeCheckoutSentinel {
 			return CheckoutResult{Free: true}, nil
+		}
+		// A replay is a fresh request about the order: it never hands out a
+		// payment reference for another student's order or one that has since
+		// expired or been cancelled.
+		if _, err := s.validatePendingOrder(ctx, oID, sID); err != nil {
+			return CheckoutResult{}, err
 		}
 		return CheckoutResult{GatewayRef: cached}, nil
 	}
@@ -1185,7 +1197,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		}
 	}
 
-	if err := s.storeRepo.CheckoutOrder(ctx, tx, oID); err != nil {
+	if err := s.storeRepo.CheckoutOrder(ctx, tx, oID, paymentWindow); err != nil {
 		if errors.Is(err, repository.ErrInsufficientStock) {
 			return CheckoutResult{}, ErrInsufficientStock
 		}
@@ -1250,14 +1262,25 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, err
 	}
 
+	pending, err := s.validatePendingOrder(ctx, oID, sID)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
 	customer := fetchCustomerInfo(ctx, s, order.StudentID.String())
 	paymentReq := buildPaymentRequest(oID.String(), order, customer)
+	if err := bindPaymentDeadline(&paymentReq, pending.PaymentExpiresAt); err != nil {
+		return CheckoutResult{}, err
+	}
 	paymentResp, err := s.payment.CreatePayment(ctx, paymentReq)
 	if err != nil {
 		return CheckoutResult{}, err
 	}
 
-	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.GatewayRef, paymentResp.ExpiresAt); err != nil {
+	// The gateway call ran outside any transaction, so the order may have
+	// expired, been paid or been cancelled meanwhile. The reference is attached,
+	// and the link handed out, only if it is still an unexpired pending order.
+	deadline, err := s.attachPayment(ctx, oID, sID, paymentResp)
+	if err != nil {
 		return CheckoutResult{}, err
 	}
 
@@ -1265,7 +1288,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		GatewayRef:       paymentResp.GatewayRef,
 		SnapToken:        paymentResp.SnapToken,
 		PaymentURL:       paymentResp.PaymentURL,
-		PaymentExpiresAt: paymentResp.ExpiresAt,
+		PaymentExpiresAt: earlier(paymentResp.ExpiresAt, deadline),
 	}
 
 	if err := s.rdb.Set(ctx, cacheKey, paymentResp.GatewayRef, 24*time.Hour).Err(); err != nil {
@@ -1275,6 +1298,54 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	return result, nil
 }
 
+// The gateway call ran outside any transaction, so the order is re-locked and re-checked before the reference is attached.
+func (s *Service) attachPayment(ctx context.Context, orderID, studentID uuid.UUID, resp PaymentResponse) (time.Time, error) {
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := s.lockPendingOrderTx(ctx, tx, orderID, studentID); err != nil {
+		return time.Time{}, err
+	}
+	deadline, attached, err := s.storeRepo.SetPaymentRefTx(ctx, tx, orderID, resp.GatewayRef, paymentWindow)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !attached {
+		return time.Time{}, ErrPaymentExpired
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return time.Time{}, err
+	}
+	return deadline, nil
+}
+
+// The session ends paymentSessionMargin before the deadline; under a minute of session left the whole-minute granularity is unusable, so refuse. A nil deadline (legacy order) gets the standard window.
+func bindPaymentDeadline(req *PaymentRequest, deadline *time.Time) error {
+	at := time.Now().Add(paymentWindow)
+	if deadline != nil {
+		at = *deadline
+	}
+	at = at.Add(-paymentSessionMargin)
+	remaining := time.Until(at)
+	if remaining < time.Minute {
+		return ErrPaymentDeadlineTooClose
+	}
+	req.ExpiresAt = at
+	req.ExpiresIn = remaining
+	return nil
+}
+
+func earlier(a, b time.Time) time.Time {
+	if a.IsZero() || b.Before(a) {
+		return b
+	}
+	return a
+}
+
+// Expiry is final: only a payment_pending order inside its deadline gets a new payment. The lock is released across the gateway call, so the order is re-validated when the reference is written.
 func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
@@ -1285,39 +1356,29 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 		return CheckoutResult{}, err
 	}
 
-	cacheKey := "idempotency:retry:" + key
-	cached, err := s.rdb.Get(ctx, cacheKey).Result()
-	if err == nil && cached != "" {
-		return CheckoutResult{GatewayRef: cached}, nil
-	}
-
 	order, err := s.validateRetryableOrder(ctx, oID, sID)
 	if err != nil {
 		return CheckoutResult{}, err
 	}
 
+	cacheKey := "idempotency:retry:" + sID.String() + ":" + oID.String() + ":" + key
+	cached, err := s.rdb.Get(ctx, cacheKey).Result()
+	if err == nil && cached != "" {
+		return CheckoutResult{GatewayRef: cached}, nil
+	}
+
 	customer := fetchCustomerInfo(ctx, s, order.StudentID.String())
 	paymentReq := buildPaymentRequest(oID.String(), order, customer)
+	if err := bindPaymentDeadline(&paymentReq, order.PaymentExpiresAt); err != nil {
+		return CheckoutResult{}, err
+	}
 	paymentResp, err := s.payment.CreatePayment(ctx, paymentReq)
 	if err != nil {
 		return CheckoutResult{}, err
 	}
 
-	tx, err := s.storeRepo.BeginTx(ctx)
+	deadline, err := s.attachPayment(ctx, oID, sID, paymentResp)
 	if err != nil {
-		return CheckoutResult{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.GatewayRef, paymentResp.ExpiresAt); err != nil {
-		return CheckoutResult{}, err
-	}
-
-	if err := s.storeRepo.SetOrderStatus(ctx, tx, oID, "payment_pending", ""); err != nil {
-		return CheckoutResult{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
 		return CheckoutResult{}, err
 	}
 
@@ -1325,7 +1386,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 		GatewayRef:       paymentResp.GatewayRef,
 		SnapToken:        paymentResp.SnapToken,
 		PaymentURL:       paymentResp.PaymentURL,
-		PaymentExpiresAt: paymentResp.ExpiresAt,
+		PaymentExpiresAt: earlier(paymentResp.ExpiresAt, deadline),
 	}
 
 	if err := s.rdb.Set(ctx, cacheKey, paymentResp.GatewayRef, 24*time.Hour).Err(); err != nil {
@@ -1336,12 +1397,36 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 }
 
 func (s *Service) validateRetryableOrder(ctx context.Context, orderID, studentID uuid.UUID) (model.Order, error) {
+	return s.validateOrder(ctx, orderID, func(tx pgx.Tx) (model.Order, error) {
+		return s.lockRetryableOrderTx(ctx, tx, orderID, studentID)
+	})
+}
+
+func (s *Service) validatePendingOrder(ctx context.Context, orderID, studentID uuid.UUID) (model.Order, error) {
+	return s.validateOrder(ctx, orderID, func(tx pgx.Tx) (model.Order, error) {
+		return s.lockPendingOrderTx(ctx, tx, orderID, studentID)
+	})
+}
+
+func (s *Service) validateOrder(ctx context.Context, orderID uuid.UUID, lock func(pgx.Tx) (model.Order, error)) (model.Order, error) {
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return model.Order{}, err
 	}
 	defer tx.Rollback(ctx)
 
+	order, err := lock(tx)
+	if err != nil {
+		return model.Order{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return model.Order{}, err
+	}
+	return order, nil
+}
+
+// The deadline is judged on the database clock, like the sweeper, so every path agrees on whether the order is still payable.
+func (s *Service) lockPendingOrderTx(ctx context.Context, tx pgx.Tx, orderID, studentID uuid.UUID) (model.Order, error) {
 	order, err := s.storeRepo.GetOrderByIDForUpdateTx(ctx, tx, orderID)
 	if err != nil {
 		return model.Order{}, err
@@ -1349,13 +1434,30 @@ func (s *Service) validateRetryableOrder(ctx context.Context, orderID, studentID
 	if order.ID == uuid.Nil || order.StudentID != studentID {
 		return model.Order{}, ErrOrderNotFound
 	}
-	if order.Status != "payment_pending" && order.Status != "payment_expired" {
+	switch order.Status {
+	case "payment_pending":
+	case "payment_expired":
+		return model.Order{}, ErrPaymentExpired
+	default:
 		return model.Order{}, ErrOrderNotEditable
 	}
-	if err := s.recheckDigitalTargets(ctx, tx, order); err != nil {
+	elapsed, err := s.storeRepo.PaymentDeadlineElapsedTx(ctx, tx, orderID)
+	if err != nil {
 		return model.Order{}, err
 	}
-	if err := tx.Commit(ctx); err != nil {
+	if elapsed {
+		return model.Order{}, ErrPaymentExpired
+	}
+	return order, nil
+}
+
+// Ownership or another live order may have appeared since checkout, so a new payment re-runs the digital guard.
+func (s *Service) lockRetryableOrderTx(ctx context.Context, tx pgx.Tx, orderID, studentID uuid.UUID) (model.Order, error) {
+	order, err := s.lockPendingOrderTx(ctx, tx, orderID, studentID)
+	if err != nil {
+		return model.Order{}, err
+	}
+	if err := s.recheckDigitalTargets(ctx, tx, order); err != nil {
 		return model.Order{}, err
 	}
 	return order, nil
@@ -1599,6 +1701,13 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key, 
 	if order.Status != "payment_pending" {
 		return ErrOrderNotPayable
 	}
+	elapsed, err := s.storeRepo.PaymentDeadlineElapsedTx(ctx, tx, order.ID)
+	if err != nil {
+		return err
+	}
+	if elapsed {
+		return ErrOrderNotPayable
+	}
 
 	// Manual settlement — a human asserting payment arrived, with proof, without
 	// gateway confirmation. The proof write, status flip and audit row all share
@@ -1833,6 +1942,15 @@ func (s *Service) AdminReconcileOrder(ctx context.Context, actorID, orderID, key
 			return ErrOrderNotFound
 		}
 		actor := &actorID
+		if locked.Status == "payment_pending" {
+			expired, err := s.storeRepo.ExpirePaymentOrderTx(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			if expired {
+				locked.Status = "payment_expired"
+			}
+		}
 		switch {
 		case locked.Status == "payment_pending":
 			if err := s.markOrderPaidTx(ctx, tx, locked, actor, "order.reconcile", map[string]any{
@@ -1842,7 +1960,23 @@ func (s *Service) AdminReconcileOrder(ctx context.Context, actorID, orderID, key
 			}
 		case orderSettled(locked.Status):
 		default:
-			// Recording this payment is #197.
+			fresh, err := s.storeRepo.RecordLatePaymentTx(ctx, tx, id, locked.GatewayRef, map[string]any{
+				"source":       "reconcile",
+				"order_status": locked.Status,
+				"gateway_ref":  locked.GatewayRef,
+				"actor_id":     actorID,
+			})
+			if err != nil {
+				return err
+			}
+			if fresh {
+				if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, actor, "order", id.String(), "order.reconcile_late", map[string]any{
+					"gateway_ref":  locked.GatewayRef,
+					"order_status": locked.Status,
+				}); err != nil {
+					return err
+				}
+			}
 			slog.Warn("reconcile: gateway reports payment for an order that can no longer be fulfilled",
 				"order_id", id, "order_status", locked.Status)
 			notPayable = ErrOrderNotPayable
@@ -1976,6 +2110,20 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		return err
 	}
 
+	// No grace after the deadline: a pending order whose deadline has passed is
+	// expired here, under the lock and with the sweeper's own transition (stock
+	// released once), instead of being fulfilled because the worker has not
+	// ticked yet. The settlement then falls into the late-payment path.
+	if order.Status == "payment_pending" {
+		expired, err := s.storeRepo.ExpirePaymentOrderTx(ctx, tx, orderID)
+		if err != nil {
+			return err
+		}
+		if expired {
+			order.Status = "payment_expired"
+		}
+	}
+
 	switch {
 	case order.Status == "payment_pending":
 	case orderSettled(order.Status):
@@ -1984,9 +2132,20 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		}
 		return s.cacheWebhookDone(ctx, cacheKey)
 	default:
-		// 2xx on purpose, or the gateway redelivers; flagging this payment as late is #197.
-		slog.Warn("payment settled for an order that can no longer be fulfilled",
-			"order_id", orderID, "order_status", order.Status, "transaction_id", notif.TransactionID)
+		// Flagged for an operator, so acknowledge with 2xx; a failed flag write returns the error and the gateway redelivers.
+		fresh, err := s.storeRepo.RecordLatePaymentTx(ctx, tx, orderID, latePaymentReference(notif, order), map[string]any{
+			"source":       "webhook",
+			"order_status": order.Status,
+			"gateway_ref":  order.GatewayRef,
+			"notification": json.RawMessage(payload),
+		})
+		if err != nil {
+			return err
+		}
+		if fresh {
+			slog.Warn("payment settled for an order that can no longer be fulfilled; flagged for reconciliation",
+				"order_id", orderID, "order_status", order.Status, "transaction_id", notif.TransactionID)
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return err
 		}
@@ -2037,6 +2196,13 @@ func orderSettled(status string) bool {
 		return true
 	}
 	return false
+}
+
+func latePaymentReference(notif MidtransNotification, order model.Order) string {
+	if notif.TransactionID != "" {
+		return notif.TransactionID
+	}
+	return order.GatewayRef
 }
 
 // isPhysicalType reports whether a product type is shipped physical inventory

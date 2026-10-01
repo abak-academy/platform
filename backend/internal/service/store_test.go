@@ -3074,8 +3074,8 @@ func TestRetryPayment_RecoversFromCreatePaymentFailureOnCheckout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOrderByID (after retry): %v", err)
 	}
-	if after.GatewayRef == "" {
-		t.Error("want order to carry a gateway_ref after retry")
+	if after.GatewayRef != result.GatewayRef {
+		t.Errorf("order gateway_ref = %q, want the retry's %q", after.GatewayRef, result.GatewayRef)
 	}
 	if after.PaymentExpiresAt == nil {
 		t.Error("want payment_expires_at set after retry")

@@ -333,9 +333,9 @@ func TestCheckout(t *testing.T) {
 		).Scan(&stockAfter))
 		assert.Equal(t, stockBefore-1, stockAfter, "stock must be decremented by 1 after checkout")
 
-		exists, err := env.rdb.Exists(ctx, "idempotency:checkout:"+idempKey).Result()
+		exists, err := env.rdb.Exists(ctx, "idempotency:checkout:"+userID+":"+orderID+":"+idempKey).Result()
 		require.NoError(t, err)
-		assert.EqualValues(t, 1, exists, "idempotency:checkout:<key> must exist in Redis")
+		assert.EqualValues(t, 1, exists, "idempotency:checkout:<student>:<order>:<key> must exist in Redis")
 	})
 
 	t.Run("FR-INT-11 webhook flips order to paid, inserts outbox row and webhook_log", func(t *testing.T) {
