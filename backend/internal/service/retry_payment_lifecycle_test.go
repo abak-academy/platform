@@ -25,7 +25,7 @@ func TestRetryPayment_RefusesWhenTheTargetBecameUnavailable(t *testing.T) {
 			arrange: func(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) uuid.UUID {
 				exam := seedExamTarget(t, repo)
 				product := seedDigitalProduct(t, repo, "exam", 50000, exam)
-				orderID := pendingCourseOrderFor(t, svc, student, product)
+				orderID := pendingOrderFor(t, svc, student, product)
 				registerForExam(t, repo, student, exam, "registered")
 				return orderID
 			},
@@ -37,7 +37,7 @@ func TestRetryPayment_RefusesWhenTheTargetBecameUnavailable(t *testing.T) {
 				course := seedCourseTarget(t, repo)
 				holder := seedDigitalProduct(t, repo, "course", 50000, course)
 				sameCourse := seedDigitalProduct(t, repo, "course", 40000, course)
-				pendingCourseOrderFor(t, svc, student, holder)
+				pendingOrderFor(t, svc, student, holder)
 
 				loser := cartOf(t, svc, student)
 				forceLine(t, repo, loser, sameCourse, "course", 40000)
@@ -56,7 +56,7 @@ func TestRetryPayment_RefusesWhenTheTargetBecameUnavailable(t *testing.T) {
 				courseA, courseB := seedCourseTarget(t, repo), seedCourseTarget(t, repo)
 				productA := seedDigitalProduct(t, repo, "course", 50000, courseA)
 				productB := seedDigitalProduct(t, repo, "course", 40000, courseB)
-				pending := pendingCourseOrderFor(t, svc, student, productA, productB)
+				pending := pendingOrderFor(t, svc, student, productA, productB)
 				if _, err := repo.Pool().Exec(ctx, `DELETE FROM product_course WHERE product_id = $1`, productB); err != nil {
 					t.Fatalf("unlink product: %v", err)
 				}
@@ -76,10 +76,14 @@ func TestRetryPayment_RefusesWhenTheTargetBecameUnavailable(t *testing.T) {
 			student := newDigitalStudent(t, repo)
 			orderID := tt.arrange(t, svc, repo, student)
 			before := pay.creates.Load()
+			statusBefore := orderStatusOf(t, repo, orderID)
 
 			_, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey())
 
 			tt.assertErr(t, err)
+			if got := orderStatusOf(t, repo, orderID); got != statusBefore {
+				t.Errorf("status = %q, want unchanged %q", got, statusBefore)
+			}
 			if got := pay.creates.Load() - before; got != 0 {
 				t.Errorf("gateway calls = %d, want 0", got)
 			}
@@ -99,7 +103,7 @@ func TestRetryPayment_ProceedsWhenTheRecheckHasNothingToRefuse(t *testing.T) {
 				participant := newDigitalStudent(t, repo)
 				exam := seedExamTarget(t, repo)
 				product := seedDigitalProduct(t, repo, "exam", 50000, exam)
-				orderID := pendingCourseOrderFor(t, svc, student, product)
+				orderID := pendingOrderFor(t, svc, student, product)
 				if _, err := repo.Pool().Exec(ctx, `INSERT INTO order_participant (order_id, student_id) VALUES ($1, $2)`, orderID, participant); err != nil {
 					t.Fatalf("seed participant: %v", err)
 				}
@@ -112,7 +116,7 @@ func TestRetryPayment_ProceedsWhenTheRecheckHasNothingToRefuse(t *testing.T) {
 			arrange: func(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) uuid.UUID {
 				productA := seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo))
 				productB := seedDigitalProduct(t, repo, "course", 40000, seedCourseTarget(t, repo))
-				return pendingCourseOrderFor(t, svc, student, productA, productB)
+				return pendingOrderFor(t, svc, student, productA, productB)
 			},
 		},
 	}
@@ -134,7 +138,7 @@ func TestRetryPayment_ProceedsWhenTheRecheckHasNothingToRefuse(t *testing.T) {
 	}
 }
 
-func pendingCourseOrderFor(t *testing.T, svc *Service, student uuid.UUID, products ...uuid.UUID) uuid.UUID {
+func pendingOrderFor(t *testing.T, svc *Service, student uuid.UUID, products ...uuid.UUID) uuid.UUID {
 	t.Helper()
 	orderID := cartOf(t, svc, student, products...)
 	if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey()); err != nil {

@@ -88,6 +88,22 @@ func orderPaidEvents(t *testing.T, repo *repository.Repository, orderID uuid.UUI
 	return n
 }
 
+func manualConfirmWrites(t *testing.T, repo *repository.Repository, orderID uuid.UUID) (method, proof string, audits int) {
+	t.Helper()
+	ctx := context.Background()
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT COALESCE(payment_method, ''), COALESCE(payment_proof_url, '') FROM orders WHERE id = $1`, orderID,
+	).Scan(&method, &proof); err != nil {
+		t.Fatalf("read manual payment fields: %v", err)
+	}
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT count(*) FROM audit_log WHERE target_id = $1 AND action = 'order.confirm'`, orderID.String(),
+	).Scan(&audits); err != nil {
+		t.Fatalf("count confirm audits: %v", err)
+	}
+	return method, proof, audits
+}
+
 func webhookLogRows(t *testing.T, repo *repository.Repository, orderID uuid.UUID) int {
 	t.Helper()
 	var n int
@@ -283,10 +299,26 @@ func TestAdminConfirmOrder_RefusesOrdersThatAreNotAwaitingPayment(t *testing.T) 
 			ctx := context.Background()
 			actor := insertAdminActor(t, repo, "confirmguard_")
 			orderID := tt.seed(t, svc, repo)
+			statusBefore := orderStatusOf(t, repo, orderID)
+			methodBefore, proofBefore, _ := manualConfirmWrites(t, repo, orderID)
 
 			proof := "payment_proof/" + actor + "/" + uniqueSuffix() + ".jpg"
 			if err := svc.AdminConfirmOrder(ctx, actor, orderID.String(), "confirm-"+uniqueSuffix(), proof); !errors.Is(err, ErrOrderNotPayable) {
 				t.Errorf("err = %v, want ErrOrderNotPayable", err)
+			}
+
+			if got := orderStatusOf(t, repo, orderID); got != statusBefore {
+				t.Errorf("status = %q, want unchanged %q", got, statusBefore)
+			}
+			method, gotProof, audits := manualConfirmWrites(t, repo, orderID)
+			if method != methodBefore {
+				t.Errorf("payment_method = %q, want unchanged %q", method, methodBefore)
+			}
+			if gotProof != proofBefore || gotProof == proof {
+				t.Errorf("payment_proof_url = %q, want unchanged %q and not the refused proof", gotProof, proofBefore)
+			}
+			if audits != 0 {
+				t.Errorf("order.confirm audit rows = %d, want 0", audits)
 			}
 			if tt.check != nil {
 				tt.check(t, repo, orderID)
@@ -295,49 +327,48 @@ func TestAdminConfirmOrder_RefusesOrdersThatAreNotAwaitingPayment(t *testing.T) 
 	}
 }
 
-func TestAdminReconcileOrder_GatewayPaidOnExpiredOrderIsRefusedNotMarkedPaid(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	actor := insertAdminActor(t, repo, "reconcileguard_")
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	expireOrderNow(t, repo, orderID)
-	pay.paid.Store(true)
-
-	for i := 0; i < 2; i++ {
-		err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix())
-		if !errors.Is(err, ErrOrderNotPayable) {
-			t.Fatalf("reconcile #%d err = %v, want ErrOrderNotPayable", i, err)
-		}
+func TestAdminReconcileOrder_OutcomeDependsOnTheOrderStatusUnderItsLock(t *testing.T) {
+	tests := []struct {
+		name       string
+		actorTag   string
+		expire     bool
+		wantErr    error
+		wantStatus string
+		wantEvents int
+	}{
+		{name: "gateway paid on an expired order is refused", actorTag: "reconcileguard_", expire: true, wantErr: ErrOrderNotPayable, wantStatus: "payment_expired", wantEvents: 0},
+		{name: "repeat on a paid order does not emit again", actorTag: "reconcilerepeat_", wantStatus: "paid", wantEvents: 1},
 	}
 
-	if got := orderStatusOf(t, repo, orderID); got != "payment_expired" {
-		t.Errorf("status = %q, want payment_expired", got)
-	}
-	if got := orderPaidEvents(t, repo, orderID); got != 0 {
-		t.Errorf("OrderPaid events = %d, want 0", got)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, pay := newLifecycleService(t)
+			ctx := context.Background()
+			student := newDigitalStudent(t, repo)
+			actor := insertAdminActor(t, repo, tt.actorTag)
+			orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+			if tt.expire {
+				expireOrderNow(t, repo, orderID)
+			}
+			pay.paid.Store(true)
 
-func TestAdminReconcileOrder_RepeatOnPaidOrderDoesNotEmitAgain(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	actor := insertAdminActor(t, repo, "reconcilerepeat_")
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	pay.paid.Store(true)
+			for i := 0; i < 2; i++ {
+				err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix())
+				if tt.wantErr == nil && err != nil {
+					t.Fatalf("reconcile #%d: %v", i, err)
+				}
+				if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+					t.Fatalf("reconcile #%d err = %v, want %v", i, err, tt.wantErr)
+				}
+			}
 
-	for i := 0; i < 2; i++ {
-		if err := svc.AdminReconcileOrder(ctx, actor, orderID.String(), "reconcile-"+uniqueSuffix()); err != nil {
-			t.Fatalf("reconcile #%d: %v", i, err)
-		}
-	}
-
-	if got := orderStatusOf(t, repo, orderID); got != "paid" {
-		t.Errorf("status = %q, want paid", got)
-	}
-	if got := orderPaidEvents(t, repo, orderID); got != 1 {
-		t.Errorf("OrderPaid events = %d, want 1", got)
+			if got := orderStatusOf(t, repo, orderID); got != tt.wantStatus {
+				t.Errorf("status = %q, want %s", got, tt.wantStatus)
+			}
+			if got := orderPaidEvents(t, repo, orderID); got != tt.wantEvents {
+				t.Errorf("OrderPaid events = %d, want %d", got, tt.wantEvents)
+			}
+		})
 	}
 }
 
