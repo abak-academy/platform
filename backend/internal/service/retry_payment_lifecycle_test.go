@@ -8,19 +8,9 @@ import (
 	"github.com/google/uuid"
 
 	"akademi-bimbel/internal/model"
-	"akademi-bimbel/internal/repository"
 )
 
 func retryKey() string { return "retry-key-" + uniqueSuffix() }
-
-func gatewayRefOf(t *testing.T, repo *repository.Repository, orderID uuid.UUID) string {
-	t.Helper()
-	order, err := repo.GetOrderByID(context.Background(), orderID)
-	if err != nil {
-		t.Fatalf("GetOrderByID: %v", err)
-	}
-	return order.GatewayRef
-}
 
 func TestRetryPayment_RefusesExamTheStudentWasGrantedMeanwhile(t *testing.T) {
 	svc, repo, pay := newLifecycleService(t)
