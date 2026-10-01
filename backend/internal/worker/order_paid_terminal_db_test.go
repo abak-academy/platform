@@ -99,6 +99,7 @@ func waitForWaitersBehind(t *testing.T, e *lifecycleEnv, holder pgx.Tx, want int
 }
 
 func (e *lifecycleEnv) unprocessedEvents(t *testing.T, orderID uuid.UUID) int {
+	t.Helper()
 	return e.count(t, `SELECT count(*) FROM outbox WHERE aggregate_id = $1 AND processed_at IS NULL`, orderID)
 }
 
@@ -116,15 +117,13 @@ func (e *lifecycleEnv) enrollmentCourse(t *testing.T, orderID uuid.UUID) uuid.UU
 
 func TestOrderPaid_RefundWinsAndGrantsNoAccess(t *testing.T) {
 	tests := []struct {
-		name        string
-		iterations  int
-		wantDrained bool
-		cancel      func(t *testing.T, env *lifecycleEnv, student uuid.UUID) (orderID, course uuid.UUID)
+		name       string
+		iterations int
+		cancel     func(t *testing.T, env *lifecycleEnv, student uuid.UUID) (orderID, course uuid.UUID)
 	}{
 		{
-			name:        "refunded before the event is polled",
-			iterations:  1,
-			wantDrained: true,
+			name:       "refunded before the event is polled",
+			iterations: 1,
 			cancel: func(t *testing.T, env *lifecycleEnv, student uuid.UUID) (uuid.UUID, uuid.UUID) {
 				book := env.book(t, 5)
 				digital := env.courseProduct(t, 50000, env.course(t))
@@ -224,10 +223,8 @@ func TestOrderPaid_RefundWinsAndGrantsNoAccess(t *testing.T) {
 				if got := env.status(t, orderID); got != "cancelled" {
 					t.Errorf("iteration %d: status = %q, want cancelled (not processing or completed)", i, got)
 				}
-				if tt.wantDrained {
-					if got := env.unprocessedEvents(t, orderID); got != 0 {
-						t.Errorf("iteration %d: unprocessed outbox events = %d, want 0 (the stale event is consumed, not retried forever)", i, got)
-					}
+				if got := env.unprocessedEvents(t, orderID); got != 0 {
+					t.Errorf("iteration %d: unprocessed outbox events = %d, want 0 (the stale event is consumed, not retried forever)", i, got)
 				}
 			}
 		})
@@ -235,15 +232,19 @@ func TestOrderPaid_RefundWinsAndGrantsNoAccess(t *testing.T) {
 }
 
 // The sweeper can overwrite a status a webhook just committed as paid; the money
-// is in, so the event must still grant access.
-func TestOrderPaid_EventForExpiredOrderStillGrantsAccess(t *testing.T) {
+// is in, so the event must still grant access, and the status only moves forward.
+func TestOrderPaid_GrantsCourseAndOnlyMovesStatusForward(t *testing.T) {
 	tests := []struct {
 		name       string
 		withBook   bool
+		start      string
 		wantStatus string
 	}{
-		{"digital only ends completed", false, "completed"},
-		{"mixed with a book ends processing", true, "processing"},
+		{"paid digital only ends completed", false, "paid", "completed"},
+		{"paid mixed with a book ends processing", true, "paid", "processing"},
+		{"expired digital only ends completed", false, "expired", "completed"},
+		{"expired mixed with a book ends processing", true, "expired", "processing"},
+		{"shipped mixed with a book stays shipped", true, "shipped", "shipped"},
 	}
 
 	for _, tt := range tests {
@@ -260,25 +261,35 @@ func TestOrderPaid_EventForExpiredOrderStillGrantsAccess(t *testing.T) {
 				items = `{"product_id":"` + book.String() + `","product_type":"book","qty":1},` + items
 			}
 
-			orderID := env.pendingOrder(t, student, products...)
-			course := env.enrollmentCourse(t, orderID)
-			env.expireDeadline(t, orderID)
-			env.w.sweepStalePayments(ctx)
-			if got := env.status(t, orderID); got != "payment_expired" {
-				t.Fatalf("status = %q, want payment_expired before the event runs", got)
+			var orderID uuid.UUID
+			if tt.start == "expired" {
+				orderID = env.pendingOrder(t, student, products...)
+				env.expireDeadline(t, orderID)
+				env.w.sweepStalePayments(ctx)
+				if got := env.status(t, orderID); got != "payment_expired" {
+					t.Fatalf("status = %q, want payment_expired before the event runs", got)
+				}
+				env.exec(t,
+					`INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload) VALUES ('order', $1, 'OrderPaid', $2::jsonb)`,
+					orderID, `{"order_id":"`+orderID.String()+`","items":[`+items+`]}`,
+				)
+			} else {
+				orderID = env.paidOrder(t, student, products...)
 			}
-			env.exec(t,
-				`INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload) VALUES ('order', $1, 'OrderPaid', $2::jsonb)`,
-				orderID, `{"order_id":"`+orderID.String()+`","items":[`+items+`]}`,
-			)
+			if tt.start == "shipped" {
+				if err := env.repo.SetShipped(ctx, orderID, "RESI-"+uuid.NewString()[:8]); err != nil {
+					t.Fatalf("SetShipped: %v", err)
+				}
+			}
+			course := env.enrollmentCourse(t, orderID)
 
 			env.pollAll(t, ctx)
 
 			if got := env.activeEnrollments(t, student, course); got != 1 {
-				t.Errorf("active enrollments = %d, want 1: a settled payment must grant access even when the sweeper expired the order first", got)
+				t.Errorf("active enrollments = %d, want 1: a settled payment must grant access whatever state the order is in", got)
 			}
 			if got := env.status(t, orderID); got != tt.wantStatus {
-				t.Errorf("status = %q, want %s: an order that granted access must not stay payment_expired (unrefundable, retryable)", got, tt.wantStatus)
+				t.Errorf("status = %q, want %s: the event must not leave an order payment_expired or walk shipped back", got, tt.wantStatus)
 			}
 			if got := env.unprocessedEvents(t, orderID); got != 0 {
 				t.Errorf("unprocessed outbox events = %d, want 0", got)
@@ -287,7 +298,7 @@ func TestOrderPaid_EventForExpiredOrderStillGrantsAccess(t *testing.T) {
 	}
 }
 
-func TestOrderPaid_PaidOrderIsFulfilledOnce(t *testing.T) {
+func TestOrderPaid_ReplayedEventDoesNotRefulfilOrMoveStatus(t *testing.T) {
 	env := newLifecycleEnv(t)
 	ctx := context.Background()
 	student := env.student(t)
@@ -297,13 +308,6 @@ func TestOrderPaid_PaidOrderIsFulfilledOnce(t *testing.T) {
 	orderID := env.paidOrder(t, student, book, digital)
 	course := env.enrollmentCourse(t, orderID)
 	env.pollAll(t, ctx)
-
-	if got := env.activeEnrollments(t, student, course); got != 1 {
-		t.Errorf("active enrollments = %d, want 1", got)
-	}
-	if got := env.status(t, orderID); got != "processing" {
-		t.Errorf("status = %q, want processing (mixed order waits for shipping)", got)
-	}
 
 	env.exec(t,
 		`INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload) VALUES ('order', $1, 'OrderPaid', $2::jsonb)`,
@@ -354,31 +358,5 @@ func TestOrderPaid_FulfilledTargetIsOwnedUntilRefundedThenCanBeRepurchased(t *te
 	}
 	if got := env.status(t, orderID); got != "cancelled" {
 		t.Errorf("refunded order status = %q, want cancelled", got)
-	}
-}
-
-func TestOrderPaid_ShippedMixedOrderStillGetsItsCourseAndStaysShipped(t *testing.T) {
-	env := newLifecycleEnv(t)
-	ctx := context.Background()
-	student := env.student(t)
-	book := env.book(t, 5)
-	digital := env.courseProduct(t, 50000, env.course(t))
-
-	orderID := env.paidOrder(t, student, book, digital)
-	course := env.enrollmentCourse(t, orderID)
-	if err := env.repo.SetShipped(ctx, orderID, "RESI-"+uuid.NewString()[:8]); err != nil {
-		t.Fatalf("SetShipped: %v", err)
-	}
-
-	env.pollAll(t, ctx)
-
-	if got := env.activeEnrollments(t, student, course); got != 1 {
-		t.Errorf("active enrollments = %d, want 1: a shipped order still owes its course", got)
-	}
-	if got := env.status(t, orderID); got != "shipped" {
-		t.Errorf("status = %q, want shipped (not walked back to processing)", got)
-	}
-	if got := env.unprocessedEvents(t, orderID); got != 0 {
-		t.Errorf("unprocessed outbox events = %d, want 0", got)
 	}
 }

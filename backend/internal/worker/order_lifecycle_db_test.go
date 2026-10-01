@@ -203,9 +203,11 @@ func (e *lifecycleEnv) count(t *testing.T, sql string, args ...any) int {
 }
 
 func (e *lifecycleEnv) activeEnrollments(t *testing.T, student, course uuid.UUID) int {
+	t.Helper()
 	return e.count(t, `SELECT count(*) FROM course_session WHERE student_id = $1 AND course_id = $2 AND status = 'active'`, student, course)
 }
 
+// TODO: uncertain: this payload shape is hand-written, not captured from the provider.
 func (e *lifecycleEnv) settlementPayload(orderID uuid.UUID) []byte {
 	b, _ := json.Marshal(map[string]string{
 		"transaction_status": "settlement",
