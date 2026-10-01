@@ -53,11 +53,11 @@ Siswa boleh menyelesaikan section walau masih ada soal belum dijawab, dengan kon
 
 **Compatibility**
 
-Semua baris `exam` existing tetap `format_version=1` dan tetap memakai jalur runtime lama, tanpa backfill dan tanpa perubahan perilaku. `exam.mode` tetap ditulis dan dibaca untuk exam legacy sampai PR-3. Exam baru dibuat dengan `format_version=2`, dan hanya exam itu yang memakai policy baru.
+Semua baris `exam` existing tetap `format_version=1` dan tetap memakai jalur runtime lama, tanpa backfill dan tanpa perubahan perilaku. `exam.mode` tetap ditulis dan dibaca untuk exam legacy sampai PR-3. Perpindahan create path ke `format_version=2` terjadi di PR-2 bersama UI section config: selama PR-1, exam baru tetap `format_version=1` supaya tidak ada exam baru yang berjalan dengan policy default tanpa cara bagi admin untuk mengaturnya.
 
 **Edit safety**
 
-Draft atau exam tanpa session: policy dan section config boleh diubah; bila sudah ada registration (tanpa session), perubahan dicatat di audit log. Begitu exam punya session (aktif atau submitted), perubahan policy/section config ditolak. Karena itu snapshot policy di `exam_session`/`exam_session_section` tidak ditambahkan.
+Draft atau exam tanpa session: policy dan section config boleh diubah; bila sudah ada registration (tanpa session), perubahan dicatat di audit log. Begitu exam punya session (aktif atau submitted), perubahan policy (`navigation_policy`) dan section config (daftar Test terlampir beserta `question_presentation`) ditolak. Aturan ini berlaku untuk exam `format_version=2`; exam legacy tetap berperilaku seperti sekarang supaya tidak ada regresi admin. Karena itu snapshot policy di `exam_session`/`exam_session_section` tidak ditambahkan.
 
 ## Technical contract
 
