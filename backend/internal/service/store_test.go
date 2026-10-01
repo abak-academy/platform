@@ -11,6 +11,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -3520,4 +3521,95 @@ func TestStudentFacingOrderPaths_DoNotPopulateStudentName(t *testing.T) {
 	if single.StudentName != "" {
 		t.Errorf("GetStudentOrder: want empty student_name, got %q", single.StudentName)
 	}
+}
+
+// seedV2PublishExam seeds a format_version=2 exam with one attached Test holding
+// one Question, returning all three ids. The Test's duration is always positive.
+func seedV2PublishExam(t *testing.T, repo *repository.Repository, presentation string, questionHasMaterial bool) (examID, testID, questionID uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+
+	duration := 60
+	exam := &model.Exam{
+		Title:            "V2 Publish " + uniqueSuffix(),
+		ResultConfig:     "hidden",
+		Status:           "draft",
+		FormatVersion:    2,
+		NavigationPolicy: "free",
+		TimerMode:        "overall",
+		DurationMinutes:  &duration,
+	}
+	require.NoError(t, repo.CreateExam(ctx, exam))
+	examID = exam.ID
+
+	require.NoError(t, repo.Pool().QueryRow(ctx,
+		`INSERT INTO test (title, subject, topic, duration_minutes) VALUES ($1, 'english', 'reading', 30) RETURNING id`,
+		"Section "+uniqueSuffix()).Scan(&testID))
+
+	var material *string
+	if questionHasMaterial {
+		m := "<p>section-owned material</p>"
+		material = &m
+	}
+	require.NoError(t, repo.Pool().QueryRow(ctx,
+		`INSERT INTO question (format, body, point_correct, point_wrong, material_html)
+		 VALUES ('essay', 'publish question', 1, 0, $1) RETURNING id`,
+		material).Scan(&questionID))
+
+	_, err := repo.Pool().Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, 1)`, testID, questionID)
+	require.NoError(t, err)
+	_, err = repo.Pool().Exec(ctx,
+		`INSERT INTO exam_test (exam_id, test_id, sort_order, question_presentation) VALUES ($1, $2, 0, $3)`,
+		examID, testID, presentation)
+	require.NoError(t, err)
+	return examID, testID, questionID
+}
+
+// TestPublishProduct_Integration_V2AllOnPageMaterial proves PublishProduct loads
+// each attached Test's Questions for the composable gate: an all_on_page section
+// with a question that carries its own material is rejected naming the question,
+// and flipping the section to one_per_page lets the product publish.
+func TestPublishProduct_Integration_V2AllOnPageMaterial(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	examID, _, questionID := seedV2PublishExam(t, repo, "all_on_page", true)
+	product, err := svc.CreateProductWithExams(ctx,
+		model.Product{Type: "exam", Name: "V2 Publish Product " + uniqueSuffix(), Price: 0, Status: "draft"},
+		[]string{examID.String()}, RoleAdminStore)
+	require.NoError(t, err)
+
+	err = svc.PublishProduct(ctx, product.ID, RoleAdminStore)
+	require.ErrorIs(t, err, ErrValidation)
+	require.Contains(t, err.Error(), questionID.String())
+
+	_, err = repo.Pool().Exec(ctx, `UPDATE exam_test SET question_presentation = 'one_per_page' WHERE exam_id = $1`, examID)
+	require.NoError(t, err)
+	require.NoError(t, svc.PublishProduct(ctx, product.ID, RoleAdminStore))
+}
+
+// TestPublishProduct_Integration_V2RequiresAttachedTest proves the composable
+// gate runs for a v2 exam even when mode is standard (the legacy gate skips it).
+func TestPublishProduct_Integration_V2RequiresAttachedTest(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	exam := &model.Exam{
+		Title:            "V2 Empty " + uniqueSuffix(),
+		ResultConfig:     "hidden",
+		Status:           "draft",
+		FormatVersion:    2,
+		NavigationPolicy: "free",
+	}
+	require.NoError(t, repo.CreateExam(ctx, exam))
+
+	product, err := svc.CreateProductWithExams(ctx,
+		model.Product{Type: "exam", Name: "V2 Empty Product " + uniqueSuffix(), Price: 0, Status: "draft"},
+		[]string{exam.ID.String()}, RoleAdminStore)
+	require.NoError(t, err)
+
+	err = svc.PublishProduct(ctx, product.ID, RoleAdminStore)
+	require.ErrorIs(t, err, ErrValidation)
+	require.Contains(t, err.Error(), "format_version=2")
 }

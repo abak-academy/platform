@@ -301,7 +301,7 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 		overlay.NavigationPolicy = req.NavigationPolicy
 	}
 
-	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)
+	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay, ClaimsFromContext(c).Sub)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -351,7 +351,7 @@ func (h *Handler) AdminReplaceExamTests(c echo.Context) error {
 		}
 	}
 
-	if err := h.svc.ReplaceExamTests(c.Request().Context(), id, tests); err != nil {
+	if err := h.svc.ReplaceExamTests(c.Request().Context(), id, tests, ClaimsFromContext(c).Sub); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.NoContent(http.StatusNoContent)

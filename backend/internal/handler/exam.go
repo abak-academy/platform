@@ -1111,7 +1111,7 @@ func (h *Handler) AdminUpdateExamCertificateDesign(c echo.Context) error {
 		overlay.CertificateTemplateHTML = &sanitizedTemplateHTML
 	}
 
-	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)
+	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay, ClaimsFromContext(c).Sub)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

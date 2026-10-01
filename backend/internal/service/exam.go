@@ -945,7 +945,7 @@ func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, err
 	return m, nil
 }
 
-func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (model.Exam, error) {
+func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam, actorID string) (model.Exam, error) {
 	m.CardNotes = normalizeCardNotes(m.CardNotes)
 	commonFields := m
 	commonFields.CertificateDesign = nil
@@ -958,6 +958,11 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 			return model.Exam{}, ErrExamNotFound
 		}
 		return model.Exam{}, err
+	}
+	if existing.FormatVersion == 2 {
+		if err := s.checkExamPolicyEditSafety(ctx, *existing, m, actorID); err != nil {
+			return model.Exam{}, err
+		}
 	}
 	designChanged := !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign)
 	if designChanged {
@@ -1196,12 +1201,18 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 	}, nil
 }
 
-func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, tests []model.ExamTest) error {
-	if _, err := s.storeRepo.GetExamByID(ctx, examID); err != nil {
+func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, tests []model.ExamTest, actorID string) error {
+	exam, err := s.storeRepo.GetExamByID(ctx, examID)
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrExamNotFound
 		}
 		return err
+	}
+	if exam.FormatVersion == 2 {
+		if err := s.checkExamTestsEditSafety(ctx, *exam, tests, actorID); err != nil {
+			return err
+		}
 	}
 
 	for _, t := range tests {
@@ -1233,13 +1244,100 @@ func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, tests 
 	return tx.Commit(ctx)
 }
 
-// validatePublishSections enforces FR-19: a sectioned exam (mode ∈ {utbk,ielts})
-// must have at least one attached Test, and an ielts exam must have a non-null
-// section_type on every attached Test (the offending section is named in the
-// error message). Standard/empty modes skip the gate entirely. The function is
-// pure over (exam, tests) so it can be unit-tested without a DB; PublishProduct
+// checkExamPolicyEditSafety freezes navigation_policy and randomize on a
+// composable exam once any attempt exists, and audit-logs the change while only
+// registrations exist. Legacy exams never reach this.
+func (s *Service) checkExamPolicyEditSafety(ctx context.Context, existing, updated model.Exam, actorID string) error {
+	if existing.NavigationPolicy == updated.NavigationPolicy && existing.Randomize == updated.Randomize {
+		return nil
+	}
+	hasSession, err := s.storeRepo.ExamHasAnySession(ctx, existing.ID)
+	if err != nil {
+		return err
+	}
+	if hasSession {
+		return fmt.Errorf("%w: navigation_policy and randomize cannot change once the exam has a session", ErrValidation)
+	}
+	registrations, err := s.storeRepo.CountExamRegistrationsByStatus(ctx, existing.ID, nil)
+	if err != nil {
+		return err
+	}
+	if registrations.Total == 0 {
+		return nil
+	}
+	actor := actorID
+	return s.storeRepo.InsertAuditLogMeta(ctx, nil, &actor, "exam", existing.ID.String(), "exam.format_policy", map[string]any{
+		"navigation_policy": updated.NavigationPolicy,
+		"randomize":         updated.Randomize,
+	})
+}
+
+// checkExamTestsEditSafety freezes the attached-test list and each section's
+// question_presentation on a composable exam once any attempt exists, and
+// audit-logs the change while only registrations exist. Legacy exams never reach this.
+func (s *Service) checkExamTestsEditSafety(ctx context.Context, exam model.Exam, next []model.ExamTest, actorID string) error {
+	detail, err := s.storeRepo.GetExamDetail(ctx, exam.ID)
+	if err != nil {
+		return err
+	}
+	if !examTestListChanged(detail.Tests, next) {
+		return nil
+	}
+	hasSession, err := s.storeRepo.ExamHasAnySession(ctx, exam.ID)
+	if err != nil {
+		return err
+	}
+	if hasSession {
+		return fmt.Errorf("%w: attached tests and question_presentation cannot change once the exam has a session", ErrValidation)
+	}
+	registrations, err := s.storeRepo.CountExamRegistrationsByStatus(ctx, exam.ID, nil)
+	if err != nil {
+		return err
+	}
+	if registrations.Total == 0 {
+		return nil
+	}
+	actor := actorID
+	return s.storeRepo.InsertAuditLogMeta(ctx, nil, &actor, "exam", exam.ID.String(), "exam.format_policy", map[string]any{
+		"test_count": len(next),
+	})
+}
+
+func examTestListChanged(current []model.ExamTestEntry, next []model.ExamTest) bool {
+	if len(current) != len(next) {
+		return true
+	}
+	for i := range current {
+		if current[i].TestID != next[i].TestID {
+			return true
+		}
+		if presentationOrDefault(current[i].QuestionPresentation) != presentationOrDefault(next[i].QuestionPresentation) {
+			return true
+		}
+	}
+	return false
+}
+
+func presentationOrDefault(presentation string) string {
+	if presentation == "" {
+		return "one_per_page"
+	}
+	return presentation
+}
+
+// validatePublishSections enforces the publish-time section gate. Legacy exams
+// (format_version != 2) keep the FR-19 mode-driven rules: a sectioned exam
+// (mode ∈ {utbk,ielts}) must have at least one attached Test, and an ielts exam
+// must have a non-null section_type on every attached Test. Composable exams
+// (format_version == 2) instead use the format matrix below and ignore
+// mode/section_type entirely. questionsByTest carries each attached Test's
+// Questions for the v2 all_on_page rule (nil is fine for legacy). The function is
+// pure over its inputs so it can be unit-tested without a DB; PublishProduct
 // runs this for every exam attached to an exam-type product before publishing.
-func validatePublishSections(exam model.Exam, tests []model.ExamTestEntry) error {
+func validatePublishSections(exam model.Exam, tests []model.ExamTestEntry, questionsByTest map[uuid.UUID][]model.Question) error {
+	if exam.FormatVersion == 2 {
+		return validateComposablePublishSections(exam, tests, questionsByTest)
+	}
 	if !isSectionedMode(exam.Mode) {
 		return nil
 	}
@@ -1258,6 +1356,60 @@ func validatePublishSections(exam model.Exam, tests []model.ExamTestEntry) error
 		}
 	}
 	return nil
+}
+
+// validateComposablePublishSections is the format_version=2 publish matrix: it
+// never consults exam.mode or test.section_type. Every violation names the
+// offending exam or section.
+func validateComposablePublishSections(exam model.Exam, tests []model.ExamTestEntry, questionsByTest map[uuid.UUID][]model.Question) error {
+	if len(tests) == 0 {
+		return fmt.Errorf("%w: composable exam (format_version=2) requires at least one attached test", ErrValidation)
+	}
+	if exam.TimerMode == "overall" {
+		if exam.DurationMinutes == nil || *exam.DurationMinutes <= 0 {
+			return fmt.Errorf("%w: timer_mode=overall requires a positive exam duration_minutes", ErrValidation)
+		}
+	}
+	if exam.TimerMode == "per_test" && exam.NavigationPolicy != "sequential" {
+		return fmt.Errorf("%w: timer_mode=per_test requires navigation_policy=sequential", ErrValidation)
+	}
+	for _, te := range tests {
+		label := composableSectionLabel(te)
+		if exam.TimerMode == "per_test" && (te.Test.DurationMinutes == nil || *te.Test.DurationMinutes <= 0) {
+			return fmt.Errorf("%w: section %q needs a positive duration_minutes when timer_mode=per_test", ErrValidation, label)
+		}
+		questions := questionsByTest[te.TestID]
+		if len(questions) == 0 {
+			return fmt.Errorf("%w: section %q has no questions attached", ErrValidation, label)
+		}
+		if te.QuestionPresentation == "all_on_page" {
+			for _, q := range questions {
+				if hasQuestionMaterial(q) {
+					return fmt.Errorf("%w: all_on_page section %q has a question with its own material (question %s); move it to shared material, remove it, or use one_per_page", ErrValidation, label, q.ID)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func composableSectionLabel(te model.ExamTestEntry) string {
+	if te.Test.Title != "" {
+		return te.Test.Title
+	}
+	return te.TestID.String()
+}
+
+// hasQuestionMaterial reports whether a Question carries its own material.
+// Body is never material; only material_html, image_url, or audio_url count.
+func hasQuestionMaterial(q model.Question) bool {
+	if q.MaterialHTML != nil && strings.TrimSpace(*q.MaterialHTML) != "" {
+		return true
+	}
+	if q.ImageURL != nil && *q.ImageURL != "" {
+		return true
+	}
+	return q.AudioURL != nil && *q.AudioURL != ""
 }
 
 func (s *Service) GetExam(ctx context.Context, id uuid.UUID) (model.ExamDetail, error) {

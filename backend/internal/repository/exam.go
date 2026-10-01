@@ -1652,6 +1652,14 @@ func (r *Repository) ListSubmittedSessionIDsTx(ctx context.Context, tx pgx.Tx, e
 	return ids, rows.Err()
 }
 
+// ExamHasAnySession reports whether an exam has at least one session, whether
+// still in progress or already submitted. Backs composable-format edit safety.
+func (r *Repository) ExamHasAnySession(ctx context.Context, examID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM exam_session WHERE exam_id = $1)`, examID).Scan(&exists)
+	return exists, err
+}
+
 // ReplaceExamTestsTx atomically replaces all exam_test links for an exam. Caller
 // supplies the tx; verification of test existence is the caller's responsibility
 // (mirrors ReplaceProductCourses).

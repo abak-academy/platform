@@ -204,3 +204,41 @@ func TestExamFormatPolicy_InvalidValuesRejected(t *testing.T) {
 		exam.ID, test.ID)
 	assertCheckViolation(t, err)
 }
+
+func TestExamFormatPolicy_ExamHasAnySession(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	exam := &model.Exam{Title: "HAS " + uuid.NewString(), ResultConfig: "hidden", Status: "draft"}
+	require.NoError(t, repo.CreateExam(ctx, exam))
+
+	has, err := repo.ExamHasAnySession(ctx, exam.ID)
+	require.NoError(t, err)
+	require.False(t, has)
+
+	var studentID uuid.UUID
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO users (name, username, jenjang, role, status, auth_provider)
+		 VALUES ($1, $2, 'sd', 'student', 'active', 'password') RETURNING id`,
+		"HAS Student "+uuid.NewString(), "has_"+uuid.NewString()).Scan(&studentID))
+
+	var regID uuid.UUID
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3) RETURNING id`,
+		studentID, exam.ID, uuid.NewString()).Scan(&regID))
+
+	// A registration alone is not a session.
+	has, err = repo.ExamHasAnySession(ctx, exam.ID)
+	require.NoError(t, err)
+	require.False(t, has)
+
+	_, err = pool.Exec(ctx,
+		`INSERT INTO exam_session (registration_id, student_id, exam_id, started_at) VALUES ($1, $2, $3, now())`,
+		regID, studentID, exam.ID)
+	require.NoError(t, err)
+
+	has, err = repo.ExamHasAnySession(ctx, exam.ID)
+	require.NoError(t, err)
+	require.True(t, has)
+}

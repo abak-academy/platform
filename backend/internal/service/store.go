@@ -429,7 +429,8 @@ func (s *Service) PublishProduct(ctx context.Context, id string, role string) er
 	}
 	// FR-19: an exam-type product can bundle more than one exam (product_exam
 	// M:N); every attached sectioned exam (mode utbk|ielts) must pass its
-	// section gate before the product can publish.
+	// section gate before the product can publish. Composable exams
+	// (format_version=2) run the format matrix instead, regardless of mode.
 	if existing.Type == "exam" {
 		pID, err := parseUUID(id)
 		if err != nil {
@@ -440,14 +441,30 @@ func (s *Service) PublishProduct(ctx context.Context, id string, role string) er
 			return err
 		}
 		for _, exam := range exams {
-			if !isSectionedMode(exam.Mode) {
+			if exam.FormatVersion != 2 && !isSectionedMode(exam.Mode) {
 				continue
 			}
 			detail, err := s.storeRepo.GetExamDetail(ctx, exam.ID)
 			if err != nil {
 				return err
 			}
-			if err := validatePublishSections(exam, detail.Tests); err != nil {
+			var questionsByTest map[uuid.UUID][]model.Question
+			if exam.FormatVersion == 2 {
+				// Per-test reads are fine here: publish is a rare admin action.
+				questionsByTest = make(map[uuid.UUID][]model.Question, len(detail.Tests))
+				for _, te := range detail.Tests {
+					testDetail, err := s.storeRepo.GetTestDetail(ctx, te.TestID)
+					if err != nil {
+						return err
+					}
+					questions := make([]model.Question, len(testDetail.Questions))
+					for i, q := range testDetail.Questions {
+						questions[i] = q.Question
+					}
+					questionsByTest[te.TestID] = questions
+				}
+			}
+			if err := validatePublishSections(exam, detail.Tests, questionsByTest); err != nil {
 				return err
 			}
 		}
