@@ -88,7 +88,7 @@ SELECT 'exam', er.exam_id, 'owned' FROM exam_registration er
 
 ## Rollout and operator audit (no schema change)
 
-- **No schema change.** No table or column is added and nothing is backfilled.
+- **No schema change.** No table or column is added and the guard backfills nothing; the payment window's single data-only migration is #197's (`docs/specs/payment-window-and-settlements.md`).
 - **Rolling deploy.** An old replica's checkout still produces a `payment_pending` order, which the new guard reads. But an old replica still runs an unguarded checkout, so while one is serving it can still create a duplicate; the new guard sees the rows those replicas create but cannot prevent the duplicate.
 
 ### Operator audit (read-only queries)

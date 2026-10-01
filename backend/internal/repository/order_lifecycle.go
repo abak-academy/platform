@@ -87,10 +87,7 @@ func (r *Repository) RecordLatePaymentTx(ctx context.Context, tx pgx.Tx, orderID
 			return false, nil
 		}
 	}
-	_, err = tx.Exec(ctx,
-		`INSERT INTO webhook_log (event_type, payload, gateway_ref) VALUES ('payment_late', $1::jsonb, $2)`,
-		payload, key,
-	)
+	err = r.InsertWebhookLog(ctx, tx, "payment_late", payload, key)
 	return err == nil, err
 }
 
