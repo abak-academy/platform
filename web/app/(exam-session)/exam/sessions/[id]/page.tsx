@@ -149,6 +149,7 @@ export default function SessionPage() {
   const [navExpanded, setNavExpanded] = useState(false);
   const [remaining, setRemaining] = useState<number>(0);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showAdvanceConfirm, setShowAdvanceConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [expiryRecoveryFailed, setExpiryRecoveryFailed] = useState(false);
   const [showViolationOverlay, setShowViolationOverlay] = useState(false);
@@ -981,6 +982,54 @@ export default function SessionPage() {
     [scheduleAutosave],
   );
 
+  const handleAdvanceSection = useCallback(async () => {
+    const sectionId = session?.active_test_id;
+    if (submitting || !sectionId) return;
+    setSubmitting(true);
+    submittingRef.current = true;
+    try {
+      await runSaveBarrier();
+    } catch {
+      toast.error(t("session_submit_save_failed"));
+      setSubmitting(false);
+      submittingRef.current = false;
+      return;
+    }
+    try {
+      const result = await advanceSection.mutateAsync(sectionId);
+      if (result.completed) {
+        await submitSession.mutateAsync();
+        clearQueue(sessionId);
+        setShowAdvanceConfirm(false);
+        setRedirecting(true);
+        router.replace(`/exam/sessions/${sessionId}/result`);
+        return;
+      }
+      setShowAdvanceConfirm(false);
+      setSubmitting(false);
+      submittingRef.current = false;
+    } catch (error) {
+      if (isAlreadySubmittedError(error)) {
+        clearQueue(sessionId);
+        setRedirecting(true);
+        router.replace(`/exam/sessions/${sessionId}/result`);
+        return;
+      }
+      toast.error(t("error_generic"));
+      setSubmitting(false);
+      submittingRef.current = false;
+    }
+  }, [
+    submitting,
+    session,
+    runSaveBarrier,
+    advanceSection,
+    submitSession,
+    router,
+    sessionId,
+    t,
+  ]);
+
   const handleSubmit = useCallback(async () => {
     if (submitting) return;
     setSubmitting(true);
@@ -1105,6 +1154,13 @@ export default function SessionPage() {
   const questionsToShow = activeQuestions;
   const currentQ = questionsToShow[currentQIndex];
   const isLastQuestion = currentQIndex >= questionsToShow.length - 1;
+  const canAdvanceSection =
+    isSectioned &&
+    !!activeTest &&
+    tests.indexOf(activeTest) < tests.length - 1;
+  const sectionAnsweredCount = questionsToShow.filter(
+    (q) => (answers[q.id] ?? "") !== "",
+  ).length;
   const answeredCount = Object.values(answers).filter(
     (answer) => answer !== "",
   ).length;
@@ -1341,7 +1397,18 @@ export default function SessionPage() {
                 {t("session_prev_question")}
               </Button>
 
-              {isLastQuestion ? (
+              {isLastQuestion && canAdvanceSection ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowAdvanceConfirm(true)}
+                  disabled={timerExpired || submitting}
+                  className="min-w-28 rounded-full bg-[var(--color-submit)] font-bold text-white shadow-sm hover:bg-[var(--color-submit-hover)]"
+                >
+                  <span>{t("session_advance_section")}</span>
+                </Button>
+              ) : isLastQuestion ? (
                 <Button
                   type="button"
                   variant="destructive"
@@ -1481,6 +1548,34 @@ export default function SessionPage() {
               className="h-10 w-full rounded-full bg-[var(--color-submit)] font-bold text-white hover:bg-[var(--color-submit-hover)]"
             >
               {submitting ? t("sys_loading") : t("submit")}
+            </Button>
+            <DialogClose asChild>
+              <Button variant="outline" className="h-10 w-full rounded-xl">
+                {t("cancel")}
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAdvanceConfirm} onOpenChange={setShowAdvanceConfirm}>
+        <DialogContent className="max-w-sm rounded-2xl p-5 sm:max-w-md">
+          <DialogHeader className="gap-2 text-center">
+            <DialogTitle>{t("session_advance_confirm_title")}</DialogTitle>
+            <DialogDescription>
+              {sectionAnsweredCount}/{questionsToShow.length}{" "}
+              {t("session_question").toLowerCase()}.{" "}
+              {t("session_advance_confirm_desc")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-start">
+            <Button
+              variant="destructive"
+              onClick={handleAdvanceSection}
+              disabled={submitting}
+              className="h-10 w-full rounded-full bg-[var(--color-submit)] font-bold text-white hover:bg-[var(--color-submit-hover)]"
+            >
+              {submitting ? t("sys_loading") : t("session_advance_section")}
             </Button>
             <DialogClose asChild>
               <Button variant="outline" className="h-10 w-full rounded-xl">
