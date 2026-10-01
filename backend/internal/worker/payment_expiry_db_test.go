@@ -116,3 +116,28 @@ func TestSweepStalePayments_LeavesPaidOrderAlone(t *testing.T) {
 		t.Errorf("status = %q, want paid", got)
 	}
 }
+
+func TestExpirePaymentOrder_SkipsOrderASettlementAlreadyResolved(t *testing.T) {
+	env := newLifecycleEnv(t)
+	student := env.student(t)
+	book := env.book(t, 5)
+	digital := env.courseProduct(t, 50000, env.course(t))
+
+	orderID := env.paidOrder(t, student, book, digital)
+	env.expireDeadline(t, orderID)
+
+	expired, err := env.w.expirePaymentOrder(context.Background(), orderID)
+	if err != nil {
+		t.Fatalf("expirePaymentOrder: %v", err)
+	}
+
+	if expired {
+		t.Error("expirePaymentOrder reported an expiry for an order that was already paid")
+	}
+	if got := env.status(t, orderID); got != "paid" {
+		t.Errorf("status = %q, want paid", got)
+	}
+	if got := env.stock(t, book); got != 3 {
+		t.Errorf("book stock = %d, want 3 (a skipped expiry restores nothing)", got)
+	}
+}

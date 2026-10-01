@@ -27,7 +27,6 @@ type mockRepository struct {
 	getCoursesByProductIDFn   func(context.Context, uuid.UUID) ([]model.Course, error)
 	beginTxFn                 func(context.Context) (pgx.Tx, error)
 	getExpiredPaymentOrdersFn func(context.Context, int) ([]uuid.UUID, error)
-	expirePaymentOrderTxFn    func(context.Context, pgx.Tx, uuid.UUID) (bool, error)
 	getExamsByProductIDFn     func(context.Context, uuid.UUID) ([]model.Exam, error)
 	createExamRegistrationFn  func(context.Context, pgx.Tx, model.ExamRegistration) error
 	stampOrderItemFulfilledFn func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
@@ -94,8 +93,8 @@ func (m *mockRepository) GetOrderParticipants(ctx context.Context, orderID uuid.
 	return m.getOrderParticipantsFn(ctx, orderID)
 }
 
-func (m *mockRepository) ExpirePaymentOrderTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) (bool, error) {
-	return m.expirePaymentOrderTxFn(ctx, tx, orderID)
+func (m *mockRepository) ExpirePaymentOrderTx(context.Context, pgx.Tx, uuid.UUID) (bool, error) {
+	panic("ExpirePaymentOrderTx runs against Postgres in payment_expiry_db_test.go")
 }
 
 type mockTx struct {
@@ -328,69 +327,6 @@ func TestOrderPaidHandlerIdempotentOnReplay(t *testing.T) {
 	// prevents duplicates; the mock simulates success on both calls.
 	if sessionCallCount != 2 {
 		t.Fatalf("expected 2 CreateCourseSession calls across two polls, got %d", sessionCallCount)
-	}
-}
-
-func TestStalePaymentSweeperExpiresAndCommits(t *testing.T) {
-	ctx := context.Background()
-	orderID := uuid.New()
-
-	var expired []uuid.UUID
-	committed := 0
-
-	repo := &mockRepository{
-		getExpiredPaymentOrdersFn: func(ctx context.Context, limit int) ([]uuid.UUID, error) {
-			return []uuid.UUID{orderID}, nil
-		},
-		expirePaymentOrderTxFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
-			expired = append(expired, id)
-			return true, nil
-		},
-		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
-			return &mockTx{
-				commitFn:   func(ctx context.Context) error { committed++; return nil },
-				rollbackFn: func(ctx context.Context) error { return nil },
-			}, nil
-		},
-	}
-
-	w := &Worker{repo: repo, sweeperInterval: time.Minute}
-	w.sweepStalePayments(ctx)
-
-	if len(expired) != 1 || expired[0] != orderID {
-		t.Errorf("expired orders = %v, want [%v]", expired, orderID)
-	}
-	if committed != 1 {
-		t.Errorf("commits = %d, want 1", committed)
-	}
-}
-
-func TestStalePaymentSweeperSkipsOrderAnotherTransitionAlreadyResolved(t *testing.T) {
-	ctx := context.Background()
-	orderID := uuid.New()
-
-	committed := 0
-
-	repo := &mockRepository{
-		getExpiredPaymentOrdersFn: func(ctx context.Context, limit int) ([]uuid.UUID, error) {
-			return []uuid.UUID{orderID}, nil
-		},
-		expirePaymentOrderTxFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
-			return false, nil
-		},
-		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
-			return &mockTx{
-				commitFn:   func(ctx context.Context) error { committed++; return nil },
-				rollbackFn: func(ctx context.Context) error { return nil },
-			}, nil
-		},
-	}
-
-	w := &Worker{repo: repo, sweeperInterval: time.Minute}
-	w.sweepStalePayments(ctx)
-
-	if committed != 0 {
-		t.Errorf("commits = %d, want 0 when the guarded transition did not apply", committed)
 	}
 }
 
