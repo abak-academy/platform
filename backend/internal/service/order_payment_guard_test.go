@@ -232,34 +232,66 @@ func TestWebhook_UnknownOrderIsNotFound(t *testing.T) {
 }
 
 func TestAdminConfirmOrder_RefusesOrdersThatAreNotAwaitingPayment(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	actor := insertAdminActor(t, repo, "confirmguard_")
+	tests := []struct {
+		name string
+		// seed leaves one order in a state that cannot be confirmed and returns it.
+		seed  func(t *testing.T, svc *Service, repo *repository.Repository) uuid.UUID
+		check func(t *testing.T, repo *repository.Repository, orderID uuid.UUID)
+	}{
+		{
+			name: "expired",
+			seed: func(t *testing.T, svc *Service, repo *repository.Repository) uuid.UUID {
+				orderID, _, _ := pendingCourseOrder(t, svc, repo, newDigitalStudent(t, repo))
+				expireOrderNow(t, repo, orderID)
+				return orderID
+			},
+			check: func(t *testing.T, repo *repository.Repository, orderID uuid.UUID) {
+				if got := orderStatusOf(t, repo, orderID); got != "payment_expired" {
+					t.Errorf("status = %q, want payment_expired", got)
+				}
+				if got := orderPaidEvents(t, repo, orderID); got != 0 {
+					t.Errorf("OrderPaid events = %d, want 0", got)
+				}
+			},
+		},
+		{
+			name: "paid",
+			seed: func(t *testing.T, svc *Service, repo *repository.Repository) uuid.UUID {
+				orderID, _, _ := pendingCourseOrder(t, svc, repo, newDigitalStudent(t, repo))
+				if err := svc.HandlePaymentWebhook(context.Background(), settlementBody(orderID, "tx-paid"), "sig", uuid.NewString()); err != nil {
+					t.Fatalf("webhook: %v", err)
+				}
+				return orderID
+			},
+			check: func(t *testing.T, repo *repository.Repository, orderID uuid.UUID) {
+				if got := orderPaidEvents(t, repo, orderID); got != 1 {
+					t.Errorf("OrderPaid events = %d, want the webhook's 1 only", got)
+				}
+			},
+		},
+		{
+			name: "cart",
+			seed: func(t *testing.T, svc *Service, repo *repository.Repository) uuid.UUID {
+				return cartOf(t, svc, newDigitalStudent(t, repo))
+			},
+		},
+	}
 
-	expiredID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	expireOrderNow(t, repo, expiredID)
-	paidID, _, _ := pendingCourseOrder(t, svc, repo, newDigitalStudent(t, repo))
-	if err := svc.HandlePaymentWebhook(ctx, settlementBody(paidID, "tx-paid"), "sig", uuid.NewString()); err != nil {
-		t.Fatalf("webhook: %v", err)
-	}
-	cartID := cartOf(t, svc, newDigitalStudent(t, repo))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, _ := newLifecycleService(t)
+			ctx := context.Background()
+			actor := insertAdminActor(t, repo, "confirmguard_")
+			orderID := tt.seed(t, svc, repo)
 
-	for name, orderID := range map[string]uuid.UUID{"expired": expiredID, "paid": paidID, "cart": cartID} {
-		proof := "payment_proof/" + actor + "/" + uniqueSuffix() + ".jpg"
-		err := svc.AdminConfirmOrder(ctx, actor, orderID.String(), "confirm-"+uniqueSuffix(), proof)
-		if !errors.Is(err, ErrOrderNotPayable) {
-			t.Errorf("%s: err = %v, want ErrOrderNotPayable", name, err)
-		}
-	}
-	if got := orderStatusOf(t, repo, expiredID); got != "payment_expired" {
-		t.Errorf("expired order status = %q, want payment_expired", got)
-	}
-	if got := orderPaidEvents(t, repo, expiredID); got != 0 {
-		t.Errorf("expired order OrderPaid events = %d, want 0", got)
-	}
-	if got := orderPaidEvents(t, repo, paidID); got != 1 {
-		t.Errorf("paid order OrderPaid events = %d, want the webhook's 1 only", got)
+			proof := "payment_proof/" + actor + "/" + uniqueSuffix() + ".jpg"
+			if err := svc.AdminConfirmOrder(ctx, actor, orderID.String(), "confirm-"+uniqueSuffix(), proof); !errors.Is(err, ErrOrderNotPayable) {
+				t.Errorf("err = %v, want ErrOrderNotPayable", err)
+			}
+			if tt.check != nil {
+				tt.check(t, repo, orderID)
+			}
+		})
 	}
 }
 
