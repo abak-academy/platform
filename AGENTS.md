@@ -60,6 +60,14 @@ Read [repo-map.md](.agents/repo-map.md) before broad scans or cross-layer work.
 - Any implementation or review work: [workflows.md](.agents/workflows.md)
 - Any test/build claim: [verification.md](.agents/verification.md)
 
+## Standards
+
+`docs/standards/` is authoritative for code and test style; read the relevant one before writing code, and name its path in any brief handed to another agent.
+
+- Go code and Go unit tests: [go-style-and-tests.md](docs/standards/go-style-and-tests.md), [go-patterns.md](docs/standards/go-patterns.md)
+- `web/` code and tests: [web-tests.md](docs/standards/web-tests.md)
+- Reviewing a diff means checking it against that standard, not only against the package's existing style. A deviation is allowed but must be named, with its reason, in the PR body.
+
 ## Boundaries
 
 - Default to read-only for scans and reviews.
