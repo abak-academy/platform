@@ -147,47 +147,37 @@ func pendingOrderFor(t *testing.T, svc *Service, student uuid.UUID, products ...
 	return orderID
 }
 
-func TestRetryPayment_ExpiredOrderIsRefusedWithoutGatewayCall(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
+func TestRetryPayment_OrderPastItsWindowIsRefusedWithoutGatewayCall(t *testing.T) {
 	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	expireOrderNow(t, repo, orderID)
-	before := pay.creates.Load()
+	tests := []struct {
+		name       string
+		pastWindow func(t *testing.T, repo *repository.Repository, orderID uuid.UUID)
+		wantStatus string
+	}{
+		{"order the sweeper already expired is never reopened", expireOrderNow, "payment_expired"},
+		{"elapsed deadline is refused before the sweeper runs, and retry does not expire the order itself", elapseDeadline, "payment_pending"},
+	}
 
-	_, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, pay := newLifecycleService(t)
+			student := newDigitalStudent(t, repo)
+			orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+			tt.pastWindow(t, repo, orderID)
+			before := pay.creates.Load()
 
-	if !errors.Is(err, ErrPaymentExpired) {
-		t.Fatalf("err = %v, want ErrPaymentExpired", err)
-	}
-	if got := orderStatusOf(t, repo, orderID); got != "payment_expired" {
-		t.Errorf("status = %q, want payment_expired (never reopened)", got)
-	}
-	if got := pay.creates.Load() - before; got != 0 {
-		t.Errorf("gateway calls = %d, want 0", got)
-	}
-}
+			_, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey())
 
-func TestRetryPayment_ElapsedDeadlineIsRefusedEvenBeforeTheSweeperRuns(t *testing.T) {
-	svc, repo, pay := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET payment_expires_at = now() - interval '1 second' WHERE id = $1`, orderID); err != nil {
-		t.Fatalf("elapse deadline: %v", err)
-	}
-	before := pay.creates.Load()
-
-	_, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey())
-
-	if !errors.Is(err, ErrPaymentExpired) {
-		t.Fatalf("err = %v, want ErrPaymentExpired", err)
-	}
-	if got := pay.creates.Load() - before; got != 0 {
-		t.Errorf("gateway calls = %d, want 0", got)
-	}
-	if got := orderStatusOf(t, repo, orderID); got != "payment_pending" {
-		t.Errorf("status = %q, want payment_pending (retry does not expire orders itself)", got)
+			if !errors.Is(err, ErrPaymentExpired) {
+				t.Fatalf("err = %v, want ErrPaymentExpired", err)
+			}
+			if got := orderStatusOf(t, repo, orderID); got != tt.wantStatus {
+				t.Errorf("status = %q, want %q", got, tt.wantStatus)
+			}
+			if got := pay.creates.Load() - before; got != 0 {
+				t.Errorf("gateway calls = %d, want 0", got)
+			}
+		})
 	}
 }
 
