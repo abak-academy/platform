@@ -167,25 +167,58 @@ func TestWebhook_SettlementOnTerminalOrderIsAcknowledgedAndNotFulfilled(t *testi
 }
 
 func TestWebhook_RepeatedSettlementEmitsOneOrderPaid(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-
-	for i := 0; i < 3; i++ {
-		if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-dup"), "sig", uuid.NewString()); err != nil {
-			t.Fatalf("webhook #%d: %v", i, err)
-		}
+	tests := []struct {
+		name       string
+		txID       string
+		deliveries int
+		concurrent bool
+	}{
+		{"sequential redeliveries", "tx-dup", 3, false},
+		{"simultaneous deliveries", "tx-race", 5, true},
 	}
 
-	if got := orderStatusOf(t, repo, orderID); got != "paid" {
-		t.Errorf("status = %q, want paid", got)
-	}
-	if got := orderPaidEvents(t, repo, orderID); got != 1 {
-		t.Errorf("OrderPaid events = %d, want 1", got)
-	}
-	if got := webhookLogRows(t, repo, orderID); got != 3 {
-		t.Errorf("webhook_log rows = %d, want 3: a repeat on a settled order must still be logged", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, _ := newLifecycleService(t)
+			ctx := context.Background()
+			student := newDigitalStudent(t, repo)
+			orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+
+			errs := make([]error, tt.deliveries)
+			deliver := func(i int) {
+				errs[i] = svc.HandlePaymentWebhook(ctx, settlementBody(orderID, tt.txID), "sig", uuid.NewString())
+			}
+			if tt.concurrent {
+				var wg sync.WaitGroup
+				for i := 0; i < tt.deliveries; i++ {
+					wg.Add(1)
+					go func(i int) {
+						defer wg.Done()
+						deliver(i)
+					}(i)
+				}
+				wg.Wait()
+			} else {
+				for i := 0; i < tt.deliveries; i++ {
+					deliver(i)
+				}
+			}
+
+			for i, err := range errs {
+				if err != nil {
+					t.Errorf("delivery #%d: %v", i, err)
+				}
+			}
+			if got := orderStatusOf(t, repo, orderID); got != "paid" {
+				t.Errorf("status = %q, want paid", got)
+			}
+			if got := orderPaidEvents(t, repo, orderID); got != 1 {
+				t.Errorf("OrderPaid events = %d, want 1", got)
+			}
+			if got := webhookLogRows(t, repo, orderID); got != tt.deliveries {
+				t.Errorf("webhook_log rows = %d, want %d: every delivery is logged, including repeats on a settled order", got, tt.deliveries)
+			}
+		})
 	}
 }
 
@@ -317,36 +350,5 @@ func TestAdminRefundOrder_ConcurrentRefundsApplyOnce(t *testing.T) {
 	}
 	if audits != 1 {
 		t.Errorf("refund audit rows = %d, want 1", audits)
-	}
-}
-
-func TestWebhook_ConcurrentDeliveriesEmitOneOrderPaid(t *testing.T) {
-	svc, repo, _ := newLifecycleService(t)
-	ctx := context.Background()
-	student := newDigitalStudent(t, repo)
-	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
-
-	const deliveries = 5
-	errs := make([]error, deliveries)
-	var wg sync.WaitGroup
-	for i := 0; i < deliveries; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			errs[i] = svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-race"), "sig", uuid.NewString())
-		}(i)
-	}
-	wg.Wait()
-
-	for i, err := range errs {
-		if err != nil {
-			t.Errorf("delivery #%d: %v", i, err)
-		}
-	}
-	if got := orderPaidEvents(t, repo, orderID); got != 1 {
-		t.Errorf("OrderPaid events = %d, want 1", got)
-	}
-	if got := webhookLogRows(t, repo, orderID); got != deliveries {
-		t.Errorf("webhook_log rows = %d, want %d: every delivery is logged under the row lock", got, deliveries)
 	}
 }
