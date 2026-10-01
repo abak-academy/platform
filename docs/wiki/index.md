@@ -23,7 +23,7 @@ Current truth about this system: how it is built, the business rules it enforces
 
 ## Decisions
 
-_None yet._
+- [Block browser machine translation](decisions/block-browser-translation.md) — site-wide `translate="no"` and shape-stable exam controls, after Google Translate crashed the last exam question (#199)
 
 ## Architecture
 

@@ -1350,7 +1350,7 @@ export default function SessionPage() {
                   disabled={timerExpired || submitting}
                   className="min-w-28 rounded-full bg-[var(--color-submit)] font-bold text-white shadow-sm hover:bg-[var(--color-submit-hover)]"
                 >
-                  {t("submit")}
+                  <span>{t("submit")}</span>
                 </Button>
               ) : (
                 <Button
@@ -1364,7 +1364,7 @@ export default function SessionPage() {
                   }
                   className="min-w-28 justify-end"
                 >
-                  {t("session_next_question")}
+                  <span>{t("session_next_question")}</span>
                   <ChevronRight className="size-4" />
                 </Button>
               )}
