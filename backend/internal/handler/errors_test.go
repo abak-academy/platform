@@ -18,12 +18,14 @@ import (
 )
 
 func TestMapServiceError(t *testing.T) {
+	conflictProduct, conflictTarget := uuid.New(), uuid.New()
 	tests := []struct {
 		name       string
 		err        error
 		wantStatus int
 		wantCode   string
 		wantDetail any
+		wantBody   func(t *testing.T, raw []byte)
 	}{
 		{name: "email taken", err: service.ErrEmailTaken, wantStatus: 409, wantCode: "email_taken"},
 		{name: "school NPSN taken", err: service.ErrSchoolNPSNTaken, wantStatus: 409, wantCode: "school_npsn_taken"},
@@ -87,6 +89,47 @@ func TestMapServiceError(t *testing.T) {
 		{name: "question format locked", err: service.ErrQuestionFormatLocked, wantStatus: 409, wantCode: "question_format_locked"},
 		{name: "invalid cursor", err: repository.ErrInvalidCursor, wantStatus: 400, wantCode: "invalid_cursor"},
 		{name: "unknown error falls to 500", err: errors.New("something unexpected"), wantStatus: 500, wantCode: "internal_error"},
+		{
+			name:       "digital product without targets",
+			err:        fmt.Errorf("checkout: %w", service.ErrDigitalProductNoTargets),
+			wantStatus: 409, wantCode: "digital_product_unavailable",
+		},
+		{
+			name: "digital target conflict",
+			err: fmt.Errorf("checkout: %w", &service.DigitalTargetConflictError{
+				Conflicts: []model.DigitalTargetConflict{
+					{ProductID: conflictProduct, Kind: model.DigitalTargetCourse, TargetID: conflictTarget, Reason: model.DigitalConflictOwned},
+				},
+			}),
+			wantStatus: 409, wantCode: "digital_target_conflict",
+			wantBody: func(t *testing.T, raw []byte) {
+				t.Helper()
+				var body struct {
+					Message string `json:"message"`
+					Details struct {
+						Conflicts []struct {
+							ProductID string `json:"product_id"`
+							Kind      string `json:"kind"`
+							TargetID  string `json:"target_id"`
+							Reason    string `json:"reason"`
+						} `json:"conflicts"`
+					} `json:"details"`
+				}
+				if err := json.Unmarshal(raw, &body); err != nil {
+					t.Fatalf("decode response: %v", err)
+				}
+				if body.Message == "" {
+					t.Error("want a non-empty message for a client that only reads message")
+				}
+				if len(body.Details.Conflicts) != 1 {
+					t.Fatalf("conflicts = %+v, want 1", body.Details.Conflicts)
+				}
+				got := body.Details.Conflicts[0]
+				if got.ProductID != conflictProduct.String() || got.TargetID != conflictTarget.String() || got.Kind != "course" || got.Reason != "owned" {
+					t.Errorf("conflict = %+v", got)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -102,8 +145,9 @@ func TestMapServiceError(t *testing.T) {
 				t.Errorf("status: want %d, got %d", tt.wantStatus, rec.Code)
 			}
 
+			raw := rec.Body.Bytes()
 			var apiErr APIError
-			if err := json.NewDecoder(rec.Body).Decode(&apiErr); err != nil {
+			if err := json.Unmarshal(raw, &apiErr); err != nil {
 				t.Fatalf("decode response: %v", err)
 			}
 			if apiErr.Code != tt.wantCode {
@@ -113,6 +157,9 @@ func TestMapServiceError(t *testing.T) {
 				if apiErr.Details != tt.wantDetail {
 					t.Errorf("details: want %v, got %v", tt.wantDetail, apiErr.Details)
 				}
+			}
+			if tt.wantBody != nil {
+				tt.wantBody(t, raw)
 			}
 		})
 	}
@@ -195,59 +242,5 @@ func TestBadRequest(t *testing.T) {
 	}
 	if apiErr.Message != "something is wrong" {
 		t.Errorf("message: want %q, got %q", "something is wrong", apiErr.Message)
-	}
-}
-
-func TestMapServiceError_DigitalTargetConflict_BodyCarriesConflicts(t *testing.T) {
-	e := echo.New()
-	rec := httptest.NewRecorder()
-	c := e.NewContext(httptest.NewRequest(http.MethodPost, "/", nil), rec)
-	productID, targetID := uuid.New(), uuid.New()
-
-	_ = mapServiceError(c, fmt.Errorf("checkout: %w", &service.DigitalTargetConflictError{
-		Conflicts: []model.DigitalTargetConflict{
-			{ProductID: productID, Kind: model.DigitalTargetCourse, TargetID: targetID, Reason: model.DigitalConflictOwned},
-		},
-	}))
-
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("status: want 409, got %d", rec.Code)
-	}
-	var body struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-		Details struct {
-			Conflicts []struct {
-				ProductID string `json:"product_id"`
-				Kind      string `json:"kind"`
-				TargetID  string `json:"target_id"`
-				Reason    string `json:"reason"`
-			} `json:"conflicts"`
-		} `json:"details"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body.Code != "digital_target_conflict" || body.Message == "" {
-		t.Errorf("code/message = %q/%q, want digital_target_conflict and a message", body.Code, body.Message)
-	}
-	if len(body.Details.Conflicts) != 1 {
-		t.Fatalf("conflicts = %+v, want 1", body.Details.Conflicts)
-	}
-	got := body.Details.Conflicts[0]
-	if got.ProductID != productID.String() || got.TargetID != targetID.String() || got.Kind != "course" || got.Reason != "owned" {
-		t.Errorf("conflict = %+v", got)
-	}
-}
-
-func TestMapServiceError_DigitalProductNoTargets_Is409(t *testing.T) {
-	e := echo.New()
-	rec := httptest.NewRecorder()
-	c := e.NewContext(httptest.NewRequest(http.MethodPost, "/", nil), rec)
-
-	_ = mapServiceError(c, fmt.Errorf("checkout: %w", service.ErrDigitalProductNoTargets))
-
-	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"digital_product_unavailable"`) {
-		t.Fatalf("got %d %s, want 409 digital_product_unavailable", rec.Code, rec.Body.String())
 	}
 }
