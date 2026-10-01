@@ -49,31 +49,11 @@ func (h *Handler) AdminListTests(c echo.Context) error {
 }
 
 func (h *Handler) AdminCreateTest(c echo.Context) error {
-	var req struct {
-		Title              string  `json:"title"`
-		Subject            string  `json:"subject"`
-		Topic              string  `json:"topic"`
-		DurationMinutes    int     `json:"duration_minutes"`
-		AudioURL           *string `json:"audio_url,omitempty"`
-		AudioPlayLimit     *int    `json:"audio_play_limit,omitempty"`
-		SectionType        *string `json:"section_type,omitempty"`
-		SharedMaterialHTML *string `json:"shared_material_html,omitempty"`
-		InstructionsHTML   *string `json:"instructions_html,omitempty"`
-	}
-	if err := c.Bind(&req); err != nil {
+	// The write path owns id, created_at and question_count (CreateTest takes
+	// them from the INSERT ... RETURNING), so binding the model is safe here.
+	var t model.Test
+	if err := c.Bind(&t); err != nil {
 		return badRequest(c, "invalid request body")
-	}
-
-	t := model.Test{
-		Title:              req.Title,
-		Subject:            req.Subject,
-		Topic:              req.Topic,
-		DurationMinutes:    req.DurationMinutes,
-		AudioURL:           req.AudioURL,
-		AudioPlayLimit:     req.AudioPlayLimit,
-		SectionType:        req.SectionType,
-		SharedMaterialHTML: req.SharedMaterialHTML,
-		InstructionsHTML:   req.InstructionsHTML,
 	}
 
 	out, err := h.svc.CreateTest(c.Request().Context(), t)
