@@ -241,6 +241,14 @@ func mapServiceError(c echo.Context, err error) error {
 		}
 	case errors.Is(err, service.ErrShippingUnavailable):
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_unavailable", Message: "shipping is not available right now"}
+	case errors.Is(err, service.ErrDigitalTargetConflict):
+		status, apiErr = http.StatusConflict, APIError{Code: "digital_target_conflict", Message: err.Error()}
+		var conflictErr *service.DigitalTargetConflictError
+		if errors.As(err, &conflictErr) {
+			apiErr.Details = map[string]any{"conflicts": conflictErr.Conflicts}
+		}
+	case errors.Is(err, service.ErrDigitalProductNoTargets):
+		status, apiErr = http.StatusConflict, APIError{Code: "digital_product_unavailable", Message: err.Error()}
 	case errors.Is(err, service.ErrDigitalQtyLimit):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_qty", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidQty):
@@ -255,6 +263,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_shippable", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotRefundable):
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_refundable", Message: err.Error()}
+	case errors.Is(err, service.ErrOrderNotPayable):
+		status, apiErr = http.StatusConflict, APIError{Code: "order_not_payable", Message: err.Error()}
 	case errors.Is(err, service.ErrNoTrackingNumber):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_tracking_number", Message: err.Error()}
 	case errors.Is(err, service.ErrMissingGatewayRef):

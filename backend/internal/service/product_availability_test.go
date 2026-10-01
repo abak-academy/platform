@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
 )
 
 // The availability window is tri-state on update: a field the request omits must
@@ -228,9 +229,19 @@ func TestListOrderableExams_RespectsExamWindow(t *testing.T) {
 		t.Fatalf("CreateProductWithExams started: %v", err)
 	}
 
-	products, err := svc.ListOrderableExams(ctx, RoleAdminSchool)
+	// ListOrderableExams returns the repository's default page (20 rows, id
+	// order) of a table this package shares between tests and never resets, so
+	// a fresh product can fall outside it. Same filter, a page that cannot
+	// truncate.
+	products, _, err := svc.ListProducts(ctx, repository.ProductFilter{
+		Type:              "exam",
+		Status:            "published",
+		VisibleOnly:       true,
+		OrderableExamOnly: true,
+		Limit:             500,
+	}, RoleAdminSchool)
 	if err != nil {
-		t.Fatalf("ListOrderableExams: %v", err)
+		t.Fatalf("ListProducts: %v", err)
 	}
 	seen := map[string]bool{}
 	for _, product := range products {

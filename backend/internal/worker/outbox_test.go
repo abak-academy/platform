@@ -49,6 +49,10 @@ func (m *mockRepository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.
 	return m.getOrderByIDFn(ctx, id)
 }
 
+func (m *mockRepository) GetOrderByIDForUpdateTx(ctx context.Context, _ pgx.Tx, id uuid.UUID) (model.Order, error) {
+	return m.getOrderByIDFn(ctx, id)
+}
+
 func (m *mockRepository) CreateCourseSession(ctx context.Context, tx pgx.Tx, s model.CourseSession) error {
 	return m.createCourseSessionFn(ctx, tx, s)
 }
@@ -107,8 +111,8 @@ func (mt *mockTx) Rollback(ctx context.Context) error {
 }
 
 // Minimal implementations of unused Tx methods
-func (mt *mockTx) Begin(ctx context.Context) (pgx.Tx, error)                               { return nil, nil }
-func (mt *mockTx) BeginFunc(ctx context.Context, f func(pgx.Tx) error) error               { return nil }
+func (mt *mockTx) Begin(ctx context.Context) (pgx.Tx, error)                 { return nil, nil }
+func (mt *mockTx) BeginFunc(ctx context.Context, f func(pgx.Tx) error) error { return nil }
 func (mt *mockTx) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
 	return 0, nil
 }
@@ -116,10 +120,12 @@ func (mt *mockTx) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults 
 func (mt *mockTx) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
 	return pgconn.NewCommandTag(""), nil
 }
-func (mt *mockTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) { return nil, nil }
-func (mt *mockTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row        { return nil }
-func (mt *mockTx) Ping(ctx context.Context) error                                        { return nil }
-func (mt *mockTx) Conn() *pgx.Conn                                                       { return nil }
+func (mt *mockTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return nil, nil
+}
+func (mt *mockTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row { return nil }
+func (mt *mockTx) Ping(ctx context.Context) error                                { return nil }
+func (mt *mockTx) Conn() *pgx.Conn                                               { return nil }
 func (mt *mockTx) LargeObjects() pgx.LargeObjects {
 	return pgx.LargeObjects{}
 }

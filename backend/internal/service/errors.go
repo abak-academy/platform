@@ -1,6 +1,10 @@
 package service
 
-import "errors"
+import (
+	"errors"
+
+	"akademi-bimbel/internal/model"
+)
 
 var (
 	// ErrStorageNotConfigured replaces eight separate inline allocations of the
@@ -185,7 +189,26 @@ var (
 	// ErrInvalidQty is returned for a non-positive quantity. There is no generic
 	// validation sentinel in this package, so the rule owns its own.
 	ErrInvalidQty = errors.New("invalid quantity")
+	// ErrDigitalTargetConflict is returned when a student would buy a course or
+	// exam they already own, are already buying, or have twice in one cart.
+	ErrDigitalTargetConflict = errors.New("digital product already owned or being purchased")
+	// ErrDigitalProductNoTargets is returned at checkout when a course or exam
+	// product links nothing to grant, so charging for it would deliver nothing.
+	ErrDigitalProductNoTargets = errors.New("digital product has no linked course or exam")
 )
+
+// DigitalTargetConflictError names each target and order-line product that
+// caused the conflict so the client can tell the student what to remove. It
+// satisfies errors.Is(err, ErrDigitalTargetConflict).
+type DigitalTargetConflictError struct {
+	Conflicts []model.DigitalTargetConflict
+}
+
+func (e *DigitalTargetConflictError) Error() string { return ErrDigitalTargetConflict.Error() }
+
+func (e *DigitalTargetConflictError) Is(target error) bool {
+	return target == ErrDigitalTargetConflict
+}
 
 // --- from job.go ---
 var (
@@ -267,6 +290,11 @@ var (
 	// recorded against a status where money was actually taken. Maps to 422.
 	ErrOrderNotRefundable = errors.New("order not in refundable status")
 	ErrNoCarrierCode      = errors.New("order has no persisted courier code")
+
+	// ErrOrderNotPayable gates manual confirmation and reconciliation: only an
+	// order still awaiting payment can be marked paid. Expired, cancelled,
+	// refunded and already-paid orders stay as they are. Maps to 409.
+	ErrOrderNotPayable = errors.New("order is not awaiting payment")
 )
 
 // --- from student_bulk.go ---

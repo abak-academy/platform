@@ -771,6 +771,7 @@ func insertDigitalCourseProduct(t *testing.T, repo *repository.Repository, name 
 	).Scan(&productID); err != nil {
 		t.Fatalf("create product: %v", err)
 	}
+	linkFreshCourse(t, repo, productID)
 	return productID
 }
 
@@ -1443,6 +1444,7 @@ func TestCheckout_DigitalQtyOne_Succeeds(t *testing.T) {
 	).Scan(&productID); err != nil {
 		t.Fatalf("create product: %v", err)
 	}
+	linkFreshCourse(t, repo, productID)
 
 	studentID := insertCheckoutStudent(t, repo, "Digital Qty One Student", "digqtyone_")
 
