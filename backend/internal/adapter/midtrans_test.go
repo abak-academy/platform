@@ -5,6 +5,7 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -101,30 +102,6 @@ func TestMidtransClient_CreatePayment(t *testing.T) {
 	wantExpiresAt := time.Now().Add(req.ExpiresIn)
 	if resp.ExpiresAt.Before(wantExpiresAt.Add(-5*time.Second)) || resp.ExpiresAt.After(wantExpiresAt.Add(5*time.Second)) {
 		t.Errorf("ExpiresAt out of range: got %v, want around %v", resp.ExpiresAt, wantExpiresAt)
-	}
-}
-
-// The gateway link must not outlive the order it pays for, so the requested
-// expiry is whole minutes rounded down, never hours rounded to zero or up.
-func TestMidtransClient_CreatePayment_ExpiryIsWholeMinutesRoundedDown(t *testing.T) {
-	client, body, _ := captureSnapExpiry(t)
-	expiresIn := 150*time.Minute + 40*time.Second
-	resp, err := client.CreatePayment(context.Background(), service.PaymentRequest{
-		OrderID: "order-exp", Amount: 100000, ExpiresIn: expiresIn,
-	})
-	if err != nil {
-		t.Fatalf("CreatePayment: %v", err)
-	}
-
-	if body.Expiry.Unit != "minute" || body.Expiry.Duration != 150 {
-		t.Errorf("expiry = %d %s, want 150 minute", body.Expiry.Duration, body.Expiry.Unit)
-	}
-	start, err := time.Parse("2006-01-02 15:04:05 -0700", body.Expiry.StartTime)
-	if err != nil {
-		t.Fatalf("start_time %q is not yyyy-MM-dd HH:mm:ss Z: %v", body.Expiry.StartTime, err)
-	}
-	if limit := start.Add(expiresIn); resp.ExpiresAt.After(limit) {
-		t.Errorf("ExpiresAt %v is past the requested window %v", resp.ExpiresAt, limit)
 	}
 }
 
@@ -261,62 +238,82 @@ func captureSnapExpiry(t *testing.T) (*MidtransClient, *snapExpiryBody, *int) {
 	return newTestMidtransClient("test-server-key", ts), &body, &calls
 }
 
-// Without an explicit start_time Midtrans counts expiry from the moment the
-// customer charges, so a link opened late would outlive the order's deadline.
+// The gateway link must not outlive the order it pays for: the requested
+// expiry is whole minutes rounded down, pinned to the order deadline, and
+// refused when under a minute remains. Without an explicit start_time Midtrans
+// counts expiry from the moment the customer charges, so a link opened late
+// would outlive the order's deadline.
 // TODO: uncertain: no captured exchange confirms Midtrans accepts this start_time layout.
-func TestMidtransClient_CreatePayment_PinsExpiryToTheOrderDeadline(t *testing.T) {
-	client, body, _ := captureSnapExpiry(t)
-	deadline := time.Now().Add(90*time.Minute + 40*time.Second)
-
-	resp, err := client.CreatePayment(context.Background(), service.PaymentRequest{
-		OrderID: "order-deadline", Amount: 100000, ExpiresIn: 24 * time.Hour, ExpiresAt: deadline,
-	})
-	if err != nil {
-		t.Fatalf("CreatePayment: %v", err)
+func TestMidtransClient_CreatePayment_ExpiryBecomesSnapExpiry(t *testing.T) {
+	tests := []struct {
+		name            string
+		expiresIn       time.Duration
+		expiresAtOffset time.Duration
+		wantErr         error
+		wantMinutes     int64
+		wantCalls       int
+	}{
+		{"whole minutes rounded down, never hours rounded to zero or up", 150*time.Minute + 40*time.Second, 0, nil, 150, 1},
+		{"pinned to the order deadline when it is nearer than ExpiresIn", 24 * time.Hour, 90*time.Minute + 40*time.Second, nil, 0, 1},
+		{"refused when under a minute remains", 24 * time.Hour, 45 * time.Second, service.ErrPaymentDeadlineTooClose, 0, 0},
 	}
 
-	if body.Expiry.StartTime == "" {
-		t.Fatal("snap request has no expiry.start_time: expiry would start when the customer charges")
-	}
-	start, err := time.Parse("2006-01-02 15:04:05 -0700", body.Expiry.StartTime)
-	if err != nil {
-		t.Fatalf("start_time %q is not yyyy-MM-dd HH:mm:ss Z: %v", body.Expiry.StartTime, err)
-	}
-	if body.Expiry.Unit != "minute" || body.Expiry.Duration < 1 {
-		t.Fatalf("expiry = %d %s, want a positive count of minutes", body.Expiry.Duration, body.Expiry.Unit)
-	}
-	if since := time.Since(start); since < 0 || since > 5*time.Second {
-		t.Errorf("start_time %v is not the session creation time", start)
-	}
-	end := start.Add(time.Duration(body.Expiry.Duration) * time.Minute)
-	if end.After(deadline) {
-		t.Errorf("gateway session ends %v, past the order deadline %v", end, deadline)
-	}
-	if deadline.Sub(end) >= time.Minute {
-		t.Errorf("gateway session ends %v, more than a minute short of the deadline %v", end, deadline)
-	}
-	if resp.ExpiresAt.After(deadline) {
-		t.Errorf("advertised ExpiresAt %v is past the order deadline %v", resp.ExpiresAt, deadline)
-	}
-	if !resp.ExpiresAt.Equal(end) {
-		t.Errorf("advertised ExpiresAt %v, gateway session ends %v", resp.ExpiresAt, end)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, body, calls := captureSnapExpiry(t)
+			req := service.PaymentRequest{OrderID: "order-expiry", Amount: 100000, ExpiresIn: tt.expiresIn}
+			if tt.expiresAtOffset != 0 {
+				req.ExpiresAt = time.Now().Add(tt.expiresAtOffset)
+			}
 
-func TestMidtransClient_CreatePayment_RefusesWhenUnderAMinuteRemains(t *testing.T) {
-	client, _, calls := captureSnapExpiry(t)
+			resp, err := client.CreatePayment(context.Background(), req)
 
-	resp, err := client.CreatePayment(context.Background(), service.PaymentRequest{
-		OrderID: "order-late", Amount: 100000, ExpiresIn: 24 * time.Hour, ExpiresAt: time.Now().Add(45 * time.Second),
-	})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("CreatePayment() err = %v, want %v", err, tt.wantErr)
+			}
+			if *calls != tt.wantCalls {
+				t.Errorf("gateway calls = %d, want %d", *calls, tt.wantCalls)
+			}
+			if tt.wantErr != nil {
+				if resp != (service.PaymentResponse{}) {
+					t.Errorf("resp = %+v, want no payment link", resp)
+				}
+				return
+			}
 
-	if err == nil {
-		t.Fatal("CreatePayment with under a minute to the deadline succeeded")
-	}
-	if resp != (service.PaymentResponse{}) {
-		t.Errorf("resp = %+v, want no payment link", resp)
-	}
-	if *calls != 0 {
-		t.Errorf("gateway calls = %d, want 0", *calls)
+			if body.Expiry.StartTime == "" {
+				t.Fatal("snap request has no expiry.start_time: expiry would start when the customer charges")
+			}
+			start, err := time.Parse("2006-01-02 15:04:05 -0700", body.Expiry.StartTime)
+			if err != nil {
+				t.Fatalf("start_time %q is not yyyy-MM-dd HH:mm:ss Z: %v", body.Expiry.StartTime, err)
+			}
+			if body.Expiry.Unit != "minute" || body.Expiry.Duration < 1 {
+				t.Fatalf("expiry = %d %s, want a positive count of minutes", body.Expiry.Duration, body.Expiry.Unit)
+			}
+			if tt.wantMinutes != 0 && body.Expiry.Duration != tt.wantMinutes {
+				t.Errorf("expiry = %d %s, want %d minute", body.Expiry.Duration, body.Expiry.Unit, tt.wantMinutes)
+			}
+			if since := time.Since(start); since < 0 || since > 5*time.Second {
+				t.Errorf("start_time %v is not the session creation time", start)
+			}
+			deadline := req.ExpiresAt
+			if deadline.IsZero() {
+				deadline = start.Add(req.ExpiresIn)
+			}
+			end := start.Add(time.Duration(body.Expiry.Duration) * time.Minute)
+			if end.After(deadline) {
+				t.Errorf("gateway session ends %v, past the order deadline %v", end, deadline)
+			}
+			if deadline.Sub(end) >= time.Minute {
+				t.Errorf("gateway session ends %v, more than a minute short of the deadline %v", end, deadline)
+			}
+			if resp.ExpiresAt.After(deadline) {
+				t.Errorf("advertised ExpiresAt %v is past the order deadline %v", resp.ExpiresAt, deadline)
+			}
+			if !resp.ExpiresAt.Equal(end) {
+				t.Errorf("advertised ExpiresAt %v, gateway session ends %v", resp.ExpiresAt, end)
+			}
+		})
 	}
 }
