@@ -50,26 +50,30 @@ func (h *Handler) AdminListTests(c echo.Context) error {
 
 func (h *Handler) AdminCreateTest(c echo.Context) error {
 	var req struct {
-		Title           string  `json:"title"`
-		Subject         string  `json:"subject"`
-		Topic           string  `json:"topic"`
-		DurationMinutes int     `json:"duration_minutes"`
-		AudioURL        *string `json:"audio_url,omitempty"`
-		AudioPlayLimit  *int    `json:"audio_play_limit,omitempty"`
-		SectionType     *string `json:"section_type,omitempty"`
+		Title              string  `json:"title"`
+		Subject            string  `json:"subject"`
+		Topic              string  `json:"topic"`
+		DurationMinutes    int     `json:"duration_minutes"`
+		AudioURL           *string `json:"audio_url,omitempty"`
+		AudioPlayLimit     *int    `json:"audio_play_limit,omitempty"`
+		SectionType        *string `json:"section_type,omitempty"`
+		SharedMaterialHTML *string `json:"shared_material_html,omitempty"`
+		InstructionsHTML   *string `json:"instructions_html,omitempty"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
 
 	t := model.Test{
-		Title:           req.Title,
-		Subject:         req.Subject,
-		Topic:           req.Topic,
-		DurationMinutes: req.DurationMinutes,
-		AudioURL:        req.AudioURL,
-		AudioPlayLimit:  req.AudioPlayLimit,
-		SectionType:     req.SectionType,
+		Title:              req.Title,
+		Subject:            req.Subject,
+		Topic:              req.Topic,
+		DurationMinutes:    req.DurationMinutes,
+		AudioURL:           req.AudioURL,
+		AudioPlayLimit:     req.AudioPlayLimit,
+		SectionType:        req.SectionType,
+		SharedMaterialHTML: req.SharedMaterialHTML,
+		InstructionsHTML:   req.InstructionsHTML,
 	}
 
 	out, err := h.svc.CreateTest(c.Request().Context(), t)
@@ -107,13 +111,15 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 	// null — clear" (a plain *T cannot: encoding/json leaves it nil either way),
 	// so clearing audio/section settings via PATCH actually clears them.
 	var req struct {
-		Title           string           `json:"title"`
-		Subject         string           `json:"subject"`
-		Topic           string           `json:"topic"`
-		DurationMinutes int              `json:"duration_minutes"`
-		AudioURL        Nullable[string] `json:"audio_url"`
-		AudioPlayLimit  Nullable[int]    `json:"audio_play_limit"`
-		SectionType     Nullable[string] `json:"section_type"`
+		Title              string           `json:"title"`
+		Subject            string           `json:"subject"`
+		Topic              string           `json:"topic"`
+		DurationMinutes    int              `json:"duration_minutes"`
+		AudioURL           Nullable[string] `json:"audio_url"`
+		AudioPlayLimit     Nullable[int]    `json:"audio_play_limit"`
+		SectionType        Nullable[string] `json:"section_type"`
+		SharedMaterialHTML Nullable[string] `json:"shared_material_html"`
+		InstructionsHTML   Nullable[string] `json:"instructions_html"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -135,6 +141,8 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 	applyNullable(req.AudioURL, &t.AudioURL)
 	applyNullable(req.AudioPlayLimit, &t.AudioPlayLimit)
 	applyNullable(req.SectionType, &t.SectionType)
+	applyNullable(req.SharedMaterialHTML, &t.SharedMaterialHTML)
+	applyNullable(req.InstructionsHTML, &t.InstructionsHTML)
 
 	out, err := h.svc.UpdateTest(c.Request().Context(), id, t)
 	if err != nil {
@@ -493,6 +501,7 @@ type questionRequest struct {
 	Explanation     *string            `json:"explanation,omitempty"`
 	ImageURL        *string            `json:"image_url,omitempty"`
 	AudioURL        *string            `json:"audio_url,omitempty"`
+	MaterialHTML    *string            `json:"material_html,omitempty"`
 	CorrectAnswer   *string            `json:"correct_answer,omitempty"`
 	AcceptedAnswers []string           `json:"accepted_answers,omitempty"`
 	TopicID         *string            `json:"topic_id,omitempty"`
@@ -559,6 +568,7 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		Difficulty:      r.Difficulty,
 		ImageURL:        r.ImageURL,
 		AudioURL:        r.AudioURL,
+		MaterialHTML:    r.MaterialHTML,
 		TopicID:         topicID,
 		PointCorrect:    pointCorrect,
 		PointWrong:      pointWrong,

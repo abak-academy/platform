@@ -148,6 +148,16 @@ func sanitizeQuestionStatements(statements []model.QuestionStatement) []model.Qu
 	return sanitized
 }
 
+// sanitizeOptionalHTML applies the question-body policy to an optional material
+// field, preserving nil so "not set" stays distinct from an emptied string.
+func sanitizeOptionalHTML(v *string) *string {
+	if v == nil {
+		return nil
+	}
+	cleaned := sanitizeQuestionBody(*v)
+	return &cleaned
+}
+
 // extractTokensFromStem finds all {{N}} tokens in the stem and returns their
 // numeric indices in order. Returns the slice and error if any token is malformed.
 func extractTokensFromStem(body string) ([]int, error) {
@@ -455,6 +465,8 @@ func validateTest(t model.Test) error {
 }
 
 func (s *Service) CreateTest(ctx context.Context, t model.Test) (model.Test, error) {
+	t.SharedMaterialHTML = sanitizeOptionalHTML(t.SharedMaterialHTML)
+	t.InstructionsHTML = sanitizeOptionalHTML(t.InstructionsHTML)
 	if err := validateTest(t); err != nil {
 		return model.Test{}, err
 	}
@@ -465,6 +477,8 @@ func (s *Service) CreateTest(ctx context.Context, t model.Test) (model.Test, err
 }
 
 func (s *Service) UpdateTest(ctx context.Context, id uuid.UUID, t model.Test) (model.Test, error) {
+	t.SharedMaterialHTML = sanitizeOptionalHTML(t.SharedMaterialHTML)
+	t.InstructionsHTML = sanitizeOptionalHTML(t.InstructionsHTML)
 	if err := validateTest(t); err != nil {
 		return model.Test{}, err
 	}
@@ -516,6 +530,7 @@ func (s *Service) GetTestDetail(ctx context.Context, id uuid.UUID) (model.TestDe
 // SaveQuestion routes create vs update by q.ID == uuid.Nil.
 func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
+	q.MaterialHTML = sanitizeOptionalHTML(q.MaterialHTML)
 	options = sanitizeQuestionOptions(options)
 	statements = sanitizeQuestionStatements(statements)
 
@@ -577,6 +592,7 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 // behavior after migration 0025 moved attachment to test_question.
 func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
+	q.MaterialHTML = sanitizeOptionalHTML(q.MaterialHTML)
 	options = sanitizeQuestionOptions(options)
 	statements = sanitizeQuestionStatements(statements)
 	if err := validateQuestion(q, options, blanks, statements); err != nil {
@@ -715,6 +731,7 @@ func sameUUIDSet(a, b []uuid.UUID) bool {
 // CreateBankQuestion creates a question in the bank with no test attachment (FR-9).
 func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank, statements []model.QuestionStatement) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
+	q.MaterialHTML = sanitizeOptionalHTML(q.MaterialHTML)
 	options = sanitizeQuestionOptions(options)
 	statements = sanitizeQuestionStatements(statements)
 	if err := validateQuestion(q, options, blanks, statements); err != nil {
@@ -1179,7 +1196,7 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 	}, nil
 }
 
-func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testIDs []uuid.UUID) error {
+func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, tests []model.ExamTest) error {
 	if _, err := s.storeRepo.GetExamByID(ctx, examID); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrExamNotFound
@@ -1187,8 +1204,8 @@ func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testID
 		return err
 	}
 
-	for _, testID := range testIDs {
-		if _, err := s.storeRepo.GetTestByID(ctx, testID); err != nil {
+	for _, t := range tests {
+		if _, err := s.storeRepo.GetTestByID(ctx, t.TestID); err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
 				return ErrTestNotFound
 			}
@@ -1196,9 +1213,11 @@ func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testID
 		}
 	}
 
-	tests := make([]model.ExamTest, len(testIDs))
-	for i, testID := range testIDs {
-		tests[i] = model.ExamTest{ExamID: examID, TestID: testID, SortOrder: i}
+	// sort_order follows list position; the caller only supplies test_id and
+	// question_presentation.
+	for i := range tests {
+		tests[i].ExamID = examID
+		tests[i].SortOrder = i
 	}
 
 	tx, err := s.storeRepo.BeginTx(ctx)

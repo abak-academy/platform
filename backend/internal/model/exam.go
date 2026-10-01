@@ -30,6 +30,9 @@ type Test struct {
 	// SectionType identities an IELTS section (listening|reading|writing); NULL for
 	// standard tests and UTBK subtests. Pointer so "not set" is distinct from "".
 	SectionType *string `json:"section_type,omitempty"`
+	// SharedMaterialHTML is the section-wide context; sanitized like the question body.
+	SharedMaterialHTML *string `json:"shared_material_html"`
+	InstructionsHTML   *string `json:"instructions_html"`
 	// QuestionCount is only populated by list-style reads (e.g. ListTests LEFT JOIN).
 	// It is zero on freshly created tests and on direct GetByID reads.
 	QuestionCount int       `json:"question_count"`
@@ -41,17 +44,19 @@ type Test struct {
 // and surfaced via QuestionWithOptions for read paths. topic_id links to the curated
 // exam_topic list; it is nullable for questions created before topics were assigned.
 type Question struct {
-	ID             uuid.UUID  `json:"id"`
-	QuestionNumber int        `json:"question_number"`
-	Format         string     `json:"format"`
-	Body           string     `json:"body"`
-	CorrectAnswer  *string    `json:"correct_answer"`
-	Explanation    *string    `json:"explanation"`
-	Difficulty     *string    `json:"difficulty"`
-	ImageURL       *string    `json:"image_url"`
-	AudioURL       *string    `json:"audio_url"`
-	TopicID        *uuid.UUID `json:"topic_id"`
-	Topic          *string    `json:"topic"`
+	ID             uuid.UUID `json:"id"`
+	QuestionNumber int       `json:"question_number"`
+	Format         string    `json:"format"`
+	Body           string    `json:"body"`
+	CorrectAnswer  *string   `json:"correct_answer"`
+	Explanation    *string   `json:"explanation"`
+	Difficulty     *string   `json:"difficulty"`
+	ImageURL       *string   `json:"image_url"`
+	AudioURL       *string   `json:"audio_url"`
+	// MaterialHTML is per-question material; it replaces shared material under one_per_page.
+	MaterialHTML *string    `json:"material_html"`
+	TopicID      *uuid.UUID `json:"topic_id"`
+	Topic        *string    `json:"topic"`
 	// PointCorrect and PointWrong are positive magnitudes (fractional allowed) authored
 	// per question; the scoring engine (not the author) applies the sign for wrong answers.
 	PointCorrect float64 `json:"point_correct"`
@@ -175,6 +180,10 @@ type Exam struct {
 	// both nil until an admin sets them. No templating — plain values only.
 	EndScreenImageURL  *string `json:"end_screen_image_url"`
 	EndScreenPromoText *string `json:"end_screen_promo_text"`
+	// FormatVersion selects the runtime path: 1 legacy, 2 composable; never admin-mutable.
+	FormatVersion int `json:"format_version"`
+	// NavigationPolicy governs cross-section movement for format 2 (free|sequential).
+	NavigationPolicy string `json:"navigation_policy"`
 }
 
 // ExamTest is the M:N join between Exam and Test with sort order.
@@ -183,6 +192,8 @@ type ExamTest struct {
 	ExamID    uuid.UUID `json:"exam_id"`
 	TestID    uuid.UUID `json:"test_id"`
 	SortOrder int       `json:"sort_order"`
+	// QuestionPresentation is how the section renders its questions (one_per_page|all_on_page).
+	QuestionPresentation string `json:"question_presentation"`
 }
 
 // ExamRegistration enrolls a student in an exam; (student_id, exam_id) is unique.

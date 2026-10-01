@@ -172,8 +172,8 @@ func TestScanTest_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanTest returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 9 {
-		t.Fatalf("scanTest passed %d destinations, want 9 (id, title, subject, topic, duration_minutes, audio_url, audio_play_limit, section_type, created_at)", got)
+	if got := len(rec.dests); got != 11 {
+		t.Fatalf("scanTest passed %d destinations, want 11 (id, title, subject, topic, duration_minutes, audio_url, audio_play_limit, section_type, shared_material_html, instructions_html, created_at)", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -200,8 +200,14 @@ func TestScanTest_passes_expected_destinations(t *testing.T) {
 	if _, ok := rec.dests[7].(**string); !ok {
 		t.Errorf("dest[7] = %T, want **string (section_type, nullable pointer scanned into struct)", rec.dests[7])
 	}
-	if _, ok := rec.dests[8].(*time.Time); !ok {
-		t.Errorf("dest[8] = %T, want *time.Time (created_at)", rec.dests[8])
+	if _, ok := rec.dests[8].(**string); !ok {
+		t.Errorf("dest[8] = %T, want **string (shared_material_html, nullable pointer field)", rec.dests[8])
+	}
+	if _, ok := rec.dests[9].(**string); !ok {
+		t.Errorf("dest[9] = %T, want **string (instructions_html, nullable pointer field)", rec.dests[9])
+	}
+	if _, ok := rec.dests[10].(*time.Time); !ok {
+		t.Errorf("dest[10] = %T, want *time.Time (created_at)", rec.dests[10])
 	}
 }
 
@@ -214,8 +220,8 @@ func TestScanQuestion_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanQuestion returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 11 {
-		t.Fatalf("scanQuestion passed %d destinations, want 11 (id, question_number, format, body, correct_answer, explanation, difficulty, image_url, topic_id, point_correct, point_wrong)", got)
+	if got := len(rec.dests); got != 12 {
+		t.Fatalf("scanQuestion passed %d destinations, want 12 (id, question_number, format, body, correct_answer, explanation, difficulty, image_url, topic_id, point_correct, point_wrong, material_html)", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -250,6 +256,9 @@ func TestScanQuestion_passes_expected_destinations(t *testing.T) {
 	}
 	if _, ok := rec.dests[10].(*float64); !ok {
 		t.Errorf("dest[10] = %T, want *float64 (point_wrong)", rec.dests[10])
+	}
+	if _, ok := rec.dests[11].(**string); !ok {
+		t.Errorf("dest[11] = %T, want **string (material_html, nullable pointer field)", rec.dests[11])
 	}
 }
 
@@ -309,8 +318,8 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 30 {
-		t.Fatalf("scanExam passed %d destinations, want 30", got)
+	if got := len(rec.dests); got != 32 {
+		t.Fatalf("scanExam passed %d destinations, want 32", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -363,6 +372,12 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 	}
 	if _, ok := rec.dests[27].(**string); !ok {
 		t.Errorf("dest[27] = %T, want **string (end_screen_promo_text, nullable pointer field)", rec.dests[27])
+	}
+	if _, ok := rec.dests[30].(*int); !ok {
+		t.Errorf("dest[30] = %T, want *int (format_version)", rec.dests[30])
+	}
+	if _, ok := rec.dests[31].(*string); !ok {
+		t.Errorf("dest[31] = %T, want *string (navigation_policy)", rec.dests[31])
 	}
 }
 
