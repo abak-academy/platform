@@ -136,7 +136,7 @@ Test yang harus ada di PR-1: migration up (+ down bila repo memakai pasangan), c
 
 ## Scope
 
-**Ditunda ke PR-2:** student renderer `one_per_page`/`all_on_page`, resolusi material di UI, section transition + konfirmasi jumlah soal belum dijawab, admin section config + editor shared material, effective behavior summary.
+**Ditunda ke PR-2:** student renderer `one_per_page`/`all_on_page`, resolusi material di UI, section transition + konfirmasi jumlah soal belum dijawab, admin section config + editor shared material, effective behavior summary. Saat UI section-config menyimpan daftar test, ia harus mengirim bentuk rich `[{test_id,question_presentation},…]`: bentuk lama `[test_id,…]` tetap didukung tapi mengembalikan `question_presentation` ke default kolom, jadi pilihan `all_on_page` yang sudah tersimpan akan hilang.
 
 **Ditunda ke PR-3:** konversi exam lama (preview mapping `mode → format_version=2`), result/monitor/export memakai label section dan `result_grouping`, retirement `isSectionedMode` dan kolom legacy.
 
