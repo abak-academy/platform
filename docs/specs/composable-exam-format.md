@@ -145,5 +145,6 @@ Test yang harus ada di PR-1: migration up (+ down bila repo memakai pasangan), c
 **Residual risk:**
 
 - Konten Test (`Test.title`, daftar soal, `shared_material_html`) dibaca live; mengubahnya saat exam berjalan tetap mengubah attempt yang sedang jalan. Penutupnya adalah Test revision/immutability yang ditunda. Timer section sendiri sudah aman karena disnapshot.
+- Blokir edit adalah pengecekan sebelum penulisan, bukan lock: sesi yang mulai tepat bersamaan dengan penulisan admin masih bisa memakai policy yang baru. Penutupnya butuh row lock saat session start (atau snapshot yang sengaja tidak dipakai di desain ini); perilakunya tetap lebih ketat daripada sebelumnya, ketika perubahan berlaku ke semua attempt yang berjalan.
 - Label section mengikuti `Test.title`, sehingga mengganti title Test juga mengganti label di hasil/monitor.
 - Kombinasi `free` + timer per section tidak didukung; admin harus memilih `sequential`.
