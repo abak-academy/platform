@@ -329,15 +329,17 @@ func (h *Handler) AdminReplaceExamTests(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
+	// The plain `[test_id,...]` form is tried first: a failed decode into the rich
+	// form still fills the slice with zero-value entries, which would then trip the
+	// test_id guard below.
+	var testIDs []uuid.UUID
 	var items []examTestReplaceItem
-	if err := json.Unmarshal(raw, &items); err != nil {
-		var testIDs []uuid.UUID
-		if err2 := json.Unmarshal(raw, &testIDs); err2 != nil {
-			return badRequest(c, "invalid request body")
-		}
+	if err := json.Unmarshal(raw, &testIDs); err == nil {
 		for _, testID := range testIDs {
 			items = append(items, examTestReplaceItem{TestID: testID})
 		}
+	} else if err := json.Unmarshal(raw, &items); err != nil {
+		return badRequest(c, "invalid request body")
 	}
 
 	tests := make([]model.ExamTest, len(items))

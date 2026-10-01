@@ -1002,6 +1002,37 @@ func TestExam_AdminReplaceExamTests_declarative_and_bad_id_leaves_rows_intact(t 
 	assert.Equal(t, t3, curAfter[0].(map[string]any)["test"].(map[string]any)["id"])
 }
 
+func TestExam_AdminReplaceExamTests_rich_form_sets_question_presentation(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
+		map[string]any{"title": "Rich Form", "timer_mode": "per_test", "is_free": true}, token)
+	require.Equal(t, http.StatusCreated, createResp.StatusCode)
+	examID := createOut["id"].(string)
+
+	t1 := seedTest(t, env, "RF1", "math", "algebra", 30)
+	t2 := seedTest(t, env, "RF2", "math", "algebra", 30)
+
+	putResp := env.doJSON(t, http.MethodPut, "/api/v1/admin/exams/"+examID+"/tests",
+		[]map[string]any{
+			{"test_id": t1, "question_presentation": "all_on_page"},
+			{"test_id": t2},
+		}, token)
+	require.Equal(t, http.StatusNoContent, putResp.StatusCode)
+	putResp.Body.Close()
+
+	_, detail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	entries := detail["tests"].([]any)
+	require.Len(t, entries, 2)
+	first := entries[0].(map[string]any)
+	second := entries[1].(map[string]any)
+	assert.Equal(t, t1, first["test"].(map[string]any)["id"], "sort_order 0 keeps list position")
+	assert.Equal(t, "all_on_page", first["question_presentation"])
+	assert.Equal(t, "one_per_page", second["question_presentation"], "omitted field falls back to the column default; entries=%v", entries)
+}
+
 func TestExam_Product_UpdatePriceViaGenericProductEndpoint(t *testing.T) {
 	env := newTestEnv(t)
 	examAdminID := seedUser(t, env, "admin_exam", "active", false)
