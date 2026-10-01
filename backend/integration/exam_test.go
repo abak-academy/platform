@@ -166,6 +166,26 @@ func TestExam_AdminValidation_rejects(t *testing.T) {
 			})
 		}
 	})
+	t.Run("exam format policy", func(t *testing.T) {
+		createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
+			map[string]any{"title": "Policy Validation", "timer_mode": "per_test", "is_free": true}, token)
+		require.Equal(t, http.StatusCreated, createResp.StatusCode, "body=%v", createOut)
+		examID := createOut["id"].(string)
+
+		t.Run("patch unknown navigation_policy", func(t *testing.T) {
+			resp, out := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/exams/"+examID,
+				map[string]any{"navigation_policy": "bogus"}, token)
+			assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+			assert.Equal(t, "validation_failed", out["code"])
+		})
+
+		t.Run("replace tests unknown question_presentation", func(t *testing.T) {
+			resp, out := doJSONBody(t, env, http.MethodPut, "/api/v1/admin/exams/"+examID+"/tests",
+				[]map[string]any{{"test_id": testID, "question_presentation": "side_by_side"}}, token)
+			assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+			assert.Equal(t, "validation_failed", out["code"])
+		})
+	})
 }
 
 func TestExam_AdminListTests_returns_data_and_cursor(t *testing.T) {

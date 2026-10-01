@@ -803,6 +803,18 @@ var validResultConfigs = map[string]bool{
 	"score_pembahasan": true,
 }
 
+var validNavigationPolicies = map[string]bool{
+	"free":       true,
+	"sequential": true,
+}
+
+// validQuestionPresentations enumerates exam_test.question_presentation; empty
+// means the caller omitted it and the column default applies.
+var validQuestionPresentations = map[string]bool{
+	"one_per_page": true,
+	"all_on_page":  true,
+}
+
 // validateExam enforces exam-level invariants: title required, timer_mode
 // ∈ {overall, per_test} (empty allowed for legacy rows), duration
 // required when timer_mode=overall, and result_config ∈ {hidden, score_only,
@@ -830,6 +842,9 @@ func validateExam(e model.Exam) error {
 	}
 	if e.ResultConfig != "" && !validResultConfigs[e.ResultConfig] {
 		return fmt.Errorf("%w: result_config must be hidden, score_only, or score_pembahasan", ErrValidation)
+	}
+	if e.NavigationPolicy != "" && !validNavigationPolicies[e.NavigationPolicy] {
+		return fmt.Errorf("%w: navigation_policy must be free or sequential", ErrValidation)
 	}
 	if err := validateCertificateDesign(e.CertificateDesign); err != nil {
 		return err
@@ -1216,6 +1231,9 @@ func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, tests 
 	}
 
 	for _, t := range tests {
+		if t.QuestionPresentation != "" && !validQuestionPresentations[t.QuestionPresentation] {
+			return fmt.Errorf("%w: question_presentation must be one_per_page or all_on_page", ErrValidation)
+		}
 		if _, err := s.storeRepo.GetTestByID(ctx, t.TestID); err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
 				return ErrTestNotFound

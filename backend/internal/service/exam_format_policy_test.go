@@ -433,3 +433,34 @@ func TestExamFormatPolicy_V1EditSafetyAllowsChangeWithSession(t *testing.T) {
 	_, err = svc.UpdateExam(ctx, exam.ID, navOverlay, uuid.NewString())
 	require.NoError(t, err)
 }
+
+// TestExamFormatPolicy_rejectsInvalidEnumValues proves the new format columns are
+// validated like their siblings (mode, timer_mode, result_config) instead of
+// reaching the DB CHECK constraint, which left the API answering 500.
+func TestExamFormatPolicy_rejectsInvalidEnumValues(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	examID := createV2Exam(t, repo, "free")
+	detail, err := svc.GetExam(ctx, examID)
+	require.NoError(t, err)
+
+	badNav := detail.Exam
+	badNav.NavigationPolicy = "bogus"
+	_, err = svc.UpdateExam(ctx, examID, badNav, uuid.NewString())
+	require.ErrorIs(t, err, ErrValidation)
+
+	goodNav := detail.Exam
+	goodNav.NavigationPolicy = "sequential"
+	_, err = svc.UpdateExam(ctx, examID, goodNav, uuid.NewString())
+	require.NoError(t, err)
+
+	testID := seedTestWithQuestion(t, repo)
+	err = svc.ReplaceExamTests(ctx, examID,
+		[]model.ExamTest{{TestID: testID, QuestionPresentation: "side_by_side"}}, uuid.NewString())
+	require.ErrorIs(t, err, ErrValidation)
+
+	err = svc.ReplaceExamTests(ctx, examID,
+		[]model.ExamTest{{TestID: testID, QuestionPresentation: "all_on_page"}}, uuid.NewString())
+	require.NoError(t, err, "empty-to-all_on_page stays a valid section presentation")
+}
