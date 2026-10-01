@@ -41,7 +41,7 @@ type outboxRepository interface {
 	GetExamsByProductID(context.Context, uuid.UUID) ([]model.Exam, error)
 	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
 	StampOrderItemFulfilledAt(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
-	GetOrderParticipantsTx(context.Context, pgx.Tx, uuid.UUID) ([]uuid.UUID, error)
+	GetOrderParticipants(context.Context, uuid.UUID) ([]uuid.UUID, error)
 }
 
 type Worker struct {
@@ -243,7 +243,7 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 			// Fan-out: if order_participant rows exist, register each
 			// participant instead of the buyer (order.StudentID).
 			registerIDs := []uuid.UUID{order.StudentID}
-			participants, err := w.repo.GetOrderParticipantsTx(ctx, tx, payload.OrderID)
+			participants, err := w.repo.GetOrderParticipants(ctx, payload.OrderID)
 			if err != nil {
 				slog.Error("get order participants", "order_id", payload.OrderID, "err", err)
 				return

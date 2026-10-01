@@ -42,17 +42,7 @@ func (r *Repository) InsertOrderParticipantsTx(ctx context.Context, tx pgx.Tx, o
 // participants exist — this empty-vs-nonempty distinction is the fan-out
 // discriminator used by the outbox handler (Task 14).
 func (r *Repository) GetOrderParticipants(ctx context.Context, orderID uuid.UUID) ([]uuid.UUID, error) {
-	return listOrderParticipants(ctx, r.pool, orderID)
-}
-
-// GetOrderParticipantsTx reads the participants on the caller's transaction, so
-// a caller holding a connection does not need a second pool connection.
-func (r *Repository) GetOrderParticipantsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) ([]uuid.UUID, error) {
-	return listOrderParticipants(ctx, tx, orderID)
-}
-
-func listOrderParticipants(ctx context.Context, q queryer, orderID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := q.Query(ctx,
+	rows, err := r.pool.Query(ctx,
 		`SELECT student_id FROM order_participant WHERE order_id = $1 ORDER BY student_id`,
 		orderID,
 	)

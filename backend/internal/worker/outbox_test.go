@@ -31,7 +31,6 @@ type mockRepository struct {
 	createExamRegistrationFn  func(context.Context, pgx.Tx, model.ExamRegistration) error
 	stampOrderItemFulfilledFn func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 	getOrderParticipantsFn    func(context.Context, uuid.UUID) ([]uuid.UUID, error)
-	participantsReadTx        pgx.Tx
 }
 
 func (m *mockRepository) ClaimOutboxEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
@@ -91,8 +90,7 @@ func (m *mockRepository) StampOrderItemFulfilledAt(ctx context.Context, tx pgx.T
 	return m.stampOrderItemFulfilledFn(ctx, tx, orderID, productID)
 }
 
-func (m *mockRepository) GetOrderParticipantsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) ([]uuid.UUID, error) {
-	m.participantsReadTx = tx
+func (m *mockRepository) GetOrderParticipants(ctx context.Context, orderID uuid.UUID) ([]uuid.UUID, error) {
 	if m.getOrderParticipantsFn == nil {
 		return []uuid.UUID{}, nil
 	}
@@ -113,8 +111,8 @@ func (mt *mockTx) Rollback(ctx context.Context) error {
 }
 
 // Minimal implementations of unused Tx methods
-func (mt *mockTx) Begin(ctx context.Context) (pgx.Tx, error)                               { return nil, nil }
-func (mt *mockTx) BeginFunc(ctx context.Context, f func(pgx.Tx) error) error               { return nil }
+func (mt *mockTx) Begin(ctx context.Context) (pgx.Tx, error)                 { return nil, nil }
+func (mt *mockTx) BeginFunc(ctx context.Context, f func(pgx.Tx) error) error { return nil }
 func (mt *mockTx) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
 	return 0, nil
 }
@@ -122,10 +120,12 @@ func (mt *mockTx) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults 
 func (mt *mockTx) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
 	return pgconn.NewCommandTag(""), nil
 }
-func (mt *mockTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) { return nil, nil }
-func (mt *mockTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row        { return nil }
-func (mt *mockTx) Ping(ctx context.Context) error                                        { return nil }
-func (mt *mockTx) Conn() *pgx.Conn                                                       { return nil }
+func (mt *mockTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return nil, nil
+}
+func (mt *mockTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row { return nil }
+func (mt *mockTx) Ping(ctx context.Context) error                                { return nil }
+func (mt *mockTx) Conn() *pgx.Conn                                               { return nil }
 func (mt *mockTx) LargeObjects() pgx.LargeObjects {
 	return pgx.LargeObjects{}
 }

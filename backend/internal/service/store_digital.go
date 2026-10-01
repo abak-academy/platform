@@ -159,7 +159,7 @@ func (s *Service) recheckDigitalTargets(ctx context.Context, tx pgx.Tx, order mo
 	if !digital {
 		return nil
 	}
-	participants, err := s.storeRepo.GetOrderParticipantsTx(ctx, tx, order.ID)
+	participants, err := s.storeRepo.GetOrderParticipants(ctx, order.ID)
 	if err != nil {
 		return err
 	}

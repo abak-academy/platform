@@ -1161,14 +1161,14 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	}
 	var participants []uuid.UUID
 	if hasDigital {
-		participants, err = s.storeRepo.GetOrderParticipantsTx(ctx, tx, oID)
+		participants, err = s.storeRepo.GetOrderParticipants(ctx, oID)
 		if err != nil {
 			return CheckoutResult{}, err
 		}
 	}
 	if hasExam {
 		if len(participants) == 0 { // self-purchase
-			u, err := s.storeRepo.GetUserByIDTx(ctx, tx, order.StudentID)
+			u, err := s.storeRepo.GetUserByID(ctx, order.StudentID.String())
 			if err != nil {
 				return CheckoutResult{}, err
 			}
