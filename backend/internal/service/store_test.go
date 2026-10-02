@@ -3479,20 +3479,33 @@ func seedV2PublishExam(t *testing.T, repo *repository.Repository, presentation s
 func TestPublishProduct_Integration_V2AllOnPageMaterial(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
-
 	examID, _, questionID := seedV2PublishExam(t, repo, "all_on_page", true)
 	product, err := svc.CreateProductWithExams(ctx,
 		model.Product{Type: "exam", Name: "V2 Publish Product " + uniqueSuffix(), Price: 0, Status: "draft"},
 		[]string{examID.String()}, RoleAdminStore)
 	require.NoError(t, err)
-
-	err = svc.PublishProduct(ctx, product.ID, RoleAdminStore)
-	require.ErrorIs(t, err, ErrValidation)
-	require.Contains(t, err.Error(), questionID.String())
-
-	_, err = repo.Pool().Exec(ctx, `UPDATE exam_test SET question_presentation = 'one_per_page' WHERE exam_id = $1`, examID)
-	require.NoError(t, err)
-	require.NoError(t, svc.PublishProduct(ctx, product.ID, RoleAdminStore))
+	for _, tc := range []struct {
+		presentation, status string
+		wantErr              error
+	}{
+		{"all_on_page", "draft", ErrValidation},
+		{"one_per_page", "published", nil},
+	} {
+		t.Run(tc.presentation, func(t *testing.T) {
+			_, err := repo.Pool().Exec(ctx, `UPDATE exam_test SET question_presentation = $1 WHERE exam_id = $2`, tc.presentation, examID)
+			require.NoError(t, err)
+			err = svc.PublishProduct(ctx, product.ID, RoleAdminStore)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				require.Contains(t, err.Error(), questionID.String())
+			} else {
+				require.NoError(t, err)
+			}
+			var status string
+			require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT status FROM product WHERE id = $1`, product.ID).Scan(&status))
+			require.Equal(t, tc.status, status)
+		})
+	}
 }
 
 // TestPublishProduct_Integration_V2RequiresAttachedTest proves the composable

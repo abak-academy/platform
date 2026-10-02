@@ -172,19 +172,19 @@ func TestExam_AdminValidation_rejects(t *testing.T) {
 		require.Equal(t, http.StatusCreated, createResp.StatusCode, "body=%v", createOut)
 		examID := createOut["id"].(string)
 
-		t.Run("patch unknown navigation_policy", func(t *testing.T) {
-			resp, out := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/exams/"+examID,
-				map[string]any{"navigation_policy": "bogus"}, token)
-			assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-			assert.Equal(t, "validation_failed", out["code"])
-		})
-
-		t.Run("replace tests unknown question_presentation", func(t *testing.T) {
-			resp, out := doJSONBody(t, env, http.MethodPut, "/api/v1/admin/exams/"+examID+"/tests",
-				[]map[string]any{{"test_id": testID, "question_presentation": "side_by_side"}}, token)
-			assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-			assert.Equal(t, "validation_failed", out["code"])
-		})
+		for _, tc := range []struct {
+			name, method, suffix string
+			body                 any
+		}{
+			{"patch unknown navigation_policy", http.MethodPatch, "", map[string]any{"navigation_policy": "bogus"}},
+			{"replace tests unknown question_presentation", http.MethodPut, "/tests", []map[string]any{{"test_id": testID, "question_presentation": "side_by_side"}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				resp, out := doJSONBody(t, env, tc.method, "/api/v1/admin/exams/"+examID+tc.suffix, tc.body, token)
+				assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+				assert.Equal(t, "validation_failed", out["code"])
+			})
+		}
 	})
 }
 
@@ -570,49 +570,47 @@ func TestExam_AdminUpdateQuestion_replaces_options_atomically(t *testing.T) {
 	assert.NotContains(t, keys, "a")
 }
 
-// The question editor PATCHes without material_html (it does not know the field
-// yet), so an omitted value must preserve what the API wrote and an explicit
-// null must clear it — the same Nullable contract AdminUpdateTest uses.
 func TestExam_AdminUpdateQuestion_keeps_material_html_when_omitted(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
-
 	testID := seedTest(t, env, "X", "math", "algebra", 60)
-	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions",
-		map[string]any{
-			"format": "essay", "body": "explain gravity", "sort_order": 1,
-			"material_html": "<p>shared passage</p>",
-		}, token)
-	require.Equal(t, http.StatusCreated, createResp.StatusCode, "body=%v", createOut)
-	created := createOut["question"].(map[string]any)
-	qID := created["id"].(string)
-	require.Equal(t, "<p>shared passage</p>", created["material_html"], "create must store material_html")
-
-	assertBankMaterial := func(want any) {
-		t.Helper()
-		resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions?search="+qID, nil, token)
-		require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
-		rows := out["data"].([]any)
-		require.Len(t, rows, 1)
-		question := rows[0].(map[string]any)["question"].(map[string]any)
-		require.Equal(t, qID, question["id"])
-		assert.Equal(t, want, question["material_html"])
+	for _, tc := range []struct {
+		name  string
+		clear bool
+		want  any
+	}{
+		{"omitted preserves material", false, "<p>shared passage</p>"},
+		{"explicit null clears material", true, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions",
+				map[string]any{"format": "essay", "body": "explain gravity", "sort_order": 1, "material_html": "<p>shared passage</p>"}, token)
+			require.Equal(t, http.StatusCreated, createResp.StatusCode, "body=%v", createOut)
+			created := createOut["question"].(map[string]any)
+			qID := created["id"].(string)
+			require.Equal(t, "<p>shared passage</p>", created["material_html"])
+			assertBankMaterial := func(want any) {
+				t.Helper()
+				resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions?search="+qID, nil, token)
+				require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+				rows := out["data"].([]any)
+				require.Len(t, rows, 1)
+				question := rows[0].(map[string]any)["question"].(map[string]any)
+				require.Equal(t, qID, question["id"])
+				assert.Equal(t, want, question["material_html"])
+			}
+			assertBankMaterial("<p>shared passage</p>")
+			body := map[string]any{"format": "essay", "body": "explain gravity again", "sort_order": 1}
+			if tc.clear {
+				body["material_html"] = nil
+			}
+			resp, out := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/questions/"+qID, body, token)
+			require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+			assert.Equal(t, tc.want, out["question"].(map[string]any)["material_html"])
+			assertBankMaterial(tc.want)
+		})
 	}
-	assertBankMaterial("<p>shared passage</p>")
-
-	updateResp, updateOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/questions/"+qID,
-		map[string]any{"format": "essay", "body": "explain gravity again", "sort_order": 1}, token)
-	require.Equal(t, http.StatusOK, updateResp.StatusCode, "body=%v", updateOut)
-	updated := updateOut["question"].(map[string]any)
-	assert.Equal(t, "<p>shared passage</p>", updated["material_html"], "omitted material_html must preserve the stored value")
-	assertBankMaterial("<p>shared passage</p>")
-
-	clearResp, clearOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/questions/"+qID,
-		map[string]any{"format": "essay", "body": "explain gravity again", "sort_order": 1, "material_html": nil}, token)
-	require.Equal(t, http.StatusOK, clearResp.StatusCode, "body=%v", clearOut)
-	assert.Nil(t, clearOut["question"].(map[string]any)["material_html"], "explicit null must clear it")
-	assertBankMaterial(nil)
 }
 
 // Task 6 relaxed the old "attached to any test" refusal: a question attached
@@ -1088,14 +1086,20 @@ func TestExam_AdminReplaceExamTests_rich_form_sets_question_presentation(t *test
 	require.Equal(t, http.StatusNoContent, putResp.StatusCode)
 	putResp.Body.Close()
 
-	_, detail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	resp, detail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	entries := detail["tests"].([]any)
 	require.Len(t, entries, 2)
-	first := entries[0].(map[string]any)
-	second := entries[1].(map[string]any)
-	assert.Equal(t, t1, first["test"].(map[string]any)["id"], "sort_order 0 keeps list position")
-	assert.Equal(t, "all_on_page", first["question_presentation"])
-	assert.Equal(t, "one_per_page", second["question_presentation"], "omitted field falls back to the column default; entries=%v", entries)
+	for i, tc := range []struct{ name, testID, presentation string }{
+		{"explicit presentation", t1, "all_on_page"},
+		{"omitted presentation", t2, "one_per_page"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entry := entries[i].(map[string]any)
+			assert.Equal(t, tc.testID, entry["test"].(map[string]any)["id"])
+			assert.Equal(t, tc.presentation, entry["question_presentation"])
+		})
+	}
 }
 
 func TestExam_Product_UpdatePriceViaGenericProductEndpoint(t *testing.T) {

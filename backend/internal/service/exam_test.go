@@ -1019,19 +1019,24 @@ func entryTitled(title string, sectionType *string) model.ExamTestEntry {
 }
 
 func TestValidatePublishSections_rejects_sectioned_exam_with_zero_tests(t *testing.T) {
-	for _, mode := range []string{"utbk", "ielts"} {
-		exam := model.Exam{Mode: mode}
-		err := validatePublishSections(exam, nil, nil)
-		if !errors.Is(err, ErrValidation) {
-			t.Errorf("mode=%s with 0 tests should return ErrValidation, got %v", mode, err)
-		}
-		if !strings.Contains(err.Error(), "at least one test") {
-			t.Errorf("zero-tests msg should mention 'at least one test', got %q", err.Error())
-		}
-		err = validatePublishSections(exam, []model.ExamTestEntry{}, nil)
-		if !errors.Is(err, ErrValidation) {
-			t.Errorf("mode=%s with empty tests slice should return ErrValidation, got %v", mode, err)
-		}
+	for _, tc := range []struct {
+		name, mode string
+		tests      []model.ExamTestEntry
+	}{
+		{"utbk nil tests", "utbk", nil},
+		{"utbk empty tests", "utbk", []model.ExamTestEntry{}},
+		{"ielts nil tests", "ielts", nil},
+		{"ielts empty tests", "ielts", []model.ExamTestEntry{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePublishSections(model.Exam{Mode: tc.mode}, tc.tests, nil)
+			if !errors.Is(err, ErrValidation) {
+				t.Fatalf("want ErrValidation, got %v", err)
+			}
+			if !strings.Contains(err.Error(), "at least one test") {
+				t.Errorf("want at least one test message, got %q", err)
+			}
+		})
 	}
 }
 
@@ -1076,13 +1081,18 @@ func TestValidatePublishSections_allows_utbk_with_untyped_tests(t *testing.T) {
 }
 
 func TestValidatePublishSections_allows_standard_with_any_tests(t *testing.T) {
-	// standard publish is unchanged; the gate is skipped entirely.
-	exam := model.Exam{Mode: "standard"}
-	if err := validatePublishSections(exam, nil, nil); err != nil {
-		t.Errorf("standard with no tests should pass (gate skipped), got %v", err)
-	}
-	if err := validatePublishSections(exam, []model.ExamTestEntry{entryTitled("Any", nil)}, nil); err != nil {
-		t.Errorf("standard with untyped test should pass (gate skipped), got %v", err)
+	for _, tc := range []struct {
+		name  string
+		tests []model.ExamTestEntry
+	}{
+		{"no tests", nil},
+		{"untyped test", []model.ExamTestEntry{entryTitled("Any", nil)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validatePublishSections(model.Exam{Mode: "standard"}, tc.tests, nil); err != nil {
+				t.Errorf("standard publish should pass, got %v", err)
+			}
+		})
 	}
 }
 

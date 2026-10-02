@@ -291,85 +291,85 @@ var (
 	attemptQ4 = uuid.MustParse("44444444-4444-4444-4444-444444444444")
 )
 
-// Spec acceptance #7: randomisation must be stable for one attempt (refresh reuses the order).
-func TestSessionTestsPayload_v2RandomizeOn_StableAndNotInputOrder(t *testing.T) {
+func TestSessionTestsPayload_QuestionOrder(t *testing.T) {
 	sessID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	testID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
-	exam := &model.Exam{FormatVersion: 2, Randomize: true}
-	tests := []model.TestDetail{attemptTestDetail(testID, attemptQ1, attemptQ2, attemptQ3, attemptQ4)}
+	authored := []uuid.UUID{attemptQ1, attemptQ2, attemptQ3, attemptQ4}
+	testDetails := []model.TestDetail{attemptTestDetail(testID, authored...)}
 
-	first := sessionQuestionIDs(sessionTestsPayload(exam, sessID, tests))
-	second := sessionQuestionIDs(sessionTestsPayload(exam, sessID, tests))
-	if !sameUUIDOrder(first, second) {
-		t.Fatalf("same session+test must reuse one order:\nfirst  %v\nsecond %v", first, second)
+	tests := []struct {
+		name              string
+		formatVersion     int
+		randomize         bool
+		wantAuthoredOrder bool
+	}{
+		{"composable randomizes", 2, true, false},
+		{"legacy randomize keeps authored order", 1, true, true},
+		{"composable without randomize keeps authored order", 2, false, true},
 	}
-	if sameUUIDOrder(first, []uuid.UUID{attemptQ1, attemptQ2, attemptQ3, attemptQ4}) {
-		t.Fatalf("v2 randomize=true must not keep sort_order, got %v", first)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exam := &model.Exam{FormatVersion: tt.formatVersion, Randomize: tt.randomize}
+			got := sessionQuestionIDs(sessionTestsPayload(exam, sessID, testDetails))
+			if len(got) != len(authored) {
+				t.Fatalf("question count: got %d, want %d", len(got), len(authored))
+			}
+			if sameUUIDOrder(got, authored) != tt.wantAuthoredOrder {
+				t.Fatalf("authored order preserved: want %v, got %v", tt.wantAuthoredOrder, got)
+			}
+		})
 	}
 }
 
-// The order must be a function of the question ids, not of the order they were read in.
-func TestOrderQuestionsForAttempt_IndependentOfInputOrder(t *testing.T) {
-	sessID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-	testID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
-
-	forward := []model.QuestionWithOptions{
-		{Question: model.Question{ID: attemptQ1}},
-		{Question: model.Question{ID: attemptQ2}},
-		{Question: model.Question{ID: attemptQ3}},
-		{Question: model.Question{ID: attemptQ4}},
-	}
-	reversed := []model.QuestionWithOptions{
-		{Question: model.Question{ID: attemptQ4}},
-		{Question: model.Question{ID: attemptQ3}},
-		{Question: model.Question{ID: attemptQ2}},
-		{Question: model.Question{ID: attemptQ1}},
-	}
-
-	gotForward := questionIDsOf(orderQuestionsForAttempt(sessID, testID, forward))
-	gotReversed := questionIDsOf(orderQuestionsForAttempt(sessID, testID, reversed))
-	if !sameUUIDOrder(gotForward, gotReversed) {
-		t.Fatalf("order must not depend on input order:\nforward  %v\nreversed %v", gotForward, gotReversed)
-	}
-}
-
-// The seed includes session_id, so two attempts get different papers (fixture ids checked to differ).
-func TestSessionTestsPayload_v2RandomizeOn_DiffersAcrossSessions(t *testing.T) {
+func TestSessionTestsPayload_OrderBySession(t *testing.T) {
 	sessA := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	sessB := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 	testID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
 	exam := &model.Exam{FormatVersion: 2, Randomize: true}
-	tests := []model.TestDetail{attemptTestDetail(testID, attemptQ1, attemptQ2, attemptQ3, attemptQ4)}
+	testDetails := []model.TestDetail{attemptTestDetail(testID, attemptQ1, attemptQ2, attemptQ3, attemptQ4)}
+	first := sessionQuestionIDs(sessionTestsPayload(exam, sessA, testDetails))
 
-	a := sessionQuestionIDs(sessionTestsPayload(exam, sessA, tests))
-	b := sessionQuestionIDs(sessionTestsPayload(exam, sessB, tests))
-	if sameUUIDOrder(a, b) {
-		t.Fatalf("distinct sessions must not share a question order: %v", a)
+	tests := []struct {
+		name      string
+		sessionID uuid.UUID
+		wantSame  bool
+	}{
+		{"same attempt reuses order", sessA, true},
+		{"different attempt changes order", sessB, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sessionQuestionIDs(sessionTestsPayload(exam, tt.sessionID, testDetails))
+			if sameUUIDOrder(first, got) != tt.wantSame {
+				t.Fatalf("same question order: want %v, first %v, got %v", tt.wantSame, first, got)
+			}
+		})
 	}
 }
 
-// Legacy exams are untouched: randomize stays inert and sort_order is kept.
-func TestSessionTestsPayload_v1Randomize_KeepsSortOrder(t *testing.T) {
+func TestOrderQuestionsForAttempt_IndependentOfInputOrder(t *testing.T) {
 	sessID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	testID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
-	exam := &model.Exam{FormatVersion: 1, Randomize: true}
-	tests := []model.TestDetail{attemptTestDetail(testID, attemptQ1, attemptQ2, attemptQ3, attemptQ4)}
+	forward := attemptTestDetail(testID, attemptQ1, attemptQ2, attemptQ3, attemptQ4).Questions
+	want := questionIDsOf(orderQuestionsForAttempt(sessID, testID, forward))
 
-	got := sessionQuestionIDs(sessionTestsPayload(exam, sessID, tests))
-	if !sameUUIDOrder(got, []uuid.UUID{attemptQ1, attemptQ2, attemptQ3, attemptQ4}) {
-		t.Fatalf("legacy v1 must keep sort_order even with randomize on, got %v", got)
+	tests := []struct {
+		name      string
+		questions []model.QuestionWithOptions
+	}{
+		{"authored order", forward},
+		{"reversed order", attemptTestDetail(testID, attemptQ4, attemptQ3, attemptQ2, attemptQ1).Questions},
 	}
-}
 
-func TestSessionTestsPayload_v2RandomizeOff_KeepsSortOrder(t *testing.T) {
-	sessID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-	testID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
-	exam := &model.Exam{FormatVersion: 2, Randomize: false}
-	tests := []model.TestDetail{attemptTestDetail(testID, attemptQ1, attemptQ2, attemptQ3, attemptQ4)}
-
-	got := sessionQuestionIDs(sessionTestsPayload(exam, sessID, tests))
-	if !sameUUIDOrder(got, []uuid.UUID{attemptQ1, attemptQ2, attemptQ3, attemptQ4}) {
-		t.Fatalf("v2 randomize=false must keep sort_order, got %v", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := questionIDsOf(orderQuestionsForAttempt(sessID, testID, tt.questions))
+			if !sameUUIDOrder(got, want) {
+				t.Fatalf("order must not depend on input order: want %v, got %v", want, got)
+			}
+		})
 	}
 }
 

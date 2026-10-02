@@ -11,88 +11,66 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-// TestExamFormatPolicy_sanitizesMaterialHTML proves the section/question material
-// write paths reuse the question-body sanitizer, so a stored value can never carry
-// <script>/event handlers even when the caller submits them.
 func TestExamFormatPolicy_sanitizesMaterialHTML(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
-
-	shared := `<p>intro<script>alert(1)</script><img src="/x.png" onerror="alert(2)"></p>`
-	instructions := `<b>read</b><iframe src="evil"></iframe>`
-
-	created, err := svc.CreateTest(ctx, model.Test{
-		Title:              "sanitize " + uniqueSuffix(),
-		Subject:            "english",
-		Topic:              "reading",
-		DurationMinutes:    10,
-		SharedMaterialHTML: &shared,
-		InstructionsHTML:   &instructions,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, created.SharedMaterialHTML)
-	require.NotContains(t, *created.SharedMaterialHTML, "<script>")
-	require.NotContains(t, *created.SharedMaterialHTML, "onerror")
-	require.Contains(t, *created.SharedMaterialHTML, "intro")
-	require.NotNil(t, created.InstructionsHTML)
-	require.NotContains(t, *created.InstructionsHTML, "<iframe")
-
-	storedTest, err := repo.GetTestByID(ctx, created.ID)
-	require.NoError(t, err)
-	require.NotNil(t, storedTest.SharedMaterialHTML)
-	require.NotContains(t, *storedTest.SharedMaterialHTML, "<script>")
-	require.NotNil(t, storedTest.InstructionsHTML)
-	require.NotContains(t, *storedTest.InstructionsHTML, "<iframe")
-
-	// UpdateTest sanitizes on the write path too, and clearing to null persists.
-	updatedShared := `<p>updated<script>x</script></p>`
-	created.SharedMaterialHTML = &updatedShared
-	created.InstructionsHTML = nil
-	updated, err := svc.UpdateTest(ctx, created.ID, created)
-	require.NoError(t, err)
-	require.NotNil(t, updated.SharedMaterialHTML)
-	require.NotContains(t, *updated.SharedMaterialHTML, "<script>")
-	require.Nil(t, updated.InstructionsHTML)
-
-	storedAfter, err := repo.GetTestByID(ctx, created.ID)
-	require.NoError(t, err)
-	require.NotContains(t, *storedAfter.SharedMaterialHTML, "<script>")
-	require.Nil(t, storedAfter.InstructionsHTML)
-
-	// Question material follows the same policy.
-	questionMaterial := `<p>stem<script>alert(1)</script></p>`
-	q, err := svc.CreateBankQuestion(ctx, model.Question{
-		Format:       "essay",
-		Body:         "Explain the stem " + uniqueSuffix(),
-		PointCorrect: 1,
-		MaterialHTML: &questionMaterial,
-	}, nil, nil, nil)
-	require.NoError(t, err)
-	require.NotNil(t, q.Question.MaterialHTML)
-	require.NotContains(t, *q.Question.MaterialHTML, "<script>")
-	require.Contains(t, *q.Question.MaterialHTML, "stem")
-
-	storedQuestion, err := repo.GetQuestionByID(ctx, q.Question.ID)
-	require.NoError(t, err)
-	require.NotNil(t, storedQuestion.MaterialHTML)
-	require.NotContains(t, *storedQuestion.MaterialHTML, "<script>")
+	for _, tc := range []struct{ name, input, want string }{
+		{"script", "<p>intro<script>alert(1)</script></p>", "<p>intro</p>"},
+		{"event handler", `<img src="/x.png" onerror="alert(2)">`, `<img src="/x.png">`},
+		{"iframe", `<b>read</b><iframe src="evil"></iframe>`, "<b>read</b>"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			created, err := svc.CreateTest(ctx, model.Test{
+				Title: "sanitize " + uniqueSuffix(), Subject: "english", Topic: "reading", DurationMinutes: 10,
+				SharedMaterialHTML: &tc.input, InstructionsHTML: &tc.input,
+			})
+			require.NoError(t, err)
+			require.Equal(t, &tc.want, created.SharedMaterialHTML)
+			require.Equal(t, &tc.want, created.InstructionsHTML)
+			stored, err := repo.GetTestByID(ctx, created.ID)
+			require.NoError(t, err)
+			require.Equal(t, &tc.want, stored.SharedMaterialHTML)
+			require.Equal(t, &tc.want, stored.InstructionsHTML)
+			created.SharedMaterialHTML = &tc.input
+			created.InstructionsHTML = nil
+			updated, err := svc.UpdateTest(ctx, created.ID, created)
+			require.NoError(t, err)
+			require.Equal(t, &tc.want, updated.SharedMaterialHTML)
+			require.Nil(t, updated.InstructionsHTML)
+			stored, err = repo.GetTestByID(ctx, created.ID)
+			require.NoError(t, err)
+			require.Equal(t, &tc.want, stored.SharedMaterialHTML)
+			require.Nil(t, stored.InstructionsHTML)
+			q, err := svc.CreateBankQuestion(ctx, model.Question{
+				Format: "essay", Body: "Explain the stem " + uniqueSuffix(), PointCorrect: 1, MaterialHTML: &tc.input,
+			}, nil, nil, nil)
+			require.NoError(t, err)
+			require.Equal(t, &tc.want, q.Question.MaterialHTML)
+			storedQuestion, err := repo.GetQuestionByID(ctx, q.Question.ID)
+			require.NoError(t, err)
+			require.Equal(t, &tc.want, storedQuestion.MaterialHTML)
+		})
+	}
 }
 
-// TestExamFormatPolicy_navigationPolicyDefaultedOnCreate pins the create-path
-// default: an empty policy persists as 'free' and format_version resolves to 1.
 func TestExamFormatPolicy_navigationPolicyDefaultedOnCreate(t *testing.T) {
-	svc, _ := newRealDBService(t)
+	svc, repo := newRealDBService(t)
 	ctx := context.Background()
-
-	exam, err := svc.CreateExam(ctx, model.Exam{Title: "nav " + uniqueSuffix()})
-	require.NoError(t, err)
-	require.Equal(t, 1, exam.FormatVersion)
-	require.Equal(t, "free", exam.NavigationPolicy)
-
-	sequential := "sequential"
-	exam2, err := svc.CreateExam(ctx, model.Exam{Title: "nav " + uniqueSuffix(), NavigationPolicy: sequential})
-	require.NoError(t, err)
-	require.Equal(t, "sequential", exam2.NavigationPolicy)
+	for _, tc := range []struct{ name, policy, want string }{
+		{"omitted defaults to free", "", "free"},
+		{"explicit sequential", "sequential", "sequential"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			exam, err := svc.CreateExam(ctx, model.Exam{Title: "nav " + uniqueSuffix(), NavigationPolicy: tc.policy})
+			require.NoError(t, err)
+			require.Equal(t, 1, exam.FormatVersion)
+			require.Equal(t, tc.want, exam.NavigationPolicy)
+			stored, err := repo.GetExamByID(ctx, exam.ID)
+			require.NoError(t, err)
+			require.Equal(t, 1, stored.FormatVersion)
+			require.Equal(t, tc.want, stored.NavigationPolicy)
+		})
+	}
 }
 
 func intPtr(v int) *int { return &v }
@@ -317,33 +295,48 @@ func seedTestWithQuestion(t *testing.T, repo *repository.Repository) uuid.UUID {
 	return testID
 }
 
-// TestExamFormatPolicy_V2EditSafetyRejectsPolicyChangeWithSession proves that a
-// composable exam with any attempt freezes navigation_policy and randomize,
-// while unrelated field edits stay allowed.
 func TestExamFormatPolicy_V2EditSafetyRejectsPolicyChangeWithSession(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
-
-	examID := createV2Exam(t, repo, "free")
-	seedExamSession(t, repo, examID)
-
-	detail, err := svc.GetExam(ctx, examID)
-	require.NoError(t, err)
-
-	navOverlay := detail.Exam
-	navOverlay.NavigationPolicy = "sequential"
-	_, err = svc.UpdateExam(ctx, examID, navOverlay, uuid.NewString())
-	require.ErrorIs(t, err, ErrExamHasSessions)
-
-	randomizeOverlay := detail.Exam
-	randomizeOverlay.Randomize = !detail.Exam.Randomize
-	_, err = svc.UpdateExam(ctx, examID, randomizeOverlay, uuid.NewString())
-	require.ErrorIs(t, err, ErrExamHasSessions)
-
-	titleOverlay := detail.Exam
-	titleOverlay.Title = "Renamed " + uniqueSuffix()
-	_, err = svc.UpdateExam(ctx, examID, titleOverlay, uuid.NewString())
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name    string
+		wantErr error
+	}{
+		{"navigation", ErrExamHasSessions},
+		{"randomize", ErrExamHasSessions},
+		{"title", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			examID := createV2Exam(t, repo, "free")
+			seedExamSession(t, repo, examID)
+			detail, err := svc.GetExam(ctx, examID)
+			require.NoError(t, err)
+			overlay := detail.Exam
+			switch tc.name {
+			case "navigation":
+				overlay.NavigationPolicy = "sequential"
+			case "randomize":
+				overlay.Randomize = !overlay.Randomize
+			case "title":
+				overlay.Title = "Renamed " + uniqueSuffix()
+			}
+			_, err = svc.UpdateExam(ctx, examID, overlay, uuid.NewString())
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			stored, err := svc.GetExam(ctx, examID)
+			require.NoError(t, err)
+			want := detail.Exam
+			if tc.wantErr == nil {
+				want = overlay
+			}
+			require.Equal(t, want.NavigationPolicy, stored.Exam.NavigationPolicy)
+			require.Equal(t, want.Randomize, stored.Exam.Randomize)
+			require.Equal(t, want.Title, stored.Exam.Title)
+		})
+	}
 }
 
 // TestExamFormatPolicy_V2EditSafetyRejectsTestListChangeWithSession proves the
@@ -360,24 +353,39 @@ func TestExamFormatPolicy_V2EditSafetyRejectsTestListChangeWithSession(t *testin
 	require.ErrorIs(t, err, ErrExamHasSessions)
 }
 
-// TestExamFormatPolicy_V2EditSafetyAllowsUnchangedTestListWithSession pins the
-// other half of examTestListChanged: re-sending the same list is not an edit,
-// even with question_presentation omitted (presentationOrDefault maps it back
-// to the stored default).
 func TestExamFormatPolicy_V2EditSafetyAllowsUnchangedTestListWithSession(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
-
-	examID := createV2Exam(t, repo, "free")
-	testID := seedTestWithQuestion(t, repo)
-	require.NoError(t, svc.ReplaceExamTests(ctx, examID, []model.ExamTest{{TestID: testID}}, uuid.NewString()))
-	seedExamSession(t, repo, examID)
-
-	require.NoError(t, svc.ReplaceExamTests(ctx, examID, []model.ExamTest{{TestID: testID}}, uuid.NewString()),
-		"an unchanged attached-test list must stay editable with a session present")
-
-	otherTestID := seedTestWithQuestion(t, repo)
-	require.ErrorIs(t, svc.ReplaceExamTests(ctx, examID, []model.ExamTest{{TestID: otherTestID}}, uuid.NewString()), ErrExamHasSessions)
+	for _, tc := range []struct {
+		name    string
+		changed bool
+		wantErr error
+	}{
+		{"same list with omitted presentation", false, nil},
+		{"different test", true, ErrExamHasSessions},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			examID := createV2Exam(t, repo, "free")
+			testID := seedTestWithQuestion(t, repo)
+			require.NoError(t, svc.ReplaceExamTests(ctx, examID, []model.ExamTest{{TestID: testID}}, uuid.NewString()))
+			seedExamSession(t, repo, examID)
+			replacement := testID
+			if tc.changed {
+				replacement = seedTestWithQuestion(t, repo)
+			}
+			err := svc.ReplaceExamTests(ctx, examID, []model.ExamTest{{TestID: replacement}}, uuid.NewString())
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			stored, err := svc.GetExam(ctx, examID)
+			require.NoError(t, err)
+			require.Len(t, stored.Tests, 1)
+			require.Equal(t, testID, stored.Tests[0].TestID)
+			require.Equal(t, "one_per_page", stored.Tests[0].QuestionPresentation)
+		})
+	}
 }
 
 // TestExamFormatPolicy_V2RejectedEditLeavesNoAuditRow proves validation runs
@@ -476,33 +484,49 @@ func TestExamFormatPolicy_V1EditSafetyAllowsChangeWithSession(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestExamFormatPolicy_rejectsInvalidEnumValues proves the new format columns are
-// validated like their siblings (mode, timer_mode, result_config) instead of
-// reaching the DB CHECK constraint, which left the API answering 500.
 func TestExamFormatPolicy_rejectsInvalidEnumValues(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
-
-	examID := createV2Exam(t, repo, "free")
-	detail, err := svc.GetExam(ctx, examID)
-	require.NoError(t, err)
-
-	badNav := detail.Exam
-	badNav.NavigationPolicy = "bogus"
-	_, err = svc.UpdateExam(ctx, examID, badNav, uuid.NewString())
-	require.ErrorIs(t, err, ErrValidation)
-
-	goodNav := detail.Exam
-	goodNav.NavigationPolicy = "sequential"
-	_, err = svc.UpdateExam(ctx, examID, goodNav, uuid.NewString())
-	require.NoError(t, err)
-
-	testID := seedTestWithQuestion(t, repo)
-	err = svc.ReplaceExamTests(ctx, examID,
-		[]model.ExamTest{{TestID: testID, QuestionPresentation: "side_by_side"}}, uuid.NewString())
-	require.ErrorIs(t, err, ErrValidation)
-
-	err = svc.ReplaceExamTests(ctx, examID,
-		[]model.ExamTest{{TestID: testID, QuestionPresentation: "all_on_page"}}, uuid.NewString())
-	require.NoError(t, err, "empty-to-all_on_page stays a valid section presentation")
+	for _, tc := range []struct {
+		name, field, value string
+		wantErr            error
+	}{
+		{"invalid navigation", "navigation", "bogus", ErrValidation},
+		{"valid navigation", "navigation", "sequential", nil},
+		{"invalid presentation", "presentation", "side_by_side", ErrValidation},
+		{"valid presentation", "presentation", "all_on_page", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			examID := createV2Exam(t, repo, "free")
+			detail, err := svc.GetExam(ctx, examID)
+			require.NoError(t, err)
+			if tc.field == "navigation" {
+				overlay := detail.Exam
+				overlay.NavigationPolicy = tc.value
+				_, err = svc.UpdateExam(ctx, examID, overlay, uuid.NewString())
+			} else {
+				testID := seedTestWithQuestion(t, repo)
+				err = svc.ReplaceExamTests(ctx, examID, []model.ExamTest{{TestID: testID, QuestionPresentation: tc.value}}, uuid.NewString())
+			}
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			stored, err := svc.GetExam(ctx, examID)
+			require.NoError(t, err)
+			if tc.field == "navigation" {
+				want := "free"
+				if tc.wantErr == nil {
+					want = tc.value
+				}
+				require.Equal(t, want, stored.Exam.NavigationPolicy)
+			} else if tc.wantErr != nil {
+				require.Empty(t, stored.Tests)
+			} else {
+				require.Len(t, stored.Tests, 1)
+				require.Equal(t, tc.value, stored.Tests[0].QuestionPresentation)
+			}
+		})
+	}
 }
