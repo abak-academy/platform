@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/service"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -115,6 +118,59 @@ func TestProductRelations_ConcurrentChangesAreWholeSets(t *testing.T) {
 				assert.ElementsMatch(t, ids[:2], got)
 			} else {
 				assert.ElementsMatch(t, ids[2:], got)
+			}
+		})
+	}
+}
+
+func TestProductRelations_DetailCarriesTitlesForAdminsOnly(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	for _, kind := range []string{"exam", "course"} {
+		t.Run(kind, func(t *testing.T) {
+			titles := map[string]string{}
+			var ids []string
+			for _, title := range []string{"Alpha " + kind, "Beta " + kind} {
+				var id string
+				if kind == "exam" {
+					exam, err := env.svc.CreateExam(ctx, model.Exam{Title: title, Mode: "standard"})
+					require.NoError(t, err)
+					id = exam.ID.String()
+				} else {
+					course, err := env.svc.CreateCourse(ctx, title, "SMA", "Math", "Instructor", service.RoleSuperAdmin)
+					require.NoError(t, err)
+					id = course.ID.String()
+				}
+				titles[id] = title
+				ids = append(ids, id)
+			}
+			p := model.Product{Type: kind, Name: "Titled", Price: 1000, Status: "published"}
+			var product model.Product
+			var err error
+			if kind == "exam" {
+				product, err = env.svc.CreateProductWithExams(ctx, p, ids, service.RoleSuperAdmin)
+			} else {
+				product, err = env.svc.CreateProductWithCourses(ctx, p, ids, service.RoleSuperAdmin)
+			}
+			require.NoError(t, err)
+
+			admin, err := env.svc.GetProduct(ctx, product.ID, service.RoleSuperAdmin)
+			require.NoError(t, err)
+			got := map[string]string{}
+			for _, r := range admin.Relations {
+				got[r.ID] = r.Title
+			}
+			assert.Equal(t, titles, got)
+
+			for _, role := range []string{service.RoleStudent, ""} {
+				public, err := env.svc.GetProduct(ctx, product.ID, role)
+				require.NoError(t, err)
+				assert.Empty(t, public.Relations, "role=%q", role)
+				if kind == "exam" {
+					assert.ElementsMatch(t, ids, public.ExamIDs, "role=%q", role)
+				} else {
+					assert.ElementsMatch(t, ids, public.CourseIDs, "role=%q", role)
+				}
 			}
 		})
 	}

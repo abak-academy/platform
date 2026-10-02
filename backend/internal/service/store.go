@@ -158,6 +158,7 @@ func (s *Service) GetProduct(ctx context.Context, id string, role string) (model
 			}
 		}
 	}
+	withRelations := role != RoleStudent && role != ""
 	if p.Type == "course" {
 		pID, err := parseUUID(p.ID)
 		if err == nil {
@@ -165,6 +166,9 @@ func (s *Service) GetProduct(ctx context.Context, id string, role string) (model
 			if err == nil {
 				for _, c := range courses {
 					p.CourseIDs = append(p.CourseIDs, c.ID.String())
+					if withRelations {
+						p.Relations = append(p.Relations, model.ProductRelation{ID: c.ID.String(), Title: c.Title})
+					}
 				}
 			}
 		}
@@ -176,6 +180,9 @@ func (s *Service) GetProduct(ctx context.Context, id string, role string) (model
 			if err == nil {
 				for _, e := range exams {
 					p.ExamIDs = append(p.ExamIDs, e.ID.String())
+					if withRelations {
+						p.Relations = append(p.Relations, model.ProductRelation{ID: e.ID.String(), Title: e.Title})
+					}
 				}
 			}
 		}
