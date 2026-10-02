@@ -98,6 +98,12 @@ func TestExamFormatPolicy_QuestionMaterialRoundTrip(t *testing.T) {
 	require.NotNil(t, questions[0].Question.MaterialHTML)
 	require.Equal(t, material, *questions[0].Question.MaterialHTML)
 
+	bank, _, err := repo.ListBankQuestions(ctx, QuestionFilter{Search: q.ID.String()})
+	require.NoError(t, err)
+	require.Len(t, bank, 1)
+	require.NotNil(t, bank[0].Question.MaterialHTML)
+	require.Equal(t, material, *bank[0].Question.MaterialHTML)
+
 	updatedMaterial := "<p>revised " + uuid.NewString() + "</p>"
 	q.MaterialHTML = &updatedMaterial
 	tx2, err := pool.Begin(ctx)

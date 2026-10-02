@@ -852,7 +852,7 @@ func (r *Repository) ListBankQuestions(ctx context.Context, filter QuestionFilte
 		filter.Limit = 20
 	}
 
-	query := `SELECT q.id, q.question_number, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0), ` +
+	query := `SELECT q.id, q.question_number, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.material_html, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0), ` +
 		questionInLiveExamSQL("q.id") + ` AS in_live_exam
 FROM question q
 LEFT JOIN exam_topic et ON et.id = q.topic_id
@@ -888,11 +888,11 @@ WHERE 1=1`
 		q := model.Question{}
 		var attachedCount int
 		var inLiveExam bool
-		var correctAnswer, explanation, difficulty, imageURL, audioURL, topic *string
+		var correctAnswer, explanation, difficulty, imageURL, audioURL, materialHTML, topic *string
 		var topicID *uuid.UUID
 		if err := rows.Scan(
 			&q.ID, &q.QuestionNumber, &q.Format, &q.Body,
-			&correctAnswer, &explanation, &difficulty, &imageURL, &audioURL,
+			&correctAnswer, &explanation, &difficulty, &imageURL, &audioURL, &materialHTML,
 			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &attachedCount, &inLiveExam,
 		); err != nil {
 			return nil, "", err
@@ -912,6 +912,7 @@ WHERE 1=1`
 		if audioURL != nil {
 			q.AudioURL = audioURL
 		}
+		q.MaterialHTML = materialHTML
 		if topicID != nil {
 			q.TopicID = topicID
 		}

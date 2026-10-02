@@ -589,16 +589,30 @@ func TestExam_AdminUpdateQuestion_keeps_material_html_when_omitted(t *testing.T)
 	qID := created["id"].(string)
 	require.Equal(t, "<p>shared passage</p>", created["material_html"], "create must store material_html")
 
+	assertBankMaterial := func(want any) {
+		t.Helper()
+		resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions?search="+qID, nil, token)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+		rows := out["data"].([]any)
+		require.Len(t, rows, 1)
+		question := rows[0].(map[string]any)["question"].(map[string]any)
+		require.Equal(t, qID, question["id"])
+		assert.Equal(t, want, question["material_html"])
+	}
+	assertBankMaterial("<p>shared passage</p>")
+
 	updateResp, updateOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/questions/"+qID,
 		map[string]any{"format": "essay", "body": "explain gravity again", "sort_order": 1}, token)
 	require.Equal(t, http.StatusOK, updateResp.StatusCode, "body=%v", updateOut)
 	updated := updateOut["question"].(map[string]any)
 	assert.Equal(t, "<p>shared passage</p>", updated["material_html"], "omitted material_html must preserve the stored value")
+	assertBankMaterial("<p>shared passage</p>")
 
 	clearResp, clearOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/questions/"+qID,
 		map[string]any{"format": "essay", "body": "explain gravity again", "sort_order": 1, "material_html": nil}, token)
 	require.Equal(t, http.StatusOK, clearResp.StatusCode, "body=%v", clearOut)
 	assert.Nil(t, clearOut["question"].(map[string]any)["material_html"], "explicit null must clear it")
+	assertBankMaterial(nil)
 }
 
 // Task 6 relaxed the old "attached to any test" refusal: a question attached
