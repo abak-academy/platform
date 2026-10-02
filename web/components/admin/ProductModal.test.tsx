@@ -171,7 +171,7 @@ describe("ProductModal", () => {
   // --- edit mode ---
 
   it("shows read-only course_ids from detail in edit mode", () => {
-    detailState.data = { id: "p1", type: "course", name: "Detail", price: 150000, status: "published", course_ids: ["c1"] };
+    detailState.data = { id: "p1", type: "course", name: "Detail", price: 150000, status: "published", course_ids: ["c1"], relations: [{ id: "c1", title: "Fisika Dasar" }] };
     const product: Product = {
       id: "p1",
       type: "course",
@@ -192,12 +192,9 @@ describe("ProductModal", () => {
 
     expect(screen.getByDisplayValue("Kursus IPA")).toBeInTheDocument();
 
-    const fisikaCheckbox = screen.getByText("Fisika Dasar").closest("label")!.querySelector("input[type=checkbox]")!;
-    expect(fisikaCheckbox).toBeChecked();
-    expect(fisikaCheckbox).toBeDisabled();
-
-    const matematikaCheckbox = screen.getByText("Matematika Lanjut").closest("label")!.querySelector("input[type=checkbox]")!;
-    expect(matematikaCheckbox).not.toBeChecked();
+    expect(screen.getByText("Fisika Dasar")).toBeInTheDocument();
+    expect(screen.queryByText("Matematika Lanjut")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
   it("excludes all relation keys from update payload for course type", async () => {
@@ -362,6 +359,7 @@ describe("ProductModal", () => {
   });
 
   it("shows read-only exam_ids from detail in edit mode", () => {
+    detailState.data = { ...detailState.data!, relations: [{ id: "e1", title: "UTBK 2026" }] };
     const product: Product = {
       id: "p1",
       type: "exam",
@@ -380,12 +378,9 @@ describe("ProductModal", () => {
       />
     );
 
-    const utbkCheckbox = screen.getByText("UTBK 2026").closest("label")!.querySelector("input[type=checkbox]")!;
-    expect(utbkCheckbox).toBeChecked();
-    expect(utbkCheckbox).toBeDisabled();
-
-    const tryoutCheckbox = screen.getByText("Tryout SNBT").closest("label")!.querySelector("input[type=checkbox]")!;
-    expect(tryoutCheckbox).not.toBeChecked();
+    expect(screen.getByText("UTBK 2026")).toBeInTheDocument();
+    expect(screen.queryByText("Tryout SNBT")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
   it("excludes all relation keys from update payload for exam type", async () => {
@@ -778,29 +773,31 @@ describe("ProductModal", () => {
   it("changes exam relations separately as super_admin and refreshes detail", async () => {
     mockRole = "super_admin";
     mockChangeRelations.mockImplementation(async ({ input }) => {
-      detailState.data = { ...detailState.data!, exam_ids: input.exam_ids };
+      detailState.data = { ...detailState.data!, exam_ids: input.exam_ids, relations: sampleExams.filter((e) => input.exam_ids.includes(e.id)) };
       return detailState.data;
     });
+    detailState.data = { ...detailState.data!, relations: [sampleExams[0]] };
     render(<ProductModal open onOpenChange={mockOnOpenChange} product={{ id: "p1", type: "exam", name: "Exam", price: 1000, status: "published" }} onSubmit={mockOnSubmit} isPending={false} />);
     expect(mockUseAdminProduct).toHaveBeenCalledWith("p1", true);
     fireEvent.click(screen.getByRole("button", { name: "Ubah relasi" }));
     expect(screen.getByLabelText("UTBK 2026")).toBeEnabled();
     fireEvent.click(screen.getByLabelText("Tryout SNBT"));
     fireEvent.click(screen.getByRole("button", { name: "Simpan relasi" }));
-    await waitFor(() => expect(screen.getByLabelText("UTBK 2026")).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Ubah relasi" })).toBeInTheDocument());
     expect(mockChangeRelations).toHaveBeenCalledWith({ id: "p1", input: { exam_ids: ["e1", "e2"] } });
-    expect(screen.getByLabelText("Tryout SNBT")).toBeChecked();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.getByText("Tryout SNBT")).toBeInTheDocument();
     expect(mockOnSubmit).not.toHaveBeenCalled();
   });
 
   it("reuses exam search when changing relations and keeps targets beyond the current results", async () => {
     mockRole = "super_admin";
-    detailState.data = { ...detailState.data!, exam_ids: ["e1", "e-other-page"] };
+    detailState.data = { ...detailState.data!, exam_ids: ["e1", "e-other-page"], relations: [{ id: "e1", title: "UTBK 2026" }, { id: "e-other-page", title: "Ujian Halaman Lain" }] };
     mockUseExams.mockImplementation((filter?: { q?: string }) => filter?.q === "snbt" ? { data: { data: [sampleExams[1]] } } : examsState);
     render(<ProductModal open onOpenChange={mockOnOpenChange} product={{ id: "p1", type: "exam", name: "Exam", price: 1000, status: "published" }} onSubmit={mockOnSubmit} isPending={false} />);
-    expect(screen.getByLabelText("e-other-page")).toBeChecked();
-    expect(screen.getByLabelText("e-other-page")).toBeDisabled();
+    expect(screen.getByText("Ujian Halaman Lain")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Ubah relasi" }));
+    expect(screen.getByLabelText("Ujian Halaman Lain")).toBeChecked();
     fireEvent.change(screen.getByPlaceholderText("Cari ujian..."), { target: { value: "snbt" } });
     await waitFor(() => expect(screen.queryByLabelText("UTBK 2026")).not.toBeInTheDocument());
     fireEvent.click(screen.getByLabelText("Tryout SNBT"));
@@ -835,14 +832,14 @@ describe("ProductModal", () => {
 
   it("changes course relations separately and can cancel an unsubmitted selection", async () => {
     mockRole = "super_admin";
-    detailState.data = { id: "p1", type: "course", name: "Course", price: 1000, status: "published", course_ids: ["c1"] };
+    detailState.data = { id: "p1", type: "course", name: "Course", price: 1000, status: "published", course_ids: ["c1"], relations: [{ id: "c1", title: "Fisika Dasar" }] };
     render(<ProductModal open onOpenChange={mockOnOpenChange} product={detailState.data} onSubmit={mockOnSubmit} isPending={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Ubah relasi" }));
     fireEvent.click(screen.getByLabelText("Fisika Dasar"));
     expect(screen.getByRole("button", { name: "Simpan relasi" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Batal ubah relasi" }));
-    expect(screen.getByLabelText("Fisika Dasar")).toBeChecked();
-    expect(screen.getByLabelText("Fisika Dasar")).toBeDisabled();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.getByText("Fisika Dasar")).toBeInTheDocument();
     expect(mockChangeRelations).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Ubah relasi" }));
     fireEvent.click(screen.getByLabelText("Matematika Lanjut"));
@@ -850,6 +847,46 @@ describe("ProductModal", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Ubah relasi" })).toBeInTheDocument());
     expect(mockChangeRelations).toHaveBeenCalledWith({ id: "p1", input: { course_ids: ["c1", "c2"] } });
     expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+
+  describe("linked items", () => {
+    const uuid = "29ccb3e4-a46e-4f1e-9d57-1c2b3a4d5e6f";
+    const examProduct = { id: "p1", type: "exam" as const, name: "Exam", price: 1000, status: "published" as const };
+    const before = (a: HTMLElement, b: HTMLElement) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+    it("lists linked titles, never ids, even when the item is outside the search results", () => {
+      detailState.data = { ...detailState.data!, exam_ids: ["e1", uuid, "e-untitled"], relations: [{ id: "e1", title: "UTBK 2026" }, { id: uuid, title: "Ujian Halaman Lain" }, { id: "e-untitled", title: "" }] };
+      render(<ProductModal open onOpenChange={mockOnOpenChange} product={examProduct} onSubmit={mockOnSubmit} isPending={false} />);
+      expect(screen.getByText("UTBK 2026")).toBeInTheDocument();
+      expect(screen.getByText("Ujian Halaman Lain")).toBeInTheDocument();
+      expect(screen.queryByText(new RegExp(uuid.slice(0, 8)))).not.toBeInTheDocument();
+      expect(screen.queryByText("e-untitled")).not.toBeInTheDocument();
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    });
+
+    it("resolves a selected linked title from the detail when changing relations", () => {
+      mockRole = "super_admin";
+      detailState.data = { ...detailState.data!, exam_ids: ["e1", uuid], relations: [{ id: "e1", title: "UTBK 2026" }, { id: uuid, title: "Ujian Halaman Lain" }] };
+      render(<ProductModal open onOpenChange={mockOnOpenChange} product={examProduct} onSubmit={mockOnSubmit} isPending={false} />);
+      fireEvent.click(screen.getByRole("button", { name: "Ubah relasi" }));
+      expect(screen.getByLabelText("Ujian Halaman Lain")).toBeChecked();
+      expect(screen.queryByText(new RegExp(uuid.slice(0, 8)))).not.toBeInTheDocument();
+    });
+
+    it("places the relations section right after Produk, before the image section, when creating", () => {
+      render(<ProductModal open onOpenChange={mockOnOpenChange} onSubmit={mockOnSubmit} isPending={false} />);
+      fireEvent.change(screen.getByLabelText("Jenis"), { target: { value: "exam" } });
+      const heading = screen.getByRole("heading", { name: "Ujian terkait" });
+      expect(before(screen.getByRole("heading", { name: /^produk$/i }), heading)).toBe(true);
+      expect(before(heading, screen.getByRole("heading", { name: "Gambar produk" }))).toBe(true);
+    });
+
+    it.each([["exam", "Ujian terkait"], ["course", "Kursus terkait"]] as const)("places the %s relations section before the image section when editing", (type, title) => {
+      detailState.data = { ...detailState.data!, type };
+      render(<ProductModal open onOpenChange={mockOnOpenChange} product={{ ...examProduct, type }} onSubmit={mockOnSubmit} isPending={false} />);
+      expect(before(screen.getByRole("heading", { name: title }), screen.getByRole("heading", { name: "Gambar produk" }))).toBe(true);
+    });
   });
 
 });
