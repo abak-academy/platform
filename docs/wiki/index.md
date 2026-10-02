@@ -23,7 +23,7 @@ Current truth about this system: how it is built, the business rules it enforces
 
 ## Decisions
 
-- [Composable exam format](decisions/composable-exam-format.md) — why the runtime switches on `format_version`, what the design doc's policy set was trimmed to, and the deferred work
+- [Composable exam format](decisions/composable-exam-format.md) — why `format_version` was chosen, what the design doc's policy set was trimmed to, and the deferred work
 - [Block browser machine translation](decisions/block-browser-translation.md) — site-wide `translate="no"` and shape-stable exam controls, after Google Translate crashed the last exam question (#199)
 
 ## Architecture

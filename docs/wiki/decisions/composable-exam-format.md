@@ -1,7 +1,7 @@
 ---
 title: Composable exam format — explicit section configuration instead of named modes
-updated: 2026-10-01
-verified_against: 57b2fd87
+updated: 2026-10-02
+verified_against: 6ebe3dc6
 ---
 
 Why the exam runtime stops branching on `exam.mode` and what was deliberately left out of `docs/backlog/exam-format-system-design.md`. Behaviour lives in [[exam-lifecycle-and-scoring]]; the implementation contract for the first slice is `docs/specs/composable-exam-format.md`.
@@ -13,7 +13,7 @@ Why the exam runtime stops branching on `exam.mode` and what was deliberately le
 ## Decisions
 
 1. **Runtime path is an explicit `exam.format_version` (1 legacy, 2 composable), not an adapter over every exam.** An adapter would move all legacy exams onto one runtime and make rollback a data write; a version flag keeps legacy behaviour byte-identical and makes rollback a value flip. Cost: two paths until the legacy path is retired.
-2. **No per-attempt policy snapshot; edit safety instead.** Once a format-2 exam has any session, `navigation_policy`, `randomize`, and the attached-test list are rejected, so a running attempt cannot be re-configured; while only registrations exist the change is allowed and audit-logged. A snapshot table would have been state that duplicates what the edit block already guarantees.
+2. **No per-attempt policy snapshot; edit safety instead.** Once a format-2 exam has any session, changes to `navigation_policy`, `randomize`, and the attached-test list are rejected; while only registrations exist the change is allowed and audit-logged. This avoids a snapshot table but accepts a race between the pre-write check and a concurrent session start, as recorded in the spec.
 3. **Section presentation lives on `exam_test`; duration stays on `test`.** Presentation is per attachment (the same Test can be shown differently in two exams), while duration is a property of the Test itself — the product decision is that attaching a Test adopts its duration, so no per-attachment duration column exists.
 4. **No `timer_scope` column.** `exam.timer_mode` (`overall | per_test`) plus `duration_minutes` already expresses exam timer, section timer, and no timer.
 5. **Randomization is derived, not stored.** A deterministic permutation seeded by `(session_id, test_id)` gives per-attempt stability without a stored order; dropping the seed is only safe because the seed is a pure function of ids that never change mid-attempt.
@@ -21,6 +21,8 @@ Why the exam runtime stops branching on `exam.mode` and what was deliberately le
 7. **`section_transition_policy` and `result_grouping` deferred** until a real requirement (a second transition mode, or grouped results/export) needs them.
 
 ## Consequences
+
+- Slice 1 implements persistence, publish validation, edit safety and deterministic ordering. Session timing and transitions still consult `exam.mode`; the mode-independent runtime and material renderer belong to PR-2 before the create path can switch to format 2.
 
 - Publish for format 2 runs a format matrix (`validateComposablePublishSections`) and never consults `mode` or `test.section_type`; format 1 keeps the FR-19 gate.
 - Question material is machine-detectable (`material_html` / `image_url` / `audio_url`), which is what lets `all_on_page` refuse to silently drop authored content.
