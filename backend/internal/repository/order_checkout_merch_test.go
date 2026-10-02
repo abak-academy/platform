@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,7 +23,7 @@ func TestCheckoutOrder_MerchandiseStockEnforcedAndDecremented(t *testing.T) {
 	orderID := seedMerchOrderRow(t, pool, prodID, 2)
 	tx, err := repo.BeginTx(ctx)
 	require.NoError(t, err)
-	require.NoError(t, repo.CheckoutOrder(ctx, tx, orderID))
+	require.NoError(t, repo.CheckoutOrder(ctx, tx, orderID, time.Hour))
 	require.NoError(t, tx.Commit(ctx))
 	require.Equal(t, 3, merchStock(t, pool, prodID), "merchandise stock must decrement by qty")
 
@@ -31,7 +32,7 @@ func TestCheckoutOrder_MerchandiseStockEnforcedAndDecremented(t *testing.T) {
 	orderID2 := seedMerchOrderRow(t, pool, prodID2, 3)
 	tx2, err := repo.BeginTx(ctx)
 	require.NoError(t, err)
-	err = repo.CheckoutOrder(ctx, tx2, orderID2)
+	err = repo.CheckoutOrder(ctx, tx2, orderID2, time.Hour)
 	require.ErrorIs(t, err, ErrInsufficientStock)
 	_ = tx2.Rollback(ctx)
 	require.Equal(t, 1, merchStock(t, pool, prodID2), "stock must be unchanged after an insufficient-stock checkout")
@@ -46,7 +47,7 @@ func TestCheckoutOrder_MedalStockEnforcedAndDecremented(t *testing.T) {
 	orderID := seedPhysicalOrderRow(t, pool, prodID, "medal", 2)
 	tx, err := repo.BeginTx(ctx)
 	require.NoError(t, err)
-	require.NoError(t, repo.CheckoutOrder(ctx, tx, orderID))
+	require.NoError(t, repo.CheckoutOrder(ctx, tx, orderID, time.Hour))
 	require.NoError(t, tx.Commit(ctx))
 	require.Equal(t, 3, merchStock(t, pool, prodID))
 }

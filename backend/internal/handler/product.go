@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -162,15 +163,18 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 		Stock          int                  `json:"stock"`
 		WeightGrams    *int                 `json:"weight_grams"`
 		ImageURL       *string              `json:"image_url"`
-		Specs          *[]model.ProductSpec `json:"specs"`  // pointer: absent preserves existing specs, present replaces them
-		Status         Nullable[string]     `json:"status"` // published ↔ hidden visibility flip only; absent preserves existing
+		Specs          *[]model.ProductSpec `json:"specs"`          // pointer: absent preserves existing specs, present replaces them
+		Status         Nullable[string]     `json:"status"`         // published ↔ hidden visibility flip only; absent preserves existing
 		AvailableFrom  Nullable[time.Time]  `json:"available_from"` // absent preserves; null clears; value sets
 		AvailableUntil Nullable[time.Time]  `json:"available_until"`
-		CourseIDs      []string             `json:"course_ids"`
-		ExamIDs        []string             `json:"exam_ids"`
+		CourseIDs      Nullable[[]string]   `json:"course_ids"`
+		ExamIDs        Nullable[[]string]   `json:"exam_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
+	}
+	if req.CourseIDs.Valid || req.ExamIDs.Valid {
+		return mapProductRelationsError(c, service.ErrValidation)
 	}
 	if req.Specs != nil {
 		if err := service.ValidateSpecs(*req.Specs); err != nil {
@@ -229,21 +233,47 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 		p.AvailableUntil = &v
 	}
 
-	var product model.Product
-	var err error
-	switch {
-	case req.CourseIDs != nil:
-		product, err = h.svc.UpdateProductWithCourses(c.Request().Context(), id, p, req.CourseIDs, role)
-	case req.ExamIDs != nil:
-		product, err = h.svc.UpdateProductWithExams(c.Request().Context(), id, p, req.ExamIDs, role)
-	default:
-		product, err = h.svc.UpdateProduct(c.Request().Context(), id, p, role)
-	}
+	product, err := h.svc.UpdateProduct(c.Request().Context(), id, p, role)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 
 	return c.JSON(http.StatusOK, product)
+}
+
+func (h *Handler) AdminUpdateProductRelations(c echo.Context) error {
+	var req struct {
+		ExamIDs   Nullable[[]string] `json:"exam_ids"`
+		CourseIDs Nullable[[]string] `json:"course_ids"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	claims, _ := c.Get("claims").(*infra.Claims)
+	role := ""
+	if claims != nil {
+		role = claims.Role
+	}
+	var examIDs, courseIDs []string
+	if req.ExamIDs.Set {
+		examIDs = append([]string{}, req.ExamIDs.Value...)
+	}
+	if req.CourseIDs.Set {
+		courseIDs = append([]string{}, req.CourseIDs.Value...)
+	}
+	product, err := h.svc.UpdateProductRelations(c.Request().Context(), c.Param("id"), examIDs, courseIDs, role)
+	if err != nil {
+		return mapProductRelationsError(c, err)
+	}
+	return c.JSON(http.StatusOK, product)
+}
+
+func mapProductRelationsError(c echo.Context, err error) error {
+	// Relation validation requires 400 while other endpoints retain the existing 422 mapping.
+	if errors.Is(err, service.ErrValidation) {
+		return c.JSON(http.StatusBadRequest, APIError{Code: "validation_failed", Message: err.Error()})
+	}
+	return mapServiceError(c, err)
 }
 
 func (h *Handler) AdminPublishProduct(c echo.Context) error {

@@ -19,11 +19,12 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 export const metadata: Metadata = {
   title: "Abak Academy",
   description: "Tingkatkan Skills Bersama Abak Academy",
+  other: { google: "notranslate" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="id">
+    <html lang="id" translate="no">
       <body
         className={`${publicSans.variable} ${sourceSerif.variable} ${splineMono.variable} ${cinzel.variable} ${inter.variable} antialiased`}
       >

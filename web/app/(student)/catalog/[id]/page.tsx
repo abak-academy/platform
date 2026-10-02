@@ -14,6 +14,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import { ApiError, fileUrl } from "@/lib/api";
+import { digitalConflictMessage } from "@/lib/digital-conflict";
 import { missingExamBiodataFields, type ExamBiodataField } from "@/lib/profile";
 import type { ProductType } from "@/lib/types";
 import { isDigitalType, isPhysicalType } from "@/lib/shipping";
@@ -111,7 +112,9 @@ export default function ProductDetailPage({
           thenRoute?.();
         },
         onError: (err) => {
-          const msg = err instanceof ApiError ? err.message : t("product_add_failed_desc");
+          const msg =
+            digitalConflictMessage(err, t) ??
+            (err instanceof ApiError ? err.message : t("product_add_failed_desc"));
           toast.error(t("product_add_failed_title"), { description: msg });
         },
       },

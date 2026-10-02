@@ -14,11 +14,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAdminCourses } from "@/lib/hooks/admin-courses";
 import { useExams } from "@/lib/hooks/admin-exams";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { usePresignUpload } from "@/lib/hooks/students";
-import { fileUrl } from "@/lib/api";
+import { ApiError, fileUrl } from "@/lib/api";
 import { ProductSpecsEditor } from "@/components/admin/ProductSpecsEditor";
-import type { Product, ProductType, ProductStatus, ProductSpec, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
+import type { Product, ProductType, ProductStatus, ProductSpec, ProductRelation, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 import { useResolvedRole } from "@/lib/hooks/use-capability";
+import { useAdminProduct, useUpdateProductRelations } from "@/lib/hooks/admin-products";
+import { useTranslation } from "@/lib/i18n";
 import { writableProductTypes } from "@/lib/product-types";
 
 interface ProductModalProps {
@@ -66,6 +69,11 @@ function fromLocalInput(v: string): string | null {
 export function ProductModal({ open, onOpenChange, product, onSubmit, isPending }: ProductModalProps) {
   const isEdit = Boolean(product);
   const { role } = useResolvedRole();
+  const { t } = useTranslation();
+  const detail = useAdminProduct(product?.id, open);
+  const relations = useUpdateProductRelations();
+  const [editingRelations, setEditingRelations] = useState(false);
+  const [relationError, setRelationError] = useState<string | null>(null);
   const productTypes = writableProductTypes(role);
   const [name, setName] = useState("");
   const [type, setType] = useState<ProductType | "">("");
@@ -82,13 +90,18 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const [availableUntil, setAvailableUntil] = useState("");
   const [specs, setSpecs] = useState<ProductSpec[]>([]);
   const { data: courses } = useAdminCourses();
-  const { data: examsResp } = useExams();
+  const [examSearch, setExamSearch] = useState("");
+  const examQ = useDebouncedValue(examSearch).trim();
+  const { data: examsResp } = useExams(examQ ? { q: examQ } : undefined);
   const presign = usePresignUpload();
   const imageInputRef = useRef<HTMLInputElement>(null);
   const exams = examsResp?.data ?? [];
 
   useEffect(() => {
     if (open) {
+      setExamSearch("");
+      setEditingRelations(false);
+      setRelationError(null);
       if (product) {
         setName(product.name ?? "");
         setType(product.type ?? "");
@@ -98,8 +111,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setImageUrl(product.image_url ?? "");
         setStatus(product.status ?? "draft");
         setDescription(product.description ?? "");
-        setCourseIds(product.course_ids ?? []);
-        setExamIds(product.exam_ids ?? []);
+        setCourseIds([]);
+        setExamIds([]);
         setAvailableFrom(toLocalInput(product.available_from));
         setAvailableUntil(toLocalInput(product.available_until));
         setSpecs(product.specs ?? []);
@@ -120,6 +133,13 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       }
     }
   }, [open, product]);
+
+  useEffect(() => {
+    if (open && isEdit && !editingRelations) {
+      setCourseIds(detail.data?.course_ids ?? []);
+      setExamIds(detail.data?.exam_ids ?? []);
+    }
+  }, [open, isEdit, editingRelations, detail.data]);
 
   const showStock = type === "book" || type === "merchandise" || type === "medal";
 
@@ -150,12 +170,12 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
     name.trim() !== "" &&
     (isEdit || type !== "") &&
     price !== "" &&
-    (!showCourses || courseIds.length > 0) &&
-    (!showExams || examIds.length > 0);
+    (isEdit || !showCourses || courseIds.length > 0) &&
+    (isEdit || !showExams || examIds.length > 0);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit || isPending) return;
+    if (!canSubmit || isPending || editingRelations || relations.isPending) return;
 
     const base = {
       name: name.trim(),
@@ -175,8 +195,6 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         ...(showStock && weight !== "" ? { weight_grams: Number(weight) } : {}),
         ...(imageUrl !== "" ? { image_url: imageUrl } : {}),
         specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
-        ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
-        ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
       };
       onSubmit(input);
       return;
@@ -196,6 +214,37 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
     };
     onSubmit(input);
+  }
+
+  const readOnlyRelations = isEdit && !editingRelations;
+  const relationInputsDisabled = isPending || relations.isPending;
+  const linked = detail.data?.relations ?? [];
+  const linkedTitles = linked.map((r) => r.title).filter((title) => title !== "");
+  const withLinked = (items: ProductRelation[], searching: boolean) => {
+    if (!editingRelations) return items;
+    const resolved = items.map((i) => linked.find((r) => r.id === i.id) ?? i);
+    return searching ? resolved : [...linked, ...resolved.filter((i) => !linked.some((r) => r.id === i.id))];
+  };
+  const displayedExams = withLinked(exams, examQ !== "");
+  const displayedCourses = withLinked(courses ?? [], false);
+
+  async function handleRelationChange() {
+    if (!product || role !== "super_admin" || !editingRelations || relations.isPending) return;
+    setRelationError(null);
+    try {
+      await relations.mutateAsync({
+        id: product.id,
+        input: showExams ? { exam_ids: examIds } : { course_ids: courseIds },
+      });
+      setExamSearch("");
+      setEditingRelations(false);
+    } catch (err) {
+      setRelationError(t(
+        err instanceof ApiError && err.status === 409
+          ? "product_relations_locked"
+          : "product_relations_failed"
+      ));
+    }
   }
 
   return (
@@ -278,6 +327,135 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
               )}
             </Section>
 
+            {isEdit && (showCourses || showExams) && detail.isPending && <p>{t("product_relations_loading")}</p>}
+            {isEdit && (showCourses || showExams) && detail.isError && (
+              <div role="alert">
+                <p>{t("product_relations_load_failed")}</p>
+                <Button type="button" variant="outline" onClick={() => detail.refetch()}>{t("product_relations_retry")}</Button>
+              </div>
+            )}
+
+            {showCourses && (!isEdit || detail.data) && (
+              <Section title="Kursus terkait">
+                {readOnlyRelations ? (
+                  <LinkedTitles titles={linkedTitles} empty="Belum ada kursus." />
+                ) : (
+                  <div className="max-h-40 overflow-y-auto rounded-md border border-input p-2">
+                    {displayedCourses.length === 0 ? (
+                      <p className="px-1 py-2 text-sm text-muted-foreground">Belum ada kursus.</p>
+                    ) : (
+                      displayedCourses.map((c) => {
+                        const checked = courseIds.includes(c.id);
+                        return (
+                          <label key={c.id} className="flex items-center gap-2 px-1 py-1.5 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={relationInputsDisabled}
+                              onChange={(e) =>
+                                setCourseIds((prev) =>
+                                  e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id)
+                                )
+                              }
+                            />
+                            <span>{c.title}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </Section>
+            )}
+
+            {showExams && (!isEdit || detail.data) && (
+              <Section title="Ujian terkait">
+                {!readOnlyRelations && (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      disabled={isPending || relations.isPending}
+                      value={examSearch}
+                      onChange={(e) => setExamSearch(e.target.value)}
+                      placeholder="Cari ujian..."
+                      aria-label="Cari ujian"
+                    />
+                    {(!isEdit || editingRelations) && (
+                      <span className="shrink-0 text-xs text-muted-foreground">{examIds.length} dipilih</span>
+                    )}
+                  </div>
+                )}
+                {readOnlyRelations ? (
+                  <LinkedTitles titles={linkedTitles} empty="Belum ada ujian." />
+                ) : (
+                  <div className="max-h-40 overflow-y-auto rounded-md border border-input p-2">
+                    {displayedExams.length === 0 ? (
+                      <p className="px-1 py-2 text-sm text-muted-foreground">Belum ada ujian.</p>
+                    ) : (
+                      displayedExams.map((e) => {
+                        const checked = examIds.includes(e.id);
+                        return (
+                          <label key={e.id} className="flex items-center gap-2 px-1 py-1.5 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={relationInputsDisabled}
+                              onChange={(ev) =>
+                                setExamIds((prev) =>
+                                  ev.target.checked ? [...prev, e.id] : prev.filter((id) => id !== e.id)
+                                )
+                              }
+                            />
+                            <span>{e.title}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </Section>
+            )}
+
+            {isEdit && (showCourses || showExams) && role === "super_admin" && detail.data && !detail.isError && (
+              <div className="flex flex-wrap gap-2">
+                {editingRelations ? (
+                  <>
+                    <Button
+                      type="button"
+                      onClick={handleRelationChange}
+                      disabled={isPending || relations.isPending || (showExams ? examIds.length === 0 : courseIds.length === 0)}
+                    >
+                      {t("product_relations_save")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={relations.isPending}
+                      onClick={() => {
+                        setEditingRelations(false);
+                        setRelationError(null);
+                        setExamSearch("");
+                      }}
+                    >
+                      {t("product_relations_cancel")}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isPending}
+                    onClick={() => {
+                      setEditingRelations(true);
+                      setRelationError(null);
+                    }}
+                  >
+                    {t("product_relations_change")}
+                  </Button>
+                )}
+              </div>
+            )}
+            {relationError && <p role="alert" className="text-sm text-destructive">{relationError}</p>}
+
             {showStock && (
               <Section title="Inventaris & pengiriman">
                 <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
@@ -333,64 +511,6 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                 </div>
               </div>
             </Section>
-
-            {showCourses && (
-              <Section title="Kursus terkait">
-                <div className="max-h-40 overflow-y-auto rounded-md border border-input p-2">
-                  {(courses ?? []).length === 0 ? (
-                    <p className="px-1 py-2 text-sm text-muted-foreground">Belum ada kursus.</p>
-                  ) : (
-                    (courses ?? []).map((c) => {
-                      const checked = courseIds.includes(c.id);
-                      return (
-                        <label key={c.id} className="flex items-center gap-2 px-1 py-1.5 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={isPending}
-                            onChange={(e) =>
-                              setCourseIds((prev) =>
-                                e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id)
-                              )
-                            }
-                          />
-                          <span>{c.title}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </Section>
-            )}
-
-            {showExams && (
-              <Section title="Ujian terkait">
-                <div className="max-h-40 overflow-y-auto rounded-md border border-input p-2">
-                  {exams.length === 0 ? (
-                    <p className="px-1 py-2 text-sm text-muted-foreground">Belum ada ujian.</p>
-                  ) : (
-                    exams.map((e) => {
-                      const checked = examIds.includes(e.id);
-                      return (
-                        <label key={e.id} className="flex items-center gap-2 px-1 py-1.5 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={isPending}
-                            onChange={(ev) =>
-                              setExamIds((prev) =>
-                                ev.target.checked ? [...prev, e.id] : prev.filter((id) => id !== e.id)
-                              )
-                            }
-                          />
-                          <span>{e.title}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </Section>
-            )}
 
             <ProductSpecsEditor type={type as ProductType} value={specs} onChange={setSpecs} />
 
@@ -452,7 +572,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
             >
               Batal
             </Button>
-            <Button type="submit" disabled={!canSubmit || isPending}>
+            <Button type="submit" disabled={!canSubmit || isPending || editingRelations || relations.isPending}>
               {isPending ? "Menyimpan..." : "Simpan"}
             </Button>
           </DialogFooter>
@@ -472,5 +592,16 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       </h3>
       {children}
     </section>
+  );
+}
+
+function LinkedTitles({ titles, empty }: { titles: string[]; empty: string }) {
+  if (titles.length === 0) return <p className="text-sm text-muted-foreground">{empty}</p>;
+  return (
+    <ul className="list-disc space-y-1 pl-5 text-sm">
+      {titles.map((title, i) => (
+        <li key={i}>{title}</li>
+      ))}
+    </ul>
   );
 }

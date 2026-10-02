@@ -512,7 +512,10 @@ func TestCheckout_ConcurrentUpdateItemQtyRace(t *testing.T) {
 	pairs := make([]pair, n)
 	for i := 0; i < n; i++ {
 		studentID := insertCheckoutStudent(t, repo, "Checkout Qty Race Student", "checkoutqtyrace_")
-		productID := insertRaceTestProduct(t, repo, "course", 25000, 0)
+		// The digital line must link a course: checkout refuses a digital
+		// product with no target before it reaches the qty check, so an
+		// unlinked product would decide this race on the wrong error.
+		productID := seedDigitalProduct(t, repo, "course", 25000, seedCourseTarget(t, repo)).String()
 
 		order, _, err := svc.MintCart(ctx, studentID)
 		if err != nil {

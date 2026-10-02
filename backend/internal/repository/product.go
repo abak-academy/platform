@@ -270,18 +270,22 @@ func (r *Repository) UpdateProduct(ctx context.Context, id string, p *model.Prod
 	return err
 }
 
-func (r *Repository) UpdateProductTx(ctx context.Context, tx pgx.Tx, id string, p *model.Product) error {
-	specs, err := marshalSpecs(p.Specs)
-	if err != nil {
-		return err
+func (r *Repository) LockProductType(ctx context.Context, tx pgx.Tx, id string) (string, error) {
+	var productType string
+	err := tx.QueryRow(ctx, `SELECT type FROM product WHERE id = $1 FOR UPDATE`, id).Scan(&productType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
 	}
-	_, err = tx.Exec(ctx,
-		`UPDATE product
-		SET type = $1, name = $2, description = $3, price = $4, stock = $5, status = $6, weight_grams = $7, image_url = $8, specs = $9, available_from = $10, available_until = $11, updated_at = now()
-		WHERE id = $12`,
-		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL, specs, p.AvailableFrom, p.AvailableUntil, id,
-	)
-	return err
+	return productType, err
+}
+
+func (r *Repository) ProductHasLiveOrders(ctx context.Context, tx pgx.Tx, productID uuid.UUID) (bool, error) {
+	var exists bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS (
+			SELECT 1 FROM order_item oi JOIN orders o ON o.id = oi.order_id
+			WHERE oi.product_id = $1 AND `+liveOrderStatusPredicate+`
+		)`, productID).Scan(&exists)
+	return exists, err
 }
 
 func (r *Repository) PublishProduct(ctx context.Context, id string) error {

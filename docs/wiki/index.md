@@ -24,6 +24,7 @@ Current truth about this system: how it is built, the business rules it enforces
 ## Decisions
 
 - [Composable exam format](decisions/composable-exam-format.md) — why the runtime switches on `format_version`, what the design doc's policy set was trimmed to, and the deferred work
+- [Block browser machine translation](decisions/block-browser-translation.md) — site-wide `translate="no"` and shape-stable exam controls, after Google Translate crashed the last exam question (#199)
 
 ## Architecture
 
@@ -37,4 +38,4 @@ Current truth about this system: how it is built, the business rules it enforces
 
 - [Exam lifecycle and scoring](domain/exam-lifecycle-and-scoring.md) — question formats, sanitisation, access, session lifecycle, grading, proctoring
 - [RBAC and accounts](domain/rbac-and-accounts.md) — roles, capabilities, school scope, auth, sessions, passwords, login rate limit
-- [Orders and payments](domain/orders-and-payments.md) — cart, checkout, order statuses, payment webhook, refunds, revenue ledger
+- [Orders and payments](domain/orders-and-payments.md) — cart, checkout, digital purchase guard, order statuses, payment window, payment webhook, refunds, revenue ledger

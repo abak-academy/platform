@@ -31,12 +31,13 @@ type OrderItemMini struct {
 type outboxRepository interface {
 	ClaimOutboxEvents(context.Context, int) ([]model.OutboxEvent, error)
 	MarkOutboxProcessed(context.Context, pgx.Tx, int64) error
-	GetOrderByID(context.Context, uuid.UUID) (model.Order, error)
+	GetOrderByIDForUpdateTx(context.Context, pgx.Tx, uuid.UUID) (model.Order, error)
 	SetOrderStatus(context.Context, pgx.Tx, uuid.UUID, string, string) error
 	CreateCourseSession(context.Context, pgx.Tx, model.CourseSession) error
 	GetCoursesByProductID(context.Context, uuid.UUID) ([]model.Course, error)
 	BeginTx(context.Context) (pgx.Tx, error)
 	GetExpiredPaymentOrders(context.Context, int) ([]uuid.UUID, error)
+	ExpirePaymentOrderTx(context.Context, pgx.Tx, uuid.UUID) (bool, error)
 	GetExamsByProductID(context.Context, uuid.UUID) ([]model.Exam, error)
 	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
 	StampOrderItemFulfilledAt(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
@@ -167,18 +168,38 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 		return
 	}
 
-	order, err := w.repo.GetOrderByID(ctx, payload.OrderID)
-	if err != nil {
-		slog.Error("get order by id", "order_id", payload.OrderID, "err", err)
-		return
-	}
-
 	tx, err := w.repo.BeginTx(ctx)
 	if err != nil {
 		slog.Error("begin tx", "err", err)
 		return
 	}
 	defer tx.Rollback(ctx)
+
+	// The order is read under its row lock inside the fulfilment transaction,
+	// so a refund that commits first is seen here and one that comes later
+	// waits for this commit and then revokes what it granted.
+	order, err := w.repo.GetOrderByIDForUpdateTx(ctx, tx, payload.OrderID)
+	if err != nil {
+		slog.Error("get order by id", "order_id", payload.OrderID, "err", err)
+		return
+	}
+	if order.ID == uuid.Nil {
+		slog.Error("order for OrderPaid event not found", "order_id", payload.OrderID, "event_id", event.ID)
+		return
+	}
+	if order.Status == "cancelled" {
+		// A payment_expired order still grants: it means the sweeper won a race against a settled payment, which #197 closes at the source.
+		slog.Warn("OrderPaid event skipped: order was refunded",
+			"order_id", payload.OrderID, "event_id", event.ID, "status", order.Status)
+		if err := w.repo.MarkOutboxProcessed(ctx, tx, event.ID); err != nil {
+			slog.Error("mark outbox processed", "event_id", event.ID, "err", err)
+			return
+		}
+		if err := tx.Commit(ctx); err != nil {
+			slog.Error("commit tx", "err", err)
+		}
+		return
+	}
 
 	// Provision access for each item; track whether any physical item requires shipping.
 	hasPhysicalItem := false
@@ -256,14 +277,17 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 		}
 	}
 
-	// Digital-only orders complete immediately; physical orders need admin to ship.
-	nextStatus := "completed"
-	if hasPhysicalItem {
-		nextStatus = "processing"
-	}
-	if err := w.repo.SetOrderStatus(ctx, tx, payload.OrderID, nextStatus, ""); err != nil {
-		slog.Error("set order status", "order_id", payload.OrderID, "err", err)
-		return
+	// payment_expired advances too (the sweeper overwrote a settled payment); processing/shipped/completed are never walked back.
+	if order.Status == "paid" || order.Status == "payment_expired" {
+		// Digital-only orders complete immediately; physical orders need admin to ship.
+		nextStatus := "completed"
+		if hasPhysicalItem {
+			nextStatus = "processing"
+		}
+		if err := w.repo.SetOrderStatus(ctx, tx, payload.OrderID, nextStatus, ""); err != nil {
+			slog.Error("set order status", "order_id", payload.OrderID, "err", err)
+			return
+		}
 	}
 
 	// Mark outbox event processed
@@ -288,50 +312,33 @@ func (w *Worker) sweepStalePayments(ctx context.Context) {
 	}
 
 	for _, orderID := range orderIDs {
-		tx, err := w.repo.BeginTx(ctx)
+		expired, err := w.expirePaymentOrder(ctx, orderID)
 		if err != nil {
-			slog.Error("begin tx for sweeper", "err", err)
+			slog.Error("expire payment order", "order_id", orderID, "err", err)
 			continue
 		}
-
-		// Re-check status inside transaction
-		currentOrder, err := w.repo.GetOrderByID(ctx, orderID)
-		if err != nil {
-			slog.Error("get order for recheck", "order_id", orderID, "err", err)
-			tx.Rollback(ctx)
-			continue
+		if expired {
+			slog.Info("stale payment expired", "order_id", orderID)
 		}
-
-		if currentOrder.Status != "payment_pending" {
-			tx.Rollback(ctx)
-			continue
-		}
-
-		// Set order status to payment_expired
-		if err := w.repo.SetOrderStatus(ctx, tx, orderID, "payment_expired", ""); err != nil {
-			slog.Error("set payment expired status", "order_id", orderID, "err", err)
-			tx.Rollback(ctx)
-			continue
-		}
-
-		// Restore stock for each item
-		for _, item := range currentOrder.Items {
-			_, err := tx.Exec(ctx,
-				`UPDATE product SET stock = stock + $1, updated_at = now() WHERE id = $2`,
-				item.Qty, item.ProductID,
-			)
-			if err != nil {
-				slog.Error("restore stock", "order_id", orderID, "product_id", item.ProductID, "err", err)
-				tx.Rollback(ctx)
-				continue
-			}
-		}
-
-		if err := tx.Commit(ctx); err != nil {
-			slog.Error("commit sweeper tx", "order_id", orderID, "err", err)
-			continue
-		}
-
-		slog.Info("stale payment expired", "order_id", orderID)
 	}
+}
+
+// expirePaymentOrder leaves status, deadline and stock to one guarded
+// repository transition, so a webhook or refund that wins the row lock first
+// turns this into a no-op instead of a second restore.
+func (w *Worker) expirePaymentOrder(ctx context.Context, orderID uuid.UUID) (bool, error) {
+	tx, err := w.repo.BeginTx(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	expired, err := w.repo.ExpirePaymentOrderTx(ctx, tx, orderID)
+	if err != nil || !expired {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }

@@ -1113,6 +1113,7 @@ func TestExam_Product_UpdatePriceViaGenericProductEndpoint(t *testing.T) {
 	err := env.pool.QueryRow(ctx, `SELECT price FROM product WHERE id = $1`, productID).Scan(&dbPrice)
 	require.NoError(t, err)
 	assert.Equal(t, int64(50000), dbPrice, "product.price in DB must equal 50000")
+	assert.ElementsMatch(t, []string{examID}, persistedRelations(t, env, productID, "exam"))
 }
 
 func TestExam_Product_PartialPatchOmittingStatus_PreservesStatus(t *testing.T) {
@@ -1147,6 +1148,7 @@ func TestExam_Product_PartialPatchOmittingStatus_PreservesStatus(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(75000), dbPrice, "product.price in DB must equal 75000")
 	assert.Equal(t, "draft", dbStatus, "product.status in DB must remain 'draft'")
+	assert.ElementsMatch(t, []string{examID}, persistedRelations(t, env, productID, "exam"))
 }
 
 func TestExam_Product_PublishViaGenericProductEndpoint(t *testing.T) {

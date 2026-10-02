@@ -277,13 +277,12 @@ func TestRefundOrder_RevokesExamRegistrations(t *testing.T) {
 	_, err := repo.Pool().Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, productID, examID)
 	require.NoError(t, err)
 
-	if _, err := svc.GrantExamAccess(ctx, actorID.String(), examID.String(), []uuid.UUID{buyer, participant}); err != nil {
-		t.Fatalf("GrantExamAccess: %v", err)
-	}
-
 	order, _, err := svc.MintCart(ctx, buyer.String())
 	require.NoError(t, err)
 	require.NoError(t, svc.AddItem(ctx, buyer.String(), order.ID.String(), productID, 1))
+	if _, err := svc.GrantExamAccess(ctx, actorID.String(), examID.String(), []uuid.UUID{buyer, participant}); err != nil {
+		t.Fatalf("GrantExamAccess: %v", err)
+	}
 	_, err = repo.Pool().Exec(ctx,
 		`INSERT INTO order_participant (order_id, student_id) VALUES ($1, $2)`,
 		order.ID, participant,
@@ -316,13 +315,12 @@ func TestRefundOrder_SelfPurchase_RevokesBuyer(t *testing.T) {
 	_, err := repo.Pool().Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, productID, examID)
 	require.NoError(t, err)
 
-	if _, err := svc.GrantExamAccess(ctx, actorID.String(), examID.String(), []uuid.UUID{buyer}); err != nil {
-		t.Fatalf("GrantExamAccess: %v", err)
-	}
-
 	order, _, err := svc.MintCart(ctx, buyer.String())
 	require.NoError(t, err)
 	require.NoError(t, svc.AddItem(ctx, buyer.String(), order.ID.String(), productID, 1))
+	if _, err := svc.GrantExamAccess(ctx, actorID.String(), examID.String(), []uuid.UUID{buyer}); err != nil {
+		t.Fatalf("GrantExamAccess: %v", err)
+	}
 	_, err = repo.Pool().Exec(ctx, `UPDATE orders SET status = 'paid' WHERE id = $1`, order.ID)
 	require.NoError(t, err)
 

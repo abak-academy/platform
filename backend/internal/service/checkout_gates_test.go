@@ -56,6 +56,7 @@ func TestCheckout_FreeOrder_SkipsGateway(t *testing.T) {
 	).Scan(&productID); err != nil {
 		t.Fatalf("create product: %v", err)
 	}
+	linkFreshCourse(t, repo, productID)
 
 	studentID := insertCheckoutStudent(t, repo, "Free Student", "freestu_")
 
@@ -109,6 +110,7 @@ func TestCheckout_FreeOrder_PostCommitCacheFailureStillSucceeds(t *testing.T) {
 	).Scan(&productID); err != nil {
 		t.Fatalf("create product: %v", err)
 	}
+	linkFreshCourse(t, repo, productID)
 
 	studentID := insertCheckoutStudent(t, repo, "Cache Down Student", "cachestu_")
 
@@ -158,6 +160,7 @@ func TestCheckout_FreeOrder_PromoUsageCommitsWithTheOrder(t *testing.T) {
 	).Scan(&productID); err != nil {
 		t.Fatalf("create product: %v", err)
 	}
+	linkFreshCourse(t, repo, productID)
 
 	var promoID string
 	if err := repo.Pool().QueryRow(ctx,
@@ -424,6 +427,7 @@ func TestCheckout_DigitalOnlyCart_NoCourier_Succeeds(t *testing.T) {
 	).Scan(&productID); err != nil {
 		t.Fatalf("create product: %v", err)
 	}
+	linkFreshCourse(t, repo, productID)
 
 	studentID := insertCheckoutStudent(t, repo, "Digital Only Student", "digitalonly_")
 

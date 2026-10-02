@@ -45,7 +45,7 @@ func (m *mockRepository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID 
 	return m.setOrderStatusFn(ctx, tx, orderID, status, reason)
 }
 
-func (m *mockRepository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Order, error) {
+func (m *mockRepository) GetOrderByIDForUpdateTx(ctx context.Context, _ pgx.Tx, id uuid.UUID) (model.Order, error) {
 	return m.getOrderByIDFn(ctx, id)
 }
 
@@ -93,6 +93,10 @@ func (m *mockRepository) GetOrderParticipants(ctx context.Context, orderID uuid.
 	return m.getOrderParticipantsFn(ctx, orderID)
 }
 
+func (m *mockRepository) ExpirePaymentOrderTx(context.Context, pgx.Tx, uuid.UUID) (bool, error) {
+	panic("ExpirePaymentOrderTx runs against Postgres in payment_expiry_db_test.go")
+}
+
 type mockTx struct {
 	commitFn   func(context.Context) error
 	rollbackFn func(context.Context) error
@@ -107,8 +111,8 @@ func (mt *mockTx) Rollback(ctx context.Context) error {
 }
 
 // Minimal implementations of unused Tx methods
-func (mt *mockTx) Begin(ctx context.Context) (pgx.Tx, error)                               { return nil, nil }
-func (mt *mockTx) BeginFunc(ctx context.Context, f func(pgx.Tx) error) error               { return nil }
+func (mt *mockTx) Begin(ctx context.Context) (pgx.Tx, error)                 { return nil, nil }
+func (mt *mockTx) BeginFunc(ctx context.Context, f func(pgx.Tx) error) error { return nil }
 func (mt *mockTx) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
 	return 0, nil
 }
@@ -116,10 +120,12 @@ func (mt *mockTx) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults 
 func (mt *mockTx) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
 	return pgconn.NewCommandTag(""), nil
 }
-func (mt *mockTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) { return nil, nil }
-func (mt *mockTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row        { return nil }
-func (mt *mockTx) Ping(ctx context.Context) error                                        { return nil }
-func (mt *mockTx) Conn() *pgx.Conn                                                       { return nil }
+func (mt *mockTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return nil, nil
+}
+func (mt *mockTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row { return nil }
+func (mt *mockTx) Ping(ctx context.Context) error                                { return nil }
+func (mt *mockTx) Conn() *pgx.Conn                                               { return nil }
 func (mt *mockTx) LargeObjects() pgx.LargeObjects {
 	return pgx.LargeObjects{}
 }
@@ -321,98 +327,6 @@ func TestOrderPaidHandlerIdempotentOnReplay(t *testing.T) {
 	// prevents duplicates; the mock simulates success on both calls.
 	if sessionCallCount != 2 {
 		t.Fatalf("expected 2 CreateCourseSession calls across two polls, got %d", sessionCallCount)
-	}
-}
-
-func TestStalePaymentSweeperUpdatesStatus(t *testing.T) {
-	ctx := context.Background()
-	orderID := uuid.New()
-
-	statusUpdated := false
-
-	repo := &mockRepository{
-		getExpiredPaymentOrdersFn: func(ctx context.Context, limit int) ([]uuid.UUID, error) {
-			return []uuid.UUID{orderID}, nil
-		},
-		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
-			return model.Order{
-				ID:        orderID,
-				Status:    "payment_pending",
-				StudentID: uuid.New(),
-				Items: []model.OrderItem{
-					{
-						ProductID:   uuid.New(),
-						Qty:         2,
-						ProductType: "book",
-					},
-				},
-			}, nil
-		},
-		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
-			if id == orderID && status == "payment_expired" {
-				statusUpdated = true
-			}
-			return nil
-		},
-		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
-			mockTx := &mockTx{
-				commitFn:   func(ctx context.Context) error { return nil },
-				rollbackFn: func(ctx context.Context) error { return nil },
-			}
-			return mockTx, nil
-		},
-	}
-
-	w := &Worker{repo: repo, sweeperInterval: time.Minute}
-	w.sweepStalePayments(ctx)
-
-	if !statusUpdated {
-		t.Error("expected Order status to be updated to payment_expired")
-	}
-}
-
-func TestStalePaymentSweeperIdempotent(t *testing.T) {
-	ctx := context.Background()
-	orderID := uuid.New()
-
-	checkStatusCallCount := 0
-
-	repo := &mockRepository{
-		getExpiredPaymentOrdersFn: func(ctx context.Context, limit int) ([]uuid.UUID, error) {
-			return []uuid.UUID{orderID}, nil
-		},
-		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
-			return model.Order{
-				ID:        orderID,
-				Status:    "payment_pending",
-				StudentID: uuid.New(),
-				Items: []model.OrderItem{
-					{
-						ProductID:   uuid.New(),
-						Qty:         1,
-						ProductType: "book",
-					},
-				},
-			}, nil
-		},
-		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
-			checkStatusCallCount++
-			return nil
-		},
-		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
-			mockTx := &mockTx{
-				commitFn:   func(ctx context.Context) error { return nil },
-				rollbackFn: func(ctx context.Context) error { return nil },
-			}
-			return mockTx, nil
-		},
-	}
-
-	w := &Worker{repo: repo, sweeperInterval: time.Minute}
-	w.sweepStalePayments(ctx)
-
-	if checkStatusCallCount == 0 {
-		t.Error("expected SetOrderStatus to be called at least once")
 	}
 }
 

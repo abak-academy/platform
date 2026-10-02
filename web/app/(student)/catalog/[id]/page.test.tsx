@@ -3,6 +3,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Suspense } from "react";
 import ProductDetailPage from "./page";
+import { ApiError } from "@/lib/api";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -29,8 +30,17 @@ vi.mock("@/lib/hooks/products", () => ({
   }),
 }));
 
+const { addToCartMutate, toastError } = vi.hoisted(() => ({
+  addToCartMutate: vi.fn(),
+  toastError: vi.fn(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { error: toastError, success: vi.fn() },
+}));
+
 vi.mock("@/lib/hooks/orders", () => ({
-  useAddToCart: () => ({ mutate: vi.fn(), isPending: false }),
+  useAddToCart: () => ({ mutate: addToCartMutate, isPending: false }),
   useCart: () => ({ data: { items: [] } }),
 }));
 
@@ -61,6 +71,8 @@ async function renderPage(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  addToCartMutate.mockReset();
+  toastError.mockReset();
   product = { ...BASE_PRODUCT };
   profile = undefined;
 });
@@ -172,6 +184,66 @@ describe("ProductDetailPage", () => {
       await renderPage(); // medal, from BASE_PRODUCT
 
       expect(screen.queryByText(/lengkapi biodata sebelum mendaftar/i)).toBeNull();
+    });
+  });
+  describe("add-to-cart failure", () => {
+    const TARGET = "0b6f7c1e-3a52-4c1d-9d0e-6f1b1f2f7a11";
+
+    function failWith(err: ApiError) {
+      addToCartMutate.mockImplementation((_vars, opts: { onError: (e: unknown) => void }) => opts.onError(err));
+    }
+
+    async function addToCart() {
+      await userEvent.click(screen.getByRole("button", { name: /tambah ke keranjang/i }));
+    }
+
+    it("explains an owned digital target instead of the raw backend text", async () => {
+      failWith(
+        new ApiError("digital_target_conflict", "digital product already owned or being purchased", 409, {
+          details: { conflicts: [{ product_id: "p1", kind: "course", target_id: TARGET, reason: "owned" }] },
+        }),
+      );
+      await renderPage({ id: "course-1", type: "course", name: "Kursus Fisika" });
+
+      await addToCart();
+
+      expect(toastError).toHaveBeenCalledTimes(1);
+      const [, opts] = toastError.mock.calls[0];
+      expect(opts.description).toBe(
+        "Kamu sudah memiliki kursus ini.",
+      );
+      expect(opts.description).not.toContain(TARGET);
+    });
+
+    it("tells the student what to do when another order already claims the target", async () => {
+      failWith(
+        new ApiError("digital_target_conflict", "digital product already owned or being purchased", 409, {
+          details: { conflicts: [{ product_id: "p1", kind: "exam", target_id: TARGET, reason: "claimed" }] },
+        }),
+      );
+      await renderPage({ id: "exam-1", type: "exam", name: "Ujian Try Out" });
+
+      await addToCart();
+
+      expect(toastError.mock.calls[0][1].description).toMatch(/pesanan lain yang belum selesai/i);
+    });
+
+    it("explains an unlinked digital product", async () => {
+      failWith(new ApiError("digital_product_unavailable", "digital product has no targets", 409));
+      await renderPage({ id: "exam-1", type: "exam", name: "Ujian Try Out" });
+
+      await addToCart();
+
+      expect(toastError.mock.calls[0][1].description).toMatch(/belum tersedia.*hubungi admin/i);
+    });
+
+    it("keeps the server message for other API errors", async () => {
+      failWith(new ApiError("invalid_qty", "quantity too high", 400));
+      await renderPage();
+
+      await addToCart();
+
+      expect(toastError.mock.calls[0][1].description).toBe("quantity too high");
     });
   });
 });
