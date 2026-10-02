@@ -81,8 +81,8 @@ func TestBiteshipClient_GetRates_Success(t *testing.T) {
 
 		// Verify couriers parameter
 		couriers := reqBody["couriers"]
-		if couriers == nil || couriers == "" {
-			t.Error("expected couriers parameter to be set")
+		if couriers != "jne,lion" {
+			t.Errorf("expected jne,lion, got %v", couriers)
 		}
 
 		// Return mock response
@@ -117,6 +117,7 @@ func TestBiteshipClient_GetRates_Success(t *testing.T) {
 	req := service.ShippingQuoteRequest{
 		DestinationPostalCode: destPostalCode,
 		WeightGrams:           weightGrams,
+		Couriers:              []string{"jne", "lion"},
 	}
 
 	rates, err := client.GetRates(context.Background(), req)
@@ -384,6 +385,23 @@ func TestBiteshipClient_GetRates_ItemValue(t *testing.T) {
 			}
 			if item["value"] != tt.expectedValue {
 				t.Errorf("expected items[0].value=%v, got %v", tt.expectedValue, item["value"])
+			}
+		})
+	}
+}
+
+func TestBiteshipRequestCouriers(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		couriers []string
+		want     string
+	}{
+		{"selected", []string{"jne", "lion"}, "jne,lion"}, {"empty", nil, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := (&BiteshipClient{}).buildBiteshipRequest("12345", service.ShippingQuoteRequest{Couriers: tt.couriers})
+			if got["couriers"] != tt.want {
+				t.Fatalf("couriers=%v want %q", got["couriers"], tt.want)
 			}
 		})
 	}

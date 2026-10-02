@@ -120,8 +120,8 @@ type twoServiceLogisticsClient struct{}
 
 func (twoServiceLogisticsClient) GetRates(ctx context.Context, req service.ShippingQuoteRequest) ([]service.CourierRate, error) {
 	return []service.CourierRate{
-		{Courier: "JNE", Service: "REG", EstimatedDays: 3, Price: 15000},
-		{Courier: "JNE", Service: "YES", EstimatedDays: 1, Price: 30000},
+		{Courier: "JNE", Service: "REG", EstimatedDays: 3, Price: 15000, CourierCode: "jne", ServiceCode: "reg"},
+		{Courier: "JNE", Service: "YES", EstimatedDays: 1, Price: 30000, CourierCode: "jne", ServiceCode: "yes"},
 	}, nil
 }
 

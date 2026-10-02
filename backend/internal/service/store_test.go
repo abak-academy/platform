@@ -654,7 +654,7 @@ func TestPatchCart_PopulatesItemValueFromPhysicalItemLineTotal(t *testing.T) {
 	ctx := context.Background()
 	_, repo := newRealDBService(t)
 
-	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", CourierCode: "jne", ServiceCode: "reg", Price: 18000}}
 	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, spy, nil, nil, nil)
 
 	var productID string
@@ -1060,7 +1060,7 @@ func TestPatchCart_PromoSurvivesAddressAndCourierPatchesThroughCheckout(t *testi
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", CourierCode: "jne", ServiceCode: "reg", Price: 18000}}
 	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, spy, nil, nil, nil)
 
 	var productID string
@@ -1372,7 +1372,7 @@ func TestCheckout_PhysicalQtyGreaterThanOne_Succeeds(t *testing.T) {
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", CourierCode: "jne", ServiceCode: "reg", Price: 18000}}
 	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, spy, nil, nil, nil)
 
 	var productID string

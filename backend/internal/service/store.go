@@ -460,16 +460,40 @@ func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest
 		return nil, err
 	}
 
-	rates, clientErr := s.logisticsClient().GetRates(ctx, req)
-
+	enabledServices := defaultBiteshipServices
 	var flatRate int64
 	if cfg, cfgErr := s.GetSystemConfig(ctx); cfgErr == nil {
+		if cfg["biteship_services"] != "" {
+			enabledServices = cfg["biteship_services"]
+		}
 		if raw := cfg["shipping_fallback_flat_rate"]; raw != "" {
 			if _, scanErr := fmt.Sscanf(raw, "%d", &flatRate); scanErr != nil {
 				flatRate = 0
 			}
 		}
 	}
+
+	enabled := make(map[string]bool)
+	for _, pair := range strings.Split(enabledServices, ",") {
+		enabled[pair] = true
+	}
+	req.Couriers = nil
+	for _, courier := range biteshipCourierOrder {
+		for _, code := range biteshipServiceCatalog[courier] {
+			if enabled[courier+":"+code] {
+				req.Couriers = append(req.Couriers, courier)
+				break
+			}
+		}
+	}
+	rates, clientErr := s.logisticsClient().GetRates(ctx, req)
+	filtered := make([]CourierRate, 0, len(rates))
+	for _, rate := range rates {
+		if enabled[rate.CourierCode+":"+rate.ServiceCode] {
+			filtered = append(filtered, rate)
+		}
+	}
+	rates = filtered
 
 	resolved, cause, err := resolveShippingRates(rates, clientErr, flatRate)
 	if cause != "" {
