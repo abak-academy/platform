@@ -148,3 +148,14 @@ Test yang harus ada di PR-1: migration up (+ down bila repo memakai pasangan), c
 - Blokir edit adalah pengecekan sebelum penulisan, bukan lock: sesi yang mulai tepat bersamaan dengan penulisan admin masih bisa memakai policy yang baru. Penutupnya butuh row lock saat session start (atau snapshot yang sengaja tidak dipakai di desain ini); perilakunya tetap lebih ketat daripada sebelumnya, ketika perubahan berlaku ke semua attempt yang berjalan.
 - Label section mengikuti `Test.title`, sehingga mengganti title Test juga mengganti label di hasil/monitor.
 - Kombinasi `free` + timer per section tidak didukung; admin harus memilih `sequential`.
+
+## PR-2 delivery contract
+
+PR-2 is stacked on PR #198 at `8040fcb3` and is independently deployable after PR-1. New API-created exams become format 2; existing exams retain format 1. No conversion or legacy-column removal is included.
+
+- Format-2 navigation uses `navigation_policy`: free allows all attached sections; sequential seeds section state and only accepts answers for the active section.
+- Format-2 timers use `timer_mode`: overall expires/submits the whole attempt, including sequential exams; per_test expires/advances the active section using its snapshotted duration. Legacy timing remains unchanged. The current publish contract offers whole-exam or per-section timers; no additional timer option is introduced.
+- Student start, reconnect and advance payloads expose effective format/navigation and section presentation/material. Answer keys remain absent. Question ordering stays stable through these real service paths.
+- Admin configures navigation and presentation and edits reusable Test material/instructions plus Question material. Section saves use rich attachment objects and preserve existing presentation when adding/removing another Test.
+- Student presentation supports all existing answer formats, material precedence, shared instructions, unanswered-count confirmation and the existing save barrier. Format-2 free navigation allows selecting each section without locking answers in other sections.
+- Proof includes table-driven real-DB runtime/timer/compatibility tests, frontend component and material matrix tests, browser coverage, and full backend/frontend gates. Result calculation remains unchanged; conversion and enhanced grouping/retirement are follow-up work.
