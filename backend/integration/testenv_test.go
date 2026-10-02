@@ -17,6 +17,7 @@ import (
 	"akademi-bimbel/config"
 	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/server"
 	"akademi-bimbel/internal/service"
@@ -344,4 +345,41 @@ func (stubLogisticsClient) CancelOrder(context.Context, string, string) error {
 
 func (stubLogisticsClient) GetOrder(context.Context, string) (service.Shipment, error) {
 	return service.Shipment{}, service.ErrShippingUnavailable
+}
+
+func relationProduct(t *testing.T, env *testEnv, kind string) (string, []string) {
+	t.Helper()
+	ctx := context.Background()
+	ids := make([]string, 5)
+	for i := range ids {
+		if kind == "exam" {
+			exam, err := env.svc.CreateExam(ctx, model.Exam{Title: "Relation exam", Mode: "standard"})
+			require.NoError(t, err)
+			ids[i] = exam.ID.String()
+		} else {
+			course, err := env.svc.CreateCourse(ctx, "Relation course", "SMA", "Math", "Instructor", service.RoleSuperAdmin)
+			require.NoError(t, err)
+			ids[i] = course.ID.String()
+		}
+	}
+	p := model.Product{Type: kind, Name: "Original", Price: 1000, Status: "published", WeightGrams: 100, ImageURL: "old.jpg"}
+	var product model.Product
+	var err error
+	if kind == "exam" {
+		product, err = env.svc.CreateProductWithExams(ctx, p, ids[:2], service.RoleSuperAdmin)
+	} else {
+		product, err = env.svc.CreateProductWithCourses(ctx, p, ids[:2], service.RoleSuperAdmin)
+	}
+	require.NoError(t, err)
+	return product.ID, ids
+}
+
+func persistedRelations(t *testing.T, env *testEnv, id, kind string) []string {
+	t.Helper()
+	product, err := env.svc.GetProduct(context.Background(), id, service.RoleSuperAdmin)
+	require.NoError(t, err)
+	if kind == "exam" {
+		return product.ExamIDs
+	}
+	return product.CourseIDs
 }

@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"akademi-bimbel/internal/model"
@@ -240,4 +241,56 @@ func TestUpdateLesson_PreservesPosition_RealRepo(t *testing.T) {
 	require.NoError(t, env.pool.QueryRow(ctx,
 		`SELECT position FROM lesson WHERE id = $1`, l2.ID).Scan(&pos))
 	assert.Equal(t, 1, pos, "persisted position must be preserved")
+}
+
+func TestProductPatch_RelationsRejectedWithoutWrites(t *testing.T) {
+	env := newTestEnv(t)
+	token := authToken(t, env, seedUser(t, env, "super_admin", "active", false), "super_admin")
+	for _, kind := range []string{"exam", "course"} {
+		t.Run(kind, func(t *testing.T) {
+			id, ids := relationProduct(t, env, kind)
+			for _, body := range []map[string]any{
+				{"name": "Changed", "exam_ids": ids[2:3]},
+				{"name": "Changed", "exam_ids": []string{}},
+				{"name": "Changed", "course_ids": ids[2:3]},
+				{"name": "Changed", "course_ids": []string{}},
+			} {
+				resp, out := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/products/"+id, body, token)
+				require.Equal(t, http.StatusBadRequest, resp.StatusCode, "body=%v", out)
+				assert.ElementsMatch(t, ids[:2], persistedRelations(t, env, id, kind))
+				var name string
+				require.NoError(t, env.pool.QueryRow(context.Background(), `SELECT name FROM product WHERE id=$1`, id).Scan(&name))
+				assert.Equal(t, "Original", name)
+			}
+		})
+	}
+}
+
+func TestProductPatch_MetadataAndNullPreserveRelations(t *testing.T) {
+	env := newTestEnv(t)
+	token := authToken(t, env, seedUser(t, env, "super_admin", "active", false), "super_admin")
+	for _, kind := range []string{"exam", "course"} {
+		t.Run(kind, func(t *testing.T) {
+			id, ids := relationProduct(t, env, kind)
+			for _, nulls := range []bool{false, true} {
+				body := map[string]any{"name": "Updated", "price": 2000, "status": "hidden", "stock": 7, "image_url": "new.jpg", "specs": []map[string]string{{"key": "format", "label": "Format", "value": "Online"}}}
+				if nulls {
+					body["exam_ids"] = nil
+					body["course_ids"] = nil
+				}
+				resp, out := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/products/"+id, body, token)
+				require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+				assert.ElementsMatch(t, ids[:2], persistedRelations(t, env, id, kind))
+				product, err := env.svc.GetProduct(context.Background(), id, service.RoleSuperAdmin)
+				require.NoError(t, err)
+				assert.Equal(t, "Updated", product.Name)
+				assert.Equal(t, int64(2000), product.Price)
+				assert.Equal(t, "hidden", product.Status)
+				assert.Equal(t, 7, product.Stock)
+				assert.Equal(t, "new.jpg", product.ImageURL)
+				assert.Equal(t, 100, product.WeightGrams)
+				assert.Equal(t, []model.ProductSpec{{Key: "format", Label: "Format", Value: "Online"}}, product.Specs)
+			}
+		})
+	}
 }
