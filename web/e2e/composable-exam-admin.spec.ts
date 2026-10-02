@@ -48,3 +48,32 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
     expect(materialPayload?.instructions_html).toBe("<p>Read carefully</p>");
   });
 }
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+  for (const status of ["in_progress", "overdue"]) {
+    test(`${viewport.width}px monitoring adds outage compensation to ${status} session`, async ({ page, context }) => {
+      await seedSession(context, { token: "fixture", refreshToken: "", user: { id: "admin-fixture", role: "admin_exam", name: "Browser Admin" } });
+      let requestBody: unknown;
+      await page.route("**/api/v1/**", async route => {
+        const request = route.request();
+        const path = new URL(request.url()).pathname;
+        if (path.endsWith("/admin/sessions/target-session/reopen")) {
+          requestBody = request.postDataJSON();
+          await route.fulfill({ json: { status: "ok" } });
+        } else if (path.endsWith("/admin/sessions/monitor/available")) {
+          await route.fulfill({ json: { data: [{ id: "exam", title: "Outage exam", state: "live", total_registered: 1, active_count: 1, not_started_count: 0 }] } });
+        } else if (path.endsWith("/admin/sessions/monitor")) {
+          await route.fulfill({ json: { exam: { id: "exam", title: "Outage exam", duration_minutes: 60 }, violations_recent: [], rows: [{ registration_id: "reg", student_id: "student", student_name: "Affected student", school_name: "School", status, answers_saved: 1, total_questions: 2, violation_count: 0, session_id: "target-session", admin_submitted: false, extended_until: null }] } });
+        } else { await route.fulfill({ json: { data: [] } }); }
+      });
+      await page.setViewportSize(viewport);
+      await page.goto("/admin/exam/monitor");
+      await page.getByRole("button", { name: "Pantau", exact: true }).click();
+      await expect(page.getByText("Affected student", { exact: true })).toBeVisible();
+      page.once("dialog", dialog => dialog.accept("15"));
+      await page.getByRole("button", { name: "Perpanjang", exact: true }).click();
+      await expect.poll(() => requestBody).toEqual({ extend_minutes: 15 });
+      await expect(page.getByText(/Waktu sesi ditambah/)).toBeVisible();
+    });
+  }
+}

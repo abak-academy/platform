@@ -304,10 +304,15 @@ func TestExamFormatPolicy_V2EditSafetyRejectsPolicyChangeWithSession(t *testing.
 	}{
 		{"navigation", ErrExamHasSessions},
 		{"randomize", ErrExamHasSessions},
+		{"timer", ErrExamHasSessions},
+		{"duration", ErrExamHasSessions},
+		{"unchanged duration value", nil},
 		{"title", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			examID := createV2Exam(t, repo, "free")
+			_, err := repo.Pool().Exec(ctx, `UPDATE exam SET timer_mode='overall',duration_minutes=60 WHERE id=$1`, examID)
+			require.NoError(t, err)
 			seedExamSession(t, repo, examID)
 			detail, err := svc.GetExam(ctx, examID)
 			require.NoError(t, err)
@@ -317,6 +322,14 @@ func TestExamFormatPolicy_V2EditSafetyRejectsPolicyChangeWithSession(t *testing.
 				overlay.NavigationPolicy = "sequential"
 			case "randomize":
 				overlay.Randomize = !overlay.Randomize
+			case "timer":
+				overlay.TimerMode = "per_test"
+			case "duration":
+				duration := 90
+				overlay.DurationMinutes = &duration
+			case "unchanged duration value":
+				duration := *overlay.DurationMinutes
+				overlay.DurationMinutes = &duration
 			case "title":
 				overlay.Title = "Renamed " + uniqueSuffix()
 			}
@@ -334,6 +347,8 @@ func TestExamFormatPolicy_V2EditSafetyRejectsPolicyChangeWithSession(t *testing.
 			}
 			require.Equal(t, want.NavigationPolicy, stored.Exam.NavigationPolicy)
 			require.Equal(t, want.Randomize, stored.Exam.Randomize)
+			require.Equal(t, want.TimerMode, stored.Exam.TimerMode)
+			require.Equal(t, want.DurationMinutes, stored.Exam.DurationMinutes)
 			require.Equal(t, want.Title, stored.Exam.Title)
 		})
 	}

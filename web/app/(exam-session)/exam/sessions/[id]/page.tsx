@@ -542,6 +542,21 @@ export default function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  const lastExtensionRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!session || session.status !== "in_progress") return;
+    const extension = usesSectionTimer ? activeTest?.extended_until : session.extended_until;
+    const key = `${usesSectionTimer ? session.active_test_id : sessionId}:${extension ?? ""}`;
+    const previous = lastExtensionRef.current;
+    lastExtensionRef.current = key;
+    if (previous === undefined || previous === key || !extension) return;
+    const nextRemaining = usesSectionTimer ? activeTest?.remaining_seconds ?? 0 : session.remaining_seconds;
+    remainingRef.current = nextRemaining;
+    setRemaining(nextRemaining);
+    autoSubmittedRef.current = false;
+    autoAdvanceRef.current = false;
+  }, [session, usesSectionTimer, activeTest, sessionId]);
+
   useEffect(() => {
     if (
       !session ||

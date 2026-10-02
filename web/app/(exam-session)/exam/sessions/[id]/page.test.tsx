@@ -4412,6 +4412,21 @@ describe("SessionPage", () => {
     lookup.mockRestore();
   });
 
+  it.each(["overall", "per_test"])("applies %s monitoring compensation without resetting local answers", async timer => {
+    sessionState.data = { ...sectionedSession, format_version: 2, navigation_policy: "sequential", timer_mode: timer, duration_minutes: 60, remaining_seconds: 3600 };
+    const view = render(<SessionPage />);
+    await enterFullscreenSectioned();
+    const radio = screen.getAllByRole("radio")[0];
+    fireEvent.click(radio);
+    sessionState.data = {
+      ...sessionState.data, extended_until: timer === "overall" ? "2026-10-03T04:00:00Z" : null, remaining_seconds: 4500,
+      tests: sessionState.data.tests.map((test, index) => index === 0 ? { ...test, extended_until: timer === "per_test" ? "2026-10-03T04:00:00Z" : null, remaining_seconds: 2700 } : test),
+    };
+    view.rerender(<SessionPage />);
+    expect(screen.getByText(timer === "overall" ? "75:00" : "45:00")).toBeInTheDocument();
+    expect(radio).toBeChecked();
+  });
+
   it("free format 2 navigates between sections without losing local answers", async () => {
     sessionState.data = {...sectionedSession,format_version:2,navigation_policy:"free",mode:"ielts", duration_minutes:60, remaining_seconds:3600};
     render(<SessionPage />);

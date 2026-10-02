@@ -2826,7 +2826,7 @@ func (r *Repository) LogViolation(ctx context.Context, v model.SessionViolationL
 func (r *Repository) ReopenSession(ctx context.Context, sessionID uuid.UUID, minutes int) error {
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE exam_session
-		SET extended_until = now() + make_interval(mins => $2)
+		SET extended_until = GREATEST(now(), extended_until, started_at + make_interval(mins => (SELECT COALESCE(duration_minutes,0) FROM exam WHERE id=exam_session.exam_id))) + make_interval(mins => $2)
 		WHERE id = $1 AND status IN ('in_progress', 'submitted')`,
 		sessionID, minutes,
 	)
@@ -3394,7 +3394,7 @@ func (r *Repository) AdvanceSessionSectionTx(ctx context.Context, tx pgx.Tx, ses
 func (r *Repository) ExtendActiveSectionTx(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID, extendMinutes int) error {
 	tag, err := tx.Exec(ctx,
 		`UPDATE exam_session_section
-		SET extended_until = now() + make_interval(mins => $2)
+		SET extended_until = GREATEST(now(), extended_until, started_at + make_interval(mins => duration_minutes)) + make_interval(mins => $2)
 		WHERE session_id = $1 AND status = 'active'`,
 		sessionID, extendMinutes,
 	)

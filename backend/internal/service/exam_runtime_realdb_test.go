@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -170,6 +171,65 @@ func TestComposableRuntime_CreateActivatesFormatTwo(t *testing.T) {
 			stored, err := repo.GetExamByID(t.Context(), exam.ID)
 			require.NoError(t, err)
 			require.Equal(t, 2, stored.FormatVersion)
+		})
+	}
+}
+
+func TestComposableRuntime_MonitorExtension(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	for _, timer := range []string{"overall", "per_test"} {
+		for _, overdue := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s overdue=%v", timer, overdue), func(t *testing.T) {
+				ctx := t.Context()
+				eid, tid, _ := seedV2PublishExam(t, repo, "one_per_page", false)
+				_, err := repo.Pool().Exec(ctx, `UPDATE exam SET navigation_policy='sequential',timer_mode=$1 WHERE id=$2`, timer, eid)
+				require.NoError(t, err)
+				student := seedExamSession(t, repo, eid)
+				var sid uuid.UUID
+				require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT id FROM exam_session WHERE exam_id=$1`, eid).Scan(&sid))
+				peer := seedExamSession(t, repo, eid)
+				started := time.Now()
+				if overdue {
+					started = started.Add(-2 * time.Hour)
+				}
+				_, err = repo.Pool().Exec(ctx, `UPDATE exam_session SET started_at=$2 WHERE id=$1`, sid, started)
+				require.NoError(t, err)
+				_, err = repo.Pool().Exec(ctx, `INSERT INTO exam_session_section(session_id,test_id,sort_order,duration_minutes,status,started_at) VALUES($1,$2,0,30,'active',$3)`, sid, tid, started)
+				require.NoError(t, err)
+				before, err := svc.ReconnectSession(ctx, student.String(), sid.String())
+				require.NoError(t, err)
+				require.NoError(t, svc.ReopenSession(ctx, sid.String(), 15))
+				after, err := svc.ReconnectSession(ctx, student.String(), sid.String())
+				require.NoError(t, err)
+				require.InDelta(t, before.RemainingSeconds+900, after.RemainingSeconds, 5)
+				require.NoError(t, svc.ReopenSession(ctx, sid.String(), 10))
+				twice, err := svc.ReconnectSession(ctx, student.String(), sid.String())
+				require.NoError(t, err)
+				require.InDelta(t, after.RemainingSeconds+600, twice.RemainingSeconds, 5)
+				exam, err := repo.GetExamByID(ctx, eid)
+				require.NoError(t, err)
+				require.Equal(t, 60, *exam.DurationMinutes)
+				require.Equal(t, timer, exam.TimerMode)
+				var peerExtension *time.Time
+				require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT extended_until FROM exam_session WHERE exam_id=$1 AND student_id=$2`, eid, peer).Scan(&peerExtension))
+				require.Nil(t, peerExtension)
+			})
+		}
+	}
+}
+
+func TestComposableRuntime_MonitorExtensionRejectsNonpositiveMinutes(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	eid, _, _ := seedV2PublishExam(t, repo, "one_per_page", false)
+	seedExamSession(t, repo, eid)
+	var sid uuid.UUID
+	require.NoError(t, repo.Pool().QueryRow(t.Context(), `SELECT id FROM exam_session WHERE exam_id=$1`, eid).Scan(&sid))
+	for _, minutes := range []int{0, -15} {
+		t.Run(fmt.Sprint(minutes), func(t *testing.T) {
+			require.ErrorIs(t, svc.ReopenSession(t.Context(), sid.String(), minutes), ErrValidation)
+			var extension *time.Time
+			require.NoError(t, repo.Pool().QueryRow(t.Context(), `SELECT extended_until FROM exam_session WHERE id=$1`, sid).Scan(&extension))
+			require.Nil(t, extension)
 		})
 	}
 }

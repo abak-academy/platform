@@ -27,6 +27,7 @@ type CheckInResult struct {
 }
 
 type SessionTestPayload struct {
+	ExtendedUntil        *time.Time        `json:"extended_until,omitempty"`
 	QuestionPresentation string            `json:"question_presentation,omitempty"`
 	SharedMaterialHTML   *string           `json:"shared_material_html,omitempty"`
 	InstructionsHTML     *string           `json:"instructions_html,omitempty"`
@@ -34,12 +35,12 @@ type SessionTestPayload struct {
 	Title                string            `json:"title"`
 	Subject              string            `json:"subject"`
 	Questions            []SessionQuestion `json:"questions"`
-	SectionType      *string `json:"section_type,omitempty"`
-	DurationMinutes  *int    `json:"duration_minutes,omitempty"`
-	AudioURL         *string `json:"audio_url,omitempty"`
-	AudioPlayLimit   *int    `json:"audio_play_limit,omitempty"`
-	Status           string  `json:"status,omitempty"`
-	RemainingSeconds int64   `json:"remaining_seconds,omitempty"`
+	SectionType          *string           `json:"section_type,omitempty"`
+	DurationMinutes      *int              `json:"duration_minutes,omitempty"`
+	AudioURL             *string           `json:"audio_url,omitempty"`
+	AudioPlayLimit       *int              `json:"audio_play_limit,omitempty"`
+	Status               string            `json:"status,omitempty"`
+	RemainingSeconds     int64             `json:"remaining_seconds,omitempty"`
 }
 
 type SessionStartPayload struct {
@@ -85,6 +86,7 @@ type SessionStatement struct {
 }
 
 type SessionStatePayload struct {
+	ExtendedUntil    *time.Time                `json:"extended_until,omitempty"`
 	FormatVersion    int                       `json:"format_version,omitempty"`
 	NavigationPolicy string                    `json:"navigation_policy,omitempty"`
 	SessionID        uuid.UUID                 `json:"session_id"`
@@ -290,6 +292,7 @@ func enrichSectionedTests(grouped []SessionTestPayload, tests []model.TestDetail
 		grouped[i].AudioURL = td.AudioURL
 		grouped[i].AudioPlayLimit = td.AudioPlayLimit
 		grouped[i].Status = sec.Status
+		grouped[i].ExtendedUntil = sec.ExtendedUntil
 		// FR-7: remaining_seconds is the section's own remaining; 0 for non-active sections.
 		if sec.Status == "active" {
 			grouped[i].RemainingSeconds = computeSectionRemaining(sec)
@@ -686,6 +689,7 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 			}
 		}
 		return SessionStatePayload{
+			ExtendedUntil:    sess.ExtendedUntil,
 			FormatVersion:    exam.FormatVersion,
 			NavigationPolicy: exam.NavigationPolicy,
 			SessionID:        sess.ID,
@@ -702,6 +706,7 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 	}
 
 	return SessionStatePayload{
+		ExtendedUntil:    sess.ExtendedUntil,
 		FormatVersion:    exam.FormatVersion,
 		NavigationPolicy: exam.NavigationPolicy,
 		SessionID:        sess.ID,
@@ -1044,6 +1049,9 @@ func (s *Service) LogViolation(ctx context.Context, studentID, sessionID, violat
 // ReopenSession extends a session's deadline or the active section's deadline for
 // sectioned exams. FR-22 / FR23.
 func (s *Service) ReopenSession(ctx context.Context, sessionID string, minutes int) error {
+	if minutes <= 0 {
+		return fmt.Errorf("%w: extra minutes must be positive", ErrValidation)
+	}
 	sessID, err := uuid.Parse(sessionID)
 	if err != nil {
 		return fmt.Errorf("%w: invalid session id", ErrValidation)

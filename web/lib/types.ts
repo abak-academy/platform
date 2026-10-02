@@ -963,6 +963,7 @@ export interface SessionQuestion {
 }
 
 export interface SessionTest {
+  extended_until?: string | null;
   shared_material_html?: string | null;
   instructions_html?: string | null;
   question_presentation?: "one_per_page" | "all_on_page";
