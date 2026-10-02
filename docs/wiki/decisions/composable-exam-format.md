@@ -12,7 +12,7 @@ Why the exam runtime stops branching on `exam.mode` and what was deliberately le
 
 ## Decisions
 
-1. **Runtime path is an explicit `exam.format_version` (1 legacy, 2 composable), not an adapter over every exam.** An adapter would move all legacy exams onto one runtime and make rollback a data write; a version flag keeps legacy behaviour byte-identical and retains the legacy runtime. Cost: two paths until the legacy path is retired.
+1. **Runtime path is an explicit `exam.format_version` (1 legacy, 2 composable), not an adapter over every exam.** An adapter would move all legacy exams onto one runtime and make rollback a data write; a version flag isolates format-2 behaviour and retains the legacy runtime. Cost: two paths until the legacy path is retired.
 2. **No per-attempt policy snapshot; edit safety instead.** Once a format-2 exam has any session, changes to `navigation_policy`, `randomize`, and the attached-test list are rejected; while only registrations exist the change is allowed and audit-logged. This avoids a snapshot table but accepts a race between the pre-write check and a concurrent session start, as recorded in the spec.
 3. **Section presentation lives on `exam_test`; duration stays on `test`.** Presentation is per attachment (the same Test can be shown differently in two exams), while duration is a property of the Test itself — the product decision is that attaching a Test adopts its duration, so no per-attachment duration column exists.
 4. **No `timer_scope` column.** `exam.timer_mode` (`overall | per_test`) plus `duration_minutes` provides whole-exam and per-section clocks; current format-2 publishing requires a positive duration.
