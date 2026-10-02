@@ -170,6 +170,11 @@ export interface ProductSpec {
   value: string;
 }
 
+export interface ProductRelation {
+  id: string;
+  title: string;
+}
+
 export interface Product {
   id: string;
   type: ProductType;
@@ -185,6 +190,7 @@ export interface Product {
   available_until?: string | null;
   course_ids?: string[];
   exam_ids?: string[];
+  relations?: ProductRelation[];
   created_at?: string;
   updated_at?: string;
 }
