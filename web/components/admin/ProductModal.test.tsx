@@ -20,13 +20,14 @@ let coursesState: { data: typeof sampleCourses | undefined };
 let examsState: { data: { data: typeof sampleExams } | undefined };
 
 const mockPresign = vi.fn();
+const mockUseExams = vi.fn();
 
 vi.mock("@/lib/hooks/admin-courses", () => ({
   useAdminCourses: () => coursesState,
 }));
 
 vi.mock("@/lib/hooks/admin-exams", () => ({
-  useExams: () => examsState,
+  useExams: (filter?: { q?: string }) => mockUseExams(filter),
 }));
 
 vi.mock("@/lib/hooks/students", () => ({
@@ -46,6 +47,8 @@ describe("ProductModal", () => {
     mockOnOpenChange.mockReset();
     coursesState = { data: sampleCourses };
     examsState = { data: { data: sampleExams } };
+    mockUseExams.mockReset();
+    mockUseExams.mockImplementation(() => examsState);
     mockPresign.mockReset();
     mockPresign.mockResolvedValue({ url: "https://upload.example", method: "PUT", key: "avatars/u/img.png" });
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 }) as unknown as typeof fetch;
@@ -395,6 +398,76 @@ describe("ProductModal", () => {
         })
       );
     });
+  });
+
+  it("searches exams with a debounced q and keeps selections across result changes", async () => {
+    mockUseExams.mockImplementation((filter?: { q?: string }) =>
+      filter?.q === "snbt"
+        ? { data: { data: [{ id: "e3", title: "SNBT Paket C" }] } }
+        : examsState,
+    );
+
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Paket Ujian" } });
+    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "99999" } });
+    fireEvent.click(screen.getByLabelText("UTBK 2026"));
+    expect(screen.getByText("1 dipilih")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("Cari ujian..."), { target: { value: "snbt" } });
+    expect(mockUseExams).not.toHaveBeenCalledWith({ q: "snbt" });
+
+    expect(await screen.findByText("SNBT Paket C")).toBeInTheDocument();
+    expect(mockUseExams).toHaveBeenCalledWith({ q: "snbt" });
+    expect(screen.queryByText("UTBK 2026")).not.toBeInTheDocument();
+    expect(screen.getByText("1 dipilih")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("SNBT Paket C"));
+    expect(screen.getByText("2 dipilih")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("Cari ujian..."), { target: { value: "" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText("UTBK 2026")).toBeChecked();
+    });
+    expect(screen.getByLabelText("Tryout SNBT")).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ exam_ids: ["e1", "e3"] })
+      );
+    });
+  });
+
+  it("does not show the selected count when editing a product", () => {
+    const product: Product = {
+      id: "p1",
+      type: "exam",
+      name: "Paket UTBK",
+      price: 150000,
+      status: "published",
+    };
+
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        product={product}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    expect(screen.getByPlaceholderText("Cari ujian...")).toBeInTheDocument();
+    expect(screen.queryByText(/dipilih/)).not.toBeInTheDocument();
   });
 
   it("shows empty state when no exams exist", () => {

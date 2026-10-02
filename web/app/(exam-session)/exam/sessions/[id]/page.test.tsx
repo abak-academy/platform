@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+  within,
+} from "@testing-library/react";
 import { StrictMode, act } from "react";
 import { toast } from "sonner";
 
@@ -1518,6 +1524,166 @@ describe("SessionPage", () => {
         revision: 1,
       },
     ]);
+  });
+
+  describe("manual section advance", () => {
+    const advanceResult = {
+      mode: "utbk",
+      active_test_id: "test-section-2",
+      completed: false,
+      tests: sectionedSession.tests,
+    };
+
+    async function openAdvanceDialog() {
+      render(<SessionPage />);
+      await enterFullscreenSectioned();
+      fireEvent.click(screen.getByRole("button", { name: /^berikutnya$/i }));
+      expect(screen.getByText(/TPS Essay\?/)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^kumpulkan$/i }),
+      ).not.toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole("button", { name: /lanjut ke section berikutnya/i }),
+      );
+      expect(
+        screen.getByText(/lanjut ke section berikutnya\?/i),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("dialog")).getByText(/\d\/2 soal/i),
+      ).toBeInTheDocument();
+    }
+
+    function confirmAdvance() {
+      const buttons = screen.getAllByRole("button", {
+        name: /lanjut ke section berikutnya/i,
+      });
+      fireEvent.click(buttons[buttons.length - 1]);
+    }
+
+    it("shows the next-section button instead of submit on the last question of a non-final section", async () => {
+      sessionState = { ...sessionState, data: sectionedSession };
+      await openAdvanceDialog();
+    });
+
+    it("advances after the save barrier without submitting the session", async () => {
+      saveAnswersMutateAsync.mockResolvedValue(undefined);
+      advanceSectionMutateAsync.mockResolvedValue(advanceResult);
+      sessionState = { ...sessionState, data: sectionedSession };
+      await openAdvanceDialog();
+      await clearInitialReconciliation();
+
+      confirmAdvance();
+
+      await waitFor(() => {
+        expect(advanceSectionMutateAsync).toHaveBeenCalledWith(
+          "test-section-1",
+        );
+      });
+      expect(saveAnswersMutateAsync.mock.invocationCallOrder[0]).toBeLessThan(
+        advanceSectionMutateAsync.mock.invocationCallOrder[0],
+      );
+      expect(submitSessionMutate).not.toHaveBeenCalled();
+      expect(submitSessionMutateAsync).not.toHaveBeenCalled();
+      expect(routerReplace).not.toHaveBeenCalled();
+    });
+
+    it("does not advance and shows the save-failed toast when the save barrier fails", async () => {
+      saveQueue("session-1", [
+        {
+          question_id: "q-sec1-mcq",
+          answer: "B",
+          flagged_for_review: false,
+          revision: 1,
+        },
+      ]);
+      saveAnswersMutateAsync.mockRejectedValue(new Error("network down"));
+      sessionState = { ...sessionState, data: sectionedSession };
+      await openAdvanceDialog();
+
+      confirmAdvance();
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          "Jawaban belum tersimpan. Coba lagi sebelum mengumpulkan.",
+        );
+      });
+      expect(advanceSectionMutateAsync).not.toHaveBeenCalled();
+      expect(submitSessionMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it("redirects to the result when advance reports already_submitted", async () => {
+      saveAnswersMutateAsync.mockResolvedValue(undefined);
+      advanceSectionMutateAsync.mockRejectedValue(
+        new ApiError("already_submitted", "already submitted", 409),
+      );
+      sessionState = { ...sessionState, data: sectionedSession };
+      await openAdvanceDialog();
+
+      confirmAdvance();
+
+      await waitFor(() => {
+        expect(routerReplace).toHaveBeenCalledWith(
+          "/exam/sessions/session-1/result",
+        );
+      });
+    });
+
+    it("submits and redirects when the advance response is completed", async () => {
+      saveAnswersMutateAsync.mockResolvedValue(undefined);
+      advanceSectionMutateAsync.mockResolvedValue({
+        ...advanceResult,
+        active_test_id: null,
+        completed: true,
+      });
+      submitSessionMutateAsync.mockResolvedValue({
+        submitted: true,
+        score: 85,
+      });
+      sessionState = { ...sessionState, data: sectionedSession };
+      await openAdvanceDialog();
+
+      confirmAdvance();
+
+      await waitFor(() => {
+        expect(submitSessionMutateAsync).toHaveBeenCalledTimes(1);
+      });
+      await waitFor(() => {
+        expect(routerReplace).toHaveBeenCalledWith(
+          "/exam/sessions/session-1/result",
+        );
+      });
+    });
+
+    it("keeps submit on the last question of the final section", async () => {
+      sessionState = {
+        ...sessionState,
+        data: {
+          ...sectionedSession,
+          active_test_id: "test-section-2",
+          tests: [
+            { ...sectionedSession.tests[0], status: "submitted" as const },
+            {
+              ...sectionedSession.tests[1],
+              status: "active" as const,
+              remaining_seconds: 2700,
+            },
+          ],
+        },
+      };
+      render(<SessionPage />);
+      await enterFullscreenUntil(/Literasi Question 1\?/);
+
+      expect(
+        screen.queryByRole("button", { name: /lanjut ke section berikutnya/i }),
+      ).not.toBeInTheDocument();
+      const submitButtons = screen.getAllByRole("button", {
+        name: /kumpulkan/i,
+      });
+      fireEvent.click(submitButtons[submitButtons.length - 1]);
+      expect(
+        screen.getByText(/yakin ingin mengumpulkan jawaban/i),
+      ).toBeInTheDocument();
+    });
   });
 
   it("sends one full reconciliation after reconnect hydration", async () => {

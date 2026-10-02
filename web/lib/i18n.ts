@@ -1452,6 +1452,10 @@ export const DICT = {
     session_prev_question: "Sebelumnya",
     session_next_question: "Berikutnya",
     submit_confirm: "Yakin ingin mengumpulkan jawaban?",
+    session_advance_section: "Lanjut ke section berikutnya",
+    session_advance_confirm_title: "Lanjut ke section berikutnya?",
+    session_advance_confirm_desc:
+      "Section ini tidak dapat dibuka kembali setelah Anda melanjutkan.",
     submit: "Kumpulkan",
     time_remaining: "Sisa waktu",
     fullscreen_required: "Mode layar penuh diperlukan",
@@ -3157,6 +3161,10 @@ export const DICT = {
     session_prev_question: "Previous",
     session_next_question: "Next",
     submit_confirm: "Are you sure you want to submit?",
+    session_advance_section: "Continue to next section",
+    session_advance_confirm_title: "Continue to the next section?",
+    session_advance_confirm_desc:
+      "You cannot reopen this section after you continue.",
     submit: "Submit",
     time_remaining: "Time remaining",
     fullscreen_required: "Fullscreen mode required",
