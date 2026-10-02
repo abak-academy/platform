@@ -241,6 +241,8 @@ func mapServiceError(c echo.Context, err error) error {
 		}
 	case errors.Is(err, service.ErrShippingUnavailable):
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_unavailable", Message: "shipping is not available right now"}
+	case errors.Is(err, service.ErrProductRelationsLocked):
+		status, apiErr = http.StatusConflict, APIError{Code: "product_relations_locked", Message: err.Error()}
 	case errors.Is(err, service.ErrDigitalTargetConflict):
 		status, apiErr = http.StatusConflict, APIError{Code: "digital_target_conflict", Message: err.Error()}
 		var conflictErr *service.DigitalTargetConflictError

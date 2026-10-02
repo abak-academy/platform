@@ -157,3 +157,22 @@ func TestAdminListCourses_NoToken_Returns401(t *testing.T) {
 		t.Errorf("want 401, got %d", rec.Code)
 	}
 }
+
+func TestAdminUpdateProduct_CourseIDs_Returns400(t *testing.T) {
+	env := newCourseTestEnv(t)
+	tok := adminStoreToken(t, env)
+	for _, ids := range [][]string{{"00000000-0000-0000-0000-000000000001"}, {}} {
+		body, err := json.Marshal(map[string]any{"course_ids": ids})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/products/unused", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
+		}
+	}
+}

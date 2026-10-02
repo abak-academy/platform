@@ -263,126 +263,68 @@ func (s *Service) CreateProductWithExams(ctx context.Context, p model.Product, e
 	return p, nil
 }
 
-func (s *Service) UpdateProductWithExams(ctx context.Context, id string, p model.Product, examIDs []string, role string) (model.Product, error) {
-	existing, err := s.storeRepo.GetProductByID(ctx, id)
+func (s *Service) UpdateProductRelations(ctx context.Context, id string, examIDs, courseIDs []string, role string) (model.Product, error) {
+	if role != RoleSuperAdmin {
+		return model.Product{}, ErrForbidden
+	}
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Product{}, err
+	}
+	defer tx.Rollback(ctx)
+	productType, err := s.storeRepo.LockProductType(ctx, tx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return model.Product{}, ErrProductNotFound
 		}
 		return model.Product{}, err
 	}
-	if err := checkTypeRBAC(role, existing.Type); err != nil {
+	var targets []string
+	switch productType {
+	case "exam":
+		if courseIDs != nil || len(examIDs) == 0 {
+			return model.Product{}, ErrValidation
+		}
+		targets = examIDs
+	case "course":
+		if examIDs != nil || len(courseIDs) == 0 {
+			return model.Product{}, ErrValidation
+		}
+		targets = courseIDs
+	default:
+		return model.Product{}, ErrValidation
+	}
+	pID, err := parseUUID(id)
+	if err != nil {
 		return model.Product{}, err
 	}
-	p.Type = existing.Type
-	if !p.WeightGramsSet && p.WeightGrams == 0 {
-		p.WeightGrams = existing.WeightGrams
-	}
-	if !p.ImageURLSet && p.ImageURL == "" {
-		p.ImageURL = existing.ImageURL
-	}
-	if !p.AvailableFromSet {
-		p.AvailableFrom = existing.AvailableFrom
-	}
-	if !p.AvailableUntilSet {
-		p.AvailableUntil = existing.AvailableUntil
-	}
-
-	var ids []uuid.UUID
-	for _, eid := range examIDs {
-		parsed, err := parseUUID(eid)
+	ids := make([]uuid.UUID, 0, len(targets))
+	for _, target := range targets {
+		parsed, err := parseUUID(target)
 		if err != nil {
 			return model.Product{}, err
 		}
 		ids = append(ids, parsed)
 	}
-
-	pID, err := parseUUID(id)
+	locked, err := s.storeRepo.ProductHasLiveOrders(ctx, tx, pID)
 	if err != nil {
 		return model.Product{}, err
 	}
-
-	tx, err := s.storeRepo.BeginTx(ctx)
+	if locked {
+		return model.Product{}, ErrProductRelationsLocked
+	}
+	if productType == "exam" {
+		err = s.storeRepo.ReplaceProductExams(ctx, tx, pID, ids)
+	} else {
+		err = s.storeRepo.ReplaceProductCourses(ctx, tx, pID, ids)
+	}
 	if err != nil {
 		return model.Product{}, err
 	}
-	defer tx.Rollback(ctx)
-
-	if err := s.storeRepo.UpdateProductTx(ctx, tx, id, &p); err != nil {
-		return model.Product{}, err
-	}
-	if err := s.storeRepo.ReplaceProductExams(ctx, tx, pID, ids); err != nil {
-		return model.Product{}, err
-	}
-
 	if err := tx.Commit(ctx); err != nil {
 		return model.Product{}, err
 	}
-
-	p.ID = id
-	p.ExamIDs = examIDs
-	return p, nil
-}
-
-func (s *Service) UpdateProductWithCourses(ctx context.Context, id string, p model.Product, courseIDs []string, role string) (model.Product, error) {
-	existing, err := s.storeRepo.GetProductByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return model.Product{}, ErrProductNotFound
-		}
-		return model.Product{}, err
-	}
-	if err := checkTypeRBAC(role, existing.Type); err != nil {
-		return model.Product{}, err
-	}
-	p.Type = existing.Type
-	if !p.WeightGramsSet && p.WeightGrams == 0 {
-		p.WeightGrams = existing.WeightGrams
-	}
-	if !p.ImageURLSet && p.ImageURL == "" {
-		p.ImageURL = existing.ImageURL
-	}
-	if !p.AvailableFromSet {
-		p.AvailableFrom = existing.AvailableFrom
-	}
-	if !p.AvailableUntilSet {
-		p.AvailableUntil = existing.AvailableUntil
-	}
-
-	var ids []uuid.UUID
-	for _, cid := range courseIDs {
-		parsed, err := parseUUID(cid)
-		if err != nil {
-			return model.Product{}, err
-		}
-		ids = append(ids, parsed)
-	}
-
-	pID, err := parseUUID(id)
-	if err != nil {
-		return model.Product{}, err
-	}
-
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return model.Product{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	if err := s.storeRepo.UpdateProductTx(ctx, tx, id, &p); err != nil {
-		return model.Product{}, err
-	}
-	if err := s.storeRepo.ReplaceProductCourses(ctx, tx, pID, ids); err != nil {
-		return model.Product{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return model.Product{}, err
-	}
-
-	p.ID = id
-	p.CourseIDs = courseIDs
-	return p, nil
+	return s.GetProduct(ctx, id, role)
 }
 
 func (s *Service) UpdateProduct(ctx context.Context, id string, p model.Product, role string) (model.Product, error) {

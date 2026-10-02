@@ -88,7 +88,7 @@ func TestUpdateProduct_AvailabilityWindowIsTriState(t *testing.T) {
 	}
 }
 
-func TestUpdateProductWithExams_AvailabilityWindowIsTriState(t *testing.T) {
+func TestUpdateProduct_Exam_AvailabilityWindowIsTriState(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
 
@@ -110,10 +110,10 @@ func TestUpdateProductWithExams_AvailabilityWindowIsTriState(t *testing.T) {
 	}
 
 	// Absent preserves.
-	if _, err := svc.UpdateProductWithExams(ctx, created.ID, model.Product{
+	if _, err := svc.UpdateProduct(ctx, created.ID, model.Product{
 		Name: "Tri-state Exam Product renamed", Price: 6000, Status: "published",
-	}, []string{exam.ID.String()}, RoleSuperAdmin); err != nil {
-		t.Fatalf("UpdateProductWithExams (absent): %v", err)
+	}, RoleSuperAdmin); err != nil {
+		t.Fatalf("UpdateProduct (absent): %v", err)
 	}
 	gotFrom, gotUntil := availabilityWindow(t, svc, created.ID)
 	if gotFrom == nil || !gotFrom.Equal(from) || gotUntil == nil || !gotUntil.Equal(until) {
@@ -121,12 +121,12 @@ func TestUpdateProductWithExams_AvailabilityWindowIsTriState(t *testing.T) {
 	}
 
 	// Explicit null clears.
-	if _, err := svc.UpdateProductWithExams(ctx, created.ID, model.Product{
+	if _, err := svc.UpdateProduct(ctx, created.ID, model.Product{
 		Name: "Tri-state Exam Product renamed", Price: 6000, Status: "published",
 		AvailableFrom: nil, AvailableFromSet: true,
 		AvailableUntil: nil, AvailableUntilSet: true,
-	}, []string{exam.ID.String()}, RoleSuperAdmin); err != nil {
-		t.Fatalf("UpdateProductWithExams (null): %v", err)
+	}, RoleSuperAdmin); err != nil {
+		t.Fatalf("UpdateProduct (null): %v", err)
 	}
 	gotFrom, gotUntil = availabilityWindow(t, svc, created.ID)
 	if gotFrom != nil || gotUntil != nil {
@@ -134,7 +134,7 @@ func TestUpdateProductWithExams_AvailabilityWindowIsTriState(t *testing.T) {
 	}
 }
 
-func TestUpdateProductWithCourses_AvailabilityWindowIsTriState(t *testing.T) {
+func TestUpdateProduct_Course_AvailabilityWindowIsTriState(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 
@@ -159,10 +159,10 @@ func TestUpdateProductWithCourses_AvailabilityWindowIsTriState(t *testing.T) {
 	}
 
 	// Absent preserves.
-	if _, err := svc.UpdateProductWithCourses(ctx, created.ID, model.Product{
+	if _, err := svc.UpdateProduct(ctx, created.ID, model.Product{
 		Name: "Tri-state Course Product renamed", Price: 8000, Status: "published",
-	}, []string{courseID.String()}, RoleSuperAdmin); err != nil {
-		t.Fatalf("UpdateProductWithCourses (absent): %v", err)
+	}, RoleSuperAdmin); err != nil {
+		t.Fatalf("UpdateProduct (absent): %v", err)
 	}
 	gotFrom, gotUntil := availabilityWindow(t, svc, created.ID)
 	if gotFrom == nil || !gotFrom.Equal(from) || gotUntil == nil || !gotUntil.Equal(until) {
@@ -170,12 +170,12 @@ func TestUpdateProductWithCourses_AvailabilityWindowIsTriState(t *testing.T) {
 	}
 
 	// Explicit null clears.
-	if _, err := svc.UpdateProductWithCourses(ctx, created.ID, model.Product{
+	if _, err := svc.UpdateProduct(ctx, created.ID, model.Product{
 		Name: "Tri-state Course Product renamed", Price: 8000, Status: "published",
 		AvailableFrom: nil, AvailableFromSet: true,
 		AvailableUntil: nil, AvailableUntilSet: true,
-	}, []string{courseID.String()}, RoleSuperAdmin); err != nil {
-		t.Fatalf("UpdateProductWithCourses (null): %v", err)
+	}, RoleSuperAdmin); err != nil {
+		t.Fatalf("UpdateProduct (null): %v", err)
 	}
 	gotFrom, gotUntil = availabilityWindow(t, svc, created.ID)
 	if gotFrom != nil || gotUntil != nil {
