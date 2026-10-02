@@ -276,8 +276,9 @@ type SessionViolationLog struct {
 // TestDetail is a composite read shape used by the authoring API for a single test page:
 // the parent Test and its full ordered question list with inline options.
 type TestDetail struct {
-	Test      Test                  `json:"test"`
-	Questions []QuestionWithOptions `json:"questions"`
+	QuestionPresentation string                `json:"-"`
+	Test                 Test                  `json:"test"`
+	Questions            []QuestionWithOptions `json:"questions"`
 }
 
 // QuestionWithOptions is a composite read shape: a Question plus its inline option list and blanks.

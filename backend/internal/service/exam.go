@@ -953,6 +953,7 @@ func normalizeCardNotes(notes []string) []string {
 }
 
 func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, error) {
+	m.FormatVersion = 2
 	m.CardNotes = normalizeCardNotes(m.CardNotes)
 	if m.ResultConfig == "" {
 		m.ResultConfig = "hidden"

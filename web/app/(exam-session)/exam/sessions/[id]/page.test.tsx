@@ -4356,4 +4356,72 @@ describe("SessionPage", () => {
       "current_position",
     );
   });
+  it.each([
+    ["one_per_page", "<p>Question context</p>", "Question context", false],
+    ["one_per_page", null, "Shared context", false],
+    ["all_on_page", "<p>Question context</p>", "Shared context", true],
+  ] as const)("format 2 %s resolves material (%s)", async (presentation, own, effective, all) => {
+    const test = sampleSession.tests[0];
+    sessionState.data = {
+      ...sampleSession, format_version: 2, navigation_policy: "free", mode: "ielts",
+      tests: [{ ...test, question_presentation: presentation, shared_material_html: "<p>Shared context</p>", instructions_html: "<p>Section instructions</p>",
+        questions: test.questions.map((q, i) => ({ ...q, material_html: i === 0 ? own : null })) }],
+    } as SessionState;
+    render(<SessionPage />);
+    await enterFullscreen();
+    expect(screen.getByText(effective)).toBeInTheDocument();
+    expect(screen.getByText("Section instructions")).toBeInTheDocument();
+    expect(screen.queryByText(effective === "Shared context" ? "Question context" : "Shared context")).not.toBeInTheDocument();
+    for (const q of test.questions.slice(1)) {
+      if (all) expect(screen.getByText(q.body)).toBeInTheDocument();
+      else expect(screen.queryByText(q.body)).not.toBeInTheDocument();
+    }
+  });
+
+  it("keeps true/false answers independent when multiple questions share a page", async () => {
+    sessionState.data = { ...sampleSession, format_version:2, navigation_policy:"free", tests:[{ ...sampleSession.tests[0], question_presentation:"all_on_page",
+      questions:[1,2].map(n => ({id:`tf-q-${n}`,test_id:"test-1",format:"true_false",body:`Question ${n}`,sort_order:n,options:[],statements:[{index:1,body:`Statement ${n}`}]})) }] };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Statement 2/);
+    const radios = screen.getAllByTestId("tf-radio-true-1");
+    fireEvent.click(radios[0]);
+    fireEvent.click(radios[1]);
+    expect(radios[0]).toBeChecked();
+    expect(radios[1]).toBeChecked();
+    expect(radios[0]).not.toHaveAttribute("name", radios[1].getAttribute("name"));
+  });
+
+  it.each(["overall", "per_test"])("sequential format 2 uses the %s clock", async timer => {
+    sessionState.data = {...sectionedSession, mode:"standard",format_version:2,navigation_policy:"sequential", timer_mode:timer, duration_minutes:60, remaining_seconds:3600};
+    render(<SessionPage />);
+    await enterFullscreenSectioned();
+    expect(screen.getByText(timer === "overall" ? "60:00" : "30:00")).toBeInTheDocument();
+    expect(screen.getByTestId("section-rail")).toBeInTheDocument();
+  });
+
+  it("all-on-page navigation scrolls within the active sequential section", async () => {
+    sessionState.data = {
+      ...sectionedSession, format_version: 2, navigation_policy: "sequential", active_test_id: "test-section-2",
+      tests: sectionedSession.tests.map(test => ({ ...test, question_presentation: "all_on_page", status: test.id === "test-section-2" ? "active" : "submitted" })),
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Literasi Question 1\?/);
+    const lookup = vi.spyOn(document, "getElementById");
+    fireEvent.click(screen.getByTestId("session-nav-0"));
+    await waitFor(() => expect(lookup).toHaveBeenCalledWith("question-q-sec2-mcq"));
+    lookup.mockRestore();
+  });
+
+  it("free format 2 navigates between sections without losing local answers", async () => {
+    sessionState.data = {...sectionedSession,format_version:2,navigation_policy:"free",mode:"ielts", duration_minutes:60, remaining_seconds:3600};
+    render(<SessionPage />);
+    await enterFullscreenSectioned();
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByTestId("section-rail-item-1"));
+    await screen.findByText("Literasi Question 1?");
+    fireEvent.click(screen.getByTestId("section-rail-item-0"));
+    await screen.findByText("TPS Question 1?");
+    expect(screen.getAllByRole("radio")[0]).toBeChecked();
+  });
+
 });

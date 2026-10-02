@@ -63,11 +63,11 @@ func TestExamFormatPolicy_navigationPolicyDefaultedOnCreate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			exam, err := svc.CreateExam(ctx, model.Exam{Title: "nav " + uniqueSuffix(), NavigationPolicy: tc.policy})
 			require.NoError(t, err)
-			require.Equal(t, 1, exam.FormatVersion)
+			require.Equal(t, 2, exam.FormatVersion)
 			require.Equal(t, tc.want, exam.NavigationPolicy)
 			stored, err := repo.GetExamByID(ctx, exam.ID)
 			require.NoError(t, err)
-			require.Equal(t, 1, stored.FormatVersion)
+			require.Equal(t, 2, stored.FormatVersion)
 			require.Equal(t, tc.want, stored.NavigationPolicy)
 		})
 	}

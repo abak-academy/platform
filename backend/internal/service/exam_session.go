@@ -27,12 +27,13 @@ type CheckInResult struct {
 }
 
 type SessionTestPayload struct {
-	ID        uuid.UUID         `json:"id"`
-	Title     string            `json:"title"`
-	Subject   string            `json:"subject"`
-	Questions []SessionQuestion `json:"questions"`
-	// Sectioned-exam fields (FR-7/FR-16). omitempty keeps standard-mode JSON
-	// byte-compatible: these are only populated when exam.Mode is utbk|ielts.
+	QuestionPresentation string            `json:"question_presentation,omitempty"`
+	SharedMaterialHTML   *string           `json:"shared_material_html,omitempty"`
+	InstructionsHTML     *string           `json:"instructions_html,omitempty"`
+	ID                   uuid.UUID         `json:"id"`
+	Title                string            `json:"title"`
+	Subject              string            `json:"subject"`
+	Questions            []SessionQuestion `json:"questions"`
 	SectionType      *string `json:"section_type,omitempty"`
 	DurationMinutes  *int    `json:"duration_minutes,omitempty"`
 	AudioURL         *string `json:"audio_url,omitempty"`
@@ -42,6 +43,8 @@ type SessionTestPayload struct {
 }
 
 type SessionStartPayload struct {
+	FormatVersion    int                  `json:"format_version,omitempty"`
+	NavigationPolicy string               `json:"navigation_policy,omitempty"`
 	SessionID        uuid.UUID            `json:"session_id"`
 	RemainingSeconds int64                `json:"remaining_seconds"`
 	TimerMode        string               `json:"timer_mode"`
@@ -53,15 +56,17 @@ type SessionStartPayload struct {
 }
 
 type SessionQuestion struct {
-	ID         uuid.UUID          `json:"id"`
-	TestID     uuid.UUID          `json:"test_id"`
-	Format     string             `json:"format"`
-	Body       string             `json:"body"`
-	Options    []SessionOption    `json:"options"`
-	AudioURL   *string            `json:"audio_url,omitempty"`
-	Blanks     []int              `json:"blanks,omitempty"`
-	Statements []SessionStatement `json:"statements,omitempty"`
-	SortOrder  int                `json:"sort_order"`
+	MaterialHTML *string            `json:"material_html,omitempty"`
+	ImageURL     *string            `json:"image_url,omitempty"`
+	ID           uuid.UUID          `json:"id"`
+	TestID       uuid.UUID          `json:"test_id"`
+	Format       string             `json:"format"`
+	Body         string             `json:"body"`
+	Options      []SessionOption    `json:"options"`
+	AudioURL     *string            `json:"audio_url,omitempty"`
+	Blanks       []int              `json:"blanks,omitempty"`
+	Statements   []SessionStatement `json:"statements,omitempty"`
+	SortOrder    int                `json:"sort_order"`
 }
 
 type SessionOption struct {
@@ -80,6 +85,8 @@ type SessionStatement struct {
 }
 
 type SessionStatePayload struct {
+	FormatVersion    int                       `json:"format_version,omitempty"`
+	NavigationPolicy string                    `json:"navigation_policy,omitempty"`
 	SessionID        uuid.UUID                 `json:"session_id"`
 	Status           string                    `json:"status"`
 	RemainingSeconds int64                     `json:"remaining_seconds"`
@@ -99,10 +106,12 @@ type SessionStatePayload struct {
 // (FR-10/FR-12). It carries the updated per-section timing block (same shape as the
 // state payload's tests[]) plus the new active_test_id and a completed flag.
 type AdvanceSectionResult struct {
-	Mode         string               `json:"mode,omitempty"`
-	ActiveTestID *uuid.UUID           `json:"active_test_id,omitempty"`
-	Completed    bool                 `json:"completed"`
-	Tests        []SessionTestPayload `json:"tests"`
+	FormatVersion    int                  `json:"format_version,omitempty"`
+	NavigationPolicy string               `json:"navigation_policy,omitempty"`
+	Mode             string               `json:"mode,omitempty"`
+	ActiveTestID     *uuid.UUID           `json:"active_test_id,omitempty"`
+	Completed        bool                 `json:"completed"`
+	Tests            []SessionTestPayload `json:"tests"`
 }
 
 type SubmitResult struct {
@@ -128,6 +137,27 @@ var validViolationTypes = map[string]bool{
 	"tab_switch":         true,
 	"copy_attempt":       true,
 	"screenshot_attempt": true,
+}
+
+func sequentialSession(exam *model.Exam) bool {
+	if exam.FormatVersion == 2 {
+		return exam.NavigationPolicy == "sequential"
+	}
+	return exam.Mode == "utbk" || exam.Mode == "ielts"
+}
+
+func sectionTimer(exam *model.Exam) bool {
+	if exam.FormatVersion == 2 {
+		return exam.TimerMode == "per_test"
+	}
+	return sequentialSession(exam)
+}
+
+func legacySessionMode(exam *model.Exam) string {
+	if exam.FormatVersion == 2 {
+		return ""
+	}
+	return exam.Mode
 }
 
 // ---------- Shared helpers ----------
@@ -226,7 +256,19 @@ func sessionTestsPayload(exam *model.Exam, sessionID uuid.UUID, tests []model.Te
 		}
 		tests = ordered
 	}
-	return groupQuestionsByTest(tests)
+	grouped := groupQuestionsByTest(tests)
+	if exam.FormatVersion == 2 {
+		for i, td := range tests {
+			grouped[i].QuestionPresentation = presentationOrDefault(td.QuestionPresentation)
+			grouped[i].SharedMaterialHTML = td.Test.SharedMaterialHTML
+			grouped[i].InstructionsHTML = td.Test.InstructionsHTML
+			for j, q := range td.Questions {
+				grouped[i].Questions[j].MaterialHTML = q.Question.MaterialHTML
+				grouped[i].Questions[j].ImageURL = q.Question.ImageURL
+			}
+		}
+	}
+	return grouped
 }
 
 // enrichSectionedTests populates the per-section fields (FR-7/FR-16) on a grouped
@@ -473,7 +515,7 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 		}
 	}
 
-	isSectioned := exam.Mode == "utbk" || exam.Mode == "ielts"
+	isSectioned := sequentialSession(exam)
 
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
@@ -544,14 +586,16 @@ func (s *Service) sessionStartPayload(ctx context.Context, exam *model.Exam, ses
 	}
 	grouped := sessionTestsPayload(exam, sess.ID, tests)
 
-	if exam.Mode == "utbk" || exam.Mode == "ielts" {
+	if sequentialSession(exam) {
 		sections, err := s.storeRepo.GetSessionSections(ctx, sess.ID)
 		if err != nil {
 			return SessionStartPayload{}, err
 		}
 		activeID := enrichSectionedTests(grouped, tests, sections)
 		var topRemaining int64
-		if activeID != nil {
+		if !sectionTimer(exam) {
+			topRemaining = computeRemainingSeconds(sess.StartedAt, exam.DurationMinutes, sess.ExtendedUntil)
+		} else if activeID != nil {
 			for _, tp := range grouped {
 				if tp.ID == *activeID {
 					topRemaining = tp.RemainingSeconds
@@ -560,17 +604,22 @@ func (s *Service) sessionStartPayload(ctx context.Context, exam *model.Exam, ses
 			}
 		}
 		return SessionStartPayload{
+			FormatVersion:    exam.FormatVersion,
+			NavigationPolicy: exam.NavigationPolicy,
 			SessionID:        sess.ID,
 			RemainingSeconds: topRemaining,
 			TimerMode:        exam.TimerMode,
+			DurationMinutes:  exam.DurationMinutes,
 			Tests:            grouped,
-			Mode:             exam.Mode,
+			Mode:             legacySessionMode(exam),
 			ActiveTestID:     activeID,
 		}, nil
 	}
 
 	remaining := computeRemainingSeconds(sess.StartedAt, exam.DurationMinutes, sess.ExtendedUntil)
 	return SessionStartPayload{
+		FormatVersion:    exam.FormatVersion,
+		NavigationPolicy: exam.NavigationPolicy,
 		SessionID:        sess.ID,
 		RemainingSeconds: remaining,
 		TimerMode:        exam.TimerMode,
@@ -619,14 +668,16 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 		return SessionStatePayload{}, err
 	}
 
-	if exam.Mode == "utbk" || exam.Mode == "ielts" {
+	if sequentialSession(exam) {
 		sections, err := s.storeRepo.GetSessionSections(ctx, sessID)
 		if err != nil {
 			return SessionStatePayload{}, err
 		}
 		activeID := enrichSectionedTests(grouped, tests, sections)
 		var topRemaining int64
-		if activeID != nil {
+		if !sectionTimer(exam) {
+			topRemaining = computeRemainingSeconds(sess.StartedAt, exam.DurationMinutes, sess.ExtendedUntil)
+		} else if activeID != nil {
 			for _, tp := range grouped {
 				if tp.ID == *activeID {
 					topRemaining = tp.RemainingSeconds
@@ -635,19 +686,24 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 			}
 		}
 		return SessionStatePayload{
+			FormatVersion:    exam.FormatVersion,
+			NavigationPolicy: exam.NavigationPolicy,
 			SessionID:        sess.ID,
 			Status:           sess.Status,
 			RemainingSeconds: topRemaining,
 			TimerMode:        exam.TimerMode,
+			DurationMinutes:  exam.DurationMinutes,
 			Tests:            grouped,
 			Answers:          answers,
 			CurrentPosition:  sess.CurrentPosition,
-			Mode:             exam.Mode,
+			Mode:             legacySessionMode(exam),
 			ActiveTestID:     activeID,
 		}, nil
 	}
 
 	return SessionStatePayload{
+		FormatVersion:    exam.FormatVersion,
+		NavigationPolicy: exam.NavigationPolicy,
 		SessionID:        sess.ID,
 		Status:           sess.Status,
 		RemainingSeconds: remaining,
@@ -705,7 +761,7 @@ func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, 
 				return fmt.Errorf("%w: question not part of this exam", ErrValidation)
 			}
 		}
-		if exam.Mode == "utbk" || exam.Mode == "ielts" {
+		if sequentialSession(exam) {
 			sections, err := s.storeRepo.GetSessionSections(ctx, sessID)
 			if err != nil {
 				return err
@@ -781,7 +837,7 @@ func (s *Service) AdvanceSection(ctx context.Context, studentID, sessionID, test
 	if err != nil {
 		return AdvanceSectionResult{}, err
 	}
-	if exam.Mode != "utbk" && exam.Mode != "ielts" {
+	if !sequentialSession(exam) {
 		return AdvanceSectionResult{}, fmt.Errorf("%w: advance only applies to sectioned exams", ErrValidation)
 	}
 
@@ -835,10 +891,12 @@ func (s *Service) buildAdvanceResult(ctx context.Context, exam *model.Exam, sess
 	grouped := sessionTestsPayload(exam, sessID, tests)
 	activeID := enrichSectionedTests(grouped, tests, sections)
 	return AdvanceSectionResult{
-		Mode:         exam.Mode,
-		ActiveTestID: activeID,
-		Completed:    activeID == nil,
-		Tests:        grouped,
+		FormatVersion:    exam.FormatVersion,
+		NavigationPolicy: exam.NavigationPolicy,
+		Mode:             legacySessionMode(exam),
+		ActiveTestID:     activeID,
+		Completed:        activeID == nil,
+		Tests:            grouped,
 	}, nil
 }
 
@@ -1005,7 +1063,7 @@ func (s *Service) ReopenSession(ctx context.Context, sessionID string, minutes i
 	}
 
 	// FR-22: sectioned path — extend the active section, not the session-level deadline.
-	if exam.Mode == "utbk" || exam.Mode == "ielts" {
+	if sectionTimer(exam) {
 		tx, err := s.storeRepo.BeginTx(ctx)
 		if err != nil {
 			return err
@@ -1156,9 +1214,16 @@ func (s *Service) GetSessionMonitor(ctx context.Context, examID string) (model.S
 	now := time.Now()
 	for i := range rows {
 		rows[i].TotalQuestions = totalQ
-		rows[i].Status = deriveStatus(rows[i], now, exam.DurationMinutes, exam.GraceWindowMinutes)
+		timingRow := rows[i]
+		if exam.FormatVersion == 2 && !sectionTimer(exam) {
+			timingRow.ActiveSectionStartedAt = nil
+		}
+		rows[i].Status = deriveStatus(timingRow, now, exam.DurationMinutes, exam.GraceWindowMinutes)
 		// FR-21: populate the active section's remaining seconds for the proctor UI.
-		if rows[i].ActiveSectionStartedAt != nil {
+		if exam.FormatVersion == 2 && !sectionTimer(exam) && rows[i].ActiveSectionTestID != nil && rows[i].StartedAt != nil {
+			rows[i].ActiveSectionRemainingSeconds = computeRemainingSeconds(*rows[i].StartedAt, exam.DurationMinutes, rows[i].ExtendedUntil)
+		}
+		if sectionTimer(exam) && rows[i].ActiveSectionStartedAt != nil {
 			sec := model.ExamSessionSection{
 				DurationMinutes: *rows[i].ActiveSectionDurationMinutes,
 				StartedAt:       rows[i].ActiveSectionStartedAt,

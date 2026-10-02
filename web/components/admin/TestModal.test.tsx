@@ -519,4 +519,11 @@ describe("TestModal", () => {
       );
     });
   });
+  it.each([null, "<p>Reusable passage</p>"])("preserves shared material %s when saving metadata", async material => {
+    render(<TestModal open={true} onOpenChange={mockOnOpenChange} onSubmit={mockOnSubmit} isPending={false}
+      test={{ id:"material-test", title:"Material Test", subject:"English", topic:"Reading", duration_minutes:30, shared_material_html:material, instructions_html:"<p>Read carefully</p>" } as Test} />);
+    fireEvent.click(screen.getByRole("button", { name:/^simpan$/i }));
+    await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ shared_material_html:material, instructions_html:"<p>Read carefully</p>" })));
+  });
+
 });

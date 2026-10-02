@@ -2414,7 +2414,7 @@ func (r *Repository) GetExamSessionByIDForUpdateTx(ctx context.Context, tx pgx.T
 // Reuses GetTestDetail for each attached test.
 func (r *Repository) GetSessionWithQuestions(ctx context.Context, examID uuid.UUID) ([]model.TestDetail, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT et.test_id
+		`SELECT et.test_id, et.question_presentation
 		FROM exam_test et
 		WHERE et.exam_id = $1
 		ORDER BY et.sort_order ASC`,
@@ -2426,12 +2426,15 @@ func (r *Repository) GetSessionWithQuestions(ctx context.Context, examID uuid.UU
 	defer rows.Close()
 
 	var testIDs []uuid.UUID
+	var presentations []string
 	for rows.Next() {
 		var testID uuid.UUID
-		if err := rows.Scan(&testID); err != nil {
+		var presentation string
+		if err := rows.Scan(&testID, &presentation); err != nil {
 			return nil, err
 		}
 		testIDs = append(testIDs, testID)
+		presentations = append(presentations, presentation)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -2446,6 +2449,7 @@ func (r *Repository) GetSessionWithQuestions(ctx context.Context, examID uuid.UU
 		if err != nil {
 			return nil, err
 		}
+		detail.QuestionPresentation = presentations[i]
 		result[i] = *detail
 	}
 	return result, nil

@@ -72,44 +72,31 @@ describe("ExamModal", () => {
     expect(payload).not.toHaveProperty("certificate_design_updated_at");
   });
 
-  it("renders a mode selector with standard, utbk, ielts options on create", () => {
-    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
-
-    expect(screen.getByLabelText("Standar")).toBeInTheDocument();
-    expect(screen.getByLabelText("UTBK")).toBeInTheDocument();
-    expect(screen.getByLabelText("IELTS")).toBeInTheDocument();
+  it("offers navigation instead of named modes for new exams", () => {
+    render(<ExamModal open={true} onClose={vi.fn()} />);
+    expect(screen.getByLabelText("Bebas")).toBeChecked();
+    expect(screen.getByLabelText("Berurutan")).not.toBeChecked();
+    expect(screen.queryByLabelText("UTBK")).not.toBeInTheDocument();
   });
 
-  it("defaults to standard mode on create", () => {
-    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
-
-    expect(screen.getByLabelText("Standar")).toBeChecked();
-    expect(screen.getByLabelText("UTBK")).not.toBeChecked();
-    expect(screen.getByLabelText("IELTS")).not.toBeChecked();
+  it.each(["Bebas", "Berurutan"])("sends %s navigation on create", async label => {
+    mockCreateExam.mockResolvedValue({ id: "new-exam" });
+    render(<ExamModal open={true} onClose={vi.fn()} />);
+    fireEvent.input(screen.getByLabelText(/judul/i), { target:{value:"Configured Exam"} });
+    fireEvent.input(screen.getByLabelText(/durasi/i), { target:{value:"60"} });
+    fireEvent.click(screen.getByLabelText(label));
+    fireEvent.click(screen.getByRole("button", {name:/^simpan$/i}));
+    await waitFor(() => expect(mockCreateExam).toHaveBeenCalledWith(expect.objectContaining({navigation_policy:label === "Bebas" ? "free" : "sequential"})));
+    expect(mockCreateExam.mock.calls[0][0]).not.toHaveProperty("mode");
   });
 
-  it("includes mode in create payload", async () => {
-    mockCreateExam.mockResolvedValue({ id: "exam-1" });
-
-    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
-
-    fireEvent.input(screen.getByLabelText(/judul/i), {
-      target: { value: "UTBK Tryout" },
-    });
-
-    // Use per_test timer so overall duration isn't required
+  it("per-section timer requires sequential navigation", () => {
+    render(<ExamModal open={true} onClose={vi.fn()} />);
+    fireEvent.input(screen.getByLabelText(/judul/i), {target:{value:"Configured Exam"}});
     fireEvent.click(screen.getByLabelText("Per Tes"));
-
-    // Select UTBK mode
-    fireEvent.click(screen.getByLabelText("UTBK"));
-
-    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
-
-    await waitFor(() => {
-      expect(mockCreateExam).toHaveBeenCalledWith(
-        expect.objectContaining({ mode: "utbk", title: "UTBK Tryout" }),
-      );
-    });
+    expect(screen.getByLabelText("Berurutan")).toBeChecked();
+    fireEvent.click(screen.getByLabelText("Bebas"));
+    expect(screen.getByRole("button", {name:/^simpan$/i})).toBeDisabled();
   });
 
   it("includes mode in update payload", async () => {
@@ -143,7 +130,7 @@ describe("ExamModal", () => {
 
   it("shows a hint when utbk or ielts mode is selected", () => {
     const { rerender } = render(
-      <ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />,
+      <ExamModal open={true} onClose={vi.fn()} exam={{...sampleExam, format_version:1}} onSaved={vi.fn()} />,
     );
 
     // Default: no hint
