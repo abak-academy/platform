@@ -22,6 +22,8 @@ let deleteState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending:
 
 vi.mock("@/lib/hooks/admin-products", () => ({
   useAdminProducts: () => productsState,
+  useAdminProduct: (id?: string) => ({ data: sampleProducts.find((product) => product.id === id), isPending: false, isError: false, refetch: vi.fn() }),
+  useUpdateProductRelations: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCreateProduct: () => createState,
   useUpdateProduct: () => updateState,
   usePublishProduct: () => publishState,

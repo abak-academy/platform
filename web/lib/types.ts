@@ -215,9 +215,11 @@ export interface AdminUpdateProductInput {
   specs?: ProductSpec[];
   available_from?: string | null;
   available_until?: string | null;
-  course_ids?: string[];
-  exam_ids?: string[];
 }
+
+export type AdminUpdateProductRelationsInput =
+  | { exam_ids: string[]; course_ids?: never }
+  | { course_ids: string[]; exam_ids?: never };
 
 export interface OrderItem {
   id: string;

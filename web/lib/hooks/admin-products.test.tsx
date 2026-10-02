@@ -3,6 +3,8 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   useAdminProducts,
+  useAdminProduct,
+  useUpdateProductRelations,
   useCreateProduct,
   useUpdateProduct,
   usePublishProduct,
@@ -146,6 +148,46 @@ describe("admin-products hooks", () => {
       body: JSON.stringify({ name: "Buku A v2", price: 12000 }),
     });
     expect(spy).toHaveBeenCalledWith({ queryKey: adminProductsKeys.list() });
+  });
+
+  it("useAdminProduct loads detail with relations and encodes the id", async () => {
+    const product: Product = { id: "p/1", type: "exam", name: "Exam", price: 1000, status: "published", exam_ids: ["e1", "e2"] };
+    mockAuthFetch.mockResolvedValueOnce(product);
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useAdminProduct("p/1", true), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(product);
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/products/p%2F1");
+  });
+
+  it("useAdminProduct does not fetch while closed or creating", () => {
+    const { wrapper } = wrapperFactory();
+    renderHook(() => useAdminProduct(undefined, true), { wrapper });
+    renderHook(() => useAdminProduct("p1", false), { wrapper });
+    expect(mockAuthFetch).not.toHaveBeenCalled();
+  });
+
+  it.each([{ exam_ids: ["e2"] }, { course_ids: ["c2"] }])("useUpdateProductRelations sends PUT and refreshes detail and list for %j", async (input) => {
+    mockAuthFetch.mockResolvedValueOnce({ id: "p/1" });
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useUpdateProductRelations(), { wrapper });
+    await act(async () => { await result.current.mutateAsync({ id: "p/1", input }); });
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/products/p%2F1/relations", { method: "PUT", body: JSON.stringify(input) });
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminProductsKeys.detail("p/1") });
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminProductsKeys.list() });
+  });
+
+  it("refreshes the loaded relations after a successful replacement", async () => {
+    const before: Product = { id: "p1", type: "exam", name: "Exam", price: 1000, status: "published", exam_ids: ["e1"] };
+    const after = { ...before, exam_ids: ["e2"] };
+    mockAuthFetch.mockResolvedValueOnce(before).mockResolvedValueOnce(after).mockResolvedValueOnce(after);
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => ({ detail: useAdminProduct("p1"), change: useUpdateProductRelations() }), { wrapper });
+    await waitFor(() => expect(result.current.detail.data?.exam_ids).toEqual(["e1"]));
+    await act(async () => { await result.current.change.mutateAsync({ id: "p1", input: { exam_ids: ["e2"] } }); });
+    await waitFor(() => expect(result.current.detail.data?.exam_ids).toEqual(["e2"]));
+    expect(mockAuthFetch).toHaveBeenNthCalledWith(3, "/admin/products/p1");
   });
 
   it("usePublishProduct posts to /admin/products/:id/publish and invalidates list", async () => {

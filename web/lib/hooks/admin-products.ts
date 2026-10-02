@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { Product, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
+import type { Product, AdminCreateProductInput, AdminUpdateProductInput, AdminUpdateProductRelationsInput } from "@/lib/types";
 
 export const adminProductsKeys = {
   all: ["admin", "products"] as const,
+  detail: (id: string) => [...adminProductsKeys.all, "detail", id] as const,
   list: () => [...adminProductsKeys.all, "list"] as const,
 };
 
@@ -94,6 +95,31 @@ export function useDeleteProduct() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminProductsKeys.list() });
+    },
+  });
+}
+
+export function useAdminProduct(id?: string, enabled = true) {
+  return useQuery({
+    queryKey: adminProductsKeys.detail(id ?? ""),
+    enabled: !!id && enabled,
+    queryFn: () => authFetch<Product>(`/admin/products/${encodeURIComponent(id!)}`),
+  });
+}
+
+export function useUpdateProductRelations() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: AdminUpdateProductRelationsInput }) =>
+      authFetch<Product>(`/admin/products/${encodeURIComponent(id)}/relations`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: async (_, { id }) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: adminProductsKeys.detail(id) }),
+        qc.invalidateQueries({ queryKey: adminProductsKeys.list() }),
+      ]);
     },
   });
 }
