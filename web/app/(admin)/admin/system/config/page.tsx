@@ -47,6 +47,7 @@ function Toggle({ checked, onChange, label, description }: ToggleProps) {
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
         className={cn(
           "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
@@ -95,10 +96,38 @@ const INITIAL_PAYMENT = {
   midtrans_server_key: "",
   midtrans_client_key: "",
   midtrans_env: "sandbox",
+};
+
+const INITIAL_SHIPPING = {
   shipping_fallback_flat_rate: "",
   biteship_api_key: "",
   biteship_webhook_secret: "",
 };
+
+const COURIERS = [
+  {
+    code: "jne", name: "JNE", logo: "/couriers/jne.svg",
+    services: [["reg", "Reguler"], ["yes", "YES"], ["oke", "OKE"], ["jtr", "JTR"]],
+  },
+  {
+    code: "sicepat", name: "SiCepat", logo: "/couriers/sicepat.svg",
+    services: [["reg", "Reguler"], ["best", "Best"], ["gokil", "GOKIL"]],
+  },
+  {
+    code: "anteraja", name: "Anteraja", logo: "/couriers/anteraja.png",
+    services: [["reg", "Reguler"], ["same_day", "Same Day"]],
+  },
+  {
+    code: "tiki", name: "TIKI", logo: "/couriers/tiki.png",
+    services: [["reg", "REG"], ["eko", "EKO"], ["ons", "ONS"], ["sds", "SDS"]],
+  },
+  {
+    code: "lion", name: "Lion Parcel", logo: "/couriers/lion.svg",
+    services: [["reg_pack", "Reg Pack"], ["big_pack", "Big Pack"]],
+  },
+];
+
+const DEFAULT_SERVICES = "jne:reg,jne:yes,jne:oke";
 
 export default function SystemConfigPage() {
   const { t } = useTranslation();
@@ -108,6 +137,10 @@ export default function SystemConfigPage() {
   const [appFields, setAppFields] = useState(INITIAL_APP);
   const [notifFields, setNotifFields] = useState(INITIAL_NOTIF);
   const [paymentFields, setPaymentFields] = useState(INITIAL_PAYMENT);
+  const [shippingFields, setShippingFields] = useState(INITIAL_SHIPPING);
+  const [enabledServices, setEnabledServices] = useState(
+    () => new Set(DEFAULT_SERVICES.split(","))
+  );
 
   const { data: config, isLoading, error } = useAdminSystemConfig();
   const updateConfig = useUpdateSystemConfig();
@@ -140,6 +173,11 @@ export default function SystemConfigPage() {
         midtrans_server_key: config.midtrans_server_key ?? "",
         midtrans_client_key: config.midtrans_client_key ?? "",
         midtrans_env: (config.midtrans_env as "sandbox" | "production") ?? "sandbox",
+      });
+      setEnabledServices(
+        new Set((config.biteship_services || DEFAULT_SERVICES).split(","))
+      );
+      setShippingFields({
         shipping_fallback_flat_rate: config.shipping_fallback_flat_rate ?? "",
         biteship_api_key: config.biteship_api_key ?? "",
         biteship_webhook_secret: config.biteship_webhook_secret ?? "",
@@ -171,6 +209,22 @@ export default function SystemConfigPage() {
     try {
       await updateConfig.mutateAsync(paymentFields);
       toast.success(t("config_toast_integrations_saved"));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("sys_save_failed");
+      toast.error(msg);
+    }
+  };
+
+  const handleSaveShipping = async () => {
+    if (enabledServices.size === 0) return;
+    try {
+      const biteship_services = COURIERS.flatMap((courier) =>
+        courier.services.map(([code]) => `${courier.code}:${code}`)
+      )
+        .filter((pair) => enabledServices.has(pair))
+        .join(",");
+      await updateConfig.mutateAsync({ ...shippingFields, biteship_services });
+      toast.success(t("config_toast_couriers_saved"));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("sys_save_failed");
       toast.error(msg);
@@ -216,7 +270,7 @@ export default function SystemConfigPage() {
       />
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="mb-6">
+        <TabsList className="mb-6 h-auto flex-wrap">
           <TabsTrigger value="general" className="text-xs">
             <Settings className="mr-1 size-4" />
             {t("config_tab_general")}
@@ -228,6 +282,10 @@ export default function SystemConfigPage() {
           <TabsTrigger value="integrations" className="text-xs">
             <Plug className="mr-1 size-4" />
             {t("config_tab_integrations")}
+          </TabsTrigger>
+          <TabsTrigger value="couriers" className="text-xs">
+            <Plug className="mr-1 size-4" />
+            {t("config_tab_couriers")}
           </TabsTrigger>
         </TabsList>
 
@@ -542,6 +600,21 @@ export default function SystemConfigPage() {
                 </div>
               </div>
 
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleSavePayment}
+                  disabled={updateConfig.isPending}
+                >
+                  <Save className="mr-1 size-4" />
+                  {t("save")}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="couriers">
+          <div className="md-card-outlined">
+            <div className="space-y-8">
               <div>
                 <Eyebrow>{t("config_group_shipping")}</Eyebrow>
                 <div className="space-y-4">
@@ -549,9 +622,9 @@ export default function SystemConfigPage() {
                     <Label>{t("config_shipping_fallback_rate")}</Label>
                     <Input
                       type="number"
-                      value={paymentFields.shipping_fallback_flat_rate}
+                      value={shippingFields.shipping_fallback_flat_rate}
                       onChange={(e) =>
-                        setPaymentFields((f) => ({
+                        setShippingFields((f) => ({
                           ...f,
                           shipping_fallback_flat_rate: e.target.value,
                         }))
@@ -563,20 +636,20 @@ export default function SystemConfigPage() {
                     <Label>{t("config_shipping_biteship_key")}</Label>
                     <Input
                       type="password"
-                      value={paymentFields.biteship_api_key}
+                      value={shippingFields.biteship_api_key}
                       onChange={(e) =>
-                        setPaymentFields((f) => ({
+                        setShippingFields((f) => ({
                           ...f,
                           biteship_api_key: e.target.value,
                         }))
                       }
                       placeholder={
-                        paymentFields.biteship_api_key === "***"
+                        shippingFields.biteship_api_key === "***"
                           ? "***"
                           : t("config_shipping_key_placeholder")
                       }
                     />
-                    {paymentFields.biteship_api_key === "***" && (
+                    {shippingFields.biteship_api_key === "***" && (
                       <div className="mt-1 text-xs text-ink-500">
                         {t("config_payment_mask_hint")}
                       </div>
@@ -586,20 +659,20 @@ export default function SystemConfigPage() {
                     <Label>{t("config_shipping_webhook_secret")}</Label>
                     <Input
                       type="password"
-                      value={paymentFields.biteship_webhook_secret}
+                      value={shippingFields.biteship_webhook_secret}
                       onChange={(e) =>
-                        setPaymentFields((f) => ({
+                        setShippingFields((f) => ({
                           ...f,
                           biteship_webhook_secret: e.target.value,
                         }))
                       }
                       placeholder={
-                        paymentFields.biteship_webhook_secret === "***"
+                        shippingFields.biteship_webhook_secret === "***"
                           ? "***"
                           : t("config_shipping_webhook_secret_placeholder")
                       }
                     />
-                    {paymentFields.biteship_webhook_secret === "***" && (
+                    {shippingFields.biteship_webhook_secret === "***" && (
                       <div className="mt-1 text-xs text-ink-500">
                         {t("config_payment_mask_hint")}
                       </div>
@@ -608,10 +681,55 @@ export default function SystemConfigPage() {
                 </div>
               </div>
 
+              <div className="space-y-6">
+                {COURIERS.map((courier) => {
+                  const active = courier.services.some(([code]) =>
+                    enabledServices.has(`${courier.code}:${code}`)
+                  );
+                  return (
+                    <div key={courier.code}>
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={courier.logo}
+                          alt={courier.name}
+                          className={cn(
+                            "h-10 w-20 object-contain transition-all duration-200 motion-reduce:transition-none",
+                            !active && "grayscale opacity-40"
+                          )}
+                        />
+                        <div className="text-sm font-semibold">{courier.name}</div>
+                      </div>
+                      {courier.services.map(([code, label]) => {
+                        const pair = `${courier.code}:${code}`;
+                        return (
+                          <Toggle
+                            key={pair}
+                            label={`${courier.name} ${label}`}
+                            checked={enabledServices.has(pair)}
+                            onChange={(checked) =>
+                              setEnabledServices((current) => {
+                                const next = new Set(current);
+                                if (checked) next.add(pair);
+                                else next.delete(pair);
+                                return next;
+                              })
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+              {enabledServices.size === 0 && (
+                <p role="alert" className="text-sm text-amber-700">
+                  {t("config_couriers_required")}
+                </p>
+              )}
               <div className="flex justify-end">
                 <Button
-                  onClick={handleSavePayment}
-                  disabled={updateConfig.isPending}
+                  onClick={handleSaveShipping}
+                  disabled={updateConfig.isPending || enabledServices.size === 0}
                 >
                   <Save className="mr-1 size-4" />
                   {t("save")}

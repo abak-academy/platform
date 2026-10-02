@@ -17,6 +17,7 @@ import (
 // interface, so the order/status assertions below run against the actual
 // repository methods from Task 9).
 type fakeShipLogistics struct {
+	getRatesCalls    int
 	createOrderCalls int
 	getOrderCalls    int
 	lastCreateReq    CreateShipmentRequest
@@ -28,6 +29,7 @@ type fakeShipLogistics struct {
 var _ LogisticsClient = (*fakeShipLogistics)(nil)
 
 func (f *fakeShipLogistics) GetRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
+	f.getRatesCalls++
 	return nil, ErrShippingUnavailable
 }
 
@@ -325,5 +327,28 @@ func TestAdminShipOrderManual_StampsManualWithZeroClientCalls(t *testing.T) {
 	}
 	if fake.createOrderCalls != 0 || fake.getOrderCalls != 0 {
 		t.Errorf("want zero client calls, got create=%d get=%d", fake.createOrderCalls, fake.getOrderCalls)
+	}
+}
+
+func TestAdminShipOrder_DisabledCourierStillBooksStoredCodes(t *testing.T) {
+	fake := &fakeShipLogistics{createOrderFn: func(context.Context, CreateShipmentRequest) (Shipment, error) {
+		return Shipment{BiteshipOrderID: "disabled-booking", WaybillID: "WB-disabled", Status: "confirmed"}, nil
+	}}
+	svc, repo := newShipOrderTestService(t, fake)
+	ctx := context.Background()
+	if err := repo.UpsertSystemConfig(ctx, "biteship_services", "lion:reg_pack", false); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = repo.UpsertSystemConfig(ctx, "biteship_services", "", false) })
+	id := createShippableOrder(t, svc, repo, "paid", true)
+	if err := svc.AdminShipOrder(ctx, id.String(), "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if fake.createOrderCalls != 1 || fake.lastCreateReq.CourierCode != "jne" || fake.lastCreateReq.ServiceCode != "reg" || fake.getRatesCalls != 0 {
+		t.Fatalf("booking calls=%d quote calls=%d request=%+v", fake.createOrderCalls, fake.getRatesCalls, fake.lastCreateReq)
+	}
+	order, err := repo.GetOrderByID(ctx, id)
+	if err != nil || order.Status != "shipped" {
+		t.Fatalf("order=%+v error=%v", order, err)
 	}
 }

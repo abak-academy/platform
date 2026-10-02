@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -48,7 +48,9 @@ const translationMap: Record<string, string> = {
   config_toast_general_saved: "Pengaturan umum disimpan",
   config_toast_notif_saved: "Pengaturan notifikasi disimpan",
   config_toast_payment_saved: "Pengaturan pembayaran disimpan",
-  config_tab_integrations: "Integrasi",
+  config_tab_integrations: "Integrasi Pembayaran",
+  config_tab_couriers: "Integrasi Kurir",
+  config_couriers_required: "Setidaknya satu layanan kurir harus tetap aktif.",
   config_group_identity: "Identitas",
   config_group_contact: "Kontak",
   config_group_address: "Alamat",
@@ -88,6 +90,7 @@ let configState = {
     midtrans_env: "sandbox",
     shipping_fallback_flat_rate: "50000",
     biteship_api_key: "***",
+    biteship_services: "",
     biteship_webhook_secret: "***",
     notify_on_purchase_admin_store: "false",
     notify_on_purchase_admin_exam: "false",
@@ -168,6 +171,7 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
         midtrans_env: "sandbox",
         shipping_fallback_flat_rate: "50000",
         biteship_api_key: "***",
+        biteship_services: "",
         biteship_webhook_secret: "***",
         notify_on_purchase_admin_store: "false",
         notify_on_purchase_admin_exam: "false",
@@ -223,176 +227,95 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
     expect(payload).toHaveProperty("app_kode_pos");
   });
 
-  it("renders shipping settings section in Integrations tab", async () => {
+  async function openCouriers() {
     renderPage();
+    await userEvent.setup().click(await screen.findByRole("tab", { name: "Integrasi Kurir" }));
+    return screen.getByRole("tabpanel");
+  }
 
-    // First, wait for the page to load
-    await waitFor(() => {
-      expect(screen.getByText("Konfigurasi Sistem")).toBeInTheDocument();
-    });
-
-    // The component has paymentFields state that includes shipping settings
-    // Verify the fields exist by checking for number inputs (flat rate is type="number")
-    try {
-      // Try to find spinbutton which is the input role for type="number"
-      const allInputs = document.querySelectorAll('input[type="number"]');
-      expect(allInputs.length).toBeGreaterThan(0);
-    } catch {
-      // If no number inputs yet, we'll verify they work in the save test
-      expect(true).toBe(true);
+  it("renders courier logos, all 15 service switches and default services for empty config", async () => {
+    const panel = await openCouriers();
+    const names = ["JNE", "SiCepat", "Anteraja", "TIKI", "Lion Parcel"];
+    const paths = ["jne.svg", "sicepat.svg", "anteraja.png", "tiki.png", "lion.svg"];
+    names.forEach((name, i) => expect(within(panel).getByRole("img", { name })).toHaveAttribute("src", `/couriers/${paths[i]}`));
+    const serviceNames = [
+      "JNE Reguler", "JNE YES", "JNE OKE", "JNE JTR",
+      "SiCepat Reguler", "SiCepat Best", "SiCepat GOKIL",
+      "Anteraja Reguler", "Anteraja Same Day",
+      "TIKI REG", "TIKI EKO", "TIKI ONS", "TIKI SDS",
+      "Lion Parcel Reg Pack", "Lion Parcel Big Pack",
+    ];
+    expect(within(panel).getAllByRole("switch").map(el => el.getAttribute("aria-label"))).toEqual(serviceNames);
+    for (const name of ["JNE Reguler", "JNE YES", "JNE OKE"]) {
+      expect(within(panel).getByRole("switch", { name })).toHaveAttribute("aria-checked", "true");
     }
+    expect(within(panel).getAllByRole("switch").filter(el => el.getAttribute("aria-checked") === "true")).toHaveLength(3);
+    expect(within(panel).getByRole("img", { name: "Lion Parcel" })).toHaveClass("grayscale", "opacity-40", "duration-200", "motion-reduce:transition-none");
+    await userEvent.setup().click(within(panel).getByRole("switch", { name: "Lion Parcel Reg Pack" }));
+    expect(within(panel).getByRole("img", { name: "Lion Parcel" })).not.toHaveClass("grayscale");
+    expect(within(panel).getByRole("spinbutton")).toHaveValue(50000);
+    expect(within(panel).getByText("API Key Biteship")).toBeInTheDocument();
   });
 
-  it("includes shipping_fallback_flat_rate and biteship_api_key in Payment tab save", async () => {
-    mockMutateAsync.mockResolvedValue({ success: true });
-    renderPage();
-
-    // Wait for page to load
-    await waitFor(() => {
-      expect(screen.getByText("Konfigurasi Sistem")).toBeInTheDocument();
-    });
-
-    // The paymentFields state is loaded with shipping_fallback_flat_rate and biteship_api_key from config
-    // We need to click specifically the Payment tab save button
-    // Find all save buttons
-    const saveButtons = screen.getAllByRole("button", { name: /simpan|save/i });
-
-    // There should be 3: General, Notifications, Payment
-    // Payment is the 3rd one (index 2)
-    if (saveButtons.length >= 3) {
-      fireEvent.click(saveButtons[2]);
-
-      await waitFor(() => {
-        expect(mockMutateAsync).toHaveBeenCalled();
-      });
-
-      const payload = mockMutateAsync.mock.calls[0][0];
-      // Verify shipping-related fields are in the payload
-      expect(payload).toHaveProperty("shipping_fallback_flat_rate");
-      expect(payload).toHaveProperty("biteship_api_key");
+  it("shows an inline warning and disables Save when all services are off", async () => {
+    const panel = await openCouriers();
+    for (const name of ["JNE Reguler", "JNE YES", "JNE OKE"]) {
+      await userEvent.setup().click(within(panel).getByRole("switch", { name }));
     }
+    expect(within(panel).getByText("Setidaknya satu layanan kurir harus tetap aktif.")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Simpan" })).toBeDisabled();
   });
 
-  it("preserves masked biteship_api_key value when not edited", async () => {
-    mockMutateAsync.mockResolvedValue({ success: true });
+  it("courier Save sends only shipping keys, masked secrets and services in catalog order", async () => {
+    const panel = await openCouriers();
+    await userEvent.setup().click(within(panel).getByRole("switch", { name: "Lion Parcel Reg Pack" }));
+    await userEvent.setup().click(within(panel).getByRole("switch", { name: "JNE OKE" }));
+    await userEvent.setup().click(within(panel).getByRole("button", { name: "Simpan" }));
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith({
+      shipping_fallback_flat_rate: "50000", biteship_api_key: "***", biteship_webhook_secret: "***",
+      biteship_services: "jne:reg,jne:yes,lion:reg_pack",
+    }));
+  });
+
+  it("payment tab holds Midtrans fields and saves only payment keys", async () => {
     renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Konfigurasi Sistem")).toBeInTheDocument();
-    });
-
-    // Click the Payment tab save button (index 2) without modifying any fields
-    const saveButtons = screen.getAllByRole("button", { name: /simpan|save/i });
-    if (saveButtons.length >= 3) {
-      fireEvent.click(saveButtons[2]);
-
-      await waitFor(() => {
-        expect(mockMutateAsync).toHaveBeenCalled();
-      });
-
-      const payload = mockMutateAsync.mock.calls[0][0];
-      // The masked value should be sent unchanged
-      expect(payload.biteship_api_key).toBe("***");
-    }
+    await userEvent.setup().click(await screen.findByRole("tab", { name: "Integrasi Pembayaran" }));
+    const panel = screen.getByRole("tabpanel");
+    expect(within(panel).getByText("Midtrans Server Key")).toBeInTheDocument();
+    expect(within(panel).getByText("Midtrans Client Key")).toBeInTheDocument();
+    expect(within(panel).getByText("Lingkungan Midtrans")).toBeInTheDocument();
+    expect(within(panel).queryByText("API Key Biteship")).not.toBeInTheDocument();
+    await userEvent.setup().click(within(panel).getByRole("button", { name: "Simpan" }));
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith({
+      midtrans_server_key: "***", midtrans_client_key: "***", midtrans_env: "sandbox",
+    }));
   });
 
-  it("sends new biteship_api_key when modified", async () => {
-    mockMutateAsync.mockResolvedValue({ success: true });
-
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Konfigurasi Sistem")).toBeInTheDocument();
-    });
-
-    // Find all password inputs
-    const allInputs = document.querySelectorAll('input[type="password"]') as NodeListOf<HTMLInputElement>;
-
-    // There should be at least 2: midtrans_server_key and biteship_api_key
-    if (allInputs.length >= 2) {
-      // The last one is biteship_api_key
-      const biteshipInput = allInputs[allInputs.length - 1];
-
-      // Clear and enter new value
-      fireEvent.change(biteshipInput, { target: { value: "" } });
-      fireEvent.change(biteshipInput, { target: { value: "new_api_key_xyz" } });
-
-      const saveButtons = screen.getAllByRole("button", { name: /simpan|save/i });
-      // Click Payment tab save button (index 2)
-      if (saveButtons.length >= 3) {
-        fireEvent.click(saveButtons[2]);
-
-        await waitFor(() => {
-          expect(mockMutateAsync).toHaveBeenCalled();
-        });
-
-        const payload = mockMutateAsync.mock.calls[0][0];
-        expect(payload.biteship_api_key).toBe("new_api_key_xyz");
-      }
-    }
+  it.each([
+    ["biteship_api_key", "new_api_key_xyz", 0],
+    ["biteship_webhook_secret", "test-webhook-secret", 1],
+  ])("sends edited %s from courier tab", async (key, value, index) => {
+    const panel = await openCouriers();
+    const inputs = panel.querySelectorAll('input[type="password"]');
+    expect(inputs).toHaveLength(2);
+    fireEvent.change(inputs[index], { target: { value } });
+    await userEvent.setup().click(within(panel).getByRole("button", { name: "Simpan" }));
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ [key]: value })));
   });
 
-  it("preserves masked biteship_webhook_secret value when not edited", async () => {
-    const user = userEvent.setup();
-    mockMutateAsync.mockResolvedValue({ success: true });
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Konfigurasi Sistem")).toBeInTheDocument();
-    });
-
-    // Integrations tab content only mounts once its trigger is active —
-    // switch to it (Radix requires a real pointer interaction, not a bare
-    // fireEvent.click) before looking for its save button.
-    await user.click(screen.getByRole("tab", { name: /integrasi|integrations/i }));
-    await waitFor(() => {
-      expect(screen.getByText(/pembayaran|payment/i)).toBeInTheDocument();
-    });
-
-    const saveButton = screen.getByRole("button", { name: /simpan|save/i });
-    fireEvent.click(saveButton);
-
-    await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalled();
-    });
-
-    const payload = mockMutateAsync.mock.calls[0][0];
-    expect(payload.biteship_webhook_secret).toBe("***");
+  it("loads a saved service set without adding defaults", async () => {
+    configState.data.biteship_services = "lion:reg_pack";
+    const panel = await openCouriers();
+    expect(within(panel).getByRole("switch", { name: "Lion Parcel Reg Pack" })).toHaveAttribute("aria-checked", "true");
+    expect(within(panel).getByRole("switch", { name: "JNE Reguler" })).toHaveAttribute("aria-checked", "false");
+  });
+  it("serializes saved services in catalog order", async () => {
+    configState.data.biteship_services = "lion:reg_pack,jne:yes,jne:reg";
+    const panel = await openCouriers();
+    await userEvent.setup().click(within(panel).getByRole("button", { name: "Simpan" }));
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      biteship_services: "jne:reg,jne:yes,lion:reg_pack",
+    })));
   });
 
-  it("sends new biteship_webhook_secret when modified", async () => {
-    const user = userEvent.setup();
-    mockMutateAsync.mockResolvedValue({ success: true });
-
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Konfigurasi Sistem")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("tab", { name: /integrasi|integrations/i }));
-    await waitFor(() => {
-      expect(screen.getByText(/pembayaran|payment/i)).toBeInTheDocument();
-    });
-
-    // Find all password inputs — server key, client key, api key, webhook secret.
-    const allInputs = document.querySelectorAll('input[type="password"]') as NodeListOf<HTMLInputElement>;
-    expect(allInputs.length).toBeGreaterThanOrEqual(4);
-
-    // The last one is biteship_webhook_secret.
-    const webhookSecretInput = allInputs[allInputs.length - 1];
-
-    fireEvent.change(webhookSecretInput, { target: { value: "" } });
-    fireEvent.change(webhookSecretInput, { target: { value: "test-webhook-secret" } });
-
-    const saveButton = screen.getByRole("button", { name: /simpan|save/i });
-    fireEvent.click(saveButton);
-
-    await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalled();
-    });
-
-    const payload = mockMutateAsync.mock.calls[0][0];
-    expect(payload.biteship_webhook_secret).toBe("test-webhook-secret");
-  });
 });

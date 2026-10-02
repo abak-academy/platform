@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"testing"
 
 	"akademi-bimbel/internal/repository"
@@ -873,5 +874,39 @@ func TestUpdateSystemConfig_WebhookSecretIsEncryptedAndMasked(t *testing.T) {
 	}
 	if decrypted != "test-webhook-secret" {
 		t.Errorf("decrypted: want 'test-webhook-secret', got %q", decrypted)
+	}
+}
+
+func TestSystemConfigBiteshipServicesValidation(t *testing.T) {
+	tests := []struct {
+		name, value string
+		wantErr     bool
+	}{
+		{"default services", "jne:reg,jne:yes,jne:oke", false},
+		{"lion", "lion:reg_pack", false},
+		{"catalog", "jne:jtr,sicepat:best,sicepat:gokil,anteraja:same_day,tiki:eko,tiki:sds,tiki:reg,tiki:ons,lion:big_pack", false},
+		{"tiki motor service", "tiki:t15", true}, {"tiki trucking", "tiki:trc", true},
+		{"empty", "", true}, {"unknown courier", "unknown:reg", true},
+		{"unknown service", "jne:unknown", true}, {"duplicate", "jne:reg,jne:reg", true},
+		{"empty entry", "jne:reg,", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConfigKeys(map[string]string{"biteship_services": tt.value})
+			if tt.wantErr {
+				if !errors.Is(err, ErrUnknownConfigKey) {
+					t.Fatalf("want validation error, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	if err := validateConfigKeys(map[string]string{"app_name": "Example"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := buildConfigMap([]repository.SystemConfigRow{{Key: "biteship_services", Value: "lion:reg_pack"}})
+	if cfg["biteship_services"] != "lion:reg_pack" {
+		t.Fatalf("non-secret config = %v", cfg)
 	}
 }

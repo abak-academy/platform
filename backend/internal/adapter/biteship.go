@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"akademi-bimbel/internal/repository"
@@ -119,7 +120,7 @@ func (c *BiteshipClient) buildBiteshipRequest(originPostalCode string, req servi
 	return map[string]interface{}{
 		"origin_postal_code":      originPostalCode,
 		"destination_postal_code": req.DestinationPostalCode,
-		"couriers":                "anteraja,jne,sicepat,tiki",
+		"couriers":                strings.Join(req.Couriers, ","),
 		"items": []map[string]interface{}{
 			{
 				"name":     "items",

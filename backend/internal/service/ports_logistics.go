@@ -8,6 +8,7 @@ import (
 )
 
 type ShippingQuoteRequest struct {
+	Couriers              []string
 	DestinationPostalCode string
 	WeightGrams           int
 	// ItemValue is the item's value in rupiah, used for Biteship's insurance

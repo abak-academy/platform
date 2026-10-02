@@ -9,6 +9,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 
 	"akademi-bimbel/internal/repository"
 )
@@ -42,9 +44,23 @@ var configKeyCatalog = map[string]configKeyDef{
 	"midtrans_client_key":            {group: "payment", valueType: "string", secret: true},
 	"midtrans_env":                   {group: "payment", valueType: "enum", enumValues: []string{"sandbox", "production"}},
 	"shipping_fallback_flat_rate":    {group: "shipping", valueType: "string"},
+	"biteship_services":              {group: "shipping", valueType: "string"},
 	"biteship_api_key":               {group: "shipping", valueType: "string", secret: true},
 	"biteship_webhook_secret":        {group: "shipping", valueType: "string", secret: true},
 }
+
+// TODO: uncertain — service codes mapped from dashboard names via Biteship docs, reconcile with GET /v1/couriers before prod
+var biteshipServiceCatalog = map[string][]string{
+	"jne":      {"reg", "yes", "oke", "jtr"},
+	"sicepat":  {"reg", "best", "gokil"},
+	"anteraja": {"reg", "same_day"},
+	"tiki":     {"reg", "eko", "ons", "sds"},
+	"lion":     {"reg_pack", "big_pack"},
+}
+
+var biteshipCourierOrder = []string{"jne", "sicepat", "anteraja", "tiki", "lion"}
+
+const defaultBiteshipServices = "jne:reg,jne:yes,jne:oke"
 
 // encryptConfigValue encrypts plaintext with AES-256-GCM.
 // hexKey is a 64-char hex string (decoded to 32 bytes).
@@ -126,6 +142,17 @@ func validateConfigKeys(values map[string]string) error {
 		if !ok {
 			return fmt.Errorf("%w: %s", ErrUnknownConfigKey, key)
 		}
+		if key == "biteship_services" {
+			seen := make(map[string]bool)
+			for _, pair := range strings.Split(val, ",") {
+				courier, service, found := strings.Cut(pair, ":")
+				if !found || !slices.Contains(biteshipServiceCatalog[courier], service) || seen[pair] {
+					return fmt.Errorf("%w: invalid or duplicate courier service %q", ErrUnknownConfigKey, pair)
+				}
+				seen[pair] = true
+			}
+		}
+
 		switch def.valueType {
 		case "bool":
 			if val != "true" && val != "false" {

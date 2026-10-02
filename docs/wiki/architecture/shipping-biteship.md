@@ -1,6 +1,6 @@
 ---
 title: Shipping (Ongkir) & Biteship Integration
-updated: 2026-09-25
+updated: 2026-10-02
 verified_against: e6cf227c
 ---
 
@@ -11,7 +11,7 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 
 - Port: `service.LogisticsClient` (`backend/internal/service/ports_logistics.go:105`) —
   `GetRates`, `CreateOrder`, `GetOrder`, `CancelOrder`, `TrackWaybill`.
-- Real implementation: `adapter.BiteshipClient` (`backend/internal/adapter/biteship.go:25`).
+- Real implementation: `adapter.BiteshipClient` (`backend/internal/adapter/biteship.go:26`).
 - Stub: `service.NoopLogisticsClient` (`ports_logistics.go:119`) — every method returns
   `ErrShippingUnavailable`; never fabricates a rate or booking.
 - Resolution: `adapter.ResolveShippingClient` (`backend/internal/adapter/shipping_config.go:16`) —
@@ -26,11 +26,16 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 
 - `POST /orders/shipping` (no auth) → `Handler.GetShipping` → `Service.GetShippingRates`
   (`store.go:509`).
-- `BiteshipClient.GetRates` (`biteship.go:47`) reads origin postal code from
-  `system_config.app_kode_pos`, calls `POST /v1/rates/couriers` with couriers hardcoded to
-  `anteraja,jne,sicepat,tiki`.
+- `Service.GetShippingRates` reads `system_config` once for `biteship_services` and the flat rate.
+  An absent/empty service list, or a config read failure, enables only `jne:reg,jne:yes,jne:oke`.
+  The service puts distinct courier codes in catalog order on `ShippingQuoteRequest.Couriers`;
+  `BiteshipClient.GetRates` reads origin postal code from `system_config.app_kode_pos` and calls
+  `POST /v1/rates/couriers` with that list joined by commas. The adapter holds no courier policy.
+  The service then keeps only rates whose courier/service pair is enabled. An empty intersection
+  uses the existing flat-rate fallback and logs `route_unserved` at `Warn`; the fallback itself
+  is created after filtering.
 - Duration string ("1 - 2 days", "Same day") is parsed by `parseDurationDays`
-  (`biteship.go:146`) — takes the **upper** bound of a range; a string with no digits yields `0`
+  (`biteship.go:147`) — takes the **upper** bound of a range; a string with no digits yields `0`
   and is logged at `Info` (not a hard error, since "Same day" legitimately has none).
 - Fallback resolution: `resolveShippingRates` (`shipping_rates.go:42`) — carrier quotes win;
   otherwise `system_config.shipping_fallback_flat_rate` stands in, flagged `is_estimate: true`
@@ -136,6 +141,7 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 
 | Key | Type | Notes |
 |---|---|---|
+| `biteship_services` | non-secret string | comma-separated `courier:service` pairs; empty/unset defaults to JNE REG/YES/OKE; empty or unknown pairs and duplicates rejected on save |
 | `biteship_api_key` | secret string | encrypted at rest, `"***"` on read; env fallback `cfg.BiteshipAPIKey` |
 | `biteship_webhook_secret` | secret string | unset ⇒ webhook always rejects (fail-closed) |
 | `shipping_fallback_flat_rate` | string (parsed as int64) | flat-rate stand-in when no carrier quote available |
@@ -158,7 +164,8 @@ origin), `app_name`/`app_contact_phone`/`app_address`/`app_kode_pos` (booking se
   excludes `on_hold`, which self-resolves), snake_case normalisation for Biteship's inconsistent casing.
 - `lib/shipping.ts` — single source of truth for physical vs. digital (`isPhysicalType`:
   book/merchandise/medal), reused by cart, checkout gating, and admin order rendering.
-- `app/(admin)/admin/system/config/page.tsx` — origin address + flat-rate + Biteship key/secret fields.
+- `app/(admin)/admin/system/config/page.tsx` — origin address in General; flat rate, Biteship
+  key/secret, and per-service switches in Courier Integration; Midtrans in Payment Integration.
 - Cart-side: `components/cart/ShippingAddressForm.tsx`, `CourierRateList.tsx` — manual "check
   shipping cost" trigger only; no automatic/live quoting.
 
