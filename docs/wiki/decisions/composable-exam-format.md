@@ -1,7 +1,7 @@
 ---
 title: Composable exam format — explicit section configuration instead of named modes
 updated: 2026-10-03
-verified_against: b1bdfeaf
+verified_against: a786d5b5
 ---
 
 Why the exam runtime stops branching on `exam.mode` and what was deliberately left out of `docs/backlog/exam-format-system-design.md`. Behaviour lives in [[exam-lifecycle-and-scoring]]; the implementation contract for the first slice is `docs/specs/composable-exam-format.md`.
@@ -13,7 +13,7 @@ Why the exam runtime stops branching on `exam.mode` and what was deliberately le
 ## Decisions
 
 1. **Runtime path is an explicit `exam.format_version` (1 legacy, 2 composable), not an adapter over every exam.** An adapter would move all legacy exams onto one runtime and make rollback a data write; a version flag isolates format-2 behaviour and retains the legacy runtime. Cost: two paths until the legacy path is retired.
-2. **No per-attempt policy snapshot; edit safety instead.** Once a format-2 exam has any session, changes to `navigation_policy`, `randomize`, and the attached-test list are rejected; while only registrations exist the change is allowed and audit-logged. This avoids a snapshot table but accepts a race between the pre-write check and a concurrent session start, as recorded in the spec.
+2. **No per-attempt policy snapshot; edit safety instead.** Once a format-2 exam has any session, changes to `navigation_policy`, `randomize`, `timer_mode`, exam duration, and the attached-test list are rejected; while only registrations exist the change is allowed and audit-logged. Time compensation belongs to individual sessions in monitoring rather than changing exam defaults. This avoids a snapshot table but accepts a race between the pre-write check and a concurrent session start, as recorded in the spec.
 3. **Section presentation lives on `exam_test`; duration stays on `test`.** Presentation is per attachment (the same Test can be shown differently in two exams), while duration is a property of the Test itself — the product decision is that attaching a Test adopts its duration, so no per-attachment duration column exists.
 4. **No `timer_scope` column.** `exam.timer_mode` (`overall | per_test`) plus `duration_minutes` provides whole-exam and per-section clocks; current format-2 publishing requires a positive duration.
 5. **Randomization is derived, not stored.** A deterministic permutation seeded by `(session_id, test_id)` gives per-attempt stability without a stored order; dropping the seed is only safe because the seed is a pure function of ids that never change mid-attempt.
