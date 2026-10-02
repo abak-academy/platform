@@ -122,33 +122,37 @@ func TestExamFormatPolicy_ExamNavigationRoundTrip(t *testing.T) {
 	repo := New(pool)
 	ctx := context.Background()
 
-	// Explicit policy survives; a zero FormatVersion resolves to the column default (1).
-	sequential := &model.Exam{Title: "E " + uuid.NewString(), ResultConfig: "hidden", Status: "draft", NavigationPolicy: "sequential"}
-	require.NoError(t, repo.CreateExam(ctx, sequential))
-	require.Equal(t, 1, sequential.FormatVersion)
-	require.Equal(t, "sequential", sequential.NavigationPolicy)
+	tests := []struct {
+		name             string
+		navigationPolicy string
+		want             string
+	}{
+		{"explicit policy", "sequential", "sequential"},
+		{"omitted policy defaults to free", "", "free"},
+	}
 
-	got, err := repo.GetExamByID(ctx, sequential.ID)
-	require.NoError(t, err)
-	require.Equal(t, 1, got.FormatVersion)
-	require.Equal(t, "sequential", got.NavigationPolicy)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exam := &model.Exam{Title: "E " + uuid.NewString(), ResultConfig: "hidden", Status: "draft", NavigationPolicy: tt.navigationPolicy}
+			require.NoError(t, repo.CreateExam(ctx, exam))
+			require.Equal(t, 1, exam.FormatVersion)
+			require.Equal(t, tt.want, exam.NavigationPolicy)
 
-	// Empty policy resolves to the default 'free'.
-	defaulted := &model.Exam{Title: "E " + uuid.NewString(), ResultConfig: "hidden", Status: "draft"}
-	require.NoError(t, repo.CreateExam(ctx, defaulted))
-	require.Equal(t, 1, defaulted.FormatVersion)
-	require.Equal(t, "free", defaulted.NavigationPolicy)
+			got, err := repo.GetExamByID(ctx, exam.ID)
+			require.NoError(t, err)
+			require.Equal(t, 1, got.FormatVersion)
+			require.Equal(t, tt.want, got.NavigationPolicy)
 
-	// UpdateExamPATCH may change navigation_policy but must never touch format_version.
-	onUpdate := sequential
-	onUpdate.FormatVersion = 99
-	onUpdate.NavigationPolicy = "free"
-	require.NoError(t, repo.UpdateExam(ctx, sequential.ID, onUpdate))
+			exam.FormatVersion = 99
+			exam.NavigationPolicy = "free"
+			require.NoError(t, repo.UpdateExam(ctx, exam.ID, exam))
 
-	afterUpdate, err := repo.GetExamByID(ctx, sequential.ID)
-	require.NoError(t, err)
-	require.Equal(t, 1, afterUpdate.FormatVersion, "format_version must not be mutable via UpdateExam")
-	require.Equal(t, "free", afterUpdate.NavigationPolicy)
+			afterUpdate, err := repo.GetExamByID(ctx, exam.ID)
+			require.NoError(t, err)
+			require.Equal(t, 1, afterUpdate.FormatVersion, "format_version must not be mutable via UpdateExam")
+			require.Equal(t, "free", afterUpdate.NavigationPolicy)
+		})
+	}
 }
 
 func TestExamFormatPolicy_ExamTestPresentationRoundTrip(t *testing.T) {
@@ -156,37 +160,43 @@ func TestExamFormatPolicy_ExamTestPresentationRoundTrip(t *testing.T) {
 	repo := New(pool)
 	ctx := context.Background()
 
-	test := &model.Test{Title: "P " + uuid.NewString(), Subject: "english", Topic: "listening", DurationMinutes: 15}
-	require.NoError(t, repo.CreateTest(ctx, test))
-	exam := &model.Exam{Title: "PE " + uuid.NewString(), ResultConfig: "hidden", Status: "draft"}
-	require.NoError(t, repo.CreateExam(ctx, exam))
+	tests := []struct {
+		name         string
+		initial      string
+		presentation string
+		want         string
+	}{
+		{"explicit presentation", "one_per_page", "all_on_page", "all_on_page"},
+		{"omitted presentation defaults to one per page", "all_on_page", "", "one_per_page"},
+	}
 
-	tx, err := pool.Begin(ctx)
-	require.NoError(t, err)
-	require.NoError(t, repo.ReplaceExamTestsTx(ctx, tx, exam.ID, []model.ExamTest{
-		{ExamID: exam.ID, TestID: test.ID, SortOrder: 0, QuestionPresentation: "all_on_page"},
-	}))
-	require.NoError(t, tx.Commit(ctx))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			test := &model.Test{Title: "P " + uuid.NewString(), Subject: "english", Topic: "listening", DurationMinutes: 15}
+			require.NoError(t, repo.CreateTest(ctx, test))
+			exam := &model.Exam{Title: "PE " + uuid.NewString(), ResultConfig: "hidden", Status: "draft"}
+			require.NoError(t, repo.CreateExam(ctx, exam))
 
-	detail, err := repo.GetExamDetail(ctx, exam.ID)
-	require.NoError(t, err)
-	require.Len(t, detail.Tests, 1)
-	require.Equal(t, "all_on_page", detail.Tests[0].QuestionPresentation)
+			for _, presentation := range []string{tt.initial, tt.presentation} {
+				tx, err := pool.Begin(ctx)
+				require.NoError(t, err)
+				defer tx.Rollback(ctx)
+				require.NoError(t, repo.ReplaceExamTestsTx(ctx, tx, exam.ID, []model.ExamTest{
+					{ExamID: exam.ID, TestID: test.ID, SortOrder: 0, QuestionPresentation: presentation},
+				}))
+				require.NoError(t, tx.Commit(ctx))
+			}
 
-	var stored string
-	require.NoError(t, pool.QueryRow(ctx, `SELECT question_presentation FROM exam_test WHERE exam_id = $1`, exam.ID).Scan(&stored))
-	require.Equal(t, "all_on_page", stored)
+			detail, err := repo.GetExamDetail(ctx, exam.ID)
+			require.NoError(t, err)
+			require.Len(t, detail.Tests, 1)
+			require.Equal(t, tt.want, detail.Tests[0].QuestionPresentation)
 
-	// An empty presentation falls back to the one_per_page column default.
-	tx2, err := pool.Begin(ctx)
-	require.NoError(t, err)
-	require.NoError(t, repo.ReplaceExamTestsTx(ctx, tx2, exam.ID, []model.ExamTest{
-		{ExamID: exam.ID, TestID: test.ID, SortOrder: 0},
-	}))
-	require.NoError(t, tx2.Commit(ctx))
-
-	require.NoError(t, pool.QueryRow(ctx, `SELECT question_presentation FROM exam_test WHERE exam_id = $1`, exam.ID).Scan(&stored))
-	require.Equal(t, "one_per_page", stored)
+			var stored string
+			require.NoError(t, pool.QueryRow(ctx, `SELECT question_presentation FROM exam_test WHERE exam_id = $1`, exam.ID).Scan(&stored))
+			require.Equal(t, tt.want, stored)
+		})
+	}
 }
 
 func TestExamFormatPolicy_InvalidValuesRejected(t *testing.T) {
@@ -194,21 +204,27 @@ func TestExamFormatPolicy_InvalidValuesRejected(t *testing.T) {
 	repo := New(pool)
 	ctx := context.Background()
 
-	_, err := pool.Exec(ctx, `INSERT INTO exam (title, navigation_policy) VALUES ('bad-nav', 'bogus')`)
-	assertCheckViolation(t, err)
-
-	_, err = pool.Exec(ctx, `INSERT INTO exam (title, format_version) VALUES ('bad-format', 0)`)
-	assertCheckViolation(t, err)
-
 	exam := &model.Exam{Title: "CV " + uuid.NewString(), ResultConfig: "hidden", Status: "draft"}
 	require.NoError(t, repo.CreateExam(ctx, exam))
 	test := &model.Test{Title: "CV " + uuid.NewString(), Subject: "s", Topic: "t", DurationMinutes: 5}
 	require.NoError(t, repo.CreateTest(ctx, test))
 
-	_, err = pool.Exec(ctx,
-		`INSERT INTO exam_test (exam_id, test_id, sort_order, question_presentation) VALUES ($1, $2, 0, 'bogus')`,
-		exam.ID, test.ID)
-	assertCheckViolation(t, err)
+	tests := []struct {
+		name  string
+		query string
+		args  []any
+	}{
+		{"invalid navigation policy", `INSERT INTO exam (title, navigation_policy) VALUES ('bad-nav', 'bogus')`, nil},
+		{"non-positive format version", `INSERT INTO exam (title, format_version) VALUES ('bad-format', 0)`, nil},
+		{"invalid question presentation", `INSERT INTO exam_test (exam_id, test_id, sort_order, question_presentation) VALUES ($1, $2, 0, 'bogus')`, []any{exam.ID, test.ID}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := pool.Exec(ctx, tt.query, tt.args...)
+			assertCheckViolation(t, err)
+		})
+	}
 }
 
 func TestExamFormatPolicy_ExamHasAnySession(t *testing.T) {
@@ -216,35 +232,45 @@ func TestExamFormatPolicy_ExamHasAnySession(t *testing.T) {
 	repo := New(pool)
 	ctx := context.Background()
 
-	exam := &model.Exam{Title: "HAS " + uuid.NewString(), ResultConfig: "hidden", Status: "draft"}
-	require.NoError(t, repo.CreateExam(ctx, exam))
+	tests := []struct {
+		name            string
+		hasRegistration bool
+		hasSession      bool
+		want            bool
+	}{
+		{"no registration or session", false, false, false},
+		{"registration without session", true, false, false},
+		{"registration with session", true, true, true},
+	}
 
-	has, err := repo.ExamHasAnySession(ctx, exam.ID)
-	require.NoError(t, err)
-	require.False(t, has)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exam := &model.Exam{Title: "HAS " + uuid.NewString(), ResultConfig: "hidden", Status: "draft"}
+			require.NoError(t, repo.CreateExam(ctx, exam))
 
-	var studentID uuid.UUID
-	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO users (name, username, jenjang, role, status, auth_provider)
-		 VALUES ($1, $2, 'sd', 'student', 'active', 'password') RETURNING id`,
-		"HAS Student "+uuid.NewString(), "has_"+uuid.NewString()).Scan(&studentID))
+			if tt.hasRegistration {
+				var studentID uuid.UUID
+				require.NoError(t, pool.QueryRow(ctx,
+					`INSERT INTO users (name, username, jenjang, role, status, auth_provider)
+					 VALUES ($1, $2, 'sd', 'student', 'active', 'password') RETURNING id`,
+					"HAS Student "+uuid.NewString(), "has_"+uuid.NewString()).Scan(&studentID))
 
-	var regID uuid.UUID
-	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3) RETURNING id`,
-		studentID, exam.ID, uuid.NewString()).Scan(&regID))
+				var regID uuid.UUID
+				require.NoError(t, pool.QueryRow(ctx,
+					`INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3) RETURNING id`,
+					studentID, exam.ID, uuid.NewString()).Scan(&regID))
 
-	// A registration alone is not a session.
-	has, err = repo.ExamHasAnySession(ctx, exam.ID)
-	require.NoError(t, err)
-	require.False(t, has)
+				if tt.hasSession {
+					_, err := pool.Exec(ctx,
+						`INSERT INTO exam_session (registration_id, student_id, exam_id, started_at) VALUES ($1, $2, $3, now())`,
+						regID, studentID, exam.ID)
+					require.NoError(t, err)
+				}
+			}
 
-	_, err = pool.Exec(ctx,
-		`INSERT INTO exam_session (registration_id, student_id, exam_id, started_at) VALUES ($1, $2, $3, now())`,
-		regID, studentID, exam.ID)
-	require.NoError(t, err)
-
-	has, err = repo.ExamHasAnySession(ctx, exam.ID)
-	require.NoError(t, err)
-	require.True(t, has)
+			has, err := repo.ExamHasAnySession(ctx, exam.ID)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, has)
+		})
+	}
 }
