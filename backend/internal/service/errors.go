@@ -188,7 +188,8 @@ var (
 	ErrDigitalQtyLimit = errors.New("digital products are limited to one per order")
 	// ErrInvalidQty is returned for a non-positive quantity. There is no generic
 	// validation sentinel in this package, so the rule owns its own.
-	ErrInvalidQty = errors.New("invalid quantity")
+	ErrInvalidQty             = errors.New("invalid quantity")
+	ErrProductRelationsLocked = errors.New("product relations cannot change because the product has orders")
 	// ErrDigitalTargetConflict is returned when a student would buy a course or
 	// exam they already own, are already buying, or have twice in one cart.
 	ErrDigitalTargetConflict = errors.New("digital product already owned or being purchased")

@@ -172,3 +172,48 @@ func TestAdminProduct_SpecsPersistForExamProduct(t *testing.T) {
 		t.Fatalf("want 1 spec {format:Format:Online} persisted in DB for exam product, got %+v", persisted.Specs)
 	}
 }
+
+func TestAdminProduct_ExamMetadataPatchPreservesSpecsAndRelations(t *testing.T) {
+	env := newAdminProductDBEnv(t)
+	token := mintProductToken(t, env, "00000000-0000-0000-0000-0000000000a5", "super_admin")
+	repo := repository.New(env.pool)
+	exam := &model.Exam{Title: "Specs preservation", ResultConfig: "hidden", Status: "draft"}
+	if err := repo.CreateExam(context.Background(), exam); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"type":"exam","name":"Specs exam","price":1000,"exam_ids":["` + exam.ID.String() + `"],"specs":[{"key":"format","label":"Format","value":"Online"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/products", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var product model.Product
+	if err := json.Unmarshal(rec.Body.Bytes(), &product); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPatch, "/api/v1/admin/products/"+product.ID, strings.NewReader(`{"name":"Renamed","price":2000,"exam_ids":null}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch: %d %s", rec.Code, rec.Body.String())
+	}
+	persisted, err := repo.GetProductByID(context.Background(), product.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Specs) != 1 || persisted.Specs[0].Value != "Online" {
+		t.Fatalf("specs changed: %v", persisted.Specs)
+	}
+	var count int
+	if err := env.pool.QueryRow(context.Background(), `SELECT count(*) FROM product_exam WHERE product_id=$1 AND exam_id=$2`, product.ID, exam.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatal("exam link lost")
+	}
+}

@@ -39,6 +39,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminProducts.POST("", h.AdminCreateProduct)
 	adminProducts.GET("/:id", h.AdminGetProduct)
 	adminProducts.PATCH("/:id", h.AdminUpdateProduct)
+	adminProducts.PUT("/:id/relations", h.AdminUpdateProductRelations)
 	adminProducts.POST("/:id/publish", h.AdminPublishProduct)
 	adminProducts.DELETE("/:id", h.AdminDeleteProduct)
 

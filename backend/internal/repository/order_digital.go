@@ -9,6 +9,8 @@ import (
 	"akademi-bimbel/internal/model"
 )
 
+const liveOrderStatusPredicate = `o.status NOT IN ('cart', 'cancelled', 'payment_expired')`
+
 type queryer interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
@@ -69,14 +71,14 @@ func (r *Repository) ListLiveDigitalTargets(ctx context.Context, tx pgx.Tx, stud
 		      JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'course'
 		      JOIN product_course pc ON pc.product_id = oi.product_id
 		     WHERE o.student_id = $1 AND o.id <> $2
-		       AND o.status NOT IN ('cart', 'cancelled', 'payment_expired')
+		       AND `+liveOrderStatusPredicate+`
 		    UNION ALL
 		    SELECT 'exam'::text, pe.exam_id
 		      FROM orders o
 		      JOIN order_item oi ON oi.order_id = o.id AND oi.product_type = 'exam'
 		      JOIN product_exam pe ON pe.product_id = oi.product_id
 		     WHERE o.student_id = $1 AND o.id <> $2
-		       AND o.status NOT IN ('cart', 'cancelled', 'payment_expired')
+		       AND `+liveOrderStatusPredicate+`
 		)
 		SELECT f.kind, f.target_id, 'in_flight' AS reason FROM in_flight f
 		UNION

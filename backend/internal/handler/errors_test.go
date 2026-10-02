@@ -42,6 +42,7 @@ func TestMapServiceError(t *testing.T) {
 		{name: "invalid google token", err: service.ErrInvalidToken, wantStatus: 401, wantCode: "invalid_google_token"},
 		{name: "invalid uuid", err: service.ErrInvalidUUID, wantStatus: 400, wantCode: "invalid_request"},
 		{name: "weak password", err: service.ErrWeakPassword, wantStatus: 400, wantCode: "invalid_request", wantDetail: "password must be at least 8 characters"},
+		{name: "product relations locked", err: service.ErrProductRelationsLocked, wantStatus: 409, wantCode: "product_relations_locked"},
 		{name: "product not found", err: service.ErrProductNotFound, wantStatus: 404, wantCode: "product_not_found"},
 		{name: "course not found", err: service.ErrCourseNotFound, wantStatus: 404, wantCode: "course_not_found"},
 		{name: "forbidden", err: service.ErrForbidden, wantStatus: 403, wantCode: "forbidden"},
