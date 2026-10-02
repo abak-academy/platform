@@ -10,15 +10,15 @@ import (
 )
 
 // This file shares the newGradingTestPool container (exam_grading_test.go) with
-// 14+ other test files; rows are never reset between tests. Reserved windows,
-// in Asia/Jakarta — take a free one rather than reusing one below. Only this
-// file writes exam.scheduled_at (confirmed by grep; exam_certificate_design_test.go
-// is the one other writer, pinned to 2026-03-15 UTC), so these windows only need
-// to stay clear of each other, not of dashboard_series_test.go's orders/users windows.
+// 14+ other test files; rows are never reset between tests. Other files seed
+// exams scheduled relative to the wall clock (product_availability_test.go uses
+// time.Now()+24h), so a window in the current era is eventually hit by their
+// rows. These windows sit in 2020, which the wall clock never revisits, and must
+// stay clear of each other. Reserved windows, in Asia/Jakarta:
 //
-//	2026-10-03 .. 2026-10-17  UpcomingExamsExcludesPastAndUnscheduled
-//	2026-11-03 .. 2026-11-17  UpcomingExamsOrdersBySoonestFirst
-//	2026-12-01                UpcomingExamsScheduledAtInJakartaOffset (single point)
+//	2020-10-03 .. 2020-10-17  UpcomingExamsExcludesPastAndUnscheduled
+//	2020-11-03 .. 2020-11-17  UpcomingExamsOrdersBySoonestFirst
+//	2020-12-01                UpcomingExamsScheduledAtInJakartaOffset (single point)
 //
 // CountActiveExamSessions and CountStudentsAndSchools count rows globally and
 // assert on before/after deltas instead, so they claim no window.
@@ -252,7 +252,7 @@ func TestUpcomingExamsExcludesPastAndUnscheduled(t *testing.T) {
 	ctx := context.Background()
 
 	jkt, _ := time.LoadLocation("Asia/Jakarta")
-	now := time.Date(2026, 10, 3, 0, 0, 0, 0, jkt)
+	now := time.Date(2020, 10, 3, 0, 0, 0, 0, jkt)
 	horizon := now.AddDate(0, 0, 14)
 
 	seedCountsExam(t, r, "Sudah lewat", ptrTime(now.AddDate(0, 0, -1)))
@@ -283,7 +283,7 @@ func TestUpcomingExamsOrdersBySoonestFirst(t *testing.T) {
 	ctx := context.Background()
 
 	jkt, _ := time.LoadLocation("Asia/Jakarta")
-	now := time.Date(2026, 11, 3, 0, 0, 0, 0, jkt)
+	now := time.Date(2020, 11, 3, 0, 0, 0, 0, jkt)
 
 	seedCountsExam(t, r, "Nanti", ptrTime(now.AddDate(0, 0, 10)))
 	seedCountsExam(t, r, "Segera", ptrTime(now.AddDate(0, 0, 2)))
@@ -309,7 +309,7 @@ func TestUpcomingExamsScheduledAtInJakartaOffset(t *testing.T) {
 	ctx := context.Background()
 
 	jkt, _ := time.LoadLocation("Asia/Jakarta")
-	scheduledAt := time.Date(2026, 12, 1, 9, 0, 0, 0, jkt)
+	scheduledAt := time.Date(2020, 12, 1, 9, 0, 0, 0, jkt)
 
 	seedCountsExam(t, r, "Offset Check", ptrTime(scheduledAt))
 
@@ -332,7 +332,7 @@ func TestUpcomingExamsScheduledAtInJakartaOffset(t *testing.T) {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
 
-	const want = "2026-12-01T09:00:00+07:00"
+	const want = "2020-12-01T09:00:00+07:00"
 	if decoded.ScheduledAt != want {
 		t.Errorf("serialized scheduled_at = %q, want %q (Jakarta offset, not a false UTC Z)", decoded.ScheduledAt, want)
 	}
