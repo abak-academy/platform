@@ -432,3 +432,123 @@ func TestGetDashboard_ExistingFieldsByteCompatible(t *testing.T) {
 		}
 	}
 }
+
+func TestGetDashboard_CompletedCourses(t *testing.T) {
+	type courseSpec struct {
+		lessons   int
+		completed int
+	}
+	tests := []struct {
+		name          string
+		courses       []courseSpec
+		wantCompleted int
+	}{
+		{
+			name:          "empty course is not completed",
+			courses:       []courseSpec{{lessons: 0, completed: 0}},
+			wantCompleted: 0,
+		},
+		{
+			name:          "all lessons done is completed",
+			courses:       []courseSpec{{lessons: 2, completed: 2}},
+			wantCompleted: 1,
+		},
+		{
+			name:          "partially done is not completed",
+			courses:       []courseSpec{{lessons: 2, completed: 1}},
+			wantCompleted: 0,
+		},
+		{
+			name:          "empty course next to a finished one counts only the finished one",
+			courses:       []courseSpec{{lessons: 0, completed: 0}, {lessons: 1, completed: 1}},
+			wantCompleted: 1,
+		},
+	}
+
+	svc, repo := newRealDBService(t)
+	pool := repo.Pool()
+	ctx := context.Background()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var studentID uuid.UUID
+			if err := pool.QueryRow(ctx,
+				`INSERT INTO users (name, username, role, status, jenjang, grade, otp_enabled)
+				 VALUES ($1, $2, 'student', 'active', 'sma', 10, false) RETURNING id`,
+				"Completed Courses Student "+uniqueSuffix(), "completedcourses_"+uniqueSuffix(),
+			).Scan(&studentID); err != nil {
+				t.Fatalf("seed student: %v", err)
+			}
+
+			courseIDs := make([]uuid.UUID, len(tt.courses))
+			for i, spec := range tt.courses {
+				if err := pool.QueryRow(ctx,
+					`INSERT INTO course (title, level, subject, instructor_name) VALUES ($1, 'sma', 'math', 'T') RETURNING id`,
+					"Course "+uniqueSuffix(),
+				).Scan(&courseIDs[i]); err != nil {
+					t.Fatalf("seed course: %v", err)
+				}
+
+				done := map[string]string{}
+				if spec.lessons > 0 {
+					var sectionID uuid.UUID
+					if err := pool.QueryRow(ctx,
+						`INSERT INTO section (course_id, title) VALUES ($1, 'S') RETURNING id`, courseIDs[i],
+					).Scan(&sectionID); err != nil {
+						t.Fatalf("seed section: %v", err)
+					}
+					for l := 0; l < spec.lessons; l++ {
+						var lessonID uuid.UUID
+						if err := pool.QueryRow(ctx,
+							`INSERT INTO lesson (section_id, title, duration_seconds, position) VALUES ($1, 'L', 60, $2) RETURNING id`,
+							sectionID, l,
+						).Scan(&lessonID); err != nil {
+							t.Fatalf("seed lesson: %v", err)
+						}
+						if l < spec.completed {
+							done[lessonID.String()] = "2030-01-01T00:00:00Z"
+						}
+					}
+				}
+				doneJSON, err := json.Marshal(done)
+				if err != nil {
+					t.Fatalf("marshal completed lessons: %v", err)
+				}
+				if _, err := pool.Exec(ctx,
+					`INSERT INTO course_session (student_id, course_id, status, source, completed_lessons)
+					 VALUES ($1, $2, 'active', 'test', $3::jsonb)`, studentID, courseIDs[i], doneJSON,
+				); err != nil {
+					t.Fatalf("seed session: %v", err)
+				}
+			}
+
+			view, err := svc.GetDashboard(ctx, studentID.String())
+			if err != nil {
+				t.Fatalf("GetDashboard: %v", err)
+			}
+
+			if got := view.StudySummary.EnrolledCoursesCount; got != len(tt.courses) {
+				t.Errorf("EnrolledCoursesCount: want %d, got %d", len(tt.courses), got)
+			}
+			if got := view.StudySummary.CompletedCourses; got != tt.wantCompleted {
+				t.Errorf("CompletedCourses: want %d, got %d", tt.wantCompleted, got)
+			}
+			byID := map[string]DashboardCourseSummary{}
+			for _, c := range view.EnrolledCourses {
+				byID[c.ID] = c
+			}
+			for i, spec := range tt.courses {
+				c, ok := byID[courseIDs[i].String()]
+				if !ok {
+					t.Fatalf("course %d missing from EnrolledCourses", i)
+				}
+				if c.TotalLessons != spec.lessons || c.DoneLessons != spec.completed {
+					t.Errorf("course %d: want total/done %d/%d, got %d/%d", i, spec.lessons, spec.completed, c.TotalLessons, c.DoneLessons)
+				}
+				if spec.lessons == 0 && c.Progress != 0 {
+					t.Errorf("course %d: empty course progress want 0, got %v", i, c.Progress)
+				}
+			}
+		})
+	}
+}
