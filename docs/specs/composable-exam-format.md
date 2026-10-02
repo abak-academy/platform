@@ -78,7 +78,7 @@ Tidak ada kolom baru di `exam_session` maupun `exam_session_section`.
 
 - `test`: `title` (menjadi label section), `duration_minutes` (satu-satunya sumber durasi section), `shared_material_html`, `instructions_html`, daftar Question.
 - `exam_test`: `question_presentation` dan `sort_order`.
-- `exam`: `format_version`, `navigation_policy`; timer tetap memakai field existing `timer_mode` ∈ {`overall`,`per_test`} + `duration_minutes` (`overall` + duration = timer per exam, `per_test` + duration = timer per section, `per_test` tanpa duration = tanpa timer).
+- `exam`: `format_version`, `navigation_policy`; timer tetap memakai field existing `timer_mode` ∈ {`overall`,`per_test`} + `duration_minutes` (`overall` + duration = timer per exam, `per_test` + duration = timer per section; publish format 2 mensyaratkan durasi positif).
 
 **Invariant**
 
@@ -136,7 +136,7 @@ Test yang harus ada di PR-1: migration up (+ down bila repo memakai pasangan), c
 
 ## Scope
 
-**Ditunda ke PR-2:** student renderer `one_per_page`/`all_on_page`, resolusi material di UI, section transition + konfirmasi jumlah soal belum dijawab, admin section config + editor shared material, effective behavior summary. Saat UI section-config menyimpan daftar test, ia harus mengirim bentuk rich `[{test_id,question_presentation},…]`: bentuk lama `[test_id,…]` tetap didukung tapi mengembalikan `question_presentation` ke default kolom, jadi pilihan `all_on_page` yang sudah tersimpan akan hilang.
+**Delivery PR-2:** student renderer `one_per_page`/`all_on_page`, resolusi material di UI, section transition + konfirmasi jumlah soal belum dijawab, admin section config + editor shared material, effective behavior summary. Saat UI section-config menyimpan daftar test, ia harus mengirim bentuk rich `[{test_id,question_presentation},…]`: bentuk lama `[test_id,…]` tetap didukung tapi mengembalikan `question_presentation` ke default kolom, jadi pilihan `all_on_page` yang sudah tersimpan akan hilang.
 
 **Ditunda ke PR-3:** konversi exam lama (preview mapping `mode → format_version=2`), result/monitor/export memakai label section dan `result_grouping`, retirement `isSectionedMode` dan kolom legacy.
 
@@ -159,3 +159,5 @@ PR-2 is stacked on PR #198 at `8040fcb3` and is independently deployable after P
 - Admin configures navigation and presentation and edits reusable Test material/instructions plus Question material. Section saves use rich attachment objects and preserve existing presentation when adding/removing another Test.
 - Student presentation supports all existing answer formats, material precedence, shared instructions, unanswered-count confirmation and the existing save barrier. Format-2 free navigation allows selecting each section without locking answers in other sections.
 - Proof includes table-driven real-DB runtime/timer/compatibility tests, frontend component and material matrix tests, browser coverage, and full backend/frontend gates. Result calculation remains unchanged; conversion and enhanced grouping/retirement are follow-up work.
+
+Pending product decision: the accepted edit guard freezes navigation/randomization/attachments after a session exists, but does not freeze `timer_mode` or exam duration. Those values remain live reads and changing them can alter an active format-2 clock. Extending the guard requires confirmation; PR-2 stays draft while this choice is unresolved.
