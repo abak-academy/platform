@@ -681,52 +681,107 @@ export default function SystemConfigPage() {
                 </div>
               </div>
 
-              <div className="space-y-6">
-                {COURIERS.map((courier) => {
-                  const active = courier.services.some(([code]) =>
-                    enabledServices.has(`${courier.code}:${code}`)
-                  );
-                  return (
-                    <div key={courier.code}>
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={courier.logo}
-                          alt={courier.name}
-                          className={cn(
-                            "h-10 w-20 object-contain transition-all duration-200 motion-reduce:transition-none",
-                            !active && "grayscale opacity-40"
-                          )}
-                        />
-                        <div className="text-sm font-semibold">{courier.name}</div>
-                      </div>
-                      {courier.services.map(([code, label]) => {
-                        const pair = `${courier.code}:${code}`;
-                        return (
-                          <Toggle
-                            key={pair}
-                            label={`${courier.name} ${label}`}
-                            checked={enabledServices.has(pair)}
-                            onChange={(checked) =>
-                              setEnabledServices((current) => {
-                                const next = new Set(current);
-                                if (checked) next.add(pair);
-                                else next.delete(pair);
-                                return next;
-                              })
-                            }
-                          />
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+              <div>
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-bold text-ink-900">
+                      {t("config_couriers_section")}
+                    </h2>
+                    <p className="mt-1 text-sm text-ink-500">
+                      {t("config_couriers_hint")}
+                    </p>
+                  </div>
+                  <p className="text-sm text-ink-500">
+                    {t("config_couriers_summary").split("{enabled}")[0]}
+                    <span className="font-bold text-brand-600">{enabledServices.size}</span>
+                    {t("config_couriers_summary").split("{enabled}")[1]
+                      .replace("{total}", String(COURIERS.reduce((total, courier) => total + courier.services.length, 0)))}
+                  </p>
+                </div>
+                <div className="border-y border-line">
+                  <div className="hidden grid-cols-[9.5rem_1fr] gap-4 border-b border-line py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400 sm:grid">
+                    <span>{t("config_couriers_col_courier")}</span>
+                    <span>{t("config_couriers_col_services")}</span>
+                  </div>
+                  <div className="divide-y divide-line">
+                    {COURIERS.map((courier) => {
+                      const enabled = courier.services.filter(([code]) =>
+                        enabledServices.has(`${courier.code}:${code}`)
+                      ).length;
+                      return (
+                        <article key={courier.code} className="space-y-2 py-2 sm:grid sm:grid-cols-[9.5rem_1fr] sm:items-center sm:gap-4 sm:space-y-0">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-6 w-14 shrink-0 items-center">
+                              <img
+                                src={courier.logo}
+                                alt={courier.name}
+                                className="h-auto max-h-4 w-auto max-w-[52px] object-contain object-left"
+                              />
+                            </div>
+                            <div>
+                              <div className="text-xs font-semibold leading-tight text-ink-900">{courier.name}</div>
+                              <div className="text-[11px] leading-tight text-ink-500">
+                                <span className={enabled > 0 ? "font-medium text-brand-600" : "text-ink-500"}>{enabled}</span>
+                                {" / "}{courier.services.length} {t("config_couriers_active_suffix")}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {courier.services.map(([code, label]) => {
+                              const pair = `${courier.code}:${code}`;
+                              const checked = enabledServices.has(pair);
+                              return (
+                                <button
+                                  key={pair}
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={checked}
+                                  aria-label={`${courier.name} ${label}`}
+                                  onClick={() =>
+                                    setEnabledServices((current) => {
+                                      const next = new Set(current);
+                                      if (checked) next.delete(pair);
+                                      else next.add(pair);
+                                      return next;
+                                    })
+                                  }
+                                  className={cn(
+                                    "inline-flex h-6 min-w-[4.25rem] items-center justify-between gap-1.5 rounded-md border px-2 text-[11px] leading-none transition-colors duration-200 motion-reduce:transition-none",
+                                    checked ? "border-brand-600/40 bg-brand-50 text-ink-900" : "border-line bg-white text-ink-500"
+                                  )}
+                                >
+                                  <span>{label}</span>
+                                  <span
+                                    aria-hidden="true"
+                                    className={cn(
+                                      "inline-flex h-3.5 w-6 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 motion-reduce:transition-none",
+                                      checked ? "bg-brand-600" : "bg-line"
+                                    )}
+                                  >
+                                    <span
+                                      className={cn(
+                                        "size-2.5 rounded-full bg-white shadow transition-transform duration-200 motion-reduce:transition-none",
+                                        checked ? "translate-x-2.5" : "translate-x-0"
+                                      )}
+                                    />
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
               {enabledServices.size === 0 && (
                 <p role="alert" className="text-sm text-amber-700">
                   {t("config_couriers_required")}
                 </p>
               )}
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-ink-500">{t("config_couriers_footer_hint")}</p>
                 <Button
                   onClick={handleSaveShipping}
                   disabled={updateConfig.isPending || enabledServices.size === 0}

@@ -50,6 +50,13 @@ const translationMap: Record<string, string> = {
   config_toast_payment_saved: "Pengaturan pembayaran disimpan",
   config_tab_integrations: "Integrasi Pembayaran",
   config_tab_couriers: "Integrasi Kurir",
+  config_couriers_section: "Biteship Kurir",
+  config_couriers_hint: "Pilih layanan kurir yang bisa ditawarkan kepada pembeli saat checkout.",
+  config_couriers_summary: "{enabled} dari {total} layanan aktif",
+  config_couriers_col_courier: "Kurir",
+  config_couriers_col_services: "Layanan yang ditawarkan",
+  config_couriers_active_suffix: "aktif",
+  config_couriers_footer_hint: "Perubahan layanan berlaku setelah disimpan.",
   config_couriers_required: "Setidaknya satu layanan kurir harus tetap aktif.",
   config_group_identity: "Identitas",
   config_group_contact: "Kontak",
@@ -233,6 +240,58 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
     return screen.getByRole("tabpanel");
   }
 
+  it("renders the courier section heading and checkout hint", async () => {
+    const panel = await openCouriers();
+    expect(within(panel).getByRole("heading", { name: "Biteship Kurir" })).toBeInTheDocument();
+    expect(within(panel).getByText("Pilih layanan kurir yang bisa ditawarkan kepada pembeli saat checkout.")).toBeInTheDocument();
+    expect(within(panel).getByText("dari 15 layanan aktif")).toHaveTextContent("3 dari 15 layanan aktif");
+    expect(within(panel).getByText("Kurir")).toBeInTheDocument();
+    expect(within(panel).getByText("Layanan yang ditawarkan")).toBeInTheDocument();
+    expect(within(panel).getByText("Perubahan layanan berlaku setelah disimpan.")).toBeInTheDocument();
+  });
+
+  it("shows default counts per courier row and updates them when toggled", async () => {
+    const panel = await openCouriers();
+    const counts = [["JNE", "3 / 4 aktif"], ["SiCepat", "0 / 3 aktif"], ["Anteraja", "0 / 2 aktif"], ["TIKI", "0 / 4 aktif"], ["Lion Parcel", "0 / 2 aktif"]];
+    for (const [name, count] of counts) {
+      const row = within(panel).getByRole("img", { name }).closest("article");
+      expect(row).not.toBeNull();
+      expect(row).toHaveTextContent(count);
+      expect(within(row!).getByText(name)).toBeInTheDocument();
+    }
+    const lionRow = within(panel).getByRole("img", { name: "Lion Parcel" }).closest("article")!;
+    await userEvent.setup().click(within(lionRow).getByRole("switch", { name: "Lion Parcel Reg Pack" }));
+    expect(lionRow).toHaveTextContent("1 / 2 aktif");
+    expect(within(panel).getByText("dari 15 layanan aktif")).toHaveTextContent("4 dari 15 layanan aktif");
+    const jneRow = within(panel).getByRole("img", { name: "JNE" }).closest("article")!;
+    expect(within(jneRow).getByText("Reguler")).toBeInTheDocument();
+    expect(within(jneRow).queryByText("JNE Reguler")).not.toBeInTheDocument();
+    await userEvent.setup().click(within(jneRow).getByRole("switch", { name: "JNE Reguler" }));
+    expect(jneRow).toHaveTextContent("2 / 4 aktif");
+  });
+
+  it("defines courier translations in both locales", async () => {
+    const { DICT } = await vi.importActual<typeof import("@/lib/i18n")>("@/lib/i18n");
+    expect(DICT.id).toMatchObject({
+      config_couriers_section: "Biteship Kurir",
+      config_couriers_hint: "Pilih layanan kurir yang bisa ditawarkan kepada pembeli saat checkout.",
+      config_couriers_summary: "{enabled} dari {total} layanan aktif",
+      config_couriers_col_courier: "Kurir",
+      config_couriers_col_services: "Layanan yang ditawarkan",
+      config_couriers_active_suffix: "aktif",
+      config_couriers_footer_hint: "Perubahan layanan berlaku setelah disimpan.",
+    });
+    expect(DICT.en).toMatchObject({
+      config_couriers_section: "Biteship Couriers",
+      config_couriers_hint: "Choose the courier services that can be offered to buyers at checkout.",
+      config_couriers_summary: "{enabled} of {total} services active",
+      config_couriers_col_courier: "Courier",
+      config_couriers_col_services: "Offered services",
+      config_couriers_active_suffix: "active",
+      config_couriers_footer_hint: "Service changes apply after saving.",
+    });
+  });
+
   it("renders courier logos, all 15 service switches and default services for empty config", async () => {
     const panel = await openCouriers();
     const names = ["JNE", "SiCepat", "Anteraja", "TIKI", "Lion Parcel"];
@@ -250,11 +309,19 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
       expect(within(panel).getByRole("switch", { name })).toHaveAttribute("aria-checked", "true");
     }
     expect(within(panel).getAllByRole("switch").filter(el => el.getAttribute("aria-checked") === "true")).toHaveLength(3);
-    expect(within(panel).getByRole("img", { name: "Lion Parcel" })).toHaveClass("grayscale", "opacity-40", "duration-200", "motion-reduce:transition-none");
+    for (const name of names) {
+      expect(within(panel).getByRole("img", { name }).className).not.toMatch(/grayscale|opacity-/);
+    }
     await userEvent.setup().click(within(panel).getByRole("switch", { name: "Lion Parcel Reg Pack" }));
-    expect(within(panel).getByRole("img", { name: "Lion Parcel" })).not.toHaveClass("grayscale");
+    expect(within(panel).getByRole("img", { name: "Lion Parcel" }).className).not.toMatch(/grayscale|opacity-/);
     expect(within(panel).getByRole("spinbutton")).toHaveValue(50000);
     expect(within(panel).getByText("API Key Biteship")).toBeInTheDocument();
+  });
+
+  it("keeps default courier logos full colour and service chips 44 px tall", async () => {
+    const panel = await openCouriers();
+    expect(within(panel).getAllByRole("img").every(logo => !/opacity-|grayscale/.test(logo.className))).toBe(true);
+    expect(within(panel).getByRole("switch", { name: "SiCepat Best" })).toHaveClass("h-6");
   });
 
   it("shows an inline warning and disables Save when all services are off", async () => {
@@ -262,7 +329,7 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
     for (const name of ["JNE Reguler", "JNE YES", "JNE OKE"]) {
       await userEvent.setup().click(within(panel).getByRole("switch", { name }));
     }
-    expect(within(panel).getByText("Setidaknya satu layanan kurir harus tetap aktif.")).toBeInTheDocument();
+    expect(within(panel).getByRole("alert")).toHaveTextContent("Setidaknya satu layanan kurir harus tetap aktif.");
     expect(within(panel).getByRole("button", { name: "Simpan" })).toBeDisabled();
   });
 
