@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { adminOrderStatusLabel } from "@/lib/admin-order-status";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { ShipmentTimeline } from "@/components/orders/ShipmentTimeline";
 import { formatRupiah } from "@/lib/format";
@@ -92,7 +93,7 @@ export function OrderDetailModal({
         <DialogHeader className="shrink-0 border-b px-6 py-5">
           <DialogTitle className="flex items-center gap-3">
             <span className="font-mono">#{order.id.slice(-8)}</span>
-            <OrderStatusBadge status={order.status} />
+            <OrderStatusBadge status={order.status} label={adminOrderStatusLabel(order, t)} />
           </DialogTitle>
           <DialogDescription>
             {[placed, order.payment_method].filter(Boolean).join(" · ") || order.id}

@@ -180,7 +180,7 @@ describe("OrdersPage", () => {
     // Status column renders a badge per row. "Dikirim" is no longer also a
     // filter chip — the status filter is a select whose options are portalled
     // until opened — so this asserts the badge of a status the fixture has.
-    expect(screen.getAllByText("Menunggu Pembayaran").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Menunggu pembayaran").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Selesai").length).toBeGreaterThanOrEqual(1);
   });
 

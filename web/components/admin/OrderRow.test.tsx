@@ -5,10 +5,13 @@ import type { Order, OrderStatus } from "@/lib/types";
 
 // shipment-status.ts imports the bare `t` from this module, so the mock has to
 // provide it too or shipmentStatusLabel() throws.
-vi.mock("@/lib/i18n", () => ({
-  useTranslation: () => ({ t: (key: string) => key, lang: "id" }),
-  t: (_lang: string, key: string) => key,
-}));
+vi.mock("@/lib/i18n", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/i18n")>();
+  return {
+    useTranslation: () => ({ t: (key: import("@/lib/i18n").I18nKey) => original.t("id", key), lang: "id" }),
+    t: (_lang: string, key: string) => key,
+  };
+});
 
 const DAY_MS = 86_400_000;
 
@@ -240,7 +243,7 @@ describe("OrderRow actions", () => {
     expect(row).not.toHaveAttribute("role", "button");
     expect(row).not.toHaveAttribute("tabindex");
 
-    fireEvent.click(screen.getByRole("button", { name: /orders_detail_open/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Lihat detail pesanan/ }));
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
@@ -273,4 +276,25 @@ describe("OrderRow actions", () => {
       "destructive",
     );
   });
+});
+
+it.each([
+  ["payment_pending", "book", null, "Menunggu pembayaran"],
+  ["paid", "book", null, "Siap kirim"],
+  ["processing", "merchandise", null, "Siap kirim"],
+  ["processing", "medal", null, "Siap kirim"],
+  ["paid", "course", null, "Dibayar"],
+  ["processing", "exam", null, "Diproses"],
+  ["shipped", "book", "courierNotFound", "Pengiriman bermasalah"],
+  ["shipped", "book", "returned", "Pengiriman bermasalah"],
+  ["shipped", "book", null, "Dalam pengiriman"],
+  ["shipped", "book", "on_hold", "Dalam pengiriman"],
+  ["completed", "course", null, "Selesai"],
+  ["payment_expired", "book", null, "Kedaluwarsa"],
+  ["cancelled", "book", null, "Dibatalkan"],
+] as const)("renders the operator badge for %s/%s/%s", (status, productType, shipmentStatus, label) => {
+  const order = makeOrder({ status, shipment_status: shipmentStatus });
+  order.items = [{ ...order.items![0], product_type: productType }];
+  renderRow({ order });
+  expect(screen.getByText(label, { selector: '[data-slot="badge"]' })).toBeInTheDocument();
 });

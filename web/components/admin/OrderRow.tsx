@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { adminOrderStatusLabel } from "@/lib/admin-order-status";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { isShipmentFailure, shipmentStatusLabel } from "@/lib/shipment-status";
 import { useTranslation } from "@/lib/i18n";
@@ -218,7 +219,7 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
           courier state beneath the order state. */}
       <td className="px-4 py-4">
         <div className="flex flex-col items-start gap-1.5">
-          <OrderStatusBadge status={order.status} />
+          <OrderStatusBadge status={order.status} label={adminOrderStatusLabel(order, t)} />
           {courierSubLine()}
         </div>
       </td>
