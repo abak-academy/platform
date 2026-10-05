@@ -2207,3 +2207,7 @@ func checkTypeRBAC(role, productType string) error {
 		return ErrForbidden
 	}
 }
+
+func (s *Service) AdminOrderCouriers(ctx context.Context) ([]string, error) {
+	return s.storeRepo.ListOrderCouriers(ctx)
+}

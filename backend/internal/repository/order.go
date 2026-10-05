@@ -41,6 +41,7 @@ type OrderFilter struct {
 	StudentID   *uuid.UUID
 	Status      string
 	ProductType string
+	CourierCode string
 	ExcludeCart bool
 	Cursor      string
 	Limit       int
@@ -132,6 +133,11 @@ func orderFilterPredicateFrom(filter OrderFilter, startArg int) (string, []inter
 	if filter.ProductType != "" {
 		query += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM order_item WHERE order_item.order_id = orders.id AND product_type = $%d)`, argNum)
 		args = append(args, filter.ProductType)
+		argNum++
+	}
+	if filter.CourierCode != "" {
+		query += fmt.Sprintf(` AND courier_code = $%d`, argNum)
+		args = append(args, filter.CourierCode)
 		argNum++
 	}
 	if filter.ExcludeCart {
