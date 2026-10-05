@@ -38,6 +38,10 @@ func (h *Handler) AdminListOrders(c echo.Context) error {
 		return badRequest(c, err.Error())
 	}
 
+	if err := applyOrderSort(&filter, c.QueryParam("sort"), c.QueryParam("dir")); err != nil {
+		return badRequest(c, err.Error())
+	}
+
 	orders, nextCursor, err := h.svc.AdminListOrders(c.Request().Context(), filter)
 	if err != nil {
 		return mapServiceError(c, err)
@@ -433,4 +437,26 @@ func adminOrderFilter(c echo.Context) (repository.OrderFilter, error) {
 	filter.CreatedFrom, filter.CreatedTo = from, to
 
 	return filter, nil
+}
+
+func applyOrderSort(filter *repository.OrderFilter, sort, direction string) error {
+	switch sort {
+	case "", "order_at":
+		filter.Sort = repository.OrderSortOrderAt
+	case "paid_at":
+		filter.Sort = repository.OrderSortPaidAt
+	case "item_qty":
+		filter.Sort = repository.OrderSortItemQty
+	default:
+		return fmt.Errorf("unknown sort %q", sort)
+	}
+	switch direction {
+	case "", "desc":
+		filter.Direction = repository.OrderSortDesc
+	case "asc":
+		filter.Direction = repository.OrderSortAsc
+	default:
+		return fmt.Errorf("unknown direction %q", direction)
+	}
+	return nil
 }

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"akademi-bimbel/internal/repository"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 	"net/http"
@@ -45,4 +46,32 @@ func TestAdminOrderFilter_Params(t *testing.T) {
 	require.Equal(t, "Buyer", filter.Search)
 	require.NotNil(t, filter.CreatedFrom)
 	require.NotNil(t, filter.CreatedTo)
+}
+
+func TestAdminOrders_InvalidSortDirectionReturns400(t *testing.T) {
+	h := &Handler{}
+	for _, params := range []string{"sort=total", "dir=sideways", "sort=paid_at&dir=ASC"} {
+		rec := httptest.NewRecorder()
+		c := echo.New().NewContext(httptest.NewRequest(http.MethodGet, "/admin/orders?"+params, nil), rec)
+		require.NoError(t, h.AdminListOrders(c))
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestApplyOrderSort(t *testing.T) {
+	for _, sort := range []string{"", "order_at", "paid_at", "item_qty"} {
+		for _, dir := range []string{"", "asc", "desc"} {
+			filter := repository.OrderFilter{}
+			require.NoError(t, applyOrderSort(&filter, sort, dir))
+			wantSort, wantDir := sort, dir
+			if wantSort == "" {
+				wantSort = "order_at"
+			}
+			if wantDir == "" {
+				wantDir = "desc"
+			}
+			require.Equal(t, repository.OrderSort(wantSort), filter.Sort)
+			require.Equal(t, repository.OrderSortDirection(wantDir), filter.Direction)
+		}
+	}
 }

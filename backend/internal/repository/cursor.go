@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +32,49 @@ func DecodeOrderCursor(s string) (time.Time, uuid.UUID, error) {
 		return time.Time{}, uuid.Nil, ErrInvalidCursor
 	}
 	return at, id, nil
+}
+
+func EncodePaidOrderCursor(at *time.Time, id uuid.UUID) string {
+	if at == nil {
+		return "null," + id.String()
+	}
+	return EncodeOrderCursor(*at, id)
+}
+
+func DecodePaidOrderCursor(s string) (*time.Time, uuid.UUID, error) {
+	key, idStr, found := strings.Cut(s, ",")
+	if found && key == "null" {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, uuid.Nil, ErrInvalidCursor
+		}
+		return nil, id, nil
+	}
+	at, id, err := DecodeOrderCursor(s)
+	if err != nil {
+		return nil, uuid.Nil, err
+	}
+	return &at, id, nil
+}
+
+func EncodeItemQtyOrderCursor(qty int64, id uuid.UUID) string {
+	return strconv.FormatInt(qty, 10) + "," + id.String()
+}
+
+func DecodeItemQtyOrderCursor(s string) (int64, uuid.UUID, error) {
+	key, idStr, found := strings.Cut(s, ",")
+	if !found {
+		return 0, uuid.Nil, ErrInvalidCursor
+	}
+	qty, err := strconv.ParseInt(key, 10, 64)
+	if err != nil || qty < 0 {
+		return 0, uuid.Nil, ErrInvalidCursor
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return 0, uuid.Nil, ErrInvalidCursor
+	}
+	return qty, id, nil
 }
 
 // EncodeNameCursor and DecodeNameCursor carry a "<name>,<uuid>" keyset cursor
