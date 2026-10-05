@@ -301,6 +301,11 @@ var (
 	// deadline has passed, whether or not the worker has expired it yet.
 	// Expiry is final: the student starts over from a fresh cart. Maps to 409.
 	ErrPaymentExpired = errors.New("payment window has expired")
+
+	// ErrPaymentSessionUnavailable means the order already has a gateway
+	// session but its link is no longer stored, so a retry cannot hand it out
+	// and must not open a second session. Maps to 409.
+	ErrPaymentSessionUnavailable = errors.New("payment session is unavailable")
 )
 
 // --- from student_bulk.go ---

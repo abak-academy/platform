@@ -119,6 +119,7 @@ func TestRetryPayment_KeepsTheOrdersDeadline(t *testing.T) {
 			} else if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET payment_expires_at = NULL, gateway_ref = NULL WHERE id = $1`, orderID); err != nil {
 				t.Fatalf("simulate a pre-deadline order: %v", err)
 			}
+			clearPaymentForRetry(t, svc, repo, orderID)
 			original := deadlineOf(t, repo, orderID)
 			pay.expiresAfter = 72 * time.Hour
 

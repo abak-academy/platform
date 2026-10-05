@@ -1264,11 +1264,49 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		PaymentExpiresAt: earlier(paymentResp.ExpiresAt, deadline),
 	}
 
+	s.storePaymentSession(ctx, oID.String(), paymentSession{
+		GatewayRef: result.GatewayRef, SnapToken: result.SnapToken,
+		PaymentURL: result.PaymentURL, ExpiresAt: result.PaymentExpiresAt,
+	})
+
 	if err := s.rdb.Set(ctx, cacheKey, paymentResp.GatewayRef, 24*time.Hour).Err(); err != nil {
 		return CheckoutResult{}, err
 	}
 
 	return result, nil
+}
+
+type paymentSession struct {
+	GatewayRef string    `json:"gateway_ref"`
+	SnapToken  string    `json:"snap_token"`
+	PaymentURL string    `json:"payment_url"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+func (s *Service) storePaymentSession(ctx context.Context, orderID string, session paymentSession) {
+	ttl := time.Until(session.ExpiresAt)
+	if ttl <= 0 {
+		return
+	}
+	data, err := json.Marshal(session)
+	if err == nil {
+		err = s.rdb.Set(ctx, "payment:session:"+orderID, data, ttl).Err()
+	}
+	if err != nil {
+		slog.Warn("store payment session failed", "order_id", orderID, "error", err)
+	}
+}
+
+func (s *Service) loadPaymentSession(ctx context.Context, orderID string) (paymentSession, bool) {
+	data, err := s.rdb.Get(ctx, "payment:session:"+orderID).Bytes()
+	if err != nil {
+		return paymentSession{}, false
+	}
+	var session paymentSession
+	if err := json.Unmarshal(data, &session); err != nil {
+		return paymentSession{}, false
+	}
+	return session, true
 }
 
 // The gateway call ran outside any transaction, so the order is re-locked and re-checked before the reference is attached.
@@ -1318,7 +1356,7 @@ func earlier(a, b time.Time) time.Time {
 	return a
 }
 
-// Expiry is final: only a payment_pending order inside its deadline gets a new payment. The lock is released across the gateway call, so the order is re-validated when the reference is written.
+// Expiry is final: only a payment_pending order inside its deadline is retried, and it gets back the session checkout stored; a new session is created only for an order with no gateway reference. The lock is released across the gateway call, so the order is re-validated when the reference is written.
 func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
@@ -1345,6 +1383,13 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	if err := bindPaymentDeadline(&paymentReq, order.PaymentExpiresAt); err != nil {
 		return CheckoutResult{}, err
 	}
+	if session, ok := s.loadPaymentSession(ctx, oID.String()); ok {
+		return CheckoutResult{GatewayRef: session.GatewayRef, SnapToken: session.SnapToken,
+			PaymentURL: session.PaymentURL, PaymentExpiresAt: session.ExpiresAt}, nil
+	}
+	if order.GatewayRef != "" {
+		return CheckoutResult{}, ErrPaymentSessionUnavailable
+	}
 	paymentResp, err := s.payment.CreatePayment(ctx, paymentReq)
 	if err != nil {
 		return CheckoutResult{}, err
@@ -1361,6 +1406,11 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 		PaymentURL:       paymentResp.PaymentURL,
 		PaymentExpiresAt: earlier(paymentResp.ExpiresAt, deadline),
 	}
+
+	s.storePaymentSession(ctx, oID.String(), paymentSession{
+		GatewayRef: result.GatewayRef, SnapToken: result.SnapToken,
+		PaymentURL: result.PaymentURL, ExpiresAt: result.PaymentExpiresAt,
+	})
 
 	if err := s.rdb.Set(ctx, cacheKey, paymentResp.GatewayRef, 24*time.Hour).Err(); err != nil {
 		return CheckoutResult{}, err
