@@ -39,7 +39,7 @@ export interface OrdersToolbarProps {
   counts?: OrderBucketCounts;
 }
 
-function chipCount(
+export function chipCount(
   status: FilterOption,
   counts: OrderBucketCounts | undefined,
 ): number | undefined {
@@ -198,6 +198,15 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
                 </SelectItem>
               );
             })}
+          </SelectContent>
+        </Select>
+
+        <Select value={String(value.limit ?? 20)} onValueChange={(v) => onChange({ ...value, limit: Number(v) as 20 | 50 | 100 })}>
+          <SelectTrigger className="w-24" aria-label={t("orders_page_size")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[20, 50, 100].map((limit) => <SelectItem key={limit} value={String(limit)}>{limit}</SelectItem>)}
           </SelectContent>
         </Select>
 

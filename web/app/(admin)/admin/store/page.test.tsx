@@ -4,6 +4,7 @@ import StoreDashboardPage from "./page";
 import type { OrderSummary, PromoCode } from "@/lib/types";
 
 const sampleSummary: OrderSummary = {
+  couriers: [],
   buckets: {
     needs_confirm: 7,
     ready_to_ship: 23,

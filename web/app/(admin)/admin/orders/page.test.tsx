@@ -1,30 +1,40 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import { toast } from "sonner";
 import OrdersPage from "./page";
 import type { Order, OrderSummary, AdminOrderQuery } from "@/lib/types";
 
+beforeAll(() => {
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.releasePointerCapture = vi.fn();
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
+async function selectOption(label: string, option: string) {
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: label }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  await screen.findByRole("listbox");
+  fireEvent.click(screen.getByRole("option", { name: new RegExp(`^${option}`) }));
+}
+
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
-const mockFetchNextPage = vi.fn();
 
 interface OrdersResultPage {
   data: Order[];
   next_cursor: string;
 }
 
-function pages(orders: Order[]): { pages: OrdersResultPage[] } {
-  return { pages: [{ data: orders, next_cursor: "" }] };
+function pages(orders: Order[]): OrdersResultPage {
+  return { data: orders, next_cursor: "" };
 }
 
 let ordersState = {
-  data: pages([]) as { pages: OrdersResultPage[] } | undefined,
+  data: pages([]) as OrdersResultPage | undefined,
   isLoading: true,
   isError: false,
   error: null as Error | null,
-  hasNextPage: false,
-  isFetchingNextPage: false,
-  fetchNextPage: mockFetchNextPage,
+  isFetching: false,
+  isPlaceholderData: false,
 };
 
 let summaryState = { data: undefined as OrderSummary | undefined, isLoading: false };
@@ -40,11 +50,11 @@ let cancelShipmentState = { mutate: mockMutate, mutateAsync: mockMutateAsync, is
 
 // Spies rather than plain stubs so the legacy-?status= mapping test below can
 // assert on the query object the page actually built, not just what renders.
-const mockUseAdminOrders = vi.fn((_query?: AdminOrderQuery) => ordersState);
+const mockUseAdminOrders = vi.fn((_query?: AdminOrderQuery, _cursor?: string) => ordersState);
 const mockUseAdminOrderSummary = vi.fn((_query?: AdminOrderQuery) => summaryState);
 
 vi.mock("@/lib/hooks/admin-orders", () => ({
-  useAdminOrders: (query: AdminOrderQuery) => mockUseAdminOrders(query),
+  useAdminOrders: (query: AdminOrderQuery, cursor: string) => mockUseAdminOrders(query, cursor),
   useAdminOrderSummary: (query: AdminOrderQuery) => mockUseAdminOrderSummary(query),
   useAdminOrder: () => ({}),
   useConfirmOrder: () => confirmState,
@@ -147,9 +157,8 @@ describe("OrdersPage", () => {
       isLoading: false,
       isError: false,
       error: null,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: mockFetchNextPage,
+      isFetching: false,
+      isPlaceholderData: false,
     };
     summaryState = { data: undefined, isLoading: false };
     confirmState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
@@ -160,8 +169,8 @@ describe("OrdersPage", () => {
     reconcileState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     mockMutate.mockReset();
     mockMutateAsync.mockReset();
-    mockFetchNextPage.mockReset();
-    mockUseAdminOrders.mockClear();
+    mockUseAdminOrders.mockReset();
+    mockUseAdminOrders.mockImplementation(() => ordersState);
     mockUseAdminOrderSummary.mockClear();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
@@ -452,7 +461,7 @@ describe("OrdersPage", () => {
 
     ordersState = {
       ...ordersState,
-      data: pages([{ ...ordersState.data!.pages[0].data[0], status: "shipped", tracking_number: "JNE-MERCH-1" }]),
+      data: pages([{ ...ordersState.data!.data[0], status: "shipped", tracking_number: "JNE-MERCH-1" }]),
     };
     rerender(<OrdersPage />);
 
@@ -762,6 +771,7 @@ describe("OrdersPage", () => {
           completed_this_month: 1,
           total: 42,
         },
+        couriers: [],
         top_products: [],
       },
       isLoading: false,
@@ -770,25 +780,49 @@ describe("OrdersPage", () => {
     render(<OrdersPage />);
     await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
 
-    expect(screen.getByText("Menampilkan 3 dari 42")).toBeInTheDocument();
+    expect(screen.getByText("Menampilkan 1-3 dari 42")).toBeInTheDocument();
   });
 
-  it("asks for the next page when load more is clicked", async () => {
-    ordersState = { ...ordersState, hasNextPage: true };
-
+  it("Next then Prev restores page 1 and disables Next on the last page", async () => {
+    mockUseAdminOrders.mockImplementation((_query, cursor) => ({ ...ordersState,
+      data: cursor ? { data: [sampleOrders[1]], next_cursor: "" } : { data: [sampleOrders[0]], next_cursor: "cur-2" },
+    }));
     render(<OrdersPage />);
-    await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: /muat lebih banyak/i }));
-
-    expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
+    await waitFor(() => expect(screen.getByText("Buku Shipped")).toBeInTheDocument());
+    expect(screen.queryByText("Buku A")).toBeNull();
+    expect(screen.getByRole("button", { name: "Berikutnya" })).toBeDisabled();
+    expect(screen.getByText("Menampilkan 21-21")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sebelumnya" }));
+    await waitFor(() => expect(screen.getByText("Buku A")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled();
+    expect(mockUseAdminOrders).toHaveBeenLastCalledWith({ status: "all" }, "");
   });
 
-  it("hides load more when there is no next page", async () => {
+  it.each(["status", "queue", "search", "dates", "from", "to", "limit50", "limit100", "limit20"])("changing %s resets the cursor stack", async (control) => {
+    ordersState.data = { data: sampleOrders, next_cursor: "cur-2" };
     render(<OrdersPage />);
-    await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
+    if (control === "from" || control === "to") fireEvent.click(screen.getByTestId("orders-date-mode-range"));
+    if (control === "limit20") await selectOption("Pesanan per halaman", "50");
+    fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
+    expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeEnabled();
+    const before = mockUseAdminOrders.mock.calls.length;
+    if (control === "status") await selectOption("Status", "Menunggu pembayaran");
+    if (control === "queue") await selectOption("Status", "Siap kirim");
+    if (control === "search") fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Paging Buyer" } });
+    if (control === "dates") fireEvent.change(screen.getByLabelText("Tanggal", { selector: "input" }), { target: { value: "2026-08-02" } });
+    if (control === "from") fireEvent.change(screen.getByLabelText("Dari tanggal"), { target: { value: "2026-08-02" } });
+    if (control === "to") fireEvent.change(screen.getByLabelText("Sampai tanggal"), { target: { value: "2026-08-03" } });
+    if (control.startsWith("limit")) await selectOption("Pesanan per halaman", control.slice(5));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled());
+    expect(mockUseAdminOrders.mock.calls.length).toBeGreaterThan(before);
+    expect(mockUseAdminOrders.mock.calls.slice(before).every(([, cursor]) => cursor === "")).toBe(true);
+  });
 
-    expect(screen.queryByRole("button", { name: /muat lebih banyak/i })).toBeNull();
+  it("disables Next when there is no next cursor", async () => {
+    render(<OrdersPage />);
+    expect(screen.getByRole("button", { name: "Berikutnya" })).toBeDisabled();
   });
 
   it("surfaces an API error as inline error text", async () => {
@@ -824,9 +858,8 @@ describe("OrdersPage failed shipments", () => {
       isLoading: false,
       isError: false,
       error: null,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: mockFetchNextPage,
+      isFetching: false,
+      isPlaceholderData: false,
     };
   });
 
@@ -873,9 +906,8 @@ describe("OrdersPage shipment status", () => {
       isLoading: false,
       isError: false,
       error: null,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: mockFetchNextPage,
+      isFetching: false,
+      isPlaceholderData: false,
     };
     render(<OrdersPage />);
   }

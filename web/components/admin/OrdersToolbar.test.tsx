@@ -150,3 +150,15 @@ describe("OrdersToolbar search", () => {
     vi.useRealTimers();
   });
 });
+
+
+describe("OrdersToolbar page size", () => {
+  it.each([20, 50, 100] as const)("selects %i orders per page", async (limit) => {
+    const { onChange } = renderToolbar();
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Pesanan per halaman" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    await screen.findByRole("listbox");
+    fireEvent.click(screen.getByRole("option", { name: String(limit) }));
+    if (limit !== 20) expect(onChange).toHaveBeenCalledWith({ status: "all", limit });
+    else expect(screen.getByRole("combobox", { name: "Pesanan per halaman" })).toHaveTextContent("20");
+  });
+});
