@@ -13,7 +13,7 @@ import {
   adminOrdersKeys,
   ORDERS_PAGE_SIZE,
 } from "./admin-orders";
-import type { Order, OrderSummary } from "@/lib/types";
+import type { Order, OrderSummary, AdminOrderQuery } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 
@@ -63,6 +63,27 @@ describe("admin-orders hooks", () => {
     expect(mockAuthFetch).toHaveBeenCalledWith(`/admin/orders?limit=${ORDERS_PAGE_SIZE}`);
     expect(result.current.data?.pages[0].data).toEqual([sampleOrder]);
   });
+
+  it.each([
+    [{ status: "all" }, null, null],
+    [{ status: "pending" }, "payment_pending", null],
+    [{ status: "completed", queue: undefined }, "completed", null],
+    [{ status: "payment_expired" }, "payment_expired", null],
+    [{ status: "cancelled" }, "cancelled", null],
+    [{ status: "pending", queue: "ready_to_ship" }, null, "ready_to_ship"],
+    [{ status: "pending", queue: "shipment_failed" }, null, "shipment_failed"],
+    [{ status: "pending", queue: "in_transit" }, null, "in_transit"],
+  ] satisfies [AdminOrderQuery, string | null, string | null][])(
+    "sends the status/queue parameters for %j", async (query, status, queue) => {
+      mockAuthFetch.mockResolvedValueOnce({ data: [] });
+      const { wrapper } = wrapperFactory();
+      const { result } = renderHook(() => useAdminOrders(query), { wrapper });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      const params = new URLSearchParams(mockAuthFetch.mock.calls[0][0].split("?")[1]);
+      expect(params.get("status")).toBe(status);
+      expect(params.get("queue")).toBe(queue);
+    },
+  );
 
   it("useAdminOrders maps status filter to backend enum", async () => {
     mockAuthFetch.mockResolvedValueOnce({ data: [] });
@@ -182,6 +203,9 @@ describe("admin-orders hooks", () => {
         ready_to_ship: 1,
         shipment_failed: 0,
         in_transit: 2,
+        completed: 0,
+        payment_expired: 0,
+        cancelled: 0,
         created_this_month: 9,
         completed_this_month: 4,
         total: 12,
@@ -212,7 +236,7 @@ describe("admin-orders hooks", () => {
   it("useAdminOrderSummary never sends status or queue, whatever is selected", async () => {
     mockAuthFetch.mockResolvedValue({
       buckets: {
-        needs_confirm: 0, ready_to_ship: 0, shipment_failed: 0, in_transit: 0,
+        needs_confirm: 0, ready_to_ship: 0, shipment_failed: 0, in_transit: 0, completed: 0, payment_expired: 0, cancelled: 0,
         created_this_month: 0, completed_this_month: 0, total: 0,
       },
       top_products: [],

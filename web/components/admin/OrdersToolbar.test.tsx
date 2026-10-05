@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 import { OrdersToolbar } from "./OrdersToolbar";
+import { useUIStore } from "@/stores/ui";
 import type { AdminOrderQuery, OrderBucketCounts } from "@/lib/types";
 
 // Radix Select drives its trigger through Pointer Events APIs that jsdom does
@@ -17,6 +18,9 @@ const counts: OrderBucketCounts = {
   ready_to_ship: 7,
   shipment_failed: 1,
   in_transit: 12,
+  completed: 23,
+  payment_expired: 5,
+  cancelled: 6,
   created_this_month: 128,
   completed_this_month: 96,
   total: 1284,
@@ -36,83 +40,40 @@ async function openStatusMenu() {
   return screen.findByRole("listbox");
 }
 
+afterEach(() => act(() => useUIStore.setState({ lang: "id" })));
+
+const filterCases = [
+  ["all", "Semua", "All", 1284],
+  ["pending", "Menunggu pembayaran", "Awaiting payment", 4],
+  ["ready_to_ship", "Siap kirim", "Ready to ship", 7],
+  ["shipment_failed", "Pengiriman bermasalah", "Delivery problem", 1],
+  ["in_transit", "Dalam pengiriman", "In transit", 12],
+  ["completed", "Selesai", "Completed", 23],
+  ["payment_expired", "Kedaluwarsa", "Payment expired", 5],
+  ["cancelled", "Dibatalkan", "Cancelled", 6],
+] as const;
+
 describe("OrdersToolbar status filter", () => {
-  it("offers every status, including the failed-shipment filter", async () => {
+  it.each(["id", "en"] as const)("offers exactly eight ordered options with counts in %s", async (lang) => {
+    useUIStore.setState({ lang });
     renderToolbar();
     const listbox = await openStatusMenu();
-
-    for (const label of [
-      "Semua",
-      "Menunggu",
-      "Dibayar",
-      "Diproses",
-      "Dikirim",
-      "Pengiriman bermasalah",
-    ]) {
-      expect(
-        screen.getAllByText(label).length,
-        `option "${label}" is missing`,
-      ).toBeGreaterThanOrEqual(1);
-    }
-    expect(listbox).toBeInTheDocument();
+    expect(within(listbox).getAllByRole("option").map((option) => option.textContent))
+      .toEqual(filterCases.map(([, id, en, count]) => `${lang === "id" ? id : en}${count}`));
   });
 
-  it("shows the count beside the buckets the API actually counts", async () => {
-    renderToolbar();
-    await openStatusMenu();
-
-    // needs_confirm, ready_to_ship, in_transit, shipment_failed and total.
-    expect(screen.getAllByText("1284").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("4").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("7").length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("emits the chosen status", async () => {
+  it.each(filterCases)("selecting %s clears the other filter dimension", async (option, label) => {
     const onChange = vi.fn();
-    renderToolbar({ status: "all" }, onChange);
+    const isQueue = ["ready_to_ship", "shipment_failed", "in_transit"].includes(option);
+    renderToolbar(isQueue ? { status: "pending" } : { status: "all", queue: "shipment_failed" }, onChange);
     await openStatusMenu();
-
-    fireEvent.click(screen.getByRole("option", { name: /Menunggu/ }));
-
-    await waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", queue: undefined })),
-    );
+    fireEvent.click(screen.getByRole("option", { name: new RegExp(label) }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining(
+      isQueue ? { status: "all", queue: option } : { status: option, queue: undefined },
+    ));
   });
 
-  // ready_to_ship and shipment_failed are queues, not statuses — picking one
-  // must set queue and reset status to "all", not send a status value the API
-  // no longer accepts.
-  it("emits queue (and resets status to all) when a queue chip is chosen", async () => {
-    const onChange = vi.fn();
-    renderToolbar({ status: "all" }, onChange);
-    await openStatusMenu();
-
-    fireEvent.click(screen.getByRole("option", { name: /Pengiriman bermasalah/ }));
-
-    await waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "all", queue: "shipment_failed" }),
-      ),
-    );
-  });
-
-  // Selecting back out of a queue must drop it — otherwise a stale queue
-  // would keep overriding the newly chosen status downstream in the hook.
-  it("clears queue when a real status is chosen afterwards", async () => {
-    const onChange = vi.fn();
-    renderToolbar({ status: "all", queue: "shipment_failed" }, onChange);
-    await openStatusMenu();
-
-    fireEvent.click(screen.getByRole("option", { name: /Dibayar/ }));
-
-    await waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "paid", queue: undefined }),
-      ),
-    );
-  });
-
-  it("shows the queue-selected filter as the trigger's selected value", async () => {
+  it("shows the queue-selected filter as the trigger's selected value", () => {
     renderToolbar({ status: "all", queue: "ready_to_ship" });
     expect(screen.getByTestId("orders-status-filter")).toHaveTextContent("Siap kirim");
   });

@@ -644,9 +644,11 @@ export const DICT = {
     empty_orders: "Tidak ada pesanan.",
     status_shipped: "Dikirim",
     status_pending_ship: "Belum dikirim",
-    filter_pending: "Menunggu",
+    filter_pending: "Menunggu pembayaran",
+    filter_in_transit: "Dalam pengiriman",
+    filter_completed: "Selesai",
+    filter_payment_expired: "Kedaluwarsa",
     filter_paid: "Dibayar",
-    filter_failed: "Gagal",
     filter_cancelled: "Dibatalkan",
 
     // Admin — courses
@@ -2371,9 +2373,11 @@ export const DICT = {
     empty_orders: "No orders.",
     status_shipped: "Shipped",
     status_pending_ship: "Pending",
-    filter_pending: "Pending",
+    filter_pending: "Awaiting payment",
+    filter_in_transit: "In transit",
+    filter_completed: "Completed",
+    filter_payment_expired: "Payment expired",
     filter_paid: "Paid",
-    filter_failed: "Failed",
     filter_cancelled: "Cancelled",
 
     // Admin — courses

@@ -567,6 +567,13 @@ describe("OrdersPage", () => {
     });
   });
 
+  it.each(["queue", "status"])("adopts ?%s=in_transit on mount", async (parameter) => {
+    window.history.replaceState({}, "", `/admin/orders?${parameter}=in_transit`);
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByTestId("orders-status-filter")).toHaveTextContent("Dalam pengiriman"));
+    expect(mockUseAdminOrders.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ status: "all", queue: "in_transit" }));
+  });
+
   it("adopts ?queue= from the URL so the dashboard can deep link", async () => {
     window.history.replaceState({}, "", "/admin/orders?queue=shipment_failed");
     render(<OrdersPage />);
@@ -748,6 +755,9 @@ describe("OrdersPage", () => {
           ready_to_ship: 1,
           shipment_failed: 0,
           in_transit: 0,
+          completed: 0,
+          payment_expired: 0,
+          cancelled: 0,
           created_this_month: 3,
           completed_this_month: 1,
           total: 42,

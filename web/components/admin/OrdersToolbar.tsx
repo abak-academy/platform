@@ -24,11 +24,10 @@ const FILTER_OPTIONS: FilterOption[] = [
   "all",
   "pending",
   "ready_to_ship",
-  "paid",
-  "processing",
-  "shipped",
   "shipment_failed",
-  "failed",
+  "in_transit",
+  "completed",
+  "payment_expired",
   "cancelled",
 ];
 
@@ -40,7 +39,6 @@ export interface OrdersToolbarProps {
   counts?: OrderBucketCounts;
 }
 
-/** Only the buckets the API actually counts — the rest stay bare rather than guess. */
 function chipCount(
   status: FilterOption,
   counts: OrderBucketCounts | undefined,
@@ -53,8 +51,14 @@ function chipCount(
       return counts.needs_confirm;
     case "ready_to_ship":
       return counts.ready_to_ship;
-    case "shipped":
+    case "in_transit":
       return counts.in_transit;
+    case "completed":
+      return counts.completed;
+    case "payment_expired":
+      return counts.payment_expired;
+    case "cancelled":
+      return counts.cancelled;
     case "shipment_failed":
       return counts.shipment_failed;
     default:
@@ -62,7 +66,7 @@ function chipCount(
   }
 }
 
-const QUEUE_VALUES: AdminOrderQueue[] = ["ready_to_ship", "shipment_failed"];
+const QUEUE_VALUES: AdminOrderQueue[] = ["ready_to_ship", "shipment_failed", "in_transit"];
 
 function isQueueOption(option: FilterOption): option is AdminOrderQueue {
   return (QUEUE_VALUES as string[]).includes(option);
@@ -135,8 +139,12 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
         return t("filter_processing");
       case "shipped":
         return t("filter_shipped");
-      case "failed":
-        return t("filter_failed");
+      case "in_transit":
+        return t("filter_in_transit");
+      case "completed":
+        return t("filter_completed");
+      case "payment_expired":
+        return t("filter_payment_expired");
       case "cancelled":
         return t("filter_cancelled");
       case "shipment_failed":

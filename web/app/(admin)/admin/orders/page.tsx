@@ -42,14 +42,14 @@ import type { Order, OrderStatus, AdminOrderQuery, AdminOrderFilterStatus, Admin
 // Mirrors AdminOrderFilterStatus. An unknown ?status= falls back to "all"
 // rather than sending a value the API would reject.
 const ORDER_FILTER_STATUSES: AdminOrderFilterStatus[] = [
-  "all", "pending", "paid", "processing", "shipped", "failed", "cancelled",
+  "all", "pending", "paid", "processing", "shipped", "completed", "payment_expired", "cancelled",
 ];
 
 // Mirrors AdminOrderQueue. Also doubles as the backward-compat list: prod has
 // shipped `?status=ready_to_ship` / `?status=shipment_failed` links since
 // before the queue split, so a legacy ?status= carrying one of these is
 // treated as the equivalent ?queue= rather than breaking the bookmark.
-const ORDER_QUEUES: AdminOrderQueue[] = ["ready_to_ship", "shipment_failed"];
+const ORDER_QUEUES: AdminOrderQueue[] = ["ready_to_ship", "shipment_failed", "in_transit"];
 
 function orderNumber(order: Order): string {
   return `#${order.id.slice(-8)}`;

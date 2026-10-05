@@ -31,7 +31,8 @@ const FILTER_STATUS_MAP: Record<
   paid: "paid",
   processing: "processing",
   shipped: "shipped",
-  failed: "payment_expired",
+  completed: "completed",
+  payment_expired: "payment_expired",
   cancelled: "cancelled",
 };
 
