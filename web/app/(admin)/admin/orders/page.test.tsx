@@ -800,11 +800,19 @@ describe("OrdersPage", () => {
     expect(mockUseAdminOrders).toHaveBeenLastCalledWith({ status: "all" }, "");
   });
 
-  it.each(["status", "queue", "search", "dates", "from", "to", "limit50", "limit100", "limit20"])("changing %s resets the cursor stack", async (control) => {
+  it.each(["status", "queue", "search", "dates", "from", "to", "limit50", "limit100", "limit20", "type", "courier", "paid_at", "item_qty", "order_at", "dir", "all_types", "all_couriers"])("changing %s resets the cursor stack", async (control) => {
     ordersState.data = { data: sampleOrders, next_cursor: "cur-2" };
+    summaryState.data = {
+      buckets: { needs_confirm: 3, ready_to_ship: 3, shipment_failed: 0, in_transit: 0,
+        completed: 0, payment_expired: 0, cancelled: 0, total: 42, created_this_month: 0, completed_this_month: 0 },
+      couriers: ["jne", "jnt"], top_products: [],
+    };
     render(<OrdersPage />);
     if (control === "from" || control === "to") fireEvent.click(screen.getByTestId("orders-date-mode-range"));
     if (control === "limit20") await selectOption("Pesanan per halaman", "50");
+    if (control === "order_at") await selectOption("Urutkan pesanan", "Tanggal bayar");
+    if (control === "all_types") await selectOption("Jenis produk", "Medali");
+    if (control === "all_couriers") await selectOption("Kurir", "JNE");
     fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
     expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeEnabled();
     const before = mockUseAdminOrders.mock.calls.length;
@@ -814,8 +822,17 @@ describe("OrdersPage", () => {
     if (control === "dates") fireEvent.change(screen.getByLabelText("Tanggal", { selector: "input" }), { target: { value: "2026-08-02" } });
     if (control === "from") fireEvent.change(screen.getByLabelText("Dari tanggal"), { target: { value: "2026-08-02" } });
     if (control === "to") fireEvent.change(screen.getByLabelText("Sampai tanggal"), { target: { value: "2026-08-03" } });
+    if (control === "type") await selectOption("Jenis produk", "Medali");
+    if (control === "courier") await selectOption("Kurir", "JNE");
+    if (control === "paid_at") await selectOption("Urutkan pesanan", "Tanggal bayar");
+    if (control === "item_qty") await selectOption("Urutkan pesanan", "Jumlah barang");
+    if (control === "order_at") await selectOption("Urutkan pesanan", "Tanggal pesanan");
+    if (control === "dir") fireEvent.click(screen.getByRole("button", { name: /^Arah urutan/ }));
+    if (control === "all_types") await selectOption("Jenis produk", "Semua jenis");
+    if (control === "all_couriers") await selectOption("Kurir", "Semua kurir");
     if (control.startsWith("limit")) await selectOption("Pesanan per halaman", control.slice(5));
     await waitFor(() => expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled());
+    if (control === "status" || control === "queue") expect(screen.getByText("Menampilkan 1-3 dari 3")).toBeInTheDocument();
     expect(mockUseAdminOrders.mock.calls.length).toBeGreaterThan(before);
     expect(mockUseAdminOrders.mock.calls.slice(before).every(([, cursor]) => cursor === "")).toBe(true);
   });

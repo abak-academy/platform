@@ -475,7 +475,7 @@ export interface OrderBucketCounts {
   total: number;
 }
 
-export type AdminOrderSort = "placed_at" | "paid_at" | "item_qty";
+export type AdminOrderSort = "order_at" | "paid_at" | "item_qty";
 export type AdminOrderSortDirection = "asc" | "desc";
 
 export interface OrderSummary {
