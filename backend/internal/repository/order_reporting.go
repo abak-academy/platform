@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +17,9 @@ type OrderBucketCounts struct {
 	ReadyToShip        int `json:"ready_to_ship"`
 	ShipmentFailed     int `json:"shipment_failed"`
 	InTransit          int `json:"in_transit"`
+	Completed          int `json:"completed"`
+	PaymentExpired     int `json:"payment_expired"`
+	Cancelled          int `json:"cancelled"`
 	CreatedThisMonth   int `json:"created_this_month"`
 	CompletedThisMonth int `json:"completed_this_month"`
 	Total              int `json:"total"`
@@ -32,7 +36,7 @@ type TopProduct struct {
 
 // CountOrdersByBucket answers "what needs me" in one pass.
 //
-// The first four buckets and Total run through the same predicate builder as
+// Every status bucket and Total run through the same predicate builder as
 // ListOrders, so they always describe the rows the table is showing. The two
 // month figures deliberately ignore the filters: they are the store dashboard's
 // fixed month-to-date tiles and must not move when someone types in the orders
@@ -47,37 +51,41 @@ func (r *Repository) CountOrdersByBucket(
 	monthStart, monthEnd time.Time,
 ) (OrderBucketCounts, error) {
 	var out OrderBucketCounts
-
-	// $1..$3 are bound here; the shared predicate continues from $4.
-	where, args, _ := orderFilterPredicateFrom(filter, 4)
-
-	// COALESCE around the ANY test because shipment_status is nullable, and
-	// `NULL = ANY(...)` is NULL — a shipped parcel with no courier status yet
-	// would otherwise fall out of both the failed and the in-transit bucket.
-	//
-	// ready_to_ship also requires a physical item: the orders page gates its Ship
-	// action on one, so counting digital-only orders here would promise work no
-	// row could actually offer.
-	q := `
-		SELECT
-		  COUNT(*) FILTER (WHERE status = 'payment_pending'),
-		  COUNT(*) FILTER (WHERE status IN ('paid','processing')
-		                     AND EXISTS (SELECT 1 FROM order_item oi
-		                                  WHERE oi.order_id = orders.id
-		                                    AND oi.product_type IN ('book','merchandise','medal'))),
-		  COUNT(*) FILTER (WHERE COALESCE(shipment_status = ANY($1), false)),
-		  COUNT(*) FILTER (WHERE status = 'shipped'
-		                     AND NOT COALESCE(shipment_status = ANY($1), false)),
-		  COUNT(*) FILTER (WHERE ` + placedAtExpr + ` >= $2 AND ` + placedAtExpr + ` < $3),
-		  COUNT(*) FILTER (WHERE completed_at >= $2 AND completed_at < $3),
-		  COUNT(*)
-		FROM orders
-		WHERE status != 'cart'` + where
-
-	full := append([]interface{}{failureStatuses, monthStart, monthEnd}, args...)
-
+	where, args, nextArg := orderFilterPredicateFrom(filter, 3)
+	bucketPredicate := func(bucket OrderFilter) string {
+		predicate, bucketArgs, next := orderFilterPredicateFrom(bucket, nextArg)
+		args = append(args, bucketArgs...)
+		nextArg = next
+		return strings.TrimPrefix(predicate, " AND ")
+	}
+	// The in-transit predicate COALESCEs the ANY test because shipment_status is
+	// nullable and `NULL = ANY(...)` is NULL: a shipped parcel with no courier
+	// status yet would otherwise fall out of both the failed and in-transit buckets.
+	needsConfirm := bucketPredicate(OrderFilter{Status: "payment_pending"})
+	readyToShip := bucketPredicate(OrderFilter{ReadyToShip: true})
+	shipmentFailed := "false"
+	if len(failureStatuses) > 0 {
+		shipmentFailed = bucketPredicate(OrderFilter{ShipmentStatusIn: failureStatuses})
+	}
+	inTransit := bucketPredicate(OrderFilter{InTransit: true, ShipmentStatusNotIn: failureStatuses})
+	completed := bucketPredicate(OrderFilter{Status: "completed"})
+	paymentExpired := bucketPredicate(OrderFilter{Status: "payment_expired"})
+	cancelled := bucketPredicate(OrderFilter{Status: "cancelled"})
+	q := `SELECT
+  COUNT(*) FILTER (WHERE ` + needsConfirm + `),
+  COUNT(*) FILTER (WHERE ` + readyToShip + `),
+  COUNT(*) FILTER (WHERE ` + shipmentFailed + `),
+  COUNT(*) FILTER (WHERE ` + inTransit + `),
+  COUNT(*) FILTER (WHERE ` + completed + `),
+  COUNT(*) FILTER (WHERE ` + paymentExpired + `),
+  COUNT(*) FILTER (WHERE ` + cancelled + `),
+  COUNT(*) FILTER (WHERE ` + placedAtExpr + ` >= $1 AND ` + placedAtExpr + ` < $2),
+  COUNT(*) FILTER (WHERE completed_at >= $1 AND completed_at < $2),
+  COUNT(*) FROM orders WHERE status != 'cart'` + where
+	full := append([]interface{}{monthStart, monthEnd}, args...)
 	err := r.pool.QueryRow(ctx, q, full...).Scan(
 		&out.NeedsConfirm, &out.ReadyToShip, &out.ShipmentFailed, &out.InTransit,
+		&out.Completed, &out.PaymentExpired, &out.Cancelled,
 		&out.CreatedThisMonth, &out.CompletedThisMonth, &out.Total,
 	)
 	return out, err

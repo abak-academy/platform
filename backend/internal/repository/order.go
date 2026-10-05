@@ -52,6 +52,12 @@ type OrderFilter struct {
 	// single matching orders.status.
 	ReadyToShip bool
 
+	// InTransit is status 'shipped' whose shipment_status is not in
+	// ShipmentStatusNotIn: a shipped parcel that has not failed. Takes
+	// precedence over Status, like ReadyToShip.
+	InTransit           bool
+	ShipmentStatusNotIn []string
+
 	// ShipmentStatusIn matches orders.shipment_status against an explicit set.
 	// The caller supplies every spelling it wants matched — shipment_status
 	// holds whatever Biteship sent, unnormalised, so deciding which spellings
@@ -114,6 +120,10 @@ func orderFilterPredicateFrom(filter OrderFilter, startArg int) (string, []inter
 		// "all" is the frontend's sentinel for its own "All" filter tab, not a
 		// real status value — treated as no filter here so it can't be
 		// forwarded as a literal that matches zero rows.
+	} else if filter.InTransit {
+		query += fmt.Sprintf(` AND status = 'shipped' AND NOT COALESCE(shipment_status = ANY($%d), false)`, argNum)
+		args = append(args, filter.ShipmentStatusNotIn)
+		argNum++
 	} else if filter.Status != "" && filter.Status != "all" {
 		query += fmt.Sprintf(` AND status = $%d`, argNum)
 		args = append(args, filter.Status)

@@ -114,18 +114,21 @@ var jakarta = func() *time.Location {
 	return loc
 }()
 
-// applyOrderQueue maps ?queue= onto the two OrderFilter fields that have no
+// applyOrderQueue maps ?queue= onto the OrderFilter fields that have no
 // single matching orders.status value — see repository.OrderFilter.
-// ReadyToShip/ShipmentStatusIn. An empty queue leaves Status (already read
-// from ?status=) to do the filtering, unchanged. Anything else unrecognised
-// is a typo in the URL, not a request for "no filter", so it is rejected
-// rather than silently ignored.
+// ReadyToShip/InTransit/ShipmentStatusIn. An empty queue leaves Status (already
+// read from ?status=) to do the filtering, unchanged. Anything else
+// unrecognised is a typo in the URL, not a request for "no filter", so it is
+// rejected rather than silently ignored.
 func applyOrderQueue(filter *repository.OrderFilter, queue string) error {
 	switch queue {
 	case "":
 		return nil
 	case "ready_to_ship":
 		filter.ReadyToShip = true
+	case "in_transit":
+		filter.InTransit = true
+		filter.ShipmentStatusNotIn = service.ShipmentFailureStatusValues()
 	case "shipment_failed":
 		filter.ShipmentStatusIn = service.ShipmentFailureStatusValues()
 	default:
