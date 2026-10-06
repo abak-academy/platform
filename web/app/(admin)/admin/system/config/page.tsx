@@ -99,7 +99,6 @@ const INITIAL_PAYMENT = {
 };
 
 const INITIAL_SHIPPING = {
-  shipping_fallback_flat_rate: "",
   biteship_api_key: "",
   biteship_webhook_secret: "",
 };
@@ -178,7 +177,6 @@ export default function SystemConfigPage() {
         new Set((config.biteship_services || DEFAULT_SERVICES).split(","))
       );
       setShippingFields({
-        shipping_fallback_flat_rate: config.shipping_fallback_flat_rate ?? "",
         biteship_api_key: config.biteship_api_key ?? "",
         biteship_webhook_secret: config.biteship_webhook_secret ?? "",
       });
@@ -618,20 +616,6 @@ export default function SystemConfigPage() {
               <div>
                 <Eyebrow>{t("config_group_shipping")}</Eyebrow>
                 <div className="space-y-4">
-                  <div>
-                    <Label>{t("config_shipping_fallback_rate")}</Label>
-                    <Input
-                      type="number"
-                      value={shippingFields.shipping_fallback_flat_rate}
-                      onChange={(e) =>
-                        setShippingFields((f) => ({
-                          ...f,
-                          shipping_fallback_flat_rate: e.target.value,
-                        }))
-                      }
-                      placeholder={t("config_shipping_rate_placeholder")}
-                    />
-                  </div>
                   <div>
                     <Label>{t("config_shipping_biteship_key")}</Label>
                     <Input
