@@ -734,6 +734,8 @@ export const DICT = {
     login_submitting: "Masuk...",
     login_failed: "Gagal masuk. Coba lagi.",
     login_rate_limited: "Terlalu banyak percobaan masuk. Coba lagi sebentar lagi.",
+    otp_send_locked: "Pengiriman kode OTP terkunci sementara. Coba lagi beberapa jam lagi.",
+    otp_attempts_exceeded: "Terlalu banyak percobaan salah. Silakan minta kode baru.",
     login_no_account: "Belum punya akun?",
     login_sign_up_link: "Daftar sekarang",
 
@@ -771,6 +773,13 @@ export const DICT = {
     otp_submit: "Verifikasi & Masuk",
     otp_submitting: "Memverifikasi...",
     otp_help: "Tidak menerima kode? Periksa folder spam atau tunggu beberapa saat sebelum meminta ulang.",
+    otp_resend: "Kirim ulang kode",
+    otp_resend_countdown: "Kirim ulang tersedia dalam {s} detik",
+    otp_resent: "Kode baru sudah dikirim. Periksa email Anda.",
+    otp_resend_failed: "Gagal mengirim ulang kode. Coba lagi nanti.",
+    otp_send_failed: "Kode gagal dikirim ke email Anda. Coba lagi beberapa saat.",
+    otp_email_failed_banner: "Kode gagal dikirim ke email Anda. Silakan kirim ulang.",
+    otp_active_banner: "Kode sebelumnya masih berlaku — masukkan dari email Anda, atau kirim ulang jika tidak sampai.",
 
     /* Admin — super admin home */
     admin_home_badge: "Super Admin · Abak Academy",
@@ -2461,6 +2470,8 @@ export const DICT = {
     login_submitting: "Signing in...",
     login_failed: "Sign in failed. Try again.",
     login_rate_limited: "Too many login attempts. Please try again shortly.",
+    otp_send_locked: "OTP delivery is temporarily locked. Please try again in a few hours.",
+    otp_attempts_exceeded: "Too many wrong attempts. Please request a new code.",
     login_no_account: "Don't have an account yet?",
     login_sign_up_link: "Sign up",
 
@@ -2498,6 +2509,13 @@ export const DICT = {
     otp_submit: "Verify & Sign in",
     otp_submitting: "Verifying...",
     otp_help: "Didn't receive the code? Check your spam folder or wait a moment before requesting again.",
+    otp_resend: "Resend code",
+    otp_resend_countdown: "Resend available in {s}s",
+    otp_resent: "A new code has been sent. Check your email.",
+    otp_resend_failed: "Failed to resend the code. Try again later.",
+    otp_send_failed: "We couldn't send the code to your email. Please try again shortly.",
+    otp_email_failed_banner: "We couldn't deliver the code to your email. Please resend it.",
+    otp_active_banner: "Your previous code is still valid — enter it from your email, or resend if it didn't arrive.",
 
     /* Admin — super admin home */
     admin_home_badge: "Super Admin · Abak Academy",

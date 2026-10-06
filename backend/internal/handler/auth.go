@@ -22,13 +22,16 @@ func (h *Handler) Register(c echo.Context) error {
 	if req.Email == "" || req.Password == "" || req.Name == "" {
 		return badRequest(c, "email, password and name are required")
 	}
-	pendingToken, err := h.svc.Register(c.Request().Context(), req.Email, req.Password, req.Name)
+	chall, err := h.svc.Register(c.Request().Context(), req.Email, req.Password, req.Name)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusCreated, map[string]any{
 		"otp_required":  true,
-		"pending_token": pendingToken,
+		"pending_token": chall.PendingToken,
+		"email_failed":  chall.EmailFailed,
+		"otp_active":    chall.OTPActive,
+		"resend_after":  chall.ResendAfter,
 	})
 }
 
@@ -45,11 +48,21 @@ func (h *Handler) Login(c echo.Context) error {
 	}
 	access, refresh, pendingToken, err := h.svc.Login(c.Request().Context(), req.Identifier, req.Password)
 	if errors.Is(err, service.ErrVerificationPending) {
+		emailFailed, otpActive, resendAfter := false, false, 0
+		var vp *service.VerificationPendingError
+		if errors.As(err, &vp) {
+			emailFailed = vp.EmailFailed
+			otpActive = vp.OTPActive
+			resendAfter = vp.ResendAfter
+		}
 		return c.JSON(http.StatusForbidden, map[string]any{
 			"code":          "verification_pending",
 			"otp_required":  true,
 			"pending_token": pendingToken,
 			"id":            req.Identifier,
+			"email_failed":  emailFailed,
+			"otp_active":    otpActive,
+			"resend_after":  resendAfter,
 		})
 	}
 	if err != nil {

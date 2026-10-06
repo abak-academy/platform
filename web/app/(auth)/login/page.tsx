@@ -34,6 +34,14 @@ export default function LoginPage() {
         const pendingToken = err.body?.pending_token;
         if (typeof window !== "undefined" && typeof pendingToken === "string") {
           sessionStorage.setItem("abak-pending-token", pendingToken);
+          // Delivery/budget flags for the OTP page's banners and countdown.
+          sessionStorage.setItem("abak-email-failed", err.body?.email_failed ? "1" : "0");
+          sessionStorage.setItem("abak-otp-active", err.body?.otp_active ? "1" : "0");
+          const resendAfter = Number(err.body?.resend_after);
+          sessionStorage.setItem(
+            "abak-resend-after",
+            Number.isFinite(resendAfter) && resendAfter > 0 ? String(resendAfter) : "60",
+          );
         }
         router.push(`/otp?id=${encodeURIComponent(identifier)}`);
         return;

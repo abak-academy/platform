@@ -311,6 +311,10 @@ func TestRegisterHandler_HappyPath(t *testing.T) {
 	if resp["pending_token"] == "" || resp["pending_token"] == nil {
 		t.Error("want non-empty pending_token")
 	}
+	// The noop provider succeeds, so the response reports delivery fine.
+	if resp["email_failed"] != false {
+		t.Errorf("want email_failed=false, got %v", resp["email_failed"])
+	}
 }
 
 func TestRegisterHandler_DuplicateEmail(t *testing.T) {

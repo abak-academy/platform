@@ -18,6 +18,10 @@ type AnnounceRepo interface {
 	DeleteAnnouncement(ctx context.Context, id string) error
 	ListActiveUserEmails(ctx context.Context, recipients string) ([]string, error)
 	MarkAnnouncementSent(ctx context.Context, id string, sentAt time.Time, recipientCount int) error
+	// ScheduleAnnouncementNow flips a draft/scheduled announcement back to
+	// 'scheduled' with scheduled_at = at so the worker's paced loop dispatches
+	// it on the next tick (SendAnnouncementNow).
+	ScheduleAnnouncementNow(ctx context.Context, id string, at time.Time) error
 	ClaimDueAnnouncements(ctx context.Context, now time.Time, limit int) ([]model.Announcement, error)
 }
 
@@ -44,8 +48,9 @@ var validAnnouncementStatuses = map[string]bool{
 
 // CreateAnnouncement creates a new announcement after validating enums and
 // status-specific rules. For status "scheduled", scheduledAt must be non-nil
-// and in the future. For status "sent", the announcement is sent immediately
-// (recipients resolved, emails sent, row updated).
+// and in the future. A client-requested status "sent" is routed through the
+// scheduler (scheduled_at = now) so the fan-out runs in the worker's paced
+// loop instead of synchronously inside this request.
 func (s *Service) CreateAnnouncement(
 	ctx context.Context,
 	actorID, title, message, typ, recipients, status string,
@@ -70,6 +75,12 @@ func (s *Service) CreateAnnouncement(
 		}
 	}
 
+	if status == "sent" {
+		status = "scheduled"
+		now := time.Now()
+		scheduledAt = &now
+	}
+
 	a := &model.Announcement{
 		Title:       title,
 		Message:     message,
@@ -84,14 +95,7 @@ func (s *Service) CreateAnnouncement(
 		return model.Announcement{}, err
 	}
 
-	// For status "sent", trigger immediate send via the same path as manual send.
-	if status == "sent" {
-		if err := s.sendAnnouncement(ctx, a); err != nil {
-			return model.Announcement{}, err
-		}
-	}
-
-	// Re-fetch to get updated state (e.g. after send-now marking).
+	// Re-fetch to reflect the persisted state.
 	result, err := s.announceRepo.GetAnnouncementByID(ctx, a.ID)
 	if err != nil {
 		return model.Announcement{}, err
@@ -156,9 +160,11 @@ func (s *Service) DeleteAnnouncement(ctx context.Context, id string) error {
 	return s.announceRepo.DeleteAnnouncement(ctx, id)
 }
 
-// SendAnnouncementNow triggers immediate send of a draft or scheduled
-// announcement. Returns ErrAnnouncementNotFound if the id doesn't exist,
-// and ErrAnnouncementImmutable if already sent.
+// SendAnnouncementNow queues a draft or scheduled announcement for immediate
+// dispatch: it becomes scheduled at now and the worker's paced loop fans the
+// emails out on its next tick (≤ announcementPollInterval). Returns
+// ErrAnnouncementNotFound if the id doesn't exist, and ErrAnnouncementImmutable
+// if already sent.
 func (s *Service) SendAnnouncementNow(ctx context.Context, id string) (model.Announcement, error) {
 	existing, err := s.announceRepo.GetAnnouncementByID(ctx, id)
 	if err != nil {
@@ -171,7 +177,7 @@ func (s *Service) SendAnnouncementNow(ctx context.Context, id string) (model.Ann
 		return model.Announcement{}, ErrAnnouncementImmutable
 	}
 
-	if err := s.sendAnnouncement(ctx, existing); err != nil {
+	if err := s.announceRepo.ScheduleAnnouncementNow(ctx, id, time.Now()); err != nil {
 		return model.Announcement{}, err
 	}
 
@@ -180,6 +186,44 @@ func (s *Service) SendAnnouncementNow(ctx context.Context, id string) (model.Ann
 		return model.Announcement{}, err
 	}
 	return *result, nil
+}
+
+// emailPacer spaces consecutive announcement emails at least `interval` apart
+// so a large fan-out never bursts past the SMTP relay's rate limit. A zero
+// interval disables pacing (tests).
+type emailPacer struct {
+	interval time.Duration
+	last     time.Time
+	sleep    func(time.Duration)
+}
+
+func newEmailPacer(interval time.Duration, sleep func(time.Duration)) *emailPacer {
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+	return &emailPacer{interval: interval, sleep: sleep}
+}
+
+// wait blocks until the next email may go out. The first send is immediate.
+func (p *emailPacer) wait() {
+	if p.interval <= 0 {
+		return
+	}
+	if !p.last.IsZero() {
+		if d := p.interval - time.Since(p.last); d > 0 {
+			p.sleep(d)
+		}
+	}
+	p.last = time.Now()
+}
+
+// announcementEmailInterval derives the per-email spacing from
+// email_send_per_minute. Zero/nil config (tests) disables pacing.
+func (s *Service) announcementEmailInterval() time.Duration {
+	if s.cfg == nil || s.cfg.EmailSendPerMinute <= 0 {
+		return 0
+	}
+	return time.Minute / time.Duration(s.cfg.EmailSendPerMinute)
 }
 
 // DispatchDueAnnouncements claims and sends all due scheduled announcements.
@@ -191,9 +235,10 @@ func (s *Service) DispatchDueAnnouncements(ctx context.Context, limit int) (int,
 		return 0, err
 	}
 
+	pacer := newEmailPacer(s.announcementEmailInterval(), s.emailSleep)
 	dispatched := 0
 	for _, a := range announcements {
-		if err := s.sendAnnouncement(ctx, &a); err != nil {
+		if err := s.sendAnnouncement(ctx, &a, pacer); err != nil {
 			log.Printf("failed to dispatch announcement %s: %v", a.ID, err)
 			continue
 		}
@@ -204,7 +249,7 @@ func (s *Service) DispatchDueAnnouncements(ctx context.Context, limit int) (int,
 
 // sendAnnouncement resolves recipients, sends one email per address (best-effort),
 // and marks the announcement as sent with the attempted recipient count.
-func (s *Service) sendAnnouncement(ctx context.Context, a *model.Announcement) error {
+func (s *Service) sendAnnouncement(ctx context.Context, a *model.Announcement, pacer *emailPacer) error {
 	emails, err := s.announceRepo.ListActiveUserEmails(ctx, a.Recipients)
 	if err != nil {
 		return fmt.Errorf("resolve recipients: %w", err)
@@ -212,6 +257,7 @@ func (s *Service) sendAnnouncement(ctx context.Context, a *model.Announcement) e
 
 	count := len(emails)
 	for _, email := range emails {
+		pacer.wait()
 		if err := s.emailProvider.SendEmail(ctx, email, a.Title, a.Message); err != nil {
 			// One failure logs and continues — never aborts the loop.
 			log.Printf("failed to send announcement %s to %s: %v", a.ID, email, err)

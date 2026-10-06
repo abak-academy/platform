@@ -58,6 +58,9 @@ export interface RegisterInput {
 export interface RegisterResponse {
   otp_required: boolean;
   pending_token: string;
+  email_failed?: boolean;
+  otp_active?: boolean;
+  resend_after?: number;
 }
 
 export function useRegister() {
@@ -74,6 +77,24 @@ export interface VerifyOtpInput {
   identifier: string;
   code: string;
   pending_token?: string;
+}
+
+export interface SendOtpInput {
+  pending_token?: string;
+  email?: string;
+}
+
+// Resend the OTP for a pending verification. The backend enforces the resend
+// ladder: 429 carries retryAfter (Retry-After header) and 503 signals a failed
+// delivery — the caller owns the countdown and the error copy.
+export function useSendOtp() {
+  return useMutation({
+    mutationFn: (input: SendOtpInput) =>
+      apiFetch<{ message: string }>(`/auth/otp/send`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+  });
 }
 
 export function useVerifyOtp() {

@@ -13,13 +13,23 @@ export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
   readonly body?: Record<string, unknown>;
+  // Seconds the server asks the client to wait (Retry-After header); present
+  // only on throttled auth endpoints. Undefined otherwise.
+  readonly retryAfter?: number;
 
-  constructor(code: string, message: string, status: number, body?: Record<string, unknown>) {
+  constructor(
+    code: string,
+    message: string,
+    status: number,
+    body?: Record<string, unknown>,
+    retryAfter?: number,
+  ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
     this.body = body;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -47,7 +57,10 @@ async function parseError(res: Response): Promise<ApiError> {
     res.statusText ??
     `Request failed with status ${status}`;
   const code = body?.code ?? `HTTP_${status}`;
-  return new ApiError(code, message, status, body ?? undefined);
+  const retryAfterHeader = Number(res.headers.get("Retry-After"));
+  const retryAfter =
+    Number.isFinite(retryAfterHeader) && retryAfterHeader > 0 ? retryAfterHeader : undefined;
+  return new ApiError(code, message, status, body ?? undefined, retryAfter);
 }
 
 function withJsonHeaders(init?: RequestInit): HeadersInit {

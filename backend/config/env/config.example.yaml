@@ -20,6 +20,9 @@ smtp_host: ""
 smtp_port: "587"
 smtp_from: ""
 smtp_from_name: ""
+# Announcement email fan-out pacing in the worker (emails per minute). Keeps a
+# large broadcast from bursting past the SMTP relay's rate limit. Default 30.
+email_send_per_minute: 30
 object_storage_endpoint: "minio:9000"
 object_storage_public_endpoint: "localhost:9000"
 object_storage_use_ssl: false
