@@ -1,6 +1,6 @@
 "use client";
 
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import type {
   Order,
@@ -16,9 +16,9 @@ export const adminOrdersKeys = {
   all: ["admin", "orders"] as const,
   // The whole query object is part of the key, so any filter change starts a
   // fresh page 1 rather than appending to the previous filter's pages.
-  list: (query: AdminOrderQuery) => [...adminOrdersKeys.all, "list", query] as const,
+  list: (query: AdminOrderQuery, cursor: string = "") => [...adminOrdersKeys.all, "list", query, cursor] as const,
   // Keyed without status on purpose — see useAdminOrderSummary.
-  summary: (scope: { q?: string; from?: string; to?: string }) =>
+  summary: (scope: Pick<AdminOrderQuery, "q" | "from" | "to" | "type" | "courier">) =>
     [...adminOrdersKeys.all, "summary", scope] as const,
   detail: (id: string) => [...adminOrdersKeys.all, "detail", id] as const,
 };
@@ -61,6 +61,10 @@ function orderQueryParams(query: AdminOrderQuery): URLSearchParams {
   if (query.to) {
     params.set("to", query.to);
   }
+  if (query.type) params.set("type", query.type);
+  if (query.courier) params.set("courier", query.courier);
+  if (query.sort) params.set("sort", query.sort);
+  if (query.dir) params.set("dir", query.dir);
   return params;
 }
 
@@ -68,23 +72,20 @@ function idempotencyKey(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
-export function useAdminOrders(query: AdminOrderQuery) {
-  return useInfiniteQuery({
-    queryKey: adminOrdersKeys.list(query),
-    initialPageParam: "",
-    queryFn: ({ pageParam }) => {
+export function useAdminOrders(query: AdminOrderQuery, cursor: string = "") {
+  return useQuery({
+    queryKey: adminOrdersKeys.list(query, cursor),
+    queryFn: () => {
       const params = orderQueryParams(query);
-      params.set("limit", String(ORDERS_PAGE_SIZE));
-      if (pageParam) {
-        params.set("cursor", pageParam);
-      }
-      return authFetch<{ data: Order[]; next_cursor?: string }>(`/admin/orders?${params.toString()}`);
+      params.set("limit", String(query.limit ?? ORDERS_PAGE_SIZE));
+      if (cursor) params.set("cursor", cursor);
+      return authFetch<{ data: Order[]; next_cursor: string }>(`/admin/orders?${params.toString()}`);
     },
-    getNextPageParam: (last) => last.next_cursor || undefined,
+    placeholderData: keepPreviousData,
   });
 }
 
-// Scoped to the search and date range, never to the status.
+// Scoped to search, dates, type and courier, never to the status.
 //
 // The buckets ARE the per-status breakdown, and the toolbar renders a chip
 // count from each. Passing the selected status through would filter the counts
@@ -92,7 +93,7 @@ export function useAdminOrders(query: AdminOrderQuery) {
 // drops to zero. Search and dates do narrow them, so the numbers still describe
 // the rows on screen.
 export function useAdminOrderSummary(query: AdminOrderQuery) {
-  const scope = { q: query.q, from: query.from, to: query.to };
+  const scope = { q: query.q, from: query.from, to: query.to, type: query.type, courier: query.courier };
   return useQuery({
     queryKey: adminOrdersKeys.summary(scope),
     queryFn: () => {
@@ -100,11 +101,14 @@ export function useAdminOrderSummary(query: AdminOrderQuery) {
       if (scope.q) params.set("q", scope.q);
       if (scope.from) params.set("from", scope.from);
       if (scope.to) params.set("to", scope.to);
+      if (scope.type) params.set("type", scope.type);
+      if (scope.courier) params.set("courier", scope.courier);
       const qs = params.toString();
       return authFetch<OrderSummary>(
         qs ? `/admin/orders/summary?${qs}` : "/admin/orders/summary",
       );
     },
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -475,8 +475,12 @@ export interface OrderBucketCounts {
   total: number;
 }
 
+export type AdminOrderSort = "order_at" | "paid_at" | "item_qty";
+export type AdminOrderSortDirection = "asc" | "desc";
+
 export interface OrderSummary {
   buckets: OrderBucketCounts;
+  couriers: string[];
   top_products: TopProduct[];
 }
 
@@ -485,6 +489,11 @@ export interface AdminOrderQuery {
   // Mutually exclusive with status: a queue is its own filter dimension, not
   // another status value to combine with one.
   queue?: AdminOrderQueue;
+  type?: ProductType;
+  courier?: string;
+  sort?: AdminOrderSort;
+  dir?: AdminOrderSortDirection;
+  limit?: 20 | 50 | 100;
   q?: string;
   from?: string;
   to?: string;

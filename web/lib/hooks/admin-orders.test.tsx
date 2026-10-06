@@ -61,7 +61,7 @@ describe("admin-orders hooks", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(mockAuthFetch).toHaveBeenCalledWith(`/admin/orders?limit=${ORDERS_PAGE_SIZE}`);
-    expect(result.current.data?.pages[0].data).toEqual([sampleOrder]);
+    expect(result.current.data?.data).toEqual([sampleOrder]);
   });
 
   it.each([
@@ -84,6 +84,15 @@ describe("admin-orders hooks", () => {
       expect(params.get("queue")).toBe(queue);
     },
   );
+
+  it.each([20, 50, 100] as const)("sends all filter and sort params with limit %i", async (limit) => {
+    mockAuthFetch.mockResolvedValue({ data: [] });
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useAdminOrders({ status: "paid", type: "medal", courier: "jne", sort: "paid_at", dir: "asc", limit }), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const params = new URLSearchParams(mockAuthFetch.mock.calls[0][0].split("?")[1]);
+    expect(Object.fromEntries(params)).toEqual({ status: "paid", type: "medal", courier: "jne", sort: "paid_at", dir: "asc", limit: String(limit) });
+  });
 
   it("useAdminOrders maps status filter to backend enum", async () => {
     mockAuthFetch.mockResolvedValueOnce({ data: [] });
@@ -157,25 +166,25 @@ describe("admin-orders hooks", () => {
     expect(params.get("status")).toBeNull();
   });
 
-  it("useAdminOrders pages forward with cursor and stops when next_cursor is empty", async () => {
-    mockAuthFetch
-      .mockResolvedValueOnce({ data: [sampleOrder], next_cursor: "cur-2" })
-      .mockResolvedValueOnce({ data: [{ ...sampleOrder, id: "o2" }], next_cursor: "" });
-
+  it("loads one cursor page, keeps the previous rows while loading, and returns to the first page", async () => {
+    let resolveNext!: (value: { data: Order[]; next_cursor: string }) => void;
+    mockAuthFetch.mockResolvedValueOnce({ data: [sampleOrder], next_cursor: "cur-2" })
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveNext = resolve; }))
+      .mockResolvedValue({ data: [sampleOrder], next_cursor: "cur-2" });
     const { wrapper } = wrapperFactory();
-    const { result } = renderHook(() => useAdminOrders({ status: "all" }), { wrapper });
-
-    await waitFor(() => expect(result.current.hasNextPage).toBe(true));
-
-    await act(async () => {
-      await result.current.fetchNextPage();
+    const { result, rerender } = renderHook(({ cursor }) => useAdminOrders({ status: "all" }, cursor), {
+      wrapper, initialProps: { cursor: "" },
     });
-
-    await waitFor(() => expect(result.current.hasNextPage).toBe(false));
-    expect(mockAuthFetch).toHaveBeenLastCalledWith(
-      `/admin/orders?limit=${ORDERS_PAGE_SIZE}&cursor=cur-2`
-    );
-    expect(result.current.data?.pages).toHaveLength(2);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    rerender({ cursor: "cur-2" });
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(true));
+    expect(result.current.data?.data).toEqual([sampleOrder]);
+    await act(async () => resolveNext({ data: [{ ...sampleOrder, id: "o2" }], next_cursor: "" }));
+    await waitFor(() => expect(result.current.data?.data[0].id).toBe("o2"));
+    expect(result.current.data?.next_cursor).toBe("");
+    expect(mockAuthFetch).toHaveBeenLastCalledWith(`/admin/orders?limit=${ORDERS_PAGE_SIZE}&cursor=cur-2`);
+    rerender({ cursor: "" });
+    await waitFor(() => expect(result.current.data?.data).toEqual([sampleOrder]));
   });
 
   it("useAdminOrders refetches when q changes", async () => {
@@ -210,6 +219,7 @@ describe("admin-orders hooks", () => {
         completed_this_month: 4,
         total: 12,
       },
+      couriers: ["jne"],
       top_products: [
         { product_id: "p1", name: "Buku A", product_type: "book", qty_sold: 7, order_count: 5 },
       ],
@@ -218,14 +228,14 @@ describe("admin-orders hooks", () => {
 
     const { wrapper } = wrapperFactory();
     const { result } = renderHook(
-      () => useAdminOrderSummary({ status: "all", q: "buku", from: "2026-07-01", to: "2026-07-31" }),
+      () => useAdminOrderSummary({ status: "all", q: "buku", from: "2026-07-01", to: "2026-07-31", type: "medal", courier: "jne" }),
       { wrapper }
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(mockAuthFetch).toHaveBeenCalledWith(
-      "/admin/orders/summary?q=buku&from=2026-07-01&to=2026-07-31"
+      "/admin/orders/summary?q=buku&from=2026-07-01&to=2026-07-31&type=medal&courier=jne"
     );
     expect(result.current.data).toEqual(summary);
   });
@@ -239,6 +249,7 @@ describe("admin-orders hooks", () => {
         needs_confirm: 0, ready_to_ship: 0, shipment_failed: 0, in_transit: 0, completed: 0, payment_expired: 0, cancelled: 0,
         created_this_month: 0, completed_this_month: 0, total: 0,
       },
+      couriers: ["jne"],
       top_products: [],
     });
 

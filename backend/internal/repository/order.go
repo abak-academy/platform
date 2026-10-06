@@ -37,11 +37,28 @@ var ErrOrderChanged = errors.New("order changed")
 // ErrDigitalQtyLimit sentinel.
 var ErrDuplicateDigitalItem = errors.New("duplicate digital item")
 
+type OrderSort string
+
+type OrderSortDirection string
+
+const (
+	OrderSortOrderAt OrderSort          = "order_at"
+	OrderSortPaidAt  OrderSort          = "paid_at"
+	OrderSortItemQty OrderSort          = "item_qty"
+	OrderSortAsc     OrderSortDirection = "asc"
+	OrderSortDesc    OrderSortDirection = "desc"
+)
+
+const itemQtyExpr = `(SELECT COALESCE(SUM(qty),0) FROM order_item WHERE order_id = orders.id)`
+
 type OrderFilter struct {
 	StudentID   *uuid.UUID
 	Status      string
 	ProductType string
+	CourierCode string
 	ExcludeCart bool
+	Sort        OrderSort
+	Direction   OrderSortDirection
 	Cursor      string
 	Limit       int
 
@@ -134,6 +151,11 @@ func orderFilterPredicateFrom(filter OrderFilter, startArg int) (string, []inter
 		args = append(args, filter.ProductType)
 		argNum++
 	}
+	if filter.CourierCode != "" {
+		query += fmt.Sprintf(` AND courier_code = $%d`, argNum)
+		args = append(args, filter.CourierCode)
+		argNum++
+	}
 	if filter.ExcludeCart {
 		query += ` AND status != 'cart'`
 	}
@@ -220,11 +242,11 @@ const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost,
 
 func scanOrder(row interface {
 	Scan(dest ...any) error
-}, order *model.Order) error {
+}, order *model.Order, extra ...any) error {
 	// Nullable TEXT columns must be scanned into *string so pgx v5 can set nil for SQL NULL.
 	var selectedCourier, selectedService, trackingNumber, gatewayRef, paymentMethod, invoiceURL,
 		cancellationReason *string
-	err := row.Scan(
+	dest := []any{
 		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
 		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
 		&selectedCourier, &selectedService, &trackingNumber, &order.ShippedAt,
@@ -235,7 +257,8 @@ func scanOrder(row interface {
 		&order.CourierCode, &order.CourierServiceCode,
 		&order.PaymentProofURL, &order.RefundProofURL,
 		&order.ProvinceID, &order.CityID, &order.DistrictID, &order.KodePos,
-	)
+	}
+	err := row.Scan(append(dest, extra...)...)
 	if err != nil {
 		return err
 	}
@@ -546,22 +569,10 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		filter.Limit = 100
 	}
 
-	query := `SELECT ` + orderColumns + ` FROM orders WHERE 1=1`
-	where, args, argNum := orderFilterPredicateFrom(filter, 1)
-	query += where
-
-	if filter.Cursor != "" {
-		curAt, curID, err := DecodeOrderCursor(filter.Cursor)
-		if err != nil {
-			return nil, "", err
-		}
-		query += fmt.Sprintf(` AND (%s, id) < ($%d, $%d)`, placedAtExpr, argNum, argNum+1)
-		args = append(args, curAt, curID)
-		argNum += 2
+	query, args, err := listOrdersQuery(filter)
+	if err != nil {
+		return nil, "", err
 	}
-
-	query += fmt.Sprintf(` ORDER BY %s DESC, id DESC LIMIT $%d`, placedAtExpr, argNum)
-	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -572,17 +583,26 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 	orders := []model.Order{}
 	nextCursor := ""
 	hasMore := false
+	var lastQty int64
 
 	for rows.Next() {
 		order := model.Order{}
-		if err := scanOrder(rows, &order); err != nil {
-			return nil, "", err
+		var qty int64
+		var scanErr error
+		if filter.Sort == OrderSortItemQty {
+			scanErr = scanOrder(rows, &order, &qty)
+		} else {
+			scanErr = scanOrder(rows, &order)
+		}
+		if scanErr != nil {
+			return nil, "", scanErr
 		}
 		if len(orders) < filter.Limit {
 			orders = append(orders, order)
+			lastQty = qty
 		} else {
 			// One row beyond the page proves there is a next page, but it must
-			// not become the cursor: the predicate is strictly less-than, so
+			// not become the cursor: the predicate is strict, so
 			// pointing at this row would skip it. The cursor is the last row we
 			// actually returned.
 			hasMore = true
@@ -595,9 +615,16 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 
 	if hasMore && len(orders) > 0 {
 		last := orders[len(orders)-1]
-		// Must be the same value placedAtExpr sorted on, or the next page skips
-		// and repeats rows wherever the two timestamps disagree.
-		nextCursor = EncodeOrderCursor(placedAt(last), last.ID)
+		switch filter.Sort {
+		case OrderSortPaidAt:
+			nextCursor = EncodePaidOrderCursor(last.PaidAt, last.ID)
+		case OrderSortItemQty:
+			nextCursor = EncodeItemQtyOrderCursor(lastQty, last.ID)
+		default:
+			// Must be the same value placedAtExpr sorted on, or the next page skips
+			// and repeats rows wherever the two timestamps disagree.
+			nextCursor = EncodeOrderCursor(placedAt(last), last.ID)
+		}
 	}
 
 	for i := range orders {
@@ -1140,4 +1167,65 @@ func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[st
 		"order_count":     orderCount,
 		"by_type":         byType,
 	}, nil
+}
+
+func listOrdersQuery(filter OrderFilter) (string, []interface{}, error) {
+	key := placedAtExpr
+	switch filter.Sort {
+	case OrderSortPaidAt:
+		key = "paid_at"
+	case OrderSortItemQty:
+		key = itemQtyExpr
+	}
+	direction, comparison := "DESC", "<"
+	if filter.Direction == OrderSortAsc {
+		direction, comparison = "ASC", ">"
+	}
+	columns := orderColumns
+	if filter.Sort == OrderSortItemQty {
+		columns += ", " + itemQtyExpr
+	}
+	query := `SELECT ` + columns + ` FROM orders WHERE 1=1`
+	where, args, argNum := orderFilterPredicateFrom(filter, 1)
+	query += where
+	if filter.Cursor != "" {
+		var value interface{}
+		var id uuid.UUID
+		var err error
+		switch filter.Sort {
+		case OrderSortPaidAt:
+			var at *time.Time
+			at, id, err = DecodePaidOrderCursor(filter.Cursor)
+			if at != nil {
+				value = *at
+			}
+		case OrderSortItemQty:
+			value, id, err = DecodeItemQtyOrderCursor(filter.Cursor)
+		default:
+			value, id, err = DecodeOrderCursor(filter.Cursor)
+		}
+		if err != nil {
+			return "", nil, err
+		}
+		if filter.Sort == OrderSortPaidAt && value == nil {
+			query += fmt.Sprintf(` AND paid_at IS NULL AND id %s $%d`, comparison, argNum)
+			args = append(args, id)
+			argNum++
+		} else {
+			predicate := fmt.Sprintf(`(%s, id) %s ($%d, $%d)`, key, comparison, argNum, argNum+1)
+			if filter.Sort == OrderSortPaidAt {
+				predicate = "(" + predicate + " OR paid_at IS NULL)"
+			}
+			query += " AND " + predicate
+			args = append(args, value, id)
+			argNum += 2
+		}
+	}
+	nulls := ""
+	if filter.Sort == OrderSortPaidAt {
+		nulls = " NULLS LAST"
+	}
+	query += fmt.Sprintf(` ORDER BY %s %s%s, id %s LIMIT $%d`, key, direction, nulls, direction, argNum)
+	args = append(args, filter.Limit+1)
+	return query, args, nil
 }

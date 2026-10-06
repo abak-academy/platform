@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { OrderDetailModal } from "@/components/admin/OrderDetailModal";
 import { OrderRow, type OrderRowMenuAction, type OrderRowPrimaryAction } from "@/components/admin/OrderRow";
-import { OrdersToolbar } from "@/components/admin/OrdersToolbar";
+import { OrdersToolbar, chipCount } from "@/components/admin/OrdersToolbar";
 import { ShipOrderModal } from "@/components/admin/ShipOrderModal";
 import { ConfirmOrderModal } from "@/components/admin/ConfirmOrderModal";
 import { RefundOrderModal } from "@/components/admin/RefundOrderModal";
@@ -105,6 +105,11 @@ function shipAllowed(order: Order): boolean {
 export default function OrdersPage() {
   const { t } = useTranslation();
   const [query, setQuery] = useState<AdminOrderQuery>({ status: "all" });
+  const [cursorStack, setCursorStack] = useState([""]);
+  function changeQuery(next: AdminOrderQuery) {
+    setQuery(next);
+    setCursorStack([""]);
+  }
 
   // Read ?queue=/?status= once on mount so the store dashboard's queue cards
   // can deep link into their own queue. Deliberately an effect rather than a
@@ -140,10 +145,9 @@ export default function OrdersPage() {
     isLoading,
     isError,
     error,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-  } = useAdminOrders(query);
+    isFetching,
+    isPlaceholderData,
+  } = useAdminOrders(query, cursorStack[cursorStack.length - 1]);
   const { data: summary } = useAdminOrderSummary(query);
   const confirm = useConfirmOrder();
   const ship = useShipOrder();
@@ -166,8 +170,10 @@ export default function OrdersPage() {
   const [refundError, setRefundError] = useState<string | null>(null);
   const [completingOrder, setCompletingOrder] = useState<Order | null>(null);
 
-  const orders = data?.pages.flatMap((p) => p.data) ?? [];
-  const total = summary?.buckets.total;
+  const orders = data?.data ?? [];
+  const total = chipCount(query.queue ?? query.status, summary?.buckets);
+  const firstRow = orders.length ? (cursorStack.length - 1) * (query.limit ?? 20) + 1 : 0;
+  const lastRow = orders.length ? firstRow + orders.length - 1 : 0;
 
   function errorMessage(error: unknown): string {
     if (error instanceof Error) return error.message;
@@ -347,7 +353,7 @@ export default function OrdersPage() {
         description={t("admin_orders_page_description")}
       />
 
-      <OrdersToolbar value={query} onChange={setQuery} counts={summary?.buckets} />
+      <OrdersToolbar value={query} onChange={changeQuery} counts={summary?.buckets} couriers={summary?.couriers} />
 
       {isLoading && (
         <div className="space-y-2">
@@ -401,19 +407,19 @@ export default function OrdersPage() {
 
           <div className="flex items-center justify-between gap-4 px-1">
             <p className="text-xs tabular-nums text-ink-600">
-              {t("orders_showing")} {orders.length}
+              {t("orders_showing")} {firstRow}-{lastRow}
               {total !== undefined && ` ${t("orders_of_total")} ${total}`}
             </p>
-            {hasNextPage && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fetchNextPage()}
-                disabled={isFetchingNextPage}
-              >
-                {t("orders_load_more")}
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={cursorStack.length === 1 || isFetching}
+                onClick={() => setCursorStack((stack) => stack.slice(0, -1))}>
+                {t("pagination_prev")}
               </Button>
-            )}
+              <Button variant="outline" size="sm" disabled={!data?.next_cursor || isFetching || isPlaceholderData}
+                onClick={() => { if (data?.next_cursor) setCursorStack((stack) => [...stack, data.next_cursor]); }}>
+                {t("pagination_next")}
+              </Button>
+            </div>
           </div>
         </div>
       )}

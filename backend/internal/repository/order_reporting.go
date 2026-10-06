@@ -146,3 +146,21 @@ func (r *Repository) TopProducts(
 	}
 	return out, rows.Err()
 }
+
+func (r *Repository) ListOrderCouriers(ctx context.Context) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `SELECT DISTINCT courier_code FROM orders
+  WHERE status != 'cart' AND courier_code IS NOT NULL AND courier_code != '' ORDER BY courier_code`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	couriers := []string{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		couriers = append(couriers, code)
+	}
+	return couriers, rows.Err()
+}

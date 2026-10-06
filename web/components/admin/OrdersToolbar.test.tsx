@@ -150,3 +150,78 @@ describe("OrdersToolbar search", () => {
     vi.useRealTimers();
   });
 });
+
+
+describe("OrdersToolbar page size", () => {
+  it.each([20, 50, 100] as const)("selects %i orders per page", async (limit) => {
+    const { onChange } = renderToolbar({ status: "all", limit: limit === 20 ? 50 : 20 });
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Pesanan per halaman" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    await screen.findByRole("listbox");
+    fireEvent.click(screen.getByRole("option", { name: String(limit) }));
+    expect(onChange).toHaveBeenCalledWith({ status: "all", limit });
+  });
+});
+
+describe("OrdersToolbar product, courier and sort", () => {
+  it("selects a product type without dropping the other filters", async () => {
+    const { onChange } = renderToolbar({ status: "pending", courier: "jne" });
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Jenis produk" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    await screen.findByRole("listbox");
+    fireEvent.click(screen.getByRole("option", { name: "Medali" }));
+    expect(onChange).toHaveBeenCalledWith({ status: "pending", courier: "jne", type: "medal" });
+  });
+});
+
+it.each([
+  ["book", "Buku"], ["merchandise", "Merchandise"], ["medal", "Medali"], ["course", "Kursus"], ["exam", "Ujian"], [undefined, "Semua jenis"],
+] as const)("product option %s sends the product type", async (type, label) => {
+  const { onChange } = renderToolbar({ status: "all", type: "medal" });
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: "Jenis produk" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  await screen.findByRole("listbox");
+  fireEvent.click(screen.getByRole("option", { name: label }));
+  if (type !== "medal") expect(onChange).toHaveBeenCalledWith({ status: "all", type });
+});
+
+it.each(["jne", "jnt", undefined])("courier %s sends the original code", async (courier) => {
+  const onChange = vi.fn();
+  render(<OrdersToolbar value={{ status: "all", courier: "old_courier" }} onChange={onChange} couriers={["jne", "jnt"]} />);
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: "Kurir" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  const listbox = await screen.findByRole("listbox");
+  expect(within(listbox).getAllByRole("option").map((option) => option.textContent)).toEqual(["Semua kurir", "JNE", "JNT"]);
+  fireEvent.click(screen.getByRole("option", { name: courier?.toUpperCase() ?? "Semua kurir" }));
+  expect(onChange).toHaveBeenCalledWith({ status: "all", courier });
+});
+
+it.each([
+  ["order_at", "Tanggal pesanan"], ["paid_at", "Tanggal bayar"], ["item_qty", "Jumlah barang"],
+] as const)("sort %s sends a fixed key", async (sort, label) => {
+  const { onChange } = renderToolbar({ status: "all", sort: sort === "order_at" ? "paid_at" : "order_at", dir: "asc" });
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: "Urutkan pesanan" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  await screen.findByRole("listbox");
+  fireEvent.click(screen.getByRole("option", { name: label }));
+  expect(onChange).toHaveBeenCalledWith({ status: "all", sort, dir: "asc" });
+});
+
+it.each([undefined, "asc", "desc"] as const)("toggles sort direction from %s", (dir) => {
+  const { onChange } = renderToolbar({ status: "all", sort: "item_qty", dir });
+  const button = screen.getByRole("button", { name: dir === "asc" ? "Arah urutan: Naik" : "Arah urutan: Turun" });
+  expect(button).toHaveTextContent(dir === "asc" ? "↑ Naik" : "↓ Turun");
+  fireEvent.click(button);
+  expect(onChange).toHaveBeenCalledWith({ status: "all", sort: "item_qty", dir: dir === "asc" ? "desc" : "asc" });
+});
+
+it.each(["id", "en"] as const)("has accessible translated controls and options in %s", async (lang) => {
+  useUIStore.setState({ lang });
+  renderToolbar();
+  const labels = lang === "id"
+    ? ["Jenis produk", "Kurir", "Urutkan pesanan", "Pesanan per halaman", "Arah urutan"]
+    : ["Product type", "Courier", "Sort orders", "Orders per page", "Sort direction"];
+  labels.slice(0, 4).forEach((label) => expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument());
+  expect(screen.getByRole("combobox", { name: labels[0] })).toHaveTextContent(lang === "id" ? "Semua jenis" : "All types");
+  expect(screen.getByRole("combobox", { name: labels[1] })).toHaveTextContent(lang === "id" ? "Semua kurir" : "All couriers");
+  expect(screen.getByRole("button", { name: `${labels[4]}: ${lang === "id" ? "Turun" : "Descending"}` })).toHaveTextContent(lang === "id" ? "Turun" : "Descending");
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: labels[2] }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  const listbox = await screen.findByRole("listbox");
+  expect(within(listbox).getAllByRole("option").map((option) => option.textContent)).toEqual(lang === "id"
+    ? ["Tanggal pesanan", "Tanggal bayar", "Jumlah barang"] : ["Order date", "Paid date", "Item count"]);
+});

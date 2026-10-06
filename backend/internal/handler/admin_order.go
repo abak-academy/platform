@@ -28,26 +28,19 @@ type OrderSummaryProduct struct {
 
 type OrderSummaryResponse struct {
 	Buckets     repository.OrderBucketCounts `json:"buckets"`
+	Couriers    []string                     `json:"couriers"`
 	TopProducts []OrderSummaryProduct        `json:"top_products"`
 }
 
 func (h *Handler) AdminListOrders(c echo.Context) error {
-	filter := repository.OrderFilter{
-		Status:      c.QueryParam("status"),
-		ProductType: c.QueryParam("type"),
-		Cursor:      c.QueryParam("cursor"),
-		Search:      strings.TrimSpace(c.QueryParam("q")),
-		Limit:       parseLimit(c.QueryParam("limit"), 20, 100),
-	}
-	if err := applyOrderQueue(&filter, c.QueryParam("queue")); err != nil {
-		return badRequest(c, err.Error())
-	}
-
-	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
+	filter, err := adminOrderFilter(c)
 	if err != nil {
 		return badRequest(c, err.Error())
 	}
-	filter.CreatedFrom, filter.CreatedTo = from, to
+
+	if err := applyOrderSort(&filter, c.QueryParam("sort"), c.QueryParam("dir")); err != nil {
+		return badRequest(c, err.Error())
+	}
 
 	orders, nextCursor, err := h.svc.AdminListOrders(c.Request().Context(), filter)
 	if err != nil {
@@ -63,18 +56,10 @@ func (h *Handler) AdminListOrders(c echo.Context) error {
 // AdminOrdersSummary returns counts and quantity-ranked products. Deliberately
 // no money: see OrderSummaryProduct.
 func (h *Handler) AdminOrdersSummary(c echo.Context) error {
-	filter := repository.OrderFilter{
-		Status: c.QueryParam("status"),
-		Search: strings.TrimSpace(c.QueryParam("q")),
-	}
-	if err := applyOrderQueue(&filter, c.QueryParam("queue")); err != nil {
-		return badRequest(c, err.Error())
-	}
-	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
+	filter, err := adminOrderFilter(c)
 	if err != nil {
 		return badRequest(c, err.Error())
 	}
-	filter.CreatedFrom, filter.CreatedTo = from, to
 
 	// Month-to-date is computed in Jakarta time: an order placed at 08:00 WIB on
 	// the 1st belongs to this month, and UTC would put it in the last one.
@@ -103,7 +88,11 @@ func (h *Handler) AdminOrdersSummary(c echo.Context) error {
 		})
 	}
 
-	return c.JSON(http.StatusOK, OrderSummaryResponse{Buckets: buckets, TopProducts: rows})
+	couriers, err := h.svc.AdminOrderCouriers(c.Request().Context())
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, OrderSummaryResponse{Buckets: buckets, TopProducts: rows, Couriers: couriers})
 }
 
 var jakarta = func() *time.Location {
@@ -414,4 +403,60 @@ func (h *Handler) AdminReconcileOrder(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "order reconciled",
 	})
+}
+
+func validateOrderProductType(value string) error {
+	switch value {
+	case "", "book", "merchandise", "medal", "course", "exam":
+		return nil
+	default:
+		return fmt.Errorf("unknown product type %q", value)
+	}
+}
+
+func adminOrderFilter(c echo.Context) (repository.OrderFilter, error) {
+	filter := repository.OrderFilter{
+		Status:      c.QueryParam("status"),
+		ProductType: c.QueryParam("type"),
+		CourierCode: c.QueryParam("courier"),
+		Cursor:      c.QueryParam("cursor"),
+		Search:      strings.TrimSpace(c.QueryParam("q")),
+		Limit:       parseLimit(c.QueryParam("limit"), 20, 100),
+	}
+	if err := validateOrderProductType(filter.ProductType); err != nil {
+		return repository.OrderFilter{}, err
+	}
+	if err := applyOrderQueue(&filter, c.QueryParam("queue")); err != nil {
+		return repository.OrderFilter{}, err
+	}
+
+	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
+	if err != nil {
+		return repository.OrderFilter{}, err
+	}
+	filter.CreatedFrom, filter.CreatedTo = from, to
+
+	return filter, nil
+}
+
+func applyOrderSort(filter *repository.OrderFilter, sort, direction string) error {
+	switch sort {
+	case "", "order_at":
+		filter.Sort = repository.OrderSortOrderAt
+	case "paid_at":
+		filter.Sort = repository.OrderSortPaidAt
+	case "item_qty":
+		filter.Sort = repository.OrderSortItemQty
+	default:
+		return fmt.Errorf("unknown sort %q", sort)
+	}
+	switch direction {
+	case "", "desc":
+		filter.Direction = repository.OrderSortDesc
+	case "asc":
+		filter.Direction = repository.OrderSortAsc
+	default:
+		return fmt.Errorf("unknown direction %q", direction)
+	}
+	return nil
 }

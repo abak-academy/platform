@@ -277,6 +277,8 @@ func TestCountOrdersByBucket_AllStatusOptionsMatchPagedRows(t *testing.T) {
 	at := time.Date(2027, 1, 10, 0, 0, 0, 0, time.UTC)
 	failures := []string{"courier_not_found", "courierNotFound"}
 	expected := map[string][]uuid.UUID{}
+	types := map[uuid.UUID]string{}
+	couriers := map[uuid.UUID]string{}
 	add := func(status, productType string, shipmentStatus *string, buckets ...string) {
 		product := book
 		if productType == "course" {
@@ -284,6 +286,14 @@ func TestCountOrdersByBucket_AllStatusOptionsMatchPagedRows(t *testing.T) {
 		}
 		id := seedOrder(t, pool, student, status, at, 10000, 0, 0, 10000,
 			[]seedItem{{product, "Status Filter Item", productType, 10000, 1}})
+		types[id] = productType
+		courier := "jne"
+		if len(types)%2 == 0 {
+			courier = "jnt"
+		}
+		couriers[id] = courier
+		_, err := pool.Exec(ctx, `UPDATE orders SET courier_code=$1 WHERE id=$2`, courier, id)
+		require.NoError(t, err)
 		if shipmentStatus != nil {
 			require.NoError(t, repo.SetShipmentStatus(ctx, id, *shipmentStatus))
 		}
@@ -312,43 +322,56 @@ func TestCountOrdersByBucket_AllStatusOptionsMatchPagedRows(t *testing.T) {
 	for _, status := range failures {
 		add("shipped", "book", &status, "shipment_failed")
 	}
-	counts, err := repo.CountOrdersByBucket(ctx, OrderFilter{StudentID: &student, ExcludeCart: true}, failures, at, at.AddDate(0, 1, 0))
-	require.NoError(t, err)
-	cases := []struct {
-		name   string
-		filter OrderFilter
-		count  int
-	}{
-		{"all", OrderFilter{}, counts.Total},
-		{"pending", OrderFilter{Status: "payment_pending"}, counts.NeedsConfirm},
-		{"ready_to_ship", OrderFilter{ReadyToShip: true}, counts.ReadyToShip},
-		{"shipment_failed", OrderFilter{ShipmentStatusIn: failures}, counts.ShipmentFailed},
-		{"in_transit", OrderFilter{InTransit: true, ShipmentStatusNotIn: failures}, counts.InTransit},
-		{"completed", OrderFilter{Status: "completed"}, counts.Completed},
-		{"payment_expired", OrderFilter{Status: "payment_expired"}, counts.PaymentExpired},
-		{"cancelled", OrderFilter{Status: "cancelled"}, counts.Cancelled},
-		{"paid", OrderFilter{Status: "paid"}, len(expected["paid"])},
-		{"processing", OrderFilter{Status: "processing"}, len(expected["processing"])},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			filter := tc.filter
-			filter.StudentID, filter.ExcludeCart, filter.Limit = &student, true, 2
-			var ids []uuid.UUID
-			for page := 0; ; page++ {
-				require.Less(t, page, 30, "paging must terminate")
-				rows, cursor, err := repo.ListOrders(ctx, filter)
-				require.NoError(t, err)
-				for _, row := range rows {
-					ids = append(ids, row.ID)
+	for _, scope := range []OrderFilter{{}, {ProductType: "book"}, {CourierCode: "jne"}, {ProductType: "book", CourierCode: "jne"}} {
+		scopedExpected := map[string][]uuid.UUID{}
+		for name, ids := range expected {
+			for _, id := range ids {
+				if (scope.ProductType == "" || types[id] == scope.ProductType) && (scope.CourierCode == "" || couriers[id] == scope.CourierCode) {
+					scopedExpected[name] = append(scopedExpected[name], id)
 				}
-				if cursor == "" {
-					break
-				}
-				filter.Cursor = cursor
 			}
-			require.ElementsMatch(t, expected[tc.name], ids)
-			require.Equal(t, tc.count, len(ids))
-		})
+		}
+		scope.StudentID, scope.ExcludeCart = &student, true
+		counts, err := repo.CountOrdersByBucket(ctx, scope, failures, at, at.AddDate(0, 1, 0))
+		require.NoError(t, err)
+		cases := []struct {
+			name   string
+			filter OrderFilter
+			count  int
+		}{
+			{"all", OrderFilter{}, counts.Total},
+			{"pending", OrderFilter{Status: "payment_pending"}, counts.NeedsConfirm},
+			{"ready_to_ship", OrderFilter{ReadyToShip: true}, counts.ReadyToShip},
+			{"shipment_failed", OrderFilter{ShipmentStatusIn: failures}, counts.ShipmentFailed},
+			{"in_transit", OrderFilter{InTransit: true, ShipmentStatusNotIn: failures}, counts.InTransit},
+			{"completed", OrderFilter{Status: "completed"}, counts.Completed},
+			{"payment_expired", OrderFilter{Status: "payment_expired"}, counts.PaymentExpired},
+			{"cancelled", OrderFilter{Status: "cancelled"}, counts.Cancelled},
+			{"paid", OrderFilter{Status: "paid"}, len(scopedExpected["paid"])},
+			{"processing", OrderFilter{Status: "processing"}, len(scopedExpected["processing"])},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				filter := tc.filter
+				filter.ProductType, filter.CourierCode = scope.ProductType, scope.CourierCode
+				filter.StudentID, filter.ExcludeCart, filter.Limit = &student, true, 2
+				var ids []uuid.UUID
+				for page := 0; ; page++ {
+					require.Less(t, page, 30, "paging must terminate")
+					rows, cursor, err := repo.ListOrders(ctx, filter)
+					require.NoError(t, err)
+					for _, row := range rows {
+						ids = append(ids, row.ID)
+					}
+					if cursor == "" {
+						break
+					}
+					filter.Cursor = cursor
+				}
+				require.ElementsMatch(t, scopedExpected[tc.name], ids)
+				require.Equal(t, tc.count, len(ids))
+			})
+		}
+
 	}
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -12,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
-import type { AdminOrderFilterStatus, AdminOrderQueue, AdminOrderQuery, OrderBucketCounts } from "@/lib/types";
+import type { AdminOrderFilterStatus, AdminOrderQueue, AdminOrderQuery, OrderBucketCounts, ProductType, AdminOrderSort } from "@/lib/types";
 
 // One flat dropdown mixing real statuses and queues — the admin picks a
 // filter, not a filter *kind*. The two concepts stay split in the query
@@ -37,9 +38,10 @@ export interface OrdersToolbarProps {
   value: AdminOrderQuery;
   onChange: (q: AdminOrderQuery) => void;
   counts?: OrderBucketCounts;
+  couriers?: string[];
 }
 
-function chipCount(
+export function chipCount(
   status: FilterOption,
   counts: OrderBucketCounts | undefined,
 ): number | undefined {
@@ -72,7 +74,7 @@ function isQueueOption(option: FilterOption): option is AdminOrderQueue {
   return (QUEUE_VALUES as string[]).includes(option);
 }
 
-export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
+export function OrdersToolbar({ value, onChange, counts, couriers = [] }: OrdersToolbarProps) {
   const { t } = useTranslation();
   const [search, setSearch] = useState(value.q ?? "");
 
@@ -198,6 +200,54 @@ export function OrdersToolbar({ value, onChange, counts }: OrdersToolbarProps) {
                 </SelectItem>
               );
             })}
+          </SelectContent>
+        </Select>
+
+        <Select value={value.type ?? "all"} onValueChange={(v) => onChange({ ...value, type: v === "all" ? undefined : v as ProductType })}>
+          <SelectTrigger className="w-40" aria-label={t("orders_product_type")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("orders_all_types")}</SelectItem>
+            {(["book", "merchandise", "medal", "course", "exam"] as const).map((type) => (
+              <SelectItem key={type} value={type}>{t(`product_type_${type}`)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={value.courier ?? "all"} onValueChange={(v) => onChange({ ...value, courier: v === "all" ? undefined : v })}>
+          <SelectTrigger className="w-40" aria-label={t("orders_courier")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("orders_all_couriers")}</SelectItem>
+            {couriers.map((code) => <SelectItem key={code} value={code}>{code.toUpperCase()}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        <div className="flex items-center gap-1">
+          <Select value={value.sort ?? "order_at"} onValueChange={(v) => onChange({ ...value, sort: v as AdminOrderSort })}>
+            <SelectTrigger className="w-44" aria-label={t("orders_sort")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(["order_at", "paid_at", "item_qty"] as const).map((sort) => (
+                <SelectItem key={sort} value={sort}>{t(`orders_sort_${sort}`)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" aria-label={`${t("orders_sort_direction")}: ${t(value.dir === "asc" ? "orders_sort_asc" : "orders_sort_desc")}`}
+            onClick={() => onChange({ ...value, dir: value.dir === "asc" ? "desc" : "asc" })}>
+            {value.dir === "asc" ? "↑" : "↓"} {t(value.dir === "asc" ? "orders_sort_asc" : "orders_sort_desc")}
+          </Button>
+        </div>
+
+        <Select value={String(value.limit ?? 20)} onValueChange={(v) => onChange({ ...value, limit: Number(v) as 20 | 50 | 100 })}>
+          <SelectTrigger className="w-24" aria-label={t("orders_page_size")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[20, 50, 100].map((limit) => <SelectItem key={limit} value={String(limit)}>{limit}</SelectItem>)}
           </SelectContent>
         </Select>
 
