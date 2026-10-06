@@ -17,6 +17,7 @@ type OrderBucketCounts struct {
 	ReadyToShip        int `json:"ready_to_ship"`
 	ShipmentFailed     int `json:"shipment_failed"`
 	InTransit          int `json:"in_transit"`
+	Shipped            int `json:"shipped"`
 	Completed          int `json:"completed"`
 	PaymentExpired     int `json:"payment_expired"`
 	Cancelled          int `json:"cancelled"`
@@ -68,6 +69,7 @@ func (r *Repository) CountOrdersByBucket(
 		shipmentFailed = bucketPredicate(OrderFilter{ShipmentStatusIn: failureStatuses})
 	}
 	inTransit := bucketPredicate(OrderFilter{InTransit: true, ShipmentStatusNotIn: failureStatuses})
+	shipped := bucketPredicate(OrderFilter{Status: "shipped"})
 	completed := bucketPredicate(OrderFilter{Status: "completed"})
 	paymentExpired := bucketPredicate(OrderFilter{Status: "payment_expired"})
 	cancelled := bucketPredicate(OrderFilter{Status: "cancelled"})
@@ -76,6 +78,7 @@ func (r *Repository) CountOrdersByBucket(
   COUNT(*) FILTER (WHERE ` + readyToShip + `),
   COUNT(*) FILTER (WHERE ` + shipmentFailed + `),
   COUNT(*) FILTER (WHERE ` + inTransit + `),
+  COUNT(*) FILTER (WHERE ` + shipped + `),
   COUNT(*) FILTER (WHERE ` + completed + `),
   COUNT(*) FILTER (WHERE ` + paymentExpired + `),
   COUNT(*) FILTER (WHERE ` + cancelled + `),
@@ -85,7 +88,7 @@ func (r *Repository) CountOrdersByBucket(
 	full := append([]interface{}{monthStart, monthEnd}, args...)
 	err := r.pool.QueryRow(ctx, q, full...).Scan(
 		&out.NeedsConfirm, &out.ReadyToShip, &out.ShipmentFailed, &out.InTransit,
-		&out.Completed, &out.PaymentExpired, &out.Cancelled,
+		&out.Shipped, &out.Completed, &out.PaymentExpired, &out.Cancelled,
 		&out.CreatedThisMonth, &out.CompletedThisMonth, &out.Total,
 	)
 	return out, err
