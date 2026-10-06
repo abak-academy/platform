@@ -27,6 +27,7 @@ func TestMapServiceError(t *testing.T) {
 		wantDetail any
 		wantBody   func(t *testing.T, raw []byte)
 	}{
+		{name: "shipping required", err: service.ErrShippingRequired, wantStatus: 400, wantCode: "shipping_required"},
 		{name: "shipping route unserved", err: fmt.Errorf("raw provider body: %w", service.ErrShippingRouteUnserved), wantStatus: 422, wantCode: "shipping_route_unserved", wantBody: assertGenericShippingMessage},
 		{name: "shipping temporarily unavailable", err: fmt.Errorf("raw provider body: %w", service.ErrShippingTemporarilyUnavailable), wantStatus: 503, wantCode: "shipping_temporarily_unavailable", wantBody: assertGenericShippingMessage},
 		{name: "shipping unavailable", err: fmt.Errorf("raw provider body: %w", service.ErrShippingUnavailable), wantStatus: 503, wantCode: "shipping_unavailable", wantBody: assertGenericShippingMessage},

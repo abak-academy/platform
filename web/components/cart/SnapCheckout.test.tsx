@@ -107,6 +107,19 @@ describe("SnapCheckout conflicts", () => {
     await waitFor(() => expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank"));
   });
 
+  it.each([
+    ["id", "Pilih ulang kurir pengiriman sebelum membayar."],
+    ["en", "Choose a shipping courier again before paying."],
+  ] as const)("explains shipping_required in %s", async (lang, message) => {
+    useUIStore.setState({ lang });
+    authFetch.mockRejectedValueOnce(new ApiError("shipping_required", "order requires a shipping selection before checkout", 400));
+    renderCheckout();
+    await pay();
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(message));
+    expect(open).not.toHaveBeenCalled();
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
   it("keeps the toast-only path for other errors", async () => {
     authFetch.mockRejectedValueOnce(new ApiError("payment_failed", "gateway down", 502));
     renderCheckout();

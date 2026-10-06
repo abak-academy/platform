@@ -434,6 +434,7 @@ export const DICT = {
     cart_shipping_route_unserved: "Alamat tujuan belum terjangkau kurir. Periksa kode pos atau coba alamat lain.",
     cart_shipping_temporarily_unavailable: "Layanan cek ongkir sedang gangguan. Coba lagi beberapa saat.",
     cart_shipping_unavailable: "Pengiriman belum tersedia, hubungi admin.",
+    shipping_required: "Pilih ulang kurir pengiriman sebelum membayar.",
     cart_shipping_address_changed:
       "Pilihan pengiriman dihapus karena alamat berubah. Silakan pilih kurir lagi.",
     select_province: "Pilih Provinsi",
@@ -2191,6 +2192,7 @@ export const DICT = {
     cart_shipping_route_unserved: "No courier serves this destination yet. Check the postal code or try another address.",
     cart_shipping_temporarily_unavailable: "The shipping quote service is having trouble. Please try again in a little while.",
     cart_shipping_unavailable: "Shipping is not available yet, please contact an admin.",
+    shipping_required: "Choose a shipping courier again before paying.",
     cart_shipping_address_changed:
       "Shipping selection cleared because the address changed. Please choose a courier again.",
     select_province: "Select Province",

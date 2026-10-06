@@ -249,7 +249,7 @@ func mapServiceError(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrInvalidGrantStudent):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_grant_student", Message: err.Error()}
 	case errors.Is(err, service.ErrShippingRequired):
-		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+		status, apiErr = http.StatusBadRequest, APIError{Code: "shipping_required", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidCourierSelection):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_courier_selection", Message: err.Error()}
 	case errors.Is(err, service.ErrBiodataIncomplete):

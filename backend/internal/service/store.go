@@ -1118,7 +1118,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	}
 
 	for _, item := range locked.Items {
-		if isPhysicalType(item.ProductType) && (locked.ShippingCost <= 0 || locked.SelectedCourier == "") {
+		if isPhysicalType(item.ProductType) && (locked.ShippingCost <= 0 || locked.SelectedCourier == "" || locked.IsEstimate) {
 			return CheckoutResult{}, ErrShippingRequired
 		}
 	}
