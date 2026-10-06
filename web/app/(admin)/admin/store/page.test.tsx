@@ -9,7 +9,7 @@ const sampleSummary: OrderSummary = {
     needs_confirm: 7,
     ready_to_ship: 23,
     shipment_failed: 2,
-    in_transit: 11,
+    in_transit: 11, shipped: 0,
     completed: 0,
     payment_expired: 0,
     cancelled: 0,

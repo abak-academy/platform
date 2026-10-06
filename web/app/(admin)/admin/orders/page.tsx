@@ -354,7 +354,7 @@ export default function OrdersPage() {
         description={t("admin_orders_page_description")}
       />
 
-      <OrdersToolbar value={query} onChange={changeQuery} counts={summary?.buckets} couriers={summary?.couriers} />
+      <OrdersToolbar value={query} onChange={changeQuery} couriers={summary?.couriers} />
 
       {isLoading && (
         <div className="space-y-2">

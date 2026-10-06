@@ -467,6 +467,7 @@ export interface OrderBucketCounts {
   ready_to_ship: number;
   shipment_failed: number;
   in_transit: number;
+  shipped: number;
   completed: number;
   payment_expired: number;
   cancelled: number;
