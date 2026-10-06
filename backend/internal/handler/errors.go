@@ -258,6 +258,10 @@ func mapServiceError(c echo.Context, err error) error {
 		if errors.As(err, &bioErr) {
 			apiErr.Details = map[string]any{"missing_fields": bioErr.Missing}
 		}
+	case errors.Is(err, service.ErrShippingRouteUnserved):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "shipping_route_unserved", Message: "no carrier serves this shipping destination"}
+	case errors.Is(err, service.ErrShippingTemporarilyUnavailable):
+		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_temporarily_unavailable", Message: "shipping quotes are temporarily unavailable"}
 	case errors.Is(err, service.ErrShippingUnavailable):
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_unavailable", Message: "shipping is not available right now"}
 	case errors.Is(err, service.ErrProductRelationsLocked):

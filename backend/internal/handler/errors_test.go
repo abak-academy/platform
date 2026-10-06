@@ -27,6 +27,9 @@ func TestMapServiceError(t *testing.T) {
 		wantDetail any
 		wantBody   func(t *testing.T, raw []byte)
 	}{
+		{name: "shipping route unserved", err: fmt.Errorf("raw provider body: %w", service.ErrShippingRouteUnserved), wantStatus: 422, wantCode: "shipping_route_unserved", wantBody: assertGenericShippingMessage},
+		{name: "shipping temporarily unavailable", err: fmt.Errorf("raw provider body: %w", service.ErrShippingTemporarilyUnavailable), wantStatus: 503, wantCode: "shipping_temporarily_unavailable", wantBody: assertGenericShippingMessage},
+		{name: "shipping unavailable", err: fmt.Errorf("raw provider body: %w", service.ErrShippingUnavailable), wantStatus: 503, wantCode: "shipping_unavailable", wantBody: assertGenericShippingMessage},
 		{name: "email taken", err: service.ErrEmailTaken, wantStatus: 409, wantCode: "email_taken"},
 		{name: "school NPSN taken", err: service.ErrSchoolNPSNTaken, wantStatus: 409, wantCode: "school_npsn_taken"},
 		{name: "invalid school NPSN", err: service.ErrInvalidSchoolNPSN, wantStatus: 400, wantCode: "invalid_request"},
@@ -251,5 +254,16 @@ func TestBadRequest(t *testing.T) {
 	}
 	if apiErr.Message != "something is wrong" {
 		t.Errorf("message: want %q, got %q", "something is wrong", apiErr.Message)
+	}
+}
+
+func assertGenericShippingMessage(t *testing.T, raw []byte) {
+	t.Helper()
+	var body APIError
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Message == "" || strings.Contains(body.Message, "raw provider body") {
+		t.Fatalf("unsafe shipping message: %q", body.Message)
 	}
 }

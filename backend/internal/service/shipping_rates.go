@@ -2,15 +2,6 @@ package service
 
 import "errors"
 
-// FallbackCourier and FallbackService label the flat-rate stand-in shown when no
-// carrier quote is available. They are deliberately generic: naming a real
-// carrier on a price that carrier never quoted is exactly the defect this
-// fallback exists to avoid.
-const (
-	FallbackCourier = "Ongkir Flat"
-	FallbackService = "Standar"
-)
-
 // classifyShippingCause explains why a shipping quote could not be shown as a
 // live carrier rate. It returns one of a fixed set of discriminated strings —
 // never the underlying error's own text, which for auth rejection carries the
@@ -34,23 +25,18 @@ func classifyShippingCause(clientErr error, rateCount int) string {
 	}
 }
 
-// resolveShippingRates decides what the storefront may show for a shipping
-// quote. Carrier quotes win. Otherwise the configured flat rate stands in,
-// explicitly flagged as an estimate. If neither exists the caller gets an
-// error — never an invented figure. The returned cause names why a carrier
-// quote did not win (empty when it did), for the caller to log.
-func resolveShippingRates(rates []CourierRate, clientErr error, flatRate int64) ([]CourierRate, string, error) {
+// resolveShippingRates returns carrier quotes only; otherwise a typed error for the cause, never an invented price.
+func resolveShippingRates(rates []CourierRate, clientErr error) ([]CourierRate, string, error) {
 	cause := classifyShippingCause(clientErr, len(rates))
 	if clientErr == nil && len(rates) > 0 {
 		return rates, cause, nil
 	}
-	if flatRate > 0 {
-		return []CourierRate{{
-			Courier:    FallbackCourier,
-			Service:    FallbackService,
-			Price:      flatRate,
-			IsEstimate: true,
-		}}, cause, nil
+	switch cause {
+	case "route_unserved":
+		return nil, cause, ErrShippingRouteUnserved
+	case "client_error":
+		return nil, cause, ErrShippingTemporarilyUnavailable
+	default:
+		return nil, cause, ErrShippingUnavailable
 	}
-	return nil, cause, ErrShippingUnavailable
 }

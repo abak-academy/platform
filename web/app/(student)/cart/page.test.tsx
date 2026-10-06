@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import CartPage from "./page";
+import { ApiError } from "@/lib/api";
 import type { Order, OrderItem } from "@/lib/types";
 
 // Mock next/navigation
@@ -75,6 +76,9 @@ vi.mock("@/lib/i18n", () => ({
         students_field_kode_pos_placeholder: "E.g., 40123",
         cart_shipping_options: "Shipping Options",
         cart_shipping_error: "Unable to calculate",
+        cart_shipping_route_unserved: "Alamat tujuan belum terjangkau kurir. Periksa kode pos atau coba alamat lain.",
+        cart_shipping_temporarily_unavailable: "Layanan cek ongkir sedang gangguan. Coba lagi beberapa saat.",
+        cart_shipping_unavailable: "Pengiriman belum tersedia, hubungi admin.",
         update: "Update",
         checkout_process: "Process",
         cart_address_change: "Change address",
@@ -1431,6 +1435,23 @@ describe("CartPage with Shipping", () => {
 
     // Review finding: destinationChanged alone used to drive the notice, even
     // when there was no rate list and no courier selection to clear.
+    it.each([
+      ["shipping_route_unserved", "Alamat tujuan belum terjangkau kurir. Periksa kode pos atau coba alamat lain."],
+      ["shipping_temporarily_unavailable", "Layanan cek ongkir sedang gangguan. Coba lagi beberapa saat."],
+      ["shipping_unavailable", "Pengiriman belum tersedia, hubungi admin."],
+      ["unexpected_code", "Pengiriman belum tersedia, hubungi admin."],
+    ])("explains %s and disables checkout", async (code, message) => {
+      mockCartWithPersistedAddress();
+      mockUseShippingRates.mockReturnValue({
+        mutate: vi.fn(), isPending: false, data: undefined, isError: true,
+        error: new ApiError(code, "raw provider text", 503),
+      });
+      renderWithQueryClient(<CartPage />);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(screen.queryByText("raw provider text")).toBeNull();
+      expect(screen.getByRole("button", { name: /Bayar di Tab Baru/i })).toBeDisabled();
+    });
+
     it("keeps checkout enabled while no cart mutation is pending", async () => {
       mockCartWithPersistedAddress();
       mockRatesAlreadyPresent();

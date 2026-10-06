@@ -21,8 +21,8 @@ const RATES = [
   { courier: "JNE", service: "Reguler", price: 10000, estimated_days: 2 },
 ] as any;
 
-const FALLBACK = [
-  { courier: "Ongkir Flat", service: "Standar", price: 20000, estimated_days: 0, is_estimate: true },
+const NO_DURATION = [
+  { courier: "JNE", service: "Reguler", price: 20000, estimated_days: 0 },
 ] as any;
 
 function renderList(props: Partial<Parameters<typeof CourierRateList>[0]> = {}) {
@@ -99,16 +99,10 @@ describe("CourierRateList", () => {
     expect(screen.getByText(/Beberapa hari · Rab, 29 Jul/)).toBeTruthy();
   });
 
-  it("labels an estimate so it cannot be mistaken for a carrier quote", async () => {
-    renderList({ rates: FALLBACK });
-    await openList();
-    expect(screen.getByText("Estimasi — bukan tarif kurir")).toBeTruthy();
-  });
-
   // estimated_days is 0 both for same-day and for a duration the backend could
   // not read, and only the first deserves a date.
   it("shows no arrival date when the duration could not be read", async () => {
-    renderList({ rates: FALLBACK });
+    renderList({ rates: NO_DURATION });
     await openList();
     expect(screen.queryByText(/Estimasi tiba/)).toBeNull();
   });
@@ -136,33 +130,5 @@ describe("CourierRateList", () => {
       .filter((el) => el.getAttribute("aria-checked") === "true");
     expect(checked).toHaveLength(1);
     expect(within(checked[0]).getByText(/JNE · Reguler/)).toBeTruthy();
-  });
-
-  it("says the region was never priced when only the flat rate came back", () => {
-    render(
-      <CourierRateList
-        rates={[{ courier: "Ongkir Flat", service: "Standar", price: 20000, estimated_days: 0, is_estimate: true }]}
-        selectedKey={null}
-        onSelect={vi.fn()}
-        isLoading={false}
-        isError={false}
-      />
-    );
-
-    expect(screen.getByText(/tidak menemukan tarif kurir/i)).toBeInTheDocument();
-  });
-
-  it("stays quiet when the carrier actually quoted", () => {
-    render(
-      <CourierRateList
-        rates={[{ courier: "JNE", service: "REG", price: 18000, estimated_days: 2, is_estimate: false }]}
-        selectedKey={null}
-        onSelect={vi.fn()}
-        isLoading={false}
-        isError={false}
-      />
-    );
-
-    expect(screen.queryByText(/tidak menemukan tarif kurir/i)).toBeNull();
   });
 });

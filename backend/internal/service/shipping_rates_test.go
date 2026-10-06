@@ -9,68 +9,33 @@ import (
 
 func TestResolveShippingRates(t *testing.T) {
 	real := []CourierRate{{Courier: "JNE", Service: "REG", Price: 18000}}
-
-	t.Run("real quotes pass through untouched and are not flagged", func(t *testing.T) {
-		got, cause, err := resolveShippingRates(real, nil, 12000)
-		if err != nil {
-			t.Fatalf("want nil error, got %v", err)
-		}
-		if cause != "" {
-			t.Errorf("want empty cause when a carrier quote wins, got %q", cause)
-		}
-		if len(got) != 1 || got[0].Courier != "JNE" {
-			t.Fatalf("want the carrier quote, got %+v", got)
-		}
-		if got[0].IsEstimate {
-			t.Error("a real carrier quote must not be flagged as an estimate")
-		}
-	})
-
-	t.Run("client failure falls back to the configured flat rate, flagged", func(t *testing.T) {
-		got, _, err := resolveShippingRates(nil, errors.New("upstream down"), 12000)
-		if err != nil {
-			t.Fatalf("want nil error, got %v", err)
-		}
-		if len(got) != 1 || got[0].Price != 12000 {
-			t.Fatalf("want the flat rate, got %+v", got)
-		}
-		if !got[0].IsEstimate {
-			t.Error("the flat-rate fallback must be flagged as an estimate")
-		}
-		// Compared against literals on purpose: asserting against the constants
-		// would move with any rename and could never fail. The frontend coupling
-		// this used to guard is gone — the badge now reads the persisted
-		// orders.is_estimate rather than matching courier names — but the strings
-		// still matter, because 0047_order_is_estimate.up.sql backfilled historical
-		// rows with `WHERE selected_courier IN ('Ongkir Flat', 'Flat')`. A rename
-		// leaves those rows unreachable by any later backfill, and changes a label
-		// buyers see.
-		if got[0].Courier != "Ongkir Flat" || got[0].Service != "Standar" {
-			t.Errorf("fallback labels changed to %q/%q — these are the strings "+
-				"0047_order_is_estimate.up.sql backfilled on, and are user-visible",
-				got[0].Courier, got[0].Service)
-		}
-	})
-
-	t.Run("empty quote list falls back too", func(t *testing.T) {
-		got, cause, err := resolveShippingRates([]CourierRate{}, nil, 12000)
-		if err != nil || len(got) != 1 || !got[0].IsEstimate {
-			t.Fatalf("want a flagged flat rate, got %+v err=%v", got, err)
-		}
-		if cause != "route_unserved" {
-			t.Errorf("want cause=route_unserved, got %q", cause)
-		}
-	})
-
-	t.Run("no quotes and no flat rate is an explicit failure, never a made-up number", func(t *testing.T) {
-		got, _, err := resolveShippingRates(nil, errors.New("upstream down"), 0)
-		if !errors.Is(err, ErrShippingUnavailable) {
-			t.Fatalf("want ErrShippingUnavailable, got %v", err)
-		}
-		if got != nil {
-			t.Fatalf("want no rates, got %+v", got)
-		}
-	})
+	tests := []struct {
+		name               string
+		rates              []CourierRate
+		clientErr, wantErr error
+		cause              string
+	}{
+		{"carrier quote", real, nil, nil, ""},
+		{"client error", nil, errors.New("upstream down"), ErrShippingTemporarilyUnavailable, "client_error"},
+		{"empty rates", nil, nil, ErrShippingRouteUnserved, "route_unserved"},
+		{"origin unset", nil, ErrShippingOriginUnset, ErrShippingUnavailable, "origin_unset"},
+		{"auth rejected", nil, ErrShippingAuthRejected, ErrShippingUnavailable, "auth_rejected"},
+		{"noop", nil, ErrShippingUnavailable, ErrShippingUnavailable, "client_noop"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, cause, err := resolveShippingRates(tt.rates, tt.clientErr)
+			if !errors.Is(err, tt.wantErr) || cause != tt.cause {
+				t.Fatalf("rates=%+v cause=%q err=%v, want cause=%q err=%v", got, cause, err, tt.cause, tt.wantErr)
+			}
+			if tt.wantErr != nil && len(got) != 0 {
+				t.Fatalf("failed quote returned a price: %+v", got)
+			}
+			if tt.wantErr == nil && (len(got) != 1 || got[0].Price != 18000) {
+				t.Fatalf("carrier quote changed: %+v", got)
+			}
+		})
+	}
 }
 
 // TestClassifyShippingCause covers FR-A-2..A-5: the four ways a shipping

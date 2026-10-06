@@ -426,14 +426,13 @@ export const DICT = {
     cart_address_primary_badge: "Alamat Utama",
     cart_shipping_options: "Pilihan Pengiriman",
     cart_shipping_error: "Gagal menghitung ongkos kirim",
-    cart_rate_estimate_badge: "Estimasi — bukan tarif kurir",
-    cart_shipping_flat_fallback:
-      "Kami tidak menemukan tarif kurir untuk wilayah tujuan ini, jadi ongkir memakai tarif flat. Biaya sebenarnya bisa berbeda dan akan kami konfirmasi.",
     cart_eta_prefix: "Estimasi tiba",
     cart_shipping_placeholder: "Pilih jasa pengiriman",
     cart_speed_same_day: "Sampai hari ini",
     cart_speed_next_day: "Sampai besok",
     cart_speed_regular: "Beberapa hari",
+    cart_shipping_route_unserved: "Alamat tujuan belum terjangkau kurir. Periksa kode pos atau coba alamat lain.",
+    cart_shipping_temporarily_unavailable: "Layanan cek ongkir sedang gangguan. Coba lagi beberapa saat.",
     cart_shipping_unavailable: "Pengiriman belum tersedia, hubungi admin.",
     cart_shipping_address_changed:
       "Pilihan pengiriman dihapus karena alamat berubah. Silakan pilih kurir lagi.",
@@ -2184,14 +2183,13 @@ export const DICT = {
     cart_address_primary_badge: "Primary",
     cart_shipping_options: "Shipping Options",
     cart_shipping_error: "Failed to calculate shipping cost",
-    cart_rate_estimate_badge: "Estimate — not a carrier quote",
-    cart_shipping_flat_fallback:
-      "We could not find a carrier rate for this destination, so shipping falls back to a flat rate. The real cost may differ and we will confirm it with you.",
     cart_eta_prefix: "Estimated arrival",
     cart_shipping_placeholder: "Choose a shipping service",
     cart_speed_same_day: "Arrives today",
     cart_speed_next_day: "Arrives tomorrow",
     cart_speed_regular: "Takes a few days",
+    cart_shipping_route_unserved: "No courier serves this destination yet. Check the postal code or try another address.",
+    cart_shipping_temporarily_unavailable: "The shipping quote service is having trouble. Please try again in a little while.",
     cart_shipping_unavailable: "Shipping is not available yet, please contact an admin.",
     cart_shipping_address_changed:
       "Shipping selection cleared because the address changed. Please choose a courier again.",

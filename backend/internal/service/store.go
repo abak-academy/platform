@@ -461,15 +461,9 @@ func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest
 	}
 
 	enabledServices := defaultBiteshipServices
-	var flatRate int64
 	if cfg, cfgErr := s.GetSystemConfig(ctx); cfgErr == nil {
 		if cfg["biteship_services"] != "" {
 			enabledServices = cfg["biteship_services"]
-		}
-		if raw := cfg["shipping_fallback_flat_rate"]; raw != "" {
-			if _, scanErr := fmt.Sscanf(raw, "%d", &flatRate); scanErr != nil {
-				flatRate = 0
-			}
 		}
 	}
 
@@ -495,9 +489,17 @@ func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest
 	}
 	rates = filtered
 
-	resolved, cause, err := resolveShippingRates(rates, clientErr, flatRate)
+	resolved, cause, err := resolveShippingRates(rates, clientErr)
 	if cause != "" {
-		slog.Warn("shipping quote degraded to fallback", "cause", cause)
+		attrs := []any{"cause", cause}
+		if cause == "client_error" {
+			detail := []rune(clientErr.Error())
+			if len(detail) > 300 {
+				detail = detail[:300]
+			}
+			attrs = append(attrs, "err", string(detail))
+		}
+		slog.Warn("shipping quote degraded", attrs...)
 	}
 	return resolved, err
 }
@@ -852,7 +854,7 @@ func (s *Service) buildCartPatch(ctx context.Context, order model.Order, patch C
 			for _, rate := range rates {
 				if strings.EqualFold(rate.Courier, patch.Courier) && strings.EqualFold(rate.Service, patch.Service) {
 					repoPatch.ShippingCost = float64(rate.Price)
-					repoPatch.IsEstimate = rate.IsEstimate
+					repoPatch.IsEstimate = false
 					repoPatch.CourierCode = &rate.CourierCode
 					repoPatch.CourierServiceCode = &rate.ServiceCode
 					matched = true

@@ -103,12 +103,6 @@ export function CourierRateList({
     return formatArrivalDate(rate.estimated_days, lang);
   }
 
-  // The courier API answers an address it cannot place with a plain "no rates"
-  // rather than an error, so the flat rate standing alone is the only signal the
-  // buyer gets that their region was never priced. Say so, or the estimate reads
-  // as a quote.
-  const fellBackToFlatRate = rates.every((r) => r.is_estimate);
-
   function choose(rate: CourierRate) {
     onSelect(rate);
     setOpen(false);
@@ -119,12 +113,6 @@ export function CourierRateList({
       <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-500">
         {t("cart_shipping_options") || "Shipping Options"}
       </p>
-
-      {fellBackToFlatRate && (
-        <p className="rounded-lg border border-warn/30 bg-warn-bg px-3 py-2 text-xs text-warn">
-          {t("cart_shipping_flat_fallback" as any)}
-        </p>
-      )}
 
       <div className="overflow-hidden rounded-lg border border-line">
         <button
@@ -193,11 +181,6 @@ export function CourierRateList({
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate text-sm font-semibold text-ink-900">
                           {rate.courier} · {rate.service}
-                          {rate.is_estimate && (
-                            <span className="ml-2 rounded bg-warn-bg px-1.5 py-0.5 text-[10px] font-medium text-warn">
-                              {t("cart_rate_estimate_badge" as any)}
-                            </span>
-                          )}
                         </span>
                         {date && (
                           <span className="truncate text-xs text-ink-500">
