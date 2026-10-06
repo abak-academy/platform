@@ -152,14 +152,9 @@ describe("OrdersToolbar search", () => {
 });
 
 
-describe("OrdersToolbar page size", () => {
-  it.each([20, 50, 100] as const)("selects %i orders per page", async (limit) => {
-    const { onChange } = renderToolbar({ status: "all", limit: limit === 20 ? 50 : 20 });
-    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Pesanan per halaman" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
-    await screen.findByRole("listbox");
-    fireEvent.click(screen.getByRole("option", { name: String(limit) }));
-    expect(onChange).toHaveBeenCalledWith({ status: "all", limit });
-  });
+it("leaves page size to the table footer", () => {
+  renderToolbar();
+  expect(screen.queryByRole("combobox", { name: "Pesanan per halaman" })).not.toBeInTheDocument();
 });
 
 describe("OrdersToolbar product, courier and sort", () => {
@@ -214,12 +209,12 @@ it.each(["id", "en"] as const)("has accessible translated controls and options i
   useUIStore.setState({ lang });
   renderToolbar();
   const labels = lang === "id"
-    ? ["Jenis produk", "Kurir", "Urutkan pesanan", "Pesanan per halaman", "Arah urutan"]
-    : ["Product type", "Courier", "Sort orders", "Orders per page", "Sort direction"];
-  labels.slice(0, 4).forEach((label) => expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument());
+    ? ["Jenis produk", "Kurir", "Urutkan pesanan", "Arah urutan"]
+    : ["Product type", "Courier", "Sort orders", "Sort direction"];
+  labels.slice(0, 3).forEach((label) => expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument());
   expect(screen.getByRole("combobox", { name: labels[0] })).toHaveTextContent(lang === "id" ? "Semua jenis" : "All types");
   expect(screen.getByRole("combobox", { name: labels[1] })).toHaveTextContent(lang === "id" ? "Semua kurir" : "All couriers");
-  expect(screen.getByRole("button", { name: `${labels[4]}: ${lang === "id" ? "Turun" : "Descending"}` })).toHaveTextContent(lang === "id" ? "Turun" : "Descending");
+  expect(screen.getByRole("button", { name: `${labels[3]}: ${lang === "id" ? "Turun" : "Descending"}` })).toHaveTextContent(lang === "id" ? "Turun" : "Descending");
   fireEvent.pointerDown(screen.getByRole("combobox", { name: labels[2] }), { button: 0, ctrlKey: false, pointerType: "mouse" });
   const listbox = await screen.findByRole("listbox");
   expect(within(listbox).getAllByRole("option").map((option) => option.textContent)).toEqual(lang === "id"

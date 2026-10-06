@@ -837,6 +837,14 @@ describe("OrdersPage", () => {
     expect(mockUseAdminOrders.mock.calls.slice(before).every(([, cursor]) => cursor === "")).toBe(true);
   });
 
+  it.each([20, 50, 100])("offers %i rows per page in the pagination footer", async (limit) => {
+    render(<OrdersPage />);
+    const footer = screen.getByRole("button", { name: "Sebelumnya" }).parentElement!.parentElement!.parentElement!;
+    expect(within(footer).getByRole("combobox", { name: "Pesanan per halaman" })).toBeInTheDocument();
+    await selectOption("Pesanan per halaman", String(limit));
+    expect(screen.getByRole("combobox", { name: "Pesanan per halaman" })).toHaveTextContent(String(limit));
+  });
+
   it("disables Next when there is no next cursor", async () => {
     render(<OrdersPage />);
     expect(screen.getByRole("button", { name: "Berikutnya" })).toBeDisabled();

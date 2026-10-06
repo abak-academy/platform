@@ -242,15 +242,6 @@ export function OrdersToolbar({ value, onChange, counts, couriers = [] }: Orders
           </Button>
         </div>
 
-        <Select value={String(value.limit ?? 20)} onValueChange={(v) => onChange({ ...value, limit: Number(v) as 20 | 50 | 100 })}>
-          <SelectTrigger className="w-24" aria-label={t("orders_page_size")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[20, 50, 100].map((limit) => <SelectItem key={limit} value={String(limit)}>{limit}</SelectItem>)}
-          </SelectContent>
-        </Select>
-
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1" role="group" aria-label={t("orders_date_single")}>
             {(["single", "range"] as const).map((m) => (

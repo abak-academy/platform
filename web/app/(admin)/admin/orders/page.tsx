@@ -22,6 +22,7 @@ import { isShipmentFailure } from "@/lib/shipment-status";
 import { CancelShipmentModal } from "@/components/admin/CancelShipmentModal";
 import { TrackingModal } from "@/components/admin/TrackingModal";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -405,20 +406,33 @@ export default function OrdersPage() {
             </table>
           </div>
 
-          <div className="flex items-center justify-between gap-4 px-1">
-            <p className="text-xs tabular-nums text-ink-600">
-              {t("orders_showing")} {firstRow}-{lastRow}
-              {total !== undefined && ` ${t("orders_of_total")} ${total}`}
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={cursorStack.length === 1 || isFetching}
-                onClick={() => setCursorStack((stack) => stack.slice(0, -1))}>
-                {t("pagination_prev")}
-              </Button>
-              <Button variant="outline" size="sm" disabled={!data?.next_cursor || isFetching || isPlaceholderData}
-                onClick={() => { if (data?.next_cursor) setCursorStack((stack) => [...stack, data.next_cursor]); }}>
-                {t("pagination_next")}
-              </Button>
+          <div className="flex flex-wrap items-center justify-between gap-4 px-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-ink-600">{t("orders_page_size")}</span>
+              <Select value={String(query.limit ?? 20)} onValueChange={(v) => changeQuery({ ...query, limit: Number(v) as 20 | 50 | 100 })}>
+                <SelectTrigger className="w-24" aria-label={t("orders_page_size")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[20, 50, 100].map((limit) => <SelectItem key={limit} value={String(limit)}>{limit}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <p className="text-xs tabular-nums text-ink-600">
+                {t("orders_showing")} {firstRow}-{lastRow}
+                {total !== undefined && ` ${t("orders_of_total")} ${total}`}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={cursorStack.length === 1 || isFetching}
+                  onClick={() => setCursorStack((stack) => stack.slice(0, -1))}>
+                  {t("pagination_prev")}
+                </Button>
+                <Button variant="outline" size="sm" disabled={!data?.next_cursor || isFetching || isPlaceholderData}
+                  onClick={() => { if (data?.next_cursor) setCursorStack((stack) => [...stack, data.next_cursor]); }}>
+                  {t("pagination_next")}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
