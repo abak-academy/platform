@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -131,8 +132,8 @@ func TestRetryPayment_ProceedsWhenTheRecheckHasNothingToRefuse(t *testing.T) {
 			if _, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey()); err != nil {
 				t.Fatalf("RetryPayment: %v", err)
 			}
-			if got := pay.creates.Load() - before; got != 1 {
-				t.Errorf("gateway calls = %d, want 1", got)
+			if got := pay.creates.Load() - before; got != 0 {
+				t.Errorf("gateway calls = %d, want 0", got)
 			}
 		})
 	}
@@ -228,6 +229,7 @@ func TestRetryPayment_CachedResponseDoesNotBypassOrderState(t *testing.T) {
 			svc, repo, pay := newLifecycleService(t)
 			orderID, _, _ := pendingCourseOrder(t, svc, repo, newDigitalStudent(t, repo))
 			student := studentOf(t, repo, orderID)
+			clearPaymentForRetry(t, svc, repo, orderID)
 			key := retryKey()
 			first, err := svc.RetryPayment(ctx, student.String(), orderID.String(), key)
 			if err != nil {
@@ -259,6 +261,7 @@ func TestRetryPayment_OneKeyUsedOnTwoOrdersNeverHandsOutTheOtherOrdersReference(
 	student := newDigitalStudent(t, repo)
 	orderA, _, _ := pendingCourseOrder(t, svc, repo, student)
 	orderB, _, _ := pendingCourseOrder(t, svc, repo, student)
+	clearPaymentForRetry(t, svc, repo, orderA)
 	key := retryKey()
 
 	first, err := svc.RetryPayment(ctx, student.String(), orderA.String(), key)
@@ -279,6 +282,7 @@ func TestRetryPayment_OrderExpiringDuringGatewayCallKeepsItsOldPaymentState(t *t
 	ctx := context.Background()
 	student := newDigitalStudent(t, repo)
 	orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+	clearPaymentForRetry(t, svc, repo, orderID)
 	originalRef := gatewayRefOf(t, repo, orderID)
 	pay.onCreate = func() {
 		pay.onCreate = nil
@@ -314,4 +318,168 @@ func studentOf(t *testing.T, repo *repository.Repository, orderID uuid.UUID) uui
 		t.Fatalf("GetOrderByID: %v", err)
 	}
 	return order.StudentID
+}
+
+func TestRetryPayment_SessionStates(t *testing.T) {
+	type prepareFunc func(t *testing.T, svc *Service, repo *repository.Repository, pay *lifecyclePayments, student uuid.UUID) (uuid.UUID, CheckoutResult)
+	tests := []struct {
+		name        string
+		prepare     prepareFunc
+		wantErr     error
+		wantCreates int32
+	}{
+		{
+			name: "checkout stored the session, so retry hands it back without a gateway call",
+			prepare: func(t *testing.T, svc *Service, repo *repository.Repository, _ *lifecyclePayments, student uuid.UUID) (uuid.UUID, CheckoutResult) {
+				orderID := cartOf(t, svc, student, seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)))
+				first, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return orderID, first
+			},
+		},
+		{
+			name: "order has a reference but its session is gone, so retry is refused",
+			prepare: func(t *testing.T, svc *Service, repo *repository.Repository, _ *lifecyclePayments, student uuid.UUID) (uuid.UUID, CheckoutResult) {
+				orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+				if err := svc.rdb.Del(context.Background(), "payment:session:"+orderID.String()).Err(); err != nil {
+					t.Fatal(err)
+				}
+				return orderID, CheckoutResult{}
+			},
+			wantErr: ErrPaymentSessionUnavailable,
+		},
+		{
+			name: "checkout failed before a session existed, so retry creates and stores one",
+			prepare: func(t *testing.T, svc *Service, repo *repository.Repository, pay *lifecyclePayments, student uuid.UUID) (uuid.UUID, CheckoutResult) {
+				orderID := cartOf(t, svc, student, seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)))
+				pay.failCreate.Store(true)
+				if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey()); err == nil {
+					t.Fatal("checkout should fail")
+				}
+				pay.failCreate.Store(false)
+				return orderID, CheckoutResult{}
+			},
+			wantCreates: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, pay := newLifecycleService(t)
+			ctx := context.Background()
+			student := newDigitalStudent(t, repo)
+			orderID, first := tt.prepare(t, svc, repo, pay, student)
+			before, err := repo.GetOrderByID(ctx, orderID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			calls := pay.creates.Load()
+			key := retryKey()
+
+			got, err := svc.RetryPayment(ctx, student.String(), orderID.String(), key)
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if delta := pay.creates.Load() - calls; delta != tt.wantCreates {
+				t.Errorf("gateway calls = %d, want %d", delta, tt.wantCreates)
+			}
+			cacheKey := "idempotency:retry:" + student.String() + ":" + orderID.String() + ":" + key
+			if cached := svc.rdb.Exists(ctx, cacheKey).Val() != 0; cached != (tt.wantCreates > 0) {
+				t.Errorf("retry idempotency cache written = %v, want %v", cached, tt.wantCreates > 0)
+			}
+			after, err := repo.GetOrderByID(ctx, orderID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantErr != nil {
+				if got != (CheckoutResult{}) {
+					t.Errorf("refused retry returned %+v", got)
+				}
+				if after.GatewayRef != before.GatewayRef || after.Status != before.Status || !after.PaymentExpiresAt.Equal(*before.PaymentExpiresAt) || !after.UpdatedAt.Equal(before.UpdatedAt) {
+					t.Error("refused retry changed the order")
+				}
+				return
+			}
+
+			if got.GatewayRef == "" || got.SnapToken == "" || got.PaymentURL == "" {
+				t.Fatalf("retry returned no link: %+v", got)
+			}
+			if first.GatewayRef != "" && (got.GatewayRef != first.GatewayRef || got.SnapToken != first.SnapToken || got.PaymentURL != first.PaymentURL || !got.PaymentExpiresAt.Equal(first.PaymentExpiresAt)) {
+				t.Fatalf("retry = %+v, want checkout session %+v", got, first)
+			}
+			if after.GatewayRef != got.GatewayRef {
+				t.Errorf("attached reference = %q, want %q", after.GatewayRef, got.GatewayRef)
+			}
+			stored, ok := svc.loadPaymentSession(ctx, orderID.String())
+			if !ok || stored.GatewayRef != got.GatewayRef || stored.SnapToken != got.SnapToken || stored.PaymentURL != got.PaymentURL || !stored.ExpiresAt.Equal(got.PaymentExpiresAt) {
+				t.Errorf("stored session = %+v, %v; want %+v", stored, ok, got)
+			}
+			if ttl := svc.rdb.TTL(ctx, "payment:session:"+orderID.String()).Val(); ttl <= 0 || ttl > time.Until(got.PaymentExpiresAt)+time.Second {
+				t.Errorf("session TTL = %v, expiry = %v", ttl, got.PaymentExpiresAt)
+			}
+			again, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey())
+			if err != nil || again.GatewayRef != got.GatewayRef || pay.creates.Load()-calls != tt.wantCreates {
+				t.Errorf("second retry = %+v, %v; gateway calls %d, want %d", again, err, pay.creates.Load()-calls, tt.wantCreates)
+			}
+		})
+	}
+}
+
+func TestRetryPayment_StoredSessionDoesNotBypassValidation(t *testing.T) {
+	tests := []struct {
+		name         string
+		status       string
+		elapsed      bool
+		otherStudent bool
+		want         error
+	}{
+		{"expired", "payment_expired", false, false, ErrPaymentExpired},
+		{"elapsed", "", true, false, ErrPaymentExpired},
+		{"paid", "paid", false, false, ErrOrderNotEditable},
+		{"cancelled", "cancelled", false, false, ErrOrderNotEditable},
+		{"another student", "", false, true, ErrOrderNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo, pay := newLifecycleService(t)
+			ctx := context.Background()
+			student := newDigitalStudent(t, repo)
+			orderID, _, _ := pendingCourseOrder(t, svc, repo, student)
+			if _, ok := svc.loadPaymentSession(ctx, orderID.String()); !ok {
+				t.Fatal("checkout session missing")
+			}
+			if tt.status != "" {
+				if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET status = $2 WHERE id = $1`, orderID, tt.status); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.elapsed {
+				elapseDeadline(t, repo, orderID)
+			}
+			if tt.otherStudent {
+				student = newDigitalStudent(t, repo)
+			}
+			before := pay.creates.Load()
+			got, err := svc.RetryPayment(ctx, student.String(), orderID.String(), retryKey())
+			if !errors.Is(err, tt.want) || got != (CheckoutResult{}) {
+				t.Fatalf("retry = %+v, %v; want no session and %v", got, err, tt.want)
+			}
+			if pay.creates.Load() != before {
+				t.Fatal("refused retry called gateway")
+			}
+		})
+	}
+}
+
+func clearPaymentForRetry(t *testing.T, svc *Service, repo *repository.Repository, orderID uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET gateway_ref = NULL WHERE id = $1`, orderID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.rdb.Del(ctx, "payment:session:"+orderID.String()).Err(); err != nil {
+		t.Fatal(err)
+	}
 }

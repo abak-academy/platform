@@ -45,6 +45,10 @@ func (p *lifecyclePayments) CreatePayment(ctx context.Context, req PaymentReques
 	p.lastExpiresIn.Store(int64(req.ExpiresIn))
 	p.lastExpiresAt.Store(req.ExpiresAt)
 	resp, err := p.countingPaymentClient.CreatePayment(ctx, req)
+	if err == nil {
+		resp.SnapToken = "token-" + req.OrderID
+		resp.PaymentURL = "https://payment.test/" + req.OrderID
+	}
 	if err == nil && p.expiresAfter > 0 {
 		resp.ExpiresAt = time.Now().Add(p.expiresAfter)
 	}

@@ -137,6 +137,7 @@ func TestMapServiceError(t *testing.T) {
 			},
 		},
 		{name: "payment deadline too close", err: fmt.Errorf("retry: %w", service.ErrPaymentDeadlineTooClose), wantStatus: 409, wantCode: "payment_deadline_too_close"},
+		{name: "payment session unavailable", err: fmt.Errorf("retry: %w", service.ErrPaymentSessionUnavailable), wantStatus: 409, wantCode: "payment_session_unavailable"},
 		{name: "payment already expired", err: fmt.Errorf("retry: %w", service.ErrPaymentExpired), wantStatus: 409, wantCode: "payment_expired"},
 	}
 
