@@ -211,7 +211,7 @@ describe("admin-orders hooks", () => {
         needs_confirm: 3,
         ready_to_ship: 1,
         shipment_failed: 0,
-        in_transit: 2,
+        in_transit: 2, shipped: 0,
         completed: 0,
         payment_expired: 0,
         cancelled: 0,
@@ -246,7 +246,7 @@ describe("admin-orders hooks", () => {
   it("useAdminOrderSummary never sends status or queue, whatever is selected", async () => {
     mockAuthFetch.mockResolvedValue({
       buckets: {
-        needs_confirm: 0, ready_to_ship: 0, shipment_failed: 0, in_transit: 0, completed: 0, payment_expired: 0, cancelled: 0,
+        needs_confirm: 0, ready_to_ship: 0, shipment_failed: 0, in_transit: 0, shipped: 0, completed: 0, payment_expired: 0, cancelled: 0,
         created_this_month: 0, completed_this_month: 0, total: 0,
       },
       couriers: ["jne"],

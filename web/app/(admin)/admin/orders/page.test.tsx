@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
-import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import { toast } from "sonner";
 import OrdersPage from "./page";
 import type { Order, OrderSummary, AdminOrderQuery } from "@/lib/types";
@@ -10,7 +10,14 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 
+function openFilters() {
+  if (!screen.queryByRole("dialog", { name: "Filter pesanan" })) {
+    fireEvent.click(screen.getByRole("button", { name: /^Filter(?: \(|$)/ }));
+  }
+}
+
 async function selectOption(label: string, option: string) {
+  if (["Status", "Jenis produk", "Kurir"].includes(label)) openFilters();
   fireEvent.pointerDown(screen.getByRole("combobox", { name: label }), { button: 0, ctrlKey: false, pointerType: "mouse" });
   await screen.findByRole("listbox");
   fireEvent.click(screen.getByRole("option", { name: new RegExp(`^${option}`) }));
@@ -579,13 +586,15 @@ describe("OrdersPage", () => {
   it.each(["queue", "status"])("adopts ?%s=in_transit on mount", async (parameter) => {
     window.history.replaceState({}, "", `/admin/orders?${parameter}=in_transit`);
     render(<OrdersPage />);
-    await waitFor(() => expect(screen.getByTestId("orders-status-filter")).toHaveTextContent("Dalam pengiriman"));
+    openFilters();
+    await waitFor(() => expect(screen.getByTestId("orders-status-filter")).toHaveTextContent("Sedang dalam pengiriman"));
     expect(mockUseAdminOrders.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ status: "all", queue: "in_transit" }));
   });
 
   it("adopts ?queue= from the URL so the dashboard can deep link", async () => {
     window.history.replaceState({}, "", "/admin/orders?queue=shipment_failed");
     render(<OrdersPage />);
+    openFilters();
     await waitFor(() =>
       expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Pengiriman bermasalah/),
     );
@@ -603,6 +612,7 @@ describe("OrdersPage", () => {
   it("maps a legacy ?status=shipment_failed URL onto the shipment-failed queue, not status", async () => {
     window.history.replaceState({}, "", "/admin/orders?status=shipment_failed");
     render(<OrdersPage />);
+    openFilters();
     await waitFor(() =>
       expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Pengiriman bermasalah/),
     );
@@ -650,6 +660,7 @@ describe("OrdersPage", () => {
   it("ignores an unknown ?status= rather than sending it to the API", async () => {
     window.history.replaceState({}, "", "/admin/orders?status=bogus");
     render(<OrdersPage />);
+    openFilters();
     await waitFor(() =>
       expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Semua/),
     );
@@ -666,8 +677,7 @@ describe("OrdersPage", () => {
 
     await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
 
-    // The status filter is a select, not a row of chips: the chips wrapped to a
-    // second line and never lined up with the search and date controls.
+    openFilters();
     expect(screen.getByTestId("orders-status-filter")).toBeInTheDocument();
 
     expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument();
@@ -763,7 +773,7 @@ describe("OrdersPage", () => {
           needs_confirm: 1,
           ready_to_ship: 1,
           shipment_failed: 0,
-          in_transit: 0,
+          in_transit: 0, shipped: 0,
           completed: 0,
           payment_expired: 0,
           cancelled: 0,
@@ -803,14 +813,15 @@ describe("OrdersPage", () => {
   it.each(["status", "queue", "search", "dates", "from", "to", "limit50", "limit100", "limit20", "type", "courier", "paid_at", "item_qty", "order_at", "dir", "all_types", "all_couriers"])("changing %s resets the cursor stack", async (control) => {
     ordersState.data = { data: sampleOrders, next_cursor: "cur-2" };
     summaryState.data = {
-      buckets: { needs_confirm: 3, ready_to_ship: 3, shipment_failed: 0, in_transit: 0,
+      buckets: { needs_confirm: 3, ready_to_ship: 3, shipment_failed: 0, in_transit: 0, shipped: 0,
         completed: 0, payment_expired: 0, cancelled: 0, total: 42, created_this_month: 0, completed_this_month: 0 },
       couriers: ["jne", "jnt"], top_products: [],
     };
     render(<OrdersPage />);
+    if (["status", "queue", "dates", "from", "to", "type", "courier", "all_types", "all_couriers"].includes(control)) openFilters();
     if (control === "from" || control === "to") fireEvent.click(screen.getByTestId("orders-date-mode-range"));
-    if (control === "limit20") await selectOption("Pesanan per halaman", "50");
-    if (control === "order_at") await selectOption("Urutkan pesanan", "Tanggal bayar");
+    if (control === "limit20") await selectOption("Baris per halaman", "50");
+    if (control === "order_at") await selectOption("Urutkan pesanan", "Tanggal bayar · terbaru");
     if (control === "all_types") await selectOption("Jenis produk", "Medali");
     if (control === "all_couriers") await selectOption("Kurir", "JNE");
     fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
@@ -824,17 +835,74 @@ describe("OrdersPage", () => {
     if (control === "to") fireEvent.change(screen.getByLabelText("Sampai tanggal"), { target: { value: "2026-08-03" } });
     if (control === "type") await selectOption("Jenis produk", "Medali");
     if (control === "courier") await selectOption("Kurir", "JNE");
-    if (control === "paid_at") await selectOption("Urutkan pesanan", "Tanggal bayar");
-    if (control === "item_qty") await selectOption("Urutkan pesanan", "Jumlah barang");
-    if (control === "order_at") await selectOption("Urutkan pesanan", "Tanggal pesanan");
-    if (control === "dir") fireEvent.click(screen.getByRole("button", { name: /^Arah urutan/ }));
+    if (control === "paid_at") await selectOption("Urutkan pesanan", "Tanggal bayar · terbaru");
+    if (control === "item_qty") await selectOption("Urutkan pesanan", "Jumlah barang · terbanyak");
+    if (control === "order_at") await selectOption("Urutkan pesanan", "Tanggal pesanan · terbaru");
+    if (control === "dir") await selectOption("Urutkan pesanan", "Tanggal pesanan · terlama");
     if (control === "all_types") await selectOption("Jenis produk", "Semua jenis");
     if (control === "all_couriers") await selectOption("Kurir", "Semua kurir");
-    if (control.startsWith("limit")) await selectOption("Pesanan per halaman", control.slice(5));
+    if (control.startsWith("limit")) await selectOption("Baris per halaman", control.slice(5));
     await waitFor(() => expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled());
     if (control === "status" || control === "queue") expect(screen.getByText("Menampilkan 1-3 dari 3")).toBeInTheDocument();
     expect(mockUseAdminOrders.mock.calls.length).toBeGreaterThan(before);
     expect(mockUseAdminOrders.mock.calls.slice(before).every(([, cursor]) => cursor === "")).toBe(true);
+  });
+
+  it.each(["status", "type", "date", "reset", "clear_search"])("changing %s through a chip or clear action resets to page 1", async (action) => {
+    ordersState.data = { data: sampleOrders, next_cursor: "cur-2" };
+    render(<OrdersPage />);
+    if (action === "status") await selectOption("Status", "Siap kirim");
+    if (action === "type" || action === "reset") await selectOption("Jenis produk", "Medali");
+    if (action === "date") {
+      openFilters();
+      fireEvent.change(screen.getByLabelText("Tanggal", { selector: "input" }), { target: { value: "2026-08-02" } });
+    }
+    if (action === "clear_search") {
+      vi.useFakeTimers();
+      fireEvent.change(screen.getByRole("searchbox"), { target: { value: "test" } });
+      act(() => vi.advanceTimersByTime(400));
+      vi.useRealTimers();
+    }
+    if (screen.queryByRole("dialog", { name: "Filter pesanan" })) {
+      fireEvent.click(screen.getByRole("button", { name: "Tampilkan pesanan" }));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
+    expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeEnabled();
+    if (action === "reset") {
+      openFilters();
+      fireEvent.click(screen.getByRole("button", { name: "Reset filter" }));
+    } else if (action === "clear_search") {
+      fireEvent.click(screen.getByRole("button", { name: "Hapus pencarian" }));
+    } else {
+      const names = { status: "Hapus filter: Status: Siap kirim", type: "Hapus filter: Jenis produk: Medali", date: "Hapus filter: Tanggal: 2026-08-02" };
+      fireEvent.click(screen.getByRole("button", { name: names[action as keyof typeof names] }));
+    }
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled());
+    expect(mockUseAdminOrders.mock.calls.at(-1)?.[1]).toBe("");
+  });
+
+  it.each([20, 50, 100])("offers %i rows per page in the pagination footer", async (limit) => {
+    render(<OrdersPage />);
+    const footer = screen.getByRole("button", { name: "Sebelumnya" }).parentElement!.parentElement!.parentElement!;
+    expect(within(footer).getByRole("combobox", { name: "Baris per halaman" })).toBeInTheDocument();
+    if (limit === 20) await selectOption("Baris per halaman", "50");
+    await selectOption("Baris per halaman", String(limit));
+    await waitFor(() => expect(mockUseAdminOrders.mock.calls.at(-1)?.[0]?.limit).toBe(limit));
+    expect(screen.getByRole("combobox", { name: "Baris per halaman" })).toHaveTextContent(String(limit));
+  });
+
+  it("shows the shipped count as the total for the merged delivery option, not the in-transit one", async () => {
+    summaryState = {
+      isLoading: false,
+      data: {
+        buckets: { needs_confirm: 3, ready_to_ship: 3, shipment_failed: 2, in_transit: 5, shipped: 9,
+          completed: 0, payment_expired: 0, cancelled: 0, total: 42, created_this_month: 0, completed_this_month: 0 },
+        couriers: [], top_products: [],
+      },
+    };
+    render(<OrdersPage />);
+    await selectOption("Status", "Sedang dalam pengiriman");
+    await waitFor(() => expect(screen.getByText("Menampilkan 1-3 dari 9")).toBeInTheDocument());
   });
 
   it("disables Next when there is no next cursor", async () => {
@@ -899,6 +967,7 @@ describe("OrdersPage failed shipments", () => {
     // The status filter is a select. Its options live in a Radix portal that
     // jsdom will not open without pointer-capture shims, so this asserts the
     // control is present; OrdersToolbar.test.tsx covers the option list.
+    openFilters();
     expect(await screen.findByTestId("orders-status-filter")).toBeTruthy();
   });
 });

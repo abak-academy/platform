@@ -315,12 +315,12 @@ func TestCountOrdersByBucket_AllStatusOptionsMatchPagedRows(t *testing.T) {
 	}
 	add("cart", "book", nil)
 	add("paid", "course", nil, "paid")
-	add("shipped", "book", nil, "in_transit")
+	add("shipped", "book", nil, "in_transit", "shipped")
 	for _, status := range []string{"", "in_transit", "delivered", "on_hold"} {
-		add("shipped", "book", &status, "in_transit")
+		add("shipped", "book", &status, "in_transit", "shipped")
 	}
 	for _, status := range failures {
-		add("shipped", "book", &status, "shipment_failed")
+		add("shipped", "book", &status, "shipment_failed", "shipped")
 	}
 	for _, scope := range []OrderFilter{{}, {ProductType: "book"}, {CourierCode: "jne"}, {ProductType: "book", CourierCode: "jne"}} {
 		scopedExpected := map[string][]uuid.UUID{}
@@ -344,6 +344,7 @@ func TestCountOrdersByBucket_AllStatusOptionsMatchPagedRows(t *testing.T) {
 			{"ready_to_ship", OrderFilter{ReadyToShip: true}, counts.ReadyToShip},
 			{"shipment_failed", OrderFilter{ShipmentStatusIn: failures}, counts.ShipmentFailed},
 			{"in_transit", OrderFilter{InTransit: true, ShipmentStatusNotIn: failures}, counts.InTransit},
+			{"shipped", OrderFilter{Status: "shipped"}, counts.Shipped},
 			{"completed", OrderFilter{Status: "completed"}, counts.Completed},
 			{"payment_expired", OrderFilter{Status: "payment_expired"}, counts.PaymentExpired},
 			{"cancelled", OrderFilter{Status: "cancelled"}, counts.Cancelled},
