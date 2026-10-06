@@ -34,7 +34,7 @@ Decisions (Panca, 2026-10-02):
 Derived behavior:
 
 - Buyer-facing quote = Biteship rates **intersected** with the enabled services. A service that is enabled here but not active in the Biteship dashboard simply never appears.
-- If the intersection is empty the existing flat-rate fallback applies (`shipping_fallback_flat_rate`), logged at `Warn` with the existing cause labels.
+- If the intersection is empty, return `ErrShippingRouteUnserved` (422 `shipping_route_unserved`) and log `route_unserved` at `Warn`; see [the carrier-only quote spec](no-flat-rate-shipping-fallback.md).
 
 ## Technical contract
 

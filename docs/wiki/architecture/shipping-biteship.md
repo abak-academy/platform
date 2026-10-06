@@ -1,7 +1,7 @@
 ---
 title: Shipping (Ongkir) & Biteship Integration
-updated: 2026-10-02
-verified_against: e6cf227c
+updated: 2026-10-06
+verified_against: 1b3cc1ef
 ---
 
 Logistics Level 3: rate quoting, carrier booking, cancellation, and webhook-driven status sync
@@ -9,10 +9,10 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 
 ## Adapter boundary
 
-- Port: `service.LogisticsClient` (`backend/internal/service/ports_logistics.go:105`) —
+- Port: `service.LogisticsClient` (`backend/internal/service/ports_logistics.go:102`) —
   `GetRates`, `CreateOrder`, `GetOrder`, `CancelOrder`, `TrackWaybill`.
 - Real implementation: `adapter.BiteshipClient` (`backend/internal/adapter/biteship.go:26`).
-- Stub: `service.NoopLogisticsClient` (`ports_logistics.go:119`) — every method returns
+- Stub: `service.NoopLogisticsClient` (`ports_logistics.go:116`) — every method returns
   `ErrShippingUnavailable`; never fabricates a rate or booking.
 - Resolution: `adapter.ResolveShippingClient` (`backend/internal/adapter/shipping_config.go:16`) —
   DB `system_config.biteship_api_key` (encrypted) wins, `cfg.BiteshipAPIKey` (env/secrets.yaml) is
@@ -25,46 +25,54 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 ## Quote (rate) flow
 
 - `POST /orders/shipping` (no auth) → `Handler.GetShipping` → `Service.GetShippingRates`
-  (`store.go:509`).
-- `Service.GetShippingRates` reads `system_config` once for `biteship_services` and the flat rate.
+  (`store.go:458`).
+- `Service.GetShippingRates` reads `system_config` once for `biteship_services`.
   An absent/empty service list, or a config read failure, enables only `jne:reg,jne:yes,jne:oke`.
   The service puts distinct courier codes in catalog order on `ShippingQuoteRequest.Couriers`;
   `BiteshipClient.GetRates` reads origin postal code from `system_config.app_kode_pos` and calls
   `POST /v1/rates/couriers` with that list joined by commas. The adapter holds no courier policy.
   The service then keeps only rates whose courier/service pair is enabled. An empty intersection
-  uses the existing flat-rate fallback and logs `route_unserved` at `Warn`; the fallback itself
-  is created after filtering.
+  returns `ErrShippingRouteUnserved` and logs `route_unserved` at `Warn`.
 - Duration string ("1 - 2 days", "Same day") is parsed by `parseDurationDays`
   (`biteship.go:147`) — takes the **upper** bound of a range; a string with no digits yields `0`
   and is logged at `Info` (not a hard error, since "Same day" legitimately has none).
-- Fallback resolution: `resolveShippingRates` (`shipping_rates.go:42`) — carrier quotes win;
-  otherwise `system_config.shipping_fallback_flat_rate` stands in, flagged `is_estimate: true`
-  (`CourierRate.IsEstimate`); if neither, returns `ErrShippingUnavailable` (mapped 503 via
-  `handler/errors.go`) — never an invented figure.
-- Cause is discriminated and logged at `Warn` on every degraded quote (`store.go:526-528`):
-  `origin_unset`, `auth_rejected`, `client_noop`, `route_unserved`, `client_error`. This is the one
-  fallback path in this system that **is** observable.
+- Rate resolution: `resolveShippingRates` (`shipping_rates.go:29`) returns carrier quotes or an
+  error, with no flat-rate price:
+
+  | Cause | Service error | HTTP / API code |
+  |---|---|---|
+  | `route_unserved` | `ErrShippingRouteUnserved` | 422 `shipping_route_unserved` |
+  | `client_error` | `ErrShippingTemporarilyUnavailable` | 503 `shipping_temporarily_unavailable` |
+  | `origin_unset`, `auth_rejected`, `client_noop` | `ErrShippingUnavailable` | 503 `shipping_unavailable` |
+
+- Every degraded quote logs a discriminated `cause` at `Warn` (`store.go:492-502`). Only
+  `client_error` includes `err`, truncated to 300 characters. Auth rejection logs no error text
+  because the provider error can contain the raw response body. API messages are generic English;
+  the cart translates the error code into a plain-language buyer message and disables checkout.
 - `GetShippingRates` is called from two places: the standalone quote endpoint above, and again
   inside `buildCartPatch` (below) to validate/price the courier selection — no rate caching exists.
 
 ## Quote staleness & re-validation at checkout
 
-- `PatchCart` (`store.go:750`) takes a lock-free snapshot, builds the patch (incl. a live
+- `PatchCart` (`store.go:730`) takes a lock-free snapshot, builds the patch (incl. a live
   `GetShippingRates` call when a courier is selected), then writes with optimistic concurrency —
   guarded by `ExpectedUpdatedAt` (`order.updated_at` as read); a conflict (`ErrOrderChanged`, HTTP
-  409 `order_changed`) triggers one retry from a fresh read (`store.go:780-813`).
-- `buildCartPatch` (`store.go:821`) voids a stale quote when the *effective* destination changes —
+  409 `order_changed`) triggers one retry from a fresh read (`store.go:760-793`).
+- `buildCartPatch` (`store.go:801`) voids a stale quote when the *effective* destination changes —
   comparing values ("patch value if sent, else persisted"), mirroring the SQL `COALESCE`, not which
-  keys the PATCH body carried (`store.go:890-921`). A no-op address edit keeps a valid quote.
+  keys the PATCH body carried (`store.go:875-901`). A no-op address edit keeps a valid quote.
 - Courier selection is matched by `(Courier, Service)` case-insensitively against a fresh
   `GetShippingRates` call, and the matched rate's `CourierCode`/`ServiceCode` (not display names)
-  are persisted (`store.go:873-886`) — booking later uses these codes, never the display name.
-- `Checkout` (`store.go:1072`) re-reads the order `FOR UPDATE` inside a transaction
-  (`GetOrderByIDForUpdateTx`, `store.go:1114`) — judged against the locked row, not the
+  are persisted with `is_estimate = false` (`store.go:854-868`) — booking later uses these codes,
+  never the display name.
+- `Checkout` (`store.go:1058`) re-reads the order `FOR UPDATE` inside a transaction
+  (`GetOrderByIDForUpdateTx`, `store.go:1106`) — judged against the locked row, not the
   pre-transaction read — then requires, for every physical item, `shipping_cost > 0` and a non-empty
-  `selected_courier` (`ErrShippingRequired`, `store.go:1128-1131`). It does **not** re-call Biteship
-  at checkout time; it trusts the persisted `shipping_cost`/`selected_courier` that `PatchCart`
-  already re-quoted and locked.
+  `selected_courier`, and refuses `is_estimate = true` (`ErrShippingRequired`, HTTP 400
+  `shipping_required`, `store.go:1120-1123`). A stale flat cart stays unchanged until the buyer
+  re-checks shipping and picks a real rate through `PatchCart`; the checkout toast asks them to
+  re-pick. Checkout does **not** re-call Biteship; it trusts the persisted real quote. Legacy paid
+  orders keep their estimate note in the admin and student views.
 
 ## Order shipment creation
 
@@ -132,8 +140,8 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 - **Silent fallback found**: `shipping_tracking.go:70` — `if tracking, tErr := ...; tErr == nil && len(tracking.History) > 0`.
   On any `TrackWaybill` error (or an empty-but-successful history), `tErr`/the failure is **discarded
   with no logging** — the file imports no `log/slog` at all — and the view silently degrades to
-  `Source: "local"` (the stored `order_shipment_events`). Contrast with the rate-quote fallback
-  (`shipping_rates.go`), which logs a discriminated cause on every degrade; this path has no
+  `Source: "local"` (the stored `order_shipment_events`). Contrast with rate-quote failures
+  (`store.go`), which logs a discriminated cause on every degrade; this path has no
   equivalent signal, so an admin sees a thinner "local" history with no indication the courier call
   failed vs. was simply never queried.
 
@@ -144,11 +152,13 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 | `biteship_services` | non-secret string | comma-separated `courier:service` pairs; empty/unset defaults to JNE REG/YES/OKE; empty or unknown pairs and duplicates rejected on save |
 | `biteship_api_key` | secret string | encrypted at rest, `"***"` on read; env fallback `cfg.BiteshipAPIKey` |
 | `biteship_webhook_secret` | secret string | unset ⇒ webhook always rejects (fail-closed) |
-| `shipping_fallback_flat_rate` | string (parsed as int64) | flat-rate stand-in when no carrier quote available |
+
+`shipping_fallback_flat_rate` is no longer in the managed catalog. A PUT containing it returns
+400 (unknown key); stale database rows remain and are ignored by GET. No migration is needed.
 
 Origin address for booking comes from the `app` group, not `shipping`: `app_kode_pos` (rate-quote
 origin), `app_name`/`app_contact_phone`/`app_address`/`app_kode_pos` (booking sender fields) —
-`backend/internal/service/system_config.go:27-47`.
+`backend/internal/service/system_config.go:28-49`.
 
 ## Admin UI touchpoints (`web/`)
 
@@ -164,14 +174,15 @@ origin), `app_name`/`app_contact_phone`/`app_address`/`app_kode_pos` (booking se
   excludes `on_hold`, which self-resolves), snake_case normalisation for Biteship's inconsistent casing.
 - `lib/shipping.ts` — single source of truth for physical vs. digital (`isPhysicalType`:
   book/merchandise/medal), reused by cart, checkout gating, and admin order rendering.
-- `app/(admin)/admin/system/config/page.tsx` — origin address in General; flat rate, Biteship
+- `app/(admin)/admin/system/config/page.tsx` — origin address in General; Biteship
   key/secret, and per-service switches in Courier Integration; Midtrans in Payment Integration.
 - Cart-side: `components/cart/ShippingAddressForm.tsx`, `CourierRateList.tsx` — manual "check
   shipping cost" trigger only; no automatic/live quoting.
 
 ## Error sentinels → HTTP (selected)
 
-`ErrShippingRequired`/`ErrInvalidCourierSelection` → 4xx; `ErrShippingUnavailable` → 503;
+`ErrShippingRequired` → 400 `shipping_required`; `ErrInvalidCourierSelection` → 422;
+quote errors map as listed above;
 `ErrIncompleteSchedule`/`ErrNoCarrierCode`/`ErrOrderNotShippable`/`ErrIncompleteAddress`/
 `ErrNoBiteshipBooking`/`ErrNoTrackingNumber` each have a dedicated case in
 `backend/internal/handler/errors.go`; `ErrInvalidSignature` → 401 (webhook rejection).
