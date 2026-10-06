@@ -4,11 +4,15 @@ import StoreDashboardPage from "./page";
 import type { OrderSummary, PromoCode } from "@/lib/types";
 
 const sampleSummary: OrderSummary = {
+  couriers: [],
   buckets: {
     needs_confirm: 7,
     ready_to_ship: 23,
     shipment_failed: 2,
     in_transit: 11,
+    completed: 0,
+    payment_expired: 0,
+    cancelled: 0,
     created_this_month: 148,
     completed_this_month: 96,
     total: 512,

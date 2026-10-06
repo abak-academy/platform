@@ -12,9 +12,7 @@ export type OrderStatus =
   | "payment_expired"
   | "cancelled";
 
-// "failed" here is a *payment* failure (payment_expired) — a real
-// orders.status value, unlike the two queue values below.
-export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "cancelled";
+export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "completed" | "payment_expired" | "cancelled";
 
 // AdminOrderQueue names a derived bucket that spans more than one
 // orders.status value (or a different column entirely), so it cannot live in
@@ -22,7 +20,8 @@ export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" |
 // - "ready_to_ship": status IN ('paid','processing') with a physical item.
 // - "shipment_failed": a courier failure — orders.shipment_status, not
 //   orders.status; a dead parcel can still read "shipped".
-export type AdminOrderQueue = "ready_to_ship" | "shipment_failed";
+// - "in_transit": status 'shipped' whose courier status is not a failure.
+export type AdminOrderQueue = "ready_to_ship" | "shipment_failed" | "in_transit";
 
 export interface School {
   id: string;
@@ -468,13 +467,20 @@ export interface OrderBucketCounts {
   ready_to_ship: number;
   shipment_failed: number;
   in_transit: number;
+  completed: number;
+  payment_expired: number;
+  cancelled: number;
   created_this_month: number;
   completed_this_month: number;
   total: number;
 }
 
+export type AdminOrderSort = "order_at" | "paid_at" | "item_qty";
+export type AdminOrderSortDirection = "asc" | "desc";
+
 export interface OrderSummary {
   buckets: OrderBucketCounts;
+  couriers: string[];
   top_products: TopProduct[];
 }
 
@@ -483,6 +489,11 @@ export interface AdminOrderQuery {
   // Mutually exclusive with status: a queue is its own filter dimension, not
   // another status value to combine with one.
   queue?: AdminOrderQueue;
+  type?: ProductType;
+  courier?: string;
+  sort?: AdminOrderSort;
+  dir?: AdminOrderSortDirection;
+  limit?: 20 | 50 | 100;
   q?: string;
   from?: string;
   to?: string;

@@ -217,3 +217,24 @@ describe("OrderDetailModal shipment status", () => {
     expect(screen.queryByTestId("order-shipment-failed-badge")).toBeNull();
   });
 });
+
+it.each([
+  ["payment_pending", "book", null, "Menunggu pembayaran"],
+  ["paid", "book", null, "Siap kirim"],
+  ["processing", "merchandise", null, "Siap kirim"],
+  ["processing", "medal", null, "Siap kirim"],
+  ["paid", "course", null, "Dibayar"],
+  ["processing", "exam", null, "Diproses"],
+  ["shipped", "book", "courier_not_found", "Pengiriman bermasalah"],
+  ["shipped", "book", "returned", "Pengiriman bermasalah"],
+  ["shipped", "book", null, "Dalam pengiriman"],
+  ["shipped", "book", "on_hold", "Dalam pengiriman"],
+  ["completed", "course", null, "Selesai"],
+  ["payment_expired", "book", null, "Kedaluwarsa"],
+  ["cancelled", "book", null, "Dibatalkan"],
+] as const)("renders the operator badge for %s/%s/%s", (status, productType, shipmentStatus, label) => {
+  const order = { ...physicalOrder, status, shipment_status: shipmentStatus,
+    items: [{ ...physicalOrder.items[0], product_type: productType }] };
+  render(<OrderDetailModal order={order} onOpenChange={vi.fn()} />);
+  expect(screen.getByText(label, { selector: '[data-slot="badge"]' })).toBeInTheDocument();
+});

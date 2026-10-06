@@ -884,3 +884,70 @@ func TestAdminConfirmOrder_ValidProof_Returns200AndConfirms(t *testing.T) {
 		t.Errorf(`response["payment_proof_url"]: want %q, got %v`, proofKey, raw["payment_proof_url"])
 	}
 }
+
+func TestAdminOrders_InTransitAndLegacyStatusFilters(t *testing.T) {
+	h, svc, repo := newShipHandlerTestService(t, &fakeShipHandlerLogistics{})
+	ctx := context.Background()
+	for _, shipmentStatus := range append([]string{"", "in_transit"}, service.ShipmentFailureStatusValues()...) {
+		t.Run("shipment_"+shipmentStatus, func(t *testing.T) {
+			id := createShippableOrderForHandler(t, svc, repo, "shipped", true)
+			if shipmentStatus != "" {
+				if err := repo.SetShipmentStatus(ctx, id, shipmentStatus); err != nil {
+					t.Fatal(err)
+				}
+			}
+			q := id.String()[24:]
+			listCtx, listRec := newAdminOrdersGetCtx("/admin/orders?queue=in_transit&q=" + q)
+			if err := h.AdminListOrders(listCtx); err != nil {
+				t.Fatal(err)
+			}
+			if listRec.Code != http.StatusOK {
+				t.Fatalf("list: %d %s", listRec.Code, listRec.Body.String())
+			}
+			var rows orderIDListResponse
+			if err := json.Unmarshal(listRec.Body.Bytes(), &rows); err != nil {
+				t.Fatal(err)
+			}
+			want := 0
+			if shipmentStatus == "" || shipmentStatus == "in_transit" {
+				want = 1
+			}
+			if len(rows.Data) != want {
+				t.Fatalf("rows = %d, want %d", len(rows.Data), want)
+			}
+			sumCtx, sumRec := newAdminOrdersGetCtx("/admin/orders/summary?queue=in_transit&q=" + q)
+			if err := h.AdminOrdersSummary(sumCtx); err != nil {
+				t.Fatal(err)
+			}
+			if sumRec.Code != http.StatusOK {
+				t.Fatalf("summary: %d %s", sumRec.Code, sumRec.Body.String())
+			}
+			var summary handler.OrderSummaryResponse
+			if err := json.Unmarshal(sumRec.Body.Bytes(), &summary); err != nil {
+				t.Fatal(err)
+			}
+			if summary.Buckets.InTransit != want || summary.Buckets.Total != want {
+				t.Fatalf("buckets: %+v, want %d", summary.Buckets, want)
+			}
+		})
+	}
+	for _, status := range []string{"paid", "processing"} {
+		t.Run(status, func(t *testing.T) {
+			id := createShippableOrderForHandler(t, svc, repo, status, true)
+			c, rec := newAdminOrdersGetCtx("/admin/orders?status=" + status + "&q=" + id.String()[24:])
+			if err := h.AdminListOrders(c); err != nil {
+				t.Fatal(err)
+			}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
+			}
+			var rows orderIDListResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &rows); err != nil {
+				t.Fatal(err)
+			}
+			if len(rows.Data) != 1 || rows.Data[0].ID != id.String() {
+				t.Fatalf("rows: %+v", rows.Data)
+			}
+		})
+	}
+}

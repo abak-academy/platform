@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 import { OrdersToolbar } from "./OrdersToolbar";
+import { useUIStore } from "@/stores/ui";
 import type { AdminOrderQuery, OrderBucketCounts } from "@/lib/types";
 
 // Radix Select drives its trigger through Pointer Events APIs that jsdom does
@@ -17,6 +18,9 @@ const counts: OrderBucketCounts = {
   ready_to_ship: 7,
   shipment_failed: 1,
   in_transit: 12,
+  completed: 23,
+  payment_expired: 5,
+  cancelled: 6,
   created_this_month: 128,
   completed_this_month: 96,
   total: 1284,
@@ -36,83 +40,40 @@ async function openStatusMenu() {
   return screen.findByRole("listbox");
 }
 
+afterEach(() => act(() => useUIStore.setState({ lang: "id" })));
+
+const filterCases = [
+  ["all", "Semua", "All", 1284],
+  ["pending", "Menunggu pembayaran", "Awaiting payment", 4],
+  ["ready_to_ship", "Siap kirim", "Ready to ship", 7],
+  ["shipment_failed", "Pengiriman bermasalah", "Delivery problem", 1],
+  ["in_transit", "Dalam pengiriman", "In transit", 12],
+  ["completed", "Selesai", "Completed", 23],
+  ["payment_expired", "Kedaluwarsa", "Payment expired", 5],
+  ["cancelled", "Dibatalkan", "Cancelled", 6],
+] as const;
+
 describe("OrdersToolbar status filter", () => {
-  it("offers every status, including the failed-shipment filter", async () => {
+  it.each(["id", "en"] as const)("offers exactly eight ordered options with counts in %s", async (lang) => {
+    useUIStore.setState({ lang });
     renderToolbar();
     const listbox = await openStatusMenu();
-
-    for (const label of [
-      "Semua",
-      "Menunggu",
-      "Dibayar",
-      "Diproses",
-      "Dikirim",
-      "Pengiriman bermasalah",
-    ]) {
-      expect(
-        screen.getAllByText(label).length,
-        `option "${label}" is missing`,
-      ).toBeGreaterThanOrEqual(1);
-    }
-    expect(listbox).toBeInTheDocument();
+    expect(within(listbox).getAllByRole("option").map((option) => option.textContent))
+      .toEqual(filterCases.map(([, id, en, count]) => `${lang === "id" ? id : en}${count}`));
   });
 
-  it("shows the count beside the buckets the API actually counts", async () => {
-    renderToolbar();
-    await openStatusMenu();
-
-    // needs_confirm, ready_to_ship, in_transit, shipment_failed and total.
-    expect(screen.getAllByText("1284").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("4").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("7").length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("emits the chosen status", async () => {
+  it.each(filterCases)("selecting %s clears the other filter dimension", async (option, label) => {
     const onChange = vi.fn();
-    renderToolbar({ status: "all" }, onChange);
+    const isQueue = ["ready_to_ship", "shipment_failed", "in_transit"].includes(option);
+    renderToolbar(isQueue ? { status: "pending" } : { status: "all", queue: "shipment_failed" }, onChange);
     await openStatusMenu();
-
-    fireEvent.click(screen.getByRole("option", { name: /Menunggu/ }));
-
-    await waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", queue: undefined })),
-    );
+    fireEvent.click(screen.getByRole("option", { name: new RegExp(label) }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining(
+      isQueue ? { status: "all", queue: option } : { status: option, queue: undefined },
+    ));
   });
 
-  // ready_to_ship and shipment_failed are queues, not statuses — picking one
-  // must set queue and reset status to "all", not send a status value the API
-  // no longer accepts.
-  it("emits queue (and resets status to all) when a queue chip is chosen", async () => {
-    const onChange = vi.fn();
-    renderToolbar({ status: "all" }, onChange);
-    await openStatusMenu();
-
-    fireEvent.click(screen.getByRole("option", { name: /Pengiriman bermasalah/ }));
-
-    await waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "all", queue: "shipment_failed" }),
-      ),
-    );
-  });
-
-  // Selecting back out of a queue must drop it — otherwise a stale queue
-  // would keep overriding the newly chosen status downstream in the hook.
-  it("clears queue when a real status is chosen afterwards", async () => {
-    const onChange = vi.fn();
-    renderToolbar({ status: "all", queue: "shipment_failed" }, onChange);
-    await openStatusMenu();
-
-    fireEvent.click(screen.getByRole("option", { name: /Dibayar/ }));
-
-    await waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "paid", queue: undefined }),
-      ),
-    );
-  });
-
-  it("shows the queue-selected filter as the trigger's selected value", async () => {
+  it("shows the queue-selected filter as the trigger's selected value", () => {
     renderToolbar({ status: "all", queue: "ready_to_ship" });
     expect(screen.getByTestId("orders-status-filter")).toHaveTextContent("Siap kirim");
   });
@@ -188,4 +149,79 @@ describe("OrdersToolbar search", () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ q: "rani" }));
     vi.useRealTimers();
   });
+});
+
+
+describe("OrdersToolbar page size", () => {
+  it.each([20, 50, 100] as const)("selects %i orders per page", async (limit) => {
+    const { onChange } = renderToolbar({ status: "all", limit: limit === 20 ? 50 : 20 });
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Pesanan per halaman" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    await screen.findByRole("listbox");
+    fireEvent.click(screen.getByRole("option", { name: String(limit) }));
+    expect(onChange).toHaveBeenCalledWith({ status: "all", limit });
+  });
+});
+
+describe("OrdersToolbar product, courier and sort", () => {
+  it("selects a product type without dropping the other filters", async () => {
+    const { onChange } = renderToolbar({ status: "pending", courier: "jne" });
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Jenis produk" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    await screen.findByRole("listbox");
+    fireEvent.click(screen.getByRole("option", { name: "Medali" }));
+    expect(onChange).toHaveBeenCalledWith({ status: "pending", courier: "jne", type: "medal" });
+  });
+});
+
+it.each([
+  ["book", "Buku"], ["merchandise", "Merchandise"], ["medal", "Medali"], ["course", "Kursus"], ["exam", "Ujian"], [undefined, "Semua jenis"],
+] as const)("product option %s sends the product type", async (type, label) => {
+  const { onChange } = renderToolbar({ status: "all", type: "medal" });
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: "Jenis produk" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  await screen.findByRole("listbox");
+  fireEvent.click(screen.getByRole("option", { name: label }));
+  if (type !== "medal") expect(onChange).toHaveBeenCalledWith({ status: "all", type });
+});
+
+it.each(["jne", "jnt", undefined])("courier %s sends the original code", async (courier) => {
+  const onChange = vi.fn();
+  render(<OrdersToolbar value={{ status: "all", courier: "old_courier" }} onChange={onChange} couriers={["jne", "jnt"]} />);
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: "Kurir" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  const listbox = await screen.findByRole("listbox");
+  expect(within(listbox).getAllByRole("option").map((option) => option.textContent)).toEqual(["Semua kurir", "JNE", "JNT"]);
+  fireEvent.click(screen.getByRole("option", { name: courier?.toUpperCase() ?? "Semua kurir" }));
+  expect(onChange).toHaveBeenCalledWith({ status: "all", courier });
+});
+
+it.each([
+  ["order_at", "Tanggal pesanan"], ["paid_at", "Tanggal bayar"], ["item_qty", "Jumlah barang"],
+] as const)("sort %s sends a fixed key", async (sort, label) => {
+  const { onChange } = renderToolbar({ status: "all", sort: sort === "order_at" ? "paid_at" : "order_at", dir: "asc" });
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: "Urutkan pesanan" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  await screen.findByRole("listbox");
+  fireEvent.click(screen.getByRole("option", { name: label }));
+  expect(onChange).toHaveBeenCalledWith({ status: "all", sort, dir: "asc" });
+});
+
+it.each([undefined, "asc", "desc"] as const)("toggles sort direction from %s", (dir) => {
+  const { onChange } = renderToolbar({ status: "all", sort: "item_qty", dir });
+  const button = screen.getByRole("button", { name: dir === "asc" ? "Arah urutan: Naik" : "Arah urutan: Turun" });
+  expect(button).toHaveTextContent(dir === "asc" ? "↑ Naik" : "↓ Turun");
+  fireEvent.click(button);
+  expect(onChange).toHaveBeenCalledWith({ status: "all", sort: "item_qty", dir: dir === "asc" ? "desc" : "asc" });
+});
+
+it.each(["id", "en"] as const)("has accessible translated controls and options in %s", async (lang) => {
+  useUIStore.setState({ lang });
+  renderToolbar();
+  const labels = lang === "id"
+    ? ["Jenis produk", "Kurir", "Urutkan pesanan", "Pesanan per halaman", "Arah urutan"]
+    : ["Product type", "Courier", "Sort orders", "Orders per page", "Sort direction"];
+  labels.slice(0, 4).forEach((label) => expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument());
+  expect(screen.getByRole("combobox", { name: labels[0] })).toHaveTextContent(lang === "id" ? "Semua jenis" : "All types");
+  expect(screen.getByRole("combobox", { name: labels[1] })).toHaveTextContent(lang === "id" ? "Semua kurir" : "All couriers");
+  expect(screen.getByRole("button", { name: `${labels[4]}: ${lang === "id" ? "Turun" : "Descending"}` })).toHaveTextContent(lang === "id" ? "Turun" : "Descending");
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: labels[2] }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  const listbox = await screen.findByRole("listbox");
+  expect(within(listbox).getAllByRole("option").map((option) => option.textContent)).toEqual(lang === "id"
+    ? ["Tanggal pesanan", "Tanggal bayar", "Jumlah barang"] : ["Order date", "Paid date", "Item count"]);
 });

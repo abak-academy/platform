@@ -24,13 +24,14 @@ const STATUS_META: Record<OrderStatus, StatusMeta> = {
 export interface OrderStatusBadgeProps {
   status: OrderStatus;
   className?: string;
+  label?: string;
 }
 
-export function OrderStatusBadge({ status, className }: OrderStatusBadgeProps) {
+export function OrderStatusBadge({ status, className, label }: OrderStatusBadgeProps) {
   const meta = STATUS_META[status] ?? STATUS_META.cart;
   return (
     <Badge variant="outline" className={cn("border-transparent", meta.bg, meta.tone, className)}>
-      {meta.label}
+      {label ?? meta.label}
     </Badge>
   );
 }
