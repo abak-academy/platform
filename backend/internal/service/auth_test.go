@@ -224,11 +224,11 @@ func TestRegister(t *testing.T) {
 	t.Run("happy path creates user with username", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, mr := newTestService(t, repo)
-		pending, err := svc.Register(ctx, "New@Example.com", "password123", "Budi")
+		chall, err := svc.Register(ctx, "New@Example.com", "password123", "Budi")
 		if err != nil {
 			t.Fatalf("Register: %v", err)
 		}
-		if pending == "" {
+		if chall.PendingToken == "" {
 			t.Error("want non-empty pending_token")
 		}
 		u, _ := repo.GetUserByEmail(ctx, "new@example.com")
@@ -289,11 +289,14 @@ func TestRegister(t *testing.T) {
 
 	t.Run("can login with generated username (FR-SELFREG-03)", func(t *testing.T) {
 		repo := newFakeUserRepo()
-		svc, _ := newTestService(t, repo)
+		svc, mr := newTestService(t, repo)
 		_, err := svc.Register(ctx, "loginuser@example.com", "password123", "Login User")
 		if err != nil {
 			t.Fatalf("Register: %v", err)
 		}
+		// Register armed the 60s resend cooldown; the login OTP dispatch shares
+		// the same ladder, so step past it.
+		mr.FastForward(time.Minute + time.Second)
 		u, _ := repo.GetUserByEmail(ctx, "loginuser@example.com")
 		if u == nil || u.Username == nil {
 			t.Fatal("user/username not created")
@@ -311,16 +314,29 @@ func TestRegister(t *testing.T) {
 		}
 	})
 
-	t.Run("re-register on pending email is rate limited", func(t *testing.T) {
+	t.Run("re-register on pending email with a live code skips the send", func(t *testing.T) {
 		repo := newFakeUserRepo()
-		svc, _ := newTestService(t, repo)
+		svc, mr := newTestService(t, repo)
 		if _, err := svc.Register(ctx, "pending@example.com", "password123", "Budi"); err != nil {
 			t.Fatalf("first Register: %v", err)
 		}
+		codeBefore, _ := mr.Get("otp:" + "pending@example.com")
 
-		_, err := svc.Register(ctx, "pending@example.com", "password123", "Budi")
-		if !errors.Is(err, ErrOTPRateLimit) {
-			t.Errorf("want ErrOTPRateLimit, got %v", err)
+		chall, err := svc.Register(ctx, "pending@example.com", "password123", "Budi")
+		if err != nil {
+			t.Fatalf("second Register: %v", err)
+		}
+		if !chall.OTPActive {
+			t.Error("want otp_active=true while the first code is still live")
+		}
+		if chall.EmailFailed {
+			t.Error("want email_failed=false — nothing was sent")
+		}
+		if chall.ResendAfter <= 0 || chall.ResendAfter > 60 {
+			t.Errorf("ResendAfter = %d, want the armed 60s cooldown", chall.ResendAfter)
+		}
+		if codeAfter, _ := mr.Get("otp:" + "pending@example.com"); codeAfter != codeBefore {
+			t.Error("the stored code must not change when no send happens")
 		}
 	})
 
@@ -341,17 +357,20 @@ func TestRegister(t *testing.T) {
 		if errors.Is(err, ErrEmailTaken) {
 			t.Error("want no ErrEmailTaken for pending email re-register")
 		}
-		if second == "" {
+		if !second.OTPActive {
+			t.Error("want otp_active=true — the live code skips the send")
+		}
+		if second.PendingToken == "" {
 			t.Error("want non-empty pending_token")
 		}
-		if second == first {
+		if second.PendingToken == first.PendingToken {
 			t.Error("want a fresh pending_token, got the same one")
 		}
 		after, _ := repo.GetUserByEmail(ctx, "pending@example.com")
 		if after == nil || before == nil || after.ID != before.ID {
 			t.Errorf("want same user id, got before=%v after=%v", before, after)
 		}
-		if !mr.Exists("pending:" + second) {
+		if !mr.Exists("pending:" + second.PendingToken) {
 			t.Error("fresh pending token should be stored in redis")
 		}
 	})
@@ -485,12 +504,12 @@ func TestVerifyOTP(t *testing.T) {
 	setup := func(t *testing.T) (*Service, *miniredis.Miniredis, *fakeUserRepo, string, string) {
 		repo := newFakeUserRepo()
 		svc, mr := newTestService(t, repo)
-		pending, err := svc.Register(ctx, "user@example.com", "password123", "Budi")
+		chall, err := svc.Register(ctx, "user@example.com", "password123", "Budi")
 		if err != nil {
 			t.Fatalf("Register: %v", err)
 		}
-		userID, _ := mr.Get("pending:" + pending)
-		return svc, mr, repo, pending, userID
+		userID, _ := mr.Get("pending:" + chall.PendingToken)
+		return svc, mr, repo, chall.PendingToken, userID
 	}
 
 	t.Run("correct code returns tokens, clears keys and disables otp", func(t *testing.T) {
@@ -538,6 +557,36 @@ func TestVerifyOTP(t *testing.T) {
 		_, _, err := svc.VerifyOTP(ctx, pending, "000000")
 		if !errors.Is(err, ErrInvalidOTP) {
 			t.Errorf("want ErrInvalidOTP, got %v", err)
+		}
+	})
+
+	t.Run("three wrong entries kill the code, a fresh dispatch restores the budget", func(t *testing.T) {
+		svc, mr, _, pending, userID := setup(t)
+
+		for i := 1; i <= 3; i++ {
+			_, _, err := svc.VerifyOTP(ctx, pending, fmt.Sprintf("wrong-%d", i))
+			if i < maxOTPVerifyAttempts && !errors.Is(err, ErrInvalidOTP) {
+				t.Fatalf("wrong #%d: want ErrInvalidOTP, got %v", i, err)
+			}
+			if i == maxOTPVerifyAttempts && !errors.Is(err, ErrOTPAttemptsExceeded) {
+				t.Fatalf("wrong #%d: want ErrOTPAttemptsExceeded, got %v", i, err)
+			}
+		}
+		if mr.Exists("otp:" + userID) {
+			t.Error("the code should be killed after three wrong entries")
+		}
+		if _, _, err := svc.VerifyOTP(ctx, pending, "000000"); !errors.Is(err, ErrOTPExpired) {
+			t.Errorf("post-kill verify err = %v, want ErrOTPExpired", err)
+		}
+
+		// A fresh dispatch restores the budget: one wrong entry is a plain
+		// invalid OTP again, not an attempts-exceeded.
+		mr.FastForward(time.Minute + time.Second) // step past the ladder cooldown
+		if err := svc.SendOTP(ctx, userID); err != nil {
+			t.Fatalf("SendOTP: %v", err)
+		}
+		if _, _, err := svc.VerifyOTP(ctx, pending, "000000"); !errors.Is(err, ErrInvalidOTP) {
+			t.Errorf("after re-dispatch err = %v, want ErrInvalidOTP (fresh budget)", err)
 		}
 	})
 
@@ -655,6 +704,304 @@ func TestSendOTP(t *testing.T) {
 	}
 	if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrOTPRateLimit) {
 		t.Errorf("second SendOTP within window: want ErrOTPRateLimit, got %v", err)
+	}
+}
+
+// stubOTPProvider lets OTP-send tests control the provider outcome. With
+// failChannel set, only sends on that channel fail; others succeed.
+type stubOTPProvider struct {
+	err         error
+	failChannel string
+	sent        int
+}
+
+func (f *stubOTPProvider) SendOTP(_ context.Context, channel, _, _ string) error {
+	f.sent++
+	if f.failChannel != "" && channel != f.failChannel {
+		return nil
+	}
+	return f.err
+}
+
+func TestRegister_EmailSendFailure_NonFatal(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	svc, mr := newTestService(t, repo)
+	otp := &stubOTPProvider{err: errors.New("451 4.7.1 Ratelimit exceeded")}
+	svc.otpProvider = otp
+
+	chall, err := svc.Register(ctx, "relaydown@example.com", "password123", "Budi")
+	if err != nil {
+		t.Fatalf("Register with failing SMTP: want non-fatal, got %v", err)
+	}
+	if chall.PendingToken == "" {
+		t.Error("want non-empty pending_token even when the send failed")
+	}
+	if !chall.EmailFailed {
+		t.Error("want email_failed=true")
+	}
+	u, _ := repo.GetUserByEmail(ctx, "relaydown@example.com")
+	if u == nil {
+		t.Fatal("user should still be created when the send fails")
+	}
+	if !mr.Exists("otp:"+u.ID) {
+		t.Error("otp code should still be stored for later verify")
+	}
+	if otp.sent != 1 {
+		t.Errorf("want exactly 1 send attempt, got %d", otp.sent)
+	}
+}
+
+func TestResend_EmailDeliveryFailed(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), Role: RoleStudent, Status: "active", OTPEnabled: true})
+	svc, _ := newTestService(t, repo)
+	svc.otpProvider = &stubOTPProvider{err: errors.New("451 4.7.1 Ratelimit exceeded")}
+
+	// The resend endpoint surfaces the failure instead of swallowing it.
+	err := svc.SendOTP(ctx, "u1")
+	if !errors.Is(err, ErrEmailDeliveryFailed) {
+		t.Errorf("want ErrEmailDeliveryFailed, got %v", err)
+	}
+}
+
+func TestLogin_EmailFailedFlag(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{
+		ID:           "u-pending",
+		Email:        strptr("pending@example.com"),
+		PasswordHash: mustHashStd("password123"),
+		Role:         RoleStudent,
+		Status:       "pending_verification",
+		OTPEnabled:   true,
+	})
+	svc, _ := newTestService(t, repo)
+	svc.otpProvider = &stubOTPProvider{err: errors.New("smtp down")}
+
+	_, _, pending, err := svc.Login(ctx, "pending@example.com", "password123")
+	if !errors.Is(err, ErrVerificationPending) {
+		t.Fatalf("want ErrVerificationPending, got %v", err)
+	}
+	var vp *VerificationPendingError
+	if !errors.As(err, &vp) {
+		t.Fatal("want typed VerificationPendingError")
+	}
+	if !vp.EmailFailed {
+		t.Error("want EmailFailed=true on the 403 path")
+	}
+	if pending == "" {
+		t.Error("want non-empty pending_token even when the send failed")
+	}
+}
+
+func TestOTPSendLadder(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), Role: RoleStudent, Status: "active", OTPEnabled: true})
+	svc, mr := newTestService(t, repo)
+
+	// cooldownAfterSend asserts the immediate-next-send Retry-After matches
+	// the ladder step for the Nth send.
+	cooldownAfterSend := func(t *testing.T, want time.Duration) {
+		t.Helper()
+		err := svc.SendOTP(ctx, "u1")
+		var rl *OTPRateLimitError
+		if !errors.As(err, &rl) {
+			t.Fatalf("want OTPRateLimitError, got %v", err)
+		}
+		if rl.RetryAfter < want-time.Second || rl.RetryAfter > want {
+			t.Errorf("RetryAfter = %v, want ~%v", rl.RetryAfter, want)
+		}
+	}
+
+	if err := svc.SendOTP(ctx, "u1"); err != nil {
+		t.Fatalf("send 1: %v", err)
+	}
+	cooldownAfterSend(t, time.Minute)
+	mr.FastForward(time.Minute + time.Second)
+
+	if err := svc.SendOTP(ctx, "u1"); err != nil {
+		t.Fatalf("send 2: %v", err)
+	}
+	cooldownAfterSend(t, 5*time.Minute)
+	mr.FastForward(5*time.Minute + time.Second)
+
+	if err := svc.SendOTP(ctx, "u1"); err != nil {
+		t.Fatalf("send 3: %v", err)
+	}
+	cooldownAfterSend(t, 15*time.Minute)
+	mr.FastForward(15*time.Minute + time.Second)
+
+	if err := svc.SendOTP(ctx, "u1"); err != nil {
+		t.Fatalf("send 4: %v", err)
+	}
+	cooldownAfterSend(t, time.Hour)
+	mr.FastForward(time.Hour + time.Second)
+
+	if err := svc.SendOTP(ctx, "u1"); err != nil {
+		t.Fatalf("send 5: %v", err)
+	}
+	// The ladder window (1h) also expired, so the next cooldown resets to 60s.
+	cooldownAfterSend(t, time.Minute)
+}
+
+func TestOTPSendLockout(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), Role: RoleStudent, Status: "active", OTPEnabled: true})
+	svc, mr := newTestService(t, repo)
+	svc.otpProvider = &stubOTPProvider{err: errors.New("451 4.7.1 Ratelimit exceeded")}
+
+	// Three failed sends (spaced past each cooldown) trip the 24h lockout.
+	for i, wait := range []time.Duration{0, time.Minute + time.Second, 5*time.Minute + time.Second} {
+		if wait > 0 {
+			mr.FastForward(wait)
+		}
+		if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+			t.Fatalf("send %d: want ErrEmailDeliveryFailed, got %v", i+1, err)
+		}
+	}
+
+	err := svc.SendOTP(ctx, "u1")
+	if !errors.Is(err, ErrOTPSendLocked) {
+		t.Fatalf("want ErrOTPSendLocked after 3 failures, got %v", err)
+	}
+	var lk *OTPSendLockedError
+	if !errors.As(err, &lk) {
+		t.Fatal("want typed OTPSendLockedError")
+	}
+	if lk.RetryAfter < otpFailureWindow-time.Second || lk.RetryAfter > otpFailureWindow {
+		t.Errorf("RetryAfter = %v, want ~24h", lk.RetryAfter)
+	}
+}
+
+func TestLogin_NoSendWhenCodeStillAlive(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{
+		ID:           "u-pending",
+		Email:        strptr("pending@example.com"),
+		PasswordHash: mustHashStd("password123"),
+		Role:         RoleStudent,
+		Status:       "pending_verification",
+		OTPEnabled:   true,
+	})
+	svc, mr := newTestService(t, repo)
+	otp := &stubOTPProvider{}
+	svc.otpProvider = otp
+	// A live code from an earlier dispatch — e.g. the email is still in flight.
+	mr.Set("otp:u-pending", "123456")
+
+	_, _, pending, err := svc.Login(ctx, "pending@example.com", "password123")
+
+	if !errors.Is(err, ErrVerificationPending) {
+		t.Fatalf("want ErrVerificationPending, got %v", err)
+	}
+	var vp *VerificationPendingError
+	if !errors.As(err, &vp) {
+		t.Fatal("want typed VerificationPendingError")
+	}
+	if !vp.OTPActive {
+		t.Error("want OTPActive=true — a live code skips the send")
+	}
+	if vp.EmailFailed {
+		t.Error("want EmailFailed=false — nothing was sent")
+	}
+	if pending == "" {
+		t.Error("want a fresh pending token even without a send")
+	}
+	if otp.sent != 0 {
+		t.Errorf("provider sends = %d, want 0", otp.sent)
+	}
+}
+
+func TestOTPSendLockout_ResetOnSuccess(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), Role: RoleStudent, Status: "active", OTPEnabled: true})
+	svc, mr := newTestService(t, repo)
+	otp := &stubOTPProvider{err: errors.New("451 4.7.1 Ratelimit exceeded")}
+	svc.otpProvider = otp
+
+	// Two failures, one success, two more failures — the success resets the
+	// counter, so the second pair does not trip the lockout.
+	for _, wait := range []time.Duration{0, time.Minute + time.Second} {
+		if wait > 0 {
+			mr.FastForward(wait)
+		}
+		if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+			t.Fatalf("initial failure: want ErrEmailDeliveryFailed, got %v", err)
+		}
+	}
+	otp.err = nil
+	mr.FastForward(5*time.Minute + time.Second)
+	if err := svc.SendOTP(ctx, "u1"); err != nil {
+		t.Fatalf("recovery send: %v", err)
+	}
+
+	otp.err = errors.New("451 4.7.1 Ratelimit exceeded")
+	for _, wait := range []time.Duration{15*time.Minute + time.Second, time.Hour + time.Second} {
+		mr.FastForward(wait)
+		if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+			t.Fatalf("post-recovery failure: want ErrEmailDeliveryFailed, got %v", err)
+		}
+	}
+	if mr.Exists(otpLockKey("u1", "email")) {
+		t.Error("lockout should not trip after only 2 failures since the last success")
+	}
+
+	// A third failure after the recovery does trip it.
+	mr.FastForward(time.Hour + time.Second)
+	if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+		t.Fatalf("third failure: want ErrEmailDeliveryFailed, got %v", err)
+	}
+	if !mr.Exists(otpLockKey("u1", "email")) {
+		t.Error("lockout key should be set after 3 failures since the last success")
+	}
+}
+
+func TestOTPSendLockout_PerChannelIsolation(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{
+		ID:    "u1",
+		Email: strptr("user@example.com"),
+		Phone: strptr("+628123456789"),
+		Role:  RoleStudent, Status: "active", OTPEnabled: true,
+	})
+	svc, mr := newTestService(t, repo)
+	// The user has a phone, so PreferredOTPChannel resolves to WhatsApp —
+	// fail only that channel and leave email healthy.
+	svc.otpProvider = &stubOTPProvider{err: errors.New("gateway down"), failChannel: "whatsapp"}
+
+	for _, wait := range []time.Duration{0, time.Minute + time.Second, 5*time.Minute + time.Second} {
+		if wait > 0 {
+			mr.FastForward(wait)
+		}
+		// The register/login path swallows the send failure, so drive the
+		// failures through the resend endpoint which surfaces them.
+		if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+			t.Fatalf("whatsapp failure: want ErrEmailDeliveryFailed, got %v", err)
+		}
+	}
+	if !mr.Exists(otpLockKey("u1", "whatsapp")) {
+		t.Error("whatsapp channel should be locked after 3 failures")
+	}
+	if mr.Exists(otpLockKey("u1", "email")) {
+		t.Error("email channel must not be locked by whatsapp failures")
+	}
+	// The resend ladder is per-user and shared across channels, so step past
+	// the 15m cooldown the last send armed. The email gate then passes while
+	// whatsapp stays locked. (SendOTP itself always resolves to whatsapp for
+	// this user — the gate is asserted directly for the email channel.)
+	mr.FastForward(15*time.Minute + time.Second)
+	if err := svc.limitOTPSend(ctx, "u1", "email"); err != nil {
+		t.Errorf("email gate after whatsapp lockout: want nil, got %v", err)
+	}
+	if err := svc.limitOTPSend(ctx, "u1", "whatsapp"); !errors.Is(err, ErrOTPSendLocked) {
+		t.Errorf("whatsapp gate: want ErrOTPSendLocked, got %v", err)
 	}
 }
 

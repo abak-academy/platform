@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"time"
 
 	"akademi-bimbel/internal/model"
 )
@@ -94,9 +95,22 @@ var (
 
 // --- from auth.go ---
 var (
-	ErrEmailTaken          = errors.New("email already registered")
-	ErrInvalidCredentials  = errors.New("invalid credentials")
-	ErrOTPRateLimit        = errors.New("otp requested too recently")
+	ErrEmailTaken = errors.New("email already registered")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	// ErrOTPRateLimit means the resend ladder is still holding the user off.
+	// User-facing copy (spec C-4); the precise wait rides the Retry-After
+	// header and the typed OTPRateLimitError below.
+	ErrOTPRateLimit = errors.New("Terlalu sering meminta kode OTP. Tunggu sebentar lalu coba lagi.")
+	// ErrOTPSendLocked means OTP email sending is locked out for the user after
+	// repeated delivery failures (relay rate limit). Keep the quoted window in
+	// sync with otpFailureWindow in auth.go. User-facing copy (spec C-4).
+	ErrOTPSendLocked = errors.New("Pengiriman kode OTP terkunci sementara setelah beberapa kali gagal kirim. Coba lagi dalam 12 jam.")
+	// ErrOTPAttemptsExceeded means the verification code was invalidated after
+	// too many wrong entries; a fresh code is required. User-facing copy.
+	ErrOTPAttemptsExceeded = errors.New("Terlalu banyak percobaan salah. Silakan minta kode baru.")
+	// ErrEmailDeliveryFailed means the email provider rejected or failed a
+	// send (e.g. SMTP relay 451 rate limit). Maps to 503.
+	ErrEmailDeliveryFailed = errors.New("email delivery failed")
 	ErrOTPExpired          = errors.New("otp expired")
 	ErrInvalidOTP          = errors.New("invalid otp")
 	ErrInvalidPendingToken = errors.New("invalid pending token")
@@ -114,6 +128,40 @@ var (
 	ErrInvalidUUID         = errors.New("invalid uuid")
 	ErrVerificationPending = errors.New("email verification pending")
 )
+
+// OTPRateLimitError reports the resend cooldown with its remaining duration so
+// the handler can set a precise Retry-After. Satisfies
+// errors.Is(err, ErrOTPRateLimit).
+type OTPRateLimitError struct {
+	RetryAfter time.Duration
+}
+
+func (e *OTPRateLimitError) Error() string { return ErrOTPRateLimit.Error() }
+
+func (e *OTPRateLimitError) Is(target error) bool { return target == ErrOTPRateLimit }
+
+// OTPSendLockedError reports the 24h lockout with its remaining duration.
+// Satisfies errors.Is(err, ErrOTPSendLocked).
+type OTPSendLockedError struct {
+	RetryAfter time.Duration
+}
+
+func (e *OTPSendLockedError) Error() string { return ErrOTPSendLocked.Error() }
+
+func (e *OTPSendLockedError) Is(target error) bool { return target == ErrOTPSendLocked }
+
+// VerificationPendingError carries the OTP dispatch outcome on the login 403
+// path so the client can warn when the send failed or tell the user a live
+// code is already waiting. Satisfies errors.Is(err, ErrVerificationPending).
+type VerificationPendingError struct {
+	EmailFailed bool // a send was attempted and failed
+	OTPActive   bool // a live code already existed — nothing was sent
+	ResendAfter int  // seconds until a new send is allowed; 0 = now
+}
+
+func (e *VerificationPendingError) Error() string { return ErrVerificationPending.Error() }
+
+func (e *VerificationPendingError) Is(target error) bool { return target == ErrVerificationPending }
 
 // --- from bulk_exam_order.go ---
 var (

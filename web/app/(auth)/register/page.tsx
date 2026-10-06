@@ -81,15 +81,28 @@ export default function RegisterPage() {
 
     try {
       const res = await register.mutateAsync({ name: name.trim(), email: email.trim(), password });
-      toast.success(t("register_success"));
       // Registration returns an OTP challenge — hand the pending token + email to
       // the OTP page (it reads ?id= and sessionStorage["abak-pending-token"]).
       if (res.otp_required && res.pending_token) {
         if (typeof window !== "undefined") {
           sessionStorage.setItem("abak-pending-token", res.pending_token);
+          // Delivery/budget flags for the OTP page's banners and countdown.
+          sessionStorage.setItem("abak-email-failed", res.email_failed ? "1" : "0");
+          sessionStorage.setItem("abak-otp-active", res.otp_active ? "1" : "0");
+          const resendAfter = Number(res.resend_after);
+          sessionStorage.setItem(
+            "abak-resend-after",
+            Number.isFinite(resendAfter) && resendAfter > 0 ? String(resendAfter) : "60",
+          );
+        }
+        if (res.email_failed) {
+          toast.warning(t("otp_email_failed_banner"));
+        } else {
+          toast.success(t("register_success"));
         }
         router.push(`/otp?id=${encodeURIComponent(email.trim())}`);
       } else {
+        toast.success(t("register_success"));
         router.push("/login");
       }
     } catch (err) {

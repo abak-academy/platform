@@ -21,6 +21,9 @@ type Config struct {
 	CORSOrigins                   []string
 	DBMaxConns                    int32
 	EnforceSchoolNPSNRegistration bool
+	// EmailSendPerMinute paces the announcement email fan-out in the worker
+	// (per-email spacing = 1 minute / this). Defaults to 30 when unset.
+	EmailSendPerMinute int
 
 	JWTSecret           string
 	AccessTokenTTL      time.Duration
@@ -63,6 +66,7 @@ type fileConfig struct {
 	CORSOrigins                    []string `yaml:"cors_origins"`
 	DBMaxConns                     int32    `yaml:"db_max_conns"`
 	EnforceSchoolNPSNRegistration  bool     `yaml:"enforce_school_npsn_registration"`
+	EmailSendPerMinute             int      `yaml:"email_send_per_minute"`
 	AccessTokenTTL                 string   `yaml:"access_token_ttl"`
 	RefreshTokenTTL                string   `yaml:"refresh_token_ttl"`
 	OTPTTL                         string   `yaml:"otp_ttl"`
@@ -186,6 +190,10 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("worker_poll_interval: %w", err)
 	}
+	emailSendPerMinute := fc.EmailSendPerMinute
+	if emailSendPerMinute <= 0 {
+		emailSendPerMinute = 30
+	}
 	accessTTL, err := time.ParseDuration(fc.AccessTokenTTL)
 	if err != nil {
 		return Config{}, fmt.Errorf("access_token_ttl: %w", err)
@@ -212,6 +220,7 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		CORSOrigins:                   fc.CORSOrigins,
 		DBMaxConns:                    fc.DBMaxConns,
 		EnforceSchoolNPSNRegistration: fc.EnforceSchoolNPSNRegistration,
+		EmailSendPerMinute:            emailSendPerMinute,
 
 		AccessTokenTTL:  accessTTL,
 		RefreshTokenTTL: refreshTTL,

@@ -134,6 +134,19 @@ func (r *Repository) MarkAnnouncementSent(ctx context.Context, id string, sentAt
 	return err
 }
 
+// ScheduleAnnouncementNow flips a draft/scheduled announcement back to
+// 'scheduled' with the given scheduled_at, clearing any stale sent metadata,
+// so the worker's paced loop dispatches it on the next tick.
+func (r *Repository) ScheduleAnnouncementNow(ctx context.Context, id string, at time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE announcement
+		SET status = 'scheduled', scheduled_at = $1, sent_at = NULL, recipient_count = NULL, updated_at = now()
+		WHERE id = $2`,
+		at, id,
+	)
+	return err
+}
+
 func (r *Repository) ListActiveUserEmails(ctx context.Context, recipients string) ([]string, error) {
 	query := `SELECT email FROM users
 		WHERE status = 'active'

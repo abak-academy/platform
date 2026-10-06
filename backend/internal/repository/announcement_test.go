@@ -16,5 +16,6 @@ var _ interface {
 	DeleteAnnouncement(context.Context, string) error
 	ClaimDueAnnouncements(context.Context, time.Time, int) ([]model.Announcement, error)
 	MarkAnnouncementSent(context.Context, string, time.Time, int) error
+	ScheduleAnnouncementNow(context.Context, string, time.Time) error
 	ListActiveUserEmails(context.Context, string) ([]string, error)
 } = (*Repository)(nil)

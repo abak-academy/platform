@@ -96,6 +96,19 @@ func (f *handlerAnnounceFake) ClaimDueAnnouncements(_ context.Context, now time.
 	return nil, nil
 }
 
+func (f *handlerAnnounceFake) ScheduleAnnouncementNow(_ context.Context, id string, at time.Time) error {
+	a, ok := f.announcements[id]
+	if !ok {
+		return nil
+	}
+	a.Status = "scheduled"
+	a.ScheduledAt = &at
+	a.SentAt = nil
+	a.RecipientCount = nil
+	a.UpdatedAt = time.Now()
+	return nil
+}
+
 // seed adds an announcement to the fake with the given status, returning its ID.
 func (f *handlerAnnounceFake) seed(status string) string {
 	f.seq++

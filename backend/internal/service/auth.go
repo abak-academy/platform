@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 	"time"
@@ -45,37 +46,46 @@ type UserRepository interface {
 
 const minPasswordLen = 8
 
-func (s *Service) Register(ctx context.Context, email, password, name string) (pendingToken string, err error) {
+// OTPChallenge is the outcome of arming — or deliberately skipping — an OTP
+// dispatch for a pending account.
+type OTPChallenge struct {
+	PendingToken string
+	EmailFailed  bool // a send was attempted and failed
+	OTPActive    bool // a live code already existed — nothing was sent
+	ResendAfter  int  // seconds until the next send is allowed; 0 = now
+}
+
+func (s *Service) Register(ctx context.Context, email, password, name string) (OTPChallenge, error) {
 	email = normalizeEmail(email)
 	if email == "" {
-		return "", ErrInvalidCredentials
+		return OTPChallenge{}, ErrInvalidCredentials
 	}
 	if len(password) < minPasswordLen {
-		return "", ErrWeakPassword
+		return OTPChallenge{}, ErrWeakPassword
 	}
 	name = strings.TrimSpace(stripFormatRunes(name))
 	if name == "" {
-		return "", ErrInvalidCredentials
+		return OTPChallenge{}, ErrInvalidCredentials
 	}
 
 	existing, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return "", err
+		return OTPChallenge{}, err
 	}
 	if existing != nil {
 		if existing.Status == "pending_verification" {
-			return s.startRegistrationOTPChallenge(ctx, existing)
+			return s.startOTPChallenge(ctx, existing)
 		}
-		return "", ErrEmailTaken
+		return OTPChallenge{}, ErrEmailTaken
 	}
 
 	hash, err := hashPassword(password)
 	if err != nil {
-		return "", err
+		return OTPChallenge{}, err
 	}
 	username, err := s.generateUniqueUsername(ctx, name)
 	if err != nil {
-		return "", err
+		return OTPChallenge{}, err
 	}
 	user := &model.User{
 		Email:        &email,
@@ -87,9 +97,9 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (p
 		OTPEnabled:   true,
 	}
 	if err := s.repo.CreateUser(ctx, user); err != nil {
-		return "", err
+		return OTPChallenge{}, err
 	}
-	return s.startRegistrationOTPChallenge(ctx, user)
+	return s.startOTPChallenge(ctx, user)
 }
 
 func (s *Service) Login(ctx context.Context, identifier, password string) (accessToken, refreshToken, pendingToken string, err error) {
@@ -108,11 +118,15 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (acces
 		accessToken, refreshToken, err = s.mintSession(ctx, user)
 		return accessToken, refreshToken, "", err
 	case "pending_verification":
-		pendingToken, err = s.startOTPChallenge(ctx, user)
+		challenge, err := s.startOTPChallenge(ctx, user)
 		if err != nil {
 			return "", "", "", err
 		}
-		return "", "", pendingToken, ErrVerificationPending
+		return "", "", challenge.PendingToken, &VerificationPendingError{
+			EmailFailed: challenge.EmailFailed,
+			OTPActive:   challenge.OTPActive,
+			ResendAfter: challenge.ResendAfter,
+		}
 	default:
 		return "", "", "", ErrInvalidCredentials
 	}
@@ -133,24 +147,73 @@ func (s *Service) lookupByIdentifier(ctx context.Context, identifier string) (*m
 	return s.repo.GetUserByEmail(ctx, identifier)
 }
 
-func (s *Service) startOTPChallenge(ctx context.Context, user *model.User) (pendingToken string, err error) {
-	if err := s.dispatchOTP(ctx, user); err != nil {
-		return "", err
+// startOTPChallenge arms (or deliberately skips) an OTP dispatch. A live code
+// means the previous dispatch is still inside the user's mailbox window:
+// re-sending would burn relay quota and trip the ladder for nothing, so only
+// the pending token is re-armed and the user is told a code is already
+// waiting. The throttle gates sends — never verification.
+func (s *Service) startOTPChallenge(ctx context.Context, user *model.User) (OTPChallenge, error) {
+	if exists, err := s.rdb.Exists(ctx, "otp:"+user.ID).Result(); err == nil && exists > 0 {
+		pendingToken, err := s.storePendingToken(ctx, user.ID)
+		if err != nil {
+			return OTPChallenge{}, err
+		}
+		return OTPChallenge{
+			PendingToken: pendingToken,
+			OTPActive:    true,
+			ResendAfter:  s.resendAfter(ctx, user.ID),
+		}, nil
 	}
-	pendingToken = newToken(user.ID)
-	if err := s.rdb.Set(ctx, "pending:"+pendingToken, user.ID, s.cfg.OTPTTL).Err(); err != nil {
+
+	channel, destination := PreferredOTPChannel(deref(user.Phone), deref(user.Email))
+	if err := s.limitOTPSend(ctx, user.ID, channel); err != nil {
+		return OTPChallenge{}, err
+	}
+	pendingToken, err := s.storePendingToken(ctx, user.ID)
+	if err != nil {
+		return OTPChallenge{}, err
+	}
+	code, err := genOTP()
+	if err != nil {
+		return OTPChallenge{}, err
+	}
+	if err := s.rdb.Set(ctx, "otp:"+user.ID, code, s.cfg.OTPTTL).Err(); err != nil {
+		return OTPChallenge{}, err
+	}
+	// A fresh code means a fresh verification budget.
+	s.rdb.Del(ctx, otpVerifyKey(user.ID))
+	// A failed provider send is not fatal: the account stays pending and the
+	// caller reports email_failed so the client can offer the resend path.
+	if err := s.otpProvider.SendOTP(ctx, channel, destination, code); err != nil {
+		s.recordOTPSendFailure(ctx, user.ID, channel)
+		return OTPChallenge{PendingToken: pendingToken, EmailFailed: true, ResendAfter: s.resendAfter(ctx, user.ID)}, nil
+	}
+	s.rdb.Del(ctx, otpFailKey(user.ID, channel))
+	return OTPChallenge{PendingToken: pendingToken, ResendAfter: s.resendAfter(ctx, user.ID)}, nil
+}
+
+func (s *Service) storePendingToken(ctx context.Context, userID string) (string, error) {
+	pendingToken := newToken(userID)
+	if err := s.rdb.Set(ctx, "pending:"+pendingToken, userID, s.cfg.OTPTTL).Err(); err != nil {
 		return "", err
 	}
 	return pendingToken, nil
 }
 
-func (s *Service) startRegistrationOTPChallenge(ctx context.Context, user *model.User) (string, error) {
-	if err := s.limitOTPSend(ctx, user.ID); err != nil {
-		return "", err
+// resendAfter reports the remaining send cooldown in whole seconds; 0 when the
+// next send is free.
+func (s *Service) resendAfter(ctx context.Context, userID string) int {
+	ttl, err := s.rdb.TTL(ctx, otpCooldownKey(userID)).Result()
+	if err != nil || ttl <= 0 {
+		return 0
 	}
-	return s.startOTPChallenge(ctx, user)
+	return int(math.Ceil(ttl.Seconds()))
 }
 
+// dispatchOTP stores a fresh code and sends it, treating provider failure as
+// ErrEmailDeliveryFailed while counting the failure toward the channel's 12h
+// lockout. Used by the resend endpoint, which surfaces the failure; the
+// register/login paths swallow it inside startOTPChallenge instead.
 func (s *Service) dispatchOTP(ctx context.Context, user *model.User) error {
 	code, err := genOTP()
 	if err != nil {
@@ -159,8 +222,15 @@ func (s *Service) dispatchOTP(ctx context.Context, user *model.User) error {
 	if err := s.rdb.Set(ctx, "otp:"+user.ID, code, s.cfg.OTPTTL).Err(); err != nil {
 		return err
 	}
+	// A fresh code means a fresh verification budget.
+	s.rdb.Del(ctx, otpVerifyKey(user.ID))
 	channel, destination := PreferredOTPChannel(deref(user.Phone), deref(user.Email))
-	return s.otpProvider.SendOTP(ctx, channel, destination, code)
+	if err := s.otpProvider.SendOTP(ctx, channel, destination, code); err != nil {
+		s.recordOTPSendFailure(ctx, user.ID, channel)
+		return fmt.Errorf("%w: %s", ErrEmailDeliveryFailed, err)
+	}
+	s.rdb.Del(ctx, otpFailKey(user.ID, channel))
+	return nil
 }
 
 func (s *Service) ResolveUserFromPendingToken(ctx context.Context, pendingToken string) (string, error) {
@@ -183,9 +253,6 @@ func (s *Service) ResolveUserFromEmail(ctx context.Context, email string) (strin
 }
 
 func (s *Service) SendOTP(ctx context.Context, userID string) error {
-	if err := s.limitOTPSend(ctx, userID); err != nil {
-		return err
-	}
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return err
@@ -193,18 +260,77 @@ func (s *Service) SendOTP(ctx context.Context, userID string) error {
 	if user == nil {
 		return ErrUserNotFound
 	}
+	channel, _ := PreferredOTPChannel(deref(user.Phone), deref(user.Email))
+	if err := s.limitOTPSend(ctx, userID, channel); err != nil {
+		return err
+	}
 	return s.dispatchOTP(ctx, user)
 }
 
-func (s *Service) limitOTPSend(ctx context.Context, userID string) error {
-	rl := s.rdb.SetNX(ctx, "otpsend:"+userID, "1", 60*time.Second)
-	if err := rl.Err(); err != nil {
+// otpResendLadder arms the cooldown after the Nth send: 1 minute after the
+// first, then 5m, 15m, and 1h for every further send. otpLadderWindow is the
+// sliding window the send count lives in — after an hour without a send the
+// ladder resets. otpFailureWindow is both the failure-counter horizon and the
+// lockout duration once maxOTPFailures delivery failures accumulate. Keep the
+// "12 jam" in ErrOTPSendLocked (errors.go) in sync with it.
+var (
+	otpResendLadder  = [4]time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour}
+	otpLadderWindow  = time.Hour
+	otpFailureWindow = 12 * time.Hour
+	maxOTPFailures   = 3
+	// Wrong verification entries are budgeted per code: three strikes kill the
+	// code so an online guesser can't grind through the 6-digit space inside
+	// its TTL.
+	maxOTPVerifyAttempts = 3
+)
+
+func otpCooldownKey(userID string) string { return "otp:cooldown:" + userID }
+func otpCountKey(userID string) string    { return "otp:count:" + userID }
+func otpVerifyKey(userID string) string   { return "otp:verify:" + userID }
+
+// Lockout state is scoped per channel: repeated WhatsApp gateway failures
+// must not lock the email path (and vice versa) for the same user.
+func otpLockKey(userID, channel string) string { return "otp:lock:" + userID + ":" + channel }
+func otpFailKey(userID, channel string) string { return "otp:fail:" + userID + ":" + channel }
+
+// limitOTPSend gates every OTP dispatch behind the per-channel failure
+// lockout and the per-user resend ladder (the cooldown ladder is shared
+// across channels so one user cannot double-send by alternating channels).
+// It returns a typed error carrying the remaining wait so the handler can
+// set a precise Retry-After.
+func (s *Service) limitOTPSend(ctx context.Context, userID, channel string) error {
+	if ttl, err := s.rdb.TTL(ctx, otpLockKey(userID, channel)).Result(); err == nil && ttl > 0 {
+		return &OTPSendLockedError{RetryAfter: ttl}
+	}
+	if ttl, err := s.rdb.TTL(ctx, otpCooldownKey(userID)).Result(); err == nil && ttl > 0 {
+		return &OTPRateLimitError{RetryAfter: ttl}
+	}
+	count, err := s.rdb.Incr(ctx, otpCountKey(userID)).Result()
+	if err != nil {
 		return err
 	}
-	if !rl.Val() {
-		return ErrOTPRateLimit
+	s.rdb.Expire(ctx, otpCountKey(userID), otpLadderWindow)
+	idx := int(count) - 1
+	if idx >= len(otpResendLadder) {
+		idx = len(otpResendLadder) - 1
 	}
+	s.rdb.Set(ctx, otpCooldownKey(userID), "1", otpResendLadder[idx])
 	return nil
+}
+
+// recordOTPSendFailure bumps the channel's delivery-failure counter and
+// locks that channel for 24h once maxOTPFailures failures accumulate.
+func (s *Service) recordOTPSendFailure(ctx context.Context, userID, channel string) {
+	n, err := s.rdb.Incr(ctx, otpFailKey(userID, channel)).Result()
+	if err != nil {
+		return
+	}
+	if n == 1 {
+		s.rdb.Expire(ctx, otpFailKey(userID, channel), otpFailureWindow)
+	}
+	if int(n) >= maxOTPFailures {
+		s.rdb.Set(ctx, otpLockKey(userID, channel), "1", otpFailureWindow)
+	}
 }
 
 func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code string) (accessToken, refreshToken string, err error) {
@@ -224,6 +350,21 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code string) (acc
 		return "", "", err
 	}
 	if stored != code {
+		// Wrong entries are budgeted per code: three strikes kill the code so
+		// an online guesser can't grind through the 6-digit space inside its
+		// TTL. The next verify then reports the code as expired, and a fresh
+		// dispatch restores the budget.
+		n, err := s.rdb.Incr(ctx, otpVerifyKey(userID)).Result()
+		if err != nil {
+			return "", "", err
+		}
+		if n == 1 {
+			s.rdb.Expire(ctx, otpVerifyKey(userID), s.cfg.OTPTTL)
+		}
+		if int(n) >= maxOTPVerifyAttempts {
+			s.rdb.Del(ctx, "otp:"+userID)
+			return "", "", ErrOTPAttemptsExceeded
+		}
 		return "", "", ErrInvalidOTP
 	}
 
@@ -241,7 +382,7 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code string) (acc
 	if !activated {
 		return "", "", ErrInvalidPendingToken
 	}
-	s.rdb.Del(ctx, "otp:"+userID, "pending:"+pendingToken)
+	s.rdb.Del(ctx, "otp:"+userID, "pending:"+pendingToken, otpVerifyKey(userID))
 	return s.mintSession(ctx, user)
 }
 
@@ -314,7 +455,10 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 		return err
 	}
 	body := fmt.Sprintf("Your password reset code is %s. Token: %s", code, token)
-	return s.emailProvider.SendEmail(ctx, deref(user.Email), "Password reset", body)
+	if err := s.emailProvider.SendEmail(ctx, deref(user.Email), "Password reset", body); err != nil {
+		return fmt.Errorf("%w: %s", ErrEmailDeliveryFailed, err)
+	}
+	return nil
 }
 
 func (s *Service) ResetPassword(ctx context.Context, token, otp, newPassword string) error {
