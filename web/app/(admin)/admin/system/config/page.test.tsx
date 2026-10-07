@@ -9,8 +9,6 @@ const translationMap: Record<string, string> = {
   config_shipping_origin: "Asal Pengiriman",
   config_general_kode_pos_placeholder: "Masukkan kode pos",
   config_shipping_settings: "Pengaturan Pengiriman",
-  config_shipping_fallback_rate: "Tarif Fallback Pengiriman",
-  config_shipping_rate_placeholder: "Masukkan tarif dalam rupiah",
   config_shipping_biteship_key: "API Key Biteship",
   config_shipping_key_placeholder: "Isi API key Biteship",
   config_shipping_webhook_secret: "Webhook Secret Biteship",
@@ -314,7 +312,7 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
     }
     await userEvent.setup().click(within(panel).getByRole("switch", { name: "Lion Parcel Reg Pack" }));
     expect(within(panel).getByRole("img", { name: "Lion Parcel" }).className).not.toMatch(/grayscale|opacity-/);
-    expect(within(panel).getByRole("spinbutton")).toHaveValue(50000);
+    expect(within(panel).queryByRole("spinbutton")).toBeNull();
     expect(within(panel).getByText("API Key Biteship")).toBeInTheDocument();
   });
 
@@ -333,13 +331,19 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
     expect(within(panel).getByRole("button", { name: "Simpan" })).toBeDisabled();
   });
 
+  it("has no flat-rate field even when config contains a stale row", async () => {
+    const panel = await openCouriers();
+    expect(within(panel).queryByText("Tarif Fallback Pengiriman")).toBeNull();
+    expect(within(panel).queryByRole("spinbutton")).toBeNull();
+  });
+
   it("courier Save sends only shipping keys, masked secrets and services in catalog order", async () => {
     const panel = await openCouriers();
     await userEvent.setup().click(within(panel).getByRole("switch", { name: "Lion Parcel Reg Pack" }));
     await userEvent.setup().click(within(panel).getByRole("switch", { name: "JNE OKE" }));
     await userEvent.setup().click(within(panel).getByRole("button", { name: "Simpan" }));
     await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith({
-      shipping_fallback_flat_rate: "50000", biteship_api_key: "***", biteship_webhook_secret: "***",
+      biteship_api_key: "***", biteship_webhook_secret: "***",
       biteship_services: "jne:reg,jne:yes,lion:reg_pack",
     }));
   });

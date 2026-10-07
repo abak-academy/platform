@@ -297,9 +297,14 @@ var (
 
 // --- from shipping_rates.go ---
 var (
-	// ErrShippingUnavailable means no carrier quote could be obtained and no
-	// flat-rate fallback is configured.
+	// ErrShippingUnavailable means shipping is not configured or authorized.
 	ErrShippingUnavailable = errors.New("shipping is unavailable")
+
+	// ErrShippingRouteUnserved means no enabled carrier serves the destination.
+	ErrShippingRouteUnserved = errors.New("shipping route is unserved")
+
+	// ErrShippingTemporarilyUnavailable means the carrier quote request failed.
+	ErrShippingTemporarilyUnavailable = errors.New("shipping is temporarily unavailable")
 )
 
 // --- from biteship.go ---

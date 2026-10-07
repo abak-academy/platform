@@ -7,6 +7,7 @@ import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, use
 import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
 import { useCitiesByProvince, useDistrictsByCity, useProvinces } from "@/lib/hooks/regions";
 import { useTranslation } from "@/lib/i18n";
+import { ApiError } from "@/lib/api";
 import { formatRupiah } from "@/lib/format";
 import type { OrderItem } from "@/lib/types";
 import { CartLineItem } from "@/components/cart/CartLineItem";
@@ -431,7 +432,11 @@ export default function CartPage() {
 
             {hasPhysical && shippingRates.isError && (
               <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
-                {t("cart_shipping_unavailable" as any)}
+                {t(shippingRates.error instanceof ApiError && shippingRates.error.code === "shipping_route_unserved"
+                  ? "cart_shipping_route_unserved"
+                  : shippingRates.error instanceof ApiError && shippingRates.error.code === "shipping_temporarily_unavailable"
+                    ? "cart_shipping_temporarily_unavailable"
+                    : "cart_shipping_unavailable")}
               </div>
             )}
 

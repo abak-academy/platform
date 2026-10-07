@@ -7,9 +7,9 @@ import "fmt"
 // It is stored and carried as text — leading zeros are significant, so it can
 // never become a number — but every character still has to be a digit. Letters
 // and punctuation reach the courier API as a destination it cannot resolve, and
-// an unresolvable destination is not reported: the quote silently degrades to
-// the flat rate (see the Biteship adapter), so a typo becomes a wrong shipping
-// price rather than an error.
+// an unresolvable destination is not reported: the quote comes back empty and
+// reads as an unserved route, so a typo looks like a coverage gap rather than
+// a validation error.
 //
 // This checks the characters, not whether there are any. An empty string passes,
 // because empty means "not provided" and only two callers can even reach it with

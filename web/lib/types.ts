@@ -245,7 +245,6 @@ export interface CourierRate {
   service: string;
   estimated_days: number;
   price: number;
-  is_estimate?: boolean;
 }
 
 export interface OrderShipmentEvent {

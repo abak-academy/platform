@@ -126,11 +126,6 @@ func TestNew(t *testing.T) {
 // while GetShippingRates read it from another goroutine.
 func TestReloadLogisticsClient_ConcurrentWithGetShippingRates(t *testing.T) {
 	_, repo := newRealDBService(t)
-	// The noop client now errors (see shipping_rates.go), so GetShippingRates
-	// always falls through to the configured flat rate — needs a real repo.
-	if err := repo.UpsertSystemConfig(context.Background(), "shipping_fallback_flat_rate", "12000", false); err != nil {
-		t.Fatalf("seed shipping_fallback_flat_rate: %v", err)
-	}
 
 	svc := &Service{storeRepo: repo}
 	var initial LogisticsClient = &NoopLogisticsClient{}
@@ -149,8 +144,9 @@ func TestReloadLogisticsClient_ConcurrentWithGetShippingRates(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			if _, err := svc.GetShippingRates(ctx, ShippingQuoteRequest{DestinationPostalCode: "12345", WeightGrams: 500}); err != nil {
-				t.Errorf("GetShippingRates: %v", err)
+			rates, err := svc.GetShippingRates(ctx, ShippingQuoteRequest{DestinationPostalCode: "12345", WeightGrams: 500})
+			if !errors.Is(err, ErrShippingUnavailable) || len(rates) != 0 {
+				t.Errorf("GetShippingRates: rates=%+v err=%v, want unavailable", rates, err)
 			}
 		}()
 	}

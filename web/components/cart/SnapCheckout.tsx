@@ -52,6 +52,10 @@ export function SnapCheckout({ orderId, basePath = "/orders", disabled }: SnapCh
           toast.error(conflictMsg);
           return;
         }
+        if (err instanceof ApiError && err.code === "shipping_required") {
+          toast.error(t("shipping_required"));
+          return;
+        }
         if (err instanceof ApiError && err.code === "biodata_incomplete") {
           toast.error(err.message);
           router.push("/profile");

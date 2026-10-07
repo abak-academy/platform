@@ -504,3 +504,56 @@ func TestCheckout_PhysicalItemWithCourierAndPricedQuote_Succeeds(t *testing.T) {
 		t.Error("want a gateway ref (payment proceeded)")
 	}
 }
+
+func TestCheckout_EstimateRequiresRealRate(t *testing.T) {
+	svc, repo := newCheckoutTestService(t)
+	ctx := context.Background()
+	var client LogisticsClient = &courierQuoteClient{rates: courierTestRates()}
+	svc.logistics.Store(&client)
+	studentID := insertCheckoutStudent(t, repo, "Estimate Cart Student", "estimate_"+uniqueSuffix())
+	var productID string
+	if err := repo.Pool().QueryRow(ctx, `INSERT INTO product (type, name, price, stock, status, weight_grams) VALUES ('book', $1, 50000, 10, 'published', 500) RETURNING id`, "Estimate Book "+uniqueSuffix()).Scan(&productID); err != nil {
+		t.Fatal(err)
+	}
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET selected_courier = 'Ongkir Flat', selected_service = 'Standar', shipping_cost = 15000, total = subtotal + 15000, is_estimate = true WHERE id = $1`, order.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "estimate-reject-"+uniqueSuffix()); !errors.Is(err, ErrShippingRequired) {
+		t.Fatalf("want shipping required, got %v", err)
+	}
+	rejected, err := repo.GetOrderByID(ctx, order.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rejected.Status != "cart" || !rejected.IsEstimate {
+		t.Fatalf("stale cart was rewritten: %+v", rejected)
+	}
+	province, city, district, postal := "93", "9301", "930101", "12345"
+	if err := svc.PatchCart(ctx, studentID, order.ID.String(), CartPatch{Courier: "JNE", Service: "REG", ProvinceID: &province, CityID: &city, DistrictID: &district, KodePos: &postal}); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := repo.GetOrderByID(ctx, order.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.IsEstimate || selected.ShippingCost != 10000 {
+		t.Fatalf("want real quote: %+v", selected)
+	}
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "estimate-accept-"+uniqueSuffix()); err != nil {
+		t.Fatalf("checkout after real quote: %v", err)
+	}
+	paid, err := repo.GetOrderByID(ctx, order.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paid.Status != "payment_pending" {
+		t.Fatalf("status=%s want payment_pending", paid.Status)
+	}
+}

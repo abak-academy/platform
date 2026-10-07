@@ -61,7 +61,7 @@ func seedPhysicalCartWithCourierQuote(t *testing.T, svc *Service, repo *reposito
 func newDestinationChangeTestService(t *testing.T) (*Service, *repository.Repository) {
 	t.Helper()
 	_, repo := newRealDBService(t)
-	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000, CourierCode: "jne", ServiceCode: "reg", IsEstimate: true}}
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000, CourierCode: "jne", ServiceCode: "reg"}}
 	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, spy, nil, nil, nil)
 	return svc, repo
 }
@@ -75,6 +75,9 @@ func TestPatchCart_KodePosChangeVoidsQuote(t *testing.T) {
 	studentID := insertCheckoutStudent(t, repo, "Kodepos Change Student", "kpchg_")
 
 	orderID := seedPhysicalCartWithCourierQuote(t, svc, repo, studentID, "93", "9301", "930101", "12345")
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET is_estimate = true WHERE id = $1`, orderID); err != nil {
+		t.Fatal(err)
+	}
 
 	newKodePos := "54321"
 	if err := svc.PatchCart(ctx, studentID, orderID.String(), CartPatch{
@@ -119,6 +122,9 @@ func TestPatchCart_ProvinceCityDistrictChangeVoidsQuote(t *testing.T) {
 	studentID := insertCheckoutStudent(t, repo, "Province Change Student", "provchg_")
 
 	orderID := seedPhysicalCartWithCourierQuote(t, svc, repo, studentID, "93", "9301", "930101", "12345")
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET is_estimate = true WHERE id = $1`, orderID); err != nil {
+		t.Fatal(err)
+	}
 
 	newProvince, newCity, newDistrict := "94", "9401", "940101"
 	if err := svc.PatchCart(ctx, studentID, orderID.String(), CartPatch{
@@ -166,6 +172,9 @@ func TestPatchCart_IdenticalDestinationPatchPreservesQuote(t *testing.T) {
 
 	provinceID, cityID, districtID, kodePos := "93", "9301", "930101", "12345"
 	orderID := seedPhysicalCartWithCourierQuote(t, svc, repo, studentID, provinceID, cityID, districtID, kodePos)
+	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET is_estimate = true WHERE id = $1`, orderID); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := svc.PatchCart(ctx, studentID, orderID.String(), CartPatch{
 		ProvinceID: &provinceID,

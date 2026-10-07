@@ -249,7 +249,7 @@ func mapServiceError(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrInvalidGrantStudent):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_grant_student", Message: err.Error()}
 	case errors.Is(err, service.ErrShippingRequired):
-		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+		status, apiErr = http.StatusBadRequest, APIError{Code: "shipping_required", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidCourierSelection):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_courier_selection", Message: err.Error()}
 	case errors.Is(err, service.ErrBiodataIncomplete):
@@ -258,6 +258,10 @@ func mapServiceError(c echo.Context, err error) error {
 		if errors.As(err, &bioErr) {
 			apiErr.Details = map[string]any{"missing_fields": bioErr.Missing}
 		}
+	case errors.Is(err, service.ErrShippingRouteUnserved):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "shipping_route_unserved", Message: "no carrier serves this shipping destination"}
+	case errors.Is(err, service.ErrShippingTemporarilyUnavailable):
+		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_temporarily_unavailable", Message: "shipping quotes are temporarily unavailable"}
 	case errors.Is(err, service.ErrShippingUnavailable):
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_unavailable", Message: "shipping is not available right now"}
 	case errors.Is(err, service.ErrProductRelationsLocked):
