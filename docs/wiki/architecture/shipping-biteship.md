@@ -9,10 +9,10 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 
 ## Adapter boundary
 
-- Port: `service.LogisticsClient` (`backend/internal/service/ports_logistics.go:102`) —
+- Port: `service.LogisticsClient` (`backend/internal/service/ports_logistics.go:104`) —
   `GetRates`, `CreateOrder`, `GetOrder`, `CancelOrder`, `TrackWaybill`.
 - Real implementation: `adapter.BiteshipClient` (`backend/internal/adapter/biteship.go:26`).
-- Stub: `service.NoopLogisticsClient` (`ports_logistics.go:116`) — every method returns
+- Stub: `service.NoopLogisticsClient` (`ports_logistics.go:118`) — every method returns
   `ErrShippingUnavailable`; never fabricates a rate or booking.
 - Resolution: `adapter.ResolveShippingClient` (`backend/internal/adapter/shipping_config.go:16`) —
   DB `system_config.biteship_api_key` (encrypted) wins, `cfg.BiteshipAPIKey` (env/secrets.yaml) is
@@ -76,23 +76,23 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 
 ## Order shipment creation
 
-- `POST /admin/orders/:id/ship` → `Service.AdminShipOrder` (`shipping_order.go:113`).
+- `POST /admin/orders/:id/ship` → `Service.AdminShipOrder` (`shipping_order.go:114`).
 - Gates: `shippable(order)` — `status` `paid`/`processing`, or `shipped` **and**
   `isShipmentFailureStatus(shipment_status)` (dead booking gets a re-ship path;
-  `shipping_order.go:47-52`); non-empty courier/service code; complete address
-  (`parseShipmentDestination`, `shipping_order.go:23`); complete sender config
+  `shipping_order.go:48-53`); non-empty courier/service code; complete address
+  (`parseShipmentDestination`, `shipping_order.go:24`); complete sender config
   (`app_name`/`app_contact_phone`/`app_address`/`app_kode_pos`).
-- `bookingReference` (`shipping_order.go:62`): attempt 1 uses the bare order UUID as
-  `reference_id`; a re-book gets a numeric suffix (`nextBookingAttempt`, line 77) — first attempt
+- `bookingReference` (`shipping_order.go:63`): attempt 1 uses the bare order UUID as
+  `reference_id`; a re-book gets a numeric suffix (`nextBookingAttempt`, line 78) — first attempt
   stays idempotent against Biteship's own dedup, re-books get distinct references.
 - Duplicate-booking response (Biteship error `40002060`) is caught (`ShipmentAlreadyBookedError`)
   and **adopts** the existing Biteship order id via `GetOrder` rather than booking twice
-  (`shipping_order.go:184-203`). If the echoed id is empty, refuses rather than calling
+  (`shipping_order.go:192-211`). If the echoed id is empty, refuses rather than calling
   `GetOrder("")` — flagged `TODO: uncertain` in-code (`biteship.go:326-333`,
-  `shipping_order.go:190-198`): the echoed field name and the tracking-endpoint response shape are
+  `shipping_order.go:198-206`): the echoed field name and the tracking-endpoint response shape are
   unverified against a real Biteship response.
 - Manual escape hatch: `POST /admin/orders/:id/ship-manual` → `AdminShipOrderManual`
-  (`shipping_order.go:212`) — admin-entered tracking number, no Biteship call,
+  (`shipping_order.go:220`) — admin-entered tracking number, no Biteship call,
   `waybill_source='manual'`.
 
 ## Cancel
@@ -158,7 +158,9 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 
 Origin address for booking comes from the `app` group, not `shipping`: `app_kode_pos` (rate-quote
 origin), `app_name`/`app_contact_phone`/`app_address`/`app_kode_pos` (booking sender fields) —
-`backend/internal/service/system_config.go:28-49`.
+`backend/internal/service/system_config.go:30-53`.
+Optional `app_latitude` and `app_longitude` provide the sender coordinate; `origin_coordinate`
+is sent for every courier only when both are set.
 
 ## Admin UI touchpoints (`web/`)
 
