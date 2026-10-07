@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"akademi-bimbel/internal/model"
 )
@@ -178,6 +179,13 @@ func (s *Service) AdminShipOrder(ctx context.Context, orderID, deliveryDate, del
 		DeliveryTime: deliveryTime,
 
 		Items: shipmentItemsFromOrder(order.Items),
+	}
+
+	latitude, latitudeErr := strconv.ParseFloat(cfg["app_latitude"], 64)
+	longitude, longitudeErr := strconv.ParseFloat(cfg["app_longitude"], 64)
+	if latitudeErr == nil && longitudeErr == nil {
+		req.OriginLatitude = &latitude
+		req.OriginLongitude = &longitude
 	}
 
 	logistics := s.logisticsClient()
