@@ -167,9 +167,8 @@ is sent for every courier only when both are set.
 - `components/admin/OrderDetailModal.tsx` — ship button (opens `ShipOrderModal`), track/refresh/cancel
   buttons (shown only when `order.tracking_number` is set), print-label link, shipment status badge
   with a failure flag (`isShipmentFailure`), `ShipmentTimeline` render.
-- `components/admin/ShipOrderModal.tsx` — auto-book vs. manual-mode toggle; optional
-  `deliveryDate`/`deliveryTime` schedule fields. `components/admin/CancelShipmentModal.tsx` —
-  free-text reason, required.
+- `components/admin/ShipOrderModal.tsx` — auto-book vs. manual-mode toggle.
+  `components/admin/CancelShipmentModal.tsx` — free-text reason, required.
 - `components/admin/TrackingModal.tsx` / `components/orders/ShipmentTimeline.tsx` — render the
   `TrackingView`/`order_shipment_events` history.
 - `lib/shipment-status.ts` — full Biteship status enum, `SHIPMENT_FAILURE_STATUSES` (deliberately
