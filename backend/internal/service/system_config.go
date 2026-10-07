@@ -9,7 +9,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 
 	"akademi-bimbel/internal/repository"
@@ -35,6 +37,8 @@ var configKeyCatalog = map[string]configKeyDef{
 	"app_city_id":                    {group: "app", valueType: "string"},
 	"app_district_id":                {group: "app", valueType: "string"},
 	"app_kode_pos":                   {group: "app", valueType: "string"},
+	"app_latitude":                   {group: "app", valueType: "string"},
+	"app_longitude":                  {group: "app", valueType: "string"},
 	"exam_platform":                  {group: "app", valueType: "string"},
 	"app_help_url":                   {group: "app", valueType: "string"},
 	"app_social_handle":              {group: "app", valueType: "string"},
@@ -152,6 +156,17 @@ func validateConfigKeys(values map[string]string) error {
 			}
 		}
 
+		if (key == "app_latitude" || key == "app_longitude") && val != "" {
+			limit := 90.0
+			if key == "app_longitude" {
+				limit = 180
+			}
+			coordinate, err := strconv.ParseFloat(val, 64)
+			if err != nil || math.IsNaN(coordinate) || coordinate < -limit || coordinate > limit {
+				return fmt.Errorf("%w: %q must be a number within [%g, %g]", ErrUnknownConfigKey, key, -limit, limit)
+			}
+		}
+
 		switch def.valueType {
 		case "bool":
 			if val != "true" && val != "false" {
@@ -169,6 +184,11 @@ func validateConfigKeys(values map[string]string) error {
 				return fmt.Errorf("%w: %q invalid value %q for enum", ErrUnknownConfigKey, key, val)
 			}
 		}
+	}
+	latitude, hasLatitude := values["app_latitude"]
+	longitude, hasLongitude := values["app_longitude"]
+	if hasLatitude && hasLongitude && (latitude == "") != (longitude == "") {
+		return fmt.Errorf("%w: app_latitude and app_longitude must be both empty or both set", ErrUnknownConfigKey)
 	}
 	return nil
 }

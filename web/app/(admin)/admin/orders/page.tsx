@@ -573,7 +573,7 @@ export default function OrdersPage() {
             setShipError(null);
           }}
           orderNumber={orderNumber(shippingOrder)}
-          onBook={(schedule) => handleShipBook(shippingOrder.id, schedule)}
+          onBook={() => handleShipBook(shippingOrder.id)}
           onSubmitManual={(trackingNumber) => handleShipManual(shippingOrder.id, trackingNumber)}
           isPending={ship.isPending || shipManual.isPending}
           error={shipError}

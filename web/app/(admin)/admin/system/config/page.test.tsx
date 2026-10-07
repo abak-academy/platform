@@ -8,6 +8,9 @@ import ConfigPage from "./page";
 const translationMap: Record<string, string> = {
   config_shipping_origin: "Asal Pengiriman",
   config_general_kode_pos_placeholder: "Masukkan kode pos",
+  config_shipping_latitude: "Lintang pengirim",
+  config_shipping_longitude: "Bujur pengirim",
+  config_shipping_coordinate_hint: "Titik jemput pengirim untuk booking Biteship; wajib untuk Lion Parcel. Urutan: lintang, lalu bujur. Isi keduanya atau kosongkan keduanya.",
   config_shipping_settings: "Pengaturan Pengiriman",
   config_shipping_biteship_key: "API Key Biteship",
   config_shipping_key_placeholder: "Isi API key Biteship",
@@ -90,6 +93,8 @@ let configState = {
     app_city_id: "c1",
     app_district_id: "d1",
     app_kode_pos: "12130",
+    app_latitude: "-6.2088",
+    app_longitude: "106.8456",
     midtrans_server_key: "***",
     midtrans_client_key: "***",
     midtrans_env: "sandbox",
@@ -171,6 +176,8 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
         app_city_id: "c1",
         app_district_id: "d1",
         app_kode_pos: "12130",
+        app_latitude: "-6.2088",
+        app_longitude: "106.8456",
         midtrans_server_key: "***",
         midtrans_client_key: "***",
         midtrans_env: "sandbox",
@@ -192,6 +199,39 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
     mockMutateAsync.mockClear();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  it("loads sender coordinates and sends both only in the Couriers save payload", async () => {
+    mockMutateAsync.mockResolvedValue({ success: true });
+    renderPage();
+
+    const generalPanel = screen.getByRole("tabpanel");
+    expect(within(generalPanel).queryByRole("textbox", { name: "Lintang pengirim" })).not.toBeInTheDocument();
+    expect(within(generalPanel).queryByRole("textbox", { name: "Bujur pengirim" })).not.toBeInTheDocument();
+    fireEvent.click(within(generalPanel).getByRole("button", { name: "Simpan" }));
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1));
+    expect(mockMutateAsync.mock.calls[0][0]).not.toHaveProperty("app_latitude");
+    expect(mockMutateAsync.mock.calls[0][0]).not.toHaveProperty("app_longitude");
+
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Integrasi Kurir" }));
+    const courierPanel = screen.getByRole("tabpanel");
+    const latitude = within(courierPanel).getByRole("textbox", { name: "Lintang pengirim" });
+    const longitude = within(courierPanel).getByRole("textbox", { name: "Bujur pengirim" });
+    expect(within(courierPanel).getByText(translationMap.config_shipping_coordinate_hint)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(latitude).toHaveValue("-6.2088");
+      expect(longitude).toHaveValue("106.8456");
+    });
+    fireEvent.change(latitude, { target: { value: "-6.3" } });
+    fireEvent.change(longitude, { target: { value: "106.9" } });
+    fireEvent.click(within(courierPanel).getByRole("button", { name: "Simpan" }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        app_latitude: "-6.3",
+        app_longitude: "106.9",
+      }));
+    });
   });
 
   it("shows the address block with its shipping-origin hint in General tab", async () => {
@@ -344,6 +384,7 @@ describe("SystemConfigPage — Shipping Origin & Settings", () => {
     await userEvent.setup().click(within(panel).getByRole("button", { name: "Simpan" }));
     await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith({
       biteship_api_key: "***", biteship_webhook_secret: "***",
+      app_latitude: "-6.2088", app_longitude: "106.8456",
       biteship_services: "jne:reg,jne:yes,lion:reg_pack",
     }));
   });

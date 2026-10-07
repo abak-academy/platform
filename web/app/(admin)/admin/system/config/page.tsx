@@ -101,6 +101,8 @@ const INITIAL_PAYMENT = {
 const INITIAL_SHIPPING = {
   biteship_api_key: "",
   biteship_webhook_secret: "",
+  app_latitude: "",
+  app_longitude: "",
 };
 
 const COURIERS = [
@@ -179,6 +181,8 @@ export default function SystemConfigPage() {
       setShippingFields({
         biteship_api_key: config.biteship_api_key ?? "",
         biteship_webhook_secret: config.biteship_webhook_secret ?? "",
+        app_latitude: config.app_latitude ?? "",
+        app_longitude: config.app_longitude ?? "",
       });
     }
   }, [config]);
@@ -662,6 +666,37 @@ export default function SystemConfigPage() {
                       </div>
                     )}
                   </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <Label htmlFor="app_latitude">{t("config_shipping_latitude")}</Label>
+                      <Input
+                        id="app_latitude"
+                        value={shippingFields.app_latitude}
+                        onChange={(e) =>
+                          setShippingFields((f) => ({
+                            ...f,
+                            app_latitude: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="app_longitude">{t("config_shipping_longitude")}</Label>
+                      <Input
+                        id="app_longitude"
+                        value={shippingFields.app_longitude}
+                        onChange={(e) =>
+                          setShippingFields((f) => ({
+                            ...f,
+                            app_longitude: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-ink-500">
+                    {t("config_shipping_coordinate_hint")}
+                  </p>
                 </div>
               </div>
 

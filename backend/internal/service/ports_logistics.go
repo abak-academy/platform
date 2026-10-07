@@ -45,6 +45,8 @@ type CreateShipmentRequest struct {
 	OriginContactPhone string
 	OriginAddress      string
 	OriginPostalCode   string
+	OriginLatitude     *float64
+	OriginLongitude    *float64
 
 	DestinationContactName  string
 	DestinationContactPhone string

@@ -925,3 +925,41 @@ func TestValidateConfigKeys_RejectsFlatRate(t *testing.T) {
 		t.Fatalf("want unknown key, got %v", err)
 	}
 }
+
+func TestValidateConfigKeys_OriginCoordinate(t *testing.T) {
+	tests := []struct {
+		name    string
+		values  map[string]string
+		wantErr bool
+	}{
+		{"valid", map[string]string{"app_latitude": "-6.2088", "app_longitude": "106.8456"}, false},
+		{"empty", map[string]string{"app_latitude": "", "app_longitude": ""}, false},
+		{"latitude only submitted", map[string]string{"app_latitude": "-6.2088"}, false},
+		{"longitude only submitted", map[string]string{"app_longitude": "106.8456"}, false},
+		{"lower boundaries", map[string]string{"app_latitude": "-90", "app_longitude": "-180"}, false},
+		{"upper boundaries", map[string]string{"app_latitude": "90", "app_longitude": "180"}, false},
+		{"zero", map[string]string{"app_latitude": "0", "app_longitude": "0"}, false},
+		{"latitude not a number", map[string]string{"app_latitude": "bad", "app_longitude": "106.8456"}, true},
+		{"longitude not a number", map[string]string{"app_latitude": "-6.2088", "app_longitude": "bad"}, true},
+		{"latitude below range", map[string]string{"app_latitude": "-90.1", "app_longitude": "106.8456"}, true},
+		{"latitude above range", map[string]string{"app_latitude": "90.1", "app_longitude": "106.8456"}, true},
+		{"longitude below range", map[string]string{"app_latitude": "-6.2088", "app_longitude": "-180.1"}, true},
+		{"longitude above range", map[string]string{"app_latitude": "-6.2088", "app_longitude": "180.1"}, true},
+		{"latitude unset", map[string]string{"app_latitude": "", "app_longitude": "106.8456"}, true},
+		{"longitude unset", map[string]string{"app_latitude": "-6.2088", "app_longitude": ""}, true},
+		{"nan", map[string]string{"app_latitude": "NaN", "app_longitude": "106.8456"}, true},
+		{"infinity", map[string]string{"app_latitude": "-6.2088", "app_longitude": "+Inf"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConfigKeys(tt.values)
+			if tt.wantErr {
+				if !errors.Is(err, ErrUnknownConfigKey) {
+					t.Fatalf("validateConfigKeys() = %v, want ErrUnknownConfigKey", err)
+				}
+			} else if err != nil {
+				t.Fatalf("validateConfigKeys() = %v, want nil", err)
+			}
+		})
+	}
+}

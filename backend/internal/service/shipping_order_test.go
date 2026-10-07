@@ -352,3 +352,48 @@ func TestAdminShipOrder_DisabledCourierStillBooksStoredCodes(t *testing.T) {
 		t.Fatalf("order=%+v error=%v", order, err)
 	}
 }
+
+func TestAdminShipOrder_OriginCoordinate(t *testing.T) {
+	tests := []struct {
+		name, latitude, longitude string
+		wantCoordinate            bool
+	}{
+		{"configured", "-6.2088", "106.8456", true},
+		{"unset", "", "", false},
+		{"latitude only", "-6.2088", "", false},
+		{"invalid longitude", "-6.2088", "bad", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := &fakeShipLogistics{createOrderFn: func(context.Context, CreateShipmentRequest) (Shipment, error) {
+				return Shipment{BiteshipOrderID: "biteship-coordinate", WaybillID: "WB-COORD", Status: "confirmed"}, nil
+			}}
+			svc, repo := newShipOrderTestService(t, fake)
+			ctx := context.Background()
+			t.Cleanup(func() {
+				for _, key := range []string{"app_latitude", "app_longitude"} {
+					if err := repo.UpsertSystemConfig(ctx, key, "", false); err != nil {
+						t.Errorf("clear %s: %v", key, err)
+					}
+				}
+			})
+			for key, value := range map[string]string{"app_latitude": tt.latitude, "app_longitude": tt.longitude} {
+				if err := repo.UpsertSystemConfig(ctx, key, value, false); err != nil {
+					t.Fatalf("seed %s: %v", key, err)
+				}
+			}
+			orderID := createShippableOrder(t, svc, repo, "paid", true)
+			if err := svc.AdminShipOrder(ctx, orderID.String(), "", ""); err != nil {
+				t.Fatalf("AdminShipOrder: %v", err)
+			}
+			req := fake.lastCreateReq
+			if tt.wantCoordinate {
+				if req.OriginLatitude == nil || req.OriginLongitude == nil || *req.OriginLatitude != -6.2088 || *req.OriginLongitude != 106.8456 {
+					t.Fatalf("sender coordinate = %v, %v, want -6.2088, 106.8456", req.OriginLatitude, req.OriginLongitude)
+				}
+			} else if req.OriginLatitude != nil || req.OriginLongitude != nil {
+				t.Fatalf("sender coordinate = %v, %v, want nil, nil", req.OriginLatitude, req.OriginLongitude)
+			}
+		})
+	}
+}
