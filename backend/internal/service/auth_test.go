@@ -1522,7 +1522,7 @@ func TestOTPQuotaPerIP(t *testing.T) {
 	}
 	// Clear the ladder cooldown the last success armed, then try a different
 	// source IP — it is unaffected.
-	mr.FastForward(2 * time.Minute + time.Second)
+	mr.FastForward(2*time.Minute + time.Second)
 	if err := svc.SendOTP(ctx, "u1", "7.7.7.7"); err != nil {
 		t.Errorf("send from a fresh IP: want nil, got %v", err)
 	}
