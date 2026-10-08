@@ -633,11 +633,11 @@ func TestLoginAndMe_PasswordTemporary(t *testing.T) {
 	env := newTestEnv(t)
 	email := "flagged@example.com"
 	env.repo.seed(&model.User{
-		ID:                 "u-flag",
-		Email:              &email,
-		PasswordHash:       mustHash("tempPass123"),
-		Role:               service.RoleStudent,
-		Status:             "active",
+		ID:                "u-flag",
+		Email:             &email,
+		PasswordHash:      mustHash("tempPass123"),
+		Role:              service.RoleStudent,
+		Status:            "active",
 		PasswordTemporary: true,
 	})
 
@@ -960,5 +960,45 @@ func TestStudentsPhoto_RoleGate(t *testing.T) {
 	}, adminToken)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("want 403 for admin, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestSendOTPHandler_UsesRealIPForQuota: the client IP reached the service —
+// two sends from one address exhaust a 1-per-hour IP quota and the second
+// HTTP send answers 429 with a Retry-After.
+func TestSendOTPHandler_UsesRealIPForQuota(t *testing.T) {
+	env := newTestEnv(t)
+	env.svc.SetOTPConfigForTest(1)
+	env.repo.seed(&model.User{
+		ID:         "u-target",
+		Email:      strptr("target@example.com"),
+		Role:       service.RoleStudent,
+		Status:     "active",
+		OTPEnabled: true,
+	})
+
+	post := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/otp/send", bytes.NewReader([]byte(`{"email":"target@example.com"}`)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Real-IP", "198.51.100.7")
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := post(); rec.Code != http.StatusOK {
+		t.Fatalf("send 1: want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	// Step past the ladder cooldown the first send armed, so only the IP
+	// quota is left to stop the second send.
+	env.mr.FastForward(2 * time.Minute)
+	rec := post()
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("send 2 (same IP): want 429, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("want a Retry-After header on the 429")
+	}
+	if err := env.svc.SendOTP(context.Background(), "u-target", "203.0.113.9"); err != nil {
+		t.Errorf("send from a different IP via the service: want nil, got %v", err)
 	}
 }

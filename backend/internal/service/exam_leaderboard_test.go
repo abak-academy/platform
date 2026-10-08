@@ -649,11 +649,11 @@ func TestGetExamAnalytics_BucketBoundaries(t *testing.T) {
 		label string
 		want  int
 	}{
-		{0, "0-20", 1},    // score 0
-		{1, "21-40", 1},   // score 40
-		{2, "41-60", 1},   // score 60
-		{3, "61-80", 1},   // score 80
-		{4, "81-100", 1},  // score 100
+		{0, "0-20", 1},   // score 0
+		{1, "21-40", 1},  // score 40
+		{2, "41-60", 1},  // score 60
+		{3, "61-80", 1},  // score 80
+		{4, "81-100", 1}, // score 100
 	}
 	for _, c := range checks {
 		if analytics.Distribution[c.idx].Count != c.want {

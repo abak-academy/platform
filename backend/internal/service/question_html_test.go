@@ -46,7 +46,6 @@ func TestValidateQuestion_accepts_paragraph_body_with_text(t *testing.T) {
 	}
 }
 
-
 // --- Part C: table tags on the question-body allowlist (FR-36) ---
 
 func TestSanitizeQuestionBody_preservesTable(t *testing.T) {

@@ -83,12 +83,12 @@ func TestGrantExamAccessBulk_Integration(t *testing.T) {
 	}
 
 	usernames := []string{
-		"",                          // blank -> failed
-		studentUsername,             // ok -> granted
-		studentUsername,             // duplicate row -> skipped
+		"",                                  // blank -> failed
+		studentUsername,                     // ok -> granted
+		studentUsername,                     // duplicate row -> skipped
 		"nonexistent_" + uniqueSuffix()[:8], // not found -> failed
-		nonStudentUsername,          // wrong role -> failed
-		alreadyRegisteredUsername,   // already registered -> skipped
+		nonStudentUsername,                  // wrong role -> failed
+		alreadyRegisteredUsername,           // already registered -> skipped
 	}
 
 	results, err := svc.GrantExamAccessBulk(ctx, actorID.String(), examID.String(), usernames)

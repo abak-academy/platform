@@ -1,0 +1,255 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+)
+
+// OTP send-protection limits (konsep-otp.md §6/§9). Knobs come from config;
+// zero values fall back to these free-tier starting points.
+const (
+	defaultOTPQuotaHour   = 3
+	defaultOTPQuotaDay    = 8
+	defaultOTPQuotaIPHour = 20
+	defaultOTPSendfailMax = 3
+	defaultSMTPQuotaDay   = 500
+
+	otpHourWindow = time.Hour
+	otpDayWindow  = 24 * time.Hour
+)
+
+type otpSendKeys struct {
+	cd       string
+	hr       string
+	day      string
+	lvl      string
+	gq       string
+	ip       string
+	sendfail string
+	abuse    string
+}
+
+// loginOTPSendKeys builds the account-verification key set. Existing key
+// names (otp:cooldown, otp:count) are kept so old data keeps working.
+func loginOTPSendKeys(userID, channel, ip string) otpSendKeys {
+	return otpSendKeys{
+		cd:       otpCooldownKey(userID),
+		hr:       "otp:hr:" + userID,
+		day:      "otp:day:" + userID,
+		lvl:      otpCountKey(userID),
+		gq:       "smtp:quota:placeholder",
+		ip:       "otp:ip:" + ip,
+		sendfail: otpSendfailKey(userID, channel),
+		abuse:    "otp:abuse:" + userID,
+	}
+}
+
+func (s *Service) otpQuotaHour() int {
+	if s.cfg != nil && s.cfg.OTPQuotaHour > 0 {
+		return s.cfg.OTPQuotaHour
+	}
+	return defaultOTPQuotaHour
+}
+
+func (s *Service) otpQuotaDay() int {
+	if s.cfg != nil && s.cfg.OTPQuotaDay > 0 {
+		return s.cfg.OTPQuotaDay
+	}
+	return defaultOTPQuotaDay
+}
+
+func (s *Service) otpQuotaIPHour() int {
+	if s.cfg != nil && s.cfg.OTPQuotaIPHour > 0 {
+		return s.cfg.OTPQuotaIPHour
+	}
+	return defaultOTPQuotaIPHour
+}
+
+func (s *Service) otpSendfailMax() int {
+	if s.cfg != nil && s.cfg.OTPSendfailMax > 0 {
+		return s.cfg.OTPSendfailMax
+	}
+	return defaultOTPSendfailMax
+}
+
+func (s *Service) otpSendfailPause() time.Duration {
+	if s.cfg != nil && s.cfg.OTPSendfailPause > 0 {
+		return s.cfg.OTPSendfailPause
+	}
+	return otpSendfailPause
+}
+
+func (s *Service) otpSMTPQuotaDay() int {
+	if s.cfg != nil && s.cfg.SMTPQuotaDay > 0 {
+		return s.cfg.SMTPQuotaDay
+	}
+	return defaultSMTPQuotaDay
+}
+
+// smtpQuotaDateKey returns today's global provider-quota key (YYYYMMDD in
+// WIB) and the unix seconds when tomorrow's WIB midnight begins — konsep
+// §12: the window resets when the provider resets.
+func smtpQuotaDateKey(now time.Time) (string, int64) {
+	loc := time.FixedZone("WIB", 7*3600)
+	d := now.In(loc)
+	key := fmt.Sprintf("smtp:quota:%04d%02d%02d", d.Year(), d.Month(), d.Day())
+	nextMidnight := time.Date(d.Year(), d.Month(), d.Day()+1, 0, 0, 0, 0, loc)
+	return key, nextMidnight.Unix()
+}
+
+// otpClaimScript atomically checks every send gate. On denial it consumes
+// nothing and reports the longest tripped TTL; on approval it increments it
+// (hour/day/IP/global with fixed windows — EXPIRE only on the first INCR —
+// plus the level and ladder cooldown), konsep-otp.md §4/§6/§7.
+var otpClaimScript = redis.NewScript(`
+local denial = nil
+local maxTTL = 0
+local function mark(name, ttl)
+	if ttl and ttl > maxTTL then
+		maxTTL = ttl
+		denial = {0, name, ttl}
+	end
+end
+
+local cdTTL = redis.call('TTL', KEYS[1])
+if cdTTL > 0 then mark('cooldown', cdTTL) end
+
+local hrLim = tonumber(ARGV[1])
+if hrLim > 0 then
+	local ttl = redis.call('TTL', KEYS[2])
+	if ttl > 0 and (tonumber(redis.call('GET', KEYS[2])) or 0) >= hrLim then mark('hour', ttl) end
+end
+local dayLim = tonumber(ARGV[2])
+if dayLim > 0 then
+	local ttl = redis.call('TTL', KEYS[3])
+	if ttl > 0 and (tonumber(redis.call('GET', KEYS[3])) or 0) >= dayLim then mark('day', ttl) end
+end
+local ipLim = tonumber(ARGV[3])
+if ipLim > 0 then
+	local ttl = redis.call('TTL', KEYS[4])
+	if ttl > 0 and (tonumber(redis.call('GET', KEYS[4])) or 0) >= ipLim then mark('ip', ttl) end
+end
+local gLim = tonumber(ARGV[4])
+if gLim > 0 then
+	local ttl = redis.call('TTL', KEYS[6])
+	if ttl > 0 and (tonumber(redis.call('GET', KEYS[6])) or 0) >= gLim then mark('global', ttl) end
+end
+
+local sfMax = tonumber(ARGV[9])
+if sfMax > 0 then
+	local ttl = redis.call('TTL', KEYS[7])
+	if ttl > 0 and (tonumber(redis.call('GET', KEYS[7])) or 0) >= sfMax then mark('sendfail', ttl) end
+end
+
+if denial then return denial end
+
+local hr = redis.call('INCR', KEYS[2])
+if hr == 1 then redis.call('EXPIRE', KEYS[2], ARGV[5]) end
+local day = redis.call('INCR', KEYS[3])
+if day == 1 then redis.call('EXPIRE', KEYS[3], ARGV[6]) end
+if ipLim > 0 then
+	local ip = redis.call('INCR', KEYS[4])
+	if ip == 1 then redis.call('EXPIRE', KEYS[4], ARGV[7]) end
+end
+if gLim > 0 then
+	local gq = redis.call('INCR', KEYS[6])
+	if gq == 1 then redis.call('EXPIREAT', KEYS[6], ARGV[8]) end
+end
+local lvl = redis.call('INCR', KEYS[5])
+local ladderBase = 10
+local n = #ARGV - ladderBase
+redis.call('EXPIRE', KEYS[5], ARGV[ladderBase])
+local idx = lvl - 1
+if idx >= n then idx = n end
+local cdSecs = tonumber(ARGV[ladderBase + idx + 1])
+redis.call('SET', KEYS[1], '1')
+redis.call('EXPIRE', KEYS[1], cdSecs)
+return {1, cdSecs}
+`)
+
+// otpRollbackScript reverses a claim after a provider failure: counters with
+// a positive value are decremented, konsep-otp.md §9.
+var otpRollbackScript = redis.NewScript(`
+local function decr(key)
+	local v = tonumber(redis.call('GET', key)) or 0
+	if v > 0 then redis.call('DECR', key) end
+end
+decr(KEYS[2])
+decr(KEYS[3])
+decr(KEYS[4])
+decr(KEYS[5])
+decr(KEYS[6])
+return {1, 0}
+`)
+
+// claimOTPSend atomically checks every send gate (cooldown, hour/day/IP
+// quotas, global provider quota, sendfail streak) and, when all pass,
+// increments them in one Redis op. A denial consumes nothing.
+func (s *Service) claimOTPSend(ctx context.Context, keys otpSendKeys) error {
+	gKey, gExp := smtpQuotaDateKey(time.Now())
+	keys.gq = gKey
+	ladder := ladderSeconds()
+	args := []interface{}{
+		s.otpQuotaHour(), s.otpQuotaDay(), s.otpQuotaIPHour(), s.otpSMTPQuotaDay(),
+		int(otpHourWindow.Seconds()), int(otpDayWindow.Seconds()), int(time.Hour.Seconds()),
+		gExp, s.otpSendfailMax(), int(otpLadderWindow.Seconds()),
+	}
+	for _, d := range ladder {
+		args = append(args, d)
+	}
+	res, err := otpClaimScript.Run(ctx, s.rdb,
+		[]string{keys.cd, keys.hr, keys.day, keys.ip, keys.lvl, gKey, keys.sendfail},
+		args...,
+	).Result()
+	if err != nil {
+		return fmt.Errorf("otp claim: %w", err)
+	}
+	arr, ok := res.([]interface{})
+	if !ok || len(arr) == 0 {
+		return fmt.Errorf("otp claim: unexpected reply %v", res)
+	}
+	status, _ := arr[0].(int64)
+	if status == 1 {
+		return nil
+	}
+	ttl, _ := arr[2].(int64)
+	return &OTPRateLimitError{RetryAfter: time.Duration(ttl) * time.Second}
+}
+
+func ladderSeconds() []int {
+	out := make([]int, 0, len(otpResendLadder))
+	for _, d := range otpResendLadder {
+		out = append(out, int(d.Seconds()))
+	}
+	return out
+}
+
+// rollbackOTPClaim reverses a claim after a provider failure: quotas and the
+// level are decremented, so failures never consume the budget (konsep §9).
+func (s *Service) rollbackOTPClaim(ctx context.Context, keys otpSendKeys) error {
+	gKey, _ := smtpQuotaDateKey(time.Now())
+	_, err := otpRollbackScript.Run(ctx, s.rdb,
+		[]string{keys.cd, keys.hr, keys.day, keys.ip, keys.lvl, gKey},
+	).Result()
+	return err
+}
+
+// recordOTPGateReject counts a rate-limited attempt in the abuse bucket —
+// rejected requests must never consume the send quota; the counter is only a
+// signal (concept §4).
+func (s *Service) recordOTPGateReject(ctx context.Context, keys otpSendKeys) {
+	n, err := s.rdb.Incr(ctx, keys.abuse).Result()
+	if err == nil && n == 1 {
+		s.rdb.Expire(ctx, keys.abuse, otpHourWindow)
+	}
+}
+
+// SetOTPConfigForTest overrides the OTP quota knobs in handler tests.
+func (s *Service) SetOTPConfigForTest(ipQuota int) {
+	if s.cfg != nil {
+		s.cfg.OTPQuotaIPHour = ipQuota
+	}
+}

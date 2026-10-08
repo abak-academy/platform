@@ -24,6 +24,14 @@ type Config struct {
 	// EmailSendPerMinute paces the announcement email fan-out in the worker
 	// (per-email spacing = 1 minute / this). Defaults to 30 when unset.
 	EmailSendPerMinute int
+	// OTP send-protection knobs (konsep-otp.md §6/§9). Zero values fall back
+	// to the service defaults so existing configs keep working.
+	OTPQuotaHour     int
+	OTPQuotaDay      int
+	OTPQuotaIPHour   int
+	OTPSendfailMax   int
+	OTPSendfailPause time.Duration
+	SMTPQuotaDay     int
 
 	JWTSecret           string
 	AccessTokenTTL      time.Duration
@@ -67,6 +75,12 @@ type fileConfig struct {
 	DBMaxConns                     int32    `yaml:"db_max_conns"`
 	EnforceSchoolNPSNRegistration  bool     `yaml:"enforce_school_npsn_registration"`
 	EmailSendPerMinute             int      `yaml:"email_send_per_minute"`
+	OTPQuotaHour                   int      `yaml:"otp_quota_hour"`
+	OTPQuotaDay                    int      `yaml:"otp_quota_day"`
+	OTPQuotaIPHour                 int      `yaml:"otp_quota_ip_hour"`
+	OTPSendfailMax                 int      `yaml:"otp_sendfail_max"`
+	OTPSendfailPause               string   `yaml:"otp_sendfail_pause"`
+	SMTPQuotaDay                   int      `yaml:"smtp_quota_day"`
 	AccessTokenTTL                 string   `yaml:"access_token_ttl"`
 	RefreshTokenTTL                string   `yaml:"refresh_token_ttl"`
 	OTPTTL                         string   `yaml:"otp_ttl"`
@@ -206,6 +220,13 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("otp_ttl: %w", err)
 	}
+	var otpSendfailPause time.Duration
+	if fc.OTPSendfailPause != "" {
+		otpSendfailPause, err = time.ParseDuration(fc.OTPSendfailPause)
+		if err != nil {
+			return Config{}, fmt.Errorf("otp_sendfail_pause: %w", err)
+		}
+	}
 
 	migrationDatabaseURL := s.MigrationDatabaseURL
 	if migrationDatabaseURL == "" {
@@ -221,6 +242,12 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		DBMaxConns:                    fc.DBMaxConns,
 		EnforceSchoolNPSNRegistration: fc.EnforceSchoolNPSNRegistration,
 		EmailSendPerMinute:            emailSendPerMinute,
+		OTPQuotaHour:                  fc.OTPQuotaHour,
+		OTPQuotaDay:                   fc.OTPQuotaDay,
+		OTPQuotaIPHour:                fc.OTPQuotaIPHour,
+		OTPSendfailMax:                fc.OTPSendfailMax,
+		OTPSendfailPause:              otpSendfailPause,
+		SMTPQuotaDay:                  fc.SMTPQuotaDay,
 
 		AccessTokenTTL:  accessTTL,
 		RefreshTokenTTL: refreshTTL,

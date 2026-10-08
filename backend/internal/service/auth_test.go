@@ -224,7 +224,7 @@ func TestRegister(t *testing.T) {
 	t.Run("happy path creates user with username", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, mr := newTestService(t, repo)
-		chall, err := svc.Register(ctx, "New@Example.com", "password123", "Budi")
+		chall, err := svc.Register(ctx, "New@Example.com", "password123", "Budi", "1.1.1.1")
 		if err != nil {
 			t.Fatalf("Register: %v", err)
 		}
@@ -259,7 +259,7 @@ func TestRegister(t *testing.T) {
 		repo := newFakeUserRepo()
 		repo.seed(&model.User{Email: strptr("taken@example.com"), Status: "active", Role: RoleStudent})
 		svc, _ := newTestService(t, repo)
-		_, err := svc.Register(ctx, "taken@example.com", "password123", "Budi")
+		_, err := svc.Register(ctx, "taken@example.com", "password123", "Budi", "1.1.1.1")
 		if !errors.Is(err, ErrEmailTaken) {
 			t.Errorf("want ErrEmailTaken, got %v", err)
 		}
@@ -268,7 +268,7 @@ func TestRegister(t *testing.T) {
 	t.Run("weak password", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, _ := newTestService(t, repo)
-		_, err := svc.Register(ctx, "x@example.com", "short", "Budi")
+		_, err := svc.Register(ctx, "x@example.com", "short", "Budi", "1.1.1.1")
 		if !errors.Is(err, ErrWeakPassword) {
 			t.Errorf("want ErrWeakPassword, got %v", err)
 		}
@@ -277,7 +277,7 @@ func TestRegister(t *testing.T) {
 	t.Run("username generation exhaustion fails account creation", func(t *testing.T) {
 		repo := &collisionRepo{fakeUserRepo: *newFakeUserRepo(), blockUntil: 99}
 		svc, _ := newTestService(t, repo)
-		_, err := svc.Register(ctx, "exhausted@example.com", "password123", "Budi Santoso")
+		_, err := svc.Register(ctx, "exhausted@example.com", "password123", "Budi Santoso", "1.1.1.1")
 		if !errors.Is(err, ErrUsernameGenerationExhausted) {
 			t.Errorf("want ErrUsernameGenerationExhausted, got %v", err)
 		}
@@ -290,7 +290,7 @@ func TestRegister(t *testing.T) {
 	t.Run("can login with generated username (FR-SELFREG-03)", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, mr := newTestService(t, repo)
-		_, err := svc.Register(ctx, "loginuser@example.com", "password123", "Login User")
+		_, err := svc.Register(ctx, "loginuser@example.com", "password123", "Login User", "1.1.1.1")
 		if err != nil {
 			t.Fatalf("Register: %v", err)
 		}
@@ -301,14 +301,14 @@ func TestRegister(t *testing.T) {
 		if u == nil || u.Username == nil {
 			t.Fatal("user/username not created")
 		}
-		_, _, pending, err := svc.Login(ctx, *u.Username, "password123")
+		_, _, pending, err := svc.Login(ctx, *u.Username, "password123", "1.1.1.1")
 		if !errors.Is(err, ErrVerificationPending) {
 			t.Fatalf("Login with username: want ErrVerificationPending, got %v", err)
 		}
 		if pending == "" {
 			t.Error("Login with username: want non-empty pending_token")
 		}
-		_, _, _, err = svc.Login(ctx, *u.Username, "wrongpassword")
+		_, _, _, err = svc.Login(ctx, *u.Username, "wrongpassword", "1.1.1.1")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("Login with wrong password: want ErrInvalidCredentials, got %v", err)
 		}
@@ -317,12 +317,12 @@ func TestRegister(t *testing.T) {
 	t.Run("re-register on pending email with a live code skips the send", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, mr := newTestService(t, repo)
-		if _, err := svc.Register(ctx, "pending@example.com", "password123", "Budi"); err != nil {
+		if _, err := svc.Register(ctx, "pending@example.com", "password123", "Budi", "1.1.1.1"); err != nil {
 			t.Fatalf("first Register: %v", err)
 		}
 		codeBefore, _ := mr.Get("otp:" + "pending@example.com")
 
-		chall, err := svc.Register(ctx, "pending@example.com", "password123", "Budi")
+		chall, err := svc.Register(ctx, "pending@example.com", "password123", "Budi", "1.1.1.1")
 		if err != nil {
 			t.Fatalf("second Register: %v", err)
 		}
@@ -343,14 +343,14 @@ func TestRegister(t *testing.T) {
 	t.Run("re-register on pending email resends after rate limit expires", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, mr := newTestService(t, repo)
-		first, err := svc.Register(ctx, "pending@example.com", "password123", "Budi")
+		first, err := svc.Register(ctx, "pending@example.com", "password123", "Budi", "1.1.1.1")
 		if err != nil {
 			t.Fatalf("first Register: %v", err)
 		}
 		before, _ := repo.GetUserByEmail(ctx, "pending@example.com")
 		mr.FastForward(time.Minute)
 
-		second, err := svc.Register(ctx, "pending@example.com", "password123", "Budi")
+		second, err := svc.Register(ctx, "pending@example.com", "password123", "Budi", "1.1.1.1")
 		if err != nil {
 			t.Fatalf("second Register: %v", err)
 		}
@@ -393,7 +393,7 @@ func TestLogin(t *testing.T) {
 		repo := newFakeUserRepo()
 		seedActive(repo, false)
 		svc, _ := newTestService(t, repo)
-		_, _, _, err := svc.Login(ctx, "user@example.com", "wrong")
+		_, _, _, err := svc.Login(ctx, "user@example.com", "wrong", "1.1.1.1")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("want ErrInvalidCredentials, got %v", err)
 		}
@@ -408,7 +408,7 @@ func TestLogin(t *testing.T) {
 			Status:       "deactivated",
 		})
 		svc, _ := newTestService(t, repo)
-		_, _, _, err := svc.Login(ctx, "user@example.com", "password123")
+		_, _, _, err := svc.Login(ctx, "user@example.com", "password123", "1.1.1.1")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("want ErrInvalidCredentials, got %v", err)
 		}
@@ -418,7 +418,7 @@ func TestLogin(t *testing.T) {
 		repo := newFakeUserRepo()
 		seedActive(repo, false)
 		svc, _ := newTestService(t, repo)
-		access, refresh, _, err := svc.Login(ctx, "user@example.com", "password123")
+		access, refresh, _, err := svc.Login(ctx, "user@example.com", "password123", "1.1.1.1")
 		if err != nil {
 			t.Fatalf("Login: %v", err)
 		}
@@ -436,7 +436,7 @@ func TestLogin(t *testing.T) {
 			Status:       "active",
 		})
 		svc, _ := newTestService(t, repo)
-		access, _, _, err := svc.Login(ctx, "budi", "password123")
+		access, _, _, err := svc.Login(ctx, "budi", "password123", "1.1.1.1")
 		if err != nil {
 			t.Fatalf("Login: %v", err)
 		}
@@ -456,7 +456,7 @@ func TestLogin(t *testing.T) {
 			OTPEnabled:   true,
 		})
 		svc, mr := newTestService(t, repo)
-		access, refresh, pending, err := svc.Login(ctx, "pending@example.com", "password123")
+		access, refresh, pending, err := svc.Login(ctx, "pending@example.com", "password123", "1.1.1.1")
 		if !errors.Is(err, ErrVerificationPending) {
 			t.Errorf("want ErrVerificationPending, got %v", err)
 		}
@@ -485,7 +485,7 @@ func TestLogin(t *testing.T) {
 			OTPEnabled:   true,
 		})
 		svc, mr := newTestService(t, repo)
-		_, _, pending, err := svc.Login(ctx, "pending@example.com", "wrong")
+		_, _, pending, err := svc.Login(ctx, "pending@example.com", "wrong", "1.1.1.1")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("want ErrInvalidCredentials, got %v", err)
 		}
@@ -504,7 +504,7 @@ func TestVerifyOTP(t *testing.T) {
 	setup := func(t *testing.T) (*Service, *miniredis.Miniredis, *fakeUserRepo, string, string) {
 		repo := newFakeUserRepo()
 		svc, mr := newTestService(t, repo)
-		chall, err := svc.Register(ctx, "user@example.com", "password123", "Budi")
+		chall, err := svc.Register(ctx, "user@example.com", "password123", "Budi", "1.1.1.1")
 		if err != nil {
 			t.Fatalf("Register: %v", err)
 		}
@@ -515,7 +515,7 @@ func TestVerifyOTP(t *testing.T) {
 	t.Run("correct code returns tokens, clears keys and disables otp", func(t *testing.T) {
 		svc, mr, repo, pending, userID := setup(t)
 		code, _ := mr.Get("otp:" + userID)
-		access, refresh, err := svc.VerifyOTP(ctx, pending, code)
+		access, refresh, err := svc.VerifyOTP(ctx, pending, code, "1.1.1.1")
 		if err != nil {
 			t.Fatalf("VerifyOTP: %v", err)
 		}
@@ -539,7 +539,7 @@ func TestVerifyOTP(t *testing.T) {
 		code, _ := mr.Get("otp:" + userID)
 		repo.byID[userID].Status = "deactivated"
 
-		access, refresh, err := svc.VerifyOTP(ctx, pending, code)
+		access, refresh, err := svc.VerifyOTP(ctx, pending, code, "1.1.1.1")
 		if !errors.Is(err, ErrInvalidPendingToken) {
 			t.Errorf("want ErrInvalidPendingToken, got %v", err)
 		}
@@ -554,7 +554,7 @@ func TestVerifyOTP(t *testing.T) {
 
 	t.Run("wrong code", func(t *testing.T) {
 		svc, _, _, pending, _ := setup(t)
-		_, _, err := svc.VerifyOTP(ctx, pending, "000000")
+		_, _, err := svc.VerifyOTP(ctx, pending, "000000", "1.1.1.1")
 		if !errors.Is(err, ErrInvalidOTP) {
 			t.Errorf("want ErrInvalidOTP, got %v", err)
 		}
@@ -564,7 +564,7 @@ func TestVerifyOTP(t *testing.T) {
 		svc, mr, _, pending, userID := setup(t)
 
 		for i := 1; i <= 3; i++ {
-			_, _, err := svc.VerifyOTP(ctx, pending, fmt.Sprintf("wrong-%d", i))
+			_, _, err := svc.VerifyOTP(ctx, pending, fmt.Sprintf("wrong-%d", i), "1.1.1.1")
 			if i < maxOTPVerifyAttempts && !errors.Is(err, ErrInvalidOTP) {
 				t.Fatalf("wrong #%d: want ErrInvalidOTP, got %v", i, err)
 			}
@@ -575,17 +575,17 @@ func TestVerifyOTP(t *testing.T) {
 		if mr.Exists("otp:" + userID) {
 			t.Error("the code should be killed after three wrong entries")
 		}
-		if _, _, err := svc.VerifyOTP(ctx, pending, "000000"); !errors.Is(err, ErrOTPExpired) {
+		if _, _, err := svc.VerifyOTP(ctx, pending, "000000", "1.1.1.1"); !errors.Is(err, ErrOTPExpired) {
 			t.Errorf("post-kill verify err = %v, want ErrOTPExpired", err)
 		}
 
 		// A fresh dispatch restores the budget: one wrong entry is a plain
 		// invalid OTP again, not an attempts-exceeded.
 		mr.FastForward(time.Minute + time.Second) // step past the ladder cooldown
-		if err := svc.SendOTP(ctx, userID); err != nil {
+		if err := svc.SendOTP(ctx, userID, "1.1.1.1"); err != nil {
 			t.Fatalf("SendOTP: %v", err)
 		}
-		if _, _, err := svc.VerifyOTP(ctx, pending, "000000"); !errors.Is(err, ErrInvalidOTP) {
+		if _, _, err := svc.VerifyOTP(ctx, pending, "000000", "1.1.1.1"); !errors.Is(err, ErrInvalidOTP) {
 			t.Errorf("after re-dispatch err = %v, want ErrInvalidOTP (fresh budget)", err)
 		}
 	})
@@ -593,7 +593,7 @@ func TestVerifyOTP(t *testing.T) {
 	t.Run("expired otp", func(t *testing.T) {
 		svc, mr, _, pending, userID := setup(t)
 		mr.Del("otp:" + userID)
-		_, _, err := svc.VerifyOTP(ctx, pending, "123456")
+		_, _, err := svc.VerifyOTP(ctx, pending, "123456", "1.1.1.1")
 		if !errors.Is(err, ErrOTPExpired) {
 			t.Errorf("want ErrOTPExpired, got %v", err)
 		}
@@ -601,7 +601,7 @@ func TestVerifyOTP(t *testing.T) {
 
 	t.Run("invalid pending token", func(t *testing.T) {
 		svc, _, _, _, _ := setup(t)
-		_, _, err := svc.VerifyOTP(ctx, "bogus", "123456")
+		_, _, err := svc.VerifyOTP(ctx, "bogus", "123456", "1.1.1.1")
 		if !errors.Is(err, ErrInvalidPendingToken) {
 			t.Errorf("want ErrInvalidPendingToken, got %v", err)
 		}
@@ -621,7 +621,7 @@ func TestRefresh(t *testing.T) {
 			Status:       "active",
 		})
 		svc, mr := newTestService(t, repo)
-		_, refresh, _, err := svc.Login(ctx, "user@example.com", "password123")
+		_, refresh, _, err := svc.Login(ctx, "user@example.com", "password123", "1.1.1.1")
 		if err != nil {
 			t.Fatalf("Login: %v", err)
 		}
@@ -661,7 +661,7 @@ func TestLogout(t *testing.T) {
 		Status:       "active",
 	})
 	svc, mr := newTestService(t, repo)
-	access, _, _, err := svc.Login(ctx, "user@example.com", "password123")
+	access, _, _, err := svc.Login(ctx, "user@example.com", "password123", "1.1.1.1")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -696,13 +696,13 @@ func TestSendOTP(t *testing.T) {
 	})
 	svc, mr := newTestService(t, repo)
 
-	if err := svc.SendOTP(ctx, "u1"); err != nil {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
 		t.Fatalf("first SendOTP: %v", err)
 	}
 	if !mr.Exists("otp:u1") {
 		t.Error("otp key should be set")
 	}
-	if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrOTPRateLimit) {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); !errors.Is(err, ErrOTPRateLimit) {
 		t.Errorf("second SendOTP within window: want ErrOTPRateLimit, got %v", err)
 	}
 }
@@ -733,7 +733,7 @@ func TestRegister_EmailSendFailure_NonFatal(t *testing.T) {
 	otp := &stubOTPProvider{err: errors.New("451 4.7.1 Ratelimit exceeded")}
 	svc.otpProvider = otp
 
-	chall, err := svc.Register(ctx, "relaydown@example.com", "password123", "Budi")
+	chall, err := svc.Register(ctx, "relaydown@example.com", "password123", "Budi", "1.1.1.1")
 	if err != nil {
 		t.Fatalf("Register with failing SMTP: want non-fatal, got %v", err)
 	}
@@ -761,7 +761,7 @@ func TestRegister_EmailSendFailure_NonFatal(t *testing.T) {
 	// store a live code.
 	otp.err = nil
 	mr.FastForward(otpSendfailPause + time.Second)
-	retry, err := svc.Register(ctx, "relaydown@example.com", "password123", "Budi")
+	retry, err := svc.Register(ctx, "relaydown@example.com", "password123", "Budi", "1.1.1.1")
 	if err != nil {
 		t.Fatalf("retry Register: %v", err)
 	}
@@ -781,7 +781,7 @@ func TestResend_EmailDeliveryFailed(t *testing.T) {
 	svc.otpProvider = &stubOTPProvider{err: errors.New("451 4.7.1 Ratelimit exceeded")}
 
 	// The resend endpoint surfaces the failure instead of swallowing it.
-	err := svc.SendOTP(ctx, "u1")
+	err := svc.SendOTP(ctx, "u1", "1.1.1.1")
 	if !errors.Is(err, ErrEmailDeliveryFailed) {
 		t.Errorf("want ErrEmailDeliveryFailed, got %v", err)
 	}
@@ -801,7 +801,7 @@ func TestLogin_EmailFailedFlag(t *testing.T) {
 	svc, mr := newTestService(t, repo)
 	svc.otpProvider = &stubOTPProvider{err: errors.New("smtp down")}
 
-	_, _, pending, err := svc.Login(ctx, "pending@example.com", "password123")
+	_, _, pending, err := svc.Login(ctx, "pending@example.com", "password123", "1.1.1.1")
 	if !errors.Is(err, ErrVerificationPending) {
 		t.Fatalf("want ErrVerificationPending, got %v", err)
 	}
@@ -825,12 +825,15 @@ func TestOTPSendLadder(t *testing.T) {
 	repo := newFakeUserRepo()
 	repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), Role: RoleStudent, Status: "active", OTPEnabled: true})
 	svc, mr := newTestService(t, repo)
+	// The ladder test sends 6 codes/hour; lift the hour quota so only the
+	// ladder itself is exercised.
+	svc.cfg.OTPQuotaHour = 12
 
 	// cooldownAfterSend asserts the immediate-next-send Retry-After matches
 	// the ladder step for the Nth send.
 	cooldownAfterSend := func(t *testing.T, want time.Duration) {
 		t.Helper()
-		err := svc.SendOTP(ctx, "u1")
+		err := svc.SendOTP(ctx, "u1", "1.1.1.1")
 		var rl *OTPRateLimitError
 		if !errors.As(err, &rl) {
 			t.Fatalf("want OTPRateLimitError, got %v", err)
@@ -840,37 +843,37 @@ func TestOTPSendLadder(t *testing.T) {
 		}
 	}
 
-	if err := svc.SendOTP(ctx, "u1"); err != nil {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
 		t.Fatalf("send 1: %v", err)
 	}
 	cooldownAfterSend(t, time.Minute)
 	mr.FastForward(time.Minute + time.Second)
 
-	if err := svc.SendOTP(ctx, "u1"); err != nil {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
 		t.Fatalf("send 2: %v", err)
 	}
 	cooldownAfterSend(t, 2*time.Minute)
 	mr.FastForward(2*time.Minute + time.Second)
 
-	if err := svc.SendOTP(ctx, "u1"); err != nil {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
 		t.Fatalf("send 3: %v", err)
 	}
 	cooldownAfterSend(t, 5*time.Minute)
 	mr.FastForward(5*time.Minute + time.Second)
 
-	if err := svc.SendOTP(ctx, "u1"); err != nil {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
 		t.Fatalf("send 4: %v", err)
 	}
 	cooldownAfterSend(t, 15*time.Minute)
 	mr.FastForward(15*time.Minute + time.Second)
 
-	if err := svc.SendOTP(ctx, "u1"); err != nil {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
 		t.Fatalf("send 5: %v", err)
 	}
 	cooldownAfterSend(t, time.Hour)
 	// The ladder window (1h) also expired, so the next cooldown resets to 60s.
 	mr.FastForward(time.Hour + time.Second)
-	if err := svc.SendOTP(ctx, "u1"); err != nil {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
 		t.Fatalf("send 6: %v", err)
 	}
 	cooldownAfterSend(t, time.Minute)
@@ -890,7 +893,7 @@ func TestOTPSendfailGate(t *testing.T) {
 		if i > 0 {
 			mr.FastForward(otpSendfailPause + time.Second)
 		}
-		if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+		if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); !errors.Is(err, ErrEmailDeliveryFailed) {
 			t.Fatalf("failure send %d: want ErrEmailDeliveryFailed, got %v", i+1, err)
 		}
 	}
@@ -898,7 +901,7 @@ func TestOTPSendfailGate(t *testing.T) {
 		t.Fatal("sendfail counter should exist after 3 delivery failures")
 	}
 
-	err := svc.SendOTP(ctx, "u1")
+	err := svc.SendOTP(ctx, "u1", "1.1.1.1")
 	if !errors.Is(err, ErrOTPRateLimit) {
 		t.Fatalf("want ErrOTPRateLimit gate after 3 sendfail, got %v", err)
 	}
@@ -923,12 +926,12 @@ func TestOTPSendfailPause(t *testing.T) {
 	svc, mr := newTestService(t, repo)
 	svc.otpProvider = &stubOTPProvider{err: errors.New("smtp down")}
 
-	if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); !errors.Is(err, ErrEmailDeliveryFailed) {
 		t.Fatalf("want ErrEmailDeliveryFailed, got %v", err)
 	}
 
 	// Immediate retry: still inside the pause.
-	err := svc.SendOTP(ctx, "u1")
+	err := svc.SendOTP(ctx, "u1", "1.1.1.1")
 	if !errors.Is(err, ErrOTPRateLimit) {
 		t.Fatalf("want ErrOTPRateLimit during the pause, got %v", err)
 	}
@@ -944,7 +947,7 @@ func TestOTPSendfailPause(t *testing.T) {
 	mr.FastForward(otpSendfailPause + time.Second)
 	otpErr := &stubOTPProvider{}
 	svc.otpProvider = otpErr
-	if err := svc.SendOTP(ctx, "u1"); err != nil {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
 		t.Errorf("retry after the pause: want nil, got %v", err)
 	}
 }
@@ -966,7 +969,7 @@ func TestLogin_NoSendWhenCodeStillAlive(t *testing.T) {
 	// A live code from an earlier dispatch — e.g. the email is still in flight.
 	mr.Set("otp:u-pending", "123456")
 
-	_, _, pending, err := svc.Login(ctx, "pending@example.com", "password123")
+	_, _, pending, err := svc.Login(ctx, "pending@example.com", "password123", "1.1.1.1")
 
 	if !errors.Is(err, ErrVerificationPending) {
 		t.Fatalf("want ErrVerificationPending, got %v", err)
@@ -1003,13 +1006,13 @@ func TestOTPSendfail_ResetOnSuccess(t *testing.T) {
 		if i > 0 {
 			mr.FastForward(otpSendfailPause + time.Second)
 		}
-		if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+		if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); !errors.Is(err, ErrEmailDeliveryFailed) {
 			t.Fatalf("initial failure %d: want ErrEmailDeliveryFailed, got %v", i+1, err)
 		}
 	}
 	otp.err = nil
 	mr.FastForward(otpSendfailPause + time.Second)
-	if err := svc.SendOTP(ctx, "u1"); err != nil {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
 		t.Fatalf("recovery send: %v", err)
 	}
 	if mr.Exists(otpSendfailKey("u1", "email")) {
@@ -1022,7 +1025,7 @@ func TestOTPSendfail_ResetOnSuccess(t *testing.T) {
 	mr.FastForward(5 * time.Minute)
 	for i := 0; i < 2; i++ {
 		mr.FastForward(otpSendfailPause + time.Second)
-		if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+		if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); !errors.Is(err, ErrEmailDeliveryFailed) {
 			t.Fatalf("post-recovery failure %d: want ErrEmailDeliveryFailed, got %v", i+1, err)
 		}
 	}
@@ -1030,11 +1033,11 @@ func TestOTPSendfail_ResetOnSuccess(t *testing.T) {
 	// The third failure since recovery lands (sendfail reaches 3). The gate
 	// stops the fourth.
 	mr.FastForward(otpSendfailPause + time.Second)
-	if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); !errors.Is(err, ErrEmailDeliveryFailed) {
 		t.Errorf("third failure: want ErrEmailDeliveryFailed, got %v", err)
 	}
 	mr.FastForward(otpSendfailPause + time.Second)
-	if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrOTPRateLimit) {
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); !errors.Is(err, ErrOTPRateLimit) {
 		t.Errorf("fourth attempt: want ErrOTPRateLimit gate, got %v", err)
 	}
 }
@@ -1059,7 +1062,7 @@ func TestOTPSendfail_PerChannelIsolation(t *testing.T) {
 		}
 		// The register/login path swallows the send failure, so drive the
 		// failures through the resend endpoint which surfaces them.
-		if err := svc.SendOTP(ctx, "u1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+		if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); !errors.Is(err, ErrEmailDeliveryFailed) {
 			t.Fatalf("whatsapp failure %d: want ErrEmailDeliveryFailed, got %v", i+1, err)
 		}
 	}
@@ -1069,16 +1072,14 @@ func TestOTPSendfail_PerChannelIsolation(t *testing.T) {
 	if mr.Exists(otpSendfailKey("u1", "email")) {
 		t.Error("email channel must not be flagged by whatsapp failures")
 	}
-	// The resend ladder is per-user and shared across channels, so step past
-	// the pause the last failure armed. The email gate then passes while
-	// whatsapp is gated. (SendOTP itself always resolves to whatsapp for
-	// this user — the gate is asserted directly for the email channel.)
+	// Step past the pause the last failure armed. The email channel's claim
+	// then passes while whatsapp stays gated.
 	mr.FastForward(otpSendfailPause + time.Second)
-	if err := svc.limitOTPSend(ctx, "u1", "email"); err != nil {
-		t.Errorf("email gate after whatsapp sendfail: want nil, got %v", err)
+	if err := svc.claimOTPSend(ctx, loginOTPSendKeys("u1", "email", "1.1.1.1")); err != nil {
+		t.Errorf("email claim after whatsapp sendfail: want nil, got %v", err)
 	}
-	if err := svc.limitOTPSend(ctx, "u1", "whatsapp"); !errors.Is(err, ErrOTPRateLimit) {
-		t.Errorf("whatsapp gate: want ErrOTPRateLimit, got %v", err)
+	if err := svc.claimOTPSend(ctx, loginOTPSendKeys("u1", "whatsapp", "1.1.1.1")); !errors.Is(err, ErrOTPRateLimit) {
+		t.Errorf("whatsapp claim: want ErrOTPRateLimit, got %v", err)
 	}
 }
 
@@ -1092,7 +1093,7 @@ func TestResend_FailedSendKeepsPreviousCode(t *testing.T) {
 	otp := &stubOTPProvider{}
 	svc.otpProvider = otp
 
-	chall, err := svc.Register(ctx, "pending@example.com", "password123", "Budi")
+	chall, err := svc.Register(ctx, "pending@example.com", "password123", "Budi", "1.1.1.1")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -1101,7 +1102,7 @@ func TestResend_FailedSendKeepsPreviousCode(t *testing.T) {
 
 	otp.err = errors.New("smtp down")
 	mr.FastForward(time.Minute + time.Second)
-	if err := svc.SendOTP(ctx, uid); !errors.Is(err, ErrEmailDeliveryFailed) {
+	if err := svc.SendOTP(ctx, uid, "1.1.1.1"); !errors.Is(err, ErrEmailDeliveryFailed) {
 		t.Fatalf("resend: want ErrEmailDeliveryFailed, got %v", err)
 	}
 	if live, _ := mr.Get("otp:" + uid); live != code1 {
@@ -1115,17 +1116,17 @@ func TestResend_FailedSendKeepsPreviousCode(t *testing.T) {
 	// code verifies afterwards.
 	otp.err = nil
 	mr.FastForward(otpSendfailPause + time.Second)
-	if err := svc.SendOTP(ctx, uid); err != nil {
+	if err := svc.SendOTP(ctx, uid, "1.1.1.1"); err != nil {
 		t.Fatalf("resend after recovery: %v", err)
 	}
 	code2 := otp.codes[len(otp.codes)-1]
 	if code2 == code1 {
 		t.Error("resend must generate a fresh code")
 	}
-	if _, _, err := svc.VerifyOTP(ctx, chall.PendingToken, code1); !errors.Is(err, ErrInvalidOTP) {
+	if _, _, err := svc.VerifyOTP(ctx, chall.PendingToken, code1, "1.1.1.1"); !errors.Is(err, ErrInvalidOTP) {
 		t.Errorf("old code after successful resend: %v, want ErrInvalidOTP", err)
 	}
-	if _, _, err := svc.VerifyOTP(ctx, chall.PendingToken, code2); err != nil {
+	if _, _, err := svc.VerifyOTP(ctx, chall.PendingToken, code2, "1.1.1.1"); err != nil {
 		t.Errorf("new code after successful resend: %v, want nil", err)
 	}
 }
@@ -1144,7 +1145,7 @@ func TestResetPassword(t *testing.T) {
 		})
 		svc, mr := newTestService(t, repo)
 		mr.Set("reset:tok", "u1:654321")
-		if err := svc.ResetPassword(ctx, "tok", "654321", "brandnewpass"); err != nil {
+		if err := svc.ResetPassword(ctx, "tok", "654321", "brandnewpass", "1.1.1.1"); err != nil {
 			t.Fatalf("ResetPassword: %v", err)
 		}
 		u, _ := repo.GetUserByID(ctx, "u1")
@@ -1161,7 +1162,7 @@ func TestResetPassword(t *testing.T) {
 		repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), PasswordHash: mustHashStd("oldpassword"), Role: RoleStudent, Status: "active"})
 		svc, mr := newTestService(t, repo)
 		mr.Set("reset:tok", "u1:654321")
-		if err := svc.ResetPassword(ctx, "tok", "000000", "brandnewpass"); !errors.Is(err, ErrInvalidResetToken) {
+		if err := svc.ResetPassword(ctx, "tok", "000000", "brandnewpass", "1.1.1.1"); !errors.Is(err, ErrInvalidResetToken) {
 			t.Errorf("want ErrInvalidResetToken, got %v", err)
 		}
 	})
@@ -1169,7 +1170,7 @@ func TestResetPassword(t *testing.T) {
 	t.Run("invalid reset token", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, _ := newTestService(t, repo)
-		if err := svc.ResetPassword(ctx, "missing", "654321", "brandnewpass"); !errors.Is(err, ErrInvalidResetToken) {
+		if err := svc.ResetPassword(ctx, "missing", "654321", "brandnewpass", "1.1.1.1"); !errors.Is(err, ErrInvalidResetToken) {
 			t.Errorf("want ErrInvalidResetToken, got %v", err)
 		}
 	})
@@ -1225,7 +1226,7 @@ func TestLogout_WithRefreshToken(t *testing.T) {
 	})
 	svc, mr := newTestService(t, repo)
 
-	access, refresh, _, err := svc.Login(ctx, "user@example.com", "password123")
+	access, refresh, _, err := svc.Login(ctx, "user@example.com", "password123", "1.1.1.1")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -1265,7 +1266,7 @@ func TestResetPassword_RevokesAllSessions(t *testing.T) {
 	svc, mr := newTestService(t, repo)
 
 	// Mint a session so we have live access+refresh keys.
-	access, refresh, _, err := svc.Login(ctx, "user@example.com", "oldpassword")
+	access, refresh, _, err := svc.Login(ctx, "user@example.com", "oldpassword", "1.1.1.1")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -1285,7 +1286,7 @@ func TestResetPassword_RevokesAllSessions(t *testing.T) {
 
 	// Trigger reset.
 	mr.Set("reset:tok", "u1:654321")
-	if err := svc.ResetPassword(ctx, "tok", "654321", "brandnewpass"); err != nil {
+	if err := svc.ResetPassword(ctx, "tok", "654321", "brandnewpass", "1.1.1.1"); err != nil {
 		t.Fatalf("ResetPassword: %v", err)
 	}
 
@@ -1320,7 +1321,7 @@ func TestChangePassword_RevokesOtherSessionsKeepsCaller(t *testing.T) {
 			})
 			svc, mr := newTestService(t, repo)
 
-			accessA, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword")
+			accessA, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword", "1.1.1.1")
 			if err != nil {
 				t.Fatalf("login A: %v", err)
 			}
@@ -1330,7 +1331,7 @@ func TestChangePassword_RevokesOtherSessionsKeepsCaller(t *testing.T) {
 			}
 			jtiA := claimsA.ID
 
-			accessB, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword")
+			accessB, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword", "1.1.1.1")
 			if err != nil {
 				t.Fatalf("login B: %v", err)
 			}
@@ -1394,7 +1395,7 @@ func TestChangePassword_FailedChangeRevokesNothing(t *testing.T) {
 	svc, _ := newTestService(t, repo)
 	signer := infra.NewJWTSigner("test-secret", 15*time.Minute)
 
-	accessA, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword")
+	accessA, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword", "1.1.1.1")
 	if err != nil {
 		t.Fatalf("login A: %v", err)
 	}
@@ -1402,7 +1403,7 @@ func TestChangePassword_FailedChangeRevokesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse A: %v", err)
 	}
-	accessB, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword")
+	accessB, _, _, err := svc.Login(ctx, "user@example.com", "oldpassword", "1.1.1.1")
 	if err != nil {
 		t.Fatalf("login B: %v", err)
 	}
@@ -1435,4 +1436,182 @@ func mustHashStd(pw string) string {
 		panic(err)
 	}
 	return string(h)
+}
+
+// --- OTP send quotas (T2: layered limits, konsep-otp.md §6) ---
+
+func seedActiveOTP(t *testing.T) (*Service, *miniredis.Miniredis, *fakeUserRepo) {
+	t.Helper()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), Role: RoleStudent, Status: "active", OTPEnabled: true})
+	svc, mr := newTestService(t, repo)
+	return svc, mr, repo
+}
+
+func TestOTPQuotaHourPerTarget(t *testing.T) {
+	ctx := context.Background()
+	svc, mr, _ := seedActiveOTP(t)
+
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			mr.FastForward(2*time.Minute + time.Second)
+		}
+		if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
+			t.Fatalf("send %d: %v", i+1, err)
+		}
+	}
+	if got, _ := mr.Get("otp:hr:u1"); got != "3" {
+		t.Fatalf("otp:hr:u1 = %q, want 3", got)
+	}
+	err := svc.SendOTP(ctx, "u1", "1.1.1.1")
+	var rl *OTPRateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("send 4: want OTPRateLimitError, got %v", err)
+	}
+	if rl.RetryAfter < 15*time.Minute {
+		t.Errorf("RetryAfter = %v, want the hour-window remainder", rl.RetryAfter)
+	}
+	if got, _ := mr.Get("otp:hr:u1"); got != "3" {
+		t.Errorf("denied send consumed the quota: hr=%q", got)
+	}
+}
+
+func TestOTPQuotaDayPerTarget(t *testing.T) {
+	ctx := context.Background()
+	svc, mr, _ := seedActiveOTP(t)
+	svc.cfg.OTPQuotaDay = 2
+
+	for i := 0; i < 2; i++ {
+		if i > 0 {
+			mr.FastForward(2*time.Minute + time.Second)
+		}
+		if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
+			t.Fatalf("send %d: %v", i+1, err)
+		}
+	}
+	err := svc.SendOTP(ctx, "u1", "1.1.1.1")
+	var rl *OTPRateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("send 3: want OTPRateLimitError, got %v", err)
+	}
+	if rl.RetryAfter < 22*time.Hour {
+		t.Errorf("RetryAfter = %v, want the day-window remainder", rl.RetryAfter)
+	}
+}
+
+func TestOTPQuotaPerIP(t *testing.T) {
+	ctx := context.Background()
+	svc, mr, _ := seedActiveOTP(t)
+	svc.cfg.OTPQuotaIPHour = 2
+
+	for i := 0; i < 2; i++ {
+		if i > 0 {
+			mr.FastForward(2*time.Minute + time.Second)
+		}
+		if err := svc.SendOTP(ctx, "u1", "9.9.9.9"); err != nil {
+			t.Fatalf("send %d: %v", i+1, err)
+		}
+	}
+	if got, _ := mr.Get("otp:ip:9.9.9.9"); got != "2" {
+		t.Fatalf("otp:ip:9.9.9.9 = %q, want 2", got)
+	}
+	err := svc.SendOTP(ctx, "u1", "9.9.9.9")
+	var rl *OTPRateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("send 3: want OTPRateLimitError, got %v", err)
+	}
+	// Clear the ladder cooldown the last success armed, then try a different
+	// source IP — it is unaffected.
+	mr.FastForward(2 * time.Minute + time.Second)
+	if err := svc.SendOTP(ctx, "u1", "7.7.7.7"); err != nil {
+		t.Errorf("send from a fresh IP: want nil, got %v", err)
+	}
+}
+
+func TestOTPQuotaGateRejectionsNotConsumed(t *testing.T) {
+	ctx := context.Background()
+	svc, mr, _ := seedActiveOTP(t)
+	svc.cfg.OTPQuotaIPHour = 1
+
+	if err := svc.SendOTP(ctx, "u1", "9.9.9.9"); err != nil {
+		t.Fatalf("send 1: %v", err)
+	}
+	mr.FastForward(2*time.Minute + time.Second)
+
+	for i := 0; i < 2; i++ {
+		err := svc.SendOTP(ctx, "u1", "9.9.9.9")
+		if !errors.Is(err, ErrOTPRateLimit) {
+			t.Fatalf("rejected attempt %d: want OTPRateLimitError, got %v", i+1, err)
+		}
+		mr.FastForward(2*time.Minute + time.Second)
+	}
+	if got, _ := mr.Get("otp:hr:u1"); got != "1" {
+		t.Errorf("hr counter after 2 rejections = %q, want 1 (rejections consume nothing)", got)
+	}
+	if got, _ := mr.Get("otp:count:u1"); got != "1" {
+		t.Errorf("level after 2 rejections = %q, want 1 (rejections do not climb the ladder)", got)
+	}
+	if got, _ := mr.Get("otp:abuse:u1"); got != "2" {
+		t.Errorf("otp:abuse:u1 = %q, want 2", got)
+	}
+}
+
+func TestOTPQuotaWindowsDoNotRefresh(t *testing.T) {
+	ctx := context.Background()
+	svc, mr, _ := seedActiveOTP(t)
+	svc.cfg.OTPQuotaHour = 2
+
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
+		t.Fatalf("send 1: %v", err)
+	}
+	mr.FastForward(2*time.Minute + time.Second)
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
+		t.Fatalf("send 2: %v", err)
+	}
+	ttl1 := mr.TTL("otp:hr:u1")
+	if ttl1 <= 0 {
+		t.Fatalf("hr window TTL = %v, want set", ttl1)
+	}
+	mr.FastForward(5 * time.Second)
+	err := svc.SendOTP(ctx, "u1", "1.1.1.1")
+	var rl *OTPRateLimitError
+	if errors.As(err, &rl) {
+		ttl2 := mr.TTL("otp:hr:u1")
+		if d := time.Duration(ttl1-5*time.Second) - time.Duration(ttl2); d < -time.Second || d > time.Second {
+			t.Errorf("window TTL moved from %v (after 5s) to %v — a fixed window must not extend on requests/denials", ttl1-5*time.Second, ttl2)
+		}
+		return
+	}
+	t.Fatalf("send 3: want the hr quota denial, got %v", err)
+}
+
+func TestOTPQuotaFailureDoesNotConsume(t *testing.T) {
+	ctx := context.Background()
+	svc, mr, _ := seedActiveOTP(t)
+	otp := &stubOTPProvider{err: errors.New("smtp down")}
+	svc.otpProvider = otp
+
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+		t.Fatalf("failed send: want ErrEmailDeliveryFailed, got %v", err)
+	}
+	otp.err = nil
+	mr.FastForward(otpSendfailPause + time.Second)
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err != nil {
+		t.Fatalf("recovery send: %v", err)
+	}
+	if got, _ := mr.Get("otp:hr:u1"); got != "1" {
+		t.Errorf("hr counter after failed+successful send = %q, want 1 — the failed claim must roll back", got)
+	}
+	if got, _ := mr.Get("otp:count:u1"); got != "1" {
+		t.Errorf("level = %q, want 1 — a failed claim must not climb the ladder", got)
+	}
+	// The successful send stands at the FIRST ladder step.
+	err := svc.SendOTP(ctx, "u1", "1.1.1.1")
+	var rl *OTPRateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("next send: want OTPRateLimitError, got %v", err)
+	}
+	if rl.RetryAfter < time.Minute-time.Second || rl.RetryAfter > time.Minute {
+		t.Errorf("next-send RetryAfter = %v, want ~%v", rl.RetryAfter, time.Minute)
+	}
 }

@@ -22,7 +22,7 @@ func (h *Handler) Register(c echo.Context) error {
 	if req.Email == "" || req.Password == "" || req.Name == "" {
 		return badRequest(c, "email, password and name are required")
 	}
-	chall, err := h.svc.Register(c.Request().Context(), req.Email, req.Password, req.Name)
+	chall, err := h.svc.Register(c.Request().Context(), req.Email, req.Password, req.Name, c.RealIP())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -46,7 +46,7 @@ func (h *Handler) Login(c echo.Context) error {
 	if req.Identifier == "" || req.Password == "" {
 		return badRequest(c, "identifier and password are required")
 	}
-	access, refresh, pendingToken, err := h.svc.Login(c.Request().Context(), req.Identifier, req.Password)
+	access, refresh, pendingToken, err := h.svc.Login(c.Request().Context(), req.Identifier, req.Password, c.RealIP())
 	if errors.Is(err, service.ErrVerificationPending) {
 		emailFailed, otpActive, resendAfter := false, false, 0
 		var vp *service.VerificationPendingError
@@ -134,7 +134,7 @@ func (h *Handler) SendOTP(c echo.Context) error {
 		userID = id
 	}
 
-	if err := h.svc.SendOTP(ctx, userID); err != nil {
+	if err := h.svc.SendOTP(ctx, userID, c.RealIP()); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"message": "OTP sent"})
@@ -151,7 +151,7 @@ func (h *Handler) VerifyOTP(c echo.Context) error {
 	if req.PendingToken == "" || req.Code == "" {
 		return badRequest(c, "pending_token and code are required")
 	}
-	access, refresh, err := h.svc.VerifyOTP(c.Request().Context(), req.PendingToken, req.Code)
+	access, refresh, err := h.svc.VerifyOTP(c.Request().Context(), req.PendingToken, req.Code, c.RealIP())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -225,7 +225,7 @@ func (h *Handler) ForgotPassword(c echo.Context) error {
 	if req.Email == "" {
 		return badRequest(c, "email is required")
 	}
-	if err := h.svc.ForgotPassword(c.Request().Context(), req.Email); err != nil {
+	if err := h.svc.ForgotPassword(c.Request().Context(), req.Email, c.RealIP()); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{
@@ -245,7 +245,7 @@ func (h *Handler) ResetPassword(c echo.Context) error {
 	if req.Token == "" || req.OTP == "" || req.NewPassword == "" {
 		return badRequest(c, "token, otp and new_password are required")
 	}
-	if err := h.svc.ResetPassword(c.Request().Context(), req.Token, req.OTP, req.NewPassword); err != nil {
+	if err := h.svc.ResetPassword(c.Request().Context(), req.Token, req.OTP, req.NewPassword, c.RealIP()); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"message": "password reset successful"})

@@ -95,7 +95,7 @@ var (
 
 // --- from auth.go ---
 var (
-	ErrEmailTaken = errors.New("email already registered")
+	ErrEmailTaken         = errors.New("email already registered")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	// ErrOTPRateLimit means the resend ladder or the sendfail gate is still
 	// holding the user off. User-facing copy (spec C-4); the precise wait

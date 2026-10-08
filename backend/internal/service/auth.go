@@ -55,7 +55,7 @@ type OTPChallenge struct {
 	ResendAfter  int  // seconds until the next send is allowed; 0 = now
 }
 
-func (s *Service) Register(ctx context.Context, email, password, name string) (OTPChallenge, error) {
+func (s *Service) Register(ctx context.Context, email, password, name, ip string) (OTPChallenge, error) {
 	email = normalizeEmail(email)
 	if email == "" {
 		return OTPChallenge{}, ErrInvalidCredentials
@@ -74,7 +74,7 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (O
 	}
 	if existing != nil {
 		if existing.Status == "pending_verification" {
-			return s.startOTPChallenge(ctx, existing)
+			return s.startOTPChallenge(ctx, existing, ip)
 		}
 		return OTPChallenge{}, ErrEmailTaken
 	}
@@ -99,10 +99,10 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (O
 	if err := s.repo.CreateUser(ctx, user); err != nil {
 		return OTPChallenge{}, err
 	}
-	return s.startOTPChallenge(ctx, user)
+	return s.startOTPChallenge(ctx, user, ip)
 }
 
-func (s *Service) Login(ctx context.Context, identifier, password string) (accessToken, refreshToken, pendingToken string, err error) {
+func (s *Service) Login(ctx context.Context, identifier, password, ip string) (accessToken, refreshToken, pendingToken string, err error) {
 	user, err := s.lookupByIdentifier(ctx, identifier)
 	if err != nil {
 		return "", "", "", err
@@ -118,7 +118,7 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (acces
 		accessToken, refreshToken, err = s.mintSession(ctx, user)
 		return accessToken, refreshToken, "", err
 	case "pending_verification":
-		challenge, err := s.startOTPChallenge(ctx, user)
+		challenge, err := s.startOTPChallenge(ctx, user, ip)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -152,7 +152,7 @@ func (s *Service) lookupByIdentifier(ctx context.Context, identifier string) (*m
 // re-sending would burn relay quota and trip the ladder for nothing, so only
 // the pending token is re-armed and the user is told a code is already
 // waiting. The throttle gates sends — never verification.
-func (s *Service) startOTPChallenge(ctx context.Context, user *model.User) (OTPChallenge, error) {
+func (s *Service) startOTPChallenge(ctx context.Context, user *model.User, ip string) (OTPChallenge, error) {
 	if exists, err := s.rdb.Exists(ctx, "otp:"+user.ID).Result(); err == nil && exists > 0 {
 		pendingToken, err := s.storePendingToken(ctx, user.ID)
 		if err != nil {
@@ -166,7 +166,11 @@ func (s *Service) startOTPChallenge(ctx context.Context, user *model.User) (OTPC
 	}
 
 	channel, destination := PreferredOTPChannel(deref(user.Phone), deref(user.Email))
-	if err := s.limitOTPSend(ctx, user.ID, channel); err != nil {
+	keys := loginOTPSendKeys(user.ID, channel, ip)
+	if err := s.claimOTPSend(ctx, keys); err != nil {
+		if errors.Is(err, ErrOTPRateLimit) {
+			s.recordOTPGateReject(ctx, keys)
+		}
 		return OTPChallenge{}, err
 	}
 	pendingToken, err := s.storePendingToken(ctx, user.ID)
@@ -186,6 +190,7 @@ func (s *Service) startOTPChallenge(ctx context.Context, user *model.User) (OTPC
 	// caller reports email_failed so the client can offer the resend path.
 	if err := s.otpProvider.SendOTP(ctx, channel, destination, code); err != nil {
 		s.rdb.Del(ctx, otpNewKey(user.ID))
+		s.rollbackOTPClaim(ctx, keys)
 		s.recordOTPSendFailure(ctx, user.ID, channel)
 		return OTPChallenge{PendingToken: pendingToken, EmailFailed: true, ResendAfter: s.resendAfter(ctx, user.ID)}, nil
 	}
@@ -216,7 +221,7 @@ func (s *Service) resendAfter(ctx context.Context, userID string) int {
 // which surfaces the failure; the register/login paths swallow it inside
 // startOTPChallenge instead. The previous code stays verifiable until the
 // provider accepts the new one.
-func (s *Service) dispatchOTP(ctx context.Context, user *model.User) error {
+func (s *Service) dispatchOTP(ctx context.Context, user *model.User, keys otpSendKeys, ip string) error {
 	code, err := genOTP()
 	if err != nil {
 		return err
@@ -227,6 +232,7 @@ func (s *Service) dispatchOTP(ctx context.Context, user *model.User) error {
 	channel, destination := PreferredOTPChannel(deref(user.Phone), deref(user.Email))
 	if err := s.otpProvider.SendOTP(ctx, channel, destination, code); err != nil {
 		s.rdb.Del(ctx, otpNewKey(user.ID))
+		s.rollbackOTPClaim(ctx, keys)
 		s.recordOTPSendFailure(ctx, user.ID, channel)
 		return fmt.Errorf("%w: %s", ErrEmailDeliveryFailed, err)
 	}
@@ -263,7 +269,7 @@ func (s *Service) ResolveUserFromEmail(ctx context.Context, email string) (strin
 	return user.ID, nil
 }
 
-func (s *Service) SendOTP(ctx context.Context, userID string) error {
+func (s *Service) SendOTP(ctx context.Context, userID, ip string) error {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return err
@@ -272,10 +278,14 @@ func (s *Service) SendOTP(ctx context.Context, userID string) error {
 		return ErrUserNotFound
 	}
 	channel, _ := PreferredOTPChannel(deref(user.Phone), deref(user.Email))
-	if err := s.limitOTPSend(ctx, userID, channel); err != nil {
+	keys := loginOTPSendKeys(userID, channel, ip)
+	if err := s.claimOTPSend(ctx, keys); err != nil {
+		if errors.Is(err, ErrOTPRateLimit) {
+			s.recordOTPGateReject(ctx, keys)
+		}
 		return err
 	}
-	return s.dispatchOTP(ctx, user)
+	return s.dispatchOTP(ctx, user, keys, ip)
 }
 
 // otpResendLadder arms the cooldown after each successful send: 60s after the
@@ -298,39 +308,11 @@ var (
 	maxOTPVerifyAttempts = 3
 )
 
-func otpCooldownKey(userID string) string           { return "otp:cooldown:" + userID }
-func otpCountKey(userID string) string              { return "otp:count:" + userID }
-func otpVerifyKey(userID string) string             { return "otp:verify:" + userID }
-func otpNewKey(userID string) string                { return "otp:new:" + userID }
-func otpSendfailKey(userID, channel string) string  { return "otp:sendfail:" + userID + ":" + channel }
-
-// limitOTPSend gates every OTP dispatch behind the per-channel sendfail gate
-// (consecutive relay failures) and the per-user resend ladder (the cooldown
-// is shared across channels so one user cannot double-send by alternating
-// channels). It returns a typed error carrying the remaining wait so the
-// handler can set a precise Retry-After.
-func (s *Service) limitOTPSend(ctx context.Context, userID, channel string) error {
-	failCount, err := s.rdb.Get(ctx, otpSendfailKey(userID, channel)).Int()
-	if err == nil && failCount >= otpSendfailMax {
-		if ttl, err := s.rdb.TTL(ctx, otpSendfailKey(userID, channel)).Result(); err == nil && ttl > 0 {
-			return &OTPRateLimitError{RetryAfter: ttl}
-		}
-	}
-	if ttl, err := s.rdb.TTL(ctx, otpCooldownKey(userID)).Result(); err == nil && ttl > 0 {
-		return &OTPRateLimitError{RetryAfter: ttl}
-	}
-	count, err := s.rdb.Incr(ctx, otpCountKey(userID)).Result()
-	if err != nil {
-		return err
-	}
-	s.rdb.Expire(ctx, otpCountKey(userID), otpLadderWindow)
-	idx := int(count) - 1
-	if idx >= len(otpResendLadder) {
-		idx = len(otpResendLadder) - 1
-	}
-	s.rdb.Set(ctx, otpCooldownKey(userID), "1", otpResendLadder[idx])
-	return nil
-}
+func otpCooldownKey(userID string) string          { return "otp:cooldown:" + userID }
+func otpCountKey(userID string) string             { return "otp:count:" + userID }
+func otpVerifyKey(userID string) string            { return "otp:verify:" + userID }
+func otpNewKey(userID string) string               { return "otp:new:" + userID }
+func otpSendfailKey(userID, channel string) string { return "otp:sendfail:" + userID + ":" + channel }
 
 // recordOTPSendFailure bumps the channel's delivery-failure counter and
 // replaces the cooldown with the fixed short pause — provider failure delays
@@ -343,7 +325,7 @@ func (s *Service) recordOTPSendFailure(ctx context.Context, userID, channel stri
 	s.rdb.Set(ctx, otpCooldownKey(userID), "1", otpSendfailPause)
 }
 
-func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code string) (accessToken, refreshToken string, err error) {
+func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code, ip string) (accessToken, refreshToken string, err error) {
 	userID, err := s.rdb.Get(ctx, "pending:"+pendingToken).Result()
 	if errors.Is(err, redis.Nil) {
 		return "", "", ErrInvalidPendingToken
@@ -445,7 +427,7 @@ func (s *Service) Me(ctx context.Context, userID string) (*model.User, error) {
 	return user, nil
 }
 
-func (s *Service) ForgotPassword(ctx context.Context, email string) error {
+func (s *Service) ForgotPassword(ctx context.Context, email, ip string) error {
 	email = normalizeEmail(email)
 	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
@@ -471,7 +453,7 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 	return nil
 }
 
-func (s *Service) ResetPassword(ctx context.Context, token, otp, newPassword string) error {
+func (s *Service) ResetPassword(ctx context.Context, token, otp, newPassword, ip string) error {
 	stored, err := s.rdb.Get(ctx, "reset:"+token).Result()
 	if errors.Is(err, redis.Nil) {
 		return ErrInvalidResetToken
