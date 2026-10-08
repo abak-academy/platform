@@ -715,8 +715,8 @@ func TestGradingObjective_multiBlankMixed_withOtherFormats(t *testing.T) {
 
 	answers := map[uuid.UUID]*string{
 		multiBlankQ.Question.ID: strPtr(`["jakarta","1945"]`), // both correct: +2+2 = 4
-		mcqQ.Question.ID:        strPtr("b"),                  // correct: +2
-		shortQ.Question.ID:      strPtr("answer"),             // correct: +2
+		mcqQ.Question.ID:        strPtr("b"),                   // correct: +2
+		shortQ.Question.ID:      strPtr("answer"),              // correct: +2
 	}
 
 	graded, score := gradeObjective(
@@ -726,11 +726,11 @@ func TestGradingObjective_multiBlankMixed_withOtherFormats(t *testing.T) {
 
 	assert.Equal(t, 8.0, score)
 	assert.Len(t, graded, 3)
-	assert.True(t, *graded[0].IsCorrect) // multi_blank both correct
+	assert.True(t, *graded[0].IsCorrect)  // multi_blank both correct
 	assert.Equal(t, 4.0, *graded[0].Score)
-	assert.True(t, *graded[1].IsCorrect) // mcq correct
+	assert.True(t, *graded[1].IsCorrect)  // mcq correct
 	assert.Equal(t, 2.0, *graded[1].Score)
-	assert.True(t, *graded[2].IsCorrect) // short correct
+	assert.True(t, *graded[2].IsCorrect)  // short correct
 	assert.Equal(t, 2.0, *graded[2].Score)
 }
 

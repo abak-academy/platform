@@ -14,11 +14,11 @@ import (
 
 // fakeDashboardRepo implements the store methods needed by GetDashboard.
 type fakeDashboardRepo struct {
-	sessions  []model.CourseSession
-	courses   map[uuid.UUID]model.Course
-	lessonCnt map[uuid.UUID]int
-	duration  map[uuid.UUID]int // lessonID -> duration_seconds
-	orders    map[uuid.UUID]*model.Order
+	sessions   []model.CourseSession
+	courses    map[uuid.UUID]model.Course
+	lessonCnt  map[uuid.UUID]int
+	duration   map[uuid.UUID]int // lessonID -> duration_seconds
+	orders     map[uuid.UUID]*model.Order
 }
 
 func newFakeDashboardRepo() *fakeDashboardRepo {
@@ -180,10 +180,10 @@ func TestGetDashboard_StudySummaryCounters(t *testing.T) {
 	fake.lessonCnt[course2] = 3
 
 	// Duration for completed lessons (in seconds)
-	fake.duration[lesson1] = 600 // 10 min
-	fake.duration[lesson2] = 300 // 5 min
-	fake.duration[lesson3] = 180 // 3 min
-	fake.duration[lesson4] = 120 // 2 min — not completed, not included
+	fake.duration[lesson1] = 600  // 10 min
+	fake.duration[lesson2] = 300  // 5 min
+	fake.duration[lesson3] = 180  // 3 min
+	fake.duration[lesson4] = 120  // 2 min — not completed, not included
 
 	// Session 1: course1, 2/5 completed
 	fake.sessions = append(fake.sessions, model.CourseSession{
@@ -349,9 +349,9 @@ func TestGetDashboard_UnsourcedSectionsSerializeAsEmpty(t *testing.T) {
 
 	// ranking.position should be null
 	var ranking struct {
-		Position    *int                        `json:"position"`
-		Points      *float64                    `json:"points"`
-		Leaderboard []DashboardLeaderboardEntry `json:"leaderboard"`
+		Position    *int                          `json:"position"`
+		Points      *float64                      `json:"points"`
+		Leaderboard []DashboardLeaderboardEntry   `json:"leaderboard"`
 	}
 	if err := json.Unmarshal(raw["ranking"], &ranking); err != nil {
 		t.Fatalf("unmarshal ranking: %v", err)

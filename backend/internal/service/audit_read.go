@@ -11,15 +11,15 @@ import (
 
 // AuditLogEntry is the response shape for a single audit log entry.
 type AuditLogEntry struct {
-	ID         int64            `json:"id"`
-	ActorID    *string          `json:"actor_id"`
-	ActorName  *string          `json:"actor_name"`
-	ActorEmail *string          `json:"actor_email"`
-	TargetType string           `json:"target_type"`
-	TargetID   string           `json:"target_id"`
-	Action     string           `json:"action"`
-	Metadata   *json.RawMessage `json:"metadata"`
-	CreatedAt  string           `json:"created_at"`
+	ID         int64             `json:"id"`
+	ActorID    *string           `json:"actor_id"`
+	ActorName  *string           `json:"actor_name"`
+	ActorEmail *string           `json:"actor_email"`
+	TargetType string            `json:"target_type"`
+	TargetID   string            `json:"target_id"`
+	Action     string            `json:"action"`
+	Metadata   *json.RawMessage  `json:"metadata"`
+	CreatedAt  string            `json:"created_at"`
 }
 
 // AuditLogFilter carries optional filters for ListAuditLog.

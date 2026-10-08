@@ -113,12 +113,12 @@ func countRows(t *testing.T, ctx context.Context, pool *pgxpool.Pool, table stri
 // scope: if the DELETE (or the reseed) ever touches so much as one row belonging
 // to the other 32 provinces, this fingerprint changes.
 type nonPapuaSnapshot struct {
-	provinceCount int
-	provinceHash  string
-	cityCount     int
-	cityHash      string
-	districtCount int
-	districtHash  string
+	provinceCount   int
+	provinceHash    string
+	cityCount       int
+	cityHash        string
+	districtCount   int
+	districtHash    string
 }
 
 func captureNonPapuaSnapshot(t *testing.T, ctx context.Context, pool *pgxpool.Pool) nonPapuaSnapshot {
