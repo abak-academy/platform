@@ -309,8 +309,8 @@ var (
 	otpLadderWindow  = time.Hour
 	otpSendfailPause = 30 * time.Second
 	otpSendfailMax   = 3
-	// Sends gating on otpSendfailWindow: three delivery failures inside the
-	// window stop sending until the window expires.
+	// Sends gating on otpSendfailWindow: otpSendfailMax delivery failures
+	// inside one window stop sending until the window expires.
 	otpSendfailWindow = time.Hour
 	// Wrong verification entries are budgeted per code: three strikes kill the
 	// code so an online guesser can't grind through the 6-digit space inside
@@ -615,11 +615,6 @@ func (s *Service) mintSession(ctx context.Context, user *model.User) (accessToke
 	s.rdb.SAdd(ctx, "user_refresh_sessions:"+user.ID, refreshToken)
 	return tokenString, refreshToken, nil
 }
-
-const (
-	opPurposeLogin = "login"
-	opPurposeReset = "reset"
-)
 
 // hashOTP binds the code to its purpose and the server secret (konsep-otp.md
 // §11): what sits in Redis is the hex HMAC, never the raw 6 digits.
