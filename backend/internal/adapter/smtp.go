@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -88,8 +89,9 @@ func (p *SMTPProvider) send(to, subject, body string) error {
 	defer c.Close()
 
 	// Mirrors net/smtp.SendMail: upgrade to STARTTLS when the relay offers it.
+	// StartTLS does not fill in ServerName the way SendMail does; an unnamed config fails the handshake.
 	if ok, _ := c.Extension("STARTTLS"); ok {
-		if err = c.StartTLS(nil); err != nil {
+		if err = c.StartTLS(&tls.Config{ServerName: p.host}); err != nil {
 			return fmt.Errorf("smtp starttls: %w", err)
 		}
 	}
