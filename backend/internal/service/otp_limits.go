@@ -253,3 +253,137 @@ func (s *Service) SetOTPConfigForTest(ipQuota int) {
 		s.cfg.OTPQuotaIPHour = ipQuota
 	}
 }
+
+// Verification-failure budget defaults (konsep §6): 10-15 wrong entries per
+// hour and 20-30 per day per target; the per-IP budget is looser.
+const (
+	defaultOTPVfailHour   = 10
+	defaultOTPVfailDay    = 20
+	defaultOTPVfailIPHour = 30
+	defaultOTPAttempts    = 3
+)
+
+func (s *Service) otpVfailHour() int {
+	if s.cfg != nil && s.cfg.OTPVfailHour > 0 {
+		return s.cfg.OTPVfailHour
+	}
+	return defaultOTPVfailHour
+}
+
+func (s *Service) otpVfailDay() int {
+	if s.cfg != nil && s.cfg.OTPVfailDay > 0 {
+		return s.cfg.OTPVfailDay
+	}
+	return defaultOTPVfailDay
+}
+
+func (s *Service) otpVfailIPHour() int {
+	if s.cfg != nil && s.cfg.OTPVfailIPHour > 0 {
+		return s.cfg.OTPVfailIPHour
+	}
+	return defaultOTPVfailIPHour
+}
+
+func (s *Service) otpAttempts() int {
+	if s.cfg != nil && s.cfg.OTPAttempts > 0 {
+		return s.cfg.OTPAttempts
+	}
+	return defaultOTPAttempts
+}
+
+type otpVerifyKeys struct {
+	vfailHour string
+	vfailDay  string
+	vfailIP   string
+}
+
+func loginOTPVerifyKeys(userID, ip string) otpVerifyKeys {
+	return otpVerifyKeys{
+		vfailHour: "otp:vfail:" + userID,
+		vfailDay:  "otp:vfail:day:" + userID,
+		vfailIP:   "otp:vfail:ip:" + ip,
+	}
+}
+
+// otpVerifyGateScript runs the verify-side budget atomically (konsep §5): the
+// vfail gates are checked first, then the per-code attempt counter is
+// incremented BEFORE the comparison — the script returns the stored value and
+// the raised attempt count so the caller can compare safely under parallel
+// submissions.
+var otpVerifyGateScript = redis.NewScript(`
+local denial, maxTTL = nil, 0
+local function mark(name, ttl)
+	if ttl and ttl > maxTTL then
+		maxTTL = ttl
+		denial = {0, name, ttl}
+	end
+end
+
+local hf = redis.call('TTL', KEYS[2])
+if hf > 0 and (tonumber(redis.call('GET', KEYS[2])) or 0) >= tonumber(ARGV[1]) then mark('vfail_hour', hf) end
+local df = redis.call('TTL', KEYS[3])
+if df > 0 and (tonumber(redis.call('GET', KEYS[3])) or 0) >= tonumber(ARGV[2]) then mark('vfail_day', df) end
+local ipLim = tonumber(ARGV[3])
+if ipLim > 0 then
+	local ttl = redis.call('TTL', KEYS[4])
+	if ttl > 0 and (tonumber(redis.call('GET', KEYS[4])) or 0) >= ipLim then mark('vfail_ip', ttl) end
+end
+
+if denial then return denial end
+
+local otpVal = redis.call('GET', KEYS[1])
+if not otpVal then return {2, '', 0} end
+local attempts = redis.call('INCR', KEYS[5])
+if attempts == 1 then redis.call('EXPIRE', KEYS[5], ARGV[4]) end
+return {1, otpVal, attempts}
+`)
+
+// runOTPVerifyGate returns the stored code value and the atomically raised
+// attempt count. A nil error with status 2 means the code is gone (expired).
+func (s *Service) runOTPVerifyGate(ctx context.Context, userID, ip string) (otpVal string, attempts int64, deny error) {
+	vk := loginOTPVerifyKeys(userID, ip)
+	res, err := otpVerifyGateScript.Run(ctx, s.rdb,
+		[]string{"otp:" + userID, vk.vfailHour, vk.vfailDay, vk.vfailIP, otpVerifyKey(userID)},
+		s.otpVfailHour(), s.otpVfailDay(), s.otpVfailIPHour(), int(s.cfg.OTPTTL.Seconds()),
+	).Result()
+	if err != nil {
+		return "", 0, fmt.Errorf("otp verify gate: %w", err)
+	}
+	arr, ok := res.([]interface{})
+	if !ok || len(arr) != 3 {
+		return "", 0, fmt.Errorf("otp verify gate: unexpected reply %v", res)
+	}
+	status, _ := arr[0].(int64)
+	if status == 0 {
+		ttl, _ := arr[2].(int64)
+		return "", 0, &OTPRateLimitError{RetryAfter: time.Duration(ttl) * time.Second}
+	}
+	otpVal, _ = arr[1].(string)
+	attempts, _ = arr[2].(int64)
+	return otpVal, attempts, nil
+}
+
+// recordOTPVerifyFailure raises the hour/day/IP wrong-entry budgets (konsep
+// §6); these survive a resend.
+func (s *Service) recordOTPVerifyFailure(ctx context.Context, userID, ip string) {
+	vk := loginOTPVerifyKeys(userID, ip)
+	fails := []struct {
+		key string
+		win time.Duration
+	}{
+		{vk.vfailHour, otpHourWindow},
+		{vk.vfailDay, otpDayWindow},
+	}
+	if ip != "" {
+		fails = append(fails, struct {
+			key string
+			win time.Duration
+		}{vk.vfailIP, otpHourWindow})
+	}
+	for _, f := range fails {
+		n, err := s.rdb.Incr(ctx, f.key).Result()
+		if err == nil && n == 1 {
+			s.rdb.Expire(ctx, f.key, f.win)
+		}
+	}
+}

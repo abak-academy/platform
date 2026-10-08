@@ -32,6 +32,12 @@ type Config struct {
 	OTPSendfailMax   int
 	OTPSendfailPause time.Duration
 	SMTPQuotaDay     int
+	// Verification-failure budgets (wrong codes), konsep-otp.md §6. Hour/day
+	// counters survive a resend; the IP counter bounds multi-target guessing.
+	OTPVfailHour   int
+	OTPVfailDay    int
+	OTPVfailIPHour int
+	OTPAttempts    int
 
 	JWTSecret           string
 	AccessTokenTTL      time.Duration
@@ -81,6 +87,10 @@ type fileConfig struct {
 	OTPSendfailMax                 int      `yaml:"otp_sendfail_max"`
 	OTPSendfailPause               string   `yaml:"otp_sendfail_pause"`
 	SMTPQuotaDay                   int      `yaml:"smtp_quota_day"`
+	OTPVfailHour                   int      `yaml:"otp_vfail_hour"`
+	OTPVfailDay                    int      `yaml:"otp_vfail_day"`
+	OTPVfailIPHour                 int      `yaml:"otp_vfail_ip_hour"`
+	OTPAttempts                    int      `yaml:"otp_attempts"`
 	AccessTokenTTL                 string   `yaml:"access_token_ttl"`
 	RefreshTokenTTL                string   `yaml:"refresh_token_ttl"`
 	OTPTTL                         string   `yaml:"otp_ttl"`
@@ -248,6 +258,10 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		OTPSendfailMax:                fc.OTPSendfailMax,
 		OTPSendfailPause:              otpSendfailPause,
 		SMTPQuotaDay:                  fc.SMTPQuotaDay,
+		OTPVfailHour:                  fc.OTPVfailHour,
+		OTPVfailDay:                   fc.OTPVfailDay,
+		OTPVfailIPHour:                fc.OTPVfailIPHour,
+		OTPAttempts:                   fc.OTPAttempts,
 
 		AccessTokenTTL:  accessTTL,
 		RefreshTokenTTL: refreshTTL,

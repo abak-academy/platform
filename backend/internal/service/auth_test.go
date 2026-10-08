@@ -1615,3 +1615,141 @@ func TestOTPQuotaFailureDoesNotConsume(t *testing.T) {
 		t.Errorf("next-send RetryAfter = %v, want ~%v", rl.RetryAfter, time.Minute)
 	}
 }
+
+// --- OTP verify hardening (T3: vfail budgets, fail-closed) ---
+
+func TestOTPVerify_VfailSurvivesResend(t *testing.T) {
+	ctx := context.Background()
+	svc, mr, _ := seedActiveOTP(t)
+	otp := &stubOTPProvider{}
+	svc.otpProvider = otp
+	svc.cfg.OTPVfailHour = 3
+	svc.cfg.OTPVfailDay = 30
+
+	uid := "u1"
+	pending := func() string { return mustPending(mr, uid) }
+
+	// Three wrong entries kill the code and raise vfail to 3.
+	pendingToken := pending()
+	mr.Set("otp:u1", "111111")
+	for i := 1; i <= 3; i++ {
+		_, _, err := svc.VerifyOTP(ctx, pendingToken, fmt.Sprintf("wrong-%d", i), "1.1.1.1")
+		if i < 3 && !errors.Is(err, ErrInvalidOTP) {
+			t.Fatalf("wrong #%d: want ErrInvalidOTP, got %v", i, err)
+		}
+		if i == 3 && !errors.Is(err, ErrOTPAttemptsExceeded) {
+			t.Fatalf("wrong #3: want ErrOTPAttemptsExceeded, got %v", i)
+		}
+	}
+	if got, _ := mr.Get("otp:vfail:u1"); got != "3" {
+		t.Fatalf("otp:vfail:u1 = %q, want 3", got)
+	}
+
+	// A successful resend resets the per-code budget but NOT the vfail gate.
+	mr.FastForward(2*time.Minute + time.Second)
+	if err := svc.SendOTP(ctx, uid, "1.1.1.1"); err != nil {
+		t.Fatalf("resend: %v", err)
+	}
+	code2 := otp.codes[len(otp.codes)-1]
+	pendingToken = pending()
+	// Even the CORRECT new code is gated by the surviving vfail counter —
+	// and the gate must not consume the code.
+	_, _, err := svc.VerifyOTP(ctx, pendingToken, code2, "1.1.1.1")
+	if !errors.Is(err, ErrOTPRateLimit) {
+		t.Fatalf("gated verify: want ErrOTPRateLimit, got %v", err)
+	}
+	if !mr.Exists("otp:u1") {
+		t.Error("the gate must not consume the code")
+	}
+}
+
+func TestOTPVerify_VfailPerIPShared(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{ID: "u1", Email: strptr("u1@example.com"), PasswordHash: mustHashStd("password123"), Role: RoleStudent, Status: "pending_verification", OTPEnabled: true})
+	repo.seed(&model.User{ID: "u2", Email: strptr("u2@example.com"), PasswordHash: mustHashStd("password123"), Role: RoleStudent, Status: "pending_verification", OTPEnabled: true})
+	svc, mr := newTestService(t, repo)
+	svc.cfg.OTPVfailIPHour = 2
+
+	otp := &stubOTPProvider{}
+	svc.otpProvider = otp
+	svc.SendOTP(ctx, "u1", "9.9.9.9")
+	svc.SendOTP(ctx, "u2", "7.7.7.7")
+	code1 := otp.codes[0]
+	code2 := otp.codes[1]
+	tok1 := mustPending(mr, "u1")
+	tok2 := mustPending(mr, "u2")
+
+	// Two wrong entries from one IP raise the per-IP counter to the limit.
+	for i := 0; i < 2; i++ {
+		if _, _, err := svc.VerifyOTP(ctx, tok1, fmt.Sprintf("bad-%d", i), "9.9.9.9"); !errors.Is(err, ErrInvalidOTP) {
+			t.Fatalf("wrong #%d: want ErrInvalidOTP, got %v", i+1, err)
+		}
+	}
+	if got, _ := mr.Get("otp:vfail:ip:9.9.9.9"); got != "2" {
+		t.Fatalf("otp:vfail:ip:9.9.9.9 = %q, want 2", got)
+	}
+	// Another user with a CORRECT code, same IP: gated.
+	if _, _, err := svc.VerifyOTP(ctx, tok2, code2, "9.9.9.9"); !errors.Is(err, ErrOTPRateLimit) {
+		t.Fatalf("second user verify from flagged IP: want ErrOTPRateLimit, got %v", err)
+	}
+	// A different IP is unaffected.
+	if _, _, err := svc.VerifyOTP(ctx, tok2, code2, "3.3.3.3"); err != nil {
+		t.Fatalf("second user verify from a fresh IP: want nil, got %v", err)
+	}
+	_ = code1
+}
+
+func TestOTPVerify_SuccessClearsGateState(t *testing.T) {
+	ctx := context.Background()
+	svc, mr, _ := seedActiveOTP(t)
+	otp := &stubOTPProvider{}
+	svc.otpProvider = otp
+
+	// Register arms cooldown+level; the code verifies — all gate state must go.
+	chall, err := svc.Register(ctx, "gatestate@example.com", "password123", "Budi", "1.1.1.1")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	uid, _ := mr.Get("pending:" + chall.PendingToken)
+	if got, _ := mr.Get("otp:count:" + uid); got == "" {
+		t.Fatal("setup: level should exist after a send")
+	}
+	// One wrong entry first, so vfail has state to clear.
+	if _, _, err := svc.VerifyOTP(ctx, chall.PendingToken, "000000", "1.1.1.1"); !errors.Is(err, ErrInvalidOTP) {
+		t.Fatalf("wrong entry: %v", err)
+	}
+	code := otp.codes[0]
+	if _, _, err := svc.VerifyOTP(ctx, chall.PendingToken, code, "1.1.1.1"); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	for _, key := range []string{
+		"otp:cooldown:" + uid, "otp:count:" + uid, "otp:verify:" + uid,
+		"otp:vfail:" + uid, "otp:vfail:day:" + uid,
+	} {
+		if mr.Exists(key) {
+			t.Errorf("%s should be cleared by a successful verification", key)
+		}
+	}
+}
+
+func TestOTPVerify_FailClosedRedisDown(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), Role: RoleStudent, Status: "pending_verification", OTPEnabled: true})
+	svc, mr := newTestService(t, repo)
+	mr.Close()
+
+	if err := svc.SendOTP(ctx, "u1", "1.1.1.1"); err == nil {
+		t.Error("SendOTP with dead redis must fail closed")
+	}
+	if _, err := svc.Register(ctx, "down@example.com", "password123", "Budi", "1.1.1.1"); err == nil {
+		t.Error("Register with dead redis must fail closed, not silently send")
+	}
+}
+
+func mustPending(mr *miniredis.Miniredis, uid string) string {
+	tok := "ptok-" + uid
+	mr.Set("pending:"+tok, uid)
+	return tok
+}

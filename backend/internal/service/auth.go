@@ -334,26 +334,22 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code, ip string) 
 		return "", "", err
 	}
 
-	stored, err := s.rdb.Get(ctx, "otp:"+userID).Result()
-	if errors.Is(err, redis.Nil) {
+	// The gate script raises the attempt budget BEFORE the caller compares,
+	// so parallel wrong guesses cannot share one budget (konsep §5).
+	stored, attempts, deny := s.runOTPVerifyGate(ctx, userID, ip)
+	if deny != nil {
+		return "", "", deny
+	}
+	if stored == "" {
 		return "", "", ErrOTPExpired
 	}
-	if err != nil {
-		return "", "", err
-	}
 	if stored != code {
-		// Wrong entries are budgeted per code: three strikes kill the code so
-		// an online guesser can't grind through the 6-digit space inside its
-		// TTL. The next verify then reports the code as expired, and a fresh
-		// dispatch restores the budget.
-		n, err := s.rdb.Incr(ctx, otpVerifyKey(userID)).Result()
-		if err != nil {
-			return "", "", err
-		}
-		if n == 1 {
-			s.rdb.Expire(ctx, otpVerifyKey(userID), s.cfg.OTPTTL)
-		}
-		if int(n) >= maxOTPVerifyAttempts {
+		// Wrong entries are budgeted per code: maxOTPVerifyAttempts strikes
+		// kill the code so an online guesser can't grind through the 6-digit
+		// space inside its TTL. The hour/day/IP vfail counters survive a
+		// resend and bound total guessing.
+		s.recordOTPVerifyFailure(ctx, userID, ip)
+		if attempts >= int64(s.otpAttempts()) {
 			s.rdb.Del(ctx, "otp:"+userID)
 			return "", "", ErrOTPAttemptsExceeded
 		}
@@ -374,7 +370,13 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code, ip string) 
 	if !activated {
 		return "", "", ErrInvalidPendingToken
 	}
-	s.rdb.Del(ctx, "otp:"+userID, "pending:"+pendingToken, otpVerifyKey(userID))
+	// Success clears the OTP and every gate state it accumulated (konsep §5).
+	vk := loginOTPVerifyKeys(userID, ip)
+	s.rdb.Del(ctx,
+		"otp:"+userID, "pending:"+pendingToken, otpVerifyKey(userID), otpNewKey(userID),
+		otpCooldownKey(userID), otpCountKey(userID),
+		vk.vfailHour, vk.vfailDay, vk.vfailIP,
+	)
 	return s.mintSession(ctx, user)
 }
 
