@@ -519,3 +519,9 @@ func (s *Service) recordResetVerifyFailure(ctx context.Context, userID, ip strin
 func (s *Service) OTPEmailRetryAfter() int {
 	return int(s.otpSendfailPause().Seconds())
 }
+
+// ResendOTPResult carries what the resend endpoint needs to hand back.
+type ResendOTPResult struct {
+	PendingToken string
+	ResendAfter  int
+}

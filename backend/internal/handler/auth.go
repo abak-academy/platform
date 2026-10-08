@@ -118,26 +118,15 @@ func (h *Handler) SendOTP(c echo.Context) error {
 		return badRequest(c, "pending_token or email is required")
 	}
 
-	ctx := c.Request().Context()
-	var userID string
-	if req.PendingToken != "" {
-		id, err := h.svc.ResolveUserFromPendingToken(ctx, req.PendingToken)
-		if err != nil {
-			return mapServiceError(c, err)
-		}
-		userID = id
-	} else {
-		id, err := h.svc.ResolveUserFromEmail(ctx, req.Email)
-		if err != nil {
-			return mapServiceError(c, err)
-		}
-		userID = id
-	}
-
-	if err := h.svc.SendOTP(ctx, userID, c.RealIP()); err != nil {
+	res, err := h.svc.ResendOTP(c.Request().Context(), req.PendingToken, req.Email, c.RealIP())
+	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]string{"message": "OTP sent"})
+	return c.JSON(http.StatusOK, map[string]any{
+		"message":       "OTP sent",
+		"pending_token": res.PendingToken,
+		"resend_after":  res.ResendAfter,
+	})
 }
 
 func (h *Handler) VerifyOTP(c echo.Context) error {

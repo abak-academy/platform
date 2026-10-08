@@ -70,6 +70,19 @@ Forgot/reset password (option B — token flow and API contract unchanged):
   (`smtp:quota:<yyyymmdd>`, EXPIREAT midnight WIB). Announcement fan-out is
   explicitly out of scope and not counted.
 
+Resend (`POST /auth/otp/send`):
+
+- The target resolves from the wallet the client still holds: a live
+  pending token, falling back to the email when the token expired — a
+  dead token can no longer brick the resend.
+- A successful send re-arms a fresh pending token (full TTL) and the 200
+  body carries `{"message", "pending_token", "resend_after"}` so the UI
+  countdown follows the ladder instead of a fixed 60s.
+- An unknown email returns the same 200 shape with a zero token/budget —
+  no state is touched and registration status is never revealed (konsep §10).
+- 503 delivery failures keep the short `Retry-After`; the pending token is
+  only re-issued on a successful send (the next resend completes the flow).
+
 API contract:
 
 - Unchanged endpoints and bodies. Error mapping changes: `otp_send_locked` is

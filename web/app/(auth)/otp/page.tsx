@@ -20,11 +20,13 @@ function maskContact(contact: string): string {
 }
 
 // The resend endpoint's errors carry user-facing Indonesian copy except a
-// failed delivery, whose raw message is technical — map it to friendly text.
+// failed delivery, whose raw message is technical — map both to friendly text.
+// A stale pending token (otp_invalid) never reaches the user as-is: the page
+// sends the email alongside the token, so the server resolves it either way.
 function resendErrorMessage(err: unknown, t: (key: I18nKey) => string): string {
   if (!(err instanceof ApiError)) return t("otp_resend_failed");
   if (err.code === "email_delivery_failed") return t("otp_send_failed");
-  return err.message;
+  return t("otp_resend_failed");
 }
 
 function OtpForm() {
@@ -96,9 +98,15 @@ function OtpForm() {
     const pending_token =
       typeof window !== "undefined" ? sessionStorage.getItem("abak-pending-token") ?? "" : "";
     try {
-      await sendOtp.mutateAsync(pending_token ? { pending_token } : { email: identifier });
+      const data = await sendOtp.mutateAsync({ pending_token, email: identifier });
+      // A successful resend re-arms the pending token server-side; keep the
+      // freshest one so the next verify works even after the old expired.
+      if (data.pending_token && typeof window !== "undefined") {
+        sessionStorage.setItem("abak-pending-token", data.pending_token);
+      }
       setBanner(t("otp_resent"));
-      setResendIn(60);
+      const serverBudget = Number(data.resend_after);
+      setResendIn(Number.isFinite(serverBudget) && serverBudget > 0 ? Math.ceil(serverBudget) : 60);
     } catch (err) {
       if (err instanceof ApiError && err.retryAfter) setResendIn(err.retryAfter);
       setError(resendErrorMessage(err, t));

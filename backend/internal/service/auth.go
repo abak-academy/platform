@@ -279,25 +279,6 @@ func (s *Service) ResolveUserFromEmail(ctx context.Context, email string) (strin
 	return user.ID, nil
 }
 
-func (s *Service) SendOTP(ctx context.Context, userID, ip string) error {
-	user, err := s.repo.GetUserByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if user == nil {
-		return ErrUserNotFound
-	}
-	channel, _ := PreferredOTPChannel(deref(user.Phone), deref(user.Email))
-	keys := loginOTPSendKeys(userID, channel, ip)
-	if err := s.claimOTPSend(ctx, keys); err != nil {
-		if errors.Is(err, ErrOTPRateLimit) {
-			s.recordOTPGateReject(ctx, keys)
-		}
-		return err
-	}
-	return s.dispatchOTP(ctx, user, keys, ip)
-}
-
 // otpResendLadder arms the cooldown after each successful send: 60s after the
 // first, then 2m, 5m, 15m, and a 1h cap for every further send (konsep §7,
 // free tier starting at 60s). otpLadderWindow is the fixed window the level
@@ -659,4 +640,57 @@ func deref(s *string) string {
 
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// ResendOTP identifies the resend target — a live pending token, falling back
+// to the email when the token expired — dispatches a fresh code, and re-arms a
+// new pending token so verification keeps working afterwards. An unknown
+// email returns a zero result with a nil error: the response must not reveal
+// whether the account exists (konsep §10).
+func (s *Service) ResendOTP(ctx context.Context, pendingToken, email, ip string) (ResendOTPResult, error) {
+	var userID string
+	if pendingToken != "" {
+		id, err := s.ResolveUserFromPendingToken(ctx, pendingToken)
+		switch {
+		case err == nil:
+			userID = id
+		case errors.Is(err, ErrInvalidPendingToken):
+			// Expired or unknown token — the email fallback continues.
+		default:
+			return ResendOTPResult{}, err
+		}
+	}
+	if userID == "" {
+		id, err := s.ResolveUserFromEmail(ctx, email)
+		if err != nil {
+			if errors.Is(err, ErrUserNotFound) {
+				return ResendOTPResult{}, nil
+			}
+			return ResendOTPResult{}, err
+		}
+		userID = id
+	}
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return ResendOTPResult{}, err
+	}
+	if user == nil {
+		return ResendOTPResult{}, nil
+	}
+	channel, _ := PreferredOTPChannel(deref(user.Phone), deref(user.Email))
+	keys := loginOTPSendKeys(userID, channel, ip)
+	if err := s.claimOTPSend(ctx, keys); err != nil {
+		if errors.Is(err, ErrOTPRateLimit) {
+			s.recordOTPGateReject(ctx, keys)
+		}
+		return ResendOTPResult{}, err
+	}
+	if err := s.dispatchOTP(ctx, user, keys, ip); err != nil {
+		return ResendOTPResult{}, err
+	}
+	token, err := s.storePendingToken(ctx, userID)
+	if err != nil {
+		return ResendOTPResult{}, err
+	}
+	return ResendOTPResult{PendingToken: token, ResendAfter: s.resendAfter(ctx, userID)}, nil
 }

@@ -997,7 +997,45 @@ func TestSendOTPHandler_UsesRealIPForQuota(t *testing.T) {
 	if rec.Header().Get("Retry-After") == "" {
 		t.Error("want a Retry-After header on the 429")
 	}
-	if err := env.svc.SendOTP(context.Background(), "u-target", "203.0.113.9"); err != nil {
+	if _, err := env.svc.ResendOTP(context.Background(), "", "target@example.com", "203.0.113.9"); err != nil {
 		t.Errorf("send from a different IP via the service: want nil, got %v", err)
+	}
+}
+
+// TestSendOTPHandler_ExpiredPendingTokenFallsBackToEmail: a dead pending
+// token must not brick the resend — the email resolves the target and the
+// 200 body carries a fresh token plus the server's resend budget.
+func TestSendOTPHandler_ExpiredPendingTokenFallsBackToEmail(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:         "u-target",
+		Email:      strptr("target@example.com"),
+		Role:       service.RoleStudent,
+		Status:     "active",
+		OTPEnabled: true,
+	})
+
+	rec := postJSON(t, env.e, "/api/v1/auth/otp/send", map[string]string{
+		"pending_token": "long-expired",
+		"email":         "target@example.com",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["message"] != "OTP sent" {
+		t.Errorf("message = %v", resp["message"])
+	}
+	pt, _ := resp["pending_token"].(string)
+	if pt == "" {
+		t.Error("want a fresh pending_token in the 200 body")
+	}
+	if uid, _ := env.mr.Get("pending:" + pt); uid != "u-target" {
+		t.Errorf("fresh token resolves to %q, want u-target", uid)
+	}
+	ra, ok := resp["resend_after"].(float64)
+	if !ok || ra < 60 || ra > 60 {
+		t.Errorf("resend_after = %v, want ~60", resp["resend_after"])
 	}
 }

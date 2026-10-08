@@ -55,8 +55,27 @@ describe("OtpPage", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/masih berlaku/i);
     const resend = screen.getByRole("button", { name: /kirim ulang kode/i });
     fireEvent.click(resend);
-    // No pending token in storage — the endpoint accepts an email-only resend.
-    expect(sendMock).toHaveBeenCalledWith({ email: "budi@example.com" });
+    // The page always sends both fields — an empty pending_token lets the
+    // server fall back to the email when the stored token has expired.
+    expect(sendMock).toHaveBeenCalledWith({ email: "budi@example.com", pending_token: "" });
+  });
+
+  it("adopts the server's resend budget and the fresh token after a successful resend", async () => {
+    seedSession({ "abak-pending-token": "tok-old", "abak-resend-after": "0" });
+    sendMock.mockResolvedValue({ message: "OTP sent", pending_token: "tok-new", resend_after: 120 });
+    render(<OtpPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /kirim ulang kode/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(/kode baru sudah dikirim/i);
+    });
+    expect(sendMock).toHaveBeenCalledWith({
+      email: "budi@example.com",
+      pending_token: "tok-old",
+    });
+    expect(sessionStorage.getItem("abak-pending-token")).toBe("tok-new");
+    expect(screen.getByText(/Kirim ulang tersedia dalam 120 detik/)).toBeInTheDocument();
   });
 
   it("maps a failed resend to friendly copy and adopts the server's Retry-After", async () => {
