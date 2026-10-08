@@ -736,3 +736,45 @@ func contains(s, substr string) bool {
 	}
 	return false
 }
+
+func TestLoad_stagingOtpSecretRequired(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "staging")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
+`)
+	writeYAML(t, envDir, "secrets.yaml", `
+database_url: "postgres://host/db"
+jwt_secret: "jwt"
+config_encryption_key: "enc-key"
+otp_secret: ""
+object_storage_access_key: "minio-ak"
+object_storage_secret_key: "minio-sk"
+`)
+
+	_, err := Load("staging", dir)
+	if err == nil {
+		t.Fatal("expected error for empty otp_secret, got nil")
+	}
+	if !contains(err.Error(), "otp_secret") {
+		t.Errorf("error should name otp_secret, got: %v", err)
+	}
+}

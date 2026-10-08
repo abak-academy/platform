@@ -196,9 +196,11 @@ func (s *Service) startOTPChallenge(ctx context.Context, user *model.User, ip st
 		s.rdb.Del(ctx, otpNewKey(user.ID))
 		s.rollbackOTPClaim(ctx, keys)
 		s.recordOTPSendFailure(ctx, user.ID, channel)
+		metrics.ObserveOTPSend("delivery_failed")
 		return OTPChallenge{PendingToken: pendingToken, EmailFailed: true, ResendAfter: s.resendAfter(ctx, user.ID)}, nil
 	}
 	s.promoteOTP(ctx, user.ID, channel, stored)
+	metrics.ObserveOTPSend("sent")
 	return OTPChallenge{PendingToken: pendingToken, ResendAfter: s.resendAfter(ctx, user.ID)}, nil
 }
 
@@ -239,9 +241,12 @@ func (s *Service) dispatchOTP(ctx context.Context, user *model.User, keys otpSen
 		s.rdb.Del(ctx, otpNewKey(user.ID))
 		s.rollbackOTPClaim(ctx, keys)
 		s.recordOTPSendFailure(ctx, user.ID, channel)
-		return fmt.Errorf("%w: %s", ErrEmailDeliveryFailed, err)
+		metrics.ObserveOTPSend("delivery_failed")
+		return &EmailDeliveryError{RetryAfter: s.otpSendfailPause(), Err: err}
 	}
-	return s.promoteOTP(ctx, user.ID, channel, stored)
+	s.promoteOTP(ctx, user.ID, channel, stored)
+	metrics.ObserveOTPSend("sent")
+	return nil
 }
 
 // promoteOTP publishes a successfully sent code hash: it replaces the live
@@ -343,9 +348,11 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code, ip string) 
 	// so parallel wrong guesses cannot share one budget (konsep §5).
 	stored, attempts, deny := s.runOTPVerifyGate(ctx, userID, ip)
 	if deny != nil {
+		metrics.ObserveOTPVerify("denied")
 		return "", "", deny
 	}
 	if stored == "" {
+		metrics.ObserveOTPVerify("invalid")
 		return "", "", ErrOTPExpired
 	}
 	if !otpEqualMAC(stored, s.hashOTP(otpPurposeLogin, code)) {
@@ -356,8 +363,10 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code, ip string) 
 		s.recordOTPVerifyFailure(ctx, userID, ip)
 		if attempts >= int64(s.otpAttempts()) {
 			s.rdb.Del(ctx, "otp:"+userID)
+			metrics.ObserveOTPVerify("attempts_exceeded")
 			return "", "", ErrOTPAttemptsExceeded
 		}
+		metrics.ObserveOTPVerify("invalid")
 		return "", "", ErrInvalidOTP
 	}
 
@@ -375,6 +384,7 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code, ip string) 
 	if !activated {
 		return "", "", ErrInvalidPendingToken
 	}
+	metrics.ObserveOTPVerify("ok")
 	// Success clears the OTP and every gate state it accumulated (konsep §5).
 	vk := loginOTPVerifyKeys(userID, ip)
 	s.rdb.Del(ctx,
@@ -444,32 +454,60 @@ func (s *Service) ForgotPassword(ctx context.Context, email, ip string) error {
 		// No enumeration: pretend success when the email is unknown.
 		return nil
 	}
+	keys := passwordResetSendKeys(email, ip)
+	if err := s.claimOTPSend(ctx, keys); err != nil {
+		if errors.Is(err, ErrOTPRateLimit) {
+			s.recordOTPGateReject(ctx, keys)
+		}
+		return err
+	}
 
 	code, err := genOTP()
 	if err != nil {
 		return err
 	}
 	token := newToken(user.ID)
-	if err := s.rdb.Set(ctx, "reset:"+token, user.ID+":"+code, s.cfg.OTPTTL).Err(); err != nil {
+	stored := s.hashOTP(otpPurposeReset, code)
+	pipe := s.rdb.TxPipeline()
+	pipe.HSet(ctx, "reset:"+token, map[string]interface{}{
+		"uid":      user.ID,
+		"hash":     stored,
+		"attempts": 0,
+	})
+	pipe.Expire(ctx, "reset:"+token, s.cfg.OTPTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
 		return err
 	}
 	body := fmt.Sprintf("Your password reset code is %s. Token: %s", code, token)
 	if err := s.emailProvider.SendEmail(ctx, deref(user.Email), "Password reset", body); err != nil {
-		return fmt.Errorf("%w: %s", ErrEmailDeliveryFailed, err)
+		s.rollbackOTPClaim(ctx, keys)
+		s.recordOTPSendFailureOn(ctx, keys)
+		metrics.ObserveOTPSend("delivery_failed")
+		return &EmailDeliveryError{RetryAfter: s.otpSendfailPause(), Err: err}
 	}
+	s.rdb.Del(ctx, keys.sendfail)
+	metrics.ObserveOTPSend("sent")
 	return nil
 }
 
 func (s *Service) ResetPassword(ctx context.Context, token, otp, newPassword, ip string) error {
-	stored, err := s.rdb.Get(ctx, "reset:"+token).Result()
-	if errors.Is(err, redis.Nil) {
+	// The gate script raises the attempt budget before the hash comparison,
+	// so parallel guesses share one budget (konsep §5), and the reset vfail
+	// budgets survive across reset tokens.
+	userID, stored, attempts, deny := s.runResetVerifyGate(ctx, token, ip)
+	if deny != nil {
+		metrics.ObserveOTPVerify("denied")
+		return deny
+	}
+	if userID == "" {
+		metrics.ObserveOTPVerify("invalid")
 		return ErrInvalidResetToken
 	}
-	if err != nil {
-		return err
-	}
-	userID, code, ok := strings.Cut(stored, ":")
-	if !ok || code != otp {
+	if !otpEqualMAC(stored, s.hashOTP(otpPurposeReset, otp)) {
+		s.recordResetVerifyFailure(ctx, userID, ip)
+		if attempts >= int64(s.otpAttempts()) {
+			s.rdb.Del(ctx, "reset:"+token)
+		}
 		return ErrInvalidResetToken
 	}
 	if len(newPassword) < minPasswordLen {
@@ -483,7 +521,9 @@ func (s *Service) ResetPassword(ctx context.Context, token, otp, newPassword, ip
 	if err := s.repo.UpdatePasswordHash(ctx, userID, string(hash)); err != nil {
 		return err
 	}
-	s.rdb.Del(ctx, "reset:"+token)
+	// Success clears the token and the accumulated wrong-entry budget.
+	vk := resetVerifyKeys(userID, ip)
+	s.rdb.Del(ctx, "reset:"+token, vk.vfailHour, vk.vfailDay, vk.vfailIP)
 	s.revokeAllSessions(ctx, userID)
 	return nil
 }
@@ -576,10 +616,18 @@ func (s *Service) mintSession(ctx context.Context, user *model.User) (accessToke
 	return tokenString, refreshToken, nil
 }
 
-const otpPurposeLogin = "login"
+const (
+	opPurposeLogin = "login"
+	opPurposeReset = "reset"
+)
 
 // hashOTP binds the code to its purpose and the server secret (konsep-otp.md
 // §11): what sits in Redis is the hex HMAC, never the raw 6 digits.
+const (
+	otpPurposeLogin = "login"
+	otpPurposeReset = "reset"
+)
+
 func (s *Service) hashOTP(purpose, code string) string {
 	var secret []byte
 	if s.cfg != nil {

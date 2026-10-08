@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -135,6 +136,32 @@ type OTPRateLimitError struct {
 func (e *OTPRateLimitError) Error() string { return ErrOTPRateLimit.Error() }
 
 func (e *OTPRateLimitError) Is(target error) bool { return target == ErrOTPRateLimit }
+
+// OTPGateError is an OTPRateLimitError carrying the limiter bucket that
+// tripped, for metrics only. The embedded pointer keeps errors.As of
+// OTPRateLimitError working for the existing handler mapping.
+type OTPGateError struct {
+	*OTPRateLimitError
+	Bucket string
+}
+
+func (e *OTPGateError) Unwrap() error { return e.OTPRateLimitError }
+
+// EmailDeliveryError reports a failed provider send with the short pause the
+// client should wait before retrying (konsep §9). Satisfies
+// errors.Is(err, ErrEmailDeliveryFailed).
+type EmailDeliveryError struct {
+	RetryAfter time.Duration
+	Err        error
+}
+
+func (e *EmailDeliveryError) Error() string {
+	return fmt.Sprintf("%s: %v", ErrEmailDeliveryFailed.Error(), e.Err)
+}
+
+func (e *EmailDeliveryError) Is(target error) bool { return target == ErrEmailDeliveryFailed }
+
+func (e *EmailDeliveryError) Unwrap() error { return e.Err }
 
 // VerificationPendingError carries the OTP dispatch outcome on the login 403
 // path so the client can warn when the send failed or tell the user a live

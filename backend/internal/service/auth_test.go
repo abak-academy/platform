@@ -1150,8 +1150,8 @@ func TestResetPassword(t *testing.T) {
 			Status:       "active",
 		})
 		svc, mr := newTestService(t, repo)
-		mr.Set("reset:tok", "u1:654321")
-		if err := svc.ResetPassword(ctx, "tok", "654321", "brandnewpass", "1.1.1.1"); err != nil {
+		token := seedResetToken(t, svc, mr, "u1", "654321")
+		if err := svc.ResetPassword(ctx, token, "654321", "brandnewpass", "1.1.1.1"); err != nil {
 			t.Fatalf("ResetPassword: %v", err)
 		}
 		u, _ := repo.GetUserByID(ctx, "u1")
@@ -1167,8 +1167,8 @@ func TestResetPassword(t *testing.T) {
 		repo := newFakeUserRepo()
 		repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), PasswordHash: mustHashStd("oldpassword"), Role: RoleStudent, Status: "active"})
 		svc, mr := newTestService(t, repo)
-		mr.Set("reset:tok", "u1:654321")
-		if err := svc.ResetPassword(ctx, "tok", "000000", "brandnewpass", "1.1.1.1"); !errors.Is(err, ErrInvalidResetToken) {
+		token := seedResetToken(t, svc, mr, "u1", "654321")
+		if err := svc.ResetPassword(ctx, token, "000000", "brandnewpass", "1.1.1.1"); !errors.Is(err, ErrInvalidResetToken) {
 			t.Errorf("want ErrInvalidResetToken, got %v", err)
 		}
 	})
@@ -1291,8 +1291,8 @@ func TestResetPassword_RevokesAllSessions(t *testing.T) {
 	}
 
 	// Trigger reset.
-	mr.Set("reset:tok", "u1:654321")
-	if err := svc.ResetPassword(ctx, "tok", "654321", "brandnewpass", "1.1.1.1"); err != nil {
+	token := seedResetToken(t, svc, mr, "u1", "654321")
+	if err := svc.ResetPassword(ctx, token, "654321", "brandnewpass", "1.1.1.1"); err != nil {
 		t.Fatalf("ResetPassword: %v", err)
 	}
 
@@ -1791,4 +1791,174 @@ func TestOTPStoredHashed_NotPlaintext(t *testing.T) {
 	if _, _, err := svc.VerifyOTP(ctx, chall.PendingToken, otp.codes[0], "1.1.1.1"); err != nil {
 		t.Errorf("captured code: want nil, got %v", err)
 	}
+}
+
+// --- T5: forgot/reset password limits (option B: token flow unchanged) ---
+
+func TestForgotPassword_EmailLadderAndQuota(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), Role: RoleStudent, Status: "active", OTPEnabled: true})
+	svc, mr := newTestService(t, repo)
+
+	if err := svc.ForgotPassword(ctx, "user@example.com", "1.1.1.1"); err != nil {
+		t.Fatalf("forgot 1: %v", err)
+	}
+	if !mr.Exists("otp:cooldown:reset:user@example.com") {
+		t.Fatal("the first forgot request should arm the reset cooldown")
+	}
+
+	// Immediate second request: denied by the ladder.
+	err := svc.ForgotPassword(ctx, "user@example.com", "1.1.1.1")
+	var rl *OTPRateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("forgot 2: want OTPRateLimitError, got %v", err)
+	}
+	if rl.RetryAfter < time.Minute-time.Second || rl.RetryAfter > time.Minute {
+		t.Errorf("RetryAfter = %v, want ~%v", rl.RetryAfter, time.Minute)
+	}
+	mr.FastForward(time.Minute + time.Second)
+
+	if err := svc.ForgotPassword(ctx, "user@example.com", "1.1.1.1"); err != nil {
+		t.Fatalf("forgot 2 after cooldown: %v", err)
+	}
+	if got, _ := mr.Get("otp:hr:reset:user@example.com"); got != "2" {
+		t.Errorf("otp:hr:reset = %q, want 2", got)
+	}
+	if got, _ := mr.Get(gKeyFor("user@example.com")); got != "2" {
+		t.Errorf("global smtp quota = %q, want 2", got)
+	}
+}
+
+func TestForgotPassword_UnknownEmailTouchesNothing(t *testing.T) {
+	ctx := context.Background()
+	svc, mr := newTestService(t, newFakeUserRepo())
+	if err := svc.ForgotPassword(ctx, "ghost@example.com", "1.1.1.1"); err != nil {
+		t.Fatalf("unknown email: want fabricated success, got %v", err)
+	}
+	for _, key := range []string{
+		"otp:cooldown:reset:ghost@example.com",
+		"otp:hr:reset:ghost@example.com",
+		"otp:abuse:reset:ghost@example.com",
+	} {
+		if mr.Exists(key) {
+			t.Errorf("%s should not exist for an unknown email", key)
+		}
+	}
+}
+
+func TestForgotPassword_SendFailRollsBack(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), Role: RoleStudent, Status: "active", OTPEnabled: true})
+	svc, mr := newTestService(t, repo)
+	failMail := &failingEmailProvider{err: errors.New("smtp down")}
+	svc.emailProvider = failMail
+
+	if err := svc.ForgotPassword(ctx, "user@example.com", "1.1.1.1"); !errors.Is(err, ErrEmailDeliveryFailed) {
+		t.Fatalf("want ErrEmailDeliveryFailed, got %v", err)
+	}
+	if got, _ := mr.Get("otp:hr:reset:user@example.com"); got != "0" {
+		t.Errorf("hr quota after failed send = %q, want rolled back to 0", got)
+	}
+	if got, _ := mr.Get(gKeyFor("user@example.com")); got != "0" {
+		t.Errorf("global smtp quota after failed send = %q, want rolled back to 0", got)
+	}
+	ttl := mr.TTL("otp:cooldown:reset:user@example.com")
+	if ttl > 35*time.Second || ttl < 25*time.Second {
+		t.Errorf("pause after failure = %v, want ~%v", ttl, otpSendfailPause)
+	}
+
+	// Recovery: retry allowed after the pause; quota counts the success only.
+	svc.emailProvider = &NoopEmailProvider{}
+	mr.FastForward(otpSendfailPause + time.Second)
+	if err := svc.ForgotPassword(ctx, "user@example.com", "1.1.1.1"); err != nil {
+		t.Fatalf("retry after pause: %v", err)
+	}
+	if got, _ := mr.Get("otp:hr:reset:user@example.com"); got != "1" {
+		t.Errorf("hr quota = %q, want 1", got)
+	}
+}
+
+func seedResetToken(t *testing.T, svc *Service, mr *miniredis.Miniredis, uid, code string) string {
+	t.Helper()
+	token := "tok-" + uid
+	stored := svc.hashOTP(otpPurposeReset, code)
+	mr.HSet("reset:"+token, "uid", uid)
+	mr.HSet("reset:"+token, "hash", stored)
+	mr.HSet("reset:"+token, "attempts", "0")
+	return token
+}
+
+func TestResetPassword_AttemptsBudget(t *testing.T) {
+	ctx := context.Background()
+	svc, mr := newTestService(t, newFakeUserRepo())
+	token := seedResetToken(t, svc, mr, "u1", "654321")
+
+	for i := 1; i <= 3; i++ {
+		err := svc.ResetPassword(ctx, token, fmt.Sprintf("wrong-%d", i), "brandnewpass", "1.1.1.1")
+		if !errors.Is(err, ErrInvalidResetToken) {
+			t.Fatalf("wrong #%d: want ErrInvalidResetToken, got %v", i, err)
+		}
+	}
+	// The budget kills the token: even the CORRECT code no longer works.
+	if err := svc.ResetPassword(ctx, token, "654321", "brandnewpass", "1.1.1.1"); !errors.Is(err, ErrInvalidResetToken) {
+		t.Fatalf("post-kill: want ErrInvalidResetToken, got %v", err)
+	}
+	if mr.Exists("reset:" + token) {
+		t.Error("the token should be deleted after the attempt budget is exhausted")
+	}
+}
+
+func TestResetPassword_VfailGateDoesNotConsume(t *testing.T) {
+	ctx := context.Background()
+	svc, mr := newTestService(t, newFakeUserRepo())
+	svc.cfg.OTPVfailHour = 2
+	token := seedResetToken(t, svc, mr, "u1", "654321")
+
+	for i := 0; i < 2; i++ {
+		if err := svc.ResetPassword(ctx, token, fmt.Sprintf("wrong-%d", i), "brandnewpass", "1.1.1.1"); !errors.Is(err, ErrInvalidResetToken) {
+			t.Fatalf("wrong #%d: want ErrInvalidResetToken, got %v", i+1, err)
+		}
+	}
+	// vfail hour = 2 >= limit: even the CORRECT code is gated, and the gate
+	// must not delete the token or consume it.
+	err := svc.ResetPassword(ctx, token, "654321", "brandnewpass", "1.1.1.1")
+	var rl *OTPRateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("gated reset: want OTPRateLimitError, got %v", err)
+	}
+	if !mr.Exists("reset:" + token) {
+		t.Error("the gated reset must not consume the token")
+	}
+}
+
+func TestResetPassword_SuccessClearsResetState(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), PasswordHash: mustHashStd("oldpassword"), Role: RoleStudent, Status: "active"})
+	svc, mr := newTestService(t, repo)
+	token := seedResetToken(t, svc, mr, "u1", "654321")
+	mr.HIncrBy("reset:"+token, "attempts", 1)
+
+	if err := svc.ResetPassword(ctx, token, "654321", "brandnewpass", "1.1.1.1"); err != nil {
+		t.Fatalf("ResetPassword: %v", err)
+	}
+	if mr.Exists("reset:" + token) {
+		t.Error("the token should be deleted after a successful reset")
+	}
+	if mr.Exists("otp:vfail:reset:u1") {
+		t.Error("the reset vfail counter should be cleared after a successful reset")
+	}
+}
+
+func gKeyFor(_ string) string {
+	k, _ := smtpQuotaDateKey(time.Now())
+	return k
+}
+
+type failingEmailProvider struct{ err error }
+
+func (f *failingEmailProvider) SendEmail(_ context.Context, _, _, _ string) error {
+	return f.err
 }

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"akademi-bimbel/internal/metrics"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -215,8 +217,10 @@ func (s *Service) claimOTPSend(ctx context.Context, keys otpSendKeys) error {
 	if status == 1 {
 		return nil
 	}
+	bucket, _ := arr[1].(string)
 	ttl, _ := arr[2].(int64)
-	return &OTPRateLimitError{RetryAfter: time.Duration(ttl) * time.Second}
+	metrics.ObserveOTPGateDenial(bucket)
+	return &OTPGateError{OTPRateLimitError: &OTPRateLimitError{RetryAfter: time.Duration(ttl) * time.Second}, Bucket: bucket}
 }
 
 func ladderSeconds() []int {
@@ -355,8 +359,10 @@ func (s *Service) runOTPVerifyGate(ctx context.Context, userID, ip string) (otpV
 	}
 	status, _ := arr[0].(int64)
 	if status == 0 {
+		bucket, _ := arr[1].(string)
 		ttl, _ := arr[2].(int64)
-		return "", 0, &OTPRateLimitError{RetryAfter: time.Duration(ttl) * time.Second}
+		metrics.ObserveOTPGateDenial(bucket)
+		return "", 0, &OTPGateError{OTPRateLimitError: &OTPRateLimitError{RetryAfter: time.Duration(ttl) * time.Second}, Bucket: bucket}
 	}
 	otpVal, _ = arr[1].(string)
 	attempts, _ = arr[2].(int64)
@@ -386,4 +392,130 @@ func (s *Service) recordOTPVerifyFailure(ctx context.Context, userID, ip string)
 			s.rdb.Expire(ctx, f.key, f.win)
 		}
 	}
+}
+
+// passwordResetSendKeys builds the forgot/reset-purpose key set; the ":reset:"
+// segment keeps these counters from colliding with the login ladder.
+func passwordResetSendKeys(email, ip string) otpSendKeys {
+	id := normalizeEmail(email)
+	return otpSendKeys{
+		cd:       "otp:cooldown:reset:" + id,
+		hr:       "otp:hr:reset:" + id,
+		day:      "otp:day:reset:" + id,
+		lvl:      "otp:count:reset:" + id,
+		sendfail: "otp:sendfail:reset:" + id + ":email",
+		abuse:    "otp:abuse:reset:" + id,
+	}
+}
+
+func resetVerifyKeys(userID, ip string) otpVerifyKeys {
+	return otpVerifyKeys{
+		vfailHour: "otp:vfail:reset:" + userID,
+		vfailDay:  "otp:vfail:day:reset:" + userID,
+		vfailIP:   "otp:vfail:ip:" + ip,
+	}
+}
+
+// recordOTPSendFailureOn bumps the sendfail counter on an explicit key set and
+// replaces the cooldown with the fixed short pause (konsep §9).
+func (s *Service) recordOTPSendFailureOn(ctx context.Context, keys otpSendKeys) {
+	n, err := s.rdb.Incr(ctx, keys.sendfail).Result()
+	if err == nil && n == 1 {
+		s.rdb.Expire(ctx, keys.sendfail, otpSendfailWindow)
+	}
+	s.rdb.Set(ctx, keys.cd, "1", s.otpSendfailPause())
+}
+
+// resetVerifyGateScript runs the reset-token budget atomically: the reset-
+// purpose vfail budgets are checked before the attempt counter increments and
+// the stored hash is handed back for comparison (konsep §5).
+var resetVerifyGateScript = redis.NewScript(`
+local denial, maxTTL = nil, 0
+local function mark(name, ttl)
+	if ttl and ttl > maxTTL then
+		maxTTL = ttl
+		denial = {0, name, ttl}
+	end
+end
+
+local uid = redis.call('HGET', KEYS[1], 'uid')
+if not uid then return {2, '', '', 0} end
+local hash = redis.call('HGET', KEYS[1], 'hash')
+if not hash then return {2, '', '', 0} end
+
+local vfHourKey = ARGV[4] .. uid
+local vfDayKey = ARGV[5] .. uid
+local hf = redis.call('TTL', vfHourKey)
+if hf > 0 and (tonumber(redis.call('GET', vfHourKey)) or 0) >= tonumber(ARGV[1]) then mark('vfail_hour', hf) end
+local df = redis.call('TTL', vfDayKey)
+if df > 0 and (tonumber(redis.call('GET', vfDayKey)) or 0) >= tonumber(ARGV[2]) then mark('vfail_day', df) end
+local ipLim = tonumber(ARGV[3])
+if ipLim > 0 then
+	local ttl = redis.call('TTL', KEYS[2])
+	if ttl > 0 and (tonumber(redis.call('GET', KEYS[2])) or 0) >= ipLim then mark('vfail_ip', ttl) end
+end
+
+if denial then return denial end
+
+local attempts = redis.call('HINCRBY', KEYS[1], 'attempts', 1)
+return {1, uid, hash, attempts}
+`)
+
+// runResetVerifyGate mirrors runOTPVerifyGate for the reset token. The vfail
+// key prefixes ride ARGV because the per-uid suffix only exists once the
+// script has read the token hash.
+func (s *Service) runResetVerifyGate(ctx context.Context, token, ip string) (uid, hash string, attempts int64, deny error) {
+	res, err := resetVerifyGateScript.Run(ctx, s.rdb,
+		[]string{"reset:" + token, "otp:vfail:ip:" + ip},
+		s.otpVfailHour(), s.otpVfailDay(), s.otpVfailIPHour(),
+		"otp:vfail:reset:", "otp:vfail:day:reset:", s.otpAttempts(),
+	).Result()
+	if err != nil {
+		return "", "", 0, fmt.Errorf("reset verify gate: %w", err)
+	}
+	arr, ok := res.([]interface{})
+	if !ok || len(arr) != 4 {
+		// A denial reply is {0, name, ttl}.
+		if len(arr) == 3 {
+			status, _ := arr[0].(int64)
+			if status == 0 {
+				bucket, _ := arr[1].(string)
+				ttl, _ := arr[2].(int64)
+				metrics.ObserveOTPGateDenial(bucket)
+				return "", "", 0, &OTPGateError{OTPRateLimitError: &OTPRateLimitError{RetryAfter: time.Duration(ttl) * time.Second}, Bucket: bucket}
+			}
+		}
+		return "", "", 0, fmt.Errorf("reset verify gate: unexpected reply %v", res)
+	}
+	status, _ := arr[0].(int64)
+	if status == 0 {
+		ttl, _ := arr[3].(int64)
+		return "", "", 0, &OTPRateLimitError{RetryAfter: time.Duration(ttl) * time.Second}
+	}
+	uid, _ = arr[1].(string)
+	hash, _ = arr[2].(string)
+	attempts, _ = arr[3].(int64)
+	return uid, hash, attempts, nil
+}
+
+// recordResetVerifyFailure raises the reset-purpose wrong-entry budgets.
+func (s *Service) recordResetVerifyFailure(ctx context.Context, userID, ip string) {
+	vk := resetVerifyKeys(userID, ip)
+	for _, f := range []struct{ key string }{
+		{vk.vfailHour},
+		{vk.vfailDay},
+	} {
+		s.rdb.Incr(ctx, f.key)
+		s.rdb.Expire(ctx, f.key, otpHourWindow)
+	}
+	if ip != "" {
+		s.rdb.Incr(ctx, vk.vfailIP)
+		s.rdb.Expire(ctx, vk.vfailIP, otpHourWindow)
+	}
+}
+
+// OTPEmailRetryAfter exposes the delivery-failure pause for the handler's
+// Retry-After header without leaking the secret or key space.
+func (s *Service) OTPEmailRetryAfter() int {
+	return int(s.otpSendfailPause().Seconds())
 }
