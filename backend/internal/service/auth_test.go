@@ -1653,15 +1653,14 @@ func TestOTPVerify_VfailSurvivesResend(t *testing.T) {
 
 	// A successful resend resets the per-code budget but NOT the vfail gate.
 	mr.FastForward(2*time.Minute + time.Second)
-	if err := resendFor(ctx, svc, "pending@example.com", "1.1.1.1"); err != nil {
+	if err := resendFor(ctx, svc, "user@example.com", "1.1.1.1"); err != nil {
 		t.Fatalf("resend: %v", err)
 	}
 	code2 := otp.codes[len(otp.codes)-1]
 	pendingToken = pending()
 	// Even the CORRECT new code is gated by the surviving vfail counter —
 	// and the gate must not consume the code.
-	_, _, err := svc.VerifyOTP(ctx, pendingToken, code2, "1.1.1.1")
-	if !errors.Is(err, ErrOTPRateLimit) {
+	if _, _, err := svc.VerifyOTP(ctx, pendingToken, code2, "1.1.1.1"); !errors.Is(err, ErrOTPRateLimit) {
 		t.Fatalf("gated verify: want ErrOTPRateLimit, got %v", err)
 	}
 	if !mr.Exists("otp:u1") {

@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { OtpInput } from "@/components/auth/OtpInput";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
+import { adoptResendBudget, clearResendBudget, readResendBudget } from "@/lib/otp-budget";
 
 function maskContact(contact: string): string {
   if (!contact) return "•••••";
@@ -42,20 +43,27 @@ function OtpForm() {
   const [banner, setBanner] = React.useState<string | null>(null);
   const [resendIn, setResendIn] = React.useState<number>(60);
 
+  // Applies a server-issued budget to BOTH layers: the wall-clock anchor in
+  // sessionStorage (so later mounts resume it) and this render's state (so
+  // the countdown shows immediately).
+  const applyResendBudget = React.useCallback((budgetSec: number) => {
+    const budget = Math.max(0, Math.ceil(budgetSec) || 0);
+    adoptResendBudget(budget);
+    setResendIn(budget);
+  }, []);
+
   // Flags written by the login/register pages describe how this challenge was
   // armed: a failed delivery, a live code (no send), and the server's own
-  // resend budget. Read once on mount — re-running it on every render (t's
-  // identity churns) would clobber the countdown adopted from a 429.
+  // wall-clock-anchored resend budget (lib/otp-budget). Read once on mount —
+  // re-running it on every render (t's identity churns) would clobber the
+  // countdown adopted from a 429.
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const failed = sessionStorage.getItem("abak-email-failed") === "1";
     const active = sessionStorage.getItem("abak-otp-active") === "1";
-    // Absent = no server budget known (default 60s floor); "0" means free now.
-    const raw = sessionStorage.getItem("abak-resend-after");
-    const stored = raw === null ? 60 : Math.max(0, Math.ceil(Number(raw) || 0));
     if (failed) setBanner(t("otp_email_failed_banner"));
     else if (active) setBanner(t("otp_active_banner"));
-    setResendIn(stored);
+    setResendIn(readResendBudget());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -82,7 +90,7 @@ function OtpForm() {
         sessionStorage.removeItem("abak-pending-token");
         sessionStorage.removeItem("abak-email-failed");
         sessionStorage.removeItem("abak-otp-active");
-        sessionStorage.removeItem("abak-resend-after");
+        clearResendBudget();
       }
       router.push(redirectForRole(data.user?.role));
     } catch (err) {
@@ -106,9 +114,9 @@ function OtpForm() {
       }
       setBanner(t("otp_resent"));
       const serverBudget = Number(data.resend_after);
-      setResendIn(Number.isFinite(serverBudget) && serverBudget > 0 ? Math.ceil(serverBudget) : 60);
+      applyResendBudget(Number.isFinite(serverBudget) && serverBudget > 0 ? serverBudget : 60);
     } catch (err) {
-      if (err instanceof ApiError && err.retryAfter) setResendIn(err.retryAfter);
+      if (err instanceof ApiError && err.retryAfter) applyResendBudget(err.retryAfter);
       setError(resendErrorMessage(err, t));
     }
   };

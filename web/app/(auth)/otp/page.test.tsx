@@ -94,6 +94,21 @@ describe("OtpPage", () => {
     expect(screen.getByText(/Kirim ulang tersedia dalam 300 detik/)).toBeInTheDocument();
   });
 
+  it("resumes the countdown across re-visits instead of restarting from the stored budget", () => {
+    // 90 of the 120s budget already elapsed before this visit.
+    seedSession({ "abak-resend-after": "120", "abak-resend-at": String(Date.now() - 90_000) });
+    render(<OtpPage />);
+
+    expect(screen.getByText(/Kirim ulang tersedia dalam 30 detik/)).toBeInTheDocument();
+  });
+
+  it("offers the resend immediately when the anchored budget fully elapsed", () => {
+    seedSession({ "abak-resend-after": "120", "abak-resend-at": String(Date.now() - 300_000) });
+    render(<OtpPage />);
+
+    expect(screen.getByRole("button", { name: /kirim ulang kode/i })).toBeInTheDocument();
+  });
+
   it("clears the stored challenge state and navigates after a successful verify", async () => {
     seedSession({ "abak-pending-token": "tok-abc", "abak-email-failed": "1" });
     verifyMock.mockResolvedValue({ user: { role: "student" } });
