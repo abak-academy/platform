@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -95,16 +96,12 @@ var (
 
 // --- from auth.go ---
 var (
-	ErrEmailTaken = errors.New("email already registered")
+	ErrEmailTaken         = errors.New("email already registered")
 	ErrInvalidCredentials = errors.New("invalid credentials")
-	// ErrOTPRateLimit means the resend ladder is still holding the user off.
-	// User-facing copy (spec C-4); the precise wait rides the Retry-After
-	// header and the typed OTPRateLimitError below.
+	// ErrOTPRateLimit means the resend ladder or the sendfail gate is still
+	// holding the user off. User-facing copy (spec C-4); the precise wait
+	// rides the Retry-After header and the typed OTPRateLimitError below.
 	ErrOTPRateLimit = errors.New("Terlalu sering meminta kode OTP. Tunggu sebentar lalu coba lagi.")
-	// ErrOTPSendLocked means OTP email sending is locked out for the user after
-	// repeated delivery failures (relay rate limit). Keep the quoted window in
-	// sync with otpFailureWindow in auth.go. User-facing copy (spec C-4).
-	ErrOTPSendLocked = errors.New("Pengiriman kode OTP terkunci sementara setelah beberapa kali gagal kirim. Coba lagi dalam 12 jam.")
 	// ErrOTPAttemptsExceeded means the verification code was invalidated after
 	// too many wrong entries; a fresh code is required. User-facing copy.
 	ErrOTPAttemptsExceeded = errors.New("Terlalu banyak percobaan salah. Silakan minta kode baru.")
@@ -140,15 +137,31 @@ func (e *OTPRateLimitError) Error() string { return ErrOTPRateLimit.Error() }
 
 func (e *OTPRateLimitError) Is(target error) bool { return target == ErrOTPRateLimit }
 
-// OTPSendLockedError reports the 24h lockout with its remaining duration.
-// Satisfies errors.Is(err, ErrOTPSendLocked).
-type OTPSendLockedError struct {
-	RetryAfter time.Duration
+// OTPGateError is an OTPRateLimitError carrying the limiter bucket that
+// tripped, for metrics only. The embedded pointer keeps errors.As of
+// OTPRateLimitError working for the existing handler mapping.
+type OTPGateError struct {
+	*OTPRateLimitError
+	Bucket string
 }
 
-func (e *OTPSendLockedError) Error() string { return ErrOTPSendLocked.Error() }
+func (e *OTPGateError) Unwrap() error { return e.OTPRateLimitError }
 
-func (e *OTPSendLockedError) Is(target error) bool { return target == ErrOTPSendLocked }
+// EmailDeliveryError reports a failed provider send with the short pause the
+// client should wait before retrying (konsep §9). Satisfies
+// errors.Is(err, ErrEmailDeliveryFailed).
+type EmailDeliveryError struct {
+	RetryAfter time.Duration
+	Err        error
+}
+
+func (e *EmailDeliveryError) Error() string {
+	return fmt.Sprintf("%s: %v", ErrEmailDeliveryFailed.Error(), e.Err)
+}
+
+func (e *EmailDeliveryError) Is(target error) bool { return target == ErrEmailDeliveryFailed }
+
+func (e *EmailDeliveryError) Unwrap() error { return e.Err }
 
 // VerificationPendingError carries the OTP dispatch outcome on the login 403
 // path so the client can warn when the send failed or tell the user a live

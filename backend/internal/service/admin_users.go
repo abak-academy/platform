@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"akademi-bimbel/internal/metrics"
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
@@ -267,7 +269,7 @@ func (s *Service) ChangeAccountStatus(ctx context.Context, actorID, targetID, ne
 }
 
 // TriggerAccountPasswordReset sends a password reset email for an admin account.
-func (s *Service) TriggerAccountPasswordReset(ctx context.Context, actorID, targetID string) error {
+func (s *Service) TriggerAccountPasswordReset(ctx context.Context, actorID, targetID, ip string) error {
 	if _, err := parseUUID(targetID); err != nil {
 		return ErrInvalidUUID
 	}
@@ -283,19 +285,41 @@ func (s *Service) TriggerAccountPasswordReset(ctx context.Context, actorID, targ
 		return ErrAccountNoEmail
 	}
 
+	email := *user.Email
+	keys := passwordResetSendKeys(email, ip)
+	if err := s.claimOTPSend(ctx, keys); err != nil {
+		if errors.Is(err, ErrOTPRateLimit) {
+			s.recordOTPGateReject(ctx, keys)
+		}
+		return err
+	}
+
 	code, err := genOTP()
 	if err != nil {
 		return err
 	}
 	token := newToken(user.ID)
-	if err := s.rdb.Set(ctx, "reset:"+token, user.ID+":"+code, s.cfg.OTPTTL).Err(); err != nil {
+	stored := s.hashOTP(otpPurposeReset, code)
+	pipe := s.rdb.TxPipeline()
+	pipe.HSet(ctx, "reset:"+token, map[string]interface{}{
+		"uid":      targetID,
+		"hash":     stored,
+		"attempts": 0,
+	})
+	pipe.Expire(ctx, "reset:"+token, s.cfg.OTPTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
 		return err
 	}
 
 	body := fmt.Sprintf("Your password reset code is %s. Token: %s", code, token)
-	if err := s.emailProvider.SendEmail(ctx, *user.Email, "Password reset", body); err != nil {
-		return fmt.Errorf("%w: %s", ErrEmailDeliveryFailed, err)
+	if err := s.emailProvider.SendEmail(ctx, email, "Password reset", body); err != nil {
+		s.rollbackOTPClaim(ctx, keys)
+		s.recordOTPSendFailureOn(ctx, keys)
+		metrics.ObserveOTPSend("delivery_failed")
+		return &EmailDeliveryError{RetryAfter: s.otpSendfailPause(), Err: err}
 	}
+	s.rdb.Del(ctx, keys.sendfail)
+	metrics.ObserveOTPSend("sent")
 
 	actor := &actorID
 	if auditErr := s.storeRepo.InsertAuditLogMeta(ctx, nil, actor, "user", targetID, "account.reset_password", map[string]any{}); auditErr != nil {

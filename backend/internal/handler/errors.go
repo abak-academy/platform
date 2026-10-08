@@ -34,15 +34,11 @@ func mapServiceError(c echo.Context, err error) error {
 		}
 		c.Response().Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())))
 		status, apiErr = http.StatusTooManyRequests, APIError{Code: "rate_limited", Message: err.Error()}
-	case errors.Is(err, service.ErrOTPSendLocked):
-		retryAfter := 24 * time.Hour
-		var lk *service.OTPSendLockedError
-		if errors.As(err, &lk) && lk.RetryAfter > 0 {
-			retryAfter = lk.RetryAfter
-		}
-		c.Response().Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())))
-		status, apiErr = http.StatusTooManyRequests, APIError{Code: "otp_send_locked", Message: err.Error()}
 	case errors.Is(err, service.ErrEmailDeliveryFailed):
+		var edErr *service.EmailDeliveryError
+		if errors.As(err, &edErr) && edErr.RetryAfter > 0 {
+			c.Response().Header().Set("Retry-After", strconv.Itoa(int(edErr.RetryAfter.Seconds())))
+		}
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "email_delivery_failed", Message: err.Error()}
 	case errors.Is(err, service.ErrOTPExpired):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "otp_invalid", Message: err.Error()}

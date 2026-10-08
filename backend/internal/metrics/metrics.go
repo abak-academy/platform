@@ -52,6 +52,23 @@ var (
 	OpLogin          = "login"
 	OpChangePassword = "change_password"
 
+	// OTP send/verify outcomes and per-layer gate rejections (konsep-otp.md
+	// §13). Labels carry no email, IP or code material.
+	OTPSendsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "otp_send_total",
+		Help: "OTP send attempts, labelled by outcome (sent, delivery_failed, denied).",
+	}, []string{"outcome"})
+
+	OTPVerifiesTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "otp_verify_total",
+		Help: "OTP verifications, labelled by outcome (ok, invalid, attempts_exceeded, denied).",
+	}, []string{"outcome"})
+
+	OTPGateTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "otp_gate_total",
+		Help: "OTP send/verify requests denied by a limiter, labelled by the bucket that tripped.",
+	}, []string{"bucket"})
+
 	// §4: the "N" the entire capacity arithmetic rests on. Set periodically by
 	// the worker from a DB count of sessions inside their exam's live window,
 	// so it stays correct across processes. Registered ONLY in the worker
@@ -153,4 +170,19 @@ func RegisterDBPool(pool *pgxpool.Pool) {
 // given op label (OpLogin or OpChangePassword).
 func ObservePasswordVerify(op string, d time.Duration) {
 	LoginBcryptSeconds.WithLabelValues(op).Observe(d.Seconds())
+}
+
+// ObserveOTPSend counts one OTP send attempt outcome.
+func ObserveOTPSend(outcome string) {
+	OTPSendsTotal.WithLabelValues(outcome).Inc()
+}
+
+// ObserveOTPVerify counts one OTP verification outcome.
+func ObserveOTPVerify(outcome string) {
+	OTPVerifiesTotal.WithLabelValues(outcome).Inc()
+}
+
+// ObserveOTPGateDenial counts one limiter denial with the bucket name.
+func ObserveOTPGateDenial(bucket string) {
+	OTPGateTotal.WithLabelValues(bucket).Inc()
 }

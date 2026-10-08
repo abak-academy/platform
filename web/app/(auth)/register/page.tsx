@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useRegister } from "@/lib/hooks/auth";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { ApiError } from "@/lib/api";
+import { adoptResendBudget } from "@/lib/otp-budget";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -89,11 +90,7 @@ export default function RegisterPage() {
           // Delivery/budget flags for the OTP page's banners and countdown.
           sessionStorage.setItem("abak-email-failed", res.email_failed ? "1" : "0");
           sessionStorage.setItem("abak-otp-active", res.otp_active ? "1" : "0");
-          const resendAfter = Number(res.resend_after);
-          sessionStorage.setItem(
-            "abak-resend-after",
-            Number.isFinite(resendAfter) && resendAfter > 0 ? String(resendAfter) : "60",
-          );
+          adoptResendBudget(Number(res.resend_after) || 60);
         }
         if (res.email_failed) {
           toast.warning(t("otp_email_failed_banner"));

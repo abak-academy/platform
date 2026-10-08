@@ -113,7 +113,7 @@ func (h *Handler) AdminResetAccountPassword(c echo.Context) error {
 	id := c.Param("id")
 
 	actorID := ClaimsFromContext(c).Sub
-	if err := h.svc.TriggerAccountPasswordReset(c.Request().Context(), actorID, id); err != nil {
+	if err := h.svc.TriggerAccountPasswordReset(c.Request().Context(), actorID, id, c.RealIP()); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"message": "password reset triggered"})
