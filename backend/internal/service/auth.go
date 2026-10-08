@@ -177,18 +177,19 @@ func (s *Service) startOTPChallenge(ctx context.Context, user *model.User) (OTPC
 	if err != nil {
 		return OTPChallenge{}, err
 	}
-	if err := s.rdb.Set(ctx, "otp:"+user.ID, code, s.cfg.OTPTTL).Err(); err != nil {
+	// The new code waits in a pending key so a provider failure cannot destroy
+	// the last delivered code.
+	if err := s.rdb.Set(ctx, otpNewKey(user.ID), code, s.cfg.OTPTTL).Err(); err != nil {
 		return OTPChallenge{}, err
 	}
-	// A fresh code means a fresh verification budget.
-	s.rdb.Del(ctx, otpVerifyKey(user.ID))
 	// A failed provider send is not fatal: the account stays pending and the
 	// caller reports email_failed so the client can offer the resend path.
 	if err := s.otpProvider.SendOTP(ctx, channel, destination, code); err != nil {
+		s.rdb.Del(ctx, otpNewKey(user.ID))
 		s.recordOTPSendFailure(ctx, user.ID, channel)
 		return OTPChallenge{PendingToken: pendingToken, EmailFailed: true, ResendAfter: s.resendAfter(ctx, user.ID)}, nil
 	}
-	s.rdb.Del(ctx, otpFailKey(user.ID, channel))
+	s.promoteOTP(ctx, user.ID, channel, code)
 	return OTPChallenge{PendingToken: pendingToken, ResendAfter: s.resendAfter(ctx, user.ID)}, nil
 }
 
@@ -210,26 +211,36 @@ func (s *Service) resendAfter(ctx context.Context, userID string) int {
 	return int(math.Ceil(ttl.Seconds()))
 }
 
-// dispatchOTP stores a fresh code and sends it, treating provider failure as
-// ErrEmailDeliveryFailed while counting the failure toward the channel's 12h
-// lockout. Used by the resend endpoint, which surfaces the failure; the
-// register/login paths swallow it inside startOTPChallenge instead.
+// dispatchOTP arms a fresh code in the pending key and sends it, treating
+// provider failure as ErrEmailDeliveryFailed. Used by the resend endpoint,
+// which surfaces the failure; the register/login paths swallow it inside
+// startOTPChallenge instead. The previous code stays verifiable until the
+// provider accepts the new one.
 func (s *Service) dispatchOTP(ctx context.Context, user *model.User) error {
 	code, err := genOTP()
 	if err != nil {
 		return err
 	}
-	if err := s.rdb.Set(ctx, "otp:"+user.ID, code, s.cfg.OTPTTL).Err(); err != nil {
+	if err := s.rdb.Set(ctx, otpNewKey(user.ID), code, s.cfg.OTPTTL).Err(); err != nil {
 		return err
 	}
-	// A fresh code means a fresh verification budget.
-	s.rdb.Del(ctx, otpVerifyKey(user.ID))
 	channel, destination := PreferredOTPChannel(deref(user.Phone), deref(user.Email))
 	if err := s.otpProvider.SendOTP(ctx, channel, destination, code); err != nil {
+		s.rdb.Del(ctx, otpNewKey(user.ID))
 		s.recordOTPSendFailure(ctx, user.ID, channel)
 		return fmt.Errorf("%w: %s", ErrEmailDeliveryFailed, err)
 	}
-	s.rdb.Del(ctx, otpFailKey(user.ID, channel))
+	return s.promoteOTP(ctx, user.ID, channel, code)
+}
+
+// promoteOTP publishes a successfully sent code: it replaces the live code
+// with a full TTL, resets the verification budget (a fresh code means a fresh
+// budget), and clears the sendfail streak.
+func (s *Service) promoteOTP(ctx context.Context, userID, channel, code string) error {
+	if err := s.rdb.Set(ctx, "otp:"+userID, code, s.cfg.OTPTTL).Err(); err != nil {
+		return err
+	}
+	s.rdb.Del(ctx, otpNewKey(userID), otpVerifyKey(userID), otpSendfailKey(userID, channel))
 	return nil
 }
 
@@ -267,40 +278,43 @@ func (s *Service) SendOTP(ctx context.Context, userID string) error {
 	return s.dispatchOTP(ctx, user)
 }
 
-// otpResendLadder arms the cooldown after the Nth send: 1 minute after the
-// first, then 5m, 15m, and 1h for every further send. otpLadderWindow is the
-// sliding window the send count lives in — after an hour without a send the
-// ladder resets. otpFailureWindow is both the failure-counter horizon and the
-// lockout duration once maxOTPFailures delivery failures accumulate. Keep the
-// "12 jam" in ErrOTPSendLocked (errors.go) in sync with it.
+// otpResendLadder arms the cooldown after each successful send: 60s after the
+// first, then 2m, 5m, 15m, and a 1h cap for every further send (konsep §7,
+// free tier starting at 60s). otpLadderWindow is the fixed window the level
+// count lives in — after an hour without a send it expires and the ladder
+// resets. otpSendfailWindow bounds consecutive delivery failures: once
+// maxOTPFailures fail inside one window, sends pause until it expires.
 var (
-	otpResendLadder  = [4]time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour}
+	otpResendLadder  = [5]time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour}
 	otpLadderWindow  = time.Hour
-	otpFailureWindow = 12 * time.Hour
-	maxOTPFailures   = 3
+	otpSendfailPause = 30 * time.Second
+	otpSendfailMax   = 3
+	// Sends gating on otpSendfailWindow: three delivery failures inside the
+	// window stop sending until the window expires.
+	otpSendfailWindow = time.Hour
 	// Wrong verification entries are budgeted per code: three strikes kill the
 	// code so an online guesser can't grind through the 6-digit space inside
 	// its TTL.
 	maxOTPVerifyAttempts = 3
 )
 
-func otpCooldownKey(userID string) string { return "otp:cooldown:" + userID }
-func otpCountKey(userID string) string    { return "otp:count:" + userID }
-func otpVerifyKey(userID string) string   { return "otp:verify:" + userID }
+func otpCooldownKey(userID string) string           { return "otp:cooldown:" + userID }
+func otpCountKey(userID string) string              { return "otp:count:" + userID }
+func otpVerifyKey(userID string) string             { return "otp:verify:" + userID }
+func otpNewKey(userID string) string                { return "otp:new:" + userID }
+func otpSendfailKey(userID, channel string) string  { return "otp:sendfail:" + userID + ":" + channel }
 
-// Lockout state is scoped per channel: repeated WhatsApp gateway failures
-// must not lock the email path (and vice versa) for the same user.
-func otpLockKey(userID, channel string) string { return "otp:lock:" + userID + ":" + channel }
-func otpFailKey(userID, channel string) string { return "otp:fail:" + userID + ":" + channel }
-
-// limitOTPSend gates every OTP dispatch behind the per-channel failure
-// lockout and the per-user resend ladder (the cooldown ladder is shared
-// across channels so one user cannot double-send by alternating channels).
-// It returns a typed error carrying the remaining wait so the handler can
-// set a precise Retry-After.
+// limitOTPSend gates every OTP dispatch behind the per-channel sendfail gate
+// (consecutive relay failures) and the per-user resend ladder (the cooldown
+// is shared across channels so one user cannot double-send by alternating
+// channels). It returns a typed error carrying the remaining wait so the
+// handler can set a precise Retry-After.
 func (s *Service) limitOTPSend(ctx context.Context, userID, channel string) error {
-	if ttl, err := s.rdb.TTL(ctx, otpLockKey(userID, channel)).Result(); err == nil && ttl > 0 {
-		return &OTPSendLockedError{RetryAfter: ttl}
+	failCount, err := s.rdb.Get(ctx, otpSendfailKey(userID, channel)).Int()
+	if err == nil && failCount >= otpSendfailMax {
+		if ttl, err := s.rdb.TTL(ctx, otpSendfailKey(userID, channel)).Result(); err == nil && ttl > 0 {
+			return &OTPRateLimitError{RetryAfter: ttl}
+		}
 	}
 	if ttl, err := s.rdb.TTL(ctx, otpCooldownKey(userID)).Result(); err == nil && ttl > 0 {
 		return &OTPRateLimitError{RetryAfter: ttl}
@@ -319,18 +333,14 @@ func (s *Service) limitOTPSend(ctx context.Context, userID, channel string) erro
 }
 
 // recordOTPSendFailure bumps the channel's delivery-failure counter and
-// locks that channel for 24h once maxOTPFailures failures accumulate.
+// replaces the cooldown with the fixed short pause — provider failure delays
+// the next retry by otpSendfailPause, never the ladder.
 func (s *Service) recordOTPSendFailure(ctx context.Context, userID, channel string) {
-	n, err := s.rdb.Incr(ctx, otpFailKey(userID, channel)).Result()
-	if err != nil {
-		return
+	n, err := s.rdb.Incr(ctx, otpSendfailKey(userID, channel)).Result()
+	if err == nil && n == 1 {
+		s.rdb.Expire(ctx, otpSendfailKey(userID, channel), otpSendfailWindow)
 	}
-	if n == 1 {
-		s.rdb.Expire(ctx, otpFailKey(userID, channel), otpFailureWindow)
-	}
-	if int(n) >= maxOTPFailures {
-		s.rdb.Set(ctx, otpLockKey(userID, channel), "1", otpFailureWindow)
-	}
+	s.rdb.Set(ctx, otpCooldownKey(userID), "1", otpSendfailPause)
 }
 
 func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code string) (accessToken, refreshToken string, err error) {

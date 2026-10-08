@@ -97,14 +97,10 @@ var (
 var (
 	ErrEmailTaken = errors.New("email already registered")
 	ErrInvalidCredentials = errors.New("invalid credentials")
-	// ErrOTPRateLimit means the resend ladder is still holding the user off.
-	// User-facing copy (spec C-4); the precise wait rides the Retry-After
-	// header and the typed OTPRateLimitError below.
+	// ErrOTPRateLimit means the resend ladder or the sendfail gate is still
+	// holding the user off. User-facing copy (spec C-4); the precise wait
+	// rides the Retry-After header and the typed OTPRateLimitError below.
 	ErrOTPRateLimit = errors.New("Terlalu sering meminta kode OTP. Tunggu sebentar lalu coba lagi.")
-	// ErrOTPSendLocked means OTP email sending is locked out for the user after
-	// repeated delivery failures (relay rate limit). Keep the quoted window in
-	// sync with otpFailureWindow in auth.go. User-facing copy (spec C-4).
-	ErrOTPSendLocked = errors.New("Pengiriman kode OTP terkunci sementara setelah beberapa kali gagal kirim. Coba lagi dalam 12 jam.")
 	// ErrOTPAttemptsExceeded means the verification code was invalidated after
 	// too many wrong entries; a fresh code is required. User-facing copy.
 	ErrOTPAttemptsExceeded = errors.New("Terlalu banyak percobaan salah. Silakan minta kode baru.")
@@ -139,16 +135,6 @@ type OTPRateLimitError struct {
 func (e *OTPRateLimitError) Error() string { return ErrOTPRateLimit.Error() }
 
 func (e *OTPRateLimitError) Is(target error) bool { return target == ErrOTPRateLimit }
-
-// OTPSendLockedError reports the 24h lockout with its remaining duration.
-// Satisfies errors.Is(err, ErrOTPSendLocked).
-type OTPSendLockedError struct {
-	RetryAfter time.Duration
-}
-
-func (e *OTPSendLockedError) Error() string { return ErrOTPSendLocked.Error() }
-
-func (e *OTPSendLockedError) Is(target error) bool { return target == ErrOTPSendLocked }
 
 // VerificationPendingError carries the OTP dispatch outcome on the login 403
 // path so the client can warn when the send failed or tell the user a live
