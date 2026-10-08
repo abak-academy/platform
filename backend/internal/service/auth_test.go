@@ -3,6 +3,7 @@ package service
 import (
 	"akademi-bimbel/config"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -211,6 +212,7 @@ func newTestService(t *testing.T, repo UserRepository) (*Service, *miniredis.Min
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 168 * time.Hour,
 		OTPTTL:          5 * time.Minute,
+		OTPSecret:       "test-otp-secret",
 		GoogleClientID:  "google-client-id",
 	}
 	signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
@@ -501,20 +503,22 @@ func TestLogin(t *testing.T) {
 func TestVerifyOTP(t *testing.T) {
 	ctx := context.Background()
 
-	setup := func(t *testing.T) (*Service, *miniredis.Miniredis, *fakeUserRepo, string, string) {
+	setup := func(t *testing.T) (*Service, *miniredis.Miniredis, *fakeUserRepo, string, string, *stubOTPProvider) {
 		repo := newFakeUserRepo()
 		svc, mr := newTestService(t, repo)
+		capture := &stubOTPProvider{}
+		svc.otpProvider = capture
 		chall, err := svc.Register(ctx, "user@example.com", "password123", "Budi", "1.1.1.1")
 		if err != nil {
 			t.Fatalf("Register: %v", err)
 		}
 		userID, _ := mr.Get("pending:" + chall.PendingToken)
-		return svc, mr, repo, chall.PendingToken, userID
+		return svc, mr, repo, chall.PendingToken, userID, capture
 	}
 
 	t.Run("correct code returns tokens, clears keys and disables otp", func(t *testing.T) {
-		svc, mr, repo, pending, userID := setup(t)
-		code, _ := mr.Get("otp:" + userID)
+		svc, mr, repo, pending, userID, capture := setup(t)
+		code := capture.codes[0]
 		access, refresh, err := svc.VerifyOTP(ctx, pending, code, "1.1.1.1")
 		if err != nil {
 			t.Fatalf("VerifyOTP: %v", err)
@@ -535,8 +539,8 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("deactivated user cannot be activated by a pending otp", func(t *testing.T) {
-		svc, mr, repo, pending, userID := setup(t)
-		code, _ := mr.Get("otp:" + userID)
+		svc, _, repo, pending, userID, capture := setup(t)
+		code := capture.codes[0]
 		repo.byID[userID].Status = "deactivated"
 
 		access, refresh, err := svc.VerifyOTP(ctx, pending, code, "1.1.1.1")
@@ -553,7 +557,8 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("wrong code", func(t *testing.T) {
-		svc, _, _, pending, _ := setup(t)
+		svc, _, _, pending, _, capture := setup(t)
+		_ = capture
 		_, _, err := svc.VerifyOTP(ctx, pending, "000000", "1.1.1.1")
 		if !errors.Is(err, ErrInvalidOTP) {
 			t.Errorf("want ErrInvalidOTP, got %v", err)
@@ -561,7 +566,7 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("three wrong entries kill the code, a fresh dispatch restores the budget", func(t *testing.T) {
-		svc, mr, _, pending, userID := setup(t)
+		svc, mr, _, pending, userID, _ := setup(t)
 
 		for i := 1; i <= 3; i++ {
 			_, _, err := svc.VerifyOTP(ctx, pending, fmt.Sprintf("wrong-%d", i), "1.1.1.1")
@@ -591,7 +596,7 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("expired otp", func(t *testing.T) {
-		svc, mr, _, pending, userID := setup(t)
+		svc, mr, _, pending, userID, _ := setup(t)
 		mr.Del("otp:" + userID)
 		_, _, err := svc.VerifyOTP(ctx, pending, "123456", "1.1.1.1")
 		if !errors.Is(err, ErrOTPExpired) {
@@ -600,7 +605,7 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("invalid pending token", func(t *testing.T) {
-		svc, _, _, _, _ := setup(t)
+		svc, _, _, _, _, _ := setup(t)
 		_, _, err := svc.VerifyOTP(ctx, "bogus", "123456", "1.1.1.1")
 		if !errors.Is(err, ErrInvalidPendingToken) {
 			t.Errorf("want ErrInvalidPendingToken, got %v", err)
@@ -1099,14 +1104,15 @@ func TestResend_FailedSendKeepsPreviousCode(t *testing.T) {
 	}
 	uid, _ := mr.Get("pending:" + chall.PendingToken)
 	code1 := otp.codes[0]
+	storedBefore, _ := mr.Get("otp:" + uid)
 
 	otp.err = errors.New("smtp down")
 	mr.FastForward(time.Minute + time.Second)
 	if err := svc.SendOTP(ctx, uid, "1.1.1.1"); !errors.Is(err, ErrEmailDeliveryFailed) {
 		t.Fatalf("resend: want ErrEmailDeliveryFailed, got %v", err)
 	}
-	if live, _ := mr.Get("otp:" + uid); live != code1 {
-		t.Errorf("stored code = %q, want unchanged %q after a failed resend", live, code1)
+	if live, _ := mr.Get("otp:" + uid); live != storedBefore {
+		t.Errorf("stored value changed after a failed resend: %q -> %q", storedBefore, live)
 	}
 	if mr.Exists("otp:new:" + uid) {
 		t.Error("pending code key must be discarded when the send fails")
@@ -1752,4 +1758,37 @@ func mustPending(mr *miniredis.Miniredis, uid string) string {
 	tok := "ptok-" + uid
 	mr.Set("pending:"+tok, uid)
 	return tok
+}
+
+// --- T4: OTP codes are stored as HMAC hex, never plaintext ---
+
+func TestOTPStoredHashed_NotPlaintext(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	svc, mr := newTestService(t, repo)
+	otp := &stubOTPProvider{}
+	svc.otpProvider = otp
+
+	chall, err := svc.Register(ctx, "hash@example.com", "password123", "Budi", "1.1.1.1")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	u, _ := repo.GetUserByEmail(ctx, "hash@example.com")
+	stored, _ := mr.Get("otp:" + u.ID)
+	if stored == otp.codes[0] {
+		t.Error("plaintext code must not be stored in redis")
+	}
+	if len(stored) != 64 {
+		t.Errorf("stored value = %q (len %d), want 64 hex chars (HMAC-SHA256)", stored, len(stored))
+	}
+	if _, err := hex.DecodeString(stored); err != nil {
+		t.Errorf("stored value is not hex: %v", err)
+	}
+	// The hash still verifies: the captured code works, a wrong one does not.
+	if _, _, err := svc.VerifyOTP(ctx, chall.PendingToken, "000000", "1.1.1.1"); !errors.Is(err, ErrInvalidOTP) {
+		t.Errorf("wrong code: want ErrInvalidOTP, got %v", err)
+	}
+	if _, _, err := svc.VerifyOTP(ctx, chall.PendingToken, otp.codes[0], "1.1.1.1"); err != nil {
+		t.Errorf("captured code: want nil, got %v", err)
+	}
 }

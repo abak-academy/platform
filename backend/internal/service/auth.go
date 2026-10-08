@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -181,9 +184,10 @@ func (s *Service) startOTPChallenge(ctx context.Context, user *model.User, ip st
 	if err != nil {
 		return OTPChallenge{}, err
 	}
+	stored := s.hashOTP(otpPurposeLogin, code)
 	// The new code waits in a pending key so a provider failure cannot destroy
 	// the last delivered code.
-	if err := s.rdb.Set(ctx, otpNewKey(user.ID), code, s.cfg.OTPTTL).Err(); err != nil {
+	if err := s.rdb.Set(ctx, otpNewKey(user.ID), stored, s.cfg.OTPTTL).Err(); err != nil {
 		return OTPChallenge{}, err
 	}
 	// A failed provider send is not fatal: the account stays pending and the
@@ -194,7 +198,7 @@ func (s *Service) startOTPChallenge(ctx context.Context, user *model.User, ip st
 		s.recordOTPSendFailure(ctx, user.ID, channel)
 		return OTPChallenge{PendingToken: pendingToken, EmailFailed: true, ResendAfter: s.resendAfter(ctx, user.ID)}, nil
 	}
-	s.promoteOTP(ctx, user.ID, channel, code)
+	s.promoteOTP(ctx, user.ID, channel, stored)
 	return OTPChallenge{PendingToken: pendingToken, ResendAfter: s.resendAfter(ctx, user.ID)}, nil
 }
 
@@ -226,7 +230,8 @@ func (s *Service) dispatchOTP(ctx context.Context, user *model.User, keys otpSen
 	if err != nil {
 		return err
 	}
-	if err := s.rdb.Set(ctx, otpNewKey(user.ID), code, s.cfg.OTPTTL).Err(); err != nil {
+	stored := s.hashOTP(otpPurposeLogin, code)
+	if err := s.rdb.Set(ctx, otpNewKey(user.ID), stored, s.cfg.OTPTTL).Err(); err != nil {
 		return err
 	}
 	channel, destination := PreferredOTPChannel(deref(user.Phone), deref(user.Email))
@@ -236,14 +241,14 @@ func (s *Service) dispatchOTP(ctx context.Context, user *model.User, keys otpSen
 		s.recordOTPSendFailure(ctx, user.ID, channel)
 		return fmt.Errorf("%w: %s", ErrEmailDeliveryFailed, err)
 	}
-	return s.promoteOTP(ctx, user.ID, channel, code)
+	return s.promoteOTP(ctx, user.ID, channel, stored)
 }
 
-// promoteOTP publishes a successfully sent code: it replaces the live code
-// with a full TTL, resets the verification budget (a fresh code means a fresh
-// budget), and clears the sendfail streak.
-func (s *Service) promoteOTP(ctx context.Context, userID, channel, code string) error {
-	if err := s.rdb.Set(ctx, "otp:"+userID, code, s.cfg.OTPTTL).Err(); err != nil {
+// promoteOTP publishes a successfully sent code hash: it replaces the live
+// code with a full TTL, resets the verification budget (a fresh code means a
+// fresh budget), and clears the sendfail streak.
+func (s *Service) promoteOTP(ctx context.Context, userID, channel, stored string) error {
+	if err := s.rdb.Set(ctx, "otp:"+userID, stored, s.cfg.OTPTTL).Err(); err != nil {
 		return err
 	}
 	s.rdb.Del(ctx, otpNewKey(userID), otpVerifyKey(userID), otpSendfailKey(userID, channel))
@@ -343,7 +348,7 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code, ip string) 
 	if stored == "" {
 		return "", "", ErrOTPExpired
 	}
-	if stored != code {
+	if !otpEqualMAC(stored, s.hashOTP(otpPurposeLogin, code)) {
 		// Wrong entries are budgeted per code: maxOTPVerifyAttempts strikes
 		// kill the code so an online guesser can't grind through the 6-digit
 		// space inside its TTL. The hour/day/IP vfail counters survive a
@@ -569,6 +574,25 @@ func (s *Service) mintSession(ctx context.Context, user *model.User) (accessToke
 	s.rdb.SAdd(ctx, "user_access_sessions:"+user.ID, jti)
 	s.rdb.SAdd(ctx, "user_refresh_sessions:"+user.ID, refreshToken)
 	return tokenString, refreshToken, nil
+}
+
+const otpPurposeLogin = "login"
+
+// hashOTP binds the code to its purpose and the server secret (konsep-otp.md
+// §11): what sits in Redis is the hex HMAC, never the raw 6 digits.
+func (s *Service) hashOTP(purpose, code string) string {
+	var secret []byte
+	if s.cfg != nil {
+		secret = []byte(s.cfg.OTPSecret)
+	}
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(purpose + ":" + code))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// otpEqualMAC compares two stored/derived HMAC hexes in constant time.
+func otpEqualMAC(storedHash, submittedHash string) bool {
+	return hmac.Equal([]byte(storedHash), []byte(submittedHash))
 }
 
 func genOTP() (string, error) {

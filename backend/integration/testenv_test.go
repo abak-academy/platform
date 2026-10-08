@@ -31,11 +31,12 @@ import (
 )
 
 type testEnv struct {
-	pool   *pgxpool.Pool
-	rdb    *redis.Client
-	svc    *service.Service
-	signer *infra.JWTSigner
-	server *httptest.Server
+	pool    *pgxpool.Pool
+	rdb     *redis.Client
+	svc     *service.Service
+	signer  *infra.JWTSigner
+	server  *httptest.Server
+	otpCode *service.RecordingOTPProvider
 }
 
 // One Postgres and one Redis container serve the whole package. Migrations run
@@ -155,13 +156,15 @@ func newTestEnv(t *testing.T) *testEnv {
 		OTPTTL:             5 * time.Minute,
 		WorkerPollInterval: 5 * time.Second,
 		CORSOrigins:        []string{"*"},
+		OTPSecret:          "integration-otp-secret",
 	}
+	otpCode := service.NewRecordingOTPProvider()
 
 	svc := service.NewWithStore(
 		repo, repo,
 		rdb,
 		signer,
-		&service.NoopOTPProvider{},
+		otpCode,
 		&service.NoopEmailProvider{},
 		&service.NoopPaymentClient{},
 		stubLogisticsClient{},
@@ -177,11 +180,12 @@ func newTestEnv(t *testing.T) *testEnv {
 	t.Cleanup(ts.Close)
 
 	return &testEnv{
-		pool:   pool,
-		rdb:    rdb,
-		svc:    svc,
-		signer: signer,
-		server: ts,
+		pool:    pool,
+		rdb:     rdb,
+		svc:     svc,
+		signer:  signer,
+		server:  ts,
+		otpCode: otpCode,
 	}
 }
 

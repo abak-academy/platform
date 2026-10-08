@@ -213,11 +213,12 @@ func mustHash(pw string) string {
 }
 
 type testEnv struct {
-	e      *echo.Echo
-	mr     *miniredis.Miniredis
-	svc    *service.Service
-	signer *infra.JWTSigner
-	repo   *fakeRepo
+	e        *echo.Echo
+	mr       *miniredis.Miniredis
+	svc      *service.Service
+	signer   *infra.JWTSigner
+	repo     *fakeRepo
+	otpCodes *service.RecordingOTPProvider
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -234,11 +235,13 @@ func newTestEnv(t *testing.T) *testEnv {
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 168 * time.Hour,
 		OTPTTL:          5 * time.Minute,
+		OTPSecret:       "handler-otp-secret",
 		GoogleClientID:  "handler-google-client",
 	}
 	signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	repo := newFakeRepo()
-	svc := service.New(repo, rdb, signer, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, cfg)
+	otpCapture := service.NewRecordingOTPProvider()
+	svc := service.New(repo, rdb, signer, otpCapture, &service.NoopEmailProvider{}, cfg)
 
 	h := handler.New(svc)
 	e := echo.New()
@@ -267,7 +270,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	adminProducts.POST("/:id/publish", h.AdminPublishProduct)
 	adminProducts.DELETE("/:id", h.AdminDeleteProduct)
 
-	return &testEnv{e: e, mr: mr, svc: svc, signer: signer, repo: repo}
+	return &testEnv{e: e, mr: mr, svc: svc, signer: signer, repo: repo, otpCodes: otpCapture}
 }
 
 func postJSON(t *testing.T, e *echo.Echo, path string, body any) *httptest.ResponseRecorder {
@@ -492,15 +495,11 @@ func TestVerifyOTPHandler_HappyPath(t *testing.T) {
 	json.NewDecoder(regRec.Body).Decode(&regResp)
 	pendingToken := regResp["pending_token"].(string)
 
-	// Resolve userID from pending token and read OTP from miniredis.
-	userID, _ := env.mr.Get("pending:" + pendingToken)
-	if userID == "" {
-		t.Fatal("pending token not stored in redis")
+	codes := env.otpCodes.Codes
+	if len(codes) == 0 {
+		t.Fatal("no OTP delivered to the recording provider")
 	}
-	otpCode, _ := env.mr.Get("otp:" + userID)
-	if otpCode == "" {
-		t.Fatal("otp not stored in redis")
-	}
+	otpCode := codes[0]
 
 	rec := postJSON(t, env.e, "/api/v1/auth/otp/verify", map[string]string{
 		"pending_token": pendingToken,
