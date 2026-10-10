@@ -66,6 +66,12 @@ function fromLocalInput(v: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+// Empty exam stock means unlimited (null); other types read empty as 0.
+function stockForType(type: ProductType | "", stock: string): number | null {
+  if (type === "exam") return stock.trim() === "" ? null : Number(stock);
+  return Number(stock);
+}
+
 export function ProductModal({ open, onOpenChange, product, onSubmit, isPending }: ProductModalProps) {
   const isEdit = Boolean(product);
   const { role } = useResolvedRole();
@@ -106,7 +112,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setName(product.name ?? "");
         setType(product.type ?? "");
         setPrice(String(product.price ?? ""));
-        setStock(product.stock != null ? String(product.stock) : "");
+        setStock(product.stock != null && (product.type !== "exam" || product.stock_limited) ? String(product.stock) : "");
         setWeight(product.weight_grams != null ? String(product.weight_grams) : "");
         setImageUrl(product.image_url ?? "");
         setStatus(product.status ?? "draft");
@@ -141,7 +147,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
     }
   }, [open, isEdit, editingRelations, detail.data]);
 
-  const showStock = type === "book" || type === "merchandise" || type === "medal";
+  const showStock = type === "book" || type === "merchandise" || type === "medal" || type === "exam";
+  const showWeight = type === "book" || type === "merchandise" || type === "medal";
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -191,8 +198,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         // backend preserves only when the key is absent).
         available_from: fromLocalInput(availableFrom),
         available_until: fromLocalInput(availableUntil),
-        ...(showStock ? { stock: Number(stock) } : {}),
-        ...(showStock && weight !== "" ? { weight_grams: Number(weight) } : {}),
+        ...(showStock ? { stock: stockForType(type, stock) } : {}),
+        ...(showWeight && weight !== "" ? { weight_grams: Number(weight) } : {}),
         ...(imageUrl !== "" ? { image_url: imageUrl } : {}),
         specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
       };
@@ -206,8 +213,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       type,
       ...(availableFrom ? { available_from: fromLocalInput(availableFrom) } : {}),
       ...(availableUntil ? { available_until: fromLocalInput(availableUntil) } : {}),
-      ...(showStock ? { stock: Number(stock) } : {}),
-      ...(showStock && weight !== "" ? { weight_grams: Number(weight) } : {}),
+      ...(showStock ? { stock: stockForType(type, stock) } : {}),
+      ...(showWeight && weight !== "" ? { weight_grams: Number(weight) } : {}),
       ...(imageUrl !== "" ? { image_url: imageUrl } : {}),
       specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
       ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
@@ -467,23 +474,28 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                       min={0}
                       value={stock}
                       onChange={(e) => setStock(e.target.value)}
-                      placeholder="0"
+                      placeholder={type === "exam" ? "Tidak terbatas" : "0"}
                       disabled={isPending}
                     />
+                    {type === "exam" && (
+                      <p className="text-xs text-muted-foreground">Kosongkan untuk kuota tanpa batas.</p>
+                    )}
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="product-weight">Berat (gram)</Label>
-                    <Input
-                      id="product-weight"
-                      type="number"
-                      min={0}
-                      value={weight}
-                      onChange={(e) => setWeight(e.target.value)}
-                      placeholder="0"
-                      disabled={isPending}
-                    />
-                    <p className="text-xs text-muted-foreground">Dipakai untuk menghitung ongkir.</p>
-                  </div>
+                  {showWeight && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="product-weight">Berat (gram)</Label>
+                      <Input
+                        id="product-weight"
+                        type="number"
+                        min={0}
+                        value={weight}
+                        onChange={(e) => setWeight(e.target.value)}
+                        placeholder="0"
+                        disabled={isPending}
+                      />
+                      <p className="text-xs text-muted-foreground">Dipakai untuk menghitung ongkir.</p>
+                    </div>
+                  )}
                 </div>
               </Section>
             )}

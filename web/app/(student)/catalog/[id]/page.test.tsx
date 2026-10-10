@@ -30,9 +30,10 @@ vi.mock("@/lib/hooks/products", () => ({
   }),
 }));
 
-const { addToCartMutate, toastError } = vi.hoisted(() => ({
+const { addToCartMutate, toastError, cartItems } = vi.hoisted(() => ({
   addToCartMutate: vi.fn(),
   toastError: vi.fn(),
+  cartItems: [] as { product_id: string }[],
 }));
 
 vi.mock("sonner", () => ({
@@ -41,7 +42,7 @@ vi.mock("sonner", () => ({
 
 vi.mock("@/lib/hooks/orders", () => ({
   useAddToCart: () => ({ mutate: addToCartMutate, isPending: false }),
-  useCart: () => ({ data: { items: [] } }),
+  useCart: () => ({ data: { items: cartItems } }),
 }));
 
 let profile: Record<string, unknown> | undefined;
@@ -71,6 +72,7 @@ async function renderPage(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  cartItems.length = 0;
   addToCartMutate.mockReset();
   toastError.mockReset();
   product = { ...BASE_PRODUCT };
@@ -244,6 +246,37 @@ describe("ProductDetailPage", () => {
       await addToCart();
 
       expect(toastError.mock.calls[0][1].description).toBe("quantity too high");
+    });
+  });
+
+  describe("exam stock", () => {
+    it("shows the remaining quota for a limited exam", async () => {
+      await renderPage({ id: "exam-1", type: "exam", name: "Tryout UTBK", stock: 5, stock_limited: true });
+
+      expect(screen.getByText("Stok: 5")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /tambah ke keranjang/i })).toBeEnabled();
+    });
+
+    it("shows Habis and disables both purchase buttons for a sold-out limited exam", async () => {
+      await renderPage({ id: "exam-1", type: "exam", name: "Tryout UTBK", stock: 0, stock_limited: true });
+
+      expect(screen.getByText("Habis")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /tambah ke keranjang/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /beli sekarang/i })).toBeDisabled();
+    });
+
+    it("keeps View Cart reachable when a sold-out exam is already in the cart", async () => {
+      cartItems.push({ product_id: "exam-1" });
+      await renderPage({ id: "exam-1", type: "exam", name: "Tryout UTBK", stock: 0, stock_limited: true });
+
+      expect(screen.getByRole("button", { name: /lihat keranjang/i })).toBeEnabled();
+    });
+
+    it("shows no stock line for an unlimited exam", async () => {
+      await renderPage({ id: "exam-1", type: "exam", name: "Tryout UTBK" });
+
+      expect(screen.queryByText(/stok/i)).toBeNull();
+      expect(screen.getByRole("button", { name: /tambah ke keranjang/i })).toBeEnabled();
     });
   });
 });

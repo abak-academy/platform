@@ -51,6 +51,16 @@ function statusBadgeClass(status?: string): string {
   }
 }
 
+function formatStock(product: Product): string | number {
+  if (product.type === "book" || product.type === "merchandise" || product.type === "medal") {
+    return product.stock ?? "-";
+  }
+  if (product.type === "exam" && product.stock_limited) {
+    return product.stock ?? 0;
+  }
+  return "-";
+}
+
 export default function ProductsPage() {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<ProductType | "all">("all");
@@ -216,7 +226,7 @@ export default function ProductsPage() {
                     <Badge className={typeBadgeClass(product.type)}>{filterLabel(product.type)}</Badge>
                   </td>
                   <td className="px-4 py-3">{formatRupiah(product.price)}</td>
-                  <td className="px-4 py-3">{product.type === "book" || product.type === "merchandise" || product.type === "medal" ? (product.stock ?? "-") : "-"}</td>
+                  <td className="px-4 py-3">{formatStock(product)}</td>
                   <td className="px-4 py-3">
                     <Badge className={statusBadgeClass(product.status)}>{product.status ?? "draft"}</Badge>
                   </td>
