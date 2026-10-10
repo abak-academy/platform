@@ -276,7 +276,7 @@ func (h *Handler) AdminShipOrder(c echo.Context) error {
 func (h *Handler) AdminGetShippingLabel(c echo.Context) error {
 	orderID := c.Param("id")
 
-	pdf, err := h.svc.GetShippingLabel(c.Request().Context(), orderID)
+	pdf, err := h.svc.GetShippingLabelSized(c.Request().Context(), orderID, c.QueryParam("size"))
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -459,4 +459,19 @@ func applyOrderSort(filter *repository.OrderFilter, sort, direction string) erro
 		return fmt.Errorf("unknown direction %q", direction)
 	}
 	return nil
+}
+
+func (h *Handler) AdminGetShippingLabels(c echo.Context) error {
+	var req struct {
+		OrderIDs []string `json:"order_ids"`
+		Size     string   `json:"size"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	pdf, err := h.svc.GetShippingLabels(c.Request().Context(), req.OrderIDs, req.Size)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.Stream(http.StatusOK, "application/pdf", bytes.NewReader(pdf))
 }

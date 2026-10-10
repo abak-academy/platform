@@ -292,6 +292,15 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "payment_deadline_too_close", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotPayable):
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_payable", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidLabelRequest):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrLabelsNotPrintable):
+		var conflict *service.LabelsNotPrintableError
+		apiErr = APIError{Code: "labels_not_printable", Message: err.Error()}
+		if errors.As(err, &conflict) {
+			apiErr.Details = conflict.Details
+		}
+		status = http.StatusConflict
 	case errors.Is(err, service.ErrNoTrackingNumber):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_tracking_number", Message: err.Error()}
 	case errors.Is(err, service.ErrMissingGatewayRef):

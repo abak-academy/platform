@@ -268,3 +268,35 @@ func assertGenericShippingMessage(t *testing.T, raw []byte) {
 		t.Fatalf("unsafe shipping message: %q", body.Message)
 	}
 }
+
+func TestMapShippingLabelErrors(t *testing.T) {
+	details := []service.LabelNotPrintable{{OrderID: uuid.NewString(), Reason: "shipment_failed"}}
+	for _, tt := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{{"invalid", service.ErrInvalidLabelRequest, 400, "invalid_request"}, {"conflict", fmt.Errorf("wrapped: %w", &service.LabelsNotPrintableError{Details: details}), 409, "labels_not_printable"}} {
+		t.Run(tt.name, func(t *testing.T) {
+			e := echo.New()
+			rec := httptest.NewRecorder()
+			c := e.NewContext(httptest.NewRequest(http.MethodPost, "/admin/orders/labels", nil), rec)
+			if err := mapServiceError(c, tt.err); err != nil {
+				t.Fatal(err)
+			}
+			var body struct {
+				Code    string                      `json:"code"`
+				Details []service.LabelNotPrintable `json:"details"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if rec.Code != tt.status || body.Code != tt.code {
+				t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+			}
+			if tt.status == 409 && (len(body.Details) != 1 || body.Details[0] != details[0]) {
+				t.Fatalf("details=%v", body.Details)
+			}
+		})
+	}
+}
