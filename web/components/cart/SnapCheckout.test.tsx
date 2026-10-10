@@ -12,8 +12,9 @@ vi.mock("next/navigation", () => ({
 }));
 
 const toastError = vi.fn();
+const toastInfo = vi.fn();
 vi.mock("sonner", () => ({
-  toast: { error: (...a: unknown[]) => toastError(...a), success: vi.fn(), info: vi.fn() },
+  toast: { error: (...a: unknown[]) => toastError(...a), success: vi.fn(), info: (...a: unknown[]) => toastInfo(...a) },
 }));
 
 const authFetch = vi.fn();
@@ -32,11 +33,11 @@ function conflictError(reason: string, kind = "course") {
   });
 }
 
-function renderCheckout() {
+function renderCheckout(basePath?: string) {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <SnapCheckout orderId="order-1" />
+      <SnapCheckout orderId="order-1" basePath={basePath} />
     </QueryClientProvider>,
   );
 }
@@ -59,6 +60,46 @@ async function pay() {
 }
 
 describe("SnapCheckout conflicts", () => {
+  it("routes to the order with a blocked-popup toast when the payment popup is blocked", async () => {
+    open.mockReturnValue(null);
+    authFetch.mockResolvedValueOnce({ snap_token: "test-token", payment_url: "https://pay.example/x" });
+    renderCheckout();
+
+    await pay();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /bayar di tab baru/i })).toBeEnabled());
+    expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank");
+    expect(push).toHaveBeenCalledWith("/orders/order-1");
+    expect(toastInfo).toHaveBeenCalledWith("Pop-up pembayaran diblokir browser. Lanjutkan pembayaran dari halaman pesanan.");
+    expect(toastInfo).not.toHaveBeenCalledWith("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
+  });
+
+  it("keeps the new-tab toast without navigation when the payment popup opens", async () => {
+    open.mockReturnValue({});
+    authFetch.mockResolvedValueOnce({ snap_token: "test-token", payment_url: "https://pay.example/x" });
+    renderCheckout();
+
+    await pay();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /bayar di tab baru/i })).toBeEnabled());
+    expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank");
+    expect(push).not.toHaveBeenCalled();
+    expect(toastInfo).toHaveBeenCalledWith("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
+    expect(toastInfo).not.toHaveBeenCalledWith("Pop-up pembayaran diblokir browser. Lanjutkan pembayaran dari halaman pesanan.");
+  });
+
+  it("does not route admin checkout to student orders when the popup is blocked", async () => {
+    open.mockReturnValue(null);
+    authFetch.mockResolvedValueOnce({ snap_token: "test-token", payment_url: "https://pay.example/x" });
+    renderCheckout("/admin/orders");
+
+    await pay();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /bayar di tab baru/i })).toBeEnabled());
+    expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank");
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["owned", /sudah memiliki kursus ini/i],
     ["claimed", /sedang dibeli lewat pesanan lain/i],

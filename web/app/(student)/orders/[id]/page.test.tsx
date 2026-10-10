@@ -44,7 +44,7 @@ function apiError(code: string, details?: unknown) {
 let client: QueryClient;
 let open: ReturnType<typeof vi.fn>;
 
-async function renderPageAndRetry(retryOutcome: () => Promise<unknown>) {
+async function renderPage(retryOutcome: () => Promise<unknown>) {
   authFetch.mockImplementation((path: string) =>
     path.endsWith("/retry") ? retryOutcome() : Promise.resolve(PENDING_ORDER),
   );
@@ -57,6 +57,10 @@ async function renderPageAndRetry(retryOutcome: () => Promise<unknown>) {
       </QueryClientProvider>,
     );
   });
+}
+
+async function renderPageAndRetry(retryOutcome: () => Promise<unknown>) {
+  await renderPage(retryOutcome);
   await userEvent.click(await screen.findByRole("button", { name: /lanjutkan pembayaran/i }));
 }
 
@@ -70,6 +74,44 @@ beforeEach(() => {
 });
 
 describe("OrderDetailPage retry payment", () => {
+  it("offers a payment link without the new-tab toast when the popup is blocked", async () => {
+    open.mockReturnValue(null);
+    await renderPageAndRetry(() => Promise.resolve({ snap_token: "test-token", payment_url: "https://pay.example/first" }));
+
+    const link = await screen.findByRole("link", { name: /buka halaman pembayaran/i });
+    expect(link).toHaveAttribute("href", "https://pay.example/first");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByText("Halaman pembayaran belum terbuka?")).toBeVisible();
+    expect(open).toHaveBeenCalledWith("https://pay.example/first", "_blank");
+    expect(toastInfo).not.toHaveBeenCalledWith("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
+  });
+
+  it("offers a payment link and the new-tab toast when the popup opens", async () => {
+    open.mockReturnValue({});
+    await renderPageAndRetry(() => Promise.resolve({ snap_token: "test-token", payment_url: "https://pay.example/first" }));
+
+    const link = await screen.findByRole("link", { name: /buka halaman pembayaran/i });
+    expect(link).toHaveAttribute("href", "https://pay.example/first");
+    expect(toastInfo).toHaveBeenCalledWith("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
+  });
+
+  it("shows no payment link before retry and replaces it after another successful retry", async () => {
+    const retryOutcome = vi.fn()
+      .mockResolvedValueOnce({ snap_token: "first-token", payment_url: "https://pay.example/first" })
+      .mockResolvedValueOnce({ snap_token: "second-token", payment_url: "https://pay.example/second" });
+    await renderPage(retryOutcome);
+    const button = await screen.findByRole("button", { name: /lanjutkan pembayaran/i });
+    expect(screen.queryByRole("link", { name: /buka halaman pembayaran/i })).toBeNull();
+
+    await userEvent.click(button);
+    expect(await screen.findByRole("link", { name: /buka halaman pembayaran/i })).toHaveAttribute("href", "https://pay.example/first");
+
+    await waitFor(() => expect(button).toBeEnabled());
+    await userEvent.click(button);
+    await waitFor(() => expect(screen.getByRole("link", { name: /buka halaman pembayaran/i })).toHaveAttribute("href", "https://pay.example/second"));
+  });
+
   it("explains a digital conflict in the student's language, refetches the order and opens no payment window", async () => {
     const invalidate = vi.spyOn(client, "invalidateQueries");
 
