@@ -1,7 +1,7 @@
 ---
 title: Shipping (Ongkir) & Biteship Integration
-updated: 2026-10-06
-verified_against: 1b3cc1ef
+updated: 2026-10-10
+verified_against: b16975af
 ---
 
 Logistics Level 3: rate quoting, carrier booking, cancellation, and webhook-driven status sync
@@ -17,7 +17,7 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 - Resolution: `adapter.ResolveShippingClient` (`backend/internal/adapter/shipping_config.go:16`) —
   DB `system_config.biteship_api_key` (encrypted) wins, `cfg.BiteshipAPIKey` (env/secrets.yaml) is
   dev fallback, Noop if neither set. `Service.logistics` is an `atomic.Pointer` swapped by
-  `ReloadLogisticsClient` (`service.go:140`) so a key change in admin config takes effect without
+  `ReloadLogisticsClient` (`service.go:147`) so a key change in admin config takes effect without
   restart.
 - Biteship base URL is hardcoded `https://api.biteship.com` (`shipping_config.go:22`); auth header
   is a plain `authorization: <key>` (no Bearer scheme).
@@ -88,7 +88,7 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 - Duplicate-booking response (Biteship error `40002060`) is caught (`ShipmentAlreadyBookedError`)
   and **adopts** the existing Biteship order id via `GetOrder` rather than booking twice
   (`shipping_order.go:192-211`). If the echoed id is empty, refuses rather than calling
-  `GetOrder("")` — flagged `TODO: uncertain` in-code (`biteship.go:326-333`,
+  `GetOrder("")` — flagged `TODO: uncertain` in-code (`biteship.go:327-334`,
   `shipping_order.go:198-206`): the echoed field name and the tracking-endpoint response shape are
   unverified against a real Biteship response.
 - Manual escape hatch: `POST /admin/orders/:id/ship-manual` → `AdminShipOrderManual`
@@ -100,7 +100,7 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
 - `POST /admin/orders/:id/shipment/cancel` → `AdminCancelShipment` (`shipping_admin_actions.go:45`).
 - Requires an existing `biteship_order_id` (`orderWithBiteshipBooking`, line 58; else
   `ErrNoBiteshipBooking`, 404-mapped).
-- Cancels at Biteship (`CancelOrder`, `biteship.go:281` — sends
+- Cancels at Biteship (`CancelOrder`, `biteship.go:282` — sends
   `cancellation_reason_code: "others"` + free-text `cancellation_reason`; the code enum's other
   values are Biteship's own fixed reasons, not something an admin's free-text reason is choosing
   between), then re-syncs via the same `syncShipmentFromBiteship` routine the webhook uses.
@@ -145,6 +145,73 @@ through Biteship. See also: [[./system-overview.md]], [[../domain/orders-and-pay
   equivalent signal, so an admin sees a thinner "local" history with no indication the courier call
   failed vs. was simply never queried.
 
+## Packing slips
+
+- Both endpoints require `orders:write`; the bulk route is registered before `/:id`
+  (`backend/internal/server/routes.go:180`). They return `200 application/pdf`, keep the
+  packing-slip footer, and change no order or shipment state.
+- Single: `GET /api/v1/admin/orders/:id/label?size=roll80` →
+  `GetShippingLabelSized` (`backend/internal/service/shipping_label_html.go:499`). An absent
+  size defaults to `100x150`; an unknown size is `400 invalid_request`. Single print requires
+  only a tracking number (`422 no_tracking_number` otherwise), including for failed shipments.
+- Bulk: `POST /api/v1/admin/orders/labels`, JSON
+  `{"order_ids":["<first uuid>","<second uuid>"],"size":"roll80"}` → `GetShippingLabels`
+  (`shipping_label_html.go:448`). Size is required. Empty lists, more than 100 ids, duplicate
+  UUIDs, malformed ids, and unknown sizes return `400 invalid_request`.
+- Bulk eligibility: the order exists, `tracking_number` is non-empty (manual or Biteship), and
+  `isShipmentFailureStatus` is false (`shipment_status.go:61`). The shared failure rule matches
+  rejected, courier_not_found, cancelled, return_in_transit, returned, and disposed in snake_case
+  or camelCase. `on_hold`, nil, and empty shipment statuses remain printable with a tracking number.
+- The service re-reads every order through sequential `GetOrderByID` calls. Any ineligible id
+  aborts the whole batch before rendering: `409 labels_not_printable` with
+  `details: [{"order_id":"<uuid>","reason":"shipment_failed"}]`; reasons are `not_found`,
+  `no_tracking_number`, or `shipment_failed`.
+  Eligible batches make one Gotenberg call, with one slip per page in request order. Concurrent
+  bulk requests share one process-wide render slot; a waiter gives up when its request context ends.
+- Both sizes share the same template and styles, with an explicit Liberation Sans / Arial /
+  Helvetica / sans-serif font stack, thin rules, and whitespace. The reading order is courier/service,
+  waybill text and Code128 barcode, recipient, sender, full order UUID as text with quantity/
+  weight, items, shipping cost, and the packing-slip footer with optional sender email
+  (`shipping_label_html.go:55`). The waybill PNG includes ten white modules on each side.
+  Panca's v3 decision removes the UUID barcode to give the recipient address and header more room.
+- The left header embeds a courier logo from `backend/internal/service/assets/couriers/`,
+  mirroring the web catalog for jne, sicepat, lion, tiki, and anteraja. Lowercased stored
+  `CourierCode` selects the SVG/PNG data URI; nil, empty, unknown, or missing assets use the
+  courier name as bold text (`shipping_label_html.go:339`). The asset equality test resolves
+  paths from its own source directory and compares all five copies byte-for-byte to
+  `web/public/couriers/` (`shipping_label_html_test.go:676`). Gotenberg fetches no images.
+  The right header keeps the canonical Abak mark and hardcodes `abak academy` on one line and
+  `hub.abakacademy.id` under it. Print navy/teal supplement size, weight, and position;
+  CSS darkens both images for 1-bit output without modifying source assets. Recipient type is
+  12 pt bold name, 9.5 pt phone, and 10 pt address with 13 pt leading; the compact sender uses
+  8.2 pt bold name/phone and 7.8 pt address with 10 pt leading.
+- `100x150` keeps 100 × 150 mm pages and distributes spare space between sections. `roll80`
+  keeps an 80 mm paper width and 78 mm printable container with inner padding giving 73 mm text
+  width and a 70 mm waybill barcode. Inline browser measurement assigns
+  each slip a named CSS page with its own fitted height (`shipping_label_html.go:121`); the batch
+  remains one PDF. Both sizes cap the printed item list at five and state the omitted count while
+  keeping totals over all physical items.
+- The orders list selects only rows on the active page; query or pagination changes clear the
+  selection. `ShippingLabelReviewDialog` presents selected/ready/skipped counts first, size radio
+  cards explaining fixed sticker and fitted thermal-roll pages, then buyer names and short order ids
+  with printable waybills or specific skipped reasons. Skipped orders appear first; the footer
+  download action states the printable count and remains reachable while the body scrolls.
+  Only printable ids are sent in original row order. A 409 keeps the review open with fresh reasons
+  and a review-again message; zero printable disables download. Pending blocks duplicate downloads
+  and close; download failures offer retry inside the dialog.
+- Single print closes `OrderDetailModal` and opens this same review in single-order mode through
+  the orders page. It uses the existing GET helper and tracking-number-only eligibility, so failed
+  shipments still print. The dialog defaults to `100x150`, does not persist size, traps keyboard
+  focus, and returns focus to the list action or the order-row button after single print.
+- `TestShippingLabelRender_PageGeometryAndContent`
+  (`backend/internal/service/shipping_label_render_gate_test.go:23`) checks page boxes, page
+  counts, different roll heights, both addresses, the waybill barcode, and a footer on each page against
+  real Gotenberg. Its ink check locates the waybill text anchor and inspects the band below it.
+  `deploy/pipeline/backend-render-gate.sh` includes its
+  `TestShippingLabelRender_` prefix. The revised gate is compiled locally but awaits CI execution;
+  local Chromium output is separate evidence. Physical barcode scanning and roll feed/cut remain
+  unverified.
+
 ## Config keys (`system_config`, group `shipping`)
 
 | Key | Type | Notes |
@@ -165,8 +232,10 @@ is sent for every courier only when both are set.
 ## Admin UI touchpoints (`web/`)
 
 - `components/admin/OrderDetailModal.tsx` — ship button (opens `ShipOrderModal`), track/refresh/cancel
-  buttons (shown only when `order.tracking_number` is set), print-label link, shipment status badge
+  buttons (shown only when `order.tracking_number` is set), print button (hands off to `ShippingLabelReviewDialog` in single mode via `onPrint`), shipment status badge
   with a failure flag (`isShipmentFailure`), `ShipmentTimeline` render.
+- `app/(admin)/admin/orders/page.tsx` / `components/admin/ShippingLabelReviewDialog.tsx` —
+  page-local selection and a review before downloading one packing-slip PDF.
 - `components/admin/ShipOrderModal.tsx` — auto-book vs. manual-mode toggle.
   `components/admin/CancelShipmentModal.tsx` — free-text reason, required.
 - `components/admin/TrackingModal.tsx` / `components/orders/ShipmentTimeline.tsx` — render the
@@ -186,7 +255,9 @@ is sent for every courier only when both are set.
 quote errors map as listed above;
 `ErrIncompleteSchedule`/`ErrNoCarrierCode`/`ErrOrderNotShippable`/`ErrIncompleteAddress`/
 `ErrNoBiteshipBooking`/`ErrNoTrackingNumber` each have a dedicated case in
-`backend/internal/handler/errors.go`; `ErrInvalidSignature` → 401 (webhook rejection).
+`backend/internal/handler/errors.go`; `ErrInvalidLabelRequest` → 400 `invalid_request`;
+`ErrLabelsNotPrintable` → 409 `labels_not_printable` with per-id details;
+`ErrInvalidSignature` → 401 (webhook rejection).
 
 ## Unverified
 
