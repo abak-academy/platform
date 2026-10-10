@@ -23,6 +23,13 @@ async function selectOption(label: string, option: string) {
   fireEvent.click(screen.getByRole("option", { name: new RegExp(`^${option}`) }));
 }
 
+const mockDownloadLabels = vi.fn();
+const mockDownloadSingle = vi.fn();
+vi.mock("@/lib/hooks/shipping-label", () => ({
+  downloadShippingLabel: (...args: unknown[]) => mockDownloadSingle(...args),
+  downloadShippingLabels: (...args: unknown[]) => mockDownloadLabels(...args),
+}));
+
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
 
@@ -174,6 +181,8 @@ describe("OrdersPage", () => {
     completeState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     refundState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     reconcileState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+    mockDownloadLabels.mockReset();
+    mockDownloadSingle.mockReset();
     mockMutate.mockReset();
     mockMutateAsync.mockReset();
     mockUseAdminOrders.mockReset();
@@ -181,6 +190,71 @@ describe("OrdersPage", () => {
     mockUseAdminOrderSummary.mockClear();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  it("selects visible rows and reviews only printable ids in row order", async () => {
+    render(<OrdersPage />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Pilih semua pesanan di halaman ini" }));
+    expect(screen.getAllByRole("checkbox")).toHaveLength(sampleOrders.length + 1);
+    expect(screen.getAllByRole("checkbox").every((el) => (el as HTMLInputElement).checked)).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Cetak resi" }));
+    const dialog = await screen.findByRole("dialog", { name: "Tinjau cetak resi" });
+    expect(within(dialog).getByText(/^Dipilih:/)).toHaveTextContent("Dipilih: 3");
+    expect(within(dialog).getByText(/^Siap:/)).toHaveTextContent("Siap: 1");
+    expect(within(dialog).getByText(/^Tidak ikut:/)).toHaveTextContent("Tidak ikut: 2");
+    expect(within(dialog).getAllByText(/Nomor resi belum tersedia/)).toHaveLength(2);
+    mockDownloadLabels.mockResolvedValueOnce(null);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Unduh 1 resi PDF" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Tinjau cetak resi" })).not.toBeInTheDocument());
+    expect(mockDownloadLabels).toHaveBeenCalledWith(["o2"], "100x150");
+  });
+
+  it("closes order details before reviewing a single failed shipment and restores row focus", async () => {
+    const order = { ...sampleOrders[1], tracking_number: "TEST456", shipment_status: "returned" };
+    ordersState.data = pages([order]);
+    render(<OrdersPage />);
+    const trigger = screen.getByRole("button", { name: /#o2/ });
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Cetak Resi" }));
+    const dialog = await screen.findByRole("dialog", { name: "Cetak resi pesanan" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(within(dialog).getByText(/^Siap:/)).toHaveTextContent("Siap: 1");
+    fireEvent.click(within(dialog).getByRole("radio", { name: /80 mm/ }));
+    mockDownloadSingle.mockResolvedValueOnce(undefined);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Unduh 1 resi PDF" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(mockDownloadSingle).toHaveBeenCalledWith(order.id, "roll80");
+    expect(mockDownloadLabels).not.toHaveBeenCalled();
+    await waitFor(() => expect(trigger).toHaveFocus());
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Cetak Resi" }));
+    const reopened = await screen.findByRole("dialog", { name: "Cetak resi pesanan" });
+    expect(within(reopened).getByRole("radio", { name: /100 × 150/ })).toBeChecked();
+  });
+
+  it("allows individual selection without opening the order and shows a mixed header", () => {
+    render(<OrdersPage />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Pilih pesanan #o2" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const header = screen.getByRole("checkbox", { name: "Pilih semua pesanan di halaman ini" }) as HTMLInputElement;
+    expect(header.checked).toBe(false);
+    expect(header.indeterminate).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Hapus pilihan" }));
+    expect(screen.getAllByRole("checkbox").every((el) => !(el as HTMLInputElement).checked)).toBe(true);
+  });
+
+  it.each(["search", "filter", "sort", "size", "page"])("clears selection after %s changes", async (change) => {
+    ordersState.data = { ...pages(sampleOrders), next_cursor: "next" };
+    render(<OrdersPage />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Pilih semua pesanan di halaman ini" }));
+    if (change === "search") fireEvent.change(screen.getByRole("searchbox", { name: "Cari no. pesanan atau nama pembeli" }), { target: { value: "query" } });
+    if (change === "filter") await selectOption("Status", "Siap kirim");
+    if (change === "sort") await selectOption("Urutkan pesanan", "Tanggal pesanan · terlama");
+    if (change === "size") await selectOption("Baris per halaman", "50");
+    if (change === "page") fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
+    await waitFor(() => expect(screen.getAllByRole("checkbox").every((el) => !(el as HTMLInputElement).checked)).toBe(true));
+    expect(screen.queryByRole("button", { name: "Cetak resi" })).not.toBeInTheDocument();
   });
 
   it("renders the orders table with order number, buyer, product, amount, payment and shipping", async () => {
