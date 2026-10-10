@@ -181,6 +181,8 @@ export interface Product {
   description?: string;
   price: number;
   stock?: number;
+  /** Absent/false means unlimited for exam products; physical types are always limited. */
+  stock_limited?: boolean;
   status?: ProductStatus;
   weight_grams?: number;
   image_url?: string;
@@ -199,7 +201,7 @@ export interface AdminCreateProductInput {
   name: string;
   description?: string;
   price: number;
-  stock?: number;
+  stock?: number | null;
   weight_grams?: number;
   image_url?: string;
   specs?: ProductSpec[];
@@ -213,7 +215,7 @@ export interface AdminUpdateProductInput {
   name?: string;
   description?: string;
   price?: number;
-  stock?: number;
+  stock?: number | null;
   status?: ProductStatus;
   weight_grams?: number;
   image_url?: string;

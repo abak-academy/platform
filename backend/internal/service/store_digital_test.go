@@ -75,9 +75,13 @@ func seedDigitalProduct(t *testing.T, repo *repository.Repository, productType s
 	t.Helper()
 	ctx := context.Background()
 	var id uuid.UUID
+	var stock any = 0
+	if productType == "exam" {
+		stock = nil
+	}
 	if err := repo.Pool().QueryRow(ctx,
-		`INSERT INTO product (type, name, price, stock, status) VALUES ($1, $2, $3, 0, 'published') RETURNING id`,
-		productType, "Digital "+uuid.NewString(), price,
+		`INSERT INTO product (type, name, price, stock, status) VALUES ($1, $2, $3, $4, 'published') RETURNING id`,
+		productType, "Digital "+uuid.NewString(), price, stock,
 	).Scan(&id); err != nil {
 		t.Fatalf("create product: %v", err)
 	}

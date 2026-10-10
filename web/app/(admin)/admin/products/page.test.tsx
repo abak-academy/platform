@@ -261,4 +261,27 @@ describe("ProductsPage", () => {
       expect(screen.getByText(/gagal memuat/i)).toBeInTheDocument();
     });
   });
+
+  it("shows the quota for a limited exam and a dash for an unlimited exam", async () => {
+    productsState = {
+      data: [
+        { id: "e1", type: "exam", name: "Limited Exam", price: 100000, stock: 5, stock_limited: true, status: "published" },
+        { id: "e2", type: "exam", name: "Unlimited Exam", price: 100000, status: "published" },
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<ProductsPage />);
+
+    await waitFor(() => expect(screen.getByText("Limited Exam")).toBeInTheDocument());
+
+    const limitedRow = screen.getByText("Limited Exam").closest("tr")!;
+    expect(within(limitedRow).getAllByRole("cell")[3].textContent).toBe("5");
+
+    const unlimitedRow = screen.getByText("Unlimited Exam").closest("tr")!;
+    expect(within(unlimitedRow).getAllByRole("cell")[3].textContent).toBe("-");
+  });
 });

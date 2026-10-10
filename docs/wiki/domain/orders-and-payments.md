@@ -9,9 +9,9 @@ See also: [../architecture/system-overview.md](../architecture/system-overview.m
 ## Catalog & product
 
 - `model.Product` (`backend/internal/model/product.go`): `type` ∈ `book|merchandise|medal|course|exam`, `status` ∈ `draft|published|hidden|archived` (constraint `product_status_check`, `backend/db/migrations/0009_schema_fixes.up.sql:6-8`).
-- `isPhysicalType(t string) bool` (`backend/internal/service/store.go:2233`) — only `book`, `merchandise`, `medal` count as physical (shipped, stock-tracked). `course`/`exam` are digital, unlimited, no stock.
+- `isPhysicalType(t string) bool` (`backend/internal/service/store.go:2235`) — only `book`, `merchandise`, `medal` count as physical (shipped, stock-tracked). `course` is digital and unlimited. `exam` is digital and unlimited by default (`stock` is NULL); an exam product with a numeric `stock` is a limited sales quota (`0` = sold out) — `tracksStock` (`store.go:2238`) extends stock tracking to those limited exams.
 - `AvailableFrom`/`AvailableUntil` bound marketplace visibility (nullable = unbounded side); `*Set` flags on the struct distinguish "field omitted" from "field cleared" on partial updates.
-- RBAC on product mutation is per-type: `checkTypeRBAC` (`store.go:2236`) — `admin_store` may touch price/visibility on any type including `exam`, but never exam content (owned by `admin_exam`).
+- RBAC on product mutation is per-type: `checkTypeRBAC` (`store.go:2243`) — `admin_store` may touch price/visibility on any type including `exam`, but never exam content (owned by `admin_exam`).
 
 ## Cart
 

@@ -547,7 +547,7 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 	if product == nil {
 		return ErrProductNotFound
 	}
-	if isPhysicalType(product.Type) && product.Stock == 0 {
+	if tracksStock(product.Type, product.StockLimited) && product.Stock == 0 {
 		return ErrOutOfStock
 	}
 	if err := ValidateItemQty(product.Type, qty); err != nil {
@@ -2233,6 +2233,11 @@ func latePaymentReference(notif MidtransNotification, order model.Order) string 
 // isPhysicalType reports whether a product type is shipped physical inventory
 // (stock-guarded, ship-before-complete). Book, merchandise, and medal qualify.
 func isPhysicalType(t string) bool { return t == "book" || t == "merchandise" || t == "medal" }
+
+// tracksStock: physical inventory, or an exam with a quota (NULL stock is unlimited).
+func tracksStock(t string, limited bool) bool {
+	return isPhysicalType(t) || (t == "exam" && limited)
+}
 
 // checkTypeRBAC returns ErrForbidden if role is not allowed to manage productType.
 func checkTypeRBAC(role, productType string) error {

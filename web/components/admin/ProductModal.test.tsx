@@ -619,7 +619,7 @@ describe("ProductModal", () => {
 
   // --- digital product image (exam/course) ---
 
-  it("shows the image picker but not the stock input when type is exam", () => {
+  it("shows the stock input but not the weight input when type is exam", () => {
     render(
       <ProductModal
         open={true}
@@ -632,10 +632,11 @@ describe("ProductModal", () => {
     fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
 
     expect(screen.getByLabelText(/gambar/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/stok/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/stok/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/berat/i)).not.toBeInTheDocument();
   });
 
-  it("includes image_url but excludes stock and weight_grams in create payload for exam type", async () => {
+  it("includes image_url and stock:null but excludes weight_grams in create payload for exam type", async () => {
     render(
       <ProductModal
         open={true}
@@ -671,9 +672,95 @@ describe("ProductModal", () => {
         })
       );
       const payload = mockOnSubmit.mock.calls[0][0];
-      expect(payload).not.toHaveProperty("stock");
+      expect(payload).toHaveProperty("stock", null);
       expect(payload).not.toHaveProperty("weight_grams");
     });
+  });
+
+  it("sends a number for a filled exam stock in create mode", async () => {
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Paket Ujian Kuota" } });
+    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "150000" } });
+    fireEvent.input(screen.getByLabelText(/stok/i), { target: { value: "20" } });
+
+    const utbkCheckbox = screen.getByText("UTBK 2026").closest("label")!.querySelector("input[type=checkbox]")!;
+    fireEvent.click(utbkCheckbox);
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "exam", stock: 20 })
+      );
+      expect(mockOnSubmit.mock.calls[0][0]).not.toHaveProperty("weight_grams");
+    });
+  });
+
+  it("sends stock:null on update when an exam's stock input is empty", async () => {
+    detailState.data = { id: "p1", type: "exam", name: "Detail", price: 150000, status: "published", exam_ids: ["e1"] };
+    const product: Product = {
+      id: "p1",
+      type: "exam",
+      name: "Paket UTBK",
+      price: 150000,
+      stock: 0,
+      stock_limited: false,
+      status: "published",
+    };
+
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        product={product}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    expect(screen.getByLabelText(/stok/i)).toHaveValue(null);
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ stock: null })
+      );
+      expect(mockOnSubmit.mock.calls[0][0]).not.toHaveProperty("weight_grams");
+    });
+  });
+
+  it("keeps a limited exam's stock in the input on edit", () => {
+    detailState.data = { id: "p1", type: "exam", name: "Detail", price: 150000, status: "published", exam_ids: ["e1"] };
+    const product: Product = {
+      id: "p1",
+      type: "exam",
+      name: "Paket UTBK",
+      price: 150000,
+      stock: 0,
+      stock_limited: true,
+      status: "published",
+    };
+
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        product={product}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    expect(screen.getByLabelText(/stok/i)).toHaveValue(0);
   });
 
   it("includes image_url in update payload for an existing course product", async () => {

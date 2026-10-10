@@ -1045,19 +1045,38 @@ func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.
 		return err
 	}
 
-	// Only enforce stock for physical inventory (book, merchandise, medal); course and exam
-	// products have no inventory constraint. Physical-type classification is a
-	// pre-existing chokepoint widened in place (logic normally lives in the service
-	// layer, but inlined here to avoid a repo→service import).
+	// Only enforce stock for physical inventory (book, merchandise, medal) and exams with a quota;
+	// course products and unlimited (NULL stock) exams have no inventory constraint.
+	// Physical-type classification is a pre-existing chokepoint widened in place (logic normally
+	// lives in the service layer, but inlined here to avoid a repo→service import).
+	// Bulk exam orders never take quota.
+	var bulk bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM order_participant WHERE order_id = $1)`,
+		orderID,
+	).Scan(&bulk); err != nil {
+		return err
+	}
+
 	for _, item := range items {
-		if item.ProductType != "book" && item.ProductType != "merchandise" && item.ProductType != "medal" {
+		switch item.ProductType {
+		case "book", "merchandise", "medal":
+		case "exam":
+			if bulk {
+				continue
+			}
+		default:
 			continue
 		}
 		var currentStock int
-		err := tx.QueryRow(ctx,
-			`SELECT stock FROM product WHERE id = $1 FOR UPDATE`,
-			item.ProductID,
-		).Scan(&currentStock)
+		lockStock := `SELECT stock FROM product WHERE id = $1 FOR UPDATE`
+		if item.ProductType == "exam" {
+			lockStock = `SELECT stock FROM product WHERE id = $1 AND stock IS NOT NULL FOR UPDATE`
+		}
+		err := tx.QueryRow(ctx, lockStock, item.ProductID).Scan(&currentStock)
+		if errors.Is(err, pgx.ErrNoRows) && item.ProductType == "exam" {
+			continue
+		}
 		if err != nil {
 			return err
 		}
