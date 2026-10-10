@@ -36,8 +36,13 @@ export function SnapCheckout({ orderId, basePath = "/orders", disabled }: SnapCh
             router.push(`/orders/${orderId}`);
           }
         } else if (data.payment_url) {
-          window.open(data.payment_url, "_blank");
-          toast.info("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
+          const paymentWindow = window.open(data.payment_url, "_blank");
+          if (!paymentWindow && basePath === "/orders") {
+            router.push(`/orders/${orderId}`);
+            toast.info(t("checkout_popup_blocked"));
+          } else {
+            toast.info("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
+          }
         } else if (data.snap_token) {
           navigator.clipboard.writeText(data.snap_token);
           toast.info("Snap token disalin. Buka Midtrans untuk melanjutkan pembayaran.");

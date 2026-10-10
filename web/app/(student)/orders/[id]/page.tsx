@@ -202,6 +202,7 @@ export default function OrderDetailPage({
   const { data: order, isLoading, isError, error, refetch } = useOrder(id);
   const retry = useRetryPayment();
   const [retrying, setRetrying] = useState(false);
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
 
   const handleRetry = () => {
     if (!order) return;
@@ -210,8 +211,11 @@ export default function OrderDetailPage({
       onSuccess: (res) => {
         setRetrying(false);
         if (res.payment_url) {
-          window.open(res.payment_url, "_blank");
-          toast.info("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
+          setPaymentUrl(res.payment_url);
+          const paymentWindow = window.open(res.payment_url, "_blank");
+          if (paymentWindow) {
+            toast.info("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
+          }
         } else {
           toast.error(t("order_snap_unavailable"));
         }
@@ -285,6 +289,19 @@ export default function OrderDetailPage({
               {t("order_continue_payment")}
             </Button>
           </div>
+          {paymentUrl && (
+            <div className="mt-3 text-sm">
+              <p className="text-ink-600">{t("order_payment_link_hint")}</p>
+              <a
+                href={paymentUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-info underline underline-offset-2"
+              >
+                {t("order_payment_link")}
+              </a>
+            </div>
+          )}
         </Card>
       )}
 
