@@ -82,7 +82,7 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 		Name           string              `json:"name"`
 		Description    string              `json:"description"`
 		Price          int64               `json:"price"`
-		Stock          int                 `json:"stock"`
+		Stock          *int                `json:"stock"`
 		WeightGrams    int                 `json:"weight_grams"`
 		ImageURL       string              `json:"image_url"`
 		Specs          []model.ProductSpec `json:"specs"`
@@ -112,7 +112,6 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 		Name:           req.Name,
 		Description:    req.Description,
 		Price:          req.Price,
-		Stock:          req.Stock,
 		WeightGrams:    req.WeightGrams,
 		ImageURL:       req.ImageURL,
 		Specs:          req.Specs,
@@ -120,6 +119,7 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 		AvailableUntil: req.AvailableUntil,
 		Status:         "draft",
 	}
+	p.Stock, p.StockLimited = requestStock(req.Stock)
 
 	var product model.Product
 	var err error
@@ -160,7 +160,7 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 		Name           string               `json:"name"`
 		Description    string               `json:"description"`
 		Price          int64                `json:"price"`
-		Stock          int                  `json:"stock"`
+		Stock          *int                 `json:"stock"`
 		WeightGrams    *int                 `json:"weight_grams"`
 		ImageURL       *string              `json:"image_url"`
 		Specs          *[]model.ProductSpec `json:"specs"`          // pointer: absent preserves existing specs, present replaces them
@@ -201,13 +201,13 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 		Name:              req.Name,
 		Description:       req.Description,
 		Price:             req.Price,
-		Stock:             req.Stock,
 		Status:            status,
 		WeightGramsSet:    req.WeightGrams != nil,
 		ImageURLSet:       req.ImageURL != nil,
 		AvailableFromSet:  req.AvailableFrom.Set,
 		AvailableUntilSet: req.AvailableUntil.Set,
 	}
+	p.Stock, p.StockLimited = requestStock(req.Stock)
 	if req.WeightGrams != nil {
 		p.WeightGrams = *req.WeightGrams
 	}
@@ -308,4 +308,12 @@ func (h *Handler) AdminDeleteProduct(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusNoContent)
+}
+
+// requestStock maps absent/null stock to unlimited and a number to limited.
+func requestStock(stock *int) (int, bool) {
+	if stock == nil {
+		return 0, false
+	}
+	return *stock, true
 }

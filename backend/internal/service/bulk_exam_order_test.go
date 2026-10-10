@@ -437,7 +437,7 @@ func createTestExamProductForBulk(t *testing.T, repo *repository.Repository, exa
 	var productID string
 	err := repo.Pool().QueryRow(ctx,
 		`INSERT INTO product (type, name, price, stock, status)
-		 VALUES ('exam', $1, $2, 0, 'published') RETURNING id`,
+		 VALUES ('exam', $1, $2, NULL, 'published') RETURNING id`,
 		"Bulk Exam Product "+uuid.New().String(), price,
 	).Scan(&productID)
 	if err != nil {
