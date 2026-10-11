@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Package } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -12,6 +12,8 @@ import {
   useDeleteProduct,
 } from "@/lib/hooks/admin-products";
 import { useTranslation } from "@/lib/i18n";
+import { ProductsToolbar, DEFAULT_PRODUCTS_QUERY, applyProductsQuery, productStock, type ProductsQuery } from "@/components/admin/ProductsToolbar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProductModal } from "@/components/admin/ProductModal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,39 +54,43 @@ function statusBadgeClass(status?: string): string {
 }
 
 function formatStock(product: Product): string | number {
-  if (product.type === "book" || product.type === "merchandise" || product.type === "medal") {
-    return product.stock ?? "-";
-  }
-  if (product.type === "exam" && product.stock_limited) {
-    return product.stock ?? 0;
-  }
-  return "-";
+  return productStock(product) ?? "-";
 }
 
 export default function ProductsPage() {
   const { t } = useTranslation();
-  const [filter, setFilter] = useState<ProductType | "all">("all");
+  const [query, setQuery] = useState<ProductsQuery>(DEFAULT_PRODUCTS_QUERY);
+  const [pageIndex, setPageIndex] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const { data: products, isLoading, isError, error } = useAdminProducts();
   const { role } = useResolvedRole();
   const writableTypes = useMemo(() => writableProductTypes(role), [role]);
-  const filterTypes = useMemo<(ProductType | "all")[]>(
-    () => ["all", ...writableTypes],
-    [writableTypes],
-  );
   const create = useCreateProduct();
   const update = useUpdateProduct();
   const publish = usePublishProduct();
   const remove = useDeleteProduct();
 
   const filtered = useMemo(() => {
-    if (!products) return [];
-    const visible = products.filter((p) => writableTypes.includes(p.type));
-    if (filter === "all") return visible;
-    return visible.filter((p) => p.type === filter);
-  }, [products, filter, writableTypes]);
+    const visible = (products ?? []).filter((product) => writableTypes.includes(product.type));
+    return applyProductsQuery(visible, query);
+  }, [products, query, writableTypes]);
+  const lastPage = Math.max(1, Math.ceil(filtered.length / query.limit));
+  const currentPage = Math.min(pageIndex, lastPage);
+  const offset = (currentPage - 1) * query.limit;
+  const rows = filtered.slice(offset, offset + query.limit);
+  const firstRow = filtered.length ? offset + 1 : 0;
+  const lastRow = offset + rows.length;
+
+  useEffect(() => {
+    setPageIndex((index) => Math.min(index, lastPage));
+  }, [lastPage]);
+
+  function changeQuery(next: ProductsQuery) {
+    setQuery(next);
+    setPageIndex(1);
+  }
 
   function openCreate() {
     setEditingProduct(null);
@@ -150,10 +156,8 @@ export default function ProductsPage() {
     }
   }
 
-  const filterLabel = (type: ProductType | "all"): string => {
+  const filterLabel = (type: ProductType): string => {
     switch (type) {
-      case "all":
-        return t("tab_all");
       case "book":
         return t("product_type_book");
       case "merchandise":
@@ -176,17 +180,7 @@ export default function ProductsPage() {
         actions={<Button onClick={openCreate}>{t("products_create")}</Button>}
       />
 
-      <div className="flex flex-wrap gap-2">
-        {filterTypes.map((ft) => (
-          <button
-            key={ft}
-            className={filter === ft ? "md-btn-filled" : "md-btn-outlined"}
-            onClick={() => setFilter(ft)}
-          >
-            {filterLabel(ft)}
-          </button>
-        ))}
-      </div>
+      <ProductsToolbar value={query} onChange={changeQuery} types={writableTypes} />
 
       {isLoading && (
         <div className="space-y-2">
@@ -203,69 +197,98 @@ export default function ProductsPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="overflow-x-auto md-card-outlined">
-          <table className="w-full text-sm">
-            <thead className="bg-muted">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">{t("th_name")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_type")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_price")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_stock")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_status")}</th>
-                <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((product) => (
-                <tr
-                  key={product.id}
-                  className="border-t transition-colors hover:bg-muted/40"
-                >
-                  <td className="px-4 py-3 font-medium">{product.name}</td>
-                  <td className="px-4 py-3">
-                    <Badge className={typeBadgeClass(product.type)}>{filterLabel(product.type)}</Badge>
-                  </td>
-                  <td className="px-4 py-3">{formatRupiah(product.price)}</td>
-                  <td className="px-4 py-3">{formatStock(product)}</td>
-                  <td className="px-4 py-3">
-                    <Badge className={statusBadgeClass(product.status)}>{product.status ?? "draft"}</Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {product.status !== "published" && (
+        <div className="space-y-4">
+          <div className="overflow-x-auto md-card-outlined">
+            <table className="w-full text-sm">
+              <thead className="bg-muted">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium">{t("th_name")}</th>
+                  <th className="px-4 py-3 text-left font-medium">{t("th_type")}</th>
+                  <th className="px-4 py-3 text-left font-medium">{t("th_price")}</th>
+                  <th className="px-4 py-3 text-left font-medium">{t("th_stock")}</th>
+                  <th className="px-4 py-3 text-left font-medium">{t("th_status")}</th>
+                  <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((product) => (
+                  <tr
+                    key={product.id}
+                    className="border-t transition-colors hover:bg-muted/40"
+                  >
+                    <td className="px-4 py-3 font-medium">{product.name}</td>
+                    <td className="px-4 py-3">
+                      <Badge className={typeBadgeClass(product.type)}>{filterLabel(product.type)}</Badge>
+                    </td>
+                    <td className="px-4 py-3">{formatRupiah(product.price)}</td>
+                    <td className="px-4 py-3">{formatStock(product)}</td>
+                    <td className="px-4 py-3">
+                      <Badge className={statusBadgeClass(product.status)}>{product.status ?? "draft"}</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {product.status !== "published" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handlePublish(product.id)}
+                            disabled={publish.isPending}
+                          >
+                            {t("action_publish")}
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => openEdit(product)}>
+                          {t("action_edit")}
+                        </Button>
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => handlePublish(product.id)}
-                          disabled={publish.isPending}
+                          variant="destructive"
+                          onClick={() => handleDelete(product.id)}
+                          disabled={remove.isPending}
                         >
-                          {t("action_publish")}
+                          {t("action_delete")}
                         </Button>
-                      )}
-                      <Button size="sm" variant="outline" onClick={() => openEdit(product)}>
-                        {t("action_edit")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleDelete(product.id)}
-                        disabled={remove.isPending}
-                      >
-                        {t("action_delete")}
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                    {t("empty_products")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                      {t("empty_products")}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-4 px-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-ink-600">{t("products_page_size")}</span>
+              <Select value={String(query.limit)} onValueChange={(v) => changeQuery({ ...query, limit: Number(v) as 20 | 50 | 100 })}>
+                <SelectTrigger className="w-24" aria-label={t("products_page_size")}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[20, 50, 100].map((limit) => <SelectItem key={limit} value={String(limit)}>{limit}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <p className="text-xs tabular-nums text-ink-600">
+                {t("products_showing")} {firstRow}-{lastRow} {t("products_of_total")} {filtered.length}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={currentPage === 1}
+                  onClick={() => setPageIndex(currentPage - 1)}>
+                  {t("pagination_prev")}
+                </Button>
+                <Button variant="outline" size="sm" disabled={currentPage === lastPage}
+                  onClick={() => setPageIndex(currentPage + 1)}>
+                  {t("pagination_next")}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
