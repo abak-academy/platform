@@ -28,7 +28,7 @@ Outcome: an admin can give an exam product a sales quota. When the quota is spen
 Decisions (Panca, 2026-10-10): stock is a sales quota; existing exams stay unlimited (option 1a: `NULL` = unlimited, `0` = sold out); only student self-checkout consumes quota (2a); the catalog shows the count like physical products (3a). Medal-eligibility validation was discussed and is deferred (non-goal below).
 
 - **Unlimited vs limited.** For an exam product, stock `NULL` means unlimited and a number means that many seats left (`0` = sold out). Book, merchandise and medal keep a required number.
-- **Admin.** The exam form shows the stock input; empty means unlimited. The products list shows the stock column for exams (`-` when unlimited). Create and edit accept `stock: null` (or absent) for an exam as unlimited; for other types an absent stock stays `0` as today.
+- **Admin.** The exam form has a “Batasi kuota” toggle, off by default on create and initialized from `stock_limited` on edit. Off hides the stock input and sends `stock: null`; on requires a non-negative integer, including `0`. The products list shows the stock column for exams (`-` when unlimited). Create and edit accept `stock: null` (or absent) for an exam as unlimited; for other types an absent stock stays `0` as today.
 - **Add to cart.** A limited exam with stock `0` is rejected `ErrOutOfStock`.
 - **Checkout.** Each limited exam line locks the product row (`FOR UPDATE`), rejects `ErrInsufficientStock` when stock is below the line qty, otherwise decrements. Unlimited exams are untouched. Two students racing for the last seat: exactly one succeeds.
 - **Expiry.** `payment_expired` restores the seat for limited exams, once, through the existing transition. Unlimited exams stay `NULL`.
@@ -54,8 +54,8 @@ Decisions (Panca, 2026-10-10): stock is a sales quota; existing exams stay unlim
 4. `payment_expired` of an order with a limited exam restores one seat, once; with an unlimited exam stock stays `NULL`.
 5. A bulk exam order never changes stock, including when it expires.
 6. Migration: existing exam products are `NULL` after it; book/merchandise/medal rows are unchanged.
-7. Create/edit exam with empty stock stores `NULL`; with a number stores it; non-exam types behave as before (`update_preserve_test.go` unchanged and green).
-8. Web: exam form shows the input and sends `stock: null` when empty; the catalog shows "Stok: N" / "Habis" for limited exams and nothing for unlimited; products list shows the column.
+7. Create/edit exam with the quota toggle off stores `NULL`; with it on, a required non-negative integer stores that number (empty input disables submit); non-exam types behave as before (`update_preserve_test.go` unchanged and green).
+8. Web: exam form hides the stock input and sends `stock: null` with the quota toggle off; with it on, the input is required and sends its number; the catalog shows "Stok: N" / "Habis" for limited exams and nothing for unlimited; products list shows the column.
 9. Gates: `deploy/pipeline/backend.sh` then `frontend.sh`, sequentially; CI is the authority where the dev box lacks Podman.
 
 ## Scope
