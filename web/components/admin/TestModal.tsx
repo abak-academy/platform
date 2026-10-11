@@ -12,7 +12,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { AudioUploadInput } from "@/components/admin/AudioUploadInput";
+import { materialHTMLOrNull } from "@/lib/rich-text";
 import { useTranslation } from "@/lib/i18n";
 import type { Test, AdminCreateTestInput, AdminUpdateTestInput } from "@/lib/types";
 
@@ -27,6 +29,8 @@ interface TestModalProps {
 export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: TestModalProps) {
   const { t } = useTranslation();
   const isEdit = Boolean(test);
+  const [sharedMaterial, setSharedMaterial] = useState("");
+  const [instructions, setInstructions] = useState("");
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
@@ -38,6 +42,8 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
   useEffect(() => {
     if (!open) return;
     if (test) {
+      setSharedMaterial(test.shared_material_html ?? "");
+      setInstructions(test.instructions_html ?? "");
       setTitle(test.title ?? "");
       setSubject(test.subject ?? "");
       setTopic(test.topic ?? "");
@@ -46,6 +52,8 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
       setAudioPlayLimit(test.audio_play_limit != null ? String(test.audio_play_limit) : "");
       setSectionType(test.section_type ?? null);
     } else {
+      setSharedMaterial("");
+      setInstructions("");
       setTitle("");
       setSubject("");
       setTopic("");
@@ -81,6 +89,8 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
         ...(audioUrl.trim() ? { audio_url: audioUrl.trim() } : {}),
         ...(audioPlayLimit !== "" ? { audio_play_limit: Number(audioPlayLimit) } : {}),
         ...sectionTypePayload,
+        shared_material_html: materialHTMLOrNull(sharedMaterial),
+        instructions_html: materialHTMLOrNull(instructions),
       };
       onSubmit(input);
       return;
@@ -94,13 +104,15 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
       ...(audioUrl.trim() ? { audio_url: audioUrl.trim() } : {}),
       ...(audioPlayLimit !== "" ? { audio_play_limit: Number(audioPlayLimit) } : {}),
       ...sectionTypePayload,
+        shared_material_html: materialHTMLOrNull(sharedMaterial),
+        instructions_html: materialHTMLOrNull(instructions),
     };
     onSubmit(input);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{isEdit ? t("tests_edit") : t("tests_new")}</DialogTitle>
@@ -160,6 +172,15 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
               />
             </div>
 
+            <div className="grid gap-2">
+              <Label htmlFor="test-shared-material">{t("format_shared_material")}</Label>
+              <RichTextEditor id="test-shared-material" aria-label={t("format_shared_material")} value={sharedMaterial} onChange={setSharedMaterial} disabled={isPending} />
+              <p className="text-xs text-ink-500">{t("format_reusable_material_hint")}</p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="test-instructions">{t("format_instructions")}</Label>
+              <RichTextEditor id="test-instructions" aria-label={t("format_instructions")} value={instructions} onChange={setInstructions} disabled={isPending} />
+            </div>
             <div className="grid gap-2">
               <Label>{t("tests_field_section_type")}</Label>
               <div className="grid grid-cols-4 gap-2">

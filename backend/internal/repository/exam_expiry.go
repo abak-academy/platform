@@ -33,7 +33,7 @@ func (r *Repository) ListDueExamExpiryCandidatesPage(ctx context.Context, now ti
 			FROM exam_session s
 			JOIN exam e ON e.id = s.exam_id
 			WHERE s.status = 'in_progress'
-			  AND e.mode = 'standard'
+			  AND ((e.format_version = 1 AND e.mode = 'standard') OR (e.format_version = 2 AND e.timer_mode = 'overall'))
 			  AND e.duration_minutes > 0
 
 			UNION ALL
@@ -49,7 +49,7 @@ func (r *Repository) ListDueExamExpiryCandidatesPage(ctx context.Context, now ti
 			JOIN exam e ON e.id = s.exam_id
 			JOIN exam_session_section ss ON ss.session_id = s.id
 			WHERE s.status = 'in_progress'
-			  AND e.mode IN ('utbk', 'ielts')
+			  AND ((e.format_version = 1 AND e.mode IN ('utbk', 'ielts')) OR (e.format_version = 2 AND e.timer_mode = 'per_test'))
 			  AND ss.status = 'active'
 			  AND ss.started_at IS NOT NULL
 			  AND ss.duration_minutes > 0

@@ -73,6 +73,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const { t } = useTranslation();
   const isEdit = Boolean(exam);
+  const composable = !exam || exam.format_version === 2;
   const create = useCreateExam();
   const update = useUpdateExam(exam?.id ?? "");
 
@@ -85,6 +86,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const [requiresCheckin, setRequiresCheckin] = useState(false);
   const [allowLeaderboard, setAllowLeaderboard] = useState(false);
   const [randomize, setRandomize] = useState(false);
+  const [navigation, setNavigation] = useState<"free" | "sequential">("free");
   const [mode, setMode] = useState("standard");
   const [resultConfig, setResultConfig] = useState<ExamResultConfig>("hidden");
   const [resultReleaseAt, setResultReleaseAt] = useState("");
@@ -108,6 +110,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setAllowLeaderboard(Boolean(exam.allow_leaderboard));
       setRandomize(Boolean(exam.randomize));
       setMode(exam.mode ?? "standard");
+      setNavigation(exam.navigation_policy ?? "free");
       setResultConfig((exam.result_config as ExamResultConfig) ?? "hidden");
       setResultReleaseAt(scheduledAtInputValue(exam.result_release_at));
       setCheckInWindow(inputValueFromNumber(exam.check_in_window_minutes));
@@ -127,6 +130,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setAllowLeaderboard(false);
       setRandomize(false);
       setMode("standard");
+      setNavigation("free");
       setResultConfig("hidden");
       setResultReleaseAt("");
       setCheckInWindow("");
@@ -151,9 +155,10 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
     () =>
       title.trim() !== "" &&
       (!durationRequired || (duration !== "" && Number(duration) > 0)) &&
+      !(composable && timerMode === "per_test" && navigation !== "sequential") &&
       !endBeforeStart &&
       !isPending,
-    [title, duration, durationRequired, endBeforeStart, isPending],
+    [title, duration, durationRequired, endBeforeStart, isPending, composable, timerMode, navigation],
   );
 
   async function handleSubmit(e: React.FormEvent) {
@@ -169,7 +174,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       requires_checkin: requiresCheckin,
       allow_leaderboard: allowLeaderboard,
       randomize,
-      mode,
+      ...(composable ? { navigation_policy: navigation } : { mode }),
       result_config: resultConfig,
       result_release_at: scheduledAtIso(resultReleaseAt),
       check_in_window_minutes: nonNegativeInt(checkInWindow),
@@ -267,6 +272,19 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
 
             <div className="grid gap-3">
               <SectionHeading>{t("exam_packages_modal_section_format")}</SectionHeading>
+              {composable ? (
+                <div className="grid gap-2">
+                  <Label>{t("format_navigation")}</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["free", "sequential"] as const).map(value => (
+                      <label key={value} className={`${RADIO_CARD_BASE} ${navigation === value ? RADIO_CARD_ON : RADIO_CARD_OFF}`}>
+                        <input type="radio" name="navigation_policy" checked={navigation === value} onChange={() => setNavigation(value)} disabled={isPending} />
+                        <span>{t(value === "free" ? "format_navigation_free" : "format_navigation_sequential")}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : (
               <div className="grid gap-2">
                 <Label>{t("exam_packages_modal_mode")}</Label>
                 <div className="grid grid-cols-3 gap-2">
@@ -297,7 +315,9 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                   <p className="text-xs text-ink-400">{t("exam_packages_modal_mode_hint")}</p>
                 )}
               </div>
+              )}
 
+              {composable && timerMode === "per_test" && navigation !== "sequential" && <p role="alert" className="text-sm text-danger">{t("format_timer_navigation_hint")}</p>}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label>{t("exam_packages_modal_timer_mode")}</Label>
@@ -317,7 +337,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                           name="timer_mode"
                           value={value}
                           checked={timerMode === value}
-                          onChange={() => setTimerMode(value)}
+                          onChange={() => { setTimerMode(value); if (composable && value === "per_test") setNavigation("sequential"); }}
                           disabled={isPending}
                         />
                         <span>{label}</span>

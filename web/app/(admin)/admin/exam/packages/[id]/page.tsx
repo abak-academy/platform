@@ -173,6 +173,7 @@ export default function ExamPackageDetailPage() {
     duration_minutes: number;
   }
 
+  const [presentations, setPresentations] = useState<Record<string, "one_per_page" | "all_on_page">>({});
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
   const [pendingSections, setPendingSections] = useState<PendingSection[]>([]);
 
@@ -198,6 +199,7 @@ export default function ExamPackageDetailPage() {
   useEffect(() => {
     if (!data) return;
     setAttachedIds(data.tests.map((entry) => entry.test_id));
+    setPresentations(Object.fromEntries(data.tests.map(entry => [entry.test_id, entry.question_presentation ?? "one_per_page"])));
   }, [data]);
 
   useEffect(() => {
@@ -253,7 +255,7 @@ export default function ExamPackageDetailPage() {
   async function handleSaveTests() {
     if (!id) return;
     try {
-      await replaceTests.mutateAsync(attachedIds);
+      await replaceTests.mutateAsync(data?.format_version === 2 ? attachedIds.map(test_id => ({ test_id, question_presentation: presentations[test_id] ?? "one_per_page" })) : attachedIds);
       toast.success(t("changes_saved"));
       refetch();
     } catch (e) {
@@ -373,7 +375,7 @@ export default function ExamPackageDetailPage() {
         icon={Calendar}
         title={title}
         description={
-          data ? `${formatMode(data.mode)} · ${formatScheduled(data.scheduled_at)}` : undefined
+          data ? `${data.format_version === 2 ? t(data.navigation_policy === "sequential" ? "format_navigation_sequential" : "format_navigation_free") : formatMode(data.mode)} · ${formatScheduled(data.scheduled_at)}` : undefined
         }
         actions={
           data ? (
@@ -449,7 +451,7 @@ export default function ExamPackageDetailPage() {
                       : formatScheduled(data.scheduled_at)
                   }
                 />
-                <OverviewRow label="Mode" value={formatMode(data.mode)} />
+                <OverviewRow label={data.format_version === 2 ? t("format_navigation") : "Mode"} value={data.format_version === 2 ? t(data.navigation_policy === "sequential" ? "format_navigation_sequential" : "format_navigation_free") : formatMode(data.mode)} />
                 <OverviewRow label="Timer mode" value={data.timer_mode ?? "—"} />
                 <OverviewRow
                   label="Duration"
@@ -635,7 +637,7 @@ export default function ExamPackageDetailPage() {
 
           {tab === "tests" && (
             <div className="grid gap-4 lg:grid-cols-2">
-              <div className="md-card-outlined p-4">
+              <div className="md-card-outlined min-w-0 p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-title-medium font-semibold">
                     {t("admin_exam_detail_tests_attached")}
@@ -644,7 +646,7 @@ export default function ExamPackageDetailPage() {
                     {attachedIds.length + pendingSections.length}
                   </span>
                 </div>
-                {data.mode && data.mode !== "standard" && (
+                {data.format_version !== 2 && data.mode && data.mode !== "standard" && (
                   <div className="mb-3 flex flex-wrap gap-2">
                     {data.mode === "utbk" && (
                       <Button
@@ -677,15 +679,15 @@ export default function ExamPackageDetailPage() {
                 ) : (
                   <ul className="space-y-2">
                     {attachedIds.map((testId, idx) => {
-                      const meta = data.tests.find((e) => e.test_id === testId)?.test;
+                      const meta = data.tests.find((e) => e.test_id === testId)?.test ?? testEntries.find(test => test.id === testId);
                       return (
                         <li
                           key={`${testId}-${idx}`}
-                          className="flex items-center justify-between gap-2 rounded-md border p-3 text-sm"
+                          className={`flex items-center justify-between gap-2 rounded-md border p-3 text-sm ${data.format_version === 2 ? "flex-wrap" : ""}`}
                         >
-                          <div className="min-w-0">
+                          <div className={data.format_version === 2 ? "min-w-0 basis-full sm:flex-1 sm:basis-auto" : "min-w-0"}>
                             <div className="truncate font-medium">
-                              #{idx + 1} · {meta?.title ?? testId}
+                              <Link href={`/admin/exam/tests/${testId}`} className="hover:underline">#{idx + 1} · {meta?.title ?? testId}</Link>
                             </div>
                             {meta && (
                               <div className="text-label text-ink-500">
@@ -695,6 +697,13 @@ export default function ExamPackageDetailPage() {
                               </div>
                             )}
                           </div>
+                          {data.format_version === 2 && (
+                            <select aria-label={`${t("format_presentation")} ${meta?.title ?? testId}`} className="max-w-44 rounded-md border border-line bg-surface p-2 text-sm" value={presentations[testId] ?? "one_per_page"}
+                              onChange={e => setPresentations(prev => ({ ...prev, [testId]: e.target.value as "one_per_page" | "all_on_page" }))} disabled={replaceTests.isPending}>
+                              <option value="one_per_page">{t("format_one_per_page")}</option>
+                              <option value="all_on_page">{t("format_all_on_page")}</option>
+                            </select>
+                          )}
                           <Button
                             type="button"
                             size="icon-xs"
@@ -744,6 +753,10 @@ export default function ExamPackageDetailPage() {
                       ))}
                     </ul>
                   </div>
+                )}
+                {data.format_version === 2 && attachedIds.some(id => presentations[id] === "all_on_page") && <p className="mt-4 text-sm text-ink-500">{t("format_material_warning")}</p>}
+                {data.format_version === 2 && (
+                  <p className="mt-4 text-sm text-ink-600">{t("format_effective_behavior")}: {t(data.navigation_policy === "sequential" ? "format_navigation_sequential" : "format_navigation_free")} · {t(data.timer_mode === "per_test" ? "format_timer_section" : "format_timer_overall")} · {attachedIds.length} {t("format_sections")}</p>
                 )}
                 <div className="mt-4 flex justify-end">
                   <Button

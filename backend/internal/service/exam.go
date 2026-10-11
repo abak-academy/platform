@@ -953,6 +953,7 @@ func normalizeCardNotes(notes []string) []string {
 }
 
 func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, error) {
+	m.FormatVersion = 2
 	m.CardNotes = normalizeCardNotes(m.CardNotes)
 	if m.ResultConfig == "" {
 		m.ResultConfig = "hidden"
@@ -1278,11 +1279,9 @@ func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, tests 
 	return tx.Commit(ctx)
 }
 
-// checkExamPolicyEditSafety freezes navigation_policy and randomize on a
-// composable exam once any attempt exists, and audit-logs the change while only
-// registrations exist. Legacy exams never reach this.
 func (s *Service) checkExamPolicyEditSafety(ctx context.Context, existing, updated model.Exam, actorID string) error {
-	if existing.NavigationPolicy == updated.NavigationPolicy && existing.Randomize == updated.Randomize {
+	sameDuration := existing.DurationMinutes == nil && updated.DurationMinutes == nil || existing.DurationMinutes != nil && updated.DurationMinutes != nil && *existing.DurationMinutes == *updated.DurationMinutes
+	if existing.NavigationPolicy == updated.NavigationPolicy && existing.Randomize == updated.Randomize && existing.TimerMode == updated.TimerMode && sameDuration {
 		return nil
 	}
 	hasSession, err := s.storeRepo.ExamHasAnySession(ctx, existing.ID)
@@ -1303,6 +1302,8 @@ func (s *Service) checkExamPolicyEditSafety(ctx context.Context, existing, updat
 	return s.storeRepo.InsertAuditLogMeta(ctx, nil, &actor, "exam", existing.ID.String(), "exam.format_policy", map[string]any{
 		"navigation_policy": updated.NavigationPolicy,
 		"randomize":         updated.Randomize,
+		"timer_mode":        updated.TimerMode,
+		"duration_minutes":  updated.DurationMinutes,
 	})
 }
 

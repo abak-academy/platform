@@ -93,7 +93,7 @@ func (s *Service) expireExamCandidate(ctx context.Context, now time.Time, candid
 	}
 
 	if candidate.TestID == nil {
-		if exam.Mode != "standard" || !standardSessionDue(*sess, *exam, now) {
+		if (exam.FormatVersion != 2 && exam.Mode != "standard") || sectionTimer(exam) || !standardSessionDue(*sess, *exam, now) {
 			return false, nil
 		}
 		if _, err := s.finalizeLockedSessionTx(ctx, tx, sess.ID, questions, false); err != nil {
@@ -105,7 +105,7 @@ func (s *Service) expireExamCandidate(ctx context.Context, now time.Time, candid
 		return true, nil
 	}
 
-	if exam.Mode != "utbk" && exam.Mode != "ielts" {
+	if !sectionTimer(exam) {
 		return false, nil
 	}
 	section, err := s.storeRepo.GetActiveSessionSectionForUpdateTx(ctx, tx, sess.ID, *candidate.TestID)

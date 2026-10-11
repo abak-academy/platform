@@ -57,7 +57,7 @@ Semua baris `exam` existing tetap `format_version=1` dan tetap memakai jalur run
 
 **Edit safety**
 
-Draft atau exam tanpa session: policy dan section config boleh diubah; bila sudah ada registration (tanpa session), perubahan dicatat di audit log. Begitu exam punya session (aktif atau submitted), perubahan policy (`navigation_policy`) dan section config (daftar Test terlampir beserta `question_presentation`) ditolak. Aturan ini berlaku untuk exam `format_version=2`; exam legacy tetap berperilaku seperti sekarang supaya tidak ada regresi admin. Karena itu snapshot policy di `exam_session`/`exam_session_section` tidak ditambahkan.
+Draft atau exam tanpa session: policy dan section config boleh diubah; bila sudah ada registration (tanpa session), perubahan dicatat di audit log. Begitu exam punya session (aktif atau submitted), perubahan policy (`navigation_policy`, `randomize`, `timer_mode`, `duration_minutes`) dan section config (daftar Test terlampir beserta `question_presentation`) ditolak. Aturan ini berlaku untuk exam `format_version=2`; exam legacy tetap berperilaku seperti sekarang supaya tidak ada regresi admin. Karena itu snapshot policy di `exam_session`/`exam_session_section` tidak ditambahkan.
 
 ## Technical contract
 
@@ -78,7 +78,7 @@ Tidak ada kolom baru di `exam_session` maupun `exam_session_section`.
 
 - `test`: `title` (menjadi label section), `duration_minutes` (satu-satunya sumber durasi section), `shared_material_html`, `instructions_html`, daftar Question.
 - `exam_test`: `question_presentation` dan `sort_order`.
-- `exam`: `format_version`, `navigation_policy`; timer tetap memakai field existing `timer_mode` ∈ {`overall`,`per_test`} + `duration_minutes` (`overall` + duration = timer per exam, `per_test` + duration = timer per section, `per_test` tanpa duration = tanpa timer).
+- `exam`: `format_version`, `navigation_policy`; timer tetap memakai field existing `timer_mode` ∈ {`overall`,`per_test`} + `duration_minutes` (`overall` + duration = timer per exam, `per_test` + duration = timer per section; publish format 2 mensyaratkan durasi positif).
 
 **Invariant**
 
@@ -136,7 +136,7 @@ Test yang harus ada di PR-1: migration up (+ down bila repo memakai pasangan), c
 
 ## Scope
 
-**Ditunda ke PR-2:** student renderer `one_per_page`/`all_on_page`, resolusi material di UI, section transition + konfirmasi jumlah soal belum dijawab, admin section config + editor shared material, effective behavior summary. Saat UI section-config menyimpan daftar test, ia harus mengirim bentuk rich `[{test_id,question_presentation},…]`: bentuk lama `[test_id,…]` tetap didukung tapi mengembalikan `question_presentation` ke default kolom, jadi pilihan `all_on_page` yang sudah tersimpan akan hilang.
+**Delivery PR-2:** student renderer `one_per_page`/`all_on_page`, resolusi material di UI, section transition + konfirmasi jumlah soal belum dijawab, admin section config + editor shared material, effective behavior summary. Saat UI section-config menyimpan daftar test, ia harus mengirim bentuk rich `[{test_id,question_presentation},…]`: bentuk lama `[test_id,…]` tetap didukung tapi mengembalikan `question_presentation` ke default kolom, jadi pilihan `all_on_page` yang sudah tersimpan akan hilang.
 
 **Ditunda ke PR-3:** konversi exam lama (preview mapping `mode → format_version=2`), result/monitor/export memakai label section dan `result_grouping`, retirement `isSectionedMode` dan kolom legacy.
 
@@ -148,3 +148,16 @@ Test yang harus ada di PR-1: migration up (+ down bila repo memakai pasangan), c
 - Blokir edit adalah pengecekan sebelum penulisan, bukan lock: sesi yang mulai tepat bersamaan dengan penulisan admin masih bisa memakai policy yang baru. Penutupnya butuh row lock saat session start (atau snapshot yang sengaja tidak dipakai di desain ini); perilakunya tetap lebih ketat daripada sebelumnya, ketika perubahan berlaku ke semua attempt yang berjalan.
 - Label section mengikuti `Test.title`, sehingga mengganti title Test juga mengganti label di hasil/monitor.
 - Kombinasi `free` + timer per section tidak didukung; admin harus memilih `sequential`.
+
+## PR-2 delivery contract
+
+PR-2 is stacked on PR #198 at `8040fcb3` and is independently deployable after PR-1. New API-created exams become format 2; existing exams retain format 1. No conversion or legacy-column removal is included.
+
+- Format-2 navigation uses `navigation_policy`: free allows all attached sections; sequential seeds section state and only accepts answers for the active section.
+- Format-2 timers use `timer_mode`: overall expires/submits the whole attempt, including sequential exams; per_test expires/advances the active section using its snapshotted duration. Legacy timing remains unchanged. The current publish contract offers whole-exam or per-section timers; no additional timer option is introduced.
+- Student start, reconnect and advance payloads expose effective format/navigation and section presentation/material. Answer keys remain absent. Question ordering stays stable through these real service paths.
+- Admin configures navigation and presentation and edits reusable Test material/instructions plus Question material. Section saves use rich attachment objects and preserve existing presentation when adding/removing another Test.
+- Student presentation supports all existing answer formats, material precedence, shared instructions, unanswered-count confirmation and the existing save barrier. Format-2 free navigation allows selecting each section without locking answers in other sections.
+- Proof includes table-driven real-DB runtime/timer/compatibility tests, frontend component and material matrix tests, browser coverage, and full backend/frontend gates. Result calculation remains unchanged; conversion and enhanced grouping/retirement are follow-up work.
+
+Approved monitoring compensation contract (2026-10-03): format-2 `timer_mode` and exam `duration_minutes` are frozen after any session exists, alongside navigation/randomization/attachments. Admins compensate affected students from session monitoring, with a positive integer number of extra minutes. The action is available for in-progress and overdue sessions. Overall clocks extend only that session; per-section clocks extend only its active section. The new deadline is `max(now, existing effective deadline) + extra minutes`, so repeated compensation accumulates and never shortens remaining time. Exam defaults and other students remain unchanged. Reconnect/refetch exposes the updated extension and synchronizes the student's countdown without replacing local answers. No polling or automatic outage detection is added; students must refresh/reconnect if their current tab has not fetched the new deadline. Submitted attempts remain completed; recovery/regrading is a separate decision and is not introduced by this action.
