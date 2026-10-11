@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SnapCheckout } from "./SnapCheckout";
 import { ApiError } from "@/lib/api";
+import { ordersKeys } from "@/lib/hooks/orders";
 import { useUIStore } from "@/stores/ui";
 
 const push = vi.fn();
@@ -33,8 +34,9 @@ function conflictError(reason: string, kind = "course") {
   });
 }
 
+let client: QueryClient;
 function renderCheckout(basePath?: string) {
-  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <SnapCheckout orderId="order-1" basePath={basePath} />
@@ -47,6 +49,7 @@ let writeText: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.snap = undefined;
   authFetch.mockReset();
   useUIStore.setState({ lang: "id" });
   open = vi.fn();
@@ -56,18 +59,18 @@ beforeEach(() => {
 });
 
 async function pay() {
-  await userEvent.click(screen.getByRole("button", { name: /bayar di tab baru/i }));
+  await userEvent.click(screen.getByRole("button", { name: /^(bayar|pay)$/i }));
 }
 
 describe("SnapCheckout conflicts", () => {
   it("routes to the order with a blocked-popup toast when the payment popup is blocked", async () => {
     open.mockReturnValue(null);
-    authFetch.mockResolvedValueOnce({ snap_token: "test-token", payment_url: "https://pay.example/x" });
+    authFetch.mockResolvedValueOnce({ snap_token: "", payment_url: "https://pay.example/x" });
     renderCheckout();
 
     await pay();
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /bayar di tab baru/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: /^(bayar|pay)$/i })).toBeEnabled());
     expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank");
     expect(push).toHaveBeenCalledWith("/orders/order-1");
     expect(toastInfo).toHaveBeenCalledWith("Pop-up pembayaran diblokir browser. Lanjutkan pembayaran dari halaman pesanan.");
@@ -76,12 +79,12 @@ describe("SnapCheckout conflicts", () => {
 
   it("keeps the new-tab toast without navigation when the payment popup opens", async () => {
     open.mockReturnValue({});
-    authFetch.mockResolvedValueOnce({ snap_token: "test-token", payment_url: "https://pay.example/x" });
+    authFetch.mockResolvedValueOnce({ snap_token: "", payment_url: "https://pay.example/x" });
     renderCheckout();
 
     await pay();
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /bayar di tab baru/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: /^(bayar|pay)$/i })).toBeEnabled());
     expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank");
     expect(push).not.toHaveBeenCalled();
     expect(toastInfo).toHaveBeenCalledWith("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
@@ -90,12 +93,12 @@ describe("SnapCheckout conflicts", () => {
 
   it("does not route admin checkout to student orders when the popup is blocked", async () => {
     open.mockReturnValue(null);
-    authFetch.mockResolvedValueOnce({ snap_token: "test-token", payment_url: "https://pay.example/x" });
+    authFetch.mockResolvedValueOnce({ snap_token: "", payment_url: "https://pay.example/x" });
     renderCheckout("/admin/orders");
 
     await pay();
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /bayar di tab baru/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: /^(bayar|pay)$/i })).toBeEnabled());
     expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank");
     expect(push).not.toHaveBeenCalled();
   });
@@ -144,7 +147,7 @@ describe("SnapCheckout conflicts", () => {
     await pay();
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
 
-    resolve({ payment_url: "https://pay.example/x" });
+    resolve({ snap_token: "", payment_url: "https://pay.example/x" });
     await waitFor(() => expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank"));
   });
 
@@ -172,7 +175,7 @@ describe("SnapCheckout conflicts", () => {
   });
 
   it("still opens the payment link when checkout succeeds", async () => {
-    authFetch.mockResolvedValueOnce({ payment_url: "https://pay.example/x" });
+    authFetch.mockResolvedValueOnce({ snap_token: "", payment_url: "https://pay.example/x" });
     renderCheckout();
 
     await pay();
@@ -180,4 +183,167 @@ describe("SnapCheckout conflicts", () => {
     await waitFor(() => expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank"));
     expect(screen.queryByRole("alert")).toBeNull();
   });
+});
+
+
+describe("SnapCheckout popup", () => {
+  it.each([["id", "Bayar"], ["en", "Pay"]] as const)("renders the payment label in %s", (lang, label) => {
+    useUIStore.setState({ lang });
+    renderCheckout();
+    expect(screen.getByRole("button", { name: label })).toBeEnabled();
+  });
+
+  it.each([
+    ["onSuccess", "/orders", true],
+    ["onPending", "/orders", true],
+    ["onClose", "/orders", false],
+    ["onError", "/orders", false],
+    ["onSuccess", "/admin/bulk-exam-orders", false],
+  ] as const)("%s on %s: goes to the order page = %s", async (event, basePath, goes) => {
+    const snapPay = vi.fn();
+    window.snap = { pay: snapPay, embed: vi.fn() };
+    authFetch.mockResolvedValue({ snap_token: "test-token", payment_url: "https://pay.example/x" });
+    renderCheckout(basePath);
+    await pay();
+    await waitFor(() => expect(snapPay).toHaveBeenCalled());
+    act(() => snapPay.mock.calls[0][1][event]({ transaction_status: "settlement" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Bayar" })).toBeEnabled());
+    if (goes) expect(push).toHaveBeenCalledWith("/orders/order-1");
+    else expect(push).not.toHaveBeenCalled();
+  });
+
+  it("explains a failed payment in English without opening a tab", async () => {
+    useUIStore.setState({ lang: "en" });
+    const snapPay = vi.fn();
+    window.snap = { pay: snapPay, embed: vi.fn() };
+    authFetch.mockResolvedValue({ snap_token: "test-token", payment_url: "https://pay.example/x" });
+    renderCheckout();
+    await pay();
+    await waitFor(() => expect(snapPay).toHaveBeenCalled());
+    act(() => snapPay.mock.calls[0][1].onError({ transaction_status: "deny" }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Payment failed. Try again or choose another payment method."));
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it.each(["onSuccess", "onPending", "onClose", "onError"] as const)("handles %s on the page and allows reopening the same token", async (event) => {
+    const snapPay = vi.fn();
+    window.snap = { pay: snapPay, embed: vi.fn() };
+    authFetch.mockResolvedValue({ snap_token: "test-token", payment_url: "https://pay.example/x" });
+    renderCheckout();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    await pay();
+    const button = screen.getByRole("button", { name: "Bayar" });
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(snapPay).toHaveBeenCalledWith("test-token", expect.any(Object));
+    expect(open).not.toHaveBeenCalled();
+    await userEvent.click(button);
+    expect(snapPay).toHaveBeenCalledTimes(1);
+    invalidate.mockClear();
+    act(() => snapPay.mock.calls[0][1][event]({ transaction_status: "settlement" }));
+    await waitFor(() => expect(button).toBeEnabled());
+    if (event !== "onError") expect(invalidate).toHaveBeenCalledWith({ queryKey: ordersKeys.all });
+    if (event === "onError") expect(toastError).toHaveBeenCalledWith("Pembayaran gagal. Coba lagi atau pilih metode pembayaran lain.");
+    if (event === "onSuccess" || event === "onPending") expect(toastInfo).toHaveBeenCalledWith(expect.stringContaining("menunggu konfirmasi"));
+    expect(open).not.toHaveBeenCalled();
+    if (event === "onSuccess" || event === "onPending") expect(push).toHaveBeenCalledWith("/orders/order-1");
+    else expect(push).not.toHaveBeenCalled();
+    expect(client.getQueryData(ordersKeys.detail("order-1"))).toBeUndefined();
+    await pay();
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(snapPay).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens a token-only response without copying it", async () => {
+    window.snap = { pay: vi.fn(), embed: vi.fn() };
+    authFetch.mockResolvedValueOnce({ snap_token: "token-only" });
+    renderCheckout();
+    await pay();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Bayar" })).toBeDisabled());
+    expect(window.snap.pay).toHaveBeenCalledWith("token-only", expect.any(Object));
+    expect(writeText).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("keeps free orders out of the payment gateway", async () => {
+    window.snap = { pay: vi.fn(), embed: vi.fn() };
+    authFetch.mockResolvedValueOnce({ free: true, snap_token: "", payment_url: "" });
+    renderCheckout();
+    await pay();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Bayar" })).toBeEnabled());
+    expect(push).toHaveBeenCalledWith("/orders/order-1");
+    expect(window.snap.pay).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("shows the existing error when neither token nor URL is available", async () => {
+    authFetch.mockResolvedValueOnce({ snap_token: "", payment_url: "" });
+    renderCheckout();
+    await pay();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Bayar" })).toBeEnabled());
+    expect(toastError).toHaveBeenCalledWith("Gagal memulai pembayaran. Coba lagi nanti.");
+    expect(open).not.toHaveBeenCalled();
+  });
+});
+
+
+function addSnapScript() {
+  const script = document.createElement("script");
+  script.src = "https://app.sandbox.midtrans.com/snap/snap.js";
+  script.setAttribute("data-test-snap", "");
+  document.head.appendChild(script);
+}
+
+afterEach(() => {
+  document.head.querySelectorAll("script[data-test-snap]").forEach((el) => el.remove());
+  vi.useRealTimers();
+  window.snap = undefined;
+});
+
+it("takes the new-tab path at once when the page never loads snap.js (admin bulk order)", async () => {
+  open.mockReturnValue({});
+  authFetch.mockResolvedValueOnce({ snap_token: "token", payment_url: "https://pay.example/x" });
+  renderCheckout("/admin/bulk-exam-orders");
+  await pay();
+  await waitFor(() => expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank"));
+  expect(screen.getByRole("button", { name: "Bayar" })).toBeEnabled();
+  expect(push).not.toHaveBeenCalled();
+});
+
+it("waits three seconds for snap.js that is still loading before the new-tab path", async () => {
+  addSnapScript();
+  vi.useFakeTimers();
+  open.mockReturnValue({});
+  authFetch.mockResolvedValueOnce({ snap_token: "token", payment_url: "https://pay.example/x" });
+  renderCheckout();
+  const button = screen.getByRole("button", { name: "Bayar" });
+  await act(async () => { fireEvent.click(button); await vi.advanceTimersByTimeAsync(0); });
+  expect(button).toBeDisabled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(2900); });
+  expect(open).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+  expect(button).toBeEnabled();
+  expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank");
+  expect(toastInfo).toHaveBeenCalledWith("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
+  expect(push).not.toHaveBeenCalled();
+});
+
+it("routes to the order when Snap throws and the fallback tab is blocked", async () => {
+  window.snap = { pay: vi.fn(() => { throw new Error("unavailable"); }), embed: vi.fn() };
+  open.mockReturnValue(null);
+  authFetch.mockResolvedValueOnce({ snap_token: "token", payment_url: "https://pay.example/x" });
+  renderCheckout();
+  await pay();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Bayar" })).toBeEnabled());
+  expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank");
+  expect(push).toHaveBeenCalledWith("/orders/order-1");
+});
+
+it("guards synchronous double clicks while checkout is pending", async () => {
+  authFetch.mockReturnValue(new Promise(() => {}));
+  renderCheckout();
+  const button = screen.getByRole("button", { name: "Bayar" });
+  act(() => { fireEvent.click(button); fireEvent.click(button); });
+  await waitFor(() => expect(button).toBeDisabled());
+  expect(authFetch).toHaveBeenCalledTimes(1);
+  expect(open).not.toHaveBeenCalled();
 });

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { Lock, Loader2, ExternalLink } from "lucide-react";
+import { useRef, useState } from "react";
+import { Lock, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCheckout, ordersKeys } from "@/lib/hooks/orders";
+import { payWithSnap } from "@/lib/snap";
 import { ApiError } from "@/lib/api";
 import { digitalConflictMessage } from "@/lib/digital-conflict";
 import { useTranslation } from "@/lib/i18n";
@@ -24,33 +25,59 @@ export function SnapCheckout({ orderId, basePath = "/orders", disabled }: SnapCh
   const { t } = useTranslation();
   const [conflict, setConflict] = useState<string | null>(null);
 
+  const busy = useRef(false);
+  const [paying, setPaying] = useState(false);
+  const finish = () => {
+    busy.current = false;
+    setPaying(false);
+  };
+
   const handleCheckout = () => {
-    if (!orderId) return;
+    if (!orderId || busy.current || checkout.isPending || disabled) return;
+    busy.current = true;
+    setPaying(true);
     setConflict(null);
     checkout.mutate(orderId, {
-      onSuccess: (data) => {
+      onSuccess: async (data) => {
         if (data.free) {
+          finish();
           qc.invalidateQueries({ queryKey: ordersKeys.all });
           toast.success("Pesanan gratis berhasil diproses.");
           if (basePath === "/orders") {
             router.push(`/orders/${orderId}`);
           }
-        } else if (data.payment_url) {
-          const paymentWindow = window.open(data.payment_url, "_blank");
-          if (!paymentWindow && basePath === "/orders") {
-            router.push(`/orders/${orderId}`);
-            toast.info(t("checkout_popup_blocked"));
-          } else {
-            toast.info("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
-          }
-        } else if (data.snap_token) {
-          navigator.clipboard.writeText(data.snap_token);
-          toast.info("Snap token disalin. Buka Midtrans untuk melanjutkan pembayaran.");
         } else {
-          toast.error("Gagal memulai pembayaran. Coba lagi nanti.");
+          try {
+            const path = await payWithSnap({
+              snapToken: data.snap_token,
+              paymentUrl: data.payment_url,
+              onFinished: (event) => {
+                finish();
+                if (event === "error") {
+                  toast.error(t("payment_failed"));
+                  return;
+                }
+                qc.invalidateQueries({ queryKey: ordersKeys.all });
+                if (event === "success") toast.info(t("payment_received"));
+                if (event === "pending") toast.info(t("payment_pending"));
+                if (event !== "close" && basePath === "/orders") router.push(`/orders/${orderId}`);
+              },
+            });
+            if (path !== "popup") finish();
+            if (path === "blocked" && basePath === "/orders") {
+              router.push(`/orders/${orderId}`);
+              toast.info(t("checkout_popup_blocked"));
+            } else if (path === "new-tab") {
+              toast.info(t("payment_new_tab"));
+            }
+          } catch {
+            finish();
+            toast.error(t("payment_start_failed"));
+          }
         }
       },
       onError: (err) => {
+        finish();
         const conflictMsg = digitalConflictMessage(err, t);
         if (conflictMsg) {
           setConflict(conflictMsg);
@@ -78,14 +105,14 @@ export function SnapCheckout({ orderId, basePath = "/orders", disabled }: SnapCh
         className="mt-4 w-full"
         size="lg"
         onClick={handleCheckout}
-        disabled={!orderId || checkout.isPending || disabled}
+        disabled={!orderId || checkout.isPending || paying || disabled}
       >
-        {checkout.isPending ? (
+        {checkout.isPending || paying ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
-          <ExternalLink className="size-4" />
+          <Lock className="size-4" />
         )}
-        Bayar di Tab Baru
+        {t("payment_pay")}
       </Button>
       {conflict && (
         <p role="alert" className="mt-3 text-sm text-danger">

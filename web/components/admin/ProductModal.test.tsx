@@ -619,7 +619,7 @@ describe("ProductModal", () => {
 
   // --- digital product image (exam/course) ---
 
-  it("shows the stock input but not the weight input when type is exam", () => {
+  it("defaults the exam quota switch off and hides stock and weight", () => {
     render(
       <ProductModal
         open={true}
@@ -632,7 +632,8 @@ describe("ProductModal", () => {
     fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
 
     expect(screen.getByLabelText(/gambar/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/stok/i)).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Batasi kuota" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByLabelText(/stok/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/berat/i)).not.toBeInTheDocument();
   });
 
@@ -690,6 +691,11 @@ describe("ProductModal", () => {
     fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
     fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Paket Ujian Kuota" } });
     fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "150000" } });
+    fireEvent.click(screen.getByRole("switch", { name: "Batasi kuota" }));
+    expect(screen.getByRole("switch", { name: "Batasi kuota" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByLabelText(/stok/i)).toBeRequired();
+    expect(screen.getByLabelText(/stok/i)).toHaveAttribute("min", "0");
+    expect(screen.getByLabelText(/stok/i)).toHaveAttribute("step", "1");
     fireEvent.input(screen.getByLabelText(/stok/i), { target: { value: "20" } });
 
     const utbkCheckbox = screen.getByText("UTBK 2026").closest("label")!.querySelector("input[type=checkbox]")!;
@@ -705,7 +711,7 @@ describe("ProductModal", () => {
     });
   });
 
-  it("sends stock:null on update when an exam's stock input is empty", async () => {
+  it("sends stock:null on update for an unlimited exam with the switch off", async () => {
     detailState.data = { id: "p1", type: "exam", name: "Detail", price: 150000, status: "published", exam_ids: ["e1"] };
     const product: Product = {
       id: "p1",
@@ -727,7 +733,8 @@ describe("ProductModal", () => {
       />
     );
 
-    expect(screen.getByLabelText(/stok/i)).toHaveValue(null);
+    expect(screen.getByRole("switch", { name: "Batasi kuota" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByLabelText(/stok/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
@@ -738,7 +745,7 @@ describe("ProductModal", () => {
     });
   });
 
-  it("keeps a limited exam's stock in the input on edit", () => {
+  it("keeps a limited exam's switch on and submits its prefilled stock on edit", () => {
     detailState.data = { id: "p1", type: "exam", name: "Detail", price: 150000, status: "published", exam_ids: ["e1"] };
     const product: Product = {
       id: "p1",
@@ -760,7 +767,76 @@ describe("ProductModal", () => {
       />
     );
 
+    expect(screen.getByRole("switch", { name: "Batasi kuota" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByLabelText(/stok/i)).toHaveValue(0);
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ stock: 0 }));
+  });
+
+  it.each(["", "0", "-1", "1.5"])("validates an enabled exam quota %j in create mode", (quota) => {
+    render(<ProductModal open onOpenChange={mockOnOpenChange} onSubmit={mockOnSubmit} isPending={false} />);
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Exam quota" } });
+    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "150000" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /UTBK 2026/i }));
+    fireEvent.click(screen.getByRole("switch", { name: "Batasi kuota" }));
+    fireEvent.input(screen.getByLabelText(/stok/i), { target: { value: quota } });
+    const save = screen.getByRole("button", { name: /^simpan$/i });
+    if (quota === "0") {
+      expect(save).toBeEnabled();
+      fireEvent.click(save);
+      expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ stock: 0 }));
+    } else {
+      expect(save).toBeDisabled();
+      fireEvent.submit(save.closest("form")!);
+      expect(mockOnSubmit).not.toHaveBeenCalled();
+    }
+  });
+
+  it("rejects empty limited stock on edit and sends null after switching off", () => {
+    const product: Product = { id: "p1", type: "exam", name: "Exam quota", price: 150000, stock: 12, stock_limited: true, status: "published" };
+    render(<ProductModal open onOpenChange={mockOnOpenChange} product={product} onSubmit={mockOnSubmit} isPending={false} />);
+    expect(screen.getByLabelText(/stok/i)).toHaveValue(12);
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ stock: 12 }));
+    mockOnSubmit.mockClear();
+    fireEvent.input(screen.getByLabelText(/stok/i), { target: { value: "" } });
+    const save = screen.getByRole("button", { name: /^simpan$/i });
+    expect(save).toBeDisabled();
+    fireEvent.submit(save.closest("form")!);
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    fireEvent.input(screen.getByLabelText(/stok/i), { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("switch", { name: "Batasi kuota" }));
+    expect(screen.queryByLabelText(/stok/i)).not.toBeInTheDocument();
+    fireEvent.click(save);
+    expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ stock: null }));
+  });
+
+  it.each(["book", "merchandise", "medal"])("keeps %s stock plain and clears quota when changing types", (type) => {
+    render(<ProductModal open onOpenChange={mockOnOpenChange} onSubmit={mockOnSubmit} isPending={false} />);
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Product" } });
+    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "150000" } });
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /UTBK 2026/i }));
+    fireEvent.click(screen.getByRole("switch", { name: "Batasi kuota" }));
+    fireEvent.input(screen.getByLabelText(/stok/i), { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("switch", { name: "Batasi kuota" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Batasi kuota" }));
+    expect(screen.getByLabelText(/stok/i)).toHaveValue(null);
+    fireEvent.input(screen.getByLabelText(/stok/i), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: type } });
+    expect(screen.queryByRole("switch", { name: "Batasi kuota" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/stok/i)).toHaveValue(null);
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    expect(mockOnSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ type, stock: 0 }));
+    fireEvent.input(screen.getByLabelText(/stok/i), { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    expect(mockOnSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ type, stock: 7 }));
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
+    expect(screen.getByRole("switch", { name: "Batasi kuota" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByLabelText(/stok/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    expect(mockOnSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ type: "exam", stock: null }));
   });
 
   it("includes image_url in update payload for an existing course product", async () => {
