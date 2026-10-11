@@ -66,9 +66,9 @@ function fromLocalInput(v: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-// Empty exam stock means unlimited (null); other types read empty as 0.
-function stockForType(type: ProductType | "", stock: string): number | null {
-  if (type === "exam") return stock.trim() === "" ? null : Number(stock);
+// Other types read empty stock as 0.
+function stockForType(type: ProductType | "", stock: string, quotaLimited: boolean): number | null {
+  if (type === "exam" && !quotaLimited) return null;
   return Number(stock);
 }
 
@@ -85,6 +85,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const [type, setType] = useState<ProductType | "">("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
+  const [quotaLimited, setQuotaLimited] = useState(false);
   const [weight, setWeight] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
@@ -112,6 +113,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setName(product.name ?? "");
         setType(product.type ?? "");
         setPrice(String(product.price ?? ""));
+        setQuotaLimited(product.stock_limited ?? false);
         setStock(product.stock != null && (product.type !== "exam" || product.stock_limited) ? String(product.stock) : "");
         setWeight(product.weight_grams != null ? String(product.weight_grams) : "");
         setImageUrl(product.image_url ?? "");
@@ -127,6 +129,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setType("");
         setPrice("");
         setStock("");
+        setQuotaLimited(false);
         setWeight("");
         setImageUrl("");
         setStatus("draft");
@@ -177,6 +180,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
     name.trim() !== "" &&
     (isEdit || type !== "") &&
     price !== "" &&
+    (type !== "exam" || !quotaLimited || (stock.trim() !== "" && Number.isInteger(Number(stock)) && Number(stock) >= 0)) &&
     (isEdit || !showCourses || courseIds.length > 0) &&
     (isEdit || !showExams || examIds.length > 0);
 
@@ -198,7 +202,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         // backend preserves only when the key is absent).
         available_from: fromLocalInput(availableFrom),
         available_until: fromLocalInput(availableUntil),
-        ...(showStock ? { stock: stockForType(type, stock) } : {}),
+        ...(showStock ? { stock: stockForType(type, stock, quotaLimited) } : {}),
         ...(showWeight && weight !== "" ? { weight_grams: Number(weight) } : {}),
         ...(imageUrl !== "" ? { image_url: imageUrl } : {}),
         specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
@@ -213,7 +217,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       type,
       ...(availableFrom ? { available_from: fromLocalInput(availableFrom) } : {}),
       ...(availableUntil ? { available_until: fromLocalInput(availableUntil) } : {}),
-      ...(showStock ? { stock: stockForType(type, stock) } : {}),
+      ...(showStock ? { stock: stockForType(type, stock, quotaLimited) } : {}),
       ...(showWeight && weight !== "" ? { weight_grams: Number(weight) } : {}),
       ...(imageUrl !== "" ? { image_url: imageUrl } : {}),
       specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
@@ -287,7 +291,12 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                   <select
                     id="product-type"
                     value={type}
-                    onChange={(e) => setType(e.target.value as ProductType)}
+                    onChange={(e) => {
+                      const nextType = e.target.value as ProductType;
+                      if (type === "exam" || nextType === "exam") setStock("");
+                      setType(nextType);
+                      setQuotaLimited(false);
+                    }}
                     disabled={isEdit || isPending}
                     className={SELECT_CLASS}
                   >
@@ -465,22 +474,45 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
 
             {showStock && (
               <Section title="Inventaris & pengiriman">
-                <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label htmlFor="product-stock">Stok</Label>
-                    <Input
-                      id="product-stock"
-                      type="number"
-                      min={0}
-                      value={stock}
-                      onChange={(e) => setStock(e.target.value)}
-                      placeholder={type === "exam" ? "Tidak terbatas" : "0"}
+                {type === "exam" && (
+                  <div className="flex items-start justify-between gap-4 py-3">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-medium text-ink-900">Batasi kuota</div>
+                      <div className="text-xs text-ink-500">Nonaktif: tanpa batas. Aktif: penjualan berhenti saat kuota 0.</div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={quotaLimited}
+                      aria-label="Batasi kuota"
                       disabled={isPending}
-                    />
-                    {type === "exam" && (
-                      <p className="text-xs text-muted-foreground">Kosongkan untuk kuota tanpa batas.</p>
-                    )}
+                      onClick={() => {
+                        setQuotaLimited(!quotaLimited);
+                        setStock("");
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${quotaLimited ? "bg-brand-600" : "bg-line"}`}
+                    >
+                      <span className={`pointer-events-none block size-5 rounded-full bg-white shadow ring-0 transition-transform ${quotaLimited ? "translate-x-5" : "translate-x-0"}`} />
+                    </button>
                   </div>
+                )}
+                <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                  {(type !== "exam" || quotaLimited) && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="product-stock">Stok</Label>
+                      <Input
+                        id="product-stock"
+                        type="number"
+                        min={0}
+                        value={stock}
+                        onChange={(e) => setStock(e.target.value)}
+                        step={type === "exam" ? 1 : undefined}
+                        required={type === "exam"}
+                        placeholder="0"
+                        disabled={isPending}
+                      />
+                    </div>
+                  )}
                   {showWeight && (
                     <div className="grid gap-2">
                       <Label htmlFor="product-weight">Berat (gram)</Label>
