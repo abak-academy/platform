@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Suspense } from "react";
@@ -170,4 +170,131 @@ describe("OrderDetailPage retry payment", () => {
     await waitFor(() => expect(open).toHaveBeenCalledWith("https://pay.example/x", "_blank"));
     expect(toastError).not.toHaveBeenCalled();
   });
+});
+
+describe("OrderDetailPage payment countdown", () => {
+  const deadlineIn = (ms: number) => new Date(Date.now() + ms).toISOString();
+  const pendingWith = (expiresAt: string | null) => ({ ...PENDING_ORDER, payment_expires_at: expiresAt });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-11T10:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function renderOrder(order: object, refetched: () => object = () => order, retried: object = {}) {
+    let calls = 0;
+    authFetch.mockImplementation((path: string) =>
+      path.endsWith("/retry")
+        ? Promise.resolve(retried)
+        : Promise.resolve((calls += 1) === 1 ? order : refetched()),
+    );
+    await act(async () => {
+      render(
+        <QueryClientProvider client={client}>
+          <Suspense fallback={null}>
+            <OrderDetailPage params={Promise.resolve({ id: ORDER_ID })} />
+          </Suspense>
+        </QueryClientProvider>,
+      );
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+  }
+
+  async function advance(ms: number) {
+    await act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+  }
+
+  it("shows the remaining time and ticks down each second", async () => {
+    await renderOrder(pendingWith(deadlineIn(19 * 60_000 + 42_000)));
+
+    expect(screen.getByText("Sisa waktu sebelum pesanan kedaluwarsa")).toBeInTheDocument();
+    expect(screen.getByText("19:42")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(screen.getByText("19:41")).toBeInTheDocument();
+  });
+
+  it("does not poll the order before the deadline", async () => {
+    await renderOrder(pendingWith(deadlineIn(60_000)));
+    const calls = authFetch.mock.calls.length;
+
+    await advance(30_000);
+
+    expect(authFetch.mock.calls.length).toBe(calls);
+    expect(screen.getByRole("button", { name: /lanjutkan pembayaran/i })).toBeInTheDocument();
+  });
+
+  it("hides the payment link from an earlier retry once the time is up", async () => {
+    await renderOrder(pendingWith(deadlineIn(60_000)), undefined, { snap_token: "t", payment_url: "https://pay.example/first" });
+    fireEvent.click(screen.getByRole("button", { name: /lanjutkan pembayaran/i }));
+    await advance(0);
+    expect(screen.getByRole("link", { name: /buka halaman pembayaran/i })).toBeInTheDocument();
+
+    await advance(60_000);
+
+    expect(screen.queryByRole("link", { name: /buka halaman pembayaran/i })).toBeNull();
+  });
+
+  it("hides the button at the deadline, says time is up, and keeps refetching while pending", async () => {
+    await renderOrder(pendingWith(deadlineIn(0)));
+
+    expect(screen.queryByRole("button", { name: /lanjutkan pembayaran/i })).toBeNull();
+    expect(screen.getByText("Waktu pembayaran habis. Menunggu pesanan ditutup.")).toBeInTheDocument();
+
+    const first = authFetch.mock.calls.length;
+    await advance(5000);
+    expect(authFetch.mock.calls.length).toBeGreaterThan(first);
+
+    const second = authFetch.mock.calls.length;
+    await advance(5000);
+    expect(authFetch.mock.calls.length).toBeGreaterThan(second);
+  });
+
+  it("stops refetching and hides the card once the order expires", async () => {
+    const pending = pendingWith(deadlineIn(0));
+    await renderOrder(pending, () => ({ ...pending, status: "payment_expired" }));
+
+    expect(screen.getByText("Waktu pembayaran habis. Menunggu pesanan ditutup.")).toBeInTheDocument();
+
+    await advance(5000);
+
+    expect(screen.queryByText("Pembayaran tertunda")).toBeNull();
+    expect(screen.queryByText("Waktu pembayaran habis. Menunggu pesanan ditutup.")).toBeNull();
+
+    const calls = authFetch.mock.calls.length;
+    await advance(15_000);
+    expect(authFetch.mock.calls.length).toBe(calls);
+  });
+
+  it("keeps the button and shows no countdown when the deadline is null", async () => {
+    await renderOrder(pendingWith(null));
+
+    expect(screen.getByRole("button", { name: /lanjutkan pembayaran/i })).toBeInTheDocument();
+    expect(screen.queryByText("Sisa waktu sebelum pesanan kedaluwarsa")).toBeNull();
+  });
+
+  it.each(["paid", "payment_expired", "cancelled", "completed"])(
+    "shows no pending card or countdown for status %s",
+    async (status) => {
+      await renderOrder({ ...PENDING_ORDER, status, payment_expires_at: deadlineIn(60_000) });
+
+      expect(screen.queryByText("Pembayaran tertunda")).toBeNull();
+      expect(screen.queryByText("Sisa waktu sebelum pesanan kedaluwarsa")).toBeNull();
+      expect(screen.queryByRole("button", { name: /lanjutkan pembayaran/i })).toBeNull();
+    },
+  );
 });
