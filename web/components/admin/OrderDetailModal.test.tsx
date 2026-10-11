@@ -1,4 +1,4 @@
-import { render as rtlRender, screen } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -237,4 +237,13 @@ it.each([
     items: [{ ...physicalOrder.items[0], product_type: productType }] };
   render(<OrderDetailModal order={order} onOpenChange={vi.fn()} />);
   expect(screen.getByText(label, { selector: '[data-slot="badge"]' })).toBeInTheDocument();
+});
+
+describe("OrderDetailModal print review", () => {
+  it("hands a failed shipment to the caller's shared review without an inline picker", async () => {
+    const onPrint = vi.fn();
+    render(<OrderDetailModal order={{ ...physicalOrder, tracking_number: "TEST123", shipment_status: "returned" }} onOpenChange={vi.fn()} onPrint={onPrint} />);
+    await userEvent.click(screen.getByRole("button", { name: "Cetak Resi" }));
+    expect(onPrint).toHaveBeenCalledOnce();
+  });
 });

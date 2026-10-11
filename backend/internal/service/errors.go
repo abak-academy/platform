@@ -8,6 +8,10 @@ import (
 	"akademi-bimbel/internal/model"
 )
 
+var ErrLabelsNotPrintable = errors.New("orders are not printable")
+
+var ErrInvalidLabelRequest = errors.New("invalid shipping label request")
+
 var (
 	// ErrStorageNotConfigured replaces eight separate inline allocations of the
 	// same message across certificate/exam/job/student, so callers can match it

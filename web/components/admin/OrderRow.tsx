@@ -53,6 +53,7 @@ export interface OrderRowProps {
   onTrack?: () => void;
   primaryAction?: OrderRowPrimaryAction;
   menuActions: OrderRowMenuAction[];
+  selection?: { checked: boolean; disabled: boolean; onChange: () => void };
 }
 
 function orderNumber(order: Order): string {
@@ -87,7 +88,7 @@ function isStale(order: Order, ageMs: number): boolean {
   );
 }
 
-export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }: OrderRowProps) {
+export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions, selection }: OrderRowProps) {
   const { t, lang } = useTranslation();
 
   // created_at is stamped by MintCart, so a cart that sat idle for days carries
@@ -161,6 +162,11 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions }:
       onClick={onOpen}
       className="cursor-pointer border-t align-top transition-colors hover:bg-brand-50/70"
     >
+      {selection && (
+        <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" className="size-4 accent-brand-700" aria-label={`${t("labels_select_order")} ${orderNumber(order)}`} checked={selection.checked} disabled={selection.disabled} onChange={selection.onChange} />
+        </td>
+      )}
       <td className="px-4 py-4">
         <button
           type="button"

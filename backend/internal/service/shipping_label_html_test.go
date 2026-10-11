@@ -1,19 +1,25 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image/png"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
 )
 
 // fakeLabelRenderer stands in for the Gotenberg-backed pdfGenerator (mirrors
@@ -211,7 +217,7 @@ func TestRenderShippingLabel_CarriesOrderContentsAndOwnBranding(t *testing.T) {
 		"Reguler",                  // service
 		"Rp 9.000",                 // ongkir, Indonesian thousands separator
 		order.ID.String(),          // order reference
-		"Akademi Bimbel Test",      // our own brand, from app_name
+		"Akademi Bimbel Test",      // sender name, from app_name
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("rendered html is missing %q", want)
@@ -229,8 +235,8 @@ func TestRenderShippingLabel_CarriesOrderContentsAndOwnBranding(t *testing.T) {
 	if !strings.Contains(html, `class="head-logo" src="data:image/svg`) {
 		t.Error("the Abak mark is not embedded as an inline SVG data URI")
 	}
-	if got := strings.Count(html, "data:image/png;base64,"); got != 2 {
-		t.Errorf("want 2 barcodes (waybill + order reference), got %d", got)
+	if got := strings.Count(html, "data:image/png;base64,"); got != 1 {
+		t.Errorf("want only the waybill barcode, got %d", got)
 	}
 }
 
@@ -298,5 +304,394 @@ func TestRenderShippingLabel_DoesNotRepeatPostalAlreadyInAddress(t *testing.T) {
 
 	if got := strings.Count(string(fake.lastHTML), "54321"); got != 1 {
 		t.Errorf("want the sender postal code printed exactly once, got %d", got)
+	}
+}
+
+type fakeShippingLabelStore struct {
+	orders map[uuid.UUID]model.Order
+	config map[string]string
+	reads  []uuid.UUID
+	err    error
+}
+
+func (f *fakeShippingLabelStore) GetOrderByID(_ context.Context, id uuid.UUID) (model.Order, error) {
+	f.reads = append(f.reads, id)
+	return f.orders[id], f.err
+}
+
+func (f *fakeShippingLabelStore) ListSystemConfig(context.Context) ([]repository.SystemConfigRow, error) {
+	var rows []repository.SystemConfigRow
+	config := f.config
+	if config == nil {
+		config = labelTestSenderConfig()
+	}
+	for k, v := range config {
+		rows = append(rows, repository.SystemConfigRow{Key: k, Value: v})
+	}
+	return rows, f.err
+}
+
+func TestGetShippingLabels(t *testing.T) {
+	for _, size := range []string{"100x150", "roll80"} {
+		t.Run(size, func(t *testing.T) {
+			store := &fakeShippingLabelStore{orders: map[uuid.UUID]model.Order{}}
+			fake := &fakeLabelRenderer{pdf: []byte("PDF")}
+			svc := &Service{labelStore: store, renderer: fake}
+			var ids []string
+			for i := 0; i < 3; i++ {
+				o := labelTestOrderFull(fmt.Sprintf("WAYBILL%d", i))
+				store.orders[o.ID] = o
+				ids = append(ids, o.ID.String())
+			}
+			pdf, err := svc.GetShippingLabels(context.Background(), ids, size)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(pdf) != "PDF" || fake.calls != 1 {
+				t.Fatalf("pdf=%q calls=%d", pdf, fake.calls)
+			}
+			html := string(fake.lastHTML)
+			if strings.Count(html, `class="slip"`) != 3 {
+				t.Fatalf("want three slips")
+			}
+			last := -1
+			for i, id := range ids {
+				pos := strings.Index(html, `class="waybill-text">WAYBILL`+fmt.Sprint(i))
+				if pos <= last || !strings.Contains(html, id) {
+					t.Fatalf("missing or unordered slip %s", id)
+				}
+				last = pos
+			}
+			if size == "roll80" && (!strings.Contains(html, "width:78mm") || !strings.Contains(html, "getBoundingClientRect") || !strings.Contains(html, "size:80mm")) {
+				t.Fatal("roll80 measurement/layout missing")
+			}
+		})
+	}
+}
+
+func TestGetShippingLabelsFailClosed(t *testing.T) {
+	for _, status := range []string{"courier_not_found", "courierNotFound", "rejected", "cancelled", "return_in_transit", "returnInTransit", "returned", "disposed"} {
+		t.Run(status, func(t *testing.T) {
+			valid := labelTestOrderFull("VALID123")
+			empty := labelTestOrder("")
+			failed := labelTestOrderFull("FAILED123")
+			failed.ShipmentStatus = &status
+			unknown := uuid.New()
+			store := &fakeShippingLabelStore{orders: map[uuid.UUID]model.Order{valid.ID: valid, empty.ID: empty, failed.ID: failed}}
+			fake := &fakeLabelRenderer{}
+			svc := &Service{labelStore: store, renderer: fake}
+			_, err := svc.GetShippingLabels(context.Background(), []string{valid.ID.String(), empty.ID.String(), failed.ID.String(), unknown.String()}, "100x150")
+			var conflict *LabelsNotPrintableError
+			if !errors.Is(err, ErrLabelsNotPrintable) || !errors.As(err, &conflict) {
+				t.Fatalf("want conflict, got %v", err)
+			}
+			want := []LabelNotPrintable{{empty.ID.String(), "no_tracking_number"}, {failed.ID.String(), "shipment_failed"}, {unknown.String(), "not_found"}}
+			if fmt.Sprint(conflict.Details) != fmt.Sprint(want) {
+				t.Fatalf("details=%v want=%v", conflict.Details, want)
+			}
+			if fake.calls != 0 || len(store.reads) != 4 {
+				t.Fatalf("renders=%d reads=%d", fake.calls, len(store.reads))
+			}
+		})
+	}
+}
+
+func TestGetShippingLabelsValidation(t *testing.T) {
+	var ids []string
+	store := &fakeShippingLabelStore{orders: map[uuid.UUID]model.Order{}}
+	for i := 0; i < 101; i++ {
+		o := labelTestOrderFull(fmt.Sprintf("WB%d", i))
+		store.orders[o.ID] = o
+		ids = append(ids, o.ID.String())
+	}
+	tests := []struct {
+		name string
+		ids  []string
+		size string
+	}{{"empty", nil, "100x150"}, {"too many", ids, "100x150"}, {"duplicate", []string{ids[0], ids[0]}, "100x150"}, {"equivalent uuid", []string{ids[0], strings.ToUpper(ids[0])}, "100x150"}, {"malformed", []string{"oops"}, "100x150"}, {"missing size", ids[:1], ""}, {"unknown size", ids[:1], "a4"}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := &fakeLabelRenderer{}
+			svc := &Service{labelStore: store, renderer: fake}
+			store.reads = nil
+			_, err := svc.GetShippingLabels(context.Background(), tt.ids, tt.size)
+			if !errors.Is(err, ErrInvalidLabelRequest) {
+				t.Fatalf("want invalid request got %v", err)
+			}
+			if fake.calls != 0 || len(store.reads) != 0 {
+				t.Fatal("invalid input reached dependencies")
+			}
+		})
+	}
+	fake := &fakeLabelRenderer{}
+	svc := &Service{labelStore: store, renderer: fake}
+	if _, err := svc.GetShippingLabels(context.Background(), ids[:100], "100x150"); err != nil {
+		t.Fatal(err)
+	}
+	if fake.calls != 1 || strings.Count(string(fake.lastHTML), `class="slip"`) != 100 {
+		t.Fatal("100 labels not accepted")
+	}
+}
+
+func TestShippingLabelContentAndSharedRenderer(t *testing.T) {
+	o := labelTestOrderFull("0099887766123")
+	o.ID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	config := labelTestSenderConfig()
+	config["app_contact_email"] = "sender@example.test"
+	for _, size := range []string{"100x150", "roll80"} {
+		t.Run(size, func(t *testing.T) {
+			fake := &fakeLabelRenderer{}
+			svc := &Service{labelStore: &fakeShippingLabelStore{orders: map[uuid.UUID]model.Order{o.ID: o}, config: config}, renderer: fake}
+			if _, err := svc.GetShippingLabelSized(context.Background(), o.ID.String(), size); err != nil {
+				t.Fatal(err)
+			}
+			single := string(fake.lastHTML)
+			for _, want := range []string{o.TrackingNumber, o.ID.String(), "TIKI", "Reguler", "Budi Test", "081200000000", "Jl. Contoh No. 1", "12345", "Akademi Bimbel Test", "081299999999", "Jl. Kantor No. 2", "54321", "sender@example.test", "Kumpulan Soal Fisika SMA", "2x", "1 kg", "Rp 9.000", "bukan label resmi kurir.", "Liberation Sans"} {
+				if !strings.Contains(single, want) {
+					t.Errorf("missing %q", want)
+				}
+			}
+			if strings.Count(single, "data:image/png;base64,") != 1 {
+				t.Fatal("only the waybill barcode must remain")
+			}
+			previous := -1
+			for _, section := range []string{`class="row row-head"`, `class="waybill-text"`, `class="waybill-barcode"`, "Alamat Penerima:", "Alamat Pengirim:", "Nomor Pesanan", "Jumlah:", "Jenis Barang", "Ongkos Kirim:", "Packing slip"} {
+				index := strings.Index(single, section)
+				if index <= previous {
+					t.Fatalf("reading order: %q", section)
+				}
+				previous = index
+			}
+			if _, err := svc.GetShippingLabels(context.Background(), []string{o.ID.String()}, size); err != nil {
+				t.Fatal(err)
+			}
+			if single != string(fake.lastHTML) {
+				t.Fatal("single and bulk must share the renderer")
+			}
+			if size == "100x150" {
+				if _, err := svc.GetShippingLabelSized(context.Background(), o.ID.String(), ""); err != nil {
+					t.Fatal(err)
+				}
+				if single != string(fake.lastHTML) {
+					t.Fatal("absent size must default to 100x150")
+				}
+			}
+		})
+	}
+}
+
+func TestGetShippingLabelSizes(t *testing.T) {
+	o := labelTestOrderFull("WAYBILL123")
+	status := "returned"
+	o.ShipmentStatus = &status
+	store := &fakeShippingLabelStore{orders: map[uuid.UUID]model.Order{o.ID: o}}
+	for _, size := range []string{"", "100x150", "roll80", "a4"} {
+		t.Run(size, func(t *testing.T) {
+			fake := &fakeLabelRenderer{}
+			svc := &Service{labelStore: store, renderer: fake}
+			_, err := svc.GetShippingLabelSized(context.Background(), o.ID.String(), size)
+			if size == "a4" {
+				if !errors.Is(err, ErrInvalidLabelRequest) || fake.calls != 0 {
+					t.Fatalf("invalid size: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fake.calls != 1 {
+				t.Fatal("single failed shipment should still print")
+			}
+			if size == "roll80" && !strings.Contains(string(fake.lastHTML), "size:80mm") {
+				t.Fatal("roll layout missing")
+			}
+		})
+	}
+}
+
+type blockingLabelRenderer struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (f *blockingLabelRenderer) RenderHTML(context.Context, []byte) ([]byte, error) {
+	f.entered <- struct{}{}
+	<-f.release
+	return []byte("PDF"), nil
+}
+
+func TestGetShippingLabelsSerializesProcesses(t *testing.T) {
+	o := labelTestOrderFull("LOCKTEST123")
+	renderer := &blockingLabelRenderer{entered: make(chan struct{}, 2), release: make(chan struct{})}
+	store1 := &fakeShippingLabelStore{orders: map[uuid.UUID]model.Order{o.ID: o}}
+	store2 := &fakeShippingLabelStore{orders: map[uuid.UUID]model.Order{o.ID: o}}
+	first := &Service{labelStore: store1, renderer: renderer}
+	second := &Service{labelStore: store2, renderer: renderer}
+	done := make(chan error, 2)
+	go func() {
+		_, err := first.GetShippingLabels(context.Background(), []string{o.ID.String()}, "100x150")
+		done <- err
+	}()
+	select {
+	case <-renderer.entered:
+	case <-time.After(time.Second):
+		t.Fatal("first request did not render")
+	}
+	started := make(chan struct{})
+	go func() {
+		close(started)
+		_, err := second.GetShippingLabels(context.Background(), []string{o.ID.String()}, "roll80")
+		done <- err
+	}()
+	<-started
+	select {
+	case <-renderer.entered:
+		t.Error("second bulk request rendered concurrently")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(renderer.release)
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("request did not finish")
+		}
+	}
+}
+
+func TestGetShippingLabelsDependencyFailure(t *testing.T) {
+	order := labelTestOrderFull("ERROR123")
+	want := errors.New("database unavailable")
+	fake := &fakeLabelRenderer{}
+	store := &fakeShippingLabelStore{orders: map[uuid.UUID]model.Order{order.ID: order}, err: want}
+	svc := &Service{labelStore: store, renderer: fake}
+	if _, err := svc.GetShippingLabels(context.Background(), []string{order.ID.String()}, "100x150"); !errors.Is(err, want) || fake.calls != 0 {
+		t.Fatalf("err=%v renders=%d", err, fake.calls)
+	}
+}
+
+func TestShippingLabelBarcodeQuietZone(t *testing.T) {
+	for _, value := range []string{"123", "SHORT12345", "LONG-WAYBILL-123456789012345678901234567890"} {
+		t.Run(value, func(t *testing.T) {
+			encoded, err := shippingLabelBarcodeBase64(value, labelBarcodeWidthPx, labelBarcodeHeightPx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := base64.StdEncoding.DecodeString(encoded)
+			if err != nil {
+				t.Fatal(err)
+			}
+			img, err := png.Decode(bytes.NewReader(raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			first, last, narrow, run := -1, -1, img.Bounds().Dx(), 0
+			for x := 0; x < img.Bounds().Dx(); x++ {
+				r, _, _, _ := img.At(x, img.Bounds().Dy()/2).RGBA()
+				if r == 0 {
+					if first < 0 {
+						first = x
+					}
+					last = x
+					run++
+				} else if run > 0 {
+					narrow = min(narrow, run)
+					run = 0
+				}
+			}
+			if run > 0 {
+				narrow = min(narrow, run)
+			}
+			if first < 10*narrow || img.Bounds().Dx()-last-1 < 10*narrow {
+				t.Fatalf("quiet zones = %d/%d pixels, narrow bar = %d; want >=10 modules", first, img.Bounds().Dx()-last-1, narrow)
+			}
+		})
+	}
+}
+
+func TestShippingLabelCourierHeader(t *testing.T) {
+	for _, size := range []string{"100x150", "roll80"} {
+		for _, code := range []string{"jne", "SICEPAT", "lion", "tiki", "anteraja", "unknown", "", "nil"} {
+			t.Run(size+"/"+code, func(t *testing.T) {
+				order := labelTestOrderFull("HEADER123")
+				if code != "nil" {
+					order.CourierCode = &code
+				}
+				data, err := shippingLabelData(order, labelTestSenderConfig())
+				if err != nil {
+					t.Fatal(err)
+				}
+				raw, err := buildShippingLabelsHTML([]shippingLabelHTMLData{data}, size)
+				if err != nil {
+					t.Fatal(err)
+				}
+				html := string(raw)
+				for _, want := range []string{"hub.abakacademy.id", `class="head-name">abak academy</div>`, "#22315B", "#176A63", "font-size:12pt", "font-size:10pt;line-height:13pt", order.ID.String()} {
+					if !strings.Contains(html, want) {
+						t.Errorf("missing %q", want)
+					}
+				}
+				hasLogo := strings.Contains(html, `class="courier-logo" src="data:image/`)
+				wantLogo := code != "unknown" && code != "" && code != "nil"
+				if wantLogo {
+					file := strings.ToLower(code) + ".svg"
+					mime := "image/svg+xml"
+					if code == "tiki" || code == "anteraja" {
+						file = code + ".png"
+						mime = "image/png"
+					}
+					_, source, _, ok := runtime.Caller(0)
+					if !ok {
+						t.Fatal("resolve test source directory")
+					}
+					asset, err := os.ReadFile(filepath.Join(filepath.Dir(source), "assets", "couriers", file))
+					if err != nil {
+						t.Fatal(err)
+					}
+					wantURI := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(asset)
+					if string(data.CourierLogoDataURI) != wantURI {
+						t.Error("wrong courier asset or MIME type")
+					}
+				}
+				if hasLogo != wantLogo {
+					t.Errorf("courier logo = %v, want %v", hasLogo, wantLogo)
+				}
+				if !wantLogo && !strings.Contains(html, `class="courier-name">TIKI`) {
+					t.Error("missing courier text fallback")
+				}
+				if strings.Contains(html, "ref-barcode") {
+					t.Error("order UUID barcode must be removed")
+				}
+				if strings.Contains(html, "ZgotmplZ") {
+					t.Error("data URI rejected by template")
+				}
+			})
+		}
+	}
+}
+
+func TestShippingLabelCourierAssetsMatchWeb(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve test source directory")
+	}
+	dir := filepath.Dir(source)
+	for _, file := range []string{"jne.svg", "sicepat.svg", "lion.svg", "tiki.png", "anteraja.png"} {
+		t.Run(file, func(t *testing.T) {
+			backend, err := os.ReadFile(filepath.Join(dir, "assets", "couriers", file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			web, err := os.ReadFile(filepath.Join(dir, "..", "..", "..", "web", "public", "couriers", file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(backend, web) {
+				t.Fatal("backend courier asset differs from web source")
+			}
+		})
 	}
 }

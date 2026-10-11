@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Receipt } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -32,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ShippingLabelReviewDialog } from "@/components/admin/ShippingLabelReviewDialog";
 import { OrderDetailModal } from "@/components/admin/OrderDetailModal";
 import { OrderRow, type OrderRowMenuAction, type OrderRowPrimaryAction } from "@/components/admin/OrderRow";
 import { OrdersToolbar, chipCount } from "@/components/admin/OrdersToolbar";
@@ -106,8 +107,13 @@ function shipAllowed(order: Order): boolean {
 export default function OrdersPage() {
   const { t } = useTranslation();
   const [query, setQuery] = useState<AdminOrderQuery>({ status: "all" });
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [reviewMode, setReviewMode] = useState<"bulk" | "single">("bulk");
+  const detailFocus = useRef<HTMLElement | null>(null);
+  const [reviewOrders, setReviewOrders] = useState<Order[] | null>(null);
   const [cursorStack, setCursorStack] = useState([""]);
   function changeQuery(next: AdminOrderQuery) {
+    setSelectedIds([]);
     setQuery(next);
     setCursorStack([""]);
   }
@@ -172,6 +178,7 @@ export default function OrdersPage() {
   const [completingOrder, setCompletingOrder] = useState<Order | null>(null);
 
   const orders = data?.data ?? [];
+  const selectedOrders = orders.filter((order) => selectedIds.includes(order.id));
   const total = chipCount(query.queue ?? query.status, summary?.buckets);
   const firstRow = orders.length ? (cursorStack.length - 1) * (query.limit ?? 20) + 1 : 0;
   const lastRow = orders.length ? firstRow + orders.length - 1 : 0;
@@ -356,6 +363,14 @@ export default function OrdersPage() {
 
       <OrdersToolbar value={query} onChange={changeQuery} couriers={summary?.couriers} />
 
+      {selectedOrders.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3" role="region" aria-label={t("labels_selected")}>
+          <span className="text-sm">{t("labels_selected")}: {selectedOrders.length}</span>
+          <Button variant="outline" size="sm" onClick={() => setSelectedIds([])}>{t("labels_clear")}</Button>
+          <Button size="sm" disabled={isFetching || isPlaceholderData} onClick={() => { setReviewMode("bulk"); setReviewOrders(selectedOrders); }}>{t("labels_print")}</Button>
+        </div>
+      )}
+
       {isLoading && (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -376,6 +391,9 @@ export default function OrdersPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted">
                 <tr>
+                  <th className="px-4 py-3.5">
+                    <input type="checkbox" className="size-4 accent-brand-700" aria-label={t("labels_select_all")} checked={orders.length > 0 && selectedOrders.length === orders.length} disabled={orders.length === 0 || isFetching || isPlaceholderData} ref={(el) => { if (el) el.indeterminate = selectedOrders.length > 0 && selectedOrders.length < orders.length; }} onChange={(e) => setSelectedIds(e.target.checked ? orders.map((order) => order.id) : [])} />
+                  </th>
                   <th className="px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase">{t("orders")}</th>
                   <th className="hidden px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase md:table-cell">{t("th_buyer")}</th>
                   <th className="hidden px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase md:table-cell">{t("th_product")}</th>
@@ -389,7 +407,8 @@ export default function OrdersPage() {
                   <OrderRow
                     key={order.id}
                     order={order}
-                    onOpen={() => setDetailOrder(order)}
+                    selection={{ checked: selectedIds.includes(order.id), disabled: isFetching || isPlaceholderData, onChange: () => setSelectedIds((ids) => ids.includes(order.id) ? ids.filter((id) => id !== order.id) : [...ids, order.id]) }}
+                    onOpen={() => { detailFocus.current = document.activeElement as HTMLElement; setDetailOrder(order); }}
                     onTrack={order.tracking_number ? () => setTrackingOrderId(order.id) : undefined}
                     primaryAction={primaryAction(order)}
                     menuActions={menuActions(order)}
@@ -397,7 +416,7 @@ export default function OrdersPage() {
                 ))}
                 {orders.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                       {t("empty_orders")}
                     </td>
                   </tr>
@@ -425,11 +444,11 @@ export default function OrdersPage() {
               </p>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" disabled={cursorStack.length === 1 || isFetching}
-                  onClick={() => setCursorStack((stack) => stack.slice(0, -1))}>
+                  onClick={() => { setSelectedIds([]); setCursorStack((stack) => stack.slice(0, -1)); }}>
                   {t("pagination_prev")}
                 </Button>
                 <Button variant="outline" size="sm" disabled={!data?.next_cursor || isFetching || isPlaceholderData}
-                  onClick={() => { if (data?.next_cursor) setCursorStack((stack) => [...stack, data.next_cursor]); }}>
+                  onClick={() => { if (data?.next_cursor) { setSelectedIds([]); setCursorStack((stack) => [...stack, data.next_cursor]); } }}>
                   {t("pagination_next")}
                 </Button>
               </div>
@@ -438,9 +457,16 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {reviewOrders && <ShippingLabelReviewDialog orders={reviewOrders} mode={reviewMode} focusTarget={reviewMode === "single" ? detailFocus.current : undefined} onClose={() => setReviewOrders(null)} />}
+
       <OrderDetailModal
         order={detailOrder}
         onOpenChange={() => setDetailOrder(null)}
+        onPrint={detailOrder?.tracking_number ? () => {
+          setReviewMode("single");
+          setReviewOrders([detailOrder]);
+          setDetailOrder(null);
+        } : undefined}
         onShip={
           detailOrder && shipAllowed(detailOrder) && hasPhysicalItem(detailOrder)
             ? () => {

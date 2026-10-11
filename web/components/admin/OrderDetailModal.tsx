@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { toast } from "sonner";
+import { useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +19,6 @@ import { useTranslation } from "@/lib/i18n";
 import type { Order } from "@/lib/types";
 import { hasPhysicalItems } from "@/lib/shipping";
 import { isShipmentFailure, shipmentStatusLabel } from "@/lib/shipment-status";
-import { downloadShippingLabel } from "@/lib/hooks/shipping-label";
 import { useFetchPaymentProofURL } from "@/lib/hooks/admin-orders";
 
 export interface OrderDetailModalProps {
@@ -29,6 +27,7 @@ export interface OrderDetailModalProps {
   // Omitted when the action is not allowed for this order — the caller owns
   // that rule so the list row and this footer can never disagree.
   onShip?: () => void;
+  onPrint?: () => void;
   onRefund?: () => void;
   isRefunding?: boolean;
   // Both only meaningful for an order booked through Biteship; the caller
@@ -53,6 +52,7 @@ export function OrderDetailModal({
   order,
   onOpenChange,
   onShip,
+  onPrint,
   onRefund,
   isRefunding,
   onTrack,
@@ -61,7 +61,7 @@ export function OrderDetailModal({
   isRefreshingShipment,
 }: OrderDetailModalProps) {
   const { t, lang } = useTranslation();
-  const [isDownloadingLabel, setIsDownloadingLabel] = useState(false);
+  const handingOffPrint = useRef(false);
   const fetchProofURL = useFetchPaymentProofURL();
   if (!order) return null;
 
@@ -76,20 +76,9 @@ export function OrderDetailModal({
   const paid = formatDateTime(order.paid_at, lang);
   const shipped = formatDateTime(order.shipped_at, lang);
 
-  const handlePrintLabel = async () => {
-    setIsDownloadingLabel(true);
-    try {
-      await downloadShippingLabel(order.id);
-    } catch {
-      toast.error(t("error_generic"));
-    } finally {
-      setIsDownloadingLabel(false);
-    }
-  };
-
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl" onCloseAutoFocus={(event) => { if (handingOffPrint.current) { event.preventDefault(); handingOffPrint.current = false; } }}>
         <DialogHeader className="shrink-0 border-b px-6 py-5">
           <DialogTitle className="flex items-center gap-3">
             <span className="font-mono">#{order.id.slice(-8)}</span>
@@ -169,8 +158,8 @@ export function OrderDetailModal({
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={isDownloadingLabel}
-                      onClick={handlePrintLabel}
+                      disabled={!onPrint}
+                      onClick={() => { handingOffPrint.current = true; onPrint?.(); }}
                     >
                       {t("order_print_label")}
                     </Button>

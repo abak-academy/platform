@@ -15,6 +15,8 @@ import (
 )
 
 type Service struct {
+	labelStore shippingLabelStore
+
 	repo          UserRepository
 	storeRepo     *repository.Repository
 	rdb           *redis.Client
