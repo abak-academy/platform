@@ -55,10 +55,10 @@ func TestCheckout_GivesThePendingOrderABoundedDeadline(t *testing.T) {
 	if deadline == nil {
 		t.Fatal("payment_expires_at is NULL after checkout")
 	}
-	if left := time.Until(*deadline); left < 23*time.Hour || left > 24*time.Hour+time.Minute {
-		t.Errorf("time left = %v, want about 24h", left)
+	if left := time.Until(*deadline); left < 19*time.Minute || left > 21*time.Minute {
+		t.Errorf("time left = %v, want about 20m", left)
 	}
-	if asked := time.Duration(pay.lastExpiresIn.Load()); asked > 24*time.Hour-paymentSessionMargin || asked < 23*time.Hour {
+	if asked := time.Duration(pay.lastExpiresIn.Load()); asked > 20*time.Minute-paymentSessionMargin || asked < 17*time.Minute {
 		t.Errorf("gateway asked to keep the link for %v, want no more than the order window less the %v margin", asked, paymentSessionMargin)
 	}
 }
@@ -105,8 +105,8 @@ func TestRetryPayment_KeepsTheOrdersDeadline(t *testing.T) {
 		skew     time.Duration
 	}{
 		{"existing deadline is never extended, even by a gateway offering 72h", "2 hours", 2*time.Hour - paymentSessionMargin, true, 0},
-		{"deadline just outside the margin plus a minute still gets a session", "7 minutes", 7*time.Minute - paymentSessionMargin, true, 0},
-		{"order without a deadline gets one on the first retry and keeps it", "", 24*time.Hour - paymentSessionMargin, false, legacyClockSkew},
+		{"deadline a couple of minutes past the margin still gets a session", "4 minutes", 4*time.Minute - paymentSessionMargin, true, 0},
+		{"order without a deadline gets one on the first retry and keeps it", "", 20*time.Minute - paymentSessionMargin, false, legacyClockSkew},
 	}
 
 	for _, tt := range tests {
@@ -133,8 +133,8 @@ func TestRetryPayment_KeepsTheOrdersDeadline(t *testing.T) {
 					t.Fatalf("retry #%d left the order without a deadline", i)
 				}
 				if original == nil {
-					if left := time.Until(*got); left < 23*time.Hour || left > 24*time.Hour+time.Minute {
-						t.Errorf("retry #%d: time left = %v, want about 24h", i, left)
+					if left := time.Until(*got); left < 19*time.Minute || left > 21*time.Minute {
+						t.Errorf("retry #%d: time left = %v, want about 20m", i, left)
 					}
 					original = got
 				}

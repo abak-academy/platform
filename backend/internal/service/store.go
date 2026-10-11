@@ -1020,10 +1020,10 @@ func truncateItemName(name string) string {
 }
 
 // paymentWindow is how long an order stays payable after checkout; the gateway link never outlives what is left of it.
-const paymentWindow = 24 * time.Hour
+const paymentWindow = 20 * time.Minute
 
 // paymentSessionMargin ends the gateway session before the order deadline so a payment made inside the session is notified before the deadline.
-const paymentSessionMargin = 5 * time.Minute
+const paymentSessionMargin = 2 * time.Minute
 
 type OrderPaidPayload struct {
 	OrderID string                 `json:"order_id"`

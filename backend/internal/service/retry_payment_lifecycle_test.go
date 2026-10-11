@@ -153,9 +153,9 @@ func leaveTwentySecondsOfWindow(t *testing.T, repo *repository.Repository, order
 	setDeadline(t, repo, orderID, "20 seconds")
 }
 
-func leaveFiveMinutesThirtySecondsOfWindow(t *testing.T, repo *repository.Repository, orderID uuid.UUID) {
+func leaveTwoMinutesThirtySecondsOfWindow(t *testing.T, repo *repository.Repository, orderID uuid.UUID) {
 	t.Helper()
-	setDeadline(t, repo, orderID, "5 minutes 30 seconds")
+	setDeadline(t, repo, orderID, "2 minutes 30 seconds")
 }
 
 func expireByTheSweeper(t *testing.T, _ *Service, repo *repository.Repository, orderID uuid.UUID) {
@@ -181,7 +181,7 @@ func TestRetryPayment_OrderPastItsWindowIsRefusedWithoutGatewayCall(t *testing.T
 		{"order the sweeper already expired is never reopened", expireOrderNow, ErrPaymentExpired, "payment_expired"},
 		{"elapsed deadline is refused before the sweeper runs, and retry does not expire the order itself", elapseDeadline, ErrPaymentExpired, "payment_pending"},
 		{"20 seconds left is refused as too close", leaveTwentySecondsOfWindow, ErrPaymentDeadlineTooClose, "payment_pending"},
-		{"5m30s left, inside the session margin plus a minute, is refused as too close", leaveFiveMinutesThirtySecondsOfWindow, ErrPaymentDeadlineTooClose, "payment_pending"},
+		{"2m30s left, inside the session margin plus a minute, is refused as too close", leaveTwoMinutesThirtySecondsOfWindow, ErrPaymentDeadlineTooClose, "payment_pending"},
 	}
 
 	for _, tt := range tests {
