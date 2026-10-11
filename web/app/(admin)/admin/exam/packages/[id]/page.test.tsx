@@ -1193,3 +1193,18 @@ describe("ExamPackageDetailPage — Tes Tersedia picker", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+
+describe("composable section presentation", () => {
+  it.each(["one_per_page", "all_on_page"] as const)("preserves %s while saving the section list", async presentation => {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({id:"exam-1"});
+    mockReplaceTests.mockReset();
+    mockReplaceTests.mockResolvedValue(undefined);
+    examState = {data:{...sampleExam,format_version:2,navigation_policy:"sequential",tests:[{id:"entry",exam_id:"exam-1",test_id:"section-1",sort_order:0,question_presentation:presentation,test:{id:"section-1",title:"Reading Section",subject:"English",duration_minutes:30,question_count:2}}]},isLoading:false,isError:false,error:null,refetch:vi.fn()};
+    render(<ExamPackageDetailPage />);
+    fireEvent.click(screen.getByRole("button",{name:/^tes$/i}));
+    expect(await screen.findByLabelText("Tampilan soal Reading Section")).toHaveValue(presentation);
+    fireEvent.click(screen.getByRole("button",{name:/^simpan$/i}));
+    await waitFor(() => expect(mockReplaceTests).toHaveBeenCalledWith([{test_id:"section-1",question_presentation:presentation}]));
+  });
+});

@@ -62,6 +62,8 @@ func (h *Handler) AdminCreateExam(c echo.Context) error {
 	if req.ID == uuid.Nil {
 		req.ID = uuid.New()
 	}
+	// format_version is server-assigned: new exams stay legacy until the composable runtime ships.
+	req.FormatVersion = 0
 
 	exam, err := h.svc.CreateExam(c.Request().Context(), req)
 	if err != nil {
@@ -212,6 +214,9 @@ type examPatchRequest struct {
 	// distinguishes absent (nil pointer — preserve) from an explicit []
 	// (pointer to an empty slice — clear back to the built-in defaults).
 	CardNotes *[]string `json:"card_notes"`
+	// NavigationPolicy is a plain string: absent (empty) preserves the stored
+	// value, matching Mode's PATCH semantics.
+	NavigationPolicy string `json:"navigation_policy"`
 }
 
 // applyNullable overlays a Nullable[T] PATCH field onto a *T model field: absent
@@ -292,8 +297,11 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	if req.CardNotes != nil {
 		overlay.CardNotes = *req.CardNotes
 	}
+	if req.NavigationPolicy != "" {
+		overlay.NavigationPolicy = req.NavigationPolicy
+	}
 
-	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)
+	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay, ClaimsFromContext(c).Sub)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -301,13 +309,15 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 }
 
 type examTestReplaceItem struct {
-	TestID    uuid.UUID `json:"test_id"`
-	SortOrder *int      `json:"sort_order,omitempty"`
+	TestID               uuid.UUID `json:"test_id"`
+	SortOrder            *int      `json:"sort_order,omitempty"`
+	QuestionPresentation *string   `json:"question_presentation,omitempty"`
 }
 
-// AdminReplaceExamTests accepts either `[{test_id,sort_order},...]` or `[test_id,...]`
-// and replaces the exam's attached-test list atomically. Service assigns sort_order
-// from list position; sort_order in the body is accepted for forward-compat but ignored.
+// AdminReplaceExamTests accepts either `[{test_id,sort_order,question_presentation},...]`
+// or `[test_id,...]` and replaces the exam's attached-test list atomically. Service assigns
+// sort_order from list position; sort_order in the body is accepted for forward-compat but
+// ignored. The plain form leaves question_presentation at the column default.
 func (h *Handler) AdminReplaceExamTests(c echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -319,21 +329,31 @@ func (h *Handler) AdminReplaceExamTests(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
+	// The plain `[test_id,...]` form is tried first: a failed decode into the rich
+	// form still fills the slice with zero-value entries, which would then trip the
+	// test_id guard below.
 	var testIDs []uuid.UUID
-	if err := json.Unmarshal(raw, &testIDs); err != nil {
-		var rich []examTestReplaceItem
-		if err2 := json.Unmarshal(raw, &rich); err2 != nil {
-			return badRequest(c, "invalid request body")
+	var items []examTestReplaceItem
+	if err := json.Unmarshal(raw, &testIDs); err == nil {
+		for _, testID := range testIDs {
+			items = append(items, examTestReplaceItem{TestID: testID})
 		}
-		for _, it := range rich {
-			if it.TestID == uuid.Nil {
-				return badRequest(c, "test_id required")
-			}
-			testIDs = append(testIDs, it.TestID)
+	} else if err := json.Unmarshal(raw, &items); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	tests := make([]model.ExamTest, len(items))
+	for i, it := range items {
+		if it.TestID == uuid.Nil {
+			return badRequest(c, "test_id required")
+		}
+		tests[i] = model.ExamTest{TestID: it.TestID}
+		if it.QuestionPresentation != nil {
+			tests[i].QuestionPresentation = *it.QuestionPresentation
 		}
 	}
 
-	if err := h.svc.ReplaceExamTests(c.Request().Context(), id, testIDs); err != nil {
+	if err := h.svc.ReplaceExamTests(c.Request().Context(), id, tests, ClaimsFromContext(c).Sub); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.NoContent(http.StatusNoContent)

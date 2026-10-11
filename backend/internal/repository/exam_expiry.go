@@ -33,7 +33,7 @@ func (r *Repository) ListDueExamExpiryCandidatesPage(ctx context.Context, now ti
 			FROM exam_session s
 			JOIN exam e ON e.id = s.exam_id
 			WHERE s.status = 'in_progress'
-			  AND e.mode = 'standard'
+			  AND ((e.format_version = 1 AND e.mode = 'standard') OR (e.format_version = 2 AND e.timer_mode = 'overall'))
 			  AND e.duration_minutes > 0
 
 			UNION ALL
@@ -49,7 +49,7 @@ func (r *Repository) ListDueExamExpiryCandidatesPage(ctx context.Context, now ti
 			JOIN exam e ON e.id = s.exam_id
 			JOIN exam_session_section ss ON ss.session_id = s.id
 			WHERE s.status = 'in_progress'
-			  AND e.mode IN ('utbk', 'ielts')
+			  AND ((e.format_version = 1 AND e.mode IN ('utbk', 'ielts')) OR (e.format_version = 2 AND e.timer_mode = 'per_test'))
 			  AND ss.status = 'active'
 			  AND ss.started_at IS NOT NULL
 			  AND ss.duration_minutes > 0
@@ -90,7 +90,7 @@ func (r *Repository) GetExamByIDTx(ctx context.Context, tx pgx.Tx, id uuid.UUID)
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
 			status, created_at, mode,
 			certificate_design, certificate_design_updated_at, exam_number, certificate_enabled, certificate_template_html,
-			end_screen_image_url, end_screen_promo_text, card_enabled, card_notes
+			end_screen_image_url, end_screen_promo_text, card_enabled, card_notes, format_version, navigation_policy
 		FROM exam
 		WHERE id = $1`,
 		id,

@@ -1019,19 +1019,24 @@ func entryTitled(title string, sectionType *string) model.ExamTestEntry {
 }
 
 func TestValidatePublishSections_rejects_sectioned_exam_with_zero_tests(t *testing.T) {
-	for _, mode := range []string{"utbk", "ielts"} {
-		exam := model.Exam{Mode: mode}
-		err := validatePublishSections(exam, nil)
-		if !errors.Is(err, ErrValidation) {
-			t.Errorf("mode=%s with 0 tests should return ErrValidation, got %v", mode, err)
-		}
-		if !strings.Contains(err.Error(), "at least one test") {
-			t.Errorf("zero-tests msg should mention 'at least one test', got %q", err.Error())
-		}
-		err = validatePublishSections(exam, []model.ExamTestEntry{})
-		if !errors.Is(err, ErrValidation) {
-			t.Errorf("mode=%s with empty tests slice should return ErrValidation, got %v", mode, err)
-		}
+	for _, tc := range []struct {
+		name, mode string
+		tests      []model.ExamTestEntry
+	}{
+		{"utbk nil tests", "utbk", nil},
+		{"utbk empty tests", "utbk", []model.ExamTestEntry{}},
+		{"ielts nil tests", "ielts", nil},
+		{"ielts empty tests", "ielts", []model.ExamTestEntry{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePublishSections(model.Exam{Mode: tc.mode}, tc.tests, nil)
+			if !errors.Is(err, ErrValidation) {
+				t.Fatalf("want ErrValidation, got %v", err)
+			}
+			if !strings.Contains(err.Error(), "at least one test") {
+				t.Errorf("want at least one test message, got %q", err)
+			}
+		})
 	}
 }
 
@@ -1041,7 +1046,7 @@ func TestValidatePublishSections_rejects_ielts_with_untyped_section(t *testing.T
 		entryTitled("Listening", strPtr("listening")),
 		entryTitled("Untyped Section", nil),
 	}
-	err := validatePublishSections(exam, tests)
+	err := validatePublishSections(exam, tests, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("ielts with an untyped attached section should return ErrValidation, got %v", err)
 	}
@@ -1057,7 +1062,7 @@ func TestValidatePublishSections_allows_fully_typed_ielts(t *testing.T) {
 		entryTitled("Reading", strPtr("reading")),
 		entryTitled("Writing", strPtr("writing")),
 	}
-	if err := validatePublishSections(exam, tests); err != nil {
+	if err := validatePublishSections(exam, tests, nil); err != nil {
 		t.Errorf("fully-typed ielts should pass, got %v", err)
 	}
 }
@@ -1070,26 +1075,31 @@ func TestValidatePublishSections_allows_utbk_with_untyped_tests(t *testing.T) {
 		entryTitled("Subtest 1", nil),
 		entryTitled("Subtest 2", strPtr("reading")),
 	}
-	if err := validatePublishSections(exam, tests); err != nil {
+	if err := validatePublishSections(exam, tests, nil); err != nil {
 		t.Errorf("utbk with a mix of untyped/typed tests should pass, got %v", err)
 	}
 }
 
 func TestValidatePublishSections_allows_standard_with_any_tests(t *testing.T) {
-	// standard publish is unchanged; the gate is skipped entirely.
-	exam := model.Exam{Mode: "standard"}
-	if err := validatePublishSections(exam, nil); err != nil {
-		t.Errorf("standard with no tests should pass (gate skipped), got %v", err)
-	}
-	if err := validatePublishSections(exam, []model.ExamTestEntry{entryTitled("Any", nil)}); err != nil {
-		t.Errorf("standard with untyped test should pass (gate skipped), got %v", err)
+	for _, tc := range []struct {
+		name  string
+		tests []model.ExamTestEntry
+	}{
+		{"no tests", nil},
+		{"untyped test", []model.ExamTestEntry{entryTitled("Any", nil)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validatePublishSections(model.Exam{Mode: "standard"}, tc.tests, nil); err != nil {
+				t.Errorf("standard publish should pass, got %v", err)
+			}
+		})
 	}
 }
 
 func TestValidatePublishSections_allows_empty_mode(t *testing.T) {
 	// empty mode (legacy rows / pre-default) must not trigger the gate.
 	exam := model.Exam{Mode: ""}
-	if err := validatePublishSections(exam, nil); err != nil {
+	if err := validatePublishSections(exam, nil, nil); err != nil {
 		t.Errorf("empty mode should pass (gate skipped), got %v", err)
 	}
 }
@@ -1808,7 +1818,7 @@ func TestScheduledEndAt_Integration_RoundTripsThroughCreateAndUpdate(t *testing.
 	newEnd := end.Add(24 * time.Hour)
 	updateInput := fetched.Exam
 	updateInput.ScheduledEndAt = &newEnd
-	updated, err := svc.UpdateExam(ctx, exam.ID, updateInput)
+	updated, err := svc.UpdateExam(ctx, exam.ID, updateInput, "")
 	if err != nil {
 		t.Fatalf("UpdateExam: %v", err)
 	}
@@ -2826,7 +2836,7 @@ func TestUpdateExam_Integration_AllowsUnrelatedEditWithLegacyCertificateLayout(t
 	}
 	update := fetched.Exam
 	update.Title = "Updated without touching certificate"
-	if _, err := svc.UpdateExam(ctx, exam.ID, update); err != nil {
+	if _, err := svc.UpdateExam(ctx, exam.ID, update, ""); err != nil {
 		t.Fatalf("unrelated update should not revalidate stored certificate design: %v", err)
 	}
 }
@@ -2903,7 +2913,7 @@ func TestGetCertificateDesign_Integration_CustomBackground_ReturnsPresignedURLNo
 	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
 	designWithKey := json.RawMessage(`{"template":"custom","background_key":"` + key + `"}`)
 	exam.CertificateDesign = &designWithKey
-	if _, err := svc.UpdateExam(ctx, exam.ID, exam); err != nil {
+	if _, err := svc.UpdateExam(ctx, exam.ID, exam, ""); err != nil {
 		t.Fatalf("UpdateExam: %v", err)
 	}
 
@@ -2964,7 +2974,7 @@ func TestGetCertificateDesign_Integration_BackgroundURL_TTLAtMost15Min(t *testin
 	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
 	designWithKey := json.RawMessage(`{"template":"custom","background_key":"` + key + `"}`)
 	exam.CertificateDesign = &designWithKey
-	if _, err := svc.UpdateExam(ctx, exam.ID, exam); err != nil {
+	if _, err := svc.UpdateExam(ctx, exam.ID, exam, ""); err != nil {
 		t.Fatalf("UpdateExam: %v", err)
 	}
 

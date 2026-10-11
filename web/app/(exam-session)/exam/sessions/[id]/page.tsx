@@ -14,6 +14,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import DOMPurify from "dompurify";
+import { fileUrl } from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -465,8 +466,11 @@ export default function SessionPage() {
   const tests = session?.tests ?? [];
   const allQuestions = session ? tests.flatMap((t) => t.questions) : [];
 
-  const isSectioned =
-    session?.mode === "utbk" || session?.mode === "ielts";
+  const composable = session?.format_version === 2;
+  const isSectioned = composable
+    ? session?.navigation_policy === "sequential"
+    : session?.mode === "utbk" || session?.mode === "ielts";
+  const usesSectionTimer = composable ? session?.timer_mode === "per_test" : isSectioned;
   const activeTest = isSectioned
     ? tests.find((t) => t.id === session?.active_test_id)
     : null;
@@ -476,6 +480,15 @@ export default function SessionPage() {
     isSectioned && activeTest
       ? new Set(activeTest.questions.map((q) => q.id))
       : null;
+
+  useEffect(() => {
+    if (!composable) return;
+    for (const test of tests) {
+      if (test.question_presentation === "all_on_page" && test.questions.some(q => q.material_html?.trim() || q.image_url || q.audio_url)) {
+        console.warn("exam_material_conflict", { session_id: sessionId, test_id: test.id });
+      }
+    }
+  }, [session, composable, sessionId]);
 
   // Initialize from session data (reconnect). Runs exactly once (see
   // hasHydratedRef above) — this is a mount-time reconnect concern, not a
@@ -511,7 +524,7 @@ export default function SessionPage() {
     currentQIndexRef.current = savedPosition;
     lastSavedPositionRef.current = savedPosition;
     setCurrentQIndex(savedPosition);
-    if (isSectioned && session.active_test_id) {
+    if (usesSectionTimer && session.active_test_id) {
       const sec = tests.find((t) => t.id === session.active_test_id);
       const nextRemaining = sec?.remaining_seconds ?? 0;
       remainingRef.current = nextRemaining;
@@ -528,6 +541,21 @@ export default function SessionPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
+
+  const lastExtensionRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!session || session.status !== "in_progress") return;
+    const extension = usesSectionTimer ? activeTest?.extended_until : session.extended_until;
+    const key = `${usesSectionTimer ? session.active_test_id : sessionId}:${extension ?? ""}`;
+    const previous = lastExtensionRef.current;
+    lastExtensionRef.current = key;
+    if (previous === undefined || previous === key || !extension) return;
+    const nextRemaining = usesSectionTimer ? activeTest?.remaining_seconds ?? 0 : session.remaining_seconds;
+    remainingRef.current = nextRemaining;
+    setRemaining(nextRemaining);
+    autoSubmittedRef.current = false;
+    autoAdvanceRef.current = false;
+  }, [session, usesSectionTimer, activeTest, sessionId]);
 
   useEffect(() => {
     if (
@@ -585,7 +613,7 @@ export default function SessionPage() {
     setCurrentQIndex(0);
     currentQIndexRef.current = 0;
     lastSavedPositionRef.current = 0;
-    const nextRemaining = activeTest?.remaining_seconds ?? 0;
+    const nextRemaining = usesSectionTimer ? activeTest?.remaining_seconds ?? 0 : remainingRef.current;
     remainingRef.current = nextRemaining;
     setRemaining(nextRemaining);
     autoSubmittedRef.current = false;
@@ -595,7 +623,7 @@ export default function SessionPage() {
 
   // Untimed exams (timer_mode=per_test → duration_minutes null) get no countdown
   // and must never auto-submit: the backend reports remaining_seconds=0 for them.
-  const hasTimer = isSectioned
+  const hasTimer = usesSectionTimer
     ? (activeTest?.duration_minutes ?? 0) > 0
     : session?.duration_minutes != null;
 
@@ -626,7 +654,7 @@ export default function SessionPage() {
         }
       }
 
-      if (isSectioned) {
+      if (usesSectionTimer) {
         const sectionId = session.active_test_id;
         if (!sectionId) return;
         const result = await retryExpiryStep(() =>
@@ -657,6 +685,7 @@ export default function SessionPage() {
   }, [
     session,
     isSectioned,
+    usesSectionTimer,
     sessionId,
     saveAnswersMutateAsync,
     advanceSection,
@@ -971,6 +1000,15 @@ export default function SessionPage() {
     (index: number) => {
       setCurrentQIndex(index);
       scheduleAutosave();
+      const navigationQuestions = session?.format_version === 2 && session.navigation_policy === "sequential"
+        ? session.tests.find(test => test.id === session.active_test_id)?.questions
+        : session?.tests.flatMap(test => test.questions);
+      const target = navigationQuestions?.[index];
+      const targetTest = session?.tests.find(test => test.id === target?.test_id);
+      if (session?.format_version === 2 && targetTest?.question_presentation === "all_on_page" && target) {
+        requestAnimationFrame(() => document.getElementById(`question-${target.id}`)?.scrollIntoView?.({ block: "start" }));
+        return;
+      }
       for (const el of [examBodyRef.current, questionPaneRef.current]) {
         if (typeof el?.scrollTo === "function") {
           el.scrollTo({ top: 0 });
@@ -979,7 +1017,7 @@ export default function SessionPage() {
         }
       }
     },
-    [scheduleAutosave],
+    [scheduleAutosave, session],
   );
 
   const handleAdvanceSection = useCallback(async () => {
@@ -1170,11 +1208,17 @@ export default function SessionPage() {
     tests.find((t) => t.id === currentQ?.test_id) ??
     tests[0];
   const currentTestTitle = currentTest?.title ?? "";
+  const allOnPage = composable && currentTest?.question_presentation === "all_on_page";
+  const hasOwnMaterial = !!(currentQ?.material_html?.trim() || currentQ?.image_url || currentQ?.audio_url);
+  const questionMaterial = composable && !allOnPage && hasOwnMaterial;
+  const materialHTML = composable ? questionMaterial ? currentQ?.material_html : currentTest?.shared_material_html : null;
+  const renderedQuestions = allOnPage ? currentTest?.questions ?? [] : currentQ ? [currentQ] : [];
+
   // In sectioned mode (utbk/ielts), use the mode label for the top bar title
   // to avoid duplicating the first section's title (which appears as the section label below).
   // In standard mode, show the title of the test that owns the current question
   // (not tests[0]), so a multi-test paper does not keep the first test's name.
-  const examTitle = isSectioned
+  const examTitle = composable ? currentTestTitle : isSectioned
     ? session?.mode === "utbk"
       ? t("exam_packages_modal_mode_utbk")
       : t("exam_packages_modal_mode_ielts")
@@ -1267,13 +1311,13 @@ export default function SessionPage() {
         >
           <div className="mx-auto max-w-3xl">
             {/* Section rail (sectioned mode only) */}
-            {isSectioned && (
+            {(isSectioned || composable) && (
               <div
                 data-testid="section-rail"
                 className="mb-4 flex gap-2 overflow-x-auto"
               >
                 {tests.map((test, i) => {
-                  const isActive = test.id === session.active_test_id;
+                  const isActive = test.id === (isSectioned ? session.active_test_id : currentTest?.id);
                   const isSubmitted = test.status === "submitted";
                   let railClass =
                     "flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium";
@@ -1285,16 +1329,19 @@ export default function SessionPage() {
                     railClass += " bg-surface-2 text-ink-400";
                   }
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={test.id}
                       data-testid={`section-rail-item-${i}`}
                       className={railClass}
+                      disabled={isSectioned || submitting || timerExpired}
+                      onClick={() => goToQuestion(allQuestions.findIndex(q => q.test_id === test.id))}
                     >
                       <span>{test.title}</span>
                       <span>
                         {isSubmitted ? "✓" : isActive ? "●" : "○"}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -1310,20 +1357,28 @@ export default function SessionPage() {
             )}
 
             {/* Per-question audio player */}
-            {currentQ?.audio_url && (
+            {currentQ?.audio_url && !allOnPage && (
               <SectionAudioPlayer
                 audioUrl={currentQ.audio_url}
                 testId="question-audio-player"
               />
             )}
 
+            {composable && currentTest?.instructions_html && (
+              <div className="mb-4 rounded-lg border border-line p-4" data-testid="section-instructions"><RichContent html={sanitizeForRichContent(currentTest.instructions_html)} /></div>
+            )}
+            {materialHTML && (
+              <div className="mb-4 rounded-lg border border-line p-4" data-testid="effective-material"><RichContent html={sanitizeForRichContent(materialHTML)} /></div>
+            )}
+            {questionMaterial && currentQ?.image_url && (
+              <img src={fileUrl(currentQ.image_url)} alt="" className="mb-4 max-w-full rounded-lg" />
+            )}
             {/* Question count + flag toggle */}
             <div className="mb-4 flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2 text-sm text-ink-600">
                 <BookOpen className="size-4" />
                 <span className="whitespace-nowrap">
-                  {t("session_question")} {Math.min(currentQIndex + 1, questionsToShow.length)} {t("of")}{" "}
-                  {questionsToShow.length}
+                  {allOnPage ? `${currentTestTitle} · ${renderedQuestions.length} ${t("session_question").toLowerCase()}` : <>{t("session_question")} {Math.min(currentQIndex + 1, questionsToShow.length)} {t("of")} {questionsToShow.length}</>}
                 </span>
                 {currentQ && (
                   <span className="hidden rounded-md bg-line-2 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-ink-500 sm:inline-flex">
@@ -1351,28 +1406,29 @@ export default function SessionPage() {
             </div>
 
             {/* Question card */}
-            {currentQ && (
-              <Card className="mb-4 p-5 sm:p-7">
-                {currentQ.format !== "multi_blank" && (
+            {renderedQuestions.map((question, index) => (
+              <Card key={question.id} id={`question-${question.id}`} className="mb-4 p-5 sm:p-7">
+                {allOnPage && <div className="mb-3 flex items-center justify-between"><span>{t("session_question")} {index + 1}</span><Button type="button" variant="outline" size="sm" onClick={() => toggleFlag(question.id)} disabled={timerExpired}>{flagged[question.id] ? t("unflag") : t("flag")}</Button></div>}
+                {question.format !== "multi_blank" && (
                   <div className="mb-5 text-base text-ink-900">
-                    <RichContent html={sanitizeForRichContent(currentQ.body)} />
+                    <RichContent html={sanitizeForRichContent(question.body)} />
                   </div>
                 )}
 
                 {renderAnswerInput(
-                  currentQ,
-                  answers[currentQ.id] ?? "",
-                  (val) => setAnswer(currentQ.id, val),
+                  question,
+                  answers[question.id] ?? "",
+                  (val) => setAnswer(question.id, val),
                   timerExpired,
                 )}
 
-                {(answers[currentQ.id] ?? "") !== "" && (
+                {(answers[question.id] ?? "") !== "" && (
                   <div className="mt-4 flex justify-end">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setAnswer(currentQ.id, "")}
+                      onClick={() => setAnswer(question.id, "")}
                       disabled={timerExpired}
                       className="border-line text-ink-700"
                     >
@@ -1381,7 +1437,7 @@ export default function SessionPage() {
                   </div>
                 )}
               </Card>
-            )}
+            ))}
 
             {/* Navigation buttons */}
             <div className="flex items-center justify-between">
@@ -1397,7 +1453,7 @@ export default function SessionPage() {
                 {t("session_prev_question")}
               </Button>
 
-              {isLastQuestion && canAdvanceSection ? (
+              {(isLastQuestion || allOnPage) && canAdvanceSection ? (
                 <Button
                   type="button"
                   variant="destructive"
@@ -1408,7 +1464,7 @@ export default function SessionPage() {
                 >
                   <span>{t("session_advance_section")}</span>
                 </Button>
-              ) : isLastQuestion ? (
+              ) : (isLastQuestion || allOnPage) ? (
                 <Button
                   type="button"
                   variant="destructive"
@@ -1565,6 +1621,7 @@ export default function SessionPage() {
             <DialogDescription>
               {sectionAnsweredCount}/{questionsToShow.length}{" "}
               {t("session_question").toLowerCase()}.{" "}
+              {composable && <>{questionsToShow.length - sectionAnsweredCount} {t("format_unanswered")}. </>}
               {t("session_advance_confirm_desc")}
             </DialogDescription>
           </DialogHeader>
@@ -1824,11 +1881,13 @@ function MultiBlankInput({
 // Component: render true_false with one true/false control per statement.
 // Serialises to a JSON array of "true"/"false"/"" in statement index order.
 function TrueFalseInput({
+  questionID,
   statements,
   currentValue,
   onChange,
   disabled,
 }: {
+  questionID: string;
   statements: { index: number; body: string }[] | undefined;
   currentValue: string;
   onChange: (val: string) => void;
@@ -1867,7 +1926,7 @@ function TrueFalseInput({
             <label className="flex items-center gap-1">
               <input
                 type="radio"
-                name={`tf-${s.index}`}
+                name={`tf-${questionID}-${s.index}`}
                 data-testid={`tf-radio-true-${s.index}`}
                 checked={parsed[i] === "true"}
                 onChange={() => setStatement(i, "true")}
@@ -1879,7 +1938,7 @@ function TrueFalseInput({
             <label className="flex items-center gap-1">
               <input
                 type="radio"
-                name={`tf-${s.index}`}
+                name={`tf-${questionID}-${s.index}`}
                 data-testid={`tf-radio-false-${s.index}`}
                 checked={parsed[i] === "false"}
                 onChange={() => setStatement(i, "false")}
@@ -2002,6 +2061,7 @@ function renderAnswerInput(
   if (format === "true_false") {
     return (
       <TrueFalseInput
+        questionID={question.id}
         statements={question.statements}
         currentValue={currentValue}
         onChange={onChange}

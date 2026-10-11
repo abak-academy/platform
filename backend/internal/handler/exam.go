@@ -49,27 +49,11 @@ func (h *Handler) AdminListTests(c echo.Context) error {
 }
 
 func (h *Handler) AdminCreateTest(c echo.Context) error {
-	var req struct {
-		Title           string  `json:"title"`
-		Subject         string  `json:"subject"`
-		Topic           string  `json:"topic"`
-		DurationMinutes int     `json:"duration_minutes"`
-		AudioURL        *string `json:"audio_url,omitempty"`
-		AudioPlayLimit  *int    `json:"audio_play_limit,omitempty"`
-		SectionType     *string `json:"section_type,omitempty"`
-	}
-	if err := c.Bind(&req); err != nil {
+	// The write path owns id, created_at and question_count (CreateTest takes
+	// them from the INSERT ... RETURNING), so binding the model is safe here.
+	var t model.Test
+	if err := c.Bind(&t); err != nil {
 		return badRequest(c, "invalid request body")
-	}
-
-	t := model.Test{
-		Title:           req.Title,
-		Subject:         req.Subject,
-		Topic:           req.Topic,
-		DurationMinutes: req.DurationMinutes,
-		AudioURL:        req.AudioURL,
-		AudioPlayLimit:  req.AudioPlayLimit,
-		SectionType:     req.SectionType,
 	}
 
 	out, err := h.svc.CreateTest(c.Request().Context(), t)
@@ -107,13 +91,15 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 	// null — clear" (a plain *T cannot: encoding/json leaves it nil either way),
 	// so clearing audio/section settings via PATCH actually clears them.
 	var req struct {
-		Title           string           `json:"title"`
-		Subject         string           `json:"subject"`
-		Topic           string           `json:"topic"`
-		DurationMinutes int              `json:"duration_minutes"`
-		AudioURL        Nullable[string] `json:"audio_url"`
-		AudioPlayLimit  Nullable[int]    `json:"audio_play_limit"`
-		SectionType     Nullable[string] `json:"section_type"`
+		Title              string           `json:"title"`
+		Subject            string           `json:"subject"`
+		Topic              string           `json:"topic"`
+		DurationMinutes    int              `json:"duration_minutes"`
+		AudioURL           Nullable[string] `json:"audio_url"`
+		AudioPlayLimit     Nullable[int]    `json:"audio_play_limit"`
+		SectionType        Nullable[string] `json:"section_type"`
+		SharedMaterialHTML Nullable[string] `json:"shared_material_html"`
+		InstructionsHTML   Nullable[string] `json:"instructions_html"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -135,6 +121,8 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 	applyNullable(req.AudioURL, &t.AudioURL)
 	applyNullable(req.AudioPlayLimit, &t.AudioPlayLimit)
 	applyNullable(req.SectionType, &t.SectionType)
+	applyNullable(req.SharedMaterialHTML, &t.SharedMaterialHTML)
+	applyNullable(req.InstructionsHTML, &t.InstructionsHTML)
 
 	out, err := h.svc.UpdateTest(c.Request().Context(), id, t)
 	if err != nil {
@@ -288,10 +276,20 @@ func (h *Handler) AdminUpdateQuestion(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
+	// PATCH replaces the fields the editor sends; material_html follows the
+	// Nullable contract so an editor that never sends it cannot wipe
+	// API-authored material (same shape as AdminUpdateTest).
+	stored, err := h.svc.GetQuestion(c.Request().Context(), qID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
 	q, err := req.toQuestion()
 	if err != nil {
 		return mapServiceError(c, err)
 	}
+	q.MaterialHTML = stored.MaterialHTML
+	applyNullable(req.MaterialHTML, &q.MaterialHTML)
 	q.ID = qID
 	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks(), req.toStatements())
 	if err != nil {
@@ -493,6 +491,7 @@ type questionRequest struct {
 	Explanation     *string            `json:"explanation,omitempty"`
 	ImageURL        *string            `json:"image_url,omitempty"`
 	AudioURL        *string            `json:"audio_url,omitempty"`
+	MaterialHTML    Nullable[string]   `json:"material_html"`
 	CorrectAnswer   *string            `json:"correct_answer,omitempty"`
 	AcceptedAnswers []string           `json:"accepted_answers,omitempty"`
 	TopicID         *string            `json:"topic_id,omitempty"`
@@ -551,6 +550,13 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		acceptedAnswers = []string{}
 	}
 
+	// Nullable: an omitted material_html leaves the column untouched on PATCH
+	// (the handler overlays the stored value) and stays NULL on create.
+	var materialHTML *string
+	if r.MaterialHTML.Set && r.MaterialHTML.Valid {
+		materialHTML = &r.MaterialHTML.Value
+	}
+
 	return model.Question{
 		Format:          r.Format,
 		Body:            r.Body,
@@ -559,6 +565,7 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		Difficulty:      r.Difficulty,
 		ImageURL:        r.ImageURL,
 		AudioURL:        r.AudioURL,
+		MaterialHTML:    materialHTML,
 		TopicID:         topicID,
 		PointCorrect:    pointCorrect,
 		PointWrong:      pointWrong,
@@ -1101,7 +1108,7 @@ func (h *Handler) AdminUpdateExamCertificateDesign(c echo.Context) error {
 		overlay.CertificateTemplateHTML = &sanitizedTemplateHTML
 	}
 
-	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)
+	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay, ClaimsFromContext(c).Sub)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

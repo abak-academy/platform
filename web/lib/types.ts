@@ -618,6 +618,8 @@ export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "
 export type SectionType = "listening" | "reading" | "writing";
 
 export interface Test {
+  shared_material_html?: string | null;
+  instructions_html?: string | null;
   id: string;
   title: string;
   subject: string;
@@ -631,6 +633,7 @@ export interface Test {
 }
 
 export interface Question {
+  material_html?: string | null;
   id: string;
   format: QuestionFormat;
   body: string;
@@ -698,6 +701,8 @@ export interface TestDetail {
 }
 
 export interface AdminCreateTestInput {
+  shared_material_html?: string | null;
+  instructions_html?: string | null;
   title: string;
   subject: string;
   topic: string;
@@ -708,6 +713,8 @@ export interface AdminCreateTestInput {
 }
 
 export interface AdminUpdateTestInput {
+  shared_material_html?: string | null;
+  instructions_html?: string | null;
   title?: string;
   subject?: string;
   topic?: string;
@@ -728,6 +735,7 @@ export interface AdminQuestionOptionInput {
 }
 
 export interface AdminQuestionInput {
+  material_html?: string | null;
   format: QuestionFormat;
   body: string;
   difficulty?: string;
@@ -775,6 +783,8 @@ export interface QuestionListResponse {
 }
 
 export interface Exam {
+  format_version?: number;
+  navigation_policy?: "free" | "sequential";
   id: string;
   title: string;
   is_free?: boolean;
@@ -816,6 +826,7 @@ export interface ExamListItem extends Exam {
 }
 
 export interface ExamTestEntry {
+  question_presentation?: "one_per_page" | "all_on_page";
   id: string;
   exam_id: string;
   test_id: string;
@@ -837,6 +848,7 @@ export interface ExamDetail extends ExamListItem {
 export type ExamResultConfig = "hidden" | "score_only" | "score_pembahasan";
 
 export interface CreateExamPayload {
+  navigation_policy?: "free" | "sequential";
   title: string;
   scheduled_at?: string | null;
   scheduled_end_at?: string | null;
@@ -856,6 +868,7 @@ export interface CreateExamPayload {
 }
 
 export interface UpdateExamPayload {
+  navigation_policy?: "free" | "sequential";
   title?: string;
   scheduled_at?: string | null;
   scheduled_end_at?: string | null;
@@ -946,6 +959,7 @@ export interface SessionQuestionOption {
 }
 
 export interface SessionQuestion {
+  material_html?: string | null;
   id: string;
   test_id: string;
   format: QuestionFormat;
@@ -962,6 +976,10 @@ export interface SessionQuestion {
 }
 
 export interface SessionTest {
+  extended_until?: string | null;
+  shared_material_html?: string | null;
+  instructions_html?: string | null;
+  question_presentation?: "one_per_page" | "all_on_page";
   id: string;
   title: string;
   subject: string;
@@ -975,6 +993,8 @@ export interface SessionTest {
 }
 
 export interface SessionStartPayload {
+  format_version?: number;
+  navigation_policy?: "free" | "sequential";
   session_id: string;
   remaining_seconds: number;
   timer_mode: string;
@@ -1027,6 +1047,8 @@ export interface CheckInResult {
 // ── Session monitor types (Slice 7) ────────────────────────────────────────
 
 export interface AdvanceSectionResult {
+  format_version?: number;
+  navigation_policy?: "free" | "sequential";
   mode?: string;
   active_test_id?: string | null;
   completed: boolean;

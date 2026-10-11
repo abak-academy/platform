@@ -64,8 +64,8 @@ func TestTestStruct(t *testing.T) {
 	typ := reflect.TypeOf((*Test)(nil)).Elem()
 	v := newModel(typ)
 
-	if typ.NumField() != 10 {
-		t.Fatalf("Test struct: got %d fields, want 10", typ.NumField())
+	if typ.NumField() != 12 {
+		t.Fatalf("Test struct: got %d fields, want 12", typ.NumField())
 	}
 
 	jsonTag(t, v, "ID", "id")
@@ -76,6 +76,8 @@ func TestTestStruct(t *testing.T) {
 	jsonTag(t, v, "AudioURL", "audio_url")
 	jsonTag(t, v, "AudioPlayLimit", "audio_play_limit")
 	jsonTag(t, v, "SectionType", "section_type,omitempty")
+	jsonTag(t, v, "SharedMaterialHTML", "shared_material_html")
+	jsonTag(t, v, "InstructionsHTML", "instructions_html")
 	jsonTag(t, v, "QuestionCount", "question_count")
 	jsonTag(t, v, "CreatedAt", "created_at")
 
@@ -94,6 +96,13 @@ func TestTestStruct(t *testing.T) {
 	if mustField(t, v, "AudioPlayLimit").Type.Elem().Kind() != reflect.Int {
 		t.Errorf("Test.AudioPlayLimit pointer base type should be int")
 	}
+	// SharedMaterialHTML / InstructionsHTML are nullable → pointer to string
+	for _, name := range []string{"SharedMaterialHTML", "InstructionsHTML"} {
+		fieldKind(t, v, name, reflect.Ptr)
+		if mustField(t, v, name).Type.Elem().Kind() != reflect.String {
+			t.Errorf("Test.%s pointer base type should be string, got %s", name, mustField(t, v, name).Type.Elem().Kind())
+		}
+	}
 	fieldType(t, v, "CreatedAt", reflect.TypeOf(time.Time{}))
 }
 
@@ -103,12 +112,12 @@ func TestQuestionStruct(t *testing.T) {
 	typ := reflect.TypeOf((*Question)(nil)).Elem()
 	v := newModel(typ)
 
-	// Question has NO created_at (migration doesn't define one). 15 fields: id,
+	// Question has NO created_at (migration doesn't define one). 16 fields: id,
 	// question_number, format, body, correct_answer, explanation, difficulty,
-	// image_url, audio_url, topic_id, topic, point_correct, point_wrong,
-	// accepted_answers, statements.
-	if typ.NumField() != 15 {
-		t.Fatalf("Question struct: got %d fields, want 15", typ.NumField())
+	// image_url, audio_url, material_html, topic_id, topic, point_correct,
+	// point_wrong, accepted_answers, statements.
+	if typ.NumField() != 16 {
+		t.Fatalf("Question struct: got %d fields, want 16", typ.NumField())
 	}
 	if _, ok := typ.FieldByName("CreatedAt"); ok {
 		t.Errorf("Question must NOT have CreatedAt — migration 0014_exam.up.sql does not define it")
@@ -119,6 +128,7 @@ func TestQuestionStruct(t *testing.T) {
 	jsonTag(t, v, "CorrectAnswer", "correct_answer")
 	jsonTag(t, v, "ImageURL", "image_url")
 	jsonTag(t, v, "AudioURL", "audio_url")
+	jsonTag(t, v, "MaterialHTML", "material_html")
 	jsonTag(t, v, "TopicID", "topic_id")
 	jsonTag(t, v, "Topic", "topic")
 	jsonTag(t, v, "PointCorrect", "point_correct")
@@ -134,7 +144,7 @@ func TestQuestionStruct(t *testing.T) {
 	fieldKind(t, v, "PointWrong", reflect.Float64)
 
 	// Nullable pointers
-	for _, name := range []string{"CorrectAnswer", "Explanation", "Difficulty", "ImageURL", "Topic"} {
+	for _, name := range []string{"CorrectAnswer", "Explanation", "Difficulty", "ImageURL", "Topic", "MaterialHTML"} {
 		fieldKind(t, v, name, reflect.Ptr)
 		if mustField(t, v, name).Type.Elem().Kind() != reflect.String {
 			t.Errorf("Question.%s pointer base type should be string, got %s", name, mustField(t, v, name).Type.Elem().Kind())
@@ -216,6 +226,8 @@ func TestExamStruct(t *testing.T) {
 	jsonTag(t, v, "CreatedAt", "created_at")
 	jsonTag(t, v, "CertificateDesign", "certificate_design")
 	jsonTag(t, v, "CertificateDesignUpdatedAt", "certificate_design_updated_at")
+	jsonTag(t, v, "FormatVersion", "format_version")
+	jsonTag(t, v, "NavigationPolicy", "navigation_policy")
 
 	fieldKind(t, v, "CertificateDesign", reflect.Ptr)
 	if mustField(t, v, "CertificateDesign").Type != reflect.TypeOf((*json.RawMessage)(nil)) {
@@ -233,6 +245,8 @@ func TestExamStruct(t *testing.T) {
 	fieldKind(t, v, "ResultConfig", reflect.String)
 	fieldKind(t, v, "Status", reflect.String)
 	fieldKind(t, v, "Randomize", reflect.Bool)
+	fieldKind(t, v, "FormatVersion", reflect.Int)
+	fieldKind(t, v, "NavigationPolicy", reflect.String)
 
 	// Nullable pointers
 	for _, name := range []string{"ScheduledAt", "BundleGeneratedAt", "ResultReleaseAt"} {
@@ -261,19 +275,21 @@ func TestExamTestStruct(t *testing.T) {
 	typ := reflect.TypeOf((*ExamTest)(nil)).Elem()
 	v := newModel(typ)
 
-	if typ.NumField() != 4 {
-		t.Fatalf("ExamTest struct: got %d fields, want 4", typ.NumField())
+	if typ.NumField() != 5 {
+		t.Fatalf("ExamTest struct: got %d fields, want 5", typ.NumField())
 	}
 
 	jsonTag(t, v, "ID", "id")
 	jsonTag(t, v, "ExamID", "exam_id")
 	jsonTag(t, v, "TestID", "test_id")
 	jsonTag(t, v, "SortOrder", "sort_order")
+	jsonTag(t, v, "QuestionPresentation", "question_presentation")
 
 	fieldType(t, v, "ID", reflect.TypeOf(uuid.UUID{}))
 	fieldType(t, v, "ExamID", reflect.TypeOf(uuid.UUID{}))
 	fieldType(t, v, "TestID", reflect.TypeOf(uuid.UUID{}))
 	fieldKind(t, v, "SortOrder", reflect.Int)
+	fieldKind(t, v, "QuestionPresentation", reflect.String)
 }
 
 // ---- ExamRegistration ----

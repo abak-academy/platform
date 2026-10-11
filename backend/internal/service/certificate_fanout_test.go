@@ -73,7 +73,7 @@ func TestUpdateExam_SavingTemplate_FansOutToAlreadySubmittedSessions(t *testing.
 	overlay := detail.Exam
 	html := `<div>{{student_name}}</div>`
 	overlay.CertificateTemplateHTML = &html
-	if _, err := svc.UpdateExam(ctx, exam.ID, overlay); err != nil {
+	if _, err := svc.UpdateExam(ctx, exam.ID, overlay, ""); err != nil {
 		t.Fatalf("UpdateExam: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestUpdateExam_UnrelatedFieldEdit_DoesNotFanOut(t *testing.T) {
 	}
 	overlay := detail.Exam
 	overlay.Title = "Fanout Noop Renamed " + uuid.NewString()
-	if _, err := svc.UpdateExam(ctx, exam.ID, overlay); err != nil {
+	if _, err := svc.UpdateExam(ctx, exam.ID, overlay, ""); err != nil {
 		t.Fatalf("UpdateExam: %v", err)
 	}
 
@@ -204,7 +204,7 @@ func TestUpdateExam_TemplateOnlyChange_BumpsDesignUpdatedAt(t *testing.T) {
 	overlay := detail.Exam
 	first := `<div>{{student_name}}</div>`
 	overlay.CertificateTemplateHTML = &first
-	saved, err := svc.UpdateExam(ctx, exam.ID, overlay)
+	saved, err := svc.UpdateExam(ctx, exam.ID, overlay, "")
 	if err != nil {
 		t.Fatalf("UpdateExam (first template): %v", err)
 	}
@@ -221,7 +221,7 @@ func TestUpdateExam_TemplateOnlyChange_BumpsDesignUpdatedAt(t *testing.T) {
 	overlay2 := detail2.Exam
 	second := `<div>{{student_name}} — revisi</div>`
 	overlay2.CertificateTemplateHTML = &second
-	saved2, err := svc.UpdateExam(ctx, exam.ID, overlay2)
+	saved2, err := svc.UpdateExam(ctx, exam.ID, overlay2, "")
 	if err != nil {
 		t.Fatalf("UpdateExam (template-only): %v", err)
 	}
