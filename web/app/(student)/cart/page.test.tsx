@@ -81,6 +81,7 @@ vi.mock("@/lib/i18n", () => ({
         cart_shipping_unavailable: "Pengiriman belum tersedia, hubungi admin.",
         update: "Update",
         checkout_process: "Process",
+        payment_pay: "Bayar",
         cart_address_change: "Change address",
         promo_sheet_trigger: "Use a promo",
         promo_sheet_trigger_count: "{n} ready",
@@ -1449,7 +1450,7 @@ describe("CartPage with Shipping", () => {
       renderWithQueryClient(<CartPage />);
       expect(await screen.findByText(message)).toBeInTheDocument();
       expect(screen.queryByText("raw provider text")).toBeNull();
-      expect(screen.getByRole("button", { name: /Bayar di Tab Baru/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /^Bayar$/i })).toBeDisabled();
     });
 
     it("keeps checkout enabled while no cart mutation is pending", async () => {
@@ -1458,7 +1459,7 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      const checkoutButton = await screen.findByRole("button", { name: /Bayar di Tab Baru/i });
+      const checkoutButton = await screen.findByRole("button", { name: /^Bayar$/i });
       expect(checkoutButton).not.toBeDisabled();
     });
 
@@ -1472,7 +1473,7 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      const checkoutButton = await screen.findByRole("button", { name: /Bayar di Tab Baru/i });
+      const checkoutButton = await screen.findByRole("button", { name: /^Bayar$/i });
       expect(checkoutButton).toBeDisabled();
     });
 

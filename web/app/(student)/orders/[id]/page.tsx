@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { useOrder, useRetryPayment } from "@/lib/hooks/orders";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
+import { payWithSnap } from "@/lib/snap";
 import { ApiError } from "@/lib/api";
 import { digitalConflictMessage } from "@/lib/digital-conflict";
 import type { Order, OrderItem, OrderStatus } from "@/lib/types";
@@ -214,24 +215,43 @@ export default function OrderDetailPage({
     return () => clearInterval(id);
   }, [expired, isPaymentPending, refetch]);
 
+  const busy = useRef(false);
+  const finish = () => {
+    busy.current = false;
+    setRetrying(false);
+  };
+
   const handleRetry = () => {
-    if (!order) return;
+    if (!order || busy.current || retry.isPending) return;
+    busy.current = true;
     setRetrying(true);
     retry.mutate(order.id, {
-      onSuccess: (res) => {
-        setRetrying(false);
-        if (res.payment_url) {
-          setPaymentUrl(res.payment_url);
-          const paymentWindow = window.open(res.payment_url, "_blank");
-          if (paymentWindow) {
-            toast.info("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
-          }
-        } else {
+      onSuccess: async (res) => {
+        if (res.payment_url) setPaymentUrl(res.payment_url);
+        try {
+          const path = await payWithSnap({
+            snapToken: res.snap_token,
+            paymentUrl: res.payment_url,
+            onFinished: (event) => {
+              finish();
+              if (event === "error") {
+                toast.error(t("payment_failed"));
+                return;
+              }
+              refetch();
+              if (event === "success") toast.info(t("payment_received"));
+              if (event === "pending") toast.info(t("payment_pending"));
+            },
+          });
+          if (path !== "popup") finish();
+          if (path === "new-tab") toast.info(t("payment_new_tab"));
+        } catch {
+          finish();
           toast.error(t("order_snap_unavailable"));
         }
       },
       onError: (err) => {
-        setRetrying(false);
+        finish();
         const msg = digitalConflictMessage(err, t) ?? retryErrorMessage(err, t);
         toast.error(t("order_retry_failed_title"), { description: msg });
       },

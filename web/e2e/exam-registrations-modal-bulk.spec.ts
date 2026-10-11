@@ -312,7 +312,7 @@ test("admin_school keeps order flow inside modal through preview/create/SnapChec
   await dialog.getByRole("button", { name: /Buat Pesanan|Create Order/i }).click();
 
   await expect(dialog.getByText(/Pesanan massal berhasil dibuat|Bulk order created/i)).toBeVisible();
-  await expect(dialog.getByRole("button", { name: /Bayar di Tab Baru/i })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /^(Bayar|Pay)$/i })).toBeVisible();
 });
 
 test("admin_exam sees roster only and no write controls", async ({ page, context }) => {
