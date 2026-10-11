@@ -287,7 +287,7 @@ export interface Order {
   gateway_ref?: string;
   payment_method?: string;
   payment_proof_url?: string | null;
-  payment_expires_at?: string;
+  payment_expires_at?: string | null;
   paid_at?: string;
   invoice_url?: string;
   checked_out_at?: string;

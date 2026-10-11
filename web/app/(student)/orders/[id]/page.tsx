@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -31,6 +31,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { buildTimeline, type TimelineStep } from "./timeline";
+import { PaymentCountdown } from "./payment-countdown";
 
 const TYPE_ICON = {
   book: Book,
@@ -203,6 +204,15 @@ export default function OrderDetailPage({
   const retry = useRetryPayment();
   const [retrying, setRetrying] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
+  const handleExpired = useCallback(() => setExpired(true), []);
+  const isPaymentPending = order?.status === "payment_pending";
+
+  useEffect(() => {
+    if (!expired || !isPaymentPending) return;
+    const id = setInterval(() => refetch(), 5000);
+    return () => clearInterval(id);
+  }, [expired, isPaymentPending, refetch]);
 
   const handleRetry = () => {
     if (!order) return;
@@ -243,7 +253,6 @@ export default function OrderDetailPage({
     );
   }
 
-  const isPaymentPending = order.status === "payment_pending";
   const timeline = buildTimeline(order, t);
 
   return (
@@ -278,18 +287,23 @@ export default function OrderDetailPage({
                 <p className="text-ink-600">
                   {t("order_payment_pending_desc").replace("{deadline}", order.payment_expires_at ? `${t("order_pay_before")}${formatDate(order.payment_expires_at)}` : "")}
                 </p>
+                {order.payment_expires_at && (
+                  <PaymentCountdown expiresAt={order.payment_expires_at} onExpired={handleExpired} />
+                )}
               </div>
             </div>
-            <Button onClick={handleRetry} disabled={retrying || retry.isPending} className="shrink-0">
-              {retrying || retry.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <CreditCard className="size-4" />
-              )}
-              {t("order_continue_payment")}
-            </Button>
+            {!expired && (
+              <Button onClick={handleRetry} disabled={retrying || retry.isPending} className="shrink-0">
+                {retrying || retry.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <CreditCard className="size-4" />
+                )}
+                {t("order_continue_payment")}
+              </Button>
+            )}
           </div>
-          {paymentUrl && (
+          {paymentUrl && !expired && (
             <div className="mt-3 text-sm">
               <p className="text-ink-600">{t("order_payment_link_hint")}</p>
               <a

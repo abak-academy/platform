@@ -106,6 +106,8 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   { key: "order_payment_pending_desc", id: "Selesaikan pembayaran{deadline}.", en: "Complete payment{deadline}." },
   { key: "order_pay_before", id: " sebelum ", en: " before " },
   { key: "order_continue_payment", id: "Lanjutkan Pembayaran", en: "Continue Payment" },
+  { key: "order_payment_pending_countdown", id: "Sisa waktu sebelum pesanan kedaluwarsa", en: "Time left before the order expires" },
+  { key: "order_payment_pending_expired", id: "Waktu pembayaran habis. Menunggu pesanan ditutup.", en: "Payment time is up. Waiting for the order to close." },
   { key: "order_pay_success_toast", id: "Pembayaran berhasil", en: "Payment successful" },
   { key: "order_pay_pending_toast", id: "Pembayaran masih tertunda", en: "Payment still pending" },
   { key: "order_pay_failed_toast", id: "Pembayaran gagal", en: "Payment failed" },
