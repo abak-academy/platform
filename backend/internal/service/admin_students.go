@@ -130,14 +130,14 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 }
 
 func (s *Service) RegisterStudentWithPassword(ctx context.Context, actorRole, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
-	if actorRole != RoleSuperAdmin {
+	if !CanManageAllStudents(actorRole) {
 		return nil, ErrForbidden
 	}
 	return s.registerStudent(ctx, schoolID, nil, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password, false)
 }
 
 func (s *Service) RegisterStudentUnlisted(ctx context.Context, actorRole, unlistedSchoolName, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*StudentRegistrationResponse, error) {
-	if actorRole != RoleSuperAdmin {
+	if !CanManageAllStudents(actorRole) {
 		return nil, ErrForbidden
 	}
 	unlistedSchoolName = strings.TrimSpace(unlistedSchoolName)
@@ -148,7 +148,7 @@ func (s *Service) RegisterStudentUnlisted(ctx context.Context, actorRole, unlist
 }
 
 func (s *Service) RegisterStudentUnlistedWithPassword(ctx context.Context, actorRole, unlistedSchoolName, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
-	if actorRole != RoleSuperAdmin {
+	if !CanManageAllStudents(actorRole) {
 		return nil, ErrForbidden
 	}
 	unlistedSchoolName = strings.TrimSpace(unlistedSchoolName)

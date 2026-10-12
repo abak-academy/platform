@@ -389,7 +389,7 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 			grade = &parsed
 		}
 
-		if r.Password != nil && actorRole != RoleSuperAdmin {
+		if r.Password != nil && !CanManageAllStudents(actorRole) {
 			err = ErrForbidden
 		}
 		var password *string

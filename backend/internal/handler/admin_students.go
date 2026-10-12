@@ -15,7 +15,7 @@ import (
 // Supports optional grade and jenjang query filters.
 func (h *Handler) AdminListStudents(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
+	schoolID, err := h.resolveStudentSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}
@@ -71,7 +71,7 @@ func (h *Handler) AdminListStudents(c echo.Context) error {
 // AdminRegisterStudent creates a new student under the caller's school.
 func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
+	schoolID, err := h.resolveStudentSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}
@@ -113,7 +113,7 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 
 	var unlistedSchoolName *string
 	if req.UnlistedSchoolName != nil {
-		if claims.Role != service.RoleSuperAdmin {
+		if !service.CanManageAllStudents(claims.Role) {
 			return mapServiceError(c, service.ErrForbidden)
 		}
 		name := strings.TrimSpace(*req.UnlistedSchoolName)
@@ -164,10 +164,10 @@ func (h *Handler) AdminSetStudentPassword(c echo.Context) error {
 }
 
 // AdminChangeStudentStatus toggles a student's active/deactivated status.
-// super_admin may omit ?school_id=; the student id is the scope.
+// super_admin and admin_exam may omit ?school_id=; the student id is the scope.
 func (h *Handler) AdminChangeStudentStatus(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
+	schoolID, err := h.resolveStudentSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}
@@ -194,10 +194,10 @@ func (h *Handler) AdminChangeStudentStatus(c echo.Context) error {
 }
 
 // AdminGetStudentCredentials resets and reissues a student's credentials.
-// super_admin may omit ?school_id=; the student id is the scope.
+// super_admin and admin_exam may omit ?school_id=; the student id is the scope.
 func (h *Handler) AdminGetStudentCredentials(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
+	schoolID, err := h.resolveStudentSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}

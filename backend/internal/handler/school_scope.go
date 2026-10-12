@@ -84,3 +84,11 @@ func (h *Handler) resolveResultsSchoolScope(c echo.Context, claims *infra.Claims
 	}
 	return h.resolveSchoolScope(c, claims)
 }
+
+// resolveStudentSchoolScope is resolveSchoolScope with admin_exam treated as global.
+func (h *Handler) resolveStudentSchoolScope(c echo.Context, claims *infra.Claims) (string, error) {
+	if service.CanManageAllStudents(claims.Role) {
+		return h.resolveGlobalSchoolParam(c)
+	}
+	return h.resolveSchoolScope(c, claims)
+}

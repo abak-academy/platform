@@ -142,6 +142,9 @@ func TestAdminExamCapabilities(t *testing.T) {
 		"sessions:*",
 		"uploads:write",
 		"results:read",
+		"students:*",
+		"student-passwords:write",
+		"student-scope:all",
 	}
 	got := Capabilities(RoleAdminExam)
 	if len(got) != len(want) {
@@ -159,14 +162,72 @@ func TestAdminExamCapabilities(t *testing.T) {
 // merged "products(exam|course):*" entry would stop matching this and lock the
 // exam admin out of the /admin/exams read group (routes.go:293).
 func TestAdminExamRetainsExamReadCapability(t *testing.T) {
-	for _, required := range []string{"products(exam):read", "products(exam):write", "products(course):write", "results:read"} {
+	for _, required := range []string{"products(exam):read", "products(exam):write", "products(course):write", "results:read", "students:*", "students:read"} {
 		if !HasCapability(RoleAdminExam, required) {
 			t.Errorf("HasCapability(admin_exam, %q) = false, want true", required)
 		}
 	}
-	for _, required := range []string{"orders:write", "revenue:read", "schools:write", "students:*"} {
+	for _, required := range []string{"orders:write", "revenue:read", "schools:write", "system:admin"} {
 		if HasCapability(RoleAdminExam, required) {
 			t.Errorf("HasCapability(admin_exam, %q) = true, want false", required)
 		}
+	}
+}
+
+// students:* prefix-matches, so the password capability lives outside that namespace.
+func TestStudentManagementCapabilities(t *testing.T) {
+	tests := []struct {
+		role              string
+		wantStudentsGroup bool
+		wantStudentsRead  bool
+		wantSetPassword   bool
+	}{
+		{RoleStudent, false, false, false},
+		{RoleAdminExam, true, true, true},
+		{RoleAdminStore, false, false, false},
+		{RoleAdminSchool, true, true, false},
+		{RoleSuperAdmin, true, true, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			checks := []struct {
+				required string
+				want     bool
+			}{
+				{"students:*", tt.wantStudentsGroup},
+				{"students:read", tt.wantStudentsRead},
+				{"students:create", tt.wantStudentsGroup},
+				{"student-passwords:write", tt.wantSetPassword},
+				{"student-scope:all", tt.wantSetPassword},
+			}
+			for _, c := range checks {
+				if got := HasCapability(tt.role, c.required); got != c.want {
+					t.Errorf("HasCapability(%q, %q) = %v, want %v", tt.role, c.required, got, c.want)
+				}
+			}
+		})
+	}
+}
+
+func TestCanManageAllStudents(t *testing.T) {
+	tests := []struct {
+		role string
+		want bool
+	}{
+		{RoleStudent, false},
+		{RoleAdminExam, true},
+		{RoleAdminStore, false},
+		{RoleAdminSchool, false},
+		{RoleSuperAdmin, true},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			if got := CanManageAllStudents(tt.role); got != tt.want {
+				t.Errorf("CanManageAllStudents(%q) = %v, want %v", tt.role, got, tt.want)
+			}
+		})
 	}
 }

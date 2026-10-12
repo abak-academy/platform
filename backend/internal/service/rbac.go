@@ -11,8 +11,8 @@ const (
 )
 
 var roleCapabilities = map[string][]string{
-	RoleStudent:     {},
-	RoleAdminExam:   {"questions:*", "tests:*", "products(exam):*", "products(course):*", "sections:*", "sessions:*", "uploads:write", "results:read"},
+	RoleStudent:   {},
+	RoleAdminExam: {"questions:*", "tests:*", "products(exam):*", "products(course):*", "sections:*", "sessions:*", "uploads:write", "results:read", "students:*", "student-passwords:write", "student-scope:all"},
 	// No revenue:read — store admins fulfil orders; revenue reporting is
 	// super_admin's. Per-order totals stay visible to them on the orders page,
 	// because confirming a manual transfer means matching the receipt to the
@@ -50,4 +50,9 @@ func HasCapability(role, required string) bool {
 		}
 	}
 	return false
+}
+
+// CanManageAllStudents reports the roles that administer students of every school.
+func CanManageAllStudents(role string) bool {
+	return HasCapability(role, "student-scope:all")
 }

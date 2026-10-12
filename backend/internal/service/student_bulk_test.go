@@ -1038,6 +1038,32 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			t.Fatalf("forbidden explicit row inserted %d users", count)
 		}
 	})
+
+	t.Run("admin_exam explicit password is accepted per row", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		schoolName := schoolNPSNByID(t, repo, schoolID)
+		explicitPassword := "chosenPass123"
+		rows := []StudentBulkRow{
+			{Name: "Exam Admin Bulk " + uniqueSuffix(), SchoolNPSN: schoolName, Jenjang: "sma", Password: &explicitPassword},
+		}
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleAdminExam, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if successCount != 1 || results[0].Status != "success" {
+			t.Fatalf("want the explicit-password row to succeed, got %+v", results)
+		}
+		if results[0].TempPassword != "" {
+			t.Errorf("explicit-password row must not return a generated temp password, got %q", results[0].TempPassword)
+		}
+		user, err := repo.GetUserByUsername(ctx, results[0].Username)
+		if err != nil || user == nil {
+			t.Fatalf("read row user: %v", err)
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(explicitPassword)); err != nil {
+			t.Fatalf("explicit row hash does not match the supplied password: %v", err)
+		}
+	})
 }
 
 // seedTestRegionData inserts deterministic region data into the shared test DB.
