@@ -125,29 +125,18 @@ func jenjangInSchoolTypes(jenjang string, types []string) bool {
 // Returns the plaintext temp password exactly once in the response.
 // jenjang is required; provinsiID/kotaID/kecamatanID are optional but must be
 // all-or-nothing (FR-REG-02a). kodePos is independently optional.
-func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*StudentRegistrationResponse, error) {
-	return s.registerStudent(ctx, schoolID, nil, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil, false)
+func (s *Service) RegisterStudent(ctx context.Context, actorID, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*StudentRegistrationResponse, error) {
+	return s.registerStudent(ctx, actorID, schoolID, nil, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil, false)
 }
 
-func (s *Service) RegisterStudentWithPassword(ctx context.Context, actorRole, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
+func (s *Service) RegisterStudentWithPassword(ctx context.Context, actorID, actorRole, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
 	if !CanManageAllStudents(actorRole) {
 		return nil, ErrForbidden
 	}
-	return s.registerStudent(ctx, schoolID, nil, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password, false)
+	return s.registerStudent(ctx, actorID, schoolID, nil, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password, false)
 }
 
-func (s *Service) RegisterStudentUnlisted(ctx context.Context, actorRole, unlistedSchoolName, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*StudentRegistrationResponse, error) {
-	if !CanManageAllStudents(actorRole) {
-		return nil, ErrForbidden
-	}
-	unlistedSchoolName = strings.TrimSpace(unlistedSchoolName)
-	if unlistedSchoolName == "" {
-		return nil, ErrMissingField
-	}
-	return s.registerStudent(ctx, "", &unlistedSchoolName, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil, false)
-}
-
-func (s *Service) RegisterStudentUnlistedWithPassword(ctx context.Context, actorRole, unlistedSchoolName, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
+func (s *Service) RegisterStudentUnlisted(ctx context.Context, actorID, actorRole, unlistedSchoolName, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*StudentRegistrationResponse, error) {
 	if !CanManageAllStudents(actorRole) {
 		return nil, ErrForbidden
 	}
@@ -155,10 +144,21 @@ func (s *Service) RegisterStudentUnlistedWithPassword(ctx context.Context, actor
 	if unlistedSchoolName == "" {
 		return nil, ErrMissingField
 	}
-	return s.registerStudent(ctx, "", &unlistedSchoolName, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password, false)
+	return s.registerStudent(ctx, actorID, "", &unlistedSchoolName, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, nil, false)
 }
 
-func (s *Service) registerStudent(ctx context.Context, schoolID string, unlistedSchoolName *string, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password *string, allowNPSNLessSchool bool) (*StudentRegistrationResponse, error) {
+func (s *Service) RegisterStudentUnlistedWithPassword(ctx context.Context, actorID, actorRole, unlistedSchoolName, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password string) (*StudentRegistrationResponse, error) {
+	if !CanManageAllStudents(actorRole) {
+		return nil, ErrForbidden
+	}
+	unlistedSchoolName = strings.TrimSpace(unlistedSchoolName)
+	if unlistedSchoolName == "" {
+		return nil, ErrMissingField
+	}
+	return s.registerStudent(ctx, actorID, "", &unlistedSchoolName, name, jenjang, email, dob, gender, grade, alamatDomisili, targetExam, provinsiID, kotaID, kecamatanID, kodePos, &password, false)
+}
+
+func (s *Service) registerStudent(ctx context.Context, actorID, schoolID string, unlistedSchoolName *string, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string, password *string, allowNPSNLessSchool bool) (*StudentRegistrationResponse, error) {
 	name = strings.TrimSpace(stripFormatRunes(name))
 	if name == "" || jenjang == "" {
 		return nil, ErrMissingField
@@ -319,6 +319,15 @@ func (s *Service) registerStudent(ctx context.Context, schoolID string, unlisted
 		return nil, err
 	}
 
+	auditMeta := map[string]any{}
+	if schoolID != "" {
+		auditMeta["school_id"] = schoolID
+	}
+	actor := &actorID
+	if err := s.storeRepo.InsertAuditLogMeta(ctx, nil, actor, "user", user.ID, "student.register", auditMeta); err != nil {
+		return nil, err
+	}
+
 	return &StudentRegistrationResponse{
 		ID:           user.ID,
 		Name:         user.Name,
@@ -445,7 +454,7 @@ func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilte
 // Row-scoping via schoolID + student ID when schoolID is set; empty schoolID
 // is id-only (super_admin). Returns ErrStudentNotFound if the student does
 // not exist or belongs to a different school.
-func (s *Service) ChangeStudentStatus(ctx context.Context, schoolID, targetID, newStatus string) error {
+func (s *Service) ChangeStudentStatus(ctx context.Context, actorID, schoolID, targetID, newStatus string) error {
 	if newStatus != "active" && newStatus != "deactivated" {
 		return fmt.Errorf("%w: %s", ErrInvalidStatusFilter, newStatus)
 	}
@@ -457,13 +466,17 @@ func (s *Service) ChangeStudentStatus(ctx context.Context, schoolID, targetID, n
 	if student == nil {
 		return ErrStudentNotFound
 	}
-	return s.storeRepo.UpdateStudentStatus(ctx, targetID, schoolID, newStatus)
+	if err := s.storeRepo.UpdateStudentStatus(ctx, targetID, schoolID, newStatus); err != nil {
+		return err
+	}
+	actor := &actorID
+	return s.storeRepo.InsertAuditLogMeta(ctx, nil, actor, "user", targetID, "student.status_change", map[string]any{"status": newStatus})
 }
 
 // ReissueStudentCredentials generates a new temp password, overwrites the
 // stored hash, and returns the plaintext password exactly once.
 // Empty schoolID is id-only (super_admin).
-func (s *Service) ReissueStudentCredentials(ctx context.Context, schoolID, targetID string) (*StudentCredentialsResponse, error) {
+func (s *Service) ReissueStudentCredentials(ctx context.Context, actorID, schoolID, targetID string) (*StudentCredentialsResponse, error) {
 	student, err := s.storeRepo.GetStudentByID(ctx, targetID, schoolID)
 	if err != nil {
 		return nil, err
@@ -486,6 +499,11 @@ func (s *Service) ReissueStudentCredentials(ctx context.Context, schoolID, targe
 		return nil, err
 	}
 	s.revokeRefreshSessions(ctx, targetID)
+
+	actor := &actorID
+	if err := s.storeRepo.InsertAuditLogMeta(ctx, nil, actor, "user", targetID, "student.reissue_credentials", map[string]any{}); err != nil {
+		return nil, err
+	}
 
 	return &StudentCredentialsResponse{
 		Username:     *student.Username,

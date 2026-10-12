@@ -299,7 +299,7 @@ func TestAdminBulkReissueCredentials_HappyPath_ReturnsCSV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
-	reg, err := env.svc.RegisterStudent(ctx, school.ID, "Reissue Target", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	reg, err := env.svc.RegisterStudent(ctx, studentTestActor, school.ID, "Reissue Target", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestAdminBulkReissueCredentials_HappyPath_ReturnsCSV(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := env.e.NewContext(req, rec)
-	setAdminSchoolClaims(c, "admin1", school.ID)
+	setAdminSchoolClaims(c, uuid.NewString(), school.ID)
 
 	if err := env.h.AdminBulkReissueCredentials(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -350,7 +350,7 @@ func TestAdminBulkReissueCredentials_AdminExam_ReturnsCSV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
-	reg, err := env.svc.RegisterStudent(ctx, school.ID, "Exam Reissue Target", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	reg, err := env.svc.RegisterStudent(ctx, studentTestActor, school.ID, "Exam Reissue Target", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -361,7 +361,8 @@ func TestAdminBulkReissueCredentials_AdminExam_ReturnsCSV(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := env.e.NewContext(req, rec)
-	setAdminExamClaims(c, uuid.NewString())
+	actorID := uuid.NewString()
+	setAdminExamClaims(c, actorID)
 
 	if err := env.h.AdminBulkReissueCredentials(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -382,5 +383,22 @@ func TestAdminBulkReissueCredentials_AdminExam_ReturnsCSV(t *testing.T) {
 	}
 	if row := records[1]; row[0] != "Exam Reissue Target" || row[1] == "" || row[2] == "" || row[3] != "" {
 		t.Errorf("unexpected credentials row: %+v", records[1])
+	}
+
+	// Every reissued student gets its own audit row, not one per batch.
+	var reissueActor string
+	var reissueMeta []byte
+	if err := env.repo.Pool().QueryRow(ctx,
+		`SELECT actor_id::text, COALESCE(metadata, '{}'::jsonb)
+		   FROM audit_log
+		  WHERE target_type = 'user' AND target_id = $1 AND action = 'student.reissue_credentials'`, reg.ID,
+	).Scan(&reissueActor, &reissueMeta); err != nil {
+		t.Fatalf("read reissue audit row: %v", err)
+	}
+	if reissueActor != actorID {
+		t.Errorf("reissue audit actor = %s, want %s", reissueActor, actorID)
+	}
+	if strings.Contains(string(reissueMeta), records[1][2]) {
+		t.Errorf("audit metadata holds the reissued password: %s", reissueMeta)
 	}
 }

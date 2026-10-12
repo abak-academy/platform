@@ -452,7 +452,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		}
 		rows := []StudentBulkRow{{Row: 2, Name: "Legacy Bulk Student", LegacySchoolName: school.Name, Jenjang: "sma"}}
 
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, nil, RoleSuperAdmin, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -469,7 +469,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		}
 		rows := []StudentBulkRow{{Row: 2, Name: "Foundation Student", Jenjang: "sma"}}
 
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, &school.ID, RoleAdminSchool, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, &school.ID, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -489,7 +489,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		}
 		rows := []StudentBulkRow{{Row: 2, Name: "Foundation Student", SchoolCode: code, Jenjang: "sma"}}
 
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, nil, RoleSuperAdmin, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -511,7 +511,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Row: 12, Name: "Unknown", SchoolNPSN: "Z9999999", Jenjang: "sma"},
 		}
 
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, nil, RoleSuperAdmin, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -538,7 +538,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			t.Fatalf("count schools before: %v", err)
 		}
 
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, []StudentBulkRow{{Row: 6, Name: "No Name Lookup", SchoolNPSN: name, Jenjang: "sma"}}, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, nil, RoleSuperAdmin, []StudentBulkRow{{Row: 6, Name: "No Name Lookup", SchoolNPSN: name, Jenjang: "sma"}}, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -560,7 +560,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Name: "Siti", SchoolNPSN: schoolName, Jenjang: "sma"},
 		}
 		var progressCalls []int
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, func(pct int) {
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, func(pct int) {
 			progressCalls = append(progressCalls, pct)
 		})
 		if err != nil {
@@ -594,7 +594,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "Fields", SchoolNPSN: schoolName, Jenjang: "sma", DOB: &dob, Gender: &gender, Grade: &grade, AlamatDomisili: &alamat, TargetExam: &targetExam},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -633,7 +633,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "BadDOB", SchoolNPSN: schoolName, Jenjang: "sma", DOB: &badDOB},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -653,7 +653,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "BadGrade", SchoolNPSN: schoolName, Jenjang: "sma", Grade: &badGrade},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -685,7 +685,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "Andi", SchoolNPSN: schoolName, Jenjang: "sma", Provinsi: &sulselProv, Kota: &makassarKota, Kecamatan: &mariso, KodePos: &kodePos},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -708,7 +708,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "Partial", SchoolNPSN: schoolName, Jenjang: "sma", Provinsi: &sulselProv},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -730,7 +730,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "Bogus", SchoolNPSN: schoolName, Jenjang: "sma", Provinsi: &bogusProv, Kota: &makassarKota, Kecamatan: &mariso},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -753,7 +753,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Name: "A", SchoolNPSN: schoolName, Jenjang: "sma"},
 			{Name: "B", SchoolNPSN: schoolName, Jenjang: "sma"},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, func(int) {})
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, func(int) {})
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -779,7 +779,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		}
 
 		callCount := 0
-		results, successCount, err := svc.ProcessStudentBulkRows(cancelCtx, schoolBound, RoleAdminSchool, rows, func(int) {
+		results, successCount, err := svc.ProcessStudentBulkRows(cancelCtx, testActorID, schoolBound, RoleAdminSchool, rows, func(int) {
 			callCount++
 			if callCount == 1 {
 				cancel()
@@ -816,7 +816,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			rows[i] = StudentBulkRow{Name: "Student", SchoolNPSN: schoolName, Jenjang: "sma"}
 		}
 		var progressCalls []int
-		_, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, func(pct int) {
+		_, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, func(pct int) {
 			progressCalls = append(progressCalls, pct)
 		})
 		if err != nil {
@@ -848,7 +848,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "NoSchool", SchoolNPSN: "Z9999999", Jenjang: "sma"},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -873,7 +873,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "Cross", SchoolNPSN: schoolBName, Jenjang: "sma"},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -899,7 +899,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Name: "FromB", SchoolNPSN: schoolBName, Jenjang: "sma"},
 		}
 		// schoolBound = nil simulates super_admin (unrestricted).
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, nil, RoleSuperAdmin, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -926,7 +926,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Name: "Good", SchoolNPSN: schoolName, Jenjang: "sma"},
 			{Name: "Bad", SchoolNPSN: "NONEXISTENT SCHOOL", Jenjang: "sma"},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, nil, RoleSuperAdmin, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -955,7 +955,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Name: "Explicit Bulk " + uniqueSuffix(), SchoolNPSN: schoolName, Jenjang: "sma", Password: &explicitPassword},
 			{Name: "Generated Bulk " + uniqueSuffix(), SchoolNPSN: schoolName, Jenjang: "sma"},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, nil, RoleSuperAdmin, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -992,7 +992,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Name: "Weak Bulk " + uniqueSuffix(), SchoolNPSN: schoolName, Jenjang: "sma", Password: &weak},
 			{Name: "Valid Bulk " + uniqueSuffix(), SchoolNPSN: schoolName, Jenjang: "sma"},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleSuperAdmin, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, nil, RoleSuperAdmin, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -1017,7 +1017,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			{Name: explicitName, SchoolNPSN: schoolName, Jenjang: "sma", Password: &explicitPassword},
 			{Name: "Allowed Bulk " + uniqueSuffix(), SchoolNPSN: schoolName, Jenjang: "sma"},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, RoleAdminSchool, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, schoolBound, RoleAdminSchool, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -1046,7 +1046,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		rows := []StudentBulkRow{
 			{Name: "Exam Admin Bulk " + uniqueSuffix(), SchoolNPSN: schoolName, Jenjang: "sma", Password: &explicitPassword},
 		}
-		results, successCount, err := svc.ProcessStudentBulkRows(ctx, nil, RoleAdminExam, rows, nil)
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, testActorID, nil, RoleAdminExam, rows, nil)
 		if err != nil {
 			t.Fatalf("ProcessStudentBulkRows: %v", err)
 		}
@@ -1062,6 +1062,18 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		}
 		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(explicitPassword)); err != nil {
 			t.Fatalf("explicit row hash does not match the supplied password: %v", err)
+		}
+
+		var auditActor, auditAction string
+		if err := repo.Pool().QueryRow(ctx,
+			`SELECT actor_id::text, action FROM audit_log
+			  WHERE target_type = 'user' AND target_id = $1 AND action = 'student.register'`,
+			user.ID,
+		).Scan(&auditActor, &auditAction); err != nil {
+			t.Fatalf("read register audit row: %v", err)
+		}
+		if auditActor != testActorID {
+			t.Errorf("bulk row audit actor = %s, want %s", auditActor, testActorID)
 		}
 	})
 }

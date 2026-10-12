@@ -173,7 +173,7 @@ func parseStudentBulkCSV(data []byte, allowLegacySchool, requireSchoolIdentity b
 // province/city/district names to IDs before passing them to RegisterStudent.
 // schoolBound, when non-nil, restricts every row's resolved school to match it.
 // nil means no restriction (super_admin cross-school).
-func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, actorRole string, rows []StudentBulkRow, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
+func (s *Service) ProcessStudentBulkRows(ctx context.Context, actorID string, schoolBound *string, actorRole string, rows []StudentBulkRow, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
 	results := make([]StudentBulkResultRow, len(rows))
 	successCount := 0
 	var boundSchool *model.School
@@ -398,7 +398,7 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 		}
 		var resp *StudentRegistrationResponse
 		if err == nil {
-			resp, err = s.registerStudent(ctx, schoolID, nil, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, password, allowNPSNLessSchool)
+			resp, err = s.registerStudent(ctx, actorID, schoolID, nil, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, password, allowNPSNLessSchool)
 		}
 		if err == nil {
 			result.Status = "success"

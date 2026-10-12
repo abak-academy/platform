@@ -129,7 +129,7 @@ func (h *Handler) AdminBulkReissueCredentials(c echo.Context) error {
 		return badRequest(c, "specify either student_ids or all, not both/neither")
 	}
 
-	csvBytes, err := h.svc.ReissueStudentCredentialsBulk(c.Request().Context(), schoolID, req.StudentIDs, req.All)
+	csvBytes, err := h.svc.ReissueStudentCredentialsBulk(c.Request().Context(), claims.Sub, schoolID, req.StudentIDs, req.All)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
