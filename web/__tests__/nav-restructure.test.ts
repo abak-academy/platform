@@ -90,9 +90,9 @@ describe("FR-FE-16: admin_exam sees exam items under Exam and catalog items unde
     expect(hrefs).toContain("/admin/exam/monitor");
   });
 
-  it("does NOT contain school items (students, reports)", () => {
+  it("carries the students roster but still no school reports", () => {
     const hrefs = examItems.map((i) => i.href);
-    expect(hrefs).not.toContain("/admin/school/students");
+    expect(hrefs).toContain("/admin/school/students");
     expect(hrefs).not.toContain("/admin/school/reports");
   });
 });
