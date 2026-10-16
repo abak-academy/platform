@@ -110,6 +110,7 @@ export const ADMIN_EXAM_NAV: RoleNavConfig = [
     items: [
       { labelKey: "nav_dashboard", href: "/admin/exam", icon: LayoutDashboard, exact: true },
       ...EXAM_NAV_ITEMS,
+      ...SCHOOL_NAV_ITEMS,
     ],
   },
   {

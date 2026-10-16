@@ -15,7 +15,7 @@ import (
 // Supports optional grade and jenjang query filters.
 func (h *Handler) AdminListStudents(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
+	schoolID, err := h.resolveStudentSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}
@@ -71,7 +71,7 @@ func (h *Handler) AdminListStudents(c echo.Context) error {
 // AdminRegisterStudent creates a new student under the caller's school.
 func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
+	schoolID, err := h.resolveStudentSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}
@@ -113,7 +113,7 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 
 	var unlistedSchoolName *string
 	if req.UnlistedSchoolName != nil {
-		if claims.Role != service.RoleSuperAdmin {
+		if !service.CanManageAllStudents(claims.Role) {
 			return mapServiceError(c, service.ErrForbidden)
 		}
 		name := strings.TrimSpace(*req.UnlistedSchoolName)
@@ -129,15 +129,15 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 	var resp *service.StudentRegistrationResponse
 	if req.Password != nil && *req.Password != "" {
 		if unlistedSchoolName != nil {
-			resp, err = h.svc.RegisterStudentUnlistedWithPassword(c.Request().Context(), claims.Role, *unlistedSchoolName, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos, *req.Password)
+			resp, err = h.svc.RegisterStudentUnlistedWithPassword(c.Request().Context(), claims.Sub, claims.Role, *unlistedSchoolName, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos, *req.Password)
 		} else {
-			resp, err = h.svc.RegisterStudentWithPassword(c.Request().Context(), claims.Role, schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos, *req.Password)
+			resp, err = h.svc.RegisterStudentWithPassword(c.Request().Context(), claims.Sub, claims.Role, schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos, *req.Password)
 		}
 	} else {
 		if unlistedSchoolName != nil {
-			resp, err = h.svc.RegisterStudentUnlisted(c.Request().Context(), claims.Role, *unlistedSchoolName, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos)
+			resp, err = h.svc.RegisterStudentUnlisted(c.Request().Context(), claims.Sub, claims.Role, *unlistedSchoolName, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos)
 		} else {
-			resp, err = h.svc.RegisterStudent(c.Request().Context(), schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos)
+			resp, err = h.svc.RegisterStudent(c.Request().Context(), claims.Sub, schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos)
 		}
 	}
 	if err != nil {
@@ -164,10 +164,10 @@ func (h *Handler) AdminSetStudentPassword(c echo.Context) error {
 }
 
 // AdminChangeStudentStatus toggles a student's active/deactivated status.
-// super_admin may omit ?school_id=; the student id is the scope.
+// super_admin and admin_exam may omit ?school_id=; the student id is the scope.
 func (h *Handler) AdminChangeStudentStatus(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
+	schoolID, err := h.resolveStudentSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}
@@ -187,17 +187,17 @@ func (h *Handler) AdminChangeStudentStatus(c echo.Context) error {
 		return badRequest(c, "status must be active or deactivated")
 	}
 
-	if err := h.svc.ChangeStudentStatus(c.Request().Context(), schoolID, id, req.Status); err != nil {
+	if err := h.svc.ChangeStudentStatus(c.Request().Context(), claims.Sub, schoolID, id, req.Status); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"message": "status updated"})
 }
 
 // AdminGetStudentCredentials resets and reissues a student's credentials.
-// super_admin may omit ?school_id=; the student id is the scope.
+// super_admin and admin_exam may omit ?school_id=; the student id is the scope.
 func (h *Handler) AdminGetStudentCredentials(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
+	schoolID, err := h.resolveStudentSchoolScope(c, claims)
 	if scopeHandled(err) {
 		return nil
 	}
@@ -207,7 +207,7 @@ func (h *Handler) AdminGetStudentCredentials(c echo.Context) error {
 
 	id := c.Param("id")
 
-	resp, err := h.svc.ReissueStudentCredentials(c.Request().Context(), schoolID, id)
+	resp, err := h.svc.ReissueStudentCredentials(c.Request().Context(), claims.Sub, schoolID, id)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

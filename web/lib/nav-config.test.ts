@@ -44,11 +44,18 @@ describe("admin navigation", () => {
       "/admin/exam/tests",
       "/admin/exam/packages",
       "/admin/exam/monitor",
+      "/admin/school/students",
     ]);
     expect(ADMIN_SCHOOL_NAV[0].items.map((item) => item.href)).toEqual([
       "/admin/school",
       "/admin/school/students",
       "/admin/exam/packages",
     ]);
+  });
+
+  it("offers the students roster to admin_exam", () => {
+    const hrefs = ADMIN_EXAM_NAV.flatMap((group) => group.items.map((item) => item.href));
+    expect(hrefs).toContain("/admin/school/students");
+    expect(NAV_CONFIG.admin_exam.flatMap((group) => group.items.map((item) => item.href))).toEqual(hrefs);
   });
 });

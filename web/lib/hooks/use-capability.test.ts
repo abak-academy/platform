@@ -13,16 +13,36 @@ describe("admin_exam capabilities", () => {
     "sessions:*",
     "uploads:write",
     "results:read",
+    "students:*",
+    "students:read",
+    "student-passwords:write",
+    "student-scope:all",
+    "results-answers:read",
   ])("grants '%s'", (cap) => {
     expect(hasCapability("admin_exam", cap)).toBe(true);
   });
 
-  it.each(["orders:write", "revenue:read", "schools:write", "students:*"])(
+  it.each(["orders:write", "revenue:read", "schools:write", "system:admin", "results-workspace:read"])(
     "withholds '%s'",
     (cap) => {
       expect(hasCapability("admin_exam", cap)).toBe(false);
     },
   );
+});
+
+// students:* prefix-matches, so the password capability lives outside that namespace.
+describe("student account capabilities", () => {
+  it("lets admin_school read students but not set passwords", () => {
+    expect(hasCapability("admin_school", "students:read")).toBe(true);
+    expect(hasCapability("admin_school", "student-passwords:write")).toBe(false);
+    expect(hasCapability("admin_school", "student-scope:all")).toBe(false);
+  });
+
+  it("lets super_admin do both", () => {
+    expect(hasCapability("super_admin", "students:read")).toBe(true);
+    expect(hasCapability("super_admin", "student-passwords:write")).toBe(true);
+    expect(hasCapability("super_admin", "student-scope:all")).toBe(true);
+  });
 });
 
 describe("other roles are unchanged", () => {

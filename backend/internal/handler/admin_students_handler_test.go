@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // setAdminSchoolClaims sets admin_school claims with a schoolID on the echo context.
@@ -33,6 +34,9 @@ func setAdminSchoolClaims(c echo.Context, sub, schoolID string) {
 func setAdminSchoolClaimsNil(c echo.Context, sub string) {
 	c.Set("claims", &infra.Claims{Sub: sub, Role: "admin_school", SchoolID: nil})
 }
+
+// audit_log.actor_id is a NOT NULL uuid, so direct service calls need a real UUID actor.
+var studentTestActor = uuid.NewString()
 
 func TestAdminListStudents_NilSchoolID_403(t *testing.T) {
 	env := newAdminSystemEnv(t)
@@ -266,7 +270,7 @@ func newAdminStuDBEnv(t *testing.T) *adminStuDBTestEnv {
 		adminStudents.Use(handler.RBACMiddleware("students:*"))
 		adminStudents.GET("", h.AdminListStudents)
 		adminStudents.POST("", h.AdminRegisterStudent)
-		adminStudents.PATCH("/:id/password", h.AdminSetStudentPassword, handler.RBACMiddleware("system:admin"))
+		adminStudents.PATCH("/:id/password", h.AdminSetStudentPassword, handler.RBACMiddleware("student-passwords:write"))
 		adminStudents.PATCH("/:id", h.AdminChangeStudentStatus)
 		adminStudents.GET("/:id/credentials", h.AdminGetStudentCredentials)
 		adminStudents.POST("/bulk/presign", h.AdminPresignStudentBulkUpload)
@@ -1097,7 +1101,7 @@ func TestAdminSetStudentPassword(t *testing.T) {
 	env := newAdminStuDBEnv(t)
 	ctx := context.Background()
 	schoolID := seedSchoolForStu(t, env.pool)
-	reg, err := env.svc.RegisterStudent(ctx, schoolID, "Set Password Handler", "SMA", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	reg, err := env.svc.RegisterStudent(ctx, studentTestActor, schoolID, "Set Password Handler", "SMA", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -1203,7 +1207,7 @@ func TestAdminGetStudentCredentials_SuperAdmin_NoSchoolID_200(t *testing.T) {
 	env := newAdminStuDBEnv(t)
 	ctx := context.Background()
 	schoolID := seedSchoolForStu(t, env.pool)
-	reg, err := env.svc.RegisterStudent(ctx, schoolID, "Cred Super", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	reg, err := env.svc.RegisterStudent(ctx, studentTestActor, schoolID, "Cred Super", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -1233,7 +1237,7 @@ func TestAdminChangeStudentStatus_SuperAdmin_NoSchoolID_200(t *testing.T) {
 	env := newAdminStuDBEnv(t)
 	ctx := context.Background()
 	schoolID := seedSchoolForStu(t, env.pool)
-	reg, err := env.svc.RegisterStudent(ctx, schoolID, "Status Super", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	reg, err := env.svc.RegisterStudent(ctx, studentTestActor, schoolID, "Status Super", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -1252,4 +1256,543 @@ func TestAdminChangeStudentStatus_SuperAdmin_NoSchoolID_200(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "school_id is required") {
 		t.Fatalf("super_admin status must not require school_id: %s", rec.Body.String())
 	}
+}
+
+// seedExamRosterStudent inserts an active student with a known password, optionally in a school.
+func seedExamRosterStudent(t *testing.T, env *adminStuDBTestEnv, name, password string, schoolID *string) string {
+	t.Helper()
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("bcrypt: %v", err)
+	}
+	var id string
+	if err := env.pool.QueryRow(context.Background(),
+		`INSERT INTO users (username, name, role, status, school_id, jenjang, password_hash)
+		 VALUES ($1, $2, 'student', 'active', $3, 'sma', $4) RETURNING id`,
+		"exam_roster_"+uuid.NewString()[:12], name, schoolID, string(hash),
+	).Scan(&id); err != nil {
+		t.Fatalf("seed student: %v", err)
+	}
+	return id
+}
+
+func adminExamStuToken(t *testing.T, env *adminStuDBTestEnv, userID string) string {
+	t.Helper()
+	return mintAdminStuToken(t, env, userID, service.RoleAdminExam, nil)
+}
+
+func decodeStudentRoster(t *testing.T, rec *httptest.ResponseRecorder) []string {
+	t.Helper()
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode roster: %v (body %s)", err, rec.Body.String())
+	}
+	ids := make([]string, 0, len(resp.Data))
+	for _, s := range resp.Data {
+		ids = append(ids, s.ID)
+	}
+	return ids
+}
+
+func TestAdminListStudents_AdminExam_GlobalAndFiltered(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	schoolA := seedSchoolForStu(t, env.pool)
+	schoolB := seedSchoolForStu(t, env.pool)
+	suffix := uuid.NewString()[:8]
+
+	inA := seedExamRosterStudent(t, env, "Roster A "+suffix, "seedPassA1", &schoolA)
+	inB := seedExamRosterStudent(t, env, "Roster B "+suffix, "seedPassB1", &schoolB)
+	noSchool := seedExamRosterStudent(t, env, "Roster Umum "+suffix, "seedPassC1", nil)
+
+	token := adminExamStuToken(t, env, uuid.NewString())
+
+	roster := func(t *testing.T, path string) []string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		return decodeStudentRoster(t, rec)
+	}
+
+	t.Run("without school_id the roster spans every school", func(t *testing.T) {
+		got := roster(t, "/api/v1/admin/students?q="+suffix+"&limit=100")
+		seen := map[string]bool{}
+		for _, id := range got {
+			seen[id] = true
+		}
+		for _, want := range []string{inA, inB, noSchool} {
+			if !seen[want] {
+				t.Errorf("roster must include %s, got %v", want, got)
+			}
+		}
+	})
+
+	t.Run("school_id narrows the roster to that school", func(t *testing.T) {
+		got := roster(t, "/api/v1/admin/students?q="+suffix+"&limit=100&school_id="+schoolA)
+		if len(got) != 1 || got[0] != inA {
+			t.Fatalf("roster = %v, want only the school-A student %s", got, inA)
+		}
+	})
+
+	t.Run("unknown school_id is rejected", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students?school_id="+uuid.NewString(), nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("want 404 for a school that does not exist, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	})
+}
+
+func TestAdminRegisterStudent_AdminExam_SchoolSelection(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+	schoolID := seedSchoolForStu(t, env.pool)
+	token := adminExamStuToken(t, env, uuid.NewString())
+
+	unlisted := "Madrasah Contoh"
+	schoolPtr := schoolID
+	unlistedPtr := unlisted
+
+	tests := []struct {
+		name         string
+		path         string
+		body         string
+		wantSchoolID *string
+		wantUnlisted *string
+	}{
+		{
+			name:         "listed school",
+			path:         "/api/v1/admin/students?school_id=" + schoolID,
+			body:         `{"name":"Exam Admin Listed","jenjang":"SMA"}`,
+			wantSchoolID: &schoolPtr,
+		},
+		{
+			name: "no school",
+			path: "/api/v1/admin/students",
+			body: `{"name":"Exam Admin Unbound","jenjang":"SMA"}`,
+		},
+		{
+			name:         "unlisted school",
+			path:         "/api/v1/admin/students",
+			body:         `{"name":"Exam Admin Unlisted","jenjang":"SMA","unlisted_school_name":"Madrasah Contoh"}`,
+			wantUnlisted: &unlistedPtr,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+			env.e.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusCreated {
+				t.Fatalf("want 201, got %d body=%s", rec.Code, rec.Body.String())
+			}
+			var created struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+
+			var gotSchoolID, gotUnlisted *string
+			if err := env.pool.QueryRow(ctx,
+				`SELECT school_id, unlisted_school_name FROM users WHERE id = $1`, created.ID,
+			).Scan(&gotSchoolID, &gotUnlisted); err != nil {
+				t.Fatalf("read back student: %v", err)
+			}
+			switch {
+			case tt.wantSchoolID == nil && gotSchoolID != nil:
+				t.Errorf("school_id = %q, want NULL", *gotSchoolID)
+			case tt.wantSchoolID != nil && (gotSchoolID == nil || *gotSchoolID != *tt.wantSchoolID):
+				t.Errorf("school_id = %v, want %q", gotSchoolID, *tt.wantSchoolID)
+			}
+			switch {
+			case tt.wantUnlisted == nil && gotUnlisted != nil:
+				t.Errorf("unlisted_school_name = %q, want NULL", *gotUnlisted)
+			case tt.wantUnlisted != nil && (gotUnlisted == nil || *gotUnlisted != *tt.wantUnlisted):
+				t.Errorf("unlisted_school_name = %v, want %q", gotUnlisted, *tt.wantUnlisted)
+			}
+		})
+	}
+}
+
+// A manual password is the real credential: nothing is echoed and the hash matches.
+func TestAdminRegisterStudent_AdminExam_ManualPassword(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+	token := adminExamStuToken(t, env, uuid.NewString())
+	password := "chosenPass123"
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", strings.NewReader(
+		`{"name":"Exam Admin Manual","jenjang":"SMA","password":"`+password+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "temp_password") {
+		t.Fatalf("manual-password registration must not echo a temp_password: %s", rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	var hash string
+	if err := env.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, created.ID).Scan(&hash); err != nil {
+		t.Fatalf("read hash: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
+		t.Fatalf("manual password does not authenticate against the stored hash: %v", err)
+	}
+}
+
+func TestAdminChangeStudentStatus_AdminExam_AnySchool(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+	schoolID := seedSchoolForStu(t, env.pool)
+	studentID := seedExamRosterStudent(t, env, "Status Exam Admin "+uuid.NewString()[:8], "seedPassS1", &schoolID)
+	token := adminExamStuToken(t, env, uuid.NewString())
+
+	tests := []struct {
+		name   string
+		status string
+	}{
+		{"deactivate", "deactivated"},
+		{"reactivate", "active"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/students/"+studentID,
+				strings.NewReader(`{"status":"`+tt.status+`"}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+			env.e.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+			}
+
+			var status string
+			if err := env.pool.QueryRow(ctx, `SELECT status FROM users WHERE id = $1`, studentID).Scan(&status); err != nil {
+				t.Fatalf("read status: %v", err)
+			}
+			if status != tt.status {
+				t.Errorf("status = %q, want %q", status, tt.status)
+			}
+		})
+	}
+}
+
+func TestAdminGetStudentCredentials_AdminExam_RotatesPassword(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+	schoolID := seedSchoolForStu(t, env.pool)
+	oldPassword := "oldPass123"
+	studentID := seedExamRosterStudent(t, env, "Creds Exam Admin "+uuid.NewString()[:8], oldPassword, &schoolID)
+	token := adminExamStuToken(t, env, uuid.NewString())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students/"+studentID+"/credentials", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var creds struct {
+		Username     string `json:"username"`
+		TempPassword string `json:"temp_password"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &creds); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if creds.Username == "" || creds.TempPassword == "" {
+		t.Fatalf("want username and temp password, got %+v", creds)
+	}
+
+	var hash string
+	if err := env.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, studentID).Scan(&hash); err != nil {
+		t.Fatalf("read hash: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(creds.TempPassword)); err != nil {
+		t.Errorf("new temp password does not authenticate: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(oldPassword)); err == nil {
+		t.Error("the old password still authenticates after a credential reissue")
+	}
+}
+
+func TestAdminSetStudentPassword_AdminExam(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+	ctx := context.Background()
+	schoolID := seedSchoolForStu(t, env.pool)
+	studentID := seedExamRosterStudent(t, env, "Password Exam Admin "+uuid.NewString()[:8], "seedPassP1", &schoolID)
+	token := adminExamStuToken(t, env, uuid.NewString())
+
+	t.Run("sets a password on a student of any school", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/students/"+studentID+"/password",
+			strings.NewReader(`{"new_password":"manualNew123"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var hash string
+		if err := env.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, studentID).Scan(&hash); err != nil {
+			t.Fatalf("read hash: %v", err)
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte("manualNew123")); err != nil {
+			t.Errorf("new password does not authenticate: %v", err)
+		}
+	})
+
+	t.Run("an admin account is never the target", func(t *testing.T) {
+		var adminID string
+		if err := env.pool.QueryRow(ctx,
+			`INSERT INTO users (username, name, role, status, password_hash)
+			 VALUES ($1, 'Not A Student', 'admin_exam', 'active', 'x') RETURNING id`,
+			"exam_admin_target_"+uuid.NewString()[:8],
+		).Scan(&adminID); err != nil {
+			t.Fatalf("seed admin: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/students/"+adminID+"/password",
+			strings.NewReader(`{"new_password":"manualNew123"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var hash string
+		if err := env.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, adminID).Scan(&hash); err != nil {
+			t.Fatalf("read admin hash: %v", err)
+		}
+		if hash != "x" {
+			t.Error("a non-student target's password hash was modified")
+		}
+	})
+}
+
+type studentAuditRow struct {
+	ActorID string
+	Action  string
+	Meta    map[string]any
+}
+
+func studentAuditRows(t *testing.T, env *adminStuDBTestEnv, targetID string) []studentAuditRow {
+	t.Helper()
+	rows, err := env.pool.Query(context.Background(),
+		`SELECT actor_id::text, action, COALESCE(metadata, '{}'::jsonb)
+		   FROM audit_log
+		  WHERE target_type = 'user' AND target_id = $1
+		  ORDER BY id`, targetID)
+	if err != nil {
+		t.Fatalf("query audit rows: %v", err)
+	}
+	defer rows.Close()
+
+	var out []studentAuditRow
+	for rows.Next() {
+		var r studentAuditRow
+		var meta []byte
+		if err := rows.Scan(&r.ActorID, &r.Action, &meta); err != nil {
+			t.Fatalf("scan audit row: %v", err)
+		}
+		if err := json.Unmarshal(meta, &r.Meta); err != nil {
+			t.Fatalf("decode audit metadata: %v", err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate audit rows: %v", err)
+	}
+	return out
+}
+
+func wantStudentAuditRow(t *testing.T, env *adminStuDBTestEnv, targetID, actorID, action string) map[string]any {
+	t.Helper()
+	rows := studentAuditRows(t, env, targetID)
+	if len(rows) != 1 {
+		t.Fatalf("audit rows for %s = %+v, want exactly one", targetID, rows)
+	}
+	if rows[0].ActorID != actorID {
+		t.Errorf("audit actor = %q, want %q", rows[0].ActorID, actorID)
+	}
+	if rows[0].Action != action {
+		t.Errorf("audit action = %q, want %q", rows[0].Action, action)
+	}
+	return rows[0].Meta
+}
+
+// A credential must never reach the audit trail, whichever path wrote the row.
+func assertAuditHoldsNoSecret(t *testing.T, env *adminStuDBTestEnv, secret string) {
+	t.Helper()
+	if secret == "" {
+		t.Fatal("assertAuditHoldsNoSecret called without a secret")
+	}
+	var count int
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM audit_log WHERE metadata::text LIKE '%' || $1 || '%'`, secret,
+	).Scan(&count); err != nil {
+		t.Fatalf("count audit rows holding the secret: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("%d audit row(s) contain the credential", count)
+	}
+}
+
+func studentAdminToken(t *testing.T, env *adminStuDBTestEnv, actorID, role, schoolID string) (string, string) {
+	t.Helper()
+	if role == service.RoleAdminSchool {
+		return mintAdminStuToken(t, env, actorID, role, &schoolID), "/api/v1/admin/students"
+	}
+	return mintAdminStuToken(t, env, actorID, role, nil), "/api/v1/admin/students?school_id=" + schoolID
+}
+
+func TestAdminStudentAccountAuditRows(t *testing.T) {
+	tests := []struct {
+		name string
+		role string
+	}{
+		{"admin_exam", service.RoleAdminExam},
+		{"admin_school", service.RoleAdminSchool},
+	}
+
+	t.Run("register", func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				env := newAdminStuDBEnv(t)
+				schoolID := seedSchoolForStu(t, env.pool)
+				actorID := uuid.NewString()
+				token, path := studentAdminToken(t, env, actorID, tt.role, schoolID)
+
+				req := httptest.NewRequest(http.MethodPost, path,
+					strings.NewReader(`{"name":"Audited Register `+uuid.NewString()[:8]+`","jenjang":"SMA"}`))
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Authorization", "Bearer "+token)
+				rec := httptest.NewRecorder()
+				env.e.ServeHTTP(rec, req)
+				if rec.Code != http.StatusCreated {
+					t.Fatalf("want 201, got %d body=%s", rec.Code, rec.Body.String())
+				}
+				var created struct {
+					ID           string `json:"id"`
+					TempPassword string `json:"temp_password"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
+
+				meta := wantStudentAuditRow(t, env, created.ID, actorID, "student.register")
+				if meta["school_id"] != schoolID {
+					t.Errorf("audit metadata school_id = %v, want %s", meta["school_id"], schoolID)
+				}
+				assertAuditHoldsNoSecret(t, env, created.TempPassword)
+			})
+		}
+	})
+
+	t.Run("status change", func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				env := newAdminStuDBEnv(t)
+				schoolID := seedSchoolForStu(t, env.pool)
+				studentID := seedExamRosterStudent(t, env, "Audited Status "+uuid.NewString()[:8], "seedPassSt1", &schoolID)
+				actorID := uuid.NewString()
+				token, _ := studentAdminToken(t, env, actorID, tt.role, schoolID)
+
+				req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/students/"+studentID,
+					strings.NewReader(`{"status":"deactivated"}`))
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Authorization", "Bearer "+token)
+				rec := httptest.NewRecorder()
+				env.e.ServeHTTP(rec, req)
+				if rec.Code != http.StatusOK {
+					t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+				}
+
+				meta := wantStudentAuditRow(t, env, studentID, actorID, "student.status_change")
+				if meta["status"] != "deactivated" {
+					t.Errorf("audit metadata status = %v, want deactivated", meta["status"])
+				}
+			})
+		}
+	})
+
+	t.Run("credential reissue", func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				env := newAdminStuDBEnv(t)
+				schoolID := seedSchoolForStu(t, env.pool)
+				studentID := seedExamRosterStudent(t, env, "Audited Reissue "+uuid.NewString()[:8], "seedPassRi1", &schoolID)
+				actorID := uuid.NewString()
+				token, _ := studentAdminToken(t, env, actorID, tt.role, schoolID)
+
+				req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students/"+studentID+"/credentials", nil)
+				req.Header.Set("Authorization", "Bearer "+token)
+				rec := httptest.NewRecorder()
+				env.e.ServeHTTP(rec, req)
+				if rec.Code != http.StatusOK {
+					t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+				}
+				var creds struct {
+					TempPassword string `json:"temp_password"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &creds); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
+
+				wantStudentAuditRow(t, env, studentID, actorID, "student.reissue_credentials")
+				assertAuditHoldsNoSecret(t, env, creds.TempPassword)
+			})
+		}
+	})
+
+	// admin_school is refused this route, so only admin_exam is audited here.
+	t.Run("set password", func(t *testing.T) {
+		env := newAdminStuDBEnv(t)
+		schoolID := seedSchoolForStu(t, env.pool)
+		studentID := seedExamRosterStudent(t, env, "Audited Password "+uuid.NewString()[:8], "seedPassSet1", &schoolID)
+		actorID := uuid.NewString()
+		token := adminExamStuToken(t, env, actorID)
+		newPassword := "auditedPass123"
+
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/students/"+studentID+"/password",
+			strings.NewReader(`{"new_password":"`+newPassword+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		wantStudentAuditRow(t, env, studentID, actorID, "student.set_password")
+		assertAuditHoldsNoSecret(t, env, newPassword)
+	})
 }

@@ -49,13 +49,13 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 
 	t.Run("explicit ids: success and not-found rows coexist, batch does not abort", func(t *testing.T) {
 		schoolID := createTestSchool(t, svc)
-		reg, err := svc.RegisterStudent(ctx, schoolID, "Budi Reissue", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		reg, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Budi Reissue", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
 
 		missingID := "00000000-0000-0000-0000-000000000000"
-		data, err := svc.ReissueStudentCredentialsBulk(ctx, schoolID, []string{reg.ID, missingID}, false)
+		data, err := svc.ReissueStudentCredentialsBulk(ctx, testActorID, schoolID, []string{reg.ID, missingID}, false)
 		if err != nil {
 			t.Fatalf("ReissueStudentCredentialsBulk: %v", err)
 		}
@@ -84,12 +84,12 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 	t.Run("cross-school id is treated as not found", func(t *testing.T) {
 		schoolA := createTestSchool(t, svc)
 		schoolB := createTestSchool(t, svc)
-		reg, err := svc.RegisterStudent(ctx, schoolA, "Cross School", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		reg, err := svc.RegisterStudent(ctx, testActorID, schoolA, "Cross School", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
 
-		data, err := svc.ReissueStudentCredentialsBulk(ctx, schoolB, []string{reg.ID}, false)
+		data, err := svc.ReissueStudentCredentialsBulk(ctx, testActorID, schoolB, []string{reg.ID}, false)
 		if err != nil {
 			t.Fatalf("ReissueStudentCredentialsBulk: %v", err)
 		}
@@ -108,7 +108,7 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 		for i := range ids {
 			ids[i] = "00000000-0000-0000-0000-000000000000"
 		}
-		_, err := svc.ReissueStudentCredentialsBulk(ctx, "some-school", ids, false)
+		_, err := svc.ReissueStudentCredentialsBulk(ctx, testActorID, "some-school", ids, false)
 		if !errors.Is(err, ErrRowLimitExceeded) {
 			t.Errorf("want ErrRowLimitExceeded, got %v", err)
 		}
@@ -118,14 +118,14 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 		schoolID := createTestSchool(t, svc)
 		var regs []*StudentRegistrationResponse
 		for i := 0; i < 3; i++ {
-			reg, err := svc.RegisterStudent(ctx, schoolID, "All Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+			reg, err := svc.RegisterStudent(ctx, testActorID, schoolID, "All Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("RegisterStudent: %v", err)
 			}
 			regs = append(regs, reg)
 		}
 
-		data, err := svc.ReissueStudentCredentialsBulk(ctx, schoolID, nil, true)
+		data, err := svc.ReissueStudentCredentialsBulk(ctx, testActorID, schoolID, nil, true)
 		if err != nil {
 			t.Fatalf("ReissueStudentCredentialsBulk: %v", err)
 		}
@@ -151,12 +151,12 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 
 		schoolID := createTestSchool(t, svc)
 		for i := 0; i < 3; i++ {
-			if _, err := svc.RegisterStudent(ctx, schoolID, "Cap Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+			if _, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Cap Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 				t.Fatalf("RegisterStudent: %v", err)
 			}
 		}
 
-		_, err := svc.ReissueStudentCredentialsBulk(ctx, schoolID, nil, true)
+		_, err := svc.ReissueStudentCredentialsBulk(ctx, testActorID, schoolID, nil, true)
 		if !errors.Is(err, ErrRowLimitExceeded) {
 			t.Errorf("want ErrRowLimitExceeded, got %v", err)
 		}

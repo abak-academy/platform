@@ -1281,12 +1281,51 @@ func TestAdminResult_Export_AdminExam_NoSchoolID_ReturnsAllSchools(t *testing.T)
 	}
 	names := map[string]bool{}
 	for _, row := range records[1:] {
-		names[row[0]] = true
+		names[row[1]] = true
 	}
 	for _, want := range []string{"Admin Exam Export A", "Admin Exam Export B"} {
 		if !names[want] {
 			t.Errorf("CSV missing %s: %+v", want, records)
 		}
+	}
+}
+
+func TestAdminResult_Export_AdminExamGetsAnswersButNotAllAttempts(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	schoolID := seedSchool(t, env.pool)
+	examID := seedExamWithMCQ(t, env.pool)
+	studentID := seedUserWithSchool(t, env.pool, "student", "Admin Exam Answers Student", schoolID)
+	seedSubmittedSession(t, env.pool, studentID, examID)
+
+	token := mintAdminExamToken(t, env, "admin-exam-answers-"+uuid.NewString())
+	wantHeader := []string{"Rank", "Student Name", "Username", "School", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds", "Violations", "Q1 Answer", "Q1 Points"}
+
+	for _, query := range []string{"", "&attempts=all"} {
+		t.Run("query="+query, func(t *testing.T) {
+			rec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+examID.String()+query, token)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+			}
+			if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="results-detailed.csv"` {
+				t.Fatalf("Content-Disposition: want detailed filename, got %q", cd)
+			}
+			records, err := csv.NewReader(bytes.NewReader(rec.Body.Bytes())).ReadAll()
+			if err != nil {
+				t.Fatalf("read csv: %v", err)
+			}
+			if len(records) != 2 || len(records[0]) != len(wantHeader) {
+				t.Fatalf("want header + 1 row of %d columns, got %v", len(wantHeader), records)
+			}
+			for i, h := range wantHeader {
+				if records[0][i] != h {
+					t.Fatalf("header[%d]: want %s, got %s; header=%v", i, h, records[0][i], records[0])
+				}
+			}
+			if records[1][1] != "Admin Exam Answers Student" || records[1][12] != "a" || records[1][13] != "1" {
+				t.Fatalf("detailed row mismatch: %v", records[1])
+			}
+		})
 	}
 }
 

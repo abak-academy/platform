@@ -1,7 +1,7 @@
 ---
 title: RBAC and Accounts
-updated: 2026-09-25
-verified_against: e6cf227c
+updated: 2026-10-12
+verified_against: d811c5e4
 ---
 
 One-liner: 5 roles, a static `role → capability` map, echo middleware that checks the map on
@@ -21,7 +21,7 @@ created only via `/auth/register` or `/auth/google`, never by an operator.
 | Role | Capabilities |
 |---|---|
 | `student` | none |
-| `admin_exam` | `questions:*`, `tests:*`, `products(exam):*`, `products(course):*`, `sections:*`, `sessions:*`, `uploads:write`, `results:read` |
+| `admin_exam` | `questions:*`, `tests:*`, `products(exam):*`, `products(course):*`, `sections:*`, `sessions:*`, `uploads:write`, `results:read`, `students:*`, `student-passwords:write`, `student-scope:all`, `results-answers:read` |
 | `admin_store` | `products(book\|course):write`, `sections:*`, `orders:*`, `promos:*`, `notifications:*`, `uploads:write` |
 | `admin_school` | `students:*`, `results:read`, `bulk-exam-orders:write`, `products(exam):read` |
 | `super_admin` | `*`, `schools:write` |
@@ -29,6 +29,24 @@ created only via `/auth/register` or `/auth/google`, never by an operator.
 `admin_store` deliberately holds no `revenue:read` — aggregate revenue reporting is
 `super_admin`'s; store admins still see per-order totals on the orders page (`rbac.go:16-19`
 comment). `schools:write` on `super_admin` is inert — `*` already covers it.
+
+`student-passwords:write` is named outside the `students:` namespace on purpose. `admin_school`
+holds `students:*` and `HasCapability` is plain string matching, so a
+`students:passwords:write` entry would have silently handed `admin_school` the ability to set
+any student's password. `admin_exam` and `super_admin` hold it; `admin_school` keeps
+`students:*` (and therefore `students:read`, which is what `adminSchoolDashboard` gates on)
+without gaining password control. `student-scope:all` marks "administers students beyond its own
+school" for the same reason (outside `students:`). Service-side, `CanManageAllStudents(role)`
+(`rbac.go:56-58`) is the single predicate for it — `HasCapability(role, "student-scope:all")`,
+so `super_admin` (via `*`) and `admin_exam` — used by the handler, `resolveStudentSchoolScope`
+and the registration/bulk services; the students page reads the same capability from its mirror
+in `use-capability.ts`. Changing who qualifies means editing `roleCapabilities` only.
+
+`results-answers:read` switches `GET /admin/results/export` from the scores-only CSV to the
+per-question `Qn Answer`/`Qn Points` CSV (`admin_results.go`); `admin_exam` and `super_admin` hold
+it, `admin_school` does not. The all-attempts variant (`?attempts=all`) still needs
+`results-workspace:read`, so it stays `super_admin`-only; `admin_exam` asking for it gets the
+latest-attempt detailed CSV.
 
 `HasCapability(role, required)` (`rbac.go:33-53`): true if the role's list contains `"*"`, an
 exact match for `required`, or an entry `x:*` where `required` starts with `x:`. This is purely
@@ -75,12 +93,39 @@ tokens either way, since only `Role` — not `Capabilities` — is ever consulte
   on it.
 - `resolveResultsSchoolScope`: same, except `admin_exam` is also treated as global/unscoped — it
   owns the exam catalogue, not a school (`school_scope.go:76-85`).
+- `resolveStudentSchoolScope`: the same trade for the student handlers — a role with
+  `CanManageAllStudents` reads `?school_id=` (empty = every school, including registrants with no school); every other role
+  falls through to `resolveSchoolScope` (`school_scope.go:88-94`). Used by list, register,
+  change status, get credentials, bulk presign and bulk reissue. `resolveSchoolScope` itself is
+  deliberately not widened — it also guards `/admin/dashboard/school`, which must keep 403ing
+  for a role with no school on its token.
 - Row-scoping is enforced in the handler/repo layer (`WHERE school_id = ...`), not by
   `RBACMiddleware` — the middleware only proves the role holds the capability, never which rows.
-- `AdminSetStudentPassword` and `AdminChangeStudentStatus` sit inside the `students:*`-gated
-  group but additionally require `system:admin` per-route (`routes.go:232`), which only
-  `super_admin` holds — `admin_school`, despite owning the students group, cannot reset a
-  student's password itself.
+- `AdminSetStudentPassword` sits inside the `students:*`-gated group and additionally requires
+  `student-passwords:write` per-route (`routes.go:235`) — held by `super_admin` and
+  `admin_exam`, but not `admin_school`, so `admin_school` cannot reset a student's password
+  despite owning the students group. `AdminChangeStudentStatus` carries no extra per-route
+  gate: `students:*` alone admits it (`routes.go:236`).
+- Bulk reissue still requires an explicit `school_id` (`school_id is required`, an empty global
+  scope is a 400), so `admin_exam` reissues per school exactly as `super_admin` does.
+
+## Student account audit
+
+Every student account mutation is recorded in `audit_log` with target type `user`, for every
+actor role — `super_admin`, `admin_exam` and `admin_school` — through `InsertAuditLogMeta`
+(`repository/audit_log.go:134`). The actor is an explicit `actorID string` service parameter
+(after `ctx`, the shape `SetStudentPassword` already used), never a context value; the
+bulk-import worker takes it from the job's `created_by`.
+
+| Action | Written by | Metadata |
+|---|---|---|
+| `student.register` | the shared registration path (`registerStudent`, `admin_students.go:161`), so single registrations and bulk rows are both covered | `school_id` when the row has a school |
+| `student.status_change` | `ChangeStudentStatus` (`admin_students.go:457`) | `status` |
+| `student.reissue_credentials` | `ReissueStudentCredentials` (`admin_students.go:479`), so the bulk reissue loop is audited per student | none |
+| `student.set_password` | `SetStudentPassword` (`admin_students.go:514`) | none |
+
+Metadata never carries a password or a temp password. An audit-write error is returned to the
+caller, the same shape `account.create` uses.
 
 ## Account model
 
@@ -122,7 +167,7 @@ Relevant fields: `Role`, `SchoolID *string` (only meaningful for `admin_school` 
 - Revocation is not uniform across every credential-change path:
   - `ResetPassword`, `ChangePassword` (excepting the caller's own access `jti`), and
     `SetStudentPassword` all call `revokeAllSessions` — kills every access **and** refresh session.
-  - `ReissueStudentCredentials` (`admin_students.go:466-488`, used by the single and bulk
+  - `ReissueStudentCredentials` (`admin_students.go:479-512`, used by the single and bulk
     credential-reissue endpoints) calls only `revokeRefreshSessions` — it does **not** kill
     existing access sessions. A student whose credentials were just reissued keeps any
     already-issued access token live for up to 15 more minutes. This looks like an oversight
@@ -136,9 +181,10 @@ Relevant fields: `Role`, `SchoolID *string` (only meaningful for `admin_school` 
   admin-set passwords. No complexity requirement beyond length.
 - Hashing: bcrypt, cost 10 in every deployed env (`productionBcryptCost`, `service/password.go:10`);
   tests force `bcrypt.MinCost` to keep the suite off the CPU-bound path.
-- **Admin-issued temporary passwords**: when `admin_school`/`super_admin` registers a student
-  without an explicit password, or reissues credentials (`ReissueStudentCredentials`), a random
-  password is generated (`genTempPassword`, `admin_students.go:42-52`) and the row is flagged
+- **Admin-issued temporary passwords**: when any admin that may register a student
+  (`admin_school`, `admin_exam`, `super_admin`) omits the password, or reissues credentials
+  (`ReissueStudentCredentials`), a random password is generated (`genTempPassword`,
+  `admin_students.go:42-52`) and the row is flagged
   `password_temporary = true` (set inside `ResetStudentPasswordHash`,
   `repository/admin_students.go:395-398`). Any self-service password write
   (`UpdatePasswordHash`, i.e. `ResetPassword`/`ChangePassword`) clears the flag

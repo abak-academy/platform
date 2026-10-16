@@ -13,8 +13,10 @@ import (
 
 	"akademi-bimbel/config"
 	"akademi-bimbel/internal/handler"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -102,6 +104,31 @@ func TestAdminPresignStudentBulkUpload_SuperAdmin_NoSchoolID_200(t *testing.T) {
 	}
 }
 
+func TestAdminPresignStudentBulkUpload_AdminExam_NoSchoolID_200(t *testing.T) {
+	h := newStudentBulkPresignHandler(t)
+	e := echo.New()
+	e.HideBanner = true
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/students/bulk/presign?filename=students.csv&content_type=text/csv", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setAdminExamClaims(c, "ae1")
+
+	if err := h.AdminPresignStudentBulkUpload(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 without school_id, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp service.PrivateUploadURL
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !studentBulkFolderKeyRe.MatchString(resp.Key) {
+		t.Errorf("key %q does not match %s", resp.Key, studentBulkFolderKeyRe)
+	}
+}
+
 func TestAdminBulkImportStudents_NilSchoolID_403(t *testing.T) {
 	env := newAdminSystemEnv(t)
 
@@ -118,6 +145,45 @@ func TestAdminBulkImportStudents_NilSchoolID_403(t *testing.T) {
 	}
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("want 403 for nil schoolID, got %d", rec.Code)
+	}
+}
+
+// admin_exam takes the super_admin branch: school comes from the CSV rows.
+func TestAdminBulkImportStudents_RoleBranch(t *testing.T) {
+	tests := []struct {
+		name     string
+		claims   func(echo.Context)
+		want     int
+		wantCode string
+	}{
+		{"super_admin", func(c echo.Context) { setAdminClaims(c, "sa1") }, http.StatusBadRequest, "invalid_request"},
+		{"admin_exam", func(c echo.Context) { setAdminExamClaims(c, "ae1") }, http.StatusBadRequest, "invalid_request"},
+		{"admin_store", func(c echo.Context) { c.Set("claims", &infra.Claims{Sub: "st1", Role: service.RoleAdminStore}) }, http.StatusForbidden, "forbidden"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newAdminSystemEnv(t)
+
+			b, _ := json.Marshal(map[string]string{"file_key": "not-a-bulk-key"})
+			req := httptest.NewRequest(http.MethodPost, "/admin/students/bulk", bytes.NewReader(b))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c := env.e.NewContext(req, rec)
+			tt.claims(c)
+
+			if err := env.h.AdminBulkImportStudents(c); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if rec.Code != tt.want {
+				t.Fatalf("want %d, got %d body=%s", tt.want, rec.Code, rec.Body.String())
+			}
+			var resp map[string]any
+			json.NewDecoder(rec.Body).Decode(&resp)
+			if resp["code"] != tt.wantCode {
+				t.Errorf("code: want %s, got %v", tt.wantCode, resp["code"])
+			}
+		})
 	}
 }
 
@@ -233,7 +299,7 @@ func TestAdminBulkReissueCredentials_HappyPath_ReturnsCSV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
-	reg, err := env.svc.RegisterStudent(ctx, school.ID, "Reissue Target", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	reg, err := env.svc.RegisterStudent(ctx, studentTestActor, school.ID, "Reissue Target", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -244,7 +310,7 @@ func TestAdminBulkReissueCredentials_HappyPath_ReturnsCSV(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := env.e.NewContext(req, rec)
-	setAdminSchoolClaims(c, "admin1", school.ID)
+	setAdminSchoolClaims(c, uuid.NewString(), school.ID)
 
 	if err := env.h.AdminBulkReissueCredentials(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -272,5 +338,67 @@ func TestAdminBulkReissueCredentials_HappyPath_ReturnsCSV(t *testing.T) {
 	}
 	if row[0] != "Reissue Target" || row[1] == "" || row[2] == "" || row[3] != "" {
 		t.Errorf("unexpected credentials row: %+v", row)
+	}
+}
+
+func TestAdminBulkReissueCredentials_AdminExam_ReturnsCSV(t *testing.T) {
+	env := newAdminJobsEnv(t)
+	ctx := context.Background()
+
+	npsn := "AE" + strings.ToUpper(strings.ReplaceAll(uuid.NewString(), "-", "")[:6])
+	school, err := env.svc.CreateSchool(ctx, "Exam Admin Reissue School", "examreissue_"+uuid.NewString()[:6], &npsn, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool: %v", err)
+	}
+	reg, err := env.svc.RegisterStudent(ctx, studentTestActor, school.ID, "Exam Reissue Target", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+
+	body := map[string]any{"student_ids": []string{reg.ID}}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/admin/students/bulk/credentials?school_id="+school.ID, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := env.e.NewContext(req, rec)
+	actorID := uuid.NewString()
+	setAdminExamClaims(c, actorID)
+
+	if err := env.h.AdminBulkReissueCredentials(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get(echo.HeaderContentType); ct != "text/csv" {
+		t.Errorf("Content-Type: want text/csv, got %q", ct)
+	}
+
+	records, err := csv.NewReader(strings.NewReader(rec.Body.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("read back csv body: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("want 2 records (header + 1 row), got %d", len(records))
+	}
+	if row := records[1]; row[0] != "Exam Reissue Target" || row[1] == "" || row[2] == "" || row[3] != "" {
+		t.Errorf("unexpected credentials row: %+v", records[1])
+	}
+
+	// Every reissued student gets its own audit row, not one per batch.
+	var reissueActor string
+	var reissueMeta []byte
+	if err := env.repo.Pool().QueryRow(ctx,
+		`SELECT actor_id::text, COALESCE(metadata, '{}'::jsonb)
+		   FROM audit_log
+		  WHERE target_type = 'user' AND target_id = $1 AND action = 'student.reissue_credentials'`, reg.ID,
+	).Scan(&reissueActor, &reissueMeta); err != nil {
+		t.Fatalf("read reissue audit row: %v", err)
+	}
+	if reissueActor != actorID {
+		t.Errorf("reissue audit actor = %s, want %s", reissueActor, actorID)
+	}
+	if strings.Contains(string(reissueMeta), records[1][2]) {
+		t.Errorf("audit metadata holds the reissued password: %s", reissueMeta)
 	}
 }
