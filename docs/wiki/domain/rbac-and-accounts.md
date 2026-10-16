@@ -21,7 +21,7 @@ created only via `/auth/register` or `/auth/google`, never by an operator.
 | Role | Capabilities |
 |---|---|
 | `student` | none |
-| `admin_exam` | `questions:*`, `tests:*`, `products(exam):*`, `products(course):*`, `sections:*`, `sessions:*`, `uploads:write`, `results:read`, `students:*`, `student-passwords:write`, `student-scope:all` |
+| `admin_exam` | `questions:*`, `tests:*`, `products(exam):*`, `products(course):*`, `sections:*`, `sessions:*`, `uploads:write`, `results:read`, `students:*`, `student-passwords:write`, `student-scope:all`, `results-answers:read` |
 | `admin_store` | `products(book\|course):write`, `sections:*`, `orders:*`, `promos:*`, `notifications:*`, `uploads:write` |
 | `admin_school` | `students:*`, `results:read`, `bulk-exam-orders:write`, `products(exam):read` |
 | `super_admin` | `*`, `schools:write` |
@@ -41,6 +41,12 @@ school" for the same reason (outside `students:`). Service-side, `CanManageAllSt
 so `super_admin` (via `*`) and `admin_exam` — used by the handler, `resolveStudentSchoolScope`
 and the registration/bulk services; the students page reads the same capability from its mirror
 in `use-capability.ts`. Changing who qualifies means editing `roleCapabilities` only.
+
+`results-answers:read` switches `GET /admin/results/export` from the scores-only CSV to the
+per-question `Qn Answer`/`Qn Points` CSV (`admin_results.go`); `admin_exam` and `super_admin` hold
+it, `admin_school` does not. The all-attempts variant (`?attempts=all`) still needs
+`results-workspace:read`, so it stays `super_admin`-only; `admin_exam` asking for it gets the
+latest-attempt detailed CSV.
 
 `HasCapability(role, required)` (`rbac.go:33-53`): true if the role's list contains `"*"`, an
 exact match for `required`, or an entry `x:*` where `required` starts with `x:`. This is purely

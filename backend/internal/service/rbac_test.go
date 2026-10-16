@@ -145,6 +145,7 @@ func TestAdminExamCapabilities(t *testing.T) {
 		"students:*",
 		"student-passwords:write",
 		"student-scope:all",
+		"results-answers:read",
 	}
 	got := Capabilities(RoleAdminExam)
 	if len(got) != len(want) {
@@ -167,7 +168,7 @@ func TestAdminExamRetainsExamReadCapability(t *testing.T) {
 			t.Errorf("HasCapability(admin_exam, %q) = false, want true", required)
 		}
 	}
-	for _, required := range []string{"orders:write", "revenue:read", "schools:write", "system:admin"} {
+	for _, required := range []string{"orders:write", "revenue:read", "schools:write", "system:admin", "results-workspace:read"} {
 		if HasCapability(RoleAdminExam, required) {
 			t.Errorf("HasCapability(admin_exam, %q) = true, want false", required)
 		}
