@@ -271,7 +271,7 @@ func (s *Service) CreateProductWithExams(ctx context.Context, p model.Product, e
 }
 
 func (s *Service) UpdateProductRelations(ctx context.Context, id string, examIDs, courseIDs []string, role string) (model.Product, error) {
-	if role != RoleSuperAdmin {
+	if !HasCapability(role, "product-relations:write") {
 		return model.Product{}, ErrForbidden
 	}
 	tx, err := s.storeRepo.BeginTx(ctx)

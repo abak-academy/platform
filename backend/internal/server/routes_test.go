@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -235,5 +236,57 @@ func TestRegisterRoutes_ResultsWorkspaceGate(t *testing.T) {
 				t.Errorf("GET results-workspace as %s: got %d, want %d (body %s)", tt.role, rec.Code, tt.want, rec.Body.String())
 			}
 		})
+	}
+}
+
+func TestRegisterRoutes_ExamModuleGates(t *testing.T) {
+	const grants = "/api/v1/admin/exam-grants"
+	tests := []struct {
+		name    string
+		method  string
+		path    string
+		body    string
+		allowed []string
+	}{
+		{"grant", http.MethodPost, grants, "{}", []string{service.RoleAdminExam, service.RoleSuperAdmin}},
+		{"revoke", http.MethodPost, grants + "/revoke", "{}", []string{service.RoleAdminExam, service.RoleSuperAdmin}},
+		{"search students", http.MethodGet, grants + "/students/search?school_id=bad", "", []string{service.RoleAdminExam, service.RoleSuperAdmin}},
+		{"bulk grant presign", http.MethodPost, grants + "/bulk/presign", "", []string{service.RoleSuperAdmin}},
+		{"bulk grant", http.MethodPost, grants + "/bulk", "{}", []string{service.RoleSuperAdmin}},
+		{"bulk revoke presign", http.MethodPost, grants + "/revoke/bulk/presign", "", []string{service.RoleSuperAdmin}},
+		{"bulk revoke", http.MethodPost, grants + "/revoke/bulk", "{}", []string{service.RoleSuperAdmin}},
+		{"product relations", http.MethodPut, "/api/v1/admin/products/00000000-0000-0000-0000-000000000001/relations", "{bad", []string{service.RoleAdminExam, service.RoleSuperAdmin}},
+	}
+	roles := []string{service.RoleStudent, service.RoleAdminStore, service.RoleAdminSchool, service.RoleAdminExam, service.RoleSuperAdmin}
+
+	for _, tt := range tests {
+		for _, role := range roles {
+			want := http.StatusForbidden
+			if slices.Contains(tt.allowed, role) {
+				want = http.StatusBadRequest
+			}
+			t.Run(tt.name+"/"+role, func(t *testing.T) {
+				signer, svc, mr := newTestDeps(t)
+				e := echo.New()
+				e.HideBanner = true
+				RegisterRoutesForTest(e, handler.New(svc), svc, signer)
+
+				token, jti, err := signer.SignAccess("user1", role, nil, nil)
+				if err != nil {
+					t.Fatalf("sign: %v", err)
+				}
+				mr.Set("session:access:"+jti, "user1")
+
+				req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+				req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+				req.Header.Set("Authorization", "Bearer "+token)
+				rec := httptest.NewRecorder()
+				e.ServeHTTP(rec, req)
+
+				if rec.Code != want {
+					t.Errorf("%s %s as %s: got %d, want %d (body %s)", tt.method, tt.path, role, rec.Code, want, rec.Body.String())
+				}
+			})
+		}
 	}
 }

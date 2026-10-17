@@ -147,6 +147,8 @@ func TestAdminExamCapabilities(t *testing.T) {
 		"student-scope:all",
 		"results-answers:read",
 		"results-workspace:read",
+		"exam-grants:write",
+		"product-relations:write",
 	}
 	got := Capabilities(RoleAdminExam)
 	if len(got) != len(want) {
@@ -173,6 +175,39 @@ func TestAdminExamRetainsExamReadCapability(t *testing.T) {
 		if HasCapability(RoleAdminExam, required) {
 			t.Errorf("HasCapability(admin_exam, %q) = true, want false", required)
 		}
+	}
+}
+
+func TestExamModuleCapabilities(t *testing.T) {
+	tests := []struct {
+		role                string
+		wantGrants          bool
+		wantBulkGrants      bool
+		wantProductRelation bool
+	}{
+		{RoleStudent, false, false, false},
+		{RoleAdminExam, true, false, true},
+		{RoleAdminStore, false, false, false},
+		{RoleAdminSchool, false, false, false},
+		{RoleSuperAdmin, true, true, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			checks := []struct {
+				required string
+				want     bool
+			}{
+				{"exam-grants:write", tt.wantGrants},
+				{"exam-grants-bulk:write", tt.wantBulkGrants},
+				{"product-relations:write", tt.wantProductRelation},
+			}
+			for _, c := range checks {
+				if got := HasCapability(tt.role, c.required); got != c.want {
+					t.Errorf("HasCapability(%q, %q) = %v, want %v", tt.role, c.required, got, c.want)
+				}
+			}
+		})
 	}
 }
 

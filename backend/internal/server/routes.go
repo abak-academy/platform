@@ -39,7 +39,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminProducts.POST("", h.AdminCreateProduct)
 	adminProducts.GET("/:id", h.AdminGetProduct)
 	adminProducts.PATCH("/:id", h.AdminUpdateProduct)
-	adminProducts.PUT("/:id/relations", h.AdminUpdateProductRelations)
+	adminProducts.PUT("/:id/relations", h.AdminUpdateProductRelations, handler.RBACMiddleware("product-relations:write"))
 	adminProducts.POST("/:id/publish", h.AdminPublishProduct)
 	adminProducts.DELETE("/:id", h.AdminDeleteProduct)
 
@@ -326,17 +326,17 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminUploads.POST("/image", h.AdminUploadImage)
 	adminUploads.POST("/audio", h.AdminUploadAudio)
 
-	// Admin exam grant routes (super_admin only — satisfies "exam-grants:write"
-	// via the "*" wildcard; see rbac.go:29-48)
+	// Admin exam grant routes (super_admin and admin_exam). The bulk CSV routes
+	// need "exam-grants-bulk:write" on top, which only super_admin's "*" satisfies.
 	adminExamGrants := admin.Group("/exam-grants")
 	adminExamGrants.Use(handler.RBACMiddleware("exam-grants:write"))
 	adminExamGrants.POST("", h.AdminGrantExamAccess)
 	adminExamGrants.POST("/revoke", h.AdminRevokeExamAccess)
 	adminExamGrants.GET("/students/search", h.AdminSearchGrantStudents)
-	adminExamGrants.POST("/bulk/presign", h.AdminPresignExamGrantBulkUpload)
-	adminExamGrants.POST("/bulk", h.AdminEnqueueExamGrantBulk)
-	adminExamGrants.POST("/revoke/bulk/presign", h.AdminPresignExamRevokeBulkUpload)
-	adminExamGrants.POST("/revoke/bulk", h.AdminEnqueueExamRevokeBulk)
+	adminExamGrants.POST("/bulk/presign", h.AdminPresignExamGrantBulkUpload, handler.RBACMiddleware("exam-grants-bulk:write"))
+	adminExamGrants.POST("/bulk", h.AdminEnqueueExamGrantBulk, handler.RBACMiddleware("exam-grants-bulk:write"))
+	adminExamGrants.POST("/revoke/bulk/presign", h.AdminPresignExamRevokeBulkUpload, handler.RBACMiddleware("exam-grants-bulk:write"))
+	adminExamGrants.POST("/revoke/bulk", h.AdminEnqueueExamRevokeBulk, handler.RBACMiddleware("exam-grants-bulk:write"))
 
 	// Admin bulk-exam-order routes (FR-BULK-01..07). admin_school +
 	// super_admin + admin_store may all order exams; capability is

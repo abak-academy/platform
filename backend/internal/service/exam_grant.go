@@ -25,7 +25,7 @@ type GrantExamAccessResult struct {
 
 // GrantExamAccess creates direct exam registrations for the given students,
 // bypassing the order pipeline entirely (FR-GRANT-01/02). No school-scoping
-// check is performed — super_admin has none.
+// check is performed — grants are global.
 //
 // Already-registered students are silently skipped via ON CONFLICT DO NOTHING
 // (FR-GRANT-03). Returns only newly created registrations along with their
