@@ -200,3 +200,40 @@ func TestRegisterRoutes_StudentPasswordGate(t *testing.T) {
 		})
 	}
 }
+
+func TestRegisterRoutes_ResultsWorkspaceGate(t *testing.T) {
+	tests := []struct {
+		role string
+		want int
+	}{
+		{service.RoleStudent, http.StatusForbidden},
+		{service.RoleAdminStore, http.StatusForbidden},
+		{service.RoleAdminSchool, http.StatusForbidden},
+		{service.RoleAdminExam, http.StatusBadRequest},
+		{service.RoleSuperAdmin, http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			signer, svc, mr := newTestDeps(t)
+			e := echo.New()
+			e.HideBanner = true
+			RegisterRoutesForTest(e, handler.New(svc), svc, signer)
+
+			token, jti, err := signer.SignAccess("user1", tt.role, nil, nil)
+			if err != nil {
+				t.Fatalf("sign: %v", err)
+			}
+			mr.Set("session:access:"+jti, "user1")
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/exams/not-a-uuid/results-workspace", nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != tt.want {
+				t.Errorf("GET results-workspace as %s: got %d, want %d (body %s)", tt.role, rec.Code, tt.want, rec.Body.String())
+			}
+		})
+	}
+}

@@ -1290,7 +1290,7 @@ func TestAdminResult_Export_AdminExam_NoSchoolID_ReturnsAllSchools(t *testing.T)
 	}
 }
 
-func TestAdminResult_Export_AdminExamGetsAnswersButNotAllAttempts(t *testing.T) {
+func TestAdminResult_Export_AdminExamGetsAnswersAndAllAttempts(t *testing.T) {
 	env := newAdminResultsDBEnv(t)
 
 	schoolID := seedSchool(t, env.pool)
@@ -1299,31 +1299,56 @@ func TestAdminResult_Export_AdminExamGetsAnswersButNotAllAttempts(t *testing.T) 
 	seedSubmittedSession(t, env.pool, studentID, examID)
 
 	token := mintAdminExamToken(t, env, "admin-exam-answers-"+uuid.NewString())
-	wantHeader := []string{"Rank", "Student Name", "Username", "School", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds", "Violations", "Q1 Answer", "Q1 Points"}
 
-	for _, query := range []string{"", "&attempts=all"} {
-		t.Run("query="+query, func(t *testing.T) {
-			rec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+examID.String()+query, token)
+	tests := []struct {
+		name       string
+		query      string
+		filename   string
+		wantHeader []string
+		nameCol    int
+		answerCol  int
+	}{
+		{
+			name:       "latest attempt",
+			query:      "",
+			filename:   "results-detailed.csv",
+			wantHeader: []string{"Rank", "Student Name", "Username", "School", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds", "Violations", "Q1 Answer", "Q1 Points"},
+			nameCol:    1,
+			answerCol:  12,
+		},
+		{
+			name:       "all attempts",
+			query:      "&attempts=all",
+			filename:   "results-detailed-all-attempts.csv",
+			wantHeader: []string{"Student Name", "Username", "School", "Attempt No", "Session Ref", "Attempt Status", "Score", "Correct", "Wrong", "Empty", "Started At", "Submitted At", "Duration Seconds", "Violations", "Q1 Answer", "Q1 Points"},
+			nameCol:    0,
+			answerCol:  14,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := getRequest(t, env.e, "/api/v1/admin/results/export?exam_id="+examID.String()+tt.query, token)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 			}
-			if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="results-detailed.csv"` {
-				t.Fatalf("Content-Disposition: want detailed filename, got %q", cd)
+			if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="`+tt.filename+`"` {
+				t.Fatalf("Content-Disposition: want %s, got %q", tt.filename, cd)
 			}
 			records, err := csv.NewReader(bytes.NewReader(rec.Body.Bytes())).ReadAll()
 			if err != nil {
 				t.Fatalf("read csv: %v", err)
 			}
-			if len(records) != 2 || len(records[0]) != len(wantHeader) {
-				t.Fatalf("want header + 1 row of %d columns, got %v", len(wantHeader), records)
+			if len(records) != 2 || len(records[0]) != len(tt.wantHeader) {
+				t.Fatalf("want header + 1 row of %d columns, got %v", len(tt.wantHeader), records)
 			}
-			for i, h := range wantHeader {
+			for i, h := range tt.wantHeader {
 				if records[0][i] != h {
 					t.Fatalf("header[%d]: want %s, got %s; header=%v", i, h, records[0][i], records[0])
 				}
 			}
-			if records[1][1] != "Admin Exam Answers Student" || records[1][12] != "a" || records[1][13] != "1" {
-				t.Fatalf("detailed row mismatch: %v", records[1])
+			if records[1][tt.nameCol] != "Admin Exam Answers Student" || records[1][tt.answerCol] != "a" || records[1][tt.answerCol+1] != "1" {
+				t.Fatalf("row mismatch: %v", records[1])
 			}
 		})
 	}

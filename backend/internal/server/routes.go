@@ -310,9 +310,10 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamsRead.GET("/:id/registrations/counts", h.AdminExamRegistrationCounts)
 	adminExamsRead.GET("/:id/registrations/export", h.AdminExportExamRegistrations)
 
-	// Admin exam results workspace (Issue 124) — super_admin only. "results-workspace:read"
-	// is claimed by no other role, so RBACMiddleware rejects everyone else with 403
-	// (mirrors the adminSystem group's "system:admin" idiom).
+	// Admin exam results workspace (Issue 124) — super_admin and admin_exam.
+	// "results-workspace:read" is claimed by no other role, so RBACMiddleware
+	// rejects everyone else with 403 (mirrors the adminSystem group's
+	// "system:admin" idiom).
 	adminResultsWorkspace := admin.Group("/exams")
 	adminResultsWorkspace.Use(handler.RBACMiddleware("results-workspace:read"))
 	adminResultsWorkspace.GET("/:id/results-workspace", h.AdminGetExamResultsWorkspace)
