@@ -21,6 +21,7 @@ describe("admin_exam capabilities", () => {
     "results-workspace:read",
     "exam-grants:write",
     "product-relations:write",
+    "schools:read",
   ])("grants '%s'", (cap) => {
     expect(hasCapability("admin_exam", cap)).toBe(true);
   });

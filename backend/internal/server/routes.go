@@ -219,13 +219,18 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Admin school routes
 	adminSchools := admin.Group("/schools")
 	adminSchools.Use(handler.RBACMiddleware("schools:write"))
-	adminSchools.GET("", h.AdminListSchools)
 	adminSchools.GET("/options", h.AdminListSchoolOptions)
 	adminSchools.POST("", h.AdminCreateSchool)
 	adminSchools.PUT("/:id", h.AdminUpdateSchool)
 	adminSchools.PATCH("/:id", h.AdminChangeSchoolStatus)
 	adminSchools.POST("/bulk/presign", h.AdminPresignSchoolBulkUpload)
 	adminSchools.POST("/bulk", h.AdminBulkImportSchools)
+
+	// Sibling group, not a sub-route of adminSchools: that group's schools:write
+	// would lock out admin_exam, which only reads the list for its school filters.
+	adminSchoolsRead := admin.Group("/schools")
+	adminSchoolsRead.Use(handler.RBACMiddleware("schools:read"))
+	adminSchoolsRead.GET("", h.AdminListSchools)
 
 	// Admin student routes (row-scoped via JWT schoolID)
 	adminStudents := admin.Group("/students")

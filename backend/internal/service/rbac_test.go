@@ -149,6 +149,7 @@ func TestAdminExamCapabilities(t *testing.T) {
 		"results-workspace:read",
 		"exam-grants:write",
 		"product-relations:write",
+		"schools:read",
 	}
 	got := Capabilities(RoleAdminExam)
 	if len(got) != len(want) {
@@ -184,12 +185,13 @@ func TestExamModuleCapabilities(t *testing.T) {
 		wantGrants          bool
 		wantBulkGrants      bool
 		wantProductRelation bool
+		wantSchoolsRead     bool
 	}{
-		{RoleStudent, false, false, false},
-		{RoleAdminExam, true, false, true},
-		{RoleAdminStore, false, false, false},
-		{RoleAdminSchool, false, false, false},
-		{RoleSuperAdmin, true, true, true},
+		{RoleStudent, false, false, false, false},
+		{RoleAdminExam, true, false, true, true},
+		{RoleAdminStore, false, false, false, false},
+		{RoleAdminSchool, false, false, false, false},
+		{RoleSuperAdmin, true, true, true, true},
 	}
 
 	for _, tt := range tests {
@@ -201,6 +203,7 @@ func TestExamModuleCapabilities(t *testing.T) {
 				{"exam-grants:write", tt.wantGrants},
 				{"exam-grants-bulk:write", tt.wantBulkGrants},
 				{"product-relations:write", tt.wantProductRelation},
+				{"schools:read", tt.wantSchoolsRead},
 			}
 			for _, c := range checks {
 				if got := HasCapability(tt.role, c.required); got != c.want {

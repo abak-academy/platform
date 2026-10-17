@@ -255,6 +255,9 @@ func TestRegisterRoutes_ExamModuleGates(t *testing.T) {
 		{"bulk grant", http.MethodPost, grants + "/bulk", "{}", []string{service.RoleSuperAdmin}},
 		{"bulk revoke presign", http.MethodPost, grants + "/revoke/bulk/presign", "", []string{service.RoleSuperAdmin}},
 		{"bulk revoke", http.MethodPost, grants + "/revoke/bulk", "{}", []string{service.RoleSuperAdmin}},
+		{"list schools", http.MethodGet, "/api/v1/admin/schools?status=bad", "", []string{service.RoleAdminExam, service.RoleSuperAdmin}},
+		{"create school", http.MethodPost, "/api/v1/admin/schools", "{bad", []string{service.RoleSuperAdmin}},
+		{"import schools", http.MethodPost, "/api/v1/admin/schools/bulk", "{bad", []string{service.RoleSuperAdmin}},
 		{"product relations", http.MethodPut, "/api/v1/admin/products/00000000-0000-0000-0000-000000000001/relations", "{bad", []string{service.RoleAdminExam, service.RoleSuperAdmin}},
 	}
 	roles := []string{service.RoleStudent, service.RoleAdminStore, service.RoleAdminSchool, service.RoleAdminExam, service.RoleSuperAdmin}
