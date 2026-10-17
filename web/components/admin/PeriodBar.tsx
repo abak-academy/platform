@@ -3,7 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { useTranslation } from "@/lib/i18n";
 
-export type PeriodPreset = "7d" | "30d" | "90d" | "this_month" | "custom";
+export type PeriodPreset = "7d" | "30d" | "90d" | "this_month" | "custom" | "all_time";
 
 export interface PeriodRange {
   from?: string;
@@ -63,11 +63,12 @@ interface PeriodBarProps {
   preset: PeriodPreset;
   range: PeriodRange;
   onChange: (preset: PeriodPreset, range: PeriodRange) => void;
+  allowAllTime?: boolean;
   resolvedFrom?: string;
   resolvedTo?: string;
 }
 
-export function PeriodBar({ preset, range, onChange, resolvedFrom, resolvedTo }: PeriodBarProps) {
+export function PeriodBar({ preset, range, onChange, resolvedFrom, resolvedTo, allowAllTime = false }: PeriodBarProps) {
   const { t } = useTranslation();
 
   return (
@@ -79,8 +80,8 @@ export function PeriodBar({ preset, range, onChange, resolvedFrom, resolvedTo }:
         {t("admin_home_period")}
       </span>
 
-      <div className="flex overflow-hidden rounded-[10px] border border-line" role="group">
-        {PRESETS.map((p) => (
+      <div className={`flex ${allowAllTime ? "flex-wrap " : ""}overflow-hidden rounded-[10px] border border-line`} role="group">
+        {(allowAllTime ? [...PRESETS, { id: "all_time" as const, key: "admin_unit_all_time" as const }] : PRESETS).map((p) => (
           <button
             key={p.id}
             type="button"
@@ -106,6 +107,7 @@ export function PeriodBar({ preset, range, onChange, resolvedFrom, resolvedTo }:
         <div className="flex items-center gap-2">
           <Input
             type="date"
+            aria-label={allowAllTime ? t("admin_unit_from") : undefined}
             value={range.from ?? ""}
             max={range.to}
             onChange={(e) => onChange("custom", { ...range, from: e.target.value })}
@@ -113,6 +115,7 @@ export function PeriodBar({ preset, range, onChange, resolvedFrom, resolvedTo }:
           />
           <Input
             type="date"
+            aria-label={allowAllTime ? t("admin_unit_to") : undefined}
             value={range.to ?? ""}
             min={range.from}
             onChange={(e) => onChange("custom", { ...range, to: e.target.value })}

@@ -1492,3 +1492,29 @@ export interface SchoolDashboard {
   latest_bulk_order: SchoolDashboardBulkOrder | null;
   recent_results: SchoolDashboardResult[];
 }
+
+export type UnitSalesProductType = "book" | "merchandise" | "medal" | "course" | "exam";
+
+export interface UnitSalesFigures {
+  paid_orders: number;
+  refund_orders: number;
+  paid_units: number;
+  refund_units: number;
+  net_units: number;
+}
+
+export interface UnitSalesProduct extends UnitSalesFigures {
+  product_id: string;
+  name: string;
+}
+
+export interface UnitSalesType extends UnitSalesFigures {
+  type: UnitSalesProductType;
+  products: UnitSalesProduct[];
+}
+
+export interface UnitSalesResponse {
+  from: string | null;
+  to: string | null;
+  types: UnitSalesType[];
+}
