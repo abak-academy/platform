@@ -21,6 +21,7 @@ import { DashboardHero } from "@/components/admin/DashboardHero";
 import { MonitorCard } from "@/components/admin/MonitorCard";
 import { QuickActionTiles, type QuickAction } from "@/components/admin/QuickActionTiles";
 import { StatCard } from "@/components/admin/StatCard";
+import { UnitSalesBlock } from "@/components/admin/UnitSalesBlock";
 import { TopProductsTable } from "@/components/admin/TopProductsTable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminOrderSummary } from "@/lib/hooks/admin-orders";
@@ -172,6 +173,8 @@ export default function StoreDashboardPage() {
           )}
         </div>
       </section>
+
+      <UnitSalesBlock />
 
       <section>
         <BandLabel>{t("store_promos")}</BandLabel>

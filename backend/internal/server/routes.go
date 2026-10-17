@@ -177,6 +177,8 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminOrders.GET("", h.AdminListOrders)
 	// Registered before /:id so "summary" is never read as an order id.
 	adminOrders.GET("/summary", h.AdminOrdersSummary)
+	adminOrders.GET("/unit-sales", h.AdminUnitSales)
+	adminOrders.GET("/unit-sales/export", h.AdminUnitSalesExport)
 	adminOrders.POST("/labels", h.AdminGetShippingLabels)
 	adminOrders.GET("/:id", h.AdminGetOrder)
 	adminOrders.GET("/:id/payment-proof", h.AdminGetPaymentProof)

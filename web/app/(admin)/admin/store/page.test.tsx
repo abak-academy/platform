@@ -32,6 +32,11 @@ vi.mock("@/lib/hooks/admin-orders", () => ({
   useAdminOrderSummary: () => summaryState,
 }));
 
+vi.mock("@/lib/hooks/admin-unit-sales", () => ({
+  useAdminUnitSales: () => ({ data: { from: null, to: null, types: [] }, isLoading: false, isError: false }),
+  downloadUnitSalesCsv: vi.fn(),
+}));
+
 const PROMOS: PromoCode[] = [
   { id: "p1", code: "HEMAT10", used_count: 3, max_uses: 100, expires_at: null },
   { id: "p2", code: "KILAT", used_count: 1, max_uses: 50, expires_at: "2026-08-15T00:00:00+07:00" },
@@ -104,6 +109,12 @@ describe("admin_store dashboard", () => {
 
     expect(screen.getByText("148")).toBeInTheDocument();
     expect(screen.getByText("96")).toBeInTheDocument();
+  });
+
+  it("includes the unit sales block with its own all-time control", () => {
+    render(<StoreDashboardPage />);
+    expect(screen.getByRole("heading", { name: "Unit terjual per tipe produk" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Semua waktu" })).toBeInTheDocument();
   });
 
   it("renders the top products by quantity sold", () => {
