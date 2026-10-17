@@ -315,14 +315,24 @@ test("admin_school keeps order flow inside modal through preview/create/SnapChec
   await expect(dialog.getByRole("button", { name: /^(Bayar|Pay)$/i })).toBeVisible();
 });
 
-test("admin_exam sees roster only and no write controls", async ({ page, context }) => {
+test("admin_exam grants and revokes manually, with no CSV mode and no order flow", async ({ page, context }) => {
   await seedAdmin(context, ADMIN_EXAM);
   await mockExamRegistrationsBackend(page);
 
   await openRegistrationsTab(page);
   await expect(page.getByText("Existing Student")).toBeVisible();
-  await expect(page.getByText(/Ekspor CSV|Export CSV/i)).toBeVisible();
-  await expect(page.getByTestId("open-grant-modal")).toHaveCount(0);
   await expect(page.getByTestId("open-order-modal")).toHaveCount(0);
-  await expect(page.getByText("Andi Saputra")).toHaveCount(0);
+  await expect(page.getByTestId("open-revoke-modal")).toBeVisible();
+
+  await page.getByTestId("open-grant-modal").click();
+  const dialog = page.getByRole("dialog", { name: /Beri Akses|Grant Access/i });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("grant-mode-toggle")).toHaveCount(0);
+  await dialog.getByRole("checkbox", { name: "Andi Saputra" }).click();
+  await dialog.getByRole("button", { name: /Beri Akses|Grant Access/i }).last().click();
+  await expect(dialog.getByText("@andi123")).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  await page.getByTestId("open-revoke-modal").click();
+  await expect(page.getByTestId("revoke-mode-toggle")).toHaveCount(0);
 });

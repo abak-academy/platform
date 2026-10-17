@@ -19,7 +19,7 @@ import { usePresignUpload } from "@/lib/hooks/students";
 import { ApiError, fileUrl } from "@/lib/api";
 import { ProductSpecsEditor } from "@/components/admin/ProductSpecsEditor";
 import type { Product, ProductType, ProductStatus, ProductSpec, ProductRelation, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
-import { useResolvedRole } from "@/lib/hooks/use-capability";
+import { hasCapability, useResolvedRole } from "@/lib/hooks/use-capability";
 import { useAdminProduct, useUpdateProductRelations } from "@/lib/hooks/admin-products";
 import { useTranslation } from "@/lib/i18n";
 import { writableProductTypes } from "@/lib/product-types";
@@ -240,7 +240,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const displayedCourses = withLinked(courses ?? [], false);
 
   async function handleRelationChange() {
-    if (!product || role !== "super_admin" || !editingRelations || relations.isPending) return;
+    if (!product || !hasCapability(role, "product-relations:write") || !editingRelations || relations.isPending) return;
     setRelationError(null);
     try {
       await relations.mutateAsync({
@@ -431,7 +431,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
               </Section>
             )}
 
-            {isEdit && (showCourses || showExams) && role === "super_admin" && detail.data && !detail.isError && (
+            {isEdit && (showCourses || showExams) && hasCapability(role, "product-relations:write") && detail.data && !detail.isError && (
               <div className="flex flex-wrap gap-2">
                 {editingRelations ? (
                   <>
