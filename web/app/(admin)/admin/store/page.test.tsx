@@ -23,13 +23,21 @@ const sampleSummary: OrderSummary = {
   ],
 };
 
+const summaryRequest = vi.fn();
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ replace: vi.fn() }) }));
+
 let summaryState = {
   data: null as OrderSummary | null,
   isLoading: false,
 };
 
 vi.mock("@/lib/hooks/admin-orders", () => ({
-  useAdminOrderSummary: () => summaryState,
+  useAdminOrderSummary: (range: unknown) => { summaryRequest(range); return summaryState; },
+}));
+
+vi.mock("@/lib/hooks/admin-unit-sales", () => ({
+  useAdminUnitSales: () => ({ data: { from: null, to: null, types: [] }, isLoading: false, isError: false }),
+  downloadUnitSalesCsv: vi.fn(),
 }));
 
 const PROMOS: PromoCode[] = [
@@ -80,6 +88,7 @@ vi.mock("@/lib/hooks/auth", async () => {
 
 describe("admin_store dashboard", () => {
   beforeEach(() => {
+    summaryRequest.mockClear();
     vi.setSystemTime(new Date("2026-08-12T00:00:00+07:00"));
     summaryState = { data: sampleSummary, isLoading: false };
     promoState = { data: PROMOS };
@@ -93,25 +102,35 @@ describe("admin_store dashboard", () => {
   it("renders the queue counts and the month volume", () => {
     render(<StoreDashboardPage />);
 
-    const needsConfirm = screen.getByText("Perlu konfirmasi").closest("div")!.parentElement!;
+    const needsConfirm = screen.getByText("Perlu konfirmasi").closest("a")!;
     expect(within(needsConfirm).getByText("7")).toBeInTheDocument();
 
-    const readyToShip = screen.getByText("Siap kirim").closest("div")!.parentElement!;
+    const readyToShip = screen.getByText("Siap kirim").closest("a")!;
     expect(within(readyToShip).getByText("23")).toBeInTheDocument();
 
-    const failed = screen.getByText("Pengiriman gagal").closest("div")!.parentElement!;
+    const failed = screen.getByText("Pengiriman gagal").closest("a")!;
     expect(within(failed).getByText("2")).toBeInTheDocument();
 
     expect(screen.getByText("148")).toBeInTheDocument();
     expect(screen.getByText("96")).toBeInTheDocument();
   });
 
+  it("includes the unit sales block with its own all-time control", () => {
+    render(<StoreDashboardPage />);
+    expect(screen.getByRole("heading", { name: "Unit terjual per tipe produk" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Semua waktu" })).toBeInTheDocument();
+  });
+
   it("renders the top products by quantity sold", () => {
     render(<StoreDashboardPage />);
 
-    const row = screen.getByText("Buku Latihan TKA").closest("tr")!;
+    const row = screen.getByText("Buku Latihan TKA").closest("li")!;
     expect(within(row).getByText("340")).toBeInTheDocument();
-    expect(within(row).getByText("210")).toBeInTheDocument();
+    expect(screen.queryByText("210")).not.toBeInTheDocument();
+    expect(screen.queryByText("61")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Produk teratas · bulan berjalan (WIB)" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /order/i })).not.toBeInTheDocument();
+    expect(row.querySelector("[style*=width]")).toBeNull();
     expect(screen.getByText("Medali Juara")).toBeInTheDocument();
   });
 
@@ -189,15 +208,36 @@ describe("admin_store dashboard", () => {
     const { container } = render(<StoreDashboardPage />);
 
     expect(container.querySelector('a[href="/admin/revenue"]')).toBeNull();
-    expect(container.querySelector('a[href="/admin/orders"]')).not.toBeNull();
-    expect(container.querySelector('a[href="/admin/products"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin/orders?status=pending"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin/products"]')).toBeNull();
   });
 
-  it("renders the greeting hero and tile-shaped quick actions", () => {
+  it("keeps the hero, compact volume, and promo link and removes Quick Actions", () => {
     render(<StoreDashboardPage />);
-    expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
-    expect(screen.getByRole("link", { name: /kelola produk/i })).toHaveAttribute("href", "/admin/products");
-    expect(screen.getByRole("link", { name: /buat promo/i })).toHaveAttribute("href", "/admin/promos");
+    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(screen.queryByText("Akses Cepat")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /kelola produk|buat promo|kirim pengumuman/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /lihat promo/i })).toHaveAttribute("href", "/admin/promos");
+    const volume = screen.getByRole("region", { name: "Volume bulan ini" });
+    expect(volume).toHaveTextContent("148");
+    expect(volume).toHaveTextContent("96");
+    expect(volume).toHaveClass("flex", "!py-3");
+    expect(summaryRequest).toHaveBeenCalledWith({ status: "all" });
+  });
+
+  it("keeps the shipment failure accent only for nonzero failures", () => {
+    const view = render(<StoreDashboardPage />);
+    const failed = screen.getByRole("link", { name: /pengiriman gagal/i });
+    expect(within(failed).getByText("2")).toHaveStyle({ color: "var(--md-sys-color-error)" });
+    summaryState = { data: { ...sampleSummary, buckets: { ...sampleSummary.buckets, shipment_failed: 0 } }, isLoading: false };
+    view.rerender(<StoreDashboardPage />);
+    expect(within(screen.getByRole("link", { name: /pengiriman gagal/i })).getByText("0").style.color).toBe("");
+  });
+
+  it("keeps the top products empty state", () => {
+    summaryState = { data: { ...sampleSummary, top_products: [] }, isLoading: false };
+    render(<StoreDashboardPage />);
+    expect(screen.getByText("Belum ada produk terjual bulan ini.")).toBeInTheDocument();
   });
 
   it("refuses a role without orders capability", () => {
