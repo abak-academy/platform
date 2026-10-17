@@ -1,7 +1,7 @@
 ---
 title: RBAC and Accounts
 updated: 2026-10-12
-verified_against: d811c5e4
+verified_against: a857f636
 ---
 
 One-liner: 5 roles, a static `role → capability` map, echo middleware that checks the map on
@@ -21,7 +21,7 @@ created only via `/auth/register` or `/auth/google`, never by an operator.
 | Role | Capabilities |
 |---|---|
 | `student` | none |
-| `admin_exam` | `questions:*`, `tests:*`, `products(exam):*`, `products(course):*`, `sections:*`, `sessions:*`, `uploads:write`, `results:read`, `students:*`, `student-passwords:write`, `student-scope:all`, `results-answers:read` |
+| `admin_exam` | `questions:*`, `tests:*`, `products(exam):*`, `products(course):*`, `sections:*`, `sessions:*`, `uploads:write`, `results:read`, `students:*`, `student-passwords:write`, `student-scope:all`, `results-answers:read`, `results-workspace:read` |
 | `admin_store` | `products(book\|course):write`, `sections:*`, `orders:*`, `promos:*`, `notifications:*`, `uploads:write` |
 | `admin_school` | `students:*`, `results:read`, `bulk-exam-orders:write`, `products(exam):read` |
 | `super_admin` | `*`, `schools:write` |
@@ -44,9 +44,11 @@ in `use-capability.ts`. Changing who qualifies means editing `roleCapabilities` 
 
 `results-answers:read` switches `GET /admin/results/export` from the scores-only CSV to the
 per-question `Qn Answer`/`Qn Points` CSV (`admin_results.go`); `admin_exam` and `super_admin` hold
-it, `admin_school` does not. The all-attempts variant (`?attempts=all`) still needs
-`results-workspace:read`, so it stays `super_admin`-only; `admin_exam` asking for it gets the
-latest-attempt detailed CSV.
+it, `admin_school` does not. The all-attempts variant (`?attempts=all`) needs
+`results-workspace:read`, which `super_admin` and `admin_exam` hold; `admin_school` and the other
+roles do not. The workspace routes (`/admin/exams/:id/results-workspace*`) are gated by the same
+capability and take no school scope, so `admin_exam` sees every school. The exam detail page
+reads it from `use-capability.ts` to swap the Results/Leaderboard tabs for the workspace.
 
 `HasCapability(role, required)` (`rbac.go:33-53`): true if the role's list contains `"*"`, an
 exact match for `required`, or an entry `x:*` where `required` starts with `x:`. This is purely
@@ -215,7 +217,7 @@ by the pod count, not a global one.
 The runbook's own verification step (`grep -c "admin.Group(" routes.go` → 23) no longer holds:
 current `routes.go` has **27** `admin.Group(...)` calls. The 4 groups missing from the matrix
 entirely: `adminResultsWorkspace` (`/admin/exams/:id/results-workspace`, `results-workspace:read`
-— super_admin only), and the three dashboard groups `adminDashboard` (`revenue:read`),
+— super_admin and admin_exam), and the three dashboard groups `adminDashboard` (`revenue:read`),
 `adminExamDashboard` (`sessions:read`), `adminSchoolDashboard` (`students:read`, satisfied by
 `admin_school`'s `students:*` via prefix match) — all under `/admin/dashboard*`
 (`routes.go:349-378`). None of the 23 documented rows are wrong for the routes they cover; the
