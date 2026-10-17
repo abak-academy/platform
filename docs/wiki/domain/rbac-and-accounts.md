@@ -1,7 +1,7 @@
 ---
 title: RBAC and Accounts
 updated: 2026-10-12
-verified_against: a857f636
+verified_against: a5d92558
 ---
 
 One-liner: 5 roles, a static `role → capability` map, echo middleware that checks the map on
@@ -21,7 +21,7 @@ created only via `/auth/register` or `/auth/google`, never by an operator.
 | Role | Capabilities |
 |---|---|
 | `student` | none |
-| `admin_exam` | `questions:*`, `tests:*`, `products(exam):*`, `products(course):*`, `sections:*`, `sessions:*`, `uploads:write`, `results:read`, `students:*`, `student-passwords:write`, `student-scope:all`, `results-answers:read`, `results-workspace:read` |
+| `admin_exam` | `questions:*`, `tests:*`, `products(exam):*`, `products(course):*`, `sections:*`, `sessions:*`, `uploads:write`, `results:read`, `students:*`, `student-passwords:write`, `student-scope:all`, `results-answers:read`, `results-workspace:read`, `exam-grants:write`, `product-relations:write`, `schools:read` |
 | `admin_store` | `products(book\|course):write`, `sections:*`, `orders:*`, `promos:*`, `notifications:*`, `uploads:write` |
 | `admin_school` | `students:*`, `results:read`, `bulk-exam-orders:write`, `products(exam):read` |
 | `super_admin` | `*`, `schools:write` |
@@ -49,6 +49,21 @@ it, `admin_school` does not. The all-attempts variant (`?attempts=all`) needs
 roles do not. The workspace routes (`/admin/exams/:id/results-workspace*`) are gated by the same
 capability and take no school scope, so `admin_exam` sees every school. The exam detail page
 reads it from `use-capability.ts` to swap the Results/Leaderboard tabs for the workspace.
+
+`exam-grants:write` gates the whole `/admin/exam-grants` group (grant, revoke, student search);
+`admin_exam` and `super_admin` hold it, so both enrol participants directly with no order or
+payment, and each grant writes an `exam_grant.create` audit row. The four bulk CSV routes
+(`bulk`, `bulk/presign`, `revoke/bulk`, `revoke/bulk/presign`) add `exam-grants-bulk:write` per
+route, which only `super_admin`'s `*` satisfies, so `admin_exam` grants and revokes one batch of
+picked students at a time but cannot upload a CSV. The registrations tab reads both capabilities
+(`ExamRegistrationsTab.tsx`). `product-relations:write` gates `PUT /admin/products/:id/relations`
+at the route and again in `UpdateProductRelations`; the "no live order" guard still applies to
+every role.
+
+`schools:read` gates only `GET /admin/schools` (the sibling group `adminSchoolsRead`); school
+create/update/status/bulk and `/admin/schools/options` stay `schools:write`, so `admin_exam` can
+list schools but not change them. It exists for the school dropdown in the results workspace and
+in the grant/revoke picker (`SchoolFilterPicker`), which reads that list.
 
 `HasCapability(role, required)` (`rbac.go:33-53`): true if the role's list contains `"*"`, an
 exact match for `required`, or an entry `x:*` where `required` starts with `x:`. This is purely
@@ -83,7 +98,8 @@ tokens either way, since only `Role` — not `Capabilities` — is ever consulte
 - Product type writes go through a second, separate gate: `checkTypeRBAC(role, productType)`
   (`service/store.go:1956`) on the `/admin/products` group, which carries **no** `RBACMiddleware`
   at all — the capability string `products(book|course):write` on `admin_store` is never checked
-  by middleware here, only by this inline switch.
+  by middleware here, only by this inline switch. The one exception is `PUT /:id/relations`,
+  gated per route by `product-relations:write` (`routes.go:42`).
 
 ## School scoping (`handler/school_scope.go`)
 
@@ -215,13 +231,16 @@ by the pod count, not a global one.
 ## rbac-matrix.md vs current code
 
 The runbook's own verification step (`grep -c "admin.Group(" routes.go` → 23) no longer holds:
-current `routes.go` has **27** `admin.Group(...)` calls. The 4 groups missing from the matrix
-entirely: `adminResultsWorkspace` (`/admin/exams/:id/results-workspace`, `results-workspace:read`
-— super_admin and admin_exam), and the three dashboard groups `adminDashboard` (`revenue:read`),
+current `routes.go` has **28** `admin.Group(...)` calls. The 5 groups missing from the matrix
+entirely: `adminSchoolsRead` (`GET /admin/schools`, `schools:read` — super_admin and admin_exam; a
+sibling of row 11, which the runbook now annotates), `adminResultsWorkspace`
+(`/admin/exams/:id/results-workspace`, `results-workspace:read` — super_admin and admin_exam), and
+the three dashboard groups `adminDashboard` (`revenue:read`),
 `adminExamDashboard` (`sessions:read`), `adminSchoolDashboard` (`students:read`, satisfied by
 `admin_school`'s `students:*` via prefix match) — all under `/admin/dashboard*`
-(`routes.go:349-378`). None of the 23 documented rows are wrong for the routes they cover; the
-matrix is just incomplete against HEAD `e6cf227c`. Everything else checked in this page (roles,
+(`routes.go:368-385`). Rows 11 (`adminSchools`) and 21 (`adminExamGrants`) were updated for
+`admin_exam`; the other documented rows are not wrong for the routes they cover; the
+matrix is just incomplete against HEAD `a5d92558`. Everything else checked in this page (roles,
 `roleCapabilities`, the C-1 course-read fix, the `admin_store` bulk-exam-orders gap) matches the
 matrix as written.
 
