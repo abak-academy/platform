@@ -1,7 +1,7 @@
 ---
 title: Orders & Payments
-updated: 2026-10-11
-verified_against: 93dbd7b3
+updated: 2026-10-17
+verified_against: f79ecd6c
 ---
 
 See also: [../architecture/system-overview.md](../architecture/system-overview.md), [../architecture/shipping-biteship.md](../architecture/shipping-biteship.md), [./exam-lifecycle-and-scoring.md](./exam-lifecycle-and-scoring.md).
@@ -102,6 +102,14 @@ A settlement that arrives for an order that is no longer `payment_pending` (`pay
 - Order counts are **not** signed: a refund reduces revenue but does not decrement the count of orders that were paid.
 - `DashboardSeries` buckets in `Asia/Jakarta`, anchored to the query's `from` (not calendar week/month boundaries) — see the comment block in `dashboard_series.go`.
 - The digital/physical split sums `order_item.jumlah` per line, deliberately separate from the per-order `total` sum, to avoid multiplying a multi-item order's revenue by its item count (comment references the PR #80 fan-out fix).
+
+## Store unit sales — quantities only
+
+- `/admin/store` reports paid, refunded and net **units** (`SUM(order_item.qty)`), with no money fields. The aggregation reuses `revenueEventCTE`: paid activity belongs to `paid_at`; refund activity belongs to `cancelled_at` only when `cancellation_reason = 'refunded'`. A refund in a later period leaves the paid period intact, can make the refund period negative, and nets to zero across both periods (`backend/internal/repository/unit_sales.go:18`).
+- Paid and refunded orders are counted distinctly for each type and each product. SQL groups type totals independently, so a mixed order counts once in each type it contains, and several products of one type can have product order counts whose sum exceeds the type count. There is no all-types total (`backend/internal/repository/unit_sales.go:21`).
+- Dates are inclusive WIB days, parsed into half-open bounds. No dates means all-time; either bound may be omitted; malformed or reversed dates return 400 (`backend/internal/handler/unit_sales.go:13`). The five types always appear as `book`, `merchandise`, `medal`, `course`, `exam`, including zero rows. Active products use order-line snapshot names and sort by net units descending, name ascending, then product ID (`backend/internal/service/unit_sales.go:16`).
+- The type modal downloads only that type's products for the selected period. CSV has a UTF-8 BOM and exactly `Produk, Order dibayar, Order refund, Unit dibayar, Unit refund, Unit neto`, with no total row. Names starting with `=`, `+`, `-`, `@`, tab or carriage return receive an apostrophe prefix; `encoding/csv` quotes fields (`backend/internal/service/unit_sales.go:50`). The attachment is named `unit-terjual-<type>-<from>_<to>.csv`, with `semua-waktu` for each omitted bound (`backend/internal/handler/unit_sales.go:67`).
+- `GET /api/v1/admin/orders/unit-sales` and `/api/v1/admin/orders/unit-sales/export` use the existing `orders:write` group: only `admin_store` and `super_admin` have access. They do not require or grant `revenue:read`; other roles and unauthenticated requests are rejected (`backend/internal/server/routes.go:175`, `backend/internal/service/rbac.go:13`).
 
 ## Order → access / shipping fan-out
 
