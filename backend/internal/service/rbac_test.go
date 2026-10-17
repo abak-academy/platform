@@ -146,6 +146,10 @@ func TestAdminExamCapabilities(t *testing.T) {
 		"student-passwords:write",
 		"student-scope:all",
 		"results-answers:read",
+		"results-workspace:read",
+		"exam-grants:write",
+		"product-relations:write",
+		"schools:read",
 	}
 	got := Capabilities(RoleAdminExam)
 	if len(got) != len(want) {
@@ -163,15 +167,71 @@ func TestAdminExamCapabilities(t *testing.T) {
 // merged "products(exam|course):*" entry would stop matching this and lock the
 // exam admin out of the /admin/exams read group (routes.go:293).
 func TestAdminExamRetainsExamReadCapability(t *testing.T) {
-	for _, required := range []string{"products(exam):read", "products(exam):write", "products(course):write", "results:read", "students:*", "students:read"} {
+	for _, required := range []string{"products(exam):read", "products(exam):write", "products(course):write", "results:read", "students:*", "students:read", "results-workspace:read"} {
 		if !HasCapability(RoleAdminExam, required) {
 			t.Errorf("HasCapability(admin_exam, %q) = false, want true", required)
 		}
 	}
-	for _, required := range []string{"orders:write", "revenue:read", "schools:write", "system:admin", "results-workspace:read"} {
+	for _, required := range []string{"orders:write", "revenue:read", "schools:write", "system:admin"} {
 		if HasCapability(RoleAdminExam, required) {
 			t.Errorf("HasCapability(admin_exam, %q) = true, want false", required)
 		}
+	}
+}
+
+func TestExamModuleCapabilities(t *testing.T) {
+	tests := []struct {
+		role                string
+		wantGrants          bool
+		wantBulkGrants      bool
+		wantProductRelation bool
+		wantSchoolsRead     bool
+	}{
+		{RoleStudent, false, false, false, false},
+		{RoleAdminExam, true, false, true, true},
+		{RoleAdminStore, false, false, false, false},
+		{RoleAdminSchool, false, false, false, false},
+		{RoleSuperAdmin, true, true, true, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			checks := []struct {
+				required string
+				want     bool
+			}{
+				{"exam-grants:write", tt.wantGrants},
+				{"exam-grants-bulk:write", tt.wantBulkGrants},
+				{"product-relations:write", tt.wantProductRelation},
+				{"schools:read", tt.wantSchoolsRead},
+			}
+			for _, c := range checks {
+				if got := HasCapability(tt.role, c.required); got != c.want {
+					t.Errorf("HasCapability(%q, %q) = %v, want %v", tt.role, c.required, got, c.want)
+				}
+			}
+		})
+	}
+}
+
+func TestResultsWorkspaceCapability(t *testing.T) {
+	tests := []struct {
+		role string
+		want bool
+	}{
+		{RoleStudent, false},
+		{RoleAdminExam, true},
+		{RoleAdminStore, false},
+		{RoleAdminSchool, false},
+		{RoleSuperAdmin, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			if got := HasCapability(tt.role, "results-workspace:read"); got != tt.want {
+				t.Errorf("HasCapability(%q, results-workspace:read) = %v, want %v", tt.role, got, tt.want)
+			}
+		})
 	}
 }
 

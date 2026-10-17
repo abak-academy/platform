@@ -1312,7 +1312,7 @@ export interface AdminResultDetail {
   pembahasan?: ResultPembahasanItem[];
 }
 
-// ── Admin Results workspace (Issue 124, super_admin only) ────────────────
+// ── Admin Results workspace (Issue 124, super_admin and admin_exam) ────────────────
 
 export interface ResultsWorkspaceSummary {
   total_registered: number;

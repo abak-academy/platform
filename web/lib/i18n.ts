@@ -1722,8 +1722,6 @@ export const DICT = {
     exam_roster_revoke_result_title: "Hasil Revoke Akses",
     exam_roster_revoke_success: "Akses {n} peserta berhasil dicabut.",
     exam_roster_revoke_failed: "Revoke gagal.",
-    exam_registrations_manual_notice:
-      "Pendaftaran peserta secara manual dilakukan oleh Super Admin atau School Operator.",
 
     // Complete-profile unlisted-school fallback
     complete_profile_school_unlisted_label: "Sekolah saya tidak ada di daftar",
@@ -3531,8 +3529,6 @@ export const DICT = {
     exam_roster_revoke_result_title: "Revoke Access Results",
     exam_roster_revoke_success: "Revoked access for {n} participants.",
     exam_roster_revoke_failed: "Revoke failed.",
-    exam_registrations_manual_notice:
-      "Manual participant registration is handled by Super Admin or School Operator.",
 
     // Complete-profile unlisted-school fallback
     complete_profile_school_unlisted_label: "My school is not on the list",

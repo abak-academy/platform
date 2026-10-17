@@ -27,7 +27,7 @@ var examGrantBulkKeyRe = regexp.MustCompile(`^exam-grant-bulk/[0-9a-f-]{36}/[0-9
 const testExamID = "11111111-1111-1111-1111-111111111111"
 
 // newExamGrantBulkRouter mirrors routes.go's adminExamGrants group — the
-// RBACMiddleware("exam-grants:write") guard (super_admin only) is the point
+// RBACMiddleware("exam-grants-bulk:write") guard (super_admin only) is the point
 // of this route, so these tests drive the real router rather than calling
 // the handler directly.
 func newExamGrantBulkRouter(t *testing.T, h *handler.Handler) *echo.Echo {
@@ -36,8 +36,8 @@ func newExamGrantBulkRouter(t *testing.T, h *handler.Handler) *echo.Echo {
 	e.HideBanner = true
 	g := e.Group("/admin/exam-grants")
 	g.Use(handler.RBACMiddleware("exam-grants:write"))
-	g.POST("/bulk/presign", h.AdminPresignExamGrantBulkUpload)
-	g.POST("/bulk", h.AdminEnqueueExamGrantBulk)
+	g.POST("/bulk/presign", h.AdminPresignExamGrantBulkUpload, handler.RBACMiddleware("exam-grants-bulk:write"))
+	g.POST("/bulk", h.AdminEnqueueExamGrantBulk, handler.RBACMiddleware("exam-grants-bulk:write"))
 	return e
 }
 

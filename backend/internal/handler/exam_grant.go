@@ -10,7 +10,7 @@ import (
 )
 
 // AdminSearchGrantStudents handles GET /admin/exam-grants/students/search.
-// Returns cross-school student results for the super_admin grant participant
+// Returns cross-school student results for the grant participant
 // picker (FR-SEARCH-01/02/03). Deliberately does NOT call resolveSchoolScope.
 func (h *Handler) AdminSearchGrantStudents(c echo.Context) error {
 	claims := ClaimsFromContext(c)
@@ -74,7 +74,7 @@ func (h *Handler) AdminSearchGrantStudents(c echo.Context) error {
 // AdminGrantExamAccess handles POST /admin/exam-grants.
 // Creates direct exam registrations for the given students, bypassing the
 // order pipeline (FR-GRANT-01/02/07). No school_id in the request —
-// super_admin's grant is not school-scoped.
+// the grant is not school-scoped.
 func (h *Handler) AdminGrantExamAccess(c echo.Context) error {
 	claims := ClaimsFromContext(c)
 	if claims == nil {
@@ -105,8 +105,8 @@ func (h *Handler) AdminGrantExamAccess(c echo.Context) error {
 
 // AdminRevokeExamAccess handles POST /admin/exam-grants/revoke.
 // Soft-revokes the exam registrations for the given students — the inverse
-// of AdminGrantExamAccess, same no-school-scoping rule: super_admin's revoke
-// is not school-scoped.
+// of AdminGrantExamAccess, same no-school-scoping rule: the revoke is not
+// school-scoped.
 func (h *Handler) AdminRevokeExamAccess(c echo.Context) error {
 	claims := ClaimsFromContext(c)
 	if claims == nil {

@@ -18,11 +18,15 @@ describe("admin_exam capabilities", () => {
     "student-passwords:write",
     "student-scope:all",
     "results-answers:read",
+    "results-workspace:read",
+    "exam-grants:write",
+    "product-relations:write",
+    "schools:read",
   ])("grants '%s'", (cap) => {
     expect(hasCapability("admin_exam", cap)).toBe(true);
   });
 
-  it.each(["orders:write", "revenue:read", "schools:write", "system:admin", "results-workspace:read"])(
+  it.each(["orders:write", "revenue:read", "schools:write", "system:admin", "exam-grants-bulk:write"])(
     "withholds '%s'",
     (cap) => {
       expect(hasCapability("admin_exam", cap)).toBe(false);

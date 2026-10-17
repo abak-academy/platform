@@ -49,7 +49,8 @@ vi.mock("@/lib/hooks/admin-products", () => ({
 
 let mockRole: string | undefined = "admin_store";
 
-vi.mock("@/lib/hooks/use-capability", () => ({
+vi.mock("@/lib/hooks/use-capability", async (importActual) => ({
+  ...(await importActual<typeof import("@/lib/hooks/use-capability")>()),
   useResolvedRole: () => ({ role: mockRole, hydrated: true, meIsError: false }),
 }));
 
@@ -917,7 +918,13 @@ describe("ProductModal", () => {
     expect(screen.getByRole("heading", { name: /^deskripsi$/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /ketersediaan di marketplace/i })).toBeInTheDocument();
   });
-  it.each(["admin_exam", "admin_store", "admin_school", "student", undefined])("hides relation action for %s", (role) => {
+  it("shows the relation action to admin_exam", () => {
+    mockRole = "admin_exam";
+    render(<ProductModal open onOpenChange={mockOnOpenChange} product={{ id: "p1", type: "exam", name: "Exam", price: 1000, status: "published" }} onSubmit={mockOnSubmit} isPending={false} />);
+    expect(screen.getByRole("button", { name: "Ubah relasi" })).toBeInTheDocument();
+  });
+
+  it.each(["admin_store", "admin_school", "student", undefined])("hides relation action for %s", (role) => {
     mockRole = role;
     render(<ProductModal open onOpenChange={mockOnOpenChange} product={{ id: "p1", type: "exam", name: "Exam", price: 1000, status: "published" }} onSubmit={mockOnSubmit} isPending={false} />);
     expect(screen.queryByRole("button", { name: "Ubah relasi" })).not.toBeInTheDocument();

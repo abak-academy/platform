@@ -9,7 +9,7 @@ import (
 )
 
 // AdminGetExamResultsWorkspace returns the participant-centric results workspace
-// for an exam (Issue 124). Super-admin only — gated by the RBACMiddleware
+// for an exam (Issue 124). super_admin and admin_exam — gated by the RBACMiddleware
 // "results-workspace:read" capability on the route, not by an in-handler role check.
 func (h *Handler) AdminGetExamResultsWorkspace(c echo.Context) error {
 	examID, err := uuid.Parse(c.Param("id"))
@@ -64,7 +64,7 @@ func (h *Handler) AdminGetResultsWorkspaceAttempts(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"data": attempts})
 }
 
-// AdminGetResultsWorkspaceResultDetail returns super-admin-only operational answer
+// AdminGetResultsWorkspaceResultDetail returns operational answer
 // detail for a submitted, fully graded results workspace attempt.
 func (h *Handler) AdminGetResultsWorkspaceResultDetail(c echo.Context) error {
 	examID, err := uuid.Parse(c.Param("id"))

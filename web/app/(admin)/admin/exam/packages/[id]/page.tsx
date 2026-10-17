@@ -40,6 +40,7 @@ import {
   useSetCardEnabled,
 } from "@/lib/hooks/admin-exams";
 import { useAdminTests } from "@/lib/hooks/admin-tests";
+import { hasCapability } from "@/lib/hooks/use-capability";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
@@ -76,9 +77,9 @@ const TAB_ORDER: Tab[] = [
   "leaderboard",
 ];
 
-// super_admin gets the participant-centric Results workspace (Issue 124)
-// in place of the separate Results/Leaderboard tabs.
-const SUPER_ADMIN_TABS: Tab[] = [
+// Roles holding results-workspace:read get the participant-centric Results
+// workspace (Issue 124) in place of the separate Results/Leaderboard tabs.
+const RESULTS_WORKSPACE_TABS: Tab[] = [
   "overview",
   "tests",
   "certificate",
@@ -110,7 +111,7 @@ export default function ExamPackageDetailPage() {
   const { t } = useTranslation();
   const role = useAuthStore((s) => s.user?.role);
   const isSchoolScoped = role === "admin_school";
-  const isSuperAdmin = role === "super_admin";
+  const hasResultsWorkspace = hasCapability(role, "results-workspace:read");
   const canAccessResultsAndRegistrations =
     role === "admin_school" || role === "super_admin" || role === "admin_exam";
 
@@ -124,7 +125,7 @@ export default function ExamPackageDetailPage() {
   const setCardEnabled = useSetCardEnabled(id);
 
   const visibleTabs = (
-    isSchoolScoped ? SCHOOL_SCOPED_TABS : isSuperAdmin ? SUPER_ADMIN_TABS : TAB_ORDER
+    isSchoolScoped ? SCHOOL_SCOPED_TABS : hasResultsWorkspace ? RESULTS_WORKSPACE_TABS : TAB_ORDER
   ).filter((key) => key !== "certificate" || data?.certificate_enabled);
 
   async function handleEnableCertificate() {
@@ -157,7 +158,7 @@ export default function ExamPackageDetailPage() {
   const [lbEntries, setLbEntries] = useState<ExamLeaderboardEntry[]>([]);
   const [lbCursor, setLbCursor] = useState<string | undefined>(undefined);
 
-  const legacyLeaderboardEnabled = !isSchoolScoped && !isSuperAdmin;
+  const legacyLeaderboardEnabled = !isSchoolScoped && !hasResultsWorkspace;
   const { data: analytics, isLoading: analyticsLoading } = useExamAnalytics(id, legacyLeaderboardEnabled);
   const lb = useExamLeaderboard(
     id,
@@ -854,7 +855,7 @@ export default function ExamPackageDetailPage() {
               <UnderMaintenance icon={ListChecks} title={t("admin_exam_detail_tab_results")} />
             )
           )}
-          {tab === "results_workspace" && isSuperAdmin && <ResultsWorkspaceTab examId={id} />}
+          {tab === "results_workspace" && hasResultsWorkspace && <ResultsWorkspaceTab examId={id} />}
           {tab === "grading" && (
             <div className="md-card-outlined space-y-4 p-6">
               <div className="flex items-center justify-between">
