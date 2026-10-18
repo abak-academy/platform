@@ -113,3 +113,17 @@ describe("PeriodBar", () => {
     expect(inputs[1].getAttribute("min")).toBe("2026-08-01");
   });
 });
+
+describe("PeriodBar optional all-time preset", () => {
+  it("omits all-time by default", () => {
+    render(<PeriodBar preset="30d" range={{}} onChange={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Semua waktu" })).not.toBeInTheDocument();
+  });
+
+  it("emits no dates for all-time when enabled", () => {
+    const onChange = vi.fn();
+    render(<PeriodBar preset="30d" range={{ from: "2026-01-01" }} onChange={onChange} allowAllTime />);
+    fireEvent.click(screen.getByRole("button", { name: "Semua waktu" }));
+    expect(onChange).toHaveBeenCalledWith("all_time", {});
+  });
+});
