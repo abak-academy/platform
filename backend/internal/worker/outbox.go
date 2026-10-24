@@ -27,6 +27,18 @@ type OrderItemMini struct {
 	ProductType string    `json:"product_type"`
 }
 
+// commissionProcessor is the affiliate commission step run after fulfilment;
+// *service.Service implements it, and a nil processor (unit-test workers)
+// skips the step entirely.
+type commissionProcessor interface {
+	CreateCommissionsForOrder(ctx context.Context, tx pgx.Tx, order model.Order, items []model.OrderItem) error
+}
+
+func resolveCommissionProcessor(svc bulkProcessor) commissionProcessor {
+	commissionSvc, _ := svc.(commissionProcessor)
+	return commissionSvc
+}
+
 // outboxRepository interface defines the methods needed from the repository
 type outboxRepository interface {
 	ClaimOutboxEvents(context.Context, int) ([]model.OutboxEvent, error)
@@ -56,6 +68,7 @@ type Worker struct {
 	objectStore              objectStore
 	svc                      bulkProcessor
 	expirySvc                expiryProcessor
+	commissionSvc            commissionProcessor
 	jobPollInterval          time.Duration
 	privateBucket            string
 	certGen                  certificateGenerator
@@ -74,6 +87,7 @@ func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval,
 		objectStore:              objectStore,
 		svc:                      svc,
 		expirySvc:                resolveExpiryProcessor(svc),
+		commissionSvc:            resolveCommissionProcessor(svc),
 		jobPollInterval:          jobPollInterval,
 		privateBucket:            privateBucket,
 		certGen:                  certGen,
@@ -287,6 +301,18 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 		if err := w.repo.SetOrderStatus(ctx, tx, payload.OrderID, nextStatus, ""); err != nil {
 			slog.Error("set order status", "order_id", payload.OrderID, "err", err)
 			return
+		}
+	}
+
+	// komisi yang gagal tidak boleh menggagalkan akses — the step shares this tx behind a savepoint, so a failure rolls back only itself and the rerun endpoint or a replayed OrderPaid event re-attempts it.
+	if w.commissionSvc != nil {
+		if sp, err := tx.Begin(ctx); err != nil {
+			slog.Error("begin commission savepoint", "order_id", payload.OrderID, "event_id", event.ID, "err", err)
+		} else if err := w.commissionSvc.CreateCommissionsForOrder(ctx, sp, order, order.Items); err != nil {
+			slog.Error("create affiliate commissions", "order_id", payload.OrderID, "event_id", event.ID, "err", err)
+			_ = sp.Rollback(ctx)
+		} else if err := sp.Commit(ctx); err != nil {
+			slog.Error("release commission savepoint", "order_id", payload.OrderID, "event_id", event.ID, "err", err)
 		}
 	}
 
