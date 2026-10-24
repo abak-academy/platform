@@ -1962,6 +1962,14 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID, refund
 		return err
 	}
 
+	// Settle commissions in this same tx so a half-refunded commission state
+	// cannot outlive a failed refund.
+	if s.affiliateEnabled(ctx) {
+		if err := s.settleAffiliateRefundTx(ctx, tx, id, actorID); err != nil {
+			return err
+		}
+	}
+
 	actor := &actorID
 	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, actor, "order", id.String(), "order.refund", map[string]any{
 		"manual":           true,
