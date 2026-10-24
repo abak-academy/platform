@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"math/big"
 	"strings"
@@ -48,6 +49,14 @@ type UserRepository interface {
 }
 
 const minPasswordLen = 8
+
+// AffiliateReferral is the optional referral attribution sent with the verify
+// and Google requests: the manual code takes precedence over the cookie code,
+// and an empty pair means no attribution.
+type AffiliateReferral struct {
+	ManualCode string
+	CookieCode string
+}
 
 // OTPChallenge is the outcome of arming — or deliberately skipping — an OTP
 // dispatch for a pending account.
@@ -316,7 +325,7 @@ func (s *Service) recordOTPSendFailure(ctx context.Context, userID, channel stri
 	s.rdb.Set(ctx, otpCooldownKey(userID), "1", otpSendfailPause)
 }
 
-func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code, ip string) (accessToken, refreshToken string, err error) {
+func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code, ip string, referral ...AffiliateReferral) (accessToken, refreshToken string, err error) {
 	userID, err := s.rdb.Get(ctx, "pending:"+pendingToken).Result()
 	if errors.Is(err, redis.Nil) {
 		return "", "", ErrInvalidPendingToken
@@ -365,6 +374,7 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code, ip string) 
 	if !activated {
 		return "", "", ErrInvalidPendingToken
 	}
+	s.bindAffiliateAtActivation(ctx, user, firstReferral(referral))
 	metrics.ObserveOTPVerify("ok")
 	// Success clears the OTP and every gate state it accumulated (konsep §5).
 	vk := loginOTPVerifyKeys(userID, ip)
@@ -374,6 +384,46 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code, ip string) 
 		vk.vfailHour, vk.vfailDay, vk.vfailIP,
 	)
 	return s.mintSession(ctx, user)
+}
+
+// firstReferral picks the optional attribution argument: callers either pass
+// nothing or exactly one value.
+func firstReferral(referral []AffiliateReferral) AffiliateReferral {
+	if len(referral) > 0 {
+		return referral[0]
+	}
+	return AffiliateReferral{}
+}
+
+// bindAffiliateAtActivation creates the student's binding at the activation
+// moment (OTP verify or Google registration). Attribution is best-effort: a
+// failure must not fail the activation, so the caller ignores the error.
+func (s *Service) bindAffiliateAtActivation(ctx context.Context, user *model.User, ref AffiliateReferral) {
+	if user.Role != RoleStudent || s.storeRepo == nil || !s.affiliateEnabled(ctx) {
+		return
+	}
+	if err := s.createActivationBinding(ctx, user, ref); err != nil {
+		slog.Warn("affiliate binding at activation failed", "user_id", user.ID, "error", err)
+	}
+}
+
+func (s *Service) createActivationBinding(ctx context.Context, user *model.User, ref AffiliateReferral) error {
+	decision, err := s.ResolveBinding(ctx, user, &ref.ManualCode, &ref.CookieCode)
+	if err != nil {
+		return fmt.Errorf("resolve referral binding: %w", err)
+	}
+	if decision == nil {
+		return nil
+	}
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin binding tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := s.CreateBinding(ctx, tx, user.ID, decision.AffiliatorID, decision.Source); err != nil {
+		return fmt.Errorf("create referral binding: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (newAccessToken, newRefreshToken string, err error) {

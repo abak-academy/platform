@@ -2,6 +2,8 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -188,7 +190,16 @@ func (h *Handler) Checkout(c echo.Context) error {
 		return badRequest(c, "Idempotency-Key header is required")
 	}
 
-	result, err := h.svc.Checkout(c.Request().Context(), claims.Sub, orderID, key)
+	// The body is optional: older clients send none, newer ones may carry the
+	// referral code for attribution at settlement.
+	var req struct {
+		AffiliateCode string `json:"affiliate_code"`
+	}
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return badRequest(c, "invalid request body")
+	}
+
+	result, err := h.svc.Checkout(c.Request().Context(), claims.Sub, orderID, key, req.AffiliateCode)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

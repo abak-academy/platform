@@ -17,7 +17,7 @@ type googleTokenInfo struct {
 	Name          string `json:"name"`
 }
 
-func (s *Service) GoogleLogin(ctx context.Context, idToken string) (accessToken string, refreshToken string, err error) {
+func (s *Service) GoogleLogin(ctx context.Context, idToken string, referral ...AffiliateReferral) (accessToken string, refreshToken string, err error) {
 	info, err := s.verifyGoogleToken(ctx, idToken)
 	if err != nil {
 		return "", "", err
@@ -50,6 +50,7 @@ func (s *Service) GoogleLogin(ctx context.Context, idToken string) (accessToken 
 			return "", "", err
 		}
 		user = newUser
+		s.bindAffiliateAtActivation(ctx, user, firstReferral(referral))
 	} else if user.Role != RoleStudent {
 		return "", "", ErrGoogleNotStudent
 	} else if user.Status != "active" {

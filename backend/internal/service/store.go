@@ -1055,7 +1055,7 @@ type MidtransNotification struct {
 // payment_pending order whose promo has already been counted — RetryPayment
 // is the documented recovery path for that order, and it does not re-count
 // the promo, so the redemption is not lost or duplicated on retry.
-func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
+func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string, affiliateCode ...string) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
 		return CheckoutResult{}, err
@@ -1063,6 +1063,10 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	sID, err := parseUUID(studentID)
 	if err != nil {
 		return CheckoutResult{}, err
+	}
+	var code string
+	if len(affiliateCode) > 0 {
+		code = affiliateCodeString(&affiliateCode[0])
 	}
 
 	cacheKey := "idempotency:checkout:" + sID.String() + ":" + oID.String() + ":" + key
@@ -1179,11 +1183,22 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, err
 	}
 
+	// The referral code rides on the order row until settlement, where the
+	// binding is born; the attribution decision itself is revalidated there.
+	if code != "" {
+		if err := s.storeRepo.SetOrderAffiliateCodeTx(ctx, tx, oID, code); err != nil {
+			return CheckoutResult{}, err
+		}
+	}
+
 	// Free / zero-total order: skip the payment gateway entirely. Mark it paid
 	// and emit OrderPaid in the SAME tx so fulfilment (exam registrations,
 	// course access, digital auto-complete) runs exactly as a real settlement.
 	if order.Total == 0 {
 		if err := s.storeRepo.SetOrderStatus(ctx, tx, oID, "paid", ""); err != nil {
+			return CheckoutResult{}, err
+		}
+		if err := s.paidOrderBindingTx(ctx, tx, order); err != nil {
 			return CheckoutResult{}, err
 		}
 		payload := OrderPaidPayload{OrderID: oID.String()}
@@ -1672,6 +1687,9 @@ func (s *Service) markOrderPaidTx(ctx context.Context, tx pgx.Tx, order model.Or
 	if err := s.storeRepo.SetOrderStatus(ctx, tx, order.ID, "paid", ""); err != nil {
 		return err
 	}
+	if err := s.paidOrderBindingTx(ctx, tx, order); err != nil {
+		return err
+	}
 
 	payload := OrderPaidPayload{OrderID: order.ID.String()}
 	for _, item := range order.Items {
@@ -1688,6 +1706,47 @@ func (s *Service) markOrderPaidTx(ctx context.Context, tx pgx.Tx, order model.Or
 	}
 
 	return s.storeRepo.InsertAuditLogMeta(ctx, tx, actorID, "order", order.ID.String(), action, meta)
+}
+
+// paidOrderBindingTx is the single affiliate hook every settlement path calls
+// inside its tx, before the OrderPaid outbox event is written: a buyer still
+// unbound gets the binding of the order's stored code (source checkout_code),
+// and an already-bound buyer gets the binding extended by this payment. Flag
+// off is a no-op, so settlements behave exactly as before the feature.
+func (s *Service) paidOrderBindingTx(ctx context.Context, tx pgx.Tx, order model.Order) error {
+	if !s.affiliateEnabled(ctx) {
+		return nil
+	}
+	buyer, err := s.storeRepo.GetUserByID(ctx, order.StudentID.String())
+	if err != nil {
+		return fmt.Errorf("get order buyer: %w", err)
+	}
+	if buyer == nil || buyer.Role != RoleStudent {
+		return nil
+	}
+	created := false
+	code, err := s.storeRepo.GetOrderAffiliateCodeTx(ctx, tx, order.ID)
+	if err != nil {
+		return fmt.Errorf("get order affiliate code: %w", err)
+	}
+	if code != nil && *code != "" {
+		decision, err := s.ResolveBinding(ctx, buyer, code, nil)
+		if err != nil {
+			return fmt.Errorf("resolve checkout binding: %w", err)
+		}
+		if decision != nil {
+			decision.Source = affiliateSourceCheckoutCode
+			if err := s.CreateBinding(ctx, tx, buyer.ID, decision.AffiliatorID, decision.Source); err != nil {
+				return fmt.Errorf("create checkout binding: %w", err)
+			}
+			created = true
+		}
+	}
+	if created {
+		// The binding just born already covers three months from this payment.
+		return nil
+	}
+	return s.ExtendBinding(ctx, tx, buyer.ID, time.Now(), order.Subtotal-order.Discount)
 }
 
 func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key, paymentProofURL string) error {
@@ -2187,6 +2246,10 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		if err := s.storeRepo.SetOrderPaymentMethod(ctx, tx, orderID, notif.PaymentType); err != nil {
 			return err
 		}
+	}
+
+	if err := s.paidOrderBindingTx(ctx, tx, order); err != nil {
+		return err
 	}
 
 	outboxPayload := OrderPaidPayload{OrderID: orderID.String()}
