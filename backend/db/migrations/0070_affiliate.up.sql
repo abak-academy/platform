@@ -231,11 +231,17 @@ CREATE TABLE IF NOT EXISTS affiliate_clicks (
     code          TEXT NOT NULL,
     ip_hash       TEXT,
     user_agent    TEXT,
+    click_day     DATE NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_affiliate_clicks_affiliator_day
     ON affiliate_clicks (affiliator_id, created_at);
+
+-- One statistics row per code + visitor hash + calendar day (WIB).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_affiliate_clicks_daily
+    ON affiliate_clicks (code, ip_hash, click_day)
+    WHERE ip_hash IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS affiliate_flags (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),

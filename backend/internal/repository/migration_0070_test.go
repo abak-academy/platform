@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -162,6 +163,25 @@ func TestMigration0070_AffiliateSchema(t *testing.T) {
 	require.Error(t, err, "ledger rows must refuse UPDATE (append-only)")
 	_, err = pool.Exec(ctx, `DELETE FROM affiliate_ledger_entries WHERE id = $1`, ledgerID)
 	require.Error(t, err, "ledger rows must refuse DELETE (append-only)")
+
+	// Click stats dedupe: uq_affiliate_clicks_daily keeps one row per code +
+	// visitor hash + calendar day.
+	clickDay := time.Now()
+	_, err = pool.Exec(ctx,
+		`INSERT INTO affiliate_clicks (affiliator_id, code, ip_hash, click_day) VALUES ($1, 'AFFTEST1', 'deadbeef', $2)
+		 ON CONFLICT (code, ip_hash, click_day) WHERE ip_hash IS NOT NULL DO NOTHING`,
+		affiliatorID, clickDay,
+	)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO affiliate_clicks (affiliator_id, code, ip_hash, click_day) VALUES ($1, 'AFFTEST1', 'deadbeef', $2)
+		 ON CONFLICT (code, ip_hash, click_day) WHERE ip_hash IS NOT NULL DO NOTHING`,
+		affiliatorID, clickDay,
+	)
+	require.NoError(t, err, "a same-day repeat click must not error on the daily dedupe index")
+	var clickCount int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM affiliate_clicks WHERE code = 'AFFTEST1'`).Scan(&clickCount))
+	require.Equal(t, 1, clickCount, "same-day repeat clicks must collapse to one statistics row")
 
 	// Apply 0070 down: schema reverts and the affiliator role is rejected again.
 	applyMigrationFile(t, pool, "0070_affiliate.down.sql")

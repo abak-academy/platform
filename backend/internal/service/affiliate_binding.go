@@ -1,0 +1,190 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+)
+
+const (
+	affiliateSourceLink         = "link"
+	affiliateSourceManualCode   = "manual_code"
+	affiliateSourceCheckoutCode = "checkout_code"
+
+	affiliateBindingStatusActive    = "active"
+	affiliateAffiliatorStatusActive = "active"
+	affiliateFlagRuleSelfPurchase   = "self_purchase"
+)
+
+// AffiliateBindingDecision is the attribution outcome for one student; a nil
+// decision from ResolveBinding means no binding should be created.
+type AffiliateBindingDecision struct {
+	AffiliatorID uuid.UUID
+	Source       string
+}
+
+// ResolveBinding decides whether a student gets bound to an affiliator from a
+// manual referral code (register/OTP) or a link cookie. Precedence is manual >
+// cookie; unknown/inactive codes, self-purchase, pre-launch accounts and
+// already-bound students all yield a nil decision with no error, so callers
+// simply skip binding creation.
+func (s *Service) ResolveBinding(ctx context.Context, student *model.User, manualCode, cookieCode *string) (*AffiliateBindingDecision, error) {
+	code, source := affiliateAttributionCode(manualCode, cookieCode)
+	if code == "" {
+		return nil, nil
+	}
+
+	owner, err := s.storeRepo.GetAffiliatorByCode(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("get affiliator by code: %w", err)
+	}
+	if owner == nil || owner.Status != affiliateAffiliatorStatusActive {
+		return nil, nil
+	}
+
+	if matched, field := affiliateSelfMatch(owner.Email, owner.Phone, student.Email, student.Phone); matched {
+		if err := s.recordSelfPurchaseFlag(ctx, owner.ID, student.ID, field); err != nil {
+			return nil, fmt.Errorf("record self-purchase flag: %w", err)
+		}
+		return nil, nil
+	}
+
+	settings, err := s.LoadAffiliateSettings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load affiliate settings: %w", err)
+	}
+	if settings.LaunchDate == nil || student.CreatedAt.Before(*settings.LaunchDate) {
+		return nil, nil
+	}
+
+	existing, err := s.storeRepo.GetActiveBindingByStudent(ctx, nil, student.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get active binding: %w", err)
+	}
+	if existing != nil {
+		return nil, nil
+	}
+
+	return &AffiliateBindingDecision{AffiliatorID: owner.ID, Source: source}, nil
+}
+
+func affiliateAttributionCode(manual, cookie *string) (code, source string) {
+	if c := affiliateCodeString(manual); c != "" {
+		return c, affiliateSourceManualCode
+	}
+	if c := affiliateCodeString(cookie); c != "" {
+		return c, affiliateSourceLink
+	}
+	return "", ""
+}
+
+func affiliateCodeString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return strings.ToUpper(strings.TrimSpace(*p))
+}
+
+func affiliateSelfMatch(affEmail, affPhone, studentEmail, studentPhone *string) (bool, string) {
+	if affEmail != nil && studentEmail != nil &&
+		strings.EqualFold(strings.TrimSpace(*affEmail), strings.TrimSpace(*studentEmail)) {
+		return true, "email"
+	}
+	if affPhone != nil && studentPhone != nil &&
+		strings.TrimSpace(*affPhone) == strings.TrimSpace(*studentPhone) {
+		return true, "phone"
+	}
+	return false, ""
+}
+
+func (s *Service) recordSelfPurchaseFlag(ctx context.Context, affiliatorID uuid.UUID, studentID, matchedField string) error {
+	payload, err := json.Marshal(map[string]string{"user_id": studentID, "matched_field": matchedField})
+	if err != nil {
+		return fmt.Errorf("marshal self-purchase payload: %w", err)
+	}
+	flag := &model.AffiliateFlag{
+		AffiliatorID: affiliatorID,
+		Rule:         affiliateFlagRuleSelfPurchase,
+		Payload:      payload,
+		Status:       "open",
+	}
+	if err := s.storeRepo.InsertAffiliateFlag(ctx, flag); err != nil {
+		return fmt.Errorf("insert affiliate flag: %w", err)
+	}
+	return nil
+}
+
+// CreateBinding inserts one active binding inside the caller's transaction,
+// lasting settings.BindingMonths from now.
+func (s *Service) CreateBinding(ctx context.Context, tx pgx.Tx, studentID string, affiliatorID uuid.UUID, source string) error {
+	settings, err := s.LoadAffiliateSettings(ctx)
+	if err != nil {
+		return fmt.Errorf("load affiliate settings: %w", err)
+	}
+	sid, err := parseUUID(studentID)
+	if err != nil {
+		return err
+	}
+	startedAt := time.Now()
+	endedAt := startedAt.AddDate(0, settings.BindingMonths, 0)
+	binding := &model.AffiliateBinding{
+		AffiliatorID: affiliatorID,
+		StudentID:    sid,
+		Status:       affiliateBindingStatusActive,
+		Source:       source,
+		StartedAt:    startedAt,
+		EndedAt:      &endedAt,
+	}
+	if err := s.storeRepo.InsertBinding(ctx, tx, binding); err != nil {
+		// A concurrent binding won the partial unique index; the student keeps it.
+		if errors.Is(err, repository.ErrAffiliateBindingExists) {
+			return nil
+		}
+		return fmt.Errorf("insert affiliate binding: %w", err)
+	}
+	return nil
+}
+
+// ExtendBinding extends the student's active binding when the paid order meets
+// the extension threshold (0 = every payment extends).
+func (s *Service) ExtendBinding(ctx context.Context, tx pgx.Tx, studentID string, paidAt time.Time, baseAmount float64) error {
+	settings, err := s.LoadAffiliateSettings(ctx)
+	if err != nil {
+		return fmt.Errorf("load affiliate settings: %w", err)
+	}
+	if baseAmount < settings.MinExtendAmount {
+		return nil
+	}
+	binding, err := s.storeRepo.GetActiveBindingByStudent(ctx, tx, studentID)
+	if err != nil {
+		return fmt.Errorf("get active binding: %w", err)
+	}
+	if binding == nil {
+		return nil
+	}
+	// ended_at re-anchors from the payment date instead of stacking onto the remaining window.
+	newEndedAt := paidAt.AddDate(0, settings.BindingMonths, 0)
+	if binding.EndedAt != nil && binding.EndedAt.After(newEndedAt) {
+		newEndedAt = *binding.EndedAt
+	}
+	return s.storeRepo.ExtendBindingTx(ctx, tx, binding.ID, newEndedAt, paidAt)
+}
+
+// ExpireBindings ends every active binding whose ended_at has passed; repeat
+// runs change nothing.
+func (s *Service) ExpireBindings(ctx context.Context, now time.Time) (int, error) {
+	rows, err := s.storeRepo.ExpireDueBindings(ctx, now)
+	if err != nil {
+		return 0, fmt.Errorf("expire due bindings: %w", err)
+	}
+	return int(rows), nil
+}

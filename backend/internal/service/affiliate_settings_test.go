@@ -1,0 +1,503 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"akademi-bimbel/internal/model"
+
+	"github.com/google/uuid"
+)
+
+func intPtr(i int) *int         { return &i }
+func f64Ptr(f float64) *float64 { return &f }
+
+func TestAffiliateSettingsDefaults_matchMigrationDefaults(t *testing.T) {
+	s := defaultAffiliateSettings()
+	if s == nil {
+		t.Fatal("defaultAffiliateSettings() = nil, want settings")
+	}
+	if s.ID != 1 {
+		t.Errorf("ID = %d, want 1", s.ID)
+	}
+	if s.CookieDays != 30 {
+		t.Errorf("CookieDays = %d, want 30", s.CookieDays)
+	}
+	if s.BindingMonths != 3 {
+		t.Errorf("BindingMonths = %d, want 3", s.BindingMonths)
+	}
+	if s.MinExtendAmount != 0 {
+		t.Errorf("MinExtendAmount = %v, want 0", s.MinExtendAmount)
+	}
+	if s.DigitalWaitDays != 7 {
+		t.Errorf("DigitalWaitDays = %d, want 7", s.DigitalWaitDays)
+	}
+	if s.PhysicalReceivedDays != 7 {
+		t.Errorf("PhysicalReceivedDays = %d, want 7", s.PhysicalReceivedDays)
+	}
+	if s.PhysicalWaitDays != 7 {
+		t.Errorf("PhysicalWaitDays = %d, want 7", s.PhysicalWaitDays)
+	}
+	if s.MinPayout != 100000 {
+		t.Errorf("MinPayout = %v, want 100000", s.MinPayout)
+	}
+	if s.PayoutDayOfMonth != nil {
+		t.Errorf("PayoutDayOfMonth = %v, want nil", *s.PayoutDayOfMonth)
+	}
+	if s.AdjustmentThreshold != 1000000 {
+		t.Errorf("AdjustmentThreshold = %v, want 1000000", s.AdjustmentThreshold)
+	}
+	if s.AdjustmentThresholdEnabled {
+		t.Error("AdjustmentThresholdEnabled = true, want false")
+	}
+	if s.FreezeMaxDays != 14 {
+		t.Errorf("FreezeMaxDays = %d, want 14", s.FreezeMaxDays)
+	}
+	if s.SoonEndDays != 30 {
+		t.Errorf("SoonEndDays = %d, want 30", s.SoonEndDays)
+	}
+	if s.LaunchDate != nil {
+		t.Errorf("LaunchDate = %v, want nil", s.LaunchDate)
+	}
+	if s.EvalDay != 8 {
+		t.Errorf("EvalDay = %d, want 8", s.EvalDay)
+	}
+	if s.SilverThreshold != 5000000 {
+		t.Errorf("SilverThreshold = %v, want 5000000", s.SilverThreshold)
+	}
+	if s.GoldThreshold != 15000000 {
+		t.Errorf("GoldThreshold = %v, want 15000000", s.GoldThreshold)
+	}
+	if string(s.HoldThresholds) != "{}" {
+		t.Errorf("HoldThresholds = %s, want {}", s.HoldThresholds)
+	}
+	if s.DailyRegistrationCap != nil {
+		t.Errorf("DailyRegistrationCap = %v, want nil", *s.DailyRegistrationCap)
+	}
+	if s.UpdatedBy != nil {
+		t.Errorf("UpdatedBy = %v, want nil", s.UpdatedBy)
+	}
+}
+
+// TestAffiliateEffectiveRules_levelOverridesGlobal pins the resolver
+// precedence: a per-level row overrides the global setting only for the
+// fields it sets; absent levels and absent fields fall back to global
+// (defaults when the singleton row is missing).
+func TestAffiliateEffectiveRules_levelOverridesGlobal(t *testing.T) {
+	settings := defaultAffiliateSettings()
+	levels := []model.AffiliateLevelSettings{
+		{
+			Level:            "silver",
+			CommissionPct:    json.RawMessage(`{"exam":12,"book":5}`),
+			DigitalWaitDays:  intPtr(3),
+			MinPayout:        f64Ptr(50000),
+			PayoutDayOfMonth: intPtr(25),
+		},
+		{
+			Level:                "gold",
+			PhysicalWaitDays:     intPtr(5),
+			PhysicalReceivedDays: intPtr(2),
+			RiseThreshold:        f64Ptr(20000000),
+			HoldThreshold:        f64Ptr(9000000),
+		},
+	}
+
+	rules := buildAffiliateEffectiveRules(settings, levels)
+
+	if len(rules) != 3 {
+		t.Fatalf("len(rules) = %d, want 3 (bronze synthesized even without a row)", len(rules))
+	}
+
+	silver := rules["silver"]
+	if silver.Level != "silver" {
+		t.Errorf("silver.Level = %q, want silver", silver.Level)
+	}
+	if silver.DigitalWaitDays != 3 {
+		t.Errorf("silver.DigitalWaitDays = %d, want 3 (level override)", silver.DigitalWaitDays)
+	}
+	if silver.MinPayout != 50000 {
+		t.Errorf("silver.MinPayout = %v, want 50000 (level override)", silver.MinPayout)
+	}
+	if silver.PayoutDayOfMonth == nil || *silver.PayoutDayOfMonth != 25 {
+		t.Errorf("silver.PayoutDayOfMonth = %v, want 25 (level override)", silver.PayoutDayOfMonth)
+	}
+	if silver.PhysicalReceivedDays != 7 {
+		t.Errorf("silver.PhysicalReceivedDays = %d, want 7 (global fallback)", silver.PhysicalReceivedDays)
+	}
+	if silver.PhysicalWaitDays != 7 {
+		t.Errorf("silver.PhysicalWaitDays = %d, want 7 (global fallback)", silver.PhysicalWaitDays)
+	}
+	if silver.CommissionPct["exam"] != 12 || silver.CommissionPct["book"] != 5 {
+		t.Errorf("silver.CommissionPct = %v, want exam 12 book 5 (level override)", silver.CommissionPct)
+	}
+	if silver.CommissionPct["course"] != 10 || silver.CommissionPct["merchandise"] != 3 || silver.CommissionPct["medal"] != 0 {
+		t.Errorf("silver.CommissionPct unset categories = %v, want defaults course 10 merchandise 3 medal 0", silver.CommissionPct)
+	}
+
+	gold := rules["gold"]
+	if gold.PhysicalWaitDays != 5 {
+		t.Errorf("gold.PhysicalWaitDays = %d, want 5 (level override)", gold.PhysicalWaitDays)
+	}
+	if gold.PhysicalReceivedDays != 2 {
+		t.Errorf("gold.PhysicalReceivedDays = %d, want 2 (level override)", gold.PhysicalReceivedDays)
+	}
+	if gold.MinPayout != 100000 {
+		t.Errorf("gold.MinPayout = %v, want 100000 (global fallback)", gold.MinPayout)
+	}
+	if gold.DigitalWaitDays != 7 {
+		t.Errorf("gold.DigitalWaitDays = %d, want 7 (global fallback)", gold.DigitalWaitDays)
+	}
+	if gold.RiseThreshold == nil || *gold.RiseThreshold != 20000000 {
+		t.Errorf("gold.RiseThreshold = %v, want 20000000 (from level row)", gold.RiseThreshold)
+	}
+	if gold.HoldThreshold == nil || *gold.HoldThreshold != 9000000 {
+		t.Errorf("gold.HoldThreshold = %v, want 9000000 (from level row)", gold.HoldThreshold)
+	}
+
+	bronze := rules["bronze"]
+	if bronze.MinPayout != 100000 || bronze.PayoutDayOfMonth != nil {
+		t.Errorf("bronze payout fields = %v %v, want global defaults 100000 nil", bronze.MinPayout, bronze.PayoutDayOfMonth)
+	}
+	if bronze.RiseThreshold != nil || bronze.HoldThreshold != nil {
+		t.Errorf("bronze thresholds = %v %v, want nil nil (bronze has no level row)", bronze.RiseThreshold, bronze.HoldThreshold)
+	}
+	if bronze.CommissionPct["exam"] != 10 || bronze.CommissionPct["book"] != 3 {
+		t.Errorf("bronze.CommissionPct = %v, want defaults exam 10 book 3", bronze.CommissionPct)
+	}
+}
+
+func TestAffiliateEffectiveRules_nilSettingsFallsBackToDefaults(t *testing.T) {
+	rules := buildAffiliateEffectiveRules(nil, nil)
+	if len(rules) != 3 {
+		t.Fatalf("len(rules) = %d, want 3", len(rules))
+	}
+	silver := rules["silver"]
+	if silver.DigitalWaitDays != 7 || silver.MinPayout != 100000 {
+		t.Errorf("silver wait/payout = %d %v, want defaults 7 100000", silver.DigitalWaitDays, silver.MinPayout)
+	}
+	if silver.CommissionPct["exam"] != 10 {
+		t.Errorf("silver.CommissionPct[exam] = %v, want default 10", silver.CommissionPct["exam"])
+	}
+}
+
+func TestResolveAffiliateCommissionPct_precedence(t *testing.T) {
+	defaultRules := buildAffiliateEffectiveRules(defaultAffiliateSettings(), nil)
+	levelRules := buildAffiliateEffectiveRules(defaultAffiliateSettings(), []model.AffiliateLevelSettings{
+		{Level: "silver", CommissionPct: json.RawMessage(`{"exam":12,"book":5}`)},
+	})
+
+	tests := []struct {
+		name        string
+		override    *model.AffiliateProductOverride
+		rule        AffiliateEffectiveRule
+		productType string
+		want        float64
+	}{
+		{"override beats level and default", &model.AffiliateProductOverride{Percentage: 25}, levelRules["silver"], "book", 25},
+		{"override wins even for defaulted category", &model.AffiliateProductOverride{Percentage: 1}, levelRules["silver"], "course", 1},
+		{"level value beats default", nil, levelRules["silver"], "exam", 12},
+		{"level value set", nil, levelRules["silver"], "book", 5},
+		{"default when level omits category", nil, levelRules["silver"], "merchandise", 3},
+		{"default when level has no pct", nil, defaultRules["bronze"], "exam", 10},
+		{"medal defaults to zero", nil, defaultRules["bronze"], "medal", 0},
+		{"unknown product type has no commission", nil, defaultRules["bronze"], "webinar", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveAffiliateCommissionPct(tt.override, tt.rule, tt.productType)
+			if got != tt.want {
+				t.Errorf("resolveAffiliateCommissionPct(%v, %v, %q) = %v, want %v", tt.override, tt.rule.CommissionPct, tt.productType, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAffiliateFlag_gate(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  map[string]string
+		want bool
+	}{
+		{"unset disables (default off)", map[string]string{}, false},
+		{"empty disables", map[string]string{"affiliate_enabled": ""}, false},
+		{"false disables", map[string]string{"affiliate_enabled": "false"}, false},
+		{"true enables", map[string]string{"affiliate_enabled": "true"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := affiliateEnabled(tt.cfg); got != tt.want {
+				t.Errorf("affiliateEnabled(%v) = %v, want %v", tt.cfg, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAffiliateSettingsLoadIntegration(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	pool := repo.Pool()
+	ctx := context.Background()
+
+	var userID string
+	var productID uuid.UUID
+	var affID uuid.UUID
+
+	st, err := svc.LoadAffiliateSettings(ctx)
+	if err != nil {
+		t.Fatalf("LoadAffiliateSettings (no row): %v", err)
+	}
+	if st == nil {
+		t.Fatal("LoadAffiliateSettings() = nil with no row, want defaults")
+	}
+	if st.CookieDays != 30 {
+		t.Errorf("no-row CookieDays = %d, want default 30", st.CookieDays)
+	}
+
+	// Cleanup is registered in FK-dependency order: t.Cleanup runs LIFO, so
+	// children (clicks, overrides) delete before the parents they reference.
+	// The shared real-DB fixture never resets rows between tests.
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID) })
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_settings WHERE id = 1`) })
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_level_settings WHERE level = 'silver'`) })
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliators WHERE user_id = $1`, userID) })
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM product WHERE id = $1`, productID) })
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_product_overrides WHERE product_id = $1`, productID)
+	})
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_clicks WHERE affiliator_id = $1`, affID) })
+
+	// Seed singleton row with non-defaults plus one level row and one override.
+	// UPSERT because the shared real-DB fixture may already carry the row from
+	// a sibling test.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO affiliate_settings (id, cookie_days, digital_wait_days, min_payout)
+		 VALUES (1, 45, 3, 250000)
+		 ON CONFLICT (id) DO UPDATE SET cookie_days = 45, digital_wait_days = 3, min_payout = 250000, updated_at = now()`); err != nil {
+		t.Fatalf("seed affiliate_settings: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO affiliate_level_settings (level, commission_pct, digital_wait_days, min_payout)
+		 VALUES ('silver', '{"exam":12,"book":5}', 3, 50000)`); err != nil {
+		t.Fatalf("seed affiliate_level_settings: %v", err)
+	}
+
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO product (name, type, price, status) VALUES ($1, 'book', 60000, 'published') RETURNING id`,
+		"Affiliate Override Product "+uniqueSuffix()).Scan(&productID); err != nil {
+		t.Fatalf("seed product: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO affiliate_product_overrides (product_id, percentage) VALUES ($1, 25)`, productID); err != nil {
+		t.Fatalf("seed affiliate_product_overrides: %v", err)
+	}
+
+	override, err := repo.LoadProductOverride(ctx, productID)
+	if err != nil {
+		t.Fatalf("LoadProductOverride: %v", err)
+	}
+	if override == nil || override.Percentage != 25 || override.ProductID != productID {
+		t.Errorf("LoadProductOverride(%v) = %+v, want percentage 25", productID, override)
+	}
+	other, err := repo.LoadProductOverride(ctx, uuid.New())
+	if err != nil || other != nil {
+		t.Errorf("LoadProductOverride(unknown) = %v, %v; want nil, nil", other, err)
+	}
+
+	settings, rules, err := svc.LoadAffiliateEffectiveRules(ctx)
+	if err != nil {
+		t.Fatalf("LoadAffiliateEffectiveRules: %v", err)
+	}
+	if settings == nil || settings.CookieDays != 45 || settings.DigitalWaitDays != 3 || settings.MinPayout != 250000 {
+		t.Errorf("LoadAffiliateEffectiveRules settings = %+v, want row values 45/3/250000", settings)
+	}
+	silver := rules["silver"]
+	if silver.DigitalWaitDays != 3 {
+		t.Errorf("silver.DigitalWaitDays = %d, want 3 (level row overrides row setting 3)", silver.DigitalWaitDays)
+	}
+	if silver.MinPayout != 50000 {
+		t.Errorf("silver.MinPayout = %v, want 50000 (level override)", silver.MinPayout)
+	}
+	if silver.CommissionPct["exam"] != 12 {
+		t.Errorf("silver.CommissionPct[exam] = %v, want 12 (level override)", silver.CommissionPct["exam"])
+	}
+
+	// FindAffiliatorByCode round trip on the seeded affiliator.
+	code := "B1" + uniqueSuffix()[:6]
+	name := "Integration Affiliator " + uniqueSuffix()
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO users (name, username, role, status, otp_enabled)
+		 VALUES ($1, $2, 'affiliator', 'active', false) RETURNING id`,
+		name, "affload_"+uniqueSuffix()).Scan(&userID); err != nil {
+		t.Fatalf("seed affiliator user: %v", err)
+	}
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO affiliators (user_id, code, status, terms_version)
+		 VALUES ($1, $2, 'active', 'v1') RETURNING id`,
+		userID, code).Scan(&affID); err != nil {
+		t.Fatalf("seed affiliator: %v", err)
+	}
+
+	aff, err := repo.FindAffiliatorByCode(ctx, code)
+	if err != nil {
+		t.Fatalf("FindAffiliatorByCode: %v", err)
+	}
+	if aff == nil || aff.Status != "active" || aff.ID != affID {
+		t.Errorf("FindAffiliatorByCode(%q) = %+v, want active affiliator %v", code, aff, affID)
+	}
+	missing, err := repo.FindAffiliatorByCode(ctx, "NOPE"+uniqueSuffix())
+	if err != nil || missing != nil {
+		t.Errorf("FindAffiliatorByCode(unknown) = %v, %v; want nil, nil", missing, err)
+	}
+
+	// InsertAffiliateClick persists; a same-day repeat from the same visitor
+	// hash is deduped (no new row, recorded=false).
+	click := &model.AffiliateClick{
+		AffiliatorID: affID,
+		Code:         code,
+		IPHash:       userAgentPtr("abc123"),
+		UserAgent:    userAgentPtr("Integration UA"),
+		ClickDay:     time.Now().In(affiliateWIBLocation()),
+	}
+	inserted, err := repo.InsertAffiliateClick(ctx, click)
+	if err != nil {
+		t.Fatalf("InsertAffiliateClick: %v", err)
+	}
+	if !inserted {
+		t.Fatalf("InsertAffiliateClick() inserted = false, want true on first insert")
+	}
+	repeat, err := repo.InsertAffiliateClick(ctx, click)
+	if err != nil {
+		t.Fatalf("InsertAffiliateClick (repeat): %v", err)
+	}
+	if repeat {
+		t.Errorf("InsertAffiliateClick (same-day repeat) inserted = true, want dedupe false")
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM affiliate_clicks WHERE user_agent = 'Integration UA'`).Scan(&n); err != nil {
+		t.Fatalf("count clicks: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("affiliate_clicks rows = %d, want 1", n)
+	}
+}
+
+func userAgentPtr(s string) *string { return &s }
+
+func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	pool := repo.Pool()
+	ctx := context.Background()
+
+	code := "C1" + uniqueSuffix()[:6]
+	name := "Flag Gate Affiliator " + uniqueSuffix()
+	var userID string
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO users (name, username, role, status, otp_enabled)
+		 VALUES ($1, $2, 'affiliator', 'active', false) RETURNING id`,
+		name, "affflag_"+uniqueSuffix()).Scan(&userID); err != nil {
+		t.Fatalf("seed affiliator user: %v", err)
+	}
+	var affID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO affiliators (user_id, code, status, terms_version)
+		 VALUES ($1, $2, 'active', 'v1') RETURNING id`,
+		userID, code).Scan(&affID); err != nil {
+		t.Fatalf("seed affiliator: %v", err)
+	}
+	// Registration order is FK-dependency order: t.Cleanup runs LIFO, so
+	// clicks delete before affiliators, affiliators before users.
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID) })
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM system_config WHERE key = 'affiliate_enabled'`) })
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliators WHERE user_id = $1`, userID) })
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_clicks WHERE affiliator_id = $1`, affID) })
+
+	// Flag unset → default off: validate invalid, click no-op.
+	res, err := svc.ValidateAffiliateCode(ctx, code)
+	if err != nil {
+		t.Fatalf("ValidateAffiliateCode (flag unset): %v", err)
+	}
+	if res.Valid {
+		t.Errorf("ValidateAffiliateCode (flag unset) = %+v, want valid:false", res)
+	}
+	recorded, err := svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
+	if err != nil || recorded {
+		t.Errorf("RecordAffiliateClick (flag unset) = %v, %v; want no-op", recorded, err)
+	}
+
+	// Flag on → validate names the affiliator, click records.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO system_config (key, value, is_secret) VALUES ('affiliate_enabled', 'true', false)
+		 ON CONFLICT (key) DO UPDATE SET value = 'true'`); err != nil {
+		t.Fatalf("set flag on: %v", err)
+	}
+	res, err = svc.ValidateAffiliateCode(ctx, code)
+	if err != nil {
+		t.Fatalf("ValidateAffiliateCode (flag on): %v", err)
+	}
+	if !res.Valid || res.AffiliatorName != name {
+		t.Errorf("ValidateAffiliateCode (flag on) = %+v, want valid with name %q", res, name)
+	}
+	recorded, err = svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
+	if err != nil || !recorded {
+		t.Errorf("RecordAffiliateClick (flag on) = %v, %v; want recorded, nil", recorded, err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM affiliate_clicks WHERE user_agent = 'flag-gate-ua'`).Scan(&n); err != nil {
+		t.Fatalf("count clicks: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("affiliate_clicks rows after flag-on click = %d, want 1", n)
+	}
+
+	// Flag off → validate invalid, click no-op, no new rows.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO system_config (key, value, is_secret) VALUES ('affiliate_enabled', 'false', false)
+		 ON CONFLICT (key) DO UPDATE SET value = 'false'`); err != nil {
+		t.Fatalf("set flag off: %v", err)
+	}
+	res, err = svc.ValidateAffiliateCode(ctx, code)
+	if err != nil {
+		t.Fatalf("ValidateAffiliateCode (flag off): %v", err)
+	}
+	if res.Valid {
+		t.Errorf("ValidateAffiliateCode (flag off) = %+v, want valid:false", res)
+	}
+	recorded, err = svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
+	if err != nil || recorded {
+		t.Errorf("RecordAffiliateClick (flag off) = %v, %v; want no-op", recorded, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM affiliate_clicks WHERE user_agent = 'flag-gate-ua'`).Scan(&n); err != nil {
+		t.Fatalf("count clicks: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("affiliate_clicks rows after flag-off click = %d, want 1", n)
+	}
+
+	// Inactive affiliator with flag on → invalid.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO system_config (key, value, is_secret) VALUES ('affiliate_enabled', 'true', false)
+		 ON CONFLICT (key) DO UPDATE SET value = 'true'`); err != nil {
+		t.Fatalf("set flag on: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE affiliators SET status = 'pending_approval' WHERE id = $1`, affID); err != nil {
+		t.Fatalf("deactivate affiliator: %v", err)
+	}
+	res, err = svc.ValidateAffiliateCode(ctx, code)
+	if err != nil {
+		t.Fatalf("ValidateAffiliateCode (inactive): %v", err)
+	}
+	if res.Valid {
+		t.Errorf("ValidateAffiliateCode (inactive) = %+v, want valid:false", res)
+	}
+
+	// Unknown code → invalid, empty name, no error (no user enumeration).
+	res, err = svc.ValidateAffiliateCode(ctx, "UNKNOWN1")
+	if err != nil {
+		t.Fatalf("ValidateAffiliateCode (unknown): %v", err)
+	}
+	if res.Valid || res.AffiliatorName != "" {
+		t.Errorf("ValidateAffiliateCode (unknown) = %+v, want valid:false empty name", res)
+	}
+}

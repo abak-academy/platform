@@ -185,6 +185,7 @@ type AffiliateClick struct {
 	Code         string    `json:"code"`
 	IPHash       *string   `json:"ip_hash"`
 	UserAgent    *string   `json:"user_agent"`
+	ClickDay     time.Time `json:"click_day"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
