@@ -1,0 +1,382 @@
+package handler_test
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"akademi-bimbel/config"
+	"akademi-bimbel/internal/handler"
+	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/service"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
+)
+
+// affiliateConfigEnv is a private, migrated database per test behind the real
+// JWT + RBAC middleware: the five admin config surfaces are gated by
+// RBACMiddleware("affiliates:*"), so the tests drive a real router.
+type affiliateConfigEnv struct {
+	pool   *pgxpool.Pool
+	rdb    *redis.Client
+	e      *echo.Echo
+	signer *infra.JWTSigner
+}
+
+// newAffiliateAdminConfigRouter wires the admin config routes the way
+// routes.go's /admin group does: JWT on the group, RBACMiddleware("affiliates:*")
+// in front of the affiliate config surfaces.
+func newAffiliateAdminConfigRouter(t *testing.T, h *handler.Handler, svc *service.Service, signer *infra.JWTSigner) *echo.Echo {
+	t.Helper()
+	e := echo.New()
+	e.HideBanner = true
+	v1 := e.Group("/api/v1")
+	admin := v1.Group("/admin")
+	admin.Use(handler.JWTMiddleware(svc, signer))
+	cfg := admin.Group("", handler.RBACMiddleware("affiliates:*"))
+	cfg.GET("/affiliate-settings", h.AdminGetAffiliateSettings)
+	cfg.PUT("/affiliate-settings", h.AdminUpdateAffiliateSettings)
+	cfg.GET("/affiliate-product-overrides", h.AdminListAffiliateOverrides)
+	cfg.PUT("/affiliate-product-overrides/:product_id", h.AdminUpsertAffiliateOverride)
+	cfg.DELETE("/affiliate-product-overrides/:product_id", h.AdminDeleteAffiliateOverride)
+	cfg.GET("/affiliate-flags", h.AdminListAffiliateFlags)
+	cfg.POST("/affiliate-flags/:id/review", h.AdminReviewAffiliateFlag)
+	cfg.GET("/affiliate-appeals", h.AdminListAffiliateAppeals)
+	cfg.POST("/affiliate-appeals/:id/decide", h.AdminDecideAffiliateAppeal)
+	cfg.GET("/affiliate-reports/summary", h.AdminAffiliateReportSummary)
+	cfg.GET("/affiliate-reports/liability", h.AdminAffiliateReportLiability)
+	return e
+}
+
+func newAffiliateAdminConfigEnv(t *testing.T) *affiliateConfigEnv {
+	t.Helper()
+	pool := newTemplatedPool(t)
+	store := repository.New(pool)
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	cfg := &config.Config{
+		JWTSecret:       "affiliate-config-test-secret",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 168 * time.Hour,
+		OTPTTL:          5 * time.Minute,
+	}
+	signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
+	svc := service.NewWithStore(
+		store, store, rdb, signer,
+		&service.NoopOTPProvider{}, &service.NoopEmailProvider{},
+		&service.NoopPaymentClient{}, &service.NoopLogisticsClient{},
+		nil, cfg, nil,
+	)
+	h := handler.New(svc)
+	e := newAffiliateAdminConfigRouter(t, h, svc, signer)
+
+	t.Cleanup(pool.Close)
+	return &affiliateConfigEnv{pool: pool, rdb: rdb, e: e, signer: signer}
+}
+
+// tokenFor mints a valid access token for a real seeded user (settings PUT
+// writes updated_by with an FK to users) and seeds its session so
+// JWTMiddleware's SessionActive check passes.
+func (env *affiliateConfigEnv) tokenFor(t *testing.T, role string) string {
+	t.Helper()
+	var sub string
+	if err := env.pool.QueryRow(context.Background(),
+		`INSERT INTO users (name, username, role, status, otp_enabled)
+		 VALUES ($1, $2, $3, 'active', false) RETURNING id`,
+		"Config Admin "+uniqueHandlerSuffix(), "affcfgtok_"+uniqueHandlerSuffix(), role,
+	).Scan(&sub); err != nil {
+		t.Fatalf("seed actor user: %v", err)
+	}
+	tok, jti, err := env.signer.SignAccess(sub, role, nil, []string{})
+	if err != nil {
+		t.Fatalf("SignAccess: %v", err)
+	}
+	if err := env.rdb.Set(context.Background(), "session:access:"+jti, sub, time.Hour).Err(); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	return tok
+}
+
+func putJSONWithToken(t *testing.T, e interface {
+	ServeHTTP(http.ResponseWriter, *http.Request)
+}, path, token, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPut, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
+}
+
+func deleteWithToken(t *testing.T, e *echo.Echo, path, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodDelete, path, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
+}
+
+const validAffiliateSettingsBody = `{
+	"cookie_days": 45,
+	"binding_months": 3,
+	"min_extend_amount": 0,
+	"digital_wait_days": 7,
+	"physical_received_days": 7,
+	"physical_wait_days": 7,
+	"min_payout": 100000,
+	"payout_day_of_month": null,
+	"adjustment_threshold": 1000000,
+	"adjustment_threshold_enabled": false,
+	"freeze_max_days": 14,
+	"soon_end_days": 30,
+	"launch_date": null,
+	"eval_day": 8,
+	"silver_threshold": 5000000,
+	"gold_threshold": 15000000,
+	"hold_thresholds": {"bronze": 1000000, "silver": null},
+	"daily_registration_cap": null,
+	"levels": [
+		{"level": "silver", "commission_pct": {"exam": 12}, "digital_wait_days": 3, "min_payout": 50000}
+	]
+}`
+
+func seedConfigOverrideProduct(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := pool.QueryRow(context.Background(),
+		`INSERT INTO product (name, type, price, status) VALUES ($1, 'book', 60000, 'published') RETURNING id`,
+		"Config Handler Product "+uniqueHandlerSuffix(),
+	).Scan(&id); err != nil {
+		t.Fatalf("seed product: %v", err)
+	}
+	return id
+}
+
+func seedConfigFlag(t *testing.T, pool *pgxpool.Pool, affiliatorID string) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(),
+		`INSERT INTO affiliate_flags (affiliator_id, rule, payload, status)
+		 VALUES ($1, 'self_purchase', '{}', 'open') RETURNING id`,
+		affiliatorID,
+	).Scan(&id); err != nil {
+		t.Fatalf("seed flag: %v", err)
+	}
+	return id
+}
+
+func seedConfigAdminUser(t *testing.T, pool *pgxpool.Pool) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(context.Background(),
+		`INSERT INTO users (name, username, role, status) VALUES ($1, $2, 'super_admin', 'active') RETURNING id`,
+		"Config Admin "+uniqueHandlerSuffix(), "affcfg_"+uniqueHandlerSuffix(),
+	).Scan(&id); err != nil {
+		t.Fatalf("seed admin user: %v", err)
+	}
+	return id
+}
+
+func seedConfigPendingAppeal(t *testing.T, pool *pgxpool.Pool, affiliatorID string) string {
+	t.Helper()
+	decider := seedConfigAdminUser(t, pool)
+	var id string
+	if err := pool.QueryRow(context.Background(),
+		`INSERT INTO affiliate_violations (affiliator_id, category, description, sanction, status, decided_by, decided_at, appeal_status)
+		 VALUES ($1, 'self_purchase', 'pesan sendiri', 'warning', 'resolved', $2, now(), 'pending') RETURNING id`,
+		affiliatorID, decider,
+	).Scan(&id); err != nil {
+		t.Fatalf("seed pending appeal: %v", err)
+	}
+	return id
+}
+
+func TestAffiliateAdminConfigHandlerRBAC(t *testing.T) {
+	env := newAffiliateAdminConfigEnv(t)
+	affID, _ := seedAffiliateAdminRow(t, env.pool, "active")
+	productID := seedConfigOverrideProduct(t, env.pool)
+	flagID := seedConfigFlag(t, env.pool, affID)
+	appealID := seedConfigPendingAppeal(t, env.pool, affID)
+	from := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	to := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+
+	surfaces := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{"settings read", http.MethodGet, "/api/v1/admin/affiliate-settings", ""},
+		{"settings write", http.MethodPut, "/api/v1/admin/affiliate-settings", validAffiliateSettingsBody},
+		{"overrides read", http.MethodGet, "/api/v1/admin/affiliate-product-overrides", ""},
+		{"overrides write", http.MethodPut, "/api/v1/admin/affiliate-product-overrides/" + productID.String(), `{"percentage":10}`},
+		{"overrides delete", http.MethodDelete, "/api/v1/admin/affiliate-product-overrides/" + productID.String(), ""},
+		{"flags read", http.MethodGet, "/api/v1/admin/affiliate-flags", ""},
+		{"flags review", http.MethodPost, "/api/v1/admin/affiliate-flags/" + flagID + "/review", `{"status":"reviewed"}`},
+		{"appeals read", http.MethodGet, "/api/v1/admin/affiliate-appeals", ""},
+		{"appeals decide", http.MethodPost, "/api/v1/admin/affiliate-appeals/" + appealID + "/decide", `{"outcome":"upheld"}`},
+		{"reports summary", http.MethodGet, "/api/v1/admin/affiliate-reports/summary?from=" + from + "&to=" + to, ""},
+		{"reports liability", http.MethodGet, "/api/v1/admin/affiliate-reports/liability", ""},
+	}
+
+	t.Run("a missing token is unauthorized", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/affiliate-settings", nil)
+		rec := httptest.NewRecorder()
+		env.e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("want 401, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("admin_store is forbidden on the five surfaces", func(t *testing.T) {
+		for _, surface := range surfaces {
+			t.Run(surface.name, func(t *testing.T) {
+				token := env.tokenFor(t, service.RoleAdminStore)
+				var rec *httptest.ResponseRecorder
+				switch surface.method {
+				case http.MethodGet:
+					rec = getWithToken(t, env.e, surface.path, token)
+				case http.MethodPut:
+					rec = putJSONWithToken(t, env.e, surface.path, token, surface.body)
+				case http.MethodDelete:
+					rec = deleteWithToken(t, env.e, surface.path, token)
+				default:
+					rec = postJSONWithToken(t, env.e, surface.path, token, surface.body)
+				}
+				if rec.Code != http.StatusForbidden {
+					t.Errorf("%s %s: want 403, got %d: %s", surface.method, surface.path, rec.Code, rec.Body.String())
+				}
+			})
+		}
+	})
+
+	t.Run("super_admin reads and writes the surfaces", func(t *testing.T) {
+		token := env.tokenFor(t, service.RoleSuperAdmin)
+
+		rec := getWithToken(t, env.e, "/api/v1/admin/affiliate-settings", token)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var got struct {
+			Settings struct {
+				CookieDays int `json:"cookie_days"`
+			} `json:"settings"`
+			Levels []struct {
+				Level string `json:"level"`
+			} `json:"levels"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decode settings: %v", err)
+		}
+		if len(got.Levels) != 3 {
+			t.Errorf("GET settings levels = %d rows, want the three level rows", len(got.Levels))
+		}
+
+		rec = putJSONWithToken(t, env.e, "/api/v1/admin/affiliate-settings", token, validAffiliateSettingsBody)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("PUT settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var putBack struct {
+			Settings struct {
+				CookieDays int `json:"cookie_days"`
+			} `json:"settings"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &putBack); err != nil {
+			t.Fatalf("decode put settings: %v", err)
+		}
+		if putBack.Settings.CookieDays != 45 {
+			t.Errorf("PUT settings readback cookie_days = %d, want 45", putBack.Settings.CookieDays)
+		}
+
+		rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-product-overrides", token)
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET overrides: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		rec = putJSONWithToken(t, env.e, "/api/v1/admin/affiliate-product-overrides/"+productID.String(), token, `{"percentage":10}`)
+		if rec.Code != http.StatusOK {
+			t.Errorf("PUT override: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var ovr struct {
+			Percentage float64 `json:"percentage"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &ovr); err != nil {
+			t.Fatalf("decode override: %v", err)
+		}
+		if ovr.Percentage != 10 {
+			t.Errorf("override percentage = %v, want 10", ovr.Percentage)
+		}
+
+		rec = deleteWithToken(t, env.e, "/api/v1/admin/affiliate-product-overrides/"+productID.String(), token)
+		if rec.Code != http.StatusOK {
+			t.Errorf("DELETE override: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-flags", token)
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET flags: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		rec = postJSONWithToken(t, env.e, "/api/v1/admin/affiliate-flags/"+flagID+"/review", token, `{"status":"reviewed","note":"cek"}`)
+		if rec.Code != http.StatusOK {
+			t.Errorf("POST flag review: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-appeals", token)
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET appeals: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		rec = postJSONWithToken(t, env.e, "/api/v1/admin/affiliate-appeals/"+appealID+"/decide", token, `{"outcome":"upheld"}`)
+		if rec.Code != http.StatusOK {
+			t.Errorf("POST appeal decide: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-reports/summary?from="+from+"&to="+to, token)
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET reports summary: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var summary struct {
+			Data   []json.RawMessage `json:"data"`
+			Totals json.RawMessage   `json:"totals"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &summary); err != nil {
+			t.Fatalf("decode summary: %v", err)
+		}
+		if summary.Totals == nil {
+			t.Errorf("summary response lacks the totals row: %s", rec.Body.String())
+		}
+
+		rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-reports/liability", token)
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET reports liability: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("an invalid settings body is rejected", func(t *testing.T) {
+		token := env.tokenFor(t, service.RoleSuperAdmin)
+		rec := putJSONWithToken(t, env.e, "/api/v1/admin/affiliate-settings", token,
+			strings.Replace(validAffiliateSettingsBody, `"cookie_days": 45`, `"cookie_days": 0`, 1))
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Errorf("PUT settings cookie_days 0: want 422, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+}

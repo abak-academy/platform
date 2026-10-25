@@ -50,6 +50,7 @@ var configKeyCatalog = map[string]configKeyDef{
 	"biteship_services":              {group: "shipping", valueType: "string"},
 	"biteship_api_key":               {group: "shipping", valueType: "string", secret: true},
 	"biteship_webhook_secret":        {group: "shipping", valueType: "string", secret: true},
+	"affiliate_enabled":              {group: "app", valueType: "bool"},
 }
 
 // TODO: uncertain — service codes mapped from dashboard names via Biteship docs, reconcile with GET /v1/couriers before prod

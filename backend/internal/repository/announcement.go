@@ -157,6 +157,9 @@ func (r *Repository) ListActiveUserEmails(ctx context.Context, recipients string
 		query += " AND role = 'student'"
 	case "admins":
 		query += " AND role LIKE 'admin_%'"
+	case "affiliators":
+		// Active affiliator accounts only: the user row alone is not enough.
+		query += " AND role = 'affiliator' AND EXISTS (SELECT 1 FROM affiliators a WHERE a.user_id = users.id AND a.status = 'active')"
 	case "all":
 		// no additional filter
 	default:
