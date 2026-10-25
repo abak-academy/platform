@@ -188,3 +188,23 @@ func (s *Service) ExpireBindings(ctx context.Context, now time.Time) (int, error
 	}
 	return int(rows), nil
 }
+
+// AffiliateCodeEligible reports whether a checkout referral code could still
+// bind this student (flag on, account created after launch, no active binding).
+// It deliberately says nothing about who the binding belongs to, and any lookup
+// failure reads as false so the cart never fails over a referral hint.
+func (s *Service) AffiliateCodeEligible(ctx context.Context, studentID string) bool {
+	if s.storeRepo == nil || !s.affiliateEnabled(ctx) {
+		return false
+	}
+	student, err := s.storeRepo.GetUserByID(ctx, studentID)
+	if err != nil || student == nil || student.Role != RoleStudent {
+		return false
+	}
+	settings, err := s.LoadAffiliateSettings(ctx)
+	if err != nil || settings.LaunchDate == nil || student.CreatedAt.Before(*settings.LaunchDate) {
+		return false
+	}
+	existing, err := s.storeRepo.GetActiveBindingByStudent(ctx, nil, student.ID)
+	return err == nil && existing == nil
+}

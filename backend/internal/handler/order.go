@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
@@ -27,7 +28,10 @@ func (h *Handler) MintCart(c echo.Context) error {
 	if isNew {
 		status = http.StatusCreated
 	}
-	return c.JSON(status, order)
+	return c.JSON(status, struct {
+		model.Order
+		AffiliateCodeEligible bool `json:"affiliate_code_eligible"`
+	}{order, h.svc.AffiliateCodeEligible(c.Request().Context(), claims.Sub)})
 }
 
 func (h *Handler) GetOrders(c echo.Context) error {

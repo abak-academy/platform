@@ -262,6 +262,8 @@ export interface OrderShipmentEvent {
 export interface Order {
   id: string;
   student_id: string;
+  /** Only the cart mint response carries it; true when a checkout referral code could still bind this student. */
+  affiliate_code_eligible?: boolean;
   /** Resolved server-side (FR-33/FR-35); fallback text when the student row is missing. */
   student_name?: string;
   student_school?: string;

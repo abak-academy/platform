@@ -371,3 +371,44 @@ func TestExpireBindings_DueOnlyAndIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, expiredAgain)
 }
+
+func TestAffiliateCodeEligible(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	setAffiliateMeFlag(t, repo, "true")
+	launch := time.Now().UTC().Add(-24 * time.Hour)
+	seedAffiliateSettingsForBinding(t, repo, affiliateSettingsSeed{launchDate: &launch, bindingMonths: 3})
+
+	t.Run("an unbound post-launch student is eligible", func(t *testing.T) {
+		student := seedAffiliateTestStudent(t, repo, "elig-free-"+uniqueSuffix()+"@test.local", "")
+		require.True(t, svc.AffiliateCodeEligible(ctx, student.ID))
+	})
+
+	t.Run("a student bound to an affiliator is not", func(t *testing.T) {
+		owner := seedAffiliatorOwner(t, repo, "elig-aff-"+uniqueSuffix()+"@test.local", "", "active")
+		student := seedAffiliateTestStudent(t, repo, "elig-bound-"+uniqueSuffix()+"@test.local", "")
+		createAffiliateBindingCommitted(t, svc, repo, student.ID, owner.affiliatorID, "link")
+		require.False(t, svc.AffiliateCodeEligible(ctx, student.ID))
+	})
+
+	t.Run("a bound student stays ineligible even if the affiliator is suspended", func(t *testing.T) {
+		owner := seedAffiliatorOwner(t, repo, "elig-susp-"+uniqueSuffix()+"@test.local", "", "suspended")
+		student := seedAffiliateTestStudent(t, repo, "elig-susp-s-"+uniqueSuffix()+"@test.local", "")
+		createAffiliateBindingCommitted(t, svc, repo, student.ID, owner.affiliatorID, "link")
+		require.False(t, svc.AffiliateCodeEligible(ctx, student.ID))
+	})
+
+	t.Run("a pre-launch account is not", func(t *testing.T) {
+		later := time.Now().UTC().Add(24 * time.Hour)
+		seedAffiliateSettingsForBinding(t, repo, affiliateSettingsSeed{launchDate: &later, bindingMonths: 3})
+		student := seedAffiliateTestStudent(t, repo, "elig-pre-"+uniqueSuffix()+"@test.local", "")
+		require.False(t, svc.AffiliateCodeEligible(ctx, student.ID))
+	})
+
+	t.Run("nothing is eligible while the flag is off", func(t *testing.T) {
+		seedAffiliateSettingsForBinding(t, repo, affiliateSettingsSeed{launchDate: &launch, bindingMonths: 3})
+		setAffiliateMeFlag(t, repo, "false")
+		student := seedAffiliateTestStudent(t, repo, "elig-off-"+uniqueSuffix()+"@test.local", "")
+		require.False(t, svc.AffiliateCodeEligible(ctx, student.ID))
+	})
+}

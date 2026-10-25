@@ -478,13 +478,15 @@ export default function CartPage() {
                 <span className="font-serif text-2xl font-bold text-success">{formatRupiah(total)}</span>
               </div>
 
-              <div className="mt-4">
-                <ReferralCodeField value={referralCode} onChange={setReferralCode} />
-              </div>
+              {cart?.affiliate_code_eligible && (
+                <div className="mt-4">
+                  <ReferralCodeField value={referralCode} onChange={setReferralCode} />
+                </div>
+              )}
 
               <SnapCheckout
                 orderId={cart?.id}
-                affiliateCode={referralCode}
+                affiliateCode={cart?.affiliate_code_eligible ? referralCode : undefined}
                 disabled={(hasPhysical && shippingRates.isError) || patchCart.isPending || removeItem.isPending || updateQty.isPending}
               />
 
