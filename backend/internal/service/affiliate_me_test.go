@@ -162,6 +162,22 @@ func TestGetMyAffiliateProfile_showsLevelProgress(t *testing.T) {
 	require.InDelta(t, 50000, *progress.HoldThreshold, 0.001)
 }
 
+func TestGetMyAffiliateProfile_pendingHasNoCodeOrLink(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	setAffiliateMeFlag(t, repo, "true")
+
+	userID := seedAffiliateMeUser(t, repo, "Affiliator Pending "+uniqueSuffix(), "affiliator")
+	_, err := repo.Pool().Exec(context.Background(),
+		`INSERT INTO affiliators (user_id, status, terms_version) VALUES ($1, 'pending_approval', 'v1')`, userID)
+	require.NoError(t, err)
+
+	profile, err := svc.GetMyAffiliateProfile(context.Background(), userID)
+	require.NoError(t, err)
+	require.Equal(t, "pending_approval", profile.Status)
+	require.Empty(t, profile.Code)
+	require.Empty(t, profile.ReferralLink)
+}
+
 func TestGetMyAffiliateProfile_goldHasNoRiseThreshold(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()

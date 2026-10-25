@@ -142,9 +142,13 @@ func (s *Service) GetMyAffiliateProfile(ctx context.Context, userID string) (Aff
 	if err != nil {
 		return AffiliateMeProfile{}, err
 	}
+	referralLink := ""
+	if aff.Code != "" {
+		referralLink = affiliateReferralLinkPrefix + aff.Code
+	}
 	profile := AffiliateMeProfile{
 		Code:              aff.Code,
-		ReferralLink:      affiliateReferralLinkPrefix + aff.Code,
+		ReferralLink:      referralLink,
 		Level:             aff.Level,
 		Status:            aff.Status,
 		RejectionReason:   aff.RejectionReason,
