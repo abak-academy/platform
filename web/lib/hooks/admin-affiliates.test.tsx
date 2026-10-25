@@ -73,14 +73,14 @@ describe("admin affiliate hooks", () => {
     });
   });
 
-  it("unwraps the flag list", async () => {
+  it("returns the flag list body as sent", async () => {
     mockAuthFetch.mockResolvedValueOnce({ data: [{ id: "f1" }] });
     const { wrapper } = wrapperFactory();
     const { result } = renderHook(() => useAdminAffiliateFlags("open"), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockAuthFetch).toHaveBeenCalledWith("/admin/affiliate-flags?status=open");
-    expect(result.current.data).toEqual([{ id: "f1" }]);
+    expect(result.current.data).toEqual({ data: [{ id: "f1" }] });
   });
 
   it("reruns a job with the scope and quarter", async () => {

@@ -80,6 +80,6 @@ describe("AffiliateViolationsPage", () => {
     render(<ViolationsPage />);
 
     expect(screen.queryByRole("button", { name: "Ajukan banding" })).toBeNull();
-    expect(screen.getAllByText("Menunggu").length).toBeGreaterThan(0);
+    expect(screen.getByText("Menunggu keputusan")).toBeInTheDocument();
   });
 });

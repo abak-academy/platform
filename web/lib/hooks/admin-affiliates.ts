@@ -222,10 +222,7 @@ export function useDeleteAffiliateOverride() {
 export function useAdminAffiliateFlags(status: string) {
   return useQuery({
     queryKey: adminAffiliateKeys.flags(status),
-    queryFn: async () => {
-      const res = await authFetch<{ data: AffiliateFlagRow[] }>(`/admin/affiliate-flags${qs({ status })}`);
-      return res.data ?? [];
-    },
+    queryFn: () => authFetch<{ data: AffiliateFlagRow[] }>(`/admin/affiliate-flags${qs({ status })}`),
   });
 }
 
@@ -239,10 +236,7 @@ export function useReviewAffiliateFlag() {
 export function useAdminAffiliateAppeals(status: string) {
   return useQuery({
     queryKey: adminAffiliateKeys.appeals(status),
-    queryFn: async () => {
-      const res = await authFetch<{ data: AffiliateAppealRow[] }>(`/admin/affiliate-appeals${qs({ status })}`);
-      return res.data ?? [];
-    },
+    queryFn: () => authFetch<{ data: AffiliateAppealRow[] }>(`/admin/affiliate-appeals${qs({ status })}`),
   });
 }
 

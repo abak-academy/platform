@@ -4,7 +4,7 @@ import { Suspense, use } from "react";
 import Link from "next/link";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { AffiliateAdminActions } from "@/components/affiliate/AffiliateAdminActions";
-import { StatusBadge } from "@/components/affiliate/StatusBadge";
+import { AppealBadge, StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { ApiError } from "@/lib/api";
@@ -88,7 +88,7 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
     { key: "date", header: t("aff_col_date"), cell: (r) => formatAffDate(r.decided_at) },
     { key: "description", header: t("aff_col_description"), cell: (r) => r.description },
     { key: "sanction", header: t("aff_col_sanction"), cell: (r) => affLabel(t, r.sanction) },
-    { key: "appeal", header: t("aff_col_appeal"), cell: (r) => <StatusBadge status={r.appeal_status} /> },
+    { key: "appeal", header: t("aff_col_appeal"), cell: (r) => <AppealBadge status={r.appeal_status} /> },
   ];
 
   return (

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { AffiliateList } from "@/components/affiliate/AffiliateList";
-import { StatusBadge } from "@/components/affiliate/StatusBadge";
+import { AppealBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
 import {
@@ -23,7 +23,7 @@ function AppealCell({ violation }: { violation: AffiliateViolation }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
 
-  if (violation.appeal_status !== "none") return <StatusBadge status={violation.appeal_status} />;
+  if (violation.appeal_status !== "none") return <AppealBadge status={violation.appeal_status} />;
   if (!open) {
     return (
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
