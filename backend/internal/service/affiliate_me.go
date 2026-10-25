@@ -1,0 +1,330 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
+
+	"github.com/google/uuid"
+)
+
+// Feature-local sentinels (see affiliate_jobs.go for the precedent); the
+// parent owns their mapServiceError cases.
+var (
+	ErrAffiliateProfileNotFound = errors.New("affiliator profile not found")
+	ErrAffiliateNotActive       = errors.New("affiliator account is not active")
+)
+
+const affiliateReferralLinkPrefix = "/r/"
+
+type AffiliateMeLevelProgress struct {
+	Quarter       string   `json:"quarter"`
+	NetRevenue    float64  `json:"net_revenue"`
+	NextLevel     string   `json:"next_level,omitempty"`
+	RiseThreshold *float64 `json:"rise_threshold,omitempty"`
+	HoldThreshold *float64 `json:"hold_threshold,omitempty"`
+}
+
+type AffiliateMeProfile struct {
+	Code              string                    `json:"code"`
+	ReferralLink      string                    `json:"referral_link"`
+	Level             string                    `json:"level"`
+	Status            string                    `json:"status"`
+	RejectionReason   *string                   `json:"rejection_reason,omitempty"`
+	WarnQuarters      int                       `json:"warn_quarters"`
+	LevelLockedUntil  *time.Time                `json:"level_locked_until,omitempty"`
+	SuspendedUntil    *time.Time                `json:"suspended_until,omitempty"`
+	FrozenUntil       *time.Time                `json:"frozen_until,omitempty"`
+	BankName          *string                   `json:"bank_name"`
+	BankAccountNumber *string                   `json:"bank_account_number"`
+	BankAccountHolder *string                   `json:"bank_account_holder"`
+	TermsVersion      string                    `json:"terms_version"`
+	TermsAcceptedAt   time.Time                 `json:"terms_accepted_at"`
+	LevelProgress     *AffiliateMeLevelProgress `json:"level_progress"`
+}
+
+type AffiliateMeListFilter struct {
+	Page        int
+	PerPage     int
+	Status      string
+	ProductType string
+	Order       string
+	From        *time.Time
+	To          *time.Time
+}
+
+// AffiliateMeBinding is one affiliator-facing student row: name is
+// privacy-formatted and carries no contact or exam data (BR-PRV-02).
+type AffiliateMeBinding struct {
+	BindingID    uuid.UUID  `json:"binding_id"`
+	Name         string     `json:"name"`
+	RegisteredAt time.Time  `json:"registered_at"`
+	Status       string     `json:"status"`
+	Source       string     `json:"source"`
+	StartedAt    time.Time  `json:"started_at"`
+	EndedAt      *time.Time `json:"ended_at"`
+	TotalSpend   float64    `json:"total_spend"`
+}
+
+type AffiliateMeBindingsPage struct {
+	Data    []AffiliateMeBinding `json:"data"`
+	Page    int                  `json:"page"`
+	PerPage int                  `json:"per_page"`
+	Total   int                  `json:"total"`
+}
+
+type AffiliateMeCommissionsPage struct {
+	Data    []model.AffiliateCommission `json:"data"`
+	Page    int                         `json:"page"`
+	PerPage int                         `json:"per_page"`
+	Total   int                         `json:"total"`
+}
+
+type AffiliateMeLedgerPage struct {
+	Data    []model.AffiliateLedgerEntry `json:"data"`
+	Saldo   float64                      `json:"saldo"`
+	Page    int                          `json:"page"`
+	PerPage int                          `json:"per_page"`
+	Total   int                          `json:"total"`
+}
+
+type AffiliateMeStats struct {
+	Clicks                int            `json:"clicks"`
+	Registrations         int            `json:"registrations"`
+	RegistrationsBySource map[string]int `json:"registrations_by_source"`
+	Conversion            float64        `json:"conversion"`
+	TotalStudents         int            `json:"total_students"`
+	ActiveBindings        int            `json:"active_bindings"`
+}
+
+// affiliateStudentDisplayName renders a student's name as first name plus the
+// initials of the remaining words ("Budi Santoso" → "Budi S."), BR-PRV-02.
+func affiliateStudentDisplayName(name string) string {
+	words := strings.Fields(name)
+	if len(words) == 0 {
+		return ""
+	}
+	initials := make([]string, 0, len(words)-1)
+	for _, word := range words[1:] {
+		runes := []rune(word)
+		initials = append(initials, strings.ToUpper(string(runes[0]))+".")
+	}
+	if len(initials) == 0 {
+		return words[0]
+	}
+	return words[0] + " " + strings.Join(initials, " ")
+}
+
+// affiliateMeAffiliator resolves the affiliators row behind the JWT user_id —
+// the privacy boundary for every /affiliates/me read (BR-PRV-01). Flag off or
+// no profile row is the same 404 sentinel so flag-off pages look absent.
+func (s *Service) affiliateMeAffiliator(ctx context.Context, userID string) (*model.Affiliator, error) {
+	if !s.affiliateEnabled(ctx) {
+		return nil, ErrAffiliateProfileNotFound
+	}
+	aff, err := s.storeRepo.GetAffiliatorByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get affiliator by user: %w", err)
+	}
+	if aff == nil {
+		return nil, ErrAffiliateProfileNotFound
+	}
+	return aff, nil
+}
+
+func (s *Service) GetMyAffiliateProfile(ctx context.Context, userID string) (AffiliateMeProfile, error) {
+	aff, err := s.affiliateMeAffiliator(ctx, userID)
+	if err != nil {
+		return AffiliateMeProfile{}, err
+	}
+	profile := AffiliateMeProfile{
+		Code:              aff.Code,
+		ReferralLink:      affiliateReferralLinkPrefix + aff.Code,
+		Level:             aff.Level,
+		Status:            aff.Status,
+		RejectionReason:   aff.RejectionReason,
+		WarnQuarters:      aff.WarnQuarters,
+		LevelLockedUntil:  aff.LevelLockedUntil,
+		SuspendedUntil:    aff.SuspendedUntil,
+		FrozenUntil:       aff.FrozenUntil,
+		BankName:          aff.BankName,
+		BankAccountNumber: aff.BankAccountNumber,
+		BankAccountHolder: aff.BankAccountHolder,
+		TermsVersion:      aff.TermsVersion,
+		TermsAcceptedAt:   aff.TermsAcceptedAt,
+	}
+
+	settings, rules, err := s.LoadAffiliateEffectiveRules(ctx)
+	if err != nil {
+		return profile, fmt.Errorf("load affiliate effective rules: %w", err)
+	}
+	nowWIB := time.Now().In(affiliateWIBLocation())
+	quarter := affiliateQuarterKey(nowWIB)
+	start, end, err := affiliateQuarterRange(quarter, nowWIB.Location())
+	if err != nil {
+		return profile, err
+	}
+	net, err := s.storeRepo.GetAffiliateQuarterNetRevenue(ctx, aff.ID, start, end)
+	if err != nil {
+		return profile, fmt.Errorf("sum quarter net revenue: %w", err)
+	}
+	progress := &AffiliateMeLevelProgress{
+		Quarter:       quarter,
+		NetRevenue:    net,
+		HoldThreshold: rules[aff.Level].HoldThreshold,
+	}
+	if next, ok := affiliateNextLevel(aff.Level); ok {
+		rise := affiliateRiseThreshold(next, rules, settings)
+		progress.NextLevel = next
+		progress.RiseThreshold = &rise
+	}
+	profile.LevelProgress = progress
+	return profile, nil
+}
+
+func (s *Service) UpdateMyAffiliateBank(ctx context.Context, userID string, bankName, bankAccountNumber, bankAccountHolder string) (AffiliateMeProfile, error) {
+	aff, err := s.affiliateMeAffiliator(ctx, userID)
+	if err != nil {
+		return AffiliateMeProfile{}, err
+	}
+	if aff.Status != affiliateAffiliatorStatusActive {
+		return AffiliateMeProfile{}, ErrAffiliateNotActive
+	}
+	bankName = strings.TrimSpace(bankName)
+	bankAccountNumber = strings.TrimSpace(bankAccountNumber)
+	bankAccountHolder = strings.TrimSpace(bankAccountHolder)
+	if bankName == "" || bankAccountNumber == "" || bankAccountHolder == "" {
+		return AffiliateMeProfile{}, fmt.Errorf("%w: bank_name, bank_account_number, bank_account_holder", ErrMissingField)
+	}
+	if err := s.storeRepo.UpdateAffiliatorBank(ctx, aff.ID, bankName, bankAccountNumber, bankAccountHolder); err != nil {
+		return AffiliateMeProfile{}, fmt.Errorf("update affiliator bank: %w", err)
+	}
+	if err := s.storeRepo.InsertAuditLogMeta(ctx, nil, &userID, "affiliator", aff.ID.String(), "affiliate.bank_update", map[string]any{
+		"bank_name":           bankName,
+		"bank_account_number": bankAccountNumber,
+		"bank_account_holder": bankAccountHolder,
+	}); err != nil {
+		return AffiliateMeProfile{}, fmt.Errorf("audit affiliate bank update: %w", err)
+	}
+	return s.GetMyAffiliateProfile(ctx, userID)
+}
+
+var affiliateMeBindingStatuses = map[string]bool{"active": true, "ended": true}
+
+func (s *Service) ListMyAffiliateBindings(ctx context.Context, userID string, filter AffiliateMeListFilter) (AffiliateMeBindingsPage, error) {
+	page := AffiliateMeBindingsPage{Data: []AffiliateMeBinding{}, Page: filter.Page, PerPage: filter.PerPage}
+	if filter.Status != "" && !affiliateMeBindingStatuses[filter.Status] {
+		return page, fmt.Errorf("%w: %s", ErrInvalidStatusFilter, filter.Status)
+	}
+	aff, err := s.affiliateMeAffiliator(ctx, userID)
+	if err != nil {
+		return page, err
+	}
+	total, err := s.storeRepo.CountAffiliateBindingsForAffiliator(ctx, aff.ID, filter.Status)
+	if err != nil {
+		return page, fmt.Errorf("count affiliate bindings: %w", err)
+	}
+	page.Total = total
+	rows, err := s.storeRepo.ListAffiliateBindingsForAffiliator(ctx, aff.ID, filter.Status, filter.PerPage, (filter.Page-1)*filter.PerPage)
+	if err != nil {
+		return page, fmt.Errorf("list affiliate bindings: %w", err)
+	}
+	for _, row := range rows {
+		page.Data = append(page.Data, AffiliateMeBinding{
+			BindingID:    row.BindingID,
+			Name:         affiliateStudentDisplayName(row.StudentName),
+			RegisteredAt: row.RegisteredAt,
+			Status:       row.Status,
+			Source:       row.Source,
+			StartedAt:    row.StartedAt,
+			EndedAt:      row.EndedAt,
+			TotalSpend:   row.TotalSpend,
+		})
+	}
+	return page, nil
+}
+
+var affiliateMeCommissionStatuses = map[string]bool{"pending": true, "available": true, "paid": true, "cancelled": true, "held": true}
+
+func (s *Service) ListMyAffiliateCommissions(ctx context.Context, userID string, filter AffiliateMeListFilter) (AffiliateMeCommissionsPage, error) {
+	page := AffiliateMeCommissionsPage{Data: []model.AffiliateCommission{}, Page: filter.Page, PerPage: filter.PerPage}
+	if filter.Status != "" && !affiliateMeCommissionStatuses[filter.Status] {
+		return page, fmt.Errorf("%w: %s", ErrInvalidStatusFilter, filter.Status)
+	}
+	aff, err := s.affiliateMeAffiliator(ctx, userID)
+	if err != nil {
+		return page, err
+	}
+	repoFilter := repository.AffiliateCommissionFilter{
+		Status:      filter.Status,
+		ProductType: filter.ProductType,
+		PaidFrom:    filter.From,
+		PaidTo:      filter.To,
+		Limit:       filter.PerPage,
+		Offset:      (filter.Page - 1) * filter.PerPage,
+	}
+	total, err := s.storeRepo.CountAffiliateCommissionsForAffiliator(ctx, aff.ID, repoFilter)
+	if err != nil {
+		return page, fmt.Errorf("count affiliate commissions: %w", err)
+	}
+	page.Total = total
+	data, err := s.storeRepo.ListAffiliateCommissionsForAffiliator(ctx, aff.ID, repoFilter)
+	if err != nil {
+		return page, fmt.Errorf("list affiliate commissions: %w", err)
+	}
+	page.Data = data
+	return page, nil
+}
+
+func (s *Service) GetMyAffiliateLedger(ctx context.Context, userID string, filter AffiliateMeListFilter) (AffiliateMeLedgerPage, error) {
+	page := AffiliateMeLedgerPage{Data: []model.AffiliateLedgerEntry{}, Page: filter.Page, PerPage: filter.PerPage}
+	aff, err := s.affiliateMeAffiliator(ctx, userID)
+	if err != nil {
+		return page, err
+	}
+	total, err := s.storeRepo.CountAffiliateLedgerEntriesForAffiliator(ctx, aff.ID)
+	if err != nil {
+		return page, fmt.Errorf("count affiliate ledger: %w", err)
+	}
+	page.Total = total
+	saldo, err := s.storeRepo.SumAffiliateLedgerForAffiliator(ctx, aff.ID)
+	if err != nil {
+		return page, fmt.Errorf("sum affiliate ledger: %w", err)
+	}
+	page.Saldo = saldo
+	data, err := s.storeRepo.ListAffiliateLedgerForAffiliator(ctx, aff.ID, filter.Order == "asc", filter.PerPage, (filter.Page-1)*filter.PerPage)
+	if err != nil {
+		return page, fmt.Errorf("list affiliate ledger: %w", err)
+	}
+	page.Data = data
+	return page, nil
+}
+
+func (s *Service) GetMyAffiliateStats(ctx context.Context, userID string) (AffiliateMeStats, error) {
+	stats := AffiliateMeStats{}
+	aff, err := s.affiliateMeAffiliator(ctx, userID)
+	if err != nil {
+		return stats, err
+	}
+	counts, err := s.storeRepo.GetAffiliateMeCounts(ctx, aff.ID)
+	if err != nil {
+		return stats, fmt.Errorf("count affiliate stats: %w", err)
+	}
+	stats.Clicks = counts.Clicks
+	stats.Registrations = counts.Registrations
+	stats.TotalStudents = counts.TotalStudents
+	stats.ActiveBindings = counts.ActiveBindings
+	if counts.Clicks > 0 {
+		stats.Conversion = float64(counts.Registrations) / float64(counts.Clicks)
+	}
+	stats.RegistrationsBySource, err = s.storeRepo.CountAffiliateBindingsBySource(ctx, aff.ID)
+	if err != nil {
+		return stats, fmt.Errorf("count affiliate bindings by source: %w", err)
+	}
+	return stats, nil
+}
