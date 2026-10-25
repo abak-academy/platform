@@ -311,13 +311,17 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusNotFound, APIError{Code: "affiliate_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateSelfAdjustment):
 		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_self_adjustment", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateFrozen):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_frozen", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateBankMissing):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_bank_missing", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatePayoutBelowMin):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_payout_below_min", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatePayoutInFlight):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_payout_in_flight", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateNotActive),
 		errors.Is(err, service.ErrAffiliateNotPending),
 		errors.Is(err, service.ErrAffiliatePayoutNotDecidable),
-		errors.Is(err, service.ErrAffiliateFrozen),
-		errors.Is(err, service.ErrAffiliateBankMissing),
-		errors.Is(err, service.ErrAffiliatePayoutBelowMin),
-		errors.Is(err, service.ErrAffiliatePayoutInFlight),
 		errors.Is(err, service.ErrAffiliateNotAppealable),
 		errors.Is(err, service.ErrAffiliateFlagNotOpen),
 		errors.Is(err, service.ErrAffiliateAppealNotPending):
