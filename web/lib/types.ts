@@ -1702,3 +1702,167 @@ export interface AffiliateViolationPage {
   per_page: number;
   total: number;
 }
+
+// Affiliate admin (super_admin) — mirrors the admin handler/service JSON.
+
+export interface AffiliateAdminRow {
+  id: string;
+  user_id: string;
+  code: string;
+  status: string;
+  rejection_reason: string | null;
+  level: string;
+  level_locked_until: string | null;
+  warn_quarters: number;
+  suspended_until: string | null;
+  frozen_until: string | null;
+  terms_version: string;
+  terms_accepted_at: string;
+  bank_name: string | null;
+  bank_account_number: string | null;
+  bank_account_holder: string | null;
+  created_at: string;
+  updated_at: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface AffiliateAdminListPage {
+  data: AffiliateAdminRow[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface AffiliateLevelHistoryEntry {
+  id: string;
+  affiliator_id: string;
+  quarter: string;
+  from_level: string | null;
+  to_level: string;
+  net_revenue: number;
+  source: string;
+  reason: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface AffiliateAdminDetail {
+  affiliate: Omit<AffiliateAdminRow, "name" | "email" | "phone">;
+  name: string;
+  email: string | null;
+  bindings: { active: number; ended: number; data: AffiliateBinding[] };
+  commissions: { counts: Record<string, number>; total_amount: number };
+  saldo: number;
+  level_history: AffiliateLevelHistoryEntry[];
+  violations: AffiliateViolation[];
+}
+
+export interface AffiliateAdminPayout extends AffiliatePayout {
+  affiliator_name: string;
+  affiliator_code: string;
+}
+
+export interface AffiliateAdminPayoutPage {
+  data: AffiliateAdminPayout[];
+  total: number;
+}
+
+export interface AffiliateSettings {
+  id: number;
+  cookie_days: number;
+  binding_months: number;
+  min_extend_amount: number;
+  digital_wait_days: number;
+  physical_received_days: number;
+  physical_wait_days: number;
+  min_payout: number;
+  payout_day_of_month: number | null;
+  adjustment_threshold: number;
+  adjustment_threshold_enabled: boolean;
+  freeze_max_days: number;
+  soon_end_days: number;
+  launch_date: string | null;
+  eval_day: number;
+  silver_threshold: number;
+  gold_threshold: number;
+  hold_thresholds: Record<string, number> | null;
+  daily_registration_cap: number | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface AffiliateLevelSettings {
+  level: string;
+  commission_pct: Record<string, number> | null;
+  digital_wait_days: number | null;
+  physical_received_days: number | null;
+  physical_wait_days: number | null;
+  min_payout: number | null;
+  payout_day_of_month: number | null;
+  rise_threshold: number | null;
+  hold_threshold: number | null;
+}
+
+export interface AffiliateSettingsView {
+  settings: AffiliateSettings;
+  levels: AffiliateLevelSettings[];
+}
+
+export type AffiliateSettingsInput = Omit<AffiliateSettings, "id" | "updated_by" | "updated_at"> & {
+  levels: AffiliateLevelSettings[];
+};
+
+export interface AffiliateProductOverride {
+  product_id: string;
+  percentage: number;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface AffiliateFlagRow {
+  id: string;
+  affiliator_id: string;
+  rule: string;
+  payload: Record<string, unknown> | null;
+  status: string;
+  note: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  affiliator_code: string;
+  affiliator_name: string;
+}
+
+export interface AffiliateAppealRow extends AffiliateViolation {
+  affiliator_code: string;
+  affiliator_name: string;
+}
+
+export interface AffiliateReportRow {
+  affiliator_id: string;
+  affiliator_code: string;
+  affiliator_name: string;
+  level: string;
+  students_new: number;
+  net_revenue: number;
+  commissions: Record<string, number>;
+  clicks: number;
+  conversion: number;
+}
+
+export interface AffiliateReportSummary {
+  data: AffiliateReportRow[];
+  totals: AffiliateReportRow;
+}
+
+export interface AffiliateLiabilityReport {
+  by_status: Record<string, number>;
+  payout_liability: number;
+}
+
+export interface AffiliateJobResult {
+  scope: string;
+  [key: string]: unknown;
+}

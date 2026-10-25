@@ -14,7 +14,7 @@ import {
   useRequestAffiliatePayout,
   useUpdateAffiliateBank,
 } from "@/lib/hooks/affiliate";
-import { ApiError, fileUrl } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { formatAffDate } from "@/lib/affiliate-labels";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
@@ -88,18 +88,6 @@ export default function AffiliatePayoutsPage() {
     { key: "status", header: t("aff_col_status"), cell: (r) => <StatusBadge status={r.status} /> },
     { key: "processed", header: t("aff_col_processed"), cell: (r) => formatAffDate(r.processed_at) },
     { key: "reason", header: t("aff_col_reason"), cell: (r) => r.reject_reason ?? "—" },
-    {
-      key: "proof",
-      header: t("aff_col_proof"),
-      cell: (r) =>
-        r.proof_url ? (
-          <a href={fileUrl(r.proof_url)} target="_blank" rel="noreferrer" className="text-success underline">
-            {t("aff_proof_open")}
-          </a>
-        ) : (
-          "—"
-        ),
-    },
   ];
 
   const summary = payouts.data;

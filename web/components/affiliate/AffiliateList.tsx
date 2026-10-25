@@ -7,21 +7,21 @@ import { useTranslation } from "@/lib/i18n";
 
 interface PageShape<T> {
   data: T[];
-  page: number;
-  per_page: number;
-  total: number;
+  page?: number;
+  per_page?: number;
+  total?: number;
 }
 
 interface AffiliateListProps<T> {
   query: UseQueryResult<PageShape<T>>;
   columns: DataTableColumn<T>[];
   rowKey: (row: T) => string;
-  page: number;
-  onPageChange: (page: number) => void;
+  page?: number;
+  onPageChange?: (page: number) => void;
   empty?: string;
 }
 
-export function AffiliateList<T>({ query, columns, rowKey, page, onPageChange, empty }: AffiliateListProps<T>) {
+export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChange, empty }: AffiliateListProps<T>) {
   const { t } = useTranslation();
 
   if (query.isError) {
@@ -38,8 +38,8 @@ export function AffiliateList<T>({ query, columns, rowKey, page, onPageChange, e
     return <div className="p-6 text-sm text-ink-500">{t("aff_loading")}</div>;
   }
 
-  const { data, total, per_page } = query.data;
-  const pages = Math.max(1, Math.ceil(total / per_page));
+  const { data, total = data.length, per_page = 0 } = query.data;
+  const pages = per_page > 0 ? Math.max(1, Math.ceil(total / per_page)) : 1;
   return (
     <DataTable
       columns={columns}
@@ -47,7 +47,7 @@ export function AffiliateList<T>({ query, columns, rowKey, page, onPageChange, e
       rowKey={rowKey}
       empty={empty ?? t("aff_empty")}
       footer={
-        pages > 1 ? (
+        pages > 1 && onPageChange ? (
           <div className="flex items-center justify-between border-t border-line px-4 py-3 text-xs text-ink-500">
             <span>
               {t("aff_page_summary")
