@@ -2,12 +2,14 @@ import { ADMIN_ROLES, type UserRole } from "./nav-config";
 
 export function redirectForRole(role?: string | null): string {
   if (ADMIN_ROLES.includes(role as UserRole)) return "/admin";
+  if (role === "affiliator") return "/affiliate";
   return "/";
 }
 
 // Explicit per role, not a nav scan — the scan is how admin_exam ended up on /admin/exam/tests.
 const ADMIN_HOME: Record<UserRole, string> = {
   student: "/",
+  affiliator: "/affiliate",
   admin_store: "/admin/store",
   admin_exam: "/admin/exam",
   admin_school: "/admin/school",

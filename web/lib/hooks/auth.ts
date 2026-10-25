@@ -77,6 +77,8 @@ export interface VerifyOtpInput {
   identifier: string;
   code: string;
   pending_token?: string;
+  referral_code?: string;
+  referral_code_cookie?: string;
 }
 
 export interface SendOtpInput {
@@ -138,6 +140,8 @@ export function useLogout() {
 
 export interface GoogleLoginInput {
   id_token: string;
+  referral_code?: string;
+  referral_code_cookie?: string;
 }
 
 export function useGoogleLogin() {

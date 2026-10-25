@@ -10,6 +10,10 @@ vi.mock("@/lib/hooks/auth", () => ({
   useRegister: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
+vi.mock("@/lib/hooks/affiliate", () => ({
+  useValidateAffiliateCode: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 vi.mock("@/components/auth/GoogleSignInButton", () => ({
   GoogleSignInButton: ({ text }: { text: string }) => (
     <div data-testid="google-sign-in" data-text={text} />
@@ -17,6 +21,14 @@ vi.mock("@/components/auth/GoogleSignInButton", () => ({
 }));
 
 describe("RegisterPage", () => {
+  it("prefills the referral field from the aff_ref cookie", async () => {
+    document.cookie = "aff_ref=BUDI10; path=/";
+    render(<RegisterPage />);
+
+    expect(await screen.findByLabelText("Kode referral (opsional)")).toHaveValue("BUDI10");
+    document.cookie = "aff_ref=; path=/; max-age=0";
+  });
+
   it("renders the Google sign-up button above the registration form", () => {
     const { container } = render(<RegisterPage />);
     const form = container.querySelector("form");

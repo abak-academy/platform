@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useShippingRates, usePatchCart, useActivePromoCodes, ordersKeys } from "./orders";
+import { useShippingRates, usePatchCart, useActivePromoCodes, useCheckout, ordersKeys } from "./orders";
 import { ApiError } from "@/lib/api";
 import type { ActivePromoCode, CourierRate } from "@/lib/types";
 
@@ -294,6 +294,31 @@ describe("orders hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual([]);
+    });
+  });
+
+  describe("useCheckout", () => {
+    it("sends the affiliate code as the body when one is given", async () => {
+      mockAuthFetch.mockResolvedValueOnce({ free: false });
+
+      const { wrapper } = wrapperFactory();
+      const { result } = renderHook(() => useCheckout(undefined, " BUDI10 "), { wrapper });
+      await act(() => result.current.mutateAsync("o1"));
+
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        "/orders/o1/checkout",
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ affiliate_code: "BUDI10" }) }),
+      );
+    });
+
+    it("sends no body when the code is empty", async () => {
+      mockAuthFetch.mockResolvedValueOnce({ free: false });
+
+      const { wrapper } = wrapperFactory();
+      const { result } = renderHook(() => useCheckout(undefined, "  "), { wrapper });
+      await act(() => result.current.mutateAsync("o1"));
+
+      expect(mockAuthFetch.mock.calls[0][1]).not.toHaveProperty("body");
     });
   });
 });

@@ -71,7 +71,7 @@ export function AppShell({ role, children }: AppShellProps) {
           collapsed ? "pl-16" : "pl-[252px]"
         )}
       >
-        {!isAdmin && <CartCountSync />}
+        {!isAdmin && role !== "affiliator" && <CartCountSync />}
         <AppHeader onMenuClick={toggleSidebar} />
         <main className="flex-1">
           <div

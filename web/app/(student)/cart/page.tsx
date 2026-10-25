@@ -13,6 +13,7 @@ import type { OrderItem } from "@/lib/types";
 import { CartLineItem } from "@/components/cart/CartLineItem";
 import { PromoSheet } from "@/components/cart/PromoSheet";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
+import { ReferralCodeField } from "@/components/auth/ReferralCodeField";
 import { ShippingAddressForm, type ShippingAddressFormState } from "@/components/cart/ShippingAddressForm";
 import { ShippingAddressSummary, isAddressComplete } from "@/components/cart/ShippingAddressSummary";
 import { CourierRateList, courierRateKey } from "@/components/cart/CourierRateList";
@@ -47,6 +48,7 @@ export default function CartPage() {
   });
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
   const [promoError, setPromoError] = useState<string | undefined>(undefined);
+  const [referralCode, setReferralCode] = useState("");
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | undefined>(undefined);
   // Once open, the form closes when the buyer closes it, never because it looks
   // full. Deriving this from "every field is non-empty" swapped the form out on
@@ -476,8 +478,13 @@ export default function CartPage() {
                 <span className="font-serif text-2xl font-bold text-success">{formatRupiah(total)}</span>
               </div>
 
+              <div className="mt-4">
+                <ReferralCodeField value={referralCode} onChange={setReferralCode} />
+              </div>
+
               <SnapCheckout
                 orderId={cart?.id}
+                affiliateCode={referralCode}
                 disabled={(hasPhysical && shippingRates.isError) || patchCart.isPending || removeItem.isPending || updateQty.isPending}
               />
 

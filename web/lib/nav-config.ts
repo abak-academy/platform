@@ -19,10 +19,14 @@ import {
   Settings,
   ShieldCheck,
   Store,
+  Wallet,
+  Gavel,
+  Link2,
 } from "lucide-react";
 
 export type UserRole =
   | "student"
+  | "affiliator"
   | "admin_store"
   | "admin_exam"
   | "admin_school"
@@ -45,6 +49,7 @@ export type RoleNavConfig = NavGroup[];
 
 export const ROLE_LABEL_KEYS: Record<UserRole, keyof (typeof import("./i18n").DICT)["id"]> = {
   student: "role_student",
+  affiliator: "role_affiliator",
   admin_store: "role_admin_store",
   admin_exam: "role_admin_exam",
   admin_school: "role_admin_school",
@@ -177,8 +182,22 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   },
 ];
 
+const AFFILIATOR_NAV: RoleNavConfig = [
+  {
+    items: [
+      { labelKey: "aff_nav_dashboard", href: "/affiliate", icon: LayoutDashboard, exact: true },
+      { labelKey: "aff_nav_students", href: "/affiliate/students", icon: Users },
+      { labelKey: "aff_nav_commissions", href: "/affiliate/commissions", icon: Link2 },
+      { labelKey: "aff_nav_ledger", href: "/affiliate/ledger", icon: Receipt },
+      { labelKey: "aff_nav_payouts", href: "/affiliate/payouts", icon: Wallet },
+      { labelKey: "aff_nav_violations", href: "/affiliate/violations", icon: Gavel },
+    ],
+  },
+];
+
 export const NAV_CONFIG: Record<UserRole, RoleNavConfig> = {
   student: STUDENT_NAV,
+  affiliator: AFFILIATOR_NAV,
   admin_store: CONTENT_MANAGER_NAV,
   admin_exam: ADMIN_EXAM_NAV,
   admin_school: ADMIN_SCHOOL_NAV,
