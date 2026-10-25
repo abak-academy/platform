@@ -334,6 +334,10 @@ func mapServiceError(c echo.Context, err error) error {
 		errors.Is(err, service.ErrAffiliateJobUnknownScope),
 		errors.Is(err, service.ErrAffiliateJobInvalidQuarter):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateRegistrationClosed):
+		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_registration_closed", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateTermsRequired), errors.Is(err, service.ErrAffiliatePhoneRequired):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateCodeGenerationExhausted):
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "affiliate_code_unavailable", Message: err.Error()}
 	default:

@@ -68,7 +68,7 @@ func (r *Repository) ListAffiliateAdmins(ctx context.Context, filter AffiliateAd
 		return nil, 0, err
 	}
 
-	query := `SELECT a.id, a.user_id, a.code, a.status, a.rejection_reason, a.level, a.level_locked_until,
+	query := `SELECT a.id, a.user_id, COALESCE(a.code, ''), a.status, a.rejection_reason, a.level, a.level_locked_until,
 	        a.warn_quarters, a.suspended_until, a.frozen_until, a.terms_version, a.terms_accepted_at,
 	        a.bank_name, a.bank_account_number, a.bank_account_holder, a.created_at, a.updated_at,
 	        u.name, u.email, u.phone

@@ -30,7 +30,7 @@ func scanAffiliatePayout(row pgx.Row) (*model.AffiliatePayout, error) {
 func (r *Repository) GetAffiliatorForUpdateTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*model.Affiliator, error) {
 	var a model.Affiliator
 	err := tx.QueryRow(ctx,
-		`SELECT id, user_id, code, status, rejection_reason, level, level_locked_until,
+		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level, level_locked_until,
 		        warn_quarters, suspended_until, frozen_until, terms_version, terms_accepted_at,
 		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
 		 FROM affiliators

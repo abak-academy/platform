@@ -13,6 +13,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	auth := v1.Group("/auth")
 	auth.POST("/register", h.Register)
+	auth.POST("/affiliators/register", h.RegisterAffiliator, handler.AffiliateClickRateLimiter())
 	auth.POST("/login", h.Login, handler.LoginRateLimiter())
 	auth.POST("/google", h.GoogleLogin)
 	auth.POST("/otp/send", h.SendOTP)

@@ -1,0 +1,1 @@
+ALTER TABLE affiliators ALTER COLUMN code SET NOT NULL;

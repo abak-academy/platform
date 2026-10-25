@@ -266,7 +266,7 @@ func (r *Repository) CountRefundCancelledCommissions(ctx context.Context, window
 // evaluation may consider: active or suspended.
 func (r *Repository) ListAffiliatorsForLevelEval(ctx context.Context) ([]model.Affiliator, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, user_id, code, status, rejection_reason, level, level_locked_until,
+		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level, level_locked_until,
 		        warn_quarters, suspended_until, frozen_until, terms_version, terms_accepted_at,
 		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
 		 FROM affiliators

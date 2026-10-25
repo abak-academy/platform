@@ -72,7 +72,7 @@ func affiliateBindingPredicateFrom(status string, startArg int) (string, []inter
 func (r *Repository) GetAffiliatorByUserID(ctx context.Context, userID string) (*model.Affiliator, error) {
 	var a model.Affiliator
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, user_id, code, status, rejection_reason, level, level_locked_until,
+		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level, level_locked_until,
 		        warn_quarters, suspended_until, frozen_until, terms_version, terms_accepted_at,
 		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
 		 FROM affiliators
