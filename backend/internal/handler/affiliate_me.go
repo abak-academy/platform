@@ -108,6 +108,109 @@ func (h *Handler) AffiliateMeStats(c echo.Context) error {
 	return c.JSON(http.StatusOK, stats)
 }
 
+// affiliateMePayoutRequest is the body only POST /affiliates/me/payouts reads;
+// an empty body defaults the amount to the full available saldo.
+type affiliateMePayoutRequest struct {
+	Amount *float64 `json:"amount"`
+}
+
+// affiliateMeAppealRequest is the body only the violation appeal route reads.
+type affiliateMeAppealRequest struct {
+	Text string `json:"text"`
+}
+
+// AffiliateMeRequestPayout backs POST /affiliates/me/payouts (BR-PCR-01..05).
+func (h *Handler) AffiliateMeRequestPayout(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	var req affiliateMePayoutRequest
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if req.Amount != nil && *req.Amount <= 0 {
+		return badRequest(c, "amount must be positive")
+	}
+	payout, err := h.svc.RequestMyAffiliatePayout(c.Request().Context(), claims.Sub, req.Amount)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, payout)
+}
+
+// AffiliateMePayouts backs GET /affiliates/me/payouts — own payout history
+// newest first with the saldo and the payout schedule.
+func (h *Handler) AffiliateMePayouts(c echo.Context) error {
+	filter, err := affiliateMeListQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	page, err := h.svc.ListMyAffiliatePayouts(c.Request().Context(), claims.Sub, filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, page)
+}
+
+// AffiliateMeAdjustments backs GET /affiliates/me/adjustments — own adjustment
+// history with the applied flag.
+func (h *Handler) AffiliateMeAdjustments(c echo.Context) error {
+	filter, err := affiliateMeListQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	page, err := h.svc.ListMyAffiliateAdjustments(c.Request().Context(), claims.Sub, filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, page)
+}
+
+// AffiliateMeViolations backs GET /affiliates/me/violations — own violations
+// with sanction and appeal fields.
+func (h *Handler) AffiliateMeViolations(c echo.Context) error {
+	filter, err := affiliateMeListQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	page, err := h.svc.ListMyAffiliateViolations(c.Request().Context(), claims.Sub, filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, page)
+}
+
+// AffiliateMeAppealViolation backs POST /affiliates/me/violations/:id/appeal
+// (BR-PLG-06).
+func (h *Handler) AffiliateMeAppealViolation(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	var req affiliateMeAppealRequest
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	violation, err := h.svc.AppealMyAffiliateViolation(c.Request().Context(), claims.Sub, c.Param("id"), req.Text)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, violation)
+}
+
 // affiliateMeListQuery parses the shared list query params: page/per_page
 // (per_page clamped like parseLimit), optional status filter and a half-open
 // from/to date range (parseDayRange).
