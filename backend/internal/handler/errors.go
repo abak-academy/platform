@@ -307,6 +307,35 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "missing_gateway_ref", Message: err.Error()}
 	case errors.Is(err, repository.ErrInvalidCursor):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_cursor", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateNotFound), errors.Is(err, service.ErrAffiliateProfileNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "affiliate_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateSelfAdjustment):
+		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_self_adjustment", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateNotActive),
+		errors.Is(err, service.ErrAffiliateNotPending),
+		errors.Is(err, service.ErrAffiliatePayoutNotDecidable),
+		errors.Is(err, service.ErrAffiliateFrozen),
+		errors.Is(err, service.ErrAffiliateBankMissing),
+		errors.Is(err, service.ErrAffiliatePayoutBelowMin),
+		errors.Is(err, service.ErrAffiliatePayoutInFlight),
+		errors.Is(err, service.ErrAffiliateNotAppealable),
+		errors.Is(err, service.ErrAffiliateFlagNotOpen),
+		errors.Is(err, service.ErrAffiliateAppealNotPending):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_state_conflict", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateInvalidDecision),
+		errors.Is(err, service.ErrAffiliateRejectReasonRequired),
+		errors.Is(err, service.ErrAffiliateInvalidStatus),
+		errors.Is(err, service.ErrAffiliateReasonRequired),
+		errors.Is(err, service.ErrAffiliateInvalidDays),
+		errors.Is(err, service.ErrAffiliateInvalidLevel),
+		errors.Is(err, service.ErrAffiliateAdjustmentInvalid),
+		errors.Is(err, service.ErrAffiliatePayoutAmountInvalid),
+		errors.Is(err, service.ErrAffiliatePayoutInvalid),
+		errors.Is(err, service.ErrAffiliateJobUnknownScope),
+		errors.Is(err, service.ErrAffiliateJobInvalidQuarter):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateCodeGenerationExhausted):
+		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "affiliate_code_unavailable", Message: err.Error()}
 	default:
 		slog.Error("unhandled service error", "method", c.Request().Method, "uri", c.Request().RequestURI, "err", err)
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}

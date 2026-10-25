@@ -100,6 +100,86 @@ func (r *Repository) ListAffiliateAdmins(ctx context.Context, filter AffiliateAd
 	return out, total, rows.Err()
 }
 
+// AffiliateAdminUserContact is the owning user's header fields for the
+// admin detail page.
+type AffiliateAdminUserContact struct {
+	Name  string
+	Email *string
+}
+
+// GetAffiliateAdminUserContact returns the display name and email of the user
+// behind one affiliator.
+func (r *Repository) GetAffiliateAdminUserContact(ctx context.Context, userID uuid.UUID) (AffiliateAdminUserContact, error) {
+	var c AffiliateAdminUserContact
+	err := r.pool.QueryRow(ctx,
+		`SELECT name, email FROM users WHERE id = $1`,
+		userID,
+	).Scan(&c.Name, &c.Email)
+	return c, err
+}
+
+// AffiliateCommissionStatusTotal aggregates one commission status: the row
+// count and the summed amounts behind it.
+type AffiliateCommissionStatusTotal struct {
+	Status string
+	Count  int
+	Amount float64
+}
+
+// SumAffiliateCommissionsByStatus returns one count/amount row per commission
+// status the affiliator has commissions in.
+func (r *Repository) SumAffiliateCommissionsByStatus(ctx context.Context, affiliatorID uuid.UUID) ([]AffiliateCommissionStatusTotal, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT status, count(*), COALESCE(SUM(amount), 0)
+		 FROM affiliate_commissions
+		 WHERE affiliator_id = $1
+		 GROUP BY status`,
+		affiliatorID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AffiliateCommissionStatusTotal
+	for rows.Next() {
+		var t AffiliateCommissionStatusTotal
+		if err := rows.Scan(&t.Status, &t.Count, &t.Amount); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// ListAffiliateLevelHistory returns the affiliator's level history newest
+// first, capped at limit rows.
+func (r *Repository) ListAffiliateLevelHistory(ctx context.Context, affiliatorID uuid.UUID, limit int) ([]model.AffiliateLevelHistory, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, affiliator_id, quarter, from_level, to_level, net_revenue, source, reason, created_by, created_at
+		 FROM affiliate_level_history
+		 WHERE affiliator_id = $1
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $2`,
+		affiliatorID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []model.AffiliateLevelHistory
+	for rows.Next() {
+		var h model.AffiliateLevelHistory
+		if err := rows.Scan(&h.ID, &h.AffiliatorID, &h.Quarter, &h.FromLevel, &h.ToLevel, &h.NetRevenue,
+			&h.Source, &h.Reason, &h.CreatedBy, &h.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
 // InsertAffiliateLevelHistoryManualTx appends one manual level-history row,
 // recording the acting admin; InsertAffiliateLevelHistoryTx covers the auto
 // path where created_by stays NULL.

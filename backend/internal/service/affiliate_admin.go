@@ -68,6 +68,40 @@ type AffiliateAdminListPage struct {
 	Total   int                                `json:"total"`
 }
 
+const (
+	affiliateDetailBindingsLimit = 10
+	affiliateDetailHistoryCap    = 50
+	affiliateDetailViolationsCap = 50
+)
+
+// AffiliateAdminBindingsSummary counts the bindings by status and carries the
+// newest affiliateDetailBindingsLimit rows, privacy-formatted.
+type AffiliateAdminBindingsSummary struct {
+	Active int                  `json:"active"`
+	Ended  int                  `json:"ended"`
+	Data   []AffiliateMeBinding `json:"data"`
+}
+
+// AffiliateAdminCommissionSummary counts commissions by status and totals
+// their amounts.
+type AffiliateAdminCommissionSummary struct {
+	Counts      map[string]int `json:"counts"`
+	TotalAmount float64        `json:"total_amount"`
+}
+
+// AffiliateAdminDetail is the GET /admin/affiliates/:id body. The bindings
+// rows reuse the affiliator-facing privacy shape (BR-PRV-02).
+type AffiliateAdminDetail struct {
+	Affiliate    *model.Affiliator               `json:"affiliate"`
+	Name         string                          `json:"name"`
+	Email        *string                         `json:"email"`
+	Bindings     AffiliateAdminBindingsSummary   `json:"bindings"`
+	Commissions  AffiliateAdminCommissionSummary `json:"commissions"`
+	Saldo        float64                         `json:"saldo"`
+	LevelHistory []model.AffiliateLevelHistory   `json:"level_history"`
+	Violations   []model.AffiliateViolation      `json:"violations"`
+}
+
 // ListAffiliateAdmin backs GET /admin/affiliates.
 func (s *Service) ListAffiliateAdmin(ctx context.Context, filter AffiliateAdminListFilter) (*AffiliateAdminListPage, error) {
 	if filter.Status != "" && !slices.Contains(affiliateAdminStatuses, filter.Status) {
@@ -397,6 +431,89 @@ func (s *Service) ChangeAffiliateLevel(ctx context.Context, actorID, id, level, 
 		return nil, fmt.Errorf("commit level change: %w", err)
 	}
 	return s.storeRepo.GetAffiliatorByID(ctx, nil, affID)
+}
+
+// GetAffiliateAdminDetail backs GET /admin/affiliates/:id: one affiliator's
+// profile plus the bindings, commissions, saldo, level history and violations
+// summaries the detail tabs render.
+func (s *Service) GetAffiliateAdminDetail(ctx context.Context, id string) (*AffiliateAdminDetail, error) {
+	affID, err := parseUUID(id)
+	if err != nil {
+		return nil, ErrInvalidUUID
+	}
+	aff, err := s.storeRepo.GetAffiliatorByID(ctx, nil, affID)
+	if err != nil {
+		return nil, fmt.Errorf("get affiliator: %w", err)
+	}
+	if aff == nil {
+		return nil, ErrAffiliateNotFound
+	}
+
+	contact, err := s.storeRepo.GetAffiliateAdminUserContact(ctx, aff.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("get affiliator user: %w", err)
+	}
+	detail := &AffiliateAdminDetail{
+		Affiliate:   aff,
+		Name:        contact.Name,
+		Email:       contact.Email,
+		Bindings:    AffiliateAdminBindingsSummary{Data: []AffiliateMeBinding{}},
+		Commissions: AffiliateAdminCommissionSummary{Counts: map[string]int{}},
+	}
+
+	detail.Bindings.Active, err = s.storeRepo.CountAffiliateBindingsForAffiliator(ctx, affID, "active")
+	if err != nil {
+		return nil, fmt.Errorf("count active affiliate bindings: %w", err)
+	}
+	detail.Bindings.Ended, err = s.storeRepo.CountAffiliateBindingsForAffiliator(ctx, affID, "ended")
+	if err != nil {
+		return nil, fmt.Errorf("count ended affiliate bindings: %w", err)
+	}
+	rows, err := s.storeRepo.ListAffiliateBindingsForAffiliator(ctx, affID, "", affiliateDetailBindingsLimit, 0)
+	if err != nil {
+		return nil, fmt.Errorf("list affiliate bindings: %w", err)
+	}
+	for _, row := range rows {
+		detail.Bindings.Data = append(detail.Bindings.Data, AffiliateMeBinding{
+			BindingID:    row.BindingID,
+			Name:         affiliateStudentDisplayName(row.StudentName),
+			RegisteredAt: row.RegisteredAt,
+			Status:       row.Status,
+			Source:       row.Source,
+			StartedAt:    row.StartedAt,
+			EndedAt:      row.EndedAt,
+			TotalSpend:   row.TotalSpend,
+		})
+	}
+
+	totals, err := s.storeRepo.SumAffiliateCommissionsByStatus(ctx, affID)
+	if err != nil {
+		return nil, fmt.Errorf("sum affiliate commissions by status: %w", err)
+	}
+	for _, t := range totals {
+		detail.Commissions.Counts[t.Status] = t.Count
+		detail.Commissions.TotalAmount += t.Amount
+	}
+
+	detail.Saldo, err = s.storeRepo.SumAffiliateLedgerForAffiliator(ctx, affID)
+	if err != nil {
+		return nil, fmt.Errorf("sum affiliate ledger: %w", err)
+	}
+	detail.LevelHistory, err = s.storeRepo.ListAffiliateLevelHistory(ctx, affID, affiliateDetailHistoryCap)
+	if err != nil {
+		return nil, fmt.Errorf("list affiliate level history: %w", err)
+	}
+	if detail.LevelHistory == nil {
+		detail.LevelHistory = []model.AffiliateLevelHistory{}
+	}
+	detail.Violations, _, err = s.storeRepo.ListAffiliateViolationsForAffiliator(ctx, affID, affiliateDetailViolationsCap, 0)
+	if err != nil {
+		return nil, fmt.Errorf("list affiliate violations: %w", err)
+	}
+	if detail.Violations == nil {
+		detail.Violations = []model.AffiliateViolation{}
+	}
+	return detail, nil
 }
 
 // generateAffiliateReferralCode returns one random 8-char referral code from
