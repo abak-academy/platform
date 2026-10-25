@@ -1518,3 +1518,187 @@ export interface UnitSalesResponse {
   to: string | null;
   types: UnitSalesType[];
 }
+
+// Affiliate program (docs/specs/affiliate-program.md). Field names mirror the
+// Go handler/service JSON tags exactly; Go pointers without omitempty are
+// null, with omitempty are absent.
+
+export interface AffiliateValidation {
+  valid: boolean;
+  affiliator_name: string;
+}
+
+export interface AffiliateLevelProgress {
+  quarter: string;
+  net_revenue: number;
+  next_level?: string;
+  rise_threshold?: number;
+  hold_threshold?: number;
+}
+
+export interface AffiliateProfile {
+  code: string;
+  referral_link: string;
+  level: string;
+  status: string;
+  rejection_reason?: string;
+  warn_quarters: number;
+  level_locked_until?: string;
+  suspended_until?: string;
+  frozen_until?: string;
+  bank_name: string | null;
+  bank_account_number: string | null;
+  bank_account_holder: string | null;
+  terms_version: string;
+  terms_accepted_at: string;
+  level_progress: AffiliateLevelProgress | null;
+}
+
+export interface AffiliateBinding {
+  binding_id: string;
+  // First name + initials of the remaining words (BR-PRV-02) — no email, phone
+  // or address ever arrives on this payload.
+  name: string;
+  registered_at: string;
+  status: string;
+  source: string;
+  started_at: string;
+  ended_at: string | null;
+  total_spend: number;
+}
+
+export interface AffiliateBindingPage {
+  data: AffiliateBinding[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface AffiliateCommission {
+  id: string;
+  affiliator_id: string;
+  student_id: string;
+  order_id: string;
+  order_item_id: string;
+  product_type: string;
+  base_amount: number;
+  percentage: number;
+  level_snapshot: string;
+  amount: number;
+  status: string;
+  wait_until: string | null;
+  paid_at: string | null;
+  received_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AffiliateCommissionPage {
+  data: AffiliateCommission[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface AffiliateLedgerEntry {
+  id: string;
+  affiliator_id: string;
+  entry_type: string;
+  amount: number;
+  commission_id: string | null;
+  payout_id: string | null;
+  adjustment_id: string | null;
+  note: string | null;
+  actor_id: string | null;
+  created_at: string;
+}
+
+export interface AffiliateLedgerPage {
+  data: AffiliateLedgerEntry[];
+  saldo: number;
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface AffiliateStats {
+  clicks: number;
+  registrations: number;
+  registrations_by_source: Record<string, number>;
+  conversion: number;
+  total_students: number;
+  active_bindings: number;
+}
+
+export interface AffiliatePayout {
+  id: string;
+  affiliator_id: string;
+  amount: number;
+  status: string;
+  bank_name: string;
+  bank_account_number: string;
+  bank_account_holder: string;
+  proof_url: string | null;
+  reject_reason: string | null;
+  processed_by: string | null;
+  processed_at: string | null;
+  requested_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AffiliatePayoutPage {
+  data: AffiliatePayout[];
+  saldo: number;
+  min_payout: number;
+  payout_day_of_month?: number;
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface AffiliateAdjustment {
+  id: string;
+  affiliator_id: string;
+  category: string;
+  amount: number;
+  reason: string;
+  note: string | null;
+  approval_status: string | null;
+  approver_id: string | null;
+  approved_at: string | null;
+  created_by: string;
+  created_at: string;
+  applied: boolean;
+}
+
+export interface AffiliateAdjustmentPage {
+  data: AffiliateAdjustment[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface AffiliateViolation {
+  id: string;
+  affiliator_id: string;
+  category: string;
+  description: string;
+  sanction: string;
+  suspension_until: string | null;
+  status: string;
+  decided_by: string;
+  decided_at: string;
+  appeal_text: string | null;
+  appeal_status: string;
+  appeal_decided_by: string | null;
+  appeal_decided_at: string | null;
+  created_at: string;
+}
+
+export interface AffiliateViolationPage {
+  data: AffiliateViolation[];
+  page: number;
+  per_page: number;
+  total: number;
+}

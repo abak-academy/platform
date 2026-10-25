@@ -150,3 +150,11 @@ export async function authFetch<T>(path: string, init?: RequestInit): Promise<T>
 export async function authFetchMultipart<T>(path: string, init?: RequestInit): Promise<T> {
   return doAuthFetch<T>(path, init, {});
 }
+
+export const affiliateApi = {
+  recordClick: (code: string, userAgent: string) =>
+    apiFetch<{ recorded: boolean }>("/affiliates/clicks", {
+      method: "POST",
+      body: JSON.stringify({ code, user_agent: userAgent }),
+    }),
+};
