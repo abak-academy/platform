@@ -22,6 +22,10 @@ import {
   Wallet,
   Gavel,
   Link2,
+  Flag,
+  Scale,
+  FileBarChart,
+  HandCoins,
 } from "lucide-react";
 
 export type UserRole =
@@ -170,6 +174,17 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
     items: [
       { labelKey: "schools", href: "/admin/system/schools", icon: Building },
       ...SCHOOL_NAV_ITEMS,
+    ],
+  },
+  {
+    titleKey: "nav_group_affiliate",
+    items: [
+      { labelKey: "admin_aff_nav_list", href: "/admin/affiliates", icon: HandCoins, exact: true },
+      { labelKey: "admin_aff_nav_payouts", href: "/admin/affiliates/payouts", icon: Wallet },
+      { labelKey: "admin_aff_nav_flags", href: "/admin/affiliates/flags", icon: Flag },
+      { labelKey: "admin_aff_nav_appeals", href: "/admin/affiliates/appeals", icon: Scale },
+      { labelKey: "admin_aff_nav_reports", href: "/admin/affiliates/reports", icon: FileBarChart },
+      { labelKey: "admin_aff_nav_settings", href: "/admin/affiliates/settings", icon: Settings },
     ],
   },
   {
