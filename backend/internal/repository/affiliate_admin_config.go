@@ -178,7 +178,7 @@ func (r *Repository) FindAffiliateFlagByID(ctx context.Context, id uuid.UUID) (*
 // status "all" removes the filter, any other non-empty value filters it.
 func (r *Repository) ListAffiliateFlagRows(ctx context.Context, status string) ([]AffiliateFlagRow, error) {
 	query := `SELECT f.id, f.affiliator_id, f.rule, f.payload, f.status, f.note, f.reviewed_by, f.reviewed_at, f.created_at,
-	                 a.code, u.name
+	                 COALESCE(a.code, ''), u.name
 	          FROM affiliate_flags f
 	          JOIN affiliators a ON a.id = f.affiliator_id
 	          JOIN users u ON u.id = a.user_id`
@@ -246,7 +246,7 @@ func (r *Repository) ListAffiliateAppealRows(ctx context.Context, appealStatus s
 	query := `SELECT v.id, v.affiliator_id, v.category, v.description, v.sanction, v.suspension_until,
 	                 v.status, v.decided_by, v.decided_at, v.appeal_text, v.appeal_status,
 	                 v.appeal_decided_by, v.appeal_decided_at, v.created_at,
-	                 a.code, u.name
+	                 COALESCE(a.code, ''), u.name
 	          FROM affiliate_violations v
 	          JOIN affiliators a ON a.id = v.affiliator_id
 	          JOIN users u ON u.id = a.user_id`
@@ -295,7 +295,7 @@ func (r *Repository) DecideAffiliateAppealTx(ctx context.Context, tx pgx.Tx, id 
 // stitched by the service.
 func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.Time) ([]AffiliateReportRow, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT a.id, a.code, u.name, a.level,
+		`SELECT a.id, COALESCE(a.code, ''), u.name, a.level,
 		        COALESCE(bind.students_new, 0), COALESCE(rev.net_revenue, 0), COALESCE(clicks.n, 0)
 		 FROM affiliators a
 		 JOIN users u ON u.id = a.user_id

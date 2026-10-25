@@ -144,7 +144,7 @@ func (r *Repository) ListAffiliatePayoutQueue(ctx context.Context, statuses []st
 	rows, err := r.pool.Query(ctx,
 		`SELECT p.id, p.affiliator_id, p.amount, p.status, p.bank_name, p.bank_account_number, p.bank_account_holder,
 		        p.proof_url, p.reject_reason, p.processed_by, p.processed_at, p.requested_at, p.created_at, p.updated_at,
-		        u.name, a.code
+		        u.name, COALESCE(a.code, '')
 		 FROM affiliate_payouts p
 		 JOIN affiliators a ON a.id = p.affiliator_id
 		 JOIN users u ON u.id = a.user_id

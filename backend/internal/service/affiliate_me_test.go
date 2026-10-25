@@ -170,12 +170,43 @@ func TestGetMyAffiliateProfile_pendingHasNoCodeOrLink(t *testing.T) {
 	_, err := repo.Pool().Exec(context.Background(),
 		`INSERT INTO affiliators (user_id, status, terms_version) VALUES ($1, 'pending_approval', 'v1')`, userID)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = repo.Pool().Exec(context.Background(), `DELETE FROM affiliators WHERE user_id = $1`, userID)
+		_, _ = repo.Pool().Exec(context.Background(), `DELETE FROM users WHERE id = $1`, userID)
+	})
 
 	profile, err := svc.GetMyAffiliateProfile(context.Background(), userID)
 	require.NoError(t, err)
 	require.Equal(t, "pending_approval", profile.Status)
 	require.Empty(t, profile.Code)
 	require.Empty(t, profile.ReferralLink)
+}
+
+func TestAdminReadsSurviveACodelessPendingAffiliator(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	userID := seedAffiliateMeUser(t, repo, "Affiliator Codeless "+uniqueSuffix(), "affiliator")
+	_, err := repo.Pool().Exec(ctx,
+		`INSERT INTO affiliators (user_id, status, terms_version) VALUES ($1, 'pending_approval', 'v1')`, userID)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = repo.Pool().Exec(ctx, `DELETE FROM affiliators WHERE user_id = $1`, userID)
+		_, _ = repo.Pool().Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	})
+
+	from := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	to := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	_, err = svc.AdminAffiliateReportSummary(ctx, from, to)
+	require.NoError(t, err)
+	_, err = svc.AdminListAffiliateFlags(ctx, "open")
+	require.NoError(t, err)
+	_, err = svc.AdminListAffiliateAppeals(ctx, "pending")
+	require.NoError(t, err)
+	_, _, err = svc.AdminListAffiliatePayouts(ctx, "", 20, 0)
+	require.NoError(t, err)
+	_, err = svc.ListAffiliateAdmin(ctx, AffiliateAdminListFilter{Status: "pending_approval"})
+	require.NoError(t, err)
 }
 
 func TestGetMyAffiliateProfile_goldHasNoRiseThreshold(t *testing.T) {

@@ -11,6 +11,8 @@ import { expect, type BrowserContext, type APIRequestContext } from "@playwright
  * decision, 2026-08-01). Set:
  *   E2E_ADMIN_IDENTIFIER   / E2E_ADMIN_PASSWORD    — admin_exam or super_admin
  *   E2E_STUDENT_IDENTIFIER / E2E_STUDENT_PASSWORD  — a registered student
+ *   E2E_AFFILIATOR_IDENTIFIER / E2E_AFFILIATOR_PASSWORD — an approved affiliator
+ *   E2E_AFFILIATE_CODE                              — that affiliator's referral code
  */
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
@@ -78,6 +80,17 @@ export function loginRealStudent(context: BrowserContext, request: APIRequestCon
     process.env.E2E_STUDENT_IDENTIFIER,
     process.env.E2E_STUDENT_PASSWORD,
     "student"
+  );
+}
+
+/** Logs in the manually-provisioned, already approved affiliator. Returns the bearer token. */
+export function loginRealAffiliator(context: BrowserContext, request: APIRequestContext): Promise<string> {
+  return loginReal(
+    context,
+    request,
+    process.env.E2E_AFFILIATOR_IDENTIFIER,
+    process.env.E2E_AFFILIATOR_PASSWORD,
+    "affiliator"
   );
 }
 
