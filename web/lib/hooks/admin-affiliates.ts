@@ -250,6 +250,7 @@ export function useDecideAffiliateAppeal() {
 export function useAffiliateReportSummary(from: string, to: string) {
   return useQuery({
     queryKey: adminAffiliateKeys.report(from, to),
+    enabled: from !== "" && to !== "",
     queryFn: () => authFetch<AffiliateReportSummary>(`/admin/affiliate-reports/summary${qs({ from, to })}`),
   });
 }
