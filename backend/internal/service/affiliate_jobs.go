@@ -77,6 +77,7 @@ type AffiliateJobResult struct {
 	BindingsExpired     int    `json:"bindings_expired"`
 	PhysicalBackfilled  int    `json:"physical_backfilled"`
 	CommissionsReleased int    `json:"commissions_released"`
+	OrdersReconciled    int    `json:"orders_reconciled"`
 	SanctionsExpired    int    `json:"sanctions_expired"`
 	FlagsRaised         int    `json:"flags_raised"`
 	LevelsEvaluated     int    `json:"levels_evaluated"`
@@ -127,6 +128,11 @@ func (s *Service) RunAffiliateJob(ctx context.Context, scope string, quarter *st
 		}
 		res.BindingsExpired = expired
 	case affiliateScopeCommissions:
+		reconciled, err := s.reconcileMissingCommissions(ctx, now)
+		if err != nil {
+			return res, err
+		}
+		res.OrdersReconciled = reconciled
 		backfilled, err := s.backfillPhysicalWaitUntil(ctx)
 		if err != nil {
 			return res, err
@@ -158,6 +164,9 @@ func (s *Service) runAffiliateDailyBatch(ctx context.Context, now time.Time, cfg
 	// completed long ago) still transitions in this same pass.
 	if _, err := s.ExpireBindings(ctx, now); err != nil {
 		return fmt.Errorf("expire affiliate bindings: %w", err)
+	}
+	if _, err := s.reconcileMissingCommissions(ctx, now); err != nil {
+		return err
 	}
 	if _, err := s.backfillPhysicalWaitUntil(ctx); err != nil {
 		return err
@@ -223,6 +232,67 @@ func (s *Service) releaseAffiliateCommission(ctx context.Context, c repository.A
 		return false, nil
 	}
 	return true, tx.Commit(ctx)
+}
+
+const (
+	affiliateReconcileWindowDays = 14
+	affiliateReconcileMinAge     = time.Hour
+	affiliateReconcileBatchLimit = 1000
+)
+
+// reconcileMissingCommissions recreates commissions the OrderPaid worker step
+// failed to write (it logs and moves on so access is never blocked). Creation is
+// idempotent per order item, so orders that legitimately earn nothing (0%, full
+// discount) are re-examined harmlessly until they age out of the window. It
+// returns how many orders gained at least one commission.
+func (s *Service) reconcileMissingCommissions(ctx context.Context, now time.Time) (int, error) {
+	ids, err := s.storeRepo.ListPaidOrdersMissingAffiliateCommissions(ctx,
+		now.AddDate(0, 0, -affiliateReconcileWindowDays), now.Add(-affiliateReconcileMinAge), affiliateReconcileBatchLimit)
+	if err != nil {
+		return 0, fmt.Errorf("list orders missing affiliate commissions: %w", err)
+	}
+	reconciled := 0
+	for _, id := range ids {
+		created, err := s.reconcileOrderCommissions(ctx, id)
+		if err != nil {
+			return reconciled, fmt.Errorf("reconcile commissions for order %s: %w", id, err)
+		}
+		if created {
+			reconciled++
+		}
+	}
+	return reconciled, nil
+}
+
+func (s *Service) reconcileOrderCommissions(ctx context.Context, orderID uuid.UUID) (bool, error) {
+	order, err := s.storeRepo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		return false, err
+	}
+	if order.ID == uuid.Nil {
+		return false, nil
+	}
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	before, err := s.storeRepo.GetCommissionsByOrderTx(ctx, tx, orderID)
+	if err != nil {
+		return false, err
+	}
+	if err := s.CreateCommissionsForOrder(ctx, tx, order, order.Items); err != nil {
+		return false, err
+	}
+	after, err := s.storeRepo.GetCommissionsByOrderTx(ctx, tx, orderID)
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return len(after) > len(before), nil
 }
 
 // backfillPhysicalWaitUntil derives wait_until for pending physical

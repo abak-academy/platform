@@ -304,14 +304,17 @@ func (r *Repository) HasAffiliateLevelHistory(ctx context.Context, affiliatorID 
 }
 
 // GetAffiliateQuarterNetRevenue sums the base amounts of the affiliator's
-// available and paid commissions paid inside the window; cancelled and held
-// commissions are excluded by the status list (BR-LVL-07).
+// available and paid commissions that became final inside the window, i.e.
+// whose wait_until (paid_at when there is none) falls in it. A commission
+// refunded after release is cancelled, so it drops out (BR-LVL-07); counting by
+// the final date keeps a physical order that settles after the evaluation day
+// in the next quarter instead of in none.
 func (r *Repository) GetAffiliateQuarterNetRevenue(ctx context.Context, affiliatorID uuid.UUID, from, to time.Time) (float64, error) {
 	var net float64
 	err := r.pool.QueryRow(ctx,
 		`SELECT COALESCE(SUM(base_amount), 0) FROM affiliate_commissions
 		 WHERE affiliator_id = $1 AND status IN ('available', 'paid')
-		   AND paid_at >= $2 AND paid_at < $3`,
+		   AND COALESCE(wait_until, paid_at) >= $2 AND COALESCE(wait_until, paid_at) < $3`,
 		affiliatorID, from, to,
 	).Scan(&net)
 	return net, err
@@ -346,4 +349,42 @@ func (r *Repository) InsertAffiliateLevelHistoryTx(ctx context.Context, tx pgx.T
 		 RETURNING id, created_at`,
 		h.AffiliatorID, h.Quarter, h.FromLevel, h.ToLevel, h.NetRevenue, h.Source, h.Reason,
 	).Scan(&h.ID, &h.CreatedAt)
+}
+
+// ListPaidOrdersMissingAffiliateCommissions returns paid orders (oldest first)
+// of students bound to an active affiliator since the payment (a checkout-code
+// binding is stamped a moment after the order's paid_at, hence the tolerance), that still
+// have a commissionable item with no commission row. paid_before keeps it off
+// orders whose OrderPaid event the worker may still be handling.
+func (r *Repository) ListPaidOrdersMissingAffiliateCommissions(ctx context.Context, paidSince, paidBefore time.Time, limit int) ([]uuid.UUID, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT o.id
+		 FROM orders o
+		 JOIN affiliate_bindings b ON b.student_id = o.student_id AND b.status = 'active'
+		      AND b.started_at <= o.paid_at + interval '5 minutes'
+		 JOIN affiliators a ON a.id = b.affiliator_id AND a.status = 'active'
+		 WHERE o.status IN ('paid', 'processing', 'shipped', 'completed')
+		   AND o.paid_at >= $1 AND o.paid_at < $2
+		   AND EXISTS (
+		       SELECT 1 FROM order_item oi
+		       WHERE oi.order_id = o.id
+		         AND oi.product_type IN ('exam', 'course', 'book', 'merchandise', 'medal')
+		         AND NOT EXISTS (SELECT 1 FROM affiliate_commissions c WHERE c.order_item_id = oi.id))
+		 ORDER BY o.paid_at, o.id
+		 LIMIT $3`,
+		paidSince, paidBefore, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }

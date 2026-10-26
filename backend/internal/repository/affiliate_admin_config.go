@@ -308,7 +308,8 @@ func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.
 		 LEFT JOIN (
 		     SELECT affiliator_id, SUM(base_amount) AS net_revenue
 		     FROM affiliate_commissions
-		     WHERE status IN ('available', 'paid') AND paid_at >= $1 AND paid_at < $2
+		     WHERE status IN ('available', 'paid')
+		       AND COALESCE(wait_until, paid_at) >= $1 AND COALESCE(wait_until, paid_at) < $2
 		     GROUP BY affiliator_id
 		 ) rev ON rev.affiliator_id = a.id
 		 LEFT JOIN (

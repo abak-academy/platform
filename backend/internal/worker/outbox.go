@@ -307,7 +307,7 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 		}
 	}
 
-	// komisi yang gagal tidak boleh menggagalkan akses — the step shares this tx behind a savepoint, so a failure rolls back only itself and the rerun endpoint or a replayed OrderPaid event re-attempts it.
+	// komisi yang gagal tidak boleh menggagalkan akses — the step shares this tx behind a savepoint, so a failure rolls back only itself; the event is still marked processed, and the daily batch (or the commissions rerun scope) recreates the missing commissions.
 	if w.commissionSvc != nil {
 		if sp, err := tx.Begin(ctx); err != nil {
 			slog.Error("begin commission savepoint", "order_id", payload.OrderID, "event_id", event.ID, "err", err)
