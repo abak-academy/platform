@@ -19,7 +19,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError } from "@/lib/api";
 import { useAffiliateLedger, useAffiliateMe, useAffiliatePayouts, useRequestAffiliatePayout } from "@/lib/hooks/affiliate";
 import { useListParams } from "@/lib/hooks/use-list-params";
-import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
+import { affLabel, formatAffDate, ledgerDescription } from "@/lib/affiliate-labels";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 import type { AffiliateLedgerEntry, AffiliatePayout } from "@/lib/types";
@@ -190,29 +190,6 @@ function RequestPayout({ disabled, saldo, bank }: { disabled: boolean; saldo: nu
       </Dialog>
     </>
   );
-}
-
-export function ledgerDescription(t: (key: I18nKey) => string, row: AffiliateLedgerEntry): string {
-  const student = row.student_name ?? "";
-  const product = row.product_name ?? "";
-  switch (row.entry_type) {
-    case "commission":
-      return student && product
-        ? t("aff_ledger_desc_commission").replace("{student}", student).replace("{product}", product)
-        : t("aff_ledger_desc_commission_plain");
-    case "refund_deduction":
-      return student && product
-        ? t("aff_ledger_desc_refund").replace("{student}", student).replace("{product}", product)
-        : t("aff_ledger_desc_refund_plain");
-    case "adjustment":
-      return row.note || t("aff_ledger_desc_adjustment");
-    case "payout":
-      return t("aff_ledger_desc_payout");
-    case "payout_reversal":
-      return t("aff_ledger_desc_reversal");
-    default:
-      return row.entry_type;
-  }
 }
 
 function HistoryTab() {

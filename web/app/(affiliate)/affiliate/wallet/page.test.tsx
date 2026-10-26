@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import WalletPage, { ledgerDescription } from "./page";
+import WalletPage from "./page";
+import { ledgerDescription } from "@/lib/affiliate-labels";
 import { ApiError } from "@/lib/api";
 
 const h = vi.hoisted(() => ({
