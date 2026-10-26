@@ -40,13 +40,38 @@ describe("AffiliateRegisterPage", () => {
     sessionStorage.clear();
   });
 
-  it("blocks submit until the terms are accepted", async () => {
+  it("keeps the sign-up button off until the terms are ticked, and says why", () => {
     render(<AffiliateRegisterPage />);
     fillValid();
+    const button = screen.getByRole("button", { name: /daftar & verifikasi otp/i });
+
+    expect(button).toBeDisabled();
+    expect(screen.getByText("Centang persetujuan di atas untuk mengaktifkan tombol daftar.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(button).toBeEnabled();
+    expect(screen.queryByText("Centang persetujuan di atas untuk mengaktifkan tombol daftar.")).toBeNull();
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(button).toBeDisabled();
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it("matches the student sign-up: password meter, no Google button", () => {
+    render(<AffiliateRegisterPage />);
+    fill("Kata Sandi", "abcdefghij");
+
+    expect(screen.getByTestId("password-strength")).toBeInTheDocument();
+    expect(screen.queryByText(/google/i)).toBeNull();
+  });
+
+  it("still validates the fields once the terms are ticked", async () => {
+    render(<AffiliateRegisterPage />);
+    fireEvent.click(screen.getByRole("checkbox"));
 
     fireEvent.click(screen.getByRole("button", { name: /daftar & verifikasi otp/i }));
 
-    expect(await screen.findByText("Kamu harus menyetujui Ketentuan Program")).toBeInTheDocument();
+    expect(await screen.findByText("Nomor HP wajib diisi")).toBeInTheDocument();
     expect(registerMock).not.toHaveBeenCalled();
   });
 

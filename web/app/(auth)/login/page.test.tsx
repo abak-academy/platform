@@ -30,6 +30,17 @@ describe("LoginPage", () => {
     sessionStorage.clear();
   });
 
+  it("links to the affiliate sign-up under the student sign-up link", () => {
+    render(<LoginPage />);
+
+    const student = screen.getByRole("button", { name: "Daftar sekarang" });
+    const affiliate = screen.getByRole("button", { name: "Daftar sebagai affiliator" });
+    expect(student.compareDocumentPosition(affiliate)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    fireEvent.click(affiliate);
+    expect(pushMock).toHaveBeenCalledWith("/affiliate-register");
+  });
+
   // Google moved below the credential form (client, 2026-08-03): most sign-ins
   // are email/password, and leading with Google pushed the form down.
   it("renders the Google sign-in button below the password form", () => {

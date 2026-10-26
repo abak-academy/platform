@@ -119,7 +119,7 @@ func (r *Repository) ListAffiliateAdjustments(ctx context.Context, affiliatorID 
 	}
 	defer rows.Close()
 
-	var out []model.AffiliateAdjustment
+	out := []model.AffiliateAdjustment{}
 	for rows.Next() {
 		var a model.AffiliateAdjustment
 		if err := rows.Scan(&a.ID, &a.AffiliatorID, &a.Category, &a.Amount, &a.Reason, &a.Note,
@@ -158,7 +158,7 @@ func (r *Repository) ListAffiliatePayoutQueue(ctx context.Context, statuses []st
 	}
 	defer rows.Close()
 
-	var out []AffiliatePayoutQueueRow
+	out := []AffiliatePayoutQueueRow{}
 	for rows.Next() {
 		var row AffiliatePayoutQueueRow
 		if err := rows.Scan(&row.ID, &row.AffiliatorID, &row.Amount, &row.Status, &row.BankName,

@@ -85,7 +85,7 @@ func (r *Repository) ListAffiliateAdmins(ctx context.Context, filter AffiliateAd
 	}
 	defer rows.Close()
 
-	var out []AffiliateAdminListRow
+	out := []AffiliateAdminListRow{}
 	for rows.Next() {
 		var row AffiliateAdminListRow
 		if err := rows.Scan(&row.ID, &row.UserID, &row.Code, &row.Status, &row.RejectionReason, &row.Level,
@@ -141,7 +141,7 @@ func (r *Repository) SumAffiliateCommissionsByStatus(ctx context.Context, affili
 	}
 	defer rows.Close()
 
-	var out []AffiliateCommissionStatusTotal
+	out := []AffiliateCommissionStatusTotal{}
 	for rows.Next() {
 		var t AffiliateCommissionStatusTotal
 		if err := rows.Scan(&t.Status, &t.Count, &t.Amount); err != nil {
@@ -168,7 +168,7 @@ func (r *Repository) ListAffiliateLevelHistory(ctx context.Context, affiliatorID
 	}
 	defer rows.Close()
 
-	var out []model.AffiliateLevelHistory
+	out := []model.AffiliateLevelHistory{}
 	for rows.Next() {
 		var h model.AffiliateLevelHistory
 		if err := rows.Scan(&h.ID, &h.AffiliatorID, &h.Quarter, &h.FromLevel, &h.ToLevel, &h.NetRevenue,
@@ -261,7 +261,7 @@ func (r *Repository) GetAffiliateCommissionsByIDsTx(ctx context.Context, tx pgx.
 	}
 	defer rows.Close()
 
-	var out []model.AffiliateCommission
+	out := []model.AffiliateCommission{}
 	for rows.Next() {
 		var c model.AffiliateCommission
 		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID,

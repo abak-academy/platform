@@ -146,7 +146,7 @@ func (r *Repository) ListAffiliateOverrideRows(ctx context.Context) ([]Affiliate
 	}
 	defer rows.Close()
 
-	var out []AffiliateOverrideRow
+	out := []AffiliateOverrideRow{}
 	for rows.Next() {
 		var row AffiliateOverrideRow
 		if err := rows.Scan(&row.ProductID, &row.ProductName, &row.Percentage, &row.UpdatedBy, &row.UpdatedAt); err != nil {
@@ -195,7 +195,7 @@ func (r *Repository) ListAffiliateFlagRows(ctx context.Context, status string) (
 	}
 	defer rows.Close()
 
-	var out []AffiliateFlagRow
+	out := []AffiliateFlagRow{}
 	for rows.Next() {
 		var row AffiliateFlagRow
 		if err := rows.Scan(&row.ID, &row.AffiliatorID, &row.Rule, &row.Payload, &row.Status, &row.Note,
@@ -263,7 +263,7 @@ func (r *Repository) ListAffiliateAppealRows(ctx context.Context, appealStatus s
 	}
 	defer rows.Close()
 
-	var out []AffiliateAppealRow
+	out := []AffiliateAppealRow{}
 	for rows.Next() {
 		var row AffiliateAppealRow
 		if err := rows.Scan(&row.ID, &row.AffiliatorID, &row.Category, &row.Description, &row.Sanction,
@@ -327,7 +327,7 @@ func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.
 	}
 	defer rows.Close()
 
-	var out []AffiliateReportRow
+	out := []AffiliateReportRow{}
 	for rows.Next() {
 		var row AffiliateReportRow
 		row.Commissions = map[string]float64{}

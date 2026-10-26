@@ -106,7 +106,7 @@ func (r *Repository) ListAffiliatePayoutsForAffiliator(ctx context.Context, affi
 	}
 	defer rows.Close()
 
-	var out []model.AffiliatePayout
+	out := []model.AffiliatePayout{}
 	for rows.Next() {
 		p, err := scanAffiliatePayout(rows)
 		if err != nil {
@@ -149,7 +149,7 @@ func (r *Repository) ListAffiliateAdjustmentsWithApplied(ctx context.Context, af
 	}
 	defer rows.Close()
 
-	var out []AffiliateAdjustmentWithApplied
+	out := []AffiliateAdjustmentWithApplied{}
 	for rows.Next() {
 		var row AffiliateAdjustmentWithApplied
 		if err := rows.Scan(&row.ID, &row.AffiliatorID, &row.Category, &row.Amount, &row.Reason, &row.Note,
@@ -185,7 +185,7 @@ func (r *Repository) ListAffiliateViolationsForAffiliator(ctx context.Context, a
 	}
 	defer rows.Close()
 
-	var out []model.AffiliateViolation
+	out := []model.AffiliateViolation{}
 	for rows.Next() {
 		var v model.AffiliateViolation
 		if err := rows.Scan(&v.ID, &v.AffiliatorID, &v.Category, &v.Description, &v.Sanction, &v.SuspensionUntil,

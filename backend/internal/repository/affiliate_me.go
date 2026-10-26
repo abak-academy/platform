@@ -119,7 +119,7 @@ func (r *Repository) ListAffiliateBindingsForAffiliator(ctx context.Context, aff
 	}
 	defer rows.Close()
 
-	var out []AffiliateBindingListRow
+	out := []AffiliateBindingListRow{}
 	for rows.Next() {
 		var row AffiliateBindingListRow
 		if err := rows.Scan(&row.BindingID, &row.Status, &row.Source, &row.StartedAt, &row.EndedAt, &row.CreatedAt,
@@ -185,7 +185,7 @@ func (r *Repository) ListAffiliateCommissionsForAffiliator(ctx context.Context, 
 	}
 	defer rows.Close()
 
-	var out []model.AffiliateCommission
+	out := []model.AffiliateCommission{}
 	for rows.Next() {
 		var c model.AffiliateCommission
 		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType,
@@ -226,7 +226,7 @@ func (r *Repository) ListAffiliateLedgerForAffiliator(ctx context.Context, affil
 	}
 	defer rows.Close()
 
-	var out []model.AffiliateLedgerEntry
+	out := []model.AffiliateLedgerEntry{}
 	for rows.Next() {
 		var e model.AffiliateLedgerEntry
 		if err := rows.Scan(&e.ID, &e.AffiliatorID, &e.EntryType, &e.Amount, &e.CommissionID, &e.PayoutID,

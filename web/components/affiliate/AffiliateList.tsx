@@ -6,7 +6,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { useTranslation } from "@/lib/i18n";
 
 interface PageShape<T> {
-  data: T[];
+  data: T[] | null;
   page?: number;
   per_page?: number;
   total?: number;
@@ -38,7 +38,9 @@ export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChang
     return <div className="p-6 text-sm text-ink-500">{t("aff_loading")}</div>;
   }
 
-  const { data, total = data.length, per_page = 0 } = query.data;
+  // The API answers [] for an empty list, but a null must never take the page down.
+  const data = query.data.data ?? [];
+  const { total = data.length, per_page = 0 } = query.data;
   const pages = per_page > 0 ? Math.max(1, Math.ceil(total / per_page)) : 1;
   return (
     <DataTable

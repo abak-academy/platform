@@ -38,6 +38,11 @@ describe("AffiliateList", () => {
     expect(screen.getByText("Belum ada data.")).toBeInTheDocument();
   });
 
+  it("treats a null list as empty instead of crashing", () => {
+    renderList(query({ isLoading: false, isError: false, data: { data: null, page: 1, per_page: 20, total: 0 } }));
+    expect(screen.getByText("Belum ada data.")).toBeInTheDocument();
+  });
+
   it("renders rows and pages forward", () => {
     const data = { data: [{ id: "1", label: "Baris satu" }], page: 1, per_page: 20, total: 45 };
     const onPageChange = renderList(query({ isLoading: false, isError: false, data }));
