@@ -120,3 +120,20 @@ func (r *Repository) ExpireDueBindings(ctx context.Context, now time.Time) (int6
 	}
 	return tag.RowsAffected(), nil
 }
+
+// InsertAffiliateFlagForUserOnce stores a flag unless the affiliator already has
+// an open flag of the same rule for the same user_id in its payload; the
+// returned bool reports whether a new row was stored.
+func (r *Repository) InsertAffiliateFlagForUserOnce(ctx context.Context, f *model.AffiliateFlag, userID string) (bool, error) {
+	tag, err := r.pool.Exec(ctx,
+		`INSERT INTO affiliate_flags (affiliator_id, rule, payload, status)
+		 SELECT $1, $2, $3, $4
+		 WHERE NOT EXISTS (
+		     SELECT 1 FROM affiliate_flags
+		     WHERE affiliator_id = $1 AND rule = $2 AND status = 'open' AND payload->>'user_id' = $5)`,
+		f.AffiliatorID, f.Rule, []byte(f.Payload), f.Status, userID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}

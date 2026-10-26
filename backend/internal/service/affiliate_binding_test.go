@@ -202,6 +202,23 @@ func TestResolveBinding_SelfPurchase_NoBindingAndFlag(t *testing.T) {
 		require.Equal(t, "email", fields["matched_field"])
 	})
 
+	t.Run("a repeat for the same user keeps one open flag", func(t *testing.T) {
+		email := "self-repeat-" + uniqueSuffix() + "@test.local"
+		owner := seedAffiliatorOwner(t, repo, email, "", "active")
+		student := &model.User{ID: uuid.NewString(), Email: &email, CreatedAt: time.Now().UTC()}
+		code := owner.code
+		for i := 0; i < 3; i++ {
+			decision, err := svc.ResolveBinding(ctx, student, &code, nil)
+			require.NoError(t, err)
+			require.Nil(t, decision)
+		}
+		var n int
+		require.NoError(t, repo.Pool().QueryRow(ctx,
+			`SELECT count(*) FROM affiliate_flags WHERE affiliator_id = $1 AND rule = 'self_purchase'`, owner.affiliatorID,
+		).Scan(&n))
+		require.Equal(t, 1, n)
+	})
+
 	t.Run("same phone", func(t *testing.T) {
 		phone := "+62812" + uniqueSuffix()[:6]
 		owner := seedAffiliatorOwner(t, repo, "self-phone-"+uniqueSuffix()+"@test.local", phone, "active")

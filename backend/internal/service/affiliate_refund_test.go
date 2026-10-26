@@ -121,7 +121,7 @@ func TestRefundOrder_AvailableCommissionWritesNegativeDeduction(t *testing.T) {
 
 	require.NoError(t, svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"))
 
-	require.Equal(t, "available", commissionStatusByID(t, repo, commissionID))
+	require.Equal(t, "cancelled", commissionStatusByID(t, repo, commissionID))
 	rows := refundDeductionEntries(t, repo, commissionID)
 	require.Len(t, rows, 1)
 	deduction := rows[0]
@@ -161,7 +161,7 @@ func TestRefundOrder_PaidCommissionWritesDeductionToo(t *testing.T) {
 
 	require.NoError(t, svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"))
 
-	require.Equal(t, "paid", commissionStatusByID(t, repo, commissionID))
+	require.Equal(t, "cancelled", commissionStatusByID(t, repo, commissionID))
 	rows := refundDeductionEntries(t, repo, commissionID)
 	require.Len(t, rows, 1)
 	require.Equal(t, "refund_deduction", rows[0].EntryType)
@@ -183,9 +183,55 @@ func TestRefundOrder_DoubleRefundRefusedBeforeAffiliateSettlement(t *testing.T) 
 	err := svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png")
 	require.ErrorIs(t, err, ErrOrderNotRefundable)
 
-	require.Equal(t, "available", commissionStatusByID(t, repo, commissionID))
+	require.Equal(t, "cancelled", commissionStatusByID(t, repo, commissionID))
 	rows := refundDeductionEntries(t, repo, commissionID)
 	require.Len(t, rows, 1)
 	require.Equal(t, "refund_deduction", rows[0].EntryType)
 	require.Equal(t, 2, commissionLedgerCount(t, repo, commissionID))
+}
+
+// A release that starts while the refund holds the commission row must wait and
+// then find it cancelled; without the row lock it credited the ledger first and
+// the refund then overwrote the status, leaving a credit with no deduction.
+func TestRefundOrder_ConcurrentReleaseWaitsAndFindsCommissionCancelled(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	setAffiliateFlagForCommission(t, repo, "true")
+	owner := seedAffiliatorOwner(t, repo, "aff-refund-race-"+uniqueSuffix()+"@test.local", "", "active")
+	actor := seedRevokeActor(t, repo)
+
+	orderID, commissionID := refundSeed(t, repo, owner, "pending")
+
+	tx, err := repo.BeginTx(ctx)
+	require.NoError(t, err)
+	_, err = repo.GetCommissionsByOrderTx(ctx, tx, orderID)
+	require.NoError(t, err)
+
+	type result struct {
+		done bool
+		err  error
+	}
+	released := make(chan result, 1)
+	go func() {
+		done, err := svc.releaseAffiliateCommission(ctx, repository.AffiliateDueCommission{
+			Commission: model.AffiliateCommission{ID: commissionID, OrderID: orderID},
+			ItemName:   "book",
+		})
+		released <- result{done, err}
+	}()
+	time.Sleep(300 * time.Millisecond)
+
+	require.NoError(t, svc.settleAffiliateRefundTx(ctx, tx, orderID, actor.String()))
+	require.NoError(t, tx.Commit(ctx))
+
+	select {
+	case res := <-released:
+		require.NoError(t, res.err)
+		require.False(t, res.done, "the release must lose to the refund")
+	case <-time.After(10 * time.Second):
+		t.Fatal("release never returned")
+	}
+	require.Equal(t, "cancelled", commissionStatusByID(t, repo, commissionID))
+	require.Equal(t, 0, commissionLedgerCount(t, repo, commissionID))
+	require.Equal(t, 0.0, affiliateLedgerSaldo(t, repo, owner.affiliatorID))
 }

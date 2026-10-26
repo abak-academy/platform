@@ -117,7 +117,7 @@ func (s *Service) recordSelfPurchaseFlag(ctx context.Context, affiliatorID uuid.
 		Payload:      payload,
 		Status:       "open",
 	}
-	if err := s.storeRepo.InsertAffiliateFlag(ctx, flag); err != nil {
+	if _, err := s.storeRepo.InsertAffiliateFlagForUserOnce(ctx, flag, studentID); err != nil {
 		return fmt.Errorf("insert affiliate flag: %w", err)
 	}
 	return nil

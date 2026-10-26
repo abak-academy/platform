@@ -33,7 +33,7 @@ func (s *Service) CreateCommissionsForOrder(ctx context.Context, tx pgx.Tx, orde
 	if err != nil {
 		return fmt.Errorf("get affiliator: %w", err)
 	}
-	if aff == nil || aff.Status != affiliateAffiliatorStatusActive || affiliateSanctionActive(aff, time.Now()) {
+	if aff == nil || aff.Status != affiliateAffiliatorStatusActive {
 		return nil
 	}
 	_, rules, err := s.LoadAffiliateEffectiveRules(ctx)
@@ -74,7 +74,7 @@ func (s *Service) createCommissionForItem(ctx context.Context, tx pgx.Tx, aff *m
 		BaseAmount:    base,
 		Percentage:    pct,
 		LevelSnapshot: aff.Level,
-		Amount:        math.Floor(base * pct / 100),
+		Amount:        affiliateCommissionAmount(base, pct),
 		Status:        "pending",
 		WaitUntil:     affiliateWaitUntil(item.ProductType, order.PaidAt, rule),
 		PaidAt:        order.PaidAt,
@@ -121,9 +121,9 @@ func affiliateWaitUntil(productType string, paidAt *time.Time, rule AffiliateEff
 	}
 }
 
-// affiliateSanctionActive is BR-ATR-12: a suspended or frozen affiliator
-// earns nothing while the sanction lasts.
-func affiliateSanctionActive(aff *model.Affiliator, now time.Time) bool {
-	return (aff.SuspendedUntil != nil && aff.SuspendedUntil.After(now)) ||
-		(aff.FrozenUntil != nil && aff.FrozenUntil.After(now))
+// affiliateCommissionAmount floors base*pct/100 to whole rupiah. The product is
+// rounded to a hundredth of a percent first so float error in a decimal pct
+// (7.35 is not exactly representable) cannot drop a rupiah.
+func affiliateCommissionAmount(base, pct float64) float64 {
+	return math.Floor(math.Round(base*pct*100) / 10000)
 }

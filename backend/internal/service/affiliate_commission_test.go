@@ -228,7 +228,7 @@ func TestAffiliateCommission_UnboundStudentCreatesNothing(t *testing.T) {
 	require.Empty(t, affiliateCommissionsForOrder(t, repo, order.ID))
 }
 
-func TestAffiliateCommission_SuspendedOrFrozenAffiliatorCreatesNothing(t *testing.T) {
+func TestAffiliateCommission_SuspendedAffiliatorCreatesNothingButFrozenStillEarns(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	launch := time.Now().UTC().Add(-24 * time.Hour)
@@ -252,7 +252,9 @@ func TestAffiliateCommission_SuspendedOrFrozenAffiliatorCreatesNothing(t *testin
 		require.Empty(t, affiliateCommissionsForOrder(t, repo, order.ID))
 	})
 
-	t.Run("frozen affiliator earns nothing", func(t *testing.T) {
+	// BR-PLG-05: a balance freeze only holds withdrawals; purchases made while it
+	// lasts must still earn, because the commission is created once from the event.
+	t.Run("frozen affiliator still earns", func(t *testing.T) {
 		owner := seedAffiliatorOwner(t, repo, "aff-comm-e2-"+uniqueSuffix()+"@test.local", "", "active")
 		_, err := repo.Pool().Exec(ctx, `UPDATE affiliators SET frozen_until = $1 WHERE id = $2`, freezeUntil, owner.affiliatorID)
 		require.NoError(t, err)
@@ -263,8 +265,28 @@ func TestAffiliateCommission_SuspendedOrFrozenAffiliatorCreatesNothing(t *testin
 			commissionSeedItem{productType: "exam", jumlah: 100000},
 		)
 		require.NoError(t, runCreateCommissions(t, svc, repo, order))
-		require.Empty(t, affiliateCommissionsForOrder(t, repo, order.ID))
+		require.Len(t, affiliateCommissionsForOrder(t, repo, order.ID), 1)
 	})
+}
+
+func TestAffiliateCommissionAmount(t *testing.T) {
+	cases := []struct {
+		name      string
+		base, pct float64
+		want      float64
+	}{
+		{"whole percent", 100000, 10, 10000},
+		{"floors the remainder", 33333, 10, 3333},
+		{"decimal percent that is inexact in float", 20000, 7.35, 1470},
+		{"half percent", 99999, 2.5, 2499},
+		{"zero percent", 100000, 0, 0},
+		{"fractional base after discount split", 33333.33, 5, 1666},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, affiliateCommissionAmount(tc.base, tc.pct))
+		})
+	}
 }
 
 func TestAffiliateCommission_DigitalWaitsPhysicalWaitsNull(t *testing.T) {

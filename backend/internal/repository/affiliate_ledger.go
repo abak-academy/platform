@@ -11,14 +11,17 @@ import (
 
 // GetCommissionsByOrderTx returns the order's affiliate commissions as read
 // inside the caller's transaction, so the refund settles exactly the rows it
-// mutates. An order without commissions returns an empty slice.
+// mutates. The rows stay locked until the tx ends, so a concurrent release
+// job waits and then sees the refunded status. An order without commissions
+// returns an empty slice.
 func (r *Repository) GetCommissionsByOrderTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) ([]model.AffiliateCommission, error) {
 	rows, err := r.affiliateQueryer(tx).Query(ctx,
 		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, percentage,
 		        level_snapshot, amount, status, wait_until, paid_at
 		 FROM affiliate_commissions
 		 WHERE order_id = $1
-		 ORDER BY created_at`, orderID)
+		 ORDER BY created_at
+		 FOR UPDATE`, orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -36,12 +39,16 @@ func (r *Repository) GetCommissionsByOrderTx(ctx context.Context, tx pgx.Tx, ord
 	return out, rows.Err()
 }
 
-// UpdateCommissionStatusTx moves one commission to a new status inside tx.
-func (r *Repository) UpdateCommissionStatusTx(ctx context.Context, tx pgx.Tx, commissionID uuid.UUID, status string) error {
-	_, err := tx.Exec(ctx,
-		`UPDATE affiliate_commissions SET status = $2, updated_at = now() WHERE id = $1`,
-		commissionID, status)
-	return err
+// SetCommissionStatusFromTx moves one commission from one status to another
+// inside tx and reports whether it was still in the expected status.
+func (r *Repository) SetCommissionStatusFromTx(ctx context.Context, tx pgx.Tx, commissionID uuid.UUID, from, to string) (bool, error) {
+	tag, err := tx.Exec(ctx,
+		`UPDATE affiliate_commissions SET status = $3, updated_at = now() WHERE id = $1 AND status = $2`,
+		commissionID, from, to)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // InsertRefundDeductionTx appends one signed ledger row inside tx and leaves

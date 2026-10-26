@@ -12,8 +12,9 @@ import (
 
 // settleAffiliateRefundTx settles the refunded order's affiliate commissions
 // inside the refund's own transaction (BR-KOM-11): pending → cancelled, an
-// available/paid commission gets one negative refund_deduction ledger entry,
-// and held commissions stay held (BR-PLG-05). The saldo may go negative.
+// available/paid commission gets one negative refund_deduction ledger entry and
+// is cancelled too (so level revenue and the refund-ratio flag stop counting
+// it), and held commissions stay held (BR-PLG-05). The saldo may go negative.
 func (s *Service) settleAffiliateRefundTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, actorID string) error {
 	commissions, err := s.storeRepo.GetCommissionsByOrderTx(ctx, tx, orderID)
 	if err != nil {
@@ -30,7 +31,7 @@ func (s *Service) settleAffiliateRefundTx(ctx context.Context, tx pgx.Tx, orderI
 	for _, c := range commissions {
 		switch c.Status {
 		case "pending":
-			if err := s.storeRepo.UpdateCommissionStatusTx(ctx, tx, c.ID, "cancelled"); err != nil {
+			if _, err := s.storeRepo.SetCommissionStatusFromTx(ctx, tx, c.ID, "pending", "cancelled"); err != nil {
 				return fmt.Errorf("cancel affiliate commission: %w", err)
 			}
 		case "available", "paid":
@@ -43,6 +44,9 @@ func (s *Service) settleAffiliateRefundTx(ctx context.Context, tx pgx.Tx, orderI
 				ActorID:      &actor,
 			}); err != nil {
 				return fmt.Errorf("insert refund deduction: %w", err)
+			}
+			if _, err := s.storeRepo.SetCommissionStatusFromTx(ctx, tx, c.ID, c.Status, "cancelled"); err != nil {
+				return fmt.Errorf("cancel refunded affiliate commission: %w", err)
 			}
 		}
 	}
