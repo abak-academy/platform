@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strconv"
 
 	"akademi-bimbel/internal/model"
 
@@ -85,21 +86,27 @@ func (r *Repository) HasAffiliatePayoutInFlightTx(ctx context.Context, tx pgx.Tx
 }
 
 // ListAffiliatePayoutsForAffiliator returns one affiliator's payouts newest
-// request first with the total row count for pagination.
-func (r *Repository) ListAffiliatePayoutsForAffiliator(ctx context.Context, affiliatorID uuid.UUID, limit, offset int) ([]model.AffiliatePayout, int, error) {
+// request first with the total row count for pagination. Status and the
+// request-date range are filterable.
+func (r *Repository) ListAffiliatePayoutsForAffiliator(ctx context.Context, affiliatorID uuid.UUID, q AffiliateListQuery, limit, offset int) ([]model.AffiliatePayout, int, error) {
+	p := newAffPredicate(2)
+	p.eq("status", q.Status)
+	p.dates("requested_at", q.From, q.To)
+	args := append([]interface{}{affiliatorID}, p.args...)
+
 	var total int
 	if err := r.pool.QueryRow(ctx,
-		`SELECT count(*) FROM affiliate_payouts WHERE affiliator_id = $1`, affiliatorID,
+		`SELECT count(*) FROM affiliate_payouts WHERE affiliator_id = $1`+p.sql, args...,
 	).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+affiliatePayoutColumns+`
 		 FROM affiliate_payouts
-		 WHERE affiliator_id = $1
+		 WHERE affiliator_id = $1`+p.sql+`
 		 ORDER BY requested_at DESC, id DESC
-		 LIMIT $2 OFFSET $3`,
-		affiliatorID, limit, offset,
+		 LIMIT $`+strconv.Itoa(p.next)+` OFFSET $`+strconv.Itoa(p.next+1),
+		append(args, limit, offset)...,
 	)
 	if err != nil {
 		return nil, 0, err
@@ -126,11 +133,18 @@ type AffiliateAdjustmentWithApplied struct {
 }
 
 // ListAffiliateAdjustmentsWithApplied returns one affiliator's adjustments
-// newest first, each joined with whether its ledger entry exists.
-func (r *Repository) ListAffiliateAdjustmentsWithApplied(ctx context.Context, affiliatorID uuid.UUID, limit, offset int) ([]AffiliateAdjustmentWithApplied, int, error) {
+// newest first, each joined with whether its ledger entry exists. Type filters
+// the category; the text search covers the reason and the note.
+func (r *Repository) ListAffiliateAdjustmentsWithApplied(ctx context.Context, affiliatorID uuid.UUID, q AffiliateListQuery, limit, offset int) ([]AffiliateAdjustmentWithApplied, int, error) {
+	p := newAffPredicate(2)
+	p.eq("a.category", q.Type)
+	p.dates("a.created_at", q.From, q.To)
+	p.search(q.Q, "a.reason", "a.note")
+	args := append([]interface{}{affiliatorID}, p.args...)
+
 	var total int
 	if err := r.pool.QueryRow(ctx,
-		`SELECT count(*) FROM affiliate_adjustments WHERE affiliator_id = $1`, affiliatorID,
+		`SELECT count(*) FROM affiliate_adjustments a WHERE a.affiliator_id = $1`+p.sql, args...,
 	).Scan(&total); err != nil {
 		return nil, 0, err
 	}
@@ -139,10 +153,10 @@ func (r *Repository) ListAffiliateAdjustmentsWithApplied(ctx context.Context, af
 		        a.approver_id, a.approved_at, a.created_by, a.created_at,
 		        EXISTS (SELECT 1 FROM affiliate_ledger_entries l WHERE l.adjustment_id = a.id)
 		 FROM affiliate_adjustments a
-		 WHERE a.affiliator_id = $1
+		 WHERE a.affiliator_id = $1`+p.sql+`
 		 ORDER BY a.created_at DESC, a.id DESC
-		 LIMIT $2 OFFSET $3`,
-		affiliatorID, limit, offset,
+		 LIMIT $`+strconv.Itoa(p.next)+` OFFSET $`+strconv.Itoa(p.next+1),
+		append(args, limit, offset)...,
 	)
 	if err != nil {
 		return nil, 0, err
@@ -163,11 +177,19 @@ func (r *Repository) ListAffiliateAdjustmentsWithApplied(ctx context.Context, af
 }
 
 // ListAffiliateViolationsForAffiliator returns one affiliator's violations
-// newest first with the total row count for pagination.
-func (r *Repository) ListAffiliateViolationsForAffiliator(ctx context.Context, affiliatorID uuid.UUID, limit, offset int) ([]model.AffiliateViolation, int, error) {
+// newest first with the total row count for pagination. Type filters the
+// sanction, Status the open/resolved state, and the text search the description.
+func (r *Repository) ListAffiliateViolationsForAffiliator(ctx context.Context, affiliatorID uuid.UUID, q AffiliateListQuery, limit, offset int) ([]model.AffiliateViolation, int, error) {
+	p := newAffPredicate(2)
+	p.eq("sanction", q.Type)
+	p.eq("status", q.Status)
+	p.dates("created_at", q.From, q.To)
+	p.search(q.Q, "description")
+	args := append([]interface{}{affiliatorID}, p.args...)
+
 	var total int
 	if err := r.pool.QueryRow(ctx,
-		`SELECT count(*) FROM affiliate_violations WHERE affiliator_id = $1`, affiliatorID,
+		`SELECT count(*) FROM affiliate_violations WHERE affiliator_id = $1`+p.sql, args...,
 	).Scan(&total); err != nil {
 		return nil, 0, err
 	}
@@ -175,10 +197,10 @@ func (r *Repository) ListAffiliateViolationsForAffiliator(ctx context.Context, a
 		`SELECT id, affiliator_id, category, description, sanction, suspension_until, status, decided_by, decided_at,
 		        appeal_text, appeal_status, appeal_decided_by, appeal_decided_at, created_at
 		 FROM affiliate_violations
-		 WHERE affiliator_id = $1
+		 WHERE affiliator_id = $1`+p.sql+`
 		 ORDER BY created_at DESC, id DESC
-		 LIMIT $2 OFFSET $3`,
-		affiliatorID, limit, offset,
+		 LIMIT $`+strconv.Itoa(p.next)+` OFFSET $`+strconv.Itoa(p.next+1),
+		append(args, limit, offset)...,
 	)
 	if err != nil {
 		return nil, 0, err

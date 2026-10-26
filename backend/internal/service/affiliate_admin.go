@@ -522,15 +522,15 @@ func (s *Service) GetAffiliateAdminDetail(ctx context.Context, id string) (*Affi
 		Commissions: AffiliateAdminCommissionSummary{Counts: map[string]int{}},
 	}
 
-	detail.Bindings.Active, err = s.storeRepo.CountAffiliateBindingsForAffiliator(ctx, affID, "active")
+	detail.Bindings.Active, err = s.storeRepo.CountAffiliateBindingsForAffiliator(ctx, affID, repository.AffiliateListQuery{Status: "active"})
 	if err != nil {
 		return nil, fmt.Errorf("count active affiliate bindings: %w", err)
 	}
-	detail.Bindings.Ended, err = s.storeRepo.CountAffiliateBindingsForAffiliator(ctx, affID, "ended")
+	detail.Bindings.Ended, err = s.storeRepo.CountAffiliateBindingsForAffiliator(ctx, affID, repository.AffiliateListQuery{Status: "ended"})
 	if err != nil {
 		return nil, fmt.Errorf("count ended affiliate bindings: %w", err)
 	}
-	rows, err := s.storeRepo.ListAffiliateBindingsForAffiliator(ctx, affID, "", affiliateDetailBindingsLimit, 0)
+	rows, err := s.storeRepo.ListAffiliateBindingsForAffiliator(ctx, affID, repository.AffiliateListQuery{}, affiliateDetailBindingsLimit, 0)
 	if err != nil {
 		return nil, fmt.Errorf("list affiliate bindings: %w", err)
 	}
@@ -567,7 +567,7 @@ func (s *Service) GetAffiliateAdminDetail(ctx context.Context, id string) (*Affi
 	if detail.LevelHistory == nil {
 		detail.LevelHistory = []model.AffiliateLevelHistory{}
 	}
-	detail.Violations, _, err = s.storeRepo.ListAffiliateViolationsForAffiliator(ctx, affID, affiliateDetailViolationsCap, 0)
+	detail.Violations, _, err = s.storeRepo.ListAffiliateViolationsForAffiliator(ctx, affID, repository.AffiliateListQuery{}, affiliateDetailViolationsCap, 0)
 	if err != nil {
 		return nil, fmt.Errorf("list affiliate violations: %w", err)
 	}

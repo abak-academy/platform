@@ -83,3 +83,46 @@ func TestEmptyListsAnswerAnEmptyArray(t *testing.T) {
 		t.Errorf("report summary: want 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestAffiliateMeListQueryParams(t *testing.T) {
+	env := newAffiliateJobsEnv(t)
+	ctx := context.Background()
+	setAffiliateFlag(t, env.pool, "true")
+	affID, _ := seedAffiliateAdminRow(t, env.pool, "active")
+	var userID string
+	if err := env.pool.QueryRow(ctx, `SELECT user_id FROM affiliators WHERE id = $1`, affID).Scan(&userID); err != nil {
+		t.Fatalf("affiliator user: %v", err)
+	}
+	tok, jti, err := env.signer.SignAccess(userID, service.RoleAffiliator, nil, []string{})
+	if err != nil {
+		t.Fatalf("SignAccess: %v", err)
+	}
+	if err := env.rdb.Set(ctx, "session:access:"+jti, "1", time.Hour).Err(); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	cases := []struct {
+		path string
+		want int
+	}{
+		{"ledger?type=commission&q=sari&from=2026-01-01&to=2026-12-31", http.StatusOK},
+		{"ledger?type=bogus", http.StatusBadRequest},
+		{"commissions?q=x&status=held", http.StatusOK},
+		{"commissions?status=bogus", http.StatusBadRequest},
+		{"bindings?type=link&q=budi", http.StatusOK},
+		{"bindings?type=bogus", http.StatusBadRequest},
+		{"payouts?status=paid", http.StatusOK},
+		{"payouts?status=bogus", http.StatusBadRequest},
+		{"adjustments?type=bonus", http.StatusOK},
+		{"adjustments?type=bogus", http.StatusBadRequest},
+		{"violations?type=warning&status=open", http.StatusOK},
+		{"violations?status=bogus", http.StatusBadRequest},
+		{"ledger?from=not-a-date", http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		rec := getWithToken(t, env.e, "/api/v1/affiliates/me/"+tc.path, tok)
+		if rec.Code != tc.want {
+			t.Errorf("GET %s: want %d, got %d: %s", tc.path, tc.want, rec.Code, rec.Body.String())
+		}
+	}
+}

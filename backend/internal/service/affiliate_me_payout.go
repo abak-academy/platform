@@ -156,6 +156,9 @@ func (s *Service) RequestMyAffiliatePayout(ctx context.Context, userID string, a
 // payout_day_of_month) so the UI can explain when transfers happen.
 func (s *Service) ListMyAffiliatePayouts(ctx context.Context, userID string, filter AffiliateMeListFilter) (AffiliateMePayoutPage, error) {
 	page := AffiliateMePayoutPage{Data: []model.AffiliatePayout{}, Page: filter.Page, PerPage: filter.PerPage}
+	if err := checkAffiliateFilter(affiliatePayoutStatuses, filter.Status); err != nil {
+		return page, err
+	}
 	aff, err := s.affiliateMeAffiliator(ctx, userID)
 	if err != nil {
 		return page, err
@@ -175,7 +178,7 @@ func (s *Service) ListMyAffiliatePayouts(ctx context.Context, userID string, fil
 	}
 	page.Saldo = saldo
 
-	rows, total, err := s.storeRepo.ListAffiliatePayoutsForAffiliator(ctx, aff.ID, filter.PerPage, (filter.Page-1)*filter.PerPage)
+	rows, total, err := s.storeRepo.ListAffiliatePayoutsForAffiliator(ctx, aff.ID, filter.repoQuery(), filter.PerPage, (filter.Page-1)*filter.PerPage)
 	if err != nil {
 		return page, fmt.Errorf("list affiliate payouts: %w", err)
 	}
@@ -189,11 +192,14 @@ func (s *Service) ListMyAffiliatePayouts(ctx context.Context, userID string, fil
 // immediately, a threshold-pending row has none).
 func (s *Service) ListMyAffiliateAdjustments(ctx context.Context, userID string, filter AffiliateMeListFilter) (AffiliateMeAdjustmentsPage, error) {
 	page := AffiliateMeAdjustmentsPage{Data: []repository.AffiliateAdjustmentWithApplied{}, Page: filter.Page, PerPage: filter.PerPage}
+	if err := checkAffiliateFilter(affiliateAdjustmentCategories, filter.Type); err != nil {
+		return page, err
+	}
 	aff, err := s.affiliateMeAffiliator(ctx, userID)
 	if err != nil {
 		return page, err
 	}
-	rows, total, err := s.storeRepo.ListAffiliateAdjustmentsWithApplied(ctx, aff.ID, filter.PerPage, (filter.Page-1)*filter.PerPage)
+	rows, total, err := s.storeRepo.ListAffiliateAdjustmentsWithApplied(ctx, aff.ID, filter.repoQuery(), filter.PerPage, (filter.Page-1)*filter.PerPage)
 	if err != nil {
 		return page, fmt.Errorf("list affiliate adjustments: %w", err)
 	}
@@ -206,11 +212,17 @@ func (s *Service) ListMyAffiliateAdjustments(ctx context.Context, userID string,
 // first, with the sanction and appeal fields.
 func (s *Service) ListMyAffiliateViolations(ctx context.Context, userID string, filter AffiliateMeListFilter) (AffiliateMeViolationsPage, error) {
 	page := AffiliateMeViolationsPage{Data: []model.AffiliateViolation{}, Page: filter.Page, PerPage: filter.PerPage}
+	if err := checkAffiliateFilter(affiliateMeSanctions, filter.Type); err != nil {
+		return page, err
+	}
+	if err := checkAffiliateFilter(affiliateMeViolationState, filter.Status); err != nil {
+		return page, err
+	}
 	aff, err := s.affiliateMeAffiliator(ctx, userID)
 	if err != nil {
 		return page, err
 	}
-	rows, total, err := s.storeRepo.ListAffiliateViolationsForAffiliator(ctx, aff.ID, filter.PerPage, (filter.Page-1)*filter.PerPage)
+	rows, total, err := s.storeRepo.ListAffiliateViolationsForAffiliator(ctx, aff.ID, filter.repoQuery(), filter.PerPage, (filter.Page-1)*filter.PerPage)
 	if err != nil {
 		return page, fmt.Errorf("list affiliate violations: %w", err)
 	}

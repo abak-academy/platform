@@ -51,12 +51,34 @@ type AffiliateMeProfile struct {
 type AffiliateMeListFilter struct {
 	Page        int
 	PerPage     int
+	Query       string
 	Status      string
+	Type        string
 	ProductType string
 	Order       string
 	From        *time.Time
 	To          *time.Time
 }
+
+func (f AffiliateMeListFilter) repoQuery() repository.AffiliateListQuery {
+	return repository.AffiliateListQuery{Q: f.Query, Type: f.Type, Status: f.Status, From: f.From, To: f.To}
+}
+
+// checkAffiliateFilter rejects a status or type outside the list's known values
+// (an empty value means "no filter").
+func checkAffiliateFilter(allowed map[string]bool, value string) error {
+	if value != "" && !allowed[value] {
+		return fmt.Errorf("%w: %s", ErrInvalidStatusFilter, value)
+	}
+	return nil
+}
+
+var (
+	affiliateMeBindingSources = map[string]bool{"link": true, "manual_code": true, "checkout_code": true}
+	affiliateMeLedgerTypes    = map[string]bool{"commission": true, "refund_deduction": true, "adjustment": true, "payout": true, "payout_reversal": true}
+	affiliateMeViolationState = map[string]bool{"open": true, "resolved": true}
+	affiliateMeSanctions      = map[string]bool{"warning": true, "commission_cancel": true, "balance_freeze": true, "level_change": true, "suspend": true, "deactivate": true}
+)
 
 // AffiliateMeBinding is one affiliator-facing student row: name is
 // privacy-formatted and carries no contact or exam data (BR-PRV-02).
@@ -79,18 +101,18 @@ type AffiliateMeBindingsPage struct {
 }
 
 type AffiliateMeCommissionsPage struct {
-	Data    []model.AffiliateCommission `json:"data"`
-	Page    int                         `json:"page"`
-	PerPage int                         `json:"per_page"`
-	Total   int                         `json:"total"`
+	Data    []repository.AffiliateCommissionRow `json:"data"`
+	Page    int                                 `json:"page"`
+	PerPage int                                 `json:"per_page"`
+	Total   int                                 `json:"total"`
 }
 
 type AffiliateMeLedgerPage struct {
-	Data    []model.AffiliateLedgerEntry `json:"data"`
-	Saldo   float64                      `json:"saldo"`
-	Page    int                          `json:"page"`
-	PerPage int                          `json:"per_page"`
-	Total   int                          `json:"total"`
+	Data    []repository.AffiliateLedgerRow `json:"data"`
+	Saldo   float64                         `json:"saldo"`
+	Page    int                             `json:"page"`
+	PerPage int                             `json:"per_page"`
+	Total   int                             `json:"total"`
 }
 
 type AffiliateMeStats struct {
@@ -222,19 +244,22 @@ var affiliateMeBindingStatuses = map[string]bool{"active": true, "ended": true}
 
 func (s *Service) ListMyAffiliateBindings(ctx context.Context, userID string, filter AffiliateMeListFilter) (AffiliateMeBindingsPage, error) {
 	page := AffiliateMeBindingsPage{Data: []AffiliateMeBinding{}, Page: filter.Page, PerPage: filter.PerPage}
-	if filter.Status != "" && !affiliateMeBindingStatuses[filter.Status] {
-		return page, fmt.Errorf("%w: %s", ErrInvalidStatusFilter, filter.Status)
+	if err := checkAffiliateFilter(affiliateMeBindingStatuses, filter.Status); err != nil {
+		return page, err
+	}
+	if err := checkAffiliateFilter(affiliateMeBindingSources, filter.Type); err != nil {
+		return page, err
 	}
 	aff, err := s.affiliateMeAffiliator(ctx, userID)
 	if err != nil {
 		return page, err
 	}
-	total, err := s.storeRepo.CountAffiliateBindingsForAffiliator(ctx, aff.ID, filter.Status)
+	total, err := s.storeRepo.CountAffiliateBindingsForAffiliator(ctx, aff.ID, filter.repoQuery())
 	if err != nil {
 		return page, fmt.Errorf("count affiliate bindings: %w", err)
 	}
 	page.Total = total
-	rows, err := s.storeRepo.ListAffiliateBindingsForAffiliator(ctx, aff.ID, filter.Status, filter.PerPage, (filter.Page-1)*filter.PerPage)
+	rows, err := s.storeRepo.ListAffiliateBindingsForAffiliator(ctx, aff.ID, filter.repoQuery(), filter.PerPage, (filter.Page-1)*filter.PerPage)
 	if err != nil {
 		return page, fmt.Errorf("list affiliate bindings: %w", err)
 	}
@@ -256,7 +281,7 @@ func (s *Service) ListMyAffiliateBindings(ctx context.Context, userID string, fi
 var affiliateMeCommissionStatuses = map[string]bool{"pending": true, "available": true, "paid": true, "cancelled": true, "held": true}
 
 func (s *Service) ListMyAffiliateCommissions(ctx context.Context, userID string, filter AffiliateMeListFilter) (AffiliateMeCommissionsPage, error) {
-	page := AffiliateMeCommissionsPage{Data: []model.AffiliateCommission{}, Page: filter.Page, PerPage: filter.PerPage}
+	page := AffiliateMeCommissionsPage{Data: []repository.AffiliateCommissionRow{}, Page: filter.Page, PerPage: filter.PerPage}
 	if filter.Status != "" && !affiliateMeCommissionStatuses[filter.Status] {
 		return page, fmt.Errorf("%w: %s", ErrInvalidStatusFilter, filter.Status)
 	}
@@ -265,6 +290,7 @@ func (s *Service) ListMyAffiliateCommissions(ctx context.Context, userID string,
 		return page, err
 	}
 	repoFilter := repository.AffiliateCommissionFilter{
+		Q:           filter.Query,
 		Status:      filter.Status,
 		ProductType: filter.ProductType,
 		PaidFrom:    filter.From,
@@ -281,17 +307,23 @@ func (s *Service) ListMyAffiliateCommissions(ctx context.Context, userID string,
 	if err != nil {
 		return page, fmt.Errorf("list affiliate commissions: %w", err)
 	}
+	for i := range data {
+		data[i].StudentName = affiliateStudentDisplayName(data[i].StudentName)
+	}
 	page.Data = data
 	return page, nil
 }
 
 func (s *Service) GetMyAffiliateLedger(ctx context.Context, userID string, filter AffiliateMeListFilter) (AffiliateMeLedgerPage, error) {
-	page := AffiliateMeLedgerPage{Data: []model.AffiliateLedgerEntry{}, Page: filter.Page, PerPage: filter.PerPage}
+	page := AffiliateMeLedgerPage{Data: []repository.AffiliateLedgerRow{}, Page: filter.Page, PerPage: filter.PerPage}
+	if err := checkAffiliateFilter(affiliateMeLedgerTypes, filter.Type); err != nil {
+		return page, err
+	}
 	aff, err := s.affiliateMeAffiliator(ctx, userID)
 	if err != nil {
 		return page, err
 	}
-	total, err := s.storeRepo.CountAffiliateLedgerEntriesForAffiliator(ctx, aff.ID)
+	total, err := s.storeRepo.CountAffiliateLedgerEntriesForAffiliator(ctx, aff.ID, filter.repoQuery())
 	if err != nil {
 		return page, fmt.Errorf("count affiliate ledger: %w", err)
 	}
@@ -301,9 +333,20 @@ func (s *Service) GetMyAffiliateLedger(ctx context.Context, userID string, filte
 		return page, fmt.Errorf("sum affiliate ledger: %w", err)
 	}
 	page.Saldo = saldo
-	data, err := s.storeRepo.ListAffiliateLedgerForAffiliator(ctx, aff.ID, filter.Order == "asc", filter.PerPage, (filter.Page-1)*filter.PerPage)
+	data, err := s.storeRepo.ListAffiliateLedgerForAffiliator(ctx, aff.ID, filter.Order == "asc", filter.repoQuery(), filter.PerPage, (filter.Page-1)*filter.PerPage)
 	if err != nil {
 		return page, fmt.Errorf("list affiliate ledger: %w", err)
+	}
+	for i := range data {
+		if data[i].StudentName != nil {
+			name := affiliateStudentDisplayName(*data[i].StudentName)
+			data[i].StudentName = &name
+		}
+		// The stored note is internal bookkeeping text (it carries order ids);
+		// only an adjustment's note is a reason written for the affiliator.
+		if data[i].EntryType != "adjustment" {
+			data[i].Note = nil
+		}
 	}
 	page.Data = data
 	return page, nil

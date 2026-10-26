@@ -211,6 +211,16 @@ func (h *Handler) AffiliateMeAppealViolation(c echo.Context) error {
 	return c.JSON(http.StatusOK, violation)
 }
 
+// affiliateSearchText trims the search box text and caps it so a pasted
+// paragraph cannot become a huge ILIKE pattern.
+func affiliateSearchText(raw string) string {
+	text := strings.TrimSpace(raw)
+	if runes := []rune(text); len(runes) > 100 {
+		text = string(runes[:100])
+	}
+	return text
+}
+
 // affiliateMeListQuery parses the shared list query params: page/per_page
 // (per_page clamped like parseLimit), optional status filter and a half-open
 // from/to date range (parseDayRange).
@@ -218,6 +228,8 @@ func affiliateMeListQuery(c echo.Context) (service.AffiliateMeListFilter, error)
 	filter := service.AffiliateMeListFilter{
 		Page:        1,
 		PerPage:     parseLimit(c.QueryParam("per_page"), 20, 50),
+		Query:       affiliateSearchText(c.QueryParam("q")),
+		Type:        c.QueryParam("type"),
 		Status:      c.QueryParam("status"),
 		ProductType: c.QueryParam("product_type"),
 		Order:       strings.ToLower(c.QueryParam("order")),
