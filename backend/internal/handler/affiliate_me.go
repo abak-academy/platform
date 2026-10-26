@@ -97,11 +97,15 @@ func (h *Handler) AffiliateMeLedger(c echo.Context) error {
 }
 
 func (h *Handler) AffiliateMeStats(c echo.Context) error {
+	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
 	claims := claimsFromContext(c)
 	if claims == nil || claims.Sub == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
-	stats, err := h.svc.GetMyAffiliateStats(c.Request().Context(), claims.Sub)
+	stats, err := h.svc.GetMyAffiliateStats(c.Request().Context(), claims.Sub, from, to)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

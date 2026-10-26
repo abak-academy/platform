@@ -40,10 +40,12 @@ type AffiliateCommissionFilter struct {
 }
 
 type AffiliateMeCounts struct {
-	Clicks         int
-	Registrations  int
-	TotalStudents  int
-	ActiveBindings int
+	Clicks           int
+	Registrations    int
+	TotalStudents    int
+	ActiveBindings   int
+	NewStudents      int
+	CommissionEarned float64
 }
 
 // affiliateBindingSpendExpr sums the student's paid orders (subtotal minus
@@ -274,16 +276,25 @@ func (r *Repository) SumAffiliateLedgerForAffiliator(ctx context.Context, affili
 	return saldo, err
 }
 
-func (r *Repository) GetAffiliateMeCounts(ctx context.Context, affiliatorID uuid.UUID) (AffiliateMeCounts, error) {
+// GetAffiliateMeCounts counts clicks, registrations, new students and earned
+// commission inside [from, to); a nil bound leaves that side open. Total
+// students and active bindings are never period-scoped.
+func (r *Repository) GetAffiliateMeCounts(ctx context.Context, affiliatorID uuid.UUID, from, to *time.Time) (AffiliateMeCounts, error) {
 	var counts AffiliateMeCounts
 	err := r.pool.QueryRow(ctx,
 		`SELECT
-		    (SELECT count(*) FROM affiliate_clicks WHERE affiliator_id = $1),
-		    (SELECT count(*) FROM affiliate_bindings WHERE affiliator_id = $1),
+		    (SELECT count(*) FROM affiliate_clicks WHERE affiliator_id = $1
+		        AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)),
+		    (SELECT count(*) FROM affiliate_bindings WHERE affiliator_id = $1
+		        AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)),
 		    (SELECT count(DISTINCT student_id) FROM affiliate_bindings WHERE affiliator_id = $1),
-		    (SELECT count(*) FROM affiliate_bindings WHERE affiliator_id = $1 AND status = 'active')`,
-		affiliatorID,
-	).Scan(&counts.Clicks, &counts.Registrations, &counts.TotalStudents, &counts.ActiveBindings)
+		    (SELECT count(*) FROM affiliate_bindings WHERE affiliator_id = $1 AND status = 'active'),
+		    (SELECT count(DISTINCT student_id) FROM affiliate_bindings WHERE affiliator_id = $1
+		        AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)),
+		    (SELECT COALESCE(SUM(amount), 0) FROM affiliate_ledger_entries WHERE affiliator_id = $1 AND entry_type = 'commission'
+		        AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3))`,
+		affiliatorID, from, to,
+	).Scan(&counts.Clicks, &counts.Registrations, &counts.TotalStudents, &counts.ActiveBindings, &counts.NewStudents, &counts.CommissionEarned)
 	return counts, err
 }
 

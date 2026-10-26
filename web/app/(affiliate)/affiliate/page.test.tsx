@@ -6,11 +6,23 @@ import type { AffiliateProfile } from "@/lib/types";
 
 const meState = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const refetch = vi.hoisted(() => vi.fn());
+const statsCall = vi.hoisted(() => vi.fn());
 
+vi.mock("@/lib/hooks/auth", () => ({ useMe: () => ({ data: { name: "Budi Santoso" } }) }));
 vi.mock("@/lib/hooks/affiliate", () => ({
   useAffiliateMe: () => meState.value,
-  useAffiliateStats: () => ({
-    data: { clicks: 12, registrations: 3, registrations_by_source: {}, conversion: 0.25, total_students: 3, active_bindings: 2 },
+  useAffiliateStats: (range: unknown) => ({
+    ...(statsCall(range), {}),
+    data: {
+      clicks: 12,
+      registrations: 3,
+      registrations_by_source: {},
+      conversion: 0.25,
+      total_students: 3,
+      active_bindings: 2,
+      new_students: 3,
+      commission_earned: 90000,
+    },
   }),
   useAffiliateLedger: () => ({ data: { saldo: 150000, data: [], page: 1, per_page: 1, total: 0 } }),
 }));
@@ -40,11 +52,24 @@ describe("AffiliateDashboardPage", () => {
     meState.value = { isLoading: false, isError: false, data: profile, refetch };
     render(<AffiliateDashboardPage />);
 
-    expect(screen.getByText("BUDI10")).toBeInTheDocument();
+    expect(screen.getByText("Halo, Budi Santoso")).toBeInTheDocument();
+    expect(screen.getAllByText("BUDI10").length).toBeGreaterThan(0);
+    expect(screen.getByText(/90\.000/)).toBeInTheDocument();
+    expect(screen.getByText(/Kurang .*13\.800\.000.* lagi untuk naik ke Gold/)).toBeInTheDocument();
     expect(screen.getByText(`${window.location.origin}/r/BUDI10`)).toBeInTheDocument();
     expect(screen.getByText(/150\.000/)).toBeInTheDocument();
     expect(screen.getByText("25%")).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("asks for the last 30 days first and re-queries when the period changes", () => {
+    meState.value = { isLoading: false, isError: false, data: profile, refetch };
+    render(<AffiliateDashboardPage />);
+
+    expect(statsCall.mock.calls[0][0]).toEqual({ from: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    fireEvent.click(screen.getByRole("button", { name: "7 hari" }));
+    expect(statsCall.mock.lastCall?.[0]).toEqual({ from: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    expect(statsCall.mock.lastCall?.[0]).not.toEqual(statsCall.mock.calls[0][0]);
   });
 
   it("explains a pending application and hides the link and copy action", () => {
@@ -57,7 +82,7 @@ describe("AffiliateDashboardPage", () => {
     render(<AffiliateDashboardPage />);
 
     expect(screen.getByRole("status")).toHaveTextContent(/sedang ditinjau/i);
-    expect(screen.getByText("Belum ada kode")).toBeInTheDocument();
+    expect(screen.getAllByText("Belum ada kode").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /salin tautan/i })).toBeNull();
   });
 
@@ -98,6 +123,6 @@ describe("AffiliateDashboardPage", () => {
     meState.value = { isLoading: true, isError: false, data: undefined, refetch };
     render(<AffiliateDashboardPage />);
 
-    expect(screen.getByText("Memuat…")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Memuat…" })).toBeInTheDocument();
   });
 });

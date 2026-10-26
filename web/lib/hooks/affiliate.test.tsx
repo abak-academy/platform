@@ -176,6 +176,19 @@ describe("affiliate hooks", () => {
   });
 
   describe("useAffiliateStats", () => {
+    it("sends the period as from and to", async () => {
+      fetchMock.mockResolvedValueOnce(ok({ clicks: 0, registrations: 0, registrations_by_source: {}, conversion: 0, total_students: 0, active_bindings: 0, new_students: 0, commission_earned: 0 }));
+
+      const { wrapper } = wrapperFactory();
+      const { result } = renderHook(() => useAffiliateStats({ from: "2026-10-01", to: "2026-10-20" }), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:8080/api/v1/affiliates/me/stats?from=2026-10-01&to=2026-10-20",
+        expect.anything(),
+      );
+    });
+
     it("gets /affiliates/me/stats", async () => {
       fetchMock.mockResolvedValueOnce(
         ok({

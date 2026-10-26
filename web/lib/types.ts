@@ -1636,6 +1636,8 @@ export interface AffiliateStats {
   conversion: number;
   total_students: number;
   active_bindings: number;
+  new_students: number;
+  commission_earned: number;
 }
 
 export interface AffiliatePayout {

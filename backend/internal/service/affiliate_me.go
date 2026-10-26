@@ -122,6 +122,8 @@ type AffiliateMeStats struct {
 	Conversion            float64        `json:"conversion"`
 	TotalStudents         int            `json:"total_students"`
 	ActiveBindings        int            `json:"active_bindings"`
+	NewStudents           int            `json:"new_students"`
+	CommissionEarned      float64        `json:"commission_earned"`
 }
 
 // affiliateStudentDisplayName renders a student's name as first name plus the
@@ -352,13 +354,15 @@ func (s *Service) GetMyAffiliateLedger(ctx context.Context, userID string, filte
 	return page, nil
 }
 
-func (s *Service) GetMyAffiliateStats(ctx context.Context, userID string) (AffiliateMeStats, error) {
+// GetMyAffiliateStats counts clicks, registrations, new students and earned
+// commission inside the optional [from, to) range; without one it is all time.
+func (s *Service) GetMyAffiliateStats(ctx context.Context, userID string, from, to *time.Time) (AffiliateMeStats, error) {
 	stats := AffiliateMeStats{}
 	aff, err := s.affiliateMeAffiliator(ctx, userID)
 	if err != nil {
 		return stats, err
 	}
-	counts, err := s.storeRepo.GetAffiliateMeCounts(ctx, aff.ID)
+	counts, err := s.storeRepo.GetAffiliateMeCounts(ctx, aff.ID, from, to)
 	if err != nil {
 		return stats, fmt.Errorf("count affiliate stats: %w", err)
 	}
@@ -366,6 +370,8 @@ func (s *Service) GetMyAffiliateStats(ctx context.Context, userID string) (Affil
 	stats.Registrations = counts.Registrations
 	stats.TotalStudents = counts.TotalStudents
 	stats.ActiveBindings = counts.ActiveBindings
+	stats.NewStudents = counts.NewStudents
+	stats.CommissionEarned = counts.CommissionEarned
 	if counts.Clicks > 0 {
 		stats.Conversion = float64(counts.Registrations) / float64(counts.Clicks)
 	}

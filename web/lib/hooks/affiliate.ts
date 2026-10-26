@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, authFetch } from "@/lib/api";
 import type {
   AffiliateAdjustmentPage,
@@ -49,7 +49,7 @@ export const affiliateKeys = {
   payouts: (p?: AffiliateListParams) => [...affiliateKeys.all, "payouts", p ?? null] as const,
   adjustments: (p?: AffiliateListParams) => [...affiliateKeys.all, "adjustments", p ?? null] as const,
   violations: (p?: AffiliateListParams) => [...affiliateKeys.all, "violations", p ?? null] as const,
-  stats: () => [...affiliateKeys.all, "stats"] as const,
+  stats: (range?: AffiliateStatsRange) => [...affiliateKeys.all, "stats", range ?? null] as const,
 };
 
 export function useAffiliateMe() {
@@ -115,10 +115,22 @@ export function useAffiliateViolations(params?: AffiliateListParams) {
   });
 }
 
-export function useAffiliateStats() {
+export interface AffiliateStatsRange {
+  from?: string;
+  to?: string;
+}
+
+export function useAffiliateStats(range?: AffiliateStatsRange) {
   return useQuery({
-    queryKey: affiliateKeys.stats(),
-    queryFn: () => authFetch<AffiliateStats>("/affiliates/me/stats"),
+    queryKey: affiliateKeys.stats(range),
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      if (range?.from) qs.set("from", range.from);
+      if (range?.to) qs.set("to", range.to);
+      const s = qs.toString();
+      return authFetch<AffiliateStats>(`/affiliates/me/stats${s ? `?${s}` : ""}`);
+    },
+    placeholderData: keepPreviousData,
   });
 }
 
