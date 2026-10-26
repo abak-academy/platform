@@ -175,6 +175,36 @@ func TestAffiliateAdminApprovalMatrix(t *testing.T) {
 	})
 }
 
+// Two approvals racing on the same pending profile must hand out one code: the
+// loser sees the profile already approved instead of overwriting the code that
+// was just given to the affiliator.
+func TestAffiliateAdminApproval_ConcurrentSubmitsKeepTheFirstCode(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	actor := seedRevokeActor(t, repo).String()
+	id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-race-"+uniqueSuffix()+"@test.local", "pending_approval", "bronze")
+
+	results := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			_, err := svc.DecideAffiliateApproval(ctx, actor, id.String(), "approve", "")
+			results <- err
+		}()
+	}
+	var failures, successes int
+	for i := 0; i < 2; i++ {
+		if err := <-results; err != nil {
+			require.ErrorIs(t, err, ErrAffiliateNotPending)
+			failures++
+		} else {
+			successes++
+		}
+	}
+	require.Equal(t, 1, successes)
+	require.Equal(t, 1, failures)
+	require.Equal(t, 1, countAffiliateAdminAudit(t, repo, id.String(), "affiliate.approval"))
+}
+
 func TestAffiliateAdminList(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
@@ -313,24 +343,37 @@ func TestAffiliateAdminStatusChange(t *testing.T) {
 		require.ErrorIs(t, err, ErrAffiliateInvalidStatus)
 	})
 
-	t.Run("deactivate sets the status and leaves pending commissions untouched (BR-PLG-07 deferred)", func(t *testing.T) {
+	t.Run("deactivate cancels pending commissions and leaves available saldo alone (BR-PLG-07)", func(t *testing.T) {
 		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-deact-"+uniqueSuffix()+"@test.local", "active", "bronze")
 		student := seedAffiliateTestStudent(t, repo, "student-deact-"+uniqueSuffix()+"@test.local", "")
-		commission := seedAffiliateJobCommission(t, repo, id, uuid.MustParse(student.ID), affiliateJobCommissionSeed{
-			productType: "exam", base: 100000, pct: 10, amount: 10000, status: "pending", level: "bronze",
-			createdAt: time.Now(), paidAt: time.Now(),
-		})
+		seed := func(status string) uuid.UUID {
+			return seedAffiliateJobCommission(t, repo, id, uuid.MustParse(student.ID), affiliateJobCommissionSeed{
+				productType: "exam", base: 100000, pct: 10, amount: 10000, status: status, level: "bronze",
+				createdAt: time.Now(), paidAt: time.Now(),
+			}).ID
+		}
+		pending, available := seed("pending"), seed("available")
 
 		aff, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "deactivated", "penipuan", nil)
 		require.NoError(t, err)
 		require.Equal(t, "deactivated", aff.Status)
 
-		var status string
-		require.NoError(t, repo.Pool().QueryRow(context.Background(),
-			`SELECT status FROM affiliate_commissions WHERE id = $1`, commission.ID).Scan(&status))
-		require.Equal(t, "pending", status, "deactivation must not auto-cancel pending commissions")
-
+		require.Equal(t, "cancelled", commissionStatusByID(t, repo, pending))
+		require.Equal(t, "available", commissionStatusByID(t, repo, available))
 		require.Equal(t, 1, countAffiliateAdminAudit(t, repo, id.String(), "affiliate.status_change"))
+		meta := affiliateAdminAuditMeta(t, repo, id.String(), "affiliate.status_change")
+		require.EqualValues(t, 1, meta["commissions_cancelled"])
+	})
+
+	t.Run("a pending or rejected profile cannot be activated (it has no referral code)", func(t *testing.T) {
+		for _, status := range []string{"pending_approval", "rejected"} {
+			id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-badtrans-"+uniqueSuffix()+"@test.local", status, "bronze")
+			_, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "active", "alasan", nil)
+			require.ErrorIs(t, err, ErrAffiliateInvalidTransition, status)
+			var got string
+			require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT status FROM affiliators WHERE id = $1`, id).Scan(&got))
+			require.Equal(t, status, got)
+		}
 	})
 
 	t.Run("an unknown id is not found", func(t *testing.T) {
@@ -463,7 +506,7 @@ func TestAffiliateAdminSentinels_areDistinct(t *testing.T) {
 	errs := []error{
 		ErrAffiliateNotPending, ErrAffiliateInvalidDecision, ErrAffiliateRejectReasonRequired,
 		ErrAffiliateInvalidStatus, ErrAffiliateReasonRequired, ErrAffiliateInvalidDays,
-		ErrAffiliateInvalidLevel, ErrAffiliateCodeGenerationExhausted,
+		ErrAffiliateInvalidLevel, ErrAffiliateCodeGenerationExhausted, ErrAffiliateInvalidTransition,
 	}
 	seen := map[string]bool{}
 	for _, err := range errs {

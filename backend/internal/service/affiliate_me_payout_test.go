@@ -394,14 +394,14 @@ func TestListMyAffiliateViolations_listsOwnNewestFirst(t *testing.T) {
 	require.Equal(t, affB.ID, pageB.Data[0].AffiliatorID)
 }
 
-func TestAppealMyAffiliateViolation_pendingFromResolved(t *testing.T) {
+func TestAppealMyAffiliateViolation_pendingFromOpen(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	setAffiliateMeFlag(t, repo, "true")
 
 	deciderID := uuid.MustParse(seedAffiliateMeUser(t, repo, "Admin Appeal "+uniqueSuffix(), "super_admin"))
 	userID, aff := seedAffiliateMeAffiliator(t, repo, "Affiliator Appeal "+uniqueSuffix(), "active", "bronze")
-	violationID := seedAffiliateMeViolation(t, repo, aff.ID, deciderID, "resolved", "none", time.Now().UTC().AddDate(0, 0, -1))
+	violationID := seedAffiliateMeViolation(t, repo, aff.ID, deciderID, "open", "none", time.Now().UTC().AddDate(0, 0, -1))
 
 	updated, err := svc.AppealMyAffiliateViolation(ctx, userID, violationID.String(), "  Saya tidak setuju, bukan pembelian sendiri. ")
 	require.NoError(t, err)
@@ -421,16 +421,16 @@ func TestAppealMyAffiliateViolation_pendingFromResolved(t *testing.T) {
 	require.ErrorIs(t, err, ErrAffiliateNotAppealable, "a pending appeal cannot be re-filed")
 }
 
-func TestAppealMyAffiliateViolation_rejectsOpenViolation(t *testing.T) {
+func TestAppealMyAffiliateViolation_rejectsResolvedViolation(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	setAffiliateMeFlag(t, repo, "true")
 
 	deciderID := uuid.MustParse(seedAffiliateMeUser(t, repo, "Admin Appeal Open "+uniqueSuffix(), "super_admin"))
 	userID, aff := seedAffiliateMeAffiliator(t, repo, "Affiliator Appeal Open "+uniqueSuffix(), "active", "bronze")
-	violationID := seedAffiliateMeViolation(t, repo, aff.ID, deciderID, "open", "none", time.Now().UTC())
+	violationID := seedAffiliateMeViolation(t, repo, aff.ID, deciderID, "resolved", "none", time.Now().UTC())
 
-	_, err := svc.AppealMyAffiliateViolation(ctx, userID, violationID.String(), "masih dibuka")
+	_, err := svc.AppealMyAffiliateViolation(ctx, userID, violationID.String(), "sudah ditutup")
 	require.ErrorIs(t, err, ErrAffiliateNotAppealable)
 }
 
@@ -455,7 +455,7 @@ func TestAppealMyAffiliateViolation_rejectsForeignViolation(t *testing.T) {
 	deciderID := uuid.MustParse(seedAffiliateMeUser(t, repo, "Admin Appeal Foreign "+uniqueSuffix(), "super_admin"))
 	userID, _ := seedAffiliateMeAffiliator(t, repo, "Affiliator Appeal B "+uniqueSuffix(), "active", "bronze")
 	_, affA := seedAffiliateMeAffiliator(t, repo, "Affiliator Appeal A "+uniqueSuffix(), "active", "bronze")
-	violationID := seedAffiliateMeViolation(t, repo, affA.ID, deciderID, "resolved", "none", time.Now().UTC())
+	violationID := seedAffiliateMeViolation(t, repo, affA.ID, deciderID, "open", "none", time.Now().UTC())
 
 	_, err := svc.AppealMyAffiliateViolation(ctx, userID, violationID.String(), "bukan milik saya")
 	require.ErrorIs(t, err, ErrAffiliateNotFound)

@@ -380,7 +380,7 @@ func TestAffiliateMeAppealHandler_recordsPendingAppeal(t *testing.T) {
 	setAffiliateFlag(t, env.pool, "true")
 	owner := seedAffiliatePayoutOwner(t, env.pool, "Affiliator Appeal Ok "+uniqueHandlerSuffix())
 	decider := seedAffiliatePayoutDecider(t, env.pool, "Admin Appeal Ok "+uniqueHandlerSuffix())
-	violationID := seedAffiliatePayoutViolation(t, env.pool, owner.affID, decider, "resolved", "none", time.Now().UTC())
+	violationID := seedAffiliatePayoutViolation(t, env.pool, owner.affID, decider, "open", "none", time.Now().UTC())
 	token := env.tokenFor(t, owner.userID, service.RoleAffiliator)
 
 	body := `{"text":"Saya keberatan, bukan pembelian sendiri."}`

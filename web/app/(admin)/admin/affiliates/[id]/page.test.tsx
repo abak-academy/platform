@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   unfreeze: vi.fn(),
   level: vi.fn(),
   adjust: vi.fn(),
+  violation: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
@@ -22,6 +23,7 @@ vi.mock("@/lib/hooks/admin-affiliates", () => ({
   useUnfreezeAffiliateBalance: () => ({ mutate: h.unfreeze, isPending: false }),
   useChangeAffiliateLevel: () => ({ mutate: h.level, isPending: false }),
   useCreateAffiliateAdjustment: () => ({ mutate: h.adjust, isPending: false }),
+  useCreateAffiliateViolation: () => ({ mutate: h.violation, isPending: false }),
 }));
 vi.mock("@/lib/hooks/use-capability", () => ({ useHasCapability: h.capability }));
 vi.mock("sonner", () => ({ toast: h.toast }));
@@ -139,5 +141,44 @@ describe("AdminAffiliateDetailPage", () => {
 
     expect(screen.getByRole("button", { name: "Buka pembekuan" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Bekukan saldo" })).toBeNull();
+  });
+
+  it("records a violation with its sanction, and needs days for a suspension", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Catat pelanggaran" }));
+    fireEvent.change(await screen.findByLabelText("Sanksi"), { target: { value: "suspend" } });
+    fireEvent.change(screen.getByLabelText("Keterangan pelanggaran"), { target: { value: "belanja akun sendiri" } });
+    fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
+    expect(h.violation).not.toHaveBeenCalled();
+    expect(h.toast.error).toHaveBeenCalledWith("Periksa kembali isian.");
+
+    fireEvent.change(screen.getByLabelText("Lama (hari)"), { target: { value: "14" } });
+    fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
+
+    expect(h.violation).toHaveBeenCalledWith(
+      {
+        id: "a1",
+        category: "transaction_fraud",
+        description: "belanja akun sendiri",
+        sanction: "suspend",
+        days: 14,
+        level: undefined,
+      },
+      expect.anything(),
+    );
+  });
+
+  it("sends no days for a warning", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Catat pelanggaran" }));
+    fireEvent.change(await screen.findByLabelText("Keterangan pelanggaran"), { target: { value: "peringatan lisan" } });
+    fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
+
+    expect(h.violation).toHaveBeenCalledWith(
+      expect.objectContaining({ sanction: "warning", days: undefined, description: "peringatan lisan" }),
+      expect.anything(),
+    );
   });
 });

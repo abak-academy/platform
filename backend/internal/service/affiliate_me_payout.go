@@ -220,8 +220,8 @@ func (s *Service) ListMyAffiliateViolations(ctx context.Context, userID string, 
 }
 
 // AppealMyAffiliateViolation records an appeal on one violation (BR-PLG-06):
-// only a resolved violation with no appeal yet accepts one, and it moves only
-// to 'pending' — deciding the appeal stays an admin action.
+// only a still-open violation with no appeal yet accepts one, and it moves only
+// to 'pending' — deciding the appeal (which resolves it) stays an admin action.
 func (s *Service) AppealMyAffiliateViolation(ctx context.Context, userID, violationID, text string) (*model.AffiliateViolation, error) {
 	aff, err := s.affiliateMeAffiliator(ctx, userID)
 	if err != nil {
@@ -249,7 +249,7 @@ func (s *Service) AppealMyAffiliateViolation(ctx context.Context, userID, violat
 	if violation == nil || violation.AffiliatorID != aff.ID {
 		return nil, ErrAffiliateNotFound
 	}
-	if violation.Status != "resolved" || violation.AppealStatus != "none" {
+	if violation.Status != "open" || violation.AppealStatus != "none" {
 		return nil, ErrAffiliateNotAppealable
 	}
 

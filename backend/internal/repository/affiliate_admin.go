@@ -202,23 +202,86 @@ func (r *Repository) AffiliateCodeExists(ctx context.Context, code string) (bool
 	return exists, err
 }
 
-// ApproveAffiliatorTx activates the affiliator and stores the generated
-// referral code inside the caller's transaction.
-func (r *Repository) ApproveAffiliatorTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, code string) error {
-	_, err := tx.Exec(ctx,
-		`UPDATE affiliators SET status = 'active', code = $2, updated_at = now() WHERE id = $1`,
+// ApproveAffiliatorTx activates a pending affiliator and stores the generated
+// referral code inside the caller's transaction. It reports false when the
+// profile is no longer pending, so a double submit cannot overwrite a code that
+// was already handed out.
+func (r *Repository) ApproveAffiliatorTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, code string) (bool, error) {
+	tag, err := tx.Exec(ctx,
+		`UPDATE affiliators SET status = 'active', code = $2, updated_at = now()
+		 WHERE id = $1 AND status = 'pending_approval'`,
 		id, code,
 	)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
-// RejectAffiliatorTx marks the affiliator rejected with a mandatory reason.
-func (r *Repository) RejectAffiliatorTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) error {
-	_, err := tx.Exec(ctx,
-		`UPDATE affiliators SET status = 'rejected', rejection_reason = $2, updated_at = now() WHERE id = $1`,
+// RejectAffiliatorTx marks a pending affiliator rejected with a mandatory
+// reason; false means it was no longer pending.
+func (r *Repository) RejectAffiliatorTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) (bool, error) {
+	tag, err := tx.Exec(ctx,
+		`UPDATE affiliators SET status = 'rejected', rejection_reason = $2, updated_at = now()
+		 WHERE id = $1 AND status = 'pending_approval'`,
 		id, reason,
 	)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// CancelPendingCommissionsByAffiliatorTx cancels every commission of the
+// affiliator still waiting out its hold period (BR-PLG-07) and returns how many.
+func (r *Repository) CancelPendingCommissionsByAffiliatorTx(ctx context.Context, tx pgx.Tx, affiliatorID uuid.UUID) (int64, error) {
+	tag, err := tx.Exec(ctx,
+		`UPDATE affiliate_commissions SET status = 'cancelled', updated_at = now()
+		 WHERE affiliator_id = $1 AND status = 'pending'`,
+		affiliatorID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// GetAffiliateCommissionsByIDsTx locks and returns the named commissions that
+// belong to the affiliator; ids that match nothing are simply absent.
+func (r *Repository) GetAffiliateCommissionsByIDsTx(ctx context.Context, tx pgx.Tx, affiliatorID uuid.UUID, ids []uuid.UUID) ([]model.AffiliateCommission, error) {
+	rows, err := tx.Query(ctx,
+		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, percentage,
+		        level_snapshot, amount, status, wait_until, paid_at
+		 FROM affiliate_commissions
+		 WHERE affiliator_id = $1 AND id = ANY($2)
+		 ORDER BY created_at
+		 FOR UPDATE`, affiliatorID, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []model.AffiliateCommission
+	for rows.Next() {
+		var c model.AffiliateCommission
+		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID,
+			&c.ProductType, &c.BaseAmount, &c.Percentage, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// InsertAffiliateViolationTx records one violation as decided by an admin
+// (status open, no appeal) and fills the generated fields.
+func (r *Repository) InsertAffiliateViolationTx(ctx context.Context, tx pgx.Tx, v *model.AffiliateViolation) error {
+	return tx.QueryRow(ctx,
+		`INSERT INTO affiliate_violations (affiliator_id, category, description, sanction, suspension_until, decided_by)
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 RETURNING id, status, decided_at, appeal_status, created_at`,
+		v.AffiliatorID, v.Category, v.Description, v.Sanction, v.SuspensionUntil, v.DecidedBy,
+	).Scan(&v.ID, &v.Status, &v.DecidedAt, &v.AppealStatus, &v.CreatedAt)
 }
 
 // SetAffiliateStatusTx writes the affiliator status; suspendedUntil is only

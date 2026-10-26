@@ -122,6 +122,16 @@ export function useCreateAffiliateAdjustment() {
   );
 }
 
+export function useCreateAffiliateViolation() {
+  return useAffiliateAction<
+    { id: string; category: string; description: string; sanction: string; days?: number; level?: string },
+    AffiliateViolation
+  >(
+    ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/violations`,
+    ({ category, description, sanction, days, level }) => post({ category, description, sanction, days, level }),
+  );
+}
+
 export function useAdminAffiliatePayouts(status: string) {
   return useQuery({
     queryKey: adminAffiliateKeys.payouts(status),

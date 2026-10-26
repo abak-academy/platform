@@ -338,6 +338,10 @@ func mapServiceError(c echo.Context, err error) error {
 		errors.Is(err, service.ErrAffiliateJobUnknownScope),
 		errors.Is(err, service.ErrAffiliateJobInvalidQuarter):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateInvalidTransition):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_state_conflict", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateViolationInvalid):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateRegistrationClosed):
 		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_registration_closed", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateTermsRequired), errors.Is(err, service.ErrAffiliatePhoneRequired):

@@ -19,6 +19,7 @@ import {
   useChangeAffiliateLevel,
   useChangeAffiliateStatus,
   useCreateAffiliateAdjustment,
+  useCreateAffiliateViolation,
   useFreezeAffiliateBalance,
   useUnfreezeAffiliateBalance,
 } from "@/lib/hooks/admin-affiliates";
@@ -27,8 +28,19 @@ import { useTranslation } from "@/lib/i18n";
 const STATUS_TARGETS = ["active", "suspended", "deactivated"] as const;
 const LEVELS = ["bronze", "silver", "gold"] as const;
 const CATEGORIES = ["correction", "offline", "bonus", "violation", "other"] as const;
+const VIOLATION_CATEGORIES = [
+  "transaction_fraud",
+  "data_misuse",
+  "misleading_promotion",
+  "program_violation",
+  "ethics",
+  "other",
+] as const;
+// commission_cancel is supported by the API but needs a commission picker the
+// detail page does not have yet.
+const VIOLATION_SANCTIONS = ["warning", "balance_freeze", "level_change", "suspend", "deactivate"] as const;
 
-type Action = "status" | "freeze" | "unfreeze" | "level" | "adjust" | null;
+type Action = "status" | "freeze" | "unfreeze" | "level" | "adjust" | "violation" | null;
 
 interface Props {
   id: string;
@@ -65,6 +77,9 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, frozen 
   const unfreeze = useUnfreezeAffiliateBalance();
   const changeLevel = useChangeAffiliateLevel();
   const adjust = useCreateAffiliateAdjustment();
+  const createViolation = useCreateAffiliateViolation();
+  const [vCategory, setVCategory] = useState<string>(VIOLATION_CATEGORIES[0]);
+  const [vSanction, setVSanction] = useState<string>(VIOLATION_SANCTIONS[0]);
 
   const close = () => {
     setAction(null);
@@ -97,6 +112,20 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, frozen 
       freeze.mutate({ id, days: n, reason: reason.trim() }, opts);
     } else if (action === "level") {
       changeLevel.mutate({ id, level, lock_until: lockUntil || undefined, reason: reason.trim() }, opts);
+    } else if (action === "violation") {
+      const n = Number(days);
+      if ((vSanction === "suspend" || vSanction === "balance_freeze") && !(n >= 1)) return invalid();
+      createViolation.mutate(
+        {
+          id,
+          category: vCategory,
+          description: reason.trim(),
+          sanction: vSanction,
+          days: vSanction === "suspend" || vSanction === "balance_freeze" ? n : undefined,
+          level: vSanction === "level_change" ? level : undefined,
+        },
+        opts,
+      );
     } else if (action === "adjust") {
       const n = Number(amount);
       if (!Number.isFinite(n) || n === 0) return invalid();
@@ -109,9 +138,11 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, frozen 
     freeze: t("admin_aff_act_freeze"),
     level: t("admin_aff_act_level"),
     adjust: t("admin_aff_act_adjust"),
+    violation: t("admin_aff_act_violation"),
   };
   const formAction = action && action !== "unfreeze" ? action : null;
-  const pending = changeStatus.isPending || freeze.isPending || changeLevel.isPending || adjust.isPending;
+  const pending =
+    changeStatus.isPending || freeze.isPending || changeLevel.isPending || adjust.isPending || createViolation.isPending;
 
   return (
     <>
@@ -135,6 +166,9 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, frozen 
         </Button>
         <Button variant="outline" size="sm" onClick={() => setAction("adjust")}>
           {t("admin_aff_act_adjust")}
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setAction("violation")}>
+          {t("admin_aff_act_violation")}
         </Button>
       </div>
 
@@ -210,7 +244,45 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, frozen 
                 </Field>
               </>
             )}
-            <Field id="aff-reason" label={t("aff_reason_label")}>
+            {formAction === "violation" && (
+              <>
+                <Field id="aff-vcategory" label={t("admin_aff_field_vcategory")}>
+                  <select id="aff-vcategory" value={vCategory} onChange={(e) => setVCategory(e.target.value)} className={selectClass}>
+                    {VIOLATION_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {affLabel(t, c)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field id="aff-vsanction" label={t("admin_aff_field_sanction")}>
+                  <select id="aff-vsanction" value={vSanction} onChange={(e) => setVSanction(e.target.value)} className={selectClass}>
+                    {VIOLATION_SANCTIONS.map((c) => (
+                      <option key={c} value={c}>
+                        {affLabel(t, c)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {(vSanction === "suspend" || vSanction === "balance_freeze") && (
+                  <Field id="aff-days" label={t("admin_aff_field_days")}>
+                    <Input id="aff-days" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} />
+                  </Field>
+                )}
+                {vSanction === "level_change" && (
+                  <Field id="aff-level" label={t("admin_aff_field_level")}>
+                    <select id="aff-level" value={level} onChange={(e) => setLevel(e.target.value)} className={selectClass}>
+                      {LEVELS.map((l) => (
+                        <option key={l} value={l}>
+                          {affLabel(t, l)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+              </>
+            )}
+            <Field id="aff-reason" label={formAction === "violation" ? t("admin_aff_field_vdesc") : t("aff_reason_label")}>
               <textarea
                 id="aff-reason"
                 value={reason}

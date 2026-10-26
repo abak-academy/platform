@@ -413,6 +413,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminAffiliates.POST("/:id/freeze", h.AdminFreezeAffiliateBalance)
 	adminAffiliates.POST("/:id/unfreeze", h.AdminUnfreezeAffiliateBalance)
 	adminAffiliates.POST("/:id/level", h.AdminChangeAffiliateLevel)
+	adminAffiliates.POST("/:id/violations", h.AdminRecordAffiliateViolation)
 	adminAffiliates.POST("/:id/adjustments", h.AdminCreateAffiliateAdjustment)
 	adminAffiliates.GET("/:id/adjustments", h.AdminListAffiliateAdjustments)
 
