@@ -9,5 +9,9 @@ export function affLabel(t: (key: I18nKey) => string, code: string): string {
 
 export function formatAffDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  // A bare YYYY-MM-DD is a calendar day, not an instant: read it as that day
+  // locally so it never slips to the day before.
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const date = day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])) : new Date(iso);
+  return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }

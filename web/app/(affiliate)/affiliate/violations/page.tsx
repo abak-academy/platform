@@ -1,21 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Gavel } from "lucide-react";
 import { toast } from "sonner";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AffiliateList } from "@/components/affiliate/AffiliateList";
-import { AppealBadge } from "@/components/affiliate/StatusBadge";
+import { ListToolbar } from "@/components/affiliate/ListToolbar";
+import { AppealBadge, StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
-import {
-  useAffiliateAdjustments,
-  useAffiliateViolations,
-  useAppealViolation,
-} from "@/lib/hooks/affiliate";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAffiliateAdjustments, useAffiliateViolations, useAppealViolation } from "@/lib/hooks/affiliate";
+import { useListParams } from "@/lib/hooks/use-list-params";
 import { ApiError } from "@/lib/api";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { AffiliateAdjustment, AffiliateViolation } from "@/lib/types";
+
+const SANCTIONS = ["warning", "commission_cancel", "balance_freeze", "level_change", "suspend", "deactivate"] as const;
+const STATES = ["open", "resolved"] as const;
+const CATEGORIES = ["correction", "offline", "bonus", "violation", "other"] as const;
 
 function AppealCell({ violation }: { violation: AffiliateViolation }) {
   const { t } = useTranslation();
@@ -24,6 +30,7 @@ function AppealCell({ violation }: { violation: AffiliateViolation }) {
   const [text, setText] = useState("");
 
   if (violation.appeal_status !== "none") return <AppealBadge status={violation.appeal_status} />;
+  if (violation.status !== "open") return <span className="text-ink-500">—</span>;
   if (!open) {
     return (
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
@@ -69,67 +76,129 @@ function AppealCell({ violation }: { violation: AffiliateViolation }) {
 }
 
 export default function AffiliateViolationsPage() {
-  const { t } = useTranslation();
-  const [violationPage, setViolationPage] = useState(1);
-  const [adjustmentPage, setAdjustmentPage] = useState(1);
-  const violations = useAffiliateViolations({ page: violationPage });
-  const adjustments = useAffiliateAdjustments({ page: adjustmentPage });
+  return (
+    <Suspense fallback={null}>
+      <ViolationsContent />
+    </Suspense>
+  );
+}
 
-  const violationColumns: DataTableColumn<AffiliateViolation>[] = [
+function ViolationsContent() {
+  const { t } = useTranslation();
+  const router = useRouter();
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const tab = search.get("tab") === "adjustments" ? "adjustments" : "sanctions";
+  const changeTab = (value: string) => router.replace(value === "adjustments" ? `${pathname}?tab=adjustments` : pathname, { scroll: false });
+
+  return (
+    <div className="space-y-4">
+      <AdminPageHeader icon={Gavel} title={t("aff_viol_title")} description={t("aff_viol_desc")} />
+      <Tabs value={tab} onValueChange={changeTab}>
+        <TabsList>
+          <TabsTrigger value="sanctions">{t("aff_viol_tab_sanctions")}</TabsTrigger>
+          <TabsTrigger value="adjustments">{t("aff_viol_tab_adjustments")}</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      <p className="text-sm text-ink-600">{tab === "sanctions" ? t("aff_viol_help_sanctions") : t("aff_viol_help_adjustments")}</p>
+      {tab === "sanctions" ? <SanctionsTab /> : <AdjustmentsTab />}
+    </div>
+  );
+}
+
+function SanctionsTab() {
+  const { t } = useTranslation();
+  const { params, update, reset, hasFilters } = useListParams();
+  const query = useAffiliateViolations({
+    page: params.page,
+    per_page: params.per_page,
+    q: params.q,
+    type: params.type,
+    status: params.status,
+    from: params.from,
+    to: params.to,
+  });
+
+  const columns: DataTableColumn<AffiliateViolation>[] = [
     { key: "date", header: t("aff_col_date"), cell: (r) => formatAffDate(r.decided_at) },
-    { key: "category", header: t("aff_col_category"), cell: (r) => r.category },
+    { key: "category", header: t("aff_col_category"), cell: (r) => affLabel(t, r.category) },
     { key: "description", header: t("aff_col_description"), cell: (r) => r.description },
     { key: "sanction", header: t("aff_col_sanction"), cell: (r) => affLabel(t, r.sanction) },
+    { key: "state", header: t("aff_col_status"), cell: (r) => <StatusBadge status={r.status} /> },
     { key: "until", header: t("aff_col_until"), cell: (r) => formatAffDate(r.suspension_until) },
     { key: "appeal", header: t("aff_col_appeal"), cell: (r) => <AppealCell violation={r} /> },
   ];
 
-  const adjustmentColumns: DataTableColumn<AffiliateAdjustment>[] = [
+  return (
+    <div className="space-y-4">
+      <ListToolbar
+        params={params}
+        onChange={update}
+        onReset={reset}
+        searchPlaceholder={t("aff_viol_search_sanctions")}
+        filters={[
+          { key: "type", label: t("aff_viol_filter_sanction"), options: SANCTIONS.map((v) => ({ value: v, label: affLabel(t, v) })) },
+          { key: "status", label: t("aff_viol_filter_state"), options: STATES.map((v) => ({ value: v, label: affLabel(t, v) })) },
+        ]}
+        dateLabel={t("aff_viol_filter_date")}
+      />
+      <AffiliateList
+        query={query}
+        columns={columns}
+        rowKey={(r) => r.id}
+        page={params.page}
+        onPageChange={(page) => update({ page })}
+        empty={t("aff_viol_empty")}
+        filtered={hasFilters}
+      />
+    </div>
+  );
+}
+
+function AdjustmentsTab() {
+  const { t } = useTranslation();
+  const { params, update, reset, hasFilters } = useListParams();
+  const query = useAffiliateAdjustments({
+    page: params.page,
+    per_page: params.per_page,
+    q: params.q,
+    type: params.type,
+    from: params.from,
+    to: params.to,
+  });
+
+  const columns: DataTableColumn<AffiliateAdjustment>[] = [
     { key: "date", header: t("aff_col_date"), cell: (r) => formatAffDate(r.created_at) },
     { key: "category", header: t("aff_col_category"), cell: (r) => affLabel(t, r.category) },
     {
       key: "amount",
       header: t("aff_col_amount"),
       align: "right",
-      cell: (r) => (
-        <span className={r.amount < 0 ? "text-danger" : "text-ink-900"}>{formatRupiah(r.amount)}</span>
-      ),
+      cell: (r) => <span className={r.amount < 0 ? "font-semibold text-danger" : "font-semibold text-ink-900"}>{formatRupiah(r.amount)}</span>,
     },
     { key: "reason", header: t("aff_col_reason_text"), cell: (r) => r.reason },
-    {
-      key: "applied",
-      header: t("aff_col_applied"),
-      cell: (r) => (r.applied ? t("aff_adj_applied_yes") : t("aff_adj_applied_no")),
-    },
+    { key: "applied", header: t("aff_col_applied"), cell: (r) => (r.applied ? t("aff_adj_applied_yes") : t("aff_adj_applied_no")) },
   ];
 
   return (
-    <div className="space-y-8">
-      <h1 className="font-serif text-2xl font-bold text-ink-900">{t("aff_viol_title")}</h1>
-
-      <section className="space-y-3">
-        <h2 className="font-semibold text-ink-900">{t("aff_viol_section")}</h2>
-        <AffiliateList
-          query={violations}
-          columns={violationColumns}
-          rowKey={(r) => r.id}
-          page={violationPage}
-          onPageChange={setViolationPage}
-          empty={t("aff_viol_empty")}
-        />
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="font-semibold text-ink-900">{t("aff_adj_section")}</h2>
-        <AffiliateList
-          query={adjustments}
-          columns={adjustmentColumns}
-          rowKey={(r) => r.id}
-          page={adjustmentPage}
-          onPageChange={setAdjustmentPage}
-          empty={t("aff_adj_empty")}
-        />
-      </section>
+    <div className="space-y-4">
+      <ListToolbar
+        params={params}
+        onChange={update}
+        onReset={reset}
+        searchPlaceholder={t("aff_viol_search_adjustments")}
+        filters={[{ key: "type", label: t("aff_viol_filter_category"), options: CATEGORIES.map((v) => ({ value: v, label: affLabel(t, v) })) }]}
+        dateLabel={t("aff_viol_filter_date")}
+      />
+      <AffiliateList
+        query={query}
+        columns={columns}
+        rowKey={(r) => r.id}
+        page={params.page}
+        onPageChange={(page) => update({ page })}
+        empty={t("aff_adj_empty")}
+        filtered={hasFilters}
+      />
     </div>
   );
 }

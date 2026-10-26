@@ -1577,6 +1577,9 @@ export interface AffiliateBindingPage {
 }
 
 export interface AffiliateCommission {
+  /** First name + initials (BR-PRV-02) and the product the commission came from. */
+  student_name?: string;
+  product_name?: string;
   id: string;
   affiliator_id: string;
   student_id: string;
@@ -1603,6 +1606,9 @@ export interface AffiliateCommissionPage {
 }
 
 export interface AffiliateLedgerEntry {
+  /** Set for commission and refund entries; the note only reaches the web for adjustments. */
+  student_name?: string | null;
+  product_name?: string | null;
   id: string;
   affiliator_id: string;
   entry_type: string;

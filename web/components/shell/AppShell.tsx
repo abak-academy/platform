@@ -45,6 +45,8 @@ export function AppShell({ role, children }: AppShellProps) {
   const isLg = useIsLg();
   const collapsed = !isLg && !expanded;
   const isAdmin = ADMIN_ROLES.includes(role);
+  // The affiliate portal shares the admin dashboard's look (cards, tables, filters).
+  const adminLook = isAdmin || role === "affiliator";
 
   useEffect(() => {
     if (isLg) setExpanded(false);
@@ -55,7 +57,7 @@ export function AppShell({ role, children }: AppShellProps) {
   }
 
   return (
-    <div className={cn("flex min-h-screen bg-paper", isAdmin && "admin-shell")}>
+    <div className={cn("flex min-h-screen bg-paper", adminLook && "admin-shell")}>
       <aside
         className={cn(
           "fixed left-0 top-0 z-30 flex h-screen flex-col border-r border-line bg-surface transition-all duration-200 ease-out",

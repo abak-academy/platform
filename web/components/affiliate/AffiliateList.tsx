@@ -3,6 +3,7 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { Pagination } from "@/components/affiliate/Pagination";
 import { useTranslation } from "@/lib/i18n";
 
 interface PageShape<T> {
@@ -18,10 +19,14 @@ interface AffiliateListProps<T> {
   rowKey: (row: T) => string;
   page?: number;
   onPageChange?: (page: number) => void;
+  // Shown when the list is empty with no search or filter applied.
   empty?: string;
+  // True while a search or filter is active, so an empty result reads as
+  // "nothing matches" instead of "nothing yet".
+  filtered?: boolean;
 }
 
-export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChange, empty }: AffiliateListProps<T>) {
+export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChange, empty, filtered }: AffiliateListProps<T>) {
   const { t } = useTranslation();
 
   if (query.isError) {
@@ -42,29 +47,25 @@ export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChang
   const data = query.data.data ?? [];
   const { total = data.length, per_page = 0 } = query.data;
   const pages = per_page > 0 ? Math.max(1, Math.ceil(total / per_page)) : 1;
+  const first = (page - 1) * per_page + 1;
+  const last = Math.min(total, (page - 1) * per_page + data.length);
+
   return (
     <DataTable
       columns={columns}
       rows={data}
       rowKey={rowKey}
-      empty={empty ?? t("aff_empty")}
+      empty={filtered ? t("aff_no_match") : (empty ?? t("aff_empty"))}
       footer={
-        pages > 1 && onPageChange ? (
-          <div className="flex items-center justify-between border-t border-line px-4 py-3 text-xs text-ink-500">
+        total > 0 && data.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-xs text-ink-500">
             <span>
-              {t("aff_page_summary")
-                .replace("{page}", String(page))
-                .replace("{pages}", String(pages))
+              {t("aff_range_summary")
+                .replace("{from}", String(first))
+                .replace("{to}", String(last))
                 .replace("{total}", String(total))}
             </span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-                {t("pagination_prev")}
-              </Button>
-              <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => onPageChange(page + 1)}>
-                {t("pagination_next")}
-              </Button>
-            </div>
+            {onPageChange && <Pagination page={page} pages={pages} onPageChange={onPageChange} />}
           </div>
         ) : null
       }

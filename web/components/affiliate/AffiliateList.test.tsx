@@ -48,7 +48,7 @@ describe("AffiliateList", () => {
     const onPageChange = renderList(query({ isLoading: false, isError: false, data }));
 
     expect(screen.getByText("Baris satu")).toBeInTheDocument();
-    expect(screen.getByText("Hal. 1 dari 3 · 45 data")).toBeInTheDocument();
+    expect(screen.getByText("Menampilkan 1–1 dari 45")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
     expect(onPageChange).toHaveBeenCalledWith(2);

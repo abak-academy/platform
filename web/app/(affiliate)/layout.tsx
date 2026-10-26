@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { redirectForRole } from "@/lib/auth-redirect";
 import { AppShell } from "@/components/shell/AppShell";
+import "../(admin)/admin-theme.css";
 
 export default function AffiliateLayout({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);

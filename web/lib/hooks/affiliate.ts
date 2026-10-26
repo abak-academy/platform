@@ -19,6 +19,8 @@ import type {
 export interface AffiliateListParams {
   page?: number;
   per_page?: number;
+  q?: string;
+  type?: string;
   status?: string;
   product_type?: string;
   from?: string;
@@ -26,7 +28,7 @@ export interface AffiliateListParams {
   order?: "asc" | "desc";
 }
 
-const LIST_PARAM_ORDER = ["page", "per_page", "status", "product_type", "from", "to", "order"] as const;
+const LIST_PARAM_ORDER = ["page", "per_page", "q", "type", "status", "product_type", "from", "to", "order"] as const;
 
 function listQuery(params?: AffiliateListParams): string {
   const qs = new URLSearchParams();

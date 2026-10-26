@@ -57,7 +57,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const profileHref = ADMIN_ROLES.includes(resolvedRole as UserRole)
     ? "/admin/profile"
     : resolvedRole === "affiliator"
-      ? "/affiliate/payouts"
+      ? "/affiliate/account"
       : "/profile";
 
   const initial = (user?.name ?? user?.email ?? user?.username ?? "A")
