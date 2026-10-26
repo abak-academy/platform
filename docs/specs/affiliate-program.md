@@ -60,6 +60,7 @@ Aturan bisnis lengkap ada di BRD v0.3 (BR-REG, BR-ATR, BR-KOM, BR-LVL, BR-PCR, B
 - Checkout yang ada tidak berubah kecuali input opsional kode; validasi promo tetap.
 - Migration baru berpasangan (`0070_*`); deploy migration lalu flag; flag menyala setelah setting awal diisi.
 - Launch date (`affiliate_launch_date`, wajib terisi saat flag on): akun `users.created_at` sebelum tanggal itu tidak dapat diikat.
+- Default flag per lingkungan: `affiliate_enabled` mati di staging dan produksi sampai dinyalakan manual di System Config. Hanya lokal (`APP_ENV=dev`) menyala otomatis saat API start, bersama `launch_date` lampau; penyemaian itu hanya menyisipkan bila belum ada, jadi pilihan manual (termasuk mematikannya) tidak ditimpa. Persentase komisi memakai nilai bawaan kode (`affiliateDefaultCommissionPct`) sampai admin mengisi level, jadi cek angka itu sebelum flag produksi dinyalakan.
 
 ## Technical contract
 

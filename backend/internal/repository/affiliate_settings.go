@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"akademi-bimbel/internal/model"
 
@@ -58,6 +59,25 @@ func (r *Repository) LoadAffiliateLevelSettings(ctx context.Context) ([]model.Af
 		out = append(out, l)
 	}
 	return out, rows.Err()
+}
+
+// SetAffiliateLaunchDateIfUnset stores a launch date only while none is set,
+// creating the singleton row when it does not exist yet.
+func (r *Repository) SetAffiliateLaunchDateIfUnset(ctx context.Context, date time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO affiliate_settings (id, launch_date) VALUES (1, $1)
+		 ON CONFLICT (id) DO UPDATE SET launch_date = EXCLUDED.launch_date, updated_at = now()
+		 WHERE affiliate_settings.launch_date IS NULL`,
+		date,
+	)
+	return err
+}
+
+// CountAffiliatorsCreatedSince counts affiliator profiles created at or after since.
+func (r *Repository) CountAffiliatorsCreatedSince(ctx context.Context, since time.Time) (int, error) {
+	var n int
+	err := r.pool.QueryRow(ctx, `SELECT count(*) FROM affiliators WHERE created_at >= $1`, since).Scan(&n)
+	return n, err
 }
 
 // LoadProductOverride returns the commission override for one product.

@@ -19,6 +19,10 @@ export const GLOBAL_NUMBER_FIELDS = [
   "gold_threshold",
 ] as const;
 
+// Stored and round-tripped, but not editable until a feature reads it
+// (soon_end_days would drive an "ending soon" notice; notifications are out of phase 1).
+export const HIDDEN_NUMBER_FIELDS: readonly GlobalNumberField[] = ["soon_end_days"];
+
 export const GLOBAL_OPTIONAL_FIELDS = ["payout_day_of_month", "daily_registration_cap"] as const;
 
 export const LEVEL_FIELDS = [

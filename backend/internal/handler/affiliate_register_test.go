@@ -88,4 +88,17 @@ func TestRegisterAffiliatorHandler(t *testing.T) {
 			t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
 		}
 	})
+
+	t.Run("the daily cap answers 429", func(t *testing.T) {
+		if _, err := env.pool.Exec(context.Background(),
+			`INSERT INTO affiliate_settings (id, daily_registration_cap)
+			 VALUES (1, (SELECT count(*) FROM affiliators WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'Asia/Jakarta') AT TIME ZONE 'Asia/Jakarta'))
+			 ON CONFLICT (id) DO UPDATE SET daily_registration_cap = EXCLUDED.daily_registration_cap`); err != nil {
+			t.Fatalf("set cap: %v", err)
+		}
+		rec := postJSONWithToken(t, env.e, path, "", body("capped@example.com", "v1"))
+		if rec.Code != http.StatusTooManyRequests {
+			t.Errorf("want 429, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
 }

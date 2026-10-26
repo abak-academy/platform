@@ -15,8 +15,10 @@ vi.mock("@/lib/hooks/auth", () => ({
   useRegisterAffiliator: () => ({ mutateAsync: registerMock, isPending: false }),
 }));
 
+const toastError = vi.hoisted(() => vi.fn());
+
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+  toast: { success: vi.fn(), error: toastError, warning: vi.fn() },
 }));
 
 function fill(label: string, value: string) {
@@ -76,6 +78,20 @@ describe("AffiliateRegisterPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /daftar & verifikasi otp/i }));
 
     await waitFor(() => expect(registerMock).toHaveBeenCalled());
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("explains a full daily quota", async () => {
+    registerMock.mockRejectedValue(new ApiError("affiliate_registration_cap", "limit", 429));
+    render(<AffiliateRegisterPage />);
+    fillValid();
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    fireEvent.click(screen.getByRole("button", { name: /daftar & verifikasi otp/i }));
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("Kuota pendaftaran affiliator hari ini sudah penuh. Coba lagi besok."),
+    );
     expect(push).not.toHaveBeenCalled();
   });
 });

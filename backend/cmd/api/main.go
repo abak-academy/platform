@@ -81,6 +81,9 @@ func main() {
 	if err := svc.MigrateLegacyPurchaseFeed(ctx); err != nil {
 		logger.Error("migrate legacy purchase notifications", "err", err)
 	}
+	if err := svc.SeedDevAffiliateDefaults(ctx, cfg.Env); err != nil {
+		logger.Error("seed dev affiliate defaults", "err", err)
+	}
 	svc.SetReloadPaymentFn(func(ctx context.Context) service.PaymentClient {
 		return adapter.ResolvePaymentClient(ctx, storeRepo, &cfg)
 	})

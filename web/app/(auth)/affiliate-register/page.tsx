@@ -74,6 +74,8 @@ export default function AffiliateRegisterPage() {
     } catch (err) {
       if (err instanceof ApiError && err.code === "affiliate_registration_closed") {
         toast.error(t("aff_reg_closed"));
+      } else if (err instanceof ApiError && err.code === "affiliate_registration_cap") {
+        toast.error(t("aff_reg_cap"));
       } else {
         toast.error(err instanceof ApiError ? err.message : t("register_failed"));
       }

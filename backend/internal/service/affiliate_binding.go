@@ -161,7 +161,9 @@ func (s *Service) ExtendBinding(ctx context.Context, tx pgx.Tx, studentID string
 	if err != nil {
 		return fmt.Errorf("load affiliate settings: %w", err)
 	}
-	if baseAmount < settings.MinExtendAmount {
+	// min_extend_amount defaults to 0 (every purchase extends), but a free order
+	// is not a purchase and must not keep a binding alive.
+	if baseAmount <= 0 || baseAmount < settings.MinExtendAmount {
 		return nil
 	}
 	binding, err := s.storeRepo.GetActiveBindingByStudent(ctx, tx, studentID)

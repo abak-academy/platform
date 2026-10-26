@@ -1714,7 +1714,11 @@ func (s *Service) markOrderPaidTx(ctx context.Context, tx pgx.Tx, order model.Or
 // and an already-bound buyer gets the binding extended by this payment. Flag
 // off is a no-op, so settlements behave exactly as before the feature.
 func (s *Service) paidOrderBindingTx(ctx context.Context, tx pgx.Tx, order model.Order) error {
-	if !s.affiliateEnabled(ctx) {
+	enabled, err := s.affiliateEnabledErr(ctx)
+	if err != nil {
+		return err
+	}
+	if !enabled {
 		return nil
 	}
 	buyer, err := s.storeRepo.GetUserByID(ctx, order.StudentID.String())
@@ -1964,7 +1968,11 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID, refund
 
 	// Settle commissions in this same tx so a half-refunded commission state
 	// cannot outlive a failed refund.
-	if s.affiliateEnabled(ctx) {
+	enabled, err := s.affiliateEnabledErr(ctx)
+	if err != nil {
+		return err
+	}
+	if enabled {
 		if err := s.settleAffiliateRefundTx(ctx, tx, id, actorID); err != nil {
 			return err
 		}

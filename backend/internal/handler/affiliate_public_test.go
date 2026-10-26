@@ -94,7 +94,7 @@ func seedAffiliator(t *testing.T, pool *pgxpool.Pool, status string) (code, name
 	).Scan(&userID); err != nil {
 		t.Fatalf("seed affiliator user: %v", err)
 	}
-	code = "AF" + uniqueHandlerSuffix()[:6]
+	code = strings.ToUpper("AF" + uniqueHandlerSuffix()[:6])
 	if _, err := pool.Exec(context.Background(),
 		`INSERT INTO affiliators (user_id, code, status, terms_version) VALUES ($1, $2, $3, 'v1')`,
 		userID, code, status); err != nil {
@@ -193,12 +193,14 @@ func TestAffiliateRecordClickHandler(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("POST clicks: want 200, got %d: %s", rec.Code, rec.Body.String())
 			}
-			var body map[string]bool
+			var body struct {
+				Recorded bool `json:"recorded"`
+			}
 			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 				t.Fatalf("unmarshal body %q: %v", rec.Body.String(), err)
 			}
-			if body["recorded"] != tt.wantRecord {
-				t.Errorf("recorded = %v, want %v", body["recorded"], tt.wantRecord)
+			if body.Recorded != tt.wantRecord {
+				t.Errorf("recorded = %v, want %v", body.Recorded, tt.wantRecord)
 			}
 
 			var n int
@@ -230,13 +232,15 @@ func TestAffiliateRecordClick_sameDayRepeatIsDeduped(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("click %d: want 200, got %d", i, rec.Code)
 		}
-		var body map[string]bool
+		var body struct {
+			Recorded bool `json:"recorded"`
+		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatalf("unmarshal body %q: %v", rec.Body.String(), err)
 		}
 		want := i == 0
-		if body["recorded"] != want {
-			t.Errorf("click %d recorded = %v, want %v", i, body["recorded"], want)
+		if body.Recorded != want {
+			t.Errorf("click %d recorded = %v, want %v", i, body.Recorded, want)
 		}
 	}
 

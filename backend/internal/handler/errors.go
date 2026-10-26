@@ -342,6 +342,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_state_conflict", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateViolationInvalid):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateRegistrationCap):
+		status, apiErr = http.StatusTooManyRequests, APIError{Code: "affiliate_registration_cap", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateRegistrationClosed):
 		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_registration_closed", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateTermsRequired), errors.Is(err, service.ErrAffiliatePhoneRequired):

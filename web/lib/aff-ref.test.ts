@@ -17,6 +17,20 @@ describe("aff_ref cookie", () => {
     expect(AFF_REF_MAX_AGE_SECONDS).toBe(30 * 24 * 60 * 60);
   });
 
+  it("uses the admin's cookie lifetime when the server reports one", () => {
+    const setter = vi.spyOn(document, "cookie", "set");
+    setAffRefCookie("BUDI10", 45);
+
+    expect(setter).toHaveBeenCalledWith(expect.stringContaining(`max-age=${45 * 24 * 60 * 60}`));
+    setter.mockRestore();
+  });
+
+  it("stores the code in upper case so a lowercase link still matches", () => {
+    setAffRefCookie(" budi10 ");
+
+    expect(readAffRefCookie()).toBe("BUDI10");
+  });
+
   it("round-trips a code with special characters", () => {
     setAffRefCookie("ABC+1=");
 

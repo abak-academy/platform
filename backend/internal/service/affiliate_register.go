@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"akademi-bimbel/internal/model"
 )
@@ -12,6 +13,7 @@ var (
 	ErrAffiliateRegistrationClosed = errors.New("affiliate program is not open for registration")
 	ErrAffiliateTermsRequired      = errors.New("program terms must be accepted")
 	ErrAffiliatePhoneRequired      = errors.New("phone number is required")
+	ErrAffiliateRegistrationCap    = errors.New("today's affiliate registration limit has been reached")
 )
 
 // RegisterAffiliator backs POST /auth/affiliators/register (BR-REG-01/03/04).
@@ -50,6 +52,22 @@ func (s *Service) RegisterAffiliator(ctx context.Context, email, password, name,
 			return s.startOTPChallenge(ctx, existing, ip)
 		}
 		return OTPChallenge{}, ErrEmailTaken
+	}
+
+	settings, err := s.LoadAffiliateSettings(ctx)
+	if err != nil {
+		return OTPChallenge{}, err
+	}
+	if settings.DailyRegistrationCap != nil {
+		nowWIB := time.Now().In(affiliateWIBLocation())
+		dayStart := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, nowWIB.Location())
+		today, err := s.storeRepo.CountAffiliatorsCreatedSince(ctx, dayStart)
+		if err != nil {
+			return OTPChallenge{}, err
+		}
+		if today >= *settings.DailyRegistrationCap {
+			return OTPChallenge{}, ErrAffiliateRegistrationCap
+		}
 	}
 
 	hash, err := hashPassword(password)

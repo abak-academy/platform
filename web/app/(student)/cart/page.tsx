@@ -14,6 +14,7 @@ import { CartLineItem } from "@/components/cart/CartLineItem";
 import { PromoSheet } from "@/components/cart/PromoSheet";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
 import { ReferralCodeField } from "@/components/auth/ReferralCodeField";
+import { readAffRefCookie } from "@/lib/aff-ref";
 import { ShippingAddressForm, type ShippingAddressFormState } from "@/components/cart/ShippingAddressForm";
 import { ShippingAddressSummary, isAddressComplete } from "@/components/cart/ShippingAddressSummary";
 import { CourierRateList, courierRateKey } from "@/components/cart/CourierRateList";
@@ -49,6 +50,13 @@ export default function CartPage() {
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
   const [promoError, setPromoError] = useState<string | undefined>(undefined);
   const [referralCode, setReferralCode] = useState("");
+  const referralTouched = useRef(false);
+  const eligibleForReferral = cart?.affiliate_code_eligible === true;
+  useEffect(() => {
+    // BRD A-05: a click made after an earlier binding ended only becomes a cookie,
+    // and checkout is where an eligible student can still use it.
+    if (eligibleForReferral && !referralTouched.current) setReferralCode(readAffRefCookie());
+  }, [eligibleForReferral]);
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | undefined>(undefined);
   // Once open, the form closes when the buyer closes it, never because it looks
   // full. Deriving this from "every field is non-empty" swapped the form out on
@@ -480,7 +488,13 @@ export default function CartPage() {
 
               {cart?.affiliate_code_eligible && (
                 <div className="mt-4">
-                  <ReferralCodeField value={referralCode} onChange={setReferralCode} />
+                  <ReferralCodeField
+                    value={referralCode}
+                    onChange={(v) => {
+                      referralTouched.current = true;
+                      setReferralCode(v);
+                    }}
+                  />
                 </div>
               )}
 

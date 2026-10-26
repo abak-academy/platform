@@ -43,6 +43,17 @@ describe("ReferralPage /r/[code]", () => {
     expect(recordClick).toHaveBeenCalledWith("BUDI10", navigator.userAgent);
   });
 
+  it("re-sets the cookie with the lifetime the server reports", async () => {
+    recordClick.mockResolvedValue({ recorded: true, cookie_days: 45 });
+    const setter = vi.spyOn(document, "cookie", "set");
+
+    await renderPage("BUDI10");
+    await waitFor(() =>
+      expect(setter).toHaveBeenCalledWith(expect.stringContaining(`max-age=${45 * 24 * 60 * 60}`)),
+    );
+    setter.mockRestore();
+  });
+
   it("still redirects when the click recorder fails", async () => {
     recordClick.mockRejectedValue(new Error("rate_limited"));
 

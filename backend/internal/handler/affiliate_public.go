@@ -32,11 +32,11 @@ func (h *Handler) AffiliateRecordClick(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	recorded, err := h.svc.RecordAffiliateClick(c.Request().Context(), req.Code, c.RealIP(), req.UserAgent)
+	res, err := h.svc.RecordAffiliateClick(c.Request().Context(), req.Code, c.RealIP(), req.UserAgent)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]bool{"recorded": recorded})
+	return c.JSON(http.StatusOK, res)
 }
 
 // AffiliateClickRateLimiter mirrors LoginRateLimiter for the public affiliate

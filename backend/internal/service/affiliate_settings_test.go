@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -324,7 +325,7 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 	}
 
 	// FindAffiliatorByCode round trip on the seeded affiliator.
-	code := "B1" + uniqueSuffix()[:6]
+	code := strings.ToUpper("B1" + uniqueSuffix()[:6])
 	name := "Integration Affiliator " + uniqueSuffix()
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO users (name, username, role, status, otp_enabled)
@@ -390,7 +391,7 @@ func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
 	pool := repo.Pool()
 	ctx := context.Background()
 
-	code := "C1" + uniqueSuffix()[:6]
+	code := strings.ToUpper("C1" + uniqueSuffix()[:6])
 	name := "Flag Gate Affiliator " + uniqueSuffix()
 	var userID string
 	if err := pool.QueryRow(ctx,
@@ -421,7 +422,8 @@ func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
 	if res.Valid {
 		t.Errorf("ValidateAffiliateCode (flag unset) = %+v, want valid:false", res)
 	}
-	recorded, err := svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
+	clicked, err := svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
+	recorded := clicked.Recorded
 	if err != nil || recorded {
 		t.Errorf("RecordAffiliateClick (flag unset) = %v, %v; want no-op", recorded, err)
 	}
@@ -439,7 +441,8 @@ func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
 	if !res.Valid || res.AffiliatorName != name {
 		t.Errorf("ValidateAffiliateCode (flag on) = %+v, want valid with name %q", res, name)
 	}
-	recorded, err = svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
+	clicked, err = svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
+	recorded = clicked.Recorded
 	if err != nil || !recorded {
 		t.Errorf("RecordAffiliateClick (flag on) = %v, %v; want recorded, nil", recorded, err)
 	}
@@ -464,7 +467,8 @@ func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
 	if res.Valid {
 		t.Errorf("ValidateAffiliateCode (flag off) = %+v, want valid:false", res)
 	}
-	recorded, err = svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
+	clicked, err = svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
+	recorded = clicked.Recorded
 	if err != nil || recorded {
 		t.Errorf("RecordAffiliateClick (flag off) = %v, %v; want no-op", recorded, err)
 	}

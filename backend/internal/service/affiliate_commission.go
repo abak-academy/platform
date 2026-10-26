@@ -19,7 +19,11 @@ import (
 // binding, sanctioned affiliator, zero percentage and a fully-discounted item
 // simply skip so fulfilment flows are never entangled with commission policy.
 func (s *Service) CreateCommissionsForOrder(ctx context.Context, tx pgx.Tx, order model.Order, items []model.OrderItem) error {
-	if !s.affiliateEnabled(ctx) {
+	enabled, err := s.affiliateEnabledErr(ctx)
+	if err != nil {
+		return err
+	}
+	if !enabled {
 		return nil
 	}
 	binding, err := s.storeRepo.GetActiveBindingByStudent(ctx, tx, order.StudentID.String())

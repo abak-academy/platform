@@ -19,7 +19,12 @@ function ReferralRoute({ params }: { params: Promise<{ code: string }> }) {
 
   useEffect(() => {
     setAffRefCookie(code);
-    affiliateApi.recordClick(code, navigator.userAgent).catch(() => {});
+    affiliateApi
+      .recordClick(code, navigator.userAgent)
+      .then((res) => {
+        if (res.cookie_days) setAffRefCookie(code, res.cookie_days);
+      })
+      .catch(() => {});
     router.replace("/");
   }, [code, router]);
 

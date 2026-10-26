@@ -73,6 +73,16 @@ describe("AdminAffiliateSettingsPage", () => {
     expect(screen.getByLabelText("Penarikan minimum", { selector: "#g-min_payout" })).toHaveValue("100000");
   });
 
+  it("does not offer soon_end_days but still sends its stored value", async () => {
+    render(<SettingsPage />);
+
+    await screen.findByLabelText("Masa berlaku cookie (hari)");
+    expect(screen.queryByLabelText("Peringatan ikatan hampir berakhir (hari)")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Simpan pengaturan" }));
+
+    expect(h.update.mock.calls[0][0].soon_end_days).toBe(30);
+  });
+
   it("saves an edited value with the untouched ones", async () => {
     render(<SettingsPage />);
 

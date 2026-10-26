@@ -154,13 +154,23 @@ func affiliateEnabled(cfg map[string]string) bool {
 	return cfg["affiliate_enabled"] == "true"
 }
 
-func (s *Service) affiliateEnabled(ctx context.Context) bool {
-	rows, _ := s.storeRepo.ListSystemConfig(ctx)
-	cfg := make(map[string]string, len(rows))
-	for _, row := range rows {
-		cfg[row.Key] = row.Value
+// affiliateEnabledErr reads the flag and surfaces a read failure. Money paths
+// (settlement binding, commission creation, refund settlement) must use it: a
+// transient database error read as "off" would silently skip a binding or lose
+// a commission instead of failing and being retried.
+func (s *Service) affiliateEnabledErr(ctx context.Context) (bool, error) {
+	value, found, err := s.storeRepo.GetSystemConfigValue(ctx, "affiliate_enabled")
+	if err != nil {
+		return false, fmt.Errorf("read affiliate_enabled: %w", err)
 	}
-	return affiliateEnabled(cfg)
+	return found && value == "true", nil
+}
+
+// affiliateEnabled is the read-path form: a failed read counts as off, which
+// only hides a page or ignores a referral hint.
+func (s *Service) affiliateEnabled(ctx context.Context) bool {
+	on, err := s.affiliateEnabledErr(ctx)
+	return err == nil && on
 }
 
 // LoadAffiliateSettings returns the global settings, applying the 0070 column
@@ -195,7 +205,7 @@ func (s *Service) LoadAffiliateEffectiveRules(ctx context.Context) (*model.Affil
 // error so the endpoint cannot enumerate accounts.
 func (s *Service) ValidateAffiliateCode(ctx context.Context, code string) (AffiliateCodeValidation, error) {
 	res := AffiliateCodeValidation{}
-	code = strings.TrimSpace(code)
+	code = strings.ToUpper(strings.TrimSpace(code))
 	if code == "" || !s.affiliateEnabled(ctx) {
 		return res, nil
 	}
@@ -220,17 +230,23 @@ func (s *Service) ValidateAffiliateCode(ctx context.Context, code string) (Affil
 // RecordAffiliateClick stores one click-statistics row, deduped per code +
 // visitor IP hash + WIB calendar day; flag off or a non-active code is a
 // silent no-op.
-func (s *Service) RecordAffiliateClick(ctx context.Context, code, ip, userAgent string) (bool, error) {
-	code = strings.TrimSpace(code)
+func (s *Service) RecordAffiliateClick(ctx context.Context, code, ip, userAgent string) (AffiliateClickResult, error) {
+	var res AffiliateClickResult
+	code = strings.ToUpper(strings.TrimSpace(code))
 	if code == "" || !s.affiliateEnabled(ctx) {
-		return false, nil
+		return res, nil
 	}
+	settings, err := s.LoadAffiliateSettings(ctx)
+	if err != nil {
+		return res, fmt.Errorf("load affiliate settings: %w", err)
+	}
+	res.CookieDays = settings.CookieDays
 	aff, err := s.storeRepo.FindAffiliatorByCode(ctx, code)
 	if err != nil {
-		return false, fmt.Errorf("find affiliator: %w", err)
+		return res, fmt.Errorf("find affiliator: %w", err)
 	}
 	if aff == nil || aff.Status != "active" {
-		return false, nil
+		return res, nil
 	}
 	click := &model.AffiliateClick{AffiliatorID: aff.ID, Code: code}
 	if ip != "" {
@@ -242,7 +258,15 @@ func (s *Service) RecordAffiliateClick(ctx context.Context, code, ip, userAgent 
 		click.UserAgent = &userAgent
 	}
 	click.ClickDay = time.Now().In(affiliateWIBLocation())
-	return s.storeRepo.InsertAffiliateClick(ctx, click)
+	res.Recorded, err = s.storeRepo.InsertAffiliateClick(ctx, click)
+	return res, err
+}
+
+// AffiliateClickResult tells the /r/{code} page whether the click was stored
+// and how long the admin wants the referral cookie to live (0 = use the default).
+type AffiliateClickResult struct {
+	Recorded   bool `json:"recorded"`
+	CookieDays int  `json:"cookie_days,omitempty"`
 }
 
 func affiliateWIBLocation() *time.Location {

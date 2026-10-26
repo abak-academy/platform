@@ -15,6 +15,7 @@ import {
   COMMISSION_CATEGORIES,
   GLOBAL_NUMBER_FIELDS,
   GLOBAL_OPTIONAL_FIELDS,
+  HIDDEN_NUMBER_FIELDS,
   LEVEL_FIELDS,
   formToInput,
   settingsToForm,
@@ -141,7 +142,7 @@ export default function AdminAffiliateSettingsPage() {
         <section className="md-card-outlined space-y-4 p-5">
           <h2 className="font-semibold text-ink-900">{t("admin_aff_set_global")}</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {GLOBAL_NUMBER_FIELDS.map((key) => (
+            {GLOBAL_NUMBER_FIELDS.filter((key) => !HIDDEN_NUMBER_FIELDS.includes(key)).map((key) => (
               <NumberField key={key} id={`g-${key}`} label={fieldLabel(key)} value={form.numbers[key]} onChange={(v) => setNumber(key, v)} />
             ))}
             {GLOBAL_OPTIONAL_FIELDS.map((key) => (
