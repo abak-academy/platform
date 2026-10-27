@@ -11,8 +11,6 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-const maxBulkAffiliators = 200
-
 // AffiliatorResponse is the affiliator shape returned by the admin and self endpoints.
 type AffiliatorResponse struct {
 	ID        string         `json:"id"`
@@ -23,6 +21,8 @@ type AffiliatorResponse struct {
 	Schools   []model.School `json:"schools,omitempty"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
+	// TempPassword is set only on create, when the password was generated.
+	TempPassword string `json:"temp_password,omitempty"`
 	// Monitoring figures, filled by the list and detail reads.
 	StudentCount int     `json:"student_count"`
 	OrderCount   int     `json:"order_count"`
@@ -35,15 +35,6 @@ type AffiliatorInput struct {
 	Name      string   `json:"name"`
 	Password  string   `json:"password"`
 	SchoolIDs []string `json:"school_ids"`
-}
-
-// AffiliatorBulkResult is the per-row outcome of BulkCreateAffiliators.
-type AffiliatorBulkResult struct {
-	Row   int                 `json:"row"`
-	Email string              `json:"email"`
-	OK    bool                `json:"ok"`
-	Error string              `json:"error,omitempty"`
-	Data  *AffiliatorResponse `json:"data,omitempty"`
 }
 
 func toAffiliatorResponse(row repository.AffiliatorRow) AffiliatorResponse {
@@ -106,24 +97,38 @@ func (s *Service) validateAffiliatorSchools(ctx context.Context, ids []string) (
 	return ids, nil
 }
 
-// CreateAffiliator creates an active affiliator account bound to the given schools.
+// CreateAffiliator creates an active affiliator account bound to the given
+// schools. An empty password is replaced by a generated one that is returned
+// once in TempPassword, like student registration.
 func (s *Service) CreateAffiliator(ctx context.Context, actorID string, in AffiliatorInput) (*AffiliatorResponse, error) {
-	email := normalizeEmail(in.Email)
-	name := strings.TrimSpace(in.Name)
-	if email == "" || name == "" || in.Password == "" {
+	schoolIDs, err := s.validateAffiliatorSchools(ctx, in.SchoolIDs)
+	if err != nil {
+		return nil, err
+	}
+	return s.createAffiliator(ctx, actorID, in.Email, in.Name, in.Password, schoolIDs)
+}
+
+// createAffiliator is the shared create path; schoolIDs are already validated.
+func (s *Service) createAffiliator(ctx context.Context, actorID, rawEmail, rawName, password string, schoolIDs []string) (*AffiliatorResponse, error) {
+	email := normalizeEmail(rawEmail)
+	name := strings.TrimSpace(rawName)
+	if email == "" || name == "" {
 		return nil, ErrMissingField
 	}
-	if len(in.Password) < minPasswordLen {
+	generated := ""
+	if password == "" {
+		var err error
+		if generated, err = genTempPassword(); err != nil {
+			return nil, fmt.Errorf("generate temp password: %w", err)
+		}
+		password = generated
+	} else if len(password) < minPasswordLen {
 		return nil, ErrWeakPassword
 	}
 	if err := checkEmailUniqueness(ctx, s.repo, email); err != nil {
 		return nil, err
 	}
-	schoolIDs, err := s.validateAffiliatorSchools(ctx, in.SchoolIDs)
-	if err != nil {
-		return nil, err
-	}
-	hash, err := hashPassword(in.Password)
+	hash, err := hashPassword(password)
 	if err != nil {
 		return nil, err
 	}
@@ -138,37 +143,15 @@ func (s *Service) CreateAffiliator(ctx context.Context, actorID string, in Affil
 		return nil, err
 	}
 	return &AffiliatorResponse{
-		ID:        user.ID,
-		Name:      user.Name,
-		Email:     user.Email,
-		Status:    "active",
-		SchoolIDs: schoolIDs,
-		CreatedAt: user.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
+		ID:           user.ID,
+		Name:         user.Name,
+		Email:        user.Email,
+		Status:       "active",
+		SchoolIDs:    schoolIDs,
+		CreatedAt:    user.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    user.UpdatedAt.Format(time.RFC3339),
+		TempPassword: generated,
 	}, nil
-}
-
-// BulkCreateAffiliators creates each row independently and reports every outcome.
-func (s *Service) BulkCreateAffiliators(ctx context.Context, actorID string, rows []AffiliatorInput) ([]AffiliatorBulkResult, error) {
-	if len(rows) == 0 {
-		return nil, ErrMissingField
-	}
-	if len(rows) > maxBulkAffiliators {
-		return nil, fmt.Errorf("%w: at most %d rows", ErrValidation, maxBulkAffiliators)
-	}
-	results := make([]AffiliatorBulkResult, len(rows))
-	for i, in := range rows {
-		res := AffiliatorBulkResult{Row: i + 1, Email: normalizeEmail(in.Email)}
-		acc, err := s.CreateAffiliator(ctx, actorID, in)
-		if err != nil {
-			res.Error = err.Error()
-		} else {
-			res.OK = true
-			res.Data = acc
-		}
-		results[i] = res
-	}
-	return results, nil
 }
 
 // PromoteToAffiliator turns an admin_school account into an affiliator with the given schools.

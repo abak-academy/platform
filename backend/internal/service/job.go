@@ -34,6 +34,13 @@ func (s *Service) GeneratePresignedSchoolBulkUploadURL(ctx context.Context, file
 	return s.presignPrivatePut(ctx, fmt.Sprintf("school-bulk/%s-%s", uuid.New().String(), filename))
 }
 
+// GeneratePresignedAffiliatorBulkUploadURL signs a PUT for an affiliator-bulk
+// CSV. Like school-bulk the key carries no scope segment: the uploader is always
+// super_admin and each row names its own schools.
+func (s *Service) GeneratePresignedAffiliatorBulkUploadURL(ctx context.Context, filename, contentType string) (*PrivateUploadURL, error) {
+	return s.presignPrivatePut(ctx, fmt.Sprintf("affiliator-bulk/%s-%s", uuid.New().String(), filename))
+}
+
 // GeneratePresignedExamGrantBulkUploadURL signs a PUT for an exam-grant-bulk
 // CSV. The key carries the exam id segment (unlike school-bulk) because rows
 // are usernames only — the exam context has to live in the key, not the CSV.
@@ -161,6 +168,38 @@ func (s *Service) enqueueSchoolBulkJobFromData(ctx context.Context, createdBy, f
 	}
 
 	job := &model.Job{Type: "school_bulk", InputURL: &fileKey, CreatedBy: createdBy}
+	if err := s.storeRepo.CreateJob(ctx, job); err != nil {
+		return "", err
+	}
+	return job.ID, nil
+}
+
+// EnqueueAffiliatorBulkJob validates that fileKey lives under the
+// affiliator-bulk prefix and exists in the private bucket, parses the CSV
+// eagerly so a bad header is a 4xx here rather than a job that fails later,
+// then creates the affiliator_bulk job.
+func (s *Service) EnqueueAffiliatorBulkJob(ctx context.Context, createdBy, fileKey string) (string, error) {
+	if !strings.HasPrefix(fileKey, "affiliator-bulk/") {
+		return "", ErrUploadNotFound
+	}
+	if _, err := s.storage.StatObject(ctx, s.cfg.ObjectStoragePrivateBucketName, fileKey, minio.StatObjectOptions{}); err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return "", ErrUploadNotFound
+		}
+		return "", err
+	}
+	data, err := s.fetchPrivateObject(ctx, fileKey)
+	if err != nil {
+		return "", err
+	}
+	return s.enqueueAffiliatorBulkJobFromData(ctx, createdBy, fileKey, data)
+}
+
+func (s *Service) enqueueAffiliatorBulkJobFromData(ctx context.Context, createdBy, fileKey string, data []byte) (string, error) {
+	if _, err := ParseAffiliatorBulkCSV(data); err != nil {
+		return "", err
+	}
+	job := &model.Job{Type: "affiliator_bulk", InputURL: &fileKey, CreatedBy: createdBy}
 	if err := s.storeRepo.CreateJob(ctx, job); err != nil {
 		return "", err
 	}

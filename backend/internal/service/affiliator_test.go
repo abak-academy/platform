@@ -131,21 +131,25 @@ func TestAffiliatorLifecycle_Integration(t *testing.T) {
 		}
 	})
 
-	t.Run("bulk reports each row and keeps going after a failure", func(t *testing.T) {
+	t.Run("an empty password is generated, returned once, and works for login", func(t *testing.T) {
 		s1 := newSchool(t)
-		good := "aff-" + uniqueSuffix() + "@test.com"
-		results, err := svc.BulkCreateAffiliators(ctx, actorID, []AffiliatorInput{
-			{Email: good, Name: "Good", Password: "password123", SchoolIDs: []string{s1}},
-			{Email: "aff-" + uniqueSuffix() + "@test.com", Name: "Weak", Password: "short", SchoolIDs: []string{s1}},
-		})
+		email := "gen-" + uniqueSuffix() + "@test.com"
+		acc, err := svc.CreateAffiliator(ctx, actorID, AffiliatorInput{Email: email, Name: "Generated", SchoolIDs: []string{s1}})
 		if err != nil {
-			t.Fatalf("BulkCreateAffiliators: %v", err)
+			t.Fatalf("CreateAffiliator: %v", err)
 		}
-		if len(results) != 2 || !results[0].OK || results[1].OK || results[1].Error == "" {
-			t.Errorf("results = %+v, want first ok and second failed with a message", results)
+		if len(acc.TempPassword) < minPasswordLen {
+			t.Fatalf("temp password = %q, want a generated one", acc.TempPassword)
 		}
-		if _, err := svc.BulkCreateAffiliators(ctx, actorID, nil); !errors.Is(err, ErrMissingField) {
-			t.Errorf("empty bulk: err = %v, want ErrMissingField", err)
+		if _, _, _, err := svc.Login(ctx, email, acc.TempPassword, "1.1.1.1"); err != nil {
+			t.Errorf("Login with the generated password: %v", err)
+		}
+		given, _ := svc.CreateAffiliator(ctx, actorID, AffiliatorInput{Email: "giv-" + uniqueSuffix() + "@test.com", Name: "Given", Password: "password123", SchoolIDs: []string{s1}})
+		if given.TempPassword != "" {
+			t.Errorf("temp password = %q for a given password, want none", given.TempPassword)
+		}
+		if _, err := svc.CreateAffiliator(ctx, actorID, AffiliatorInput{Email: "weak-" + uniqueSuffix() + "@test.com", Name: "Weak", Password: "short", SchoolIDs: []string{s1}}); !errors.Is(err, ErrWeakPassword) {
+			t.Errorf("short password: err = %v, want ErrWeakPassword", err)
 		}
 	})
 

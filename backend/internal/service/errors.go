@@ -403,6 +403,9 @@ var (
 	// message names name/jenjang/school) because the school-bulk header set is
 	// name/code and that message would mislead here.
 	ErrMissingSchoolCSVHeader = errors.New("csv missing required name/code header")
+	// ErrMissingAffiliatorCSVHeader names the affiliator-bulk header set: name, email
+	// and at least one of school_npsn / school_code.
+	ErrMissingAffiliatorCSVHeader = errors.New("csv missing required name/email and school_npsn or school_code header")
 )
 
 // --- from system_config.go ---

@@ -204,6 +204,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_csv", Message: err.Error()}
 	case errors.Is(err, service.ErrMissingCSVHeader):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_csv_headers", Message: err.Error()}
+	case errors.Is(err, service.ErrMissingAffiliatorCSVHeader):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_csv_headers", Message: err.Error()}
 	case errors.Is(err, service.ErrMissingSchoolCSVHeader):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_csv_headers", Message: err.Error()}
 	case errors.Is(err, service.ErrRowLimitExceeded):

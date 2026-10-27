@@ -52,19 +52,37 @@ func (h *Handler) AdminCreateAffiliator(c echo.Context) error {
 	return c.JSON(http.StatusCreated, acc)
 }
 
-// AdminBulkCreateAffiliators creates many affiliator accounts and reports each row.
-func (h *Handler) AdminBulkCreateAffiliators(c echo.Context) error {
+// AdminPresignAffiliatorBulkUpload issues a presigned PUT URL to the private
+// bucket for an affiliator-bulk CSV upload (super admin only by route).
+func (h *Handler) AdminPresignAffiliatorBulkUpload(c echo.Context) error {
+	filename := c.QueryParam("filename")
+	if filename == "" {
+		return badRequest(c, "filename is required")
+	}
+	resp, err := h.svc.GeneratePresignedAffiliatorBulkUploadURL(c.Request().Context(), filename, c.QueryParam("content_type"))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+// AdminBulkImportAffiliators enqueues an async affiliator_bulk job from an
+// already-uploaded CSV.
+func (h *Handler) AdminBulkImportAffiliators(c echo.Context) error {
 	var req struct {
-		Rows []service.AffiliatorInput `json:"rows"`
+		FileKey string `json:"file_key"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	results, err := h.svc.BulkCreateAffiliators(c.Request().Context(), ClaimsFromContext(c).Sub, req.Rows)
+	if req.FileKey == "" {
+		return badRequest(c, "file_key is required")
+	}
+	jobID, err := h.svc.EnqueueAffiliatorBulkJob(c.Request().Context(), ClaimsFromContext(c).Sub, req.FileKey)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"results": results})
+	return c.JSON(http.StatusAccepted, map[string]string{"job_id": jobID})
 }
 
 // AdminPromoteAffiliator turns an admin_school account into an affiliator.

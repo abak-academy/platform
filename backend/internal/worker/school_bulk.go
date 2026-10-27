@@ -21,6 +21,7 @@ type schoolBulkProcessor interface {
 type bulkProcessor interface {
 	studentBulkProcessor
 	schoolBulkProcessor
+	affiliatorBulkProcessor
 	examGrantBulkProcessor
 	examRevokeBulkProcessor
 }

@@ -92,6 +92,7 @@ func (f *fakeObjectStore) DeleteObject(ctx context.Context, bucket, key string) 
 type fakeStudentBulkProcessor struct {
 	processFn              func(ctx context.Context, actorID string, schoolBound *string, actorRole string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
 	processSchoolFn        func(ctx context.Context, rows []service.SchoolBulkRow, onProgress func(int)) ([]service.SchoolBulkResultRow, int, error)
+	processAffiliatorFn    func(ctx context.Context, actorID string, rows []service.AffiliatorBulkRow, onProgress func(int)) ([]service.AffiliatorBulkResultRow, int, error)
 	grantExamAccessBulkFn  func(ctx context.Context, actorID, examID string, usernames []string) ([]service.ExamGrantBulkRowResult, error)
 	revokeExamAccessBulkFn func(ctx context.Context, actorID, examID string, usernames []string) ([]service.ExamRevokeBulkRowResult, error)
 }
@@ -110,6 +111,10 @@ func (f *fakeStudentBulkProcessor) ProcessStudentBulkRows(ctx context.Context, a
 
 func (f *fakeStudentBulkProcessor) ProcessSchoolBulkRows(ctx context.Context, rows []service.SchoolBulkRow, onProgress func(int)) ([]service.SchoolBulkResultRow, int, error) {
 	return f.processSchoolFn(ctx, rows, onProgress)
+}
+
+func (f *fakeStudentBulkProcessor) ProcessAffiliatorBulkRows(ctx context.Context, actorID string, rows []service.AffiliatorBulkRow, onProgress func(int)) ([]service.AffiliatorBulkResultRow, int, error) {
+	return f.processAffiliatorFn(ctx, actorID, rows, onProgress)
 }
 
 func schoolIDPtr(s string) *string { return &s }

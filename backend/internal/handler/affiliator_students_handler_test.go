@@ -304,3 +304,28 @@ func TestAffiliatorListing_RoutesAreSuperAdminOnlyAndPaginated(t *testing.T) {
 		t.Errorf("promotable: want 200 with a total, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestAffiliatorBulkRoutes_AreSuperAdminOnlyAndValidateInput(t *testing.T) {
+	f := newAffiliatorStudentsFixture(t)
+	super := promoActiveToken(t, f.env, uuid.NewString(), service.RoleSuperAdmin)
+	post := func(token, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1"+path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		f.env.e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	for _, path := range []string{"/admin/system/affiliators/bulk/presign?filename=a.csv", "/admin/system/affiliators/bulk"} {
+		if rec := post(f.token, path, `{"file_key":"affiliator-bulk/x.csv"}`); rec.Code != http.StatusForbidden {
+			t.Errorf("affiliator on %s: want 403, got %d", path, rec.Code)
+		}
+	}
+	if rec := post(super, "/admin/system/affiliators/bulk/presign", ""); rec.Code != http.StatusBadRequest {
+		t.Errorf("presign without filename: want 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec := post(super, "/admin/system/affiliators/bulk", `{}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("enqueue without file_key: want 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
