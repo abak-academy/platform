@@ -225,20 +225,26 @@ func (s *Service) SetAffiliatorSchools(ctx context.Context, actorID, targetID st
 	})
 }
 
-// ListAffiliators returns affiliators filtered by optional status, cursor-paginated.
-func (s *Service) ListAffiliators(ctx context.Context, statusFilter string, limit int, cursor string) ([]AffiliatorResponse, string, error) {
+// ListAffiliators returns affiliators filtered by optional status and name/email
+// search, cursor-paginated, with the total matching the filters.
+func (s *Service) ListAffiliators(ctx context.Context, statusFilter, q string, limit int, cursor string) ([]AffiliatorResponse, string, int, error) {
 	if statusFilter != "" && !isValidStatusFilter(statusFilter) {
-		return nil, "", fmt.Errorf("%w: %s", ErrInvalidStatusFilter, statusFilter)
+		return nil, "", 0, fmt.Errorf("%w: %s", ErrInvalidStatusFilter, statusFilter)
 	}
-	rows, next, err := s.storeRepo.ListAffiliators(ctx, repository.AffiliatorFilter{Status: statusFilter, Cursor: cursor, Limit: limit})
+	rows, next, total, err := s.storeRepo.ListAffiliators(ctx, repository.AffiliatorFilter{Status: statusFilter, Q: strings.TrimSpace(q), Cursor: cursor, Limit: limit})
 	if err != nil {
-		return nil, "", err
+		return nil, "", 0, err
 	}
 	out := make([]AffiliatorResponse, len(rows))
 	for i, r := range rows {
 		out[i] = toAffiliatorResponse(r)
 	}
-	return out, next, nil
+	return out, next, total, nil
+}
+
+// ListPromotableAdmins returns the admin_school accounts that can be promoted.
+func (s *Service) ListPromotableAdmins(ctx context.Context, q string, limit int, cursor string) ([]repository.PromotableAdmin, string, int, error) {
+	return s.storeRepo.ListPromotableAdmins(ctx, strings.TrimSpace(q), cursor, limit)
 }
 
 // GetAffiliatorProfile returns an affiliator's account with the details of its schools.

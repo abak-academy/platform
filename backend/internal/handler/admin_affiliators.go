@@ -17,11 +17,26 @@ func (h *Handler) AdminListAffiliators(c echo.Context) error {
 			limit = min(n, 100)
 		}
 	}
-	rows, next, err := h.svc.ListAffiliators(c.Request().Context(), c.QueryParam("status"), limit, c.QueryParam("cursor"))
+	rows, next, total, err := h.svc.ListAffiliators(c.Request().Context(), c.QueryParam("status"), c.QueryParam("q"), limit, c.QueryParam("cursor"))
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": rows, "next_cursor": next})
+	return c.JSON(http.StatusOK, map[string]any{"data": rows, "next_cursor": next, "total": total})
+}
+
+// AdminListPromotableAdmins lists the admin_school accounts that can become affiliators.
+func (h *Handler) AdminListPromotableAdmins(c echo.Context) error {
+	limit := 20
+	if l := c.QueryParam("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = min(n, 100)
+		}
+	}
+	rows, next, total, err := h.svc.ListPromotableAdmins(c.Request().Context(), c.QueryParam("q"), limit, c.QueryParam("cursor"))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": rows, "next_cursor": next, "total": total})
 }
 
 // AdminCreateAffiliator creates one affiliator account.

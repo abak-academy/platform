@@ -266,3 +266,41 @@ func TestAffiliatorDashboard_RoutesAndMonitoringAccess(t *testing.T) {
 		t.Errorf("super admin detail: want 200 with the school, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestAffiliatorListing_RoutesAreSuperAdminOnlyAndPaginated(t *testing.T) {
+	f := newAffiliatorStudentsFixture(t)
+	super := promoActiveToken(t, f.env, uuid.NewString(), service.RoleSuperAdmin)
+	getAs := func(token, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1"+path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		f.env.e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	for _, path := range []string{"/admin/system/affiliators", "/admin/system/affiliators/promotable"} {
+		if rec := getAs(f.token, path); rec.Code != http.StatusForbidden {
+			t.Errorf("affiliator on %s: want 403, got %d", path, rec.Code)
+		}
+	}
+
+	rec := getAs(super, "/admin/system/affiliators?limit=1&q=Aff")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var list struct {
+		Data       []struct{ ID string } `json:"data"`
+		NextCursor string                `json:"next_cursor"`
+		Total      int                   `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(list.Data) != 1 || list.Total < 1 {
+		t.Errorf("list = %+v, want one row and a total", list)
+	}
+
+	if rec := getAs(super, "/admin/system/affiliators/promotable?limit=5"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"total"`) {
+		t.Errorf("promotable: want 200 with a total, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}

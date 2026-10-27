@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -221,7 +223,7 @@ func TestAffiliatorLifecycle_Integration(t *testing.T) {
 	t.Run("list filters by status and profile returns the schools", func(t *testing.T) {
 		s1 := newSchool(t)
 		acc, _ := newAffiliator(t, s1)
-		rows, _, err := svc.ListAffiliators(ctx, "active", 100, "")
+		rows, _, _, err := svc.ListAffiliators(ctx, "active", "", 100, "")
 		if err != nil {
 			t.Fatalf("ListAffiliators: %v", err)
 		}
@@ -234,7 +236,7 @@ func TestAffiliatorLifecycle_Integration(t *testing.T) {
 		if !found {
 			t.Errorf("affiliator %s missing from the active list or wrong schools", acc.ID)
 		}
-		if _, _, err := svc.ListAffiliators(ctx, "deleted", 10, ""); !errors.Is(err, ErrInvalidStatusFilter) {
+		if _, _, _, err := svc.ListAffiliators(ctx, "deleted", "", 10, ""); !errors.Is(err, ErrInvalidStatusFilter) {
 			t.Errorf("bad status: err = %v, want ErrInvalidStatusFilter", err)
 		}
 		p, err := svc.GetAffiliatorProfile(ctx, acc.ID)
@@ -330,6 +332,110 @@ func TestAffiliatorStudents_Integration(t *testing.T) {
 		}
 		if _, _, _, err := svc.ListAffiliatorStudents(ctx, acc.ID, other, false, false, "", "", 100, "", nil, ""); !errors.Is(err, ErrAffiliatorSchoolNotAllowed) {
 			t.Errorf("foreign school filter: err = %v, want ErrAffiliatorSchoolNotAllowed", err)
+		}
+	})
+}
+
+func TestAffiliatorListing_Integration(t *testing.T) {
+	_, repo := newRealDBService(t)
+	svc := newSessionService(t, repo)
+	ctx := context.Background()
+	actorID := uuid.NewString()
+
+	code := "lst_" + uniqueSuffix()
+	school, err := svc.CreateSchool(ctx, "Listing School "+code, code, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool: %v", err)
+	}
+	tag := "Pagetag" + uniqueSuffix()
+	var created []string
+	for i := 0; i < 3; i++ {
+		acc, err := svc.CreateAffiliator(ctx, actorID, AffiliatorInput{
+			Email: fmt.Sprintf("%s-%d@test.com", strings.ToLower(tag), i), Name: fmt.Sprintf("%s %d", tag, i), Password: "password123", SchoolIDs: []string{school.ID},
+		})
+		if err != nil {
+			t.Fatalf("CreateAffiliator: %v", err)
+		}
+		created = append(created, acc.ID)
+	}
+
+	t.Run("search narrows by name or email and reports the total", func(t *testing.T) {
+		rows, _, total, err := svc.ListAffiliators(ctx, "", tag, 100, "")
+		if err != nil {
+			t.Fatalf("ListAffiliators: %v", err)
+		}
+		if len(rows) != 3 || total != 3 {
+			t.Errorf("rows=%d total=%d, want 3 and 3 for the tag %q", len(rows), total, tag)
+		}
+		byEmail, _, total, _ := svc.ListAffiliators(ctx, "", strings.ToLower(tag)+"-1@", 100, "")
+		if len(byEmail) != 1 || total != 1 {
+			t.Errorf("email search rows=%d total=%d, want 1 and 1", len(byEmail), total)
+		}
+		if none, _, total, _ := svc.ListAffiliators(ctx, "", "no-such-"+tag, 100, ""); len(none) != 0 || total != 0 {
+			t.Errorf("unmatched search returned %d rows, total %d", len(none), total)
+		}
+	})
+
+	t.Run("pages follow the cursor without gaps or repeats, newest first", func(t *testing.T) {
+		first, next, total, err := svc.ListAffiliators(ctx, "", tag, 2, "")
+		if err != nil || len(first) != 2 || next == "" || total != 3 {
+			t.Fatalf("page 1 = %d rows, next=%q, total=%d, err=%v; want 2 rows, a cursor and total 3", len(first), next, total, err)
+		}
+		second, next2, _, err := svc.ListAffiliators(ctx, "", tag, 2, next)
+		if err != nil || len(second) != 1 || next2 != "" {
+			t.Fatalf("page 2 = %d rows, next=%q, err=%v; want the last row and no cursor", len(second), next2, err)
+		}
+		seen := map[string]bool{}
+		for _, r := range append(first, second...) {
+			if seen[r.ID] {
+				t.Errorf("row %s appears on two pages", r.ID)
+			}
+			seen[r.ID] = true
+		}
+		for _, id := range created {
+			if !seen[id] {
+				t.Errorf("affiliator %s missing from the pages", id)
+			}
+		}
+		if first[0].ID != created[2] {
+			t.Errorf("first row = %s, want the newest (%s)", first[0].ID, created[2])
+		}
+	})
+
+	t.Run("promotable list holds only active school admins, with their school", func(t *testing.T) {
+		admin, err := svc.CreateAdminAccount(ctx, actorID, strings.ToLower(tag)+"-adm@test.com", tag+" Admin", RoleAdminSchool, "password123", &school.ID)
+		if err != nil {
+			t.Fatalf("CreateAdminAccount: %v", err)
+		}
+		off, err := svc.CreateAdminAccount(ctx, actorID, strings.ToLower(tag)+"-off@test.com", tag+" Off", RoleAdminSchool, "password123", &school.ID)
+		if err != nil {
+			t.Fatalf("CreateAdminAccount: %v", err)
+		}
+		if err := svc.ChangeAccountStatus(ctx, actorID, off.ID, "deactivated"); err != nil {
+			t.Fatalf("deactivate: %v", err)
+		}
+
+		rows, _, total, err := svc.ListPromotableAdmins(ctx, tag, 50, "")
+		if err != nil {
+			t.Fatalf("ListPromotableAdmins: %v", err)
+		}
+		if len(rows) != 1 || total != 1 || rows[0].ID != admin.ID {
+			t.Fatalf("promotable = %+v (total %d), want only the active admin", rows, total)
+		}
+		if rows[0].SchoolID == nil || *rows[0].SchoolID != school.ID || rows[0].SchoolName == nil || *rows[0].SchoolName != school.Name {
+			t.Errorf("school = %v / %v, want %s / %s", rows[0].SchoolID, rows[0].SchoolName, school.ID, school.Name)
+		}
+		bySchool, _, _, _ := svc.ListPromotableAdmins(ctx, school.Name, 50, "")
+		if len(bySchool) != 1 {
+			t.Errorf("search by school name returned %d rows, want 1", len(bySchool))
+		}
+
+		if err := svc.PromoteToAffiliator(ctx, actorID, admin.ID, []string{school.ID}); err != nil {
+			t.Fatalf("PromoteToAffiliator: %v", err)
+		}
+		after, _, total, _ := svc.ListPromotableAdmins(ctx, tag, 50, "")
+		if len(after) != 0 || total != 0 {
+			t.Errorf("a promoted admin is still promotable: %+v", after)
 		}
 	})
 }

@@ -137,7 +137,7 @@ func TestAffiliatorDashboard_Integration(t *testing.T) {
 	})
 
 	t.Run("admin monitoring shows the same figures", func(t *testing.T) {
-		list, _, err := svc.ListAffiliators(ctx, "", 100, "")
+		list, _, _, err := svc.ListAffiliators(ctx, "", "", 100, "")
 		if err != nil {
 			t.Fatalf("ListAffiliators: %v", err)
 		}
