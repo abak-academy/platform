@@ -11,6 +11,8 @@ type User struct {
 	Role         string     `json:"role"`
 	Name         string     `json:"name"`
 	SchoolID     *string    `json:"school_id"`
+	// RegisteredBy is the affiliator who registered this student, when one did.
+	RegisteredBy *string `json:"registered_by"`
 	PhotoURL     *string    `json:"photo_url"`
 	Status       string     `json:"status"`
 	AuthProvider string     `json:"auth_provider"`

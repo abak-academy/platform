@@ -168,6 +168,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "schools_required", Message: err.Error()}
 	case errors.Is(err, service.ErrNotAdminSchool):
 		status, apiErr = http.StatusConflict, APIError{Code: "not_admin_school", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatorSchoolNotAllowed):
+		status, apiErr = http.StatusForbidden, APIError{Code: "school_not_assigned", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliatorNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "affiliator_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolNotAllowed):

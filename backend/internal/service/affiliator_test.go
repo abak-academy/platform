@@ -243,3 +243,93 @@ func TestAffiliatorLifecycle_Integration(t *testing.T) {
 		}
 	})
 }
+
+func TestAffiliatorStudents_Integration(t *testing.T) {
+	_, repo := newRealDBService(t)
+	svc := newSessionService(t, repo)
+	ctx := context.Background()
+	actorID := uuid.NewString()
+
+	newSchool := func(t *testing.T) (id, code string) {
+		t.Helper()
+		code = "afs_" + uniqueSuffix()
+		school, err := svc.CreateSchool(ctx, "Aff Students "+code, code, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		return school.ID, code
+	}
+	own, ownCode := newSchool(t)
+	other, otherCode := newSchool(t)
+	acc, err := svc.CreateAffiliator(ctx, actorID, AffiliatorInput{
+		Email: "afs-" + uniqueSuffix() + "@test.com", Name: "Aff", Password: "password123", SchoolIDs: []string{own},
+	})
+	if err != nil {
+		t.Fatalf("CreateAffiliator: %v", err)
+	}
+
+	t.Run("register records registered_by and refuses a foreign school", func(t *testing.T) {
+		resp, err := svc.RegisterStudent(ctx, acc.ID, own, "Siswa Satu", "SMA", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("RegisterStudent: %v", err)
+		}
+		mine, _, _, err := svc.ListAffiliatorStudents(ctx, acc.ID, own, true, "", "", 100, "", nil, "")
+		if err != nil {
+			t.Fatalf("ListAffiliatorStudents: %v", err)
+		}
+		if len(mine) != 1 || mine[0].ID != resp.ID || mine[0].RegisteredBy == nil || *mine[0].RegisteredBy != acc.ID {
+			t.Fatalf("registered by me = %+v, want the new student marked %s", mine, acc.ID)
+		}
+		if _, err := svc.RegisterStudent(ctx, acc.ID, other, "Siswa Dua", "SMA", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); !errors.Is(err, ErrAffiliatorSchoolNotAllowed) {
+			t.Errorf("foreign school: err = %v, want ErrAffiliatorSchoolNotAllowed", err)
+		}
+		if _, err := svc.RegisterStudent(ctx, acc.ID, "", "Siswa Tiga", "SMA", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); !errors.Is(err, ErrAffiliatorSchoolNotAllowed) {
+			t.Errorf("no school: err = %v, want ErrAffiliatorSchoolNotAllowed", err)
+		}
+	})
+
+	t.Run("other actors are not restricted and leave registered_by empty", func(t *testing.T) {
+		resp, err := svc.RegisterStudent(ctx, actorID, other, "Siswa Admin", "SMA", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("RegisterStudent: %v", err)
+		}
+		rows, _, _, err := svc.ListStudents(ctx, other, "", "", 100, "", nil, "")
+		if err != nil {
+			t.Fatalf("ListStudents: %v", err)
+		}
+		if len(rows) != 1 || rows[0].ID != resp.ID || rows[0].RegisteredBy != nil {
+			t.Errorf("rows = %+v, want the new student with registered_by empty", rows)
+		}
+	})
+
+	t.Run("bulk rows outside the assigned schools fail, inside succeed", func(t *testing.T) {
+		rows := []StudentBulkRow{
+			{Row: 1, Name: "Bulk Dalam", Jenjang: "SMA", SchoolCode: ownCode},
+			{Row: 2, Name: "Bulk Luar", Jenjang: "SMA", SchoolCode: otherCode},
+		}
+		results, ok, err := svc.ProcessStudentBulkRows(ctx, acc.ID, nil, RoleAffiliator, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if ok != 1 || results[0].Status != "success" || results[1].Status != "failed" || results[1].Error != ErrAffiliatorSchoolNotAllowed.Error() {
+			t.Errorf("ok=%d results=%+v, want first success and second refused as not assigned", ok, results)
+		}
+	})
+
+	t.Run("list covers only assigned schools and can narrow to own registrations", func(t *testing.T) {
+		all, _, counts, err := svc.ListAffiliatorStudents(ctx, acc.ID, "", false, "", "", 100, "", nil, "")
+		if err != nil {
+			t.Fatalf("ListAffiliatorStudents: %v", err)
+		}
+		if len(all) != 2 || counts.Total != 2 {
+			t.Errorf("all = %d (count %d), want the 2 students of the assigned school", len(all), counts.Total)
+		}
+		mine, _, _, _ := svc.ListAffiliatorStudents(ctx, acc.ID, own, true, "", "", 100, "", nil, "")
+		if len(mine) != 2 {
+			t.Errorf("registered by me = %d, want 2 (single and bulk)", len(mine))
+		}
+		if _, _, _, err := svc.ListAffiliatorStudents(ctx, acc.ID, other, false, "", "", 100, "", nil, ""); !errors.Is(err, ErrAffiliatorSchoolNotAllowed) {
+			t.Errorf("foreign school filter: err = %v, want ErrAffiliatorSchoolNotAllowed", err)
+		}
+	})
+}

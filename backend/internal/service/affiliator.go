@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -279,4 +280,75 @@ func (s *Service) AffiliatorActive(ctx context.Context, userID string) (bool, er
 // canHoldSession reports whether a user in this state may be issued a session.
 func canHoldSession(user *model.User) bool {
 	return user.Status == "active" || (user.Role == RoleAffiliator && user.Status == "deactivated")
+}
+
+// AffiliatorSchoolIDs returns the schools an affiliator may act on.
+func (s *Service) AffiliatorSchoolIDs(ctx context.Context, userID string) ([]string, error) {
+	ids, err := s.storeRepo.GetAffiliatorSchoolIDs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if ids == nil {
+		ids = []string{}
+	}
+	return ids, nil
+}
+
+// affiliatorRegistration returns the id to record as registered_by when the
+// actor is an affiliator, after checking the school is one of theirs. Other
+// actors return nil and are not restricted here.
+func (s *Service) affiliatorRegistration(ctx context.Context, actorID, schoolID string) (*string, error) {
+	if _, err := parseUUID(actorID); err != nil {
+		return nil, nil
+	}
+	actor, err := s.repo.GetUserByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if actor == nil || actor.Role != RoleAffiliator {
+		return nil, nil
+	}
+	ids, err := s.storeRepo.GetAffiliatorSchoolIDs(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if schoolID == "" || !slices.Contains(ids, strings.ToLower(schoolID)) {
+		return nil, ErrAffiliatorSchoolNotAllowed
+	}
+	return &actorID, nil
+}
+
+// ListAffiliatorStudents lists students of the affiliator's allowed schools,
+// optionally narrowed to one school and to the ones it registered itself.
+func (s *Service) ListAffiliatorStudents(ctx context.Context, affiliatorID, schoolID string, registeredByMe bool, statusFilter, q string, limit int, cursor string, grade *int, jenjang string) ([]StudentResponse, string, repository.StudentAdminCounts, error) {
+	ids, err := s.AffiliatorSchoolIDs(ctx, affiliatorID)
+	if err != nil {
+		return nil, "", repository.StudentAdminCounts{}, err
+	}
+	if schoolID != "" {
+		if !slices.Contains(ids, strings.ToLower(schoolID)) {
+			return nil, "", repository.StudentAdminCounts{}, ErrAffiliatorSchoolNotAllowed
+		}
+		ids = []string{strings.ToLower(schoolID)}
+	}
+	filter := repository.StudentFilter{
+		Status: statusFilter, Cursor: cursor, Limit: limit, Q: q, Grade: grade, Jenjang: jenjang,
+		SchoolIDs: ids,
+	}
+	if registeredByMe {
+		filter.RegisteredBy = affiliatorID
+	}
+	rows, next, err := s.storeRepo.ListStudentsBySchool(ctx, "", filter)
+	if err != nil {
+		return nil, "", repository.StudentAdminCounts{}, err
+	}
+	counts, err := s.storeRepo.CountStudentsAdmin(ctx, "", filter)
+	if err != nil {
+		return nil, "", repository.StudentAdminCounts{}, err
+	}
+	students := make([]StudentResponse, len(rows))
+	for i, r := range rows {
+		students[i] = toStudentResponse(r)
+	}
+	return students, next, counts, nil
 }

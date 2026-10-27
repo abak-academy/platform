@@ -29,6 +29,7 @@ type StudentRow struct {
 	// see whose school still needs confirming.
 	SchoolName         *string   `json:"school_name"`
 	UnlistedSchoolName *string   `json:"unlisted_school_name"`
+	RegisteredBy       *string   `json:"registered_by"`
 	CreatedAt          time.Time `json:"created_at"`
 }
 
@@ -57,6 +58,12 @@ type StudentFilter struct {
 	// drops the scope instead of narrowing it. SchoolID and NoSchool are
 	// never both set.
 	NoSchool bool
+	// SchoolIDs scopes the query to several schools at once (an affiliator's
+	// allowed set). Non-nil takes precedence over the single schoolID argument;
+	// an empty non-nil slice matches nothing.
+	SchoolIDs []string
+	// RegisteredBy narrows to students registered by this user id.
+	RegisteredBy string
 }
 
 // appendStudentFilterSQL appends the predicates shared by
@@ -68,9 +75,18 @@ type StudentFilter struct {
 // participant picker, a shape no stat card should count.
 func appendStudentFilterSQL(query string, filter StudentFilter, schoolID string, argNum int) (string, []any, int) {
 	args := []any{}
-	if !filter.AllSchools {
+	if filter.SchoolIDs != nil {
+		query += fmt.Sprintf(` AND u.school_id = ANY($%d::uuid[])`, argNum)
+		args = append(args, filter.SchoolIDs)
+		argNum++
+	} else if !filter.AllSchools {
 		query += fmt.Sprintf(` AND u.school_id = $%d`, argNum)
 		args = append(args, schoolID)
+		argNum++
+	}
+	if filter.RegisteredBy != "" {
+		query += fmt.Sprintf(` AND u.registered_by = $%d::uuid`, argNum)
+		args = append(args, filter.RegisteredBy)
 		argNum++
 	}
 	if filter.Status != "" {
@@ -109,7 +125,7 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 	}
 
 	query := `SELECT u.id, u.name, u.username, u.email, u.status, u.grade, COALESCE(u.jenjang, ''),
-			s.name AS school_name, u.unlisted_school_name, u.created_at
+			s.name AS school_name, u.unlisted_school_name, u.registered_by::text, u.created_at
 			FROM users u
 			LEFT JOIN school s ON s.id = u.school_id
 			WHERE u.role = 'student' AND u.status != 'deleted'`
@@ -152,7 +168,7 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 	for rows.Next() {
 		var s StudentRow
 		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.Email, &s.Status, &s.Grade, &s.Jenjang,
-			&s.SchoolName, &s.UnlistedSchoolName, &s.CreatedAt); err != nil {
+			&s.SchoolName, &s.UnlistedSchoolName, &s.RegisteredBy, &s.CreatedAt); err != nil {
 			return nil, "", err
 		}
 		students = append(students, s)
@@ -212,17 +228,17 @@ func (r *Repository) CreateStudent(ctx context.Context, u *model.User) error {
 			email, username, password_hash, role, name,
 			school_id, unlisted_school_name, status, otp_enabled, password_temporary,
 			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
-			dob, gender, grade, alamat_domisili, target_exam
+			dob, gender, grade, alamat_domisili, target_exam, registered_by
 		) VALUES (
 			$1, $2, $3, 'student', $4,
 			$5, $6, 'active', false, true,
 			$7, $8, $9, $10, $11,
-			$12, $13, $14, $15, $16
+			$12, $13, $14, $15, $16, $17
 		) RETURNING id, created_at, updated_at`,
 		u.Email, u.Username, u.PasswordHash, u.Name,
 		u.SchoolID, u.UnlistedSchoolName,
 		u.Jenjang, u.ProvinsiID, u.KotaID, u.KecamatanID, u.KodePos,
-		u.DOB, u.Gender, u.Grade, u.AlamatDomisili, u.TargetExam,
+		u.DOB, u.Gender, u.Grade, u.AlamatDomisili, u.TargetExam, u.RegisteredBy,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 

@@ -79,6 +79,7 @@ Decisions (owner, 2026-10-27):
 - `/api/admin/system/affiliators` (super admin, `system:admin`): `GET` list, `POST` create, `POST /bulk` (JSON rows, at most 200, per-row result), `POST /:id/promote` (admin_school only), `PUT /:id/schools`. Active state reuses `PATCH /admin/system/accounts/:id/status`.
 - `GET /api/affiliates/me` (affiliator, `affiliates:self`): profile, schools, active state. `GET /api/affiliates/me/promos` lists the affiliator-only promos usable now. Dashboard widgets and students follow under `/api/affiliates/me/*`.
 - Student and purchase routes reuse `/admin/students*` and `/admin/bulk-exam-orders*` with the new scope and capability.
+- Students (phase 3): the affiliator holds `students:*`. List (`GET /admin/students`) covers every allowed school, narrowable with `?school_id=` (must be allowed, else 403 `school_not_assigned`) and `?registered_by_me=true`. Single-school actions (register) require `?school_id=` of an allowed school. Bulk CSV uses the cross-school format (school per row, like `super_admin`); each row's school is checked against the allowed list when the row is registered, and a manual password column is refused. Status change, credential reissue, bulk credential reissue and set password are not available to affiliators. The allowed list is read from the database on every request, not from the token.
 
 ### Web
 

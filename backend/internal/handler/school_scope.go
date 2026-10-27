@@ -3,6 +3,8 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"slices"
+	"strings"
 
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
@@ -87,8 +89,35 @@ func (h *Handler) resolveResultsSchoolScope(c echo.Context, claims *infra.Claims
 
 // resolveStudentSchoolScope is resolveSchoolScope with admin_exam treated as global.
 func (h *Handler) resolveStudentSchoolScope(c echo.Context, claims *infra.Claims) (string, error) {
+	if claims.Role == service.RoleAffiliator {
+		return h.resolveAffiliatorSchool(c, claims)
+	}
 	if service.CanManageAllStudents(claims.Role) {
 		return h.resolveGlobalSchoolParam(c)
 	}
 	return h.resolveSchoolScope(c, claims)
+}
+
+// resolveAffiliatorSchool returns the one school an affiliator acts on. It must
+// be named with ?school_id= and be one of the schools assigned to the affiliator;
+// the list is read from the database, not the token, so changes apply at once.
+func (h *Handler) resolveAffiliatorSchool(c echo.Context, claims *infra.Claims) (string, error) {
+	sid := strings.ToLower(c.QueryParam("school_id"))
+	if sid == "" {
+		c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "school_id is required"})
+		return "", errScopeDone
+	}
+	if _, err := uuid.Parse(sid); err != nil {
+		c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "school_id must be a valid UUID"})
+		return "", errScopeDone
+	}
+	ids, err := h.svc.AffiliatorSchoolIDs(c.Request().Context(), claims.Sub)
+	if err != nil {
+		return "", err
+	}
+	if !slices.Contains(ids, sid) {
+		c.JSON(http.StatusForbidden, APIError{Code: "school_not_assigned", Message: service.ErrAffiliatorSchoolNotAllowed.Error()})
+		return "", errScopeDone
+	}
+	return sid, nil
 }

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -70,6 +71,20 @@ func AffiliatorWriteGuard(isActive func(ctx context.Context, userID string) (boo
 			}
 			if !active {
 				return c.JSON(http.StatusForbidden, map[string]string{"code": "account_deactivated", "message": "account is deactivated and read-only"})
+			}
+			return next(c)
+		}
+	}
+}
+
+// ForbidRoles rejects the listed roles on routes that sit in a group they can
+// otherwise enter.
+func ForbidRoles(roles ...string) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			claims, _ := c.Get(claimsKey).(*infra.Claims)
+			if claims != nil && slices.Contains(roles, claims.Role) {
+				return c.JSON(http.StatusForbidden, map[string]string{"code": "forbidden", "message": "insufficient permissions"})
 			}
 			return next(c)
 		}

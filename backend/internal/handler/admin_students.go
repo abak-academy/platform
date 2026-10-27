@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 	"net/http"
 	"strconv"
@@ -15,12 +16,17 @@ import (
 // Supports optional grade and jenjang query filters.
 func (h *Handler) AdminListStudents(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveStudentSchoolScope(c, claims)
-	if scopeHandled(err) {
-		return nil
-	}
-	if err != nil {
-		return err
+	isAffiliator := claims.Role == service.RoleAffiliator
+	var schoolID string
+	if !isAffiliator {
+		var err error
+		schoolID, err = h.resolveStudentSchoolScope(c, claims)
+		if scopeHandled(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 	}
 
 	statusFilter := c.QueryParam("status")
@@ -51,7 +57,17 @@ func (h *Handler) AdminListStudents(c echo.Context) error {
 		}
 	}
 
-	students, nextCursor, counts, err := h.svc.ListStudents(c.Request().Context(), schoolID, statusFilter, q, limit, cursor, grade, jenjang, examID)
+	var (
+		students   []service.StudentResponse
+		nextCursor string
+		counts     repository.StudentAdminCounts
+		err        error
+	)
+	if isAffiliator {
+		students, nextCursor, counts, err = h.svc.ListAffiliatorStudents(c.Request().Context(), claims.Sub, strings.ToLower(c.QueryParam("school_id")), c.QueryParam("registered_by_me") == "true", statusFilter, q, limit, cursor, grade, jenjang)
+	} else {
+		students, nextCursor, counts, err = h.svc.ListStudents(c.Request().Context(), schoolID, statusFilter, q, limit, cursor, grade, jenjang, examID)
+	}
 	if err != nil {
 		return mapServiceError(c, err)
 	}
