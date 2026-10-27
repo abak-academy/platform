@@ -57,6 +57,11 @@ const view = {
   levels: [],
 };
 
+async function chooseRuleType(trigger: HTMLElement, option: string) {
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: "mouse" });
+  fireEvent.click(await screen.findByRole("option", { name: option }));
+}
+
 describe("AdminAffiliateSettingsPage", () => {
   beforeEach(() => {
     Object.values(h).forEach((m) => "mockReset" in m && m.mockReset());
@@ -158,7 +163,7 @@ describe("AdminAffiliateSettingsPage", () => {
 
     const selects = await screen.findAllByLabelText("Buku Jenis");
     expect(selects).toHaveLength(3);
-    fireEvent.change(selects[0], { target: { value: "fixed" } });
+    await chooseRuleType(selects[0], "Nominal");
     fireEvent.change(document.getElementById("l-bronze-rule-book") as HTMLInputElement, { target: { value: "4500" } });
     fireEvent.click(screen.getAllByRole("button", { name: "Simpan pengaturan" })[0]);
 
@@ -217,7 +222,7 @@ describe("AdminAffiliateSettingsPage", () => {
 
     fireEvent.focus(await screen.findByLabelText("Produk"));
     fireEvent.click(await screen.findByRole("button", { name: /Buku Fisika/ }));
-    fireEvent.change(screen.getByLabelText("Jenis"), { target: { value: "fixed" } });
+    await chooseRuleType(screen.getByLabelText("Jenis"), "Nominal");
 
     fireEvent.change(screen.getByLabelText("Nilai komisi"), { target: { value: "4500.5" } });
     fireEvent.click(screen.getByRole("button", { name: "Simpan override" }));
@@ -247,6 +252,19 @@ describe("AdminAffiliateSettingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hapus" }));
 
     expect(h.remove).toHaveBeenCalledWith("p-1", expect.anything());
+  });
+
+  it("offers the releases job and sends it without a quarter", async () => {
+    h.search.value = "tab=jobs";
+    render(<SettingsPage />);
+    await screen.findByTestId("job-scope");
+
+    fireEvent.pointerDown(screen.getByTestId("job-scope"), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("option", { name: "Pembukaan sanksi" }));
+    expect(screen.getByText(/Mengaktifkan kembali affiliator yang masa skorsnya habis/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Jalankan" }));
+
+    expect(h.run).toHaveBeenLastCalledWith({ scope: "releases", quarter: undefined }, expect.anything());
   });
 
   it("sends a quarter only for the levels job", async () => {

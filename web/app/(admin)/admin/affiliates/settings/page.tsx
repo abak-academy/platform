@@ -9,6 +9,7 @@ import { BulkFormatGuide } from "@/components/admin/BulkFormatGuide";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { JobsPanel } from "@/components/affiliate/settings/JobsPanel";
 import { OverridesPanel } from "@/components/affiliate/settings/OverridesPanel";
+import { RuleTypeSelect } from "@/components/affiliate/RuleTypeSelect";
 import { SettingField } from "@/components/affiliate/SettingField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,6 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError } from "@/lib/api";
 import { affLabel } from "@/lib/affiliate-labels";
-import { COMMISSION_RULE_TYPES } from "@/lib/affiliate-rules";
 import {
   AFFILIATE_LEVELS,
   COMMISSION_CATEGORIES,
@@ -282,19 +282,8 @@ function RuleFieldCompact({ id, label, rule, onChange }: { id: string; label: st
   return (
     <div className="space-y-1">
       <Label htmlFor={id}>{label}</Label>
-      <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-2">
-        <select
-          aria-label={`${label} ${t("admin_aff_rule_type")}`}
-          className="h-9 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900"
-          value={rule.type}
-          onChange={(e) => onChange({ type: e.target.value as RuleForm["type"] })}
-        >
-          {COMMISSION_RULE_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {t(type === "fixed" ? "admin_aff_rule_fixed" : "admin_aff_rule_percent")}
-            </option>
-          ))}
-        </select>
+      <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-2">
+        <RuleTypeSelect label={`${label} ${t("admin_aff_rule_type")}`} value={rule.type} onChange={(type) => onChange({ type })} />
         <Input id={id} inputMode="decimal" value={rule.value} onChange={(e) => onChange({ value: e.target.value })} />
       </div>
     </div>

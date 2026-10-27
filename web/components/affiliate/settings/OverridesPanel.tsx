@@ -5,13 +5,14 @@ import { toast } from "sonner";
 import { AffiliateList } from "@/components/affiliate/AffiliateList";
 import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { ProductPicker } from "@/components/affiliate/ProductPicker";
+import { RuleTypeSelect } from "@/components/affiliate/RuleTypeSelect";
 import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
-import { COMMISSION_RULE_TYPES, formatCommissionRule } from "@/lib/affiliate-rules";
+import { formatCommissionRule } from "@/lib/affiliate-rules";
 import { useAdminAffiliateOverrides, useDeleteAffiliateOverride, useUpsertAffiliateOverride } from "@/lib/hooks/admin-affiliates";
 import type { ListParams } from "@/lib/hooks/use-list-params";
 import { useTranslation } from "@/lib/i18n";
@@ -97,18 +98,7 @@ export function OverridesPanel() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ovr-type">{t("admin_aff_rule_type")}</Label>
-            <select
-              id="ovr-type"
-              className="h-10 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900"
-              value={ruleType}
-              onChange={(e) => setRuleType(e.target.value as AffiliateCommissionRuleType)}
-            >
-              {COMMISSION_RULE_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {t(type === "fixed" ? "admin_aff_rule_fixed" : "admin_aff_rule_percent")}
-                </option>
-              ))}
-            </select>
+            <RuleTypeSelect id="ovr-type" label={t("admin_aff_rule_type")} value={ruleType} onChange={setRuleType} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ovr-value">{t("admin_aff_ovr_pct")}</Label>
