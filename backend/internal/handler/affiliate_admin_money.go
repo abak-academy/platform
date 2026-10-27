@@ -56,18 +56,9 @@ func adminAffiliateQueueQuery(c echo.Context) (service.AffiliateAdminQueueFilter
 	if err != nil {
 		return service.AffiliateAdminQueueFilter{}, 0, 0, err
 	}
-	raw := c.QueryParam("per_page")
-	if raw == "" {
-		raw = c.QueryParam("limit")
-	}
-	perPage := parseLimit(raw, 20, 100)
-	page := 1
-	if p := c.QueryParam("page"); p != "" {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 1 {
-			return service.AffiliateAdminQueueFilter{}, 0, 0, errors.New("page must be a positive integer")
-		}
-		page = n
+	page, perPage, err := adminQueuePaging(c)
+	if err != nil {
+		return service.AffiliateAdminQueueFilter{}, 0, 0, err
 	}
 	return service.AffiliateAdminQueueFilter{
 		Q:      affiliateSearchText(c.QueryParam("q")),
@@ -78,6 +69,24 @@ func adminAffiliateQueueQuery(c echo.Context) (service.AffiliateAdminQueueFilter
 		Limit:  perPage,
 		Offset: (page - 1) * perPage,
 	}, page, perPage, nil
+}
+
+// adminQueuePaging reads page and per_page (limit is the legacy name).
+func adminQueuePaging(c echo.Context) (page, perPage int, err error) {
+	raw := c.QueryParam("per_page")
+	if raw == "" {
+		raw = c.QueryParam("limit")
+	}
+	perPage = parseLimit(raw, 20, 100)
+	page = 1
+	if p := c.QueryParam("page"); p != "" {
+		n, convErr := strconv.Atoi(p)
+		if convErr != nil || n < 1 {
+			return 0, 0, errors.New("page must be a positive integer")
+		}
+		page = n
+	}
+	return page, perPage, nil
 }
 
 func queuePage(rows any, total, page, perPage int) map[string]any {

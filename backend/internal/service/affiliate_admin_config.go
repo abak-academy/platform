@@ -89,8 +89,20 @@ type AffiliateAdminAppealDecisionInput struct {
 
 // AffiliateReportSummary is the GET /admin/affiliate-reports/summary response.
 type AffiliateReportSummary struct {
-	Data   []repository.AffiliateReportRow `json:"data"`
-	Totals repository.AffiliateReportRow   `json:"totals"`
+	Data    []repository.AffiliateReportRow `json:"data"`
+	Totals  repository.AffiliateReportRow   `json:"totals"`
+	Total   int                             `json:"total"`
+	Page    int                             `json:"page,omitempty"`
+	PerPage int                             `json:"per_page,omitempty"`
+}
+
+// AffiliateReportOptions narrows and pages the report. A zero Limit returns
+// every matching row; the totals always cover every matching row, not just the page.
+type AffiliateReportOptions struct {
+	Q     string
+	Level string
+	Page  int
+	Limit int
 }
 
 var affiliateFlagStatuses = []string{"open", "reviewed", "valid", "ignored"}
@@ -649,15 +661,18 @@ func (s *Service) AdminDecideAffiliateAppeal(ctx context.Context, actorID, viola
 
 // AdminAffiliateReportSummary backs GET /admin/affiliate-reports/summary?from&to:
 // per-affiliator performance rows over the window plus a totals row.
-func (s *Service) AdminAffiliateReportSummary(ctx context.Context, from, to string) (*AffiliateReportSummary, error) {
+func (s *Service) AdminAffiliateReportSummary(ctx context.Context, from, to string, opts AffiliateReportOptions) (*AffiliateReportSummary, error) {
 	if from == "" || to == "" {
 		return nil, fmt.Errorf("%w: from and to are required", ErrMissingField)
+	}
+	if opts.Level != "" && !slices.Contains(affiliateLevels, opts.Level) {
+		return nil, fmt.Errorf("%w: %s", ErrValidation, opts.Level)
 	}
 	start, end, err := parseAffiliateReportWindow(from, to)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.storeRepo.ListAffiliateReportRows(ctx, start, end)
+	rows, err := s.storeRepo.ListAffiliateReportRows(ctx, start, end, opts.Q, opts.Level)
 	if err != nil {
 		return nil, fmt.Errorf("affiliate report rows: %w", err)
 	}
@@ -683,7 +698,14 @@ func (s *Service) AdminAffiliateReportSummary(ctx context.Context, from, to stri
 			totals.Commissions[status] += amount
 		}
 	}
-	return &AffiliateReportSummary{Data: rows, Totals: totals}, nil
+	summary := &AffiliateReportSummary{Data: rows, Totals: totals, Total: len(rows)}
+	if opts.Limit > 0 {
+		page := max(opts.Page, 1)
+		lo := min((page-1)*opts.Limit, len(rows))
+		hi := min(lo+opts.Limit, len(rows))
+		summary.Data, summary.Page, summary.PerPage = rows[lo:hi], page, opts.Limit
+	}
+	return summary, nil
 }
 
 // parseAffiliateReportWindow accepts RFC3339 instants or WIB calendar dates;

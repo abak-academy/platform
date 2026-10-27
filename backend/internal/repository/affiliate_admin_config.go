@@ -309,10 +309,14 @@ func (r *Repository) DecideAffiliateAppealTx(ctx context.Context, tx pgx.Tx, id 
 	return err
 }
 
-// ListAffiliateReportRows returns every affiliator (capped) with the window's
+// ListAffiliateReportRows returns every affiliator (capped), narrowed by q (name
+// or code) and level, with the window's
 // new bindings, net revenue and click counts; commission status buckets are
 // stitched by the service.
-func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.Time) ([]AffiliateReportRow, error) {
+func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.Time, q, level string) ([]AffiliateReportRow, error) {
+	p := newAffPredicate(3)
+	p.eq("a.level", level)
+	p.search(q, "u.name", "a.code")
 	rows, err := r.pool.Query(ctx,
 		`SELECT a.id, COALESCE(a.code, ''), u.name, a.level,
 		        COALESCE(bind.students_new, 0), COALESCE(rev.net_revenue, 0), COALESCE(clicks.n, 0)
@@ -337,9 +341,10 @@ func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.
 		     WHERE created_at >= $1 AND created_at < $2
 		     GROUP BY affiliator_id
 		 ) clicks ON clicks.affiliator_id = a.id
+		 WHERE TRUE`+p.sql+`
 		 ORDER BY a.created_at
 		 LIMIT 500`,
-		from, to,
+		append([]any{from, to}, p.args...)...,
 	)
 	if err != nil {
 		return nil, err

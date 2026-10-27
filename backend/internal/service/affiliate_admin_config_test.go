@@ -506,7 +506,7 @@ func TestAffiliateConfigReportSummary(t *testing.T) {
 	to := time.Now().Add(time.Hour).UTC()
 
 	// Delta baseline: the shared fixture carries other tests' rows.
-	baseline, err := svc.AdminAffiliateReportSummary(ctx, from.Format(time.RFC3339), to.Format(time.RFC3339))
+	baseline, err := svc.AdminAffiliateReportSummary(ctx, from.Format(time.RFC3339), to.Format(time.RFC3339), AffiliateReportOptions{})
 	require.NoError(t, err)
 
 	createAffiliateBindingCommitted(t, svc, repo, studentA.ID, owner.affiliatorID, "manual_code")
@@ -554,7 +554,7 @@ func TestAffiliateConfigReportSummary(t *testing.T) {
 		owner.affiliatorID, owner.code, uuid.NewString()[:16], from.Add(-72*time.Hour).In(affiliateWIBLocation()), from.Add(-72*time.Hour))
 	require.NoError(t, err)
 
-	report, err := svc.AdminAffiliateReportSummary(ctx, from.Format(time.RFC3339), to.Format(time.RFC3339))
+	report, err := svc.AdminAffiliateReportSummary(ctx, from.Format(time.RFC3339), to.Format(time.RFC3339), AffiliateReportOptions{})
 	require.NoError(t, err)
 
 	cOwner := findAffiliateReportRow(report, owner.affiliatorID)
@@ -597,11 +597,11 @@ func TestAffiliateConfigReportSummary(t *testing.T) {
 		t.Errorf("totals pending delta = %v, want 5000", totalsAfter.Commissions["pending"]-totalsBefore.Commissions["pending"])
 	}
 
-	_, err = svc.AdminAffiliateReportSummary(ctx, "", to.Format(time.RFC3339))
+	_, err = svc.AdminAffiliateReportSummary(ctx, "", to.Format(time.RFC3339), AffiliateReportOptions{})
 	if !errors.Is(err, ErrMissingField) {
 		t.Errorf("summary without from err = %v, want ErrMissingField", err)
 	}
-	_, err = svc.AdminAffiliateReportSummary(ctx, "not-a-date", to.Format(time.RFC3339))
+	_, err = svc.AdminAffiliateReportSummary(ctx, "not-a-date", to.Format(time.RFC3339), AffiliateReportOptions{})
 	if !errors.Is(err, ErrInvalidDateFormat) {
 		t.Errorf("summary with bad from err = %v, want ErrInvalidDateFormat", err)
 	}
@@ -626,7 +626,7 @@ func TestAffiliateConfigReportSummary_dateOnlyWindowIncludesPaidDay(t *testing.T
 	})
 
 	day := paidAt.Format("2006-01-02")
-	report, err := svc.AdminAffiliateReportSummary(ctx, day, day)
+	report, err := svc.AdminAffiliateReportSummary(ctx, day, day, AffiliateReportOptions{})
 	require.NoError(t, err)
 	row := findAffiliateReportRow(report, owner.affiliatorID)
 	if row == nil || row.NetRevenue != 120000 {

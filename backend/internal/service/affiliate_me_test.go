@@ -197,7 +197,7 @@ func TestAdminReadsSurviveACodelessPendingAffiliator(t *testing.T) {
 
 	from := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	to := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
-	_, err = svc.AdminAffiliateReportSummary(ctx, from, to)
+	_, err = svc.AdminAffiliateReportSummary(ctx, from, to, AffiliateReportOptions{})
 	require.NoError(t, err)
 	_, _, err = svc.AdminListAffiliateFlags(ctx, AffiliateAdminQueueFilter{Status: "open", Limit: 20})
 	require.NoError(t, err)

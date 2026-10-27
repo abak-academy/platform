@@ -177,9 +177,19 @@ func (h *Handler) AdminDecideAffiliateAppeal(c echo.Context) error {
 	return c.JSON(http.StatusOK, violation)
 }
 
-// AdminAffiliateReportSummary backs GET /admin/affiliate-reports/summary?from&to.
+// AdminAffiliateReportSummary backs GET /admin/affiliate-reports/summary?from&to,
+// optionally narrowed by q and level and paged with page and per_page.
 func (h *Handler) AdminAffiliateReportSummary(c echo.Context) error {
-	report, err := h.svc.AdminAffiliateReportSummary(c.Request().Context(), c.QueryParam("from"), c.QueryParam("to"))
+	page, perPage, err := adminQueuePaging(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	report, err := h.svc.AdminAffiliateReportSummary(c.Request().Context(), c.QueryParam("from"), c.QueryParam("to"), service.AffiliateReportOptions{
+		Q:     affiliateSearchText(c.QueryParam("q")),
+		Level: c.QueryParam("level"),
+		Page:  page,
+		Limit: perPage,
+	})
 	if err != nil {
 		return mapServiceError(c, err)
 	}

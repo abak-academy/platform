@@ -156,3 +156,38 @@ func TestAdminAffiliateCommissions_fullNamesFiltersAndCSV(t *testing.T) {
 	require.Len(t, records, 3)
 	require.Equal(t, "student_name", records[0][2])
 }
+
+func TestAdminAffiliateReportSummary_searchLevelAndPaging(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	_, a := seedAffiliateMeAffiliator(t, repo, "Report Alpha "+uniqueSuffix(), "active", "bronze")
+	_, b := seedAffiliateMeAffiliator(t, repo, "Report Beta "+uniqueSuffix(), "active", "silver")
+	from := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	to := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+
+	byCode, err := svc.AdminAffiliateReportSummary(ctx, from, to, AffiliateReportOptions{Q: strings.ToLower(a.Code)})
+	require.NoError(t, err)
+	require.Equal(t, 1, byCode.Total)
+	require.Equal(t, a.ID, byCode.Data[0].AffiliatorID)
+
+	silver, err := svc.AdminAffiliateReportSummary(ctx, from, to, AffiliateReportOptions{Q: b.Code, Level: "silver"})
+	require.NoError(t, err)
+	require.Equal(t, 1, silver.Total)
+	none, err := svc.AdminAffiliateReportSummary(ctx, from, to, AffiliateReportOptions{Q: b.Code, Level: "gold"})
+	require.NoError(t, err)
+	require.Zero(t, none.Total)
+
+	all, err := svc.AdminAffiliateReportSummary(ctx, from, to, AffiliateReportOptions{})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, all.Total, 2)
+	paged, err := svc.AdminAffiliateReportSummary(ctx, from, to, AffiliateReportOptions{Page: 1, Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, paged.Data, 1)
+	require.Equal(t, all.Total, paged.Total, "the total counts every matching row, not the page")
+	beyond, err := svc.AdminAffiliateReportSummary(ctx, from, to, AffiliateReportOptions{Page: 9999, Limit: 10})
+	require.NoError(t, err)
+	require.Empty(t, beyond.Data)
+
+	_, err = svc.AdminAffiliateReportSummary(ctx, from, to, AffiliateReportOptions{Level: "platinum"})
+	require.ErrorIs(t, err, ErrValidation)
+}
