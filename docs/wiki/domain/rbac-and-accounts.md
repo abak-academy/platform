@@ -1,7 +1,7 @@
 ---
 title: RBAC and Accounts
-updated: 2026-10-27
-verified_against: c70f8827
+updated: 2026-10-28
+verified_against: 46fd90c8
 ---
 
 One-liner: 6 roles, a static `role → capability` map, echo middleware that checks the map on
@@ -87,10 +87,29 @@ An `affiliator` is a role-level account bound to several schools, not one: `user
 so scope code compares the role (`claims.Role == RoleAffiliator`), never the capability.
 
 - **Accounts** (`service/affiliator.go`, routes under `/admin/system/affiliators`, `system:admin`
-  so super admin only): create, bulk create (JSON rows, at most 200, per-row result), promote an
-  `admin_school` account (clears its `school_id`, revokes its sessions), replace the school list,
-  list with student/order/paid figures, detail with the latest orders. Active state reuses
-  `PATCH /admin/system/accounts/:id/status`. Every change writes an `affiliator.*` audit row.
+  so super admin only): create (an empty password is generated and returned once), bulk create,
+  promote an `admin_school` account (clears its `school_id`, revokes its sessions), replace the
+  school list, paged list with search and the student/order/paid figures, detail with the latest
+  orders, and `GET /promotable` (active school admins with the school they administer). Active
+  state reuses `PATCH /admin/system/accounts/:id/status`. Every change writes an `affiliator.*`
+  audit row.
+- **Promotion is one-way.** There is no route from `affiliator` back to `admin_school`
+  (decision, review of 2026-10-28): the Promote tab and dialog say so, and deactivation is the
+  way to stop an affiliator. Promoting does not touch students or schools; the account only
+  loses its own school-admin access unless the school is in the list it is given (the dialog
+  starts with the school the admin administered). Orders it placed as a school admin stay under
+  the same user id, so they show in its affiliator order list and totals.
+- **Bulk create** is an async `affiliator_bulk` job like the student and school ones: presign,
+  enqueue (header checked eagerly), worker, result CSV (`affiliator-bulk/results/<job>.csv`).
+  Columns `name,email,password,school_npsn,school_code`, several schools per cell separated by
+  `|`, blank password generated and listed only in the result; the input CSV is deleted after the
+  job because it may hold passwords (`worker/affiliator_bulk.go`).
+- **Menu and reports.** The affiliator menu is a group of its own in the super-admin sidebar
+  (`/admin/affiliators` with Daftar and Promote tabs, `/admin/affiliators/reports`), not part of
+  System. Reports (`service/affiliate_report.go`, `repository/affiliate_report.go`): per
+  affiliator, per school (with coverage), best sellers per school, promo usage and monthly trend,
+  each with a period, paging (trend excepted) and a CSV export. "Paid" is `paid_at` set and not
+  refunded; the pending backlog and student coverage are as of now, not of the period.
 - **School scope**: `resolveStudentSchoolScope` sends an affiliator to `resolveAffiliatorSchool`
   (`school_scope.go`): `?school_id=` is required for single-school actions and must be in the
   list, which is read from the database on every request, not from the token (403

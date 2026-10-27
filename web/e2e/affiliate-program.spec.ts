@@ -13,6 +13,9 @@ import { API_BASE, loginRealAdmin } from "./helpers/session";
  *
  * The student account is created through the affiliator's own registration, so
  * the credentials captured from the dialog also prove the student can sign in.
+ *
+ * The bulk CSV case needs the object storage the app uses for uploads (MinIO in
+ * the local compose stack); it skips itself when presigning is not available.
  */
 
 const AFFILIATOR_PASSWORD = "E2eAff#2026";
@@ -21,8 +24,8 @@ interface Ctx {
   adminToken: string;
   affiliatorId: string;
   affiliatorEmail: string;
-  schoolA: { id: string; name: string };
-  schoolB: { id: string; name: string };
+  schoolA: { id: string; name: string; code: string };
+  schoolB: { id: string; name: string; code: string };
   promoCode: string;
   productName: string;
   studentName: string;
@@ -67,9 +70,10 @@ test.describe.serial("affiliate program", () => {
 
     const school = async (label: string) => {
       const name = `E2E Affiliate School ${label} ${suffix}`;
-      const { res, body } = await api<{ id: string }>(request, "post", "/admin/schools", ctx.adminToken, { name, code: `E2E${label}${suffix}` });
+      const code = `E2E${label}${suffix}`;
+      const { res, body } = await api<{ id: string }>(request, "post", "/admin/schools", ctx.adminToken, { name, code });
       expect(res.status(), `create school ${label}: ${JSON.stringify(body)}`).toBe(201);
-      return { id: body.id, name };
+      return { id: body.id, name, code };
     };
     ctx.schoolA = await school("A");
     ctx.schoolB = await school("B");
@@ -214,21 +218,155 @@ test.describe.serial("affiliate program", () => {
     await expect(page.locator("strong", { hasText: /^0$/ })).toBeVisible();
   });
 
-  test("the super admin sees the affiliator's results and can deactivate it", async ({ page, context, request }) => {
+  test("the super admin finds the affiliator in its own menu, reads the report and exports it", async ({ page, context, request }) => {
     await loginRealAdmin(context, request);
-    await page.goto("/admin/system/affiliators");
+    await page.goto("/admin/affiliators/reports");
 
-    const row = page.getByRole("row", { name: /E2E Affiliator/ }).filter({ hasText: ctx.affiliatorEmail });
+    // The affiliator menu is a group of its own, apart from System.
+    await expect(page.getByRole("link", { name: "Laporan", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Affiliator", exact: true })).toBeVisible();
+
+    await page.getByRole("searchbox", { name: "Cari nama atau email" }).fill(ctx.affiliatorEmail);
+    const row = page.locator("tr", { hasText: ctx.affiliatorEmail });
+    await expect(row).toBeVisible();
+    await expect(row).toContainText("Aktif");
+    // One free order paid today: 1 paid order, 1 unit, no money.
+    const cells = (await row.locator("td").allTextContents()).map((c) => c.trim());
+    expect(cells[3]).toBe("1");
+    expect(cells[4]).toBe("1");
+    expect(cells[5]).toBe("Rp0");
+
+    await row.getByRole("button", { name: "Detail" }).click();
+    await expect(page.getByRole("dialog")).toContainText(ctx.productName);
+    await page.getByRole("dialog").getByRole("button", { name: "Tutup" }).click();
+
+    await page.getByRole("tab", { name: "Per sekolah" }).click();
+    await page.getByRole("searchbox", { name: "Cari sekolah" }).fill(ctx.schoolA.name);
+    const schoolRow = page.locator("tr", { hasText: ctx.schoolA.name });
+    await expect(schoolRow).toBeVisible();
+    // 1 student, covered by the order, none left uncovered.
+    const schoolCells = (await schoolRow.locator("td").allTextContents()).map((c) => c.trim());
+    expect(schoolCells.slice(2, 5)).toEqual(["1", "1", "0"]);
+
+    await page.getByRole("tab", { name: "Penggunaan promo" }).click();
+    await page.getByRole("searchbox", { name: "Cari kode promo" }).fill(ctx.promoCode);
+    await expect(page.locator("tr", { hasText: ctx.promoCode })).toContainText("Affiliator");
+
+    await page.getByRole("tab", { name: "Per affiliator" }).click();
+    await page.getByRole("searchbox", { name: "Cari nama atau email" }).fill(ctx.affiliatorEmail);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Ekspor CSV" }).click()]);
+    expect(download.suggestedFilename()).toMatch(/^laporan-affiliator-affiliators-.*\.csv$/);
+    const stream = await download.createReadStream();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(chunk as Buffer);
+    const csv = Buffer.concat(chunks).toString("utf8");
+    expect(csv.startsWith("\uFEFFnama,email,status")).toBeTruthy();
+    expect(csv).toContain(ctx.affiliatorEmail);
+  });
+
+  test("promoting a school admin warns that it cannot be undone and starts with its school", async ({ page, context, request }) => {
+    const suffix = `${Date.now()}`;
+    const email = `promote-${suffix}@example.test`;
+    const created = await api<{ id: string }>(request, "post", "/admin/system/accounts", ctx.adminToken, {
+      email, name: `E2E Promote ${suffix}`, role: "admin_school", password: AFFILIATOR_PASSWORD, school_id: ctx.schoolB.id,
+    });
+    expect(created.res.status(), JSON.stringify(created.body)).toBe(201);
+
+    await loginRealAdmin(context, request);
+    await page.goto("/admin/affiliators");
+    await page.getByRole("tab", { name: "Promote" }).click();
+    await expect(page.getByRole("note")).toContainText("tidak bisa diturunkan kembali menjadi school admin");
+
+    await page.getByRole("searchbox", { name: "Cari nama, email, atau sekolah" }).fill(email);
+    const row = page.locator("tr", { hasText: email });
+    await expect(row).toContainText(ctx.schoolB.name);
+    await row.getByRole("button", { name: "Jadikan affiliator" }).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("alert")).toContainText("Tidak bisa diturunkan kembali");
+    await expect(dialog.getByRole("alert")).toContainText("tidak bisa turun lagi menjadi school admin");
+    await expect(dialog.getByRole("list", { name: "Sekolah terpilih" })).toContainText(ctx.schoolB.name);
+
+    const promoted = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/affiliators/${created.body.id}/promote`));
+    await dialog.getByRole("button", { name: "Jadikan affiliator" }).click();
+    expect((await promoted).ok()).toBeTruthy();
+
+    // Gone from the promotable list, and the account is now an affiliator of that school.
+    await page.getByRole("searchbox", { name: "Cari nama, email, atau sekolah" }).fill(email);
+    await expect(page.locator("tr", { hasText: email })).toHaveCount(0);
+    const login = await api<{ access_token: string }>(request, "post", "/auth/login", null, { identifier: email, password: AFFILIATOR_PASSWORD });
+    const me = await api<{ schools?: { id: string }[] }>(request, "get", "/affiliates/me", login.body.access_token);
+    expect(me.res.status()).toBe(200);
+    expect(me.body.schools?.map((x) => x.id)).toEqual([ctx.schoolB.id]);
+  });
+
+  test("creates many affiliators from a CSV with a school per row, generating blank passwords", async ({ page, context, request }) => {
+    const suffix = `${Date.now()}`;
+    const probe = await api(request, "post", "/admin/system/affiliators/bulk/presign?filename=probe.csv", ctx.adminToken);
+    test.skip(!probe.res.ok(), "needs the object storage used for uploads (MinIO in the local stack)");
+
+    const given = `bulk-given-${suffix}@example.test`;
+    const generated = `bulk-gen-${suffix}@example.test`;
+    const broken = `bulk-bad-${suffix}@example.test`;
+    const csv = [
+      "name,email,password,school_npsn,school_code",
+      `E2E Bulk Given,${given},Given#2026pw,,${ctx.schoolA.code}`,
+      `E2E Bulk Generated,${generated},,,${ctx.schoolA.code}|${ctx.schoolB.code}`,
+      `E2E Bulk Broken,${broken},,,NO_SUCH_SCHOOL`,
+    ].join("\n");
+
+    await loginRealAdmin(context, request);
+    await page.goto("/admin/affiliators");
+    await page.getByRole("button", { name: "Tambah affiliator" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("radio", { name: "Banyak akun (CSV)" }).click();
+    await expect(dialog.getByLabel("Pilih berkas CSV")).toBeVisible();
+
+    await dialog.getByLabel("Pilih berkas CSV").setInputFiles({ name: "affiliators.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+    await dialog.getByRole("button", { name: "Unggah" }).click();
+    await expect(dialog.getByText("Impor selesai.")).toBeVisible({ timeout: 60_000 });
+
+    const resultHref = await dialog.getByRole("link", { name: /Unduh hasil impor/ }).getAttribute("href");
+    const report = await (await request.get(resultHref!)).text();
+    const lines = report.trim().split("\n");
+    expect(lines[0]).toBe("row,name,email,schools,status,temp_password,error");
+    const byEmail = (email: string) => lines.find((l) => l.includes(email))!;
+    expect(byEmail(given)).toContain("success");
+    expect(byEmail(broken)).toContain("failed");
+    expect(byEmail(broken)).toContain("school not found by code");
+    const genLine = byEmail(generated).split(",");
+    expect(genLine[4]).toBe("success");
+    const tempPassword = genLine[5];
+    expect(tempPassword.length).toBeGreaterThanOrEqual(8);
+
+    for (const [email, password] of [[given, "Given#2026pw"], [generated, tempPassword]]) {
+      const login = await api<{ access_token: string }>(request, "post", "/auth/login", null, { identifier: email, password });
+      expect(login.res.ok(), `${email} can sign in`).toBeTruthy();
+    }
+    const me = await api<{ schools?: unknown[] }>(request, "get", "/affiliates/me", (await api<{ access_token: string }>(request, "post", "/auth/login", null, { identifier: generated, password: tempPassword })).body.access_token);
+    expect(me.body.schools).toHaveLength(2);
+    const none = await api<{ data: unknown[] }>(request, "get", `/admin/system/affiliators?q=${encodeURIComponent(broken)}`, ctx.adminToken);
+    expect(none.body.data).toHaveLength(0);
+  });
+
+  test("the super admin deactivates the affiliator from the list, and only that action is offered", async ({ page, context, request }) => {
+    await loginRealAdmin(context, request);
+    await page.goto("/admin/affiliators");
+
+    await page.getByRole("searchbox", { name: "Cari nama atau email" }).fill(ctx.affiliatorEmail);
+    const row = page.locator("tr", { hasText: ctx.affiliatorEmail });
     await expect(row).toBeVisible();
     // Exact: the row's own "Nonaktifkan" button contains the text "Nonaktif".
     await expect(row.getByText("Aktif", { exact: true })).toBeVisible();
-    await expect(row).toContainText("Rp0");
+    await expect(row.getByRole("button")).toHaveText(["Nonaktifkan"]);
+    await expect(page.getByTestId("pager-range")).toContainText("dari");
 
     page.once("dialog", (d) => d.accept());
     const patched = page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes(`/accounts/${ctx.affiliatorId}/status`));
     await row.getByRole("button", { name: "Nonaktifkan" }).click();
     expect((await patched).ok(), "the status change must reach the server").toBeTruthy();
     await expect(row.getByText("Nonaktif", { exact: true })).toBeVisible();
+    await expect(row.getByRole("button")).toHaveText(["Aktifkan"]);
   });
 
   test("a deactivated affiliator can look but not act", async ({ page, request }) => {

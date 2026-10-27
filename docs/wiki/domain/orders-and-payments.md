@@ -1,7 +1,7 @@
 ---
 title: Orders & Payments
-updated: 2026-10-27
-verified_against: c70f8827
+updated: 2026-10-28
+verified_against: 46fd90c8
 ---
 
 See also: [../architecture/system-overview.md](../architecture/system-overview.md), [../architecture/shipping-biteship.md](../architecture/shipping-biteship.md), [./exam-lifecycle-and-scoring.md](./exam-lifecycle-and-scoring.md).
@@ -137,8 +137,10 @@ affiliator; the students are `order_participant` rows, so fulfilment fans out to
   `expires_at`, `min_qty`, `min_order_amount` and `product_ids` (empty = all products; only matching
   lines count towards the minimums and the discount). `POST /promo-codes/validate` knows only a
   subtotal, so it refuses promos that need quantities or products.
-- Dashboard figures (`repository/affiliator_dashboard.go`) count an order as paid when `paid_at` is
-  set and it was not refunded; open carts never show in lists or totals.
+- Dashboard figures (`repository/affiliator_dashboard.go`) and the super-admin reports
+  (`repository/affiliate_report.go`) count an order as paid when `paid_at` is set and it was not
+  refunded; open carts never show in lists or totals. An affiliator order belongs to the school of
+  its participants (an order is single-school), which is how the per-school report attributes it.
 
 ## Order → access / shipping fan-out
 
