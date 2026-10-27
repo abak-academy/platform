@@ -46,8 +46,6 @@ type AffiliateMeProfile struct {
 	TermsVersion      string                    `json:"terms_version"`
 	TermsAcceptedAt   time.Time                 `json:"terms_accepted_at"`
 	LevelProgress     *AffiliateMeLevelProgress `json:"level_progress"`
-	MinPayout         float64                   `json:"min_payout"`
-	PayoutDayOfMonth  *int                      `json:"payout_day_of_month"`
 }
 
 type AffiliateMeListFilter struct {
@@ -214,8 +212,6 @@ func (s *Service) GetMyAffiliateProfile(ctx context.Context, userID string) (Aff
 		progress.RiseThreshold = &rise
 	}
 	profile.LevelProgress = progress
-	profile.MinPayout = rules[aff.Level].MinPayout
-	profile.PayoutDayOfMonth = rules[aff.Level].PayoutDayOfMonth
 	return profile, nil
 }
 
