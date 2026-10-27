@@ -104,6 +104,27 @@ func TestAffiliatorOrder_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("product list is not cut off at one page", func(t *testing.T) {
+		for i := 0; i < 105; i++ {
+			seedDigitalProduct(t, repo, "course", 1000, courseTarget)
+		}
+		list, err := svc.ListAffiliatorProducts(ctx)
+		if err != nil {
+			t.Fatalf("ListAffiliatorProducts: %v", err)
+		}
+		courses := 0
+		found := false
+		for _, p := range list {
+			if p.Type == "course" {
+				courses++
+			}
+			found = found || p.ID == courseProduct.String()
+		}
+		if courses < 106 || !found {
+			t.Errorf("course products listed = %d (seeded one present: %v), want every one of the 106 seeded", courses, found)
+		}
+	})
+
 	t.Run("preview excludes owners and applies the promo to the net new count", func(t *testing.T) {
 		a, b, c := newStudent(school), newStudent(school), newStudent(school)
 		registerForExam(t, repo, c, examTarget, "registered")

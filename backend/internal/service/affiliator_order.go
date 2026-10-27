@@ -36,16 +36,25 @@ type affiliatorOrderPlan struct {
 func (s *Service) ListAffiliatorProducts(ctx context.Context) ([]model.Product, error) {
 	out := []model.Product{}
 	for _, typ := range []string{"exam", "course"} {
-		products, _, err := s.ListProducts(ctx, repository.ProductFilter{
-			Type:              typ,
-			Status:            "published",
-			VisibleOnly:       true,
-			OrderableExamOnly: typ == "exam",
-		}, RoleStudent)
-		if err != nil {
-			return nil, err
+		cursor := ""
+		for {
+			products, next, err := s.ListProducts(ctx, repository.ProductFilter{
+				Type:              typ,
+				Status:            "published",
+				VisibleOnly:       true,
+				OrderableExamOnly: typ == "exam",
+				Limit:             100,
+				Cursor:            cursor,
+			}, RoleStudent)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, products...)
+			if next == "" {
+				break
+			}
+			cursor = next
 		}
-		out = append(out, products...)
 	}
 	return out, nil
 }
