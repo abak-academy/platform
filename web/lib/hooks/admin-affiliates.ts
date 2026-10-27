@@ -48,6 +48,7 @@ export interface AdminAffiliateListParams {
   level?: string;
   q?: string;
   page?: number;
+  per_page?: number;
 }
 
 // The payout, flag and appeal queues share one query: search, status, date
@@ -82,7 +83,7 @@ export function useAdminAffiliates(params: AdminAffiliateListParams) {
     queryKey: adminAffiliateKeys.list(params),
     queryFn: () =>
       authFetch<AffiliateAdminListPage>(
-        `/admin/affiliates${qs({ status: params.status, level: params.level, q: params.q, page: params.page })}`,
+        `/admin/affiliates${qs({ status: params.status, level: params.level, q: params.q, page: params.page, per_page: params.per_page })}`,
       ),
   });
 }

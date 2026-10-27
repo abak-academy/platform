@@ -1,22 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { HandCoins } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { AffiliateList } from "@/components/affiliate/AffiliateList";
+import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { ReasonDialog } from "@/components/affiliate/ReasonDialog";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
-import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
 import { useAdminAffiliates, useDecideAffiliateApproval } from "@/lib/hooks/admin-affiliates";
-import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useHasCapability } from "@/lib/hooks/use-capability";
+import { useListParams } from "@/lib/hooks/use-list-params";
 import { useTranslation } from "@/lib/i18n";
 import type { AffiliateAdminRow } from "@/lib/types";
 
@@ -24,15 +24,19 @@ const STATUSES = ["pending_approval", "active", "suspended", "deactivated", "rej
 const LEVELS = ["bronze", "silver", "gold"] as const;
 
 export default function AdminAffiliatesPage() {
+  return (
+    <Suspense fallback={null}>
+      <AffiliatesContent />
+    </Suspense>
+  );
+}
+
+function AffiliatesContent() {
   const { t } = useTranslation();
   const canManage = useHasCapability("affiliates:*");
-  const [status, setStatus] = useState("");
-  const [level, setLevel] = useState("");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const { params, update, reset, hasFilters } = useListParams();
   const [rejecting, setRejecting] = useState<AffiliateAdminRow | null>(null);
-  const q = useDebouncedValue(search.trim());
-  const query = useAdminAffiliates({ status, level, q, page });
+  const query = useAdminAffiliates({ status: params.status, level: params.type, q: params.q, page: params.page, per_page: params.per_page });
   const decide = useDecideAffiliateApproval();
 
   if (!canManage) return <NoAccess />;
@@ -100,57 +104,24 @@ export default function AdminAffiliatesPage() {
   return (
     <div className="space-y-4">
       <AdminPageHeader icon={HandCoins} title={t("admin_aff_title")} description={t("admin_aff_desc")} />
-      <div className="flex flex-wrap gap-3">
-        <Input
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          placeholder={t("admin_aff_search_placeholder")}
-          aria-label={t("admin_aff_search_placeholder")}
-          className="max-w-xs"
-        />
-        <select
-          aria-label={t("aff_filter_status")}
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value);
-            setPage(1);
-          }}
-          className="h-9 rounded-md border border-line bg-surface px-3 text-sm"
-        >
-          <option value="">{t("aff_filter_all")}</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {affLabel(t, s)}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label={t("admin_aff_filter_level")}
-          value={level}
-          onChange={(e) => {
-            setLevel(e.target.value);
-            setPage(1);
-          }}
-          className="h-9 rounded-md border border-line bg-surface px-3 text-sm"
-        >
-          <option value="">{t("admin_aff_all_levels")}</option>
-          {LEVELS.map((l) => (
-            <option key={l} value={l}>
-              {affLabel(t, l)}
-            </option>
-          ))}
-        </select>
-      </div>
+      <ListToolbar
+        params={params}
+        onChange={update}
+        onReset={reset}
+        searchPlaceholder={t("admin_aff_search_placeholder")}
+        filters={[
+          { key: "status", label: t("aff_col_status"), options: STATUSES.map((v) => ({ value: v, label: affLabel(t, v) })) },
+          { key: "type", label: t("admin_aff_col_level"), options: LEVELS.map((v) => ({ value: v, label: affLabel(t, v) })) },
+        ]}
+      />
       <AffiliateList
         query={query}
         columns={columns}
         rowKey={(r) => r.id}
-        page={page}
-        onPageChange={setPage}
+        page={params.page}
+        onPageChange={(page) => update({ page })}
         empty={t("admin_aff_empty")}
+        filtered={hasFilters}
       />
       <ReasonDialog
         open={rejecting !== null}

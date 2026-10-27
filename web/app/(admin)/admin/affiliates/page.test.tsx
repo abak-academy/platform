@@ -6,7 +6,15 @@ const h = vi.hoisted(() => ({
   list: vi.fn(),
   decide: vi.fn(),
   capability: vi.fn(),
+  replace: vi.fn(),
+  search: { value: "" },
   toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: h.replace }),
+  usePathname: () => "/admin/affiliates",
+  useSearchParams: () => new URLSearchParams(h.search.value),
 }));
 
 vi.mock("@/lib/hooks/admin-affiliates", () => ({
@@ -34,6 +42,7 @@ const active = { ...pending, id: "a2", name: "Sari", code: "SARI2222", status: "
 describe("AdminAffiliatesPage", () => {
   beforeEach(() => {
     h.decide.mockReset();
+    h.search.value = "";
     h.toast.success.mockReset();
     h.toast.error.mockReset();
     h.capability.mockReturnValue(true);
@@ -86,11 +95,10 @@ describe("AdminAffiliatesPage", () => {
     );
   });
 
-  it("passes the status filter to the list query and resets the page", () => {
+  it("sends the URL search, filters and page size to the query", () => {
+    h.search.value = "q=budi&status=active&type=gold&page=2&per_page=50";
     render(<AdminAffiliatesPage />);
 
-    fireEvent.change(screen.getByLabelText("Filter status"), { target: { value: "active" } });
-
-    expect(h.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: "active", page: 1 }));
+    expect(h.list).toHaveBeenLastCalledWith({ q: "budi", status: "active", level: "gold", page: 2, per_page: 50 });
   });
 });
