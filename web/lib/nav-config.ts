@@ -19,6 +19,7 @@ import {
   Settings,
   ShieldCheck,
   Store,
+  Handshake,
 } from "lucide-react";
 
 export type UserRole =
@@ -26,7 +27,8 @@ export type UserRole =
   | "admin_store"
   | "admin_exam"
   | "admin_school"
-  | "super_admin";
+  | "super_admin"
+  | "affiliator";
 
 export interface NavItem {
   labelKey: keyof (typeof import("./i18n").DICT)["id"];
@@ -49,6 +51,7 @@ export const ROLE_LABEL_KEYS: Record<UserRole, keyof (typeof import("./i18n").DI
   admin_exam: "role_admin_exam",
   admin_school: "role_admin_school",
   super_admin: "role_super_admin",
+  affiliator: "role_affiliator",
 };
 
 export const ADMIN_ROLES: UserRole[] = [
@@ -56,6 +59,7 @@ export const ADMIN_ROLES: UserRole[] = [
   "admin_exam",
   "admin_school",
   "super_admin",
+  "affiliator",
 ];
 
 function cs(
@@ -133,6 +137,18 @@ export const ADMIN_SCHOOL_NAV: RoleNavConfig = [
   },
 ];
 
+export const AFFILIATOR_NAV: RoleNavConfig = [
+  {
+    titleKey: "nav_group_affiliate",
+    items: [
+      { labelKey: "nav_dashboard", href: "/admin/affiliate", icon: LayoutDashboard, exact: true },
+      { labelKey: "students", href: "/admin/affiliate/students", icon: Users },
+      { labelKey: "aff_nav_orders", href: "/admin/affiliate/orders", icon: Receipt },
+      { labelKey: "promos", href: "/admin/affiliate/promos", icon: Tag },
+    ],
+  },
+];
+
 // Store items for super admin. The store dashboard is included: it is the order
 // summary, and super_admin is meant to see everything a store admin sees plus
 // revenue. Leaving it out left super_admin with no route to the summary at all.
@@ -171,6 +187,7 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
     titleKey: "system",
     items: [
       { labelKey: "accounts", href: "/admin/system/accounts", icon: Users },
+      { labelKey: "aff_nav_affiliators", href: "/admin/system/affiliators", icon: Handshake },
       { labelKey: "config", href: "/admin/system/config", icon: Settings },
       { labelKey: "audit", href: "/admin/system/audit", icon: ShieldCheck },
     ],
@@ -183,6 +200,7 @@ export const NAV_CONFIG: Record<UserRole, RoleNavConfig> = {
   admin_exam: ADMIN_EXAM_NAV,
   admin_school: ADMIN_SCHOOL_NAV,
   super_admin: SUPER_ADMIN_NAV,
+  affiliator: AFFILIATOR_NAV,
 };
 
 export function roleLabelKey(role?: string): keyof (typeof import("./i18n").DICT)["id"] | undefined {

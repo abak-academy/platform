@@ -45,6 +45,11 @@ export const SUPER_ADMIN_STUDENT_TEMPLATE_ROWS = [
   "Siti Aminah,,YAYASANBIAN,SMA,,,,,,,,,,,",
 ];
 
+export const AFFILIATOR_STUDENT_TEMPLATE_HEADER =
+  "name,school_npsn,school_code,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos";
+
+export const AFFILIATOR_STUDENT_TEMPLATE_ROWS = SUPER_ADMIN_STUDENT_TEMPLATE_ROWS.map((row) => row.replace(/,$/, ""));
+
 export const SCHOOL_TEMPLATE_HEADER = "name,code,npsn,school_types,alamat,provinsi,kota";
 
 export const SCHOOL_TEMPLATE_ROWS = [
@@ -80,6 +85,11 @@ export const SUPER_ADMIN_STUDENT_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "password", required: false, ruleKey: "bulk_format_student_password", example: "" },
 ];
 
+// An affiliator names the school on every row like a super admin does, but cannot set passwords.
+export const AFFILIATOR_STUDENT_BULK_FIELDS: BulkFieldSpec[] = SUPER_ADMIN_STUDENT_BULK_FIELDS.filter(
+  (f) => f.column !== "password",
+);
+
 export const SCHOOL_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "name", required: true, ruleKey: "bulk_format_school_name", example: "SMAN 1 Jakarta" },
   { column: "code", required: true, ruleKey: "bulk_format_school_code", example: "SMAN1JKT" },
@@ -107,7 +117,10 @@ export const SCHOOL_GUIDE_PITFALL_KEYS = [
   "bulk_format_max_rows",
 ] as const satisfies readonly I18nKey[];
 
-export function buildStudentTemplateCSV(includePassword = false): string {
+export function buildStudentTemplateCSV(includePassword = false, schoolPerRow = false): string {
+  if (!includePassword && schoolPerRow) {
+    return `${AFFILIATOR_STUDENT_TEMPLATE_HEADER}\n${AFFILIATOR_STUDENT_TEMPLATE_ROWS.join("\n")}\n`;
+  }
   const header = includePassword ? SUPER_ADMIN_STUDENT_TEMPLATE_HEADER : STUDENT_TEMPLATE_HEADER;
   const rows = includePassword ? SUPER_ADMIN_STUDENT_TEMPLATE_ROWS : STUDENT_TEMPLATE_ROWS;
   return `${header}\n${rows.join("\n")}\n`;
@@ -128,8 +141,12 @@ function formatFieldGuide(fields: BulkFieldSpec[], t: Translate): string {
     .join("\n\n");
 }
 
-export function buildStudentGuideText(t: Translate, includePassword = false): string {
-  const fields = includePassword ? SUPER_ADMIN_STUDENT_BULK_FIELDS : STUDENT_BULK_FIELDS;
+export function buildStudentGuideText(t: Translate, includePassword = false, schoolPerRow = false): string {
+  const fields = includePassword
+    ? SUPER_ADMIN_STUDENT_BULK_FIELDS
+    : schoolPerRow
+      ? AFFILIATOR_STUDENT_BULK_FIELDS
+      : STUDENT_BULK_FIELDS;
   return [
     t("bulk_format_student_guide_title"),
     "",

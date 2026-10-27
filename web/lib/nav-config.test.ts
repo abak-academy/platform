@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ADMIN_EXAM_NAV, ADMIN_SCHOOL_NAV, NAV_CONFIG } from "./nav-config";
+import { adminHomeForRole, loginPathForRole, redirectForRole } from "./auth-redirect";
+import { ADMIN_EXAM_NAV, ADMIN_ROLES, ADMIN_SCHOOL_NAV, NAV_CONFIG } from "./nav-config";
 
 describe("admin navigation", () => {
   it("keeps super-admin exam navigation limited to exam tools", () => {
@@ -20,10 +21,11 @@ describe("admin navigation", () => {
     ]);
   });
 
-  it("keeps system navigation ordered as accounts, config, and audit", () => {
+  it("keeps system navigation ordered as accounts, affiliators, config, and audit", () => {
     const group = NAV_CONFIG.super_admin.find((item) => item.titleKey === "system")!;
     expect(group.items.map((item) => item.href)).toEqual([
       "/admin/system/accounts",
+      "/admin/system/affiliators",
       "/admin/system/config",
       "/admin/system/audit",
     ]);
@@ -57,5 +59,22 @@ describe("admin navigation", () => {
     const hrefs = ADMIN_EXAM_NAV.flatMap((group) => group.items.map((item) => item.href));
     expect(hrefs).toContain("/admin/school/students");
     expect(NAV_CONFIG.admin_exam.flatMap((group) => group.items.map((item) => item.href))).toEqual(hrefs);
+  });
+
+  it("gives affiliators their own pages and nothing from the other admin areas", () => {
+    expect(ADMIN_ROLES).toContain("affiliator");
+    const hrefs = NAV_CONFIG.affiliator.flatMap((group) => group.items.map((item) => item.href));
+    expect(hrefs).toEqual([
+      "/admin/affiliate",
+      "/admin/affiliate/students",
+      "/admin/affiliate/orders",
+      "/admin/affiliate/promos",
+    ]);
+  });
+
+  it("signs affiliators in and out through the admin pages", () => {
+    expect(adminHomeForRole("affiliator")).toBe("/admin/affiliate");
+    expect(redirectForRole("affiliator")).toBe("/admin");
+    expect(loginPathForRole("affiliator")).toBe("/admin/login");
   });
 });

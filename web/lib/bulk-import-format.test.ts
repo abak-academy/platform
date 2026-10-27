@@ -86,3 +86,27 @@ describe("bulk-import-format templates", () => {
     expect(buildStudentGuideText(t, true)).toContain("bulk_format_student_password");
   });
 });
+
+describe("affiliator student import format", () => {
+  it("names the school on every row like a super admin but offers no password column", async () => {
+    const { AFFILIATOR_STUDENT_BULK_FIELDS, SUPER_ADMIN_STUDENT_BULK_FIELDS, buildStudentTemplateCSV } = await import("./bulk-import-format");
+
+    const columns = AFFILIATOR_STUDENT_BULK_FIELDS.map((f) => f.column);
+    expect(columns).toContain("school_npsn");
+    expect(columns).toContain("school_code");
+    expect(columns).not.toContain("password");
+    expect(columns).toEqual(SUPER_ADMIN_STUDENT_BULK_FIELDS.map((f) => f.column).filter((c) => c !== "password"));
+
+    const [header, ...rows] = buildStudentTemplateCSV(false, true).trim().split("\n");
+    expect(header).toBe(columns.join(","));
+    for (const row of rows) expect(row.split(",").length).toBeGreaterThanOrEqual(columns.length);
+  });
+
+  it("keeps the other templates as they were", async () => {
+    const { buildStudentTemplateCSV, STUDENT_TEMPLATE_HEADER, SUPER_ADMIN_STUDENT_TEMPLATE_HEADER } = await import("./bulk-import-format");
+
+    expect(buildStudentTemplateCSV().split("\n")[0]).toBe(STUDENT_TEMPLATE_HEADER);
+    expect(buildStudentTemplateCSV(true).split("\n")[0]).toBe(SUPER_ADMIN_STUDENT_TEMPLATE_HEADER);
+    expect(buildStudentTemplateCSV(true, true).split("\n")[0]).toBe(SUPER_ADMIN_STUDENT_TEMPLATE_HEADER);
+  });
+});

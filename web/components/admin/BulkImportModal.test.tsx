@@ -141,6 +141,22 @@ describe("BulkImportModal", () => {
     expect(enqueueMutateAsync).not.toHaveBeenCalled();
   });
 
+  it("offers the school columns without a password column when the school is named per row", async () => {
+    render(<BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} schoolPerRow />, {
+      wrapper: wrapperFactory(),
+    });
+
+    expect(screen.getByText("school_npsn")).toBeInTheDocument();
+    expect(screen.getByText("school_code")).toBeInTheDocument();
+    expect(screen.queryByText("password")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /bulk_register_download_template/i }));
+    await waitFor(() => expect(lastDownloadedCSV).not.toBeNull());
+    expect(lastDownloadedCSV?.split("\n")[0]).toBe(
+      "name,school_npsn,school_code,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos",
+    );
+  });
+
   it("shows the field-rule table and downloads a guide txt", async () => {
     render(<BulkImportModal open={true} onOpenChange={vi.fn()} allowExplicitPassword={false} />, {
       wrapper: wrapperFactory(),

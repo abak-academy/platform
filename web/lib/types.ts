@@ -90,6 +90,8 @@ export interface AdminStudent {
   school_name?: string | null;
   /** What a self-registering user typed when their school wasn't listed. */
   unlisted_school_name?: string | null;
+  /** The affiliator that registered this student, when one did. */
+  registered_by?: string | null;
   created_at: string;
 }
 
@@ -1524,4 +1526,115 @@ export interface UnitSalesResponse {
   from: string | null;
   to: string | null;
   types: UnitSalesType[];
+}
+
+// ── Affiliate program ─────────────────────────────────────────────────────
+// Wire shapes of backend/internal/service/affiliator*.go and
+// backend/internal/repository/affiliator*.go.
+
+export interface Affiliator {
+  id: string;
+  name: string;
+  email: string | null;
+  status: "active" | "deactivated";
+  school_ids: string[];
+  /** Filled by the detail and self reads. */
+  schools?: SchoolOption[];
+  created_at: string;
+  updated_at: string;
+  student_count: number;
+  order_count: number;
+  paid_amount: number;
+}
+
+export interface AffiliatorInput {
+  email: string;
+  name: string;
+  password: string;
+  school_ids: string[];
+}
+
+export interface AffiliatorBulkResult {
+  row: number;
+  email: string;
+  ok: boolean;
+  error?: string;
+  data?: Affiliator;
+}
+
+export interface AffiliatorSchoolCount {
+  school_id: string;
+  school_name: string;
+  student_count: number;
+}
+
+export interface AffiliatorOrderTotals {
+  paid_orders: number;
+  paid_units: number;
+  paid_amount: number;
+  discount_total: number;
+  pending_orders: number;
+}
+
+export interface AffiliatorMonthPoint {
+  month: string;
+  orders: number;
+  units: number;
+  amount: number;
+}
+
+export interface AffiliatorSchoolProduct {
+  school_id: string;
+  school_name: string;
+  product_id: string;
+  product_name: string;
+  product_type: string;
+  units: number;
+}
+
+export interface AffiliatorDashboard {
+  schools: AffiliatorSchoolCount[];
+  totals: AffiliatorOrderTotals;
+  monthly: AffiliatorMonthPoint[];
+  top_products: AffiliatorSchoolProduct[];
+  unpurchased_students: number;
+}
+
+export interface AffiliatorOrderRow {
+  id: string;
+  status: string;
+  subtotal: number;
+  discount: number;
+  total: number;
+  product_name: string;
+  product_type: string;
+  participant_count: number;
+  school_name: string | null;
+  promo_code: string | null;
+  payment_expires_at: string | null;
+  created_at: string;
+}
+
+export interface AffiliatorDetail {
+  affiliator: Affiliator;
+  totals: AffiliatorOrderTotals;
+  recent_orders: AffiliatorOrderRow[];
+}
+
+export interface AffiliatorOrderPreview {
+  net_new_count: number;
+  excluded?: { student_id: string; name: string; reason: string }[];
+  unit_price: number;
+  subtotal: number;
+  discount: number;
+  total: number;
+  promo_code?: string;
+}
+
+export interface AffiliatorOrderInput {
+  school_id: string;
+  product_id: string;
+  student_ids?: string[];
+  all?: boolean;
+  promo_code?: string;
 }

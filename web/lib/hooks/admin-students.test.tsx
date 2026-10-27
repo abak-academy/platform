@@ -92,6 +92,20 @@ describe("admin-students hooks", () => {
     );
   });
 
+  it("useAdminStudents passes the affiliator filters and keeps them in separate cache entries", async () => {
+    mockAuthFetch.mockResolvedValue({ data: [], next_cursor: undefined });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(() => useAdminStudents({ registeredByMe: true, notPurchased: true }), { wrapper });
+
+    await waitFor(() =>
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/students?registered_by_me=true&not_purchased=true"),
+    );
+    expect(adminStudentsKeys.list(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, "mine,unpurchased")).not.toEqual(
+      adminStudentsKeys.list(),
+    );
+  });
+
   it("useAdminStudents passes picker eligibility and grade filters", async () => {
     mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: undefined });
 

@@ -11,8 +11,8 @@ import type {
 
 export const adminStudentsKeys = {
   all: ["admin", "students"] as const,
-  list: (status?: string, q?: string, cursor?: string, limit?: number, schoolId?: string, examId?: string, jenjang?: string, grade?: string) =>
-    [...adminStudentsKeys.all, "list", status ?? "all", q ?? "", cursor ?? "initial", limit ?? 20, schoolId ?? "", examId ?? "", jenjang ?? "", grade ?? ""] as const,
+  list: (status?: string, q?: string, cursor?: string, limit?: number, schoolId?: string, examId?: string, jenjang?: string, grade?: string, affiliator?: string) =>
+    [...adminStudentsKeys.all, "list", status ?? "all", q ?? "", cursor ?? "initial", limit ?? 20, schoolId ?? "", examId ?? "", jenjang ?? "", grade ?? "", affiliator ?? ""] as const,
 };
 
 // AdminStudentListResponse carries filter-aware counts of the whole scoped
@@ -28,11 +28,12 @@ interface AdminStudentListResponse {
 }
 
 export function useAdminStudents(
-  opts?: { status?: string; q?: string; cursor?: string; limit?: number; schoolId?: string; examId?: string; jenjang?: string; grade?: string; enabled?: boolean }
+  opts?: { status?: string; q?: string; cursor?: string; limit?: number; schoolId?: string; examId?: string; jenjang?: string; grade?: string; enabled?: boolean; registeredByMe?: boolean; notPurchased?: boolean }
 ) {
-  const { status, q, cursor, limit, schoolId, examId, jenjang, grade, enabled } = opts ?? {};
+  const { status, q, cursor, limit, schoolId, examId, jenjang, grade, enabled, registeredByMe, notPurchased } = opts ?? {};
+  const affiliator = [registeredByMe ? "mine" : "", notPurchased ? "unpurchased" : ""].filter(Boolean).join(",");
   return useQuery({
-    queryKey: adminStudentsKeys.list(status, q, cursor, limit, schoolId, examId, jenjang, grade),
+    queryKey: adminStudentsKeys.list(status, q, cursor, limit, schoolId, examId, jenjang, grade, affiliator),
     enabled: enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -44,6 +45,8 @@ export function useAdminStudents(
       if (examId) params.set("exam_id", examId);
       if (jenjang) params.set("jenjang", jenjang);
       if (grade) params.set("grade", grade);
+      if (registeredByMe) params.set("registered_by_me", "true");
+      if (notPurchased) params.set("not_purchased", "true");
       const query = params.toString();
       const path = query ? `/admin/students?${query}` : "/admin/students";
       return authFetch<AdminStudentListResponse>(path);

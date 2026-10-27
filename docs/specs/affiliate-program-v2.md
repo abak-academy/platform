@@ -94,7 +94,8 @@ Decisions (owner, 2026-10-27):
 - Follows the admin concept in `docs/specs/admin-orders-toolbar-redesign.md`: the primary row has only search (with clear), a Filters button showing the active count, and one sort select; filters live in a `Popover` with Reset and a Show button; active filters are removable `md-chip md-chip-primary` chips outside the panel; rows per page and Prev/Next sit in the table footer.
 - Reuse `AdminPageHeader`, `data-table`, `StatCard`, `PeriodBar`, `TopProductsTable`, `UnitSalesBlock`, `PromoModal`, `BulkImportModal`, `BulkFormatGuide`, `SchoolPicker`, `SchoolFilterPicker` and `ParticipantPicker`; no new visual language.
 - Every string goes through `useTranslation` with real `id` and `en` entries in `web/lib/i18n.ts`.
-- Route group `(affiliate)` for the affiliator pages; the super-admin settings and monitoring pages live under `(admin)/admin`.
+- The affiliator is an admin-shell role (`ADMIN_ROLES`, own nav, home `/admin/affiliate`, same `/admin/login`), so its pages live under `(admin)/admin/affiliate/*` rather than a separate route group: `/admin/affiliate` (dashboard), `/students`, `/orders`, `/orders/new`, `/promos`. The super-admin page is `/admin/system/affiliators` (list, search, status filter, create, CSV bulk create with one shared school list, promote, set schools, activate/deactivate, detail). Students use the existing hooks with the affiliator filters; the order flow pays through `SnapCheckout` on the `/affiliates/me/orders` base path.
+- Bulk student import for an affiliator reuses `BulkImportModal` with `schoolPerRow`: the template and guide carry `school_npsn`/`school_code` and no password column.
 - The nav (`web/lib/nav-config.ts`) and `use-capability.ts` mirror the new capabilities.
 
 ## Acceptance

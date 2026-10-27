@@ -152,6 +152,7 @@ describe("super_admin separates exam, school, and system navigation", () => {
   it("keeps System ordered and limited to platform administration", () => {
     expect(systemGroup?.items.map((i) => i.href)).toEqual([
       "/admin/system/accounts",
+      "/admin/system/affiliators",
       "/admin/system/config",
       "/admin/system/audit",
     ]);
