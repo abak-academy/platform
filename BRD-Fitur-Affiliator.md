@@ -11,7 +11,7 @@
 | Platform | Aplikasi web ujian online dan marketplace (Backend Golang, Frontend Next.js) |
 | Persetujuan formal | Tidak diperlukan (dokumen internal) |
 | Perubahan v0.2 | Fase 1 tanpa pajak, status penerimaan barang fisik sudah ada, admin adalah super admin. Q-02, Q-09, dan Q-13 dipindah ke daftar terjawab, Q-19 ditambahkan |
-| Perubahan v0.3 | Order manual dihapus dari lingkup (BR-KOM-07 dan FR-KOM-06). Ambang persetujuan kedua penyesuaian nonaktif Fase 1 (satu akun super admin). Masa tunggu digital default 7 hari. Representasi uang mengikuti konvensi repo. A-04 dan A-10 terjawab; Q-08, Q-14, Q-15, dan Q-19 pindah ke daftar terjawab. TRD: `docs/specs/affiliate-program.md` |
+| Perubahan v0.3 | Order manual dihapus dari lingkup (BR-KOM-07 dan FR-KOM-06). Ambang persetujuan kedua penyesuaian nonaktif Fase 1 (satu akun super admin). Masa tunggu digital default 7 hari. Representasi uang mengikuti konvensi repo. A-04 dan A-10 terjawab; Q-08, Q-14, Q-15, dan Q-19 pindah ke daftar terjawab. Diskusi admin dashboard: komisi persen atau nominal (per unit, dibatasi harga item), masa tunggu fisik satu parameter 14 hari, durasi ikatan per level, jadwal pencairan hanya informasi, batas pendaftaran harian untuk affiliator, semua job aman di-rerun. TRD: `docs/specs/affiliate-program.md` |
 
 ---
 
@@ -224,13 +224,13 @@ Refund setelah komisi berstatus Dibayar ditangani dengan entri pengurang di ledg
 | ID | Aturan |
 |---|---|
 | BR-KOM-01 | Komisi hanya lahir dari **order berstatus lunas** di marketplace, untuk siswa yang ikatannya aktif pada tanggal pembayaran. |
-| BR-KOM-02 | Kategori produk: Buku, Merchandise, Medali, Kursus, Ujian. Persentase komisi diatur admin per kategori, dengan kemungkinan pengecualian per produk. Persentase 0% berarti tidak ada komisi. |
+| BR-KOM-02 | Kategori produk: Buku, Merchandise, Medali, Kursus, Ujian. Komisi diatur admin per kategori sebagai **persen** atau **nominal per unit**, dengan kemungkinan pengecualian per produk. Nilai 0 berarti tidak ada komisi. Komisi per item tidak melebihi harga item setelah diskon. |
 | BR-KOM-03 | Dasar perhitungan adalah **harga item setelah diskon**, tidak termasuk ongkir, pajak, dan biaya payment gateway. Item gratis atau yang dibayar penuh dengan voucher tidak menghasilkan komisi. |
 | BR-KOM-04 | Semua pembelian selama ikatan aktif dikomisi. Tidak ada komisi khusus pembelian pertama. |
 | BR-KOM-05 | Komisi dihitung per item order. Setiap record komisi menyimpan **snapshot** persentase, level affiliator, dan dasar perhitungan. Perubahan aturan tidak mengubah komisi yang sudah tercatat. |
 | BR-KOM-06 | Pendaftaran langsung oleh admin tanpa pembayaran tidak menghasilkan komisi. Pembayaran offline yang perlu dikomisi dicatat admin sebagai penyesuaian manual (FR-ADJ), bukan order. |
 | BR-KOM-08 | Status komisi: **Menunggu**, **Tersedia**, **Dibayar**, **Dibatalkan**, **Ditahan**. |
-| BR-KOM-09 | Masa tunggu (diatur admin): produk digital (Ujian, Kursus) **7 hari** setelah pembayaran. Produk fisik (Buku, Merchandise, Medali) **7 hari setelah barang diterima ditambah 7 hari**. Nilai 0 berarti komisi langsung Tersedia. |
+| BR-KOM-09 | Masa tunggu (diatur admin): produk digital (Ujian, Kursus) **7 hari** setelah pembayaran. Produk fisik (Buku, Merchandise, Medali) **14 hari setelah barang diterima** (satu parameter). Nilai 0 berarti komisi langsung Tersedia. |
 | BR-KOM-10 | Setelah masa tunggu lewat dan tidak ada refund, komisi otomatis menjadi Tersedia dan masuk saldo. |
 | BR-KOM-11 | **Refund atau pembatalan**: bila komisi masih Menunggu, komisi dibatalkan. Bila sudah Tersedia atau Dibayar, sistem membuat entri pengurang di ledger. Saldo boleh bernilai negatif sementara dan ditutup oleh komisi berikutnya. Refund sebagian mengurangi komisi secara proporsional. |
 | BR-KOM-12 | Seluruh perubahan saldo dicatat di **ledger append-only**. Entri lama tidak diedit atau dihapus. Koreksi dilakukan dengan entri baru. |
@@ -257,8 +257,8 @@ Refund setelah komisi berstatus Dibayar ditangani dengan entri pengurang di ledg
 | ID | Aturan |
 |---|---|
 | BR-PCR-01 | **Saldo tersedia** = komisi Tersedia + penyesuaian penambah − pengurang − penarikan yang diajukan atau dibayar. Saldo yang dibekukan tidak dapat ditarik. |
-| BR-PCR-02 | Penarikan diajukan oleh affiliator jika saldo tersedia mencapai minimal penarikan (default Rp100.000). |
-| BR-PCR-03 | Pencairan dilakukan **manual oleh admin lewat transfer bank** pada jadwal pencairan (default sekali sebulan). Admin menandai penarikan Dibayar dan melampirkan bukti transfer. |
+| BR-PCR-02 | Penarikan diajukan oleh affiliator jika saldo tersedia mencapai minimal penarikan (default Rp100.000) dan status akun Aktif. |
+| BR-PCR-03 | Pencairan dilakukan **manual oleh admin lewat transfer bank** di luar sistem (tanpa integrasi bank). Jadwal pencairan (default sekali sebulan) hanya informasi untuk affiliator dan tidak membatasi pengajuan. Admin menandai penarikan Dibayar dan melampirkan bukti transfer. |
 | BR-PCR-04 | Status penarikan: Diajukan, Diproses, Dibayar, Ditolak. Penolakan wajib mencatat alasan dan saldo dikembalikan. |
 | BR-PCR-05 | Rekening tujuan harus atas nama affiliator (asumsi A-11). |
 | BR-PCR-06 | **Fase 1 tanpa pajak**: sistem tidak menghitung, memotong, atau melaporkan pajak, dan tidak mengumpulkan data identitas atau pajak (KTP, NPWP). Nominal yang dibayar sama dengan nominal penarikan. Desain data tetap menyisakan ruang agar hal ini bisa ditambahkan kelak. Kewajiban pajak di luar sistem dikonfirmasi tim keuangan. |
@@ -271,7 +271,7 @@ Refund setelah komisi berstatus Dibayar ditangani dengan entri pengurang di ledg
 | BR-PLG-02 | Kategori pelanggaran: kecurangan transaksi (belanja sendiri, akun siswa palsu, pembelian kecil demi memperpanjang ikatan, order sengaja dibatalkan setelah komisi cair), penyalahgunaan data siswa, promosi menyesatkan (klaim palsu, mengaku pihak resmi), pelanggaran aturan program (spam, mengakali sistem), dan pelanggaran etika. |
 | BR-PLG-03 | Sanksi bertingkat: (1) peringatan tercatat, (2) pengurangan atau pembatalan komisi terkait, (3) pembekuan saldo sementara, (4) penurunan atau penguncian level, (5) skors (status Ditangguhkan selama N hari), (6) penonaktifan permanen. |
 | BR-PLG-04 | Sanksi diputuskan oleh **admin (manusia)** dengan alasan dan bukti tercatat. Deteksi otomatis hanya **menandai** kasus ke admin. |
-| BR-PLG-05 | Pembekuan saldo memiliki batas waktu maksimal (default 14 hari, dapat diatur) dan harus disertai alasan. Selama dibekukan, komisi tidak dibatalkan sampai ada keputusan. |
+| BR-PLG-05 | Pembekuan saldo memiliki batas waktu maksimal (default 14 hari, dapat diatur, minimal 1 hari) dan harus disertai alasan. Selama dibekukan, komisi tidak dibatalkan sampai ada keputusan. |
 | BR-PLG-06 | Affiliator berhak mengajukan **banding** dengan penjelasan atau bukti. Admin meninjau dan mencatat hasilnya. |
 | BR-PLG-07 | Penonaktifan permanen membatalkan komisi berstatus Menunggu. Perlakuan saldo yang sudah Tersedia ditentukan kebijakan (TBD, bagian 15). |
 | BR-PLG-08 | Aturan penandaan kasus mencurigakan (versi dasar): email atau nomor HP siswa identik dengan affiliator, lonjakan pendaftaran tidak wajar dalam waktu singkat, pembelian bernilai kecil berulang di sekitar batas perpanjangan ikatan, rasio refund tinggi pada siswa binaan, dan beberapa akun siswa dengan identitas kontak serupa. |
@@ -336,7 +336,7 @@ Seluruh kebutuhan di bawah ini masuk **Fase 1** kecuali ditandai lain.
 | ID | Kebutuhan | Fase |
 |---|---|---|
 | FR-KOM-01 | Pembuatan komisi otomatis setelah order lunas (event atau job, idempoten) | 1 |
-| FR-KOM-02 | Penyimpanan snapshot persentase, level, dan dasar perhitungan per record komisi | 1 |
+| FR-KOM-02 | Penyimpanan snapshot jenis dan nilai komisi (persen atau nominal), level, dan dasar perhitungan per record komisi | 1 |
 | FR-KOM-03 | Transisi status komisi otomatis (Menunggu ke Tersedia) setelah masa tunggu | 1 |
 | FR-KOM-04 | Pembatalan atau pengurangan komisi otomatis saat refund atau pembatalan order | 1 |
 | FR-KOM-05 | Ledger append-only dan perhitungan saldo dari ledger | 1 |
@@ -429,22 +429,22 @@ Status: **Disepakati** (sudah diputuskan), **Placeholder** (nilai awal sementara
 | Durasi ikatan | 3 bulan | Global dan per level | Disepakati |
 | Minimal nilai bersih pembelian untuk perpanjang ikatan | Belum ada | Global | TBD |
 | Masa berlaku cookie | 30 hari | Global | Disepakati |
-| Persentase komisi per kategori (Ujian, Kursus, Buku, Merchandise, Medali) | Ujian 10%, Kursus 10%, Buku 3%, Merchandise 3%, Medali 0% | Global dan per level | Placeholder |
+| Komisi per kategori (Ujian, Kursus, Buku, Merchandise, Medali), persen atau nominal per unit | Ujian 10%, Kursus 10%, Buku 3%, Merchandise 3%, Medali 0% | Global dan per level | Placeholder |
 | Pengecualian komisi per produk | Kosong | Per produk | Disepakati |
 | Masa tunggu produk digital | 7 hari setelah pembayaran | Global dan per level | Disepakati |
-| Masa tunggu produk fisik | 7 hari setelah diterima, ditambah 7 hari | Global dan per level | Disepakati |
+| Masa tunggu produk fisik | 14 hari setelah diterima | Global dan per level | Disepakati |
 | Minimal penarikan | Rp100.000 | Global dan per level | Disepakati |
-| Jadwal pencairan | Sekali sebulan, tanggal belum ditentukan | Global dan per level | Disepakati (tanggal TBD) |
+| Jadwal pencairan | Sekali sebulan, tanggal belum ditentukan (hanya informasi untuk affiliator, tidak membatasi pengajuan) | Global dan per level | Disepakati (tanggal TBD) |
 | Ambang naik ke Silver | Rp5.000.000 per kuartal | Global | Placeholder |
 | Ambang naik ke Gold | Rp15.000.000 per kuartal | Global | Placeholder |
 | Ambang bertahan per level | Belum ada (tidak lebih tinggi dari ambang naik) | Global | TBD |
 | Jumlah kuartal berturut-turut sebelum turun level | 2 | Global | Disepakati |
 | Hari evaluasi level setelah kuartal berakhir | Hari ke-8 bulan pertama kuartal baru | Global | Placeholder |
 | Ambang nominal penyesuaian yang butuh persetujuan kedua | Rp1.000.000 | Global | Disepakati (nonaktif Fase 1, lihat BR-ADJ-03) |
-| Batas maksimal pembekuan saldo | 14 hari | Global | Placeholder |
+| Batas maksimal pembekuan saldo | 14 hari, minimal 1 | Global | Placeholder |
 | Batas hari sebelum ikatan berakhir untuk status Segera Berakhir | 30 hari | Global | Placeholder |
 | Tanggal peluncuran (batas akun lama tidak bisa diikat) | Belum ada | Global | TBD |
-| Batas pendaftaran siswa baru per affiliator per hari | Belum ada | Global | TBD |
+| Batas pendaftar affiliator baru per hari (siswa tanpa batas) | Belum ada | Global | TBD |
 
 ---
 
@@ -531,7 +531,7 @@ Status: **Disepakati** (sudah diputuskan), **Placeholder** (nilai awal sementara
 | Q-12 | Tanggal peluncuran (batas akun lama) dan tanggal pencairan bulanan | Operasional | Tim produk dan keuangan |
 | Q-16 | Kebijakan retensi data affiliator dan siswa terkait fitur ini | Kepatuhan | Legal |
 | Q-17 | Apakah Medali dikomisi (saat ini 0% sebagai placeholder) | Konfigurasi awal | Pemilik bisnis |
-| Q-18 | Batas pendaftaran siswa baru per affiliator per hari | Pencegahan fraud | Tim produk |
+| Q-18 | Batas pendaftar affiliator baru per hari (siswa tanpa batas) | Pencegahan fraud | Tim produk |
 
 ### Sudah Terjawab (v0.2)
 
@@ -558,7 +558,7 @@ Nomor pertanyaan tidak diurut ulang agar referensi tetap konsisten.
 
 ### Lampiran A. Contoh Perhitungan
 
-Asumsi nilai: komisi Ujian 10%, Buku 3%, minimal perpanjangan Rp25.000, masa tunggu digital 7 hari, masa tunggu fisik 7 + 7 hari (angka hanya ilustrasi).
+Asumsi nilai: komisi Ujian 10%, Buku 3%, minimal perpanjangan Rp25.000, masa tunggu digital 7 hari, masa tunggu fisik 14 hari (angka hanya ilustrasi).
 
 | Tanggal | Kejadian | Hasil |
 |---|---|---|
@@ -566,7 +566,7 @@ Asumsi nilai: komisi Ujian 10%, Buku 3%, minimal perpanjangan Rp25.000, masa tun
 | 15 Jan | Ani membeli ujian Rp100.000 (lunas) | Komisi Rp10.000 berstatus Menunggu, ikatan diperpanjang sampai 15 Apr |
 | 22 Jan | Masa tunggu 7 hari lewat | Komisi Rp10.000 menjadi Tersedia, saldo Rp10.000 |
 | 1 Feb | Ani membeli buku Rp80.000 (lunas) | Komisi Rp2.400 berstatus Menunggu, ikatan diperpanjang sampai 1 Mei |
-| 5 Feb | Buku diterima (order ditandai selesai admin) | Masa tunggu fisik mulai dihitung (7 + 7 hari) |
+| 5 Feb | Buku diterima (order ditandai selesai admin) | Masa tunggu fisik mulai dihitung (14 hari) |
 | 19 Feb | Masa tunggu lewat | Komisi Rp2.400 menjadi Tersedia, saldo Rp12.400 |
 | 19 Feb | Pak Budi melihat saldo | Belum bisa menarik karena belum mencapai Rp100.000 |
 
@@ -596,7 +596,7 @@ Skenario refund: jika Ani direfund pada 10 Feb untuk ujian Rp100.000 setelah kom
 | 10 | Semua pembelian selama ikatan aktif dikomisi |
 | 11 | Komisi per kategori, diatur admin, dasar harga setelah diskon tanpa ongkir, pajak, dan biaya gateway |
 | 12 | Tidak ada komisi dari belanja sendiri dan dari pendaftaran langsung oleh admin |
-| 13 | Masa tunggu 7 + 7 hari (fisik), diatur admin |
+| 13 | Masa tunggu 14 hari setelah diterima (fisik), diatur admin |
 | 14 | Order manual masuk Fase 1 (dicabut v0.3, lihat keputusan 27) |
 | 15 | Level Bronze, Silver, Gold, evaluasi per kuartal kalender, turun satu tingkat setelah dua kuartal berturut-turut |
 | 16 | Per level dapat dibedakan: komisi, durasi ikatan, kecepatan pencairan, minimal penarikan |
