@@ -422,37 +422,7 @@ func (s *Service) DeleteProduct(ctx context.Context, id string, role string) err
 }
 
 func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float64, shippingCost float64) (PromoValidation, error) {
-	promo, err := s.storeRepo.GetPromoByCode(ctx, code)
-	if err != nil {
-		return PromoValidation{}, err
-	}
-	if promo.Code == "" {
-		return PromoValidation{}, ErrInvalidPromo
-	}
-	if promo.ExpiresAt != nil && promo.ExpiresAt.Before(time.Now()) {
-		return PromoValidation{}, ErrInvalidPromo
-	}
-	if promo.MaxUses != nil && promo.UsedCount >= *promo.MaxUses {
-		return PromoValidation{}, ErrInvalidPromo
-	}
-	if promo.MinOrderAmount != nil && subtotal < *promo.MinOrderAmount {
-		return PromoValidation{}, ErrPromoMinOrder
-	}
-
-	var discount float64
-	if promo.DiscountPercent != nil {
-		discount = subtotal * (*promo.DiscountPercent / 100)
-		if promo.MaxDiscountAmount != nil && discount > *promo.MaxDiscountAmount {
-			discount = *promo.MaxDiscountAmount
-		}
-	} else if promo.DiscountAmount != nil {
-		discount = *promo.DiscountAmount
-		if discount > subtotal {
-			discount = subtotal
-		}
-	}
-
-	return PromoValidation{PromoID: promo.ID, Code: code, Discount: discount, Total: subtotal - discount + shippingCost}, nil
+	return s.ValidatePromoLines(ctx, code, "", []PromoLine{{Amount: subtotal, Unscoped: true}}, shippingCost)
 }
 
 func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
@@ -911,7 +881,7 @@ func (s *Service) buildCartPatch(ctx context.Context, order model.Order, patch C
 		repoPatch.Discount = 0
 		repoPatch.Total = order.Subtotal - repoPatch.Discount + repoPatch.ShippingCost
 	default:
-		validation, err := s.ValidatePromo(ctx, *patch.PromoCode, order.Subtotal, repoPatch.ShippingCost)
+		validation, err := s.ValidatePromoLines(ctx, *patch.PromoCode, RoleStudent, promoLinesFromOrder(order.Items), repoPatch.ShippingCost)
 		if err != nil {
 			return repository.OrderPatch{}, err
 		}
@@ -2029,15 +1999,27 @@ func (s *Service) AdminListPromoCodes(ctx context.Context) ([]model.PromoCode, e
 }
 
 func (s *Service) AdminCreatePromoCode(ctx context.Context, p model.PromoCode) (model.PromoCode, error) {
+	p.Code = strings.TrimSpace(p.Code)
+	if p.Code == "" {
+		return model.PromoCode{}, fmt.Errorf("%w: code is required", ErrValidation)
+	}
+	p, err := s.validatePromoInput(ctx, p)
+	if err != nil {
+		return model.PromoCode{}, err
+	}
 	return s.storeRepo.CreatePromoCode(ctx, p)
 }
 
-func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time, isPublic bool) error {
+func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, p model.PromoCode) error {
 	pID, err := parseUUID(id)
 	if err != nil {
 		return err
 	}
-	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt, isPublic)
+	p, err = s.validatePromoInput(ctx, p)
+	if err != nil {
+		return err
+	}
+	return s.storeRepo.UpdatePromoCode(ctx, pID, p)
 }
 
 // ListActivePublicPromos returns is_public promo codes that are still valid

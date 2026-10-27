@@ -29,6 +29,10 @@ func (h *Handler) AdminCreatePromoCode(c echo.Context) error {
 		MaxUses           *int       `json:"max_uses"`
 		ExpiresAt         *time.Time `json:"expires_at"`
 		IsPublic          bool       `json:"is_public"`
+		StartsAt          *time.Time `json:"starts_at"`
+		MinQty            *int       `json:"min_qty"`
+		AffiliatorOnly    bool       `json:"affiliator_only"`
+		ProductIDs        []string   `json:"product_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -46,6 +50,10 @@ func (h *Handler) AdminCreatePromoCode(c echo.Context) error {
 		MaxUses:           req.MaxUses,
 		ExpiresAt:         req.ExpiresAt,
 		IsPublic:          req.IsPublic,
+		StartsAt:          req.StartsAt,
+		MinQty:            req.MinQty,
+		AffiliatorOnly:    req.AffiliatorOnly,
+		ProductIDs:        req.ProductIDs,
 	}
 
 	created, err := h.svc.AdminCreatePromoCode(c.Request().Context(), promo)
@@ -60,15 +68,35 @@ func (h *Handler) AdminUpdatePromoCode(c echo.Context) error {
 	id := c.Param("id")
 
 	var req struct {
-		MaxUses   *int       `json:"max_uses"`
-		ExpiresAt *time.Time `json:"expires_at"`
-		IsPublic  bool       `json:"is_public"`
+		DiscountPercent   *float64   `json:"discount_percent"`
+		DiscountAmount    *float64   `json:"discount_amount"`
+		MaxDiscountAmount *float64   `json:"max_discount_amount"`
+		MinOrderAmount    *float64   `json:"min_order_amount"`
+		MaxUses           *int       `json:"max_uses"`
+		ExpiresAt         *time.Time `json:"expires_at"`
+		IsPublic          bool       `json:"is_public"`
+		StartsAt          *time.Time `json:"starts_at"`
+		MinQty            *int       `json:"min_qty"`
+		AffiliatorOnly    bool       `json:"affiliator_only"`
+		ProductIDs        []string   `json:"product_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
 
-	err := h.svc.AdminUpdatePromoCode(c.Request().Context(), id, req.MaxUses, req.ExpiresAt, req.IsPublic)
+	err := h.svc.AdminUpdatePromoCode(c.Request().Context(), id, model.PromoCode{
+		DiscountPercent:   req.DiscountPercent,
+		DiscountAmount:    req.DiscountAmount,
+		MaxDiscountAmount: req.MaxDiscountAmount,
+		MinOrderAmount:    req.MinOrderAmount,
+		MaxUses:           req.MaxUses,
+		ExpiresAt:         req.ExpiresAt,
+		IsPublic:          req.IsPublic,
+		StartsAt:          req.StartsAt,
+		MinQty:            req.MinQty,
+		AffiliatorOnly:    req.AffiliatorOnly,
+		ProductIDs:        req.ProductIDs,
+	})
 	if err != nil {
 		return mapServiceError(c, err)
 	}

@@ -112,6 +112,10 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_promo", Message: err.Error()}
 	case errors.Is(err, service.ErrPromoMinOrder):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_min_order", Message: err.Error()}
+	case errors.Is(err, service.ErrPromoMinQty):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_min_qty", Message: err.Error()}
+	case errors.Is(err, service.ErrPromoNotStarted):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_not_started", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidSignature):
 		status, apiErr = http.StatusUnauthorized, APIError{Code: "invalid_signature", Message: err.Error()}
 	case errors.Is(err, service.ErrCourseLinkRequired):

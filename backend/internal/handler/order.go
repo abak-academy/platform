@@ -290,6 +290,15 @@ type activePublicPromoDTO struct {
 	ExpiresAt         *time.Time `json:"expires_at"`
 }
 
+// ListAffiliatorPromos lists the affiliator-only promos usable right now.
+func (h *Handler) ListAffiliatorPromos(c echo.Context) error {
+	promos, err := h.svc.ListActiveAffiliatorPromos(c.Request().Context())
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": promos})
+}
+
 func (h *Handler) ListActivePublicPromos(c echo.Context) error {
 	promos, err := h.svc.ListActivePublicPromos(c.Request().Context())
 	if err != nil {

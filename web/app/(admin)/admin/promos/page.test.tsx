@@ -26,6 +26,10 @@ vi.mock("@/lib/hooks/admin-promos", () => ({
   useDeletePromoCode: () => deleteState,
 }));
 
+vi.mock("@/lib/hooks/admin-products", () => ({
+  useAdminProducts: () => ({ data: [] }),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
@@ -101,6 +105,17 @@ describe("PromosPage", () => {
     expect(screen.getByText("Rp20.000")).toBeInTheDocument();
     expect(screen.getByText("12 / 100")).toBeInTheDocument();
     expect(screen.getByText("5 / 50")).toBeInTheDocument();
+  });
+
+  it("marks an affiliator-only promo in the public column", async () => {
+    promosState = {
+      ...promosState,
+      data: [{ id: "promo-9", code: "AFF10", discount_percent: 10, used_count: 0, affiliator_only: true }],
+    };
+    render(<PromosPage />);
+
+    expect(await screen.findByText("AFF10")).toBeInTheDocument();
+    expect(screen.getByText("Affiliator")).toBeInTheDocument();
   });
 
   it("opens create modal and calls create mutation on save", async () => {

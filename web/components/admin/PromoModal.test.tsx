@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { PromoModal } from "./PromoModal";
-import type { PromoCode } from "@/lib/types";
+import type { PromoCode, Product } from "@/lib/types";
 
 const mockOnSubmit = vi.fn();
 const mockOnOpenChange = vi.fn();
@@ -113,7 +113,7 @@ describe("PromoModal", () => {
     });
   });
 
-  it("submits edit input only with allowed fields", async () => {
+  it("submits the full definition on edit", async () => {
     const promo: PromoCode = {
       id: "promo-1",
       code: "DISKON10",
@@ -136,7 +136,12 @@ describe("PromoModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
-      expect(mockOnSubmit).toHaveBeenCalledWith({ max_uses: 200, is_public: false });
+      expect(mockOnSubmit).toHaveBeenCalledWith({
+        discount_percent: 10,
+        max_uses: 200,
+        is_public: false,
+        affiliator_only: false,
+      });
     });
   });
 
@@ -192,8 +197,87 @@ describe("PromoModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
-      expect(mockOnSubmit).toHaveBeenCalledWith({ is_public: false });
+      expect(mockOnSubmit).toHaveBeenCalledWith({
+        discount_percent: 10,
+        is_public: false,
+        affiliator_only: false,
+      });
     });
+  });
+
+  it("submits the affiliator rules and the product scope on create", async () => {
+    const products = [
+      { id: "prod-1", name: "Paket Matematika", type: "exam" },
+      { id: "prod-2", name: "Kursus Fisika", type: "course" },
+    ] as Product[];
+    render(
+      <PromoModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        products={products}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.input(screen.getByPlaceholderText(/contoh: diskon10/i), { target: { value: "AFF10" } });
+    fireEvent.input(screen.getByLabelText(/nilai diskon/i), { target: { value: "10" } });
+    fireEvent.input(screen.getByLabelText(/minimal jumlah unit/i), { target: { value: "5" } });
+    fireEvent.input(screen.getByLabelText(/mulai berlaku/i), { target: { value: "2026-11-01" } });
+    fireEvent.click(screen.getByLabelText("Kursus Fisika"));
+    fireEvent.click(screen.getByLabelText(/hanya untuk affiliator/i));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith({
+        code: "AFF10",
+        discount_percent: 10,
+        min_qty: 5,
+        starts_at: new Date("2026-11-01").toISOString(),
+        product_ids: ["prod-2"],
+        is_public: false,
+        affiliator_only: true,
+      });
+    });
+  });
+
+  it("turns off and locks the checkout toggle for an affiliator-only promo", () => {
+    render(
+      <PromoModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText(/tampilkan di checkout/i));
+    expect(screen.getByLabelText(/tampilkan di checkout/i)).toBeChecked();
+    fireEvent.click(screen.getByLabelText(/hanya untuk affiliator/i));
+
+    expect(screen.getByLabelText(/tampilkan di checkout/i)).not.toBeChecked();
+    expect(screen.getByLabelText(/tampilkan di checkout/i)).toBeDisabled();
+  });
+
+  it("filters the product list by search", () => {
+    const products = [
+      { id: "prod-1", name: "Paket Matematika", type: "exam" },
+      { id: "prod-2", name: "Kursus Fisika", type: "course" },
+    ] as Product[];
+    render(
+      <PromoModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        products={products}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.input(screen.getByLabelText(/cari produk/i), { target: { value: "fisika" } });
+
+    expect(screen.getByLabelText("Kursus Fisika")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Paket Matematika")).not.toBeInTheDocument();
   });
 
   it("disables save when code or nilai diskon is empty", () => {

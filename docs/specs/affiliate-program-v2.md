@@ -66,7 +66,7 @@ Decisions (owner, 2026-10-27):
 
 - `ValidatePromo` receives the actor role, the order lines (product id and qty) and the subtotal. It applies the rules above and returns the discount computed over matching lines only.
 - `GET /promo-codes/active` excludes `affiliator_only`; a new affiliator-only list returns active, in-range, unexhausted affiliator promos.
-- Admin create and update accept the new fields. Update stops being limited to `max_uses`, `expires_at` and `is_public`. Create validates percent versus nominal exclusivity, `starts_at < expires_at`, `min_qty >= 0`, and that every `product_ids` entry exists.
+- Admin create and update accept the new fields. `PUT /admin/promo-codes/:id` now replaces every editable field (the code and `used_count` never change), so an omitted key clears it. Create validates percent versus nominal exclusivity, `starts_at < expires_at`, `min_qty >= 0`, and that every `product_ids` entry exists.
 - The affiliator order has no cart, so the promo is validated at order creation and again at checkout; the counter increments in the existing pre-gateway transaction.
 
 ### Purchase
@@ -77,7 +77,7 @@ Decisions (owner, 2026-10-27):
 ### API (shape; final names settle in phase 1 and 4)
 
 - `/api/admin/system/affiliators` (super admin, `system:admin`): `GET` list, `POST` create, `POST /bulk` (JSON rows, at most 200, per-row result), `POST /:id/promote` (admin_school only), `PUT /:id/schools`. Active state reuses `PATCH /admin/system/accounts/:id/status`.
-- `GET /api/affiliates/me` (affiliator, `affiliates:self`): profile, schools, active state. Dashboard widgets, students and promos follow under `/api/affiliates/me/*`.
+- `GET /api/affiliates/me` (affiliator, `affiliates:self`): profile, schools, active state. `GET /api/affiliates/me/promos` lists the affiliator-only promos usable now. Dashboard widgets and students follow under `/api/affiliates/me/*`.
 - Student and purchase routes reuse `/admin/students*` and `/admin/bulk-exam-orders*` with the new scope and capability.
 
 ### Web

@@ -401,6 +401,12 @@ export interface PromoCode {
   created_at?: string;
   /** FR-13: shown to authenticated students via GET /promo-codes/active when true. */
   is_public?: boolean;
+  starts_at?: string | null;
+  min_qty?: number | null;
+  /** Usable only by affiliators and never listed to students. */
+  affiliator_only?: boolean;
+  /** Empty means the promo applies to every product. */
+  product_ids?: string[];
 }
 
 export interface AdminCreatePromoCodeInput {
@@ -412,13 +418,14 @@ export interface AdminCreatePromoCodeInput {
   max_uses?: number;
   expires_at?: string;
   is_public?: boolean;
+  starts_at?: string;
+  min_qty?: number;
+  affiliator_only?: boolean;
+  product_ids?: string[];
 }
 
-export interface AdminUpdatePromoCodeInput {
-  max_uses?: number;
-  expires_at?: string;
-  is_public?: boolean;
-}
+// PUT replaces every editable field, so an omitted key clears it.
+export type AdminUpdatePromoCodeInput = Omit<AdminCreatePromoCodeInput, "code">;
 
 // GET /promo-codes/active wire shape (FR-11) — deliberately omits id,
 // used_count, and max_uses; see backend/internal/handler/order.go

@@ -375,6 +375,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	affiliates.Use(handler.JWTMiddleware(svc, jwtSigner))
 	affiliates.Use(handler.RBACMiddleware("affiliates:self"))
 	affiliates.GET("/me", h.AffiliatorMe)
+	affiliates.GET("/me/promos", h.ListAffiliatorPromos)
 	adminSystem.GET("/config", h.AdminGetSystemConfig)
 	adminSystem.PUT("/config", h.AdminUpdateSystemConfig)
 
