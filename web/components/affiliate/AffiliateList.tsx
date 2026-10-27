@@ -24,11 +24,9 @@ interface AffiliateListProps<T> {
   // True while a search or filter is active, so an empty result reads as
   // "nothing matches" instead of "nothing yet".
   filtered?: boolean;
-  expandedKey?: string | null;
-  renderExpanded?: (row: T) => React.ReactNode;
 }
 
-export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChange, empty, filtered, expandedKey, renderExpanded }: AffiliateListProps<T>) {
+export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChange, empty, filtered }: AffiliateListProps<T>) {
   const { t } = useTranslation();
 
   if (query.isError) {
@@ -57,8 +55,6 @@ export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChang
       columns={columns}
       rows={data}
       rowKey={rowKey}
-      expandedKey={expandedKey}
-      renderExpanded={renderExpanded}
       empty={filtered ? t("aff_no_match") : (empty ?? t("aff_empty"))}
       footer={
         total > 0 && data.length > 0 ? (

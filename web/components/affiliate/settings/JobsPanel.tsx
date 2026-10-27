@@ -5,10 +5,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ApiError } from "@/lib/api";
 import { affLabel } from "@/lib/affiliate-labels";
 import { useRunAffiliateJob } from "@/lib/hooks/admin-affiliates";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type I18nKey } from "@/lib/i18n";
 
 const JOB_SCOPES = ["bindings", "commissions", "flags", "levels"] as const;
 
@@ -35,31 +36,34 @@ export function JobsPanel() {
         <h2 className="font-semibold text-ink-900">{t("admin_aff_job_title")}</h2>
         <p className="text-sm text-ink-500">{t("admin_aff_job_hint")}</p>
       </div>
-      <form onSubmit={run} className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1">
+      <form onSubmit={run} className="flex flex-wrap items-start gap-4">
+        <div className="w-56 space-y-1.5">
           <Label htmlFor="job-scope">{t("admin_aff_job_scope")}</Label>
-          <select
-            id="job-scope"
-            value={scope}
-            onChange={(e) => setScope(e.target.value)}
-            className="h-9 rounded-md border border-line bg-surface px-3 text-sm"
-          >
-            {JOB_SCOPES.map((s) => (
-              <option key={s} value={s}>
-                {affLabel(t, s)}
-              </option>
-            ))}
-          </select>
+          <Select value={scope} onValueChange={setScope}>
+            <SelectTrigger id="job-scope" className="w-full" data-testid="job-scope">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {JOB_SCOPES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {affLabel(t, s)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-ink-500">{t(`admin_aff_job_scope_${scope}` as I18nKey)}</p>
         </div>
         {scope === "levels" && (
-          <div className="space-y-1">
+          <div className="w-56 space-y-1.5">
             <Label htmlFor="job-quarter">{t("admin_aff_job_quarter")}</Label>
             <Input id="job-quarter" value={quarter} onChange={(e) => setQuarter(e.target.value)} placeholder="2026-Q3" />
           </div>
         )}
-        <Button type="submit" disabled={runJob.isPending}>
-          {t("admin_aff_job_run")}
-        </Button>
+        <div className="sm:pt-[1.625rem]">
+          <Button type="submit" disabled={runJob.isPending}>
+            {t("admin_aff_job_run")}
+          </Button>
+        </div>
       </form>
     </section>
   );

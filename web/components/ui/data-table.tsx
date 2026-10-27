@@ -18,9 +18,6 @@ export interface DataTableProps<T> {
   surface?: "card" | "plain";
   stickyHeader?: boolean;
   footer?: React.ReactNode;
-  // The row whose key matches is followed by a full-width row rendering renderExpanded.
-  expandedKey?: string | null;
-  renderExpanded?: (row: T) => React.ReactNode;
   "data-testid"?: string;
 }
 
@@ -32,8 +29,6 @@ export function DataTable<T>({
   surface = "card",
   stickyHeader = false,
   footer,
-  expandedKey,
-  renderExpanded,
   "data-testid": dataTestId,
 }: DataTableProps<T>) {
   return (
@@ -65,29 +60,20 @@ export function DataTable<T>({
               </tr>
             ) : (
               rows.map((row) => (
-                <React.Fragment key={rowKey(row)}>
-                  <tr>
-                    {columns.map((column) => (
-                      <td
-                        key={column.key}
-                        className={cn(
-                          "px-4 py-3",
-                          column.align === "right" && "text-right",
-                          column.className
-                        )}
-                      >
-                        {column.cell(row)}
-                      </td>
-                    ))}
-                  </tr>
-                  {renderExpanded && expandedKey === rowKey(row) && (
-                    <tr>
-                      <td colSpan={columns.length} className="bg-surface-2/40 px-4 py-4">
-                        {renderExpanded(row)}
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
+                <tr key={rowKey(row)}>
+                  {columns.map((column) => (
+                    <td
+                      key={column.key}
+                      className={cn(
+                        "px-4 py-3",
+                        column.align === "right" && "text-right",
+                        column.className
+                      )}
+                    >
+                      {column.cell(row)}
+                    </td>
+                  ))}
+                </tr>
               ))
             )}
           </tbody>

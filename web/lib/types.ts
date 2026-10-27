@@ -1890,3 +1890,8 @@ export interface AffiliateOverrideProduct {
   type: string;
   percentage: number | null;
 }
+
+export interface AffiliateReportOrder extends AffiliateCommission {
+  affiliator_name: string;
+  affiliator_code: string;
+}

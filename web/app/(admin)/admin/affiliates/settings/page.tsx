@@ -148,6 +148,16 @@ function SettingsContent() {
       example: GLOBAL_HELP[key].example,
     }));
 
+  const levelGuideFields = [
+    { column: t("admin_aff_lvl_pct"), required: false, ruleKey: "admin_aff_pct_hint" as I18nKey, example: "10" },
+    ...LEVEL_FIELDS.map((key) => ({
+      column: fieldLabel(key),
+      required: LEVEL_HELP[key].required,
+      ruleKey: levelHintKey(key),
+      example: LEVEL_HELP[key].example,
+    })),
+  ];
+
   const saveBar = (
     <div className="flex justify-end">
       <Button type="submit" disabled={update.isPending}>
@@ -199,7 +209,7 @@ function SettingsContent() {
 
       {tab === "levels" && (
         <form onSubmit={save} className="space-y-6">
-          <p className="text-sm text-ink-600">{t("admin_aff_set_level_hint")}</p>
+          <BulkFormatGuide fields={levelGuideFields} pitfallKeys={["admin_aff_set_level_hint"]} />
           <div className="grid gap-4 lg:grid-cols-3">
             {AFFILIATE_LEVELS.map((level) => (
               <section key={level} className="md-card-outlined space-y-5 p-5">

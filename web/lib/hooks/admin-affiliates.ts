@@ -15,6 +15,7 @@ import type {
   AffiliateLiabilityReport,
   AffiliateOverrideProduct,
   AffiliateProductOverride,
+  AffiliateReportOrder,
   AffiliateReportSummary,
   AffiliateSettingsInput,
   AffiliateSettingsView,
@@ -39,6 +40,7 @@ export const adminAffiliateKeys = {
   flags: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "flags", p] as const,
   appeals: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "appeals", p] as const,
   report: (p: AdminReportParams) => [...adminAffiliateKeys.all, "report", p] as const,
+  reportOrders: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "report-orders", p] as const,
   commissions: (id: string, p: AdminQueueParams) => [...adminAffiliateKeys.all, "commissions", id, p] as const,
   liability: () => [...adminAffiliateKeys.all, "liability"] as const,
 };
@@ -186,13 +188,18 @@ export function useDecideAffiliatePayout() {
 
 // Downloads the CSV behind a queue, honouring the filters currently applied.
 export async function downloadAffiliateCsv(
-  kind: "payouts" | "flags" | "appeals" | "commissions",
+  kind: "payouts" | "flags" | "appeals" | "commissions" | "report-orders",
   params: AdminQueueParams = {},
   affiliatorId?: string,
 ): Promise<void> {
   const { useAuthStore } = await import("@/stores/auth");
   const token = useAuthStore.getState().token;
-  const path = kind === "commissions" ? `/admin/affiliates/${encodeURIComponent(affiliatorId ?? "")}/commissions/export` : `/admin/affiliate-${kind}/export`;
+  const path =
+    kind === "commissions"
+      ? `/admin/affiliates/${encodeURIComponent(affiliatorId ?? "")}/commissions/export`
+      : kind === "report-orders"
+        ? "/admin/affiliate-reports/orders/export"
+        : `/admin/affiliate-${kind}/export`;
   const res = await fetch(`${API_BASE}${path}${queueQuery({ ...params, page: undefined, per_page: undefined })}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
@@ -324,6 +331,14 @@ export function useAffiliateReportSummary(params: AdminReportParams) {
     queryKey: adminAffiliateKeys.report(params),
     enabled: params.from !== "" && params.to !== "",
     queryFn: () => authFetch<AffiliateReportSummary>(`/admin/affiliate-reports/summary${qs({ ...params })}`),
+  });
+}
+
+// Every affiliator's commissions with the order behind each, for the report's detail tab.
+export function useAdminAffiliateReportOrders(params: AdminQueueParams) {
+  return useQuery({
+    queryKey: adminAffiliateKeys.reportOrders(params),
+    queryFn: () => authFetch<AdminQueuePage<AffiliateReportOrder>>(`/admin/affiliate-reports/orders${queueQuery(params)}`),
   });
 }
 

@@ -201,14 +201,24 @@ describe("AdminAffiliateSettingsPage", () => {
   it("sends a quarter only for the levels job", async () => {
     h.search.value = "tab=jobs";
     render(<SettingsPage />);
-    await screen.findByLabelText("Cakupan");
+    await screen.findByTestId("job-scope");
 
     fireEvent.click(screen.getByRole("button", { name: "Jalankan" }));
     expect(h.run).toHaveBeenLastCalledWith({ scope: "bindings", quarter: undefined }, expect.anything());
 
-    fireEvent.change(screen.getByLabelText("Cakupan"), { target: { value: "levels" } });
+    fireEvent.pointerDown(screen.getByTestId("job-scope"), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("option", { name: "Level" }));
+    expect(screen.getByText(/Menilai ulang level affiliator/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Kuartal/), { target: { value: "2026-Q3" } });
     fireEvent.click(screen.getByRole("button", { name: "Jalankan" }));
     expect(h.run).toHaveBeenLastCalledWith({ scope: "levels", quarter: "2026-Q3" }, expect.anything());
+  });
+
+  it("explains the level rules with a column guide too", async () => {
+    h.search.value = "tab=levels";
+    render(<SettingsPage />);
+
+    await screen.findByText("Lihat aturan kolom");
+    expect(screen.getAllByText(/Penjualan kuartal minimum agar level ini tidak turun/).length).toBeGreaterThan(0);
   });
 });
