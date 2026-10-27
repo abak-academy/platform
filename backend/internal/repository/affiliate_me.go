@@ -164,7 +164,7 @@ const affiliateCommissionFrom = `FROM affiliate_commissions c
 func (r *Repository) ListAffiliateCommissionsForAffiliator(ctx context.Context, affiliatorID uuid.UUID, f AffiliateCommissionFilter) ([]AffiliateCommissionRow, error) {
 	p := affiliateCommissionPredicate(f)
 	args := append([]interface{}{affiliatorID}, p.args...)
-	query := `SELECT c.id, c.affiliator_id, c.student_id, c.order_id, c.order_item_id, c.product_type, c.base_amount, c.percentage,
+	query := `SELECT c.id, c.affiliator_id, c.student_id, c.order_id, c.order_item_id, c.product_type, c.base_amount, c.commission_type, c.commission_value,
 	        c.level_snapshot, c.amount, c.status, c.wait_until, c.paid_at, c.received_at, c.created_at, c.updated_at,
 	        u.name, oi.name
 		 ` + affiliateCommissionFrom + `
@@ -183,7 +183,7 @@ func (r *Repository) ListAffiliateCommissionsForAffiliator(ctx context.Context, 
 	for rows.Next() {
 		var c AffiliateCommissionRow
 		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType,
-			&c.BaseAmount, &c.Percentage, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt,
+			&c.BaseAmount, &c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt,
 			&c.ReceivedAt, &c.CreatedAt, &c.UpdatedAt, &c.StudentName, &c.ProductName); err != nil {
 			return nil, err
 		}
@@ -360,7 +360,7 @@ func (r *Repository) ListAffiliateReportOrders(ctx context.Context, f AffiliateR
 		return nil, 0, err
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT c.id, c.affiliator_id, c.student_id, c.order_id, c.order_item_id, c.product_type, c.base_amount, c.percentage,
+		`SELECT c.id, c.affiliator_id, c.student_id, c.order_id, c.order_item_id, c.product_type, c.base_amount, c.commission_type, c.commission_value,
 		        c.level_snapshot, c.amount, c.status, c.wait_until, c.paid_at, c.received_at, c.created_at, c.updated_at,
 		        u.name, oi.name, au.name, COALESCE(a.code, '') `+from+`
 		 ORDER BY c.paid_at DESC NULLS LAST, c.id DESC
@@ -375,7 +375,7 @@ func (r *Repository) ListAffiliateReportOrders(ctx context.Context, f AffiliateR
 	for rows.Next() {
 		var c AffiliateReportOrderRow
 		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType,
-			&c.BaseAmount, &c.Percentage, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt,
+			&c.BaseAmount, &c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt,
 			&c.ReceivedAt, &c.CreatedAt, &c.UpdatedAt, &c.StudentName, &c.ProductName, &c.AffiliatorName, &c.AffiliatorCode); err != nil {
 			return nil, 0, err
 		}

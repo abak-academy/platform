@@ -53,7 +53,7 @@ type AffiliateRefundRatioRow struct {
 func (r *Repository) GetDuePendingCommissions(ctx context.Context, now time.Time, limit int) ([]AffiliateDueCommission, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT c.id, c.affiliator_id, c.student_id, c.order_id, c.order_item_id, c.product_type,
-		        c.base_amount, c.percentage, c.level_snapshot, c.amount, c.status, c.wait_until, c.paid_at,
+		        c.base_amount, c.commission_type, c.commission_value, c.level_snapshot, c.amount, c.status, c.wait_until, c.paid_at,
 		        c.created_at, c.updated_at, oi.name
 		 FROM affiliate_commissions c
 		 JOIN order_item oi ON oi.id = c.order_item_id
@@ -70,7 +70,7 @@ func (r *Repository) GetDuePendingCommissions(ctx context.Context, now time.Time
 		var c model.AffiliateCommission
 		var name string
 		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType,
-			&c.BaseAmount, &c.Percentage, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt,
+			&c.BaseAmount, &c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt,
 			&c.CreatedAt, &c.UpdatedAt, &name); err != nil {
 			return nil, err
 		}

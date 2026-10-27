@@ -17,14 +17,14 @@ func (r *Repository) LoadAffiliateSettings(ctx context.Context) (*model.Affiliat
 	var s model.AffiliateSettings
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, cookie_days, binding_months, min_extend_amount, digital_wait_days,
-		        physical_received_days, physical_wait_days, min_payout, payout_day_of_month,
+		        physical_wait_days, min_payout, payout_day_of_month,
 		        adjustment_threshold, adjustment_threshold_enabled, freeze_max_days, soon_end_days,
 		        launch_date, eval_day, silver_threshold, gold_threshold, hold_thresholds,
 		        daily_registration_cap, updated_by, updated_at
 		 FROM affiliate_settings
 		 WHERE id = 1`,
 	).Scan(&s.ID, &s.CookieDays, &s.BindingMonths, &s.MinExtendAmount, &s.DigitalWaitDays,
-		&s.PhysicalReceivedDays, &s.PhysicalWaitDays, &s.MinPayout, &s.PayoutDayOfMonth,
+		&s.PhysicalWaitDays, &s.MinPayout, &s.PayoutDayOfMonth,
 		&s.AdjustmentThreshold, &s.AdjustmentThresholdEnabled, &s.FreezeMaxDays, &s.SoonEndDays,
 		&s.LaunchDate, &s.EvalDay, &s.SilverThreshold, &s.GoldThreshold, &s.HoldThresholds,
 		&s.DailyRegistrationCap, &s.UpdatedBy, &s.UpdatedAt)
@@ -40,7 +40,7 @@ func (r *Repository) LoadAffiliateSettings(ctx context.Context) (*model.Affiliat
 // LoadAffiliateLevelSettings returns every affiliate_level_settings row.
 func (r *Repository) LoadAffiliateLevelSettings(ctx context.Context) ([]model.AffiliateLevelSettings, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT level, commission_pct, digital_wait_days, physical_received_days,
+		`SELECT level, commission_rule, binding_months, digital_wait_days,
 		        physical_wait_days, min_payout, payout_day_of_month, rise_threshold, hold_threshold
 		 FROM affiliate_level_settings
 		 ORDER BY level`)
@@ -52,7 +52,7 @@ func (r *Repository) LoadAffiliateLevelSettings(ctx context.Context) ([]model.Af
 	var out []model.AffiliateLevelSettings
 	for rows.Next() {
 		var l model.AffiliateLevelSettings
-		if err := rows.Scan(&l.Level, &l.CommissionPct, &l.DigitalWaitDays, &l.PhysicalReceivedDays,
+		if err := rows.Scan(&l.Level, &l.CommissionRule, &l.BindingMonths, &l.DigitalWaitDays,
 			&l.PhysicalWaitDays, &l.MinPayout, &l.PayoutDayOfMonth, &l.RiseThreshold, &l.HoldThreshold); err != nil {
 			return nil, err
 		}
@@ -85,11 +85,11 @@ func (r *Repository) CountAffiliatorsCreatedSince(ctx context.Context, since tim
 func (r *Repository) LoadProductOverride(ctx context.Context, productID uuid.UUID) (*model.AffiliateProductOverride, error) {
 	var o model.AffiliateProductOverride
 	err := r.pool.QueryRow(ctx,
-		`SELECT product_id, percentage, updated_by, updated_at
+		`SELECT product_id, type, value, updated_by, updated_at
 		 FROM affiliate_product_overrides
 		 WHERE product_id = $1`,
 		productID,
-	).Scan(&o.ProductID, &o.Percentage, &o.UpdatedBy, &o.UpdatedAt)
+	).Scan(&o.ProductID, &o.Type, &o.Value, &o.UpdatedBy, &o.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

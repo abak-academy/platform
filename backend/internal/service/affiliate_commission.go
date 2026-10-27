@@ -16,7 +16,7 @@ import (
 // CreateCommissionsForOrder creates the pending affiliate commissions for a
 // paid order's items inside the caller's transaction (the worker's OrderPaid
 // step). Every gate here is a no-op, never an error: flag off, no active
-// binding, sanctioned affiliator, zero percentage and a fully-discounted item
+// binding, sanctioned affiliator, zero commission value and a fully-discounted item
 // simply skip so fulfilment flows are never entangled with commission policy.
 func (s *Service) CreateCommissionsForOrder(ctx context.Context, tx pgx.Tx, order model.Order, items []model.OrderItem) error {
 	enabled, err := s.affiliateEnabledErr(ctx)
@@ -61,27 +61,33 @@ func (s *Service) createCommissionForItem(ctx context.Context, tx pgx.Tx, aff *m
 	if err != nil {
 		return fmt.Errorf("load product override: %w", err)
 	}
-	pct := resolveAffiliateCommissionPct(override, rule, item.ProductType)
-	if pct == 0 {
+	commissionRule := resolveAffiliateCommissionRule(override, rule, item.ProductType)
+	if commissionRule.Value == 0 {
 		return nil // BR-KOM-02: medal and unset categories earn nothing
 	}
 	base := affiliateItemBase(order, item)
 	if base <= 0 {
 		return nil // BR-KOM-03: a fully discounted or free item earns nothing
 	}
+	amount := affiliateCommissionAmount(base, item.Qty, commissionRule)
+	if amount <= 0 {
+		return nil
+	}
 	commission := &model.AffiliateCommission{
-		AffiliatorID:  aff.ID,
-		StudentID:     order.StudentID,
-		OrderID:       order.ID,
-		OrderItemID:   item.ID,
-		ProductType:   item.ProductType,
-		BaseAmount:    base,
-		Percentage:    pct,
-		LevelSnapshot: aff.Level,
-		Amount:        affiliateCommissionAmount(base, pct),
-		Status:        "pending",
-		WaitUntil:     affiliateWaitUntil(item.ProductType, order.PaidAt, rule),
-		PaidAt:        order.PaidAt,
+		AffiliatorID:    aff.ID,
+		StudentID:       order.StudentID,
+		OrderID:         order.ID,
+		OrderItemID:     item.ID,
+		ProductType:     item.ProductType,
+		Quantity:        item.Qty,
+		BaseAmount:      base,
+		CommissionType:  commissionRule.Type,
+		CommissionValue: commissionRule.Value,
+		LevelSnapshot:   aff.Level,
+		Amount:          amount,
+		Status:          "pending",
+		WaitUntil:       affiliateWaitUntil(item.ProductType, order.PaidAt, rule),
+		PaidAt:          order.PaidAt,
 	}
 	if err := s.storeRepo.InsertAffiliateCommissionTx(ctx, tx, commission); err != nil {
 		// A replayed OrderPaid event hits the unique order_item_id: that is the
@@ -125,9 +131,18 @@ func affiliateWaitUntil(productType string, paidAt *time.Time, rule AffiliateEff
 	}
 }
 
-// affiliateCommissionAmount floors base*pct/100 to whole rupiah. The product is
-// rounded to a hundredth of a percent first so float error in a decimal pct
-// (7.35 is not exactly representable) cannot drop a rupiah.
-func affiliateCommissionAmount(base, pct float64) float64 {
-	return math.Floor(math.Round(base*pct*100) / 10000)
+// affiliateCommissionAmount is the whole-rupiah commission for one item. A
+// percent rule floors base*value/100, rounding the product to a hundredth of a
+// percent first so float error in a decimal value (7.35 is not exactly
+// representable) cannot drop a rupiah. A fixed rule pays value per unit. Either
+// way the commission never exceeds the item's discounted price.
+func affiliateCommissionAmount(base float64, qty int, rule model.AffiliateCommissionRule) float64 {
+	var amount float64
+	switch rule.Type {
+	case affiliateCommissionFixed:
+		amount = rule.Value * float64(qty)
+	default:
+		amount = math.Floor(math.Round(base*rule.Value*100) / 10000)
+	}
+	return math.Min(amount, math.Floor(base))
 }

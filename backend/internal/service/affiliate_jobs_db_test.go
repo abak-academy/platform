@@ -17,20 +17,19 @@ import (
 // seeds its own settings singleton values, unique users/affiliators and unique
 // WIB day keys, and never runs in parallel.
 type affiliateJobSettingsSeed struct {
-	minExtend        float64
-	evalDay          int
-	physicalReceived int
-	physicalWait     int
+	minExtend    float64
+	evalDay      int
+	physicalWait int
 }
 
 func seedAffiliateJobSettings(t *testing.T, repo *repository.Repository, seed affiliateJobSettingsSeed) {
 	t.Helper()
 	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_settings (id, min_extend_amount, eval_day, physical_received_days, physical_wait_days)
-		 VALUES (1, $1, $2, $3, $4)
+		`INSERT INTO affiliate_settings (id, min_extend_amount, eval_day, physical_wait_days)
+		 VALUES (1, $1, $2, $3)
 		 ON CONFLICT (id) DO UPDATE SET min_extend_amount = $1, eval_day = $2,
-		     physical_received_days = $3, physical_wait_days = $4, updated_at = now()`,
-		seed.minExtend, seed.evalDay, seed.physicalReceived, seed.physicalWait,
+		     physical_wait_days = $3, updated_at = now()`,
+		seed.minExtend, seed.evalDay, seed.physicalWait,
 	)
 	require.NoError(t, err)
 }
@@ -39,9 +38,9 @@ func restoreAffiliateJobSettings(t *testing.T, repo *repository.Repository) {
 	t.Helper()
 	t.Cleanup(func() {
 		_, _ = repo.Pool().Exec(context.Background(),
-			`INSERT INTO affiliate_settings (id, min_extend_amount, eval_day, physical_received_days, physical_wait_days)
-			 VALUES (1, 0, 8, 7, 7) ON CONFLICT (id) DO UPDATE SET min_extend_amount = 0, eval_day = 8,
-			     physical_received_days = 7, physical_wait_days = 7, updated_at = now()`)
+			`INSERT INTO affiliate_settings (id, min_extend_amount, eval_day, physical_wait_days)
+			 VALUES (1, 0, 8, 14) ON CONFLICT (id) DO UPDATE SET min_extend_amount = 0, eval_day = 8,
+			     physical_wait_days = 14, updated_at = now()`)
 	})
 }
 
@@ -131,14 +130,14 @@ func seedAffiliateJobCommission(t *testing.T, repo *repository.Repository, affil
 	var c model.AffiliateCommission
 	require.NoError(t, repo.Pool().QueryRow(ctx,
 		`INSERT INTO affiliate_commissions (affiliator_id, student_id, order_id, order_item_id, product_type,
-		     base_amount, percentage, level_snapshot, amount, status, wait_until, paid_at, created_at)
+		     base_amount, commission_value, level_snapshot, amount, status, wait_until, paid_at, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		 RETURNING id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount,
-		           percentage, level_snapshot, amount, status, wait_until, paid_at, created_at`,
+		           commission_type, commission_value, level_snapshot, amount, status, wait_until, paid_at, created_at`,
 		affiliatorID, studentID, orderID, itemID, seed.productType, seed.base, seed.pct, seed.level,
 		seed.amount, seed.status, seed.waitUntil, seed.paidAt, seed.createdAt,
 	).Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType, &c.BaseAmount,
-		&c.Percentage, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt, &c.CreatedAt))
+		&c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt, &c.CreatedAt))
 	return c
 }
 
@@ -174,10 +173,10 @@ func getAffiliateJobCommission(t *testing.T, repo *repository.Repository, id uui
 	var c model.AffiliateCommission
 	err := repo.Pool().QueryRow(context.Background(),
 		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount,
-		        percentage, level_snapshot, amount, status, wait_until, paid_at, created_at
+		        commission_type, commission_value, level_snapshot, amount, status, wait_until, paid_at, created_at
 		 FROM affiliate_commissions WHERE id = $1`, id,
 	).Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType, &c.BaseAmount,
-		&c.Percentage, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt, &c.CreatedAt)
+		&c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt, &c.CreatedAt)
 	if err != nil {
 		t.Fatalf("get commission: %v", err)
 	}
@@ -235,7 +234,7 @@ func TestAffiliateJobDailyDayKey_runsOncePerWIBDay(t *testing.T) {
 	ctx := context.Background()
 	clearAffiliateJobKeys(t, repo)
 	setAffiliateFlagForCommission(t, repo, "true")
-	seedAffiliateJobSettings(t, repo, affiliateJobSettingsSeed{evalDay: 8, physicalReceived: 7, physicalWait: 7})
+	seedAffiliateJobSettings(t, repo, affiliateJobSettingsSeed{evalDay: 8, physicalWait: 14})
 
 	owner := seedAffiliatorOwner(t, repo, "aff-job-day-"+uniqueSuffix()+"@test.local", "", "active")
 	student := seedAffiliateTestStudent(t, repo, "student-job-day-"+uniqueSuffix()+"@test.local", "")
@@ -363,7 +362,7 @@ func TestAffiliateJobPhysicalBackfill_setsWaitUntilFromCompletedAt(t *testing.T)
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	setAffiliateFlagForCommission(t, repo, "true")
-	seedAffiliateJobSettings(t, repo, affiliateJobSettingsSeed{evalDay: 8, physicalReceived: 2, physicalWait: 3})
+	seedAffiliateJobSettings(t, repo, affiliateJobSettingsSeed{evalDay: 8, physicalWait: 5})
 	restoreAffiliateJobSettings(t, repo)
 
 	// Drain stale due rows so the counts below are exact.
@@ -393,7 +392,7 @@ func TestAffiliateJobPhysicalBackfill_setsWaitUntilFromCompletedAt(t *testing.T)
 	require.Equal(t, 2, res.PhysicalBackfilled)
 	require.Equal(t, 1, res.CommissionsReleased, "a backfilled wait already in the past releases in the same pass")
 
-	want := completedAt.AddDate(0, 0, 5) // physical_received 2 + physical_wait 3
+	want := completedAt.AddDate(0, 0, 5) // physical_wait_days 5
 	backfilled := getAffiliateJobCommission(t, repo, waiting.ID)
 	require.NotNil(t, backfilled.WaitUntil)
 	require.WithinDuration(t, want, *backfilled.WaitUntil, time.Second)
@@ -599,4 +598,29 @@ func countAffiliateFlagsFor(t *testing.T, repo *repository.Repository, affiliato
 	require.NoError(t, repo.Pool().QueryRow(context.Background(),
 		`SELECT count(*) FROM affiliate_flags WHERE affiliator_id = $1`, affiliatorID).Scan(&n))
 	return n
+}
+
+func TestAffiliateJobReleasesScope_isRerunnable(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	setAffiliateFlagForCommission(t, repo, "true")
+
+	due := seedAffiliatorOwner(t, repo, "aff-job-rel-"+uniqueSuffix()+"@test.local", "", "active")
+	past := time.Now().UTC().Add(-time.Hour)
+	_, err := repo.Pool().Exec(ctx,
+		`UPDATE affiliators SET status = 'suspended', suspended_until = $2, frozen_until = $2 WHERE id = $1`,
+		due.affiliatorID, past)
+	require.NoError(t, err)
+
+	first, err := svc.RunAffiliateJob(ctx, "releases", nil)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, first.SanctionsExpired, 2, "the suspension and the freeze both lapse")
+	released := getAffiliateJobAffiliator(t, repo, due.affiliatorID)
+	require.Equal(t, "active", released.Status)
+	require.Nil(t, released.FrozenUntil)
+
+	second, err := svc.RunAffiliateJob(ctx, "releases", nil)
+	require.NoError(t, err)
+	require.Equal(t, 0, second.SanctionsExpired, "a second run changes nothing")
+	require.Equal(t, "active", getAffiliateJobAffiliator(t, repo, due.affiliatorID).Status)
 }

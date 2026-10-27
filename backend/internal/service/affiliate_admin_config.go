@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"time"
@@ -33,15 +34,15 @@ const (
 // AffiliateAdminLevelInput is one level row in the PUT settings body; nil
 // optional fields clear to NULL because the PUT is a full replace.
 type AffiliateAdminLevelInput struct {
-	Level                string             `json:"level"`
-	CommissionPct        map[string]float64 `json:"commission_pct"`
-	DigitalWaitDays      *int               `json:"digital_wait_days"`
-	PhysicalReceivedDays *int               `json:"physical_received_days"`
-	PhysicalWaitDays     *int               `json:"physical_wait_days"`
-	MinPayout            *float64           `json:"min_payout"`
-	PayoutDayOfMonth     *int               `json:"payout_day_of_month"`
-	RiseThreshold        *float64           `json:"rise_threshold"`
-	HoldThreshold        *float64           `json:"hold_threshold"`
+	Level            string                                   `json:"level"`
+	CommissionRule   map[string]model.AffiliateCommissionRule `json:"commission_rule"`
+	BindingMonths    *int                                     `json:"binding_months"`
+	DigitalWaitDays  *int                                     `json:"digital_wait_days"`
+	PhysicalWaitDays *int                                     `json:"physical_wait_days"`
+	MinPayout        *float64                                 `json:"min_payout"`
+	PayoutDayOfMonth *int                                     `json:"payout_day_of_month"`
+	RiseThreshold    *float64                                 `json:"rise_threshold"`
+	HoldThreshold    *float64                                 `json:"hold_threshold"`
 }
 
 // AffiliateAdminSettingsInput is the PUT /admin/affiliate-settings body: the
@@ -51,7 +52,6 @@ type AffiliateAdminSettingsInput struct {
 	BindingMonths              int                        `json:"binding_months"`
 	MinExtendAmount            float64                    `json:"min_extend_amount"`
 	DigitalWaitDays            int                        `json:"digital_wait_days"`
-	PhysicalReceivedDays       int                        `json:"physical_received_days"`
 	PhysicalWaitDays           int                        `json:"physical_wait_days"`
 	MinPayout                  float64                    `json:"min_payout"`
 	PayoutDayOfMonth           *int                       `json:"payout_day_of_month"`
@@ -120,9 +120,6 @@ func validateAffiliateSettingsInput(in AffiliateAdminSettingsInput) error {
 	if in.DigitalWaitDays < 0 || in.DigitalWaitDays > 90 {
 		return fmt.Errorf("%w: digital_wait_days must be between 0 and 90", ErrValidation)
 	}
-	if in.PhysicalReceivedDays < 0 || in.PhysicalReceivedDays > 30 {
-		return fmt.Errorf("%w: physical_received_days must be between 0 and 30", ErrValidation)
-	}
 	if in.PhysicalWaitDays < 0 || in.PhysicalWaitDays > 90 {
 		return fmt.Errorf("%w: physical_wait_days must be between 0 and 90", ErrValidation)
 	}
@@ -180,19 +177,19 @@ func affiliateValidateLevelInput(level AffiliateAdminLevelInput) error {
 	if !affiliateValidLevel(level.Level) {
 		return fmt.Errorf("%w: unknown level %q", ErrValidation, level.Level)
 	}
-	for category, pct := range level.CommissionPct {
+	for category, rule := range level.CommissionRule {
 		if !slices.Contains(affiliateCommissionCategories(), category) {
 			return fmt.Errorf("%w: unknown commission category %q", ErrValidation, category)
 		}
-		if pct < 0 || pct > 100 {
-			return fmt.Errorf("%w: commission_pct %q must be between 0 and 100", ErrValidation, category)
+		if err := validateAffiliateCommissionRule(rule); err != nil {
+			return fmt.Errorf("commission_rule %q: %w", category, err)
 		}
+	}
+	if level.BindingMonths != nil && (*level.BindingMonths < 1 || *level.BindingMonths > 12) {
+		return fmt.Errorf("%w: level binding_months must be between 1 and 12", ErrValidation)
 	}
 	if level.DigitalWaitDays != nil && (*level.DigitalWaitDays < 0 || *level.DigitalWaitDays > 90) {
 		return fmt.Errorf("%w: level digital_wait_days must be between 0 and 90", ErrValidation)
-	}
-	if level.PhysicalReceivedDays != nil && (*level.PhysicalReceivedDays < 0 || *level.PhysicalReceivedDays > 30) {
-		return fmt.Errorf("%w: level physical_received_days must be between 0 and 30", ErrValidation)
 	}
 	if level.PhysicalWaitDays != nil && (*level.PhysicalWaitDays < 0 || *level.PhysicalWaitDays > 90) {
 		return fmt.Errorf("%w: level physical_wait_days must be between 0 and 90", ErrValidation)
@@ -208,6 +205,27 @@ func affiliateValidateLevelInput(level AffiliateAdminLevelInput) error {
 	}
 	if level.HoldThreshold != nil && *level.HoldThreshold < 0 {
 		return fmt.Errorf("%w: level hold_threshold must be at least 0", ErrValidation)
+	}
+	return nil
+}
+
+// validateAffiliateCommissionRule accepts a percent rule of 0-100 with at most
+// two decimals, or a fixed rule of whole rupiah.
+func validateAffiliateCommissionRule(rule model.AffiliateCommissionRule) error {
+	switch rule.Type {
+	case affiliateCommissionPercent:
+		if rule.Value < 0 || rule.Value > 100 {
+			return fmt.Errorf("%w: percent must be between 0 and 100", ErrValidation)
+		}
+		if math.Abs(rule.Value*100-math.Round(rule.Value*100)) > 1e-6 {
+			return fmt.Errorf("%w: percent allows at most 2 decimals", ErrValidation)
+		}
+	case affiliateCommissionFixed:
+		if rule.Value < 0 || rule.Value != math.Floor(rule.Value) {
+			return fmt.Errorf("%w: fixed amount must be a whole rupiah of at least 0", ErrValidation)
+		}
+	default:
+		return fmt.Errorf("%w: commission type must be percent or fixed", ErrValidation)
 	}
 	return nil
 }
@@ -280,7 +298,6 @@ func affiliateSettingsAuditMeta(old *model.AffiliateSettings, oldLevels []model.
 		BindingMonths:              in.BindingMonths,
 		MinExtendAmount:            in.MinExtendAmount,
 		DigitalWaitDays:            in.DigitalWaitDays,
-		PhysicalReceivedDays:       in.PhysicalReceivedDays,
 		PhysicalWaitDays:           in.PhysicalWaitDays,
 		MinPayout:                  in.MinPayout,
 		PayoutDayOfMonth:           in.PayoutDayOfMonth,
@@ -306,7 +323,6 @@ func affiliateSettingsAuditMeta(old *model.AffiliateSettings, oldLevels []model.
 	add("binding_months", old.BindingMonths, updated.BindingMonths)
 	add("min_extend_amount", old.MinExtendAmount, updated.MinExtendAmount)
 	add("digital_wait_days", old.DigitalWaitDays, updated.DigitalWaitDays)
-	add("physical_received_days", old.PhysicalReceivedDays, updated.PhysicalReceivedDays)
 	add("physical_wait_days", old.PhysicalWaitDays, updated.PhysicalWaitDays)
 	add("min_payout", old.MinPayout, updated.MinPayout)
 	add("payout_day_of_month", old.PayoutDayOfMonth, updated.PayoutDayOfMonth)
@@ -332,18 +348,18 @@ func affiliateSettingsAuditMeta(old *model.AffiliateSettings, oldLevels []model.
 	}
 	for _, level := range in.Levels {
 		newRow := model.AffiliateLevelSettings{
-			Level:                level.Level,
-			DigitalWaitDays:      level.DigitalWaitDays,
-			PhysicalReceivedDays: level.PhysicalReceivedDays,
-			PhysicalWaitDays:     level.PhysicalWaitDays,
-			MinPayout:            level.MinPayout,
-			PayoutDayOfMonth:     level.PayoutDayOfMonth,
-			RiseThreshold:        level.RiseThreshold,
-			HoldThreshold:        level.HoldThreshold,
+			Level:            level.Level,
+			BindingMonths:    level.BindingMonths,
+			DigitalWaitDays:  level.DigitalWaitDays,
+			PhysicalWaitDays: level.PhysicalWaitDays,
+			MinPayout:        level.MinPayout,
+			PayoutDayOfMonth: level.PayoutDayOfMonth,
+			RiseThreshold:    level.RiseThreshold,
+			HoldThreshold:    level.HoldThreshold,
 		}
-		if len(level.CommissionPct) > 0 {
-			if raw, err := json.Marshal(level.CommissionPct); err == nil {
-				newRow.CommissionPct = raw
+		if len(level.CommissionRule) > 0 {
+			if raw, err := json.Marshal(level.CommissionRule); err == nil {
+				newRow.CommissionRule = raw
 			}
 		}
 		if !affiliateLevelRowsEqual(existing[level.Level], newRow) {
@@ -364,15 +380,15 @@ func affiliateLevelRowsEqual(old, new model.AffiliateLevelSettings) bool {
 	if old.Level != new.Level {
 		return false
 	}
-	var oldPct, newPct map[string]float64
-	_ = json.Unmarshal(old.CommissionPct, &oldPct)
-	_ = json.Unmarshal(new.CommissionPct, &newPct)
-	if len(oldPct) == 0 && len(newPct) == 0 {
-		oldPct, newPct = nil, nil
+	var oldRule, newRule map[string]model.AffiliateCommissionRule
+	_ = json.Unmarshal(old.CommissionRule, &oldRule)
+	_ = json.Unmarshal(new.CommissionRule, &newRule)
+	if len(oldRule) == 0 && len(newRule) == 0 {
+		oldRule, newRule = nil, nil
 	}
-	return reflect.DeepEqual(oldPct, newPct) &&
+	return reflect.DeepEqual(oldRule, newRule) &&
+		reflect.DeepEqual(old.BindingMonths, new.BindingMonths) &&
 		reflect.DeepEqual(old.DigitalWaitDays, new.DigitalWaitDays) &&
-		reflect.DeepEqual(old.PhysicalReceivedDays, new.PhysicalReceivedDays) &&
 		reflect.DeepEqual(old.PhysicalWaitDays, new.PhysicalWaitDays) &&
 		reflect.DeepEqual(old.MinPayout, new.MinPayout) &&
 		reflect.DeepEqual(old.PayoutDayOfMonth, new.PayoutDayOfMonth) &&
@@ -450,18 +466,18 @@ func (s *Service) UpdateAffiliateAdminSettings(ctx context.Context, actorID stri
 	}
 	for _, level := range in.Levels {
 		row := model.AffiliateLevelSettings{
-			Level:                level.Level,
-			DigitalWaitDays:      level.DigitalWaitDays,
-			PhysicalReceivedDays: level.PhysicalReceivedDays,
-			PhysicalWaitDays:     level.PhysicalWaitDays,
-			MinPayout:            level.MinPayout,
-			PayoutDayOfMonth:     level.PayoutDayOfMonth,
-			RiseThreshold:        level.RiseThreshold,
-			HoldThreshold:        level.HoldThreshold,
+			Level:            level.Level,
+			BindingMonths:    level.BindingMonths,
+			DigitalWaitDays:  level.DigitalWaitDays,
+			PhysicalWaitDays: level.PhysicalWaitDays,
+			MinPayout:        level.MinPayout,
+			PayoutDayOfMonth: level.PayoutDayOfMonth,
+			RiseThreshold:    level.RiseThreshold,
+			HoldThreshold:    level.HoldThreshold,
 		}
-		if len(level.CommissionPct) > 0 {
-			if raw, err := json.Marshal(level.CommissionPct); err == nil {
-				row.CommissionPct = raw
+		if len(level.CommissionRule) > 0 {
+			if raw, err := json.Marshal(level.CommissionRule); err == nil {
+				row.CommissionRule = raw
 			}
 		}
 		if err := s.storeRepo.UpsertAffiliateLevelSettingsTx(ctx, tx, &row); err != nil {
@@ -504,9 +520,9 @@ func (s *Service) AdminSearchAffiliateOverrideProducts(ctx context.Context, q st
 }
 
 // AdminUpsertAffiliateOverride backs PUT /admin/affiliate-product-overrides/:product_id.
-func (s *Service) AdminUpsertAffiliateOverride(ctx context.Context, actorID, productID string, percentage float64) (*model.AffiliateProductOverride, error) {
-	if percentage < 0 || percentage > 100 {
-		return nil, fmt.Errorf("%w: percentage must be between 0 and 100", ErrValidation)
+func (s *Service) AdminUpsertAffiliateOverride(ctx context.Context, actorID, productID string, rule model.AffiliateCommissionRule) (*model.AffiliateProductOverride, error) {
+	if err := validateAffiliateCommissionRule(rule); err != nil {
+		return nil, err
 	}
 	id, err := parseUUID(productID)
 	if err != nil {
@@ -529,12 +545,13 @@ func (s *Service) AdminUpsertAffiliateOverride(ctx context.Context, actorID, pro
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
-	override := &model.AffiliateProductOverride{ProductID: id, Percentage: percentage, UpdatedBy: &actor}
+	override := &model.AffiliateProductOverride{ProductID: id, Type: rule.Type, Value: rule.Value, UpdatedBy: &actor}
 	if err := s.storeRepo.UpsertAffiliateOverrideTx(ctx, tx, override); err != nil {
 		return nil, fmt.Errorf("upsert affiliate override: %w", err)
 	}
 	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actorID, "affiliate_product_override", id.String(), affiliateAuditOverride, map[string]any{
-		"percentage": percentage,
+		"type":  rule.Type,
+		"value": rule.Value,
 	}); err != nil {
 		return nil, fmt.Errorf("write override audit: %w", err)
 	}

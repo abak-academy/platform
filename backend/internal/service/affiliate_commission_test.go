@@ -18,6 +18,7 @@ import (
 type commissionSeedItem struct {
 	productType string
 	jumlah      float64
+	qty         int
 }
 
 func setAffiliateFlagForCommission(t *testing.T, repo *repository.Repository, value string) {
@@ -72,8 +73,8 @@ func seedCommissionOrder(t *testing.T, repo *repository.Repository, studentID st
 			ProductID:   productID,
 			ProductType: it.productType,
 			Name:        "Item " + it.productType,
-			UnitPrice:   it.jumlah,
-			Qty:         1,
+			UnitPrice:   it.jumlah / float64(max(it.qty, 1)),
+			Qty:         max(it.qty, 1),
 			Jumlah:      it.jumlah,
 		}
 		require.NoError(t, repo.Pool().QueryRow(ctx,
@@ -105,7 +106,7 @@ func runCreateCommissions(t *testing.T, svc *Service, repo *repository.Repositor
 func affiliateCommissionsForOrder(t *testing.T, repo *repository.Repository, orderID uuid.UUID) []model.AffiliateCommission {
 	t.Helper()
 	rows, err := repo.Pool().Query(context.Background(),
-		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, percentage,
+		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, commission_type, commission_value,
 		        level_snapshot, amount, status, wait_until, paid_at
 		 FROM affiliate_commissions WHERE order_id = $1 ORDER BY order_item_id`, orderID)
 	require.NoError(t, err)
@@ -115,7 +116,7 @@ func affiliateCommissionsForOrder(t *testing.T, repo *repository.Repository, ord
 	for rows.Next() {
 		var c model.AffiliateCommission
 		require.NoError(t, rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID,
-			&c.ProductType, &c.BaseAmount, &c.Percentage, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt))
+			&c.ProductType, &c.BaseAmount, &c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt))
 		out = append(out, c)
 	}
 	require.NoError(t, rows.Err())
@@ -156,7 +157,7 @@ func TestAffiliateCommission_CreatesPendingCommissionsForBoundStudent(t *testing
 	require.Equal(t, order.StudentID, exam.StudentID)
 	require.Equal(t, order.ID, exam.OrderID)
 	require.Equal(t, 100000.0, exam.BaseAmount)
-	require.Equal(t, 10.0, exam.Percentage)
+	require.Equal(t, 10.0, exam.CommissionValue)
 	require.Equal(t, 10000.0, exam.Amount)
 	require.Equal(t, "bronze", exam.LevelSnapshot)
 	require.Equal(t, "pending", exam.Status)
@@ -167,7 +168,7 @@ func TestAffiliateCommission_CreatesPendingCommissionsForBoundStudent(t *testing
 
 	course := byType["course"]
 	require.Equal(t, 50000.0, course.BaseAmount)
-	require.Equal(t, 10.0, course.Percentage)
+	require.Equal(t, 10.0, course.CommissionValue)
 	require.Equal(t, 5000.0, course.Amount)
 	require.Equal(t, "bronze", course.LevelSnapshot)
 	require.Equal(t, "pending", course.Status)
@@ -270,21 +271,38 @@ func TestAffiliateCommission_SuspendedAffiliatorCreatesNothingButFrozenStillEarn
 }
 
 func TestAffiliateCommissionAmount(t *testing.T) {
+	pct := func(v float64) model.AffiliateCommissionRule {
+		return model.AffiliateCommissionRule{Type: "percent", Value: v}
+	}
+	fixed := func(v float64) model.AffiliateCommissionRule {
+		return model.AffiliateCommissionRule{Type: "fixed", Value: v}
+	}
 	cases := []struct {
-		name      string
-		base, pct float64
-		want      float64
+		name string
+		base float64
+		qty  int
+		rule model.AffiliateCommissionRule
+		want float64
 	}{
-		{"whole percent", 100000, 10, 10000},
-		{"floors the remainder", 33333, 10, 3333},
-		{"decimal percent that is inexact in float", 20000, 7.35, 1470},
-		{"half percent", 99999, 2.5, 2499},
-		{"zero percent", 100000, 0, 0},
-		{"fractional base after discount split", 33333.33, 5, 1666},
+		{"whole percent", 100000, 1, pct(10), 10000},
+		{"floors the remainder", 33333, 1, pct(10), 3333},
+		{"decimal percent that is inexact in float", 20000, 1, pct(7.35), 1470},
+		{"half percent", 99999, 1, pct(2.5), 2499},
+		{"hundredth of a percent", 100000, 1, pct(0.01), 10},
+		{"hundredth of a percent below one rupiah", 5000, 1, pct(0.01), 0},
+		{"zero percent", 100000, 1, pct(0), 0},
+		{"fractional base after discount split", 33333.33, 1, pct(5), 1666},
+		{"percent ignores quantity", 300000, 3, pct(10), 30000},
+		{"fixed pays per unit", 300000, 3, fixed(5000), 15000},
+		{"fixed single unit", 100000, 1, fixed(25000), 25000},
+		{"fixed is capped at the discounted price", 20000, 1, fixed(25000), 20000},
+		{"fixed per-unit total is capped at the line base", 12000, 3, fixed(5000), 12000},
+		{"fixed cap floors a fractional base", 9999.6, 1, fixed(25000), 9999},
+		{"fixed zero", 100000, 2, fixed(0), 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, affiliateCommissionAmount(tc.base, tc.pct))
+			require.Equal(t, tc.want, affiliateCommissionAmount(tc.base, tc.qty, tc.rule))
 		})
 	}
 }
@@ -311,7 +329,7 @@ func TestAffiliateCommission_DigitalWaitsPhysicalWaitsNull(t *testing.T) {
 
 	book := byType["book"]
 	require.Equal(t, "pending", book.Status)
-	require.Equal(t, 3.0, book.Percentage)
+	require.Equal(t, 3.0, book.CommissionValue)
 	require.Equal(t, 900.0, book.Amount)
 	require.Nil(t, book.WaitUntil)
 
@@ -376,7 +394,7 @@ func TestAffiliateCommission_ProductOverrideWins(t *testing.T) {
 		commissionSeedItem{productType: "exam", jumlah: 100000},
 	)
 	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_product_overrides (product_id, percentage) VALUES ($1, 15)`,
+		`INSERT INTO affiliate_product_overrides (product_id, type, value) VALUES ($1, 'percent', 15)`,
 		order.Items[0].ProductID)
 	require.NoError(t, err)
 
@@ -384,6 +402,63 @@ func TestAffiliateCommission_ProductOverrideWins(t *testing.T) {
 
 	rows := affiliateCommissionsForOrder(t, repo, order.ID)
 	require.Len(t, rows, 1)
-	require.Equal(t, 15.0, rows[0].Percentage)
+	require.Equal(t, 15.0, rows[0].CommissionValue)
 	require.Equal(t, 15000.0, rows[0].Amount)
+}
+
+func TestAffiliateCommission_FixedOverridePaysPerUnitAndSnapshotsRule(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	launch := time.Now().UTC().Add(-24 * time.Hour)
+	seedAffiliateSettingsForBinding(t, repo, affiliateSettingsSeed{launchDate: &launch, bindingMonths: 3})
+	setAffiliateFlagForCommission(t, repo, "true")
+	owner := seedAffiliatorOwner(t, repo, "aff-comm-f-"+uniqueSuffix()+"@test.local", "", "active")
+	student := seedAffiliateTestStudent(t, repo, "student-comm-f-"+uniqueSuffix()+"@test.local", "")
+	createAffiliateBindingCommitted(t, svc, repo, student.ID, owner.affiliatorID, "checkout_code")
+
+	order := seedCommissionOrder(t, repo, student.ID, time.Now().UTC(), 0,
+		commissionSeedItem{productType: "merchandise", jumlah: 150000, qty: 3},
+	)
+	_, err := repo.Pool().Exec(context.Background(),
+		`INSERT INTO affiliate_product_overrides (product_id, type, value) VALUES ($1, 'fixed', 5000)`,
+		order.Items[0].ProductID)
+	require.NoError(t, err)
+
+	require.NoError(t, runCreateCommissions(t, svc, repo, order))
+
+	rows := affiliateCommissionsForOrder(t, repo, order.ID)
+	require.Len(t, rows, 1)
+	require.Equal(t, "fixed", rows[0].CommissionType)
+	require.Equal(t, 5000.0, rows[0].CommissionValue)
+	require.Equal(t, 15000.0, rows[0].Amount, "5.000 per unit for 3 units")
+
+	_, err = repo.Pool().Exec(context.Background(),
+		`UPDATE affiliate_product_overrides SET type = 'percent', value = 50 WHERE product_id = $1`, order.Items[0].ProductID)
+	require.NoError(t, err)
+	rows = affiliateCommissionsForOrder(t, repo, order.ID)
+	require.Equal(t, "fixed", rows[0].CommissionType, "changing the rule later does not rewrite the snapshot")
+	require.Equal(t, 15000.0, rows[0].Amount)
+}
+
+func TestAffiliateCommission_FixedAmountNeverExceedsItemPrice(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	launch := time.Now().UTC().Add(-24 * time.Hour)
+	seedAffiliateSettingsForBinding(t, repo, affiliateSettingsSeed{launchDate: &launch, bindingMonths: 3})
+	setAffiliateFlagForCommission(t, repo, "true")
+	owner := seedAffiliatorOwner(t, repo, "aff-comm-c-"+uniqueSuffix()+"@test.local", "", "active")
+	student := seedAffiliateTestStudent(t, repo, "student-comm-c-"+uniqueSuffix()+"@test.local", "")
+	createAffiliateBindingCommitted(t, svc, repo, student.ID, owner.affiliatorID, "checkout_code")
+
+	order := seedCommissionOrder(t, repo, student.ID, time.Now().UTC(), 0,
+		commissionSeedItem{productType: "book", jumlah: 18000, qty: 1},
+	)
+	_, err := repo.Pool().Exec(context.Background(),
+		`INSERT INTO affiliate_product_overrides (product_id, type, value) VALUES ($1, 'fixed', 25000)`,
+		order.Items[0].ProductID)
+	require.NoError(t, err)
+
+	require.NoError(t, runCreateCommissions(t, svc, repo, order))
+
+	rows := affiliateCommissionsForOrder(t, repo, order.ID)
+	require.Len(t, rows, 1)
+	require.Equal(t, 18000.0, rows[0].Amount)
 }

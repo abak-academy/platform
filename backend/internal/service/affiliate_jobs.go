@@ -29,6 +29,7 @@ const (
 	affiliateScopeCommissions = "commissions"
 	affiliateScopeFlags       = "flags"
 	affiliateScopeLevels      = "levels"
+	affiliateScopeReleases    = "releases"
 
 	affiliateLevelSourceAuto     = "auto"
 	affiliateLevelReasonAutoEval = "auto_eval"
@@ -58,6 +59,7 @@ var affiliateJobScopes = map[string]bool{
 	affiliateScopeCommissions: true,
 	affiliateScopeFlags:       true,
 	affiliateScopeLevels:      true,
+	affiliateScopeReleases:    true,
 }
 
 var affiliateQuarterPattern = regexp.MustCompile(`^(\d{4})-Q([1-4])$`)
@@ -151,6 +153,12 @@ func (s *Service) RunAffiliateJob(ctx context.Context, scope string, quarter *st
 		res.FlagsRaised = raised
 	case affiliateScopeLevels:
 		return s.runAffiliateQuarterly(ctx, now, quarter)
+	case affiliateScopeReleases:
+		released, err := s.storeRepo.ExpireAffiliateSanctions(ctx, now)
+		if err != nil {
+			return res, fmt.Errorf("expire affiliate sanctions: %w", err)
+		}
+		res.SanctionsExpired = int(released)
 	}
 	return res, nil
 }
@@ -297,7 +305,7 @@ func (s *Service) reconcileOrderCommissions(ctx context.Context, orderID uuid.UU
 
 // backfillPhysicalWaitUntil derives wait_until for pending physical
 // commissions whose order has meanwhile been completed:
-// completed_at + received grace + wait days, per the level's effective rule.
+// completed_at + physical wait days, per the level's effective rule.
 func (s *Service) backfillPhysicalWaitUntil(ctx context.Context) (int, error) {
 	_, rules, err := s.LoadAffiliateEffectiveRules(ctx)
 	if err != nil {
@@ -320,7 +328,7 @@ func (s *Service) backfillPhysicalWaitUntil(ctx context.Context) (int, error) {
 				// whole daily job.
 				rule = rules["bronze"]
 			}
-			wait := p.CompletedAt.AddDate(0, 0, rule.PhysicalReceivedDays+rule.PhysicalWaitDays)
+			wait := p.CompletedAt.AddDate(0, 0, rule.PhysicalWaitDays)
 			if err := s.storeRepo.SetAffiliateCommissionWaitUntil(ctx, p.CommissionID, wait); err != nil {
 				return backfilled, fmt.Errorf("set commission wait until %s: %w", p.CommissionID, err)
 			}

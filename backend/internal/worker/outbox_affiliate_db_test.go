@@ -84,7 +84,7 @@ func pollAllWithWorker(t *testing.T, env *lifecycleEnv, w *Worker) {
 func workerCommissionRows(t *testing.T, repo *repository.Repository, orderID uuid.UUID) []model.AffiliateCommission {
 	t.Helper()
 	rows, err := repo.Pool().Query(context.Background(),
-		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, percentage,
+		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, commission_type, commission_value,
 		        level_snapshot, amount, status, wait_until, paid_at
 		 FROM affiliate_commissions WHERE order_id = $1 ORDER BY order_item_id`, orderID)
 	if err != nil {
@@ -96,7 +96,7 @@ func workerCommissionRows(t *testing.T, repo *repository.Repository, orderID uui
 	for rows.Next() {
 		var c model.AffiliateCommission
 		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID,
-			&c.ProductType, &c.BaseAmount, &c.Percentage, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt); err != nil {
+			&c.ProductType, &c.BaseAmount, &c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt); err != nil {
 			t.Fatalf("scan commission: %v", err)
 		}
 		out = append(out, c)
@@ -149,7 +149,7 @@ func TestOrderPaidAffiliate_BoundStudentCreatesPendingCommissions(t *testing.T) 
 		var waitUntil *time.Time
 		var affiliator, orderStudent uuid.UUID
 		if err := env.repo.Pool().QueryRow(ctx,
-			`SELECT base_amount, percentage, amount, level_snapshot, status, wait_until, affiliator_id, student_id
+			`SELECT base_amount, commission_value, amount, level_snapshot, status, wait_until, affiliator_id, student_id
 			 FROM affiliate_commissions WHERE order_id = $1 AND product_type = $2`,
 			orderID, w.productType,
 		).Scan(&base, &pct, &amount, &level, &status, &waitUntil, &affiliator, &orderStudent); err != nil {

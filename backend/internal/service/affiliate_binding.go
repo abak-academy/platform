@@ -123,19 +123,38 @@ func (s *Service) recordSelfPurchaseFlag(ctx context.Context, affiliatorID uuid.
 	return nil
 }
 
-// CreateBinding inserts one active binding inside the caller's transaction,
-// lasting settings.BindingMonths from now.
-func (s *Service) CreateBinding(ctx context.Context, tx pgx.Tx, studentID string, affiliatorID uuid.UUID, source string) error {
-	settings, err := s.LoadAffiliateSettings(ctx)
+// affiliateBindingMonths is the binding length for an affiliator: its current
+// level's binding_months, or the global value when the level leaves it unset.
+func (s *Service) affiliateBindingMonths(ctx context.Context, tx pgx.Tx, affiliatorID uuid.UUID) (int, error) {
+	settings, rules, err := s.LoadAffiliateEffectiveRules(ctx)
 	if err != nil {
-		return fmt.Errorf("load affiliate settings: %w", err)
+		return 0, fmt.Errorf("load affiliate effective rules: %w", err)
+	}
+	aff, err := s.storeRepo.GetAffiliatorByID(ctx, tx, affiliatorID)
+	if err != nil {
+		return 0, fmt.Errorf("get affiliator: %w", err)
+	}
+	if aff != nil {
+		if rule, ok := rules[aff.Level]; ok {
+			return rule.BindingMonths, nil
+		}
+	}
+	return settings.BindingMonths, nil
+}
+
+// CreateBinding inserts one active binding inside the caller's transaction,
+// lasting the affiliator's level binding months from now.
+func (s *Service) CreateBinding(ctx context.Context, tx pgx.Tx, studentID string, affiliatorID uuid.UUID, source string) error {
+	months, err := s.affiliateBindingMonths(ctx, tx, affiliatorID)
+	if err != nil {
+		return err
 	}
 	sid, err := parseUUID(studentID)
 	if err != nil {
 		return err
 	}
 	startedAt := time.Now()
-	endedAt := startedAt.AddDate(0, settings.BindingMonths, 0)
+	endedAt := startedAt.AddDate(0, months, 0)
 	binding := &model.AffiliateBinding{
 		AffiliatorID: affiliatorID,
 		StudentID:    sid,
@@ -173,8 +192,12 @@ func (s *Service) ExtendBinding(ctx context.Context, tx pgx.Tx, studentID string
 	if binding == nil {
 		return nil
 	}
+	months, err := s.affiliateBindingMonths(ctx, tx, binding.AffiliatorID)
+	if err != nil {
+		return err
+	}
 	// ended_at re-anchors from the payment date instead of stacking onto the remaining window.
-	newEndedAt := paidAt.AddDate(0, settings.BindingMonths, 0)
+	newEndedAt := paidAt.AddDate(0, months, 0)
 	if binding.EndedAt != nil && binding.EndedAt.After(newEndedAt) {
 		newEndedAt = *binding.EndedAt
 	}

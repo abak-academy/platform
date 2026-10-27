@@ -146,8 +146,7 @@ const validAffiliateSettingsBody = `{
 	"binding_months": 3,
 	"min_extend_amount": 0,
 	"digital_wait_days": 7,
-	"physical_received_days": 7,
-	"physical_wait_days": 7,
+	"physical_wait_days": 14,
 	"min_payout": 100000,
 	"payout_day_of_month": null,
 	"adjustment_threshold": 1000000,
@@ -161,7 +160,7 @@ const validAffiliateSettingsBody = `{
 	"hold_thresholds": {"bronze": 1000000, "silver": null},
 	"daily_registration_cap": null,
 	"levels": [
-		{"level": "silver", "commission_pct": {"exam": 12}, "digital_wait_days": 3, "min_payout": 50000}
+		{"level": "silver", "commission_rule": {"exam": {"type": "percent", "value": 12}}, "binding_months": 6, "digital_wait_days": 3, "min_payout": 50000}
 	]
 }`
 
@@ -235,7 +234,7 @@ func TestAffiliateAdminConfigHandlerRBAC(t *testing.T) {
 		{"settings write", http.MethodPut, "/api/v1/admin/affiliate-settings", validAffiliateSettingsBody},
 		{"overrides read", http.MethodGet, "/api/v1/admin/affiliate-product-overrides", ""},
 		{"overrides product search", http.MethodGet, "/api/v1/admin/affiliate-product-overrides/products?q=a", ""},
-		{"overrides write", http.MethodPut, "/api/v1/admin/affiliate-product-overrides/" + productID.String(), `{"percentage":10}`},
+		{"overrides write", http.MethodPut, "/api/v1/admin/affiliate-product-overrides/" + productID.String(), `{"type":"percent","value":10}`},
 		{"overrides delete", http.MethodDelete, "/api/v1/admin/affiliate-product-overrides/" + productID.String(), ""},
 		{"flags read", http.MethodGet, "/api/v1/admin/affiliate-flags", ""},
 		{"flags export", http.MethodGet, "/api/v1/admin/affiliate-flags/export", ""},
@@ -323,18 +322,19 @@ func TestAffiliateAdminConfigHandlerRBAC(t *testing.T) {
 			t.Errorf("GET overrides: want 200, got %d: %s", rec.Code, rec.Body.String())
 		}
 
-		rec = putJSONWithToken(t, env.e, "/api/v1/admin/affiliate-product-overrides/"+productID.String(), token, `{"percentage":10}`)
+		rec = putJSONWithToken(t, env.e, "/api/v1/admin/affiliate-product-overrides/"+productID.String(), token, `{"type":"percent","value":10}`)
 		if rec.Code != http.StatusOK {
 			t.Errorf("PUT override: want 200, got %d: %s", rec.Code, rec.Body.String())
 		}
 		var ovr struct {
-			Percentage float64 `json:"percentage"`
+			Type  string  `json:"type"`
+			Value float64 `json:"value"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &ovr); err != nil {
 			t.Fatalf("decode override: %v", err)
 		}
-		if ovr.Percentage != 10 {
-			t.Errorf("override percentage = %v, want 10", ovr.Percentage)
+		if ovr.Type != "percent" || ovr.Value != 10 {
+			t.Errorf("override = %+v, want percent 10", ovr)
 		}
 
 		rec = deleteWithToken(t, env.e, "/api/v1/admin/affiliate-product-overrides/"+productID.String(), token)

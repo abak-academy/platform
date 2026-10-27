@@ -21,7 +21,7 @@ func seedRefundCommission(t *testing.T, repo *repository.Repository, affiliatorI
 	require.NoError(t, repo.Pool().QueryRow(context.Background(),
 		`INSERT INTO affiliate_commissions
 		     (affiliator_id, student_id, order_id, order_item_id, product_type,
-		      base_amount, percentage, level_snapshot, amount, status)
+		      base_amount, commission_value, level_snapshot, amount, status)
 		 VALUES ($1, $2, $3, $4, 'book', 100000, 3, 'bronze', $5, $6) RETURNING id`,
 		affiliatorID, studentID, orderID, orderItemID, amount, status,
 	).Scan(&id))

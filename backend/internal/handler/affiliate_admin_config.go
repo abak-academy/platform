@@ -3,13 +3,15 @@ package handler
 import (
 	"net/http"
 
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/service"
 
 	"github.com/labstack/echo/v4"
 )
 
 type adminAffiliateOverrideRequest struct {
-	Percentage float64 `json:"percentage"`
+	Type  string  `json:"type"`
+	Value float64 `json:"value"`
 }
 
 type adminAffiliateFlagReviewRequest struct {
@@ -77,7 +79,8 @@ func (h *Handler) AdminUpsertAffiliateOverride(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	override, err := h.svc.AdminUpsertAffiliateOverride(c.Request().Context(), actorID, c.Param("product_id"), req.Percentage)
+	override, err := h.svc.AdminUpsertAffiliateOverride(c.Request().Context(), actorID, c.Param("product_id"),
+		model.AffiliateCommissionRule{Type: req.Type, Value: req.Value})
 	if err != nil {
 		return mapServiceError(c, err)
 	}

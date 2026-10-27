@@ -16,7 +16,7 @@ import (
 // returns an empty slice.
 func (r *Repository) GetCommissionsByOrderTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) ([]model.AffiliateCommission, error) {
 	rows, err := r.affiliateQueryer(tx).Query(ctx,
-		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, percentage,
+		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, commission_type, commission_value,
 		        level_snapshot, amount, status, wait_until, paid_at
 		 FROM affiliate_commissions
 		 WHERE order_id = $1
@@ -31,7 +31,7 @@ func (r *Repository) GetCommissionsByOrderTx(ctx context.Context, tx pgx.Tx, ord
 	for rows.Next() {
 		var c model.AffiliateCommission
 		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID,
-			&c.ProductType, &c.BaseAmount, &c.Percentage, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt); err != nil {
+			&c.ProductType, &c.BaseAmount, &c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

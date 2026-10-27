@@ -162,6 +162,33 @@ func TestGetMyAffiliateProfile_showsLevelProgress(t *testing.T) {
 	require.InDelta(t, 50000, *progress.HoldThreshold, 0.001)
 }
 
+func TestGetMyAffiliateProfile_exposesLevelPayoutRule(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	setAffiliateMeFlag(t, repo, "true")
+	_, err := repo.Pool().Exec(ctx,
+		`INSERT INTO affiliate_level_settings (level, min_payout, payout_day_of_month) VALUES ('silver', 75000, 12)
+		 ON CONFLICT (level) DO UPDATE SET min_payout = 75000, payout_day_of_month = 12`)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = repo.Pool().Exec(ctx, `DELETE FROM affiliate_level_settings`)
+	})
+
+	silverUser, _ := seedAffiliateMeAffiliator(t, repo, "Affiliator Payout Silver "+uniqueSuffix(), "active", "silver")
+	profile, err := svc.GetMyAffiliateProfile(ctx, silverUser)
+	require.NoError(t, err)
+	require.InDelta(t, 75000, profile.MinPayout, 0.001, "the level value wins")
+	require.NotNil(t, profile.PayoutDayOfMonth)
+	require.Equal(t, 12, *profile.PayoutDayOfMonth)
+
+	bronzeUser, _ := seedAffiliateMeAffiliator(t, repo, "Affiliator Payout Bronze "+uniqueSuffix(), "active", "bronze")
+	global, err := svc.LoadAffiliateSettings(ctx)
+	require.NoError(t, err)
+	bronze, err := svc.GetMyAffiliateProfile(ctx, bronzeUser)
+	require.NoError(t, err)
+	require.InDelta(t, global.MinPayout, bronze.MinPayout, 0.001, "a level without a value follows the global one")
+}
+
 func TestGetMyAffiliateProfile_pendingHasNoCodeOrLink(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	setAffiliateMeFlag(t, repo, "true")

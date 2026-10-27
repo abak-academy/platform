@@ -17,7 +17,8 @@ type AffiliateOverrideRow struct {
 	ProductID   uuid.UUID  `json:"product_id"`
 	ProductName string     `json:"product_name"`
 	ProductType string     `json:"product_type"`
-	Percentage  float64    `json:"percentage"`
+	Type        string     `json:"type"`
+	Value       float64    `json:"value"`
 	UpdatedBy   *uuid.UUID `json:"updated_by"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
@@ -62,21 +63,21 @@ func (r *Repository) UpsertAffiliateSettingsTx(ctx context.Context, tx pgx.Tx, s
 	_, err := tx.Exec(ctx,
 		`INSERT INTO affiliate_settings
 		     (id, cookie_days, binding_months, min_extend_amount, digital_wait_days,
-		      physical_received_days, physical_wait_days, min_payout, payout_day_of_month,
+		      physical_wait_days, min_payout, payout_day_of_month,
 		      adjustment_threshold, adjustment_threshold_enabled, freeze_max_days, soon_end_days,
 		      launch_date, eval_day, silver_threshold, gold_threshold, hold_thresholds,
 		      daily_registration_cap, updated_by, updated_at)
-		 VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, now())
+		 VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, now())
 		 ON CONFLICT (id) DO UPDATE SET
 		     cookie_days = $1, binding_months = $2, min_extend_amount = $3,
-		     digital_wait_days = $4, physical_received_days = $5, physical_wait_days = $6,
-		     min_payout = $7, payout_day_of_month = $8, adjustment_threshold = $9,
-		     adjustment_threshold_enabled = $10, freeze_max_days = $11, soon_end_days = $12,
-		     launch_date = $13, eval_day = $14, silver_threshold = $15, gold_threshold = $16,
-		     hold_thresholds = $17, daily_registration_cap = $18,
-		     updated_by = $19, updated_at = now()`,
+		     digital_wait_days = $4, physical_wait_days = $5,
+		     min_payout = $6, payout_day_of_month = $7, adjustment_threshold = $8,
+		     adjustment_threshold_enabled = $9, freeze_max_days = $10, soon_end_days = $11,
+		     launch_date = $12, eval_day = $13, silver_threshold = $14, gold_threshold = $15,
+		     hold_thresholds = $16, daily_registration_cap = $17,
+		     updated_by = $18, updated_at = now()`,
 		s.CookieDays, s.BindingMonths, s.MinExtendAmount, s.DigitalWaitDays,
-		s.PhysicalReceivedDays, s.PhysicalWaitDays, s.MinPayout, s.PayoutDayOfMonth,
+		s.PhysicalWaitDays, s.MinPayout, s.PayoutDayOfMonth,
 		s.AdjustmentThreshold, s.AdjustmentThresholdEnabled, s.FreezeMaxDays, s.SoonEndDays,
 		s.LaunchDate, s.EvalDay, s.SilverThreshold, s.GoldThreshold, s.HoldThresholds,
 		s.DailyRegistrationCap, s.UpdatedBy,
@@ -90,14 +91,14 @@ func (r *Repository) UpsertAffiliateSettingsTx(ctx context.Context, tx pgx.Tx, s
 func (r *Repository) UpsertAffiliateLevelSettingsTx(ctx context.Context, tx pgx.Tx, l *model.AffiliateLevelSettings) error {
 	_, err := tx.Exec(ctx,
 		`INSERT INTO affiliate_level_settings
-		     (level, commission_pct, digital_wait_days, physical_received_days,
+		     (level, commission_rule, binding_months, digital_wait_days,
 		      physical_wait_days, min_payout, payout_day_of_month, rise_threshold, hold_threshold)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 ON CONFLICT (level) DO UPDATE SET
-		     commission_pct = $2, digital_wait_days = $3, physical_received_days = $4,
+		     commission_rule = $2, binding_months = $3, digital_wait_days = $4,
 		     physical_wait_days = $5, min_payout = $6, payout_day_of_month = $7,
 		     rise_threshold = $8, hold_threshold = $9`,
-		l.Level, l.CommissionPct, l.DigitalWaitDays, l.PhysicalReceivedDays,
+		l.Level, l.CommissionRule, l.BindingMonths, l.DigitalWaitDays,
 		l.PhysicalWaitDays, l.MinPayout, l.PayoutDayOfMonth, l.RiseThreshold, l.HoldThreshold,
 	)
 	return err
@@ -116,11 +117,11 @@ func (r *Repository) AffiliateProductExists(ctx context.Context, id uuid.UUID) (
 // transaction.
 func (r *Repository) UpsertAffiliateOverrideTx(ctx context.Context, tx pgx.Tx, o *model.AffiliateProductOverride) error {
 	_, err := tx.Exec(ctx,
-		`INSERT INTO affiliate_product_overrides (product_id, percentage, updated_by, updated_at)
-		 VALUES ($1, $2, $3, now())
+		`INSERT INTO affiliate_product_overrides (product_id, type, value, updated_by, updated_at)
+		 VALUES ($1, $2, $3, $4, now())
 		 ON CONFLICT (product_id) DO UPDATE SET
-		     percentage = $2, updated_by = $3, updated_at = now()`,
-		o.ProductID, o.Percentage, o.UpdatedBy,
+		     type = $2, value = $3, updated_by = $4, updated_at = now()`,
+		o.ProductID, o.Type, o.Value, o.UpdatedBy,
 	)
 	return err
 }
@@ -150,7 +151,7 @@ func (r *Repository) ListAffiliateOverrideRows(ctx context.Context, q string, li
 		return nil, 0, err
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT o.product_id, p.name, p.type, o.percentage, o.updated_by, o.updated_at `+from+`
+		`SELECT o.product_id, p.name, p.type, o.type, o.value, o.updated_by, o.updated_at `+from+`
 		 ORDER BY o.updated_at DESC, o.product_id
 		 LIMIT $`+strconv.Itoa(p.next)+` OFFSET $`+strconv.Itoa(p.next+1),
 		append(p.args, limit, offset)...)
@@ -162,7 +163,7 @@ func (r *Repository) ListAffiliateOverrideRows(ctx context.Context, q string, li
 	out := []AffiliateOverrideRow{}
 	for rows.Next() {
 		var row AffiliateOverrideRow
-		if err := rows.Scan(&row.ProductID, &row.ProductName, &row.ProductType, &row.Percentage, &row.UpdatedBy, &row.UpdatedAt); err != nil {
+		if err := rows.Scan(&row.ProductID, &row.ProductName, &row.ProductType, &row.Type, &row.Value, &row.UpdatedBy, &row.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, row)
@@ -173,10 +174,11 @@ func (r *Repository) ListAffiliateOverrideRows(ctx context.Context, q string, li
 // AffiliateOverrideProduct is one product offered by the override picker, with
 // the override already set on it (nil when none).
 type AffiliateOverrideProduct struct {
-	ID         uuid.UUID `json:"id"`
-	Name       string    `json:"name"`
-	Type       string    `json:"type"`
-	Percentage *float64  `json:"percentage"`
+	ID            uuid.UUID `json:"id"`
+	Name          string    `json:"name"`
+	Type          string    `json:"type"`
+	OverrideType  *string   `json:"override_type"`
+	OverrideValue *float64  `json:"override_value"`
 }
 
 // SearchAffiliateOverrideProducts finds non-archived products by name for the
@@ -185,7 +187,7 @@ func (r *Repository) SearchAffiliateOverrideProducts(ctx context.Context, q stri
 	p := newAffPredicate(1)
 	p.search(q, "p.name")
 	rows, err := r.pool.Query(ctx,
-		`SELECT p.id, p.name, p.type, o.percentage
+		`SELECT p.id, p.name, p.type, o.type, o.value
 		 FROM product p
 		 LEFT JOIN affiliate_product_overrides o ON o.product_id = p.id
 		 WHERE p.status <> 'archived'`+p.sql+`
@@ -200,7 +202,7 @@ func (r *Repository) SearchAffiliateOverrideProducts(ctx context.Context, q stri
 	out := []AffiliateOverrideProduct{}
 	for rows.Next() {
 		var row AffiliateOverrideProduct
-		if err := rows.Scan(&row.ID, &row.Name, &row.Type, &row.Percentage); err != nil {
+		if err := rows.Scan(&row.ID, &row.Name, &row.Type, &row.OverrideType, &row.OverrideValue); err != nil {
 			return nil, err
 		}
 		out = append(out, row)

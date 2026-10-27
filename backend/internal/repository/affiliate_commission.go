@@ -45,12 +45,12 @@ func (r *Repository) InsertAffiliateCommissionTx(ctx context.Context, tx pgx.Tx,
 	err := tx.QueryRow(ctx,
 		`INSERT INTO affiliate_commissions
 		     (affiliator_id, student_id, order_id, order_item_id, product_type,
-		      base_amount, percentage, level_snapshot, amount, status, wait_until, paid_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		      quantity, base_amount, commission_type, commission_value, level_snapshot, amount, status, wait_until, paid_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		 ON CONFLICT (order_item_id) DO NOTHING
 		 RETURNING id, created_at, updated_at`,
 		c.AffiliatorID, c.StudentID, c.OrderID, c.OrderItemID, c.ProductType,
-		c.BaseAmount, c.Percentage, c.LevelSnapshot, c.Amount, c.Status, c.WaitUntil, c.PaidAt,
+		c.Quantity, c.BaseAmount, c.CommissionType, c.CommissionValue, c.LevelSnapshot, c.Amount, c.Status, c.WaitUntil, c.PaidAt,
 	).Scan(&c.ID, &c.CreatedAt, &c.UpdatedAt)
 	if isNotFound(err) {
 		return ErrAffiliateCommissionExists

@@ -35,11 +35,8 @@ func TestAffiliateSettingsDefaults_matchMigrationDefaults(t *testing.T) {
 	if s.DigitalWaitDays != 7 {
 		t.Errorf("DigitalWaitDays = %d, want 7", s.DigitalWaitDays)
 	}
-	if s.PhysicalReceivedDays != 7 {
-		t.Errorf("PhysicalReceivedDays = %d, want 7", s.PhysicalReceivedDays)
-	}
-	if s.PhysicalWaitDays != 7 {
-		t.Errorf("PhysicalWaitDays = %d, want 7", s.PhysicalWaitDays)
+	if s.PhysicalWaitDays != 14 {
+		t.Errorf("PhysicalWaitDays = %d, want 14", s.PhysicalWaitDays)
 	}
 	if s.MinPayout != 100000 {
 		t.Errorf("MinPayout = %v, want 100000", s.MinPayout)
@@ -91,17 +88,17 @@ func TestAffiliateEffectiveRules_levelOverridesGlobal(t *testing.T) {
 	levels := []model.AffiliateLevelSettings{
 		{
 			Level:            "silver",
-			CommissionPct:    json.RawMessage(`{"exam":12,"book":5}`),
+			CommissionRule:   json.RawMessage(`{"exam":{"type":"percent","value":12},"book":{"type":"fixed","value":5000}}`),
+			BindingMonths:    intPtr(6),
 			DigitalWaitDays:  intPtr(3),
 			MinPayout:        f64Ptr(50000),
 			PayoutDayOfMonth: intPtr(25),
 		},
 		{
-			Level:                "gold",
-			PhysicalWaitDays:     intPtr(5),
-			PhysicalReceivedDays: intPtr(2),
-			RiseThreshold:        f64Ptr(20000000),
-			HoldThreshold:        f64Ptr(9000000),
+			Level:            "gold",
+			PhysicalWaitDays: intPtr(5),
+			RiseThreshold:    f64Ptr(20000000),
+			HoldThreshold:    f64Ptr(9000000),
 		},
 	}
 
@@ -124,25 +121,31 @@ func TestAffiliateEffectiveRules_levelOverridesGlobal(t *testing.T) {
 	if silver.PayoutDayOfMonth == nil || *silver.PayoutDayOfMonth != 25 {
 		t.Errorf("silver.PayoutDayOfMonth = %v, want 25 (level override)", silver.PayoutDayOfMonth)
 	}
-	if silver.PhysicalReceivedDays != 7 {
-		t.Errorf("silver.PhysicalReceivedDays = %d, want 7 (global fallback)", silver.PhysicalReceivedDays)
+	if silver.PhysicalWaitDays != 14 {
+		t.Errorf("silver.PhysicalWaitDays = %d, want 14 (global fallback)", silver.PhysicalWaitDays)
 	}
-	if silver.PhysicalWaitDays != 7 {
-		t.Errorf("silver.PhysicalWaitDays = %d, want 7 (global fallback)", silver.PhysicalWaitDays)
+	if silver.BindingMonths != 6 {
+		t.Errorf("silver.BindingMonths = %d, want 6 (level override)", silver.BindingMonths)
 	}
-	if silver.CommissionPct["exam"] != 12 || silver.CommissionPct["book"] != 5 {
-		t.Errorf("silver.CommissionPct = %v, want exam 12 book 5 (level override)", silver.CommissionPct)
+	if got := silver.CommissionRule["exam"]; got != (model.AffiliateCommissionRule{Type: "percent", Value: 12}) {
+		t.Errorf("silver exam rule = %+v, want percent 12 (level override)", got)
 	}
-	if silver.CommissionPct["course"] != 10 || silver.CommissionPct["merchandise"] != 3 || silver.CommissionPct["medal"] != 0 {
-		t.Errorf("silver.CommissionPct unset categories = %v, want defaults course 10 merchandise 3 medal 0", silver.CommissionPct)
+	if got := silver.CommissionRule["book"]; got != (model.AffiliateCommissionRule{Type: "fixed", Value: 5000}) {
+		t.Errorf("silver book rule = %+v, want fixed 5000 (level override)", got)
+	}
+	if got := silver.CommissionRule["course"]; got != (model.AffiliateCommissionRule{Type: "percent", Value: 10}) {
+		t.Errorf("silver course rule = %+v, want default percent 10", got)
+	}
+	if got := silver.CommissionRule["medal"]; got.Value != 0 {
+		t.Errorf("silver medal rule = %+v, want default 0", got)
 	}
 
 	gold := rules["gold"]
 	if gold.PhysicalWaitDays != 5 {
 		t.Errorf("gold.PhysicalWaitDays = %d, want 5 (level override)", gold.PhysicalWaitDays)
 	}
-	if gold.PhysicalReceivedDays != 2 {
-		t.Errorf("gold.PhysicalReceivedDays = %d, want 2 (level override)", gold.PhysicalReceivedDays)
+	if gold.BindingMonths != 3 {
+		t.Errorf("gold.BindingMonths = %d, want 3 (global fallback)", gold.BindingMonths)
 	}
 	if gold.MinPayout != 100000 {
 		t.Errorf("gold.MinPayout = %v, want 100000 (global fallback)", gold.MinPayout)
@@ -164,8 +167,8 @@ func TestAffiliateEffectiveRules_levelOverridesGlobal(t *testing.T) {
 	if bronze.RiseThreshold != nil || bronze.HoldThreshold != nil {
 		t.Errorf("bronze thresholds = %v %v, want nil nil (bronze has no level row)", bronze.RiseThreshold, bronze.HoldThreshold)
 	}
-	if bronze.CommissionPct["exam"] != 10 || bronze.CommissionPct["book"] != 3 {
-		t.Errorf("bronze.CommissionPct = %v, want defaults exam 10 book 3", bronze.CommissionPct)
+	if bronze.CommissionRule["exam"].Value != 10 || bronze.CommissionRule["book"].Value != 3 {
+		t.Errorf("bronze.CommissionRule = %v, want defaults exam 10 book 3", bronze.CommissionRule)
 	}
 }
 
@@ -178,15 +181,15 @@ func TestAffiliateEffectiveRules_nilSettingsFallsBackToDefaults(t *testing.T) {
 	if silver.DigitalWaitDays != 7 || silver.MinPayout != 100000 {
 		t.Errorf("silver wait/payout = %d %v, want defaults 7 100000", silver.DigitalWaitDays, silver.MinPayout)
 	}
-	if silver.CommissionPct["exam"] != 10 {
-		t.Errorf("silver.CommissionPct[exam] = %v, want default 10", silver.CommissionPct["exam"])
+	if silver.CommissionRule["exam"].Value != 10 {
+		t.Errorf("silver.CommissionRule[exam] = %v, want default 10", silver.CommissionRule["exam"])
 	}
 }
 
-func TestResolveAffiliateCommissionPct_precedence(t *testing.T) {
+func TestResolveAffiliateCommissionRule_precedence(t *testing.T) {
 	defaultRules := buildAffiliateEffectiveRules(defaultAffiliateSettings(), nil)
 	levelRules := buildAffiliateEffectiveRules(defaultAffiliateSettings(), []model.AffiliateLevelSettings{
-		{Level: "silver", CommissionPct: json.RawMessage(`{"exam":12,"book":5}`)},
+		{Level: "silver", CommissionRule: json.RawMessage(`{"exam":{"type":"percent","value":12},"book":{"type":"fixed","value":5000}}`)},
 	})
 
 	tests := []struct {
@@ -194,22 +197,23 @@ func TestResolveAffiliateCommissionPct_precedence(t *testing.T) {
 		override    *model.AffiliateProductOverride
 		rule        AffiliateEffectiveRule
 		productType string
-		want        float64
+		want        model.AffiliateCommissionRule
 	}{
-		{"override beats level and default", &model.AffiliateProductOverride{Percentage: 25}, levelRules["silver"], "book", 25},
-		{"override wins even for defaulted category", &model.AffiliateProductOverride{Percentage: 1}, levelRules["silver"], "course", 1},
-		{"level value beats default", nil, levelRules["silver"], "exam", 12},
-		{"level value set", nil, levelRules["silver"], "book", 5},
-		{"default when level omits category", nil, levelRules["silver"], "merchandise", 3},
-		{"default when level has no pct", nil, defaultRules["bronze"], "exam", 10},
-		{"medal defaults to zero", nil, defaultRules["bronze"], "medal", 0},
-		{"unknown product type has no commission", nil, defaultRules["bronze"], "webinar", 0},
+		{"override beats level and default", &model.AffiliateProductOverride{Type: "percent", Value: 25}, levelRules["silver"], "book", model.AffiliateCommissionRule{Type: "percent", Value: 25}},
+		{"override type replaces the level type", &model.AffiliateProductOverride{Type: "fixed", Value: 7500}, levelRules["silver"], "exam", model.AffiliateCommissionRule{Type: "fixed", Value: 7500}},
+		{"override wins even for defaulted category", &model.AffiliateProductOverride{Type: "percent", Value: 1}, levelRules["silver"], "course", model.AffiliateCommissionRule{Type: "percent", Value: 1}},
+		{"level value beats default", nil, levelRules["silver"], "exam", model.AffiliateCommissionRule{Type: "percent", Value: 12}},
+		{"level fixed value set", nil, levelRules["silver"], "book", model.AffiliateCommissionRule{Type: "fixed", Value: 5000}},
+		{"default when level omits category", nil, levelRules["silver"], "merchandise", model.AffiliateCommissionRule{Type: "percent", Value: 3}},
+		{"default when level has no rule", nil, defaultRules["bronze"], "exam", model.AffiliateCommissionRule{Type: "percent", Value: 10}},
+		{"medal defaults to zero", nil, defaultRules["bronze"], "medal", model.AffiliateCommissionRule{Type: "percent", Value: 0}},
+		{"unknown product type has no commission", nil, defaultRules["bronze"], "webinar", model.AffiliateCommissionRule{Type: "percent", Value: 0}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolveAffiliateCommissionPct(tt.override, tt.rule, tt.productType)
+			got := resolveAffiliateCommissionRule(tt.override, tt.rule, tt.productType)
 			if got != tt.want {
-				t.Errorf("resolveAffiliateCommissionPct(%v, %v, %q) = %v, want %v", tt.override, tt.rule.CommissionPct, tt.productType, got, tt.want)
+				t.Errorf("resolveAffiliateCommissionRule(%v, %v, %q) = %v, want %v", tt.override, tt.rule.CommissionRule, tt.productType, got, tt.want)
 			}
 		})
 	}
@@ -279,8 +283,8 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 	}
 
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO affiliate_level_settings (level, commission_pct, digital_wait_days, min_payout)
-		 VALUES ('silver', '{"exam":12,"book":5}', 3, 50000)`); err != nil {
+		`INSERT INTO affiliate_level_settings (level, commission_rule, digital_wait_days, min_payout)
+		 VALUES ('silver', '{"exam":{"type":"percent","value":12},"book":{"type":"fixed","value":5000}}', 3, 50000)`); err != nil {
 		t.Fatalf("seed affiliate_level_settings: %v", err)
 	}
 
@@ -290,7 +294,7 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 		t.Fatalf("seed product: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO affiliate_product_overrides (product_id, percentage) VALUES ($1, 25)`, productID); err != nil {
+		`INSERT INTO affiliate_product_overrides (product_id, type, value) VALUES ($1, 'percent', 25)`, productID); err != nil {
 		t.Fatalf("seed affiliate_product_overrides: %v", err)
 	}
 
@@ -298,7 +302,7 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadProductOverride: %v", err)
 	}
-	if override == nil || override.Percentage != 25 || override.ProductID != productID {
+	if override == nil || override.Type != "percent" || override.Value != 25 || override.ProductID != productID {
 		t.Errorf("LoadProductOverride(%v) = %+v, want percentage 25", productID, override)
 	}
 	other, err := repo.LoadProductOverride(ctx, uuid.New())
@@ -320,8 +324,8 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 	if silver.MinPayout != 50000 {
 		t.Errorf("silver.MinPayout = %v, want 50000 (level override)", silver.MinPayout)
 	}
-	if silver.CommissionPct["exam"] != 12 {
-		t.Errorf("silver.CommissionPct[exam] = %v, want 12 (level override)", silver.CommissionPct["exam"])
+	if silver.CommissionRule["exam"].Value != 12 {
+		t.Errorf("silver.CommissionRule[exam] = %v, want 12 (level override)", silver.CommissionRule["exam"])
 	}
 
 	// FindAffiliatorByCode round trip on the seeded affiliator.

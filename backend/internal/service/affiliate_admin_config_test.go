@@ -16,22 +16,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func affRules(category, ruleType string, value float64) map[string]model.AffiliateCommissionRule {
+	return map[string]model.AffiliateCommissionRule{category: {Type: ruleType, Value: value}}
+}
+
 func validAffiliateConfigSettingsInput() AffiliateAdminSettingsInput {
 	return AffiliateAdminSettingsInput{
-		CookieDays:           30,
-		BindingMonths:        3,
-		MinExtendAmount:      0,
-		DigitalWaitDays:      7,
-		PhysicalReceivedDays: 7,
-		PhysicalWaitDays:     7,
-		MinPayout:            100000,
-		AdjustmentThreshold:  1000000,
-		FreezeMaxDays:        14,
-		SoonEndDays:          30,
-		EvalDay:              8,
-		SilverThreshold:      5000000,
-		GoldThreshold:        15000000,
-		HoldThresholds:       json.RawMessage(`{"bronze":1000000,"silver":null}`),
+		CookieDays:          30,
+		BindingMonths:       3,
+		MinExtendAmount:     0,
+		DigitalWaitDays:     7,
+		PhysicalWaitDays:    14,
+		MinPayout:           100000,
+		AdjustmentThreshold: 1000000,
+		FreezeMaxDays:       14,
+		SoonEndDays:         30,
+		EvalDay:             8,
+		SilverThreshold:     5000000,
+		GoldThreshold:       15000000,
+		HoldThresholds:      json.RawMessage(`{"bronze":1000000,"silver":null}`),
 	}
 }
 
@@ -46,8 +49,6 @@ func TestAffiliateConfigSettingsPUTValidation(t *testing.T) {
 		{"binding_months above 12", func(in *AffiliateAdminSettingsInput) { in.BindingMonths = 13 }},
 		{"digital_wait_days below 0", func(in *AffiliateAdminSettingsInput) { in.DigitalWaitDays = -1 }},
 		{"digital_wait_days above 90", func(in *AffiliateAdminSettingsInput) { in.DigitalWaitDays = 91 }},
-		{"physical_received_days below 0", func(in *AffiliateAdminSettingsInput) { in.PhysicalReceivedDays = -1 }},
-		{"physical_received_days above 30", func(in *AffiliateAdminSettingsInput) { in.PhysicalReceivedDays = 31 }},
 		{"physical_wait_days below 0", func(in *AffiliateAdminSettingsInput) { in.PhysicalWaitDays = -1 }},
 		{"physical_wait_days above 90", func(in *AffiliateAdminSettingsInput) { in.PhysicalWaitDays = 91 }},
 		{"min_payout zero", func(in *AffiliateAdminSettingsInput) { in.MinPayout = 0 }},
@@ -71,20 +72,38 @@ func TestAffiliateConfigSettingsPUTValidation(t *testing.T) {
 		{"level unknown", func(in *AffiliateAdminSettingsInput) {
 			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "platinum"})
 		}},
-		{"level pct unknown category", func(in *AffiliateAdminSettingsInput) {
-			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "silver", CommissionPct: map[string]float64{"webinar": 5}})
+		{"level rule unknown category", func(in *AffiliateAdminSettingsInput) {
+			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "silver", CommissionRule: affRules("webinar", "percent", 5)})
 		}},
-		{"level pct above 100", func(in *AffiliateAdminSettingsInput) {
-			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "silver", CommissionPct: map[string]float64{"exam": 101}})
+		{"level percent above 100", func(in *AffiliateAdminSettingsInput) {
+			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "silver", CommissionRule: affRules("exam", "percent", 101)})
 		}},
-		{"level pct below 0", func(in *AffiliateAdminSettingsInput) {
-			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "gold", CommissionPct: map[string]float64{"exam": -1}})
+		{"level percent below 0", func(in *AffiliateAdminSettingsInput) {
+			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "gold", CommissionRule: affRules("exam", "percent", -1)})
+		}},
+		{"level percent with three decimals", func(in *AffiliateAdminSettingsInput) {
+			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "gold", CommissionRule: affRules("exam", "percent", 7.125)})
+		}},
+		{"level fixed with cents", func(in *AffiliateAdminSettingsInput) {
+			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "gold", CommissionRule: affRules("book", "fixed", 1500.5)})
+		}},
+		{"level fixed negative", func(in *AffiliateAdminSettingsInput) {
+			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "gold", CommissionRule: affRules("book", "fixed", -1)})
+		}},
+		{"level rule unknown type", func(in *AffiliateAdminSettingsInput) {
+			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "gold", CommissionRule: affRules("book", "bonus", 10)})
+		}},
+		{"level binding_months below 1", func(in *AffiliateAdminSettingsInput) {
+			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "silver", BindingMonths: intPtr(0)})
+		}},
+		{"level binding_months above 12", func(in *AffiliateAdminSettingsInput) {
+			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "silver", BindingMonths: intPtr(13)})
 		}},
 		{"level wait above 90", func(in *AffiliateAdminSettingsInput) {
 			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "silver", DigitalWaitDays: intPtr(91)})
 		}},
-		{"level received days above 30", func(in *AffiliateAdminSettingsInput) {
-			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "silver", PhysicalReceivedDays: intPtr(31)})
+		{"level physical wait above 90", func(in *AffiliateAdminSettingsInput) {
+			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "silver", PhysicalWaitDays: intPtr(91)})
 		}},
 		{"level min_payout zero", func(in *AffiliateAdminSettingsInput) {
 			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "silver", MinPayout: f64Ptr(0)})
@@ -115,7 +134,6 @@ func TestAffiliateConfigSettingsPUTValidation(t *testing.T) {
 		in.CookieDays = 180
 		in.BindingMonths = 12
 		in.DigitalWaitDays = 90
-		in.PhysicalReceivedDays = 30
 		in.PhysicalWaitDays = 90
 		in.PayoutDayOfMonth = intPtr(28)
 		in.FreezeMaxDays = 90
@@ -126,17 +144,21 @@ func TestAffiliateConfigSettingsPUTValidation(t *testing.T) {
 		in.HoldThresholds = nil
 		in.Levels = []AffiliateAdminLevelInput{
 			{
-				Level:                "bronze",
-				CommissionPct:        map[string]float64{"exam": 0, "course": 100},
-				DigitalWaitDays:      intPtr(0),
-				PhysicalReceivedDays: intPtr(0),
-				PhysicalWaitDays:     intPtr(90),
-				MinPayout:            f64Ptr(1),
-				PayoutDayOfMonth:     nil,
-				RiseThreshold:        f64Ptr(0),
-				HoldThreshold:        nil,
+				Level: "bronze",
+				CommissionRule: map[string]model.AffiliateCommissionRule{
+					"exam":   {Type: "percent", Value: 0},
+					"course": {Type: "percent", Value: 100},
+					"book":   {Type: "fixed", Value: 0},
+				},
+				BindingMonths:    intPtr(12),
+				DigitalWaitDays:  intPtr(0),
+				PhysicalWaitDays: intPtr(90),
+				MinPayout:        f64Ptr(1),
+				PayoutDayOfMonth: nil,
+				RiseThreshold:    f64Ptr(0),
+				HoldThreshold:    nil,
 			},
-			{Level: "silver", CommissionPct: nil, MinPayout: f64Ptr(50000), PayoutDayOfMonth: intPtr(1)},
+			{Level: "silver", CommissionRule: nil, MinPayout: f64Ptr(50000), PayoutDayOfMonth: intPtr(1)},
 			{Level: "gold"},
 		}
 		if err := validateAffiliateSettingsInput(in); err != nil {
@@ -164,7 +186,7 @@ func TestAffiliateConfigSettingsUpdateAuditAndReadback(t *testing.T) {
 	input.LaunchDate = strPtr("2026-11-01")
 	input.HoldThresholds = json.RawMessage(`{"bronze":1000000,"silver":null}`)
 	input.Levels = []AffiliateAdminLevelInput{
-		{Level: "silver", CommissionPct: map[string]float64{"exam": 12}, DigitalWaitDays: intPtr(3), MinPayout: f64Ptr(50000)},
+		{Level: "silver", CommissionRule: affRules("exam", "percent", 12), BindingMonths: intPtr(6), DigitalWaitDays: intPtr(3), MinPayout: f64Ptr(50000)},
 	}
 
 	got, err := svc.UpdateAffiliateAdminSettings(ctx, actor, input)
@@ -193,10 +215,13 @@ func TestAffiliateConfigSettingsUpdateAuditAndReadback(t *testing.T) {
 		byLevel[l.Level] = l
 	}
 	silver := byLevel["silver"]
-	var silverPct map[string]float64
-	require.NoError(t, json.Unmarshal(silver.CommissionPct, &silverPct))
-	if silverPct["exam"] != 12 {
-		t.Errorf("silver commission_pct = %v, want exam 12", silverPct)
+	var silverRule map[string]model.AffiliateCommissionRule
+	require.NoError(t, json.Unmarshal(silver.CommissionRule, &silverRule))
+	if silverRule["exam"] != (model.AffiliateCommissionRule{Type: "percent", Value: 12}) {
+		t.Errorf("silver commission_rule = %v, want exam percent 12", silverRule)
+	}
+	if silver.BindingMonths == nil || *silver.BindingMonths != 6 {
+		t.Errorf("silver binding_months = %v, want 6", silver.BindingMonths)
 	}
 	if silver.DigitalWaitDays == nil || *silver.DigitalWaitDays != 3 || silver.MinPayout == nil || *silver.MinPayout != 50000 {
 		t.Errorf("silver waits/min_payout = %v %v, want 3 50000", silver.DigitalWaitDays, silver.MinPayout)
@@ -286,9 +311,9 @@ func TestAffiliateConfigOverridesUpsertDeleteFallback(t *testing.T) {
 	).Scan(&productID))
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM product WHERE id = $1`, productID) })
 
-	override, err := svc.AdminUpsertAffiliateOverride(ctx, actor, productID.String(), 25)
+	override, err := svc.AdminUpsertAffiliateOverride(ctx, actor, productID.String(), model.AffiliateCommissionRule{Type: "percent", Value: 25})
 	require.NoError(t, err)
-	if override.Percentage != 25 || override.ProductID != productID {
+	if override.Type != "percent" || override.Value != 25 || override.ProductID != productID {
 		t.Errorf("AdminUpsertAffiliateOverride() = %+v, want percentage 25 product %v", override, productID)
 	}
 
@@ -297,8 +322,8 @@ func TestAffiliateConfigOverridesUpsertDeleteFallback(t *testing.T) {
 	require.Len(t, picked, 1, "the picker finds the product by a case-insensitive name search")
 	require.Equal(t, productID, picked[0].ID)
 	require.Equal(t, "book", picked[0].Type)
-	require.NotNil(t, picked[0].Percentage, "the picker shows the override already set")
-	require.InDelta(t, 25, *picked[0].Percentage, 0.001)
+	require.NotNil(t, picked[0].OverrideValue, "the picker shows the override already set")
+	require.InDelta(t, 25, *picked[0].OverrideValue, 0.001)
 	none, err := svc.AdminSearchAffiliateOverrideProducts(ctx, "zzz-no-such-product-"+uniqueSuffix(), 10)
 	require.NoError(t, err)
 	require.Empty(t, none)
@@ -320,10 +345,10 @@ func TestAffiliateConfigOverridesUpsertDeleteFallback(t *testing.T) {
 	}
 
 	// Re-upsert the same product: one row, new percentage.
-	override, err = svc.AdminUpsertAffiliateOverride(ctx, actor, productID.String(), 50)
+	override, err = svc.AdminUpsertAffiliateOverride(ctx, actor, productID.String(), model.AffiliateCommissionRule{Type: "percent", Value: 50})
 	require.NoError(t, err)
-	if override.Percentage != 50 {
-		t.Errorf("re-upsert percentage = %v, want 50", override.Percentage)
+	if override.Value != 50 {
+		t.Errorf("re-upsert value = %v, want 50", override.Value)
 	}
 	var count int
 	require.NoError(t, pool.QueryRow(ctx,
@@ -352,11 +377,11 @@ func TestAffiliateConfigOverridesUpsertDeleteFallback(t *testing.T) {
 		t.Errorf("delete missing override err = %v, want ErrAffiliateNotFound", err)
 	}
 	unknown := uuid.New()
-	_, err = svc.AdminUpsertAffiliateOverride(ctx, actor, unknown.String(), 10)
+	_, err = svc.AdminUpsertAffiliateOverride(ctx, actor, unknown.String(), model.AffiliateCommissionRule{Type: "percent", Value: 10})
 	if !errors.Is(err, ErrProductNotFound) {
 		t.Errorf("upsert override for unknown product err = %v, want ErrProductNotFound", err)
 	}
-	_, err = svc.AdminUpsertAffiliateOverride(ctx, actor, productID.String(), 101)
+	_, err = svc.AdminUpsertAffiliateOverride(ctx, actor, productID.String(), model.AffiliateCommissionRule{Type: "percent", Value: 101})
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("upsert override percentage 101 err = %v, want ErrValidation", err)
 	}
@@ -713,4 +738,34 @@ func findAffiliateReportRow(report *AffiliateReportSummary, id uuid.UUID) *repos
 		}
 	}
 	return nil
+}
+
+func TestAdminUpsertAffiliateOverride_fixedRule(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	pool := repo.Pool()
+
+	actor := seedAffiliateAdminActor(t, repo, "affcfg-fixed-"+uniqueSuffix()+"@test.local")
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, actor) })
+
+	var productID uuid.UUID
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO product (name, type, price, status) VALUES ($1, 'book', 60000, 'published') RETURNING id`,
+		"Fixed Override "+uniqueSuffix()).Scan(&productID))
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_product_overrides WHERE product_id = $1`, productID)
+		_, _ = pool.Exec(ctx, `DELETE FROM product WHERE id = $1`, productID)
+	})
+
+	override, err := svc.AdminUpsertAffiliateOverride(ctx, actor, productID.String(), model.AffiliateCommissionRule{Type: "fixed", Value: 4500})
+	require.NoError(t, err)
+	require.Equal(t, "fixed", override.Type)
+	require.Equal(t, 4500.0, override.Value)
+
+	_, err = svc.AdminUpsertAffiliateOverride(ctx, actor, productID.String(), model.AffiliateCommissionRule{Type: "fixed", Value: 4500.5})
+	require.ErrorIs(t, err, ErrValidation, "fixed commission is whole rupiah")
+	_, err = svc.AdminUpsertAffiliateOverride(ctx, actor, productID.String(), model.AffiliateCommissionRule{Type: "percent", Value: 7.125})
+	require.ErrorIs(t, err, ErrValidation, "percent allows two decimals at most")
+	_, err = svc.AdminUpsertAffiliateOverride(ctx, actor, productID.String(), model.AffiliateCommissionRule{Type: "rupiah", Value: 1})
+	require.ErrorIs(t, err, ErrValidation, "unknown type")
 }

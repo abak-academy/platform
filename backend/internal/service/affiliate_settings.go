@@ -12,13 +12,18 @@ import (
 	"akademi-bimbel/internal/model"
 )
 
-// affiliateDefaultCommissionPct holds the TRD example's per-category commission percentages; affiliate_settings has no per-category columns, so these live only here.
-var affiliateDefaultCommissionPct = map[string]float64{
-	"exam":        10,
-	"course":      10,
-	"book":        3,
-	"merchandise": 3,
-	"medal":       0,
+const (
+	affiliateCommissionPercent = "percent"
+	affiliateCommissionFixed   = "fixed"
+)
+
+// affiliateDefaultCommissionRule holds the TRD example's per-category commission rules; affiliate_settings has no per-category columns, so these live only here.
+var affiliateDefaultCommissionRule = map[string]model.AffiliateCommissionRule{
+	"exam":        {Type: affiliateCommissionPercent, Value: 10},
+	"course":      {Type: affiliateCommissionPercent, Value: 10},
+	"book":        {Type: affiliateCommissionPercent, Value: 3},
+	"merchandise": {Type: affiliateCommissionPercent, Value: 3},
+	"medal":       {Type: affiliateCommissionPercent, Value: 0},
 }
 
 var affiliateLevels = []string{"bronze", "silver", "gold"}
@@ -26,15 +31,15 @@ var affiliateLevels = []string{"bronze", "silver", "gold"}
 // AffiliateEffectiveRule is one level's resolved rule set: global settings as
 // the base, affiliate_level_settings overriding where the level row is set.
 type AffiliateEffectiveRule struct {
-	Level                string             `json:"level"`
-	CommissionPct        map[string]float64 `json:"commission_pct"`
-	DigitalWaitDays      int                `json:"digital_wait_days"`
-	PhysicalReceivedDays int                `json:"physical_received_days"`
-	PhysicalWaitDays     int                `json:"physical_wait_days"`
-	MinPayout            float64            `json:"min_payout"`
-	PayoutDayOfMonth     *int               `json:"payout_day_of_month"`
-	RiseThreshold        *float64           `json:"rise_threshold"`
-	HoldThreshold        *float64           `json:"hold_threshold"`
+	Level            string                                   `json:"level"`
+	CommissionRule   map[string]model.AffiliateCommissionRule `json:"commission_rule"`
+	BindingMonths    int                                      `json:"binding_months"`
+	DigitalWaitDays  int                                      `json:"digital_wait_days"`
+	PhysicalWaitDays int                                      `json:"physical_wait_days"`
+	MinPayout        float64                                  `json:"min_payout"`
+	PayoutDayOfMonth *int                                     `json:"payout_day_of_month"`
+	RiseThreshold    *float64                                 `json:"rise_threshold"`
+	HoldThreshold    *float64                                 `json:"hold_threshold"`
 }
 
 // AffiliateCodeValidation is the public validate endpoint response body.
@@ -52,8 +57,7 @@ func defaultAffiliateSettings() *model.AffiliateSettings {
 		BindingMonths:              3,
 		MinExtendAmount:            0,
 		DigitalWaitDays:            7,
-		PhysicalReceivedDays:       7,
-		PhysicalWaitDays:           7,
+		PhysicalWaitDays:           14,
 		MinPayout:                  100000,
 		PayoutDayOfMonth:           nil,
 		AdjustmentThreshold:        1000000,
@@ -70,26 +74,26 @@ func defaultAffiliateSettings() *model.AffiliateSettings {
 	}
 }
 
-// affiliateLevelCommissionPct overlays a level row's commission_pct jsonb onto
+// affiliateLevelCommissionRule overlays a level row's commission_rule jsonb onto
 // the package defaults; an unset or unreadable jsonb keeps the defaults.
-func affiliateLevelCommissionPct(raw json.RawMessage) map[string]float64 {
-	pct := make(map[string]float64, len(affiliateDefaultCommissionPct))
-	for category, value := range affiliateDefaultCommissionPct {
-		pct[category] = value
+func affiliateLevelCommissionRule(raw json.RawMessage) map[string]model.AffiliateCommissionRule {
+	rules := make(map[string]model.AffiliateCommissionRule, len(affiliateDefaultCommissionRule))
+	for category, rule := range affiliateDefaultCommissionRule {
+		rules[category] = rule
 	}
 	if len(raw) == 0 {
-		return pct
+		return rules
 	}
-	var levelPct map[string]float64
-	if err := json.Unmarshal(raw, &levelPct); err != nil {
-		return pct
+	var levelRules map[string]model.AffiliateCommissionRule
+	if err := json.Unmarshal(raw, &levelRules); err != nil {
+		return rules
 	}
-	for category, value := range levelPct {
-		if _, ok := affiliateDefaultCommissionPct[category]; ok {
-			pct[category] = value
+	for category, rule := range levelRules {
+		if _, ok := affiliateDefaultCommissionRule[category]; ok {
+			rules[category] = rule
 		}
 	}
-	return pct
+	return rules
 }
 
 func buildAffiliateEffectiveRules(settings *model.AffiliateSettings, levels []model.AffiliateLevelSettings) map[string]AffiliateEffectiveRule {
@@ -104,20 +108,20 @@ func buildAffiliateEffectiveRules(settings *model.AffiliateSettings, levels []mo
 	rules := make(map[string]AffiliateEffectiveRule, len(affiliateLevels))
 	for _, level := range affiliateLevels {
 		rule := AffiliateEffectiveRule{
-			Level:                level,
-			CommissionPct:        affiliateLevelCommissionPct(rows[level].CommissionPct),
-			DigitalWaitDays:      settings.DigitalWaitDays,
-			PhysicalReceivedDays: settings.PhysicalReceivedDays,
-			PhysicalWaitDays:     settings.PhysicalWaitDays,
-			MinPayout:            settings.MinPayout,
-			PayoutDayOfMonth:     settings.PayoutDayOfMonth,
+			Level:            level,
+			CommissionRule:   affiliateLevelCommissionRule(rows[level].CommissionRule),
+			BindingMonths:    settings.BindingMonths,
+			DigitalWaitDays:  settings.DigitalWaitDays,
+			PhysicalWaitDays: settings.PhysicalWaitDays,
+			MinPayout:        settings.MinPayout,
+			PayoutDayOfMonth: settings.PayoutDayOfMonth,
 		}
 		if row, ok := rows[level]; ok {
 			if row.DigitalWaitDays != nil {
 				rule.DigitalWaitDays = *row.DigitalWaitDays
 			}
-			if row.PhysicalReceivedDays != nil {
-				rule.PhysicalReceivedDays = *row.PhysicalReceivedDays
+			if row.BindingMonths != nil {
+				rule.BindingMonths = *row.BindingMonths
 			}
 			if row.PhysicalWaitDays != nil {
 				rule.PhysicalWaitDays = *row.PhysicalWaitDays
@@ -136,16 +140,17 @@ func buildAffiliateEffectiveRules(settings *model.AffiliateSettings, levels []mo
 	return rules
 }
 
-// resolveAffiliateCommissionPct picks the effective percentage for one product
-// type at one level: product override > level value > package default.
-func resolveAffiliateCommissionPct(override *model.AffiliateProductOverride, rule AffiliateEffectiveRule, productType string) float64 {
+// resolveAffiliateCommissionRule picks the effective commission rule for one
+// product type at one level: product override > level value > package default.
+// The winning rule is used whole, so an override's type replaces the level's.
+func resolveAffiliateCommissionRule(override *model.AffiliateProductOverride, rule AffiliateEffectiveRule, productType string) model.AffiliateCommissionRule {
 	if override != nil {
-		return override.Percentage
+		return model.AffiliateCommissionRule{Type: override.Type, Value: override.Value}
 	}
-	if value, ok := rule.CommissionPct[productType]; ok {
-		return value
+	if r, ok := rule.CommissionRule[productType]; ok {
+		return r
 	}
-	return 0
+	return model.AffiliateCommissionRule{Type: affiliateCommissionPercent}
 }
 
 // affiliateEnabled gates the whole affiliate feature; the flag is default-off:

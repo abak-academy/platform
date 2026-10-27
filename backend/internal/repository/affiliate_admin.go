@@ -250,7 +250,7 @@ func (r *Repository) CancelPendingCommissionsByAffiliatorTx(ctx context.Context,
 // belong to the affiliator; ids that match nothing are simply absent.
 func (r *Repository) GetAffiliateCommissionsByIDsTx(ctx context.Context, tx pgx.Tx, affiliatorID uuid.UUID, ids []uuid.UUID) ([]model.AffiliateCommission, error) {
 	rows, err := tx.Query(ctx,
-		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, percentage,
+		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, commission_type, commission_value,
 		        level_snapshot, amount, status, wait_until, paid_at
 		 FROM affiliate_commissions
 		 WHERE affiliator_id = $1 AND id = ANY($2)
@@ -265,7 +265,7 @@ func (r *Repository) GetAffiliateCommissionsByIDsTx(ctx context.Context, tx pgx.
 	for rows.Next() {
 		var c model.AffiliateCommission
 		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID,
-			&c.ProductType, &c.BaseAmount, &c.Percentage, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt); err != nil {
+			&c.ProductType, &c.BaseAmount, &c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

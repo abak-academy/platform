@@ -41,22 +41,24 @@ type AffiliateBinding struct {
 }
 
 type AffiliateCommission struct {
-	ID            uuid.UUID  `json:"id"`
-	AffiliatorID  uuid.UUID  `json:"affiliator_id"`
-	StudentID     uuid.UUID  `json:"student_id"`
-	OrderID       uuid.UUID  `json:"order_id"`
-	OrderItemID   uuid.UUID  `json:"order_item_id"`
-	ProductType   string     `json:"product_type"`
-	BaseAmount    float64    `json:"base_amount"`
-	Percentage    float64    `json:"percentage"`
-	LevelSnapshot string     `json:"level_snapshot"`
-	Amount        float64    `json:"amount"`
-	Status        string     `json:"status"`
-	WaitUntil     *time.Time `json:"wait_until"`
-	PaidAt        *time.Time `json:"paid_at"`
-	ReceivedAt    *time.Time `json:"received_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID              uuid.UUID  `json:"id"`
+	AffiliatorID    uuid.UUID  `json:"affiliator_id"`
+	StudentID       uuid.UUID  `json:"student_id"`
+	OrderID         uuid.UUID  `json:"order_id"`
+	OrderItemID     uuid.UUID  `json:"order_item_id"`
+	ProductType     string     `json:"product_type"`
+	Quantity        int        `json:"quantity,omitempty"`
+	BaseAmount      float64    `json:"base_amount"`
+	CommissionType  string     `json:"commission_type"`
+	CommissionValue float64    `json:"commission_value"`
+	LevelSnapshot   string     `json:"level_snapshot"`
+	Amount          float64    `json:"amount"`
+	Status          string     `json:"status"`
+	WaitUntil       *time.Time `json:"wait_until"`
+	PaidAt          *time.Time `json:"paid_at"`
+	ReceivedAt      *time.Time `json:"received_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 // Append-only: UPDATE/DELETE are rejected by the DB trigger (0070).
@@ -142,7 +144,6 @@ type AffiliateSettings struct {
 	BindingMonths              int             `json:"binding_months"`
 	MinExtendAmount            float64         `json:"min_extend_amount"`
 	DigitalWaitDays            int             `json:"digital_wait_days"`
-	PhysicalReceivedDays       int             `json:"physical_received_days"`
 	PhysicalWaitDays           int             `json:"physical_wait_days"`
 	MinPayout                  float64         `json:"min_payout"`
 	PayoutDayOfMonth           *int            `json:"payout_day_of_month"`
@@ -161,22 +162,30 @@ type AffiliateSettings struct {
 }
 
 type AffiliateLevelSettings struct {
-	Level                string          `json:"level"`
-	CommissionPct        json.RawMessage `json:"commission_pct"`
-	DigitalWaitDays      *int            `json:"digital_wait_days"`
-	PhysicalReceivedDays *int            `json:"physical_received_days"`
-	PhysicalWaitDays     *int            `json:"physical_wait_days"`
-	MinPayout            *float64        `json:"min_payout"`
-	PayoutDayOfMonth     *int            `json:"payout_day_of_month"`
-	RiseThreshold        *float64        `json:"rise_threshold"`
-	HoldThreshold        *float64        `json:"hold_threshold"`
+	Level            string          `json:"level"`
+	CommissionRule   json.RawMessage `json:"commission_rule"`
+	BindingMonths    *int            `json:"binding_months"`
+	DigitalWaitDays  *int            `json:"digital_wait_days"`
+	PhysicalWaitDays *int            `json:"physical_wait_days"`
+	MinPayout        *float64        `json:"min_payout"`
+	PayoutDayOfMonth *int            `json:"payout_day_of_month"`
+	RiseThreshold    *float64        `json:"rise_threshold"`
+	HoldThreshold    *float64        `json:"hold_threshold"`
+}
+
+// AffiliateCommissionRule is one commission setting: a percentage of the item
+// base, or a fixed rupiah amount per unit.
+type AffiliateCommissionRule struct {
+	Type  string  `json:"type"`
+	Value float64 `json:"value"`
 }
 
 type AffiliateProductOverride struct {
-	ProductID  uuid.UUID  `json:"product_id"`
-	Percentage float64    `json:"percentage"`
-	UpdatedBy  *uuid.UUID `json:"updated_by"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	ProductID uuid.UUID  `json:"product_id"`
+	Type      string     `json:"type"`
+	Value     float64    `json:"value"`
+	UpdatedBy *uuid.UUID `json:"updated_by"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 type AffiliateClick struct {

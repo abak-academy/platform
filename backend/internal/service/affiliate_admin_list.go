@@ -200,7 +200,7 @@ func (s *Service) AdminAffiliateCommissionsCSV(ctx context.Context, affiliatorID
 		return nil, err
 	}
 	return buildAdminCSV(
-		[]string{"paid_at", "order_id", "student_name", "product_name", "category", "base_amount", "percentage", "commission", "status", "available_from"},
+		[]string{"paid_at", "order_id", "student_name", "product_name", "category", "base_amount", "commission_type", "commission_value", "commission", "status", "available_from"},
 		len(rows),
 		func(i int) []string {
 			row := rows[i]
@@ -211,7 +211,8 @@ func (s *Service) AdminAffiliateCommissionsCSV(ctx context.Context, affiliatorID
 				csvSafeField(row.ProductName),
 				row.ProductType,
 				strconv.FormatFloat(row.BaseAmount, 'f', 2, 64),
-				strconv.FormatFloat(row.Percentage, 'f', 2, 64),
+				row.CommissionType,
+				strconv.FormatFloat(row.CommissionValue, 'f', 2, 64),
 				strconv.FormatFloat(row.Amount, 'f', 2, 64),
 				row.Status,
 				formatOptionalTime(row.WaitUntil),
@@ -252,7 +253,7 @@ func (s *Service) AdminAffiliateReportOrdersCSV(ctx context.Context, f Affiliate
 		return nil, err
 	}
 	return buildAdminCSV(
-		[]string{"paid_at", "affiliator_name", "code", "order_id", "student_name", "product_name", "category", "base_amount", "percentage", "commission", "status", "available_from"},
+		[]string{"paid_at", "affiliator_name", "code", "order_id", "student_name", "product_name", "category", "base_amount", "commission_type", "commission_value", "commission", "status", "available_from"},
 		len(rows),
 		func(i int) []string {
 			row := rows[i]
@@ -265,7 +266,8 @@ func (s *Service) AdminAffiliateReportOrdersCSV(ctx context.Context, f Affiliate
 				csvSafeField(row.ProductName),
 				row.ProductType,
 				strconv.FormatFloat(row.BaseAmount, 'f', 2, 64),
-				strconv.FormatFloat(row.Percentage, 'f', 2, 64),
+				row.CommissionType,
+				strconv.FormatFloat(row.CommissionValue, 'f', 2, 64),
 				strconv.FormatFloat(row.Amount, 'f', 2, 64),
 				row.Status,
 				formatOptionalTime(row.WaitUntil),

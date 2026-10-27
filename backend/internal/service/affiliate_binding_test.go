@@ -429,3 +429,45 @@ func TestAffiliateCodeEligible(t *testing.T) {
 		require.False(t, svc.AffiliateCodeEligible(ctx, student.ID))
 	})
 }
+
+func TestBindingLength_followsAffiliatorLevelAndFallsBackToGlobal(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	launch := time.Now().UTC().Add(-24 * time.Hour)
+	seedAffiliateSettingsForBinding(t, repo, affiliateSettingsSeed{launchDate: &launch, bindingMonths: 3, minExtend: 0})
+	_, err := repo.Pool().Exec(ctx,
+		`INSERT INTO affiliate_level_settings (level, binding_months) VALUES ('gold', 6), ('silver', NULL)
+		 ON CONFLICT (level) DO UPDATE SET binding_months = EXCLUDED.binding_months`)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = repo.Pool().Exec(ctx, `DELETE FROM affiliate_level_settings`) })
+
+	gold := seedAffiliatorOwner(t, repo, "aff-len-g-"+uniqueSuffix()+"@test.local", "", "active")
+	silver := seedAffiliatorOwner(t, repo, "aff-len-s-"+uniqueSuffix()+"@test.local", "", "active")
+	_, err = repo.Pool().Exec(ctx, `UPDATE affiliators SET level = 'gold' WHERE id = $1`, gold.affiliatorID)
+	require.NoError(t, err)
+	_, err = repo.Pool().Exec(ctx, `UPDATE affiliators SET level = 'silver' WHERE id = $1`, silver.affiliatorID)
+	require.NoError(t, err)
+
+	goldStudent := seedAffiliateTestStudent(t, repo, "student-len-g-"+uniqueSuffix()+"@test.local", "")
+	silverStudent := seedAffiliateTestStudent(t, repo, "student-len-s-"+uniqueSuffix()+"@test.local", "")
+	createAffiliateBindingCommitted(t, svc, repo, goldStudent.ID, gold.affiliatorID, "manual_code")
+	createAffiliateBindingCommitted(t, svc, repo, silverStudent.ID, silver.affiliatorID, "manual_code")
+
+	goldBinding := getActiveAffiliateBinding(t, repo, goldStudent.ID)
+	require.True(t, goldBinding.EndedAt.Equal(goldBinding.StartedAt.AddDate(0, 6, 0)), "gold level binds for 6 months")
+	silverBinding := getActiveAffiliateBinding(t, repo, silverStudent.ID)
+	require.True(t, silverBinding.EndedAt.Equal(silverBinding.StartedAt.AddDate(0, 3, 0)), "a level without a value follows the global 3 months")
+
+	paidAt := goldBinding.StartedAt.Add(time.Hour)
+	tx, err := repo.BeginTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, svc.ExtendBinding(ctx, tx, goldStudent.ID, paidAt, 50000))
+	require.NoError(t, tx.Commit(ctx))
+	extended := getActiveAffiliateBinding(t, repo, goldStudent.ID)
+	require.True(t, extended.EndedAt.Equal(paidAt.AddDate(0, 6, 0)), "an extension also uses the level length")
+
+	_, err = repo.Pool().Exec(ctx, `UPDATE affiliate_level_settings SET binding_months = 12 WHERE level = 'gold'`)
+	require.NoError(t, err)
+	unchanged := getActiveAffiliateBinding(t, repo, silverStudent.ID)
+	require.True(t, unchanged.EndedAt.Equal(*silverBinding.EndedAt), "changing a level never rewrites an existing binding")
+}
