@@ -1,21 +1,26 @@
 "use client";
 
-import { useState } from "react";
-import { FileBarChart } from "lucide-react";
+import { Suspense, useState } from "react";
+import { ChevronDown, ChevronRight, FileBarChart } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
+import { AdminCommissionsPanel } from "@/components/affiliate/AdminCommissionsPanel";
 import { AffiliateList } from "@/components/affiliate/AffiliateList";
+import { ListToolbar } from "@/components/affiliate/ListToolbar";
+import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { affLabel } from "@/lib/affiliate-labels";
 import { useAffiliateLiabilityReport, useAffiliateReportSummary } from "@/lib/hooks/admin-affiliates";
 import { useHasCapability } from "@/lib/hooks/use-capability";
+import { useListParams } from "@/lib/hooks/use-list-params";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { AffiliateReportRow } from "@/lib/types";
 
 const COMMISSION_STATUSES = ["pending", "available", "paid", "held", "cancelled"] as const;
+const LEVELS = ["bronze", "silver", "gold"] as const;
 
 function isoDay(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -23,15 +28,34 @@ function isoDay(d: Date): string {
 }
 
 export default function AdminAffiliateReportsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReportsContent />
+    </Suspense>
+  );
+}
+
+function ReportsContent() {
   const { t } = useTranslation();
   const canManage = useHasCapability("affiliates:*");
+  const { params, update, reset, hasFilters } = useListParams();
+  const [expanded, setExpanded] = useState<string | null>(null);
+  // The report's own period is not a list filter, so it stays out of the URL
+  // params the toolbar owns (from/to there would hide the orders' date range).
   const [from, setFrom] = useState(() => {
     const now = new Date();
     return isoDay(new Date(now.getFullYear(), now.getMonth(), 1));
   });
   const [to, setTo] = useState(() => isoDay(new Date()));
   const rangeValid = from !== "" && to !== "" && from <= to;
-  const summary = useAffiliateReportSummary(rangeValid ? from : "", rangeValid ? to : "");
+  const summary = useAffiliateReportSummary({
+    from: rangeValid ? from : "",
+    to: rangeValid ? to : "",
+    q: params.q,
+    level: params.type,
+    page: params.page,
+    per_page: params.per_page,
+  });
   const liability = useAffiliateLiabilityReport();
 
   if (!canManage) return <NoAccess />;
@@ -55,6 +79,24 @@ export default function AdminAffiliateReportsPage() {
     { key: "clicks", header: t("admin_aff_rep_clicks"), align: "right", cell: (r) => r.clicks },
     { key: "revenue", header: t("admin_aff_col_revenue"), align: "right", cell: (r) => formatRupiah(r.net_revenue) },
     { key: "commission", header: t("admin_aff_rep_commission"), align: "right", cell: (r) => formatRupiah(commissionTotal(r)) },
+    {
+      key: "orders",
+      header: t("admin_aff_rep_orders"),
+      cell: (r) => {
+        const open = expanded === r.affiliator_id;
+        return (
+          <Button
+            size="sm"
+            variant="outline"
+            aria-expanded={open}
+            onClick={() => setExpanded(open ? null : r.affiliator_id)}
+          >
+            {open ? <ChevronDown className="size-4" aria-hidden /> : <ChevronRight className="size-4" aria-hidden />}
+            {open ? t("admin_aff_rep_hide") : t("admin_aff_rep_show")}
+          </Button>
+        );
+      },
+    },
   ];
 
   const totals = summary.data?.totals;
@@ -100,7 +142,24 @@ export default function AdminAffiliateReportsPage() {
 
       {rangeValid && (
         <>
-          <AffiliateList query={summary} columns={columns} rowKey={(r) => r.affiliator_id} empty={t("admin_aff_rep_empty")} />
+          <ListToolbar
+            params={params}
+            onChange={update}
+            onReset={reset}
+            searchPlaceholder={t("admin_aff_search_queue")}
+            filters={[{ key: "type", label: t("admin_aff_col_level"), options: LEVELS.map((v) => ({ value: v, label: affLabel(t, v) })) }]}
+          />
+          <AffiliateList
+            query={summary}
+            columns={columns}
+            rowKey={(r) => r.affiliator_id}
+            page={params.page}
+            onPageChange={(page) => update({ page })}
+            empty={t("admin_aff_rep_empty")}
+            filtered={hasFilters}
+            expandedKey={expanded}
+            renderExpanded={(r) => <AdminCommissionsPanel affiliatorId={r.affiliator_id} from={from} to={to} />}
+          />
           {totals && (
             <p className="text-sm text-ink-700">
               <strong>{t("admin_aff_rep_totals")}</strong>: {totals.students_new} · {totals.clicks} ·{" "}

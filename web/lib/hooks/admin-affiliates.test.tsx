@@ -6,7 +6,9 @@ import {
   useAdminAffiliates,
   useDecideAffiliateApproval,
   useDecideAffiliatePayout,
+  useAdminAffiliateCommissions,
   useAdminAffiliateFlags,
+  useAffiliateReportSummary,
   useRunAffiliateJob,
 } from "./admin-affiliates";
 
@@ -81,6 +83,34 @@ describe("admin affiliate hooks", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockAuthFetch).toHaveBeenCalledWith("/admin/affiliate-flags?q=budi&status=all&page=2&per_page=20");
     expect(result.current.data).toEqual({ data: [{ id: "f1" }] });
+  });
+
+  it("asks for one affiliator's commissions with the filters", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [], total: 0, page: 1, per_page: 10 });
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(
+      () => useAdminAffiliateCommissions("a/1", { q: "sari", status: "available", type: "course", from: "2026-10-01", to: "2026-10-31", page: 1, per_page: 10 }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/admin/affiliates/a%2F1/commissions?q=sari&status=available&type=course&from=2026-10-01&to=2026-10-31&page=1&per_page=10",
+    );
+  });
+
+  it("asks for the report with search, level and paging", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [], totals: {}, total: 0 });
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(
+      () => useAffiliateReportSummary({ from: "2026-10-01", to: "2026-10-31", q: "budi", level: "gold", page: 2, per_page: 20 }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/admin/affiliate-reports/summary?from=2026-10-01&to=2026-10-31&q=budi&level=gold&page=2&per_page=20",
+    );
   });
 
   it("reruns a job with the scope and quarter", async () => {

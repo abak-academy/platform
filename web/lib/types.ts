@@ -1577,7 +1577,7 @@ export interface AffiliateBindingPage {
 }
 
 export interface AffiliateCommission {
-  /** First name + initials (BR-PRV-02) and the product the commission came from. */
+  /** First name + initials (BR-PRV-02) for an affiliator; the full name when an admin reads it. */
   student_name?: string;
   product_name?: string;
   id: string;
@@ -1867,6 +1867,9 @@ export interface AffiliateReportRow {
 export interface AffiliateReportSummary {
   data: AffiliateReportRow[];
   totals: AffiliateReportRow;
+  total: number;
+  page?: number;
+  per_page?: number;
 }
 
 export interface AffiliateLiabilityReport {

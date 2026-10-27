@@ -96,3 +96,24 @@ describe("DataTable", () => {
     expect(screen.getByTestId("plain-table")).not.toHaveClass("md-card-outlined");
   });
 });
+
+describe("DataTable expanded row", () => {
+  const rows = [{ id: "a" }, { id: "b" }];
+  const columns = [{ key: "id", header: "Id", cell: (r: { id: string }) => r.id }];
+
+  it("renders the expansion only under the matching row", () => {
+    render(
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => r.id}
+        empty="kosong"
+        expandedKey="b"
+        renderExpanded={(r) => <span>detail {r.id}</span>}
+      />,
+    );
+
+    expect(screen.getByText("detail b")).toBeInTheDocument();
+    expect(screen.queryByText("detail a")).toBeNull();
+  });
+});

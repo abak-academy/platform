@@ -25,6 +25,9 @@ vi.mock("@/lib/hooks/admin-affiliates", () => ({
   useCreateAffiliateAdjustment: () => ({ mutate: h.adjust, isPending: false }),
   useCreateAffiliateViolation: () => ({ mutate: h.violation, isPending: false }),
 }));
+vi.mock("@/components/affiliate/AdminCommissionsPanel", () => ({
+  AdminCommissionsPanel: ({ affiliatorId }: { affiliatorId: string }) => <div>orders-panel-{affiliatorId}</div>,
+}));
 vi.mock("@/lib/hooks/use-capability", () => ({ useHasCapability: h.capability }));
 vi.mock("sonner", () => ({ toast: h.toast }));
 

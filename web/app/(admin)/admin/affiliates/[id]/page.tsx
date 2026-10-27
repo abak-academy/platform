@@ -3,6 +3,7 @@
 import { Suspense, use } from "react";
 import Link from "next/link";
 import { NoAccess } from "@/components/admin/NoAccess";
+import { AdminCommissionsPanel } from "@/components/affiliate/AdminCommissionsPanel";
 import { AffiliateAdminActions } from "@/components/affiliate/AffiliateAdminActions";
 import { AppealBadge, StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -116,6 +117,9 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
       <section className="space-y-2">
         <h2 className="font-semibold text-ink-900">{t("admin_aff_sec_bindings")}</h2>
         <DataTable columns={bindingColumns} rows={d.bindings.data} rowKey={(r) => r.binding_id} empty={t("aff_students_empty")} />
+      </section>
+      <section>
+        <AdminCommissionsPanel affiliatorId={aff.id} />
       </section>
       <section className="space-y-2">
         <h2 className="font-semibold text-ink-900">{t("admin_aff_sec_levels")}</h2>

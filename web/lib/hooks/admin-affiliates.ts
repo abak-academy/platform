@@ -9,6 +9,7 @@ import type {
   AffiliateAdminPayoutPage,
   AffiliateAdjustment,
   AffiliateAppealRow,
+  AffiliateCommission,
   AffiliateFlagRow,
   AffiliateJobResult,
   AffiliateLiabilityReport,
@@ -35,7 +36,8 @@ export const adminAffiliateKeys = {
   overrides: () => [...adminAffiliateKeys.all, "overrides"] as const,
   flags: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "flags", p] as const,
   appeals: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "appeals", p] as const,
-  report: (from: string, to: string) => [...adminAffiliateKeys.all, "report", from, to] as const,
+  report: (p: AdminReportParams) => [...adminAffiliateKeys.all, "report", p] as const,
+  commissions: (id: string, p: AdminQueueParams) => [...adminAffiliateKeys.all, "commissions", id, p] as const,
   liability: () => [...adminAffiliateKeys.all, "liability"] as const,
 };
 
@@ -51,6 +53,7 @@ export interface AdminAffiliateListParams {
 export interface AdminQueueParams {
   q?: string;
   status?: string;
+  type?: string;
   from?: string;
   to?: string;
   page?: number;
@@ -58,7 +61,7 @@ export interface AdminQueueParams {
 }
 
 function queueQuery(p: AdminQueueParams): string {
-  return qs({ q: p.q, status: p.status || "all", from: p.from, to: p.to, page: p.page, per_page: p.per_page });
+  return qs({ q: p.q, status: p.status || "all", type: p.type, from: p.from, to: p.to, page: p.page, per_page: p.per_page });
 }
 
 function qs(params: Record<string, string | number | undefined>): string {
@@ -179,10 +182,15 @@ export function useDecideAffiliatePayout() {
 }
 
 // Downloads the CSV behind a queue, honouring the filters currently applied.
-export async function downloadAffiliateCsv(kind: "payouts" | "flags" | "appeals", params: AdminQueueParams = {}): Promise<void> {
+export async function downloadAffiliateCsv(
+  kind: "payouts" | "flags" | "appeals" | "commissions",
+  params: AdminQueueParams = {},
+  affiliatorId?: string,
+): Promise<void> {
   const { useAuthStore } = await import("@/stores/auth");
   const token = useAuthStore.getState().token;
-  const res = await fetch(`${API_BASE}/admin/affiliate-${kind}/export${queueQuery({ ...params, page: undefined, per_page: undefined })}`, {
+  const path = kind === "commissions" ? `/admin/affiliates/${encodeURIComponent(affiliatorId ?? "")}/commissions/export` : `/admin/affiliate-${kind}/export`;
+  const res = await fetch(`${API_BASE}${path}${queueQuery({ ...params, page: undefined, per_page: undefined })}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new ApiError(`HTTP_${res.status}`, `Failed to download ${kind}: ${res.status}`, res.status);
@@ -280,11 +288,30 @@ export function useDecideAffiliateAppeal() {
   );
 }
 
-export function useAffiliateReportSummary(from: string, to: string) {
+export interface AdminReportParams {
+  from: string;
+  to: string;
+  q?: string;
+  level?: string;
+  page?: number;
+  per_page?: number;
+}
+
+export function useAffiliateReportSummary(params: AdminReportParams) {
   return useQuery({
-    queryKey: adminAffiliateKeys.report(from, to),
-    enabled: from !== "" && to !== "",
-    queryFn: () => authFetch<AffiliateReportSummary>(`/admin/affiliate-reports/summary${qs({ from, to })}`),
+    queryKey: adminAffiliateKeys.report(params),
+    enabled: params.from !== "" && params.to !== "",
+    queryFn: () => authFetch<AffiliateReportSummary>(`/admin/affiliate-reports/summary${qs({ ...params })}`),
+  });
+}
+
+// The orders behind one affiliator's commissions; status "" means every status.
+export function useAdminAffiliateCommissions(id: string, params: AdminQueueParams) {
+  return useQuery({
+    queryKey: adminAffiliateKeys.commissions(id, params),
+    enabled: id !== "",
+    queryFn: () =>
+      authFetch<AdminQueuePage<AffiliateCommission>>(`/admin/affiliates/${encodeURIComponent(id)}/commissions${queueQuery(params)}`),
   });
 }
 
