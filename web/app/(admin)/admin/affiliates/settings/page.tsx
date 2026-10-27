@@ -1,63 +1,75 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Settings } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { BulkFormatGuide } from "@/components/admin/BulkFormatGuide";
 import { NoAccess } from "@/components/admin/NoAccess";
+import { JobsPanel } from "@/components/affiliate/settings/JobsPanel";
+import { OverridesPanel } from "@/components/affiliate/settings/OverridesPanel";
+import { SettingField } from "@/components/affiliate/SettingField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError } from "@/lib/api";
 import { affLabel } from "@/lib/affiliate-labels";
 import {
   AFFILIATE_LEVELS,
   COMMISSION_CATEGORIES,
   GLOBAL_NUMBER_FIELDS,
-  GLOBAL_OPTIONAL_FIELDS,
   HIDDEN_NUMBER_FIELDS,
   LEVEL_FIELDS,
   formToInput,
   settingsToForm,
+  type GlobalNumberField,
+  type GlobalOptionalField,
   type SettingsForm,
 } from "@/lib/affiliate-settings-form";
-import {
-  useAdminAffiliateOverrides,
-  useAdminAffiliateSettings,
-  useDeleteAffiliateOverride,
-  useRunAffiliateJob,
-  useUpdateAffiliateSettings,
-  useUpsertAffiliateOverride,
-} from "@/lib/hooks/admin-affiliates";
+import { GLOBAL_HELP, LEVEL_HELP, hintKey, levelHintKey, type GlobalField } from "@/lib/affiliate-settings-help";
+import { useAdminAffiliateSettings, useUpdateAffiliateSettings } from "@/lib/hooks/admin-affiliates";
 import { useHasCapability } from "@/lib/hooks/use-capability";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 
-const JOB_SCOPES = ["bindings", "commissions", "flags", "levels"] as const;
+const TABS = ["general", "levels", "overrides", "jobs"] as const;
+type Tab = (typeof TABS)[number];
 
-function NumberField({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) {
+interface Group {
+  title: I18nKey;
+  desc: I18nKey;
+  fields: GlobalField[];
+}
+
+const GROUPS: Group[] = [
+  { title: "admin_aff_grp_link", desc: "admin_aff_grp_link_desc", fields: ["cookie_days", "binding_months", "min_extend_amount", "launch_date"] },
+  { title: "admin_aff_grp_wait", desc: "admin_aff_grp_wait_desc", fields: ["digital_wait_days", "physical_received_days", "physical_wait_days"] },
+  { title: "admin_aff_grp_payout", desc: "admin_aff_grp_payout_desc", fields: ["min_payout", "payout_day_of_month", "freeze_max_days", "adjustment_threshold"] },
+  { title: "admin_aff_grp_level", desc: "admin_aff_grp_level_desc", fields: ["eval_day", "silver_threshold", "gold_threshold"] },
+  { title: "admin_aff_grp_signup", desc: "admin_aff_grp_signup_desc", fields: ["daily_registration_cap"] },
+];
+
+export default function AdminAffiliateSettingsPage() {
   return (
-    <div className="space-y-1">
-      <Label htmlFor={id}>{label}</Label>
-      <Input id={id} inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value)} />
-    </div>
+    <Suspense fallback={null}>
+      <SettingsContent />
+    </Suspense>
   );
 }
 
-export default function AdminAffiliateSettingsPage() {
+function SettingsContent() {
   const { t } = useTranslation();
+  const router = useRouter();
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const requested = search.get("tab");
+  const tab: Tab = (TABS as readonly string[]).includes(requested ?? "") ? (requested as Tab) : "general";
+
   const canManage = useHasCapability("affiliates:*");
   const settings = useAdminAffiliateSettings();
   const update = useUpdateAffiliateSettings();
-  const overrides = useAdminAffiliateOverrides();
-  const upsertOverride = useUpsertAffiliateOverride();
-  const deleteOverride = useDeleteAffiliateOverride();
-  const runJob = useRunAffiliateJob();
-
   const [form, setForm] = useState<SettingsForm | null>(null);
-  const [ovrProduct, setOvrProduct] = useState("");
-  const [ovrPct, setOvrPct] = useState("");
-  const [jobScope, setJobScope] = useState<string>(JOB_SCOPES[0]);
-  const [jobQuarter, setJobQuarter] = useState("");
 
   const loaded = settings.data;
   useEffect(() => {
@@ -77,8 +89,6 @@ export default function AdminAffiliateSettingsPage() {
     );
   }
 
-  const fail = (err: unknown) => toast.error(err instanceof ApiError ? err.message : t("aff_action_failed"));
-
   const save = (e: React.FormEvent) => {
     e.preventDefault();
     const input = formToInput(form);
@@ -86,192 +96,171 @@ export default function AdminAffiliateSettingsPage() {
       toast.error(t("admin_aff_set_invalid"));
       return;
     }
-    update.mutate(input, { onSuccess: () => toast.success(t("admin_aff_set_saved")), onError: fail });
+    update.mutate(input, {
+      onSuccess: () => toast.success(t("admin_aff_set_saved")),
+      onError: (err) => toast.error(err instanceof ApiError ? err.message : t("aff_action_failed")),
+    });
   };
 
-  const saveOverride = (e: React.FormEvent) => {
-    e.preventDefault();
-    const pct = Number(ovrPct);
-    if (!ovrProduct.trim() || ovrPct.trim() === "" || !Number.isFinite(pct) || pct < 0 || pct > 100) {
-      toast.error(t("admin_aff_ovr_invalid"));
-      return;
-    }
-    upsertOverride.mutate(
-      { productId: ovrProduct.trim(), percentage: pct },
-      {
-        onSuccess: () => {
-          toast.success(t("admin_aff_ovr_saved"));
-          setOvrProduct("");
-          setOvrPct("");
-        },
-        onError: fail,
-      },
-    );
-  };
+  const changeTab = (value: string) => router.replace(value === "general" ? pathname : `${pathname}?tab=${value}`, { scroll: false });
 
-  const run = (e: React.FormEvent) => {
-    e.preventDefault();
-    runJob.mutate(
-      { scope: jobScope, quarter: jobScope === "levels" && jobQuarter.trim() ? jobQuarter.trim() : undefined },
-      { onSuccess: () => toast.success(t("admin_aff_job_done")), onError: fail },
-    );
-  };
-
-  const setNumber = (key: keyof SettingsForm["numbers"], v: string) =>
-    setForm({ ...form, numbers: { ...form.numbers, [key]: v } });
-  const setOptional = (key: keyof SettingsForm["optional"], v: string) =>
-    setForm({ ...form, optional: { ...form.optional, [key]: v } });
+  const setNumber = (key: GlobalNumberField, v: string) => setForm({ ...form, numbers: { ...form.numbers, [key]: v } });
+  const setOptional = (key: GlobalOptionalField, v: string) => setForm({ ...form, optional: { ...form.optional, [key]: v } });
   const setLevelField = (level: string, key: keyof SettingsForm["levels"][string]["fields"], v: string) =>
-    setForm({
-      ...form,
-      levels: { ...form.levels, [level]: { ...form.levels[level], fields: { ...form.levels[level].fields, [key]: v } } },
-    });
+    setForm({ ...form, levels: { ...form.levels, [level]: { ...form.levels[level], fields: { ...form.levels[level].fields, [key]: v } } } });
   const setLevelPct = (level: string, category: string, v: string) =>
-    setForm({
-      ...form,
-      levels: { ...form.levels, [level]: { ...form.levels[level], pct: { ...form.levels[level].pct, [category]: v } } },
-    });
+    setForm({ ...form, levels: { ...form.levels, [level]: { ...form.levels[level], pct: { ...form.levels[level].pct, [category]: v } } } });
 
   const fieldLabel = (key: string) => t(`admin_aff_f_${key}` as I18nKey);
 
+  const globalField = (key: GlobalField) => {
+    const id = `g-${key}`;
+    const help = GLOBAL_HELP[key];
+    if (key === "launch_date") {
+      return (
+        <div key={key} className="space-y-1.5">
+          <Label htmlFor={id}>{fieldLabel(key)}</Label>
+          <Input id={id} type="date" value={form.launchDate} onChange={(e) => setForm({ ...form, launchDate: e.target.value })} />
+          <p className="text-xs leading-relaxed text-ink-500">{t(hintKey(key))}</p>
+        </div>
+      );
+    }
+    const optional = key === "payout_day_of_month" || key === "daily_registration_cap";
+    return (
+      <SettingField
+        key={key}
+        id={id}
+        label={fieldLabel(key)}
+        hint={t(hintKey(key))}
+        help={help}
+        value={optional ? form.optional[key as GlobalOptionalField] : form.numbers[key as GlobalNumberField]}
+        onChange={(v) => (optional ? setOptional(key as GlobalOptionalField, v) : setNumber(key as GlobalNumberField, v))}
+      />
+    );
+  };
+
+  const guideFields = GROUPS.flatMap((g) => g.fields)
+    .filter((key) => !(HIDDEN_NUMBER_FIELDS as readonly string[]).includes(key))
+    .map((key) => ({
+      column: fieldLabel(key),
+      required: GLOBAL_HELP[key].required,
+      ruleKey: hintKey(key),
+      example: GLOBAL_HELP[key].example,
+    }));
+
+  const saveBar = (
+    <div className="flex justify-end">
+      <Button type="submit" disabled={update.isPending}>
+        {t("admin_aff_set_save")}
+      </Button>
+    </div>
+  );
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <AdminPageHeader icon={Settings} title={t("admin_aff_set_title")} description={t("admin_aff_set_desc")} />
 
-      <form onSubmit={save} className="space-y-8">
-        <section className="md-card-outlined space-y-4 p-5">
-          <h2 className="font-semibold text-ink-900">{t("admin_aff_set_global")}</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {GLOBAL_NUMBER_FIELDS.filter((key) => !HIDDEN_NUMBER_FIELDS.includes(key)).map((key) => (
-              <NumberField key={key} id={`g-${key}`} label={fieldLabel(key)} value={form.numbers[key]} onChange={(v) => setNumber(key, v)} />
-            ))}
-            {GLOBAL_OPTIONAL_FIELDS.map((key) => (
-              <NumberField key={key} id={`g-${key}`} label={fieldLabel(key)} value={form.optional[key]} onChange={(v) => setOptional(key, v)} />
-            ))}
-            <div className="space-y-1">
-              <Label htmlFor="g-launch_date">{fieldLabel("launch_date")}</Label>
-              <Input id="g-launch_date" type="date" value={form.launchDate} onChange={(e) => setForm({ ...form, launchDate: e.target.value })} />
-            </div>
-          </div>
-          <label className="flex items-center gap-2 text-sm text-ink-700">
-            <input
-              type="checkbox"
-              checked={form.adjustmentThresholdEnabled}
-              onChange={(e) => setForm({ ...form, adjustmentThresholdEnabled: e.target.checked })}
-            />
-            {fieldLabel("adjustment_threshold_enabled")}
-          </label>
-        </section>
+      <Tabs value={tab} onValueChange={changeTab}>
+        <TabsList>
+          <TabsTrigger value="general">{t("admin_aff_tab_general")}</TabsTrigger>
+          <TabsTrigger value="levels">{t("admin_aff_tab_levels")}</TabsTrigger>
+          <TabsTrigger value="overrides">{t("admin_aff_tab_overrides")}</TabsTrigger>
+          <TabsTrigger value="jobs">{t("admin_aff_tab_jobs")}</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-        <section className="space-y-4">
-          <div>
-            <h2 className="font-semibold text-ink-900">{t("admin_aff_set_levels")}</h2>
-            <p className="text-sm text-ink-500">{t("admin_aff_set_level_hint")}</p>
-          </div>
-          {AFFILIATE_LEVELS.map((level) => (
-            <div key={level} className="md-card-outlined space-y-4 p-5">
-              <h3 className="font-semibold text-ink-900">{affLabel(t, level)}</h3>
+      {tab === "general" && (
+        <form onSubmit={save} className="space-y-6">
+          <BulkFormatGuide fields={guideFields} pitfallKeys={[]} />
+          {GROUPS.map((group) => (
+            <section key={group.title} className="md-card-outlined space-y-4 p-5">
               <div>
-                <p className="mb-2 text-xs font-medium text-ink-500">{t("admin_aff_set_commission")}</p>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-                  {COMMISSION_CATEGORIES.map((category) => (
-                    <NumberField
-                      key={category}
-                      id={`l-${level}-pct-${category}`}
-                      label={`${affLabel(t, category)} (%)`}
-                      value={form.levels[level].pct[category]}
-                      onChange={(v) => setLevelPct(level, category, v)}
+                <h2 className="font-semibold text-ink-900">{t(group.title)}</h2>
+                <p className="text-sm text-ink-600">{t(group.desc)}</p>
+              </div>
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {group.fields.filter((key) => !(HIDDEN_NUMBER_FIELDS as readonly string[]).includes(key)).map(globalField)}
+              </div>
+              {group.title === "admin_aff_grp_payout" && (
+                <label className="flex items-center gap-2 text-sm text-ink-700">
+                  <input
+                    type="checkbox"
+                    checked={form.adjustmentThresholdEnabled}
+                    onChange={(e) => setForm({ ...form, adjustmentThresholdEnabled: e.target.checked })}
+                  />
+                  {fieldLabel("adjustment_threshold_enabled")}
+                </label>
+              )}
+            </section>
+          ))}
+          {saveBar}
+        </form>
+      )}
+
+      {tab === "levels" && (
+        <form onSubmit={save} className="space-y-6">
+          <p className="text-sm text-ink-600">{t("admin_aff_set_level_hint")}</p>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {AFFILIATE_LEVELS.map((level) => (
+              <section key={level} className="md-card-outlined space-y-5 p-5">
+                <h2 className="font-serif text-lg font-bold text-ink-900">{affLabel(t, level)}</h2>
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-ink-900">{t("admin_aff_lvl_pct")}</h3>
+                    <p className="text-xs text-ink-500">{t("admin_aff_pct_hint")}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {COMMISSION_CATEGORIES.map((category) => (
+                      <SettingFieldCompact
+                        key={category}
+                        id={`l-${level}-pct-${category}`}
+                        label={affLabel(t, category)}
+                        value={form.levels[level].pct[category]}
+                        onChange={(v) => setLevelPct(level, category, v)}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-ink-900">{t("admin_aff_lvl_rules")}</h3>
+                  {LEVEL_FIELDS.map((key) => (
+                    <SettingField
+                      key={key}
+                      id={`l-${level}-${key}`}
+                      label={fieldLabel(key)}
+                      hint={t(levelHintKey(key))}
+                      help={LEVEL_HELP[key]}
+                      value={form.levels[level].fields[key]}
+                      placeholder={globalFallback(form, key)}
+                      onChange={(v) => setLevelField(level, key, v)}
                     />
                   ))}
                 </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {LEVEL_FIELDS.map((key) => (
-                  <NumberField
-                    key={key}
-                    id={`l-${level}-${key}`}
-                    label={fieldLabel(key)}
-                    value={form.levels[level].fields[key]}
-                    onChange={(v) => setLevelField(level, key, v)}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </section>
-
-        <Button type="submit" disabled={update.isPending}>
-          {t("admin_aff_set_save")}
-        </Button>
-      </form>
-
-      <section className="md-card-outlined space-y-3 p-5">
-        <h2 className="font-semibold text-ink-900">{t("admin_aff_ovr_title")}</h2>
-        {overrides.data && overrides.data.length === 0 && <p className="text-sm text-ink-500">{t("admin_aff_ovr_empty")}</p>}
-        <ul className="space-y-1 text-sm">
-          {(overrides.data ?? []).map((o) => (
-            <li key={o.product_id} className="flex items-center justify-between gap-3">
-              <span className="font-mono text-xs text-ink-700">
-                {o.product_id} · {o.percentage}%
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={deleteOverride.isPending}
-                onClick={() => deleteOverride.mutate(o.product_id, { onError: fail })}
-              >
-                {t("admin_aff_ovr_delete")}
-              </Button>
-            </li>
-          ))}
-        </ul>
-        <form onSubmit={saveOverride} className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[260px] flex-1 space-y-1">
-            <Label htmlFor="ovr-product">{t("admin_aff_ovr_product")}</Label>
-            <Input id="ovr-product" value={ovrProduct} onChange={(e) => setOvrProduct(e.target.value)} />
+              </section>
+            ))}
           </div>
-          <div className="w-28 space-y-1">
-            <Label htmlFor="ovr-pct">{t("admin_aff_ovr_pct")}</Label>
-            <Input id="ovr-pct" inputMode="decimal" value={ovrPct} onChange={(e) => setOvrPct(e.target.value)} />
-          </div>
-          <Button type="submit" disabled={upsertOverride.isPending}>
-            {t("admin_aff_ovr_add")}
-          </Button>
+          {saveBar}
         </form>
-      </section>
+      )}
 
-      <section className="md-card-outlined space-y-3 p-5">
-        <div>
-          <h2 className="font-semibold text-ink-900">{t("admin_aff_job_title")}</h2>
-          <p className="text-sm text-ink-500">{t("admin_aff_job_hint")}</p>
-        </div>
-        <form onSubmit={run} className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Label htmlFor="job-scope">{t("admin_aff_job_scope")}</Label>
-            <select
-              id="job-scope"
-              value={jobScope}
-              onChange={(e) => setJobScope(e.target.value)}
-              className="h-9 rounded-md border border-line bg-surface px-3 text-sm"
-            >
-              {JOB_SCOPES.map((s) => (
-                <option key={s} value={s}>
-                  {affLabel(t, s)}
-                </option>
-              ))}
-            </select>
-          </div>
-          {jobScope === "levels" && (
-            <div className="space-y-1">
-              <Label htmlFor="job-quarter">{t("admin_aff_job_quarter")}</Label>
-              <Input id="job-quarter" value={jobQuarter} onChange={(e) => setJobQuarter(e.target.value)} placeholder="2026-Q3" />
-            </div>
-          )}
-          <Button type="submit" disabled={runJob.isPending}>
-            {t("admin_aff_job_run")}
-          </Button>
-        </form>
-      </section>
+      {tab === "overrides" && <OverridesPanel />}
+      {tab === "jobs" && <JobsPanel />}
+    </div>
+  );
+}
+
+// A level field left empty falls back to the global value, so show that value as the placeholder.
+function globalFallback(form: SettingsForm, key: (typeof LEVEL_FIELDS)[number]): string | undefined {
+  if (key === "payout_day_of_month") return form.optional.payout_day_of_month || undefined;
+  if (key === "rise_threshold" || key === "hold_threshold") return undefined;
+  return form.numbers[key] || undefined;
+}
+
+function SettingFieldCompact({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id}>{`${label} (%)`}</Label>
+      <Input id={id} inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }

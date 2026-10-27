@@ -1828,6 +1828,8 @@ export type AffiliateSettingsInput = Omit<AffiliateSettings, "id" | "updated_by"
 
 export interface AffiliateProductOverride {
   product_id: string;
+  product_name?: string;
+  product_type?: string;
   percentage: number;
   updated_by: string | null;
   updated_at: string;
@@ -1880,4 +1882,11 @@ export interface AffiliateLiabilityReport {
 export interface AffiliateJobResult {
   scope: string;
   [key: string]: unknown;
+}
+
+export interface AffiliateOverrideProduct {
+  id: string;
+  name: string;
+  type: string;
+  percentage: number | null;
 }

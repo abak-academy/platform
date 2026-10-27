@@ -3,29 +3,7 @@ import type { I18nKey } from "./i18n";
 export type BulkFieldSpec = {
   column: string;
   required: boolean;
-  ruleKey:
-    | "bulk_format_student_name"
-    | "bulk_format_student_school_npsn"
-    | "bulk_format_student_school_code"
-    | "bulk_format_student_jenjang"
-    | "bulk_format_student_email"
-    | "bulk_format_student_dob"
-    | "bulk_format_student_gender"
-    | "bulk_format_student_grade"
-    | "bulk_format_student_target_exam"
-    | "bulk_format_student_alamat_domisili"
-    | "bulk_format_student_provinsi"
-    | "bulk_format_student_kota"
-    | "bulk_format_student_kecamatan"
-    | "bulk_format_student_kode_pos"
-    | "bulk_format_student_password"
-    | "bulk_format_school_name"
-    | "bulk_format_school_code"
-    | "bulk_format_school_npsn"
-    | "bulk_format_school_school_types"
-    | "bulk_format_school_alamat"
-    | "bulk_format_school_provinsi"
-    | "bulk_format_school_kota";
+  ruleKey: I18nKey;
   example: string;
 };
 

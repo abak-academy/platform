@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { API_BASE, ApiError, authFetch } from "@/lib/api";
 import type {
   AffiliateAdminDetail,
@@ -13,6 +13,7 @@ import type {
   AffiliateFlagRow,
   AffiliateJobResult,
   AffiliateLiabilityReport,
+  AffiliateOverrideProduct,
   AffiliateProductOverride,
   AffiliateReportSummary,
   AffiliateSettingsInput,
@@ -33,7 +34,8 @@ export const adminAffiliateKeys = {
   detail: (id: string) => [...adminAffiliateKeys.all, "detail", id] as const,
   payouts: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "payouts", p] as const,
   settings: () => [...adminAffiliateKeys.all, "settings"] as const,
-  overrides: () => [...adminAffiliateKeys.all, "overrides"] as const,
+  overrides: (p?: AdminQueueParams) => [...adminAffiliateKeys.all, "overrides", p ?? null] as const,
+  overrideProducts: (q: string) => [...adminAffiliateKeys.all, "override-products", q] as const,
   flags: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "flags", p] as const,
   appeals: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "appeals", p] as const,
   report: (p: AdminReportParams) => [...adminAffiliateKeys.all, "report", p] as const,
@@ -225,11 +227,30 @@ export function useUpdateAffiliateSettings() {
   });
 }
 
-export function useAdminAffiliateOverrides() {
+function invalidateOverrides(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: [...adminAffiliateKeys.all, "overrides"] });
+  qc.invalidateQueries({ queryKey: [...adminAffiliateKeys.all, "override-products"] });
+}
+
+// The overrides set so far, searchable by product name and paged.
+export function useAdminAffiliateOverrides(params: { q?: string; page?: number; per_page?: number } = {}) {
   return useQuery({
-    queryKey: adminAffiliateKeys.overrides(),
+    queryKey: adminAffiliateKeys.overrides(params),
+    queryFn: () =>
+      authFetch<AdminQueuePage<AffiliateProductOverride>>(
+        `/admin/affiliate-product-overrides${qs({ q: params.q, page: params.page, per_page: params.per_page })}`,
+      ),
+  });
+}
+
+// Products matching a name, for the picker that replaces typing a product id.
+export function useAffiliateOverrideProducts(q: string) {
+  return useQuery({
+    queryKey: adminAffiliateKeys.overrideProducts(q),
     queryFn: async () => {
-      const res = await authFetch<{ data: AffiliateProductOverride[] }>("/admin/affiliate-product-overrides");
+      const res = await authFetch<{ data: AffiliateOverrideProduct[] }>(
+        `/admin/affiliate-product-overrides/products${qs({ q, limit: 8 })}`,
+      );
       return res.data ?? [];
     },
   });
@@ -244,7 +265,7 @@ export function useUpsertAffiliateOverride() {
         body: JSON.stringify({ percentage }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminAffiliateKeys.overrides() });
+      invalidateOverrides(qc);
     },
   });
 }
@@ -255,7 +276,7 @@ export function useDeleteAffiliateOverride() {
     mutationFn: (productId: string) =>
       authFetch<void>(`/admin/affiliate-product-overrides/${encodeURIComponent(productId)}`, { method: "DELETE" }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminAffiliateKeys.overrides() });
+      invalidateOverrides(qc);
     },
   });
 }

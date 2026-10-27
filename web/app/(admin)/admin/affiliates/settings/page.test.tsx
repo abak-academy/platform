@@ -9,11 +9,20 @@ const h = vi.hoisted(() => ({
   upsert: vi.fn(),
   remove: vi.fn(),
   run: vi.fn(),
+  products: vi.fn(),
+  replace: vi.fn(),
+  search: { value: "" },
   capability: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: h.replace }),
+  usePathname: () => "/admin/affiliates/settings",
+  useSearchParams: () => new URLSearchParams(h.search.value),
+}));
 vi.mock("@/lib/hooks/admin-affiliates", () => ({
+  useAffiliateOverrideProducts: h.products,
   useAdminAffiliateSettings: h.settings,
   useUpdateAffiliateSettings: () => ({ mutate: h.update, isPending: false }),
   useAdminAffiliateOverrides: h.overrides,
@@ -56,7 +65,21 @@ describe("AdminAffiliateSettingsPage", () => {
     h.toast.error.mockReset();
     h.capability.mockReturnValue(true);
     h.settings.mockReturnValue({ isLoading: false, isError: false, data: view });
-    h.overrides.mockReturnValue({ data: [{ product_id: "p-1", percentage: 12.5 }] });
+    h.search.value = "";
+    h.overrides.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        data: [{ product_id: "p-1", product_name: "Kursus Matematika", product_type: "course", percentage: 12.5, updated_at: "2026-10-01T00:00:00Z" }],
+        total: 1,
+        page: 1,
+        per_page: 10,
+      },
+    });
+    h.products.mockReturnValue({
+      isLoading: false,
+      data: [{ id: "p-2", name: "Buku Fisika", type: "book", percentage: null }],
+    });
   });
 
   it("is blocked without the capability", () => {
@@ -69,14 +92,14 @@ describe("AdminAffiliateSettingsPage", () => {
   it("loads the current values into the form", async () => {
     render(<SettingsPage />);
 
-    expect(await screen.findByLabelText("Masa berlaku cookie (hari)")).toHaveValue("30");
+    expect(await screen.findByLabelText("Masa berlaku cookie")).toHaveValue("30");
     expect(screen.getByLabelText("Penarikan minimum", { selector: "#g-min_payout" })).toHaveValue("100000");
   });
 
   it("does not offer soon_end_days but still sends its stored value", async () => {
     render(<SettingsPage />);
 
-    await screen.findByLabelText("Masa berlaku cookie (hari)");
+    await screen.findByLabelText("Masa berlaku cookie");
     expect(screen.queryByLabelText("Peringatan ikatan hampir berakhir (hari)")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Simpan pengaturan" }));
 
@@ -86,7 +109,7 @@ describe("AdminAffiliateSettingsPage", () => {
   it("saves an edited value with the untouched ones", async () => {
     render(<SettingsPage />);
 
-    fireEvent.change(await screen.findByLabelText("Masa berlaku cookie (hari)"), { target: { value: "45" } });
+    fireEvent.change(await screen.findByLabelText("Masa berlaku cookie"), { target: { value: "45" } });
     fireEvent.click(screen.getByRole("button", { name: "Simpan pengaturan" }));
 
     expect(h.update).toHaveBeenCalledTimes(1);
@@ -99,35 +122,84 @@ describe("AdminAffiliateSettingsPage", () => {
   it("does not send a non-numeric value", async () => {
     render(<SettingsPage />);
 
-    fireEvent.change(await screen.findByLabelText("Masa berlaku cookie (hari)"), { target: { value: "abc" } });
+    fireEvent.change(await screen.findByLabelText("Masa berlaku cookie"), { target: { value: "abc" } });
     fireEvent.click(screen.getByRole("button", { name: "Simpan pengaturan" }));
 
     expect(h.update).not.toHaveBeenCalled();
     expect(h.toast.error).toHaveBeenCalledWith("Isian angka tidak valid.");
   });
 
-  it("validates an override percent before sending", async () => {
+  it("explains every field under its input", async () => {
     render(<SettingsPage />);
 
-    fireEvent.change(await screen.findByLabelText("ID produk"), { target: { value: "p-2" } });
-    fireEvent.change(screen.getByLabelText("Persen"), { target: { value: "150" } });
+    await screen.findByLabelText("Masa berlaku cookie");
+    expect(screen.getAllByText(/Berapa lama browser calon siswa mengingat tautan referral/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Contoh:/).length).toBeGreaterThan(8);
+  });
+
+  it("shows the column guide like the student bulk import", async () => {
+    render(<SettingsPage />);
+
+    await screen.findByLabelText("Masa berlaku cookie");
+    expect(screen.getByText("Lihat aturan kolom")).toBeInTheDocument();
+  });
+
+  it("opens the level tab from the URL and falls back to the global value as placeholder", async () => {
+    h.search.value = "tab=levels";
+    render(<SettingsPage />);
+
+    const field = await screen.findByLabelText("Penarikan minimum", { selector: "#l-silver-min_payout" });
+    expect(field).toHaveAttribute("placeholder", "100000");
+    expect(screen.getByText("Gold")).toBeInTheDocument();
+  });
+
+  it("switches tabs through the URL", async () => {
+    render(<SettingsPage />);
+    await screen.findByLabelText("Masa berlaku cookie");
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Override produk" }));
+
+    expect(h.replace).toHaveBeenCalledWith("/admin/affiliates/settings?tab=overrides", { scroll: false });
+  });
+
+  it("picks an override product by name instead of typing an id, and validates the percent", async () => {
+    h.search.value = "tab=overrides";
+    render(<SettingsPage />);
+
+    fireEvent.focus(await screen.findByLabelText("Produk"));
+    fireEvent.click(await screen.findByRole("button", { name: /Buku Fisika/ }));
+    fireEvent.change(screen.getByLabelText("Persentase komisi"), { target: { value: "150" } });
     fireEvent.click(screen.getByRole("button", { name: "Simpan override" }));
     expect(h.upsert).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText("Persen"), { target: { value: "15" } });
+    fireEvent.change(screen.getByLabelText("Persentase komisi"), { target: { value: "15" } });
     fireEvent.click(screen.getByRole("button", { name: "Simpan override" }));
     expect(h.upsert).toHaveBeenCalledWith({ productId: "p-2", percentage: 15 }, expect.anything());
   });
 
-  it("removes an override", async () => {
+  it("refuses an override without a product", async () => {
+    h.search.value = "tab=overrides";
     render(<SettingsPage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Hapus" }));
+    fireEvent.change(await screen.findByLabelText("Persentase komisi"), { target: { value: "15" } });
+    fireEvent.click(screen.getByRole("button", { name: "Simpan override" }));
+
+    expect(h.upsert).not.toHaveBeenCalled();
+    expect(h.toast.error).toHaveBeenCalledWith("Pilih produk dan isi persen 0–100.");
+  });
+
+  it("lists overrides with the product name and removes one", async () => {
+    h.search.value = "tab=overrides";
+    render(<SettingsPage />);
+
+    expect(await screen.findByText("Kursus Matematika")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hapus" }));
 
     expect(h.remove).toHaveBeenCalledWith("p-1", expect.anything());
   });
 
   it("sends a quarter only for the levels job", async () => {
+    h.search.value = "tab=jobs";
     render(<SettingsPage />);
     await screen.findByLabelText("Cakupan");
 
