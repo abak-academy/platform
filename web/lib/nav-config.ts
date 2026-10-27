@@ -184,10 +184,16 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
     ],
   },
   {
+    titleKey: "nav_group_affiliate",
+    items: [
+      { labelKey: "aff_nav_affiliators", href: "/admin/affiliators", icon: Handshake },
+      { labelKey: "aff_nav_reports", href: "/admin/affiliators/reports", icon: BarChart3 },
+    ],
+  },
+  {
     titleKey: "system",
     items: [
       { labelKey: "accounts", href: "/admin/system/accounts", icon: Users },
-      { labelKey: "aff_nav_affiliators", href: "/admin/system/affiliators", icon: Handshake },
       { labelKey: "config", href: "/admin/system/config", icon: Settings },
       { labelKey: "audit", href: "/admin/system/audit", icon: ShieldCheck },
     ],

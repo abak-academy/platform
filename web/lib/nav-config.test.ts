@@ -21,14 +21,23 @@ describe("admin navigation", () => {
     ]);
   });
 
-  it("keeps system navigation ordered as accounts, affiliators, config, and audit", () => {
+  it("keeps system navigation ordered as accounts, config, and audit", () => {
     const group = NAV_CONFIG.super_admin.find((item) => item.titleKey === "system")!;
     expect(group.items.map((item) => item.href)).toEqual([
       "/admin/system/accounts",
-      "/admin/system/affiliators",
       "/admin/system/config",
       "/admin/system/audit",
     ]);
+  });
+
+  it("gives affiliators their own super-admin menu, apart from System", () => {
+    const group = NAV_CONFIG.super_admin.find((item) => item.titleKey === "nav_group_affiliate")!;
+    expect(group.items.map((item) => item.href)).toEqual(["/admin/affiliators", "/admin/affiliators/reports"]);
+    const system = NAV_CONFIG.super_admin.find((item) => item.titleKey === "system")!;
+    expect(system.items.map((item) => item.href)).not.toContain("/admin/affiliators");
+    for (const role of ["admin_school", "admin_exam", "admin_store"] as const) {
+      expect(NAV_CONFIG[role].flatMap((g) => g.items.map((i) => i.href))).not.toContain("/admin/affiliators");
+    }
   });
 
   it("hides school reports from every admin sidebar", () => {

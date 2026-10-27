@@ -14,17 +14,8 @@ import { useAffiliatorDashboard } from "@/lib/hooks/affiliates";
 import { useHasCapability } from "@/lib/hooks/use-capability";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
+import { queryRange } from "@/lib/period";
 import type { AffiliatorMonthPoint, AffiliatorSchoolCount, AffiliatorSchoolProduct } from "@/lib/types";
-
-function jakartaDaysAgo(days: number): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date(Date.now() - days * 86400000));
-}
-
-// The affiliator endpoint reads no dates as all time, unlike the admin dashboards
-// where no dates means the last 30 days, so the 30-day preset is spelled out.
-function queryRange(preset: PeriodPreset, range: PeriodRange): PeriodRange {
-  return preset === "30d" ? { from: jakartaDaysAgo(29) } : range;
-}
 
 export default function AffiliateDashboardPage() {
   const { t } = useTranslation();

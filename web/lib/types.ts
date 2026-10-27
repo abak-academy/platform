@@ -1545,22 +1545,108 @@ export interface Affiliator {
   student_count: number;
   order_count: number;
   paid_amount: number;
+  /** Present only on the create response, when the password was generated. */
+  temp_password?: string;
 }
 
 export interface AffiliatorInput {
   email: string;
   name: string;
-  password: string;
+  /** Empty means the server generates one and returns it once. */
+  password?: string;
   school_ids: string[];
 }
 
-export interface AffiliatorBulkResult {
-  row: number;
-  email: string;
-  ok: boolean;
-  error?: string;
-  data?: Affiliator;
+/** An active admin_school account that can become an affiliator. */
+export interface PromotableAdmin {
+  id: string;
+  name: string;
+  email: string | null;
+  school_id: string | null;
+  school_name: string | null;
+  created_at: string;
 }
+
+export interface AffiliatorPage<T> {
+  data: T[];
+  next_cursor?: string;
+  total: number;
+}
+
+export interface ReportPage<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AffiliatorReportRow {
+  affiliator_id: string;
+  name: string;
+  email: string | null;
+  status: string;
+  school_count: number;
+  student_count: number;
+  paid_orders: number;
+  paid_units: number;
+  paid_amount: number;
+  discount_total: number;
+  pending_orders: number;
+  pending_amount: number;
+  expired_orders: number;
+  orders_in_period: number;
+  last_order_at: string | null;
+}
+
+export interface SchoolReportRow {
+  school_id: string;
+  school_name: string;
+  affiliator_count: number;
+  student_count: number;
+  covered_students: number;
+  unpurchased_students: number;
+  paid_orders: number;
+  paid_units: number;
+  paid_amount: number;
+  discount_total: number;
+}
+
+export interface ProductReportRow {
+  school_id: string;
+  school_name: string;
+  product_id: string;
+  product_name: string;
+  product_type: string;
+  units: number;
+  orders: number;
+}
+
+export interface PromoReportRow {
+  code: string;
+  affiliator_only: boolean;
+  discount_percent: number | null;
+  discount_amount: number | null;
+  min_qty: number | null;
+  min_order_amount: number | null;
+  starts_at: string | null;
+  expires_at: string | null;
+  max_uses: number | null;
+  used_count: number;
+  active_now: boolean;
+  orders: number;
+  discount_total: number;
+}
+
+export interface TrendReportRow {
+  month: string;
+  orders: number;
+  units: number;
+  amount: number;
+  discount: number;
+  active_affiliators: number;
+}
+
+export type AffiliateReportName = "affiliators" | "schools" | "products" | "promos" | "trend";
 
 export interface AffiliatorSchoolCount {
   school_id: string;
