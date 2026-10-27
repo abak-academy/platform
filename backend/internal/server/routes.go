@@ -33,6 +33,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Admin product routes
 	admin := v1.Group("/admin")
 	admin.Use(handler.JWTMiddleware(svc, jwtSigner))
+	admin.Use(handler.AffiliatorWriteGuard(svc.AffiliatorActive))
 
 	adminProducts := admin.Group("/products")
 	adminProducts.GET("", h.AdminListProducts)
@@ -364,6 +365,16 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminSystem.PATCH("/accounts/:id/status", h.AdminChangeAccountStatus)
 	adminSystem.POST("/accounts/:id/reset-password", h.AdminResetAccountPassword)
 	adminSystem.GET("/audit", h.AdminListAuditLog)
+	adminSystem.GET("/affiliators", h.AdminListAffiliators)
+	adminSystem.POST("/affiliators", h.AdminCreateAffiliator)
+	adminSystem.POST("/affiliators/bulk", h.AdminBulkCreateAffiliators)
+	adminSystem.POST("/affiliators/:id/promote", h.AdminPromoteAffiliator)
+	adminSystem.PUT("/affiliators/:id/schools", h.AdminSetAffiliatorSchools)
+
+	affiliates := v1.Group("/affiliates")
+	affiliates.Use(handler.JWTMiddleware(svc, jwtSigner))
+	affiliates.Use(handler.RBACMiddleware("affiliates:self"))
+	affiliates.GET("/me", h.AffiliatorMe)
 	adminSystem.GET("/config", h.AdminGetSystemConfig)
 	adminSystem.PUT("/config", h.AdminUpdateSystemConfig)
 

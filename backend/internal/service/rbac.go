@@ -8,6 +8,7 @@ const (
 	RoleAdminExam   = "admin_exam"
 	RoleAdminStore  = "admin_store"
 	RoleSuperAdmin  = "super_admin"
+	RoleAffiliator  = "affiliator"
 )
 
 var roleCapabilities = map[string][]string{
@@ -20,6 +21,7 @@ var roleCapabilities = map[string][]string{
 	RoleAdminStore:  {"products(book|course):write", "sections:*", "orders:*", "promos:*", "notifications:*", "uploads:write"},
 	RoleAdminSchool: {"students:*", "results:read", "bulk-exam-orders:write", "products(exam):read"},
 	RoleSuperAdmin:  {"*", "schools:write"},
+	RoleAffiliator:  {"affiliates:self", "student-scope:affiliator"},
 }
 
 func Capabilities(role string) []string {

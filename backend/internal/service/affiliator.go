@@ -1,0 +1,282 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
+)
+
+const maxBulkAffiliators = 200
+
+// AffiliatorResponse is the affiliator shape returned by the admin and self endpoints.
+type AffiliatorResponse struct {
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	Email     *string        `json:"email"`
+	Status    string         `json:"status"`
+	SchoolIDs []string       `json:"school_ids"`
+	Schools   []model.School `json:"schools,omitempty"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
+}
+
+// AffiliatorInput is one affiliator account to create.
+type AffiliatorInput struct {
+	Email     string   `json:"email"`
+	Name      string   `json:"name"`
+	Password  string   `json:"password"`
+	SchoolIDs []string `json:"school_ids"`
+}
+
+// AffiliatorBulkResult is the per-row outcome of BulkCreateAffiliators.
+type AffiliatorBulkResult struct {
+	Row   int                 `json:"row"`
+	Email string              `json:"email"`
+	OK    bool                `json:"ok"`
+	Error string              `json:"error,omitempty"`
+	Data  *AffiliatorResponse `json:"data,omitempty"`
+}
+
+func toAffiliatorResponse(row repository.AffiliatorRow) AffiliatorResponse {
+	return AffiliatorResponse{
+		ID:        row.ID,
+		Name:      row.Name,
+		Email:     row.Email,
+		Status:    row.Status,
+		SchoolIDs: row.SchoolIDs,
+		CreatedAt: row.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: row.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+// normalizeSchoolIDs drops duplicates, keeps order, and requires at least one valid UUID.
+func normalizeSchoolIDs(ids []string) ([]string, error) {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.ToLower(strings.TrimSpace(id))
+		if id == "" {
+			continue
+		}
+		if _, err := parseUUID(id); err != nil {
+			return nil, ErrInvalidUUID
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		return nil, ErrAffiliatorSchoolsRequired
+	}
+	return out, nil
+}
+
+func (s *Service) validateAffiliatorSchools(ctx context.Context, ids []string) ([]string, error) {
+	ids, err := normalizeSchoolIDs(ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		sch, err := s.storeRepo.GetSchoolByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if sch == nil {
+			return nil, ErrSchoolNotFound
+		}
+		if sch.Status != "active" {
+			return nil, ErrSchoolDeactivated
+		}
+	}
+	return ids, nil
+}
+
+// CreateAffiliator creates an active affiliator account bound to the given schools.
+func (s *Service) CreateAffiliator(ctx context.Context, actorID string, in AffiliatorInput) (*AffiliatorResponse, error) {
+	email := normalizeEmail(in.Email)
+	name := strings.TrimSpace(in.Name)
+	if email == "" || name == "" || in.Password == "" {
+		return nil, ErrMissingField
+	}
+	if len(in.Password) < minPasswordLen {
+		return nil, ErrWeakPassword
+	}
+	if err := checkEmailUniqueness(ctx, s.repo, email); err != nil {
+		return nil, err
+	}
+	schoolIDs, err := s.validateAffiliatorSchools(ctx, in.SchoolIDs)
+	if err != nil {
+		return nil, err
+	}
+	hash, err := hashPassword(in.Password)
+	if err != nil {
+		return nil, err
+	}
+
+	user := &model.User{Email: &email, Name: name, PasswordHash: string(hash)}
+	if err := s.storeRepo.CreateAffiliatorUser(ctx, user, schoolIDs); err != nil {
+		return nil, fmt.Errorf("create affiliator: %w", err)
+	}
+	if err := s.storeRepo.InsertAuditLogMeta(ctx, nil, &actorID, "user", user.ID, "affiliator.create", map[string]any{
+		"email": email, "school_ids": schoolIDs,
+	}); err != nil {
+		return nil, err
+	}
+	return &AffiliatorResponse{
+		ID:        user.ID,
+		Name:      user.Name,
+		Email:     user.Email,
+		Status:    "active",
+		SchoolIDs: schoolIDs,
+		CreatedAt: user.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// BulkCreateAffiliators creates each row independently and reports every outcome.
+func (s *Service) BulkCreateAffiliators(ctx context.Context, actorID string, rows []AffiliatorInput) ([]AffiliatorBulkResult, error) {
+	if len(rows) == 0 {
+		return nil, ErrMissingField
+	}
+	if len(rows) > maxBulkAffiliators {
+		return nil, fmt.Errorf("%w: at most %d rows", ErrValidation, maxBulkAffiliators)
+	}
+	results := make([]AffiliatorBulkResult, len(rows))
+	for i, in := range rows {
+		res := AffiliatorBulkResult{Row: i + 1, Email: normalizeEmail(in.Email)}
+		acc, err := s.CreateAffiliator(ctx, actorID, in)
+		if err != nil {
+			res.Error = err.Error()
+		} else {
+			res.OK = true
+			res.Data = acc
+		}
+		results[i] = res
+	}
+	return results, nil
+}
+
+// PromoteToAffiliator turns an admin_school account into an affiliator with the given schools.
+// Its sessions are revoked so the next login carries the new role.
+func (s *Service) PromoteToAffiliator(ctx context.Context, actorID, targetID string, schoolIDs []string) error {
+	if _, err := parseUUID(targetID); err != nil {
+		return ErrInvalidUUID
+	}
+	schoolIDs, err := s.validateAffiliatorSchools(ctx, schoolIDs)
+	if err != nil {
+		return err
+	}
+	user, err := s.storeRepo.GetAdminUserByID(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+	if user.Role != RoleAdminSchool {
+		return ErrNotAdminSchool
+	}
+	ok, err := s.storeRepo.PromoteSchoolAdminToAffiliator(ctx, targetID, schoolIDs)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotAdminSchool
+	}
+	s.revokeAllSessions(ctx, targetID)
+	return s.storeRepo.InsertAuditLogMeta(ctx, nil, &actorID, "user", targetID, "affiliator.promote", map[string]any{
+		"from": user.Role, "school_ids": schoolIDs,
+	})
+}
+
+// SetAffiliatorSchools replaces the schools an affiliator may access.
+func (s *Service) SetAffiliatorSchools(ctx context.Context, actorID, targetID string, schoolIDs []string) error {
+	if _, err := parseUUID(targetID); err != nil {
+		return ErrInvalidUUID
+	}
+	schoolIDs, err := s.validateAffiliatorSchools(ctx, schoolIDs)
+	if err != nil {
+		return err
+	}
+	ok, err := s.storeRepo.SetAffiliatorSchoolIDs(ctx, targetID, schoolIDs)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrAffiliatorNotFound
+	}
+	return s.storeRepo.InsertAuditLogMeta(ctx, nil, &actorID, "user", targetID, "affiliator.set_schools", map[string]any{
+		"school_ids": schoolIDs,
+	})
+}
+
+// ListAffiliators returns affiliators filtered by optional status, cursor-paginated.
+func (s *Service) ListAffiliators(ctx context.Context, statusFilter string, limit int, cursor string) ([]AffiliatorResponse, string, error) {
+	if statusFilter != "" && !isValidStatusFilter(statusFilter) {
+		return nil, "", fmt.Errorf("%w: %s", ErrInvalidStatusFilter, statusFilter)
+	}
+	rows, next, err := s.storeRepo.ListAffiliators(ctx, repository.AffiliatorFilter{Status: statusFilter, Cursor: cursor, Limit: limit})
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]AffiliatorResponse, len(rows))
+	for i, r := range rows {
+		out[i] = toAffiliatorResponse(r)
+	}
+	return out, next, nil
+}
+
+// GetAffiliatorProfile returns an affiliator's account with the details of its schools.
+func (s *Service) GetAffiliatorProfile(ctx context.Context, userID string) (*AffiliatorResponse, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil || user.Role != RoleAffiliator {
+		return nil, ErrAffiliatorNotFound
+	}
+	ids, err := s.storeRepo.GetAffiliatorSchoolIDs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	resp := &AffiliatorResponse{
+		ID:        user.ID,
+		Name:      user.Name,
+		Email:     user.Email,
+		Status:    user.Status,
+		SchoolIDs: ids,
+		CreatedAt: user.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
+	}
+	for _, id := range ids {
+		sch, err := s.storeRepo.GetSchoolByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if sch != nil {
+			resp.Schools = append(resp.Schools, *sch)
+		}
+	}
+	return resp, nil
+}
+
+// AffiliatorActive reports whether the affiliator account is active; a
+// deactivated one keeps a read-only session.
+func (s *Service) AffiliatorActive(ctx context.Context, userID string) (bool, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	return user != nil && user.Status == "active", nil
+}
+
+// canHoldSession reports whether a user in this state may be issued a session.
+func canHoldSession(user *model.User) bool {
+	return user.Status == "active" || (user.Role == RoleAffiliator && user.Status == "deactivated")
+}

@@ -57,9 +57,9 @@ Decisions (owner, 2026-10-27):
 
 ### Authorization and scope
 
-- `service/rbac.go`: role `affiliator` with capabilities for scoped students, the affiliator purchase routes, promo read and its own dashboard. A new capability (for example `student-scope:affiliator`) is the single marker for "scope comes from `school_ids`"; it must not start with `students:`. Role comparisons stay in `roleCapabilities`, not in handlers.
+- `service/rbac.go`: role `affiliator` with capabilities for scoped students, the affiliator purchase routes, promo read and its own dashboard. A new capability (`student-scope:affiliator`) is the single marker for "scope comes from `school_ids`"; it must not start with `students:`. Role comparisons stay in `roleCapabilities`, not in handlers.
 - `handler/school_scope.go`: a new resolver returns the affiliator's `school_ids`; a requested `school_id` outside the list is 403. The JWT school claim is not used for affiliators. Student list, register, bulk import and credentials handlers accept the list scope.
-- Read-only middleware: for a user with `status = deactivated` and role `affiliator`, login succeeds and every non-GET affiliator route returns 403 with a stable error code the UI maps to the notice. All other roles keep today's behavior (`deactivated` rejects login).
+- Read-only middleware (`AffiliatorWriteGuard` on the `/admin` group): for a user with `status = deactivated` and role `affiliator`, login succeeds and every non-GET affiliator route returns 403 with a stable error code the UI maps to the notice. All other roles keep today's behavior (`deactivated` rejects login).
 - Super admin routes for affiliator accounts: promote, create single, create bulk (CSV), set schools, set active state, list, detail. Each is recorded in `audit_log` like `student.set_password`.
 
 ### Promo
@@ -76,8 +76,8 @@ Decisions (owner, 2026-10-27):
 
 ### API (shape; final names settle in phase 1 and 4)
 
-- `/api/admin/affiliators` (super admin): list, detail, create, bulk create, promote, update schools, update active state.
-- `/api/affiliates/me/*` (affiliator): dashboard widgets, students, promos.
+- `/api/admin/system/affiliators` (super admin, `system:admin`): `GET` list, `POST` create, `POST /bulk` (JSON rows, at most 200, per-row result), `POST /:id/promote` (admin_school only), `PUT /:id/schools`. Active state reuses `PATCH /admin/system/accounts/:id/status`.
+- `GET /api/affiliates/me` (affiliator, `affiliates:self`): profile, schools, active state. Dashboard widgets, students and promos follow under `/api/affiliates/me/*`.
 - Student and purchase routes reuse `/admin/students*` and `/admin/bulk-exam-orders*` with the new scope and capability.
 
 ### Web
@@ -106,9 +106,9 @@ Decisions (owner, 2026-10-27):
 Phases, each committed separately and each with unit tests only:
 
 0. This TRD and the branch.
-1. Migration `0070`, role and capabilities, affiliator scope resolver, account management, active/inactive read-only.
+1. Migration `0070`, role and capabilities, account management (create, bulk, promote, set schools), active/inactive read-only.
 2. Promo columns, `ValidatePromo`, admin promo CRUD and `PromoModal`.
-3. Affiliator students: list, single and bulk registration, `registered_by`.
+3. Affiliator students: scope resolver over `school_ids`, list, single and bulk registration, `registered_by`.
 4. Purchase: single and bulk for `exam` and `course` with promo.
 5. Affiliator dashboard and super-admin monitoring pages.
 6. One end-to-end run, fixes, wiki updates (`docs/wiki/domain/rbac-and-accounts.md`, `docs/wiki/domain/orders-and-payments.md`).
