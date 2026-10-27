@@ -17,6 +17,11 @@ type AffiliatorRow struct {
 	SchoolIDs []string  `json:"school_ids"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Monitoring figures: students of the allowed schools, orders placed (open
+	// carts excluded) and the amount of orders that were paid and not refunded.
+	StudentCount int     `json:"student_count"`
+	OrderCount   int     `json:"order_count"`
+	PaidAmount   float64 `json:"paid_amount"`
 }
 
 // AffiliatorFilter carries optional filters for ListAffiliators.
@@ -90,22 +95,25 @@ func (r *Repository) ListAffiliators(ctx context.Context, filter AffiliatorFilte
 		filter.Limit = 100
 	}
 
-	query := `SELECT id, name, email, status, school_ids::text[], created_at, updated_at
-		FROM users WHERE role = 'affiliator' AND status != 'deleted'`
+	query := `SELECT users.id, users.name, users.email, users.status, users.school_ids::text[], users.created_at, users.updated_at,
+			(SELECT COUNT(*) FROM users st WHERE st.role = 'student' AND st.status != 'deleted' AND st.school_id = ANY(users.school_ids)),
+			(SELECT COUNT(*) FROM orders o WHERE o.student_id = users.id AND o.status <> 'cart'),
+			COALESCE((SELECT SUM(o.total) FROM orders o WHERE o.student_id = users.id AND o.paid_at IS NOT NULL AND o.cancellation_reason IS DISTINCT FROM 'refunded'), 0)
+		FROM users WHERE users.role = 'affiliator' AND users.status != 'deleted'`
 	args := []any{}
 	argNum := 1
 
 	if filter.Status != "" {
-		query += fmt.Sprintf(` AND status = $%d`, argNum)
+		query += fmt.Sprintf(` AND users.status = $%d`, argNum)
 		args = append(args, filter.Status)
 		argNum++
 	}
 	if filter.Cursor != "" {
-		query += fmt.Sprintf(` AND (created_at, id) < (SELECT created_at, id FROM users WHERE id = $%d::uuid)`, argNum)
+		query += fmt.Sprintf(` AND (users.created_at, users.id) < (SELECT created_at, id FROM users WHERE id = $%d::uuid)`, argNum)
 		args = append(args, filter.Cursor)
 		argNum++
 	}
-	query += fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT $%d`, argNum)
+	query += fmt.Sprintf(` ORDER BY users.created_at DESC, users.id DESC LIMIT $%d`, argNum)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -118,7 +126,7 @@ func (r *Repository) ListAffiliators(ctx context.Context, filter AffiliatorFilte
 	nextCursor := ""
 	for rows.Next() {
 		var a AffiliatorRow
-		if err := rows.Scan(&a.ID, &a.Name, &a.Email, &a.Status, &a.SchoolIDs, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Email, &a.Status, &a.SchoolIDs, &a.CreatedAt, &a.UpdatedAt, &a.StudentCount, &a.OrderCount, &a.PaidAmount); err != nil {
 			return nil, "", err
 		}
 		if len(out) < filter.Limit {

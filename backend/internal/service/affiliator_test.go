@@ -273,7 +273,7 @@ func TestAffiliatorStudents_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
-		mine, _, _, err := svc.ListAffiliatorStudents(ctx, acc.ID, own, true, "", "", 100, "", nil, "")
+		mine, _, _, err := svc.ListAffiliatorStudents(ctx, acc.ID, own, true, false, "", "", 100, "", nil, "")
 		if err != nil {
 			t.Fatalf("ListAffiliatorStudents: %v", err)
 		}
@@ -317,18 +317,18 @@ func TestAffiliatorStudents_Integration(t *testing.T) {
 	})
 
 	t.Run("list covers only assigned schools and can narrow to own registrations", func(t *testing.T) {
-		all, _, counts, err := svc.ListAffiliatorStudents(ctx, acc.ID, "", false, "", "", 100, "", nil, "")
+		all, _, counts, err := svc.ListAffiliatorStudents(ctx, acc.ID, "", false, false, "", "", 100, "", nil, "")
 		if err != nil {
 			t.Fatalf("ListAffiliatorStudents: %v", err)
 		}
 		if len(all) != 2 || counts.Total != 2 {
 			t.Errorf("all = %d (count %d), want the 2 students of the assigned school", len(all), counts.Total)
 		}
-		mine, _, _, _ := svc.ListAffiliatorStudents(ctx, acc.ID, own, true, "", "", 100, "", nil, "")
+		mine, _, _, _ := svc.ListAffiliatorStudents(ctx, acc.ID, own, true, false, "", "", 100, "", nil, "")
 		if len(mine) != 2 {
 			t.Errorf("registered by me = %d, want 2 (single and bulk)", len(mine))
 		}
-		if _, _, _, err := svc.ListAffiliatorStudents(ctx, acc.ID, other, false, "", "", 100, "", nil, ""); !errors.Is(err, ErrAffiliatorSchoolNotAllowed) {
+		if _, _, _, err := svc.ListAffiliatorStudents(ctx, acc.ID, other, false, false, "", "", 100, "", nil, ""); !errors.Is(err, ErrAffiliatorSchoolNotAllowed) {
 			t.Errorf("foreign school filter: err = %v, want ErrAffiliatorSchoolNotAllowed", err)
 		}
 	})

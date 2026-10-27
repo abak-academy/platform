@@ -64,7 +64,7 @@ func (h *Handler) AdminListStudents(c echo.Context) error {
 		err        error
 	)
 	if isAffiliator {
-		students, nextCursor, counts, err = h.svc.ListAffiliatorStudents(c.Request().Context(), claims.Sub, strings.ToLower(c.QueryParam("school_id")), c.QueryParam("registered_by_me") == "true", statusFilter, q, limit, cursor, grade, jenjang)
+		students, nextCursor, counts, err = h.svc.ListAffiliatorStudents(c.Request().Context(), claims.Sub, strings.ToLower(c.QueryParam("school_id")), c.QueryParam("registered_by_me") == "true", c.QueryParam("not_purchased") == "true", statusFilter, q, limit, cursor, grade, jenjang)
 	} else {
 		students, nextCursor, counts, err = h.svc.ListStudents(c.Request().Context(), schoolID, statusFilter, q, limit, cursor, grade, jenjang, examID)
 	}

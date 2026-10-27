@@ -225,3 +225,44 @@ func TestAffiliatorOrders_RoutesAreScopedAndGuarded(t *testing.T) {
 		t.Errorf("read while deactivated: want 200, got %d", rec.Code)
 	}
 }
+
+func TestAffiliatorDashboard_RoutesAndMonitoringAccess(t *testing.T) {
+	f := newAffiliatorStudentsFixture(t)
+
+	rec := f.do(t, http.MethodGet, "/affiliates/me/dashboard", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dashboard: want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var dash struct {
+		Schools []struct {
+			SchoolID     string `json:"school_id"`
+			StudentCount int    `json:"student_count"`
+		} `json:"schools"`
+		UnpurchasedStudents int `json:"unpurchased_students"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &dash); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(dash.Schools) != 1 || dash.Schools[0].SchoolID != f.ownSchool || dash.Schools[0].StudentCount != 1 || dash.UnpurchasedStudents != 1 {
+		t.Errorf("dashboard = %+v, want only the assigned school with its one student", dash)
+	}
+	if rec := f.do(t, http.MethodGet, "/affiliates/me/dashboard?from=nope", ""); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad date: want 400, got %d", rec.Code)
+	}
+	if rec := f.do(t, http.MethodGet, "/affiliates/me/orders", ""); rec.Code != http.StatusOK {
+		t.Errorf("orders: want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	if rec := f.do(t, http.MethodGet, "/admin/system/affiliators/"+f.affiliator, ""); rec.Code != http.StatusForbidden {
+		t.Errorf("affiliator reading the monitoring detail: want 403, got %d", rec.Code)
+	}
+
+	superToken := promoActiveToken(t, f.env, uuid.NewString(), service.RoleSuperAdmin)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/system/affiliators/"+f.affiliator, nil)
+	req.Header.Set("Authorization", "Bearer "+superToken)
+	rec = httptest.NewRecorder()
+	f.env.e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), f.ownSchool) {
+		t.Errorf("super admin detail: want 200 with the school, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}

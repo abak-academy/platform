@@ -43,7 +43,7 @@ Decisions (owner, 2026-10-27):
   4. `starts_at` and `expires_at`: the promo applies only inside the range.
   5. `product_ids`: empty means all products; otherwise only lines of those products count towards `min_qty`, `min_order_amount` and the discount.
   6. Percent or nominal discount (exists, with `max_discount_amount` cap).
-- **Dashboard** (affiliator): students per allowed school; purchases and total promo discount; available affiliator promos with their conditions; students with no purchase yet; payment status of its orders; monthly purchase trend; best-selling products per school; students whose access is about to end.
+- **Dashboard** (affiliator): students per allowed school; purchases and total promo discount; available affiliator promos with their conditions; students with no purchase yet; payment status of its orders; monthly purchase trend; best-selling products per school.
 - **Monitoring** (super admin): list and detail of affiliators with their schools, student counts, orders and active state.
 
 ## Technical contract
@@ -83,6 +83,8 @@ Decisions (owner, 2026-10-27):
 ### API (shape; final names settle in phase 1 and 4)
 
 - `/api/admin/system/affiliators` (super admin, `system:admin`): `GET` list, `POST` create, `POST /bulk` (JSON rows, at most 200, per-row result), `POST /:id/promote` (admin_school only), `PUT /:id/schools`. Active state reuses `PATCH /admin/system/accounts/:id/status`.
+- Dashboard (phase 5): `GET /api/affiliates/me/dashboard?from&to` (WIB day range on `paid_at`) returns allowed schools with student counts, totals (paid orders, units, amount, promo discount, pending orders), the monthly trend, best sellers per school and the number of active students no live order covers. `GET /api/affiliates/me/orders?status&cursor` lists non-cart orders with product, seats, school and promo. `GET /admin/students?not_purchased=true` lists the students behind that last number. Paid means `paid_at` set and not refunded.
+- Monitoring (phase 5): the affiliator list rows carry `student_count`, `order_count` and `paid_amount`; `GET /api/admin/system/affiliators/:id` returns profile, schools, lifetime totals and the ten latest orders.
 - `GET /api/affiliates/me` (affiliator, `affiliates:self`): profile, schools, active state. Purchase routes are listed under Purchase. `GET /api/affiliates/me/promos` lists the affiliator-only promos usable now. Dashboard widgets and students follow under `/api/affiliates/me/*`.
 - Student and purchase routes reuse `/admin/students*` and `/admin/bulk-exam-orders*` with the new scope and capability.
 - Students (phase 3): the affiliator holds `students:*`. List (`GET /admin/students`) covers every allowed school, narrowable with `?school_id=` (must be allowed, else 403 `school_not_assigned`) and `?registered_by_me=true`. Single-school actions (register) require `?school_id=` of an allowed school. Bulk CSV uses the cross-school format (school per row, like `super_admin`); each row's school is checked against the allowed list when the row is registered, and a manual password column is refused. Status change, credential reissue, bulk credential reissue and set password are not available to affiliators. The allowed list is read from the database on every request, not from the token.
@@ -122,7 +124,7 @@ Phases, each committed separately and each with unit tests only:
 
 ## Open points
 
-- Whether product access has an expiry is not verified; the "access about to end" widget stays out of phase 5 until it is.
+- The "access about to end" widget is dropped from the dashboard: course enrollments have no expiry and exam registrations follow the exam window, so there is no single end date to report.
 - Abandoned checkouts still consume a promo use (existing behavior, accepted).
 - The v1 worktree uses migration numbers `0070` to `0073`; they collide if v1 is ever merged.
 

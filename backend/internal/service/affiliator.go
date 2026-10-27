@@ -23,6 +23,10 @@ type AffiliatorResponse struct {
 	Schools   []model.School `json:"schools,omitempty"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
+	// Monitoring figures, filled by the list and detail reads.
+	StudentCount int     `json:"student_count"`
+	OrderCount   int     `json:"order_count"`
+	PaidAmount   float64 `json:"paid_amount"`
 }
 
 // AffiliatorInput is one affiliator account to create.
@@ -51,6 +55,10 @@ func toAffiliatorResponse(row repository.AffiliatorRow) AffiliatorResponse {
 		SchoolIDs: row.SchoolIDs,
 		CreatedAt: row.CreatedAt.Format(time.RFC3339),
 		UpdatedAt: row.UpdatedAt.Format(time.RFC3339),
+
+		StudentCount: row.StudentCount,
+		OrderCount:   row.OrderCount,
+		PaidAmount:   row.PaidAmount,
 	}
 }
 
@@ -320,7 +328,7 @@ func (s *Service) affiliatorRegistration(ctx context.Context, actorID, schoolID 
 
 // ListAffiliatorStudents lists students of the affiliator's allowed schools,
 // optionally narrowed to one school and to the ones it registered itself.
-func (s *Service) ListAffiliatorStudents(ctx context.Context, affiliatorID, schoolID string, registeredByMe bool, statusFilter, q string, limit int, cursor string, grade *int, jenjang string) ([]StudentResponse, string, repository.StudentAdminCounts, error) {
+func (s *Service) ListAffiliatorStudents(ctx context.Context, affiliatorID, schoolID string, registeredByMe, notPurchased bool, statusFilter, q string, limit int, cursor string, grade *int, jenjang string) ([]StudentResponse, string, repository.StudentAdminCounts, error) {
 	ids, err := s.AffiliatorSchoolIDs(ctx, affiliatorID)
 	if err != nil {
 		return nil, "", repository.StudentAdminCounts{}, err
@@ -337,6 +345,9 @@ func (s *Service) ListAffiliatorStudents(ctx context.Context, affiliatorID, scho
 	}
 	if registeredByMe {
 		filter.RegisteredBy = affiliatorID
+	}
+	if notPurchased {
+		filter.NotPurchasedBy = affiliatorID
 	}
 	rows, next, err := s.storeRepo.ListStudentsBySchool(ctx, "", filter)
 	if err != nil {

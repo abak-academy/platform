@@ -64,6 +64,9 @@ type StudentFilter struct {
 	SchoolIDs []string
 	// RegisteredBy narrows to students registered by this user id.
 	RegisteredBy string
+	// NotPurchasedBy narrows to students that none of this buyer's live orders
+	// covers (cart, cancelled and expired orders do not count).
+	NotPurchasedBy string
 }
 
 // appendStudentFilterSQL appends the predicates shared by
@@ -87,6 +90,12 @@ func appendStudentFilterSQL(query string, filter StudentFilter, schoolID string,
 	if filter.RegisteredBy != "" {
 		query += fmt.Sprintf(` AND u.registered_by = $%d::uuid`, argNum)
 		args = append(args, filter.RegisteredBy)
+		argNum++
+	}
+	if filter.NotPurchasedBy != "" {
+		query += fmt.Sprintf(` AND NOT EXISTS (SELECT 1 FROM order_participant op JOIN orders po ON po.id = op.order_id
+			WHERE op.student_id = u.id AND po.student_id = $%d::uuid AND po.status NOT IN ('cart', 'cancelled', 'payment_expired'))`, argNum)
+		args = append(args, filter.NotPurchasedBy)
 		argNum++
 	}
 	if filter.Status != "" {

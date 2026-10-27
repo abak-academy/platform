@@ -162,3 +162,40 @@ func (h *Handler) AffiliatorCheckoutOrder(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, result)
 }
+
+// AdminGetAffiliator returns one affiliator with lifetime totals and recent orders.
+func (h *Handler) AdminGetAffiliator(c echo.Context) error {
+	detail, err := h.svc.GetAffiliatorDetail(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, detail)
+}
+
+// AffiliatorDashboard returns the signed-in affiliator's dashboard figures.
+func (h *Handler) AffiliatorDashboard(c echo.Context) error {
+	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	d, err := h.svc.AffiliatorDashboard(c.Request().Context(), ClaimsFromContext(c).Sub, from, to)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, d)
+}
+
+// AffiliatorListOrders lists the signed-in affiliator's orders.
+func (h *Handler) AffiliatorListOrders(c echo.Context) error {
+	limit := 20
+	if l := c.QueryParam("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = min(n, 100)
+		}
+	}
+	rows, next, err := h.svc.ListAffiliatorOrders(c.Request().Context(), ClaimsFromContext(c).Sub, c.QueryParam("status"), limit, c.QueryParam("cursor"))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": rows, "next_cursor": next})
+}
