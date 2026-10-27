@@ -1777,6 +1777,8 @@ export interface AffiliateAdminPayout extends AffiliatePayout {
 export interface AffiliateAdminPayoutPage {
   data: AffiliateAdminPayout[];
   total: number;
+  page?: number;
+  per_page?: number;
 }
 
 export interface AffiliateSettings {

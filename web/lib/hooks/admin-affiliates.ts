@@ -19,15 +19,22 @@ import type {
   AffiliateViolation,
 } from "@/lib/types";
 
+interface AdminQueuePage<T> {
+  data: T[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
 export const adminAffiliateKeys = {
   all: ["admin", "affiliates"] as const,
   list: (p: AdminAffiliateListParams) => [...adminAffiliateKeys.all, "list", p] as const,
   detail: (id: string) => [...adminAffiliateKeys.all, "detail", id] as const,
-  payouts: (status: string) => [...adminAffiliateKeys.all, "payouts", status] as const,
+  payouts: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "payouts", p] as const,
   settings: () => [...adminAffiliateKeys.all, "settings"] as const,
   overrides: () => [...adminAffiliateKeys.all, "overrides"] as const,
-  flags: (status: string) => [...adminAffiliateKeys.all, "flags", status] as const,
-  appeals: (status: string) => [...adminAffiliateKeys.all, "appeals", status] as const,
+  flags: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "flags", p] as const,
+  appeals: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "appeals", p] as const,
   report: (from: string, to: string) => [...adminAffiliateKeys.all, "report", from, to] as const,
   liability: () => [...adminAffiliateKeys.all, "liability"] as const,
 };
@@ -37,6 +44,21 @@ export interface AdminAffiliateListParams {
   level?: string;
   q?: string;
   page?: number;
+}
+
+// The payout, flag and appeal queues share one query: search, status, date
+// range and paging. An empty status means every status.
+export interface AdminQueueParams {
+  q?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  per_page?: number;
+}
+
+function queueQuery(p: AdminQueueParams): string {
+  return qs({ q: p.q, status: p.status || "all", from: p.from, to: p.to, page: p.page, per_page: p.per_page });
 }
 
 function qs(params: Record<string, string | number | undefined>): string {
@@ -132,10 +154,10 @@ export function useCreateAffiliateViolation() {
   );
 }
 
-export function useAdminAffiliatePayouts(status: string) {
+export function useAdminAffiliatePayouts(params: AdminQueueParams) {
   return useQuery({
-    queryKey: adminAffiliateKeys.payouts(status),
-    queryFn: () => authFetch<AffiliateAdminPayoutPage>(`/admin/affiliate-payouts${qs({ status })}`),
+    queryKey: adminAffiliateKeys.payouts(params),
+    queryFn: () => authFetch<AffiliateAdminPayoutPage>(`/admin/affiliate-payouts${queueQuery(params)}`),
   });
 }
 
@@ -156,17 +178,18 @@ export function useDecideAffiliatePayout() {
   );
 }
 
-export async function downloadAffiliatePayoutsCsv(): Promise<void> {
+// Downloads the CSV behind a queue, honouring the filters currently applied.
+export async function downloadAffiliateCsv(kind: "payouts" | "flags" | "appeals", params: AdminQueueParams = {}): Promise<void> {
   const { useAuthStore } = await import("@/stores/auth");
   const token = useAuthStore.getState().token;
-  const res = await fetch(`${API_BASE}/admin/affiliate-payouts/export`, {
+  const res = await fetch(`${API_BASE}/admin/affiliate-${kind}/export${queueQuery({ ...params, page: undefined, per_page: undefined })}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new ApiError(`HTTP_${res.status}`, `Failed to download payouts: ${res.status}`, res.status);
+  if (!res.ok) throw new ApiError(`HTTP_${res.status}`, `Failed to download ${kind}: ${res.status}`, res.status);
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement("a");
   a.href = url;
-  a.download = "affiliate-payouts.csv";
+  a.download = `affiliate-${kind}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -229,10 +252,10 @@ export function useDeleteAffiliateOverride() {
   });
 }
 
-export function useAdminAffiliateFlags(status: string) {
+export function useAdminAffiliateFlags(params: AdminQueueParams) {
   return useQuery({
-    queryKey: adminAffiliateKeys.flags(status),
-    queryFn: () => authFetch<{ data: AffiliateFlagRow[] }>(`/admin/affiliate-flags${qs({ status })}`),
+    queryKey: adminAffiliateKeys.flags(params),
+    queryFn: () => authFetch<AdminQueuePage<AffiliateFlagRow>>(`/admin/affiliate-flags${queueQuery(params)}`),
   });
 }
 
@@ -243,10 +266,10 @@ export function useReviewAffiliateFlag() {
   );
 }
 
-export function useAdminAffiliateAppeals(status: string) {
+export function useAdminAffiliateAppeals(params: AdminQueueParams) {
   return useQuery({
-    queryKey: adminAffiliateKeys.appeals(status),
-    queryFn: () => authFetch<{ data: AffiliateAppealRow[] }>(`/admin/affiliate-appeals${qs({ status })}`),
+    queryKey: adminAffiliateKeys.appeals(params),
+    queryFn: () => authFetch<AdminQueuePage<AffiliateAppealRow>>(`/admin/affiliate-appeals${queueQuery(params)}`),
   });
 }
 

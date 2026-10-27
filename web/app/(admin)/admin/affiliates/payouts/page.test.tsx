@@ -7,16 +7,23 @@ const h = vi.hoisted(() => ({
   process: vi.fn(),
   decide: vi.fn(),
   download: vi.fn(),
+  replace: vi.fn(),
+  search: { value: "" },
   presign: vi.fn(),
   capability: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: h.replace }),
+  usePathname: () => "/admin/affiliates/payouts",
+  useSearchParams: () => new URLSearchParams(h.search.value),
+}));
 vi.mock("@/lib/hooks/admin-affiliates", () => ({
   useAdminAffiliatePayouts: h.list,
   useProcessAffiliatePayout: () => ({ mutate: h.process, isPending: false }),
   useDecideAffiliatePayout: () => ({ mutate: h.decide, isPending: false }),
-  downloadAffiliatePayoutsCsv: h.download,
+  downloadAffiliateCsv: h.download,
 }));
 vi.mock("@/lib/hooks/students", () => ({
   usePresignUpload: () => ({ mutateAsync: h.presign, isPending: false }),
@@ -39,6 +46,7 @@ const payout = (id: string, status: string) => ({
 describe("AdminAffiliatePayoutsPage", () => {
   beforeEach(() => {
     Object.values(h).forEach((m) => "mockReset" in m && m.mockReset());
+    h.search.value = "";
     h.toast.success.mockReset();
     h.toast.error.mockReset();
     h.capability.mockReturnValue(true);
@@ -105,9 +113,18 @@ describe("AdminAffiliatePayoutsPage", () => {
     h.download.mockRejectedValueOnce(new Error("boom"));
     render(<PayoutsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Unduh CSV transfer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unduh CSV" }));
 
-    await waitFor(() => expect(h.toast.error).toHaveBeenCalledWith("Gagal mengunduh CSV."));
-    expect(h.download).toHaveBeenCalled();
+    await waitFor(() => expect(h.toast.error).toHaveBeenCalledWith("Gagal mengunduh CSV"));
+    expect(h.download).toHaveBeenCalledWith("payouts", { q: "", status: "", from: "", to: "" });
+  });
+
+  it("lists every status by default and sends the URL filters to the query and the CSV", async () => {
+    h.search.value = "q=budi&status=paid&from=2026-10-01&page=2";
+    render(<PayoutsPage />);
+
+    expect(h.list).toHaveBeenLastCalledWith({ q: "budi", status: "paid", from: "2026-10-01", to: "", page: 2, per_page: 20 });
+    fireEvent.click(screen.getByRole("button", { name: "Unduh CSV" }));
+    await waitFor(() => expect(h.download).toHaveBeenCalledWith("payouts", { q: "budi", status: "paid", from: "2026-10-01", to: "" }));
   });
 });

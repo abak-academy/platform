@@ -1,31 +1,50 @@
 "use client";
 
-import { useState } from "react";
-import { Scale } from "lucide-react";
+import { Suspense } from "react";
+import { Download, Scale } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { AffiliateList } from "@/components/affiliate/AffiliateList";
+import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { AppealBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
 import { ApiError } from "@/lib/api";
 import { affLabel } from "@/lib/affiliate-labels";
-import { useAdminAffiliateAppeals, useDecideAffiliateAppeal } from "@/lib/hooks/admin-affiliates";
+import { downloadAffiliateCsv, useAdminAffiliateAppeals, useDecideAffiliateAppeal } from "@/lib/hooks/admin-affiliates";
 import { useHasCapability } from "@/lib/hooks/use-capability";
+import { useListParams } from "@/lib/hooks/use-list-params";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 import type { AffiliateAppealRow } from "@/lib/types";
 
 const STATUSES = ["pending", "upheld", "rejected"] as const;
 
 export default function AdminAffiliateAppealsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AppealsContent />
+    </Suspense>
+  );
+}
+
+function AppealsContent() {
   const { t } = useTranslation();
+  const { params, update, reset, hasFilters } = useListParams();
   const canManage = useHasCapability("affiliates:*");
-  const [status, setStatus] = useState("pending");
-  const query = useAdminAffiliateAppeals(status);
+  const queue = { q: params.q, status: params.status, from: params.from, to: params.to };
+  const query = useAdminAffiliateAppeals({ ...queue, page: params.page, per_page: params.per_page });
   const decide = useDecideAffiliateAppeal();
 
   if (!canManage) return <NoAccess />;
+
+  const exportCsv = async () => {
+    try {
+      await downloadAffiliateCsv("appeals", queue);
+    } catch {
+      toast.error(t("admin_aff_export_failed"));
+    }
+  };
 
   const act = (id: string, outcome: "upheld" | "rejected") =>
     decide.mutate(
@@ -72,20 +91,34 @@ export default function AdminAffiliateAppealsPage() {
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader icon={Scale} title={t("admin_aff_appeals_title")} description={t("admin_aff_appeals_desc")} />
-      <select
-        aria-label={t("aff_filter_status")}
-        value={status}
-        onChange={(e) => setStatus(e.target.value)}
-        className="h-9 rounded-md border border-line bg-surface px-3 text-sm"
-      >
-        {STATUSES.map((s) => (
-          <option key={s} value={s}>
-            {t(`aff_appeal_v_${s}` as I18nKey)}
-          </option>
-        ))}
-      </select>
-      <AffiliateList query={query} columns={columns} rowKey={(r) => r.id} empty={t("admin_aff_appeals_empty")} />
+      <AdminPageHeader
+        icon={Scale}
+        title={t("admin_aff_appeals_title")}
+        description={t("admin_aff_appeals_desc")}
+        actions={
+          <Button variant="outline" onClick={exportCsv}>
+            <Download className="size-4" aria-hidden />
+            {t("admin_aff_export_csv")}
+          </Button>
+        }
+      />
+      <ListToolbar
+        params={params}
+        onChange={update}
+        onReset={reset}
+        searchPlaceholder={t("admin_aff_search_queue")}
+        filters={[{ key: "status", label: t("aff_col_appeal"), options: STATUSES.map((v) => ({ value: v, label: t(`aff_appeal_v_${v}` as I18nKey) })) }]}
+        dateLabel={t("admin_aff_date_violation")}
+      />
+      <AffiliateList
+        query={query}
+        columns={columns}
+        rowKey={(r) => r.id}
+        page={params.page}
+        onPageChange={(page) => update({ page })}
+        empty={t("admin_aff_appeals_empty")}
+        filtered={hasFilters}
+      />
     </div>
   );
 }

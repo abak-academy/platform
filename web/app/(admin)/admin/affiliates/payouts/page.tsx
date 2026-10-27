@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { Wallet } from "lucide-react";
+import { Suspense, useState } from "react";
+import { Download, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { AffiliateList } from "@/components/affiliate/AffiliateList";
+import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { PayoutProofDialog } from "@/components/affiliate/PayoutProofDialog";
 import { ReasonDialog } from "@/components/affiliate/ReasonDialog";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
@@ -14,12 +15,13 @@ import type { DataTableColumn } from "@/components/ui/data-table";
 import { ApiError } from "@/lib/api";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
 import {
-  downloadAffiliatePayoutsCsv,
+  downloadAffiliateCsv,
   useAdminAffiliatePayouts,
   useDecideAffiliatePayout,
   useProcessAffiliatePayout,
 } from "@/lib/hooks/admin-affiliates";
 import { useHasCapability } from "@/lib/hooks/use-capability";
+import { useListParams } from "@/lib/hooks/use-list-params";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { AffiliateAdminPayout } from "@/lib/types";
@@ -27,12 +29,21 @@ import type { AffiliateAdminPayout } from "@/lib/types";
 const STATUSES = ["requested", "processing", "paid", "rejected"] as const;
 
 export default function AdminAffiliatePayoutsPage() {
+  return (
+    <Suspense fallback={null}>
+      <PayoutsContent />
+    </Suspense>
+  );
+}
+
+function PayoutsContent() {
   const { t } = useTranslation();
+  const { params, update, reset, hasFilters } = useListParams();
   const canManage = useHasCapability("affiliates:*");
-  const [status, setStatus] = useState("");
   const [paying, setPaying] = useState<AffiliateAdminPayout | null>(null);
   const [rejecting, setRejecting] = useState<AffiliateAdminPayout | null>(null);
-  const query = useAdminAffiliatePayouts(status);
+  const queue = { q: params.q, status: params.status, from: params.from, to: params.to };
+  const query = useAdminAffiliatePayouts({ ...queue, page: params.page, per_page: params.per_page });
   const process = useProcessAffiliatePayout();
   const decide = useDecideAffiliatePayout();
 
@@ -47,9 +58,9 @@ export default function AdminAffiliatePayoutsPage() {
 
   const exportCsv = async () => {
     try {
-      await downloadAffiliatePayoutsCsv();
+      await downloadAffiliateCsv("payouts", queue);
     } catch {
-      toast.error(t("admin_aff_pay_export_failed"));
+      toast.error(t("admin_aff_export_failed"));
     }
   };
 
@@ -117,24 +128,28 @@ export default function AdminAffiliatePayoutsPage() {
         description={t("admin_aff_pay_desc")}
         actions={
           <Button variant="outline" onClick={exportCsv}>
-            {t("admin_aff_pay_export")}
+            <Download className="size-4" aria-hidden />
+            {t("admin_aff_export_csv")}
           </Button>
         }
       />
-      <select
-        aria-label={t("aff_filter_status")}
-        value={status}
-        onChange={(e) => setStatus(e.target.value)}
-        className="h-9 rounded-md border border-line bg-surface px-3 text-sm"
-      >
-        <option value="">{t("admin_aff_pay_all")}</option>
-        {STATUSES.map((s) => (
-          <option key={s} value={s}>
-            {affLabel(t, s)}
-          </option>
-        ))}
-      </select>
-      <AffiliateList query={query} columns={columns} rowKey={(r) => r.id} empty={t("admin_aff_pay_empty")} />
+      <ListToolbar
+        params={params}
+        onChange={update}
+        onReset={reset}
+        searchPlaceholder={t("admin_aff_search_queue")}
+        filters={[{ key: "status", label: t("aff_col_status"), options: STATUSES.map((v) => ({ value: v, label: affLabel(t, v) })) }]}
+        dateLabel={t("admin_aff_date_requested")}
+      />
+      <AffiliateList
+        query={query}
+        columns={columns}
+        rowKey={(r) => r.id}
+        page={params.page}
+        onPageChange={(page) => update({ page })}
+        empty={t("admin_aff_pay_empty")}
+        filtered={hasFilters}
+      />
 
       <PayoutProofDialog
         open={paying !== null}
