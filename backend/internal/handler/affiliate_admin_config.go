@@ -243,3 +243,29 @@ func (h *Handler) AdminAffiliateCommissionsExport(c echo.Context) error {
 	}
 	return csvDownload(c, "affiliate-commissions.csv", data)
 }
+
+// AdminListAffiliateReportOrders backs GET /admin/affiliate-reports/orders.
+func (h *Handler) AdminListAffiliateReportOrders(c echo.Context) error {
+	filter, page, perPage, err := adminAffiliateQueueQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	rows, total, err := h.svc.AdminListAffiliateReportOrders(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, queuePage(rows, total, page, perPage))
+}
+
+// AdminAffiliateReportOrdersExport backs GET /admin/affiliate-reports/orders/export.
+func (h *Handler) AdminAffiliateReportOrdersExport(c echo.Context) error {
+	filter, _, _, err := adminAffiliateQueueQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	data, err := h.svc.AdminAffiliateReportOrdersCSV(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return csvDownload(c, "affiliate-report-orders.csv", data)
+}

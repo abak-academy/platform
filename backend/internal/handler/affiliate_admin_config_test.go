@@ -59,6 +59,8 @@ func newAffiliateAdminConfigRouter(t *testing.T, h *handler.Handler, svc *servic
 	cfg.POST("/affiliate-appeals/:id/decide", h.AdminDecideAffiliateAppeal)
 	cfg.GET("/affiliate-reports/summary", h.AdminAffiliateReportSummary)
 	cfg.GET("/affiliate-reports/liability", h.AdminAffiliateReportLiability)
+	cfg.GET("/affiliate-reports/orders", h.AdminListAffiliateReportOrders)
+	cfg.GET("/affiliate-reports/orders/export", h.AdminAffiliateReportOrdersExport)
 	return e
 }
 
@@ -242,6 +244,8 @@ func TestAffiliateAdminConfigHandlerRBAC(t *testing.T) {
 		{"appeals export", http.MethodGet, "/api/v1/admin/affiliate-appeals/export", ""},
 		{"appeals decide", http.MethodPost, "/api/v1/admin/affiliate-appeals/" + appealID + "/decide", `{"outcome":"upheld"}`},
 		{"reports summary", http.MethodGet, "/api/v1/admin/affiliate-reports/summary?from=" + from + "&to=" + to, ""},
+		{"reports orders", http.MethodGet, "/api/v1/admin/affiliate-reports/orders", ""},
+		{"reports orders export", http.MethodGet, "/api/v1/admin/affiliate-reports/orders/export", ""},
 		{"reports liability", http.MethodGet, "/api/v1/admin/affiliate-reports/liability", ""},
 	}
 
@@ -465,6 +469,33 @@ func TestAffiliateAdminCommissionsEndpoint(t *testing.T) {
 		t.Errorf("unknown affiliator: want 404, got %d", rec.Code)
 	}
 	if rec := getWithToken(t, env.e, base+"?from=nope", token); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad date: want 400, got %d", rec.Code)
+	}
+}
+
+func TestAffiliateAdminReportOrdersEndpoint(t *testing.T) {
+	env := newAffiliateAdminConfigEnv(t)
+	token := env.tokenFor(t, service.RoleSuperAdmin)
+
+	rec := getWithToken(t, env.e, "/api/v1/admin/affiliate-reports/orders?status=all&per_page=5", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET report orders: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var page struct {
+		Data    []json.RawMessage `json:"data"`
+		PerPage int               `json:"per_page"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if page.Data == nil || page.PerPage != 5 {
+		t.Errorf("page = %+v, want an array (not null) and per_page 5", page)
+	}
+	rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-reports/orders/export", token)
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/csv") {
+		t.Errorf("export: code %d type %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	if rec := getWithToken(t, env.e, "/api/v1/admin/affiliate-reports/orders?from=nope", token); rec.Code != http.StatusBadRequest {
 		t.Errorf("bad date: want 400, got %d", rec.Code)
 	}
 }

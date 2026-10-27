@@ -219,3 +219,57 @@ func (s *Service) AdminAffiliateCommissionsCSV(ctx context.Context, affiliatorID
 		},
 	)
 }
+
+// AdminListAffiliateReportOrders backs GET /admin/affiliate-reports/orders: the
+// commissions of every affiliator with full student names, filtered like the
+// per-affiliator list.
+func (s *Service) AdminListAffiliateReportOrders(ctx context.Context, f AffiliateAdminQueueFilter) ([]repository.AffiliateReportOrderRow, int, error) {
+	if f.Status != "" && f.Status != "all" && !affiliateMeCommissionStatuses[f.Status] {
+		return nil, 0, fmt.Errorf("%w: %s", ErrInvalidStatusFilter, f.Status)
+	}
+	if f.Type != "" && !slices.Contains(affiliateCommissionCategories(), f.Type) {
+		return nil, 0, fmt.Errorf("%w: %s", ErrValidation, f.Type)
+	}
+	status := f.Status
+	if status == "all" {
+		status = ""
+	}
+	rows, total, err := s.storeRepo.ListAffiliateReportOrders(ctx, repository.AffiliateReportOrderFilter{
+		Q: f.Q, Status: status, ProductType: f.Type, PaidFrom: f.From, PaidTo: f.To, Limit: f.Limit, Offset: f.Offset,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("list affiliate report orders: %w", err)
+	}
+	return rows, total, nil
+}
+
+// AdminAffiliateReportOrdersCSV exports the orders matching the filter, capped
+// at affiliateAdminExportLimit rows.
+func (s *Service) AdminAffiliateReportOrdersCSV(ctx context.Context, f AffiliateAdminQueueFilter) ([]byte, error) {
+	f.Limit, f.Offset = affiliateAdminExportLimit, 0
+	rows, _, err := s.AdminListAffiliateReportOrders(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	return buildAdminCSV(
+		[]string{"paid_at", "affiliator_name", "code", "order_id", "student_name", "product_name", "category", "base_amount", "percentage", "commission", "status", "available_from"},
+		len(rows),
+		func(i int) []string {
+			row := rows[i]
+			return []string{
+				formatOptionalTime(row.PaidAt),
+				csvSafeField(row.AffiliatorName),
+				csvSafeField(row.AffiliatorCode),
+				row.OrderID.String(),
+				csvSafeField(row.StudentName),
+				csvSafeField(row.ProductName),
+				row.ProductType,
+				strconv.FormatFloat(row.BaseAmount, 'f', 2, 64),
+				strconv.FormatFloat(row.Percentage, 'f', 2, 64),
+				strconv.FormatFloat(row.Amount, 'f', 2, 64),
+				row.Status,
+				formatOptionalTime(row.WaitUntil),
+			}
+		},
+	)
+}

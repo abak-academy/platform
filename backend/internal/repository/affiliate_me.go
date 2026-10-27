@@ -319,3 +319,67 @@ func (r *Repository) CountAffiliateBindingsBySource(ctx context.Context, affilia
 	}
 	return bySource, rows.Err()
 }
+
+// AffiliateReportOrderRow is one commission in the admin cross-affiliator order
+// report: the commission with its student, product and the affiliator it belongs to.
+type AffiliateReportOrderRow struct {
+	AffiliateCommissionRow
+	AffiliatorName string `json:"affiliator_name"`
+	AffiliatorCode string `json:"affiliator_code"`
+}
+
+// AffiliateReportOrderFilter narrows the order report. Q matches the student,
+// the product, the affiliator's name or code; PaidFrom/PaidTo bound the payment date.
+type AffiliateReportOrderFilter struct {
+	Q           string
+	Status      string
+	ProductType string
+	PaidFrom    *time.Time
+	PaidTo      *time.Time
+	Limit       int
+	Offset      int
+}
+
+// ListAffiliateReportOrders lists commissions across every affiliator, newest
+// payment first, plus the total matching rows.
+func (r *Repository) ListAffiliateReportOrders(ctx context.Context, f AffiliateReportOrderFilter) ([]AffiliateReportOrderRow, int, error) {
+	p := newAffPredicate(1)
+	p.eq("c.status", f.Status)
+	p.eq("c.product_type", f.ProductType)
+	p.dates("c.paid_at", f.PaidFrom, f.PaidTo)
+	p.search(f.Q, "u.name", "oi.name", "au.name", "a.code")
+	from := `FROM affiliate_commissions c
+		 JOIN users u ON u.id = c.student_id
+		 JOIN order_item oi ON oi.id = c.order_item_id
+		 JOIN affiliators a ON a.id = c.affiliator_id
+		 JOIN users au ON au.id = a.user_id
+		 WHERE TRUE` + p.sql
+
+	var total int
+	if err := r.pool.QueryRow(ctx, `SELECT count(*) `+from, p.args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT c.id, c.affiliator_id, c.student_id, c.order_id, c.order_item_id, c.product_type, c.base_amount, c.percentage,
+		        c.level_snapshot, c.amount, c.status, c.wait_until, c.paid_at, c.received_at, c.created_at, c.updated_at,
+		        u.name, oi.name, au.name, COALESCE(a.code, '') `+from+`
+		 ORDER BY c.paid_at DESC NULLS LAST, c.id DESC
+		 LIMIT $`+strconv.Itoa(p.next)+` OFFSET $`+strconv.Itoa(p.next+1),
+		append(p.args, f.Limit, f.Offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	out := []AffiliateReportOrderRow{}
+	for rows.Next() {
+		var c AffiliateReportOrderRow
+		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType,
+			&c.BaseAmount, &c.Percentage, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt,
+			&c.ReceivedAt, &c.CreatedAt, &c.UpdatedAt, &c.StudentName, &c.ProductName, &c.AffiliatorName, &c.AffiliatorCode); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, c)
+	}
+	return out, total, rows.Err()
+}

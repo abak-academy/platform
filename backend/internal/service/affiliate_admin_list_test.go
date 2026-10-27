@@ -23,7 +23,9 @@ func TestAdminAffiliateFlags_filtersAndCSV(t *testing.T) {
 	ctx := context.Background()
 	pool := repo.Pool()
 	owner := seedAffiliatorOwner(t, repo, "aff-flaglist-"+uniqueSuffix()+"@test.local", "", "active")
-	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_flags WHERE affiliator_id = $1`, owner.affiliatorID) })
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_flags WHERE affiliator_id = $1`, owner.affiliatorID)
+	})
 
 	for _, status := range []string{"open", "valid", "ignored"} {
 		_, err := pool.Exec(ctx,
@@ -69,7 +71,9 @@ func TestAdminAffiliateAppeals_filtersAndCSV(t *testing.T) {
 	owner := seedAffiliatorOwner(t, repo, "aff-appeallist-"+uniqueSuffix()+"@test.local", "", "active")
 	actor := seedAffiliateAdminActor(t, repo, "aff-appealadm-"+uniqueSuffix()+"@test.local")
 	actorUUID := uuid.MustParse(actor)
-	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_violations WHERE affiliator_id = $1`, owner.affiliatorID) })
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_violations WHERE affiliator_id = $1`, owner.affiliatorID)
+	})
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id IN ($1, $2)`, owner.userID, actor) })
 
 	seedAffiliateMeViolation(t, repo, owner.affiliatorID, actorUUID, "open", "pending", time.Now())
@@ -190,4 +194,52 @@ func TestAdminAffiliateReportSummary_searchLevelAndPaging(t *testing.T) {
 
 	_, err = svc.AdminAffiliateReportSummary(ctx, from, to, AffiliateReportOptions{Level: "platinum"})
 	require.ErrorIs(t, err, ErrValidation)
+}
+
+func TestAdminAffiliateReportOrders_acrossAffiliators(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	_, a := seedAffiliateMeAffiliator(t, repo, "Orders Alpha "+uniqueSuffix(), "active", "bronze")
+	_, b := seedAffiliateMeAffiliator(t, repo, "Orders Beta "+uniqueSuffix(), "active", "bronze")
+
+	unique := uniqueSuffix()
+	sari := uuid.MustParse(seedAffiliateMeStudent(t, repo, "Sari"+unique+" Wulandari"))
+	dimas := uuid.MustParse(seedAffiliateMeStudent(t, repo, "Dimas"+unique+" Pratama"))
+	seedAffiliateMeBindingSource(t, repo, a.ID, sari, "active", "link")
+	seedAffiliateMeBindingSource(t, repo, b.ID, dimas, "active", "link")
+	now := time.Now().UTC()
+	for _, c := range []struct {
+		aff     uuid.UUID
+		student uuid.UUID
+		kind    string
+		status  string
+	}{{a.ID, sari, "course", "available"}, {b.ID, dimas, "book", "pending"}} {
+		seedAffiliateJobCommission(t, repo, c.aff, c.student, affiliateJobCommissionSeed{
+			productType: c.kind, base: 100000, pct: 10, amount: 10000, status: c.status, level: "bronze",
+			createdAt: now, paidAt: now.AddDate(0, 0, -1),
+		})
+	}
+
+	byCode, total, err := svc.AdminListAffiliateReportOrders(ctx, AffiliateAdminQueueFilter{Q: strings.ToLower(a.Code), Limit: 20})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Equal(t, a.Code, byCode[0].AffiliatorCode)
+	require.NotEmpty(t, byCode[0].AffiliatorName)
+	require.Contains(t, byCode[0].StudentName, "Wulandari", "the full student name, not first name + initials")
+
+	byStudent, total, err := svc.AdminListAffiliateReportOrders(ctx, AffiliateAdminQueueFilter{Q: "dimas" + unique, Limit: 20})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Equal(t, b.Code, byStudent[0].AffiliatorCode)
+
+	_, total, err = svc.AdminListAffiliateReportOrders(ctx, AffiliateAdminQueueFilter{Q: unique, Type: "course", Status: "available", Limit: 20})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+
+	_, _, err = svc.AdminListAffiliateReportOrders(ctx, AffiliateAdminQueueFilter{Status: "bogus", Limit: 20})
+	require.ErrorIs(t, err, ErrInvalidStatusFilter)
+
+	data, err := svc.AdminAffiliateReportOrdersCSV(ctx, AffiliateAdminQueueFilter{Q: unique})
+	require.NoError(t, err)
+	require.Len(t, parseAdminCSV(t, data), 3)
 }
