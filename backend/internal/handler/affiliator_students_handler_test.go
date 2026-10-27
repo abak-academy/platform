@@ -329,3 +329,54 @@ func TestAffiliatorBulkRoutes_AreSuperAdminOnlyAndValidateInput(t *testing.T) {
 		t.Errorf("enqueue without file_key: want 400, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestAffiliateReportRoutes_AreSuperAdminOnlyAndValidateInput(t *testing.T) {
+	f := newAffiliatorStudentsFixture(t)
+	super := promoActiveToken(t, f.env, uuid.NewString(), service.RoleSuperAdmin)
+	get := func(token, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1"+path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		f.env.e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	for _, name := range service.AffiliateReportNames {
+		if rec := get(f.token, "/admin/system/affiliate-reports/"+name); rec.Code != http.StatusForbidden {
+			t.Errorf("affiliator on report %s: want 403, got %d", name, rec.Code)
+		}
+		if rec := get(f.token, "/admin/system/affiliate-reports/"+name+"/export"); rec.Code != http.StatusForbidden {
+			t.Errorf("affiliator on export %s: want 403, got %d", name, rec.Code)
+		}
+		if rec := get(super, "/admin/system/affiliate-reports/"+name+"?from=2019-03-01&to=2019-03-31"); rec.Code != http.StatusOK {
+			t.Errorf("super admin on report %s: want 200, got %d body=%s", name, rec.Code, rec.Body.String())
+		}
+	}
+
+	rec := get(super, "/admin/system/affiliate-reports/affiliators?limit=5&offset=0")
+	var page struct {
+		Data   []any `json:"data"`
+		Total  int   `json:"total"`
+		Limit  int   `json:"limit"`
+		Offset int   `json:"offset"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil || page.Limit != 5 || page.Total < 1 {
+		t.Errorf("page = %+v err=%v, want the paging echoed and a total", page, err)
+	}
+
+	if rec := get(super, "/admin/system/affiliate-reports/schools?from=nope"); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad date: want 400, got %d", rec.Code)
+	}
+	if rec := get(super, "/admin/system/affiliate-reports/schools?from=2019-04-02&to=2019-04-01"); rec.Code != http.StatusBadRequest {
+		t.Errorf("reversed range: want 400, got %d", rec.Code)
+	}
+	if rec := get(super, "/admin/system/affiliate-reports/nope/export"); rec.Code != http.StatusBadRequest {
+		t.Errorf("unknown export: want 400, got %d", rec.Code)
+	}
+
+	rec = get(super, "/admin/system/affiliate-reports/promos/export?from=2019-03-01&to=2019-03-31")
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/csv") ||
+		!strings.Contains(rec.Header().Get("Content-Disposition"), `laporan-affiliator-promos-2019-03-01_2019-03-31.csv`) {
+		t.Errorf("export = %d %q %q, want a named CSV attachment", rec.Code, rec.Header().Get("Content-Type"), rec.Header().Get("Content-Disposition"))
+	}
+}
