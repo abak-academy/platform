@@ -70,6 +70,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Student order routes
 	orders := v1.Group("/orders")
 	orders.Use(handler.JWTMiddleware(svc, jwtSigner))
+	orders.Use(handler.AffiliatorWriteGuard(svc.AffiliatorActive))
 	orders.POST("", h.MintCart)
 	orders.GET("", h.GetOrders)
 	orders.GET("/:id", h.GetOrder)
@@ -374,8 +375,13 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	affiliates := v1.Group("/affiliates")
 	affiliates.Use(handler.JWTMiddleware(svc, jwtSigner))
 	affiliates.Use(handler.RBACMiddleware("affiliates:self"))
+	affiliates.Use(handler.AffiliatorWriteGuard(svc.AffiliatorActive))
 	affiliates.GET("/me", h.AffiliatorMe)
 	affiliates.GET("/me/promos", h.ListAffiliatorPromos)
+	affiliates.GET("/me/products", h.AffiliatorListProducts)
+	affiliates.POST("/me/orders/preview", h.AffiliatorPreviewOrder)
+	affiliates.POST("/me/orders", h.AffiliatorCreateOrder)
+	affiliates.POST("/me/orders/:id/checkout", h.AffiliatorCheckoutOrder)
 	adminSystem.GET("/config", h.AdminGetSystemConfig)
 	adminSystem.PUT("/config", h.AdminUpdateSystemConfig)
 

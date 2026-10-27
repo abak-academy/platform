@@ -170,6 +170,10 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "not_admin_school", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliatorSchoolNotAllowed):
 		status, apiErr = http.StatusForbidden, APIError{Code: "school_not_assigned", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatorProductType):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "affiliator_product_type", Message: err.Error()}
+	case errors.Is(err, service.ErrOpenCartExists):
+		status, apiErr = http.StatusConflict, APIError{Code: "open_cart_exists", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliatorNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "affiliator_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolNotAllowed):

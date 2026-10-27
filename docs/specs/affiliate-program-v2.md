@@ -71,13 +71,19 @@ Decisions (owner, 2026-10-27):
 
 ### Purchase
 
-- `bulk_exam_order` gains `course`, a single-student path (a one-element selection) and an optional promo code. Only `exam` and `course` products are accepted; any other type is 400. Selected students must belong to the affiliator's allowed schools. Preview keeps excluding students who already hold the product.
-- The order, `order_item`, `order_participant` and Snap flow are unchanged; the buyer is the affiliator and `orders.promo_code_id`, `discount` and `total` carry the promo.
+- Separate affiliator flow keyed by product, not by exam: `GET /affiliates/me/products`, `POST /affiliates/me/orders/preview`, `POST /affiliates/me/orders`, `POST /affiliates/me/orders/:id/checkout` (`Idempotency-Key` required). The existing `/admin/bulk-exam-orders` routes are unchanged and still exam-only for school admins.
+- Body: `school_id` (one of the allowed schools), `product_id`, one selector (`student_ids`, `grade` or `all`) and an optional `promo_code`. A single student is a one-element `student_ids`. Only `exam` and `course` products visible to students are accepted (`GetProduct` with the student role); any other type is 422 `affiliator_product_type`.
+- Students who already hold every target of the product (live exam registration, or active course enrollment) are excluded as `already_owned`; zero left is 409. The preview and the create both re-resolve; a cached preview is never trusted.
+- Promo: validated with role `affiliator` over a line of the net-new quantity, stored on the order (`promo_code_id`, `discount`, `total`), and re-validated against the live promo (rules and unchanged discount) right before checkout while the order is still a cart. A replay of a finished checkout skips that check. The counter increments in the existing pre-gateway transaction.
+- The buyer on the order is the affiliator. One open cart per buyer exists (`idx_orders_student_cart`), so creating a new order cancels the affiliator's previous unfinished participant order (`cancellation_reason = 'superseded'`); an unfinished order without participants is a 409 `open_cart_exists`.
+- `Checkout` no longer applies the digital qty-1 rule to orders that have participant rows (their qty is the seat count). This also unblocks multi-student checkout of the existing school-admin bulk exam order.
+- Fulfilment: the `OrderPaid` handler enrolls each participant in each linked course, mirroring the existing exam fan-out. The stock decrement at checkout counts the seat quantity.
+- A deactivated affiliator is read-only on these routes and on `/orders/*` (same `AffiliatorWriteGuard`).
 
 ### API (shape; final names settle in phase 1 and 4)
 
 - `/api/admin/system/affiliators` (super admin, `system:admin`): `GET` list, `POST` create, `POST /bulk` (JSON rows, at most 200, per-row result), `POST /:id/promote` (admin_school only), `PUT /:id/schools`. Active state reuses `PATCH /admin/system/accounts/:id/status`.
-- `GET /api/affiliates/me` (affiliator, `affiliates:self`): profile, schools, active state. `GET /api/affiliates/me/promos` lists the affiliator-only promos usable now. Dashboard widgets and students follow under `/api/affiliates/me/*`.
+- `GET /api/affiliates/me` (affiliator, `affiliates:self`): profile, schools, active state. Purchase routes are listed under Purchase. `GET /api/affiliates/me/promos` lists the affiliator-only promos usable now. Dashboard widgets and students follow under `/api/affiliates/me/*`.
 - Student and purchase routes reuse `/admin/students*` and `/admin/bulk-exam-orders*` with the new scope and capability.
 - Students (phase 3): the affiliator holds `students:*`. List (`GET /admin/students`) covers every allowed school, narrowable with `?school_id=` (must be allowed, else 403 `school_not_assigned`) and `?registered_by_me=true`. Single-school actions (register) require `?school_id=` of an allowed school. Bulk CSV uses the cross-school format (school per row, like `super_admin`); each row's school is checked against the allowed list when the row is registered, and a manual password column is refused. Status change, credential reissue, bulk credential reissue and set password are not available to affiliators. The allowed list is read from the database on every request, not from the token.
 

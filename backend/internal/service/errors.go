@@ -82,6 +82,8 @@ var (
 	ErrNotAdminSchool             = errors.New("only an admin_school account can be promoted to affiliator")
 	ErrAffiliatorNotFound         = errors.New("affiliator not found")
 	ErrAffiliatorSchoolNotAllowed = errors.New("school is not assigned to this affiliator")
+	ErrAffiliatorProductType      = errors.New("affiliators can only order exam and course products")
+	ErrOpenCartExists             = errors.New("an unfinished order already exists")
 )
 
 // --- from announcement.go ---

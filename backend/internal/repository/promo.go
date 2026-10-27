@@ -175,3 +175,23 @@ func (r *Repository) ListActiveAffiliatorPromos(ctx context.Context) ([]model.Pr
 	}
 	return promos, rows.Err()
 }
+
+// GetPromoByID returns the promo with this id, or a zero value when it does not exist.
+func (r *Repository) GetPromoByID(ctx context.Context, id uuid.UUID) (model.PromoCode, error) {
+	p := model.PromoCode{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at, is_public, starts_at, min_qty, affiliator_only, product_ids::text[]
+		FROM promo_code
+		WHERE id = $1`,
+		id,
+	).Scan(
+		&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt, &p.IsPublic, &p.StartsAt, &p.MinQty, &p.AffiliatorOnly, &p.ProductIDs,
+	)
+	if err != nil {
+		if isNotFound(err) {
+			return model.PromoCode{}, nil
+		}
+		return model.PromoCode{}, err
+	}
+	return p, nil
+}

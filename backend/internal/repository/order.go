@@ -420,6 +420,17 @@ func (r *Repository) InsertOrderItemTx(ctx context.Context, tx pgx.Tx, orderID u
 	return err
 }
 
+// SetOrderPromoTx records a promo on a cart order inside the caller's
+// transaction and recomputes the total from the stored subtotal.
+func (r *Repository) SetOrderPromoTx(ctx context.Context, tx pgx.Tx, orderID, promoID uuid.UUID, discount float64) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE orders SET promo_code_id = $2, discount = $3, total = subtotal - $3 + shipping_cost, updated_at = now()
+		 WHERE id = $1 AND status = 'cart'`,
+		orderID, promoID, discount,
+	)
+	return err
+}
+
 func (r *Repository) GetCartByStudentID(ctx context.Context, studentID uuid.UUID) (model.Order, error) {
 	order := model.Order{}
 	err := scanOrder(r.pool.QueryRow(ctx,
