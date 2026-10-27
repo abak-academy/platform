@@ -93,3 +93,66 @@ func TestAdminAffiliateAppeals_filtersAndCSV(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, parseAdminCSV(t, data), 3)
 }
+
+func TestAdminAffiliateCommissions_fullNamesFiltersAndCSV(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	_, aff := seedAffiliateMeAffiliator(t, repo, "Affiliator AdminComm "+uniqueSuffix(), "active", "bronze")
+
+	unique := uniqueSuffix()
+	sariName := "Sari" + unique + " Wulandari"
+	sari := uuid.MustParse(seedAffiliateMeStudent(t, repo, sariName))
+	dimas := uuid.MustParse(seedAffiliateMeStudent(t, repo, "Dimas"+unique+" Pratama"))
+	seedAffiliateMeBindingSource(t, repo, aff.ID, sari, "active", "link")
+	seedAffiliateMeBindingSource(t, repo, aff.ID, dimas, "active", "link")
+
+	now := time.Now().UTC()
+	commission := func(student uuid.UUID, productType, status string) {
+		seedAffiliateJobCommission(t, repo, aff.ID, student, affiliateJobCommissionSeed{
+			productType: productType, base: 100000, pct: 10, amount: 10000, status: status, level: "bronze",
+			createdAt: now, paidAt: now.AddDate(0, 0, -2),
+		})
+	}
+	commission(sari, "course", "available")
+	commission(dimas, "book", "pending")
+
+	all, total, err := svc.AdminListAffiliateCommissions(ctx, aff.ID.String(), AffiliateAdminQueueFilter{Limit: 20})
+	require.NoError(t, err)
+	require.Equal(t, 2, total)
+	names := []string{all[0].StudentName, all[1].StudentName}
+	require.Contains(t, names, sariName, "an admin sees the full student name, not first name + initials")
+
+	byStudent, total, err := svc.AdminListAffiliateCommissions(ctx, aff.ID.String(), AffiliateAdminQueueFilter{Q: "dimas" + unique, Limit: 20})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Equal(t, "book", byStudent[0].ProductType)
+
+	_, total, err = svc.AdminListAffiliateCommissions(ctx, aff.ID.String(), AffiliateAdminQueueFilter{Status: "available", Type: "course", Limit: 20})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+
+	future := now.Add(24 * time.Hour)
+	_, total, err = svc.AdminListAffiliateCommissions(ctx, aff.ID.String(), AffiliateAdminQueueFilter{From: &future, Limit: 20})
+	require.NoError(t, err)
+	require.Zero(t, total)
+
+	page2, total, err := svc.AdminListAffiliateCommissions(ctx, aff.ID.String(), AffiliateAdminQueueFilter{Limit: 1, Offset: 1})
+	require.NoError(t, err)
+	require.Equal(t, 2, total)
+	require.Len(t, page2, 1)
+
+	_, _, err = svc.AdminListAffiliateCommissions(ctx, uuid.NewString(), AffiliateAdminQueueFilter{Limit: 20})
+	require.ErrorIs(t, err, ErrAffiliateNotFound)
+	_, _, err = svc.AdminListAffiliateCommissions(ctx, "not-a-uuid", AffiliateAdminQueueFilter{Limit: 20})
+	require.ErrorIs(t, err, ErrInvalidUUID)
+	_, _, err = svc.AdminListAffiliateCommissions(ctx, aff.ID.String(), AffiliateAdminQueueFilter{Status: "bogus", Limit: 20})
+	require.ErrorIs(t, err, ErrInvalidStatusFilter)
+	_, _, err = svc.AdminListAffiliateCommissions(ctx, aff.ID.String(), AffiliateAdminQueueFilter{Type: "bogus", Limit: 20})
+	require.ErrorIs(t, err, ErrValidation)
+
+	data, err := svc.AdminAffiliateCommissionsCSV(ctx, aff.ID.String(), AffiliateAdminQueueFilter{Status: "all"})
+	require.NoError(t, err)
+	records := parseAdminCSV(t, data)
+	require.Len(t, records, 3)
+	require.Equal(t, "student_name", records[0][2])
+}

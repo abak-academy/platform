@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"slices"
+	"strconv"
 	"time"
 
 	"akademi-bimbel/internal/repository"
@@ -17,6 +18,7 @@ import (
 type AffiliateAdminQueueFilter struct {
 	Q      string
 	Status string
+	Type   string
 	From   *time.Time
 	To     *time.Time
 	Limit  int
@@ -147,4 +149,73 @@ func formatOptionalTime(t *time.Time) string {
 		return ""
 	}
 	return t.Format(time.RFC3339)
+}
+
+// AdminListAffiliateCommissions backs GET /admin/affiliates/:id/commissions: the
+// orders behind one affiliator's commissions, with the student's full name (an
+// admin may see it; the affiliator never does). Q matches student or product,
+// Type is the product category, From/To bound the payment date.
+func (s *Service) AdminListAffiliateCommissions(ctx context.Context, affiliatorID string, f AffiliateAdminQueueFilter) ([]repository.AffiliateCommissionRow, int, error) {
+	id, err := parseUUID(affiliatorID)
+	if err != nil {
+		return nil, 0, ErrInvalidUUID
+	}
+	if f.Status != "" && f.Status != "all" && !affiliateMeCommissionStatuses[f.Status] {
+		return nil, 0, fmt.Errorf("%w: %s", ErrInvalidStatusFilter, f.Status)
+	}
+	if f.Type != "" && !slices.Contains(affiliateCommissionCategories(), f.Type) {
+		return nil, 0, fmt.Errorf("%w: %s", ErrValidation, f.Type)
+	}
+	aff, err := s.storeRepo.GetAffiliatorByID(ctx, nil, id)
+	if err != nil {
+		return nil, 0, fmt.Errorf("find affiliator: %w", err)
+	}
+	if aff == nil {
+		return nil, 0, ErrAffiliateNotFound
+	}
+	status := f.Status
+	if status == "all" {
+		status = ""
+	}
+	filter := repository.AffiliateCommissionFilter{
+		Q: f.Q, Status: status, ProductType: f.Type, PaidFrom: f.From, PaidTo: f.To, Limit: f.Limit, Offset: f.Offset,
+	}
+	total, err := s.storeRepo.CountAffiliateCommissionsForAffiliator(ctx, id, filter)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count affiliate commissions: %w", err)
+	}
+	rows, err := s.storeRepo.ListAffiliateCommissionsForAffiliator(ctx, id, filter)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list affiliate commissions: %w", err)
+	}
+	return rows, total, nil
+}
+
+// AdminAffiliateCommissionsCSV exports the commissions matching the filter,
+// capped at affiliateAdminExportLimit rows.
+func (s *Service) AdminAffiliateCommissionsCSV(ctx context.Context, affiliatorID string, f AffiliateAdminQueueFilter) ([]byte, error) {
+	f.Limit, f.Offset = affiliateAdminExportLimit, 0
+	rows, _, err := s.AdminListAffiliateCommissions(ctx, affiliatorID, f)
+	if err != nil {
+		return nil, err
+	}
+	return buildAdminCSV(
+		[]string{"paid_at", "order_id", "student_name", "product_name", "category", "base_amount", "percentage", "commission", "status", "available_from"},
+		len(rows),
+		func(i int) []string {
+			row := rows[i]
+			return []string{
+				formatOptionalTime(row.PaidAt),
+				row.OrderID.String(),
+				csvSafeField(row.StudentName),
+				csvSafeField(row.ProductName),
+				row.ProductType,
+				strconv.FormatFloat(row.BaseAmount, 'f', 2, 64),
+				strconv.FormatFloat(row.Percentage, 'f', 2, 64),
+				strconv.FormatFloat(row.Amount, 'f', 2, 64),
+				row.Status,
+				formatOptionalTime(row.WaitUntil),
+			}
+		},
+	)
 }

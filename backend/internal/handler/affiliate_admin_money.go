@@ -72,6 +72,7 @@ func adminAffiliateQueueQuery(c echo.Context) (service.AffiliateAdminQueueFilter
 	return service.AffiliateAdminQueueFilter{
 		Q:      affiliateSearchText(c.QueryParam("q")),
 		Status: c.QueryParam("status"),
+		Type:   c.QueryParam("type"),
 		From:   from,
 		To:     to,
 		Limit:  perPage,

@@ -416,6 +416,8 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminAffiliates.POST("/:id/violations", h.AdminRecordAffiliateViolation)
 	adminAffiliates.POST("/:id/adjustments", h.AdminCreateAffiliateAdjustment)
 	adminAffiliates.GET("/:id/adjustments", h.AdminListAffiliateAdjustments)
+	adminAffiliates.GET("/:id/commissions", h.AdminListAffiliateCommissions)
+	adminAffiliates.GET("/:id/commissions/export", h.AdminAffiliateCommissionsExport)
 
 	adminAffiliatePayouts := admin.Group("/affiliate-payouts")
 	adminAffiliatePayouts.Use(handler.RBACMiddleware("affiliates:*"))

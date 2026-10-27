@@ -48,6 +48,8 @@ func newAffiliateAdminConfigRouter(t *testing.T, h *handler.Handler, svc *servic
 	cfg.GET("/affiliate-product-overrides", h.AdminListAffiliateOverrides)
 	cfg.PUT("/affiliate-product-overrides/:product_id", h.AdminUpsertAffiliateOverride)
 	cfg.DELETE("/affiliate-product-overrides/:product_id", h.AdminDeleteAffiliateOverride)
+	cfg.GET("/affiliates/:id/commissions", h.AdminListAffiliateCommissions)
+	cfg.GET("/affiliates/:id/commissions/export", h.AdminAffiliateCommissionsExport)
 	cfg.GET("/affiliate-flags", h.AdminListAffiliateFlags)
 	cfg.GET("/affiliate-flags/export", h.AdminAffiliateFlagsExport)
 	cfg.POST("/affiliate-flags/:id/review", h.AdminReviewAffiliateFlag)
@@ -424,5 +426,43 @@ func TestAffiliateAdminQueueListsAreFilteredPagedAndExportable(t *testing.T) {
 				t.Errorf("GET %s%s: want 400/422, got %d", kind, bad, rec.Code)
 			}
 		}
+	}
+}
+
+func TestAffiliateAdminCommissionsEndpoint(t *testing.T) {
+	env := newAffiliateAdminConfigEnv(t)
+	affID, _ := seedAffiliateAdminRow(t, env.pool, "active")
+	base := "/api/v1/admin/affiliates/" + affID + "/commissions"
+
+	if rec := getWithToken(t, env.e, base, env.tokenFor(t, service.RoleAdminStore)); rec.Code != http.StatusForbidden {
+		t.Errorf("admin_store: want 403, got %d", rec.Code)
+	}
+
+	token := env.tokenFor(t, service.RoleSuperAdmin)
+	rec := getWithToken(t, env.e, base+"?status=all&per_page=5", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET commissions: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var page struct {
+		Data    []json.RawMessage `json:"data"`
+		Total   int               `json:"total"`
+		PerPage int               `json:"per_page"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if page.Data == nil || page.PerPage != 5 {
+		t.Errorf("page = %+v, want an empty array (not null) and per_page 5", page)
+	}
+
+	rec = getWithToken(t, env.e, base+"/export", token)
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/csv") {
+		t.Errorf("export: code %d type %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	if rec := getWithToken(t, env.e, "/api/v1/admin/affiliates/"+uuid.NewString()+"/commissions", token); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown affiliator: want 404, got %d", rec.Code)
+	}
+	if rec := getWithToken(t, env.e, base+"?from=nope", token); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad date: want 400, got %d", rec.Code)
 	}
 }

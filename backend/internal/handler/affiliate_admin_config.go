@@ -194,3 +194,29 @@ func (h *Handler) AdminAffiliateReportLiability(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, report)
 }
+
+// AdminListAffiliateCommissions backs GET /admin/affiliates/:id/commissions.
+func (h *Handler) AdminListAffiliateCommissions(c echo.Context) error {
+	filter, page, perPage, err := adminAffiliateQueueQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	rows, total, err := h.svc.AdminListAffiliateCommissions(c.Request().Context(), c.Param("id"), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, queuePage(rows, total, page, perPage))
+}
+
+// AdminAffiliateCommissionsExport backs GET /admin/affiliates/:id/commissions/export.
+func (h *Handler) AdminAffiliateCommissionsExport(c echo.Context) error {
+	filter, _, _, err := adminAffiliateQueueQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	data, err := h.svc.AdminAffiliateCommissionsCSV(c.Request().Context(), c.Param("id"), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return csvDownload(c, "affiliate-commissions.csv", data)
+}
