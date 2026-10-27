@@ -49,8 +49,10 @@ func newAffiliateAdminConfigRouter(t *testing.T, h *handler.Handler, svc *servic
 	cfg.PUT("/affiliate-product-overrides/:product_id", h.AdminUpsertAffiliateOverride)
 	cfg.DELETE("/affiliate-product-overrides/:product_id", h.AdminDeleteAffiliateOverride)
 	cfg.GET("/affiliate-flags", h.AdminListAffiliateFlags)
+	cfg.GET("/affiliate-flags/export", h.AdminAffiliateFlagsExport)
 	cfg.POST("/affiliate-flags/:id/review", h.AdminReviewAffiliateFlag)
 	cfg.GET("/affiliate-appeals", h.AdminListAffiliateAppeals)
+	cfg.GET("/affiliate-appeals/export", h.AdminAffiliateAppealsExport)
 	cfg.POST("/affiliate-appeals/:id/decide", h.AdminDecideAffiliateAppeal)
 	cfg.GET("/affiliate-reports/summary", h.AdminAffiliateReportSummary)
 	cfg.GET("/affiliate-reports/liability", h.AdminAffiliateReportLiability)
@@ -230,8 +232,10 @@ func TestAffiliateAdminConfigHandlerRBAC(t *testing.T) {
 		{"overrides write", http.MethodPut, "/api/v1/admin/affiliate-product-overrides/" + productID.String(), `{"percentage":10}`},
 		{"overrides delete", http.MethodDelete, "/api/v1/admin/affiliate-product-overrides/" + productID.String(), ""},
 		{"flags read", http.MethodGet, "/api/v1/admin/affiliate-flags", ""},
+		{"flags export", http.MethodGet, "/api/v1/admin/affiliate-flags/export", ""},
 		{"flags review", http.MethodPost, "/api/v1/admin/affiliate-flags/" + flagID + "/review", `{"status":"reviewed"}`},
 		{"appeals read", http.MethodGet, "/api/v1/admin/affiliate-appeals", ""},
+		{"appeals export", http.MethodGet, "/api/v1/admin/affiliate-appeals/export", ""},
 		{"appeals decide", http.MethodPost, "/api/v1/admin/affiliate-appeals/" + appealID + "/decide", `{"outcome":"upheld"}`},
 		{"reports summary", http.MethodGet, "/api/v1/admin/affiliate-reports/summary?from=" + from + "&to=" + to, ""},
 		{"reports liability", http.MethodGet, "/api/v1/admin/affiliate-reports/liability", ""},
@@ -379,4 +383,46 @@ func TestAffiliateAdminConfigHandlerRBAC(t *testing.T) {
 			t.Errorf("PUT settings cookie_days 0: want 422, got %d: %s", rec.Code, rec.Body.String())
 		}
 	})
+}
+
+func TestAffiliateAdminQueueListsAreFilteredPagedAndExportable(t *testing.T) {
+	env := newAffiliateAdminConfigEnv(t)
+	affID, _ := seedAffiliateAdminRow(t, env.pool, "active")
+	seedConfigFlag(t, env.pool, affID)
+	seedConfigPendingAppeal(t, env.pool, affID)
+	token := env.tokenFor(t, service.RoleSuperAdmin)
+
+	for _, kind := range []string{"flags", "appeals"} {
+		rec := getWithToken(t, env.e, "/api/v1/admin/affiliate-"+kind+"?status=all&per_page=1&page=1", token)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: want 200, got %d: %s", kind, rec.Code, rec.Body.String())
+		}
+		var page struct {
+			Data    []json.RawMessage `json:"data"`
+			Total   int               `json:"total"`
+			Page    int               `json:"page"`
+			PerPage int               `json:"per_page"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+			t.Fatalf("decode %s: %v", kind, err)
+		}
+		if page.Total < 1 || page.Page != 1 || page.PerPage != 1 || len(page.Data) != 1 {
+			t.Errorf("%s page = %+v, want total>=1, page 1, per_page 1, one row", kind, page)
+		}
+
+		rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-"+kind+"/export?status=all", token)
+		if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/csv") {
+			t.Errorf("export %s: code %d type %q", kind, rec.Code, rec.Header().Get("Content-Type"))
+		}
+		if !strings.Contains(rec.Header().Get("Content-Disposition"), "affiliate-"+kind+".csv") {
+			t.Errorf("export %s disposition = %q", kind, rec.Header().Get("Content-Disposition"))
+		}
+
+		for _, bad := range []string{"?from=nope", "?page=0", "?status=bogus"} {
+			rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-"+kind+bad, token)
+			if rec.Code != http.StatusBadRequest && rec.Code != http.StatusUnprocessableEntity {
+				t.Errorf("GET %s%s: want 400/422, got %d", kind, bad, rec.Code)
+			}
+		}
+	}
 }

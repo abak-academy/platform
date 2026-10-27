@@ -6,10 +6,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"akademi-bimbel/internal/repository"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 // The real-DB fixture is shared and never reset, so every test seeds unique
@@ -308,7 +310,7 @@ func TestAdminListAffiliatePayouts_defaultAndFilters(t *testing.T) {
 	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "paid", 400000, "ShouldNotAppear")
 	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "rejected", 500000, "ShouldNotAppear")
 
-	rows, total, err := svc.AdminListAffiliatePayouts(ctx, "", 100, 0)
+	rows, total, err := svc.AdminListAffiliatePayouts(ctx, AffiliateAdminQueueFilter{Q: owner.code, Limit: 100})
 	if err != nil {
 		t.Fatalf("AdminListAffiliatePayouts default: %v", err)
 	}
@@ -332,7 +334,7 @@ func TestAdminListAffiliatePayouts_defaultAndFilters(t *testing.T) {
 		t.Errorf("default queue rows for this affiliator = %d, want 3", mine)
 	}
 
-	rows, _, err = svc.AdminListAffiliatePayouts(ctx, "paid", 100, 0)
+	rows, _, err = svc.AdminListAffiliatePayouts(ctx, AffiliateAdminQueueFilter{Q: owner.code, Status: "paid", Limit: 100})
 	if err != nil {
 		t.Fatalf("AdminListAffiliatePayouts paid: %v", err)
 	}
@@ -349,7 +351,7 @@ func TestAdminListAffiliatePayouts_defaultAndFilters(t *testing.T) {
 		t.Errorf("paid filter rows for this affiliator = %d, want 1", mine)
 	}
 
-	if _, _, err = svc.AdminListAffiliatePayouts(ctx, "bogus", 100, 0); !errors.Is(err, ErrInvalidStatusFilter) {
+	if _, _, err = svc.AdminListAffiliatePayouts(ctx, AffiliateAdminQueueFilter{Status: "bogus", Limit: 100}); !errors.Is(err, ErrInvalidStatusFilter) {
 		t.Errorf("err = %v, want ErrInvalidStatusFilter", err)
 	}
 }
@@ -363,7 +365,7 @@ func TestAdminAffiliatePayoutsCSV_queueContentsAndInjection(t *testing.T) {
 	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "processing", 250000, "Normal Holder")
 	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "paid", 350000, "ShouldNotAppear")
 
-	data, err := svc.AdminAffiliatePayoutsCSV(ctx)
+	data, err := svc.AdminAffiliatePayoutsCSV(ctx, AffiliateAdminQueueFilter{Q: owner.code})
 	if err != nil {
 		t.Fatalf("AdminAffiliatePayoutsCSV: %v", err)
 	}
@@ -375,7 +377,7 @@ func TestAdminAffiliatePayoutsCSV_queueContentsAndInjection(t *testing.T) {
 	if len(records) < 3 {
 		t.Fatalf("records = %d, want header plus at least 2 rows", len(records))
 	}
-	wantHeader := []string{"affiliator_name", "code", "bank_name", "bank_account_number", "bank_account_holder", "amount", "requested_at"}
+	wantHeader := []string{"affiliator_name", "code", "bank_name", "bank_account_number", "bank_account_holder", "amount", "status", "requested_at"}
 	for i, col := range wantHeader {
 		if records[0][i] != col {
 			t.Errorf("header[%d] = %q, want %q", i, records[0][i], col)
@@ -398,6 +400,39 @@ func TestAdminAffiliatePayoutsCSV_queueContentsAndInjection(t *testing.T) {
 		t.Error("formula-injection guard did not fire: '=EVILCELL holder not neutralised")
 	}
 	_ = requested
+}
+
+func TestAdminListAffiliatePayouts_allStatusesSearchAndDates(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	owner := seedAffiliatorOwner(t, repo, "aff-pay-all-"+uniqueSuffix()+"@test.local", "", "active")
+
+	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "requested", 100000, "Payer One")
+	holder := "Holder" + uniqueSuffix()
+	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "paid", 400000, holder)
+	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "rejected", 500000, "Payer Three")
+
+	all, total, err := svc.AdminListAffiliatePayouts(ctx, AffiliateAdminQueueFilter{Q: owner.code, Status: "all", Limit: 100})
+	require.NoError(t, err)
+	require.Equal(t, 3, total)
+	require.Len(t, all, 3)
+	require.Equal(t, "requested", all[0].Status, "undecided payouts come first")
+
+	byHolder, total, err := svc.AdminListAffiliatePayouts(ctx, AffiliateAdminQueueFilter{Q: strings.ToLower(holder), Status: "all", Limit: 100})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Equal(t, "paid", byHolder[0].Status)
+
+	future := time.Now().Add(48 * time.Hour)
+	none, total, err := svc.AdminListAffiliatePayouts(ctx, AffiliateAdminQueueFilter{Q: owner.code, Status: "all", From: &future, Limit: 100})
+	require.NoError(t, err)
+	require.Zero(t, total)
+	require.Empty(t, none)
+
+	page2, total, err := svc.AdminListAffiliatePayouts(ctx, AffiliateAdminQueueFilter{Q: owner.code, Status: "all", Limit: 2, Offset: 2})
+	require.NoError(t, err)
+	require.Equal(t, 3, total)
+	require.Len(t, page2, 1)
 }
 
 func TestAdminDecideAffiliatePayout_paid(t *testing.T) {

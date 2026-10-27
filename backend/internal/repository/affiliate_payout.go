@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strconv"
 
 	"akademi-bimbel/internal/model"
 
@@ -132,26 +133,34 @@ func (r *Repository) ListAffiliateAdjustments(ctx context.Context, affiliatorID 
 }
 
 // ListAffiliatePayoutQueue returns payouts in the given statuses joined with
-// the owning affiliator's name and code, oldest request first, plus the total
-// row count in those statuses.
-func (r *Repository) ListAffiliatePayoutQueue(ctx context.Context, statuses []string, limit, offset int) ([]AffiliatePayoutQueueRow, int, error) {
+// the owning affiliator's name and code, plus the total row count. Undecided
+// payouts come first (oldest request first), then the decided ones newest first.
+// q.Q matches the affiliator's name, code or the bank account holder; q.From/To
+// bound the request date.
+func (r *Repository) ListAffiliatePayoutQueue(ctx context.Context, statuses []string, q AffiliateListQuery, limit, offset int) ([]AffiliatePayoutQueueRow, int, error) {
+	p := newAffPredicate(2)
+	p.dates("p.requested_at", q.From, q.To)
+	p.search(q.Q, "u.name", "a.code", "p.bank_account_holder")
+	args := append([]interface{}{statuses}, p.args...)
+	from := `FROM affiliate_payouts p
+		 JOIN affiliators a ON a.id = p.affiliator_id
+		 JOIN users u ON u.id = a.user_id
+		 WHERE p.status = ANY($1)` + p.sql
+
 	var total int
-	if err := r.pool.QueryRow(ctx,
-		`SELECT count(*) FROM affiliate_payouts WHERE status = ANY($1)`, statuses,
-	).Scan(&total); err != nil {
+	if err := r.pool.QueryRow(ctx, `SELECT count(*) `+from, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT p.id, p.affiliator_id, p.amount, p.status, p.bank_name, p.bank_account_number, p.bank_account_holder,
 		        p.proof_url, p.reject_reason, p.processed_by, p.processed_at, p.requested_at, p.created_at, p.updated_at,
 		        u.name, COALESCE(a.code, '')
-		 FROM affiliate_payouts p
-		 JOIN affiliators a ON a.id = p.affiliator_id
-		 JOIN users u ON u.id = a.user_id
-		 WHERE p.status = ANY($1)
-		 ORDER BY p.requested_at, p.id
-		 LIMIT $2 OFFSET $3`,
-		statuses, limit, offset,
+		 `+from+`
+		 ORDER BY (p.status IN ('requested', 'processing')) DESC,
+		          CASE WHEN p.status IN ('requested', 'processing') THEN p.requested_at END ASC,
+		          p.requested_at DESC, p.id
+		 LIMIT $`+strconv.Itoa(p.next)+` OFFSET $`+strconv.Itoa(p.next+1),
+		append(args, limit, offset)...,
 	)
 	if err != nil {
 		return nil, 0, err

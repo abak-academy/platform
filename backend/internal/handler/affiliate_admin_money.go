@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -48,26 +49,72 @@ func (h *Handler) AdminListAffiliateAdjustments(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"data": rows, "total": total})
 }
 
-// AdminListAffiliatePayouts backs GET /admin/affiliate-payouts — the payout
-// queue, defaulting to the undecided statuses.
+// adminAffiliateQueueQuery parses the list query shared by the payout, flag and
+// appeal queues: q, status, from/to, page and per_page (limit is the legacy name).
+func adminAffiliateQueueQuery(c echo.Context) (service.AffiliateAdminQueueFilter, int, int, error) {
+	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
+	if err != nil {
+		return service.AffiliateAdminQueueFilter{}, 0, 0, err
+	}
+	raw := c.QueryParam("per_page")
+	if raw == "" {
+		raw = c.QueryParam("limit")
+	}
+	perPage := parseLimit(raw, 20, 100)
+	page := 1
+	if p := c.QueryParam("page"); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 {
+			return service.AffiliateAdminQueueFilter{}, 0, 0, errors.New("page must be a positive integer")
+		}
+		page = n
+	}
+	return service.AffiliateAdminQueueFilter{
+		Q:      affiliateSearchText(c.QueryParam("q")),
+		Status: c.QueryParam("status"),
+		From:   from,
+		To:     to,
+		Limit:  perPage,
+		Offset: (page - 1) * perPage,
+	}, page, perPage, nil
+}
+
+func queuePage(rows any, total, page, perPage int) map[string]any {
+	return map[string]any{"data": rows, "total": total, "page": page, "per_page": perPage}
+}
+
+func csvDownload(c echo.Context, filename string, data []byte) error {
+	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="`+filename+`"`)
+	return c.Blob(http.StatusOK, "text/csv; charset=utf-8", data)
+}
+
+// AdminListAffiliatePayouts backs GET /admin/affiliate-payouts — without a
+// status the undecided queue, status=all for every payout.
 func (h *Handler) AdminListAffiliatePayouts(c echo.Context) error {
-	limit, offset := adminMoneyPage(c)
-	rows, total, err := h.svc.AdminListAffiliatePayouts(c.Request().Context(), c.QueryParam("status"), limit, offset)
+	filter, page, perPage, err := adminAffiliateQueueQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	rows, total, err := h.svc.AdminListAffiliatePayouts(c.Request().Context(), filter)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": rows, "total": total})
+	return c.JSON(http.StatusOK, queuePage(rows, total, page, perPage))
 }
 
 // AdminAffiliatePayoutsExport backs GET /admin/affiliate-payouts/export — the
-// CSV of the undecided queue for the manual bank transfer.
+// CSV of the payouts matching the same filters as the list (the undecided queue
+// by default) for the manual bank transfer.
 func (h *Handler) AdminAffiliatePayoutsExport(c echo.Context) error {
-	data, err := h.svc.AdminAffiliatePayoutsCSV(c.Request().Context())
+	filter, _, _, err := adminAffiliateQueueQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	data, err := h.svc.AdminAffiliatePayoutsCSV(c.Request().Context(), filter)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="affiliate-payouts.csv"`)
-	return c.Blob(http.StatusOK, "text/csv; charset=utf-8", data)
+	return csvDownload(c, "affiliate-payouts.csv", data)
 }
 
 type adminPayoutDecisionRequest struct {

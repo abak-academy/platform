@@ -1,9 +1,7 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"math"
@@ -50,8 +48,6 @@ var affiliatePayoutStatuses = map[string]bool{
 // affiliatePayoutQueueStatuses is the undecided queue: what the admin list
 // shows by default and what the CSV export covers.
 var affiliatePayoutQueueStatuses = []string{"requested", "processing"}
-
-const affiliatePayoutExportLimit = 1000
 
 var affiliateApprovalPending = "pending"
 
@@ -164,14 +160,17 @@ func (s *Service) AdminListAffiliateAdjustments(ctx context.Context, affiliatorI
 	return rows, total, nil
 }
 
-// AdminListAffiliatePayouts returns the payout queue. An empty statusFilter
-// defaults to the undecided statuses; a filter is a comma-separated list that
-// must name known payout statuses.
-func (s *Service) AdminListAffiliatePayouts(ctx context.Context, statusFilter string, limit, offset int) ([]repository.AffiliatePayoutQueueRow, int, error) {
+// AdminListAffiliatePayouts backs GET /admin/affiliate-payouts. Without a
+// status it lists the undecided queue; "all" lists every payout.
+func (s *Service) AdminListAffiliatePayouts(ctx context.Context, f AffiliateAdminQueueFilter) ([]repository.AffiliatePayoutQueueRow, int, error) {
 	statuses := affiliatePayoutQueueStatuses
-	if statusFilter != "" {
+	switch f.Status {
+	case "":
+	case "all":
+		statuses = []string{"requested", "processing", "paid", "rejected"}
+	default:
 		statuses = nil
-		for _, status := range strings.Split(statusFilter, ",") {
+		for _, status := range strings.Split(f.Status, ",") {
 			status = strings.TrimSpace(status)
 			if !affiliatePayoutStatuses[status] {
 				return nil, 0, ErrInvalidStatusFilter
@@ -179,44 +178,40 @@ func (s *Service) AdminListAffiliatePayouts(ctx context.Context, statusFilter st
 			statuses = append(statuses, status)
 		}
 	}
-	rows, total, err := s.storeRepo.ListAffiliatePayoutQueue(ctx, statuses, limit, offset)
+	rows, total, err := s.storeRepo.ListAffiliatePayoutQueue(ctx, statuses, f.repoQuery(), f.Limit, f.Offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list affiliate payouts: %w", err)
 	}
 	return rows, total, nil
 }
 
-// AdminAffiliatePayoutsCSV builds the manual-transfer export of the undecided
-// queue (BR-PCR-03), capped at affiliatePayoutExportLimit rows. Text columns
-// are neutralised by csvSafeField; amount and timestamp stay typed.
-func (s *Service) AdminAffiliatePayoutsCSV(ctx context.Context) ([]byte, error) {
-	rows, _, err := s.storeRepo.ListAffiliatePayoutQueue(ctx, affiliatePayoutQueueStatuses, affiliatePayoutExportLimit, 0)
+// AdminAffiliatePayoutsCSV builds the manual-transfer export (BR-PCR-03) of the
+// payouts matching the filter (the undecided queue by default), capped at
+// affiliateAdminExportLimit rows. Text columns are neutralised by csvSafeField;
+// amount and timestamp stay typed.
+func (s *Service) AdminAffiliatePayoutsCSV(ctx context.Context, f AffiliateAdminQueueFilter) ([]byte, error) {
+	f.Limit, f.Offset = affiliateAdminExportLimit, 0
+	rows, _, err := s.AdminListAffiliatePayouts(ctx, f)
 	if err != nil {
-		return nil, fmt.Errorf("list affiliate payouts for export: %w", err)
-	}
-	var buf bytes.Buffer
-	buf.WriteString("\xef\xbb\xbf")
-	writer := csv.NewWriter(&buf)
-	if err := writer.Write([]string{
-		"affiliator_name", "code", "bank_name", "bank_account_number", "bank_account_holder", "amount", "requested_at",
-	}); err != nil {
 		return nil, err
 	}
-	for _, row := range rows {
-		if err := writer.Write([]string{
-			csvSafeField(row.AffiliatorName),
-			csvSafeField(row.AffiliatorCode),
-			csvSafeField(row.BankName),
-			csvSafeField(row.BankAccountNumber),
-			csvSafeField(row.BankAccountHolder),
-			strconv.FormatFloat(row.Amount, 'f', 2, 64),
-			row.RequestedAt.Format(time.RFC3339),
-		}); err != nil {
-			return nil, err
-		}
-	}
-	writer.Flush()
-	return buf.Bytes(), writer.Error()
+	return buildAdminCSV(
+		[]string{"affiliator_name", "code", "bank_name", "bank_account_number", "bank_account_holder", "amount", "status", "requested_at"},
+		len(rows),
+		func(i int) []string {
+			row := rows[i]
+			return []string{
+				csvSafeField(row.AffiliatorName),
+				csvSafeField(row.AffiliatorCode),
+				csvSafeField(row.BankName),
+				csvSafeField(row.BankAccountNumber),
+				csvSafeField(row.BankAccountHolder),
+				strconv.FormatFloat(row.Amount, 'f', 2, 64),
+				row.Status,
+				row.RequestedAt.Format(time.RFC3339),
+			}
+		},
+	)
 }
 
 // AdminDecideAffiliatePayout marks a queued payout paid (with the mandatory

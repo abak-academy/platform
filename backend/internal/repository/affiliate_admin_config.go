@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -174,24 +175,33 @@ func (r *Repository) FindAffiliateFlagByID(ctx context.Context, id uuid.UUID) (*
 	return &f, nil
 }
 
-// ListAffiliateFlagRows lists flags with the affiliator's code and name;
-// status "all" removes the filter, any other non-empty value filters it.
-func (r *Repository) ListAffiliateFlagRows(ctx context.Context, status string) ([]AffiliateFlagRow, error) {
-	query := `SELECT f.id, f.affiliator_id, f.rule, f.payload, f.status, f.note, f.reviewed_by, f.reviewed_at, f.created_at,
-	                 COALESCE(a.code, ''), u.name
-	          FROM affiliate_flags f
-	          JOIN affiliators a ON a.id = f.affiliator_id
-	          JOIN users u ON u.id = a.user_id`
-	args := []any{}
-	if status != "" && status != "all" {
-		query += ` WHERE f.status = $1`
-		args = append(args, status)
-	}
-	query += ` ORDER BY f.created_at DESC`
+// ListAffiliateFlagRows lists flags with the affiliator's code and name, newest
+// first, plus the total matching rows. q.Status filters the flag status, q.Q
+// matches the affiliator's name, code or the rule, and q.From/To bound the
+// detection date.
+func (r *Repository) ListAffiliateFlagRows(ctx context.Context, q AffiliateListQuery, limit, offset int) ([]AffiliateFlagRow, int, error) {
+	p := newAffPredicate(1)
+	p.eq("f.status", q.Status)
+	p.dates("f.created_at", q.From, q.To)
+	p.search(q.Q, "u.name", "a.code", "f.rule")
+	from := `FROM affiliate_flags f
+	         JOIN affiliators a ON a.id = f.affiliator_id
+	         JOIN users u ON u.id = a.user_id
+	         WHERE TRUE` + p.sql
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	var total int
+	if err := r.pool.QueryRow(ctx, `SELECT count(*) `+from, p.args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT f.id, f.affiliator_id, f.rule, f.payload, f.status, f.note, f.reviewed_by, f.reviewed_at, f.created_at,
+		        COALESCE(a.code, ''), u.name `+from+`
+		 ORDER BY f.created_at DESC, f.id
+		 LIMIT $`+strconv.Itoa(p.next)+` OFFSET $`+strconv.Itoa(p.next+1),
+		append(p.args, limit, offset)...,
+	)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -200,11 +210,11 @@ func (r *Repository) ListAffiliateFlagRows(ctx context.Context, status string) (
 		var row AffiliateFlagRow
 		if err := rows.Scan(&row.ID, &row.AffiliatorID, &row.Rule, &row.Payload, &row.Status, &row.Note,
 			&row.ReviewedBy, &row.ReviewedAt, &row.CreatedAt, &row.AffiliatorCode, &row.AffiliatorName); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, row)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 // UpdateAffiliateFlagReviewTx stores the review outcome inside the caller's
@@ -240,26 +250,35 @@ func (r *Repository) FindAffiliateViolationByID(ctx context.Context, id uuid.UUI
 	return &v, nil
 }
 
-// ListAffiliateAppealRows lists violations carrying the given appeal_status
-// with the affiliator's code and name; "all" removes the filter.
-func (r *Repository) ListAffiliateAppealRows(ctx context.Context, appealStatus string) ([]AffiliateAppealRow, error) {
-	query := `SELECT v.id, v.affiliator_id, v.category, v.description, v.sanction, v.suspension_until,
-	                 v.status, v.decided_by, v.decided_at, v.appeal_text, v.appeal_status,
-	                 v.appeal_decided_by, v.appeal_decided_at, v.created_at,
-	                 COALESCE(a.code, ''), u.name
-	          FROM affiliate_violations v
-	          JOIN affiliators a ON a.id = v.affiliator_id
-	          JOIN users u ON u.id = a.user_id`
-	args := []any{}
-	if appealStatus != "" && appealStatus != "all" {
-		query += ` WHERE v.appeal_status = $1`
-		args = append(args, appealStatus)
-	}
-	query += ` ORDER BY v.created_at DESC`
+// ListAffiliateAppealRows lists violations that carry an appeal (appeal_status
+// other than "none"), newest first, plus the total matching rows. q.Status
+// filters the appeal status, q.Q matches the affiliator's name, code or the
+// violation description, and q.From/To bound the violation date.
+func (r *Repository) ListAffiliateAppealRows(ctx context.Context, q AffiliateListQuery, limit, offset int) ([]AffiliateAppealRow, int, error) {
+	p := newAffPredicate(1)
+	p.eq("v.appeal_status", q.Status)
+	p.dates("v.created_at", q.From, q.To)
+	p.search(q.Q, "u.name", "a.code", "v.description")
+	from := `FROM affiliate_violations v
+	         JOIN affiliators a ON a.id = v.affiliator_id
+	         JOIN users u ON u.id = a.user_id
+	         WHERE v.appeal_status <> 'none'` + p.sql
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	var total int
+	if err := r.pool.QueryRow(ctx, `SELECT count(*) `+from, p.args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT v.id, v.affiliator_id, v.category, v.description, v.sanction, v.suspension_until,
+		        v.status, v.decided_by, v.decided_at, v.appeal_text, v.appeal_status,
+		        v.appeal_decided_by, v.appeal_decided_at, v.created_at,
+		        COALESCE(a.code, ''), u.name `+from+`
+		 ORDER BY v.created_at DESC, v.id
+		 LIMIT $`+strconv.Itoa(p.next)+` OFFSET $`+strconv.Itoa(p.next+1),
+		append(p.args, limit, offset)...,
+	)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -270,11 +289,11 @@ func (r *Repository) ListAffiliateAppealRows(ctx context.Context, appealStatus s
 			&row.SuspensionUntil, &row.Status, &row.DecidedBy, &row.DecidedAt, &row.AppealText,
 			&row.AppealStatus, &row.AppealDecidedBy, &row.AppealDecidedAt, &row.CreatedAt,
 			&row.AffiliatorCode, &row.AffiliatorName); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, row)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 // DecideAffiliateAppealTx stores the appeal outcome inside the caller's

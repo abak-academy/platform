@@ -554,18 +554,6 @@ func (s *Service) AdminDeleteAffiliateOverride(ctx context.Context, actorID, pro
 	return tx.Commit(ctx)
 }
 
-// AdminListAffiliateFlags backs GET /admin/affiliate-flags?status= — default
-// open; "all" disables the filter.
-func (s *Service) AdminListAffiliateFlags(ctx context.Context, status string) ([]repository.AffiliateFlagRow, error) {
-	if status == "" {
-		status = "open"
-	}
-	if status != "all" && !slices.Contains(affiliateFlagStatuses, status) {
-		return nil, fmt.Errorf("%w: %s", ErrValidation, status)
-	}
-	return s.storeRepo.ListAffiliateFlagRows(ctx, status)
-}
-
 // AdminReviewAffiliateFlag backs POST /admin/affiliate-flags/:id/review. Only
 // open flags are reviewable — a second review needs a new detection row.
 func (s *Service) AdminReviewAffiliateFlag(ctx context.Context, actorID, flagID string, in AffiliateAdminFlagReviewInput) (*model.AffiliateFlag, error) {
@@ -610,18 +598,6 @@ func (s *Service) AdminReviewAffiliateFlag(ctx context.Context, actorID, flagID 
 		return nil, fmt.Errorf("commit flag review: %w", err)
 	}
 	return s.storeRepo.FindAffiliateFlagByID(ctx, id)
-}
-
-// AdminListAffiliateAppeals backs GET /admin/affiliate-appeals?status= — the
-// violations awaiting an appeal decision (default pending).
-func (s *Service) AdminListAffiliateAppeals(ctx context.Context, status string) ([]repository.AffiliateAppealRow, error) {
-	if status == "" {
-		status = "pending"
-	}
-	if status != "all" && !slices.Contains(affiliateAppealStatuses, status) {
-		return nil, fmt.Errorf("%w: %s", ErrValidation, status)
-	}
-	return s.storeRepo.ListAffiliateAppealRows(ctx, status)
 }
 
 // AdminDecideAffiliateAppeal backs POST /admin/affiliate-appeals/:id/decide.

@@ -83,13 +83,31 @@ func (h *Handler) AdminDeleteAffiliateOverride(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"deleted": true})
 }
 
-// AdminListAffiliateFlags backs GET /admin/affiliate-flags?status= (default open).
+// AdminListAffiliateFlags backs GET /admin/affiliate-flags; no status (or all)
+// lists every flag.
 func (h *Handler) AdminListAffiliateFlags(c echo.Context) error {
-	rows, err := h.svc.AdminListAffiliateFlags(c.Request().Context(), c.QueryParam("status"))
+	filter, page, perPage, err := adminAffiliateQueueQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	rows, total, err := h.svc.AdminListAffiliateFlags(c.Request().Context(), filter)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": rows})
+	return c.JSON(http.StatusOK, queuePage(rows, total, page, perPage))
+}
+
+// AdminAffiliateFlagsExport backs GET /admin/affiliate-flags/export.
+func (h *Handler) AdminAffiliateFlagsExport(c echo.Context) error {
+	filter, _, _, err := adminAffiliateQueueQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	data, err := h.svc.AdminAffiliateFlagsCSV(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return csvDownload(c, "affiliate-flags.csv", data)
 }
 
 // AdminReviewAffiliateFlag backs POST /admin/affiliate-flags/:id/review.
@@ -112,13 +130,31 @@ func (h *Handler) AdminReviewAffiliateFlag(c echo.Context) error {
 	return c.JSON(http.StatusOK, flag)
 }
 
-// AdminListAffiliateAppeals backs GET /admin/affiliate-appeals?status= (default pending).
+// AdminListAffiliateAppeals backs GET /admin/affiliate-appeals; no status (or
+// all) lists every appeal.
 func (h *Handler) AdminListAffiliateAppeals(c echo.Context) error {
-	rows, err := h.svc.AdminListAffiliateAppeals(c.Request().Context(), c.QueryParam("status"))
+	filter, page, perPage, err := adminAffiliateQueueQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	rows, total, err := h.svc.AdminListAffiliateAppeals(c.Request().Context(), filter)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": rows})
+	return c.JSON(http.StatusOK, queuePage(rows, total, page, perPage))
+}
+
+// AdminAffiliateAppealsExport backs GET /admin/affiliate-appeals/export.
+func (h *Handler) AdminAffiliateAppealsExport(c echo.Context) error {
+	filter, _, _, err := adminAffiliateQueueQuery(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	data, err := h.svc.AdminAffiliateAppealsCSV(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return csvDownload(c, "affiliate-appeals.csv", data)
 }
 
 // AdminDecideAffiliateAppeal backs POST /admin/affiliate-appeals/:id/decide.

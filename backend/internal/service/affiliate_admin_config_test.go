@@ -366,8 +366,9 @@ func TestAffiliateConfigFlagReview(t *testing.T) {
 		 VALUES ($1, 'self_purchase', '{}', 'open') RETURNING id`,
 		owner.affiliatorID).Scan(&flagID))
 
-	rows, err := svc.AdminListAffiliateFlags(ctx, "")
+	rows, total, err := svc.AdminListAffiliateFlags(ctx, AffiliateAdminQueueFilter{Q: owner.code, Limit: 20})
 	require.NoError(t, err)
+	require.Equal(t, 1, total)
 	var listed bool
 	for _, row := range rows {
 		if row.ID == flagID {
@@ -378,7 +379,7 @@ func TestAffiliateConfigFlagReview(t *testing.T) {
 		t.Errorf("open flag %v not listed with affiliator code/name: %+v", flagID, rows)
 	}
 
-	if _, err := svc.AdminListAffiliateFlags(ctx, "bogus"); !errors.Is(err, ErrValidation) {
+	if _, _, err := svc.AdminListAffiliateFlags(ctx, AffiliateAdminQueueFilter{Status: "bogus", Limit: 20}); !errors.Is(err, ErrValidation) {
 		t.Errorf("AdminListAffiliateFlags(bogus) err = %v, want ErrValidation", err)
 	}
 
@@ -429,8 +430,9 @@ func TestAffiliateConfigAppealDecide(t *testing.T) {
 
 	violationID := seedAffiliateMeViolation(t, repo, owner.affiliatorID, actorUUID, "resolved", "pending", time.Now())
 
-	rows, err := svc.AdminListAffiliateAppeals(ctx, "")
+	rows, total, err := svc.AdminListAffiliateAppeals(ctx, AffiliateAdminQueueFilter{Q: owner.code, Status: "all", Limit: 20})
 	require.NoError(t, err)
+	require.Equal(t, 1, total)
 	var listed bool
 	for _, row := range rows {
 		if row.ID == violationID {
