@@ -43,10 +43,11 @@ export function useAffiliatorDashboard(range: { from?: string; to?: string }) {
   });
 }
 
-export function useAffiliatorOrders(opts?: { status?: string; cursor?: string; limit?: number }) {
-  const { status, cursor, limit } = opts ?? {};
+export function useAffiliatorOrders(opts?: { status?: string; cursor?: string; limit?: number; refetchInterval?: number }) {
+  const { status, cursor, limit, refetchInterval } = opts ?? {};
   return useQuery({
     queryKey: [...affiliateKeys.orders(status), cursor ?? "", limit ?? 20],
+    refetchInterval,
     queryFn: () => {
       const params = new URLSearchParams();
       if (status) params.set("status", status);

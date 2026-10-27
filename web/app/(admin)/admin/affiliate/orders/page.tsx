@@ -12,22 +12,15 @@ import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/compone
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAffiliatorOrders } from "@/lib/hooks/affiliates";
 import { useHasCapability } from "@/lib/hooks/use-capability";
-import { useTranslation, type I18nKey } from "@/lib/i18n";
+import { AFFILIATE_ORDER_STATUS_LABEL, affiliateOrderStatusLabel } from "@/lib/affiliate-order-status";
+import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import type { AffiliatorOrderRow } from "@/lib/types";
 
 const ALL = "__all__";
 const PAGE_SIZE = 20;
 
-const STATUS_LABEL: Record<string, I18nKey> = {
-  payment_pending: "filter_pending",
-  paid: "filter_paid",
-  processing: "filter_processing",
-  completed: "filter_completed",
-  payment_expired: "filter_payment_expired",
-  cancelled: "filter_cancelled",
-};
-const STATUSES = Object.keys(STATUS_LABEL);
+const STATUSES = Object.keys(AFFILIATE_ORDER_STATUS_LABEL);
 
 export default function AffiliateOrdersPage() {
   const { t, lang } = useTranslation();
@@ -44,7 +37,7 @@ export default function AffiliateOrdersPage() {
 
   if (!allowed) return <NoAccess />;
 
-  const statusLabel = (s: string) => (STATUS_LABEL[s] ? t(STATUS_LABEL[s]) : s);
+  const statusLabel = (s: string) => affiliateOrderStatusLabel(s, t);
   const formatDate = (iso: string) =>
     new Intl.DateTimeFormat(lang === "en" ? "en-US" : "id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" }).format(new Date(iso));
 

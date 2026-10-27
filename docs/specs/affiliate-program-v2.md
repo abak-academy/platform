@@ -1,7 +1,7 @@
 ---
 title: Affiliate program v2
 issue: none yet
-status: proposed
+status: accepted
 created: 2026-10-27
 sources: ["affiliate_program_v2.md", "backend/db/migrations/0002_identity.up.sql", "backend/db/migrations/0004_commerce.up.sql", "backend/internal/service/rbac.go", "backend/internal/service/store.go", "backend/internal/service/bulk_exam_order.go", "backend/internal/service/auth.go", "backend/internal/handler/school_scope.go", "backend/internal/handler/admin_promo.go", "backend/internal/handler/admin_students.go", "backend/internal/handler/bulk_exam_order.go", "backend/internal/repository/promo.go", "backend/internal/server/routes.go", "web/components/admin/ProductsToolbar.tsx", "web/components/admin/PromoModal.tsx", "docs/specs/admin-orders-toolbar-redesign.md", "docs/specs/exam-admin-student-management.md"]
 ---
@@ -121,7 +121,7 @@ Phases, each committed separately and each with unit tests only:
 3. Affiliator students: scope resolver over `school_ids`, list, single and bulk registration, `registered_by`.
 4. Purchase: single and bulk for `exam` and `course` with promo.
 5. Affiliator dashboard and super-admin monitoring pages.
-6. One end-to-end run, fixes, wiki updates (`docs/wiki/domain/rbac-and-accounts.md`, `docs/wiki/domain/orders-and-payments.md`).
+6. One end-to-end run (`web/e2e/affiliate-program.spec.ts`, real backend and worker: sign-in, registration, scope refusals, free purchase with fulfilment, dashboard, super-admin deactivation, read-only session), fixes, wiki updates (`docs/wiki/domain/rbac-and-accounts.md`, `docs/wiki/domain/orders-and-payments.md`).
 
 ## Open points
 

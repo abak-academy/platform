@@ -1,7 +1,7 @@
 ---
 title: Orders & Payments
-updated: 2026-10-17
-verified_against: 1f3c4498
+updated: 2026-10-27
+verified_against: c70f8827
 ---
 
 See also: [../architecture/system-overview.md](../architecture/system-overview.md), [../architecture/shipping-biteship.md](../architecture/shipping-biteship.md), [./exam-lifecycle-and-scoring.md](./exam-lifecycle-and-scoring.md).
@@ -111,6 +111,34 @@ A settlement that arrives for an order that is no longer `payment_pending` (`pay
 - The units-first overview links whole rows to `/admin/store/units/<type>` with the selected period in the URL. The detail page separates unit quantities (including negative net) from distinct order context, shows units-only product rows, and links Back to the same Summary period. Top Products remains current-month WIB independently of that period. Both pages use the Store `orders:read` capability gate. A preset with stale URL dates is labelled Custom (`web/lib/unit-sales-period.ts`, `web/components/admin/UnitSalesBlock.tsx`, `web/app/(admin)/admin/store/units/[type]/page.tsx`).
 - The type detail page downloads only that type's products for the selected period. CSV has a UTF-8 BOM and exactly `Produk, Order dibayar, Order refund, Unit dibayar, Unit refund, Unit neto`, with no total row. Names starting with `=`, `+`, `-`, `@`, tab or carriage return receive an apostrophe prefix; `encoding/csv` quotes fields (`backend/internal/service/unit_sales.go:50`). The attachment is named `unit-terjual-<type>-<from>_<to>.csv`, with `semua-waktu` for each omitted bound (`backend/internal/handler/unit_sales.go:67`).
 - `GET /api/v1/admin/orders/unit-sales` and `/api/v1/admin/orders/unit-sales/export` use the existing `orders:write` group: only `admin_store` and `super_admin` have access. They do not require or grant `revenue:read`; other roles and unauthenticated requests are rejected (`backend/internal/server/routes.go:175`, `backend/internal/service/rbac.go:13`).
+
+## Affiliator purchases
+
+An affiliator pays for `exam` and `course` products on behalf of students of its assigned schools
+(`service/affiliator_order.go`, routes `/affiliates/me/orders*`). The buyer on the order is the
+affiliator; the students are `order_participant` rows, so fulfilment fans out to them.
+
+- Preview and create both re-resolve everything: students of one assigned school, excluded when
+  they already hold every target of the product (live exam registration or active course
+  enrollment), the promo run through `evaluatePromo` with role `affiliator` over the net-new
+  quantity. Zero net-new is 409. The promo is stored on the order (`SetOrderPromoTx`).
+- `idx_orders_student_cart` allows one open cart per buyer, so creating an order cancels the
+  affiliator's previous unfinished participant order (`cancellation_reason = 'superseded'`); an
+  unfinished order without participants is 409 `open_cart_exists`.
+- `CheckoutAffiliatorOrder` re-validates the stored promo while the order is still a cart (rules
+  and an unchanged discount), then runs the normal `Checkout`. A replay of a finished checkout
+  skips the check. The promo counter increments in the usual pre-gateway transaction.
+- `Checkout` applies the digital qty-1 rule (`ValidateItemQty`) only to orders **without**
+  participant rows: with participants, `qty` is the seat count. This also lets the school-admin
+  bulk exam order check out with more than one student.
+- The outbox `OrderPaid` handler fans out course enrollment to participants exactly as it does
+  exam registration (`worker/outbox.go`).
+- Promo rules live in `service/promo.go` (`evaluatePromo`): `affiliator_only`, `starts_at`/
+  `expires_at`, `min_qty`, `min_order_amount` and `product_ids` (empty = all products; only matching
+  lines count towards the minimums and the discount). `POST /promo-codes/validate` knows only a
+  subtotal, so it refuses promos that need quantities or products.
+- Dashboard figures (`repository/affiliator_dashboard.go`) count an order as paid when `paid_at` is
+  set and it was not refunded; open carts never show in lists or totals.
 
 ## Order → access / shipping fan-out
 

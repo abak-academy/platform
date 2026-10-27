@@ -26,7 +26,8 @@ import {
   useSetAffiliatorStatus,
 } from "@/lib/hooks/admin-affiliators";
 import { useHasCapability } from "@/lib/hooks/use-capability";
-import { useTranslation, type I18nKey } from "@/lib/i18n";
+import { affiliateOrderStatusLabel } from "@/lib/affiliate-order-status";
+import { useTranslation } from "@/lib/i18n";
 import { AFFILIATOR_CSV_HEADER, parseAffiliatorCsv } from "@/lib/affiliator-csv";
 import { formatRupiah } from "@/lib/format";
 import type { Affiliator, AffiliatorBulkResult } from "@/lib/types";
@@ -484,15 +485,6 @@ function SchoolsDialog({ id, onClose }: { id: string | null; onClose: () => void
   );
 }
 
-const ORDER_STATUS: Record<string, I18nKey> = {
-  payment_pending: "filter_pending",
-  paid: "filter_paid",
-  processing: "filter_processing",
-  completed: "filter_completed",
-  payment_expired: "filter_payment_expired",
-  cancelled: "filter_cancelled",
-};
-
 function DetailDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
   const { t } = useTranslation();
   const detail = useAdminAffiliator(id);
@@ -527,7 +519,7 @@ function DetailDialog({ id, onClose }: { id: string | null; onClose: () => void 
                 {d.recent_orders.map((o) => (
                   <li key={o.id} className="flex justify-between gap-3">
                     <span>{`${o.product_name} · ${o.participant_count}`}</span>
-                    <span>{`${formatRupiah(o.total)} · ${ORDER_STATUS[o.status] ? t(ORDER_STATUS[o.status]) : o.status}`}</span>
+                    <span>{`${formatRupiah(o.total)} · ${affiliateOrderStatusLabel(o.status, t)}`}</span>
                   </li>
                 ))}
                 {d.recent_orders.length === 0 && <li className="text-ink-500">{t("aff_orders_empty")}</li>}

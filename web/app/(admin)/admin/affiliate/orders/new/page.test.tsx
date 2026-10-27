@@ -23,7 +23,9 @@ vi.mock("@/lib/hooks/admin-students", () => ({
 
 const previewMutate = vi.fn();
 const createMutate = vi.fn();
+let liveOrders: { id: string; status: string }[] = [];
 vi.mock("@/lib/hooks/affiliates", () => ({
+  useAffiliatorOrders: () => ({ data: { data: liveOrders } }),
   useAffiliatorMe: () => ({ data: { schools: [{ id: "s1", name: "SMAN 1" }] } }),
   useAffiliatorProducts: () => ({ data: [{ id: "p1", name: "Try Out UTBK", type: "exam", price: 50000 }] }),
   usePreviewAffiliatorOrder: () => ({ mutateAsync: previewMutate, isPending: false }),
@@ -48,6 +50,7 @@ describe("AffiliateNewOrderPage", () => {
     studentCalls.length = 0;
     previewMutate.mockReset().mockResolvedValue(preview);
     createMutate.mockReset().mockResolvedValue({ id: "order-1", total: 90000 });
+    liveOrders = [];
   });
 
   it("cannot preview until a school, product and at least one student are chosen", () => {
@@ -119,6 +122,27 @@ describe("AffiliateNewOrderPage", () => {
 
     expect(await screen.findByText("pay order-1 via /affiliates/me/orders")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Lihat pembelian" })).toHaveAttribute("href", "/admin/affiliate/orders");
+  });
+
+  it("follows the created order's status so a free or finished payment is visible", async () => {
+    render(<AffiliateNewOrderPage />);
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Pratinjau" }));
+    await screen.findByTestId("aff-preview");
+    fireEvent.click(screen.getByRole("button", { name: "Buat pesanan" }));
+
+    expect(await screen.findByTestId("aff-order-status")).toHaveTextContent("Belum dibayar");
+  });
+
+  it("shows the settled status once the order appears in the list", async () => {
+    liveOrders = [{ id: "order-1", status: "completed" }, { id: "other", status: "paid" }];
+    render(<AffiliateNewOrderPage />);
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Pratinjau" }));
+    await screen.findByTestId("aff-preview");
+    fireEvent.click(screen.getByRole("button", { name: "Buat pesanan" }));
+
+    expect(await screen.findByTestId("aff-order-status")).toHaveTextContent("Selesai");
   });
 
   it("cannot create an order when nobody is left to buy for", async () => {

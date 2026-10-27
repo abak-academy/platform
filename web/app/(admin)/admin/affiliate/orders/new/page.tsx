@@ -15,12 +15,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAdminStudents } from "@/lib/hooks/admin-students";
 import {
   useAffiliatorMe,
+  useAffiliatorOrders,
   useAffiliatorProducts,
   useCreateAffiliatorOrder,
   usePreviewAffiliatorOrder,
 } from "@/lib/hooks/affiliates";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useHasCapability } from "@/lib/hooks/use-capability";
+import { affiliateOrderStatusLabel } from "@/lib/affiliate-order-status";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import type { AffiliatorOrderInput, AffiliatorOrderPreview, Order } from "@/lib/types";
@@ -50,6 +52,9 @@ export default function AffiliateNewOrderPage() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
   const q = useDebouncedValue(search).trim();
+  // Once an order exists its status is the only proof that payment went through,
+  // for the free path (no popup) as much as for Snap, so follow it until it settles.
+  const created = useAffiliatorOrders({ limit: 10, refetchInterval: order ? 3000 : undefined });
 
   const students = useAdminStudents({
     schoolId,
@@ -95,12 +100,16 @@ export default function AffiliateNewOrderPage() {
   }
 
   if (order) {
+    const live = created.data?.data.find((o) => o.id === order.id);
     return (
       <div className="fade-in space-y-6">
         <AdminPageHeader icon={ShoppingCart} title={t("aff_order_created_title")} description={t("aff_order_created_hint")} />
         <div className="md-card-outlined space-y-3 p-6">
           <p className="text-sm">
             {t("aff_stat_paid_amount")}: <strong>{formatRupiah(order.total)}</strong>
+          </p>
+          <p className="text-sm" data-testid="aff-order-status">
+            {t("aff_order_status")}: <strong>{live ? affiliateOrderStatusLabel(live.status, t) : t("aff_order_not_paid")}</strong>
           </p>
           <SnapCheckout orderId={order.id} basePath="/affiliates/me/orders" />
           <Link href="/admin/affiliate/orders" className="md-btn-tonal inline-block">

@@ -1,19 +1,20 @@
 ---
 title: RBAC and Accounts
-updated: 2026-10-12
-verified_against: a5d92558
+updated: 2026-10-27
+verified_against: c70f8827
 ---
 
-One-liner: 5 roles, a static `role → capability` map, echo middleware that checks the map on
+One-liner: 6 roles, a static `role → capability` map, echo middleware that checks the map on
 every request, plus a school-scope resolver for the one role (`admin_school`) whose rows need
 narrowing below the role level. Full route-by-route matrix: [../../runbooks/rbac-matrix.md](../../runbooks/rbac-matrix.md)
 (disagreements with current code noted below — read that file, don't re-derive it here).
 
 ## Roles
 
-`student`, `admin_exam`, `admin_store`, `admin_school`, `super_admin` — constants in
-`backend/internal/service/rbac.go:6-11`. Only the 4 admin roles are assignable via
-`/admin/system/accounts` (`adminRoles` map, `admin_users.go:14-19`); `student` accounts are
+`student`, `admin_exam`, `admin_store`, `admin_school`, `super_admin`, `affiliator` — constants in
+`backend/internal/service/rbac.go`. Only the 4 admin roles are assignable via
+`/admin/system/accounts` (`adminRoles` map, `admin_users.go:14-19`); `affiliator` is created and
+promoted only through `/admin/system/affiliators` (see Affiliators below); `student` accounts are
 created only via `/auth/register` or `/auth/google`, never by an operator.
 
 ## Capabilities (`roleCapabilities`, `rbac.go:13-23`)
@@ -25,6 +26,7 @@ created only via `/auth/register` or `/auth/google`, never by an operator.
 | `admin_store` | `products(book\|course):write`, `sections:*`, `orders:*`, `promos:*`, `notifications:*`, `uploads:write` |
 | `admin_school` | `students:*`, `results:read`, `bulk-exam-orders:write`, `products(exam):read` |
 | `super_admin` | `*`, `schools:write` |
+| `affiliator` | `affiliates:self`, `students:*`, `student-scope:affiliator` |
 
 `admin_store` deliberately holds no `revenue:read` — aggregate revenue reporting is
 `super_admin`'s; store admins still see per-order totals on the orders page (`rbac.go:16-19`
@@ -75,6 +77,35 @@ the access token at sign time (`auth.go:419-420`), but `RBACMiddleware` never re
 calls `service.HasCapability(claims.Role, required)` fresh against the live map on every request
 (`middleware.go:45`). A role's capabilities can change (deploy) without invalidating outstanding
 tokens either way, since only `Role` — not `Capabilities` — is ever consulted.
+
+## Affiliators
+
+An `affiliator` is a role-level account bound to several schools, not one: `users.school_ids UUID[]`
+(migration `0070`), no `school_id` and no foreign key (the service validates every id against
+`school`, active only, when super admin sets them). `student-scope:affiliator` is named outside
+`students:` for the same reason as `student-scope:all`, and `super_admin`'s `*` also satisfies it,
+so scope code compares the role (`claims.Role == RoleAffiliator`), never the capability.
+
+- **Accounts** (`service/affiliator.go`, routes under `/admin/system/affiliators`, `system:admin`
+  so super admin only): create, bulk create (JSON rows, at most 200, per-row result), promote an
+  `admin_school` account (clears its `school_id`, revokes its sessions), replace the school list,
+  list with student/order/paid figures, detail with the latest orders. Active state reuses
+  `PATCH /admin/system/accounts/:id/status`. Every change writes an `affiliator.*` audit row.
+- **School scope**: `resolveStudentSchoolScope` sends an affiliator to `resolveAffiliatorSchool`
+  (`school_scope.go`): `?school_id=` is required for single-school actions and must be in the
+  list, which is read from the database on every request, not from the token (403
+  `school_not_assigned`). The list endpoint instead covers all assigned schools
+  (`ListAffiliatorStudents`, `StudentFilter.SchoolIDs`), narrowable by `school_id`,
+  `registered_by_me` and `not_purchased`. `registerStudent` re-checks the school and records
+  `users.registered_by`, so single and bulk CSV registration share one enforcement point.
+- **Not available to affiliators**: status change, credential reissue (single, bulk) and set
+  password (`ForbidRoles` / `student-passwords:write`), manual password and unlisted school at
+  registration.
+- **Deactivation is read-only, not locked out.** `canHoldSession` lets a deactivated affiliator log
+  in and refresh (every other deactivated role is refused). `AffiliatorWriteGuard` on `/admin`,
+  `/orders` and `/affiliates` answers non-read requests with 403 `account_deactivated`, looking the
+  status up in the database; deactivating still revokes sessions, so the affiliator signs in again
+  to get a read-only one.
 
 ## Enforcement chain
 
