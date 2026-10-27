@@ -45,9 +45,22 @@ func (h *Handler) AdminUpdateAffiliateSettings(c echo.Context) error {
 	return c.JSON(http.StatusOK, view)
 }
 
-// AdminListAffiliateOverrides backs GET /admin/affiliate-product-overrides.
+// AdminListAffiliateOverrides backs GET /admin/affiliate-product-overrides?q=&page=&per_page=.
 func (h *Handler) AdminListAffiliateOverrides(c echo.Context) error {
-	rows, err := h.svc.AdminListAffiliateOverrides(c.Request().Context())
+	page, perPage, err := adminQueuePaging(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	rows, total, err := h.svc.AdminListAffiliateOverrides(c.Request().Context(), affiliateSearchText(c.QueryParam("q")), perPage, (page-1)*perPage)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, queuePage(rows, total, page, perPage))
+}
+
+// AdminSearchAffiliateOverrideProducts backs GET /admin/affiliate-product-overrides/products?q=.
+func (h *Handler) AdminSearchAffiliateOverrideProducts(c echo.Context) error {
+	rows, err := h.svc.AdminSearchAffiliateOverrideProducts(c.Request().Context(), affiliateSearchText(c.QueryParam("q")), parseLimit(c.QueryParam("limit"), 10, 20))
 	if err != nil {
 		return mapServiceError(c, err)
 	}

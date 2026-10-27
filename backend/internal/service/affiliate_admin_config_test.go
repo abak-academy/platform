@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -277,10 +278,11 @@ func TestAffiliateConfigOverridesUpsertDeleteFallback(t *testing.T) {
 	actor := seedAffiliateAdminActor(t, repo, "affcfg-ovr-"+uniqueSuffix()+"@test.local")
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, actor) })
 
+	productName := "Config Override Product " + uniqueSuffix()
 	var productID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO product (name, type, price, status) VALUES ($1, 'book', 60000, 'published') RETURNING id`,
-		"Config Override Product "+uniqueSuffix(),
+		productName,
 	).Scan(&productID))
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM product WHERE id = $1`, productID) })
 
@@ -290,8 +292,20 @@ func TestAffiliateConfigOverridesUpsertDeleteFallback(t *testing.T) {
 		t.Errorf("AdminUpsertAffiliateOverride() = %+v, want percentage 25 product %v", override, productID)
 	}
 
-	rows, err := svc.AdminListAffiliateOverrides(ctx)
+	picked, err := svc.AdminSearchAffiliateOverrideProducts(ctx, strings.ToLower(productName), 10)
 	require.NoError(t, err)
+	require.Len(t, picked, 1, "the picker finds the product by a case-insensitive name search")
+	require.Equal(t, productID, picked[0].ID)
+	require.Equal(t, "book", picked[0].Type)
+	require.NotNil(t, picked[0].Percentage, "the picker shows the override already set")
+	require.InDelta(t, 25, *picked[0].Percentage, 0.001)
+	none, err := svc.AdminSearchAffiliateOverrideProducts(ctx, "zzz-no-such-product-"+uniqueSuffix(), 10)
+	require.NoError(t, err)
+	require.Empty(t, none)
+
+	rows, total, err := svc.AdminListAffiliateOverrides(ctx, productName, 20, 0)
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
 	var listed *repository.AffiliateOverrideRow
 	for i := range rows {
 		if rows[i].ProductID == productID {

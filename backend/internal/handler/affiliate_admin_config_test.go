@@ -46,6 +46,7 @@ func newAffiliateAdminConfigRouter(t *testing.T, h *handler.Handler, svc *servic
 	cfg.GET("/affiliate-settings", h.AdminGetAffiliateSettings)
 	cfg.PUT("/affiliate-settings", h.AdminUpdateAffiliateSettings)
 	cfg.GET("/affiliate-product-overrides", h.AdminListAffiliateOverrides)
+	cfg.GET("/affiliate-product-overrides/products", h.AdminSearchAffiliateOverrideProducts)
 	cfg.PUT("/affiliate-product-overrides/:product_id", h.AdminUpsertAffiliateOverride)
 	cfg.DELETE("/affiliate-product-overrides/:product_id", h.AdminDeleteAffiliateOverride)
 	cfg.GET("/affiliates/:id/commissions", h.AdminListAffiliateCommissions)
@@ -231,6 +232,7 @@ func TestAffiliateAdminConfigHandlerRBAC(t *testing.T) {
 		{"settings read", http.MethodGet, "/api/v1/admin/affiliate-settings", ""},
 		{"settings write", http.MethodPut, "/api/v1/admin/affiliate-settings", validAffiliateSettingsBody},
 		{"overrides read", http.MethodGet, "/api/v1/admin/affiliate-product-overrides", ""},
+		{"overrides product search", http.MethodGet, "/api/v1/admin/affiliate-product-overrides/products?q=a", ""},
 		{"overrides write", http.MethodPut, "/api/v1/admin/affiliate-product-overrides/" + productID.String(), `{"percentage":10}`},
 		{"overrides delete", http.MethodDelete, "/api/v1/admin/affiliate-product-overrides/" + productID.String(), ""},
 		{"flags read", http.MethodGet, "/api/v1/admin/affiliate-flags", ""},

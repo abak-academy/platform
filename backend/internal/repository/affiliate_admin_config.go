@@ -16,6 +16,7 @@ import (
 type AffiliateOverrideRow struct {
 	ProductID   uuid.UUID  `json:"product_id"`
 	ProductName string     `json:"product_name"`
+	ProductType string     `json:"product_type"`
 	Percentage  float64    `json:"percentage"`
 	UpdatedBy   *uuid.UUID `json:"updated_by"`
 	UpdatedAt   time.Time  `json:"updated_at"`
@@ -135,22 +136,71 @@ func (r *Repository) DeleteAffiliateOverrideTx(ctx context.Context, tx pgx.Tx, p
 	return tag.RowsAffected() > 0, nil
 }
 
-// ListAffiliateOverrideRows lists every override joined with the product name.
-func (r *Repository) ListAffiliateOverrideRows(ctx context.Context) ([]AffiliateOverrideRow, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT o.product_id, p.name, o.percentage, o.updated_by, o.updated_at
-		 FROM affiliate_product_overrides o
+// ListAffiliateOverrideRows lists the overrides joined with the product, newest
+// first, plus the total matching rows; q matches the product name.
+func (r *Repository) ListAffiliateOverrideRows(ctx context.Context, q string, limit, offset int) ([]AffiliateOverrideRow, int, error) {
+	p := newAffPredicate(1)
+	p.search(q, "p.name")
+	from := `FROM affiliate_product_overrides o
 		 JOIN product p ON p.id = o.product_id
-		 ORDER BY o.updated_at DESC`)
+		 WHERE TRUE` + p.sql
+
+	var total int
+	if err := r.pool.QueryRow(ctx, `SELECT count(*) `+from, p.args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT o.product_id, p.name, p.type, o.percentage, o.updated_by, o.updated_at `+from+`
+		 ORDER BY o.updated_at DESC, o.product_id
+		 LIMIT $`+strconv.Itoa(p.next)+` OFFSET $`+strconv.Itoa(p.next+1),
+		append(p.args, limit, offset)...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
 	out := []AffiliateOverrideRow{}
 	for rows.Next() {
 		var row AffiliateOverrideRow
-		if err := rows.Scan(&row.ProductID, &row.ProductName, &row.Percentage, &row.UpdatedBy, &row.UpdatedAt); err != nil {
+		if err := rows.Scan(&row.ProductID, &row.ProductName, &row.ProductType, &row.Percentage, &row.UpdatedBy, &row.UpdatedAt); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, row)
+	}
+	return out, total, rows.Err()
+}
+
+// AffiliateOverrideProduct is one product offered by the override picker, with
+// the override already set on it (nil when none).
+type AffiliateOverrideProduct struct {
+	ID         uuid.UUID `json:"id"`
+	Name       string    `json:"name"`
+	Type       string    `json:"type"`
+	Percentage *float64  `json:"percentage"`
+}
+
+// SearchAffiliateOverrideProducts finds non-archived products by name for the
+// override picker, closest names first.
+func (r *Repository) SearchAffiliateOverrideProducts(ctx context.Context, q string, limit int) ([]AffiliateOverrideProduct, error) {
+	p := newAffPredicate(1)
+	p.search(q, "p.name")
+	rows, err := r.pool.Query(ctx,
+		`SELECT p.id, p.name, p.type, o.percentage
+		 FROM product p
+		 LEFT JOIN affiliate_product_overrides o ON o.product_id = p.id
+		 WHERE p.status <> 'archived'`+p.sql+`
+		 ORDER BY p.name, p.id
+		 LIMIT $`+strconv.Itoa(p.next),
+		append(p.args, limit)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []AffiliateOverrideProduct{}
+	for rows.Next() {
+		var row AffiliateOverrideProduct
+		if err := rows.Scan(&row.ID, &row.Name, &row.Type, &row.Percentage); err != nil {
 			return nil, err
 		}
 		out = append(out, row)

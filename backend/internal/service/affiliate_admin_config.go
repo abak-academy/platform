@@ -493,8 +493,14 @@ func (s *Service) UpdateAffiliateAdminSettings(ctx context.Context, actorID stri
 }
 
 // AdminListAffiliateOverrides backs GET /admin/affiliate-product-overrides.
-func (s *Service) AdminListAffiliateOverrides(ctx context.Context) ([]repository.AffiliateOverrideRow, error) {
-	return s.storeRepo.ListAffiliateOverrideRows(ctx)
+func (s *Service) AdminListAffiliateOverrides(ctx context.Context, q string, limit, offset int) ([]repository.AffiliateOverrideRow, int, error) {
+	return s.storeRepo.ListAffiliateOverrideRows(ctx, q, limit, offset)
+}
+
+// AdminSearchAffiliateOverrideProducts backs GET /admin/affiliate-product-overrides/products:
+// the picker that replaces typing a product id.
+func (s *Service) AdminSearchAffiliateOverrideProducts(ctx context.Context, q string, limit int) ([]repository.AffiliateOverrideProduct, error) {
+	return s.storeRepo.SearchAffiliateOverrideProducts(ctx, q, limit)
 }
 
 // AdminUpsertAffiliateOverride backs PUT /admin/affiliate-product-overrides/:product_id.

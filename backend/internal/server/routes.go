@@ -434,6 +434,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminAffiliateOverrides := admin.Group("/affiliate-product-overrides")
 	adminAffiliateOverrides.Use(handler.RBACMiddleware("affiliates:*"))
 	adminAffiliateOverrides.GET("", h.AdminListAffiliateOverrides)
+	adminAffiliateOverrides.GET("/products", h.AdminSearchAffiliateOverrideProducts)
 	adminAffiliateOverrides.PUT("/:product_id", h.AdminUpsertAffiliateOverride)
 	adminAffiliateOverrides.DELETE("/:product_id", h.AdminDeleteAffiliateOverride)
 
