@@ -13,6 +13,7 @@ import { downloadAffiliateCsv, useAdminAffiliateCommissions } from "@/lib/hooks/
 import type { ListParams } from "@/lib/hooks/use-list-params";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
+import { formatCommissionRule } from "@/lib/affiliate-rules";
 import type { AffiliateCommission } from "@/lib/types";
 
 const STATUSES = ["pending", "available", "paid", "held", "cancelled"] as const;
@@ -54,7 +55,7 @@ export function AdminCommissionsPanel({ affiliatorId, from = "", to = "" }: Admi
     { key: "product", header: t("aff_col_product_name"), cell: (r) => r.product_name ?? "—" },
     { key: "category", header: t("aff_col_product"), cell: (r) => affLabel(t, r.product_type) },
     { key: "base", header: t("aff_col_purchase"), align: "right", cell: (r) => formatRupiah(r.base_amount) },
-    { key: "pct", header: t("aff_col_rate"), align: "right", cell: (r) => `${r.percentage}%` },
+    { key: "pct", header: t("aff_col_rate"), align: "right", cell: (r) => formatCommissionRule(r.commission_type, r.commission_value, t("aff_per_unit")) },
     { key: "amount", header: t("aff_col_commission"), align: "right", cell: (r) => <span className="font-semibold">{formatRupiah(r.amount)}</span> },
     { key: "status", header: t("aff_col_status"), cell: (r) => <StatusBadge status={r.status} /> },
   ];

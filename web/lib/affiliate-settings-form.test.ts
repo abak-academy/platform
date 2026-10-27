@@ -8,8 +8,7 @@ const settings: AffiliateSettings = {
   binding_months: 3,
   min_extend_amount: 0,
   digital_wait_days: 7,
-  physical_received_days: 7,
-  physical_wait_days: 7,
+  physical_wait_days: 14,
   min_payout: 100000,
   payout_day_of_month: null,
   adjustment_threshold: 1000000,
@@ -29,9 +28,9 @@ const settings: AffiliateSettings = {
 const levels: AffiliateLevelSettings[] = [
   {
     level: "silver",
-    commission_pct: { book: 7.5 },
+    commission_rule: { book: { type: "percent", value: 7.5 }, merchandise: { type: "fixed", value: 5000 } },
+    binding_months: 6,
     digital_wait_days: null,
-    physical_received_days: null,
     physical_wait_days: null,
     min_payout: 50000,
     payout_day_of_month: null,
@@ -50,10 +49,12 @@ describe("affiliate settings form", () => {
     expect(input?.launch_date).toBe("2026-11-01");
     expect(input?.hold_thresholds).toEqual({ silver: 1000000 });
     const silver = input?.levels.find((l) => l.level === "silver");
-    expect(silver?.commission_pct).toEqual({ book: 7.5 });
+    expect(silver?.commission_rule).toEqual({ book: { type: "percent", value: 7.5 }, merchandise: { type: "fixed", value: 5000 } });
+    expect(silver?.binding_months).toBe(6);
     expect(silver?.min_payout).toBe(50000);
     const bronze = input?.levels.find((l) => l.level === "bronze");
-    expect(bronze?.commission_pct).toBeNull();
+    expect(bronze?.commission_rule).toBeNull();
+    expect(bronze?.binding_months).toBeNull();
     expect(bronze?.min_payout).toBeNull();
   });
 
@@ -80,8 +81,25 @@ describe("affiliate settings form", () => {
 
   it("refuses a non-numeric commission percent", () => {
     const form = settingsToForm(settings, levels);
-    form.levels.gold.pct.exam = "10%";
+    form.levels.gold.rules.exam.value = "10%";
 
     expect(formToInput(form)).toBeNull();
+  });
+
+  it("sends the chosen rule type with the value", () => {
+    const form = settingsToForm(settings, levels);
+    form.levels.gold.rules.book = { type: "fixed", value: "4500" };
+    form.levels.gold.rules.exam = { type: "percent", value: "12.5" };
+
+    const gold = formToInput(form)?.levels.find((l) => l.level === "gold");
+    expect(gold?.commission_rule).toEqual({ book: { type: "fixed", value: 4500 }, exam: { type: "percent", value: 12.5 } });
+  });
+
+  it("keeps an unset category out of the body and defaults its type to percent", () => {
+    const form = settingsToForm(settings, levels);
+
+    expect(form.levels.silver.rules.exam).toEqual({ type: "percent", value: "" });
+    expect(form.levels.silver.rules.merchandise).toEqual({ type: "fixed", value: "5000" });
+    expect(formToInput(form)?.levels.find((l) => l.level === "silver")?.commission_rule).not.toHaveProperty("exam");
   });
 });

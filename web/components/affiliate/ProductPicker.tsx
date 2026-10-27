@@ -5,6 +5,7 @@ import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { affLabel } from "@/lib/affiliate-labels";
+import { formatCommissionRule } from "@/lib/affiliate-rules";
 import { useAffiliateOverrideProducts } from "@/lib/hooks/admin-affiliates";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useTranslation } from "@/lib/i18n";
@@ -80,9 +81,9 @@ export function ProductPicker({ id, value, onChange }: ProductPickerProps) {
                 <span className="min-w-0 truncate">
                   {product.name} <span className="text-xs text-ink-500">{affLabel(t, product.type)}</span>
                 </span>
-                {product.percentage !== null && (
+                {product.override_value !== null && product.override_type !== null && (
                   <span className="shrink-0 text-xs text-warn">
-                    {t("admin_aff_ovr_current").replace("{pct}", String(product.percentage))}
+                    {t("admin_aff_ovr_current").replace("{rule}", formatCommissionRule(product.override_type, product.override_value, t("aff_per_unit")))}
                   </span>
                 )}
               </button>

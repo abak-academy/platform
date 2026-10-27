@@ -1,4 +1,10 @@
-import type { AffiliateLevelSettings, AffiliateSettings, AffiliateSettingsInput } from "@/lib/types";
+import type {
+  AffiliateCommissionRule,
+  AffiliateCommissionRuleType,
+  AffiliateLevelSettings,
+  AffiliateSettings,
+  AffiliateSettingsInput,
+} from "@/lib/types";
 
 export const COMMISSION_CATEGORIES = ["exam", "course", "book", "merchandise", "medal"] as const;
 export const AFFILIATE_LEVELS = ["bronze", "silver", "gold"] as const;
@@ -8,7 +14,6 @@ export const GLOBAL_NUMBER_FIELDS = [
   "binding_months",
   "min_extend_amount",
   "digital_wait_days",
-  "physical_received_days",
   "physical_wait_days",
   "min_payout",
   "adjustment_threshold",
@@ -26,8 +31,8 @@ export const HIDDEN_NUMBER_FIELDS: readonly GlobalNumberField[] = ["soon_end_day
 export const GLOBAL_OPTIONAL_FIELDS = ["payout_day_of_month", "daily_registration_cap"] as const;
 
 export const LEVEL_FIELDS = [
+  "binding_months",
   "digital_wait_days",
-  "physical_received_days",
   "physical_wait_days",
   "min_payout",
   "payout_day_of_month",
@@ -39,9 +44,14 @@ export type GlobalNumberField = (typeof GLOBAL_NUMBER_FIELDS)[number];
 export type GlobalOptionalField = (typeof GLOBAL_OPTIONAL_FIELDS)[number];
 export type LevelField = (typeof LEVEL_FIELDS)[number];
 
+export interface RuleForm {
+  type: AffiliateCommissionRuleType;
+  value: string;
+}
+
 export interface LevelForm {
   fields: Record<LevelField, string>;
-  pct: Record<string, string>;
+  rules: Record<string, RuleForm>;
 }
 
 export interface SettingsForm {
@@ -66,9 +76,12 @@ export function settingsToForm(settings: AffiliateSettings, levels: AffiliateLev
     const row = levels.find((l) => l.level === level);
     const fields = {} as Record<LevelField, string>;
     for (const key of LEVEL_FIELDS) fields[key] = str(row?.[key]);
-    const pct: Record<string, string> = {};
-    for (const category of COMMISSION_CATEGORIES) pct[category] = str(row?.commission_pct?.[category]);
-    levelForms[level] = { fields, pct };
+    const rules: Record<string, RuleForm> = {};
+    for (const category of COMMISSION_CATEGORIES) {
+      const rule = row?.commission_rule?.[category];
+      rules[category] = { type: rule?.type ?? "percent", value: str(rule?.value) };
+    }
+    levelForms[level] = { fields, rules };
   }
 
   return {
@@ -103,16 +116,16 @@ export function formToInput(form: SettingsForm): AffiliateSettingsInput | null {
 
   const levels: AffiliateLevelSettings[] = AFFILIATE_LEVELS.map((level) => {
     const lf = form.levels[level];
-    const pct: Record<string, number> = {};
+    const rules: Record<string, AffiliateCommissionRule> = {};
     for (const category of COMMISSION_CATEGORIES) {
-      const n = check(parseOptional(lf.pct[category]));
-      if (n !== null) pct[category] = n;
+      const n = check(parseOptional(lf.rules[category].value));
+      if (n !== null) rules[category] = { type: lf.rules[category].type, value: n };
     }
     return {
       level,
-      commission_pct: Object.keys(pct).length > 0 ? pct : null,
+      commission_rule: Object.keys(rules).length > 0 ? rules : null,
+      binding_months: check(parseOptional(lf.fields.binding_months)),
       digital_wait_days: check(parseOptional(lf.fields.digital_wait_days)),
-      physical_received_days: check(parseOptional(lf.fields.physical_received_days)),
       physical_wait_days: check(parseOptional(lf.fields.physical_wait_days)),
       min_payout: check(parseOptional(lf.fields.min_payout)),
       payout_day_of_month: check(parseOptional(lf.fields.payout_day_of_month)),

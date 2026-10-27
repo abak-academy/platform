@@ -5,16 +5,17 @@ import { toast } from "sonner";
 import { AffiliateList } from "@/components/affiliate/AffiliateList";
 import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { ProductPicker } from "@/components/affiliate/ProductPicker";
-import { SettingField } from "@/components/affiliate/SettingField";
 import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
+import { COMMISSION_RULE_TYPES, formatCommissionRule } from "@/lib/affiliate-rules";
 import { useAdminAffiliateOverrides, useDeleteAffiliateOverride, useUpsertAffiliateOverride } from "@/lib/hooks/admin-affiliates";
 import type { ListParams } from "@/lib/hooks/use-list-params";
 import { useTranslation } from "@/lib/i18n";
-import type { AffiliateOverrideProduct, AffiliateProductOverride } from "@/lib/types";
+import type { AffiliateCommissionRuleType, AffiliateOverrideProduct, AffiliateProductOverride } from "@/lib/types";
 
 const INITIAL: ListParams = { q: "", status: "", type: "", from: "", to: "", page: 1, per_page: 10 };
 
@@ -22,7 +23,8 @@ export function OverridesPanel() {
   const { t } = useTranslation();
   const [params, setParams] = useState<ListParams>(INITIAL);
   const [product, setProduct] = useState<AffiliateOverrideProduct | null>(null);
-  const [pct, setPct] = useState("");
+  const [ruleType, setRuleType] = useState<AffiliateCommissionRuleType>("percent");
+  const [ruleValue, setRuleValue] = useState("");
   const query = useAdminAffiliateOverrides({ q: params.q, page: params.page, per_page: params.per_page });
   const upsert = useUpsertAffiliateOverride();
   const remove = useDeleteAffiliateOverride();
@@ -32,18 +34,24 @@ export function OverridesPanel() {
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
-    const value = Number(pct);
-    if (!product || pct.trim() === "" || !Number.isFinite(value) || value < 0 || value > 100) {
+    const value = Number(ruleValue);
+    const invalid =
+      !product ||
+      ruleValue.trim() === "" ||
+      !Number.isFinite(value) ||
+      value < 0 ||
+      (ruleType === "percent" ? value > 100 || Math.abs(value * 100 - Math.round(value * 100)) > 1e-6 : !Number.isInteger(value));
+    if (invalid) {
       toast.error(t("admin_aff_ovr_invalid"));
       return;
     }
     upsert.mutate(
-      { productId: product.id, percentage: value },
+      { productId: product.id, type: ruleType, value },
       {
         onSuccess: () => {
           toast.success(t("admin_aff_ovr_saved"));
           setProduct(null);
-          setPct("");
+          setRuleValue("");
         },
         onError: fail,
       },
@@ -61,7 +69,7 @@ export function OverridesPanel() {
         </div>
       ),
     },
-    { key: "pct", header: t("admin_aff_ovr_col_pct"), align: "right", cell: (o) => `${o.percentage}%` },
+    { key: "pct", header: t("admin_aff_ovr_col_pct"), align: "right", cell: (o) => formatCommissionRule(o.type, o.value, t("aff_per_unit")) },
     { key: "updated", header: t("admin_aff_ovr_col_updated"), cell: (o) => formatAffDate(o.updated_at) },
     {
       key: "actions",
@@ -82,19 +90,33 @@ export function OverridesPanel() {
           <h2 className="font-semibold text-ink-900">{t("admin_aff_ovr_title")}</h2>
           <p className="text-sm text-ink-600">{t("admin_aff_ovr_desc")}</p>
         </div>
-        <form onSubmit={save} className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_12rem_auto]">
+        <form onSubmit={save} className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_7.5rem_12rem_auto]">
           <div className="space-y-1.5">
             <Label htmlFor="ovr-product">{t("admin_aff_ovr_product")}</Label>
             <ProductPicker id="ovr-product" value={product} onChange={setProduct} />
           </div>
-          <SettingField
-            id="ovr-pct"
-            label={t("admin_aff_ovr_pct")}
-            hint={t("admin_aff_pct_hint")}
-            help={{ unit: "percent", example: "15", required: true }}
-            value={pct}
-            onChange={setPct}
-          />
+          <div className="space-y-1.5">
+            <Label htmlFor="ovr-type">{t("admin_aff_rule_type")}</Label>
+            <select
+              id="ovr-type"
+              className="h-10 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900"
+              value={ruleType}
+              onChange={(e) => setRuleType(e.target.value as AffiliateCommissionRuleType)}
+            >
+              {COMMISSION_RULE_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {t(type === "fixed" ? "admin_aff_rule_fixed" : "admin_aff_rule_percent")}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ovr-value">{t("admin_aff_ovr_pct")}</Label>
+            <Input id="ovr-value" inputMode="decimal" value={ruleValue} onChange={(e) => setRuleValue(e.target.value)} aria-describedby="ovr-value-hint" />
+            <p id="ovr-value-hint" className="text-xs leading-relaxed text-ink-500">
+              {t("admin_aff_rule_hint")}
+            </p>
+          </div>
           <div className="sm:pt-[1.625rem]">
             <Button type="submit" disabled={upsert.isPending}>
               {t("admin_aff_ovr_add")}

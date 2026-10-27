@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { API_BASE, ApiError, authFetch } from "@/lib/api";
 import type {
+  AffiliateCommissionRuleType,
   AffiliateAdminDetail,
   AffiliateAdminListPage,
   AffiliateAdminPayout,
@@ -267,10 +268,10 @@ export function useAffiliateOverrideProducts(q: string) {
 export function useUpsertAffiliateOverride() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ productId, percentage }: { productId: string; percentage: number }) =>
+    mutationFn: ({ productId, type, value }: { productId: string; type: AffiliateCommissionRuleType; value: number }) =>
       authFetch<AffiliateProductOverride>(`/admin/affiliate-product-overrides/${encodeURIComponent(productId)}`, {
         method: "PUT",
-        body: JSON.stringify({ percentage }),
+        body: JSON.stringify({ type, value }),
       }),
     onSuccess: () => {
       invalidateOverrides(qc);

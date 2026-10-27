@@ -1586,8 +1586,10 @@ export interface AffiliateCommission {
   order_id: string;
   order_item_id: string;
   product_type: string;
+  quantity?: number;
   base_amount: number;
-  percentage: number;
+  commission_type: AffiliateCommissionRuleType;
+  commission_value: number;
   level_snapshot: string;
   amount: number;
   status: string;
@@ -1787,7 +1789,6 @@ export interface AffiliateSettings {
   binding_months: number;
   min_extend_amount: number;
   digital_wait_days: number;
-  physical_received_days: number;
   physical_wait_days: number;
   min_payout: number;
   payout_day_of_month: number | null;
@@ -1805,11 +1806,18 @@ export interface AffiliateSettings {
   updated_at: string;
 }
 
+export type AffiliateCommissionRuleType = "percent" | "fixed";
+
+export interface AffiliateCommissionRule {
+  type: AffiliateCommissionRuleType;
+  value: number;
+}
+
 export interface AffiliateLevelSettings {
   level: string;
-  commission_pct: Record<string, number> | null;
+  commission_rule: Record<string, AffiliateCommissionRule> | null;
+  binding_months: number | null;
   digital_wait_days: number | null;
-  physical_received_days: number | null;
   physical_wait_days: number | null;
   min_payout: number | null;
   payout_day_of_month: number | null;
@@ -1830,7 +1838,8 @@ export interface AffiliateProductOverride {
   product_id: string;
   product_name?: string;
   product_type?: string;
-  percentage: number;
+  type: AffiliateCommissionRuleType;
+  value: number;
   updated_by: string | null;
   updated_at: string;
 }
@@ -1888,7 +1897,8 @@ export interface AffiliateOverrideProduct {
   id: string;
   name: string;
   type: string;
-  percentage: number | null;
+  override_type: AffiliateCommissionRuleType | null;
+  override_value: number | null;
 }
 
 export interface AffiliateReportOrder extends AffiliateCommission {

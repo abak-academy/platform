@@ -14,6 +14,7 @@ interface SettingFieldProps {
   onChange: (value: string) => void;
   // Shown greyed out when the field is empty, e.g. the global value a level falls back to.
   placeholder?: string;
+  disabled?: boolean;
 }
 
 const UNIT_KEYS = {
@@ -24,7 +25,7 @@ const UNIT_KEYS = {
 } as const;
 
 // One setting: label, an input with its unit, and a one-sentence explanation with an example.
-export function SettingField({ id, label, hint, help, value, onChange, placeholder }: SettingFieldProps) {
+export function SettingField({ id, label, hint, help, value, onChange, placeholder, disabled }: SettingFieldProps) {
   const { t } = useTranslation();
   const unit = help.unit ? t(UNIT_KEYS[help.unit]) : null;
   return (
@@ -36,6 +37,7 @@ export function SettingField({ id, label, hint, help, value, onChange, placehold
           inputMode="decimal"
           value={value}
           placeholder={placeholder}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           aria-describedby={`${id}-hint`}
           className={unit ? "pr-16" : undefined}

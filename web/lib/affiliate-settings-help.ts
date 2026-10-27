@@ -15,8 +15,7 @@ export const GLOBAL_HELP: Record<GlobalField, FieldHelp> = {
   min_extend_amount: { unit: "rupiah", example: "100000", required: true },
   launch_date: { example: "2026-11-01", required: false },
   digital_wait_days: { unit: "days", example: "7", required: true },
-  physical_received_days: { unit: "days", example: "14", required: true },
-  physical_wait_days: { unit: "days", example: "7", required: true },
+  physical_wait_days: { unit: "days", example: "14", required: true },
   min_payout: { unit: "rupiah", example: "100000", required: true },
   payout_day_of_month: { example: "10", required: false },
   freeze_max_days: { unit: "days", example: "30", required: true },
@@ -29,9 +28,9 @@ export const GLOBAL_HELP: Record<GlobalField, FieldHelp> = {
 };
 
 export const LEVEL_HELP: Record<LevelField, FieldHelp> = {
+  binding_months: { unit: "months", example: "6", required: false },
   digital_wait_days: { unit: "days", example: "5", required: false },
-  physical_received_days: { unit: "days", example: "10", required: false },
-  physical_wait_days: { unit: "days", example: "5", required: false },
+  physical_wait_days: { unit: "days", example: "10", required: false },
   min_payout: { unit: "rupiah", example: "50000", required: false },
   payout_day_of_month: { example: "10", required: false },
   rise_threshold: { unit: "rupiah", example: "5000000", required: false },

@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError } from "@/lib/api";
 import { affLabel } from "@/lib/affiliate-labels";
+import { COMMISSION_RULE_TYPES } from "@/lib/affiliate-rules";
 import {
   AFFILIATE_LEVELS,
   COMMISSION_CATEGORIES,
@@ -26,6 +27,7 @@ import {
   settingsToForm,
   type GlobalNumberField,
   type GlobalOptionalField,
+  type RuleForm,
   type SettingsForm,
 } from "@/lib/affiliate-settings-form";
 import { GLOBAL_HELP, LEVEL_HELP, hintKey, levelHintKey, type GlobalField } from "@/lib/affiliate-settings-help";
@@ -44,7 +46,7 @@ interface Group {
 
 const GROUPS: Group[] = [
   { title: "admin_aff_grp_link", desc: "admin_aff_grp_link_desc", fields: ["cookie_days", "binding_months", "min_extend_amount", "launch_date"] },
-  { title: "admin_aff_grp_wait", desc: "admin_aff_grp_wait_desc", fields: ["digital_wait_days", "physical_received_days", "physical_wait_days"] },
+  { title: "admin_aff_grp_wait", desc: "admin_aff_grp_wait_desc", fields: ["digital_wait_days", "physical_wait_days"] },
   { title: "admin_aff_grp_payout", desc: "admin_aff_grp_payout_desc", fields: ["min_payout", "payout_day_of_month", "freeze_max_days", "adjustment_threshold"] },
   { title: "admin_aff_grp_level", desc: "admin_aff_grp_level_desc", fields: ["eval_day", "silver_threshold", "gold_threshold"] },
   { title: "admin_aff_grp_signup", desc: "admin_aff_grp_signup_desc", fields: ["daily_registration_cap"] },
@@ -108,8 +110,17 @@ function SettingsContent() {
   const setOptional = (key: GlobalOptionalField, v: string) => setForm({ ...form, optional: { ...form.optional, [key]: v } });
   const setLevelField = (level: string, key: keyof SettingsForm["levels"][string]["fields"], v: string) =>
     setForm({ ...form, levels: { ...form.levels, [level]: { ...form.levels[level], fields: { ...form.levels[level].fields, [key]: v } } } });
-  const setLevelPct = (level: string, category: string, v: string) =>
-    setForm({ ...form, levels: { ...form.levels, [level]: { ...form.levels[level], pct: { ...form.levels[level].pct, [category]: v } } } });
+  const setLevelRule = (level: string, category: string, patch: Partial<RuleForm>) =>
+    setForm({
+      ...form,
+      levels: {
+        ...form.levels,
+        [level]: {
+          ...form.levels[level],
+          rules: { ...form.levels[level].rules, [category]: { ...form.levels[level].rules[category], ...patch } },
+        },
+      },
+    });
 
   const fieldLabel = (key: string) => t(`admin_aff_f_${key}` as I18nKey);
 
@@ -134,6 +145,7 @@ function SettingsContent() {
         hint={t(hintKey(key))}
         help={help}
         value={optional ? form.optional[key as GlobalOptionalField] : form.numbers[key as GlobalNumberField]}
+        disabled={key === "adjustment_threshold"}
         onChange={(v) => (optional ? setOptional(key as GlobalOptionalField, v) : setNumber(key as GlobalNumberField, v))}
       />
     );
@@ -149,7 +161,7 @@ function SettingsContent() {
     }));
 
   const levelGuideFields = [
-    { column: t("admin_aff_lvl_pct"), required: false, ruleKey: "admin_aff_pct_hint" as I18nKey, example: "10" },
+    { column: t("admin_aff_lvl_pct"), required: false, ruleKey: "admin_aff_rule_hint" as I18nKey, example: "10% / Rp5.000" },
     ...LEVEL_FIELDS.map((key) => ({
       column: fieldLabel(key),
       required: LEVEL_HELP[key].required,
@@ -192,14 +204,13 @@ function SettingsContent() {
                 {group.fields.filter((key) => !(HIDDEN_NUMBER_FIELDS as readonly string[]).includes(key)).map(globalField)}
               </div>
               {group.title === "admin_aff_grp_payout" && (
-                <label className="flex items-center gap-2 text-sm text-ink-700">
-                  <input
-                    type="checkbox"
-                    checked={form.adjustmentThresholdEnabled}
-                    onChange={(e) => setForm({ ...form, adjustmentThresholdEnabled: e.target.checked })}
-                  />
-                  {fieldLabel("adjustment_threshold_enabled")}
-                </label>
+                <div className="space-y-1">
+                  <label className="flex items-center gap-2 text-sm text-ink-500">
+                    <input type="checkbox" checked={form.adjustmentThresholdEnabled} disabled readOnly />
+                    {fieldLabel("adjustment_threshold_enabled")}
+                  </label>
+                  <p className="text-xs text-ink-500">{t("admin_aff_adjustment_locked")}</p>
+                </div>
               )}
             </section>
           ))}
@@ -217,16 +228,16 @@ function SettingsContent() {
                 <div className="space-y-3">
                   <div>
                     <h3 className="text-sm font-semibold text-ink-900">{t("admin_aff_lvl_pct")}</h3>
-                    <p className="text-xs text-ink-500">{t("admin_aff_pct_hint")}</p>
+                    <p className="text-xs text-ink-500">{t("admin_aff_rule_hint")}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-3">
                     {COMMISSION_CATEGORIES.map((category) => (
-                      <SettingFieldCompact
+                      <RuleFieldCompact
                         key={category}
-                        id={`l-${level}-pct-${category}`}
+                        id={`l-${level}-rule-${category}`}
                         label={affLabel(t, category)}
-                        value={form.levels[level].pct[category]}
-                        onChange={(v) => setLevelPct(level, category, v)}
+                        rule={form.levels[level].rules[category]}
+                        onChange={(patch) => setLevelRule(level, category, patch)}
                       />
                     ))}
                   </div>
@@ -266,11 +277,26 @@ function globalFallback(form: SettingsForm, key: (typeof LEVEL_FIELDS)[number]):
   return form.numbers[key] || undefined;
 }
 
-function SettingFieldCompact({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) {
+function RuleFieldCompact({ id, label, rule, onChange }: { id: string; label: string; rule: RuleForm; onChange: (patch: Partial<RuleForm>) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1">
-      <Label htmlFor={id}>{`${label} (%)`}</Label>
-      <Input id={id} inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value)} />
+      <Label htmlFor={id}>{label}</Label>
+      <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-2">
+        <select
+          aria-label={`${label} ${t("admin_aff_rule_type")}`}
+          className="h-9 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900"
+          value={rule.type}
+          onChange={(e) => onChange({ type: e.target.value as RuleForm["type"] })}
+        >
+          {COMMISSION_RULE_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {t(type === "fixed" ? "admin_aff_rule_fixed" : "admin_aff_rule_percent")}
+            </option>
+          ))}
+        </select>
+        <Input id={id} inputMode="decimal" value={rule.value} onChange={(e) => onChange({ value: e.target.value })} />
+      </div>
     </div>
   );
 }
