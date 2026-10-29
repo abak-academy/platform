@@ -160,7 +160,7 @@ describe("affiliate reports", () => {
       const row = screen.getByText("2026-09").closest("tr")!;
       expect(within(row).getByText("Rp500.000")).toBeInTheDocument();
       expect(within(row).getByText("Rp20.000")).toBeInTheDocument();
-      expect(screen.getByText(/sampai 24 bulan/)).toBeInTheDocument();
+      expect(screen.getByText(/Paling banyak 24 bulan/)).toBeInTheDocument();
     });
 
     it("has no pager (it is not paged) but can be exported", async () => {
@@ -170,6 +170,36 @@ describe("affiliate reports", () => {
       fireEvent.click(screen.getByRole("button", { name: "Ekspor CSV" }));
       await waitFor(() => expect(download).toHaveBeenCalledWith("trend", period));
     });
+  });
+
+  it("says in words what each report counts, and over which time", () => {
+    const { unmount } = render(<AffiliatorsReport period={period} />);
+    expect(screen.getByText(/total dibayar sudah setelah diskon/)).toBeInTheDocument();
+    expect(screen.getByText(/Menunggu bayar adalah kondisi saat ini, tidak terikat periode/)).toBeInTheDocument();
+    unmount();
+
+    render(<SchoolsReport period={period} />);
+    expect(screen.getByText(/bukan keranjang, batal, atau kedaluwarsa/)).toBeInTheDocument();
+  });
+
+  it("explains products, promos and the trend too", () => {
+    const { unmount } = render(<ProductsReport period={period} />);
+    expect(screen.getByText(/Unit adalah jumlah siswa yang dibelikan/)).toBeInTheDocument();
+    unmount();
+
+    const promos = render(<PromosReport period={period} />);
+    expect(screen.getByText(/bertambah saat checkout walau tidak jadi dibayar/)).toBeInTheDocument();
+    promos.unmount();
+
+    render(<TrendReport period={period} />);
+    expect(screen.getByText(/total dibayar \(setelah diskon\)/)).toBeInTheDocument();
+  });
+
+  it("labels money as total paid, which is after discount", () => {
+    render(<AffiliatorsReport period={period} />);
+
+    expect(screen.getByRole("columnheader", { name: "Total dibayar" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Jumlah" })).not.toBeInTheDocument();
   });
 
   it("explains an empty report and offers a retry when loading fails", () => {

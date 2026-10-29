@@ -39,6 +39,14 @@ describe("AffiliateOrdersPage", () => {
     expect(screen.getByText("Dibayar")).toBeInTheDocument();
   });
 
+  it("calls the column the order total and explains it covers every status", () => {
+    render(<AffiliateOrdersPage />);
+
+    expect(screen.getByRole("columnheader", { name: "Total order" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Jumlah" })).not.toBeInTheDocument();
+    expect(screen.getByText(/setelah diskon untuk tiap order, apa pun statusnya/)).toBeInTheDocument();
+  });
+
   it("links to a new purchase", () => {
     render(<AffiliateOrdersPage />);
 

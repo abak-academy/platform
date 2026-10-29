@@ -47,7 +47,7 @@ export default function AffiliateOrdersPage() {
     { key: "school", header: t("aff_th_school"), cell: (r) => r.school_name ?? "-" },
     { key: "seats", header: t("aff_th_students"), align: "right", cell: (r) => r.participant_count },
     { key: "promo", header: t("aff_th_promo"), cell: (r) => r.promo_code ?? "-" },
-    { key: "total", header: t("aff_th_amount"), align: "right", cell: (r) => formatRupiah(r.total) },
+    { key: "total", header: t("aff_th_order_total"), align: "right", cell: (r) => formatRupiah(r.total) },
     { key: "status", header: t("th_status"), cell: (r) => statusLabel(r.status) },
   ];
 
@@ -64,6 +64,7 @@ export default function AffiliateOrdersPage() {
         }
       />
       <AffiliatorNotice />
+      <p className="text-sm text-ink-600">{t("aff_orders_total_note")}</p>
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">

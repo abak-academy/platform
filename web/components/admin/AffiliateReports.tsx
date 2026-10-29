@@ -70,9 +70,11 @@ interface PagedProps<T> {
   q?: string;
   inactive?: boolean;
   toolbar?: React.ReactNode;
+  /** What this report counts and over which time, shown above the table. */
+  intro: string;
 }
 
-function PagedReport<T>({ name, period, columns, rowKey, empty, q, inactive, toolbar }: PagedProps<T>) {
+function PagedReport<T>({ name, period, columns, rowKey, empty, q, inactive, toolbar, intro }: PagedProps<T>) {
   const { t } = useTranslation();
   const [limit, setLimit] = useState(20);
   const paging = useOffsetPaging([name, period.from, period.to, q, inactive, limit].join("|"), limit);
@@ -83,6 +85,7 @@ function PagedReport<T>({ name, period, columns, rowKey, empty, q, inactive, too
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-ink-600">{intro}</p>
       <div className="flex flex-wrap items-center gap-3">
         {toolbar}
         <div className="ml-auto">
@@ -188,6 +191,7 @@ export function AffiliatorsReport({ period }: { period: PeriodRange }) {
         columns={columns}
         rowKey={(r) => r.affiliator_id}
         empty={t("aff_admin_empty")}
+        intro={t("aff_report_desc_affiliators")}
         q={q}
         inactive={inactive}
         toolbar={
@@ -221,18 +225,16 @@ export function SchoolsReport({ period }: { period: PeriodRange }) {
     { key: "discount", header: t("aff_stat_discount"), align: "right", cell: (r) => formatRupiah(r.discount_total) },
   ];
   return (
-    <div className="space-y-2">
-      <p className="text-xs text-ink-600">{t("aff_report_schools_note")}</p>
-      <PagedReport<SchoolReportRow>
-        name="schools"
-        period={period}
-        columns={columns}
-        rowKey={(r) => r.school_id}
-        empty={t("aff_empty_schools")}
-        q={q}
-        toolbar={<SearchBox value={search} onChange={setSearch} label={t("aff_report_search_school")} />}
-      />
-    </div>
+    <PagedReport<SchoolReportRow>
+      name="schools"
+      period={period}
+      columns={columns}
+      rowKey={(r) => r.school_id}
+      empty={t("aff_empty_schools")}
+      intro={t("aff_report_desc_schools")}
+      q={q}
+      toolbar={<SearchBox value={search} onChange={setSearch} label={t("aff_report_search_school")} />}
+    />
   );
 }
 
@@ -254,6 +256,7 @@ export function ProductsReport({ period }: { period: PeriodRange }) {
       columns={columns}
       rowKey={(r) => `${r.school_id}:${r.product_id}`}
       empty={t("aff_empty_sales")}
+      intro={t("aff_report_desc_products")}
       q={q}
       toolbar={<SearchBox value={search} onChange={setSearch} label={t("aff_report_search_product")} />}
     />
@@ -299,6 +302,7 @@ export function PromosReport({ period }: { period: PeriodRange }) {
       columns={columns}
       rowKey={(p) => p.code}
       empty={t("aff_promos_empty")}
+      intro={t("aff_report_desc_promos")}
       q={q}
       toolbar={<SearchBox value={search} onChange={setSearch} label={t("aff_report_search_promo")} />}
     />
@@ -319,11 +323,9 @@ export function TrendReport({ period }: { period: PeriodRange }) {
   ];
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <p className="text-xs text-ink-600">{t("aff_report_trend_note")}</p>
-        <div className="ml-auto">
-          <ExportButton name="trend" params={period} />
-        </div>
+      <p className="text-sm text-ink-600">{t("aff_report_desc_trend")}</p>
+      <div className="flex justify-end">
+        <ExportButton name="trend" params={period} />
       </div>
       {trend.isError ? (
         <ReportError onRetry={() => trend.refetch()} />
