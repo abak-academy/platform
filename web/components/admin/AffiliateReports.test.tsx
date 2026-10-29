@@ -75,12 +75,44 @@ describe("affiliate reports", () => {
       expect(last("affiliators")).toMatchObject({ q: "bela", offset: 0 });
     });
 
-    it("filters to affiliators with no activity", () => {
-      render(<AffiliatorsReport period={period} />);
+    const openFilters = () => fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
-      fireEvent.click(screen.getByLabelText("Hanya yang tanpa aktivitas"));
+    it("keeps the no-activity filter in a Filters popover, not loose in the toolbar", () => {
+      render(<AffiliatorsReport period={period} />);
+      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Filter" })).toBeInTheDocument();
+
+      openFilters();
+
+      const box = screen.getByRole("checkbox", { name: /Hanya yang tanpa aktivitas/ });
+      expect(box).not.toBeChecked();
+      expect(screen.getByText("Affiliator yang tidak membuat satu pun order pada periode terpilih.")).toBeInTheDocument();
+    });
+
+    it("filters to affiliators with no activity, shows it as a chip and counts it on the button", () => {
+      render(<AffiliatorsReport period={period} />);
+      openFilters();
+
+      fireEvent.click(screen.getByRole("checkbox", { name: /Hanya yang tanpa aktivitas/ }));
 
       expect(last("affiliators")).toMatchObject({ inactive: true, offset: 0 });
+      expect(screen.getByRole("group", { name: "Filter aktif" })).toHaveTextContent("Hanya yang tanpa aktivitas");
+      expect(screen.getByRole("button", { name: "Filter (1)" })).toBeInTheDocument();
+    });
+
+    it("clears the filter from its chip, and from Reset in the popover", () => {
+      render(<AffiliatorsReport period={period} />);
+      openFilters();
+      fireEvent.click(screen.getByRole("checkbox", { name: /Hanya yang tanpa aktivitas/ }));
+
+      fireEvent.click(screen.getByRole("button", { name: /Hapus filter: Hanya yang tanpa aktivitas/ }));
+      expect(last("affiliators").inactive).toBeUndefined();
+      expect(screen.queryByRole("group", { name: "Filter aktif" })).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("checkbox", { name: /Hanya yang tanpa aktivitas/ }));
+      expect(last("affiliators")).toMatchObject({ inactive: true });
+      fireEvent.click(screen.getByRole("button", { name: "Reset filter" }));
+      expect(last("affiliators").inactive).toBeUndefined();
     });
 
     it("opens the detail of one affiliator", () => {
@@ -93,7 +125,8 @@ describe("affiliate reports", () => {
 
     it("exports the whole report for the same period, search and flag, without paging", async () => {
       render(<AffiliatorsReport period={period} />);
-      fireEvent.click(screen.getByLabelText("Hanya yang tanpa aktivitas"));
+      fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+      fireEvent.click(screen.getByRole("checkbox", { name: /Hanya yang tanpa aktivitas/ }));
       fireEvent.click(screen.getByRole("button", { name: "Ekspor CSV" }));
 
       await waitFor(() => expect(download).toHaveBeenCalledWith("affiliators", { from: "2026-10-01", to: "2026-10-31", q: undefined, inactive: true }));

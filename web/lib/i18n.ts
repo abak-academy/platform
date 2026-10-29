@@ -6,6 +6,9 @@ export type Lang = "id" | "en";
 
 export const DICT = {
   id: {
+    aff_report_show: "Tampilkan hasil",
+    aff_report_inactive_hint: "Affiliator yang tidak membuat satu pun order pada periode terpilih.",
+    aff_report_filter_title: "Filter laporan affiliator",
     aff_report_desc_trend: "Per bulan (WIB): order dibayar, unit, total dibayar (setelah diskon), diskon promo, dan jumlah affiliator yang bertransaksi. Paling banyak 24 bulan terakhir dalam periode.",
     aff_report_desc_promos: "Promo khusus affiliator dan promo lain yang dipakai di order affiliator. Terpakai / batas dihitung seumur hidup dari semua pemakai dan bertambah saat checkout walau tidak jadi dibayar. Order dan diskon hanya dari order affiliator yang dibayar pada periode.",
     aff_report_desc_products: "Produk yang dibelikan per sekolah pada periode (order dibayar, tidak di-refund). Unit adalah jumlah siswa yang dibelikan; Order adalah jumlah order.",
@@ -2041,6 +2044,9 @@ export const DICT = {
       "Unggah ulang dengan code yang sama untuk memperbarui sekolah. school_types yang kosong atau tidak disertakan tetap mempertahankan nilai tersimpan.",
   },
   en: {
+    aff_report_show: "Show results",
+    aff_report_inactive_hint: "Affiliates that created no order in the chosen period.",
+    aff_report_filter_title: "Filter affiliate report",
     aff_report_desc_trend: "Per month (WIB): paid orders, units, total paid (after discount), promo discount, and affiliates that transacted. Up to the last 24 months in the period.",
     aff_report_desc_promos: "Affiliate-only promos and any other promo used on an affiliate order. Used / limit counts all time across every user and rises at checkout even if the order is never paid. Orders and discount are affiliate orders paid in the period only.",
     aff_report_desc_products: "Products bought per school in the period (paid, not refunded). Units is the number of students covered; Orders is the number of orders.",

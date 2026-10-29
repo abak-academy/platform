@@ -186,7 +186,7 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   {
     titleKey: "nav_group_affiliate",
     items: [
-      { labelKey: "aff_nav_affiliators", href: "/admin/affiliators", icon: Handshake },
+      { labelKey: "aff_nav_affiliators", href: "/admin/affiliators", icon: Handshake, exact: true },
       { labelKey: "aff_nav_reports", href: "/admin/affiliators/reports", icon: BarChart3 },
     ],
   },

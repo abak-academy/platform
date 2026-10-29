@@ -86,4 +86,18 @@ describe("admin navigation", () => {
     expect(redirectForRole("affiliator")).toBe("/admin");
     expect(loginPathForRole("affiliator")).toBe("/admin/login");
   });
+
+  // The sidebar marks an item active for its whole sub-tree unless it is exact, so a
+  // parent link next to its own child would light up together with it.
+  it("never lets a sidebar item stay lit on a sibling's page", () => {
+    for (const [role, groups] of Object.entries(NAV_CONFIG)) {
+      const items = groups.flatMap((g) => g.items);
+      for (const parent of items) {
+        for (const child of items) {
+          if (parent === child || parent.exact) continue;
+          expect(child.href.startsWith(parent.href + "/"), `${role}: "${parent.href}" would stay active on "${child.href}"`).toBe(false);
+        }
+      }
+    }
+  });
 });

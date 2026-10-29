@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Search, X } from "lucide-react";
+import { Download, Search, SlidersHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { AffiliatorDetailDialog } from "@/components/admin/AffiliatorDialogs";
 import type { PeriodRange } from "@/components/admin/PeriodBar";
 import { TablePager } from "@/components/admin/TablePager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { downloadAffiliateReportCsv, useAffiliateReport, useAffiliateTrend, type ReportParams } from "@/lib/hooks/admin-affiliators";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useOffsetPaging } from "@/lib/hooks/use-offset-paging";
@@ -70,11 +72,13 @@ interface PagedProps<T> {
   q?: string;
   inactive?: boolean;
   toolbar?: React.ReactNode;
+  /** Removable chips for the active filters, shown under the toolbar. */
+  chips?: React.ReactNode;
   /** What this report counts and over which time, shown above the table. */
   intro: string;
 }
 
-function PagedReport<T>({ name, period, columns, rowKey, empty, q, inactive, toolbar, intro }: PagedProps<T>) {
+function PagedReport<T>({ name, period, columns, rowKey, empty, q, inactive, toolbar, chips, intro }: PagedProps<T>) {
   const { t } = useTranslation();
   const [limit, setLimit] = useState(20);
   const paging = useOffsetPaging([name, period.from, period.to, q, inactive, limit].join("|"), limit);
@@ -92,6 +96,7 @@ function PagedReport<T>({ name, period, columns, rowKey, empty, q, inactive, too
           <ExportButton name={name} params={{ ...period, q: q || undefined, inactive: inactive || undefined }} />
         </div>
       </div>
+      {chips}
       {report.isError ? (
         <ReportError onRetry={() => report.refetch()} />
       ) : (
@@ -197,11 +202,51 @@ export function AffiliatorsReport({ period }: { period: PeriodRange }) {
         toolbar={
           <>
             <SearchBox value={search} onChange={setSearch} label={t("aff_admin_search")} />
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={inactive} onChange={(e) => setInactive(e.target.checked)} />
-              {t("aff_report_inactive_only")}
-            </label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="h-9" aria-label={`${t("aff_filters")}${inactive ? " (1)" : ""}`}>
+                  <SlidersHorizontal className="size-4" aria-hidden />
+                  {t("aff_filters")}
+                  {inactive && <span className="tabular-nums">1</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="admin-shell w-[min(24rem,calc(100vw-2rem))]" aria-label={t("aff_report_filter_title")}>
+                <div className="space-y-3">
+                  <h2 className="font-semibold">{t("aff_report_filter_title")}</h2>
+                  <label
+                    htmlFor="aff-report-inactive"
+                    className="flex cursor-pointer items-start gap-3 rounded-[12px] border border-line p-3 transition-colors hover:bg-surface-2 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-brand-50"
+                  >
+                    <Checkbox id="aff-report-inactive" checked={inactive} onCheckedChange={(v) => setInactive(v === true)} className="mt-0.5" />
+                    <span className="grid gap-0.5">
+                      <span className="text-sm font-medium">{t("aff_report_inactive_only")}</span>
+                      <span className="text-xs text-ink-600">{t("aff_report_inactive_hint")}</span>
+                    </span>
+                  </label>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+                    <Button variant="ghost" onClick={() => setInactive(false)}>
+                      {t("aff_reset_filters")}
+                    </Button>
+                    <PopoverClose asChild>
+                      <Button>{t("aff_report_show")}</Button>
+                    </PopoverClose>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </>
+        }
+        chips={
+          inactive && (
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("aff_active_filters")}>
+              <span className="md-chip md-chip-primary gap-1">
+                {t("aff_report_inactive_only")}
+                <Button variant="ghost" size="icon" className="size-8" aria-label={`${t("aff_remove_filter")}: ${t("aff_report_inactive_only")}`} onClick={() => setInactive(false)}>
+                  <X className="size-4" aria-hidden />
+                </Button>
+              </span>
+            </div>
+          )
         }
       />
       <AffiliatorDetailDialog id={detail} onClose={() => setDetail(null)} />

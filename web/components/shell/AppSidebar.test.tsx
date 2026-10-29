@@ -4,10 +4,11 @@ import React from "react";
 import { AppSidebar } from "./AppSidebar";
 
 const replace = vi.fn();
+let pathname = "/dashboard";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace }),
-  usePathname: () => "/dashboard",
+  usePathname: () => pathname,
 }));
 
 // Runs onSettled the way the real mutation does, so the redirect the component
@@ -164,5 +165,29 @@ describe("AppSidebar — logout destination", () => {
     clickLogout();
 
     expect(replace).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AppSidebar active item", () => {
+  const isLit = (name: string) => screen.getByRole("link", { name }).className.includes("bg-brand-50 font-semibold");
+
+  beforeEach(() => {
+    authStore = { user: { name: "Super", role: "super_admin" } };
+  });
+
+  it("lights only Laporan, not Affiliator, on the reports page", () => {
+    pathname = "/admin/affiliators/reports";
+    render(<AppSidebar role="super_admin" />);
+
+    expect(isLit("aff_nav_reports")).toBe(true);
+    expect(isLit("aff_nav_affiliators")).toBe(false);
+  });
+
+  it("lights Affiliator on its own page", () => {
+    pathname = "/admin/affiliators";
+    render(<AppSidebar role="super_admin" />);
+
+    expect(isLit("aff_nav_affiliators")).toBe(true);
+    expect(isLit("aff_nav_reports")).toBe(false);
   });
 });
