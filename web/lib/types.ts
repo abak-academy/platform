@@ -1646,6 +1646,20 @@ export interface TrendReportRow {
   active_affiliators: number;
 }
 
+/** One school assigned to one affiliator (a row of the "Daftar sekolah" tab). */
+export interface AffiliatorSchoolRow {
+  affiliator_id: string;
+  affiliator_name: string;
+  affiliator_email: string | null;
+  affiliator_status: string;
+  school_id: string;
+  school_name: string;
+  school_code: string;
+  school_npsn: string | null;
+  school_status: string;
+  student_count: number;
+}
+
 export type AffiliateReportName = "affiliators" | "schools" | "products" | "promos" | "trend";
 
 export interface AffiliatorSchoolCount {

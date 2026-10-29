@@ -380,3 +380,49 @@ func TestAffiliateReportRoutes_AreSuperAdminOnlyAndValidateInput(t *testing.T) {
 		t.Errorf("export = %d %q %q, want a named CSV attachment", rec.Code, rec.Header().Get("Content-Type"), rec.Header().Get("Content-Disposition"))
 	}
 }
+
+func TestAffiliatorSchoolListRoutes_AreSuperAdminOnlyAndValidateInput(t *testing.T) {
+	f := newAffiliatorStudentsFixture(t)
+	super := promoActiveToken(t, f.env, uuid.NewString(), service.RoleSuperAdmin)
+	get := func(token, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1"+path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		f.env.e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	for _, path := range []string{"/admin/system/affiliators/schools", "/admin/system/affiliators/schools/export"} {
+		if rec := get(f.token, path); rec.Code != http.StatusForbidden {
+			t.Errorf("affiliator on %s: want 403, got %d", path, rec.Code)
+		}
+	}
+
+	rec := get(super, "/admin/system/affiliators/schools?limit=5&affiliator_id="+f.affiliator)
+	var page struct {
+		Data []struct {
+			SchoolID string `json:"school_id"`
+		} `json:"data"`
+		Total int `json:"total"`
+		Limit int `json:"limit"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("list: %d %v body=%s", rec.Code, err, rec.Body.String())
+	}
+	if page.Limit != 5 || page.Total != 1 || len(page.Data) != 1 || page.Data[0].SchoolID != f.ownSchool {
+		t.Errorf("page = %+v, want the one assigned school of the fixture affiliator", page)
+	}
+
+	if rec := get(super, "/admin/system/affiliators/schools?school_id=nope"); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad school id: want 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec := get(super, "/admin/system/affiliators/schools/export?affiliator_id=nope"); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad affiliator id on export: want 400, got %d", rec.Code)
+	}
+
+	rec = get(super, "/admin/system/affiliators/schools/export?affiliator_id="+f.affiliator)
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/csv") ||
+		!strings.Contains(rec.Header().Get("Content-Disposition"), "sekolah-affiliator.csv") || !strings.Contains(rec.Body.String(), "kode sekolah") {
+		t.Errorf("export = %d %q %q, want a CSV attachment", rec.Code, rec.Header().Get("Content-Type"), rec.Header().Get("Content-Disposition"))
+	}
+}

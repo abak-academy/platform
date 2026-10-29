@@ -107,7 +107,7 @@ so scope code compares the role (`claims.Role == RoleAffiliator`), never the cap
   account's first line, in the result; the input CSV is deleted after the job because it may hold
   passwords (`service/affiliator_bulk.go`, `worker/affiliator_bulk.go`).
 - **Menu and reports.** The affiliator menu is a group of its own in the super-admin sidebar
-  (`/admin/affiliators` with Daftar and Promote tabs, `/admin/affiliators/reports`), not part of
+  (`/admin/affiliators` with Daftar affiliator, Daftar sekolah (which schools each affiliator has, searchable, filterable, CSV export) and Promote tabs, `/admin/affiliators/reports`), not part of
   System. Reports (`service/affiliate_report.go`, `repository/affiliate_report.go`): per
   affiliator, per school (with coverage), best sellers per school, promo usage and monthly trend,
   each with a period, paging (trend excepted) and a CSV export. "Paid" is `paid_at` set and not

@@ -356,6 +356,25 @@ test.describe.serial("affiliate program", () => {
     expect(none.body.data).toHaveLength(0);
   });
 
+  test("the super admin sees which schools the affiliator has and exports the list", async ({ page, context, request }) => {
+    await loginRealAdmin(context, request);
+    await page.goto("/admin/affiliators");
+
+    await page.getByRole("tab", { name: "Daftar sekolah" }).click();
+    await page.getByRole("searchbox", { name: "Cari affiliator atau sekolah" }).fill(ctx.affiliatorEmail);
+    const row = page.locator("tr", { hasText: ctx.schoolA.name });
+    await expect(row).toBeVisible();
+    await expect(row).toContainText(ctx.affiliatorEmail);
+
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Ekspor CSV" }).click()]);
+    expect(download.suggestedFilename()).toBe("sekolah-affiliator.csv");
+    const chunks: Buffer[] = [];
+    for await (const chunk of await download.createReadStream()) chunks.push(chunk as Buffer);
+    const csv = Buffer.concat(chunks).toString("utf8");
+    expect(csv.startsWith("\uFEFFaffiliator,email")).toBeTruthy();
+    expect(csv).toContain(ctx.schoolA.name);
+  });
+
   test("the super admin deactivates the affiliator from the list, and only that action is offered", async ({ page, context, request }) => {
     await loginRealAdmin(context, request);
     await page.goto("/admin/affiliators");

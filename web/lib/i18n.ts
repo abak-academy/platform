@@ -6,6 +6,16 @@ export type Lang = "id" | "en";
 
 export const DICT = {
   id: {
+    aff_schools_empty: "Tidak ada sekolah yang ditugaskan ke affiliator.",
+    aff_schools_th_affiliator: "Affiliator",
+    aff_schools_th_school: "Sekolah",
+    aff_schools_all_schools: "Semua sekolah",
+    aff_schools_filter_school: "Sekolah",
+    aff_schools_all_affiliators: "Semua affiliator",
+    aff_schools_filter_affiliator: "Affiliator",
+    aff_schools_filter_title: "Filter daftar sekolah",
+    aff_schools_search: "Cari affiliator atau sekolah",
+    aff_admin_tab_schools: "Daftar sekolah",
     aff_report_show: "Tampilkan hasil",
     aff_report_inactive_hint: "Affiliator yang tidak membuat satu pun order pada periode terpilih.",
     aff_report_filter_title: "Filter laporan affiliator",
@@ -2039,6 +2049,16 @@ export const DICT = {
       "Unggah ulang dengan code yang sama untuk memperbarui sekolah. school_types yang kosong atau tidak disertakan tetap mempertahankan nilai tersimpan.",
   },
   en: {
+    aff_schools_empty: "No schools are assigned to affiliates.",
+    aff_schools_th_affiliator: "Affiliate",
+    aff_schools_th_school: "School",
+    aff_schools_all_schools: "All schools",
+    aff_schools_filter_school: "School",
+    aff_schools_all_affiliators: "All affiliates",
+    aff_schools_filter_affiliator: "Affiliate",
+    aff_schools_filter_title: "Filter school list",
+    aff_schools_search: "Search affiliate or school",
+    aff_admin_tab_schools: "School list",
     aff_report_show: "Show results",
     aff_report_inactive_hint: "Affiliates that created no order in the chosen period.",
     aff_report_filter_title: "Filter affiliate report",

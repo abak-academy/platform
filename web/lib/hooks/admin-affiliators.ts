@@ -9,6 +9,7 @@ import type {
   AffiliatorDetail,
   AffiliatorInput,
   AffiliatorPage,
+  AffiliatorSchoolRow,
   AffiliateReportName,
   PromotableAdmin,
   ReportPage,
@@ -22,6 +23,7 @@ export const adminAffiliatorsKeys = {
   list: (p: ListParams) => [...adminAffiliatorsKeys.all, "list", p.status ?? "", p.q ?? "", p.cursor ?? "", p.limit ?? 20] as const,
   promotable: (p: ListParams) => [...adminAffiliatorsKeys.all, "promotable", p.q ?? "", p.cursor ?? "", p.limit ?? 20] as const,
   detail: (id: string) => [...adminAffiliatorsKeys.all, "detail", id] as const,
+  schools: (p: SchoolListParams) => [...adminAffiliatorsKeys.all, "schools", p] as const,
   report: (name: string, p: ReportParams) => [...adminAffiliatorsKeys.all, "report", name, p] as const,
 };
 
@@ -179,6 +181,53 @@ export async function downloadAffiliateReportCsv(name: AffiliateReportName, p: R
   const a = document.createElement("a");
   a.href = url;
   a.download = `laporan-affiliator-${name}-${p.from || "semua-waktu"}_${p.to || "semua-waktu"}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export interface SchoolListParams {
+  q?: string;
+  affiliatorId?: string;
+  schoolId?: string;
+  limit?: number;
+  offset?: number;
+}
+
+function schoolListQuery(p: SchoolListParams, paged: boolean): string {
+  const params = new URLSearchParams();
+  if (p.q) params.set("q", p.q);
+  if (p.affiliatorId) params.set("affiliator_id", p.affiliatorId);
+  if (p.schoolId) params.set("school_id", p.schoolId);
+  if (paged) {
+    params.set("limit", String(p.limit ?? 20));
+    params.set("offset", String(p.offset ?? 0));
+  }
+  return params.toString();
+}
+
+/** Which schools each affiliator has, one row per assignment: GET /admin/system/affiliators/schools. */
+export function useAffiliatorSchools(p: SchoolListParams) {
+  return useQuery({
+    queryKey: adminAffiliatorsKeys.schools(p),
+    queryFn: () => authFetch<ReportPage<AffiliatorSchoolRow>>(`/admin/system/affiliators/schools?${schoolListQuery(p, true)}`),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Downloads the same list as CSV, whole and unpaged. */
+export async function downloadAffiliatorSchoolsCsv(p: SchoolListParams): Promise<void> {
+  const { useAuthStore } = await import("@/stores/auth");
+  const token = useAuthStore.getState().token;
+  const res = await fetch(`${API_BASE}/admin/system/affiliators/schools/export?${schoolListQuery(p, false)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new ApiError(`HTTP_${res.status}`, `Failed to download the school list: ${res.status}`, res.status);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "sekolah-affiliator.csv";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

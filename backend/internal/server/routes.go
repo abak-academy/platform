@@ -368,6 +368,8 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminSystem.GET("/audit", h.AdminListAuditLog)
 	adminSystem.GET("/affiliators", h.AdminListAffiliators)
 	adminSystem.GET("/affiliators/promotable", h.AdminListPromotableAdmins)
+	adminSystem.GET("/affiliators/schools", h.AdminListAffiliatorSchools)
+	adminSystem.GET("/affiliators/schools/export", h.AdminExportAffiliatorSchools)
 	adminSystem.GET("/affiliators/:id", h.AdminGetAffiliator)
 	adminSystem.POST("/affiliators", h.AdminCreateAffiliator)
 	adminSystem.GET("/affiliate-reports/affiliators", h.AdminAffiliatorReport)

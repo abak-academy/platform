@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 
 	"github.com/labstack/echo/v4"
@@ -231,4 +232,44 @@ func (h *Handler) AffiliatorListOrders(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"data": rows, "next_cursor": next})
+}
+
+func affiliatorSchoolQuery(c echo.Context) repository.AffiliatorSchoolQuery {
+	q := repository.AffiliatorSchoolQuery{
+		Q:            c.QueryParam("q"),
+		AffiliatorID: c.QueryParam("affiliator_id"),
+		SchoolID:     c.QueryParam("school_id"),
+		Limit:        20,
+	}
+	if l := c.QueryParam("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			q.Limit = min(n, 100)
+		}
+	}
+	if o := c.QueryParam("offset"); o != "" {
+		if n, err := strconv.Atoi(o); err == nil && n > 0 {
+			q.Offset = n
+		}
+	}
+	return q
+}
+
+// AdminListAffiliatorSchools lists which schools each affiliator has, paged.
+func (h *Handler) AdminListAffiliatorSchools(c echo.Context) error {
+	q := affiliatorSchoolQuery(c)
+	rows, total, err := h.svc.ListAffiliatorSchools(c.Request().Context(), q)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": rows, "total": total, "limit": q.Limit, "offset": q.Offset})
+}
+
+// AdminExportAffiliatorSchools serves the same list, unpaged, as a CSV attachment.
+func (h *Handler) AdminExportAffiliatorSchools(c echo.Context) error {
+	data, err := h.svc.ExportAffiliatorSchools(c.Request().Context(), affiliatorSchoolQuery(c))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="sekolah-affiliator.csv"`)
+	return c.Blob(http.StatusOK, "text/csv; charset=utf-8", data)
 }
