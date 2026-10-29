@@ -322,15 +322,17 @@ func (s *Service) ListAffiliatorStudents(ctx context.Context, affiliatorID, scho
 	if err != nil {
 		return nil, "", repository.StudentAdminCounts{}, err
 	}
+	filter := repository.StudentFilter{
+		Status: statusFilter, Cursor: cursor, Limit: limit, Q: q, Grade: grade, Jenjang: jenjang,
+		SchoolIDs: ids,
+	}
 	if schoolID != "" {
 		if !slices.Contains(ids, strings.ToLower(schoolID)) {
 			return nil, "", repository.StudentAdminCounts{}, ErrAffiliatorSchoolNotAllowed
 		}
-		ids = []string{strings.ToLower(schoolID)}
-	}
-	filter := repository.StudentFilter{
-		Status: statusFilter, Cursor: cursor, Limit: limit, Q: q, Grade: grade, Jenjang: jenjang,
-		SchoolIDs: ids,
+		filter.SchoolIDs = []string{strings.ToLower(schoolID)}
+	} else {
+		filter.IncludeNoSchoolOf = affiliatorID
 	}
 	if registeredByMe {
 		filter.RegisteredBy = affiliatorID

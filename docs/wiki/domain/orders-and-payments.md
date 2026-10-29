@@ -140,7 +140,8 @@ affiliator; the students are `order_participant` rows, so fulfilment fans out to
 - Dashboard figures (`repository/affiliator_dashboard.go`) and the super-admin reports
   (`repository/affiliate_report.go`) count an order as paid when `paid_at` is set and it was not
   refunded; open carts never show in lists or totals. An affiliator order belongs to the school of
-  its participants (an order is single-school), which is how the per-school report attributes it.
+  its participants. One order can span several schools: the per-school report splits its total and
+  discount between them by head count, and the order list shows every school involved.
 
 ## Order → access / shipping fan-out
 

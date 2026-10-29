@@ -2,8 +2,8 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -14,19 +14,21 @@ import (
 
 // AffiliatorOrderPreview is the response for PreviewAffiliatorOrder.
 type AffiliatorOrderPreview struct {
-	NetNewCount int                 `json:"net_new_count"`
-	Excluded    []BulkOrderExcluded `json:"excluded,omitempty"`
-	UnitPrice   float64             `json:"unit_price"`
-	Subtotal    float64             `json:"subtotal"`
-	Discount    float64             `json:"discount"`
-	Total       float64             `json:"total"`
-	PromoCode   string              `json:"promo_code,omitempty"`
+	NetNewCount int                                 `json:"net_new_count"`
+	Excluded    []BulkOrderExcluded                 `json:"excluded,omitempty"`
+	Students    []repository.AffiliatorOrderStudent `json:"students"`
+	UnitPrice   float64                             `json:"unit_price"`
+	Subtotal    float64                             `json:"subtotal"`
+	Discount    float64                             `json:"discount"`
+	Total       float64                             `json:"total"`
+	PromoCode   string                              `json:"promo_code,omitempty"`
 }
 
 type affiliatorOrderPlan struct {
 	product   model.Product
 	productID uuid.UUID
 	netNew    []uuid.UUID
+	students  []repository.AffiliatorOrderStudent
 	excluded  []BulkOrderExcluded
 	subtotal  float64
 	promo     *PromoValidation
@@ -59,14 +61,37 @@ func (s *Service) ListAffiliatorProducts(ctx context.Context) ([]model.Product, 
 	return out, nil
 }
 
-func (s *Service) planAffiliatorOrder(ctx context.Context, affiliatorID, schoolID, productID string, selector ParticipantSelector, promoCode string) (affiliatorOrderPlan, error) {
+func (s *Service) planAffiliatorOrder(ctx context.Context, affiliatorID, productID string, studentIDs []string, promoCode string) (affiliatorOrderPlan, error) {
+	if len(studentIDs) == 0 {
+		return affiliatorOrderPlan{}, ErrEmptySelector
+	}
 	allowed, err := s.AffiliatorSchoolIDs(ctx, affiliatorID)
 	if err != nil {
 		return affiliatorOrderPlan{}, err
 	}
-	schoolID = strings.ToLower(schoolID)
-	if schoolID == "" || !slices.Contains(allowed, schoolID) {
-		return affiliatorOrderPlan{}, ErrAffiliatorSchoolNotAllowed
+	participantIDs := make([]uuid.UUID, 0, len(studentIDs))
+	seen := make(map[uuid.UUID]bool, len(studentIDs))
+	for _, id := range studentIDs {
+		sid, err := parseUUID(id)
+		if err != nil {
+			return affiliatorOrderPlan{}, ErrInvalidUUID
+		}
+		if seen[sid] {
+			return affiliatorOrderPlan{}, fmt.Errorf("%w: %s", ErrDuplicateParticipant, id)
+		}
+		seen[sid] = true
+		participantIDs = append(participantIDs, sid)
+	}
+	students, err := s.storeRepo.ListAffiliatorOrderStudents(ctx, participantIDs, allowed, affiliatorID)
+	if err != nil {
+		return affiliatorOrderPlan{}, err
+	}
+	if len(students) != len(participantIDs) {
+		return affiliatorOrderPlan{}, ErrCrossSchoolStudent
+	}
+	byID := make(map[uuid.UUID]repository.AffiliatorOrderStudent, len(students))
+	for _, st := range students {
+		byID[st.ID] = st
 	}
 
 	pUUID, err := parseUUID(productID)
@@ -81,10 +106,6 @@ func (s *Service) planAffiliatorOrder(ctx context.Context, affiliatorID, schoolI
 		return affiliatorOrderPlan{}, ErrAffiliatorProductType
 	}
 
-	participantIDs, err := s.ResolveSchoolParticipantSet(ctx, schoolID, selector)
-	if err != nil {
-		return affiliatorOrderPlan{}, err
-	}
 	owned, err := s.studentsOwningProduct(ctx, product.Type, pUUID, participantIDs)
 	if err != nil {
 		return affiliatorOrderPlan{}, err
@@ -94,13 +115,10 @@ func (s *Service) planAffiliatorOrder(ctx context.Context, affiliatorID, schoolI
 	for _, pid := range participantIDs {
 		if !owned[pid] {
 			plan.netNew = append(plan.netNew, pid)
+			plan.students = append(plan.students, byID[pid])
 			continue
 		}
-		name := ""
-		if st, _ := s.repo.GetUserByID(ctx, pid.String()); st != nil {
-			name = st.Name
-		}
-		plan.excluded = append(plan.excluded, BulkOrderExcluded{StudentID: pid.String(), Name: name, Reason: "already_owned"})
+		plan.excluded = append(plan.excluded, BulkOrderExcluded{StudentID: pid.String(), Name: byID[pid].Name, Reason: "already_owned"})
 	}
 	plan.subtotal = float64(product.Price) * float64(len(plan.netNew))
 
@@ -168,14 +186,15 @@ func (s *Service) studentsOwningProduct(ctx context.Context, productType string,
 }
 
 // PreviewAffiliatorOrder resolves who would be charged and what the promo does, without creating anything.
-func (s *Service) PreviewAffiliatorOrder(ctx context.Context, affiliatorID, schoolID, productID string, selector ParticipantSelector, promoCode string) (AffiliatorOrderPreview, error) {
-	plan, err := s.planAffiliatorOrder(ctx, affiliatorID, schoolID, productID, selector, promoCode)
+func (s *Service) PreviewAffiliatorOrder(ctx context.Context, affiliatorID, productID string, studentIDs []string, promoCode string) (AffiliatorOrderPreview, error) {
+	plan, err := s.planAffiliatorOrder(ctx, affiliatorID, productID, studentIDs, promoCode)
 	if err != nil {
 		return AffiliatorOrderPreview{}, err
 	}
 	preview := AffiliatorOrderPreview{
 		NetNewCount: len(plan.netNew),
 		Excluded:    plan.excluded,
+		Students:    plan.students,
 		UnitPrice:   float64(plan.product.Price),
 		Subtotal:    plan.subtotal,
 		Total:       plan.subtotal,
@@ -192,8 +211,8 @@ func (s *Service) PreviewAffiliatorOrder(ctx context.Context, affiliatorID, scho
 // cached preview) and creates the order with its participants in one transaction.
 // A previous unfinished bulk order of the same affiliator is cancelled so the
 // one-open-cart-per-buyer rule does not block a fresh one.
-func (s *Service) CreateAffiliatorOrder(ctx context.Context, affiliatorID, schoolID, productID string, selector ParticipantSelector, promoCode string) (model.Order, error) {
-	plan, err := s.planAffiliatorOrder(ctx, affiliatorID, schoolID, productID, selector, promoCode)
+func (s *Service) CreateAffiliatorOrder(ctx context.Context, affiliatorID, productID string, studentIDs []string, promoCode string) (model.Order, error) {
+	plan, err := s.planAffiliatorOrder(ctx, affiliatorID, productID, studentIDs, promoCode)
 	if err != nil {
 		return model.Order{}, err
 	}

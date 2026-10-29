@@ -171,13 +171,14 @@ test.describe.serial("affiliate program", () => {
     await loginAffiliatorUI(page);
     await page.goto("/admin/affiliate/orders/new");
 
-    await pickOption(page, "Sekolah", ctx.schoolA.name);
     await pickOption(page, "Produk", new RegExp(ctx.productName));
+    await page.getByLabel("Cari nama siswa").fill(ctx.studentName);
     await page.getByLabel(ctx.studentName).check();
     await page.getByLabel("Kode promo").fill(ctx.promoCode);
     await page.getByRole("button", { name: "Pratinjau" }).click();
 
     const preview = page.getByTestId("aff-preview");
+    await expect(preview).toContainText(ctx.schoolA.name);
     await expect(preview).toContainText("Rp50.000");
     await expect(preview).toContainText("-Rp50.000");
     await expect(preview).toContainText("Rp0");

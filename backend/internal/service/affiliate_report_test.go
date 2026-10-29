@@ -53,7 +53,7 @@ func TestAffiliateReports_Integration(t *testing.T) {
 		return id.String()
 	}
 	s1a, s1b, s1c, s1d := newStudent(s1), newStudent(s1), newStudent(s1), newStudent(s1)
-	s2a, _ := newStudent(s2), newStudent(s2)
+	s2a, s2b := newStudent(s2), newStudent(s2)
 
 	p1 := seedDigitalProduct(t, repo, "exam", 100000, seedExamTarget(t, repo)).String()
 	var courseTarget uuid.UUID
@@ -72,7 +72,7 @@ func TestAffiliateReports_Integration(t *testing.T) {
 
 	place := func(aff, school, product string, students []string, promoCode string) uuid.UUID {
 		t.Helper()
-		o, err := svc.CreateAffiliatorOrder(ctx, aff, school, product, ParticipantSelector{StudentIDs: students}, promoCode)
+		o, err := svc.CreateAffiliatorOrder(ctx, aff, product, students, promoCode)
 		if err != nil {
 			t.Fatalf("CreateAffiliatorOrder: %v", err)
 		}
@@ -98,6 +98,9 @@ func TestAffiliateReports_Integration(t *testing.T) {
 	setOrder(o4, `status = 'payment_expired', created_at = '2019-03-20 12:00+07'`)
 	o5 := place(a1, s1, p2, []string{s1a}, "")
 	setOrder(o5, `status = 'cancelled', cancellation_reason = 'refunded', paid_at = '2019-03-15 12:00+07', created_at = '2019-03-14 12:00+07'`)
+
+	o6 := place(a1, s1, p2, []string{s1c, s2b}, "")
+	setOrder(o6, `status = 'paid', paid_at = '2019-06-10 12:00+07', created_at = '2019-06-09 12:00+07'`)
 
 	wib := time.FixedZone("WIB", 7*3600)
 	march := repository.AffiliateReportQuery{
@@ -180,8 +183,8 @@ func TestAffiliateReports_Integration(t *testing.T) {
 		if r1.PaidOrders != 1 || r1.PaidUnits != 2 || r1.PaidAmount != 180000 || r1.DiscountTotal != 20000 {
 			t.Errorf("S1 sales = %+v, want the March order only", r1)
 		}
-		if r2.Affiliators != 2 || r2.Students != 2 || r2.CoveredStudent != 1 || r2.Unpurchased != 1 || r2.PaidOrders != 0 {
-			t.Errorf("S2 = %+v, want 1 of 2 covered by the pending order and no sale", r2)
+		if r2.Affiliators != 2 || r2.Students != 2 || r2.CoveredStudent != 2 || r2.Unpurchased != 0 || r2.PaidOrders != 0 {
+			t.Errorf("S2 = %+v, want both covered (pending March order, paid June order) and no March sale", r2)
 		}
 	})
 
@@ -241,6 +244,28 @@ func TestAffiliateReports_Integration(t *testing.T) {
 			t.Errorf("unknown report: err = %v, want ErrUnknownAffiliateReport", err)
 		}
 	})
+
+	t.Run("an order across two schools is split between them by head count", func(t *testing.T) {
+		june := repository.AffiliateReportQuery{
+			From: ptrTime(time.Date(2019, 6, 1, 0, 0, 0, 0, wib)),
+			To:   ptrTime(time.Date(2019, 7, 1, 0, 0, 0, 0, wib)),
+			Q:    tag,
+		}
+		rows, _, err := svc.AffiliateSchoolReport(ctx, june)
+		if err != nil {
+			t.Fatalf("SchoolReport: %v", err)
+		}
+		if len(rows) != 2 {
+			t.Fatalf("rows = %+v, want both schools", rows)
+		}
+		for _, r := range rows {
+			if r.PaidOrders != 1 || r.PaidUnits != 1 || r.PaidAmount != 75000 {
+				t.Errorf("%s = %+v, want 1 order, 1 unit and 75000 (half of the 150000 order)", r.SchoolName, r)
+			}
+		}
+	})
 }
 
-func ptrTime(t time.Time) *time.Time { return &t }
+func ptrTime(t time.Time) *time.Time {
+	return &t
+}

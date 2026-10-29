@@ -21,6 +21,7 @@ describe("AffiliatorNotice", () => {
     render(<AffiliatorNotice />);
 
     expect(screen.getByRole("status")).toHaveTextContent("Akun Anda dinonaktifkan");
+    expect(screen.getByRole("status").className).toContain("bg-warn-bg");
   });
 
   it("does not guess before the profile has loaded", () => {

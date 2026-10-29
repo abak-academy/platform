@@ -58,7 +58,7 @@ func TestAffiliatorDashboard_Integration(t *testing.T) {
 		t.Fatalf("AdminCreatePromoCode: %v", err)
 	}
 	promo := created.Code
-	order, err := svc.CreateAffiliatorOrder(ctx, acc.ID, school, product.String(), ParticipantSelector{StudentIDs: []string{s1.String(), s2.String()}}, promo)
+	order, err := svc.CreateAffiliatorOrder(ctx, acc.ID, product.String(), []string{s1.String(), s2.String()}, promo)
 	if err != nil {
 		t.Fatalf("CreateAffiliatorOrder: %v", err)
 	}

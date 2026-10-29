@@ -188,12 +188,19 @@ func TestAffiliatorOrders_RoutesAreScopedAndGuarded(t *testing.T) {
 	if rec := f.do(t, http.MethodGet, "/affiliates/me/products", ""); rec.Code != http.StatusOK {
 		t.Errorf("products: want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if rec := f.do(t, http.MethodPost, "/affiliates/me/orders/preview", `{"product_id":"`+uuid.NewString()+`"}`); rec.Code != http.StatusBadRequest {
-		t.Errorf("preview without school_id: want 400, got %d body=%s", rec.Code, rec.Body.String())
+	if rec := f.do(t, http.MethodPost, "/affiliates/me/orders/preview", `{"student_ids":["`+uuid.NewString()+`"]}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("preview without product_id: want 400, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	foreign := `{"school_id":"` + f.otherSchool + `","product_id":"` + uuid.NewString() + `","all":true}`
-	if rec := f.do(t, http.MethodPost, "/affiliates/me/orders/preview", foreign); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "school_not_assigned") {
-		t.Errorf("preview for a foreign school: want 403 school_not_assigned, got %d body=%s", rec.Code, rec.Body.String())
+	var foreignStudent string
+	if err := f.env.pool.QueryRow(context.Background(),
+		`INSERT INTO users (email, role, name, school_id) VALUES ($1, 'student', 'Foreign', $2) RETURNING id`,
+		"stu-foreign-"+uuid.NewString()+"@test.local", f.otherSchool,
+	).Scan(&foreignStudent); err != nil {
+		t.Fatalf("insert foreign student: %v", err)
+	}
+	foreign := `{"product_id":"` + uuid.NewString() + `","student_ids":["` + foreignStudent + `"]}`
+	if rec := f.do(t, http.MethodPost, "/affiliates/me/orders/preview", foreign); rec.Code != http.StatusForbidden {
+		t.Errorf("preview for a student of a foreign school: want 403, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	if rec := f.do(t, http.MethodPost, "/affiliates/me/orders/"+uuid.NewString()+"/checkout", ""); rec.Code != http.StatusBadRequest {
 		t.Errorf("checkout without Idempotency-Key: want 400, got %d body=%s", rec.Code, rec.Body.String())
@@ -217,7 +224,7 @@ func TestAffiliatorOrders_RoutesAreScopedAndGuarded(t *testing.T) {
 	if _, err := f.env.pool.Exec(context.Background(), `UPDATE users SET status = 'deactivated' WHERE id = $1`, f.affiliator); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}
-	own := `{"school_id":"` + f.ownSchool + `","product_id":"` + uuid.NewString() + `","all":true}`
+	own := `{"product_id":"` + uuid.NewString() + `","student_ids":["` + uuid.NewString() + `"]}`
 	if rec := f.do(t, http.MethodPost, "/affiliates/me/orders", own); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "account_deactivated") {
 		t.Errorf("order while deactivated: want 403 account_deactivated, got %d body=%s", rec.Code, rec.Body.String())
 	}

@@ -133,16 +133,9 @@ func (h *Handler) AffiliatorListProducts(c echo.Context) error {
 }
 
 type affiliatorOrderBody struct {
-	SchoolID   string   `json:"school_id"`
 	ProductID  string   `json:"product_id"`
-	StudentIDs []string `json:"student_ids,omitempty"`
-	Grade      *int     `json:"grade,omitempty"`
-	All        bool     `json:"all,omitempty"`
+	StudentIDs []string `json:"student_ids"`
 	PromoCode  string   `json:"promo_code,omitempty"`
-}
-
-func (b affiliatorOrderBody) selector() service.ParticipantSelector {
-	return service.ParticipantSelector{StudentIDs: b.StudentIDs, Grade: b.Grade, All: b.All}
 }
 
 func bindAffiliatorOrder(c echo.Context) (affiliatorOrderBody, bool) {
@@ -151,20 +144,20 @@ func bindAffiliatorOrder(c echo.Context) (affiliatorOrderBody, bool) {
 		_ = badRequest(c, "invalid request body")
 		return req, false
 	}
-	if req.SchoolID == "" || req.ProductID == "" {
-		_ = badRequest(c, "school_id and product_id are required")
+	if req.ProductID == "" {
+		_ = badRequest(c, "product_id is required")
 		return req, false
 	}
 	return req, true
 }
 
-// AffiliatorPreviewOrder previews an order for students of one assigned school.
+// AffiliatorPreviewOrder previews an order for chosen students of any assigned school.
 func (h *Handler) AffiliatorPreviewOrder(c echo.Context) error {
 	req, ok := bindAffiliatorOrder(c)
 	if !ok {
 		return nil
 	}
-	preview, err := h.svc.PreviewAffiliatorOrder(c.Request().Context(), ClaimsFromContext(c).Sub, req.SchoolID, req.ProductID, req.selector(), req.PromoCode)
+	preview, err := h.svc.PreviewAffiliatorOrder(c.Request().Context(), ClaimsFromContext(c).Sub, req.ProductID, req.StudentIDs, req.PromoCode)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -177,7 +170,7 @@ func (h *Handler) AffiliatorCreateOrder(c echo.Context) error {
 	if !ok {
 		return nil
 	}
-	order, err := h.svc.CreateAffiliatorOrder(c.Request().Context(), ClaimsFromContext(c).Sub, req.SchoolID, req.ProductID, req.selector(), req.PromoCode)
+	order, err := h.svc.CreateAffiliatorOrder(c.Request().Context(), ClaimsFromContext(c).Sub, req.ProductID, req.StudentIDs, req.PromoCode)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

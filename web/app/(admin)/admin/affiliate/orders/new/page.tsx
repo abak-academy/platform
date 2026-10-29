@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ShoppingCart } from "lucide-react";
+import { ShoppingCart, X } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AffiliatorNotice, useAffiliatorReadOnly } from "@/components/admin/AffiliatorNotice";
@@ -27,7 +27,13 @@ import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import type { AffiliatorOrderInput, AffiliatorOrderPreview, Order } from "@/lib/types";
 
-type Mode = "all" | "selected";
+const ALL = "__all_schools__";
+
+interface Picked {
+  id: string;
+  name: string;
+  school: string | null;
+}
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
@@ -44,8 +50,7 @@ export default function AffiliateNewOrderPage() {
 
   const [schoolId, setSchoolId] = useState("");
   const [productId, setProductId] = useState("");
-  const [mode, setMode] = useState<Mode>("selected");
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<Picked[]>([]);
   const [search, setSearch] = useState("");
   const [promoCode, setPromoCode] = useState("");
   const [result, setResult] = useState<AffiliatorOrderPreview | null>(null);
@@ -61,20 +66,25 @@ export default function AffiliateNewOrderPage() {
     q: q || undefined,
     status: "active",
     limit: 100,
-    enabled: mode === "selected" && schoolId !== "",
   });
 
   if (!allowed) return <NoAccess />;
 
   const schools = me.data?.schools ?? [];
   const rows = students.data?.data ?? [];
+  const selectedIds = selected.map((p) => p.id);
   const input: AffiliatorOrderInput = {
-    school_id: schoolId,
     product_id: productId,
-    ...(mode === "all" ? { all: true } : { student_ids: selected }),
+    student_ids: selectedIds,
     ...(promoCode.trim() ? { promo_code: promoCode.trim() } : {}),
   };
-  const ready = schoolId !== "" && productId !== "" && (mode === "all" || selected.length > 0);
+  const ready = productId !== "" && selected.length > 0;
+  const toPicked = (r: (typeof rows)[number]): Picked => ({ id: r.id, name: r.name, school: r.school_name ?? null });
+
+  function toggle(p: Picked, on: boolean) {
+    setSelected((cur) => (on ? [...cur.filter((x) => x.id !== p.id), p] : cur.filter((x) => x.id !== p.id)));
+    touch();
+  }
 
   // Any change to the inputs voids the shown preview: the order is re-resolved on the server anyway.
   function touch() {
@@ -127,22 +137,6 @@ export default function AffiliateNewOrderPage() {
 
       <div className="md-card-outlined grid gap-5 p-6">
         <div className="grid gap-2">
-          <Label htmlFor="aff-order-school">{t("aff_th_school")}</Label>
-          <Select value={schoolId} onValueChange={(v) => { setSchoolId(v); setSelected([]); touch(); }}>
-            <SelectTrigger id="aff-order-school" className="w-full" aria-label={t("aff_th_school")}>
-              <SelectValue placeholder={t("aff_choose_school")} />
-            </SelectTrigger>
-            <SelectContent>
-              {schools.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="grid gap-2">
           <Label htmlFor="aff-order-product">{t("aff_th_product")}</Label>
           <Select value={productId} onValueChange={(v) => { setProductId(v); touch(); }}>
             <SelectTrigger id="aff-order-product" className="w-full" aria-label={t("aff_th_product")}>
@@ -160,42 +154,62 @@ export default function AffiliateNewOrderPage() {
 
         <fieldset className="grid gap-2">
           <legend className="text-sm font-medium">{t("aff_th_students")}</legend>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="radio" name="aff-mode" checked={mode === "all"} onChange={() => { setMode("all"); touch(); }} />
-            {t("aff_mode_all")}
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="radio" name="aff-mode" checked={mode === "selected"} onChange={() => { setMode("selected"); touch(); }} />
-            {t("aff_mode_selected")}
-          </label>
-          {mode === "selected" && (
-            <div className="grid gap-2">
-              <Input aria-label={t("aff_students_search")} value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("aff_students_search")} disabled={!schoolId} />
-              <div className="flex items-center justify-between text-sm">
-                <span>{t("aff_selected_count").replace("{n}", String(selected.length))}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={rows.length === 0}
-                  onClick={() => { setSelected((cur) => Array.from(new Set([...cur, ...rows.map((r) => r.id)]))); touch(); }}
-                >
-                  {t("aff_select_shown")}
-                </Button>
-              </div>
-              <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
-                {rows.map((r) => (
-                  <label key={r.id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(r.id)}
-                      onChange={(e) => { setSelected((cur) => (e.target.checked ? [...cur, r.id] : cur.filter((id) => id !== r.id))); touch(); }}
-                    />
-                    {r.name}
-                  </label>
-                ))}
-                {rows.length === 0 && <p className="text-sm text-ink-500">{schoolId ? t("aff_students_empty") : t("aff_choose_school")}</p>}
-              </div>
+          <div className="flex flex-wrap gap-2">
+            <Input className="min-w-48 flex-1" aria-label={t("aff_students_search")} value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("aff_students_search")} />
+            <div className="w-full sm:w-56">
+              <Select value={schoolId || ALL} onValueChange={(v) => setSchoolId(v === ALL ? "" : v)}>
+                <SelectTrigger className="w-full" aria-label={t("aff_th_school")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>{t("aff_filter_all_schools")}</SelectItem>
+                  {schools.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span>{t("aff_selected_count").replace("{n}", String(selected.length))}</span>
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={rows.length === 0}
+                onClick={() => { setSelected((cur) => [...cur, ...rows.filter((r) => !cur.some((x) => x.id === r.id)).map(toPicked)]); touch(); }}
+              >
+                {t("aff_select_shown")}
+              </Button>
+              <Button type="button" variant="ghost" size="sm" disabled={selected.length === 0} onClick={() => { setSelected([]); touch(); }}>
+                {t("aff_clear_selection")}
+              </Button>
+            </div>
+          </div>
+          <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2" data-testid="aff-student-list">
+            {rows.map((r) => (
+              <label key={r.id} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={selectedIds.includes(r.id)} onChange={(e) => toggle(toPicked(r), e.target.checked)} />
+                <span>{r.name}</span>
+                <span className="text-xs text-ink-600">{r.school_name ?? t("aff_no_school")}</span>
+              </label>
+            ))}
+            {rows.length === 0 && <p className="text-sm text-ink-500">{students.isLoading ? t("aff_loading") : t("aff_students_empty")}</p>}
+          </div>
+          {selected.length > 0 && (
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t("aff_selected_students")}>
+              {selected.map((p) => (
+                <span key={p.id} className="md-chip md-chip-primary gap-1">
+                  {p.name}
+                  {p.school ? ` · ${p.school}` : ""}
+                  <Button type="button" variant="ghost" size="icon" className="size-8" aria-label={`${t("aff_remove_filter")}: ${p.name}`} onClick={() => toggle(p, false)}>
+                    <X className="size-4" aria-hidden />
+                  </Button>
+                </span>
+              ))}
             </div>
           )}
         </fieldset>
@@ -220,6 +234,15 @@ export default function AffiliateNewOrderPage() {
         {result && (
           <div className="grid gap-2 rounded-[12px] border border-line p-4 text-sm" data-testid="aff-preview">
             <div className="flex justify-between"><span>{t("aff_preview_net_new")}</span><strong>{result.net_new_count}</strong></div>
+            {(result.students?.length ?? 0) > 0 && (
+              <ul className="list-disc pl-5" data-testid="aff-preview-students">
+                {result.students.map((st) => (
+                  <li key={st.student_id}>
+                    {st.name} <span className="text-ink-600">· {st.school_name ?? t("aff_no_school")}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             {(result.excluded?.length ?? 0) > 0 && (
               <div>
                 <p className="text-ink-600">{t("aff_preview_excluded").replace("{n}", String(result.excluded?.length ?? 0))}</p>

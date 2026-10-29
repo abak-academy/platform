@@ -62,6 +62,9 @@ type StudentFilter struct {
 	// allowed set). Non-nil takes precedence over the single schoolID argument;
 	// an empty non-nil slice matches nothing.
 	SchoolIDs []string
+	// IncludeNoSchoolOf widens SchoolIDs with the students that have no school
+	// and were registered by this user id (an affiliator's own unassigned students).
+	IncludeNoSchoolOf string
 	// RegisteredBy narrows to students registered by this user id.
 	RegisteredBy string
 	// NotPurchasedBy narrows to students that none of this buyer's live orders
@@ -78,7 +81,11 @@ type StudentFilter struct {
 // participant picker, a shape no stat card should count.
 func appendStudentFilterSQL(query string, filter StudentFilter, schoolID string, argNum int) (string, []any, int) {
 	args := []any{}
-	if filter.SchoolIDs != nil {
+	if filter.SchoolIDs != nil && filter.IncludeNoSchoolOf != "" {
+		query += fmt.Sprintf(` AND (u.school_id = ANY($%d::uuid[]) OR (u.school_id IS NULL AND u.registered_by = $%d::uuid))`, argNum, argNum+1)
+		args = append(args, filter.SchoolIDs, filter.IncludeNoSchoolOf)
+		argNum += 2
+	} else if filter.SchoolIDs != nil {
 		query += fmt.Sprintf(` AND u.school_id = ANY($%d::uuid[])`, argNum)
 		args = append(args, filter.SchoolIDs)
 		argNum++

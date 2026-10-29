@@ -145,6 +145,7 @@ export const AFFILIATOR_NAV: RoleNavConfig = [
       { labelKey: "students", href: "/admin/affiliate/students", icon: Users },
       { labelKey: "aff_nav_orders", href: "/admin/affiliate/orders", icon: Receipt },
       { labelKey: "promos", href: "/admin/affiliate/promos", icon: Tag },
+      { labelKey: "nav_profile", href: "/admin/profile", icon: User },
     ],
   },
 ];

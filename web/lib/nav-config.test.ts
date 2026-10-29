@@ -78,6 +78,7 @@ describe("admin navigation", () => {
       "/admin/affiliate/students",
       "/admin/affiliate/orders",
       "/admin/affiliate/promos",
+      "/admin/profile",
     ]);
   });
 

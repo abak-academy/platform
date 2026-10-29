@@ -123,7 +123,8 @@ type SchoolReportRow struct {
 // SchoolReport returns every school assigned to at least one affiliator. Coverage
 // counts students inside a live order (not cart, cancelled or expired) of any
 // affiliator, whatever the period; sales follow the period. An order belongs to
-// the school of its participants, and an affiliator order is single-school.
+// each school of its participants, in proportion to their number, since one
+// order can span several schools.
 func (r *Repository) SchoolReport(ctx context.Context, q AffiliateReportQuery) ([]SchoolReportRow, int, error) {
 	limit, offset := q.paging()
 	paidIn := reportPaid + " AND " + period("o.paid_at")
@@ -133,11 +134,15 @@ func (r *Repository) SchoolReport(ctx context.Context, q AffiliateReportQuery) (
 		WHERE ($3 = '' OR s.name ILIKE '%' || $3 || '%')
 		GROUP BY s.id, s.name
 	), sales AS (
-		SELECT o.id, o.total, o.discount,
-			(SELECT us.school_id FROM order_participant op JOIN users us ON us.id = op.student_id WHERE op.order_id = o.id LIMIT 1) AS school_id,
-			(SELECT COALESCE(SUM(qty), 0) FROM order_item WHERE order_id = o.id) AS units
-		FROM orders o JOIN users a ON a.id = o.student_id AND a.role = 'affiliator'
+		SELECT o.id, us.school_id, COUNT(*) AS units,
+			o.total * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY o.id) AS total,
+			o.discount * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY o.id) AS discount
+		FROM orders o
+		JOIN users a ON a.id = o.student_id AND a.role = 'affiliator'
+		JOIN order_participant op ON op.order_id = o.id
+		JOIN users us ON us.id = op.student_id
 		WHERE ` + paidIn + `
+		GROUP BY o.id, o.total, o.discount, us.school_id
 	), r AS (
 		SELECT s.id::text AS id, s.name, s.affiliators,
 			(SELECT COUNT(*) FROM users st WHERE st.role = 'student' AND st.status != 'deleted' AND st.school_id = s.id) AS students,

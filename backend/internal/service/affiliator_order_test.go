@@ -130,7 +130,7 @@ func TestAffiliatorOrder_Integration(t *testing.T) {
 		registerForExam(t, repo, c, examTarget, "registered")
 		promo := newPromo(t, nil)
 
-		p, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, school, examProduct.String(), ParticipantSelector{StudentIDs: ids(a, b, c)}, promo.Code)
+		p, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, examProduct.String(), ids(a, b, c), promo.Code)
 		if err != nil {
 			t.Fatalf("PreviewAffiliatorOrder: %v", err)
 		}
@@ -141,16 +141,70 @@ func TestAffiliatorOrder_Integration(t *testing.T) {
 			t.Errorf("amounts = %v/%v/%v, want 100000/10000/90000", p.Subtotal, p.Discount, p.Total)
 		}
 
-		_, err = svc.PreviewAffiliatorOrder(ctx, acc.ID, school, examProduct.String(), ParticipantSelector{StudentIDs: ids(a)}, promo.Code)
+		_, err = svc.PreviewAffiliatorOrder(ctx, acc.ID, examProduct.String(), ids(a), promo.Code)
 		if !errors.Is(err, ErrPromoMinQty) {
 			t.Errorf("one student under min_qty 2: err = %v, want ErrPromoMinQty", err)
+		}
+	})
+
+	t.Run("one order can span several assigned schools and the students without a school the affiliator registered", func(t *testing.T) {
+		second := createTestSchool(t, svc)
+		multi, err := svc.CreateAffiliator(ctx, actorID, AffiliatorInput{
+			Email: "multi-" + uniqueSuffix() + "@test.com", Name: "Multi", Password: "password123", SchoolIDs: []string{school, second},
+		})
+		if err != nil {
+			t.Fatalf("CreateAffiliator: %v", err)
+		}
+		a, b := newStudent(school), newStudent(second)
+		mine, theirs := newStudent(school), newStudent(school)
+		for _, id := range []uuid.UUID{mine, theirs} {
+			if _, err := repo.Pool().Exec(ctx, `UPDATE users SET school_id = NULL WHERE id = $1`, id); err != nil {
+				t.Fatalf("clear school: %v", err)
+			}
+		}
+		if _, err := repo.Pool().Exec(ctx, `UPDATE users SET registered_by = $1 WHERE id = $2`, multi.ID, mine); err != nil {
+			t.Fatalf("set registered_by: %v", err)
+		}
+
+		p, err := svc.PreviewAffiliatorOrder(ctx, multi.ID, examProduct.String(), ids(a, b, mine), "")
+		if err != nil {
+			t.Fatalf("PreviewAffiliatorOrder: %v", err)
+		}
+		if p.NetNewCount != 3 || len(p.Students) != 3 {
+			t.Fatalf("preview = %+v, want three students", p)
+		}
+		schools := map[string]bool{}
+		for _, st := range p.Students {
+			if st.SchoolName == nil {
+				schools["(none)"] = true
+				continue
+			}
+			schools[*st.SchoolName] = true
+		}
+		if len(schools) != 3 || !schools["(none)"] {
+			t.Errorf("schools shown = %v, want both schools and the schoolless student", schools)
+		}
+		if _, err := svc.PreviewAffiliatorOrder(ctx, multi.ID, examProduct.String(), ids(theirs), ""); !errors.Is(err, ErrCrossSchoolStudent) {
+			t.Errorf("schoolless student of nobody: err = %v, want ErrCrossSchoolStudent", err)
+		}
+
+		listed, _, _, err := svc.ListAffiliatorStudents(ctx, multi.ID, "", false, false, "", "", 100, "", nil, "")
+		if err != nil {
+			t.Fatalf("ListAffiliatorStudents: %v", err)
+		}
+		got := map[string]bool{}
+		for _, st := range listed {
+			got[st.ID] = true
+		}
+		if !got[a.String()] || !got[b.String()] || !got[mine.String()] || got[theirs.String()] {
+			t.Errorf("listed = %v, want both schools' students and the own schoolless one, not the other's", got)
 		}
 	})
 
 	t.Run("course ownership is an active enrollment", func(t *testing.T) {
 		a, b := newStudent(school), newStudent(school)
 		enrollInCourse(t, repo, a, courseTarget)
-		p, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, school, courseProduct.String(), ParticipantSelector{StudentIDs: ids(a, b)}, "")
+		p, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, courseProduct.String(), ids(a, b), "")
 		if err != nil {
 			t.Fatalf("PreviewAffiliatorOrder: %v", err)
 		}
@@ -161,20 +215,23 @@ func TestAffiliatorOrder_Integration(t *testing.T) {
 
 	t.Run("refuses a foreign school, foreign students, other product types and a student promo role", func(t *testing.T) {
 		own, foreign := newStudent(school), newStudent(otherSchool)
-		if _, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, otherSchool, examProduct.String(), ParticipantSelector{StudentIDs: ids(foreign)}, ""); !errors.Is(err, ErrAffiliatorSchoolNotAllowed) {
-			t.Errorf("foreign school: err = %v, want ErrAffiliatorSchoolNotAllowed", err)
+		if _, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, examProduct.String(), ids(foreign), ""); !errors.Is(err, ErrCrossSchoolStudent) {
+			t.Errorf("foreign school: err = %v, want ErrCrossSchoolStudent", err)
 		}
-		if _, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, school, examProduct.String(), ParticipantSelector{StudentIDs: ids(own, foreign)}, ""); !errors.Is(err, ErrCrossSchoolStudent) {
+		if _, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, examProduct.String(), nil, ""); !errors.Is(err, ErrEmptySelector) {
+			t.Errorf("no students: err = %v, want ErrEmptySelector", err)
+		}
+		if _, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, examProduct.String(), ids(own, foreign), ""); !errors.Is(err, ErrCrossSchoolStudent) {
 			t.Errorf("foreign student in own school: err = %v, want ErrCrossSchoolStudent", err)
 		}
 		merch, err := svc.CreateProduct(ctx, model.Product{Type: "merchandise", Name: "Kaos " + uniqueSuffix(), Price: 1000, Stock: 5, Status: "published"}, RoleSuperAdmin)
 		if err != nil {
 			t.Fatalf("CreateProduct: %v", err)
 		}
-		if _, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, school, merch.ID, ParticipantSelector{StudentIDs: ids(own)}, ""); !errors.Is(err, ErrAffiliatorProductType) {
+		if _, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, merch.ID, ids(own), ""); !errors.Is(err, ErrAffiliatorProductType) {
 			t.Errorf("physical product: err = %v, want ErrAffiliatorProductType", err)
 		}
-		if _, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, school, examProduct.String(), ParticipantSelector{StudentIDs: ids(own)}, "NOPE"+uniqueSuffix()); !errors.Is(err, ErrInvalidPromo) {
+		if _, err := svc.PreviewAffiliatorOrder(ctx, acc.ID, examProduct.String(), ids(own), "NOPE"+uniqueSuffix()); !errors.Is(err, ErrInvalidPromo) {
 			t.Errorf("unknown promo: err = %v, want ErrInvalidPromo", err)
 		}
 	})
@@ -182,7 +239,7 @@ func TestAffiliatorOrder_Integration(t *testing.T) {
 	t.Run("create stores buyer, participants and promo; a new order supersedes the old one", func(t *testing.T) {
 		a, b := newStudent(school), newStudent(school)
 		promo := newPromo(t, nil)
-		first, err := svc.CreateAffiliatorOrder(ctx, acc.ID, school, examProduct.String(), ParticipantSelector{StudentIDs: ids(a, b)}, promo.Code)
+		first, err := svc.CreateAffiliatorOrder(ctx, acc.ID, examProduct.String(), ids(a, b), promo.Code)
 		if err != nil {
 			t.Fatalf("CreateAffiliatorOrder: %v", err)
 		}
@@ -200,7 +257,7 @@ func TestAffiliatorOrder_Integration(t *testing.T) {
 			t.Errorf("participants = %v, want the two students", parts)
 		}
 
-		second, err := svc.CreateAffiliatorOrder(ctx, acc.ID, school, courseProduct.String(), ParticipantSelector{StudentIDs: ids(a)}, "")
+		second, err := svc.CreateAffiliatorOrder(ctx, acc.ID, courseProduct.String(), ids(a), "")
 		if err != nil {
 			t.Fatalf("second CreateAffiliatorOrder: %v", err)
 		}
@@ -213,7 +270,7 @@ func TestAffiliatorOrder_Integration(t *testing.T) {
 	t.Run("create refuses when nobody is left to buy for", func(t *testing.T) {
 		a := newStudent(school)
 		registerForExam(t, repo, a, examTarget, "registered")
-		if _, err := svc.CreateAffiliatorOrder(ctx, acc.ID, school, examProduct.String(), ParticipantSelector{StudentIDs: ids(a)}, ""); !errors.Is(err, ErrZeroNetNewParticipants) {
+		if _, err := svc.CreateAffiliatorOrder(ctx, acc.ID, examProduct.String(), ids(a), ""); !errors.Is(err, ErrZeroNetNewParticipants) {
 			t.Errorf("err = %v, want ErrZeroNetNewParticipants", err)
 		}
 	})
@@ -221,7 +278,7 @@ func TestAffiliatorOrder_Integration(t *testing.T) {
 	t.Run("checkout counts the promo once and refuses an order whose promo no longer holds", func(t *testing.T) {
 		a, b := newStudent(school), newStudent(school)
 		promo := newPromo(t, nil)
-		order, err := svc.CreateAffiliatorOrder(ctx, acc.ID, school, courseProduct.String(), ParticipantSelector{StudentIDs: ids(a, b)}, promo.Code)
+		order, err := svc.CreateAffiliatorOrder(ctx, acc.ID, courseProduct.String(), ids(a, b), promo.Code)
 		if err != nil {
 			t.Fatalf("CreateAffiliatorOrder: %v", err)
 		}

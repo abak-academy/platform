@@ -194,8 +194,9 @@ func (r *Repository) ListAffiliatorOrders(ctx context.Context, affiliatorID uuid
 			COALESCE((SELECT oi.name FROM order_item oi WHERE oi.order_id = o.id ORDER BY oi.created_at LIMIT 1), ''),
 			COALESCE((SELECT oi.product_type FROM order_item oi WHERE oi.order_id = o.id ORDER BY oi.created_at LIMIT 1), ''),
 			(SELECT COUNT(*) FROM order_participant op WHERE op.order_id = o.id),
-			(SELECT s.name FROM order_participant op JOIN users u ON u.id = op.student_id JOIN school s ON s.id = u.school_id
-			  WHERE op.order_id = o.id ORDER BY s.name LIMIT 1),
+			(SELECT string_agg(sn.name, ', ' ORDER BY sn.name) FROM
+				(SELECT DISTINCT s.name FROM order_participant op JOIN users u ON u.id = op.student_id JOIN school s ON s.id = u.school_id
+				  WHERE op.order_id = o.id) sn),
 			pc.code, o.payment_expires_at, o.created_at
 		 FROM orders o
 		 LEFT JOIN promo_code pc ON pc.id = o.promo_code_id

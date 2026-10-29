@@ -1724,6 +1724,8 @@ export interface AffiliatorDetail {
 export interface AffiliatorOrderPreview {
   net_new_count: number;
   excluded?: { student_id: string; name: string; reason: string }[];
+  /** The students the order would cover, each with the school they belong to. */
+  students: { student_id: string; name: string; school_id: string | null; school_name: string | null }[];
   unit_price: number;
   subtotal: number;
   discount: number;
@@ -1732,9 +1734,7 @@ export interface AffiliatorOrderPreview {
 }
 
 export interface AffiliatorOrderInput {
-  school_id: string;
   product_id: string;
-  student_ids?: string[];
-  all?: boolean;
+  student_ids: string[];
   promo_code?: string;
 }
