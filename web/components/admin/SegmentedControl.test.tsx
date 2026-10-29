@@ -8,15 +8,30 @@ const options = [
 ] as const;
 
 describe("SegmentedControl", () => {
-  it("fills the chosen option and outlines the others", () => {
+  it("fills the chosen option with the primary colour and leaves the others plain", () => {
     render(<SegmentedControl value="bulk" onChange={vi.fn()} options={[...options]} label="Mode" />);
 
     const single = screen.getByRole("radio", { name: "Satu akun" });
     const bulk = screen.getByRole("radio", { name: "Banyak akun" });
-    expect(bulk).toHaveAttribute("data-variant", "default");
     expect(bulk).toBeChecked();
-    expect(single).toHaveAttribute("data-variant", "outline");
+    expect(bulk.className).toContain("bg-primary");
     expect(single).not.toBeChecked();
+    expect(single.className).not.toContain("bg-primary");
+  });
+
+  it("hovers differently on the chosen option than on the others", () => {
+    render(<SegmentedControl value="bulk" onChange={vi.fn()} options={[...options]} label="Mode" />);
+
+    const hover = (name: string) => screen.getByRole("radio", { name }).className.split(" ").filter((c) => c.startsWith("hover:"));
+    expect(hover("Banyak akun")).toEqual(["hover:bg-brand-700"]);
+    expect(hover("Satu akun")).toEqual(["hover:bg-brand-50", "hover:text-brand-700"]);
+  });
+
+  it("joins the options in one bordered bar", () => {
+    render(<SegmentedControl value="single" onChange={vi.fn()} options={[...options]} label="Mode" />);
+
+    expect(screen.getByRole("radiogroup").className).toContain("border");
+    expect(screen.getByRole("radiogroup").className).toContain("overflow-hidden");
   });
 
   it("reports the option that was clicked", () => {

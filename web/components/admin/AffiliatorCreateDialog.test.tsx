@@ -39,13 +39,13 @@ describe("AffiliatorCreateDialog", () => {
     render(<AffiliatorCreateDialog open onClose={vi.fn()} />);
     const single = screen.getByRole("radio", { name: "Satu akun" });
     const bulk = screen.getByRole("radio", { name: "Banyak akun (CSV)" });
-    expect(single).toHaveAttribute("data-variant", "default");
-    expect(bulk).toHaveAttribute("data-variant", "outline");
+    expect(single.className).toContain("bg-primary");
+    expect(bulk.className).not.toContain("bg-primary");
 
     fireEvent.click(bulk);
 
-    expect(bulk).toHaveAttribute("data-variant", "default");
-    expect(single).toHaveAttribute("data-variant", "outline");
+    expect(bulk.className).toContain("bg-primary");
+    expect(single.className).not.toContain("bg-primary");
   });
 
   it("shows the CSV upload only after choosing many", () => {

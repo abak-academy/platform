@@ -42,6 +42,14 @@ describe("AffiliatorPromoteDialog", () => {
     expect(alert).toHaveTextContent("Akses school admin ke sekolahnya");
   });
 
+  it("shows the warning in the warning colours", () => {
+    render(<AffiliatorPromoteDialog admin={admin} onClose={vi.fn()} />);
+
+    const alert = screen.getByRole("alert");
+    expect(alert.className).toContain("bg-warn-bg");
+    expect(alert.className).toContain("border-warn");
+  });
+
   it("starts with the school the admin administers today", () => {
     render(<AffiliatorPromoteDialog admin={admin} onClose={vi.fn()} />);
 

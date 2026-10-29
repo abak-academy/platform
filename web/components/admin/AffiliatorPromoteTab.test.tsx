@@ -43,7 +43,18 @@ describe("AffiliatorPromoteTab", () => {
   it("says up front that promotion cannot be undone", () => {
     render(<AffiliatorPromoteTab />);
 
-    expect(screen.getByRole("note")).toHaveTextContent("tidak bisa diturunkan kembali menjadi school admin");
+    const note = screen.getByRole("note");
+    expect(note).toHaveTextContent("Akun school admin yang dijadikan affiliator tidak bisa diturunkan kembali menjadi school admin.");
+    expect(note).toHaveTextContent("Untuk menghentikan akses, nonaktifkan akunnya.");
+  });
+
+  it("shows that warning in the yellow/orange warning colours", () => {
+    render(<AffiliatorPromoteTab />);
+
+    const note = screen.getByRole("note");
+    expect(note.className).toContain("bg-warn-bg");
+    expect(note.className).toContain("border-warn");
+    expect(note.querySelector("svg")?.getAttribute("class")).toContain("text-warn");
   });
 
   it("lists the school admins with the school each one administers", () => {
@@ -91,10 +102,10 @@ describe("AffiliatorPromoteTab", () => {
   it("colours the chosen view", () => {
     render(<AffiliatorPromoteTab />);
 
-    expect(screen.getByRole("radio", { name: "Admin sekolah" })).toHaveAttribute("data-variant", "default");
+    expect(screen.getByRole("radio", { name: "Admin sekolah" }).className).toContain("bg-primary");
     fireEvent.click(screen.getByRole("radio", { name: "Affiliator (atur sekolah)" }));
-    expect(screen.getByRole("radio", { name: "Affiliator (atur sekolah)" })).toHaveAttribute("data-variant", "default");
-    expect(screen.getByRole("radio", { name: "Admin sekolah" })).toHaveAttribute("data-variant", "outline");
+    expect(screen.getByRole("radio", { name: "Affiliator (atur sekolah)" }).className).toContain("bg-primary");
+    expect(screen.getByRole("radio", { name: "Admin sekolah" }).className).not.toContain("bg-primary");
   });
 
   it("switches to the affiliators and sets their schools from there", () => {

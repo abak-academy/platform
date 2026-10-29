@@ -74,11 +74,9 @@ interface PagedProps<T> {
   toolbar?: React.ReactNode;
   /** Removable chips for the active filters, shown under the toolbar. */
   chips?: React.ReactNode;
-  /** What this report counts and over which time, shown above the table. */
-  intro: string;
 }
 
-function PagedReport<T>({ name, period, columns, rowKey, empty, q, inactive, toolbar, chips, intro }: PagedProps<T>) {
+function PagedReport<T>({ name, period, columns, rowKey, empty, q, inactive, toolbar, chips }: PagedProps<T>) {
   const { t } = useTranslation();
   const [limit, setLimit] = useState(20);
   const paging = useOffsetPaging([name, period.from, period.to, q, inactive, limit].join("|"), limit);
@@ -89,7 +87,6 @@ function PagedReport<T>({ name, period, columns, rowKey, empty, q, inactive, too
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-ink-600">{intro}</p>
       <div className="flex flex-wrap items-center gap-3">
         {toolbar}
         <div className="ml-auto">
@@ -196,7 +193,6 @@ export function AffiliatorsReport({ period }: { period: PeriodRange }) {
         columns={columns}
         rowKey={(r) => r.affiliator_id}
         empty={t("aff_admin_empty")}
-        intro={t("aff_report_desc_affiliators")}
         q={q}
         inactive={inactive}
         toolbar={
@@ -276,7 +272,6 @@ export function SchoolsReport({ period }: { period: PeriodRange }) {
       columns={columns}
       rowKey={(r) => r.school_id}
       empty={t("aff_empty_schools")}
-      intro={t("aff_report_desc_schools")}
       q={q}
       toolbar={<SearchBox value={search} onChange={setSearch} label={t("aff_report_search_school")} />}
     />
@@ -301,7 +296,6 @@ export function ProductsReport({ period }: { period: PeriodRange }) {
       columns={columns}
       rowKey={(r) => `${r.school_id}:${r.product_id}`}
       empty={t("aff_empty_sales")}
-      intro={t("aff_report_desc_products")}
       q={q}
       toolbar={<SearchBox value={search} onChange={setSearch} label={t("aff_report_search_product")} />}
     />
@@ -347,7 +341,6 @@ export function PromosReport({ period }: { period: PeriodRange }) {
       columns={columns}
       rowKey={(p) => p.code}
       empty={t("aff_promos_empty")}
-      intro={t("aff_report_desc_promos")}
       q={q}
       toolbar={<SearchBox value={search} onChange={setSearch} label={t("aff_report_search_promo")} />}
     />
@@ -368,7 +361,6 @@ export function TrendReport({ period }: { period: PeriodRange }) {
   ];
   return (
     <div className="space-y-4">
-      <p className="text-sm text-ink-600">{t("aff_report_desc_trend")}</p>
       <div className="flex justify-end">
         <ExportButton name="trend" params={period} />
       </div>

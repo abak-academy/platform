@@ -51,8 +51,8 @@ export function AffiliatorPromoteDialog({ admin, onClose }: { admin: PromotableA
             <DialogDescription>{admin ? `${admin.name} (${admin.email ?? "-"})` : null}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div role="alert" className="flex items-start gap-3 rounded-[12px] border border-line bg-surface-2 px-4 py-3 text-sm">
-              <TriangleAlert size={18} className="mt-0.5 shrink-0 text-danger" aria-hidden />
+            <div role="alert" className="flex items-start gap-3 rounded-[12px] border border-warn/40 bg-warn-bg px-4 py-3 text-sm text-ink-900">
+              <TriangleAlert size={18} className="mt-0.5 shrink-0 text-warn" aria-hidden />
               <div className="space-y-1">
                 <p className="font-semibold">{t("aff_promote_warning_title")}</p>
                 <p>{t("aff_promote_warning_irreversible")}</p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Info, Search, X } from "lucide-react";
+import { Search, TriangleAlert, X } from "lucide-react";
 import { AffiliatorPromoteDialog, AffiliatorSchoolsDialog } from "@/components/admin/AffiliatorDialogs";
 import { SegmentedControl } from "@/components/admin/SegmentedControl";
 import { TablePager } from "@/components/admin/TablePager";
@@ -181,8 +181,8 @@ export function AffiliatorPromoteTab() {
 
   return (
     <div className="space-y-4">
-      <div role="note" className="flex items-start gap-3 rounded-[12px] border border-line bg-surface-2 px-4 py-3 text-sm">
-        <Info size={18} className="mt-0.5 shrink-0" aria-hidden />
+      <div role="note" className="flex items-start gap-3 rounded-[12px] border border-warn/40 bg-warn-bg px-4 py-3 text-sm text-ink-900">
+        <TriangleAlert size={18} className="mt-0.5 shrink-0 text-warn" aria-hidden />
         <p>{t("aff_promote_tab_note")}</p>
       </div>
 

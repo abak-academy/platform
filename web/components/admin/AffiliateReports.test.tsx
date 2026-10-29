@@ -148,7 +148,6 @@ describe("affiliate reports", () => {
       const cells = within(screen.getByText("SMAN 1").closest("tr")!).getAllByRole("cell").map((c) => c.textContent);
       // school, affiliators, students, covered, not covered, orders, units, amount, discount
       expect(cells).toEqual(["SMAN 1", "2", "100", "60", "40", "3", "60", "Rp1.800.000", "Rp200.000"]);
-      expect(screen.getByText(/dihitung dari seluruh waktu/)).toBeInTheDocument();
     });
 
     it("searches by school name", () => {
@@ -193,7 +192,6 @@ describe("affiliate reports", () => {
       const row = screen.getByText("2026-09").closest("tr")!;
       expect(within(row).getByText("Rp500.000")).toBeInTheDocument();
       expect(within(row).getByText("Rp20.000")).toBeInTheDocument();
-      expect(screen.getByText(/Paling banyak 24 bulan/)).toBeInTheDocument();
     });
 
     it("has no pager (it is not paged) but can be exported", async () => {
@@ -205,27 +203,16 @@ describe("affiliate reports", () => {
     });
   });
 
-  it("says in words what each report counts, and over which time", () => {
-    const { unmount } = render(<AffiliatorsReport period={period} />);
-    expect(screen.getByText(/total dibayar sudah setelah diskon/)).toBeInTheDocument();
-    expect(screen.getByText(/Menunggu bayar adalah kondisi saat ini, tidak terikat periode/)).toBeInTheDocument();
+  it("opens each report straight on its toolbar and table, without an explanatory paragraph", () => {
+    const { container, unmount } = render(<AffiliatorsReport period={period} />);
+    expect(container.querySelector("p")).toBeNull();
     unmount();
 
-    render(<SchoolsReport period={period} />);
-    expect(screen.getByText(/bukan keranjang, batal, atau kedaluwarsa/)).toBeInTheDocument();
-  });
-
-  it("explains products, promos and the trend too", () => {
-    const { unmount } = render(<ProductsReport period={period} />);
-    expect(screen.getByText(/Unit adalah jumlah siswa yang dibelikan/)).toBeInTheDocument();
-    unmount();
-
-    const promos = render(<PromosReport period={period} />);
-    expect(screen.getByText(/bertambah saat checkout walau tidak jadi dibayar/)).toBeInTheDocument();
-    promos.unmount();
-
-    render(<TrendReport period={period} />);
-    expect(screen.getByText(/total dibayar \(setelah diskon\)/)).toBeInTheDocument();
+    for (const Report of [SchoolsReport, ProductsReport, PromosReport, TrendReport]) {
+      const view = render(<Report period={period} />);
+      expect(view.container.querySelector("p")).toBeNull();
+      view.unmount();
+    }
   });
 
   it("labels money as total paid, which is after discount", () => {
