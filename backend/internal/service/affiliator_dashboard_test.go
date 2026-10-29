@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
 
 	"github.com/google/uuid"
 )
@@ -74,9 +75,43 @@ func TestAffiliatorDashboard_Integration(t *testing.T) {
 		}
 	})
 
+	if rows, total, err := svc.ListAffiliatorPurchases(ctx, acc.ID, repository.AffiliatorPurchaseQuery{}); err != nil || total != 0 || len(rows) != 0 {
+		t.Errorf("purchases while a cart = %+v/%d, %v, want none", rows, total, err)
+	}
+
 	if _, err := svc.CheckoutAffiliatorOrder(ctx, acc.ID, order.ID.String(), "dash-"+uniqueSuffix()); err != nil {
 		t.Fatalf("CheckoutAffiliatorOrder: %v", err)
 	}
+
+	t.Run("purchase history lists each covered student with school, product and promo", func(t *testing.T) {
+		rows, total, err := svc.ListAffiliatorPurchases(ctx, acc.ID, repository.AffiliatorPurchaseQuery{})
+		if err != nil || total != 2 || len(rows) != 2 {
+			t.Fatalf("purchases = %+v/%d, %v, want the two covered students", rows, total, err)
+		}
+		got := map[string]bool{}
+		for _, r := range rows {
+			got[r.StudentID] = true
+			if r.OrderID != order.ID.String() || r.SchoolName == nil || r.PromoCode == nil || *r.PromoCode != promo || r.ProductName == "" {
+				t.Errorf("row = %+v, want this order, a school, the promo and a product", r)
+			}
+		}
+		if !got[s1.String()] || !got[s2.String()] || got[s3.String()] {
+			t.Errorf("students = %v, want s1 and s2 but not s3", got)
+		}
+		if _, total, _ := svc.ListAffiliatorPurchases(ctx, acc.ID, repository.AffiliatorPurchaseQuery{Status: "paid"}); total != 0 {
+			t.Errorf("paid filter total = %d, want 0 before payment", total)
+		}
+		if rows, total, _ := svc.ListAffiliatorPurchases(ctx, acc.ID, repository.AffiliatorPurchaseQuery{Limit: 1, Offset: 1}); total != 2 || len(rows) != 1 {
+			t.Errorf("second page = %d rows of %d, want 1 of 2", len(rows), total)
+		}
+		if _, _, err := svc.ListAffiliatorPurchases(ctx, acc.ID, repository.AffiliatorPurchaseQuery{SchoolID: "nope"}); !errors.Is(err, ErrInvalidUUID) {
+			t.Errorf("bad school id: err = %v, want ErrInvalidUUID", err)
+		}
+		other := createTestSchool(t, svc)
+		if _, total, _ := svc.ListAffiliatorPurchases(ctx, acc.ID, repository.AffiliatorPurchaseQuery{SchoolID: other}); total != 0 {
+			t.Errorf("other school total = %d, want 0", total)
+		}
+	})
 
 	t.Run("pending order covers its students but is not revenue yet", func(t *testing.T) {
 		d, _ := svc.AffiliatorDashboard(ctx, acc.ID, nil, nil)

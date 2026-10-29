@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"akademi-bimbel/internal/repository"
@@ -60,6 +61,23 @@ func (s *Service) ListAffiliatorOrders(ctx context.Context, affiliatorID, status
 		return nil, "", ErrInvalidUUID
 	}
 	return s.storeRepo.ListAffiliatorOrders(ctx, aID, repository.AffiliatorOrderFilter{Status: status, Limit: limit, Cursor: cursor})
+}
+
+// ListAffiliatorPurchases returns which students each of the affiliator's orders covers.
+func (s *Service) ListAffiliatorPurchases(ctx context.Context, affiliatorID string, q repository.AffiliatorPurchaseQuery) ([]repository.AffiliatorPurchaseRow, int, error) {
+	aID, err := uuid.Parse(affiliatorID)
+	if err != nil {
+		return nil, 0, ErrInvalidUUID
+	}
+	q.Q = strings.TrimSpace(q.Q)
+	if q.SchoolID != "" {
+		sid, err := uuid.Parse(q.SchoolID)
+		if err != nil {
+			return nil, 0, ErrInvalidUUID
+		}
+		q.SchoolID = sid.String()
+	}
+	return s.storeRepo.ListAffiliatorPurchases(ctx, aID, q)
 }
 
 // AffiliatorDetail is the super-admin monitoring view of one affiliator.

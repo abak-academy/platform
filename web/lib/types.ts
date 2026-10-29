@@ -1715,6 +1715,20 @@ export interface AffiliatorOrderRow {
   created_at: string;
 }
 
+export interface AffiliatorPurchaseRow {
+  order_id: string;
+  order_status: string;
+  created_at: string;
+  student_id: string;
+  student_name: string;
+  student_username: string | null;
+  school_name: string | null;
+  product_name: string;
+  product_type: string;
+  unit_price: number;
+  promo_code: string | null;
+}
+
 export interface AffiliatorDetail {
   affiliator: Affiliator;
   totals: AffiliatorOrderTotals;

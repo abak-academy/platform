@@ -227,6 +227,31 @@ func (h *Handler) AffiliatorListOrders(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"data": rows, "next_cursor": next})
 }
 
+// AffiliatorListPurchases lists the students the affiliator's orders cover, one row per order and student.
+func (h *Handler) AffiliatorListPurchases(c echo.Context) error {
+	q := repository.AffiliatorPurchaseQuery{
+		Q:        c.QueryParam("q"),
+		Status:   c.QueryParam("status"),
+		SchoolID: c.QueryParam("school_id"),
+		Limit:    20,
+	}
+	if l := c.QueryParam("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			q.Limit = min(n, 100)
+		}
+	}
+	if o := c.QueryParam("offset"); o != "" {
+		if n, err := strconv.Atoi(o); err == nil && n > 0 {
+			q.Offset = n
+		}
+	}
+	rows, total, err := h.svc.ListAffiliatorPurchases(c.Request().Context(), ClaimsFromContext(c).Sub, q)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": rows, "total": total, "limit": q.Limit, "offset": q.Offset})
+}
+
 func affiliatorSchoolQuery(c echo.Context) repository.AffiliatorSchoolQuery {
 	q := repository.AffiliatorSchoolQuery{
 		Q:            c.QueryParam("q"),

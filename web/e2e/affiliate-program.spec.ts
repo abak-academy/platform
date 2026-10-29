@@ -217,6 +217,13 @@ test.describe.serial("affiliate program", () => {
     await expect(top).toContainText(ctx.schoolA.name);
     await expect(page.getByText("siswa aktif belum dibelikan produk")).toBeVisible();
     await expect(page.locator("strong", { hasText: /^0$/ })).toBeVisible();
+
+    await page.goto("/admin/affiliate/orders");
+    await page.getByRole("tab", { name: "Riwayat siswa" }).click();
+    const bought = page.getByRole("row", { name: new RegExp(ctx.studentName) });
+    await expect(bought).toContainText(ctx.productName);
+    await expect(bought).toContainText(ctx.schoolA.name);
+    await expect(bought).toContainText(ctx.promoCode);
   });
 
   test("the super admin finds the affiliator in its own menu, reads the report and exports it", async ({ page, context, request }) => {

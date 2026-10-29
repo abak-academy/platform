@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import AffiliateOrdersPage from "./page";
 import type { AffiliatorOrderRow } from "@/lib/types";
 
+vi.mock("@/components/admin/AffiliatorPurchaseHistory", () => ({ AffiliatorPurchaseHistory: () => <div>history tab</div> }));
 vi.mock("@/lib/hooks/use-capability", () => ({ useHasCapability: () => true }));
 vi.mock("@/components/admin/AffiliatorNotice", () => ({ AffiliatorNotice: () => null }));
 vi.mock("@/components/ui/select", async () => await import("@/__tests__/helpers/native-select"));
@@ -26,6 +27,17 @@ describe("AffiliateOrdersPage", () => {
   beforeEach(() => {
     calls.length = 0;
     state = { data: { data: [order, { ...order, id: "o2", status: "paid", promo_code: null }] }, isLoading: false, isError: false, refetch: vi.fn() };
+  });
+
+  it("has an order tab first and a per-student history tab", () => {
+    render(<AffiliateOrdersPage />);
+
+    expect(screen.getAllByRole("tab").map((x) => x.textContent)).toEqual(["Daftar order", "Riwayat siswa"]);
+    expect(screen.queryByText("history tab")).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Riwayat siswa" }));
+
+    expect(screen.getByText("history tab")).toBeInTheDocument();
   });
 
   it("lists orders with product, school, seats, promo, total and a readable status", () => {

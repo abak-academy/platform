@@ -239,3 +239,70 @@ func nullableTime(t time.Time) *time.Time {
 	}
 	return &t
 }
+
+// AffiliatorPurchaseQuery filters the per-student purchase history. Q matches the
+// student name or username and the product name; Status and SchoolID are exact.
+type AffiliatorPurchaseQuery struct {
+	Q        string
+	Status   string
+	SchoolID string
+	Limit    int
+	Offset   int
+}
+
+// AffiliatorPurchaseRow is one student covered by one of the affiliator's orders.
+type AffiliatorPurchaseRow struct {
+	OrderID     string    `json:"order_id"`
+	OrderStatus string    `json:"order_status"`
+	CreatedAt   time.Time `json:"created_at"`
+	StudentID   string    `json:"student_id"`
+	StudentName string    `json:"student_name"`
+	StudentUser *string   `json:"student_username"`
+	SchoolName  *string   `json:"school_name"`
+	ProductName string    `json:"product_name"`
+	ProductType string    `json:"product_type"`
+	UnitPrice   float64   `json:"unit_price"`
+	PromoCode   *string   `json:"promo_code"`
+}
+
+// ListAffiliatorPurchases returns one row per (order, student) of the affiliator's
+// orders that left the cart, newest first, with the total count for paging.
+func (r *Repository) ListAffiliatorPurchases(ctx context.Context, affiliatorID uuid.UUID, q AffiliatorPurchaseQuery) ([]AffiliatorPurchaseRow, int, error) {
+	if q.Limit <= 0 {
+		q.Limit = 20
+	}
+	if q.Limit > 100 {
+		q.Limit = 100
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT o.id::text, o.status, o.created_at, u.id::text, u.name, u.username, s.name,
+			oi.name, oi.product_type, oi.unit_price, pc.code, COUNT(*) OVER ()
+		FROM orders o
+		JOIN order_participant op ON op.order_id = o.id
+		JOIN users u ON u.id = op.student_id
+		LEFT JOIN school s ON s.id = u.school_id
+		LEFT JOIN promo_code pc ON pc.id = o.promo_code_id
+		CROSS JOIN LATERAL (SELECT i.name, i.product_type, i.unit_price FROM order_item i WHERE i.order_id = o.id ORDER BY i.created_at LIMIT 1) oi
+		WHERE o.student_id = $1 AND o.status <> 'cart'
+		  AND ($2 = '' OR o.status = $2)
+		  AND ($3 = '' OR u.school_id = NULLIF($3, '')::uuid)
+		  AND ($4 = '' OR u.name ILIKE '%' || $4 || '%' OR u.username ILIKE '%' || $4 || '%' OR oi.name ILIKE '%' || $4 || '%')
+		ORDER BY o.created_at DESC, o.id DESC, u.name, u.id
+		LIMIT $5 OFFSET $6`,
+		affiliatorID, q.Status, q.SchoolID, q.Q, q.Limit, q.Offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := []AffiliatorPurchaseRow{}
+	total := 0
+	for rows.Next() {
+		var p AffiliatorPurchaseRow
+		if err := rows.Scan(&p.OrderID, &p.OrderStatus, &p.CreatedAt, &p.StudentID, &p.StudentName, &p.StudentUser, &p.SchoolName,
+			&p.ProductName, &p.ProductType, &p.UnitPrice, &p.PromoCode, &total); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, p)
+	}
+	return out, total, rows.Err()
+}

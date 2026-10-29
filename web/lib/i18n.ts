@@ -6,6 +6,13 @@ export type Lang = "id" | "en";
 
 export const DICT = {
   id: {
+    aff_th_unit_price: "Harga satuan",
+    aff_purchases_empty: "Belum ada siswa yang dibelikan.",
+    aff_th_student: "Siswa",
+    aff_purchases_filter_title: "Filter riwayat siswa",
+    aff_purchases_search: "Cari siswa atau produk",
+    aff_orders_tab_students: "Riwayat siswa",
+    aff_orders_tab_orders: "Daftar order",
     aff_schools_empty: "Tidak ada sekolah yang ditugaskan ke affiliator.",
     aff_schools_th_affiliator: "Affiliator",
     aff_schools_th_school: "Sekolah",
@@ -2050,6 +2057,13 @@ export const DICT = {
       "Unggah ulang dengan code yang sama untuk memperbarui sekolah. school_types yang kosong atau tidak disertakan tetap mempertahankan nilai tersimpan.",
   },
   en: {
+    aff_th_unit_price: "Unit price",
+    aff_purchases_empty: "No students have been bought for yet.",
+    aff_th_student: "Student",
+    aff_purchases_filter_title: "Filter student history",
+    aff_purchases_search: "Search student or product",
+    aff_orders_tab_students: "Student history",
+    aff_orders_tab_orders: "Orders",
     aff_schools_empty: "No schools are assigned to affiliates.",
     aff_schools_th_affiliator: "Affiliate",
     aff_schools_th_school: "School",

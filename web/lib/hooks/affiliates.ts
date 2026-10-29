@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
 import type {
   Affiliator,
@@ -8,6 +8,7 @@ import type {
   AffiliatorOrderInput,
   AffiliatorOrderPreview,
   AffiliatorOrderRow,
+  AffiliatorPurchaseRow,
   Order,
   Product,
   PromoCode,
@@ -57,6 +58,29 @@ export function useAffiliatorOrders(opts?: { status?: string; cursor?: string; l
       return authFetch<{ data: AffiliatorOrderRow[]; next_cursor?: string }>(
         query ? `/affiliates/me/orders?${query}` : "/affiliates/me/orders",
       );
+    },
+  });
+}
+
+export interface PurchaseParams {
+  q?: string;
+  status?: string;
+  schoolId?: string;
+  limit: number;
+  offset: number;
+}
+
+/** Which students each order covers, one row per order and student: GET /affiliates/me/orders/students. */
+export function useAffiliatorPurchases(p: PurchaseParams) {
+  return useQuery({
+    queryKey: [...affiliateKeys.all, "purchases", p] as const,
+    placeholderData: keepPreviousData,
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: String(p.limit), offset: String(p.offset) });
+      if (p.q) params.set("q", p.q);
+      if (p.status) params.set("status", p.status);
+      if (p.schoolId) params.set("school_id", p.schoolId);
+      return authFetch<{ data: AffiliatorPurchaseRow[]; total: number }>(`/affiliates/me/orders/students?${params.toString()}`);
     },
   });
 }

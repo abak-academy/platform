@@ -259,6 +259,12 @@ func TestAffiliatorDashboard_RoutesAndMonitoringAccess(t *testing.T) {
 	if rec := f.do(t, http.MethodGet, "/affiliates/me/orders", ""); rec.Code != http.StatusOK {
 		t.Errorf("orders: want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
+	if rec := f.do(t, http.MethodGet, "/affiliates/me/orders/students?q=a&limit=5", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"total":0`) {
+		t.Errorf("purchase history: want 200 with total 0, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec := f.do(t, http.MethodGet, "/affiliates/me/orders/students?school_id=nope", ""); rec.Code != http.StatusBadRequest {
+		t.Errorf("purchase history bad school id: want 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
 
 	if rec := f.do(t, http.MethodGet, "/admin/system/affiliators/"+f.affiliator, ""); rec.Code != http.StatusForbidden {
 		t.Errorf("affiliator reading the monitoring detail: want 403, got %d", rec.Code)

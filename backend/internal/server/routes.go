@@ -391,6 +391,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	affiliates.GET("/me/promos", h.ListAffiliatorPromos)
 	affiliates.GET("/me/dashboard", h.AffiliatorDashboard)
 	affiliates.GET("/me/orders", h.AffiliatorListOrders)
+	affiliates.GET("/me/orders/students", h.AffiliatorListPurchases)
 	affiliates.GET("/me/products", h.AffiliatorListProducts)
 	affiliates.POST("/me/orders/preview", h.AffiliatorPreviewOrder)
 	affiliates.POST("/me/orders", h.AffiliatorCreateOrder)
