@@ -140,10 +140,10 @@ func (r *Repository) ListAffiliateAdjustments(ctx context.Context, affiliatorID 
 func (r *Repository) ListAffiliatePayoutQueue(ctx context.Context, statuses []string, q AffiliateListQuery, limit, offset int) ([]AffiliatePayoutQueueRow, int, error) {
 	p := newAffPredicate(2)
 	p.dates("p.requested_at", q.From, q.To)
-	p.search(q.Q, "u.name", "a.code", "p.bank_account_holder")
+	p.search(q.Q, "u.name", "a.referral_code", "p.bank_account_holder")
 	args := append([]interface{}{statuses}, p.args...)
 	from := `FROM affiliate_payouts p
-		 JOIN affiliators a ON a.id = p.affiliator_id
+		 JOIN affiliators a ON a.user_id = p.affiliator_id
 		 JOIN users u ON u.id = a.user_id
 		 WHERE p.status = ANY($1)` + p.sql
 
@@ -154,7 +154,7 @@ func (r *Repository) ListAffiliatePayoutQueue(ctx context.Context, statuses []st
 	rows, err := r.pool.Query(ctx,
 		`SELECT p.id, p.affiliator_id, p.amount, p.status, p.bank_name, p.bank_account_number, p.bank_account_holder,
 		        p.proof_url, p.reject_reason, p.processed_by, p.processed_at, p.requested_at, p.created_at, p.updated_at,
-		        u.name, COALESCE(a.code, '')
+		        u.name, COALESCE(a.referral_code, '')
 		 `+from+`
 		 ORDER BY (p.status IN ('requested', 'processing')) DESC,
 		          CASE WHEN p.status IN ('requested', 'processing') THEN p.requested_at END ASC,

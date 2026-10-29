@@ -23,7 +23,7 @@ func seedAffiliateAdminAffiliator(t *testing.T, repo *repository.Repository, nam
 	code := "AF" + strings.ToUpper(uniqueSuffix())
 	var id uuid.UUID
 	require.NoError(t, repo.Pool().QueryRow(context.Background(),
-		`INSERT INTO affiliators (user_id, code, status, level, terms_version) VALUES ($1, $2, $3, $4, 'v1') RETURNING id`,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, level, terms_version) VALUES ($1, $2, $3, $4, 'v1') RETURNING user_id`,
 		userID, code, status, level,
 	).Scan(&id))
 	return id, code
@@ -92,7 +92,7 @@ func TestAffiliateAdminCodeGeneration_uniqueAgainstExisting(t *testing.T) {
 		"Affiliate Seed", "affgen_"+uniqueSuffix(),
 	).Scan(&userID))
 	require.NoError(t, repo.Pool().QueryRow(ctx,
-		`INSERT INTO affiliators (user_id, code, status, terms_version) VALUES ($1, $2, 'active', 'v1') RETURNING id`,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, terms_version) VALUES ($1, $2, 'active', 'v1') RETURNING user_id`,
 		userID, seeded,
 	).Scan(new(uuid.UUID)))
 
@@ -352,7 +352,7 @@ func TestAffiliateAdminStatusChange(t *testing.T) {
 			_, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "active", "alasan")
 			require.ErrorIs(t, err, ErrAffiliateInvalidTransition, status)
 			var got string
-			require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT status FROM affiliators WHERE id = $1`, id).Scan(&got))
+			require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT program_status FROM affiliators WHERE user_id = $1`, id).Scan(&got))
 			require.Equal(t, status, got)
 		}
 	})
@@ -371,7 +371,7 @@ func TestAffiliateAdminLevel(t *testing.T) {
 
 	t.Run("manual change resets warn_quarters and is recorded in the audit log", func(t *testing.T) {
 		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-lvl-"+uniqueSuffix()+"@test.local", "active", "bronze")
-		_, err := repo.Pool().Exec(context.Background(), `UPDATE affiliators SET warn_quarters = 2 WHERE id = $1`, id)
+		_, err := repo.Pool().Exec(context.Background(), `UPDATE affiliators SET missed_quarters = 2 WHERE user_id = $1`, id)
 		require.NoError(t, err)
 
 		aff, err := svc.ChangeAffiliateLevel(ctx, actor, id.String(), "gold", reason)
@@ -384,7 +384,7 @@ func TestAffiliateAdminLevel(t *testing.T) {
 		require.Equal(t, "bronze", meta["from"])
 		require.Equal(t, "gold", meta["to"])
 		require.Equal(t, reason, meta["reason"])
-		require.Empty(t, affiliateJobHistoryRows(t, repo, id), "manual changes no longer write level history")
+		require.Equal(t, "", affiliateJobEvaluatedQuarter(t, repo, id), "a manual change does not settle a quarter")
 	})
 
 	t.Run("a missing level is rejected", func(t *testing.T) {

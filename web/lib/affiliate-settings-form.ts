@@ -17,8 +17,6 @@ export const GLOBAL_NUMBER_FIELDS = [
   "physical_wait_days",
   "min_payout",
   "eval_day",
-  "silver_threshold",
-  "gold_threshold",
 ] as const;
 
 export const GLOBAL_OPTIONAL_FIELDS = ["payout_day_of_month", "daily_registration_cap"] as const;

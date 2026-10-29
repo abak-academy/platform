@@ -49,17 +49,8 @@ func TestAffiliateSettingsDefaults_matchMigrationDefaults(t *testing.T) {
 	if s.EvalDay != 8 {
 		t.Errorf("EvalDay = %d, want 8", s.EvalDay)
 	}
-	if s.SilverThreshold != 5000000 {
-		t.Errorf("SilverThreshold = %v, want 5000000", s.SilverThreshold)
-	}
-	if s.GoldThreshold != 15000000 {
-		t.Errorf("GoldThreshold = %v, want 15000000", s.GoldThreshold)
-	}
 	if s.DailyRegistrationCap != nil {
 		t.Errorf("DailyRegistrationCap = %v, want nil", *s.DailyRegistrationCap)
-	}
-	if s.UpdatedBy != nil {
-		t.Errorf("UpdatedBy = %v, want nil", s.UpdatedBy)
 	}
 }
 
@@ -248,12 +239,8 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 	// The shared real-DB fixture never resets rows between tests.
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID) })
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_settings WHERE id = 1`) })
-	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_level_settings WHERE level = 'silver'`) })
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliators WHERE user_id = $1`, userID) })
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM product WHERE id = $1`, productID) })
-	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_product_overrides WHERE product_id = $1`, productID)
-	})
 
 	// Seed singleton row with non-defaults plus one level row and one override.
 	// UPSERT because the shared real-DB fixture may already carry the row from
@@ -266,9 +253,8 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 	}
 
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO affiliate_level_settings (level, commission_rule, digital_wait_days, min_payout)
-		 VALUES ('silver', '{"exam":{"type":"percent","value":12},"book":{"type":"fixed","value":5000}}', 3, 50000)`); err != nil {
-		t.Fatalf("seed affiliate_level_settings: %v", err)
+		`UPDATE affiliate_settings SET levels = '{"silver": {"commission_rule": {"exam":{"type":"percent","value":12},"book":{"type":"fixed","value":5000}}, "digital_wait_days": 3, "min_payout": 50000}}' WHERE id = 1`); err != nil {
+		t.Fatalf("seed affiliate_settings levels: %v", err)
 	}
 
 	if err := pool.QueryRow(ctx,
@@ -277,8 +263,8 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 		t.Fatalf("seed product: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO affiliate_product_overrides (product_id, type, value) VALUES ($1, 'percent', 25)`, productID); err != nil {
-		t.Fatalf("seed affiliate_product_overrides: %v", err)
+		`UPDATE product SET affiliate_commission = '{"type":"percent","value":25,"updated_at":"2026-10-01T00:00:00Z"}' WHERE id = $1`, productID); err != nil {
+		t.Fatalf("seed product override: %v", err)
 	}
 
 	override, err := repo.LoadProductOverride(ctx, productID)
@@ -321,8 +307,8 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 		t.Fatalf("seed affiliator user: %v", err)
 	}
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO affiliators (user_id, code, status, terms_version)
-		 VALUES ($1, $2, 'active', 'v1') RETURNING id`,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, terms_version)
+		 VALUES ($1, $2, 'active', 'v1') RETURNING user_id`,
 		userID, code).Scan(&affID); err != nil {
 		t.Fatalf("seed affiliator: %v", err)
 	}
@@ -357,8 +343,8 @@ func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
 	}
 	var affID uuid.UUID
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO affiliators (user_id, code, status, terms_version)
-		 VALUES ($1, $2, 'active', 'v1') RETURNING id`,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, terms_version)
+		 VALUES ($1, $2, 'active', 'v1') RETURNING user_id`,
 		userID, code).Scan(&affID); err != nil {
 		t.Fatalf("seed affiliator: %v", err)
 	}
@@ -411,7 +397,7 @@ func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
 		 ON CONFLICT (key) DO UPDATE SET value = 'true'`); err != nil {
 		t.Fatalf("set flag on: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE affiliators SET status = 'pending_approval' WHERE id = $1`, affID); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE affiliators SET program_status = 'pending_approval' WHERE user_id = $1`, affID); err != nil {
 		t.Fatalf("deactivate affiliator: %v", err)
 	}
 	res, err = svc.ValidateAffiliateCode(ctx, code)

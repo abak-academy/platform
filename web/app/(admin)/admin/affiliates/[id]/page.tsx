@@ -73,7 +73,7 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
     { key: "name", header: t("aff_col_name"), cell: (r) => r.name },
     { key: "status", header: t("aff_col_status"), cell: (r) => <StatusBadge status={r.status} /> },
     { key: "started", header: t("aff_col_started"), cell: (r) => formatAffDate(r.started_at) },
-    { key: "ended", header: t("aff_col_ended"), cell: (r) => formatAffDate(r.ended_at) },
+    { key: "ended", header: t("aff_col_ended"), cell: (r) => formatAffDate(r.expires_at) },
     { key: "spend", header: t("aff_col_spend"), align: "right", cell: (r) => formatRupiah(r.total_spend) },
   ];
 

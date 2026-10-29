@@ -1563,7 +1563,7 @@ export interface AffiliateBinding {
   status: string;
   source: string;
   started_at: string;
-  ended_at: string | null;
+  expires_at: string | null;
   total_spend: number;
 }
 
@@ -1691,19 +1691,16 @@ export interface AffiliateAdjustmentPage {
 
 export interface AffiliateAdminRow {
   id: string;
-  user_id: string;
   code: string;
   status: string;
   rejection_reason: string | null;
   level: string;
   warn_quarters: number;
   terms_version: string;
-  terms_accepted_at: string;
   bank_name: string | null;
   bank_account_number: string | null;
   bank_account_holder: string | null;
   created_at: string;
-  updated_at: string;
   name: string;
   email: string | null;
   phone: string | null;
@@ -1748,10 +1745,7 @@ export interface AffiliateSettings {
   payout_day_of_month: number | null;
   launch_date: string | null;
   eval_day: number;
-  silver_threshold: number;
-  gold_threshold: number;
   daily_registration_cap: number | null;
-  updated_by: string | null;
   updated_at: string;
 }
 
@@ -1779,7 +1773,7 @@ export interface AffiliateSettingsView {
   levels: AffiliateLevelSettings[];
 }
 
-export type AffiliateSettingsInput = Omit<AffiliateSettings, "id" | "updated_by" | "updated_at"> & {
+export type AffiliateSettingsInput = Omit<AffiliateSettings, "id" | "updated_at"> & {
   levels: AffiliateLevelSettings[];
 };
 
@@ -1789,7 +1783,6 @@ export interface AffiliateProductOverride {
   product_type?: string;
   type: AffiliateCommissionRuleType;
   value: number;
-  updated_by: string | null;
   updated_at: string;
 }
 

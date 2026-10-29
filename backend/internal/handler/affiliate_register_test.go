@@ -39,7 +39,7 @@ func TestRegisterAffiliatorHandler(t *testing.T) {
 		var role, userStatus, phone, affStatus, terms string
 		var code *string
 		if err := env.pool.QueryRow(context.Background(),
-			`SELECT u.role, u.status, u.phone, a.status, a.terms_version, a.code
+			`SELECT u.role, u.status, u.phone, a.program_status, a.terms_version, a.referral_code
 			 FROM users u JOIN affiliators a ON a.user_id = u.id WHERE u.email = 'new.aff@example.com'`,
 		).Scan(&role, &userStatus, &phone, &affStatus, &terms, &code); err != nil {
 			t.Fatalf("read back: %v", err)
@@ -92,7 +92,7 @@ func TestRegisterAffiliatorHandler(t *testing.T) {
 	t.Run("the daily cap answers 429", func(t *testing.T) {
 		if _, err := env.pool.Exec(context.Background(),
 			`INSERT INTO affiliate_settings (id, daily_registration_cap)
-			 VALUES (1, (SELECT count(*) FROM affiliators WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'Asia/Jakarta') AT TIME ZONE 'Asia/Jakarta'))
+			 VALUES (1, (SELECT count(*) FROM users WHERE role = 'affiliator' AND created_at >= date_trunc('day', now() AT TIME ZONE 'Asia/Jakarta') AT TIME ZONE 'Asia/Jakarta'))
 			 ON CONFLICT (id) DO UPDATE SET daily_registration_cap = EXCLUDED.daily_registration_cap`); err != nil {
 			t.Fatalf("set cap: %v", err)
 		}

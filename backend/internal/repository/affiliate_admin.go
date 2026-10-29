@@ -36,7 +36,7 @@ func affiliateAdminFilterSQL(filter AffiliateAdminFilter, argIdx int) (string, [
 	query := ""
 	args := []interface{}{}
 	if filter.Status != "" {
-		query += fmt.Sprintf(` AND a.status = $%d`, argIdx)
+		query += fmt.Sprintf(` AND a.program_status = $%d`, argIdx)
 		args = append(args, filter.Status)
 		argIdx++
 	}
@@ -46,7 +46,7 @@ func affiliateAdminFilterSQL(filter AffiliateAdminFilter, argIdx int) (string, [
 		argIdx++
 	}
 	if filter.Query != "" {
-		query += fmt.Sprintf(` AND (LOWER(u.name) LIKE LOWER($%d) OR LOWER(u.email) LIKE LOWER($%d) OR LOWER(a.code) LIKE LOWER($%d))`, argIdx, argIdx, argIdx)
+		query += fmt.Sprintf(` AND (LOWER(u.name) LIKE LOWER($%d) OR LOWER(u.email) LIKE LOWER($%d) OR LOWER(a.referral_code) LIKE LOWER($%d))`, argIdx, argIdx, argIdx)
 		args = append(args, "%"+filter.Query+"%")
 		argIdx++
 	}
@@ -67,14 +67,10 @@ func (r *Repository) ListAffiliateAdmins(ctx context.Context, filter AffiliateAd
 		return nil, 0, err
 	}
 
-	query := `SELECT a.id, a.user_id, COALESCE(a.code, ''), a.status, a.rejection_reason, a.level,
-	        a.warn_quarters, a.terms_version, a.terms_accepted_at,
-	        a.bank_name, a.bank_account_number, a.bank_account_holder, a.created_at, a.updated_at,
-	        u.name, u.email, u.phone
-	 FROM affiliators a
-	 JOIN users u ON u.id = a.user_id
+	query := `SELECT ` + affiliatorColumns + `, u.name, u.email, u.phone
+	 ` + affiliatorFrom + `
 	 WHERE 1=1` + where + `
-	 ORDER BY a.created_at DESC, a.id
+	 ORDER BY u.created_at DESC, a.user_id
 	 LIMIT $` + strconv.Itoa(next) + ` OFFSET $` + strconv.Itoa(next+1)
 	args = append(args, filter.Limit, filter.Offset)
 
@@ -87,13 +83,15 @@ func (r *Repository) ListAffiliateAdmins(ctx context.Context, filter AffiliateAd
 	out := []AffiliateAdminListRow{}
 	for rows.Next() {
 		var row AffiliateAdminListRow
-		if err := rows.Scan(&row.ID, &row.UserID, &row.Code, &row.Status, &row.RejectionReason, &row.Level,
-			&row.WarnQuarters,
-			&row.TermsVersion, &row.TermsAcceptedAt, &row.BankName, &row.BankAccountNumber,
-			&row.BankAccountHolder, &row.CreatedAt, &row.UpdatedAt,
-			&row.Name, &row.Email, &row.Phone); err != nil {
+		var scan affiliatorScan
+		if err := rows.Scan(append(scan.dest(), &row.Name, &row.Email, &row.Phone)...); err != nil {
 			return nil, 0, err
 		}
+		affiliator, err := scan.result()
+		if err != nil {
+			return nil, 0, err
+		}
+		row.Affiliator = affiliator
 		out = append(out, row)
 	}
 	return out, total, rows.Err()
@@ -154,7 +152,7 @@ func (r *Repository) SumAffiliateCommissionsByStatus(ctx context.Context, affili
 // SetAffiliateStatusTx writes the affiliator status.
 func (r *Repository) SetAffiliateStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, status string) error {
 	_, err := tx.Exec(ctx,
-		`UPDATE affiliators SET status = $2, updated_at = now() WHERE id = $1`,
+		`UPDATE affiliators SET program_status = $2 WHERE user_id = $1`,
 		id, status,
 	)
 	return err
@@ -164,7 +162,7 @@ func (r *Repository) SetAffiliateStatusTx(ctx context.Context, tx pgx.Tx, id uui
 func (r *Repository) AffiliateCodeExists(ctx context.Context, code string) (bool, error) {
 	var exists bool
 	err := r.pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM affiliators WHERE code = $1)`,
+		`SELECT EXISTS (SELECT 1 FROM affiliators WHERE referral_code = $1)`,
 		code,
 	).Scan(&exists)
 	return exists, err
@@ -176,8 +174,8 @@ func (r *Repository) AffiliateCodeExists(ctx context.Context, code string) (bool
 // was already handed out.
 func (r *Repository) ApproveAffiliatorTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, code string) (bool, error) {
 	tag, err := tx.Exec(ctx,
-		`UPDATE affiliators SET status = 'active', code = $2, updated_at = now()
-		 WHERE id = $1 AND status = 'pending_approval'`,
+		`UPDATE affiliators SET program_status = 'active', referral_code = $2
+		 WHERE user_id = $1 AND program_status = 'pending_approval'`,
 		id, code,
 	)
 	if err != nil {
@@ -190,8 +188,8 @@ func (r *Repository) ApproveAffiliatorTx(ctx context.Context, tx pgx.Tx, id uuid
 // reason; false means it was no longer pending.
 func (r *Repository) RejectAffiliatorTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, reason string) (bool, error) {
 	tag, err := tx.Exec(ctx,
-		`UPDATE affiliators SET status = 'rejected', rejection_reason = $2, updated_at = now()
-		 WHERE id = $1 AND status = 'pending_approval'`,
+		`UPDATE affiliators SET program_status = 'rejected', rejection_reason = $2
+		 WHERE user_id = $1 AND program_status = 'pending_approval'`,
 		id, reason,
 	)
 	if err != nil {

@@ -111,7 +111,7 @@ func seedAffiliateAdminMoneyAffiliator(t *testing.T, pool *pgxpool.Pool) (affili
 	}
 	code = "AF" + uniqueHandlerSuffix()[:6]
 	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO affiliators (user_id, code, status, terms_version) VALUES ($1, $2, 'active', 'v1') RETURNING id`,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, terms_version) VALUES ($1, $2, 'active', 'v1') RETURNING user_id`,
 		userID, code,
 	).Scan(&affiliatorID); err != nil {
 		t.Fatalf("seed affiliator: %v", err)

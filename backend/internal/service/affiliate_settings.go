@@ -24,6 +24,13 @@ var affiliateDefaultCommissionRule = map[string]model.AffiliateCommissionRule{
 	"medal":       {Type: affiliateCommissionPercent, Value: 0},
 }
 
+// affiliateDefaultRiseThreshold is the quarterly revenue that rises into a
+// level while the admin leaves that level's rise_threshold empty.
+var affiliateDefaultRiseThreshold = map[string]float64{
+	"silver": 5000000,
+	"gold":   15000000,
+}
+
 var affiliateLevels = []string{"bronze", "silver", "gold"}
 
 // AffiliateEffectiveRule is one level's resolved rule set: global settings as
@@ -63,10 +70,7 @@ func defaultAffiliateSettings() *model.AffiliateSettings {
 		PayoutDayOfMonth:     nil,
 		LaunchDate:           nil,
 		EvalDay:              8,
-		SilverThreshold:      5000000,
-		GoldThreshold:        15000000,
 		DailyRegistrationCap: nil,
-		UpdatedBy:            nil,
 	}
 }
 
@@ -130,6 +134,11 @@ func buildAffiliateEffectiveRules(settings *model.AffiliateSettings, levels []mo
 			}
 			rule.RiseThreshold = row.RiseThreshold
 			rule.HoldThreshold = row.HoldThreshold
+		}
+		if rule.RiseThreshold == nil {
+			if def, ok := affiliateDefaultRiseThreshold[level]; ok {
+				rule.RiseThreshold = &def
+			}
 		}
 		rules[level] = rule
 	}
@@ -222,7 +231,7 @@ func (s *Service) ValidateAffiliateCode(ctx context.Context, code string) (Affil
 	if aff == nil || aff.Status != "active" {
 		return res, nil
 	}
-	user, err := s.repo.GetUserByID(ctx, aff.UserID.String())
+	user, err := s.repo.GetUserByID(ctx, aff.ID.String())
 	if err != nil {
 		return res, fmt.Errorf("get affiliator user: %w", err)
 	}

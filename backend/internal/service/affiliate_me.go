@@ -84,7 +84,7 @@ type AffiliateMeBinding struct {
 	Status       string     `json:"status"`
 	Source       string     `json:"source"`
 	StartedAt    time.Time  `json:"started_at"`
-	EndedAt      *time.Time `json:"ended_at"`
+	ExpiresAt    *time.Time `json:"expires_at"`
 	TotalSpend   float64    `json:"total_spend"`
 }
 
@@ -174,10 +174,10 @@ func (s *Service) GetMyAffiliateProfile(ctx context.Context, userID string) (Aff
 		BankAccountNumber: aff.BankAccountNumber,
 		BankAccountHolder: aff.BankAccountHolder,
 		TermsVersion:      aff.TermsVersion,
-		TermsAcceptedAt:   aff.TermsAcceptedAt,
+		TermsAcceptedAt:   aff.CreatedAt,
 	}
 
-	settings, rules, err := s.LoadAffiliateEffectiveRules(ctx)
+	_, rules, err := s.LoadAffiliateEffectiveRules(ctx)
 	if err != nil {
 		return profile, fmt.Errorf("load affiliate effective rules: %w", err)
 	}
@@ -197,7 +197,7 @@ func (s *Service) GetMyAffiliateProfile(ctx context.Context, userID string) (Aff
 		HoldThreshold: rules[aff.Level].HoldThreshold,
 	}
 	if next, ok := affiliateNextLevel(aff.Level); ok {
-		rise := affiliateRiseThreshold(next, rules, settings)
+		rise := affiliateRiseThreshold(next, rules)
 		progress.NextLevel = next
 		progress.RiseThreshold = &rise
 	}
@@ -263,7 +263,7 @@ func (s *Service) ListMyAffiliateBindings(ctx context.Context, userID string, fi
 			Status:       row.Status,
 			Source:       row.Source,
 			StartedAt:    row.StartedAt,
-			EndedAt:      row.EndedAt,
+			ExpiresAt:    row.ExpiresAt,
 			TotalSpend:   row.TotalSpend,
 		})
 	}

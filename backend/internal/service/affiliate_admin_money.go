@@ -93,7 +93,7 @@ func (s *Service) AdminCreateAffiliateAdjustment(ctx context.Context, actorID, a
 	if aff == nil {
 		return nil, ErrAffiliateNotFound
 	}
-	if aff.UserID == actor {
+	if aff.ID == actor {
 		return nil, ErrAffiliateSelfAdjustment
 	}
 

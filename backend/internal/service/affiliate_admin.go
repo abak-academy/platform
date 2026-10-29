@@ -330,7 +330,7 @@ func (s *Service) GetAffiliateAdminDetail(ctx context.Context, id string) (*Affi
 		return nil, ErrAffiliateNotFound
 	}
 
-	contact, err := s.storeRepo.GetAffiliateAdminUserContact(ctx, aff.UserID)
+	contact, err := s.storeRepo.GetAffiliateAdminUserContact(ctx, aff.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get affiliator user: %w", err)
 	}
@@ -362,7 +362,7 @@ func (s *Service) GetAffiliateAdminDetail(ctx context.Context, id string) (*Affi
 			Status:       row.Status,
 			Source:       row.Source,
 			StartedAt:    row.StartedAt,
-			EndedAt:      row.EndedAt,
+			ExpiresAt:    row.ExpiresAt,
 			TotalSpend:   row.TotalSpend,
 		})
 	}

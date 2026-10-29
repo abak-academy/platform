@@ -35,6 +35,18 @@ func seedAffiliateSettingsForBinding(t *testing.T, repo *repository.Repository, 
 	require.NoError(t, err)
 }
 
+// setAffiliateTestLevels replaces the per-level rules stored in the settings
+// row and clears them again when the test ends.
+func setAffiliateTestLevels(t *testing.T, repo *repository.Repository, levels string) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := repo.Pool().Exec(ctx,
+		`INSERT INTO affiliate_settings (id, levels) VALUES (1, $1::jsonb)
+		 ON CONFLICT (id) DO UPDATE SET levels = $1::jsonb`, levels)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = repo.Pool().Exec(ctx, `UPDATE affiliate_settings SET levels = '{}' WHERE id = 1`) })
+}
+
 func seedAffiliateBindingUser(t *testing.T, repo *repository.Repository, email, phone, role string) string {
 	t.Helper()
 	var id string
@@ -57,7 +69,7 @@ func seedAffiliatorOwner(t *testing.T, repo *repository.Repository, email, phone
 	code := "AF" + strings.ToUpper(uniqueSuffix())
 	var id uuid.UUID
 	require.NoError(t, repo.Pool().QueryRow(context.Background(),
-		`INSERT INTO affiliators (user_id, code, terms_version, status) VALUES ($1, $2, 'v1', $3) RETURNING id`,
+		`INSERT INTO affiliators (user_id, referral_code, terms_version, program_status) VALUES ($1, $2, 'v1', $3) RETURNING user_id`,
 		userID, code, status,
 	).Scan(&id))
 	return affiliateTestOwner{affiliatorID: id, userID: userID, code: code}
@@ -90,10 +102,10 @@ func getActiveAffiliateBinding(t *testing.T, repo *repository.Repository, studen
 	t.Helper()
 	var b model.AffiliateBinding
 	err := repo.Pool().QueryRow(context.Background(),
-		`SELECT id, affiliator_id, student_id, status, source, started_at, ended_at, last_extended_at, created_at, updated_at
+		`SELECT id, affiliator_id, student_id, status, source, started_at, expires_at, created_at, updated_at
 		 FROM affiliate_bindings WHERE student_id = $1 AND status = 'active'`,
 		studentID,
-	).Scan(&b.ID, &b.AffiliatorID, &b.StudentID, &b.Status, &b.Source, &b.StartedAt, &b.EndedAt, &b.LastExtendedAt, &b.CreatedAt, &b.UpdatedAt)
+	).Scan(&b.ID, &b.AffiliatorID, &b.StudentID, &b.Status, &b.Source, &b.StartedAt, &b.ExpiresAt, &b.CreatedAt, &b.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -104,7 +116,7 @@ func getActiveAffiliateBinding(t *testing.T, repo *repository.Repository, studen
 func endActiveAffiliateBinding(t *testing.T, repo *repository.Repository, studentID string) {
 	t.Helper()
 	_, err := repo.Pool().Exec(context.Background(),
-		`UPDATE affiliate_bindings SET status = 'ended', ended_at = now() WHERE student_id = $1 AND status = 'active'`,
+		`UPDATE affiliate_bindings SET status = 'ended', expires_at = now() WHERE student_id = $1 AND status = 'active'`,
 		studentID,
 	)
 	require.NoError(t, err)
@@ -284,8 +296,7 @@ func TestExtendBinding_AmountThresholdAndReanchor(t *testing.T) {
 		require.NoError(t, svc.ExtendBinding(ctx, tx, student.ID, binding.StartedAt.Add(2*time.Second), 99999))
 		require.NoError(t, tx.Commit(ctx))
 		row := getActiveAffiliateBinding(t, repo, student.ID)
-		require.True(t, row.EndedAt.Equal(binding.StartedAt.AddDate(0, 3, 0)))
-		require.Nil(t, row.LastExtendedAt)
+		require.True(t, row.ExpiresAt.Equal(binding.StartedAt.AddDate(0, 3, 0)))
 	})
 
 	t.Run("payment at threshold extends from paidAt", func(t *testing.T) {
@@ -295,10 +306,8 @@ func TestExtendBinding_AmountThresholdAndReanchor(t *testing.T) {
 		require.NoError(t, svc.ExtendBinding(ctx, tx, student.ID, paidAt, 100000))
 		require.NoError(t, tx.Commit(ctx))
 		row := getActiveAffiliateBinding(t, repo, student.ID)
-		require.NotNil(t, row.EndedAt)
-		require.True(t, row.EndedAt.Equal(paidAt.AddDate(0, 3, 0)))
-		require.NotNil(t, row.LastExtendedAt)
-		require.True(t, row.LastExtendedAt.Equal(paidAt))
+		require.NotNil(t, row.ExpiresAt)
+		require.True(t, row.ExpiresAt.Equal(paidAt.AddDate(0, 3, 0)))
 	})
 
 	t.Run("earlier payment keeps the longer window", func(t *testing.T) {
@@ -308,8 +317,7 @@ func TestExtendBinding_AmountThresholdAndReanchor(t *testing.T) {
 		require.NoError(t, svc.ExtendBinding(ctx, tx, student.ID, paidAt, 100000))
 		require.NoError(t, tx.Commit(ctx))
 		row := getActiveAffiliateBinding(t, repo, student.ID)
-		require.True(t, row.EndedAt.Equal(binding.StartedAt.Add(2*time.Second).AddDate(0, 3, 0)))
-		require.True(t, row.LastExtendedAt.Equal(paidAt))
+		require.True(t, row.ExpiresAt.Equal(binding.StartedAt.Add(2*time.Second).AddDate(0, 3, 0)))
 	})
 
 	t.Run("no active binding is a no-op", func(t *testing.T) {
@@ -335,7 +343,7 @@ func TestExpireBindings_DueOnlyAndIdempotent(t *testing.T) {
 	createAffiliateBindingCommitted(t, svc, repo, due.ID, owner.affiliatorID, "manual_code")
 	createAffiliateBindingCommitted(t, svc, repo, live.ID, owner.affiliatorID, "manual_code")
 	_, err := repo.Pool().Exec(ctx,
-		`UPDATE affiliate_bindings SET ended_at = now() - interval '1 hour' WHERE student_id = $1 AND status = 'active'`,
+		`UPDATE affiliate_bindings SET expires_at = now() - interval '1 hour' WHERE student_id = $1 AND status = 'active'`,
 		due.ID,
 	)
 	require.NoError(t, err)
@@ -397,17 +405,14 @@ func TestBindingLength_followsAffiliatorLevelAndFallsBackToGlobal(t *testing.T) 
 	ctx := context.Background()
 	launch := time.Now().UTC().Add(-24 * time.Hour)
 	seedAffiliateSettingsForBinding(t, repo, affiliateSettingsSeed{launchDate: &launch, bindingMonths: 3, minExtend: 0})
-	_, err := repo.Pool().Exec(ctx,
-		`INSERT INTO affiliate_level_settings (level, binding_months) VALUES ('gold', 6), ('silver', NULL)
-		 ON CONFLICT (level) DO UPDATE SET binding_months = EXCLUDED.binding_months`)
-	require.NoError(t, err)
-	t.Cleanup(func() { _, _ = repo.Pool().Exec(ctx, `DELETE FROM affiliate_level_settings`) })
+	setAffiliateTestLevels(t, repo, `{"gold": {"binding_months": 6}, "silver": {}}`)
+	var err error
 
 	gold := seedAffiliatorOwner(t, repo, "aff-len-g-"+uniqueSuffix()+"@test.local", "", "active")
 	silver := seedAffiliatorOwner(t, repo, "aff-len-s-"+uniqueSuffix()+"@test.local", "", "active")
-	_, err = repo.Pool().Exec(ctx, `UPDATE affiliators SET level = 'gold' WHERE id = $1`, gold.affiliatorID)
+	_, err = repo.Pool().Exec(ctx, `UPDATE affiliators SET level = 'gold' WHERE user_id = $1`, gold.affiliatorID)
 	require.NoError(t, err)
-	_, err = repo.Pool().Exec(ctx, `UPDATE affiliators SET level = 'silver' WHERE id = $1`, silver.affiliatorID)
+	_, err = repo.Pool().Exec(ctx, `UPDATE affiliators SET level = 'silver' WHERE user_id = $1`, silver.affiliatorID)
 	require.NoError(t, err)
 
 	goldStudent := seedAffiliateTestStudent(t, repo, "student-len-g-"+uniqueSuffix()+"@test.local", "")
@@ -416,9 +421,9 @@ func TestBindingLength_followsAffiliatorLevelAndFallsBackToGlobal(t *testing.T) 
 	createAffiliateBindingCommitted(t, svc, repo, silverStudent.ID, silver.affiliatorID, "manual_code")
 
 	goldBinding := getActiveAffiliateBinding(t, repo, goldStudent.ID)
-	require.True(t, goldBinding.EndedAt.Equal(goldBinding.StartedAt.AddDate(0, 6, 0)), "gold level binds for 6 months")
+	require.True(t, goldBinding.ExpiresAt.Equal(goldBinding.StartedAt.AddDate(0, 6, 0)), "gold level binds for 6 months")
 	silverBinding := getActiveAffiliateBinding(t, repo, silverStudent.ID)
-	require.True(t, silverBinding.EndedAt.Equal(silverBinding.StartedAt.AddDate(0, 3, 0)), "a level without a value follows the global 3 months")
+	require.True(t, silverBinding.ExpiresAt.Equal(silverBinding.StartedAt.AddDate(0, 3, 0)), "a level without a value follows the global 3 months")
 
 	paidAt := goldBinding.StartedAt.Add(time.Hour)
 	tx, err := repo.BeginTx(ctx)
@@ -426,10 +431,9 @@ func TestBindingLength_followsAffiliatorLevelAndFallsBackToGlobal(t *testing.T) 
 	require.NoError(t, svc.ExtendBinding(ctx, tx, goldStudent.ID, paidAt, 50000))
 	require.NoError(t, tx.Commit(ctx))
 	extended := getActiveAffiliateBinding(t, repo, goldStudent.ID)
-	require.True(t, extended.EndedAt.Equal(paidAt.AddDate(0, 6, 0)), "an extension also uses the level length")
+	require.True(t, extended.ExpiresAt.Equal(paidAt.AddDate(0, 6, 0)), "an extension also uses the level length")
 
-	_, err = repo.Pool().Exec(ctx, `UPDATE affiliate_level_settings SET binding_months = 12 WHERE level = 'gold'`)
-	require.NoError(t, err)
+	setAffiliateTestLevels(t, repo, `{"gold": {"binding_months": 12}, "silver": {}}`)
 	unchanged := getActiveAffiliateBinding(t, repo, silverStudent.ID)
-	require.True(t, unchanged.EndedAt.Equal(*silverBinding.EndedAt), "changing a level never rewrites an existing binding")
+	require.True(t, unchanged.ExpiresAt.Equal(*silverBinding.ExpiresAt), "changing a level never rewrites an existing binding")
 }

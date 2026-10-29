@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"time"
 
@@ -24,7 +25,7 @@ type AffiliateBindingListRow struct {
 	Status       string
 	Source       string
 	StartedAt    time.Time
-	EndedAt      *time.Time
+	ExpiresAt    *time.Time
 	CreatedAt    time.Time
 	TotalSpend   float64
 }
@@ -55,37 +56,24 @@ const affiliateBindingSpendExpr = `COALESCE((
 	WHERE o.student_id = b.student_id
 	  AND o.status IN ('paid', 'processing', 'shipped', 'completed')
 	  AND o.paid_at >= b.started_at
-	  AND (b.ended_at IS NULL OR o.paid_at < b.ended_at)
+	  AND (b.expires_at IS NULL OR o.paid_at < b.expires_at)
 ), 0)`
 
 func (r *Repository) GetAffiliatorByUserID(ctx context.Context, userID string) (*model.Affiliator, error) {
-	var a model.Affiliator
-	err := r.pool.QueryRow(ctx,
-		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level,
-		        warn_quarters, terms_version, terms_accepted_at,
-		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
-		 FROM affiliators
-		 WHERE user_id = $1`,
-		userID,
-	).Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level,
-		&a.WarnQuarters, &a.TermsVersion, &a.TermsAcceptedAt,
-		&a.BankName, &a.BankAccountNumber, &a.BankAccountHolder, &a.CreatedAt, &a.UpdatedAt)
+	a, err := scanAffiliator(r.pool.QueryRow(ctx,
+		`SELECT `+affiliatorColumns+` `+affiliatorFrom+` WHERE a.user_id = $1`, userID))
 	if isNotFound(err) {
 		return nil, nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	return &a, nil
+	return a, err
 }
 
 func (r *Repository) UpdateAffiliatorBank(ctx context.Context, id uuid.UUID, bankName, bankAccountNumber, bankAccountHolder string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE affiliators
-		 SET bank_name = $2, bank_account_number = $3, bank_account_holder = $4, updated_at = now()
-		 WHERE id = $1`,
-		id, bankName, bankAccountNumber, bankAccountHolder,
-	)
+	bank, err := json.Marshal(affiliatorBankAccount{BankName: bankName, AccountNumber: bankAccountNumber, AccountHolder: bankAccountHolder})
+	if err != nil {
+		return err
+	}
+	_, err = r.pool.Exec(ctx, `UPDATE affiliators SET bank_account = $2 WHERE user_id = $1`, id, bank)
 	return err
 }
 
@@ -101,7 +89,7 @@ func affiliateBindingPredicate(q AffiliateListQuery) *affPredicate {
 func (r *Repository) ListAffiliateBindingsForAffiliator(ctx context.Context, affiliatorID uuid.UUID, q AffiliateListQuery, limit, offset int) ([]AffiliateBindingListRow, error) {
 	p := affiliateBindingPredicate(q)
 	args := append([]interface{}{affiliatorID}, p.args...)
-	query := `SELECT b.id, b.status, b.source, b.started_at, b.ended_at, b.created_at,
+	query := `SELECT b.id, b.status, b.source, b.started_at, b.expires_at, b.created_at,
 	        u.name, u.created_at,
 ` + affiliateBindingSpendExpr + ` AS total_spend
 		 FROM affiliate_bindings b
@@ -120,7 +108,7 @@ func (r *Repository) ListAffiliateBindingsForAffiliator(ctx context.Context, aff
 	out := []AffiliateBindingListRow{}
 	for rows.Next() {
 		var row AffiliateBindingListRow
-		if err := rows.Scan(&row.BindingID, &row.Status, &row.Source, &row.StartedAt, &row.EndedAt, &row.CreatedAt,
+		if err := rows.Scan(&row.BindingID, &row.Status, &row.Source, &row.StartedAt, &row.ExpiresAt, &row.CreatedAt,
 			&row.StudentName, &row.RegisteredAt, &row.TotalSpend); err != nil {
 			return nil, err
 		}
@@ -344,11 +332,11 @@ func (r *Repository) ListAffiliateReportOrders(ctx context.Context, f AffiliateR
 	p.eq("c.status", f.Status)
 	p.eq("c.product_type", f.ProductType)
 	p.dates("c.paid_at", f.PaidFrom, f.PaidTo)
-	p.search(f.Q, "u.name", "oi.name", "au.name", "a.code")
+	p.search(f.Q, "u.name", "oi.name", "au.name", "a.referral_code")
 	from := `FROM affiliate_commissions c
 		 JOIN users u ON u.id = c.student_id
 		 JOIN order_item oi ON oi.id = c.order_item_id
-		 JOIN affiliators a ON a.id = c.affiliator_id
+		 JOIN affiliators a ON a.user_id = c.affiliator_id
 		 JOIN users au ON au.id = a.user_id
 		 WHERE TRUE` + p.sql
 
@@ -359,7 +347,7 @@ func (r *Repository) ListAffiliateReportOrders(ctx context.Context, f AffiliateR
 	rows, err := r.pool.Query(ctx,
 		`SELECT c.id, c.affiliator_id, c.student_id, c.order_id, c.order_item_id, c.product_type, c.base_amount, c.commission_type, c.commission_value,
 		        c.level_snapshot, c.amount, c.status, c.wait_until, c.paid_at, c.received_at, c.created_at, c.updated_at,
-		        u.name, oi.name, au.name, COALESCE(a.code, '') `+from+`
+		        u.name, oi.name, au.name, COALESCE(a.referral_code, '') `+from+`
 		 ORDER BY c.paid_at DESC NULLS LAST, c.id DESC
 		 LIMIT $`+strconv.Itoa(p.next)+` OFFSET $`+strconv.Itoa(p.next+1),
 		append(p.args, f.Limit, f.Offset)...)

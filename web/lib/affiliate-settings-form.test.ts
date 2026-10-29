@@ -13,10 +13,7 @@ const settings: AffiliateSettings = {
   payout_day_of_month: null,
   launch_date: "2026-11-01T00:00:00Z",
   eval_day: 8,
-  silver_threshold: 5000000,
-  gold_threshold: 15000000,
   daily_registration_cap: null,
-  updated_by: null,
   updated_at: "2026-10-01T00:00:00Z",
 };
 

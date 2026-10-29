@@ -37,7 +37,7 @@ func TestEmptyListsAnswerAnEmptyArray(t *testing.T) {
 
 	affID, _ := seedAffiliateAdminRow(t, env.pool, "active")
 	var userID, adminID string
-	if err := env.pool.QueryRow(ctx, `SELECT user_id FROM affiliators WHERE id = $1`, affID).Scan(&userID); err != nil {
+	if err := env.pool.QueryRow(ctx, `SELECT user_id FROM affiliators WHERE user_id = $1`, affID).Scan(&userID); err != nil {
 		t.Fatalf("affiliator user: %v", err)
 	}
 	if err := env.pool.QueryRow(ctx,
@@ -88,7 +88,7 @@ func TestAffiliateMeListQueryParams(t *testing.T) {
 	setAffiliateFlag(t, env.pool, "true")
 	affID, _ := seedAffiliateAdminRow(t, env.pool, "active")
 	var userID string
-	if err := env.pool.QueryRow(ctx, `SELECT user_id FROM affiliators WHERE id = $1`, affID).Scan(&userID); err != nil {
+	if err := env.pool.QueryRow(ctx, `SELECT user_id FROM affiliators WHERE user_id = $1`, affID).Scan(&userID); err != nil {
 		t.Fatalf("affiliator user: %v", err)
 	}
 	tok, jti, err := env.signer.SignAccess(userID, service.RoleAffiliator, nil, []string{})

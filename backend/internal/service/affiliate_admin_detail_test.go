@@ -27,9 +27,9 @@ func TestAffiliateAdminDetailAggregatesSummaries(t *testing.T) {
 		`INSERT INTO users (name, email, phone, role, status) VALUES ($1, $2, $3, 'student', 'active') RETURNING id`,
 		"Siti Aminah Rahayu", studentEmail, studentPhone,
 	).Scan(&studentID))
-	seedAffiliateJobBinding(t, repo, id, studentID, nil)
+	seedAffiliateJobBinding(t, repo, id, studentID)
 	_, err := repo.Pool().Exec(ctx,
-		`INSERT INTO affiliate_bindings (affiliator_id, student_id, status, source, started_at, ended_at)
+		`INSERT INTO affiliate_bindings (affiliator_id, student_id, status, source, started_at, expires_at)
 		 VALUES ($1, $2, 'ended', 'link', now() - interval '90 days', now() - interval '10 days')`,
 		id, studentID)
 	require.NoError(t, err)

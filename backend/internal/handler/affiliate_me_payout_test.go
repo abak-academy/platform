@@ -97,7 +97,7 @@ func seedAffiliatePayoutOwner(t *testing.T, pool *pgxpool.Pool, name string) aff
 	code := "AF" + uniqueHandlerSuffix()[:6]
 	var affID uuid.UUID
 	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO affiliators (user_id, code, status, terms_version) VALUES ($1, $2, 'active', 'v1') RETURNING id`,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, terms_version) VALUES ($1, $2, 'active', 'v1') RETURNING user_id`,
 		userID, code,
 	).Scan(&affID); err != nil {
 		t.Fatalf("seed affiliator: %v", err)
@@ -108,7 +108,7 @@ func seedAffiliatePayoutOwner(t *testing.T, pool *pgxpool.Pool, name string) aff
 func seedAffiliatePayoutBank(t *testing.T, pool *pgxpool.Pool, affiliatorID uuid.UUID) {
 	t.Helper()
 	if _, err := pool.Exec(context.Background(),
-		`UPDATE affiliators SET bank_name = 'BCA', bank_account_number = '1234567890', bank_account_holder = 'Budi Santoso' WHERE id = $1`,
+		`UPDATE affiliators SET bank_account = '{"bank_name":"BCA","account_number":"1234567890","account_holder":"Budi Santoso"}' WHERE user_id = $1`,
 		affiliatorID); err != nil {
 		t.Fatalf("seed bank: %v", err)
 	}

@@ -19,8 +19,6 @@ export const GLOBAL_HELP: Record<GlobalField, FieldHelp> = {
   min_payout: { unit: "rupiah", example: "100000", required: true },
   payout_day_of_month: { example: "10", required: false },
   eval_day: { example: "5", required: true },
-  silver_threshold: { unit: "rupiah", example: "5000000", required: true },
-  gold_threshold: { unit: "rupiah", example: "15000000", required: true },
   daily_registration_cap: { example: "50", required: false },
 };
 

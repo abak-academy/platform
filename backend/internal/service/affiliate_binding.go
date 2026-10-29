@@ -129,14 +129,14 @@ func (s *Service) CreateBinding(ctx context.Context, tx pgx.Tx, studentID string
 		return err
 	}
 	startedAt := time.Now()
-	endedAt := startedAt.AddDate(0, months, 0)
+	expiresAt := startedAt.AddDate(0, months, 0)
 	binding := &model.AffiliateBinding{
 		AffiliatorID: affiliatorID,
 		StudentID:    sid,
 		Status:       affiliateBindingStatusActive,
 		Source:       source,
 		StartedAt:    startedAt,
-		EndedAt:      &endedAt,
+		ExpiresAt:    &expiresAt,
 	}
 	if err := s.storeRepo.InsertBinding(ctx, tx, binding); err != nil {
 		// A concurrent binding won the partial unique index; the student keeps it.
@@ -171,15 +171,15 @@ func (s *Service) ExtendBinding(ctx context.Context, tx pgx.Tx, studentID string
 	if err != nil {
 		return err
 	}
-	// ended_at re-anchors from the payment date instead of stacking onto the remaining window.
-	newEndedAt := paidAt.AddDate(0, months, 0)
-	if binding.EndedAt != nil && binding.EndedAt.After(newEndedAt) {
-		newEndedAt = *binding.EndedAt
+	// expires_at re-anchors from the payment date instead of stacking onto the remaining window.
+	newExpiresAt := paidAt.AddDate(0, months, 0)
+	if binding.ExpiresAt != nil && binding.ExpiresAt.After(newExpiresAt) {
+		newExpiresAt = *binding.ExpiresAt
 	}
-	return s.storeRepo.ExtendBindingTx(ctx, tx, binding.ID, newEndedAt, paidAt)
+	return s.storeRepo.ExtendBindingTx(ctx, tx, binding.ID, newExpiresAt)
 }
 
-// ExpireBindings ends every active binding whose ended_at has passed; repeat
+// ExpireBindings ends every active binding whose expires_at has passed; repeat
 // runs change nothing.
 func (s *Service) ExpireBindings(ctx context.Context, now time.Time) (int, error) {
 	rows, err := s.storeRepo.ExpireDueBindings(ctx, now)

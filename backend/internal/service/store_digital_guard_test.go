@@ -75,7 +75,7 @@ func TestDigitalPurchase_LiveOrderBlocksItsTarget(t *testing.T) {
 			arrange: func(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) digitalAttempt {
 				product := seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo))
 				first := cartOf(t, svc, student, product)
-				if _, err := svc.Checkout(context.Background(), student.String(), first.String(), checkoutKey()); err != nil {
+				if _, err := svc.Checkout(context.Background(), student.String(), first.String(), checkoutKey(), ""); err != nil {
 					t.Fatalf("first Checkout: %v", err)
 				}
 				return digitalAttempt{product: product, kind: "course", price: 50000, earlier: first}
@@ -91,7 +91,7 @@ func TestDigitalPurchase_LiveOrderBlocksItsTarget(t *testing.T) {
 				first := seedDigitalProduct(t, repo, "course", 50000, course)
 				second := seedDigitalProduct(t, repo, "course", 40000, course)
 				firstCart := cartOf(t, svc, student, first)
-				if _, err := svc.Checkout(context.Background(), student.String(), firstCart.String(), checkoutKey()); err != nil {
+				if _, err := svc.Checkout(context.Background(), student.String(), firstCart.String(), checkoutKey(), ""); err != nil {
 					t.Fatalf("first Checkout: %v", err)
 				}
 				return digitalAttempt{product: second, kind: "course", price: 40000, earlier: firstCart}
@@ -112,7 +112,7 @@ func TestDigitalPurchase_LiveOrderBlocksItsTarget(t *testing.T) {
 
 			if !tt.blocked {
 				orderID := cartOf(t, svc, student, attempt.product)
-				if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey()); err != nil {
+				if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey(), ""); err != nil {
 					t.Fatalf("Checkout while the earlier order is %s: %v", tt.name, err)
 				}
 				if got := orderStatusOf(t, repo, orderID); got != "payment_pending" {
@@ -133,7 +133,7 @@ func TestDigitalPurchase_LiveOrderBlocksItsTarget(t *testing.T) {
 			}
 			wantConflict(t, svc.AddItem(ctx, student.String(), cart.ID.String(), attempt.product.String(), 1), model.DigitalConflictClaimed)
 			forceLine(t, repo, cart.ID, attempt.product, attempt.kind, attempt.price)
-			_, err = svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey())
+			_, err = svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey(), "")
 			wantConflict(t, err, model.DigitalConflictClaimed)
 			if got := orderStatusOf(t, repo, cart.ID); got != "cart" {
 				t.Errorf("order status = %q, want cart", got)
@@ -222,7 +222,7 @@ func TestDigitalPurchase_ConcurrentCheckoutsForOneStudentCreateOneOrderAndOnePay
 	done := make(chan error, 2)
 	for i := 0; i < 2; i++ {
 		go func() {
-			_, err := svc.Checkout(ctx, student.String(), cartID.String(), checkoutKey())
+			_, err := svc.Checkout(ctx, student.String(), cartID.String(), checkoutKey(), "")
 			done <- err
 		}()
 	}
@@ -300,7 +300,7 @@ func TestDigitalPurchase_MintCartWaitsForCheckoutThenGuardRefusesTheSameTarget(t
 	}
 	wantConflict(t, svc.AddItem(ctx, student.String(), m.order.ID.String(), product.String(), 1), model.DigitalConflictClaimed)
 	forceLine(t, repo, m.order.ID, product, "course", 50000)
-	_, err = svc.Checkout(ctx, student.String(), m.order.ID.String(), checkoutKey())
+	_, err = svc.Checkout(ctx, student.String(), m.order.ID.String(), checkoutKey(), "")
 	wantConflict(t, err, model.DigitalConflictClaimed)
 	if got := orderStatusOf(t, repo, m.order.ID); got != "cart" {
 		t.Errorf("second order status = %q, want cart", got)

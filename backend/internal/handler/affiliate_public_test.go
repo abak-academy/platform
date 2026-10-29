@@ -95,7 +95,7 @@ func seedAffiliator(t *testing.T, pool *pgxpool.Pool, status string) (code, name
 	}
 	code = strings.ToUpper("AF" + uniqueHandlerSuffix()[:6])
 	if _, err := pool.Exec(context.Background(),
-		`INSERT INTO affiliators (user_id, code, status, terms_version) VALUES ($1, $2, $3, 'v1')`,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, terms_version) VALUES ($1, $2, $3, 'v1')`,
 		userID, code, status); err != nil {
 		t.Fatalf("seed affiliator: %v", err)
 	}

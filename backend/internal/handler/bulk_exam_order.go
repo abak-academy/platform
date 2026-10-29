@@ -119,7 +119,7 @@ func (h *Handler) AdminCheckoutBulkOrder(c echo.Context) error {
 		return badRequest(c, "Idempotency-Key header is required")
 	}
 
-	result, err := h.svc.Checkout(c.Request().Context(), claims.Sub, orderID, key)
+	result, err := h.svc.Checkout(c.Request().Context(), claims.Sub, orderID, key, "")
 	if err != nil {
 		return mapServiceError(c, err)
 	}

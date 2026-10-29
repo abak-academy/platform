@@ -28,7 +28,7 @@ func (r *Repository) CreateAffiliatorAccount(ctx context.Context, u *model.User,
 		return err
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO affiliators (user_id, status, terms_version) VALUES ($1, 'pending_approval', $2)`,
+		`INSERT INTO affiliators (user_id, program_status, terms_version) VALUES ($1, 'pending_approval', $2)`,
 		u.ID, termsVersion,
 	); err != nil {
 		return err

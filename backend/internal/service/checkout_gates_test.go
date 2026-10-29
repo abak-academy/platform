@@ -68,7 +68,7 @@ func TestCheckout_FreeOrder_SkipsGateway(t *testing.T) {
 		t.Fatalf("AddItem: %v", err)
 	}
 
-	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "free-key-"+uniqueSuffix())
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "free-key-"+uniqueSuffix(), "")
 	if err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestCheckout_FreeOrder_PostCommitCacheFailureStillSucceeds(t *testing.T) {
 	// sentinel after the commit fails.
 	mr.Close()
 
-	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "cache-down-key-"+uniqueSuffix())
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "cache-down-key-"+uniqueSuffix(), "")
 	if err != nil {
 		t.Fatalf("Checkout must succeed despite a post-commit cache failure, got: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestCheckout_FreeOrder_PromoUsageCommitsWithTheOrder(t *testing.T) {
 		t.Fatalf("attach promo to order: %v", err)
 	}
 
-	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "promo-key-"+uniqueSuffix())
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "promo-key-"+uniqueSuffix(), "")
 	if err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestCheckout_ExamRequiresBiodata(t *testing.T) {
 	}
 
 	// Incomplete biodata → blocked.
-	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "bio-key-1-"+uniqueSuffix()); !errors.Is(err, ErrBiodataIncomplete) {
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "bio-key-1-"+uniqueSuffix(), ""); !errors.Is(err, ErrBiodataIncomplete) {
 		t.Fatalf("want ErrBiodataIncomplete, got %v", err)
 	}
 
@@ -237,7 +237,7 @@ func TestCheckout_ExamRequiresBiodata(t *testing.T) {
 		t.Fatalf("set biodata: %v", err)
 	}
 
-	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "bio-key-2-"+uniqueSuffix())
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "bio-key-2-"+uniqueSuffix(), "")
 	if err != nil {
 		t.Fatalf("Checkout after biodata complete: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestCheckout_ExamBiodataError_NamesOnlyMissingFields(t *testing.T) {
 		t.Fatalf("AddItem: %v", err)
 	}
 
-	_, err = svc.Checkout(ctx, studentID, order.ID.String(), "bio-grade-key-"+uniqueSuffix())
+	_, err = svc.Checkout(ctx, studentID, order.ID.String(), "bio-grade-key-"+uniqueSuffix(), "")
 	var bioErr *BiodataIncompleteError
 	if !errors.As(err, &bioErr) {
 		t.Fatalf("want *BiodataIncompleteError, got %v", err)
@@ -308,7 +308,7 @@ func TestCheckout_ExamRequiresBiodata_FreeExam(t *testing.T) {
 		t.Fatalf("AddItem: %v", err)
 	}
 
-	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "bio-free-key-"+uniqueSuffix()); !errors.Is(err, ErrBiodataIncomplete) {
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "bio-free-key-"+uniqueSuffix(), ""); !errors.Is(err, ErrBiodataIncomplete) {
 		t.Fatalf("want ErrBiodataIncomplete for a free exam with incomplete biodata, got %v", err)
 	}
 }
@@ -362,7 +362,7 @@ func TestCheckout_BulkExamOrder_ExemptFromBiodataGate(t *testing.T) {
 		t.Fatalf("CreateBulkExamOrder: %v", err)
 	}
 
-	result, err := svc.Checkout(ctx, adminID, order.ID.String(), "bio-bulk-key-"+uniqueSuffix())
+	result, err := svc.Checkout(ctx, adminID, order.ID.String(), "bio-bulk-key-"+uniqueSuffix(), "")
 	if err != nil {
 		t.Fatalf("Checkout: want bulk order exempt from biodata gate, got %v", err)
 	}
@@ -406,7 +406,7 @@ func TestCheckout_PhysicalItemPricedButNoCourier_ReturnsShippingRequired(t *test
 		t.Fatalf("seed priced shipping without a courier: %v", err)
 	}
 
-	_, err = svc.Checkout(ctx, studentID, order.ID.String(), "nocourier-key-"+uniqueSuffix())
+	_, err = svc.Checkout(ctx, studentID, order.ID.String(), "nocourier-key-"+uniqueSuffix(), "")
 	if !errors.Is(err, ErrShippingRequired) {
 		t.Errorf("want ErrShippingRequired, got %v", err)
 	}
@@ -439,7 +439,7 @@ func TestCheckout_DigitalOnlyCart_NoCourier_Succeeds(t *testing.T) {
 		t.Fatalf("AddItem: %v", err)
 	}
 
-	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "digitalonly-key-"+uniqueSuffix())
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "digitalonly-key-"+uniqueSuffix(), "")
 	if err != nil {
 		t.Fatalf("Checkout: want a digital-only cart with no courier to still check out, got %v", err)
 	}
@@ -496,7 +496,7 @@ func TestCheckout_PhysicalItemWithCourierAndPricedQuote_Succeeds(t *testing.T) {
 		t.Fatalf("PatchCart (courier): %v", err)
 	}
 
-	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "withcourier-key-"+uniqueSuffix())
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "withcourier-key-"+uniqueSuffix(), "")
 	if err != nil {
 		t.Fatalf("Checkout: want a priced courier selection to check out, got %v", err)
 	}
@@ -525,7 +525,7 @@ func TestCheckout_EstimateRequiresRealRate(t *testing.T) {
 	if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET selected_courier = 'Ongkir Flat', selected_service = 'Standar', shipping_cost = 15000, total = subtotal + 15000, is_estimate = true WHERE id = $1`, order.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "estimate-reject-"+uniqueSuffix()); !errors.Is(err, ErrShippingRequired) {
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "estimate-reject-"+uniqueSuffix(), ""); !errors.Is(err, ErrShippingRequired) {
 		t.Fatalf("want shipping required, got %v", err)
 	}
 	rejected, err := repo.GetOrderByID(ctx, order.ID)
@@ -546,7 +546,7 @@ func TestCheckout_EstimateRequiresRealRate(t *testing.T) {
 	if selected.IsEstimate || selected.ShippingCost != 10000 {
 		t.Fatalf("want real quote: %+v", selected)
 	}
-	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "estimate-accept-"+uniqueSuffix()); err != nil {
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "estimate-accept-"+uniqueSuffix(), ""); err != nil {
 		t.Fatalf("checkout after real quote: %v", err)
 	}
 	paid, err := repo.GetOrderByID(ctx, order.ID)

@@ -33,7 +33,7 @@ const detail = {
     active: 2,
     ended: 1,
     data: [
-      { binding_id: "b1", name: "Sari W.", status: "active", started_at: "2026-09-01T00:00:00Z", ended_at: null, total_spend: 100000 },
+      { binding_id: "b1", name: "Sari W.", status: "active", started_at: "2026-09-01T00:00:00Z", expires_at: null, total_spend: 100000 },
     ],
   },
   commissions: { counts: { paid: 1 }, total_amount: 50000 },

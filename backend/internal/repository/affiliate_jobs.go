@@ -150,12 +150,9 @@ func (r *Repository) SetAffiliateCommissionWaitUntil(ctx context.Context, id uui
 // evaluation may consider: active or suspended.
 func (r *Repository) ListAffiliatorsForLevelEval(ctx context.Context) ([]model.Affiliator, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level,
-		        warn_quarters, terms_version, terms_accepted_at,
-		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
-		 FROM affiliators
-		 WHERE status IN ('active', 'suspended')
-		 ORDER BY created_at`)
+		`SELECT `+affiliatorColumns+` `+affiliatorFrom+`
+		 WHERE a.program_status IN ('active', 'suspended')
+		 ORDER BY u.created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -163,28 +160,13 @@ func (r *Repository) ListAffiliatorsForLevelEval(ctx context.Context) ([]model.A
 
 	var out []model.Affiliator
 	for rows.Next() {
-		var a model.Affiliator
-		if err := rows.Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level,
-			&a.WarnQuarters, &a.TermsVersion, &a.TermsAcceptedAt,
-			&a.BankName, &a.BankAccountNumber, &a.BankAccountHolder, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		a, err := scanAffiliator(rows)
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, a)
+		out = append(out, *a)
 	}
 	return out, rows.Err()
-}
-
-// HasAffiliateLevelHistory reports whether the affiliator already has an auto
-// history row for the quarter: the per-quarter idempotency guard.
-func (r *Repository) HasAffiliateLevelHistory(ctx context.Context, affiliatorID uuid.UUID, quarter, source string) (bool, error) {
-	var exists bool
-	err := r.pool.QueryRow(ctx,
-		`SELECT EXISTS (
-		     SELECT 1 FROM affiliate_level_history
-		     WHERE affiliator_id = $1 AND quarter = $2 AND source = $3)`,
-		affiliatorID, quarter, source,
-	).Scan(&exists)
-	return exists, err
 }
 
 // GetAffiliateQuarterNetRevenue sums the base amounts of the affiliator's
@@ -204,35 +186,25 @@ func (r *Repository) GetAffiliateQuarterNetRevenue(ctx context.Context, affiliat
 	return net, err
 }
 
-// UpdateAffiliateLevelTx moves the affiliator's level and warning counter
-// inside the caller's transaction.
-func (r *Repository) UpdateAffiliateLevelTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, level string, warnQuarters int) error {
+// UpdateAffiliateLevelTx moves the affiliator's level and missed-quarter
+// counter inside the caller's transaction.
+func (r *Repository) UpdateAffiliateLevelTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, level string, missedQuarters int) error {
 	_, err := tx.Exec(ctx,
-		`UPDATE affiliators SET level = $2, warn_quarters = $3, updated_at = now() WHERE id = $1`,
-		id, level, warnQuarters,
+		`UPDATE affiliators SET level = $2, missed_quarters = $3 WHERE user_id = $1`,
+		id, level, missedQuarters,
 	)
 	return err
 }
 
-// SetAffiliateWarnQuarters rewrites the warning counter outside any
-// transaction; the warn_quarters <> $2 guard keeps repeat writes no-ops.
-func (r *Repository) SetAffiliateWarnQuarters(ctx context.Context, id uuid.UUID, warnQuarters int) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE affiliators SET warn_quarters = $2, updated_at = now() WHERE id = $1 AND warn_quarters <> $2`,
-		id, warnQuarters,
+// SettleAffiliateLevelEvaluationTx records one quarter's evaluation outcome
+// (level, missed-quarter counter) and marks the quarter as evaluated, which is
+// what keeps a rerun from counting the same quarter twice.
+func (r *Repository) SettleAffiliateLevelEvaluationTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, level string, missedQuarters int, quarter string) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE affiliators SET level = $2, missed_quarters = $3, last_evaluated_quarter = $4 WHERE user_id = $1`,
+		id, level, missedQuarters, quarter,
 	)
 	return err
-}
-
-// InsertAffiliateLevelHistoryTx appends one level-history row inside the
-// caller's transaction and fills ID/CreatedAt.
-func (r *Repository) InsertAffiliateLevelHistoryTx(ctx context.Context, tx pgx.Tx, h *model.AffiliateLevelHistory) error {
-	return tx.QueryRow(ctx,
-		`INSERT INTO affiliate_level_history (affiliator_id, quarter, from_level, to_level, net_revenue, source, reason)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
-		 RETURNING id, created_at`,
-		h.AffiliatorID, h.Quarter, h.FromLevel, h.ToLevel, h.NetRevenue, h.Source, h.Reason,
-	).Scan(&h.ID, &h.CreatedAt)
 }
 
 // ListPaidOrdersMissingAffiliateCommissions returns paid orders (oldest first)
@@ -246,7 +218,7 @@ func (r *Repository) ListPaidOrdersMissingAffiliateCommissions(ctx context.Conte
 		 FROM orders o
 		 JOIN affiliate_bindings b ON b.student_id = o.student_id AND b.status = 'active'
 		      AND b.started_at <= o.paid_at + interval '5 minutes'
-		 JOIN affiliators a ON a.id = b.affiliator_id AND a.status = 'active'
+		 JOIN affiliators a ON a.user_id = b.affiliator_id AND a.program_status = 'active'
 		 WHERE o.status IN ('paid', 'processing', 'shipped', 'completed')
 		   AND o.paid_at >= $1 AND o.paid_at < $2
 		   AND EXISTS (

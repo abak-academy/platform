@@ -18,7 +18,7 @@ func seedAffiliateCheckoutOrder(t *testing.T, svc *Service, repo *repository.Rep
 	key := "aff-checkout-" + uniqueSuffix()
 	var err error
 	if code == "" {
-		_, err = svc.Checkout(ctx, buyerID, orderID.String(), key)
+		_, err = svc.Checkout(ctx, buyerID, orderID.String(), key, "")
 	} else {
 		_, err = svc.Checkout(ctx, buyerID, orderID.String(), key, code)
 	}
@@ -95,19 +95,16 @@ func TestPaidOrder_WithoutCode_ExtendsExistingBinding(t *testing.T) {
 	if after == nil {
 		t.Fatal("binding must stay active after a paid order")
 	}
-	if after.LastExtendedAt == nil {
-		t.Fatal("want last_extended_at stamped by the paid order")
-	}
-	if !after.EndedAt.After(*before.EndedAt) {
-		t.Errorf("ended_at = %v, want re-anchored beyond %v by the payment", after.EndedAt, before.EndedAt)
+	if !after.ExpiresAt.After(*before.ExpiresAt) {
+		t.Errorf("expires_at = %v, want re-anchored beyond %v by the payment", after.ExpiresAt, before.ExpiresAt)
 	}
 
 	if err := svc.HandlePaymentWebhook(ctx, settlementBody(orderID, "tx-aff-extend"), "sig", uuid.NewString()); err != nil {
 		t.Fatalf("duplicate webhook: %v", err)
 	}
 	dup := getActiveAffiliateBinding(t, repo, buyerID)
-	if !dup.LastExtendedAt.Equal(*after.LastExtendedAt) {
-		t.Errorf("last_extended_at = %v, want unchanged %v after a duplicate delivery", dup.LastExtendedAt, after.LastExtendedAt)
+	if !dup.ExpiresAt.Equal(*after.ExpiresAt) {
+		t.Errorf("expires_at = %v, want unchanged %v after a duplicate delivery", dup.ExpiresAt, after.ExpiresAt)
 	}
 }
 
@@ -178,11 +175,8 @@ func TestPaidOrder_FlagOff_NoBindingNoExtension(t *testing.T) {
 	if after == nil {
 		t.Fatal("existing binding must survive a flag-off settlement")
 	}
-	if !after.EndedAt.Equal(*before.EndedAt) {
-		t.Errorf("ended_at = %v, want untouched %v with the flag off", after.EndedAt, before.EndedAt)
-	}
-	if after.LastExtendedAt != nil {
-		t.Errorf("last_extended_at = %v, want nil with the flag off", after.LastExtendedAt)
+	if !after.ExpiresAt.Equal(*before.ExpiresAt) {
+		t.Errorf("expires_at = %v, want untouched %v with the flag off", after.ExpiresAt, before.ExpiresAt)
 	}
 }
 

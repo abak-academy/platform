@@ -29,25 +29,12 @@ func scanAffiliatePayout(row pgx.Row) (*model.AffiliatePayout, error) {
 // inside tx, or (nil, nil) when the id is unknown — the lock serializes
 // concurrent payout requests for the same account (BR-PCR-05).
 func (r *Repository) GetAffiliatorForUpdateTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*model.Affiliator, error) {
-	var a model.Affiliator
-	err := tx.QueryRow(ctx,
-		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level,
-		        warn_quarters, terms_version, terms_accepted_at,
-		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
-		 FROM affiliators
-		 WHERE id = $1
-		 FOR UPDATE`,
-		id,
-	).Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level,
-		&a.WarnQuarters, &a.TermsVersion, &a.TermsAcceptedAt,
-		&a.BankName, &a.BankAccountNumber, &a.BankAccountHolder, &a.CreatedAt, &a.UpdatedAt)
+	a, err := scanAffiliator(tx.QueryRow(ctx,
+		`SELECT `+affiliatorColumns+` `+affiliatorFrom+` WHERE a.user_id = $1 FOR UPDATE OF a`, id))
 	if isNotFound(err) {
 		return nil, nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	return &a, nil
+	return a, err
 }
 
 // SumAffiliateLedgerTx is the saldo of the affiliator's ledger as read inside

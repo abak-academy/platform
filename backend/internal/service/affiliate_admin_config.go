@@ -44,8 +44,6 @@ type AffiliateAdminSettingsInput struct {
 	PayoutDayOfMonth     *int                       `json:"payout_day_of_month"`
 	LaunchDate           *string                    `json:"launch_date"`
 	EvalDay              int                        `json:"eval_day"`
-	SilverThreshold      float64                    `json:"silver_threshold"`
-	GoldThreshold        float64                    `json:"gold_threshold"`
 	DailyRegistrationCap *int                       `json:"daily_registration_cap"`
 	Levels               []AffiliateAdminLevelInput `json:"levels"`
 }
@@ -97,12 +95,6 @@ func validateAffiliateSettingsInput(in AffiliateAdminSettingsInput) error {
 	}
 	if in.EvalDay < 1 || in.EvalDay > 28 {
 		return fmt.Errorf("%w: eval_day must be between 1 and 28", ErrValidation)
-	}
-	if in.SilverThreshold <= 0 {
-		return fmt.Errorf("%w: silver_threshold must be greater than 0", ErrValidation)
-	}
-	if in.GoldThreshold <= 0 {
-		return fmt.Errorf("%w: gold_threshold must be greater than 0", ErrValidation)
 	}
 	if in.LaunchDate != nil {
 		if _, err := time.Parse("2006-01-02", *in.LaunchDate); err != nil {
@@ -221,8 +213,6 @@ func affiliateSettingsAuditMeta(old *model.AffiliateSettings, oldLevels []model.
 		PayoutDayOfMonth:     in.PayoutDayOfMonth,
 		LaunchDate:           launch,
 		EvalDay:              in.EvalDay,
-		SilverThreshold:      in.SilverThreshold,
-		GoldThreshold:        in.GoldThreshold,
 		DailyRegistrationCap: in.DailyRegistrationCap,
 	}
 
@@ -241,8 +231,6 @@ func affiliateSettingsAuditMeta(old *model.AffiliateSettings, oldLevels []model.
 	add("payout_day_of_month", old.PayoutDayOfMonth, updated.PayoutDayOfMonth)
 	add("launch_date", affiliateDateKey(old.LaunchDate), affiliateDateKey(updated.LaunchDate))
 	add("eval_day", old.EvalDay, updated.EvalDay)
-	add("silver_threshold", old.SilverThreshold, updated.SilverThreshold)
-	add("gold_threshold", old.GoldThreshold, updated.GoldThreshold)
 	add("daily_registration_cap", old.DailyRegistrationCap, updated.DailyRegistrationCap)
 
 	existing := make(map[string]model.AffiliateLevelSettings, len(oldLevels))
@@ -340,8 +328,7 @@ func (s *Service) UpdateAffiliateAdminSettings(ctx context.Context, actorID stri
 	if err := validateAffiliateSettingsInput(in); err != nil {
 		return nil, err
 	}
-	actor, err := parseUUID(actorID)
-	if err != nil {
+	if _, err := parseUUID(actorID); err != nil {
 		return nil, ErrInvalidUUID
 	}
 	current, err := s.LoadAffiliateSettings(ctx)
@@ -356,7 +343,6 @@ func (s *Service) UpdateAffiliateAdminSettings(ctx context.Context, actorID stri
 	if err != nil {
 		return nil, err
 	}
-	updated.UpdatedBy = &actor
 
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
@@ -431,8 +417,7 @@ func (s *Service) AdminUpsertAffiliateOverride(ctx context.Context, actorID, pro
 	if err != nil {
 		return nil, ErrInvalidUUID
 	}
-	actor, err := parseUUID(actorID)
-	if err != nil {
+	if _, err := parseUUID(actorID); err != nil {
 		return nil, ErrInvalidUUID
 	}
 	exists, err := s.storeRepo.AffiliateProductExists(ctx, id)
@@ -448,7 +433,7 @@ func (s *Service) AdminUpsertAffiliateOverride(ctx context.Context, actorID, pro
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
-	override := &model.AffiliateProductOverride{ProductID: id, Type: rule.Type, Value: rule.Value, UpdatedBy: &actor}
+	override := &model.AffiliateProductOverride{ProductID: id, Type: rule.Type, Value: rule.Value}
 	if err := s.storeRepo.UpsertAffiliateOverrideTx(ctx, tx, override); err != nil {
 		return nil, fmt.Errorf("upsert affiliate override: %w", err)
 	}

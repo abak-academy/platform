@@ -30,7 +30,7 @@ describe("AffiliateStudentsPage", () => {
           status: "active",
           source: "link",
           started_at: "2026-09-02T00:00:00Z",
-          ended_at: "2026-12-02T00:00:00Z",
+          expires_at: "2026-12-02T00:00:00Z",
           total_spend: 250000,
         },
       ]),

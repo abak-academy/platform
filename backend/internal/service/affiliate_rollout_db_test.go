@@ -25,8 +25,7 @@ func TestExtendBinding_AFreeOrderNeverExtends(t *testing.T) {
 	require.NoError(t, tx.Commit(ctx))
 
 	row := getActiveAffiliateBinding(t, repo, student.ID)
-	require.Nil(t, row.LastExtendedAt, "min_extend_amount=0 still means a real purchase, not a free order")
-	require.True(t, row.EndedAt.Equal(*binding.EndedAt))
+	require.True(t, row.ExpiresAt.Equal(*binding.ExpiresAt), "a free order never extends, even with min_extend_amount=0")
 }
 
 func TestAffiliateValidate_IsCaseAndSpaceInsensitiveAndReportsCookieDays(t *testing.T) {

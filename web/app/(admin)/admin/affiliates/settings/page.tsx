@@ -47,7 +47,7 @@ const GROUPS: Group[] = [
   { title: "admin_aff_grp_link", desc: "admin_aff_grp_link_desc", fields: ["cookie_days", "binding_months", "min_extend_amount", "launch_date"] },
   { title: "admin_aff_grp_wait", desc: "admin_aff_grp_wait_desc", fields: ["digital_wait_days", "physical_wait_days"] },
   { title: "admin_aff_grp_payout", desc: "admin_aff_grp_payout_desc", fields: ["min_payout", "payout_day_of_month"] },
-  { title: "admin_aff_grp_level", desc: "admin_aff_grp_level_desc", fields: ["eval_day", "silver_threshold", "gold_threshold"] },
+  { title: "admin_aff_grp_level", desc: "admin_aff_grp_level_desc", fields: ["eval_day"] },
   { title: "admin_aff_grp_signup", desc: "admin_aff_grp_signup_desc", fields: ["daily_registration_cap"] },
 ];
 

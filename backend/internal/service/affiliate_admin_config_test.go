@@ -28,8 +28,6 @@ func validAffiliateConfigSettingsInput() AffiliateAdminSettingsInput {
 		PhysicalWaitDays: 14,
 		MinPayout:        100000,
 		EvalDay:          8,
-		SilverThreshold:  5000000,
-		GoldThreshold:    15000000,
 	}
 }
 
@@ -52,8 +50,6 @@ func TestAffiliateConfigSettingsPUTValidation(t *testing.T) {
 		{"payout_day_of_month above 28", func(in *AffiliateAdminSettingsInput) { in.PayoutDayOfMonth = intPtr(29) }},
 		{"eval_day below 1", func(in *AffiliateAdminSettingsInput) { in.EvalDay = 0 }},
 		{"eval_day above 28", func(in *AffiliateAdminSettingsInput) { in.EvalDay = 29 }},
-		{"silver_threshold zero", func(in *AffiliateAdminSettingsInput) { in.SilverThreshold = 0 }},
-		{"gold_threshold zero", func(in *AffiliateAdminSettingsInput) { in.GoldThreshold = 0 }},
 		{"daily_registration_cap zero", func(in *AffiliateAdminSettingsInput) { in.DailyRegistrationCap = intPtr(0) }},
 		{"launch_date bad format", func(in *AffiliateAdminSettingsInput) { in.LaunchDate = strPtr("tomorrow") }},
 		{"level unknown", func(in *AffiliateAdminSettingsInput) {
@@ -159,9 +155,8 @@ func TestAffiliateConfigSettingsUpdateAuditAndReadback(t *testing.T) {
 	actor := seedAffiliateAdminActor(t, repo, "affcfg-actor-"+uniqueSuffix()+"@test.local")
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, actor) })
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_settings WHERE id = 1`) })
-	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_level_settings`) })
 
-	_, err := pool.Exec(ctx, `DELETE FROM affiliate_level_settings`)
+	_, err := pool.Exec(ctx, `UPDATE affiliate_settings SET levels = '{}'`)
 	require.NoError(t, err)
 
 	input := validAffiliateConfigSettingsInput()
@@ -180,9 +175,6 @@ func TestAffiliateConfigSettingsUpdateAuditAndReadback(t *testing.T) {
 	}
 	if got.Settings.LaunchDate == nil || !got.Settings.LaunchDate.Equal(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("readback LaunchDate = %v, want 2026-11-01", got.Settings.LaunchDate)
-	}
-	if got.Settings.UpdatedBy == nil || got.Settings.UpdatedBy.String() != actor {
-		t.Errorf("readback UpdatedBy = %v, want actor %s", got.Settings.UpdatedBy, actor)
 	}
 
 	if len(got.Levels) != 3 {
@@ -330,9 +322,9 @@ func TestAffiliateConfigOverridesUpsertDeleteFallback(t *testing.T) {
 	}
 	var count int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM affiliate_product_overrides WHERE product_id = $1`, productID).Scan(&count))
+		`SELECT count(*) FROM product WHERE id = $1 AND affiliate_commission IS NOT NULL`, productID).Scan(&count))
 	if count != 1 {
-		t.Fatalf("affiliate_product_overrides rows = %d, want 1 after upsert", count)
+		t.Fatalf("products carrying an override = %d, want 1 after upsert", count)
 	}
 
 	require.NoError(t, svc.AdminDeleteAffiliateOverride(ctx, actor, productID.String()))
@@ -566,7 +558,6 @@ func TestAdminUpsertAffiliateOverride_fixedRule(t *testing.T) {
 		`INSERT INTO product (name, type, price, status) VALUES ($1, 'book', 60000, 'published') RETURNING id`,
 		"Fixed Override "+uniqueSuffix()).Scan(&productID))
 	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_product_overrides WHERE product_id = $1`, productID)
 		_, _ = pool.Exec(ctx, `DELETE FROM product WHERE id = $1`, productID)
 	})
 

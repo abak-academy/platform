@@ -92,55 +92,34 @@ func TestAffiliateLevelEvaluation_matrix(t *testing.T) {
 	require.Equal(t, 3, res.LevelsChanged, "jump, rise and drop")
 
 	require.Equal(t, "gold", getAffiliateJobAffiliator(t, repo, jump).Level)
-	jumpRows := affiliateJobHistoryRows(t, repo, jump)
-	require.Len(t, jumpRows, 1)
-	require.Equal(t, affiliateLevelTestQuarter, jumpRows[0].Quarter)
-	require.NotNil(t, jumpRows[0].FromLevel)
-	require.Equal(t, "bronze", *jumpRows[0].FromLevel)
-	require.Equal(t, "gold", jumpRows[0].ToLevel)
-	require.InDelta(t, 16000000, jumpRows[0].NetRevenue, 0)
-	require.Equal(t, "auto", jumpRows[0].Source)
-	require.Equal(t, "auto_eval", *jumpRows[0].Reason)
-	require.Nil(t, jumpRows[0].CreatedBy)
 	require.Equal(t, 0, getAffiliateJobAffiliator(t, repo, jump).WarnQuarters)
+	require.Equal(t, affiliateLevelTestQuarter, affiliateJobEvaluatedQuarter(t, repo, jump))
 
 	require.Equal(t, "silver", getAffiliateJobAffiliator(t, repo, rise).Level)
-	require.Len(t, affiliateJobHistoryRows(t, repo, rise), 1)
+	require.Equal(t, affiliateLevelTestQuarter, affiliateJobEvaluatedQuarter(t, repo, rise))
 
 	holdAff := getAffiliateJobAffiliator(t, repo, hold)
 	require.Equal(t, "silver", holdAff.Level)
 	require.Equal(t, 0, holdAff.WarnQuarters, "recovered net resets the warning counter")
-	require.Empty(t, affiliateJobHistoryRows(t, repo, hold), "hold writes no history row")
+	require.Equal(t, affiliateLevelTestQuarter, affiliateJobEvaluatedQuarter(t, repo, hold), "a hold settles the quarter too")
 
 	warnAff := getAffiliateJobAffiliator(t, repo, warn)
-	require.Equal(t, "silver", warnAff.Level)
+	require.Equal(t, "silver", warnAff.Level, "the first miss only warns")
 	require.Equal(t, 1, warnAff.WarnQuarters)
-	warnRows := affiliateJobHistoryRows(t, repo, warn)
-	require.Len(t, warnRows, 1)
-	require.Equal(t, "silver", warnRows[0].ToLevel)
-	require.NotNil(t, warnRows[0].FromLevel)
-	require.Equal(t, "silver", *warnRows[0].FromLevel, "warn marker row keeps the level")
-	require.Equal(t, "auto_warn", *warnRows[0].Reason)
-	require.InDelta(t, 2000000, warnRows[0].NetRevenue, 0)
+	require.Equal(t, affiliateLevelTestQuarter, affiliateJobEvaluatedQuarter(t, repo, warn))
 
-	require.Equal(t, "bronze", getAffiliateJobAffiliator(t, repo, drop).Level)
-	require.Equal(t, 0, getAffiliateJobAffiliator(t, repo, drop).WarnQuarters)
-	dropRows := affiliateJobHistoryRows(t, repo, drop)
-	require.Len(t, dropRows, 1)
-	require.NotNil(t, dropRows[0].FromLevel)
-	require.Equal(t, "silver", *dropRows[0].FromLevel)
-	require.Equal(t, "bronze", dropRows[0].ToLevel)
-	require.InDelta(t, 1500000, dropRows[0].NetRevenue, 0, "cancelled and held are excluded")
+	dropAff := getAffiliateJobAffiliator(t, repo, drop)
+	require.Equal(t, "bronze", dropAff.Level, "the second miss drops one level; cancelled and pending are excluded from net")
+	require.Equal(t, 0, dropAff.WarnQuarters)
+	require.Equal(t, affiliateLevelTestQuarter, affiliateJobEvaluatedQuarter(t, repo, drop))
 
 	outsideAff := getAffiliateJobAffiliator(t, repo, outside)
 	require.Equal(t, "silver", outsideAff.Level)
-	require.Equal(t, 1, outsideAff.WarnQuarters)
-	outsideRows := affiliateJobHistoryRows(t, repo, outside)
-	require.Len(t, outsideRows, 1)
-	require.InDelta(t, 0, outsideRows[0].NetRevenue, 0, "pre-quarter paid_at does not count")
+	require.Equal(t, 1, outsideAff.WarnQuarters, "a pre-quarter commission does not count")
+	require.Equal(t, affiliateLevelTestQuarter, affiliateJobEvaluatedQuarter(t, repo, outside))
 
 	require.Equal(t, "bronze", getAffiliateJobAffiliator(t, repo, newcomer).Level)
-	require.Empty(t, affiliateJobHistoryRows(t, repo, newcomer), "join-quarter affiliator skipped")
+	require.Equal(t, "", affiliateJobEvaluatedQuarter(t, repo, newcomer), "join-quarter affiliator skipped")
 	require.Equal(t, "bronze", getAffiliateJobAffiliator(t, repo, deactivated).Level)
 }
 
@@ -165,13 +144,10 @@ func TestAffiliateLevelEvaluation_RerunIdempotent(t *testing.T) {
 
 	res, err := svc.RunAffiliateJob(ctx, "levels", quarterPtr(affiliateLevelTestQuarter))
 	require.NoError(t, err)
-	// LevelsEvaluated is not asserted on the rerun: the shared fixture keeps
-	// hold-plan affiliators (no history row, no change) re-evaluable by design;
-	// the per-affiliator assertions below pin the idempotence.
+	// LevelsEvaluated is not asserted on the rerun: the shared fixture carries
+	// other tests' affiliators; the per-affiliator assertions below pin the idempotence.
 	require.Equal(t, 0, res.LevelsChanged, "rerun must not repeat a change")
-	require.Len(t, affiliateJobHistoryRows(t, repo, jump), 1)
-	require.Len(t, affiliateJobHistoryRows(t, repo, warn), 1)
-	require.Len(t, affiliateJobHistoryRows(t, repo, drop), 1)
+	require.Equal(t, affiliateLevelTestQuarter, affiliateJobEvaluatedQuarter(t, repo, jump))
 	require.Equal(t, 1, getAffiliateJobAffiliator(t, repo, warn).WarnQuarters, "warn counter not re-incremented")
 	require.Equal(t, 0, getAffiliateJobAffiliator(t, repo, drop).WarnQuarters, "no double drop")
 
@@ -184,7 +160,7 @@ func TestAffiliateLevelEvaluation_RerunIdempotent(t *testing.T) {
 		// through the scope rerun either: manual changes stay untouched.
 		manualLevel := "gold"
 		_, err = repo.Pool().Exec(ctx,
-			`UPDATE affiliators SET level = $2, updated_at = now() WHERE id = $1`, drop, manualLevel)
+			`UPDATE affiliators SET level = $2 WHERE user_id = $1`, drop, manualLevel)
 		require.NoError(t, err)
 
 		res, err := svc.RunAffiliateJob(ctx, "levels", nil)
@@ -236,9 +212,9 @@ func TestAffiliateJobQuarterlyWiring_runsFromDailyLoop(t *testing.T) {
 	require.Equal(t, "2026-Q3", readAffiliateJobConfig(t, repo, affiliateLevelsLastQuarterKey))
 	require.Equal(t, "2026-10-08", readAffiliateJobConfig(t, repo, affiliateDailyLastRunKey))
 	require.Equal(t, 1, getAffiliateJobAffiliator(t, repo, warn).WarnQuarters)
-	require.Len(t, affiliateJobHistoryRows(t, repo, warn), 1)
+	require.Equal(t, "2026-Q3", affiliateJobEvaluatedQuarter(t, repo, warn))
 
 	// Same tick pattern again: the quarter key blocks a re-evaluation.
 	require.NoError(t, svc.RunAffiliateDaily(ctx, evalDay.Add(15*time.Minute)))
-	require.Len(t, affiliateJobHistoryRows(t, repo, warn), 1)
+	require.Equal(t, 1, getAffiliateJobAffiliator(t, repo, warn).WarnQuarters)
 }

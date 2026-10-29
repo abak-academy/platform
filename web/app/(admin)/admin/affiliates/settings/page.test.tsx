@@ -45,8 +45,6 @@ const view = {
     payout_day_of_month: null,
     launch_date: null,
     eval_day: 8,
-    silver_threshold: 5000000,
-    gold_threshold: 15000000,
     daily_registration_cap: null,
   },
   levels: [],

@@ -121,7 +121,7 @@ func (s *Service) RequestMyAffiliatePayout(ctx context.Context, userID string, a
 		Amount:       -payoutAmount,
 		PayoutID:     &payout.ID,
 		Note:         &note,
-		ActorID:      &fresh.UserID,
+		ActorID:      &fresh.ID,
 	}); err != nil {
 		return nil, fmt.Errorf("insert payout ledger entry: %w", err)
 	}

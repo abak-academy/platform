@@ -112,7 +112,7 @@ func seedAffiliateAdminRow(t *testing.T, pool *pgxpool.Pool, status string) (id,
 	}
 	code = "AF" + suffix[:6]
 	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO affiliators (user_id, code, status, terms_version) VALUES ($1, $2, $3, 'v1') RETURNING id`,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, terms_version) VALUES ($1, $2, $3, 'v1') RETURNING user_id`,
 		userID, code, status,
 	).Scan(&id); err != nil {
 		t.Fatalf("seed affiliator: %v", err)
@@ -238,7 +238,7 @@ func TestAffiliateAdminHandlerApprovalGeneratesCode(t *testing.T) {
 
 	var persistedStatus, persistedCode string
 	if err := env.pool.QueryRow(context.Background(),
-		`SELECT status, code FROM affiliators WHERE id = $1`, id).Scan(&persistedStatus, &persistedCode); err != nil {
+		`SELECT program_status, referral_code FROM affiliators WHERE user_id = $1`, id).Scan(&persistedStatus, &persistedCode); err != nil {
 		t.Fatalf("reload affiliator: %v", err)
 	}
 	if persistedStatus != "active" || persistedCode != aff.Code {

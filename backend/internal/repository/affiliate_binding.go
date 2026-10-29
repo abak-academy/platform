@@ -30,9 +30,9 @@ type AffiliatorByCode struct {
 func (r *Repository) GetAffiliatorByCode(ctx context.Context, code string) (*AffiliatorByCode, error) {
 	owner := &AffiliatorByCode{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT a.id, a.status, u.email, u.phone
+		`SELECT a.user_id, a.program_status, u.email, u.phone
 		 FROM affiliators a JOIN users u ON u.id = a.user_id
-		 WHERE a.code = $1`,
+		 WHERE a.referral_code = $1`,
 		code,
 	).Scan(&owner.ID, &owner.Status, &owner.Email, &owner.Phone)
 	if isNotFound(err) {
@@ -56,11 +56,11 @@ func (r *Repository) affiliateQueryer(tx pgx.Tx) queryer {
 func (r *Repository) GetActiveBindingByStudent(ctx context.Context, tx pgx.Tx, studentID string) (*model.AffiliateBinding, error) {
 	var b model.AffiliateBinding
 	err := r.affiliateQueryer(tx).QueryRow(ctx,
-		`SELECT id, affiliator_id, student_id, status, source, started_at, ended_at, last_extended_at, created_at, updated_at
+		`SELECT id, affiliator_id, student_id, status, source, started_at, expires_at, created_at, updated_at
 		 FROM affiliate_bindings
 		 WHERE student_id = $1 AND status = 'active'`,
 		studentID,
-	).Scan(&b.ID, &b.AffiliatorID, &b.StudentID, &b.Status, &b.Source, &b.StartedAt, &b.EndedAt, &b.LastExtendedAt, &b.CreatedAt, &b.UpdatedAt)
+	).Scan(&b.ID, &b.AffiliatorID, &b.StudentID, &b.Status, &b.Source, &b.StartedAt, &b.ExpiresAt, &b.CreatedAt, &b.UpdatedAt)
 	if isNotFound(err) {
 		return nil, nil
 	}
@@ -75,11 +75,11 @@ func (r *Repository) GetActiveBindingByStudent(ctx context.Context, tx pgx.Tx, s
 // already-exists sentinel is returned when no row was inserted.
 func (r *Repository) InsertBinding(ctx context.Context, tx pgx.Tx, b *model.AffiliateBinding) error {
 	err := tx.QueryRow(ctx,
-		`INSERT INTO affiliate_bindings (affiliator_id, student_id, status, source, started_at, ended_at)
+		`INSERT INTO affiliate_bindings (affiliator_id, student_id, status, source, started_at, expires_at)
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (student_id) WHERE status = 'active' DO NOTHING
 		 RETURNING id, created_at, updated_at`,
-		b.AffiliatorID, b.StudentID, b.Status, b.Source, b.StartedAt, b.EndedAt,
+		b.AffiliatorID, b.StudentID, b.Status, b.Source, b.StartedAt, b.ExpiresAt,
 	).Scan(&b.ID, &b.CreatedAt, &b.UpdatedAt)
 	if isNotFound(err) {
 		return ErrAffiliateBindingExists
@@ -87,23 +87,22 @@ func (r *Repository) InsertBinding(ctx context.Context, tx pgx.Tx, b *model.Affi
 	return err
 }
 
-// ExtendBindingTx moves an active binding's ended_at and stamps
-// last_extended_at inside tx.
-func (r *Repository) ExtendBindingTx(ctx context.Context, tx pgx.Tx, bindingID uuid.UUID, newEndedAt, paidAt time.Time) error {
+// ExtendBindingTx moves an active binding's expires_at inside tx.
+func (r *Repository) ExtendBindingTx(ctx context.Context, tx pgx.Tx, bindingID uuid.UUID, newExpiresAt time.Time) error {
 	_, err := tx.Exec(ctx,
-		`UPDATE affiliate_bindings SET ended_at = $2, last_extended_at = $3, updated_at = now()
+		`UPDATE affiliate_bindings SET expires_at = $2, updated_at = now()
 		 WHERE id = $1 AND status = 'active'`,
-		bindingID, newEndedAt, paidAt,
+		bindingID, newExpiresAt,
 	)
 	return err
 }
 
-// ExpireDueBindings flips active bindings with ended_at < now to 'ended' and
+// ExpireDueBindings flips active bindings with expires_at < now to 'ended' and
 // returns how many rows changed (0 on repeat runs).
 func (r *Repository) ExpireDueBindings(ctx context.Context, now time.Time) (int64, error) {
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE affiliate_bindings SET status = 'ended', updated_at = now()
-		 WHERE status = 'active' AND ended_at < $1`,
+		 WHERE status = 'active' AND expires_at < $1`,
 		now,
 	)
 	if err != nil {

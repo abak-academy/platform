@@ -183,7 +183,7 @@ func TestVerifyOTP_BindingFailureKeepsActivation(t *testing.T) {
 	pending, userID := registerPendingStudent(t, svc, otp, "student-votp-bad-"+uniqueSuffix()+"@test.local")
 	// Break the binding insert without touching the activation path: the
 	// affiliator's row vanishes between ResolveBinding and CreateBinding.
-	if _, err := repo.Pool().Exec(ctx, `UPDATE affiliators SET status = 'suspended' WHERE id = $1`, owner.affiliatorID); err != nil {
+	if _, err := repo.Pool().Exec(ctx, `UPDATE affiliators SET program_status = 'suspended' WHERE user_id = $1`, owner.affiliatorID); err != nil {
 		t.Fatalf("suspend affiliator: %v", err)
 	}
 	access, refresh, err := svc.VerifyOTP(ctx, pending, otp.Codes[0], "1.1.1.1", AffiliateReferral{ManualCode: owner.code})

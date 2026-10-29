@@ -7,34 +7,33 @@ import (
 	"github.com/google/uuid"
 )
 
+// Affiliator is the program profile of an affiliator user. ID is the owning
+// users.id, and CreatedAt is that user's registration time.
 type Affiliator struct {
-	ID                uuid.UUID `json:"id"`
-	UserID            uuid.UUID `json:"user_id"`
-	Code              string    `json:"code"`
-	Status            string    `json:"status"`
-	RejectionReason   *string   `json:"rejection_reason"`
-	Level             string    `json:"level"`
-	WarnQuarters      int       `json:"warn_quarters"`
-	TermsVersion      string    `json:"terms_version"`
-	TermsAcceptedAt   time.Time `json:"terms_accepted_at"`
-	BankName          *string   `json:"bank_name"`
-	BankAccountNumber *string   `json:"bank_account_number"`
-	BankAccountHolder *string   `json:"bank_account_holder"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                   uuid.UUID `json:"id"`
+	Code                 string    `json:"code"`
+	Status               string    `json:"status"`
+	RejectionReason      *string   `json:"rejection_reason"`
+	Level                string    `json:"level"`
+	WarnQuarters         int       `json:"warn_quarters"`
+	LastEvaluatedQuarter *string   `json:"-"`
+	TermsVersion         string    `json:"terms_version"`
+	BankName             *string   `json:"bank_name"`
+	BankAccountNumber    *string   `json:"bank_account_number"`
+	BankAccountHolder    *string   `json:"bank_account_holder"`
+	CreatedAt            time.Time `json:"created_at"`
 }
 
 type AffiliateBinding struct {
-	ID             uuid.UUID  `json:"id"`
-	AffiliatorID   uuid.UUID  `json:"affiliator_id"`
-	StudentID      uuid.UUID  `json:"student_id"`
-	Status         string     `json:"status"`
-	Source         string     `json:"source"`
-	StartedAt      time.Time  `json:"started_at"`
-	EndedAt        *time.Time `json:"ended_at"`
-	LastExtendedAt *time.Time `json:"last_extended_at"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID           uuid.UUID  `json:"id"`
+	AffiliatorID uuid.UUID  `json:"affiliator_id"`
+	StudentID    uuid.UUID  `json:"student_id"`
+	Status       string     `json:"status"`
+	Source       string     `json:"source"`
+	StartedAt    time.Time  `json:"started_at"`
+	ExpiresAt    *time.Time `json:"expires_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 type AffiliateCommission struct {
@@ -129,10 +128,7 @@ type AffiliateSettings struct {
 	PayoutDayOfMonth     *int       `json:"payout_day_of_month"`
 	LaunchDate           *time.Time `json:"launch_date"`
 	EvalDay              int        `json:"eval_day"`
-	SilverThreshold      float64    `json:"silver_threshold"`
-	GoldThreshold        float64    `json:"gold_threshold"`
 	DailyRegistrationCap *int       `json:"daily_registration_cap"`
-	UpdatedBy            *uuid.UUID `json:"updated_by"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
@@ -156,9 +152,8 @@ type AffiliateCommissionRule struct {
 }
 
 type AffiliateProductOverride struct {
-	ProductID uuid.UUID  `json:"product_id"`
-	Type      string     `json:"type"`
-	Value     float64    `json:"value"`
-	UpdatedBy *uuid.UUID `json:"updated_by"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ProductID uuid.UUID `json:"product_id"`
+	Type      string    `json:"type"`
+	Value     float64   `json:"value"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

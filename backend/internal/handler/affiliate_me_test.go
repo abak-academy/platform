@@ -108,7 +108,7 @@ func seedAffiliateMeOwner(t *testing.T, pool *pgxpool.Pool, name string) affilia
 	code := "AF" + uniqueHandlerSuffix()[:6]
 	var affID uuid.UUID
 	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO affiliators (user_id, code, status, terms_version) VALUES ($1, $2, 'active', 'v1') RETURNING id`,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, terms_version) VALUES ($1, $2, 'active', 'v1') RETURNING user_id`,
 		userID, code,
 	).Scan(&affID); err != nil {
 		t.Fatalf("seed affiliator: %v", err)
@@ -133,7 +133,7 @@ func seedAffiliateMeBinding(t *testing.T, pool *pgxpool.Pool, affiliatorID, stud
 	t.Helper()
 	startedAt := time.Now().UTC().AddDate(0, 0, -10)
 	if _, err := pool.Exec(context.Background(),
-		`INSERT INTO affiliate_bindings (affiliator_id, student_id, status, source, started_at, ended_at)
+		`INSERT INTO affiliate_bindings (affiliator_id, student_id, status, source, started_at, expires_at)
 		 VALUES ($1, $2, 'active', 'link', $3, $4)`,
 		affiliatorID, studentID, startedAt, startedAt.AddDate(0, 3, 0),
 	); err != nil {
@@ -362,7 +362,7 @@ func TestAffiliateMeBindingsHandler_privacyPayloadShape(t *testing.T) {
 			t.Errorf("binding payload has forbidden key %q", key)
 		}
 	}
-	for _, key := range []string{"binding_id", "name", "registered_at", "status", "source", "started_at", "ended_at", "total_spend"} {
+	for _, key := range []string{"binding_id", "name", "registered_at", "status", "source", "started_at", "expires_at", "total_spend"} {
 		if _, ok := item[key]; !ok {
 			t.Errorf("binding payload missing key %q", key)
 		}
@@ -405,7 +405,7 @@ func TestAffiliateMeUpdateBankHandler(t *testing.T) {
 
 	var persisted [3]string
 	if err := env.pool.QueryRow(context.Background(),
-		`SELECT bank_name, bank_account_number, bank_account_holder FROM affiliators WHERE id = $1`,
+		`SELECT bank_account->>'bank_name', bank_account->>'account_number', bank_account->>'account_holder' FROM affiliators WHERE user_id = $1`,
 		owner.affID,
 	).Scan(&persisted[0], &persisted[1], &persisted[2]); err != nil {
 		t.Fatalf("read bank: %v", err)

@@ -17,7 +17,7 @@ import (
 func seedAffiliateMeBank(t *testing.T, repo *repository.Repository, affiliatorID uuid.UUID) {
 	t.Helper()
 	_, err := repo.Pool().Exec(context.Background(),
-		`UPDATE affiliators SET bank_name = 'BCA', bank_account_number = '1234567890', bank_account_holder = 'Budi Santoso' WHERE id = $1`,
+		`UPDATE affiliators SET bank_account = '{"bank_name":"BCA","account_number":"1234567890","account_holder":"Budi Santoso"}' WHERE user_id = $1`,
 		affiliatorID)
 	require.NoError(t, err)
 }
@@ -25,13 +25,13 @@ func seedAffiliateMeBank(t *testing.T, repo *repository.Repository, affiliatorID
 func seedAffiliateMeMinPayout(t *testing.T, repo *repository.Repository, level string, minPayout float64) {
 	t.Helper()
 	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_level_settings (level, min_payout)
-		 VALUES ($1, $2)
-		 ON CONFLICT (level) DO UPDATE SET min_payout = $2`,
+		`INSERT INTO affiliate_settings (id, levels) VALUES (1, jsonb_build_object($1::text, jsonb_build_object('min_payout', $2::numeric)))
+		 ON CONFLICT (id) DO UPDATE SET levels = affiliate_settings.levels
+		     || jsonb_build_object($1::text, jsonb_build_object('min_payout', $2::numeric))`,
 		level, minPayout)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, _ = repo.Pool().Exec(context.Background(), `DELETE FROM affiliate_level_settings WHERE level = $1`, level)
+		_, _ = repo.Pool().Exec(context.Background(), `UPDATE affiliate_settings SET levels = levels - $1::text WHERE id = 1`, level)
 	})
 }
 
@@ -167,7 +167,7 @@ func TestRequestMyAffiliatePayout_fullSaldoDefaultWritesDeduction(t *testing.T) 
 	).Scan(&ledgerAmount, &payoutID, &actorID))
 	require.InDelta(t, -150000, ledgerAmount, 0.001)
 	require.Equal(t, payout.ID, payoutID)
-	require.Equal(t, aff.UserID, actorID)
+	require.Equal(t, aff.ID, actorID)
 
 	saldo, err := repo.SumAffiliateLedgerForAffiliator(ctx, aff.ID)
 	require.NoError(t, err)

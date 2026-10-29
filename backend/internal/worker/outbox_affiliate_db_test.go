@@ -41,7 +41,7 @@ func seedWorkerAffiliator(t *testing.T, repo *repository.Repository, status stri
 	}
 	var id uuid.UUID
 	if err := repo.Pool().QueryRow(context.Background(),
-		`INSERT INTO affiliators (user_id, code, status, terms_version) VALUES ($1, $2, $3, 'v1') RETURNING id`,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, terms_version) VALUES ($1, $2, $3, 'v1') RETURNING user_id`,
 		userID, "WK"+strings.ToUpper(uniqueWorkerSuffix()), status,
 	).Scan(&id); err != nil {
 		t.Fatalf("seed affiliator: %v", err)

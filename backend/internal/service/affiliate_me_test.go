@@ -61,10 +61,10 @@ func seedAffiliateMeAffiliator(t *testing.T, repo *repository.Repository, name, 
 	code := "AF" + strings.ToUpper(uniqueSuffix())
 	var aff model.Affiliator
 	require.NoError(t, repo.Pool().QueryRow(context.Background(),
-		`INSERT INTO affiliators (user_id, code, status, level, terms_version)
-		 VALUES ($1, $2, $3, $4, 'v1') RETURNING id, user_id, code, status, level, warn_quarters`,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, level, terms_version)
+		 VALUES ($1, $2, $3, $4, 'v1') RETURNING user_id, referral_code, program_status, level, missed_quarters`,
 		userID, code, status, level,
-	).Scan(&aff.ID, &aff.UserID, &aff.Code, &aff.Status, &aff.Level, &aff.WarnQuarters))
+	).Scan(&aff.ID, &aff.Code, &aff.Status, &aff.Level, &aff.WarnQuarters))
 	return userID, aff
 }
 
@@ -84,11 +84,11 @@ func seedAffiliateMeBindingSource(t *testing.T, repo *repository.Repository, aff
 	endedAt := startedAt.AddDate(0, 3, 0)
 	var b model.AffiliateBinding
 	require.NoError(t, repo.Pool().QueryRow(context.Background(),
-		`INSERT INTO affiliate_bindings (affiliator_id, student_id, status, source, started_at, ended_at)
+		`INSERT INTO affiliate_bindings (affiliator_id, student_id, status, source, started_at, expires_at)
 		 VALUES ($1, $2, $3, $4, $5, $6)
-		 RETURNING id, affiliator_id, student_id, status, source, started_at, ended_at, created_at`,
+		 RETURNING id, affiliator_id, student_id, status, source, started_at, expires_at, created_at`,
 		affiliatorID, studentID, status, source, startedAt, endedAt,
-	).Scan(&b.ID, &b.AffiliatorID, &b.StudentID, &b.Status, &b.Source, &b.StartedAt, &b.EndedAt, &b.CreatedAt))
+	).Scan(&b.ID, &b.AffiliatorID, &b.StudentID, &b.Status, &b.Source, &b.StartedAt, &b.ExpiresAt, &b.CreatedAt))
 	return b
 }
 
@@ -159,7 +159,7 @@ func TestGetMyAffiliateProfile_pendingHasNoCodeOrLink(t *testing.T) {
 
 	userID := seedAffiliateMeUser(t, repo, "Affiliator Pending "+uniqueSuffix(), "affiliator")
 	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliators (user_id, status, terms_version) VALUES ($1, 'pending_approval', 'v1')`, userID)
+		`INSERT INTO affiliators (user_id, program_status, terms_version) VALUES ($1, 'pending_approval', 'v1')`, userID)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = repo.Pool().Exec(context.Background(), `DELETE FROM affiliators WHERE user_id = $1`, userID)
@@ -179,7 +179,7 @@ func TestAdminReadsSurviveACodelessPendingAffiliator(t *testing.T) {
 
 	userID := seedAffiliateMeUser(t, repo, "Affiliator Codeless "+uniqueSuffix(), "affiliator")
 	_, err := repo.Pool().Exec(ctx,
-		`INSERT INTO affiliators (user_id, status, terms_version) VALUES ($1, 'pending_approval', 'v1')`, userID)
+		`INSERT INTO affiliators (user_id, program_status, terms_version) VALUES ($1, 'pending_approval', 'v1')`, userID)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = repo.Pool().Exec(ctx, `DELETE FROM affiliators WHERE user_id = $1`, userID)
@@ -246,7 +246,7 @@ func TestUpdateMyAffiliateBank_persistsAndAudits(t *testing.T) {
 
 	var bankName, number, holder string
 	require.NoError(t, repo.Pool().QueryRow(ctx,
-		`SELECT bank_name, bank_account_number, bank_account_holder FROM affiliators WHERE id = $1`,
+		`SELECT bank_account->>'bank_name', bank_account->>'account_number', bank_account->>'account_holder' FROM affiliators WHERE user_id = $1`,
 		aff.ID,
 	).Scan(&bankName, &number, &holder))
 	require.Equal(t, "BCA", bankName)
@@ -333,7 +333,7 @@ func TestListMyAffiliateBindings_privacyAndSpend(t *testing.T) {
 		require.NotEmpty(t, item.BindingID)
 		require.NotEmpty(t, item.RegisteredAt)
 		require.NotZero(t, item.StartedAt)
-		require.NotNil(t, item.EndedAt)
+		require.NotNil(t, item.ExpiresAt)
 	}
 
 	active, err := svc.ListMyAffiliateBindings(ctx, userIDA, AffiliateMeListFilter{Page: 1, PerPage: 20, Status: "active"})

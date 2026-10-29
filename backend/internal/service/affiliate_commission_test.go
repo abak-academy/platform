@@ -370,7 +370,7 @@ func TestAffiliateCommission_ProductOverrideWins(t *testing.T) {
 		commissionSeedItem{productType: "exam", jumlah: 100000},
 	)
 	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_product_overrides (product_id, type, value) VALUES ($1, 'percent', 15)`,
+		`UPDATE product SET affiliate_commission = '{"type":"percent","value":15,"updated_at":"2026-10-01T00:00:00Z"}' WHERE id = $1`,
 		order.Items[0].ProductID)
 	require.NoError(t, err)
 
@@ -395,7 +395,7 @@ func TestAffiliateCommission_FixedOverridePaysPerUnitAndSnapshotsRule(t *testing
 		commissionSeedItem{productType: "merchandise", jumlah: 150000, qty: 3},
 	)
 	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_product_overrides (product_id, type, value) VALUES ($1, 'fixed', 5000)`,
+		`UPDATE product SET affiliate_commission = '{"type":"fixed","value":5000,"updated_at":"2026-10-01T00:00:00Z"}' WHERE id = $1`,
 		order.Items[0].ProductID)
 	require.NoError(t, err)
 
@@ -408,7 +408,7 @@ func TestAffiliateCommission_FixedOverridePaysPerUnitAndSnapshotsRule(t *testing
 	require.Equal(t, 15000.0, rows[0].Amount, "5.000 per unit for 3 units")
 
 	_, err = repo.Pool().Exec(context.Background(),
-		`UPDATE affiliate_product_overrides SET type = 'percent', value = 50 WHERE product_id = $1`, order.Items[0].ProductID)
+		`UPDATE product SET affiliate_commission = '{"type":"percent","value":50,"updated_at":"2026-10-01T00:00:00Z"}' WHERE id = $1`, order.Items[0].ProductID)
 	require.NoError(t, err)
 	rows = affiliateCommissionsForOrder(t, repo, order.ID)
 	require.Equal(t, "fixed", rows[0].CommissionType, "changing the rule later does not rewrite the snapshot")
@@ -428,7 +428,7 @@ func TestAffiliateCommission_FixedAmountNeverExceedsItemPrice(t *testing.T) {
 		commissionSeedItem{productType: "book", jumlah: 18000, qty: 1},
 	)
 	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_product_overrides (product_id, type, value) VALUES ($1, 'fixed', 25000)`,
+		`UPDATE product SET affiliate_commission = '{"type":"fixed","value":25000,"updated_at":"2026-10-01T00:00:00Z"}' WHERE id = $1`,
 		order.Items[0].ProductID)
 	require.NoError(t, err)
 

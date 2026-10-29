@@ -81,15 +81,16 @@ func readAffiliateJobConfig(t *testing.T, repo *repository.Repository, key strin
 func seedAffiliateJobLevelThresholds(t *testing.T, repo *repository.Repository, level string, rise, hold float64) {
 	t.Helper()
 	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_level_settings (level, rise_threshold, hold_threshold)
-		 VALUES ($1, $2, $3)
-		 ON CONFLICT (level) DO UPDATE SET rise_threshold = $2, hold_threshold = $3`,
+		`INSERT INTO affiliate_settings (id, levels)
+		 VALUES (1, jsonb_build_object($1::text, jsonb_build_object('rise_threshold', $2::numeric, 'hold_threshold', $3::numeric)))
+		 ON CONFLICT (id) DO UPDATE SET levels = affiliate_settings.levels
+		     || jsonb_build_object($1::text, jsonb_build_object('rise_threshold', $2::numeric, 'hold_threshold', $3::numeric))`,
 		level, rise, hold,
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = repo.Pool().Exec(context.Background(),
-			`DELETE FROM affiliate_level_settings WHERE level = $1`, level)
+			`UPDATE affiliate_settings SET levels = levels - $1::text WHERE id = 1`, level)
 	})
 }
 
@@ -142,29 +143,19 @@ func seedAffiliateJobCommission(t *testing.T, repo *repository.Repository, affil
 
 func setAffiliateJobAffiliator(t *testing.T, repo *repository.Repository, id uuid.UUID, level string, warn int, createdAt time.Time) {
 	t.Helper()
-	_, err := repo.Pool().Exec(context.Background(),
-		`UPDATE affiliators SET level = $2, warn_quarters = $3, created_at = $4, updated_at = now()
-		 WHERE id = $1`,
-		id, level, warn, createdAt,
-	)
+	ctx := context.Background()
+	_, err := repo.Pool().Exec(ctx, `UPDATE affiliators SET level = $2, missed_quarters = $3 WHERE user_id = $1`, id, level, warn)
+	require.NoError(t, err)
+	_, err = repo.Pool().Exec(ctx, `UPDATE users SET created_at = $2 WHERE id = $1`, id, createdAt)
 	require.NoError(t, err)
 }
 
 func getAffiliateJobAffiliator(t *testing.T, repo *repository.Repository, id uuid.UUID) *model.Affiliator {
 	t.Helper()
-	var a model.Affiliator
-	err := repo.Pool().QueryRow(context.Background(),
-		`SELECT id, user_id, code, status, rejection_reason, level,
-		        warn_quarters, terms_version, terms_accepted_at,
-		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
-		 FROM affiliators WHERE id = $1`, id,
-	).Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level,
-		&a.WarnQuarters, &a.TermsVersion, &a.TermsAcceptedAt,
-		&a.BankName, &a.BankAccountNumber, &a.BankAccountHolder, &a.CreatedAt, &a.UpdatedAt)
-	if err != nil {
-		t.Fatalf("get affiliator: %v", err)
-	}
-	return &a
+	a, err := repo.GetAffiliatorByID(context.Background(), nil, id)
+	require.NoError(t, err)
+	require.NotNil(t, a, "affiliator %s must exist", id)
+	return a
 }
 
 func getAffiliateJobCommission(t *testing.T, repo *repository.Repository, id uuid.UUID) *model.AffiliateCommission {
@@ -200,30 +191,22 @@ func affiliateJobLedgerRows(t *testing.T, repo *repository.Repository, commissio
 	return out
 }
 
-func affiliateJobHistoryRows(t *testing.T, repo *repository.Repository, affiliatorID uuid.UUID) []model.AffiliateLevelHistory {
+// affiliateJobEvaluatedQuarter is the quarter the level job last settled for an
+// affiliator, or "" when it never did.
+func affiliateJobEvaluatedQuarter(t *testing.T, repo *repository.Repository, id uuid.UUID) string {
 	t.Helper()
-	rows, err := repo.Pool().Query(context.Background(),
-		`SELECT id, affiliator_id, quarter, from_level, to_level, net_revenue, source, reason, created_by, created_at
-		 FROM affiliate_level_history WHERE affiliator_id = $1 ORDER BY created_at`, affiliatorID)
-	require.NoError(t, err)
-	defer rows.Close()
-
-	var out []model.AffiliateLevelHistory
-	for rows.Next() {
-		var h model.AffiliateLevelHistory
-		require.NoError(t, rows.Scan(&h.ID, &h.AffiliatorID, &h.Quarter, &h.FromLevel, &h.ToLevel, &h.NetRevenue, &h.Source, &h.Reason, &h.CreatedBy, &h.CreatedAt))
-		out = append(out, h)
+	if q := getAffiliateJobAffiliator(t, repo, id).LastEvaluatedQuarter; q != nil {
+		return *q
 	}
-	require.NoError(t, rows.Err())
-	return out
+	return ""
 }
 
-func seedAffiliateJobBinding(t *testing.T, repo *repository.Repository, affiliatorID, studentID uuid.UUID, lastExtendedAt *time.Time) {
+func seedAffiliateJobBinding(t *testing.T, repo *repository.Repository, affiliatorID, studentID uuid.UUID) {
 	t.Helper()
 	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_bindings (affiliator_id, student_id, status, source, started_at, ended_at, last_extended_at)
-		 VALUES ($1, $2, 'active', 'manual_code', now() - interval '30 days', now() + interval '60 days', $3)`,
-		affiliatorID, studentID, lastExtendedAt,
+		`INSERT INTO affiliate_bindings (affiliator_id, student_id, status, source, started_at, expires_at)
+		 VALUES ($1, $2, 'active', 'manual_code', now() - interval '30 days', now() + interval '60 days')`,
+		affiliatorID, studentID,
 	)
 	require.NoError(t, err)
 }
@@ -241,7 +224,7 @@ func TestAffiliateJobDailyDayKey_runsOncePerWIBDay(t *testing.T) {
 	now1 := time.Date(2026, 10, 5, 3, 0, 0, 0, time.UTC) // 10:00 WIB, before eval day 8
 	createAffiliateBindingCommitted(t, svc, repo, student.ID, owner.affiliatorID, "manual_code")
 	_, err := repo.Pool().Exec(ctx,
-		`UPDATE affiliate_bindings SET ended_at = $2 WHERE student_id = $1 AND status = 'active'`,
+		`UPDATE affiliate_bindings SET expires_at = $2 WHERE student_id = $1 AND status = 'active'`,
 		student.ID, now1.Add(-time.Hour))
 	require.NoError(t, err)
 

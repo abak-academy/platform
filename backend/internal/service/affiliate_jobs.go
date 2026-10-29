@@ -338,7 +338,7 @@ func (s *Service) runAffiliateQuarterly(ctx context.Context, now time.Time, forc
 		quarter = dueQuarter
 	}
 
-	evaluated, changed, err := s.evaluateAffiliateLevels(ctx, quarter, rules, settings)
+	evaluated, changed, err := s.evaluateAffiliateLevels(ctx, quarter, rules)
 	if err != nil {
 		return res, err
 	}
@@ -354,10 +354,10 @@ func (s *Service) runAffiliateQuarterly(ctx context.Context, now time.Time, forc
 }
 
 // evaluateAffiliateLevels applies BR-LVL-02..07 to every eligible affiliator:
-// active or suspended, not level-locked, and not created inside the evaluated
-// quarter or later. One auto history row per affiliator per quarter is the
-// rerun guard, so changes and warnings never repeat.
-func (s *Service) evaluateAffiliateLevels(ctx context.Context, quarter string, rules map[string]AffiliateEffectiveRule, settings *model.AffiliateSettings) (int, int, error) {
+// active or suspended, and not registered inside the evaluated quarter or
+// later. last_evaluated_quarter is the per-affiliator rerun guard, so changes
+// and warnings never repeat.
+func (s *Service) evaluateAffiliateLevels(ctx context.Context, quarter string, rules map[string]AffiliateEffectiveRule) (int, int, error) {
 	start, end, err := affiliateQuarterRange(quarter, affiliateWIBLocation())
 	if err != nil {
 		return 0, 0, err
@@ -373,19 +373,15 @@ func (s *Service) evaluateAffiliateLevels(ctx context.Context, quarter string, r
 		if !aff.CreatedAt.Before(start) {
 			continue
 		}
-		settled, err := s.storeRepo.HasAffiliateLevelHistory(ctx, aff.ID, quarter, affiliateLevelSourceAuto)
-		if err != nil {
-			return evaluated, changed, fmt.Errorf("check level history: %w", err)
-		}
-		if settled {
+		if aff.LastEvaluatedQuarter != nil && *aff.LastEvaluatedQuarter >= quarter {
 			continue
 		}
 		net, err := s.storeRepo.GetAffiliateQuarterNetRevenue(ctx, aff.ID, start, end)
 		if err != nil {
 			return evaluated, changed, fmt.Errorf("sum quarter net revenue: %w", err)
 		}
-		plan := affiliateLevelPlanFor(aff.Level, aff.WarnQuarters, net, rules, settings)
-		if err := s.applyAffiliateLevelPlan(ctx, aff, quarter, net, plan); err != nil {
+		plan := affiliateLevelPlanFor(aff.Level, aff.WarnQuarters, net, rules)
+		if err := s.applyAffiliateLevelPlan(ctx, aff, quarter, plan); err != nil {
 			return evaluated, changed, fmt.Errorf("apply level plan for %s: %w", aff.ID, err)
 		}
 		evaluated++
@@ -396,49 +392,23 @@ func (s *Service) evaluateAffiliateLevels(ctx context.Context, quarter string, r
 	return evaluated, changed, nil
 }
 
-func (s *Service) applyAffiliateLevelPlan(ctx context.Context, aff *model.Affiliator, quarter string, net float64, plan affiliateLevelPlan) error {
+func (s *Service) applyAffiliateLevelPlan(ctx context.Context, aff *model.Affiliator, quarter string, plan affiliateLevelPlan) error {
+	missed := 0
 	switch plan.action {
-	case affiliateLevelActionRise, affiliateLevelActionDrop, affiliateLevelActionWarn:
-		tx, err := s.storeRepo.BeginTx(ctx)
-		if err != nil {
-			return fmt.Errorf("begin tx: %w", err)
-		}
-		defer tx.Rollback(ctx)
-
-		warnQuarters := 0
-		if plan.action == affiliateLevelActionWarn {
-			warnQuarters = aff.WarnQuarters + 1
-		}
-		if err := s.storeRepo.UpdateAffiliateLevelTx(ctx, tx, aff.ID, plan.toLevel, warnQuarters); err != nil {
-			return fmt.Errorf("update affiliate level: %w", err)
-		}
-		// Change rows record the move; the warn row is the per-quarter marker
-		// that keeps the evaluation idempotent without a level change.
-		from := aff.Level
-		reason := affiliateLevelReasonAutoEval
-		if plan.action == affiliateLevelActionWarn {
-			reason = affiliateLevelReasonAutoWarn
-		}
-		if err := s.storeRepo.InsertAffiliateLevelHistoryTx(ctx, tx, &model.AffiliateLevelHistory{
-			AffiliatorID: aff.ID,
-			Quarter:      quarter,
-			FromLevel:    &from,
-			ToLevel:      plan.toLevel,
-			NetRevenue:   net,
-			Source:       affiliateLevelSourceAuto,
-			Reason:       &reason,
-		}); err != nil {
-			return fmt.Errorf("insert level history: %w", err)
-		}
-		return tx.Commit(ctx)
-	case affiliateLevelActionHold:
-		if aff.WarnQuarters != 0 {
-			return s.storeRepo.SetAffiliateWarnQuarters(ctx, aff.ID, 0)
-		}
-		return nil
-	default: // none: bronze has no level below to drop to
-		return nil
+	case affiliateLevelActionWarn:
+		missed = aff.WarnQuarters + 1
+	case affiliateLevelActionNone: // bronze has no level below to drop to
+		missed = aff.WarnQuarters
 	}
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := s.storeRepo.SettleAffiliateLevelEvaluationTx(ctx, tx, aff.ID, plan.toLevel, missed, quarter); err != nil {
+		return fmt.Errorf("settle affiliate level: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Service) affiliateConfigMap(ctx context.Context) (map[string]string, error) {
@@ -546,29 +516,23 @@ func affiliatePrevLevel(level string) (string, bool) {
 	return "", false
 }
 
-// affiliateRiseThreshold is the revenue that rises INTO next: the level row's
-// rise_threshold, else the global silver/gold threshold for that level.
-func affiliateRiseThreshold(next string, rules map[string]AffiliateEffectiveRule, settings *model.AffiliateSettings) float64 {
+// affiliateRiseThreshold is the revenue that rises INTO next: the level's
+// rise_threshold, which falls back to the built-in default for silver and gold.
+func affiliateRiseThreshold(next string, rules map[string]AffiliateEffectiveRule) float64 {
 	if rule := rules[next]; rule.RiseThreshold != nil {
 		return *rule.RiseThreshold
-	}
-	switch next {
-	case "silver":
-		return settings.SilverThreshold
-	case "gold":
-		return settings.GoldThreshold
 	}
 	return math.MaxFloat64
 }
 
 // affiliateRiseTarget walks up level by level while each next level's rise
 // threshold is met, so a bronze affiliator can jump straight to gold.
-func affiliateRiseTarget(current string, net float64, rules map[string]AffiliateEffectiveRule, settings *model.AffiliateSettings) (string, bool) {
+func affiliateRiseTarget(current string, net float64, rules map[string]AffiliateEffectiveRule) (string, bool) {
 	target := ""
 	level := current
 	for {
 		next, ok := affiliateNextLevel(level)
-		if !ok || net < affiliateRiseThreshold(next, rules, settings) {
+		if !ok || net < affiliateRiseThreshold(next, rules) {
 			break
 		}
 		target = next
@@ -580,8 +544,8 @@ func affiliateRiseTarget(current string, net float64, rules map[string]Affiliate
 // affiliateLevelPlanFor decides rise/hold/warn/drop for one affiliator:
 // rise beats hold; a miss with no prior miss warns; a second consecutive miss
 // drops one level; bronze cannot drop further.
-func affiliateLevelPlanFor(current string, warnQuarters int, net float64, rules map[string]AffiliateEffectiveRule, settings *model.AffiliateSettings) affiliateLevelPlan {
-	if to, ok := affiliateRiseTarget(current, net, rules, settings); ok {
+func affiliateLevelPlanFor(current string, warnQuarters int, net float64, rules map[string]AffiliateEffectiveRule) affiliateLevelPlan {
+	if to, ok := affiliateRiseTarget(current, net, rules); ok {
 		return affiliateLevelPlan{action: affiliateLevelActionRise, toLevel: to}
 	}
 	hold := rules[current].HoldThreshold

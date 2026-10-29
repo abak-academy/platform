@@ -1055,7 +1055,7 @@ type MidtransNotification struct {
 // payment_pending order whose promo has already been counted — RetryPayment
 // is the documented recovery path for that order, and it does not re-count
 // the promo, so the redemption is not lost or duplicated on retry.
-func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string, affiliateCode ...string) (CheckoutResult, error) {
+func (s *Service) Checkout(ctx context.Context, studentID, orderID, key, affiliateCode string) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
 		return CheckoutResult{}, err
@@ -1064,10 +1064,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string, 
 	if err != nil {
 		return CheckoutResult{}, err
 	}
-	var code string
-	if len(affiliateCode) > 0 {
-		code = affiliateCodeString(&affiliateCode[0])
-	}
+	code := affiliateCodeString(&affiliateCode)
 
 	cacheKey := "idempotency:checkout:" + sID.String() + ":" + oID.String() + ":" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
