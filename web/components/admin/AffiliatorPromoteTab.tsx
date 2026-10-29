@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Info, Search, X } from "lucide-react";
 import { AffiliatorPromoteDialog, AffiliatorSchoolsDialog } from "@/components/admin/AffiliatorDialogs";
+import { SegmentedControl } from "@/components/admin/SegmentedControl";
 import { TablePager } from "@/components/admin/TablePager";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -185,21 +186,15 @@ export function AffiliatorPromoteTab() {
         <p>{t("aff_promote_tab_note")}</p>
       </div>
 
-      <div role="radiogroup" aria-label={t("aff_promote_view")} className="flex w-fit overflow-hidden rounded-[10px] border border-line">
-        {(["admins", "affiliators"] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            role="radio"
-            aria-checked={view === v}
-            onClick={() => setView(v)}
-            className="border-r border-line px-4 py-1.5 text-sm last:border-r-0"
-            style={view === v ? { backgroundColor: "var(--md-sys-color-primary)", color: "var(--md-sys-color-on-primary)", fontWeight: 600 } : undefined}
-          >
-            {t(v === "admins" ? "aff_promote_view_admins" : "aff_promote_view_affiliators")}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        value={view}
+        onChange={setView}
+        label={t("aff_promote_view")}
+        options={[
+          { value: "admins", label: t("aff_promote_view_admins") },
+          { value: "affiliators", label: t("aff_promote_view_affiliators") },
+        ]}
+      />
 
       {view === "admins" ? <AdminsTable /> : <AffiliatorsTable />}
     </div>

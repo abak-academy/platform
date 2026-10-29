@@ -88,6 +88,15 @@ describe("AffiliatorPromoteTab", () => {
     expect(refetch).toHaveBeenCalled();
   });
 
+  it("colours the chosen view", () => {
+    render(<AffiliatorPromoteTab />);
+
+    expect(screen.getByRole("radio", { name: "Admin sekolah" })).toHaveAttribute("data-variant", "default");
+    fireEvent.click(screen.getByRole("radio", { name: "Affiliator (atur sekolah)" }));
+    expect(screen.getByRole("radio", { name: "Affiliator (atur sekolah)" })).toHaveAttribute("data-variant", "default");
+    expect(screen.getByRole("radio", { name: "Admin sekolah" })).toHaveAttribute("data-variant", "outline");
+  });
+
   it("switches to the affiliators and sets their schools from there", () => {
     render(<AffiliatorPromoteTab />);
 

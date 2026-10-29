@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { AffiliatorBulkPanel } from "@/components/admin/AffiliatorBulkPanel";
 import { SchoolMultiPicker, type PickedSchool } from "@/components/admin/SchoolMultiPicker";
+import { SegmentedControl } from "@/components/admin/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -95,21 +96,15 @@ export function AffiliatorCreateDialog({ open, onClose }: Props) {
               <DialogDescription>{t("aff_admin_create_hint")}</DialogDescription>
             </DialogHeader>
 
-            <div role="radiogroup" aria-label={t("aff_admin_create_mode")} className="flex w-fit overflow-hidden rounded-[10px] border border-line">
-              {(["single", "bulk"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="radio"
-                  aria-checked={mode === m}
-                  onClick={() => setMode(m)}
-                  className="border-r border-line px-4 py-1.5 text-sm last:border-r-0"
-                  style={mode === m ? { backgroundColor: "var(--md-sys-color-primary)", color: "var(--md-sys-color-on-primary)", fontWeight: 600 } : undefined}
-                >
-                  {t(m === "single" ? "aff_admin_mode_single" : "aff_admin_mode_bulk")}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              value={mode}
+              onChange={setMode}
+              label={t("aff_admin_create_mode")}
+              options={[
+                { value: "single", label: t("aff_admin_mode_single") },
+                { value: "bulk", label: t("aff_admin_mode_bulk") },
+              ]}
+            />
 
             {mode === "single" ? (
               <form onSubmit={submit}>

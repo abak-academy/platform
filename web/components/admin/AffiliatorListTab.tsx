@@ -75,7 +75,7 @@ export function AffiliatorListTab() {
       header: t("th_actions"),
       align: "right",
       cell: (a) => (
-        <Button size="sm" variant={a.status === "active" ? "destructive" : "outline"} onClick={() => toggle(a)} disabled={setStatusMutation.isPending}>
+        <Button size="sm" className="w-28" variant={a.status === "active" ? "destructive" : "outline"} onClick={() => toggle(a)} disabled={setStatusMutation.isPending}>
           {a.status === "active" ? t("aff_admin_deactivate") : t("aff_admin_activate")}
         </Button>
       ),

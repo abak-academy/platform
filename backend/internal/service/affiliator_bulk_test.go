@@ -10,11 +10,11 @@ import (
 )
 
 func TestParseAffiliatorBulkCSV(t *testing.T) {
-	t.Run("reads columns by name, in any order, with several schools per cell", func(t *testing.T) {
-		rows, err := ParseAffiliatorBulkCSV([]byte("\ufeffemail,Name,school_code,school_npsn,password\n" +
-			"a@example.com,Andi,KODEA|KODEB,12345678,secret123\n" +
+	t.Run("reads one school per line by column name, in any order", func(t *testing.T) {
+		rows, err := ParseAffiliatorBulkCSV([]byte("\xEF\xBB\xBFemail,Name,school_code,school_npsn,password\n" +
+			"a@example.com,Andi,KODEA,12345678,secret123\n" +
 			"\n" +
-			"b@example.com,Bela,,\"87654321, 11112222\",\n"))
+			"a@example.com,Andi,KODEB,,\n"))
 		if err != nil {
 			t.Fatalf("ParseAffiliatorBulkCSV: %v", err)
 		}
@@ -22,12 +22,18 @@ func TestParseAffiliatorBulkCSV(t *testing.T) {
 			t.Fatalf("rows = %d, want 2 (blank line skipped)", len(rows))
 		}
 		a, b := rows[0], rows[1]
-		if a.Row != 2 || a.Name != "Andi" || a.Email != "a@example.com" || a.Password != "secret123" ||
-			strings.Join(a.SchoolCode, ",") != "KODEA,KODEB" || strings.Join(a.SchoolNPSN, ",") != "12345678" {
+		if a.Row != 2 || a.Name != "Andi" || a.Email != "a@example.com" || a.Password != "secret123" || a.SchoolCode != "KODEA" || a.SchoolNPSN != "12345678" {
 			t.Errorf("row a = %+v", a)
 		}
-		if b.Row != 3 || b.Password != "" || len(b.SchoolCode) != 0 || strings.Join(b.SchoolNPSN, ",") != "87654321,11112222" {
-			t.Errorf("row b = %+v, want record 3 (blank lines are skipped), no password, two NPSNs", b)
+		if b.Row != 3 || b.Password != "" || b.SchoolCode != "KODEB" || b.SchoolNPSN != "" {
+			t.Errorf("row b = %+v, want record 3 (blank lines are skipped), no password, code only", b)
+		}
+	})
+
+	t.Run("does not split a cell on | or commas: that is no longer a list", func(t *testing.T) {
+		rows, err := ParseAffiliatorBulkCSV([]byte("name,email,school_code\nAndi,a@example.com,KODEA|KODEB\n"))
+		if err != nil || len(rows) != 1 || rows[0].SchoolCode != "KODEA|KODEB" {
+			t.Errorf("rows=%+v err=%v, want the cell kept whole so it fails as an unknown school", rows, err)
 		}
 	})
 
@@ -65,10 +71,10 @@ func TestParseAffiliatorBulkCSV(t *testing.T) {
 
 func TestBuildAffiliatorBulkResultCSV_neutralisesFormulas(t *testing.T) {
 	out := string(BuildAffiliatorBulkResultCSV([]AffiliatorBulkResultRow{
-		{Row: 2, Name: "=HYPERLINK(\"x\")", Email: "a@example.com", Schools: "SMA", Status: "success", TempPassword: "Abc12345"},
+		{Row: 2, Name: "=HYPERLINK(\"x\")", Email: "a@example.com", School: "SMA", Status: "success", TempPassword: "Abc12345"},
 	}))
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if lines[0] != "row,name,email,schools,status,temp_password,error" {
+	if lines[0] != "row,name,email,school,status,temp_password,error" {
 		t.Errorf("header = %q", lines[0])
 	}
 	if strings.Contains(lines[1], ",=HYPERLINK") || !strings.Contains(lines[1], "Abc12345") {
@@ -97,84 +103,156 @@ func TestAffiliatorBulk_Integration(t *testing.T) {
 	}
 	id1, name1, code1, _ := newSchool(t)
 	id2, name2, _, npsn2 := newSchool(t)
+	_, name3, code3, _ := newSchool(t)
 	suffix := uniqueSuffix()
+	email := func(label string) string { return "bulk-" + label + "-" + suffix + "@test.com" }
+
+	if _, err := svc.CreateAffiliator(ctx, actor.ID, AffiliatorInput{Email: email("taken"), Name: "Existing", Password: "password123", SchoolIDs: []string{id1}}); err != nil {
+		t.Fatalf("seed an existing account: %v", err)
+	}
 
 	rows := []AffiliatorBulkRow{
-		{Row: 2, Name: "Both Schools", Email: "bulk-a-" + suffix + "@test.com", Password: "password123", SchoolCode: []string{code1}, SchoolNPSN: []string{npsn2}},
-		{Row: 3, Name: "Generated", Email: "bulk-b-" + suffix + "@test.com", SchoolCode: []string{code1, code1}},
-		{Row: 4, Name: "Weak Password", Email: "bulk-c-" + suffix + "@test.com", Password: "short", SchoolCode: []string{code1}},
-		{Row: 5, Name: "Unknown School", Email: "bulk-d-" + suffix + "@test.com", SchoolCode: []string{"does_not_exist"}},
-		{Row: 6, Name: "Bad NPSN", Email: "bulk-e-" + suffix + "@test.com", SchoolNPSN: []string{"x"}},
-		{Row: 7, Name: "No School", Email: "bulk-f-" + suffix + "@test.com"},
-		{Row: 8, Name: "Duplicate Email", Email: "bulk-a-" + suffix + "@test.com", SchoolCode: []string{code1}},
+		// One account over three lines: by code, by NPSN, and a repeated school.
+		{Row: 2, Name: "Three Lines", Email: email("a"), Password: "password123", SchoolCode: code1},
+		{Row: 3, Name: "", Email: email("a"), SchoolNPSN: npsn2},
+		{Row: 4, Name: "Three Lines", Email: email("a"), Password: "password123", SchoolCode: code1},
+		// A generated password, one school.
+		{Row: 5, Name: "Generated", Email: email("b"), SchoolCode: code3},
+		// Both NPSN and code given: the NPSN wins.
+		{Row: 6, Name: "Both Columns", Email: email("c"), SchoolNPSN: npsn2, SchoolCode: "ignored_code"},
+		// A bad school makes the whole account fail, including its good line.
+		{Row: 7, Name: "Half Bad", Email: email("d"), Password: "password123", SchoolCode: code1},
+		{Row: 8, Name: "Half Bad", Email: email("d"), SchoolCode: "does_not_exist"},
+		// Conflicting name or password between lines of one account.
+		{Row: 9, Name: "Conflict", Email: email("e"), Password: "password123", SchoolCode: code1},
+		{Row: 10, Name: "Someone Else", Email: email("e"), SchoolCode: code3},
+		// Row-level failures.
+		{Row: 11, Name: "Weak Password", Email: email("f"), Password: "short", SchoolCode: code1},
+		{Row: 12, Name: "Bad NPSN", Email: email("g"), SchoolNPSN: "x"},
+		{Row: 13, Name: "No School", Email: email("h")},
+		{Row: 14, Name: "Taken Email", Email: email("taken"), SchoolCode: code3},
+		{Row: 15, Name: "No Email", Email: "", SchoolCode: code1},
 	}
 	var progress []int
 	results, ok, err := svc.ProcessAffiliatorBulkRows(ctx, actor.ID, rows, func(p int) { progress = append(progress, p) })
 	if err != nil {
 		t.Fatalf("ProcessAffiliatorBulkRows: %v", err)
 	}
-	if ok != 2 || len(results) != len(rows) {
-		t.Fatalf("ok=%d results=%d, want 2 successes among %d rows: %+v", ok, len(results), len(rows), results)
+	if len(results) != len(rows) {
+		t.Fatalf("results = %d, want one per line (%d)", len(results), len(rows))
+	}
+	// 3 lines of account a + 1 of b + 1 of c.
+	if ok != 5 {
+		t.Fatalf("successful lines = %d, want 5: %+v", ok, results)
 	}
 	if len(progress) == 0 || progress[len(progress)-1] != 100 {
 		t.Errorf("progress = %v, want it to end at 100", progress)
 	}
+	byRow := map[int]AffiliatorBulkResultRow{}
+	for _, r := range results {
+		byRow[r.Row] = r
+	}
+	stored := func(label string) []string {
+		list, _, _, _ := svc.ListAffiliators(ctx, "", "bulk-"+label+"-"+suffix, 10, "")
+		if len(list) != 1 {
+			return nil
+		}
+		return list[0].SchoolIDs
+	}
 
-	t.Run("a row may name schools by NPSN and by code together (NPSNs first)", func(t *testing.T) {
-		r := results[0]
-		if r.Status != "success" || r.TempPassword != "" || r.Schools != name2+"|"+name1 {
-			t.Fatalf("row 2 = %+v, want success with both schools and no generated password", r)
+	t.Run("lines sharing an email become one account with each line's school, repeats collapsed", func(t *testing.T) {
+		for _, n := range []int{2, 3, 4} {
+			if byRow[n].Status != "success" {
+				t.Errorf("row %d = %+v, want success", n, byRow[n])
+			}
 		}
-		list, _, _, _ := svc.ListAffiliators(ctx, "", "bulk-a-"+suffix, 10, "")
-		if len(list) != 1 || len(list[0].SchoolIDs) != 2 || list[0].SchoolIDs[0] != id2 || list[0].SchoolIDs[1] != id1 {
-			t.Errorf("stored schools = %+v, want [%s %s]", list, id2, id1)
+		if byRow[2].School != name1 || byRow[3].School != name2 {
+			t.Errorf("schools reported = %q / %q, want %q / %q", byRow[2].School, byRow[3].School, name1, name2)
 		}
-		if _, _, _, err := svc.Login(ctx, "bulk-a-"+suffix+"@test.com", "password123", "1.1.1.1"); err != nil {
+		if got := stored("a"); len(got) != 2 || got[0] != id1 || got[1] != id2 {
+			t.Errorf("stored schools = %v, want [%s %s] in line order", got, id1, id2)
+		}
+		if byRow[2].TempPassword != "" {
+			t.Errorf("a given password must not be echoed back, got %q", byRow[2].TempPassword)
+		}
+		if _, _, _, err := svc.Login(ctx, email("a"), "password123", "1.1.1.1"); err != nil {
 			t.Errorf("Login with the given password: %v", err)
 		}
 	})
 
-	t.Run("a blank password is generated, listed once, and works; repeated schools collapse", func(t *testing.T) {
-		r := results[1]
-		if r.Status != "success" || len(r.TempPassword) < minPasswordLen || r.Schools != name1 {
-			t.Fatalf("row 3 = %+v, want success, a generated password and one school", r)
+	t.Run("a blank password is generated and shown on the first line only", func(t *testing.T) {
+		r := byRow[5]
+		if r.Status != "success" || len(r.TempPassword) < minPasswordLen || r.School != name3 {
+			t.Fatalf("row 5 = %+v, want success with a generated password", r)
 		}
-		if _, _, _, err := svc.Login(ctx, "bulk-b-"+suffix+"@test.com", r.TempPassword, "1.1.1.1"); err != nil {
+		if _, _, _, err := svc.Login(ctx, email("b"), r.TempPassword, "1.1.1.1"); err != nil {
 			t.Errorf("Login with the generated password: %v", err)
 		}
 	})
 
-	t.Run("each bad row fails alone with a reason and creates nothing", func(t *testing.T) {
-		want := map[int]string{
-			2: "password too weak",
-			3: "school not found by code",
-			4: "NPSN",
-			5: "at least one school",
-			6: "email already registered",
+	t.Run("the NPSN wins when both columns are filled", func(t *testing.T) {
+		if byRow[6].Status != "success" || byRow[6].School != name2 {
+			t.Errorf("row 6 = %+v, want success at %q", byRow[6], name2)
 		}
-		for i, sub := range want {
-			r := results[i]
-			if r.Status != "failed" || !strings.Contains(r.Error, sub) {
-				t.Errorf("row %d = %+v, want failed mentioning %q", r.Row, r, sub)
+		if got := stored("c"); len(got) != 1 || got[0] != id2 {
+			t.Errorf("stored schools = %v, want [%s]", got, id2)
+		}
+	})
+
+	t.Run("one bad line fails the whole account and says which", func(t *testing.T) {
+		if r := byRow[8]; r.Status != "failed" || !strings.Contains(r.Error, "school not found by code") {
+			t.Errorf("row 8 = %+v, want the unknown school", r)
+		}
+		if r := byRow[7]; r.Status != "failed" || !strings.Contains(r.Error, "not created: row 8") {
+			t.Errorf("row 7 = %+v, want it to point at row 8", r)
+		}
+		if got := stored("d"); got != nil {
+			t.Errorf("a half-bad account was created with %v", got)
+		}
+	})
+
+	t.Run("a line that contradicts the first line's name fails the account", func(t *testing.T) {
+		if r := byRow[10]; r.Status != "failed" || !strings.Contains(r.Error, "name differs from row 9") {
+			t.Errorf("row 10 = %+v, want a name conflict with row 9", r)
+		}
+		if r := byRow[9]; r.Status != "failed" || !strings.Contains(r.Error, "not created: row 10") {
+			t.Errorf("row 9 = %+v, want it to point at row 10", r)
+		}
+		if got := stored("e"); got != nil {
+			t.Errorf("a conflicting account was created with %v", got)
+		}
+	})
+
+	t.Run("row level failures name their reason and create nothing", func(t *testing.T) {
+		want := map[int]string{
+			11: "password too weak",
+			12: "NPSN",
+			13: "at least one school",
+			14: "email already registered",
+			15: "missing required field",
+		}
+		for n, sub := range want {
+			if r := byRow[n]; r.Status != "failed" || !strings.Contains(r.Error, sub) {
+				t.Errorf("row %d = %+v, want failed mentioning %q", n, r, sub)
 			}
 		}
-		for _, email := range []string{"bulk-c-", "bulk-d-", "bulk-e-", "bulk-f-"} {
-			if list, _, _, _ := svc.ListAffiliators(ctx, "", email+suffix, 10, ""); len(list) != 0 {
-				t.Errorf("a failed row created an account for %s", email)
+		for _, label := range []string{"f", "g", "h"} {
+			if got := stored(label); got != nil {
+				t.Errorf("a failed row created an account for %s: %v", label, got)
 			}
 		}
 	})
 
-	t.Run("a deactivated school fails the row", func(t *testing.T) {
+	t.Run("a deactivated school fails the account", func(t *testing.T) {
 		_, _, offCode, _ := newSchool(t)
 		sch, _ := repo.GetSchoolByCode(ctx, offCode)
 		if _, err := repo.Pool().Exec(ctx, "UPDATE school SET status = 'deactivated' WHERE id = $1", sch.ID); err != nil {
 			t.Fatalf("deactivate school: %v", err)
 		}
-		res, ok, _ := svc.ProcessAffiliatorBulkRows(ctx, actor.ID, []AffiliatorBulkRow{
-			{Row: 2, Name: "Off", Email: "bulk-g-" + suffix + "@test.com", SchoolCode: []string{offCode}},
+		res, n, _ := svc.ProcessAffiliatorBulkRows(ctx, actor.ID, []AffiliatorBulkRow{
+			{Row: 2, Name: "Off", Email: email("i"), SchoolCode: offCode},
 		}, nil)
-		if ok != 0 || !strings.Contains(res[0].Error, "deactivated") {
+		if n != 0 || !strings.Contains(res[0].Error, "deactivated") {
 			t.Errorf("result = %+v, want a deactivated-school failure", res)
 		}
 	})

@@ -10,7 +10,7 @@ import (
 	"akademi-bimbel/internal/service"
 )
 
-const validAffiliatorBulkCSV = "name,email,password,school_code\nAndi,andi@example.com,,SMA1\nBela,bela@example.com,secret123,SMA2\n"
+const validAffiliatorBulkCSV = "name,email,password,school_code\nAndi,andi@example.com,,SMA1\nAndi,andi@example.com,,SMA2\nBela,bela@example.com,secret123,SMA2\n"
 
 func TestPollJobsRoutesAffiliatorBulkToProcessor(t *testing.T) {
 	ctx := context.Background()
@@ -34,8 +34,8 @@ func TestPollJobsRoutesAffiliatorBulkToProcessor(t *testing.T) {
 	w := &Worker{jobRepo: repo, objectStore: store, svc: svc, privateBucket: "private-bucket"}
 	w.pollJobs(ctx)
 
-	if gotActor != "super-1" || len(gotRows) != 2 || gotRows[0].Email != "andi@example.com" || gotRows[1].Password != "secret123" {
-		t.Errorf("processor got actor=%q rows=%+v, want the uploader and both parsed rows", gotActor, gotRows)
+	if gotActor != "super-1" || len(gotRows) != 3 || gotRows[0].Email != "andi@example.com" || gotRows[1].SchoolCode != "SMA2" || gotRows[2].Password != "secret123" {
+		t.Errorf("processor got actor=%q rows=%+v, want the uploader and all three parsed lines, one school each", gotActor, gotRows)
 	}
 	if len(repo.finishCalls) != 1 {
 		t.Fatalf("expected 1 FinishJob call, got %d", len(repo.finishCalls))
@@ -71,7 +71,7 @@ func TestRunAffiliatorBulkJobFailures(t *testing.T) {
 		w.runAffiliatorBulkJob(ctx, model.Job{ID: "j1", CreatedBy: "u", InputURL: input})
 
 		f := repo.finishCalls[0]
-		if f.status != "failed" || f.errMsg == nil || !strings.Contains(*f.errMsg, "all 2 rows failed") || f.resultURL == nil {
+		if f.status != "failed" || f.errMsg == nil || !strings.Contains(*f.errMsg, "all 3 rows failed") || f.resultURL == nil {
 			t.Errorf("finish = %+v, want failed with the report still attached", f)
 		}
 		if len(store.deleteCalls) != 1 {

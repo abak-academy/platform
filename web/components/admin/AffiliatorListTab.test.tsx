@@ -52,6 +52,16 @@ describe("AffiliatorListTab", () => {
     expect(rowButtons("Bela")).toEqual(["Aktifkan"]);
   });
 
+  it("gives activate and deactivate the same size", () => {
+    render(<AffiliatorListTab />);
+
+    const deactivate = within(screen.getByText("Andi").closest("tr")!).getByRole("button", { name: "Nonaktifkan" });
+    const activate = within(screen.getByText("Bela").closest("tr")!).getByRole("button", { name: "Aktifkan" });
+    expect(deactivate.className).toContain("w-28");
+    expect(activate.className).toContain("w-28");
+    expect(deactivate.getAttribute("data-size")).toBe(activate.getAttribute("data-size"));
+  });
+
   it("asks before deactivating, then deactivates", async () => {
     render(<AffiliatorListTab />);
 

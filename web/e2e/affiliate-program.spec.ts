@@ -300,7 +300,7 @@ test.describe.serial("affiliate program", () => {
     expect(me.body.schools?.map((x) => x.id)).toEqual([ctx.schoolB.id]);
   });
 
-  test("creates many affiliators from a CSV with a school per row, generating blank passwords", async ({ page, context, request }) => {
+  test("creates many affiliators from a CSV with one school per row, generating blank passwords", async ({ page, context, request }) => {
     const suffix = `${Date.now()}`;
     const probe = await api(request, "post", "/admin/system/affiliators/bulk/presign?filename=probe.csv", ctx.adminToken);
     test.skip(!probe.res.ok(), "needs the object storage used for uploads (MinIO in the local stack)");
@@ -311,7 +311,9 @@ test.describe.serial("affiliate program", () => {
     const csv = [
       "name,email,password,school_npsn,school_code",
       `E2E Bulk Given,${given},Given#2026pw,,${ctx.schoolA.code}`,
-      `E2E Bulk Generated,${generated},,,${ctx.schoolA.code}|${ctx.schoolB.code}`,
+      // One school per row: the same email on two rows is one affiliator with two schools.
+      `E2E Bulk Generated,${generated},,,${ctx.schoolA.code}`,
+      `E2E Bulk Generated,${generated},,,${ctx.schoolB.code}`,
       `E2E Bulk Broken,${broken},,,NO_SUCH_SCHOOL`,
     ].join("\n");
 
@@ -329,15 +331,20 @@ test.describe.serial("affiliate program", () => {
     const resultHref = await dialog.getByRole("link", { name: /Unduh hasil impor/ }).getAttribute("href");
     const report = await (await request.get(resultHref!)).text();
     const lines = report.trim().split("\n");
-    expect(lines[0]).toBe("row,name,email,schools,status,temp_password,error");
-    const byEmail = (email: string) => lines.find((l) => l.includes(email))!;
-    expect(byEmail(given)).toContain("success");
-    expect(byEmail(broken)).toContain("failed");
-    expect(byEmail(broken)).toContain("school not found by code");
-    const genLine = byEmail(generated).split(",");
-    expect(genLine[4]).toBe("success");
-    const tempPassword = genLine[5];
+    expect(lines[0]).toBe("row,name,email,school,status,temp_password,error");
+    const forEmail = (email: string) => lines.filter((l) => l.includes(email));
+    expect(forEmail(given)).toHaveLength(1);
+    expect(forEmail(given)[0]).toContain("success");
+    expect(forEmail(broken)[0]).toContain("failed");
+    expect(forEmail(broken)[0]).toContain("school not found by code");
+    // Two lines for the generated account, both created; the password is on the first only.
+    const genLines = forEmail(generated).map((l) => l.split(","));
+    expect(genLines).toHaveLength(2);
+    expect(genLines.map((l) => l[4])).toEqual(["success", "success"]);
+    expect(genLines.map((l) => l[3])).toEqual([ctx.schoolA.name, ctx.schoolB.name]);
+    const tempPassword = genLines[0][5];
     expect(tempPassword.length).toBeGreaterThanOrEqual(8);
+    expect(genLines[1][5]).toBe("");
 
     for (const [email, password] of [[given, "Given#2026pw"], [generated, tempPassword]]) {
       const login = await api<{ access_token: string }>(request, "post", "/auth/login", null, { identifier: email, password });

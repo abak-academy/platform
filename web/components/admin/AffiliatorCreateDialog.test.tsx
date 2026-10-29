@@ -35,6 +35,19 @@ describe("AffiliatorCreateDialog", () => {
     expect(screen.queryByText("bulk panel")).not.toBeInTheDocument();
   });
 
+  it("colours the chosen mode and not the other, and moves the colour when switched", () => {
+    render(<AffiliatorCreateDialog open onClose={vi.fn()} />);
+    const single = screen.getByRole("radio", { name: "Satu akun" });
+    const bulk = screen.getByRole("radio", { name: "Banyak akun (CSV)" });
+    expect(single).toHaveAttribute("data-variant", "default");
+    expect(bulk).toHaveAttribute("data-variant", "outline");
+
+    fireEvent.click(bulk);
+
+    expect(bulk).toHaveAttribute("data-variant", "default");
+    expect(single).toHaveAttribute("data-variant", "outline");
+  });
+
   it("shows the CSV upload only after choosing many", () => {
     render(<AffiliatorCreateDialog open onClose={vi.fn()} />);
 

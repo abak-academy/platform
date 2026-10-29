@@ -1,7 +1,7 @@
 ---
 title: RBAC and Accounts
-updated: 2026-10-28
-verified_against: 46fd90c8
+updated: 2026-10-29
+verified_against: 018318f6
 ---
 
 One-liner: 6 roles, a static `role → capability` map, echo middleware that checks the map on
@@ -101,9 +101,11 @@ so scope code compares the role (`claims.Role == RoleAffiliator`), never the cap
   the same user id, so they show in its affiliator order list and totals.
 - **Bulk create** is an async `affiliator_bulk` job like the student and school ones: presign,
   enqueue (header checked eagerly), worker, result CSV (`affiliator-bulk/results/<job>.csv`).
-  Columns `name,email,password,school_npsn,school_code`, several schools per cell separated by
-  `|`, blank password generated and listed only in the result; the input CSV is deleted after the
-  job because it may hold passwords (`worker/affiliator_bulk.go`).
+  Columns `name,email,password,school_npsn,school_code`; **one line is one school** and lines
+  sharing an email are one affiliator (no cell is a list). An account is all or nothing: one bad
+  line means none of its lines is created. A blank password is generated and listed once, on the
+  account's first line, in the result; the input CSV is deleted after the job because it may hold
+  passwords (`service/affiliator_bulk.go`, `worker/affiliator_bulk.go`).
 - **Menu and reports.** The affiliator menu is a group of its own in the super-admin sidebar
   (`/admin/affiliators` with Daftar and Promote tabs, `/admin/affiliators/reports`), not part of
   System. Reports (`service/affiliate_report.go`, `repository/affiliate_report.go`): per
