@@ -17,18 +17,11 @@ type affiliateApprovalRequest struct {
 type affiliateStatusRequest struct {
 	Status string `json:"status"`
 	Reason string `json:"reason"`
-	Days   *int   `json:"days"`
-}
-
-type affiliateFreezeRequest struct {
-	Days   *int   `json:"days"`
-	Reason string `json:"reason"`
 }
 
 type affiliateLevelRequest struct {
-	Level     string `json:"level"`
-	LockUntil string `json:"lock_until"`
-	Reason    string `json:"reason"`
+	Level  string `json:"level"`
+	Reason string `json:"reason"`
 }
 
 // AdminListAffiliates backs GET /admin/affiliates?status&level&q — the
@@ -81,42 +74,8 @@ func (h *Handler) AdminChangeAffiliateStatus(c echo.Context) error {
 	if req.Status != "active" && req.Status != "suspended" && req.Status != "deactivated" {
 		return badRequest(c, "status must be active, suspended or deactivated")
 	}
-	if req.Status == "suspended" && req.Days == nil {
-		return badRequest(c, "days is required to suspend")
-	}
 	claims := claimsFromContext(c)
-	aff, err := h.svc.ChangeAffiliateStatus(c.Request().Context(), claims.Sub, c.Param("id"), req.Status, req.Reason, req.Days)
-	if err != nil {
-		return mapServiceError(c, err)
-	}
-	return c.JSON(http.StatusOK, aff)
-}
-
-// AdminFreezeAffiliateBalance backs POST /admin/affiliates/:id/freeze.
-func (h *Handler) AdminFreezeAffiliateBalance(c echo.Context) error {
-	var req affiliateFreezeRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "invalid request body")
-	}
-	if req.Days == nil {
-		return badRequest(c, "days is required")
-	}
-	claims := claimsFromContext(c)
-	aff, err := h.svc.FreezeAffiliateBalance(c.Request().Context(), claims.Sub, c.Param("id"), *req.Days, req.Reason)
-	if err != nil {
-		return mapServiceError(c, err)
-	}
-	return c.JSON(http.StatusOK, aff)
-}
-
-// AdminUnfreezeAffiliateBalance backs POST /admin/affiliates/:id/unfreeze.
-func (h *Handler) AdminUnfreezeAffiliateBalance(c echo.Context) error {
-	var req affiliateFreezeRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "invalid request body")
-	}
-	claims := claimsFromContext(c)
-	aff, err := h.svc.UnfreezeAffiliateBalance(c.Request().Context(), claims.Sub, c.Param("id"), req.Reason)
+	aff, err := h.svc.ChangeAffiliateStatus(c.Request().Context(), claims.Sub, c.Param("id"), req.Status, req.Reason)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -130,7 +89,7 @@ func (h *Handler) AdminChangeAffiliateLevel(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 	claims := claimsFromContext(c)
-	aff, err := h.svc.ChangeAffiliateLevel(c.Request().Context(), claims.Sub, c.Param("id"), req.Level, req.LockUntil, req.Reason)
+	aff, err := h.svc.ChangeAffiliateLevel(c.Request().Context(), claims.Sub, c.Param("id"), req.Level, req.Reason)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

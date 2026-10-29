@@ -12,15 +12,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ReasonDialog } from "@/components/affiliate/ReasonDialog";
 import { ApiError } from "@/lib/api";
 import { affLabel } from "@/lib/affiliate-labels";
 import {
   useChangeAffiliateLevel,
   useChangeAffiliateStatus,
   useCreateAffiliateAdjustment,
-  useFreezeAffiliateBalance,
-  useUnfreezeAffiliateBalance,
 } from "@/lib/hooks/admin-affiliates";
 import { useTranslation } from "@/lib/i18n";
 
@@ -28,13 +25,12 @@ const STATUS_TARGETS = ["active", "suspended", "deactivated"] as const;
 const LEVELS = ["bronze", "silver", "gold"] as const;
 const CATEGORIES = ["correction", "offline", "bonus", "other"] as const;
 
-type Action = "status" | "freeze" | "unfreeze" | "level" | "adjust" | null;
+type Action = "status" | "level" | "adjust" | null;
 
 interface Props {
   id: string;
   currentStatus: string;
   currentLevel: string;
-  frozen: boolean;
 }
 
 function Field({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
@@ -48,31 +44,25 @@ function Field({ id, label, children }: { id: string; label: string; children: R
 
 const selectClass = "h-9 w-full rounded-md border border-line bg-surface px-3 text-sm";
 
-export function AffiliateAdminActions({ id, currentStatus, currentLevel, frozen }: Props) {
+export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props) {
   const { t } = useTranslation();
   const [action, setAction] = useState<Action>(null);
   const [status, setStatus] = useState<string>(STATUS_TARGETS[0]);
-  const [days, setDays] = useState("");
   const [level, setLevel] = useState(currentLevel);
-  const [lockUntil, setLockUntil] = useState("");
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [reason, setReason] = useState("");
 
   const changeStatus = useChangeAffiliateStatus();
-  const freeze = useFreezeAffiliateBalance();
-  const unfreeze = useUnfreezeAffiliateBalance();
   const changeLevel = useChangeAffiliateLevel();
   const adjust = useCreateAffiliateAdjustment();
 
   const close = () => {
     setAction(null);
     setReason("");
-    setDays("");
     setAmount("");
     setNote("");
-    setLockUntil("");
   };
   const done = () => {
     toast.success(t("admin_aff_act_done"));
@@ -88,15 +78,9 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, frozen 
     }
     const opts = { onSuccess: done, onError: fail };
     if (action === "status") {
-      const n = Number(days);
-      if (status === "suspended" && !(n >= 1)) return invalid();
-      changeStatus.mutate({ id, status, reason: reason.trim(), days: status === "suspended" ? n : undefined }, opts);
-    } else if (action === "freeze") {
-      const n = Number(days);
-      if (!(n >= 1)) return invalid();
-      freeze.mutate({ id, days: n, reason: reason.trim() }, opts);
+      changeStatus.mutate({ id, status, reason: reason.trim() }, opts);
     } else if (action === "level") {
-      changeLevel.mutate({ id, level, lock_until: lockUntil || undefined, reason: reason.trim() }, opts);
+      changeLevel.mutate({ id, level, reason: reason.trim() }, opts);
     } else if (action === "adjust") {
       const n = Number(amount);
       if (!Number.isFinite(n) || n === 0) return invalid();
@@ -104,14 +88,12 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, frozen 
     }
   };
 
-  const titles: Record<Exclude<Action, null | "unfreeze">, string> = {
+  const titles: Record<Exclude<Action, null>, string> = {
     status: t("admin_aff_act_status"),
-    freeze: t("admin_aff_act_freeze"),
     level: t("admin_aff_act_level"),
     adjust: t("admin_aff_act_adjust"),
   };
-  const formAction = action && action !== "unfreeze" ? action : null;
-  const pending = changeStatus.isPending || freeze.isPending || changeLevel.isPending || adjust.isPending;
+  const pending = changeStatus.isPending || changeLevel.isPending || adjust.isPending;
 
   return (
     <>
@@ -119,15 +101,6 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, frozen 
         {currentStatus !== "pending_approval" && currentStatus !== "rejected" && (
           <Button variant="outline" size="sm" onClick={() => setAction("status")}>
             {t("admin_aff_act_status")}
-          </Button>
-        )}
-        {frozen ? (
-          <Button variant="outline" size="sm" onClick={() => setAction("unfreeze")}>
-            {t("admin_aff_act_unfreeze")}
-          </Button>
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => setAction("freeze")}>
-            {t("admin_aff_act_freeze")}
           </Button>
         )}
         <Button variant="outline" size="sm" onClick={() => setAction("level")}>
@@ -138,60 +111,35 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, frozen 
         </Button>
       </div>
 
-      <ReasonDialog
-        open={action === "unfreeze"}
-        onOpenChange={(open) => !open && close()}
-        title={t("admin_aff_act_unfreeze")}
-        isPending={unfreeze.isPending}
-        onConfirm={(r) => unfreeze.mutate({ id, reason: r }, { onSuccess: done, onError: fail })}
-      />
-
-      <Dialog open={formAction !== null} onOpenChange={(open) => !open && close()}>
+      <Dialog open={action !== null} onOpenChange={(open) => !open && close()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{formAction ? titles[formAction] : ""}</DialogTitle>
+            <DialogTitle>{action ? titles[action] : ""}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            {formAction === "status" && (
-              <>
-                <Field id="aff-status" label={t("admin_aff_field_status")}>
-                  <select id="aff-status" value={status} onChange={(e) => setStatus(e.target.value)} className={selectClass}>
-                    {STATUS_TARGETS.map((s) => (
-                      <option key={s} value={s}>
-                        {affLabel(t, s)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                {status === "suspended" && (
-                  <Field id="aff-days" label={t("admin_aff_field_days")}>
-                    <Input id="aff-days" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} />
-                  </Field>
-                )}
-              </>
-            )}
-            {formAction === "freeze" && (
-              <Field id="aff-days" label={t("admin_aff_field_days")}>
-                <Input id="aff-days" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} />
+            {action === "status" && (
+              <Field id="aff-status" label={t("admin_aff_field_status")}>
+                <select id="aff-status" value={status} onChange={(e) => setStatus(e.target.value)} className={selectClass}>
+                  {STATUS_TARGETS.map((s) => (
+                    <option key={s} value={s}>
+                      {affLabel(t, s)}
+                    </option>
+                  ))}
+                </select>
               </Field>
             )}
-            {formAction === "level" && (
-              <>
-                <Field id="aff-level" label={t("admin_aff_field_level")}>
-                  <select id="aff-level" value={level} onChange={(e) => setLevel(e.target.value)} className={selectClass}>
-                    {LEVELS.map((l) => (
-                      <option key={l} value={l}>
-                        {affLabel(t, l)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field id="aff-lock" label={t("admin_aff_field_lock")}>
-                  <Input id="aff-lock" type="date" value={lockUntil} onChange={(e) => setLockUntil(e.target.value)} />
-                </Field>
-              </>
+            {action === "level" && (
+              <Field id="aff-level" label={t("admin_aff_field_level")}>
+                <select id="aff-level" value={level} onChange={(e) => setLevel(e.target.value)} className={selectClass}>
+                  {LEVELS.map((l) => (
+                    <option key={l} value={l}>
+                      {affLabel(t, l)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             )}
-            {formAction === "adjust" && (
+            {action === "adjust" && (
               <>
                 <Field id="aff-category" label={t("admin_aff_field_category")}>
                   <select id="aff-category" value={category} onChange={(e) => setCategory(e.target.value)} className={selectClass}>

@@ -152,9 +152,6 @@ export async function authFetchMultipart<T>(path: string, init?: RequestInit): P
 }
 
 export const affiliateApi = {
-  recordClick: (code: string, userAgent: string) =>
-    apiFetch<{ recorded: boolean; cookie_days?: number }>("/affiliates/clicks", {
-      method: "POST",
-      body: JSON.stringify({ code, user_agent: userAgent }),
-    }),
+  validateCode: (code: string) =>
+    apiFetch<{ valid: boolean; cookie_days?: number }>(`/affiliates/public/validate?code=${encodeURIComponent(code)}`),
 };

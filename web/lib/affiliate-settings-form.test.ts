@@ -11,15 +11,10 @@ const settings: AffiliateSettings = {
   physical_wait_days: 14,
   min_payout: 100000,
   payout_day_of_month: null,
-  adjustment_threshold: 1000000,
-  adjustment_threshold_enabled: false,
-  freeze_max_days: 14,
-  soon_end_days: 30,
   launch_date: "2026-11-01T00:00:00Z",
   eval_day: 8,
   silver_threshold: 5000000,
   gold_threshold: 15000000,
-  hold_thresholds: { silver: 1000000 },
   daily_registration_cap: null,
   updated_by: null,
   updated_at: "2026-10-01T00:00:00Z",
@@ -47,7 +42,6 @@ describe("affiliate settings form", () => {
     expect(input?.cookie_days).toBe(30);
     expect(input?.payout_day_of_month).toBeNull();
     expect(input?.launch_date).toBe("2026-11-01");
-    expect(input?.hold_thresholds).toEqual({ silver: 1000000 });
     const silver = input?.levels.find((l) => l.level === "silver");
     expect(silver?.commission_rule).toEqual({ book: { type: "percent", value: 7.5 }, merchandise: { type: "fixed", value: 5000 } });
     expect(silver?.binding_months).toBe(6);

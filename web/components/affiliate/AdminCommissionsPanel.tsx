@@ -16,7 +16,7 @@ import { useTranslation } from "@/lib/i18n";
 import { formatCommissionRule } from "@/lib/affiliate-rules";
 import type { AffiliateCommission } from "@/lib/types";
 
-const STATUSES = ["pending", "available", "paid", "held", "cancelled"] as const;
+const STATUSES = ["pending", "available", "cancelled"] as const;
 const CATEGORIES = ["exam", "course", "book", "merchandise", "medal"] as const;
 
 interface AdminCommissionsPanelProps {

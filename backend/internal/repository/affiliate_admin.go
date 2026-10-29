@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 
 	"akademi-bimbel/internal/model"
 
@@ -68,8 +67,8 @@ func (r *Repository) ListAffiliateAdmins(ctx context.Context, filter AffiliateAd
 		return nil, 0, err
 	}
 
-	query := `SELECT a.id, a.user_id, COALESCE(a.code, ''), a.status, a.rejection_reason, a.level, a.level_locked_until,
-	        a.warn_quarters, a.suspended_until, a.frozen_until, a.terms_version, a.terms_accepted_at,
+	query := `SELECT a.id, a.user_id, COALESCE(a.code, ''), a.status, a.rejection_reason, a.level,
+	        a.warn_quarters, a.terms_version, a.terms_accepted_at,
 	        a.bank_name, a.bank_account_number, a.bank_account_holder, a.created_at, a.updated_at,
 	        u.name, u.email, u.phone
 	 FROM affiliators a
@@ -89,7 +88,7 @@ func (r *Repository) ListAffiliateAdmins(ctx context.Context, filter AffiliateAd
 	for rows.Next() {
 		var row AffiliateAdminListRow
 		if err := rows.Scan(&row.ID, &row.UserID, &row.Code, &row.Status, &row.RejectionReason, &row.Level,
-			&row.LevelLockedUntil, &row.WarnQuarters, &row.SuspendedUntil, &row.FrozenUntil,
+			&row.WarnQuarters,
 			&row.TermsVersion, &row.TermsAcceptedAt, &row.BankName, &row.BankAccountNumber,
 			&row.BankAccountHolder, &row.CreatedAt, &row.UpdatedAt,
 			&row.Name, &row.Email, &row.Phone); err != nil {
@@ -152,44 +151,13 @@ func (r *Repository) SumAffiliateCommissionsByStatus(ctx context.Context, affili
 	return out, rows.Err()
 }
 
-// ListAffiliateLevelHistory returns the affiliator's level history newest
-// first, capped at limit rows.
-func (r *Repository) ListAffiliateLevelHistory(ctx context.Context, affiliatorID uuid.UUID, limit int) ([]model.AffiliateLevelHistory, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, affiliator_id, quarter, from_level, to_level, net_revenue, source, reason, created_by, created_at
-		 FROM affiliate_level_history
-		 WHERE affiliator_id = $1
-		 ORDER BY created_at DESC, id DESC
-		 LIMIT $2`,
-		affiliatorID, limit,
+// SetAffiliateStatusTx writes the affiliator status.
+func (r *Repository) SetAffiliateStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, status string) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE affiliators SET status = $2, updated_at = now() WHERE id = $1`,
+		id, status,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	out := []model.AffiliateLevelHistory{}
-	for rows.Next() {
-		var h model.AffiliateLevelHistory
-		if err := rows.Scan(&h.ID, &h.AffiliatorID, &h.Quarter, &h.FromLevel, &h.ToLevel, &h.NetRevenue,
-			&h.Source, &h.Reason, &h.CreatedBy, &h.CreatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, h)
-	}
-	return out, rows.Err()
-}
-
-// InsertAffiliateLevelHistoryManualTx appends one manual level-history row,
-// recording the acting admin; InsertAffiliateLevelHistoryTx covers the auto
-// path where created_by stays NULL.
-func (r *Repository) InsertAffiliateLevelHistoryManualTx(ctx context.Context, tx pgx.Tx, h *model.AffiliateLevelHistory) error {
-	return tx.QueryRow(ctx,
-		`INSERT INTO affiliate_level_history (affiliator_id, quarter, from_level, to_level, net_revenue, source, reason, created_by)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		 RETURNING id, created_at`,
-		h.AffiliatorID, h.Quarter, h.FromLevel, h.ToLevel, h.NetRevenue, h.Source, h.Reason, h.CreatedBy,
-	).Scan(&h.ID, &h.CreatedAt)
+	return err
 }
 
 // AffiliateCodeExists reports whether a referral code is already taken.
@@ -271,32 +239,4 @@ func (r *Repository) GetAffiliateCommissionsByIDsTx(ctx context.Context, tx pgx.
 		out = append(out, c)
 	}
 	return out, rows.Err()
-}
-
-// SetAffiliateStatusTx writes the affiliator status; suspendedUntil is only
-// set for suspensions and nil otherwise.
-func (r *Repository) SetAffiliateStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, status string, suspendedUntil *time.Time) error {
-	_, err := tx.Exec(ctx,
-		`UPDATE affiliators SET status = $2, suspended_until = $3, updated_at = now() WHERE id = $1`,
-		id, status, suspendedUntil,
-	)
-	return err
-}
-
-// SetAffiliateFrozenUntilTx writes the balance freeze deadline; nil clears it.
-func (r *Repository) SetAffiliateFrozenUntilTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, until *time.Time) error {
-	_, err := tx.Exec(ctx,
-		`UPDATE affiliators SET frozen_until = $2, updated_at = now() WHERE id = $1`,
-		id, until,
-	)
-	return err
-}
-
-// SetAffiliateLevelLockedUntilTx writes the level-lock deadline; nil clears it.
-func (r *Repository) SetAffiliateLevelLockedUntilTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, until *time.Time) error {
-	_, err := tx.Exec(ctx,
-		`UPDATE affiliators SET level_locked_until = $2, updated_at = now() WHERE id = $1`,
-		id, until,
-	)
-	return err
 }

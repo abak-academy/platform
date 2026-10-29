@@ -32,8 +32,6 @@ type AffiliateReportRow struct {
 	StudentsNew    int                `json:"students_new"`
 	NetRevenue     float64            `json:"net_revenue"`
 	Commissions    map[string]float64 `json:"commissions"`
-	Clicks         int                `json:"clicks"`
-	Conversion     float64            `json:"conversion"`
 }
 
 // AffiliateLiabilityReport is the commission-liability report body.
@@ -49,22 +47,18 @@ func (r *Repository) UpsertAffiliateSettingsTx(ctx context.Context, tx pgx.Tx, s
 		`INSERT INTO affiliate_settings
 		     (id, cookie_days, binding_months, min_extend_amount, digital_wait_days,
 		      physical_wait_days, min_payout, payout_day_of_month,
-		      adjustment_threshold, adjustment_threshold_enabled, freeze_max_days, soon_end_days,
-		      launch_date, eval_day, silver_threshold, gold_threshold, hold_thresholds,
+		      launch_date, eval_day, silver_threshold, gold_threshold,
 		      daily_registration_cap, updated_by, updated_at)
-		 VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, now())
+		 VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
 		 ON CONFLICT (id) DO UPDATE SET
 		     cookie_days = $1, binding_months = $2, min_extend_amount = $3,
 		     digital_wait_days = $4, physical_wait_days = $5,
-		     min_payout = $6, payout_day_of_month = $7, adjustment_threshold = $8,
-		     adjustment_threshold_enabled = $9, freeze_max_days = $10, soon_end_days = $11,
-		     launch_date = $12, eval_day = $13, silver_threshold = $14, gold_threshold = $15,
-		     hold_thresholds = $16, daily_registration_cap = $17,
-		     updated_by = $18, updated_at = now()`,
+		     min_payout = $6, payout_day_of_month = $7,
+		     launch_date = $8, eval_day = $9, silver_threshold = $10, gold_threshold = $11,
+		     daily_registration_cap = $12, updated_by = $13, updated_at = now()`,
 		s.CookieDays, s.BindingMonths, s.MinExtendAmount, s.DigitalWaitDays,
 		s.PhysicalWaitDays, s.MinPayout, s.PayoutDayOfMonth,
-		s.AdjustmentThreshold, s.AdjustmentThresholdEnabled, s.FreezeMaxDays, s.SoonEndDays,
-		s.LaunchDate, s.EvalDay, s.SilverThreshold, s.GoldThreshold, s.HoldThresholds,
+		s.LaunchDate, s.EvalDay, s.SilverThreshold, s.GoldThreshold,
 		s.DailyRegistrationCap, s.UpdatedBy,
 	)
 	return err
@@ -197,7 +191,7 @@ func (r *Repository) SearchAffiliateOverrideProducts(ctx context.Context, q stri
 
 // ListAffiliateReportRows returns every affiliator (capped), narrowed by q (name
 // or code) and level, with the window's
-// new bindings, net revenue and click counts; commission status buckets are
+// new bindings and net revenue; commission status buckets are
 // stitched by the service.
 func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.Time, q, level string) ([]AffiliateReportRow, error) {
 	p := newAffPredicate(3)
@@ -205,7 +199,7 @@ func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.
 	p.search(q, "u.name", "a.code")
 	rows, err := r.pool.Query(ctx,
 		`SELECT a.id, COALESCE(a.code, ''), u.name, a.level,
-		        COALESCE(bind.students_new, 0), COALESCE(rev.net_revenue, 0), COALESCE(clicks.n, 0)
+		        COALESCE(bind.students_new, 0), COALESCE(rev.net_revenue, 0)
 		 FROM affiliators a
 		 JOIN users u ON u.id = a.user_id
 		 LEFT JOIN (
@@ -217,16 +211,10 @@ func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.
 		 LEFT JOIN (
 		     SELECT affiliator_id, SUM(base_amount) AS net_revenue
 		     FROM affiliate_commissions
-		     WHERE status IN ('available', 'paid')
+		     WHERE status = 'available'
 		       AND COALESCE(wait_until, paid_at) >= $1 AND COALESCE(wait_until, paid_at) < $2
 		     GROUP BY affiliator_id
 		 ) rev ON rev.affiliator_id = a.id
-		 LEFT JOIN (
-		     SELECT affiliator_id, count(*) AS n
-		     FROM affiliate_clicks
-		     WHERE created_at >= $1 AND created_at < $2
-		     GROUP BY affiliator_id
-		 ) clicks ON clicks.affiliator_id = a.id
 		 WHERE TRUE`+p.sql+`
 		 ORDER BY a.created_at
 		 LIMIT 500`,
@@ -242,7 +230,7 @@ func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.
 		var row AffiliateReportRow
 		row.Commissions = map[string]float64{}
 		if err := rows.Scan(&row.AffiliatorID, &row.AffiliatorCode, &row.AffiliatorName, &row.Level,
-			&row.StudentsNew, &row.NetRevenue, &row.Clicks); err != nil {
+			&row.StudentsNew, &row.NetRevenue); err != nil {
 			return nil, err
 		}
 		out = append(out, row)

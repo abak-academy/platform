@@ -140,12 +140,12 @@ func seedAffiliateJobCommission(t *testing.T, repo *repository.Repository, affil
 	return c
 }
 
-func setAffiliateJobAffiliator(t *testing.T, repo *repository.Repository, id uuid.UUID, level string, warn int, createdAt time.Time, lockedUntil *time.Time) {
+func setAffiliateJobAffiliator(t *testing.T, repo *repository.Repository, id uuid.UUID, level string, warn int, createdAt time.Time) {
 	t.Helper()
 	_, err := repo.Pool().Exec(context.Background(),
-		`UPDATE affiliators SET level = $2, warn_quarters = $3, created_at = $4, level_locked_until = $5, updated_at = now()
+		`UPDATE affiliators SET level = $2, warn_quarters = $3, created_at = $4, updated_at = now()
 		 WHERE id = $1`,
-		id, level, warn, createdAt, lockedUntil,
+		id, level, warn, createdAt,
 	)
 	require.NoError(t, err)
 }
@@ -154,12 +154,12 @@ func getAffiliateJobAffiliator(t *testing.T, repo *repository.Repository, id uui
 	t.Helper()
 	var a model.Affiliator
 	err := repo.Pool().QueryRow(context.Background(),
-		`SELECT id, user_id, code, status, rejection_reason, level, level_locked_until,
-		        warn_quarters, suspended_until, frozen_until, terms_version, terms_accepted_at,
+		`SELECT id, user_id, code, status, rejection_reason, level,
+		        warn_quarters, terms_version, terms_accepted_at,
 		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
 		 FROM affiliators WHERE id = $1`, id,
-	).Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level, &a.LevelLockedUntil,
-		&a.WarnQuarters, &a.SuspendedUntil, &a.FrozenUntil, &a.TermsVersion, &a.TermsAcceptedAt,
+	).Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level,
+		&a.WarnQuarters, &a.TermsVersion, &a.TermsAcceptedAt,
 		&a.BankName, &a.BankAccountNumber, &a.BankAccountHolder, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		t.Fatalf("get affiliator: %v", err)
@@ -407,76 +407,4 @@ func TestAffiliateJobPhysicalBackfill_setsWaitUntilFromCompletedAt(t *testing.T)
 	res, err = svc.RunAffiliateJob(ctx, "commissions", nil)
 	require.NoError(t, err)
 	require.Equal(t, 0, res.PhysicalBackfilled, "rerun must not backfill again")
-}
-
-func TestAffiliateJobSanctionExpiry(t *testing.T) {
-	svc, repo := newRealDBService(t)
-	ctx := context.Background()
-	clearAffiliateJobKeys(t, repo)
-	setAffiliateFlagForCommission(t, repo, "true")
-	seedAffiliateJobSettings(t, repo, affiliateJobSettingsSeed{evalDay: 8})
-
-	owner := seedAffiliatorOwner(t, repo, "aff-job-sanc-"+uniqueSuffix()+"@test.local", "", "active")
-	now := time.Date(2026, 10, 7, 3, 0, 0, 0, time.UTC) // unique WIB day, before eval day
-
-	_, err := repo.Pool().Exec(ctx,
-		`UPDATE affiliators SET status = 'suspended', suspended_until = $2, frozen_until = $3 WHERE id = $1`,
-		owner.affiliatorID, now.Add(-time.Hour), now.Add(-2*time.Hour))
-	require.NoError(t, err)
-	permanent := seedAffiliatorOwner(t, repo, "aff-job-sanc-p-"+uniqueSuffix()+"@test.local", "", "active")
-	_, err = repo.Pool().Exec(ctx,
-		`UPDATE affiliators SET status = 'suspended', suspended_until = NULL WHERE id = $1`, permanent.affiliatorID)
-	require.NoError(t, err)
-	stillSuspended := seedAffiliatorOwner(t, repo, "aff-job-sanc-f-"+uniqueSuffix()+"@test.local", "", "active")
-	_, err = repo.Pool().Exec(ctx,
-		`UPDATE affiliators SET status = 'suspended', suspended_until = $2 WHERE id = $1`,
-		stillSuspended.affiliatorID, now.Add(24*time.Hour))
-	require.NoError(t, err)
-	frozenOnly := seedAffiliatorOwner(t, repo, "aff-job-sanc-z-"+uniqueSuffix()+"@test.local", "", "active")
-	_, err = repo.Pool().Exec(ctx,
-		`UPDATE affiliators SET frozen_until = $2 WHERE id = $1`, frozenOnly.affiliatorID, now.Add(-time.Hour))
-	require.NoError(t, err)
-
-	require.NoError(t, svc.RunAffiliateDaily(ctx, now))
-
-	reinstated := getAffiliateJobAffiliator(t, repo, owner.affiliatorID)
-	require.Equal(t, "active", reinstated.Status)
-	require.Nil(t, reinstated.SuspendedUntil)
-	require.Nil(t, reinstated.FrozenUntil)
-
-	require.Equal(t, "suspended", getAffiliateJobAffiliator(t, repo, permanent.affiliatorID).Status,
-		"permanent suspension without suspended_until stays")
-	require.Equal(t, "suspended", getAffiliateJobAffiliator(t, repo, stillSuspended.affiliatorID).Status,
-		"future suspended_until stays")
-	require.Nil(t, getAffiliateJobAffiliator(t, repo, frozenOnly.affiliatorID).FrozenUntil,
-		"expired freeze clears regardless of status")
-
-	require.NoError(t, svc.RunAffiliateDaily(ctx, now.Add(time.Hour)))
-	require.Equal(t, "active", getAffiliateJobAffiliator(t, repo, owner.affiliatorID).Status,
-		"rerun stays idempotent")
-}
-
-func TestAffiliateJobReleasesScope_isRerunnable(t *testing.T) {
-	svc, repo := newRealDBService(t)
-	ctx := context.Background()
-	setAffiliateFlagForCommission(t, repo, "true")
-
-	due := seedAffiliatorOwner(t, repo, "aff-job-rel-"+uniqueSuffix()+"@test.local", "", "active")
-	past := time.Now().UTC().Add(-time.Hour)
-	_, err := repo.Pool().Exec(ctx,
-		`UPDATE affiliators SET status = 'suspended', suspended_until = $2, frozen_until = $2 WHERE id = $1`,
-		due.affiliatorID, past)
-	require.NoError(t, err)
-
-	first, err := svc.RunAffiliateJob(ctx, "releases", nil)
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, first.SanctionsExpired, 2, "the suspension and the freeze both lapse")
-	released := getAffiliateJobAffiliator(t, repo, due.affiliatorID)
-	require.Equal(t, "active", released.Status)
-	require.Nil(t, released.FrozenUntil)
-
-	second, err := svc.RunAffiliateJob(ctx, "releases", nil)
-	require.NoError(t, err)
-	require.Equal(t, 0, second.SanctionsExpired, "a second run changes nothing")
-	require.Equal(t, "active", getAffiliateJobAffiliator(t, repo, due.affiliatorID).Status)
 }

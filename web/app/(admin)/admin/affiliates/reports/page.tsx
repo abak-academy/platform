@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Download, FileBarChart, Hourglass, PauseCircle, Wallet, XCircle } from "lucide-react";
+import { Download, FileBarChart, Hourglass, Wallet, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
@@ -27,15 +27,13 @@ import { useTranslation } from "@/lib/i18n";
 import { formatCommissionRule } from "@/lib/affiliate-rules";
 import type { AffiliateReportOrder, AffiliateReportRow } from "@/lib/types";
 
-const COMMISSION_STATUSES = ["pending", "available", "paid", "held", "cancelled"] as const;
+const COMMISSION_STATUSES = ["pending", "available", "cancelled"] as const;
 const CATEGORIES = ["exam", "course", "book", "merchandise", "medal"] as const;
 const LEVELS = ["bronze", "silver", "gold"] as const;
 
 const STATUS_CARD = {
   pending: { icon: Hourglass, accent: "secondary" },
   available: { icon: Wallet, accent: "primary" },
-  paid: { icon: CheckCircle2, accent: "tertiary" },
-  held: { icon: PauseCircle, accent: "secondary" },
   cancelled: { icon: XCircle, accent: "error" },
 } as const;
 
@@ -139,7 +137,6 @@ function SummaryTab() {
     },
     { key: "level", header: t("admin_aff_col_level"), cell: (r) => affLabel(t, r.level) },
     { key: "students", header: t("admin_aff_rep_students"), align: "right", cell: (r) => r.students_new },
-    { key: "clicks", header: t("admin_aff_rep_clicks"), align: "right", cell: (r) => r.clicks },
     { key: "revenue", header: t("admin_aff_col_revenue"), align: "right", cell: (r) => formatRupiah(r.net_revenue) },
     { key: "commission", header: t("admin_aff_rep_commission"), align: "right", cell: (r) => formatRupiah(commissionTotal(r)) },
     {
@@ -177,7 +174,7 @@ function SummaryTab() {
       />
       {totals && (
         <p className="text-sm text-ink-700">
-          <strong>{t("admin_aff_rep_totals")}</strong>: {totals.students_new} · {totals.clicks} · {formatRupiah(totals.net_revenue)} ·{" "}
+          <strong>{t("admin_aff_rep_totals")}</strong>: {totals.students_new} · {formatRupiah(totals.net_revenue)} ·{" "}
           {formatRupiah(commissionTotal(totals))}
         </p>
       )}

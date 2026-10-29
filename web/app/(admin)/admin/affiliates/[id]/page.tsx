@@ -14,7 +14,7 @@ import { useAdminAffiliate } from "@/lib/hooks/admin-affiliates";
 import { useHasCapability } from "@/lib/hooks/use-capability";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import type { AffiliateBinding, AffiliateLevelHistoryEntry } from "@/lib/types";
+import type { AffiliateBinding } from "@/lib/types";
 
 export default function AdminAffiliateDetailPage({ params }: { params: Promise<{ id: string }> }) {
   return (
@@ -68,7 +68,6 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
 
   const d = query.data;
   const aff = d.affiliate;
-  const frozen = aff.frozen_until !== null && new Date(aff.frozen_until) > new Date();
 
   const bindingColumns: DataTableColumn<AffiliateBinding>[] = [
     { key: "name", header: t("aff_col_name"), cell: (r) => r.name },
@@ -76,14 +75,6 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
     { key: "started", header: t("aff_col_started"), cell: (r) => formatAffDate(r.started_at) },
     { key: "ended", header: t("aff_col_ended"), cell: (r) => formatAffDate(r.ended_at) },
     { key: "spend", header: t("aff_col_spend"), align: "right", cell: (r) => formatRupiah(r.total_spend) },
-  ];
-  const levelColumns: DataTableColumn<AffiliateLevelHistoryEntry>[] = [
-    { key: "quarter", header: t("admin_aff_col_quarter"), cell: (r) => r.quarter },
-    { key: "from", header: t("admin_aff_col_from"), cell: (r) => (r.from_level ? affLabel(t, r.from_level) : "—") },
-    { key: "to", header: t("admin_aff_col_to"), cell: (r) => affLabel(t, r.to_level) },
-    { key: "revenue", header: t("admin_aff_col_revenue"), align: "right", cell: (r) => formatRupiah(r.net_revenue) },
-    { key: "source", header: t("admin_aff_col_source"), cell: (r) => affLabel(t, r.source) },
-    { key: "reason", header: t("aff_col_reason_text"), cell: (r) => r.reason ?? "—" },
   ];
 
   return (
@@ -105,7 +96,7 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
 
       <section className="space-y-2">
         <h2 className="font-semibold text-ink-900">{t("admin_aff_actions")}</h2>
-        <AffiliateAdminActions id={aff.id} currentStatus={aff.status} currentLevel={aff.level} frozen={frozen} />
+        <AffiliateAdminActions id={aff.id} currentStatus={aff.status} currentLevel={aff.level} />
       </section>
 
       <section className="space-y-2">
@@ -114,10 +105,6 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
       </section>
       <section>
         <AdminCommissionsPanel affiliatorId={aff.id} />
-      </section>
-      <section className="space-y-2">
-        <h2 className="font-semibold text-ink-900">{t("admin_aff_sec_levels")}</h2>
-        <DataTable columns={levelColumns} rows={d.level_history} rowKey={(r) => r.id} empty={t("aff_empty")} />
       </section>
     </div>
   );

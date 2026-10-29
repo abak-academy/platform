@@ -11,7 +11,6 @@ const TONE: Record<string, string> = {
   pending: "bg-warn/15 text-warn",
   requested: "bg-warn/15 text-warn",
   processing: "bg-warn/15 text-warn",
-  held: "bg-warn/15 text-warn",
   pending_approval: "bg-warn/15 text-warn",
   suspended: "bg-warn/15 text-warn",
   cancelled: "bg-danger/15 text-danger",

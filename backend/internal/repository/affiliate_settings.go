@@ -18,15 +18,13 @@ func (r *Repository) LoadAffiliateSettings(ctx context.Context) (*model.Affiliat
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, cookie_days, binding_months, min_extend_amount, digital_wait_days,
 		        physical_wait_days, min_payout, payout_day_of_month,
-		        adjustment_threshold, adjustment_threshold_enabled, freeze_max_days, soon_end_days,
-		        launch_date, eval_day, silver_threshold, gold_threshold, hold_thresholds,
+		        launch_date, eval_day, silver_threshold, gold_threshold,
 		        daily_registration_cap, updated_by, updated_at
 		 FROM affiliate_settings
 		 WHERE id = 1`,
 	).Scan(&s.ID, &s.CookieDays, &s.BindingMonths, &s.MinExtendAmount, &s.DigitalWaitDays,
 		&s.PhysicalWaitDays, &s.MinPayout, &s.PayoutDayOfMonth,
-		&s.AdjustmentThreshold, &s.AdjustmentThresholdEnabled, &s.FreezeMaxDays, &s.SoonEndDays,
-		&s.LaunchDate, &s.EvalDay, &s.SilverThreshold, &s.GoldThreshold, &s.HoldThresholds,
+		&s.LaunchDate, &s.EvalDay, &s.SilverThreshold, &s.GoldThreshold,
 		&s.DailyRegistrationCap, &s.UpdatedBy, &s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -99,36 +97,19 @@ func (r *Repository) LoadProductOverride(ctx context.Context, productID uuid.UUI
 	return &o, nil
 }
 
-// InsertAffiliateClick persists one click-statistics row and fills ID/CreatedAt.
-// The uq_affiliate_clicks_daily index dedupes same-day repeat visitors; the
-// returned bool reports whether a new row was stored.
-func (r *Repository) InsertAffiliateClick(ctx context.Context, click *model.AffiliateClick) (bool, error) {
-	tag, err := r.pool.Exec(ctx,
-		`INSERT INTO affiliate_clicks (affiliator_id, code, ip_hash, user_agent, click_day)
-		 VALUES ($1, $2, $3, $4, $5)
-		 ON CONFLICT (code, ip_hash, click_day) WHERE ip_hash IS NOT NULL
-		 DO NOTHING`,
-		click.AffiliatorID, click.Code, click.IPHash, click.UserAgent, click.ClickDay,
-	)
-	if err != nil {
-		return false, err
-	}
-	return tag.RowsAffected() > 0, nil
-}
-
 // FindAffiliatorByCode returns the affiliator owning a referral code.
 // A missing code returns (nil, nil).
 func (r *Repository) FindAffiliatorByCode(ctx context.Context, code string) (*model.Affiliator, error) {
 	var a model.Affiliator
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level, level_locked_until,
-		        warn_quarters, suspended_until, frozen_until, terms_version, terms_accepted_at,
+		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level,
+		        warn_quarters, terms_version, terms_accepted_at,
 		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
 		 FROM affiliators
 		 WHERE code = $1`,
 		code,
-	).Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level, &a.LevelLockedUntil,
-		&a.WarnQuarters, &a.SuspendedUntil, &a.FrozenUntil, &a.TermsVersion, &a.TermsAcceptedAt,
+	).Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level,
+		&a.WarnQuarters, &a.TermsVersion, &a.TermsAcceptedAt,
 		&a.BankName, &a.BankAccountNumber, &a.BankAccountHolder, &a.CreatedAt, &a.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil

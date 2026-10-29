@@ -31,15 +31,15 @@ func scanAffiliatePayout(row pgx.Row) (*model.AffiliatePayout, error) {
 func (r *Repository) GetAffiliatorForUpdateTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*model.Affiliator, error) {
 	var a model.Affiliator
 	err := tx.QueryRow(ctx,
-		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level, level_locked_until,
-		        warn_quarters, suspended_until, frozen_until, terms_version, terms_accepted_at,
+		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level,
+		        warn_quarters, terms_version, terms_accepted_at,
 		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
 		 FROM affiliators
 		 WHERE id = $1
 		 FOR UPDATE`,
 		id,
-	).Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level, &a.LevelLockedUntil,
-		&a.WarnQuarters, &a.SuspendedUntil, &a.FrozenUntil, &a.TermsVersion, &a.TermsAcceptedAt,
+	).Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level,
+		&a.WarnQuarters, &a.TermsVersion, &a.TermsAcceptedAt,
 		&a.BankName, &a.BankAccountNumber, &a.BankAccountHolder, &a.CreatedAt, &a.UpdatedAt)
 	if isNotFound(err) {
 		return nil, nil

@@ -148,10 +148,10 @@ Aturan integritas (CHECK, index, trigger `affiliate_transactions_guard()`):
 
 ### Atribusi & registrasi
 
-- Halaman web `/r/{code}` (publik, client component): set cookie `aff_ref` (`document.cookie`, path=/, hari per setting) → redirect home. Tidak ada endpoint backend untuk mencatat klik.
+- Halaman web `/r/{code}` (publik, client component): set cookie `aff_ref` (`document.cookie`, path=/, 30 hari) → redirect home, lalu memanggil `GET /affiliates/public/validate?code=` untuk mengambil `cookie_days` dari pengaturan dan memasang ulang cookie dengan umur itu. Tidak ada endpoint backend untuk mencatat klik.
 - `POST /auth/register` dan `/auth/google` menambah field opsional `referral_code` (kode manual) — keduanya hanya membuat akun; binding tidak dibuat di sini.
 - `POST /auth/otp/verify` menambah field opsional `referral_code` (manual) dan `referral_code_cookie`: saat akun jadi aktif, service resolusi manual > cookie; validasi kode ada & affiliator `active`; tolak self-purchase (email/HP identik dengan affiliator) → tidak dibinding; tolak akun pre-launch; buat binding `source=manual_code|link` dalam tx aktivasi.
-- `POST /api/v1/affiliates/public/validate?code=` untuk UX register/checkout (tanpa JWT).
+- `GET /api/v1/affiliates/public/validate?code=` untuk UX register/checkout dan halaman `/r/{code}` (tanpa JWT): mengembalikan `valid`, `affiliator_name`, dan `cookie_days` (umur cookie dari pengaturan, dikirim selama fitur aktif agar kode yang belum aktif pun mendapat umur cookie yang benar).
 - Checkout: `POST /orders/:id/checkout` body opsional `affiliate_code` — hanya diproses bila pembeli tak terikat, `created_at ≥ launch_date`, kode milik affiliator aktif, bukan dirinya sendiri; binding dibuat di `markOrderPaidTx` (`source=checkout_code`).
 - Registrasi affiliator: `POST /auth/affiliators/register` (email, HP, nama, terms_version) — mirror alur OTP register siswa; tolak dengan error khusus bila `daily_registration_cap` hari ini (WIB) sudah tercapai (hitung dari `users` dengan `role='affiliator'`); tolak email/username yang sudah dipakai akun `admin_school` (BR-REG-03); buat user `role=affiliator` + profil `pending_approval`.
 - Kode referral dibuat saat approval (server-generated, coba lagi bila collision).
@@ -192,7 +192,7 @@ GET    /admin/affiliate-reports/{summary,liability,orders,orders/export}
 POST   /admin/affiliate-jobs/run                 rerun job idempoten (scope: bindings|commissions|levels)
 ```
 
-Dihapus dari kontrak sebelumnya: `POST /affiliates/clicks`, `/affiliates/me/violations` dan banding, `/admin/affiliates/:id/{freeze,unfreeze,violations}`, grup `/admin/affiliate-flags` dan `/admin/affiliate-appeals`. Rate limiter publik (`AffiliateClickRateLimiter`) tetap dipakai register affiliator dan validasi kode.
+Dihapus dari kontrak sebelumnya: `POST /affiliates/clicks`, `/affiliates/me/violations` dan banding, `/admin/affiliates/:id/{freeze,unfreeze,violations}`, grup `/admin/affiliate-flags` dan `/admin/affiliate-appeals`. Rate limiter publik (`AffiliateRateLimiter`) dipakai register affiliator dan validasi kode.
 
 Announcement: enum grup penerima + `affiliators`; `ListActiveUserEmails` menangani role `affiliator` (program_status aktif, bukan semua user).
 

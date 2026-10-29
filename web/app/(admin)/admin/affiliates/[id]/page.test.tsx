@@ -8,8 +8,6 @@ const h = vi.hoisted(() => ({
   detail: vi.fn(),
   capability: vi.fn(),
   status: vi.fn(),
-  freeze: vi.fn(),
-  unfreeze: vi.fn(),
   level: vi.fn(),
   adjust: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn() },
@@ -18,8 +16,6 @@ const h = vi.hoisted(() => ({
 vi.mock("@/lib/hooks/admin-affiliates", () => ({
   useAdminAffiliate: h.detail,
   useChangeAffiliateStatus: () => ({ mutate: h.status, isPending: false }),
-  useFreezeAffiliateBalance: () => ({ mutate: h.freeze, isPending: false }),
-  useUnfreezeAffiliateBalance: () => ({ mutate: h.unfreeze, isPending: false }),
   useChangeAffiliateLevel: () => ({ mutate: h.level, isPending: false }),
   useCreateAffiliateAdjustment: () => ({ mutate: h.adjust, isPending: false }),
 }));
@@ -30,7 +26,7 @@ vi.mock("@/lib/hooks/use-capability", () => ({ useHasCapability: h.capability })
 vi.mock("sonner", () => ({ toast: h.toast }));
 
 const detail = {
-  affiliate: { id: "a1", code: "BUDI1234", status: "active", level: "silver", frozen_until: null },
+  affiliate: { id: "a1", code: "BUDI1234", status: "active", level: "silver" },
   name: "Budi Santoso",
   email: "budi@example.com",
   bindings: {
@@ -42,7 +38,6 @@ const detail = {
   },
   commissions: { counts: { paid: 1 }, total_amount: 50000 },
   saldo: 30000,
-  level_history: [],
 };
 
 async function renderPage() {
@@ -111,35 +106,39 @@ describe("AdminAffiliateDetailPage", () => {
     );
   });
 
-  it("needs a duration to suspend", async () => {
+  it("suspends with a reason only, because a suspension has no end date", async () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Ubah status" }));
     fireEvent.change(await screen.findByLabelText("Status baru"), { target: { value: "suspended" } });
-    fireEvent.change(screen.getByLabelText("Alasan"), { target: { value: "pelanggaran" } });
+    expect(screen.queryByLabelText("Lama (hari)")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
 
     expect(h.status).not.toHaveBeenCalled();
-    expect(h.toast.error).toHaveBeenCalledWith("Periksa kembali isian.");
+    expect(h.toast.error).toHaveBeenCalledWith("Alasan wajib diisi");
 
-    fireEvent.change(screen.getByLabelText("Lama (hari)"), { target: { value: "14" } });
+    fireEvent.change(screen.getByLabelText("Alasan"), { target: { value: "pelanggaran" } });
     fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
 
-    expect(h.status).toHaveBeenCalledWith(
-      { id: "a1", status: "suspended", reason: "pelanggaran", days: 14 },
-      expect.anything(),
-    );
+    expect(h.status).toHaveBeenCalledWith({ id: "a1", status: "suspended", reason: "pelanggaran" }, expect.anything());
   });
 
-  it("offers unfreeze instead of freeze while the balance is frozen", async () => {
-    h.detail.mockReturnValue({
-      isLoading: false,
-      isError: false,
-      data: { ...detail, affiliate: { ...detail.affiliate, frozen_until: "2999-01-01T00:00:00Z" } },
-    });
+  it("changes the level without a lock date", async () => {
     await renderPage();
 
-    expect(screen.getByRole("button", { name: "Buka pembekuan" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ubah level" }));
+    expect(screen.queryByLabelText(/Kunci/)).toBeNull();
+    fireEvent.change(await screen.findByLabelText("Level"), { target: { value: "gold" } });
+    fireEvent.change(screen.getByLabelText("Alasan"), { target: { value: "mitra utama" } });
+    fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
+
+    expect(h.level).toHaveBeenCalledWith({ id: "a1", level: "gold", reason: "mitra utama" }, expect.anything());
+  });
+
+  it("no longer offers to freeze the balance", async () => {
+    await renderPage();
+
     expect(screen.queryByRole("button", { name: "Bekukan saldo" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Buka pembekuan" })).toBeNull();
   });
 });

@@ -9,10 +9,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace }),
 }));
 
-const { recordClick } = vi.hoisted(() => ({ recordClick: vi.fn() }));
+const { validateCode } = vi.hoisted(() => ({ validateCode: vi.fn() }));
 
 vi.mock("@/lib/api", () => ({
-  affiliateApi: { recordClick },
+  affiliateApi: { validateCode },
 }));
 
 async function renderPage(code: string) {
@@ -28,23 +28,23 @@ async function renderPage(code: string) {
 describe("ReferralPage /r/[code]", () => {
   beforeEach(() => {
     replace.mockClear();
-    recordClick.mockReset();
+    validateCode.mockReset();
     document.cookie = "aff_ref=; path=/; max-age=0";
   });
 
-  it("sets the aff_ref cookie, records the click, and redirects home", async () => {
-    recordClick.mockResolvedValue({ recorded: true });
+  it("sets the aff_ref cookie, asks the server about the code, and redirects home", async () => {
+    validateCode.mockResolvedValue({ valid: true });
 
     await renderPage("BUDI10");
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
 
     expect(document.cookie).toContain("aff_ref=BUDI10");
-    expect(recordClick).toHaveBeenCalledWith("BUDI10", navigator.userAgent);
+    expect(validateCode).toHaveBeenCalledWith("BUDI10");
   });
 
   it("re-sets the cookie with the lifetime the server reports", async () => {
-    recordClick.mockResolvedValue({ recorded: true, cookie_days: 45 });
+    validateCode.mockResolvedValue({ valid: true, cookie_days: 45 });
     const setter = vi.spyOn(document, "cookie", "set");
 
     await renderPage("BUDI10");
@@ -54,8 +54,8 @@ describe("ReferralPage /r/[code]", () => {
     setter.mockRestore();
   });
 
-  it("still redirects when the click recorder fails", async () => {
-    recordClick.mockRejectedValue(new Error("rate_limited"));
+  it("still redirects when the validate call fails", async () => {
+    validateCode.mockRejectedValue(new Error("rate_limited"));
 
     await renderPage("BUDI10");
 

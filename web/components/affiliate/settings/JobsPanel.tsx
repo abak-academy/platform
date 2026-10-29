@@ -11,7 +11,7 @@ import { affLabel } from "@/lib/affiliate-labels";
 import { useRunAffiliateJob } from "@/lib/hooks/admin-affiliates";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 
-const JOB_SCOPES = ["bindings", "commissions", "levels", "releases"] as const;
+const JOB_SCOPES = ["bindings", "commissions", "levels"] as const;
 
 export function JobsPanel() {
   const { t } = useTranslation();

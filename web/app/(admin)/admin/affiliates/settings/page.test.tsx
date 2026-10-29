@@ -43,15 +43,10 @@ const view = {
     physical_wait_days: 14,
     min_payout: 100000,
     payout_day_of_month: null,
-    adjustment_threshold: 1000000,
-    adjustment_threshold_enabled: false,
-    freeze_max_days: 14,
-    soon_end_days: 30,
     launch_date: null,
     eval_day: 8,
     silver_threshold: 5000000,
     gold_threshold: 15000000,
-    hold_thresholds: null,
     daily_registration_cap: null,
   },
   levels: [],
@@ -98,16 +93,6 @@ describe("AdminAffiliateSettingsPage", () => {
 
     expect(await screen.findByLabelText("Masa berlaku cookie")).toHaveValue("30");
     expect(screen.getByLabelText("Penarikan minimum", { selector: "#g-min_payout" })).toHaveValue("100000");
-  });
-
-  it("does not offer soon_end_days but still sends its stored value", async () => {
-    render(<SettingsPage />);
-
-    await screen.findByLabelText("Masa berlaku cookie");
-    expect(screen.queryByLabelText("Peringatan ikatan hampir berakhir (hari)")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Simpan pengaturan" }));
-
-    expect(h.update.mock.calls[0][0].soon_end_days).toBe(30);
   });
 
   it("saves an edited value with the untouched ones", async () => {
@@ -180,14 +165,6 @@ describe("AdminAffiliateSettingsPage", () => {
     expect(screen.queryByLabelText(/Batas konfirmasi barang diterima/)).not.toBeInTheDocument();
   });
 
-  it("locks the second-approval threshold with an explanation", async () => {
-    render(<SettingsPage />);
-
-    expect(await screen.findByLabelText("Ambang penyesuaian")).toBeDisabled();
-    expect(screen.getByRole("checkbox")).toBeDisabled();
-    expect(screen.getByText("Aktif setelah ada akun admin kedua.")).toBeInTheDocument();
-  });
-
   it("switches tabs through the URL", async () => {
     render(<SettingsPage />);
     await screen.findByLabelText("Masa berlaku cookie");
@@ -252,19 +229,6 @@ describe("AdminAffiliateSettingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hapus" }));
 
     expect(h.remove).toHaveBeenCalledWith("p-1", expect.anything());
-  });
-
-  it("offers the releases job and sends it without a quarter", async () => {
-    h.search.value = "tab=jobs";
-    render(<SettingsPage />);
-    await screen.findByTestId("job-scope");
-
-    fireEvent.pointerDown(screen.getByTestId("job-scope"), { button: 0, ctrlKey: false, pointerType: "mouse" });
-    fireEvent.click(await screen.findByRole("option", { name: "Pembukaan sanksi" }));
-    expect(screen.getByText(/Mengaktifkan kembali affiliator yang masa skorsnya habis/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Jalankan" }));
-
-    expect(h.run).toHaveBeenLastCalledWith({ scope: "releases", quarter: undefined }, expect.anything());
   });
 
   it("sends a quarter only for the levels job", async () => {

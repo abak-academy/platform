@@ -149,25 +149,6 @@ func TestRefundOrder_FlagOffLeavesCommissionsAndLedgerUntouched(t *testing.T) {
 	require.Equal(t, 1, commissionLedgerCount(t, repo, commissionID))
 }
 
-func TestRefundOrder_PaidCommissionWritesDeductionToo(t *testing.T) {
-	svc, repo := newRealDBService(t)
-	ctx := context.Background()
-	setAffiliateFlagForCommission(t, repo, "true")
-	owner := seedAffiliatorOwner(t, repo, "aff-refund-paid-"+uniqueSuffix()+"@test.local", "", "active")
-	actor := seedRevokeActor(t, repo)
-
-	orderID, commissionID := refundSeed(t, repo, owner, "paid")
-	seedCommissionLedgerEntry(t, repo, owner.affiliatorID, commissionID, 3000)
-
-	require.NoError(t, svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"))
-
-	require.Equal(t, "cancelled", commissionStatusByID(t, repo, commissionID))
-	rows := refundDeductionEntries(t, repo, commissionID)
-	require.Len(t, rows, 1)
-	require.Equal(t, "refund_deduction", rows[0].EntryType)
-	require.Equal(t, -3000.0, rows[0].Amount)
-}
-
 func TestRefundOrder_DoubleRefundRefusedBeforeAffiliateSettlement(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()

@@ -32,7 +32,6 @@ const profile = {
   bank_name: "BCA",
   bank_account_number: "1234567890",
   bank_account_holder: "Budi",
-  frozen_until: undefined as string | undefined,
 };
 const payoutPage = (extra: Record<string, unknown> = {}) => ({
   isLoading: false,
@@ -71,19 +70,12 @@ describe("AffiliateWalletPage", () => {
     expect(screen.getByText("Belum diisi")).toBeInTheDocument();
   });
 
-  it("blocks the request while the balance is frozen, below the minimum, or the account is not active", () => {
-    h.me.mockReturnValue({ data: { ...profile, frozen_until: "2999-01-01T00:00:00Z" } });
-    const { unmount } = render(<WalletPage />);
-    expect(screen.getByRole("button", { name: "Ajukan penarikan" })).toBeDisabled();
-    expect(screen.getByRole("note")).toHaveTextContent("Saldo sedang dibekukan sampai");
-    unmount();
-
-    h.me.mockReturnValue({ data: profile });
+  it("blocks the request while the balance is below the minimum or the account is not active", () => {
     h.payouts.mockReturnValue(payoutPage({ saldo: 50000 }));
-    const second = render(<WalletPage />);
+    const first = render(<WalletPage />);
     expect(screen.getByRole("button", { name: "Ajukan penarikan" })).toBeDisabled();
     expect(screen.getByRole("note")).toHaveTextContent("Saldo belum mencapai minimum penarikan (Rp100.000).");
-    second.unmount();
+    first.unmount();
 
     h.me.mockReturnValue({ data: { ...profile, status: "suspended" } });
     h.payouts.mockReturnValue(payoutPage());

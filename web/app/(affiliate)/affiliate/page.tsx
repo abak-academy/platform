@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAffiliateLedger, useAffiliateMe, useAffiliateStats } from "@/lib/hooks/affiliate";
 import { useMe } from "@/lib/hooks/auth";
 import { ApiError } from "@/lib/api";
-import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
+import { affLabel } from "@/lib/affiliate-labels";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 
@@ -109,9 +109,6 @@ export default function AffiliateDashboardPage() {
           {profile.rejection_reason && (
             <p className="mt-1">{t("aff_inactive_reason").replace("{reason}", profile.rejection_reason)}</p>
           )}
-          {profile.status === "suspended" && profile.suspended_until && (
-            <p className="mt-1">{formatAffDate(profile.suspended_until)}</p>
-          )}
         </div>
       )}
 
@@ -151,17 +148,9 @@ export default function AffiliateDashboardPage() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <StatCard
-            label={t("aff_dash_balance")}
-            value={ledger.data ? formatRupiah(ledger.data.saldo) : "—"}
-            icon={Wallet}
-            trend={profile.frozen_until ? t("aff_dash_frozen").replace("{date}", formatAffDate(profile.frozen_until)) : undefined}
-            accent={profile.frozen_until ? "error" : "primary"}
-          />
+          <StatCard label={t("aff_dash_balance")} value={ledger.data ? formatRupiah(ledger.data.saldo) : "—"} icon={Wallet} accent="primary" />
           <StatCard label={t("aff_dash_commission")} value={stat ? formatRupiah(stat.commission_earned) : "—"} icon={Landmark} accent="tertiary" />
           <StatCard label={t("aff_dash_new_students")} value={stat ? String(stat.new_students) : "—"} icon={Users} accent="secondary" />
-          <StatCard label={t("aff_dash_clicks")} value={stat ? String(stat.clicks) : "—"} icon={Link2} accent="secondary" />
-          <StatCard label={t("aff_dash_conversion")} value={stat ? `${Math.round(stat.conversion * 100)}%` : "—"} icon={HandCoins} accent="secondary" />
           <StatCard label={t("aff_dash_active_bindings")} value={stat ? String(stat.active_bindings) : "—"} icon={Users} accent="tertiary" />
         </div>
       )}
@@ -191,9 +180,6 @@ export default function AffiliateDashboardPage() {
           )}
           {profile.warn_quarters > 0 && (
             <p className="text-warn">{t("aff_dash_warn").replace("{n}", String(profile.warn_quarters))}</p>
-          )}
-          {profile.level_locked_until && (
-            <p>{t("aff_dash_locked").replace("{date}", formatAffDate(profile.level_locked_until))}</p>
           )}
         </section>
 

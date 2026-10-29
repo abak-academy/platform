@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -14,7 +13,6 @@ import (
 // Feature-local sentinels for the affiliator money surfaces (BR-PCR-01..05);
 // the parent owns their mapServiceError cases.
 var (
-	ErrAffiliateFrozen              = errors.New("affiliator balance is frozen")
 	ErrAffiliateBankMissing         = errors.New("bank account is not set")
 	ErrAffiliatePayoutBelowMin      = errors.New("saldo is below the minimum payout")
 	ErrAffiliatePayoutInFlight      = errors.New("a payout is already requested or processing")
@@ -71,9 +69,6 @@ func (s *Service) RequestMyAffiliatePayout(ctx context.Context, userID string, a
 	}
 	if fresh == nil || fresh.Status != affiliateAffiliatorStatusActive {
 		return nil, ErrAffiliateNotActive
-	}
-	if fresh.FrozenUntil != nil && fresh.FrozenUntil.After(time.Now()) {
-		return nil, ErrAffiliateFrozen
 	}
 	inFlight, err := s.storeRepo.HasAffiliatePayoutInFlightTx(ctx, tx, fresh.ID)
 	if err != nil {

@@ -298,48 +298,29 @@ func TestAffiliateAdminStatusChange(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	actor := uuid.NewString()
-	days := 7
 
-	t.Run("suspend sets suspended_until from WIB now plus clamped days", func(t *testing.T) {
+	t.Run("suspend has no end date and is recorded in the audit log", func(t *testing.T) {
 		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-suspend-"+uniqueSuffix()+"@test.local", "active", "bronze")
-		long := 1000
-		aff, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "suspended", "tos pelanggaran", &long)
+		aff, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "suspended", "tos pelanggaran")
 		require.NoError(t, err)
 		require.Equal(t, "suspended", aff.Status)
-		want := time.Now().In(affiliateWIBLocation()).AddDate(0, 0, 365)
-		require.WithinDuration(t, want, *aff.SuspendedUntil, 2*time.Minute)
 
 		require.Equal(t, 1, countAffiliateAdminAudit(t, repo, id.String(), "affiliate.status_change"))
 		meta := affiliateAdminAuditMeta(t, repo, id.String(), "affiliate.status_change")
 		require.Equal(t, "active", meta["from"])
 		require.Equal(t, "suspended", meta["to"])
-		require.Equal(t, float64(365), meta["days"])
-	})
-
-	t.Run("a one-day clamp keeps the suspension", func(t *testing.T) {
-		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-suspend1-"+uniqueSuffix()+"@test.local", "active", "bronze")
-		zero := 0
-		aff, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "suspended", "ringan", &zero)
-		require.NoError(t, err)
-		want := time.Now().In(affiliateWIBLocation()).AddDate(0, 0, 1)
-		require.WithinDuration(t, want, *aff.SuspendedUntil, 2*time.Minute)
-	})
-
-	t.Run("suspend without days is rejected", func(t *testing.T) {
-		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-suspendn-"+uniqueSuffix()+"@test.local", "active", "bronze")
-		_, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "suspended", "tanpa hari", nil)
-		require.ErrorIs(t, err, ErrAffiliateInvalidDays)
+		require.NotContains(t, meta, "days")
 	})
 
 	t.Run("reason is mandatory", func(t *testing.T) {
 		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-noreason-"+uniqueSuffix()+"@test.local", "active", "bronze")
-		_, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "suspended", "   ", &days)
+		_, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "suspended", "   ")
 		require.ErrorIs(t, err, ErrAffiliateReasonRequired)
 	})
 
 	t.Run("an unknown status value is rejected", func(t *testing.T) {
 		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-bogusstat-"+uniqueSuffix()+"@test.local", "active", "bronze")
-		_, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "bogus", "alasan", nil)
+		_, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "bogus", "alasan")
 		require.ErrorIs(t, err, ErrAffiliateInvalidStatus)
 	})
 
@@ -354,7 +335,7 @@ func TestAffiliateAdminStatusChange(t *testing.T) {
 		}
 		pending, available := seed("pending"), seed("available")
 
-		aff, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "deactivated", "penipuan", nil)
+		aff, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "deactivated", "penipuan")
 		require.NoError(t, err)
 		require.Equal(t, "deactivated", aff.Status)
 
@@ -368,7 +349,7 @@ func TestAffiliateAdminStatusChange(t *testing.T) {
 	t.Run("a pending or rejected profile cannot be activated (it has no referral code)", func(t *testing.T) {
 		for _, status := range []string{"pending_approval", "rejected"} {
 			id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-badtrans-"+uniqueSuffix()+"@test.local", status, "bronze")
-			_, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "active", "alasan", nil)
+			_, err := svc.ChangeAffiliateStatus(ctx, actor, id.String(), "active", "alasan")
 			require.ErrorIs(t, err, ErrAffiliateInvalidTransition, status)
 			var got string
 			require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT status FROM affiliators WHERE id = $1`, id).Scan(&got))
@@ -377,56 +358,7 @@ func TestAffiliateAdminStatusChange(t *testing.T) {
 	})
 
 	t.Run("an unknown id is not found", func(t *testing.T) {
-		_, err := svc.ChangeAffiliateStatus(ctx, actor, uuid.NewString(), "active", "alasan", nil)
-		require.ErrorIs(t, err, ErrAffiliateNotFound)
-	})
-}
-
-func TestAffiliateAdminFreeze(t *testing.T) {
-	svc, repo := newRealDBService(t)
-	ctx := context.Background()
-	actor := uuid.NewString()
-
-	seedAffiliateAdminFreezeSettings(t, repo, 5)
-
-	id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-freeze-"+uniqueSuffix()+"@test.local", "active", "bronze")
-
-	t.Run("freeze caps days at freeze_max_days", func(t *testing.T) {
-		aff, err := svc.FreezeAffiliateBalance(ctx, actor, id.String(), 30, "fraud diteliti")
-		require.NoError(t, err)
-		want := time.Now().In(affiliateWIBLocation()).AddDate(0, 0, 5)
-		require.WithinDuration(t, want, *aff.FrozenUntil, 2*time.Minute)
-
-		require.Equal(t, 1, countAffiliateAdminAudit(t, repo, id.String(), "affiliate.freeze"))
-		meta := affiliateAdminAuditMeta(t, repo, id.String(), "affiliate.freeze")
-		require.Equal(t, float64(5), meta["days"])
-	})
-
-	t.Run("freeze needs a reason", func(t *testing.T) {
-		_, err := svc.FreezeAffiliateBalance(ctx, actor, id.String(), 3, " ")
-		require.ErrorIs(t, err, ErrAffiliateReasonRequired)
-	})
-
-	t.Run("freeze with non-positive days is rejected", func(t *testing.T) {
-		_, err := svc.FreezeAffiliateBalance(ctx, actor, id.String(), 0, "alasan")
-		require.ErrorIs(t, err, ErrAffiliateInvalidDays)
-	})
-
-	t.Run("unfreeze clears frozen_until", func(t *testing.T) {
-		aff, err := svc.UnfreezeAffiliateBalance(ctx, actor, id.String(), "banding diterima")
-		require.NoError(t, err)
-		require.Nil(t, aff.FrozenUntil)
-
-		require.Equal(t, 1, countAffiliateAdminAudit(t, repo, id.String(), "affiliate.unfreeze"))
-	})
-
-	t.Run("unfreeze needs a reason", func(t *testing.T) {
-		_, err := svc.UnfreezeAffiliateBalance(ctx, actor, id.String(), "")
-		require.ErrorIs(t, err, ErrAffiliateReasonRequired)
-	})
-
-	t.Run("freeze on an unknown id is not found", func(t *testing.T) {
-		_, err := svc.FreezeAffiliateBalance(ctx, actor, uuid.NewString(), 3, "alasan")
+		_, err := svc.ChangeAffiliateStatus(ctx, actor, uuid.NewString(), "active", "alasan")
 		require.ErrorIs(t, err, ErrAffiliateNotFound)
 	})
 }
@@ -434,70 +366,47 @@ func TestAffiliateAdminFreeze(t *testing.T) {
 func TestAffiliateAdminLevel(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
-	// affiliate_level_history.created_by is FK'd to users, so the actor must
-	// be a seeded user row, unlike the audit-log-only actions.
-	actor := insertAdminActor(t, repo, "affadm")
+	actor := uuid.NewString()
 	reason := "penyesuaian manual"
 
-	t.Run("manual change writes history with from/to and resets warn_quarters", func(t *testing.T) {
+	t.Run("manual change resets warn_quarters and is recorded in the audit log", func(t *testing.T) {
 		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-lvl-"+uniqueSuffix()+"@test.local", "active", "bronze")
 		_, err := repo.Pool().Exec(context.Background(), `UPDATE affiliators SET warn_quarters = 2 WHERE id = $1`, id)
 		require.NoError(t, err)
 
-		aff, err := svc.ChangeAffiliateLevel(ctx, actor, id.String(), "gold", "", reason)
+		aff, err := svc.ChangeAffiliateLevel(ctx, actor, id.String(), "gold", reason)
 		require.NoError(t, err)
 		require.Equal(t, "gold", aff.Level)
 		require.Equal(t, 0, aff.WarnQuarters)
-
-		rows := affiliateJobHistoryRows(t, repo, id)
-		require.Len(t, rows, 1)
-		require.NotNil(t, rows[0].FromLevel)
-		require.Equal(t, "bronze", *rows[0].FromLevel)
-		require.Equal(t, "gold", rows[0].ToLevel)
-		require.Equal(t, "manual", rows[0].Source)
-		require.Equal(t, reason, *rows[0].Reason)
-		require.Equal(t, affiliateQuarterKey(time.Now().In(affiliateWIBLocation())), rows[0].Quarter)
-		require.NotNil(t, rows[0].CreatedBy)
-		require.Equal(t, actor, rows[0].CreatedBy.String())
 
 		require.Equal(t, 1, countAffiliateAdminAudit(t, repo, id.String(), "affiliate.level_change"))
 		meta := affiliateAdminAuditMeta(t, repo, id.String(), "affiliate.level_change")
 		require.Equal(t, "bronze", meta["from"])
 		require.Equal(t, "gold", meta["to"])
+		require.Equal(t, reason, meta["reason"])
+		require.Empty(t, affiliateJobHistoryRows(t, repo, id), "manual changes no longer write level history")
 	})
 
-	t.Run("a pure lock sets level_locked_until and writes no history", func(t *testing.T) {
-		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-lock-"+uniqueSuffix()+"@test.local", "active", "silver")
-
-		aff, err := svc.ChangeAffiliateLevel(ctx, actor, id.String(), "", "2027-01-01", "kunci evaluasi")
-		require.NoError(t, err)
-		require.Equal(t, "silver", aff.Level)
-		require.True(t, aff.LevelLockedUntil.Equal(time.Date(2027, 1, 2, 0, 0, 0, 0, affiliateWIBLocation())),
-			"lock_until = %v, want end of 2027-01-01 WIB", aff.LevelLockedUntil)
-		require.Empty(t, affiliateJobHistoryRows(t, repo, id), "a pure lock writes no history row")
-		require.Equal(t, 1, countAffiliateAdminAudit(t, repo, id.String(), "affiliate.level_change"))
-	})
-
-	t.Run("an empty change is rejected", func(t *testing.T) {
+	t.Run("a missing level is rejected", func(t *testing.T) {
 		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-lvle-"+uniqueSuffix()+"@test.local", "active", "bronze")
-		_, err := svc.ChangeAffiliateLevel(ctx, actor, id.String(), "", "", reason)
+		_, err := svc.ChangeAffiliateLevel(ctx, actor, id.String(), "", reason)
 		require.ErrorIs(t, err, ErrMissingField)
+	})
+
+	t.Run("a reason is mandatory", func(t *testing.T) {
+		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-lvlr-"+uniqueSuffix()+"@test.local", "active", "bronze")
+		_, err := svc.ChangeAffiliateLevel(ctx, actor, id.String(), "gold", "  ")
+		require.ErrorIs(t, err, ErrAffiliateReasonRequired)
 	})
 
 	t.Run("an unknown level is rejected", func(t *testing.T) {
 		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-lvlx-"+uniqueSuffix()+"@test.local", "active", "bronze")
-		_, err := svc.ChangeAffiliateLevel(ctx, actor, id.String(), "platinum", "", reason)
+		_, err := svc.ChangeAffiliateLevel(ctx, actor, id.String(), "platinum", reason)
 		require.ErrorIs(t, err, ErrAffiliateInvalidLevel)
 	})
 
-	t.Run("a lock on a malformed date is rejected", func(t *testing.T) {
-		id, _ := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-lvld-"+uniqueSuffix()+"@test.local", "active", "bronze")
-		_, err := svc.ChangeAffiliateLevel(ctx, actor, id.String(), "", "01-2027", reason)
-		require.ErrorIs(t, err, ErrInvalidDateFormat)
-	})
-
 	t.Run("a level change on an unknown id is not found", func(t *testing.T) {
-		_, err := svc.ChangeAffiliateLevel(ctx, actor, uuid.NewString(), "gold", "", reason)
+		_, err := svc.ChangeAffiliateLevel(ctx, actor, uuid.NewString(), "gold", reason)
 		require.ErrorIs(t, err, ErrAffiliateNotFound)
 	})
 }
@@ -505,7 +414,7 @@ func TestAffiliateAdminLevel(t *testing.T) {
 func TestAffiliateAdminSentinels_areDistinct(t *testing.T) {
 	errs := []error{
 		ErrAffiliateNotPending, ErrAffiliateInvalidDecision, ErrAffiliateRejectReasonRequired,
-		ErrAffiliateInvalidStatus, ErrAffiliateReasonRequired, ErrAffiliateInvalidDays,
+		ErrAffiliateInvalidStatus, ErrAffiliateReasonRequired,
 		ErrAffiliateInvalidLevel, ErrAffiliateCodeGenerationExhausted, ErrAffiliateInvalidTransition,
 	}
 	seen := map[string]bool{}

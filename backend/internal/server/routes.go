@@ -13,7 +13,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	auth := v1.Group("/auth")
 	auth.POST("/register", h.Register)
-	auth.POST("/affiliators/register", h.RegisterAffiliator, handler.AffiliateClickRateLimiter())
+	auth.POST("/affiliators/register", h.RegisterAffiliator, handler.AffiliateRateLimiter())
 	auth.POST("/login", h.Login, handler.LoginRateLimiter())
 	auth.POST("/google", h.GoogleLogin)
 	auth.POST("/otp/send", h.SendOTP)
@@ -386,8 +386,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminSchoolDashboard.GET("/school", h.AdminSchoolDashboard)
 
 	affiliates := v1.Group("/affiliates")
-	affiliates.GET("/public/validate", h.AffiliateValidateCode, handler.AffiliateClickRateLimiter())
-	affiliates.POST("/clicks", h.AffiliateRecordClick, handler.AffiliateClickRateLimiter())
+	affiliates.GET("/public/validate", h.AffiliateValidateCode, handler.AffiliateRateLimiter())
 
 	affiliatesMe := v1.Group("/affiliates/me")
 	affiliatesMe.Use(handler.JWTMiddleware(svc, jwtSigner))
@@ -408,8 +407,6 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminAffiliates.GET("/:id", h.AdminGetAffiliate)
 	adminAffiliates.POST("/:id/approval", h.AdminDecideAffiliateApproval)
 	adminAffiliates.PATCH("/:id/status", h.AdminChangeAffiliateStatus)
-	adminAffiliates.POST("/:id/freeze", h.AdminFreezeAffiliateBalance)
-	adminAffiliates.POST("/:id/unfreeze", h.AdminUnfreezeAffiliateBalance)
 	adminAffiliates.POST("/:id/level", h.AdminChangeAffiliateLevel)
 	adminAffiliates.POST("/:id/adjustments", h.AdminCreateAffiliateAdjustment)
 	adminAffiliates.GET("/:id/adjustments", h.AdminListAffiliateAdjustments)

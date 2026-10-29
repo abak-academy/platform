@@ -110,30 +110,16 @@ export function useDecideAffiliateApproval() {
 }
 
 export function useChangeAffiliateStatus() {
-  return useAffiliateAction<{ id: string; status: string; reason: string; days?: number }>(
+  return useAffiliateAction<{ id: string; status: string; reason: string }>(
     ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/status`,
-    ({ status, reason, days }) => ({ method: "PATCH", body: JSON.stringify({ status, reason, days }) }),
-  );
-}
-
-export function useFreezeAffiliateBalance() {
-  return useAffiliateAction<{ id: string; days: number; reason: string }>(
-    ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/freeze`,
-    ({ days, reason }) => post({ days, reason }),
-  );
-}
-
-export function useUnfreezeAffiliateBalance() {
-  return useAffiliateAction<{ id: string; reason: string }>(
-    ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/unfreeze`,
-    ({ reason }) => post({ reason }),
+    ({ status, reason }) => ({ method: "PATCH", body: JSON.stringify({ status, reason }) }),
   );
 }
 
 export function useChangeAffiliateLevel() {
-  return useAffiliateAction<{ id: string; level: string; lock_until?: string; reason: string }>(
+  return useAffiliateAction<{ id: string; level: string; reason: string }>(
     ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/level`,
-    ({ level, lock_until, reason }) => post({ level, lock_until: lock_until ?? "", reason }),
+    ({ level, reason }) => post({ level, reason }),
   );
 }
 

@@ -20,7 +20,7 @@ function ReferralRoute({ params }: { params: Promise<{ code: string }> }) {
   useEffect(() => {
     setAffRefCookie(code);
     affiliateApi
-      .recordClick(code, navigator.userAgent)
+      .validateCode(code)
       .then((res) => {
         if (res.cookie_days) setAffRefCookie(code, res.cookie_days);
       })

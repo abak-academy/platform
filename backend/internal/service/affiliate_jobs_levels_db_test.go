@@ -21,7 +21,7 @@ func quarterPtr(s string) *string { return &s }
 func seedAffiliateLevelScenario(t *testing.T, repo *repository.Repository, name, level string, warn int, createdAt time.Time, status string) uuid.UUID {
 	t.Helper()
 	owner := seedAffiliatorOwner(t, repo, "aff-lvl-"+name+"-"+uniqueSuffix()+"@test.local", "", status)
-	setAffiliateJobAffiliator(t, repo, owner.affiliatorID, level, warn, createdAt, nil)
+	setAffiliateJobAffiliator(t, repo, owner.affiliatorID, level, warn, createdAt)
 	return owner.affiliatorID
 }
 
@@ -44,56 +44,51 @@ func TestAffiliateLevelEvaluation_matrix(t *testing.T) {
 
 	createdBeforeQuarter := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	createdMidQuarter := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
-	futureLock := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	// Bronze 17M in-quarter (one inside the WIB quarter from a UTC Jun 30
 	// evening) clears both rises: jump to gold.
 	jump := seedAffiliateLevelScenario(t, repo, "jump", "bronze", 0, createdBeforeQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, jump, 15000000, "paid", time.Date(2026, 7, 15, 3, 0, 0, 0, time.UTC))
-	seedAffiliateLevelCommission(t, repo, jump, 1000000, "paid", time.Date(2026, 6, 30, 20, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, jump, 15000000, "available", time.Date(2026, 7, 15, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, jump, 1000000, "available", time.Date(2026, 6, 30, 20, 0, 0, 0, time.UTC))
 
 	rise := seedAffiliateLevelScenario(t, repo, "rise", "bronze", 0, createdBeforeQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, rise, 6000000, "paid", time.Date(2026, 8, 20, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, rise, 6000000, "available", time.Date(2026, 8, 20, 3, 0, 0, 0, time.UTC))
 
 	// Silver 5M (paid + available) clears the 3M hold: stays silver, resets a
 	// carried warning; held commission is excluded.
 	hold := seedAffiliateLevelScenario(t, repo, "hold", "silver", 1, createdBeforeQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, hold, 4000000, "paid", time.Date(2026, 7, 2, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, hold, 4000000, "available", time.Date(2026, 7, 2, 3, 0, 0, 0, time.UTC))
 	seedAffiliateLevelCommission(t, repo, hold, 1000000, "available", time.Date(2026, 9, 2, 3, 0, 0, 0, time.UTC))
-	seedAffiliateLevelCommission(t, repo, hold, 9000000, "held", time.Date(2026, 9, 3, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, hold, 9000000, "pending", time.Date(2026, 9, 3, 3, 0, 0, 0, time.UTC))
 
 	// Silver 2M below the 3M hold: first miss warns via the counter + marker row.
 	warn := seedAffiliateLevelScenario(t, repo, "warn", "silver", 0, createdBeforeQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, warn, 1000000, "paid", time.Date(2026, 7, 10, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, warn, 1000000, "available", time.Date(2026, 7, 10, 3, 0, 0, 0, time.UTC))
 	seedAffiliateLevelCommission(t, repo, warn, 1000000, "available", time.Date(2026, 8, 10, 3, 0, 0, 0, time.UTC))
 
 	// Silver second miss (carried warning) drops; the 100M cancelled refund and
-	// the held 50M do not count toward net.
+	// the pending 50M do not count toward net.
 	drop := seedAffiliateLevelScenario(t, repo, "drop", "silver", 1, createdBeforeQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, drop, 1500000, "paid", time.Date(2026, 7, 5, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, drop, 1500000, "available", time.Date(2026, 7, 5, 3, 0, 0, 0, time.UTC))
 	seedAffiliateLevelCommission(t, repo, drop, 100000000, "cancelled", time.Date(2026, 8, 5, 3, 0, 0, 0, time.UTC))
-	seedAffiliateLevelCommission(t, repo, drop, 50000000, "held", time.Date(2026, 9, 5, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, drop, 50000000, "pending", time.Date(2026, 9, 5, 3, 0, 0, 0, time.UTC))
 
 	// Commissions paid before the quarter do not count: net 0 warns with 0.
 	outside := seedAffiliateLevelScenario(t, repo, "outside", "silver", 0, createdBeforeQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, outside, 50000000, "paid", time.Date(2026, 6, 28, 3, 0, 0, 0, time.UTC))
-
-	locked := seedAffiliateLevelScenario(t, repo, "locked", "silver", 1, createdBeforeQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, locked, 20000000, "paid", time.Date(2026, 7, 6, 3, 0, 0, 0, time.UTC))
-	setAffiliateJobAffiliator(t, repo, locked, "silver", 1, createdBeforeQuarter, &futureLock)
+	seedAffiliateLevelCommission(t, repo, outside, 50000000, "available", time.Date(2026, 6, 28, 3, 0, 0, 0, time.UTC))
 
 	// BR-LVL-06: joined inside the evaluated quarter — never evaluated for it.
 	newcomer := seedAffiliateLevelScenario(t, repo, "newcomer", "bronze", 0, createdMidQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, newcomer, 20000000, "paid", time.Date(2026, 8, 15, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, newcomer, 20000000, "available", time.Date(2026, 8, 15, 3, 0, 0, 0, time.UTC))
 
 	// Not fetched by the evaluation at all.
 	deactivated := seedAffiliateLevelScenario(t, repo, "deactivated", "bronze", 0, createdBeforeQuarter, "deactivated")
-	seedAffiliateLevelCommission(t, repo, deactivated, 20000000, "paid", time.Date(2026, 7, 16, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, deactivated, 20000000, "available", time.Date(2026, 7, 16, 3, 0, 0, 0, time.UTC))
 
 	res, err := svc.RunAffiliateJob(ctx, "levels", quarterPtr(affiliateLevelTestQuarter))
 	require.NoError(t, err)
 	require.Equal(t, affiliateLevelTestQuarter, res.Quarter)
-	require.Equal(t, 6, res.LevelsEvaluated, "locked, newcomer and deactivated are not evaluated")
+	require.Equal(t, 6, res.LevelsEvaluated, "newcomer and deactivated are not evaluated")
 	require.Equal(t, 3, res.LevelsChanged, "jump, rise and drop")
 
 	require.Equal(t, "gold", getAffiliateJobAffiliator(t, repo, jump).Level)
@@ -144,11 +139,6 @@ func TestAffiliateLevelEvaluation_matrix(t *testing.T) {
 	require.Len(t, outsideRows, 1)
 	require.InDelta(t, 0, outsideRows[0].NetRevenue, 0, "pre-quarter paid_at does not count")
 
-	lockedAff := getAffiliateJobAffiliator(t, repo, locked)
-	require.Equal(t, "silver", lockedAff.Level)
-	require.Equal(t, 1, lockedAff.WarnQuarters, "locked level is not touched")
-	require.Empty(t, affiliateJobHistoryRows(t, repo, locked))
-
 	require.Equal(t, "bronze", getAffiliateJobAffiliator(t, repo, newcomer).Level)
 	require.Empty(t, affiliateJobHistoryRows(t, repo, newcomer), "join-quarter affiliator skipped")
 	require.Equal(t, "bronze", getAffiliateJobAffiliator(t, repo, deactivated).Level)
@@ -164,11 +154,11 @@ func TestAffiliateLevelEvaluation_RerunIdempotent(t *testing.T) {
 	createdBeforeQuarter := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 
 	jump := seedAffiliateLevelScenario(t, repo, "rerun-jump", "bronze", 0, createdBeforeQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, jump, 16000000, "paid", time.Date(2026, 7, 15, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, jump, 16000000, "available", time.Date(2026, 7, 15, 3, 0, 0, 0, time.UTC))
 	warn := seedAffiliateLevelScenario(t, repo, "rerun-warn", "silver", 0, createdBeforeQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, warn, 2000000, "paid", time.Date(2026, 7, 16, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, warn, 2000000, "available", time.Date(2026, 7, 16, 3, 0, 0, 0, time.UTC))
 	drop := seedAffiliateLevelScenario(t, repo, "rerun-drop", "silver", 1, createdBeforeQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, drop, 1500000, "paid", time.Date(2026, 7, 17, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, drop, 1500000, "available", time.Date(2026, 7, 17, 3, 0, 0, 0, time.UTC))
 
 	_, err := svc.RunAffiliateJob(ctx, "levels", quarterPtr(affiliateLevelTestQuarter))
 	require.NoError(t, err)
@@ -238,7 +228,7 @@ func TestAffiliateJobQuarterlyWiring_runsFromDailyLoop(t *testing.T) {
 
 	createdBeforeQuarter := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	warn := seedAffiliateLevelScenario(t, repo, "wiring", "silver", 0, createdBeforeQuarter, "active")
-	seedAffiliateLevelCommission(t, repo, warn, 2000000, "paid", time.Date(2026, 7, 15, 3, 0, 0, 0, time.UTC))
+	seedAffiliateLevelCommission(t, repo, warn, 2000000, "available", time.Date(2026, 7, 15, 3, 0, 0, 0, time.UTC))
 
 	evalDay := time.Date(2026, 10, 8, 3, 0, 0, 0, time.UTC) // 10:00 WIB on the eval day
 	require.NoError(t, svc.RunAffiliateDaily(ctx, evalDay))

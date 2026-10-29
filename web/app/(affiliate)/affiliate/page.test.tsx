@@ -14,10 +14,8 @@ vi.mock("@/lib/hooks/affiliate", () => ({
   useAffiliateStats: (range: unknown) => ({
     ...(statsCall(range), {}),
     data: {
-      clicks: 12,
       registrations: 3,
       registrations_by_source: {},
-      conversion: 0.25,
       total_students: 3,
       active_bindings: 2,
       new_students: 3,
@@ -58,7 +56,6 @@ describe("AffiliateDashboardPage", () => {
     expect(screen.getByText(/Kurang .*13\.800\.000.* lagi untuk naik ke Gold/)).toBeInTheDocument();
     expect(screen.getByText(`${window.location.origin}/r/BUDI10`)).toBeInTheDocument();
     expect(screen.getByText(/150\.000/)).toBeInTheDocument();
-    expect(screen.getByText("25%")).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();
   });
 

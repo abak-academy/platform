@@ -22,23 +22,6 @@ func seedAffiliateAdminActor(t *testing.T, repo *repository.Repository, email st
 	return seedAffiliateBindingUser(t, repo, email, "", "super_admin")
 }
 
-func seedAffiliateThresholdSettings(t *testing.T, repo *repository.Repository, enabled bool, threshold float64) {
-	t.Helper()
-	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_settings (id, adjustment_threshold, adjustment_threshold_enabled)
-		 VALUES (1, $1, $2)
-		 ON CONFLICT (id) DO UPDATE SET adjustment_threshold = $1, adjustment_threshold_enabled = $2, updated_at = now()`,
-		threshold, enabled,
-	)
-	if err != nil {
-		t.Fatalf("seed affiliate threshold settings: %v", err)
-	}
-	t.Cleanup(func() {
-		_, _ = repo.Pool().Exec(context.Background(),
-			`UPDATE affiliate_settings SET adjustment_threshold = 1000000, adjustment_threshold_enabled = false WHERE id = 1`)
-	})
-}
-
 func seedAffiliateMoneyPayout(t *testing.T, repo *repository.Repository, affiliatorID uuid.UUID, status string, amount float64, holder string) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
@@ -198,55 +181,6 @@ func TestAdminCreateAffiliateAdjustment_selfTargetRejected(t *testing.T) {
 	}
 	if n := countAffiliateLedgerByTypeFor(t, repo, owner.affiliatorID, "adjustment"); n != 0 {
 		t.Errorf("ledger rows persisted = %d, want 0", n)
-	}
-}
-
-func TestAdminCreateAffiliateAdjustment_thresholdPendingPath(t *testing.T) {
-	svc, repo := newRealDBService(t)
-	ctx := context.Background()
-	owner := seedAffiliatorOwner(t, repo, "aff-adj-pend-"+uniqueSuffix()+"@test.local", "", "active")
-	actor := seedAffiliateAdminActor(t, repo, "admin-adj-pend-"+uniqueSuffix()+"@test.local")
-	seedAffiliateThresholdSettings(t, repo, true, 50000)
-
-	adj, err := svc.AdminCreateAffiliateAdjustment(ctx, actor, owner.affiliatorID.String(), AdminAdjustmentInput{
-		Category: "bonus",
-		Amount:   150000,
-		Reason:   "large bonus",
-	})
-	if err != nil {
-		t.Fatalf("AdminCreateAffiliateAdjustment: %v", err)
-	}
-	if adj.ApprovalStatus == nil || *adj.ApprovalStatus != "pending" {
-		t.Fatalf("approval_status = %v, want pending", adj.ApprovalStatus)
-	}
-	if n := countAffiliateLedgerByTypeFor(t, repo, owner.affiliatorID, "adjustment"); n != 0 {
-		t.Errorf("ledger rows = %d, want 0 while pending", n)
-	}
-	if n := countAffiliateAudit(t, repo, "affiliate.adjustment", adj.ID.String()); n != 1 {
-		t.Errorf("affiliate.adjustment audit rows = %d, want 1", n)
-	}
-}
-
-func TestAdminCreateAffiliateAdjustment_thresholdBelowApplies(t *testing.T) {
-	svc, repo := newRealDBService(t)
-	ctx := context.Background()
-	owner := seedAffiliatorOwner(t, repo, "aff-adj-under-"+uniqueSuffix()+"@test.local", "", "active")
-	actor := seedAffiliateAdminActor(t, repo, "admin-adj-under-"+uniqueSuffix()+"@test.local")
-	seedAffiliateThresholdSettings(t, repo, true, 50000)
-
-	adj, err := svc.AdminCreateAffiliateAdjustment(ctx, actor, owner.affiliatorID.String(), AdminAdjustmentInput{
-		Category: "offline",
-		Amount:   30000,
-		Reason:   "offline payment",
-	})
-	if err != nil {
-		t.Fatalf("AdminCreateAffiliateAdjustment: %v", err)
-	}
-	if adj.ApprovalStatus != nil {
-		t.Errorf("approval_status = %v, want nil below threshold", *adj.ApprovalStatus)
-	}
-	if n := countAffiliateLedgerByTypeFor(t, repo, owner.affiliatorID, "adjustment"); n != 1 {
-		t.Errorf("ledger rows = %d, want 1", n)
 	}
 }
 

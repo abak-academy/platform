@@ -229,45 +229,21 @@ func TestAffiliateCommission_UnboundStudentCreatesNothing(t *testing.T) {
 	require.Empty(t, affiliateCommissionsForOrder(t, repo, order.ID))
 }
 
-func TestAffiliateCommission_SuspendedAffiliatorCreatesNothingButFrozenStillEarns(t *testing.T) {
+func TestAffiliateCommission_SuspendedAffiliatorCreatesNothing(t *testing.T) {
 	svc, repo := newRealDBService(t)
-	ctx := context.Background()
 	launch := time.Now().UTC().Add(-24 * time.Hour)
 	seedAffiliateSettingsForBinding(t, repo, affiliateSettingsSeed{launchDate: &launch, bindingMonths: 3})
 	setAffiliateFlagForCommission(t, repo, "true")
 
-	suspendUntil := time.Now().UTC().Add(24 * time.Hour)
-	freezeUntil := time.Now().UTC().Add(24 * time.Hour)
+	owner := seedAffiliatorOwner(t, repo, "aff-comm-e1-"+uniqueSuffix()+"@test.local", "", "suspended")
+	student := seedAffiliateTestStudent(t, repo, "student-comm-e1-"+uniqueSuffix()+"@test.local", "")
+	createAffiliateBindingCommitted(t, svc, repo, student.ID, owner.affiliatorID, "checkout_code")
 
-	t.Run("suspended affiliator earns nothing", func(t *testing.T) {
-		owner := seedAffiliatorOwner(t, repo, "aff-comm-e1-"+uniqueSuffix()+"@test.local", "", "suspended")
-		_, err := repo.Pool().Exec(ctx, `UPDATE affiliators SET suspended_until = $1 WHERE id = $2`, suspendUntil, owner.affiliatorID)
-		require.NoError(t, err)
-		student := seedAffiliateTestStudent(t, repo, "student-comm-e1-"+uniqueSuffix()+"@test.local", "")
-		createAffiliateBindingCommitted(t, svc, repo, student.ID, owner.affiliatorID, "checkout_code")
-
-		order := seedCommissionOrder(t, repo, student.ID, time.Now().UTC(), 0,
-			commissionSeedItem{productType: "exam", jumlah: 100000},
-		)
-		require.NoError(t, runCreateCommissions(t, svc, repo, order))
-		require.Empty(t, affiliateCommissionsForOrder(t, repo, order.ID))
-	})
-
-	// BR-PLG-05: a balance freeze only holds withdrawals; purchases made while it
-	// lasts must still earn, because the commission is created once from the event.
-	t.Run("frozen affiliator still earns", func(t *testing.T) {
-		owner := seedAffiliatorOwner(t, repo, "aff-comm-e2-"+uniqueSuffix()+"@test.local", "", "active")
-		_, err := repo.Pool().Exec(ctx, `UPDATE affiliators SET frozen_until = $1 WHERE id = $2`, freezeUntil, owner.affiliatorID)
-		require.NoError(t, err)
-		student := seedAffiliateTestStudent(t, repo, "student-comm-e2-"+uniqueSuffix()+"@test.local", "")
-		createAffiliateBindingCommitted(t, svc, repo, student.ID, owner.affiliatorID, "checkout_code")
-
-		order := seedCommissionOrder(t, repo, student.ID, time.Now().UTC(), 0,
-			commissionSeedItem{productType: "exam", jumlah: 100000},
-		)
-		require.NoError(t, runCreateCommissions(t, svc, repo, order))
-		require.Len(t, affiliateCommissionsForOrder(t, repo, order.ID), 1)
-	})
+	order := seedCommissionOrder(t, repo, student.ID, time.Now().UTC(), 0,
+		commissionSeedItem{productType: "exam", jumlah: 100000},
+	)
+	require.NoError(t, runCreateCommissions(t, svc, repo, order))
+	require.Empty(t, affiliateCommissionsForOrder(t, repo, order.ID))
 }
 
 func TestAffiliateCommissionAmount(t *testing.T) {

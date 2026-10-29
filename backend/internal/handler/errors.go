@@ -311,8 +311,6 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusNotFound, APIError{Code: "affiliate_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateSelfAdjustment):
 		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_self_adjustment", Message: err.Error()}
-	case errors.Is(err, service.ErrAffiliateFrozen):
-		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_frozen", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateBankMissing):
 		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_bank_missing", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliatePayoutBelowMin):
@@ -327,7 +325,6 @@ func mapServiceError(c echo.Context, err error) error {
 		errors.Is(err, service.ErrAffiliateRejectReasonRequired),
 		errors.Is(err, service.ErrAffiliateInvalidStatus),
 		errors.Is(err, service.ErrAffiliateReasonRequired),
-		errors.Is(err, service.ErrAffiliateInvalidDays),
 		errors.Is(err, service.ErrAffiliateInvalidLevel),
 		errors.Is(err, service.ErrAffiliateAdjustmentInvalid),
 		errors.Is(err, service.ErrAffiliatePayoutAmountInvalid),

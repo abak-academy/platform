@@ -37,9 +37,6 @@ type AffiliateMeProfile struct {
 	Status            string                    `json:"status"`
 	RejectionReason   *string                   `json:"rejection_reason,omitempty"`
 	WarnQuarters      int                       `json:"warn_quarters"`
-	LevelLockedUntil  *time.Time                `json:"level_locked_until,omitempty"`
-	SuspendedUntil    *time.Time                `json:"suspended_until,omitempty"`
-	FrozenUntil       *time.Time                `json:"frozen_until,omitempty"`
 	BankName          *string                   `json:"bank_name"`
 	BankAccountNumber *string                   `json:"bank_account_number"`
 	BankAccountHolder *string                   `json:"bank_account_holder"`
@@ -114,10 +111,8 @@ type AffiliateMeLedgerPage struct {
 }
 
 type AffiliateMeStats struct {
-	Clicks                int            `json:"clicks"`
 	Registrations         int            `json:"registrations"`
 	RegistrationsBySource map[string]int `json:"registrations_by_source"`
-	Conversion            float64        `json:"conversion"`
 	TotalStudents         int            `json:"total_students"`
 	ActiveBindings        int            `json:"active_bindings"`
 	NewStudents           int            `json:"new_students"`
@@ -175,9 +170,6 @@ func (s *Service) GetMyAffiliateProfile(ctx context.Context, userID string) (Aff
 		Status:            aff.Status,
 		RejectionReason:   aff.RejectionReason,
 		WarnQuarters:      aff.WarnQuarters,
-		LevelLockedUntil:  aff.LevelLockedUntil,
-		SuspendedUntil:    aff.SuspendedUntil,
-		FrozenUntil:       aff.FrozenUntil,
 		BankName:          aff.BankName,
 		BankAccountNumber: aff.BankAccountNumber,
 		BankAccountHolder: aff.BankAccountHolder,
@@ -278,7 +270,7 @@ func (s *Service) ListMyAffiliateBindings(ctx context.Context, userID string, fi
 	return page, nil
 }
 
-var affiliateMeCommissionStatuses = map[string]bool{"pending": true, "available": true, "paid": true, "cancelled": true, "held": true}
+var affiliateMeCommissionStatuses = map[string]bool{"pending": true, "available": true, "cancelled": true}
 
 func (s *Service) ListMyAffiliateCommissions(ctx context.Context, userID string, filter AffiliateMeListFilter) (AffiliateMeCommissionsPage, error) {
 	page := AffiliateMeCommissionsPage{Data: []repository.AffiliateCommissionRow{}, Page: filter.Page, PerPage: filter.PerPage}
@@ -352,7 +344,7 @@ func (s *Service) GetMyAffiliateLedger(ctx context.Context, userID string, filte
 	return page, nil
 }
 
-// GetMyAffiliateStats counts clicks, registrations, new students and earned
+// GetMyAffiliateStats counts registrations, new students and earned
 // commission inside the optional [from, to) range; without one it is all time.
 func (s *Service) GetMyAffiliateStats(ctx context.Context, userID string, from, to *time.Time) (AffiliateMeStats, error) {
 	stats := AffiliateMeStats{}
@@ -364,15 +356,11 @@ func (s *Service) GetMyAffiliateStats(ctx context.Context, userID string, from, 
 	if err != nil {
 		return stats, fmt.Errorf("count affiliate stats: %w", err)
 	}
-	stats.Clicks = counts.Clicks
 	stats.Registrations = counts.Registrations
 	stats.TotalStudents = counts.TotalStudents
 	stats.ActiveBindings = counts.ActiveBindings
 	stats.NewStudents = counts.NewStudents
 	stats.CommissionEarned = counts.CommissionEarned
-	if counts.Clicks > 0 {
-		stats.Conversion = float64(counts.Registrations) / float64(counts.Clicks)
-	}
 	stats.RegistrationsBySource, err = s.storeRepo.CountAffiliateBindingsBySource(ctx, aff.ID)
 	if err != nil {
 		return stats, fmt.Errorf("count affiliate bindings by source: %w", err)

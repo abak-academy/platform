@@ -47,8 +47,6 @@ func newAffiliateAdminRouter(t *testing.T, h *handler.Handler, svc *service.Serv
 	affiliates.GET("", h.AdminListAffiliates)
 	affiliates.POST("/:id/approval", h.AdminDecideAffiliateApproval)
 	affiliates.PATCH("/:id/status", h.AdminChangeAffiliateStatus)
-	affiliates.POST("/:id/freeze", h.AdminFreezeAffiliateBalance)
-	affiliates.POST("/:id/unfreeze", h.AdminUnfreezeAffiliateBalance)
 	affiliates.POST("/:id/level", h.AdminChangeAffiliateLevel)
 	return e
 }
@@ -187,8 +185,6 @@ func TestAffiliateAdminHandlerValidation400s(t *testing.T) {
 		{"approval decision is unknown", http.MethodPost, "/approval", `{"decision":"maybe"}`},
 		{"approval body is missing", http.MethodPost, "/approval", ``},
 		{"status value is unknown", http.MethodPatch, "/status", `{"status":"bogus","reason":"alasan"}`},
-		{"suspend needs days", http.MethodPatch, "/status", `{"status":"suspended","reason":"alasan"}`},
-		{"freeze needs days", http.MethodPost, "/freeze", `{"reason":"alasan"}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

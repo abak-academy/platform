@@ -1528,6 +1528,7 @@ export interface UnitSalesResponse {
 export interface AffiliateValidation {
   valid: boolean;
   affiliator_name: string;
+  cookie_days?: number;
 }
 
 export interface AffiliateLevelProgress {
@@ -1545,9 +1546,6 @@ export interface AffiliateProfile {
   status: string;
   rejection_reason?: string;
   warn_quarters: number;
-  level_locked_until?: string;
-  suspended_until?: string;
-  frozen_until?: string;
   bank_name: string | null;
   bank_account_number: string | null;
   bank_account_holder: string | null;
@@ -1632,10 +1630,8 @@ export interface AffiliateLedgerPage {
 }
 
 export interface AffiliateStats {
-  clicks: number;
   registrations: number;
   registrations_by_source: Record<string, number>;
-  conversion: number;
   total_students: number;
   active_bindings: number;
   new_students: number;
@@ -1700,10 +1696,7 @@ export interface AffiliateAdminRow {
   status: string;
   rejection_reason: string | null;
   level: string;
-  level_locked_until: string | null;
   warn_quarters: number;
-  suspended_until: string | null;
-  frozen_until: string | null;
   terms_version: string;
   terms_accepted_at: string;
   bank_name: string | null;
@@ -1723,19 +1716,6 @@ export interface AffiliateAdminListPage {
   total: number;
 }
 
-export interface AffiliateLevelHistoryEntry {
-  id: string;
-  affiliator_id: string;
-  quarter: string;
-  from_level: string | null;
-  to_level: string;
-  net_revenue: number;
-  source: string;
-  reason: string | null;
-  created_by: string | null;
-  created_at: string;
-}
-
 export interface AffiliateAdminDetail {
   affiliate: Omit<AffiliateAdminRow, "name" | "email" | "phone">;
   name: string;
@@ -1743,7 +1723,6 @@ export interface AffiliateAdminDetail {
   bindings: { active: number; ended: number; data: AffiliateBinding[] };
   commissions: { counts: Record<string, number>; total_amount: number };
   saldo: number;
-  level_history: AffiliateLevelHistoryEntry[];
 }
 
 export interface AffiliateAdminPayout extends AffiliatePayout {
@@ -1767,15 +1746,10 @@ export interface AffiliateSettings {
   physical_wait_days: number;
   min_payout: number;
   payout_day_of_month: number | null;
-  adjustment_threshold: number;
-  adjustment_threshold_enabled: boolean;
-  freeze_max_days: number;
-  soon_end_days: number;
   launch_date: string | null;
   eval_day: number;
   silver_threshold: number;
   gold_threshold: number;
-  hold_thresholds: Record<string, number> | null;
   daily_registration_cap: number | null;
   updated_by: string | null;
   updated_at: string;
@@ -1827,8 +1801,6 @@ export interface AffiliateReportRow {
   students_new: number;
   net_revenue: number;
   commissions: Record<string, number>;
-  clicks: number;
-  conversion: number;
 }
 
 export interface AffiliateReportSummary {

@@ -3,7 +3,6 @@ package handler_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -64,7 +63,7 @@ func newAffiliatePublicEnv(t *testing.T) *affiliatePublicEnv {
 	e.HideBanner = true
 	v1 := e.Group("/api/v1")
 	v1.GET("/affiliates/public/validate", h.AffiliateValidateCode)
-	v1.POST("/affiliates/clicks", h.AffiliateRecordClick, handler.AffiliateClickRateLimiter())
+	v1.GET("/affiliates/public/validate-limited", h.AffiliateValidateCode, handler.AffiliateRateLimiter())
 
 	t.Cleanup(pool.Close)
 	return &affiliatePublicEnv{pool: pool, e: e}
@@ -115,12 +114,13 @@ func TestAffiliateValidateCodeHandler(t *testing.T) {
 		code      func(affiliatorCode string) string
 		wantValid bool
 		wantName  bool
+		wantDays  int
 	}{
-		{"active affiliator with flag on is valid", "active", strPtrP("true"), keepCode, true, true},
-		{"unknown code is valid:false without error", "active", strPtrP("true"), noCode, false, false},
-		{"pending affiliator is valid:false", "pending_approval", strPtrP("true"), keepCode, false, false},
-		{"flag off ignores an active code", "active", strPtrP("false"), keepCode, false, false},
-		{"unset flag is default off", "active", nil, keepCode, false, false},
+		{"active affiliator with flag on is valid", "active", strPtrP("true"), keepCode, true, true, 30},
+		{"unknown code is valid:false without error", "active", strPtrP("true"), noCode, false, false, 30},
+		{"pending affiliator is valid:false", "pending_approval", strPtrP("true"), keepCode, false, false, 30},
+		{"flag off ignores an active code", "active", strPtrP("false"), keepCode, false, false, 0},
+		{"unset flag is default off", "active", nil, keepCode, false, false, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -141,12 +141,16 @@ func TestAffiliateValidateCodeHandler(t *testing.T) {
 			var body struct {
 				Valid          bool   `json:"valid"`
 				AffiliatorName string `json:"affiliator_name"`
+				CookieDays     int    `json:"cookie_days"`
 			}
 			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 				t.Fatalf("unmarshal body %q: %v", rec.Body.String(), err)
 			}
 			if body.Valid != tt.wantValid {
 				t.Errorf("valid = %v, want %v", body.Valid, tt.wantValid)
+			}
+			if body.CookieDays != tt.wantDays {
+				t.Errorf("cookie_days = %d, want %d", body.CookieDays, tt.wantDays)
 			}
 			if tt.wantName && body.AffiliatorName != name {
 				t.Errorf("affiliator_name = %q, want %q", body.AffiliatorName, name)
@@ -163,112 +167,20 @@ func noCode(string) string        { return "UNKNOWN1" }
 
 func strPtrP(s string) *string { return &s }
 
-func TestAffiliateRecordClickHandler(t *testing.T) {
-	tests := []struct {
-		name       string
-		flag       *string
-		code       func(affiliatorCode string) string
-		wantRecord bool
-	}{
-		{"flag on and active affiliator records click", strPtrP("true"), keepCode, true},
-		{"flag off is a no-op", strPtrP("false"), keepCode, false},
-		{"unknown code records nothing", strPtrP("true"), noCode, false},
-		{"unset flag is default off", nil, keepCode, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			env := newAffiliatePublicEnv(t)
-			code, _ := seedAffiliator(t, env.pool, "active")
-			if tt.flag != nil {
-				setAffiliateFlag(t, env.pool, *tt.flag)
-			}
-
-			payload := fmt.Sprintf(`{"code":%q,"user_agent":"Mozilla/5.0 Test"}`, tt.code(code))
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/affiliates/clicks", strings.NewReader(payload))
-			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-			req.RemoteAddr = "198.51.100.10:54321"
-			rec := httptest.NewRecorder()
-			env.e.ServeHTTP(rec, req)
-
-			if rec.Code != http.StatusOK {
-				t.Fatalf("POST clicks: want 200, got %d: %s", rec.Code, rec.Body.String())
-			}
-			var body struct {
-				Recorded bool `json:"recorded"`
-			}
-			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-				t.Fatalf("unmarshal body %q: %v", rec.Body.String(), err)
-			}
-			if body.Recorded != tt.wantRecord {
-				t.Errorf("recorded = %v, want %v", body.Recorded, tt.wantRecord)
-			}
-
-			var n int
-			q := env.pool.QueryRow(context.Background(), `SELECT count(*) FROM affiliate_clicks WHERE user_agent = 'Mozilla/5.0 Test'`)
-			if err := q.Scan(&n); err != nil {
-				t.Fatalf("count clicks: %v", err)
-			}
-			if tt.wantRecord && n != 1 {
-				t.Errorf("affiliate_clicks rows = %d, want 1", n)
-			}
-			if !tt.wantRecord && n != 0 {
-				t.Errorf("affiliate_clicks rows = %d, want 0", n)
-			}
-		})
-	}
-}
-
-func TestAffiliateRecordClick_sameDayRepeatIsDeduped(t *testing.T) {
-	env := newAffiliatePublicEnv(t)
-	setAffiliateFlag(t, env.pool, "true")
-	code, _ := seedAffiliator(t, env.pool, "active")
-
-	for i := 0; i < 3; i++ {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/affiliates/clicks", strings.NewReader(fmt.Sprintf(`{"code":%q,"user_agent":"dedup-ua"}`, code)))
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		req.RemoteAddr = "198.51.100.99:5555"
-		rec := httptest.NewRecorder()
-		env.e.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("click %d: want 200, got %d", i, rec.Code)
-		}
-		var body struct {
-			Recorded bool `json:"recorded"`
-		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-			t.Fatalf("unmarshal body %q: %v", rec.Body.String(), err)
-		}
-		want := i == 0
-		if body.Recorded != want {
-			t.Errorf("click %d recorded = %v, want %v", i, body.Recorded, want)
-		}
-	}
-
-	var n int
-	if err := env.pool.QueryRow(context.Background(),
-		`SELECT count(*) FROM affiliate_clicks WHERE user_agent = 'dedup-ua'`).Scan(&n); err != nil {
-		t.Fatalf("count clicks: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("affiliate_clicks rows = %d, want 1 after same-day dedupe", n)
-	}
-}
-
-func TestAffiliateClickRateLimiter_returns429(t *testing.T) {
+func TestAffiliateRateLimiter_returns429(t *testing.T) {
 	env := newAffiliatePublicEnv(t)
 	setAffiliateFlag(t, env.pool, "true")
 
 	var rec *httptest.ResponseRecorder
 	for i := 0; i < 11; i++ {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/affiliates/clicks", strings.NewReader(`{"code":"AFTEST01","user_agent":"ua"}`))
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/affiliates/public/validate-limited?code=AFTEST01", nil)
 		req.RemoteAddr = "198.51.100.77:1234"
 		rec = httptest.NewRecorder()
 		env.e.ServeHTTP(rec, req)
 	}
 
 	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("11th click: want 429, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("11th request: want 429, got %d: %s", rec.Code, rec.Body.String())
 	}
 	if got := rec.Header().Get("Retry-After"); got != "1" {
 		t.Errorf("Retry-After = %q, want 1", got)

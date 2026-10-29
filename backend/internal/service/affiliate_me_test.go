@@ -112,15 +112,6 @@ func seedAffiliateMeLedgerEntry(t *testing.T, repo *repository.Repository, affil
 	require.NoError(t, err)
 }
 
-func seedAffiliateMeClick(t *testing.T, repo *repository.Repository, affiliatorID uuid.UUID, code, ipHash string) {
-	t.Helper()
-	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_clicks (affiliator_id, code, ip_hash, click_day)
-		 VALUES ($1, $2, $3, date_trunc('day', now()))`,
-		affiliatorID, code, ipHash)
-	require.NoError(t, err)
-}
-
 func TestGetMyAffiliateProfile_showsLevelProgress(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
@@ -479,9 +470,6 @@ func TestGetMyAffiliateStats_math(t *testing.T) {
 	setAffiliateMeFlag(t, repo, "true")
 
 	userID, aff := seedAffiliateMeAffiliator(t, repo, "Affiliator Stats "+uniqueSuffix(), "active", "bronze")
-	for _, ip := range []string{"198.51.100.1", "198.51.100.2", "198.51.100.3"} {
-		seedAffiliateMeClick(t, repo, aff.ID, aff.Code, ip)
-	}
 
 	student1 := seedAffiliateMeStudent(t, repo, "Budi Santoso")
 	seedAffiliateMeBinding(t, repo, aff.ID, uuid.MustParse(student1), "active")
@@ -493,11 +481,9 @@ func TestGetMyAffiliateStats_math(t *testing.T) {
 
 	stats, err := svc.GetMyAffiliateStats(ctx, userID, nil, nil)
 	require.NoError(t, err)
-	require.Equal(t, 3, stats.Clicks)
 	require.Equal(t, 2, stats.Registrations)
 	require.Equal(t, 2, stats.TotalStudents)
 	require.Equal(t, 1, stats.ActiveBindings)
-	require.InDelta(t, 2.0/3.0, stats.Conversion, 0.0001)
 	require.Equal(t, 1, stats.RegistrationsBySource["link"])
 	require.Equal(t, 1, stats.RegistrationsBySource["manual_code"])
 	require.Equal(t, 2, stats.NewStudents)
@@ -509,7 +495,6 @@ func TestGetMyAffiliateStats_period(t *testing.T) {
 	setAffiliateMeFlag(t, repo, "true")
 
 	userID, aff := seedAffiliateMeAffiliator(t, repo, "Affiliator Stats Period "+uniqueSuffix(), "active", "bronze")
-	seedAffiliateMeClick(t, repo, aff.ID, aff.Code, "198.51.100.9")
 	student := seedAffiliateMeStudent(t, repo, "Budi Santoso")
 	seedAffiliateMeBinding(t, repo, aff.ID, uuid.MustParse(student), "active")
 	old := time.Date(2026, 1, 10, 8, 0, 0, 0, time.UTC)
@@ -523,14 +508,12 @@ func TestGetMyAffiliateStats_period(t *testing.T) {
 	inRange, err := svc.GetMyAffiliateStats(ctx, userID, &from, &to)
 	require.NoError(t, err)
 	require.InDelta(t, 8000, inRange.CommissionEarned, 0.001)
-	require.Equal(t, 0, inRange.Clicks)
 	require.Equal(t, 0, inRange.NewStudents)
 	require.Equal(t, 1, inRange.TotalStudents)
 
 	all, err := svc.GetMyAffiliateStats(ctx, userID, nil, nil)
 	require.NoError(t, err)
 	require.InDelta(t, 20000, all.CommissionEarned, 0.001)
-	require.Equal(t, 1, all.Clicks)
 	require.Equal(t, 1, all.NewStudents)
 }
 
@@ -543,8 +526,6 @@ func TestGetMyAffiliateStats_empty(t *testing.T) {
 
 	stats, err := svc.GetMyAffiliateStats(ctx, userID, nil, nil)
 	require.NoError(t, err)
-	require.Equal(t, 0, stats.Clicks)
 	require.Equal(t, 0, stats.Registrations)
-	require.InDelta(t, 0, stats.Conversion, 0.0001)
 	require.Empty(t, stats.RegistrationsBySource)
 }

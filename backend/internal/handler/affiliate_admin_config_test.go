@@ -143,15 +143,10 @@ const validAffiliateSettingsBody = `{
 	"physical_wait_days": 14,
 	"min_payout": 100000,
 	"payout_day_of_month": null,
-	"adjustment_threshold": 1000000,
-	"adjustment_threshold_enabled": false,
-	"freeze_max_days": 14,
-	"soon_end_days": 30,
 	"launch_date": null,
 	"eval_day": 8,
 	"silver_threshold": 5000000,
 	"gold_threshold": 15000000,
-	"hold_thresholds": {"bronze": 1000000, "silver": null},
 	"daily_registration_cap": null,
 	"levels": [
 		{"level": "silver", "commission_rule": {"exam": {"type": "percent", "value": 12}}, "binding_months": 6, "digital_wait_days": 3, "min_payout": 50000}

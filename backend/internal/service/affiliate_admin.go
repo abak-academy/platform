@@ -8,12 +8,10 @@ import (
 	"math/big"
 	"slices"
 	"strings"
-	"time"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -26,7 +24,6 @@ var (
 	ErrAffiliateRejectReasonRequired    = errors.New("reason is required to reject an affiliator")
 	ErrAffiliateInvalidStatus           = errors.New("invalid affiliator status")
 	ErrAffiliateReasonRequired          = errors.New("reason is required")
-	ErrAffiliateInvalidDays             = errors.New("days must be at least 1")
 	ErrAffiliateInvalidLevel            = errors.New("invalid affiliate level")
 	ErrAffiliateCodeGenerationExhausted = errors.New("referral code generation exhausted after 10 attempts")
 	ErrAffiliateInvalidTransition       = errors.New("affiliator status cannot be changed from its current state")
@@ -48,11 +45,7 @@ const (
 	affiliateAuditTargetType   = "affiliator"
 	affiliateAuditApproval     = "affiliate.approval"
 	affiliateAuditStatusChange = "affiliate.status_change"
-	affiliateAuditFreeze       = "affiliate.freeze"
-	affiliateAuditUnfreeze     = "affiliate.unfreeze"
 	affiliateAuditLevelChange  = "affiliate.level_change"
-	affiliateLevelSourceManual = "manual"
-	affiliateSuspendMaxDays    = 365
 )
 
 // AffiliateAdminListFilter carries the admin list's filters and pagination.
@@ -74,7 +67,6 @@ type AffiliateAdminListPage struct {
 
 const (
 	affiliateDetailBindingsLimit = 10
-	affiliateDetailHistoryCap    = 50
 )
 
 // AffiliateAdminBindingsSummary counts the bindings by status and carries the
@@ -95,13 +87,12 @@ type AffiliateAdminCommissionSummary struct {
 // AffiliateAdminDetail is the GET /admin/affiliates/:id body. The bindings
 // rows reuse the affiliator-facing privacy shape (BR-PRV-02).
 type AffiliateAdminDetail struct {
-	Affiliate    *model.Affiliator               `json:"affiliate"`
-	Name         string                          `json:"name"`
-	Email        *string                         `json:"email"`
-	Bindings     AffiliateAdminBindingsSummary   `json:"bindings"`
-	Commissions  AffiliateAdminCommissionSummary `json:"commissions"`
-	Saldo        float64                         `json:"saldo"`
-	LevelHistory []model.AffiliateLevelHistory   `json:"level_history"`
+	Affiliate   *model.Affiliator               `json:"affiliate"`
+	Name        string                          `json:"name"`
+	Email       *string                         `json:"email"`
+	Bindings    AffiliateAdminBindingsSummary   `json:"bindings"`
+	Commissions AffiliateAdminCommissionSummary `json:"commissions"`
+	Saldo       float64                         `json:"saldo"`
 }
 
 // ListAffiliateAdmin backs GET /admin/affiliates.
@@ -208,12 +199,12 @@ func (s *Service) DecideAffiliateApproval(ctx context.Context, actorID, id, deci
 }
 
 // ChangeAffiliateStatus backs PATCH /admin/affiliates/:id/status. A
-// suspension lasts the given days (clamped to 1..365) counted from WIB now.
-// Only an approved profile (active, suspended or deactivated) can move: a
-// pending or rejected one has no referral code yet. Deactivation also cancels
-// the commissions still waiting out their hold (BR-PLG-07); saldo already
+// suspension has no end date: the admin reactivates the account. Only an
+// approved profile (active, suspended or deactivated) can move: a pending or
+// rejected one has no referral code yet. Deactivation also cancels the
+// commissions still waiting out their hold (BR-PLG-07); saldo already
 // available is left alone (policy TBD in the BRD).
-func (s *Service) ChangeAffiliateStatus(ctx context.Context, actorID, id, newStatus, reason string, days *int) (*model.Affiliator, error) {
+func (s *Service) ChangeAffiliateStatus(ctx context.Context, actorID, id, newStatus, reason string) (*model.Affiliator, error) {
 	affID, err := parseUUID(id)
 	if err != nil {
 		return nil, ErrInvalidUUID
@@ -231,7 +222,7 @@ func (s *Service) ChangeAffiliateStatus(ctx context.Context, actorID, id, newSta
 	if aff == nil {
 		return nil, ErrAffiliateNotFound
 	}
-	if err := affiliateCheckStatusChange(aff, newStatus, days); err != nil {
+	if err := affiliateCheckStatusChange(aff); err != nil {
 		return nil, err
 	}
 
@@ -240,7 +231,7 @@ func (s *Service) ChangeAffiliateStatus(ctx context.Context, actorID, id, newSta
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
-	if err := s.applyAffiliateStatusTx(ctx, tx, actorID, aff, newStatus, reason, days); err != nil {
+	if err := s.applyAffiliateStatusTx(ctx, tx, actorID, aff, newStatus, reason); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -249,40 +240,18 @@ func (s *Service) ChangeAffiliateStatus(ctx context.Context, actorID, id, newSta
 	return s.storeRepo.GetAffiliatorByID(ctx, nil, affID)
 }
 
-func affiliateCheckStatusChange(aff *model.Affiliator, newStatus string, days *int) error {
+func affiliateCheckStatusChange(aff *model.Affiliator) error {
 	if !slices.Contains(affiliateChangeStatuses, aff.Status) {
 		return fmt.Errorf("%w: status %s", ErrAffiliateInvalidTransition, aff.Status)
-	}
-	if newStatus == "suspended" && days == nil {
-		return ErrAffiliateInvalidDays
 	}
 	return nil
 }
 
-// affiliateSuspendUntil clamps the suspension length to 1..365 days and dates
-// it from WIB now.
-func affiliateSuspendUntil(days int) (time.Time, int) {
-	if days < 1 {
-		days = 1
-	}
-	if days > affiliateSuspendMaxDays {
-		days = affiliateSuspendMaxDays
-	}
-	return time.Now().In(affiliateWIBLocation()).AddDate(0, 0, days), days
-}
-
 // applyAffiliateStatusTx writes the status change, its pending-commission
 // cancellation on deactivation, and the audit row inside the caller's tx.
-func (s *Service) applyAffiliateStatusTx(ctx context.Context, tx pgx.Tx, actorID string, aff *model.Affiliator, newStatus, reason string, days *int) error {
-	var suspendedUntil *time.Time
+func (s *Service) applyAffiliateStatusTx(ctx context.Context, tx pgx.Tx, actorID string, aff *model.Affiliator, newStatus, reason string) error {
 	meta := map[string]any{"from": aff.Status, "to": newStatus, "reason": reason}
-	if newStatus == "suspended" {
-		until, clamped := affiliateSuspendUntil(*days)
-		suspendedUntil = &until
-		meta["days"] = clamped
-		meta["suspended_until"] = until
-	}
-	if err := s.storeRepo.SetAffiliateStatusTx(ctx, tx, aff.ID, newStatus, suspendedUntil); err != nil {
+	if err := s.storeRepo.SetAffiliateStatusTx(ctx, tx, aff.ID, newStatus); err != nil {
 		return fmt.Errorf("set affiliator status: %w", err)
 	}
 	if newStatus == "deactivated" {
@@ -298,10 +267,11 @@ func (s *Service) applyAffiliateStatusTx(ctx context.Context, tx pgx.Tx, actorID
 	return nil
 }
 
-// FreezeAffiliateBalance backs POST /admin/affiliates/:id/freeze. The days are
-// clamped to 1..freeze_max_days; a non-positive request is rejected instead of
-// silently freezing for a day the admin did not ask for.
-func (s *Service) FreezeAffiliateBalance(ctx context.Context, actorID, id string, days int, reason string) (*model.Affiliator, error) {
+// ChangeAffiliateLevel backs POST /admin/affiliates/:id/level (BR-LVL-09). The
+// change resets the missed-quarter counter and is recorded in the audit log; the
+// next quarterly evaluation may move the level again, because levels are not
+// locked.
+func (s *Service) ChangeAffiliateLevel(ctx context.Context, actorID, id, level, reason string) (*model.Affiliator, error) {
 	affID, err := parseUUID(id)
 	if err != nil {
 		return nil, ErrInvalidUUID
@@ -309,8 +279,11 @@ func (s *Service) FreezeAffiliateBalance(ctx context.Context, actorID, id string
 	if strings.TrimSpace(reason) == "" {
 		return nil, ErrAffiliateReasonRequired
 	}
-	if days < 1 {
-		return nil, ErrAffiliateInvalidDays
+	if level == "" {
+		return nil, fmt.Errorf("%w: level", ErrMissingField)
+	}
+	if !affiliateValidLevel(level) {
+		return nil, fmt.Errorf("%w: %s", ErrAffiliateInvalidLevel, level)
 	}
 	aff, err := s.storeRepo.GetAffiliatorByID(ctx, nil, affID)
 	if err != nil {
@@ -325,171 +298,20 @@ func (s *Service) FreezeAffiliateBalance(ctx context.Context, actorID, id string
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
-	if err := s.applyAffiliateFreezeTx(ctx, tx, actorID, affID, days, reason); err != nil {
-		return nil, err
+	if err := s.storeRepo.UpdateAffiliateLevelTx(ctx, tx, aff.ID, level, 0); err != nil {
+		return nil, fmt.Errorf("update affiliate level: %w", err)
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit freeze: %w", err)
-	}
-	return s.storeRepo.GetAffiliatorByID(ctx, nil, affID)
-}
-
-func (s *Service) applyAffiliateFreezeTx(ctx context.Context, tx pgx.Tx, actorID string, affID uuid.UUID, days int, reason string) error {
-	settings, err := s.LoadAffiliateSettings(ctx)
-	if err != nil {
-		return fmt.Errorf("load affiliate settings: %w", err)
-	}
-	max := settings.FreezeMaxDays
-	if max < 1 {
-		max = 1
-	}
-	if days > max {
-		days = max
-	}
-	until := time.Now().In(affiliateWIBLocation()).AddDate(0, 0, days)
-	if err := s.storeRepo.SetAffiliateFrozenUntilTx(ctx, tx, affID, &until); err != nil {
-		return fmt.Errorf("freeze affiliator balance: %w", err)
-	}
-	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actorID, affiliateAuditTargetType, affID.String(), affiliateAuditFreeze, map[string]any{
-		"days":         days,
-		"frozen_until": until,
-		"reason":       reason,
-	}); err != nil {
-		return fmt.Errorf("write freeze audit: %w", err)
-	}
-	return nil
-}
-
-// UnfreezeAffiliateBalance backs POST /admin/affiliates/:id/unfreeze.
-func (s *Service) UnfreezeAffiliateBalance(ctx context.Context, actorID, id, reason string) (*model.Affiliator, error) {
-	affID, err := parseUUID(id)
-	if err != nil {
-		return nil, ErrInvalidUUID
-	}
-	if strings.TrimSpace(reason) == "" {
-		return nil, ErrAffiliateReasonRequired
-	}
-	aff, err := s.storeRepo.GetAffiliatorByID(ctx, nil, affID)
-	if err != nil {
-		return nil, fmt.Errorf("get affiliator: %w", err)
-	}
-	if aff == nil {
-		return nil, ErrAffiliateNotFound
-	}
-
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-	if err := s.storeRepo.SetAffiliateFrozenUntilTx(ctx, tx, affID, nil); err != nil {
-		return nil, fmt.Errorf("unfreeze affiliator balance: %w", err)
-	}
-	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actorID, affiliateAuditTargetType, affID.String(), affiliateAuditUnfreeze, map[string]any{
+	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actorID, affiliateAuditTargetType, aff.ID.String(), affiliateAuditLevelChange, map[string]any{
+		"from":   aff.Level,
+		"to":     level,
 		"reason": reason,
 	}); err != nil {
-		return nil, fmt.Errorf("write unfreeze audit: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit unfreeze: %w", err)
-	}
-	return s.storeRepo.GetAffiliatorByID(ctx, nil, affID)
-}
-
-// ChangeAffiliateLevel backs POST /admin/affiliates/:id/level. A level change
-// writes one manual history row (BR-LVL-09/10) and resets the warn counter; a
-// pure lock only sets level_locked_until. The lock date is inclusive: the
-// level stays locked through the end of that WIB day.
-func (s *Service) ChangeAffiliateLevel(ctx context.Context, actorID, id, level, lockUntil, reason string) (*model.Affiliator, error) {
-	affID, err := parseUUID(id)
-	if err != nil {
-		return nil, ErrInvalidUUID
-	}
-	if strings.TrimSpace(reason) == "" {
-		return nil, ErrAffiliateReasonRequired
-	}
-	lock, err := affiliateValidateLevelChange(level, lockUntil)
-	if err != nil {
-		return nil, err
-	}
-	aff, err := s.storeRepo.GetAffiliatorByID(ctx, nil, affID)
-	if err != nil {
-		return nil, fmt.Errorf("get affiliator: %w", err)
-	}
-	if aff == nil {
-		return nil, ErrAffiliateNotFound
-	}
-
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-	if err := s.applyAffiliateLevelTx(ctx, tx, actorID, aff, level, lock, reason); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write level change audit: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit level change: %w", err)
 	}
 	return s.storeRepo.GetAffiliatorByID(ctx, nil, affID)
-}
-
-// affiliateValidateLevelChange checks the requested level and parses the
-// inclusive lock date (end of that WIB day).
-func affiliateValidateLevelChange(level, lockUntil string) (*time.Time, error) {
-	if level == "" && lockUntil == "" {
-		return nil, fmt.Errorf("%w: level or lock_until", ErrMissingField)
-	}
-	var lock *time.Time
-	if lockUntil != "" {
-		date, err := time.Parse("2006-01-02", lockUntil)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %s", ErrInvalidDateFormat, lockUntil)
-		}
-		until := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, affiliateWIBLocation()).AddDate(0, 0, 1)
-		lock = &until
-	}
-	if level != "" && !affiliateValidLevel(level) {
-		return nil, fmt.Errorf("%w: %s", ErrAffiliateInvalidLevel, level)
-	}
-	return lock, nil
-}
-
-func (s *Service) applyAffiliateLevelTx(ctx context.Context, tx pgx.Tx, actorID string, aff *model.Affiliator, level string, lock *time.Time, reason string) error {
-	actor, err := parseUUID(actorID)
-	if err != nil {
-		return fmt.Errorf("parse actor: %w", err)
-	}
-	meta := map[string]any{"reason": reason}
-	if level != "" {
-		if err := s.storeRepo.UpdateAffiliateLevelTx(ctx, tx, aff.ID, level, 0); err != nil {
-			return fmt.Errorf("update affiliate level: %w", err)
-		}
-		from := aff.Level
-		if err := s.storeRepo.InsertAffiliateLevelHistoryManualTx(ctx, tx, &model.AffiliateLevelHistory{
-			AffiliatorID: aff.ID,
-			Quarter:      affiliateQuarterKey(time.Now().In(affiliateWIBLocation())),
-			FromLevel:    &from,
-			ToLevel:      level,
-			Source:       affiliateLevelSourceManual,
-			Reason:       &reason,
-			CreatedBy:    &actor,
-		}); err != nil {
-			return fmt.Errorf("insert level history: %w", err)
-		}
-		meta["from"] = from
-		meta["to"] = level
-	}
-	if lock != nil {
-		if err := s.storeRepo.SetAffiliateLevelLockedUntilTx(ctx, tx, aff.ID, lock); err != nil {
-			return fmt.Errorf("lock affiliate level: %w", err)
-		}
-		meta["lock_until"] = *lock
-	}
-	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actorID, affiliateAuditTargetType, aff.ID.String(), affiliateAuditLevelChange, meta); err != nil {
-		return fmt.Errorf("write level change audit: %w", err)
-	}
-	return nil
 }
 
 // GetAffiliateAdminDetail backs GET /admin/affiliates/:id: one affiliator's
@@ -557,13 +379,6 @@ func (s *Service) GetAffiliateAdminDetail(ctx context.Context, id string) (*Affi
 	detail.Saldo, err = s.storeRepo.SumAffiliateLedgerForAffiliator(ctx, affID)
 	if err != nil {
 		return nil, fmt.Errorf("sum affiliate ledger: %w", err)
-	}
-	detail.LevelHistory, err = s.storeRepo.ListAffiliateLevelHistory(ctx, affID, affiliateDetailHistoryCap)
-	if err != nil {
-		return nil, fmt.Errorf("list affiliate level history: %w", err)
-	}
-	if detail.LevelHistory == nil {
-		detail.LevelHistory = []model.AffiliateLevelHistory{}
 	}
 	return detail, nil
 }

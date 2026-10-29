@@ -22,13 +22,6 @@ func seedAffiliateMeBank(t *testing.T, repo *repository.Repository, affiliatorID
 	require.NoError(t, err)
 }
 
-func seedAffiliateMeFrozenUntil(t *testing.T, repo *repository.Repository, affiliatorID uuid.UUID, until *time.Time) {
-	t.Helper()
-	_, err := repo.Pool().Exec(context.Background(),
-		`UPDATE affiliators SET frozen_until = $1 WHERE id = $2`, until, affiliatorID)
-	require.NoError(t, err)
-}
-
 func seedAffiliateMeMinPayout(t *testing.T, repo *repository.Repository, level string, minPayout float64) {
 	t.Helper()
 	_, err := repo.Pool().Exec(context.Background(),
@@ -86,40 +79,6 @@ func TestRequestMyAffiliatePayout_rejectsBelowMinPayout(t *testing.T) {
 	require.ErrorIs(t, err, ErrAffiliatePayoutBelowMin)
 	require.Equal(t, 0, countAffiliateMePayouts(t, repo, aff.ID))
 	require.Equal(t, 0, countAffiliateLedgerByTypeFor(t, repo, aff.ID, "payout"))
-}
-
-func TestRequestMyAffiliatePayout_rejectsWhileFrozen(t *testing.T) {
-	svc, repo := newRealDBService(t)
-	ctx := context.Background()
-	setAffiliateMeFlag(t, repo, "true")
-	seedAffiliateMeMinPayout(t, repo, "bronze", 100000)
-
-	userID, aff := seedAffiliateMeAffiliator(t, repo, "Affiliator Frozen "+uniqueSuffix(), "active", "bronze")
-	seedAffiliateMeLedgerEntry(t, repo, aff.ID, "commission", 200000, time.Now().UTC())
-	seedAffiliateMeBank(t, repo, aff.ID)
-	frozenUntil := time.Now().UTC().Add(24 * time.Hour)
-	seedAffiliateMeFrozenUntil(t, repo, aff.ID, &frozenUntil)
-
-	_, err := svc.RequestMyAffiliatePayout(ctx, userID, nil)
-	require.ErrorIs(t, err, ErrAffiliateFrozen)
-	require.Equal(t, 0, countAffiliateMePayouts(t, repo, aff.ID))
-}
-
-func TestRequestMyAffiliatePayout_allowsPastFrozenUntil(t *testing.T) {
-	svc, repo := newRealDBService(t)
-	ctx := context.Background()
-	setAffiliateMeFlag(t, repo, "true")
-	seedAffiliateMeMinPayout(t, repo, "bronze", 100000)
-
-	userID, aff := seedAffiliateMeAffiliator(t, repo, "Affiliator Unfrozen "+uniqueSuffix(), "active", "bronze")
-	seedAffiliateMeLedgerEntry(t, repo, aff.ID, "commission", 150000, time.Now().UTC())
-	seedAffiliateMeBank(t, repo, aff.ID)
-	past := time.Now().UTC().Add(-24 * time.Hour)
-	seedAffiliateMeFrozenUntil(t, repo, aff.ID, &past)
-
-	payout, err := svc.RequestMyAffiliatePayout(ctx, userID, nil)
-	require.NoError(t, err)
-	require.Equal(t, "requested", payout.Status)
 }
 
 func TestRequestMyAffiliatePayout_rejectsMissingBank(t *testing.T) {

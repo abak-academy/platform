@@ -8,23 +8,20 @@ import (
 )
 
 type Affiliator struct {
-	ID                uuid.UUID  `json:"id"`
-	UserID            uuid.UUID  `json:"user_id"`
-	Code              string     `json:"code"`
-	Status            string     `json:"status"`
-	RejectionReason   *string    `json:"rejection_reason"`
-	Level             string     `json:"level"`
-	LevelLockedUntil  *time.Time `json:"level_locked_until"`
-	WarnQuarters      int        `json:"warn_quarters"`
-	SuspendedUntil    *time.Time `json:"suspended_until"`
-	FrozenUntil       *time.Time `json:"frozen_until"`
-	TermsVersion      string     `json:"terms_version"`
-	TermsAcceptedAt   time.Time  `json:"terms_accepted_at"`
-	BankName          *string    `json:"bank_name"`
-	BankAccountNumber *string    `json:"bank_account_number"`
-	BankAccountHolder *string    `json:"bank_account_holder"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	ID                uuid.UUID `json:"id"`
+	UserID            uuid.UUID `json:"user_id"`
+	Code              string    `json:"code"`
+	Status            string    `json:"status"`
+	RejectionReason   *string   `json:"rejection_reason"`
+	Level             string    `json:"level"`
+	WarnQuarters      int       `json:"warn_quarters"`
+	TermsVersion      string    `json:"terms_version"`
+	TermsAcceptedAt   time.Time `json:"terms_accepted_at"`
+	BankName          *string   `json:"bank_name"`
+	BankAccountNumber *string   `json:"bank_account_number"`
+	BankAccountHolder *string   `json:"bank_account_holder"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type AffiliateBinding struct {
@@ -122,26 +119,21 @@ type AffiliateLevelHistory struct {
 
 // Singleton settings row: the DB pins the primary key to 1 (0070).
 type AffiliateSettings struct {
-	ID                         int             `json:"id"`
-	CookieDays                 int             `json:"cookie_days"`
-	BindingMonths              int             `json:"binding_months"`
-	MinExtendAmount            float64         `json:"min_extend_amount"`
-	DigitalWaitDays            int             `json:"digital_wait_days"`
-	PhysicalWaitDays           int             `json:"physical_wait_days"`
-	MinPayout                  float64         `json:"min_payout"`
-	PayoutDayOfMonth           *int            `json:"payout_day_of_month"`
-	AdjustmentThreshold        float64         `json:"adjustment_threshold"`
-	AdjustmentThresholdEnabled bool            `json:"adjustment_threshold_enabled"`
-	FreezeMaxDays              int             `json:"freeze_max_days"`
-	SoonEndDays                int             `json:"soon_end_days"`
-	LaunchDate                 *time.Time      `json:"launch_date"`
-	EvalDay                    int             `json:"eval_day"`
-	SilverThreshold            float64         `json:"silver_threshold"`
-	GoldThreshold              float64         `json:"gold_threshold"`
-	HoldThresholds             json.RawMessage `json:"hold_thresholds"`
-	DailyRegistrationCap       *int            `json:"daily_registration_cap"`
-	UpdatedBy                  *uuid.UUID      `json:"updated_by"`
-	UpdatedAt                  time.Time       `json:"updated_at"`
+	ID                   int        `json:"id"`
+	CookieDays           int        `json:"cookie_days"`
+	BindingMonths        int        `json:"binding_months"`
+	MinExtendAmount      float64    `json:"min_extend_amount"`
+	DigitalWaitDays      int        `json:"digital_wait_days"`
+	PhysicalWaitDays     int        `json:"physical_wait_days"`
+	MinPayout            float64    `json:"min_payout"`
+	PayoutDayOfMonth     *int       `json:"payout_day_of_month"`
+	LaunchDate           *time.Time `json:"launch_date"`
+	EvalDay              int        `json:"eval_day"`
+	SilverThreshold      float64    `json:"silver_threshold"`
+	GoldThreshold        float64    `json:"gold_threshold"`
+	DailyRegistrationCap *int       `json:"daily_registration_cap"`
+	UpdatedBy            *uuid.UUID `json:"updated_by"`
+	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
 type AffiliateLevelSettings struct {
@@ -169,14 +161,4 @@ type AffiliateProductOverride struct {
 	Value     float64    `json:"value"`
 	UpdatedBy *uuid.UUID `json:"updated_by"`
 	UpdatedAt time.Time  `json:"updated_at"`
-}
-
-type AffiliateClick struct {
-	ID           uuid.UUID `json:"id"`
-	AffiliatorID uuid.UUID `json:"affiliator_id"`
-	Code         string    `json:"code"`
-	IPHash       *string   `json:"ip_hash"`
-	UserAgent    *string   `json:"user_agent"`
-	ClickDay     time.Time `json:"click_day"`
-	CreatedAt    time.Time `json:"created_at"`
 }

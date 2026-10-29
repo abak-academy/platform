@@ -146,36 +146,12 @@ func (r *Repository) SetAffiliateCommissionWaitUntil(ctx context.Context, id uui
 	return err
 }
 
-// ExpireAffiliateSanctions reactivates affiliators whose timed suspension has
-// passed and clears expired freezes; permanent suspensions stay untouched.
-// Repeat runs change nothing.
-func (r *Repository) ExpireAffiliateSanctions(ctx context.Context, now time.Time) (int64, error) {
-	tag, err := r.pool.Exec(ctx,
-		`UPDATE affiliators SET status = 'active', suspended_until = NULL, updated_at = now()
-		 WHERE status = 'suspended' AND suspended_until IS NOT NULL AND suspended_until <= $1`,
-		now,
-	)
-	if err != nil {
-		return 0, err
-	}
-	changed := tag.RowsAffected()
-	tag, err = r.pool.Exec(ctx,
-		`UPDATE affiliators SET frozen_until = NULL, updated_at = now()
-		 WHERE frozen_until IS NOT NULL AND frozen_until <= $1`,
-		now,
-	)
-	if err != nil {
-		return changed, err
-	}
-	return changed + tag.RowsAffected(), nil
-}
-
 // ListAffiliatorsForLevelEval returns every affiliator the quarterly level
 // evaluation may consider: active or suspended.
 func (r *Repository) ListAffiliatorsForLevelEval(ctx context.Context) ([]model.Affiliator, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level, level_locked_until,
-		        warn_quarters, suspended_until, frozen_until, terms_version, terms_accepted_at,
+		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level,
+		        warn_quarters, terms_version, terms_accepted_at,
 		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
 		 FROM affiliators
 		 WHERE status IN ('active', 'suspended')
@@ -188,8 +164,8 @@ func (r *Repository) ListAffiliatorsForLevelEval(ctx context.Context) ([]model.A
 	var out []model.Affiliator
 	for rows.Next() {
 		var a model.Affiliator
-		if err := rows.Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level, &a.LevelLockedUntil,
-			&a.WarnQuarters, &a.SuspendedUntil, &a.FrozenUntil, &a.TermsVersion, &a.TermsAcceptedAt,
+		if err := rows.Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level,
+			&a.WarnQuarters, &a.TermsVersion, &a.TermsAcceptedAt,
 			&a.BankName, &a.BankAccountNumber, &a.BankAccountHolder, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -221,7 +197,7 @@ func (r *Repository) GetAffiliateQuarterNetRevenue(ctx context.Context, affiliat
 	var net float64
 	err := r.pool.QueryRow(ctx,
 		`SELECT COALESCE(SUM(base_amount), 0) FROM affiliate_commissions
-		 WHERE affiliator_id = $1 AND status IN ('available', 'paid')
+		 WHERE affiliator_id = $1 AND status = 'available'
 		   AND COALESCE(wait_until, paid_at) >= $2 AND COALESCE(wait_until, paid_at) < $3`,
 		affiliatorID, from, to,
 	).Scan(&net)

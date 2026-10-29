@@ -27,7 +27,6 @@ const (
 	affiliateScopeBindings    = "bindings"
 	affiliateScopeCommissions = "commissions"
 	affiliateScopeLevels      = "levels"
-	affiliateScopeReleases    = "releases"
 
 	affiliateLevelSourceAuto     = "auto"
 	affiliateLevelReasonAutoEval = "auto_eval"
@@ -45,7 +44,6 @@ var affiliateJobScopes = map[string]bool{
 	affiliateScopeBindings:    true,
 	affiliateScopeCommissions: true,
 	affiliateScopeLevels:      true,
-	affiliateScopeReleases:    true,
 }
 
 var affiliateQuarterPattern = regexp.MustCompile(`^(\d{4})-Q([1-4])$`)
@@ -66,7 +64,6 @@ type AffiliateJobResult struct {
 	PhysicalBackfilled  int    `json:"physical_backfilled"`
 	CommissionsReleased int    `json:"commissions_released"`
 	OrdersReconciled    int    `json:"orders_reconciled"`
-	SanctionsExpired    int    `json:"sanctions_expired"`
 	LevelsEvaluated     int    `json:"levels_evaluated"`
 	LevelsChanged       int    `json:"levels_changed"`
 }
@@ -132,12 +129,6 @@ func (s *Service) RunAffiliateJob(ctx context.Context, scope string, quarter *st
 		res.CommissionsReleased = released
 	case affiliateScopeLevels:
 		return s.runAffiliateQuarterly(ctx, now, quarter)
-	case affiliateScopeReleases:
-		released, err := s.storeRepo.ExpireAffiliateSanctions(ctx, now)
-		if err != nil {
-			return res, fmt.Errorf("expire affiliate sanctions: %w", err)
-		}
-		res.SanctionsExpired = int(released)
 	}
 	return res, nil
 }
@@ -160,9 +151,6 @@ func (s *Service) runAffiliateDailyBatch(ctx context.Context, now time.Time, cfg
 	}
 	if _, err := s.releaseDueCommissions(ctx, now); err != nil {
 		return err
-	}
-	if _, err := s.storeRepo.ExpireAffiliateSanctions(ctx, now); err != nil {
-		return fmt.Errorf("expire affiliate sanctions: %w", err)
 	}
 	return s.storeRepo.UpsertSystemConfig(ctx, affiliateDailyLastRunKey, dayKey, false)
 }
@@ -350,7 +338,7 @@ func (s *Service) runAffiliateQuarterly(ctx context.Context, now time.Time, forc
 		quarter = dueQuarter
 	}
 
-	evaluated, changed, err := s.evaluateAffiliateLevels(ctx, now, quarter, rules, settings)
+	evaluated, changed, err := s.evaluateAffiliateLevels(ctx, quarter, rules, settings)
 	if err != nil {
 		return res, err
 	}
@@ -369,7 +357,7 @@ func (s *Service) runAffiliateQuarterly(ctx context.Context, now time.Time, forc
 // active or suspended, not level-locked, and not created inside the evaluated
 // quarter or later. One auto history row per affiliator per quarter is the
 // rerun guard, so changes and warnings never repeat.
-func (s *Service) evaluateAffiliateLevels(ctx context.Context, now time.Time, quarter string, rules map[string]AffiliateEffectiveRule, settings *model.AffiliateSettings) (int, int, error) {
+func (s *Service) evaluateAffiliateLevels(ctx context.Context, quarter string, rules map[string]AffiliateEffectiveRule, settings *model.AffiliateSettings) (int, int, error) {
 	start, end, err := affiliateQuarterRange(quarter, affiliateWIBLocation())
 	if err != nil {
 		return 0, 0, err
@@ -382,9 +370,6 @@ func (s *Service) evaluateAffiliateLevels(ctx context.Context, now time.Time, qu
 	evaluated, changed := 0, 0
 	for i := range affiliators {
 		aff := &affiliators[i]
-		if aff.LevelLockedUntil != nil && aff.LevelLockedUntil.After(now) {
-			continue
-		}
 		if !aff.CreatedAt.Before(start) {
 			continue
 		}

@@ -35,24 +35,19 @@ type AffiliateAdminLevelInput struct {
 // AffiliateAdminSettingsInput is the PUT /admin/affiliate-settings body: the
 // global singleton plus optional per-level rows.
 type AffiliateAdminSettingsInput struct {
-	CookieDays                 int                        `json:"cookie_days"`
-	BindingMonths              int                        `json:"binding_months"`
-	MinExtendAmount            float64                    `json:"min_extend_amount"`
-	DigitalWaitDays            int                        `json:"digital_wait_days"`
-	PhysicalWaitDays           int                        `json:"physical_wait_days"`
-	MinPayout                  float64                    `json:"min_payout"`
-	PayoutDayOfMonth           *int                       `json:"payout_day_of_month"`
-	AdjustmentThreshold        float64                    `json:"adjustment_threshold"`
-	AdjustmentThresholdEnabled bool                       `json:"adjustment_threshold_enabled"`
-	FreezeMaxDays              int                        `json:"freeze_max_days"`
-	SoonEndDays                int                        `json:"soon_end_days"`
-	LaunchDate                 *string                    `json:"launch_date"`
-	EvalDay                    int                        `json:"eval_day"`
-	SilverThreshold            float64                    `json:"silver_threshold"`
-	GoldThreshold              float64                    `json:"gold_threshold"`
-	HoldThresholds             json.RawMessage            `json:"hold_thresholds"`
-	DailyRegistrationCap       *int                       `json:"daily_registration_cap"`
-	Levels                     []AffiliateAdminLevelInput `json:"levels"`
+	CookieDays           int                        `json:"cookie_days"`
+	BindingMonths        int                        `json:"binding_months"`
+	MinExtendAmount      float64                    `json:"min_extend_amount"`
+	DigitalWaitDays      int                        `json:"digital_wait_days"`
+	PhysicalWaitDays     int                        `json:"physical_wait_days"`
+	MinPayout            float64                    `json:"min_payout"`
+	PayoutDayOfMonth     *int                       `json:"payout_day_of_month"`
+	LaunchDate           *string                    `json:"launch_date"`
+	EvalDay              int                        `json:"eval_day"`
+	SilverThreshold      float64                    `json:"silver_threshold"`
+	GoldThreshold        float64                    `json:"gold_threshold"`
+	DailyRegistrationCap *int                       `json:"daily_registration_cap"`
+	Levels               []AffiliateAdminLevelInput `json:"levels"`
 }
 
 // AffiliateAdminSettingsView is the GET/PUT affiliate-settings response: the
@@ -100,15 +95,6 @@ func validateAffiliateSettingsInput(in AffiliateAdminSettingsInput) error {
 	if err := affiliateValidatePayoutDay(in.PayoutDayOfMonth, "payout_day_of_month"); err != nil {
 		return err
 	}
-	if in.AdjustmentThreshold <= 0 {
-		return fmt.Errorf("%w: adjustment_threshold must be greater than 0", ErrValidation)
-	}
-	if in.FreezeMaxDays < 1 || in.FreezeMaxDays > 90 {
-		return fmt.Errorf("%w: freeze_max_days must be between 1 and 90", ErrValidation)
-	}
-	if in.SoonEndDays < 1 || in.SoonEndDays > 180 {
-		return fmt.Errorf("%w: soon_end_days must be between 1 and 180", ErrValidation)
-	}
 	if in.EvalDay < 1 || in.EvalDay > 28 {
 		return fmt.Errorf("%w: eval_day must be between 1 and 28", ErrValidation)
 	}
@@ -122,9 +108,6 @@ func validateAffiliateSettingsInput(in AffiliateAdminSettingsInput) error {
 		if _, err := time.Parse("2006-01-02", *in.LaunchDate); err != nil {
 			return fmt.Errorf("%w: launch_date must be YYYY-MM-DD", ErrValidation)
 		}
-	}
-	if _, err := affiliateNormalizeHoldThresholds(in.HoldThresholds); err != nil {
-		return err
 	}
 	if in.DailyRegistrationCap != nil && *in.DailyRegistrationCap < 1 {
 		return fmt.Errorf("%w: daily_registration_cap must be at least 1", ErrValidation)
@@ -205,38 +188,6 @@ func affiliateCommissionCategories() []string {
 	return []string{"exam", "course", "book", "merchandise", "medal"}
 }
 
-// affiliateNormalizeHoldThresholds validates the hold_thresholds jsonb (an
-// object whose keys are affiliate levels and whose values are null or a
-// number) and returns the canonical bytes to store; nil becomes {}.
-func affiliateNormalizeHoldThresholds(raw json.RawMessage) (json.RawMessage, error) {
-	if len(raw) == 0 {
-		return json.RawMessage("{}"), nil
-	}
-	var holds map[string]*float64
-	if err := json.Unmarshal(raw, &holds); err != nil {
-		return nil, fmt.Errorf("%w: hold_thresholds must be an object of levels to null or a number", ErrValidation)
-	}
-	for key := range holds {
-		if !affiliateValidLevel(key) {
-			return nil, fmt.Errorf("%w: unknown hold_thresholds key %q", ErrValidation, key)
-		}
-	}
-	out, err := json.Marshal(holds)
-	if err != nil {
-		return nil, fmt.Errorf("marshal hold_thresholds: %w", err)
-	}
-	return out, nil
-}
-
-// affiliateHoldThresholdsEqual compares two hold_thresholds jsonb blobs by
-// their parsed content, not their bytes.
-func affiliateHoldThresholdsEqual(a, b json.RawMessage) bool {
-	var left, right map[string]*float64
-	_ = json.Unmarshal(a, &left)
-	_ = json.Unmarshal(b, &right)
-	return reflect.DeepEqual(left, right)
-}
-
 // affiliateDateKey normalizes a launch_date value to YYYY-MM-DD so a re-sent
 // date compares equal to the DATE column readback.
 func affiliateDateKey(t *time.Time) string {
@@ -254,34 +205,25 @@ func affiliateSettingsAuditMeta(old *model.AffiliateSettings, oldLevels []model.
 	if old == nil {
 		old = defaultAffiliateSettings()
 	}
-	holds, err := affiliateNormalizeHoldThresholds(in.HoldThresholds)
-	if err != nil {
-		return nil, nil, err
-	}
 	var launch *time.Time
 	if in.LaunchDate != nil {
 		parsed, _ := time.Parse("2006-01-02", *in.LaunchDate)
 		launch = &parsed
 	}
 	updated := &model.AffiliateSettings{
-		ID:                         1,
-		CookieDays:                 in.CookieDays,
-		BindingMonths:              in.BindingMonths,
-		MinExtendAmount:            in.MinExtendAmount,
-		DigitalWaitDays:            in.DigitalWaitDays,
-		PhysicalWaitDays:           in.PhysicalWaitDays,
-		MinPayout:                  in.MinPayout,
-		PayoutDayOfMonth:           in.PayoutDayOfMonth,
-		AdjustmentThreshold:        in.AdjustmentThreshold,
-		AdjustmentThresholdEnabled: in.AdjustmentThresholdEnabled,
-		FreezeMaxDays:              in.FreezeMaxDays,
-		SoonEndDays:                in.SoonEndDays,
-		LaunchDate:                 launch,
-		EvalDay:                    in.EvalDay,
-		SilverThreshold:            in.SilverThreshold,
-		GoldThreshold:              in.GoldThreshold,
-		HoldThresholds:             holds,
-		DailyRegistrationCap:       in.DailyRegistrationCap,
+		ID:                   1,
+		CookieDays:           in.CookieDays,
+		BindingMonths:        in.BindingMonths,
+		MinExtendAmount:      in.MinExtendAmount,
+		DigitalWaitDays:      in.DigitalWaitDays,
+		PhysicalWaitDays:     in.PhysicalWaitDays,
+		MinPayout:            in.MinPayout,
+		PayoutDayOfMonth:     in.PayoutDayOfMonth,
+		LaunchDate:           launch,
+		EvalDay:              in.EvalDay,
+		SilverThreshold:      in.SilverThreshold,
+		GoldThreshold:        in.GoldThreshold,
+		DailyRegistrationCap: in.DailyRegistrationCap,
 	}
 
 	meta := map[string]any{}
@@ -297,20 +239,10 @@ func affiliateSettingsAuditMeta(old *model.AffiliateSettings, oldLevels []model.
 	add("physical_wait_days", old.PhysicalWaitDays, updated.PhysicalWaitDays)
 	add("min_payout", old.MinPayout, updated.MinPayout)
 	add("payout_day_of_month", old.PayoutDayOfMonth, updated.PayoutDayOfMonth)
-	add("adjustment_threshold", old.AdjustmentThreshold, updated.AdjustmentThreshold)
-	add("adjustment_threshold_enabled", old.AdjustmentThresholdEnabled, updated.AdjustmentThresholdEnabled)
-	add("freeze_max_days", old.FreezeMaxDays, updated.FreezeMaxDays)
-	add("soon_end_days", old.SoonEndDays, updated.SoonEndDays)
 	add("launch_date", affiliateDateKey(old.LaunchDate), affiliateDateKey(updated.LaunchDate))
 	add("eval_day", old.EvalDay, updated.EvalDay)
 	add("silver_threshold", old.SilverThreshold, updated.SilverThreshold)
 	add("gold_threshold", old.GoldThreshold, updated.GoldThreshold)
-	if !affiliateHoldThresholdsEqual(old.HoldThresholds, updated.HoldThresholds) {
-		var oldValue, newValue map[string]*float64
-		_ = json.Unmarshal(old.HoldThresholds, &oldValue)
-		_ = json.Unmarshal(updated.HoldThresholds, &newValue)
-		meta["hold_thresholds"] = map[string]any{"old": oldValue, "new": newValue}
-	}
 	add("daily_registration_cap", old.DailyRegistrationCap, updated.DailyRegistrationCap)
 
 	existing := make(map[string]model.AffiliateLevelSettings, len(oldLevels))
@@ -586,15 +518,11 @@ func (s *Service) AdminAffiliateReportSummary(ctx context.Context, from, to stri
 		if bucket := buckets[row.AffiliatorID]; bucket != nil {
 			row.Commissions = bucket
 		}
-		if row.Clicks > 0 {
-			row.Conversion = float64(row.StudentsNew) / float64(row.Clicks)
-		}
 	}
 	totals := repository.AffiliateReportRow{Commissions: map[string]float64{}}
 	for _, row := range rows {
 		totals.StudentsNew += row.StudentsNew
 		totals.NetRevenue += row.NetRevenue
-		totals.Clicks += row.Clicks
 		for status, amount := range row.Commissions {
 			totals.Commissions[status] += amount
 		}

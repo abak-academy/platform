@@ -40,7 +40,6 @@ type AffiliateCommissionFilter struct {
 }
 
 type AffiliateMeCounts struct {
-	Clicks           int
 	Registrations    int
 	TotalStudents    int
 	ActiveBindings   int
@@ -62,14 +61,14 @@ const affiliateBindingSpendExpr = `COALESCE((
 func (r *Repository) GetAffiliatorByUserID(ctx context.Context, userID string) (*model.Affiliator, error) {
 	var a model.Affiliator
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level, level_locked_until,
-		        warn_quarters, suspended_until, frozen_until, terms_version, terms_accepted_at,
+		`SELECT id, user_id, COALESCE(code, ''), status, rejection_reason, level,
+		        warn_quarters, terms_version, terms_accepted_at,
 		        bank_name, bank_account_number, bank_account_holder, created_at, updated_at
 		 FROM affiliators
 		 WHERE user_id = $1`,
 		userID,
-	).Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level, &a.LevelLockedUntil,
-		&a.WarnQuarters, &a.SuspendedUntil, &a.FrozenUntil, &a.TermsVersion, &a.TermsAcceptedAt,
+	).Scan(&a.ID, &a.UserID, &a.Code, &a.Status, &a.RejectionReason, &a.Level,
+		&a.WarnQuarters, &a.TermsVersion, &a.TermsAcceptedAt,
 		&a.BankName, &a.BankAccountNumber, &a.BankAccountHolder, &a.CreatedAt, &a.UpdatedAt)
 	if isNotFound(err) {
 		return nil, nil
@@ -276,15 +275,13 @@ func (r *Repository) SumAffiliateLedgerForAffiliator(ctx context.Context, affili
 	return saldo, err
 }
 
-// GetAffiliateMeCounts counts clicks, registrations, new students and earned
+// GetAffiliateMeCounts counts registrations, new students and earned
 // commission inside [from, to); a nil bound leaves that side open. Total
 // students and active bindings are never period-scoped.
 func (r *Repository) GetAffiliateMeCounts(ctx context.Context, affiliatorID uuid.UUID, from, to *time.Time) (AffiliateMeCounts, error) {
 	var counts AffiliateMeCounts
 	err := r.pool.QueryRow(ctx,
 		`SELECT
-		    (SELECT count(*) FROM affiliate_clicks WHERE affiliator_id = $1
-		        AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)),
 		    (SELECT count(*) FROM affiliate_bindings WHERE affiliator_id = $1
 		        AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)),
 		    (SELECT count(DISTINCT student_id) FROM affiliate_bindings WHERE affiliator_id = $1),
@@ -294,7 +291,7 @@ func (r *Repository) GetAffiliateMeCounts(ctx context.Context, affiliatorID uuid
 		    (SELECT COALESCE(SUM(amount), 0) FROM affiliate_ledger_entries WHERE affiliator_id = $1 AND entry_type = 'commission'
 		        AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3))`,
 		affiliatorID, from, to,
-	).Scan(&counts.Clicks, &counts.Registrations, &counts.TotalStudents, &counts.ActiveBindings, &counts.NewStudents, &counts.CommissionEarned)
+	).Scan(&counts.Registrations, &counts.TotalStudents, &counts.ActiveBindings, &counts.NewStudents, &counts.CommissionEarned)
 	return counts, err
 }
 

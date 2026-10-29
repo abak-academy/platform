@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -34,7 +33,6 @@ var affiliateAdjustmentCategories = map[string]bool{
 	"correction": true,
 	"offline":    true,
 	"bonus":      true,
-	"violation":  true,
 	"other":      true,
 }
 
@@ -48,8 +46,6 @@ var affiliatePayoutStatuses = map[string]bool{
 // affiliatePayoutQueueStatuses is the undecided queue: what the admin list
 // shows by default and what the CSV export covers.
 var affiliatePayoutQueueStatuses = []string{"requested", "processing"}
-
-var affiliateApprovalPending = "pending"
 
 // AdminAdjustmentInput is the body of POST /admin/affiliates/:id/adjustments.
 type AdminAdjustmentInput struct {
@@ -68,9 +64,8 @@ type AdminPayoutDecisionInput struct {
 
 // AdminCreateAffiliateAdjustment writes one admin adjustment (BR-ADJ-01..06).
 // Phase 1 applies it immediately: one transaction writes the adjustment row
-// and its signed ledger entry. BR-ADJ-03 stays dormant: when the threshold is
-// enabled and |amount| exceeds it, the row is created as pending with no
-// ledger entry, awaiting the second-approval flow that is not built yet.
+// and its signed ledger entry. The second-approval flow of BR-ADJ-03 is not
+// built, so there is no pending state.
 func (s *Service) AdminCreateAffiliateAdjustment(ctx context.Context, actorID, affiliatorID string, in AdminAdjustmentInput) (*model.AffiliateAdjustment, error) {
 	affID, err := parseUUID(affiliatorID)
 	if err != nil {
@@ -84,11 +79,6 @@ func (s *Service) AdminCreateAffiliateAdjustment(ctx context.Context, actorID, a
 	if err != nil {
 		return nil, ErrInvalidUUID
 	}
-	settings, err := s.LoadAffiliateSettings(ctx)
-	if err != nil {
-		return nil, err
-	}
-	pending := settings.AdjustmentThresholdEnabled && math.Abs(in.Amount) > settings.AdjustmentThreshold
 
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
@@ -115,23 +105,18 @@ func (s *Service) AdminCreateAffiliateAdjustment(ctx context.Context, actorID, a
 		Note:         in.Note,
 		CreatedBy:    actor,
 	}
-	if pending {
-		adj.ApprovalStatus = &affiliateApprovalPending
-	}
 	if err := s.storeRepo.InsertAffiliateAdjustmentTx(ctx, tx, adj); err != nil {
 		return nil, fmt.Errorf("insert affiliate adjustment: %w", err)
 	}
-	if !pending {
-		if err := s.storeRepo.InsertAffiliateLedgerEntryTx(ctx, tx, &model.AffiliateLedgerEntry{
-			AffiliatorID: aff.ID,
-			EntryType:    "adjustment",
-			Amount:       in.Amount,
-			AdjustmentID: &adj.ID,
-			Note:         &reason,
-			ActorID:      &actor,
-		}); err != nil {
-			return nil, fmt.Errorf("insert adjustment ledger entry: %w", err)
-		}
+	if err := s.storeRepo.InsertAffiliateLedgerEntryTx(ctx, tx, &model.AffiliateLedgerEntry{
+		AffiliatorID: aff.ID,
+		EntryType:    "adjustment",
+		Amount:       in.Amount,
+		AdjustmentID: &adj.ID,
+		Note:         &reason,
+		ActorID:      &actor,
+	}); err != nil {
+		return nil, fmt.Errorf("insert adjustment ledger entry: %w", err)
 	}
 	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actorID, "affiliate_adjustment", adj.ID.String(), "affiliate.adjustment", map[string]any{
 		"affiliator_id": aff.ID,

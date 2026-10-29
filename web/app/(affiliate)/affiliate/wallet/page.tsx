@@ -28,7 +28,6 @@ const LEDGER_KINDS = ["commission", "refund_deduction", "adjustment", "payout", 
 const PAYOUT_STATUSES = ["requested", "processing", "paid", "rejected"] as const;
 
 const PAYOUT_ERRORS: Record<string, I18nKey> = {
-  affiliate_frozen: "aff_payout_err_frozen",
   affiliate_bank_missing: "aff_payout_err_bank",
   affiliate_payout_below_min: "aff_payout_err_min",
   affiliate_payout_in_flight: "aff_payout_err_in_flight",
@@ -61,7 +60,6 @@ function WalletContent() {
   const payoutDay = summary.data?.payout_day_of_month;
 
   const bankReady = Boolean(profile?.bank_name && profile.bank_account_number && profile.bank_account_holder);
-  const frozenUntil = profile?.frozen_until && new Date(profile.frozen_until) > new Date() ? profile.frozen_until : null;
 
   let blocked: React.ReactNode = null;
   if (profile && profile.status !== "active") blocked = t("aff_wallet_block_inactive");
@@ -74,8 +72,7 @@ function WalletContent() {
         </Link>
       </>
     );
-  } else if (frozenUntil) blocked = t("aff_wallet_block_frozen").replace("{date}", formatAffDate(frozenUntil));
-  else if (summary.data && saldo < minPayout) blocked = t("aff_wallet_block_min").replace("{min}", formatRupiah(minPayout));
+  } else if (summary.data && saldo < minPayout) blocked = t("aff_wallet_block_min").replace("{min}", formatRupiah(minPayout));
 
   const changeTab = (value: string) => router.replace(value === "payouts" ? `${pathname}?tab=payouts` : pathname, { scroll: false });
 
@@ -88,8 +85,8 @@ function WalletContent() {
           label={t("aff_wallet_balance")}
           value={summary.data ? formatRupiah(saldo) : "—"}
           icon={Wallet}
-          trend={frozenUntil ? t("aff_wallet_block_frozen").replace("{date}", formatAffDate(frozenUntil)) : t("aff_wallet_balance_hint")}
-          accent={frozenUntil ? "error" : "primary"}
+          trend={t("aff_wallet_balance_hint")}
+          accent="primary"
         />
         <StatCard
           label={t("aff_wallet_min")}

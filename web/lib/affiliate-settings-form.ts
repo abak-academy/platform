@@ -16,17 +16,10 @@ export const GLOBAL_NUMBER_FIELDS = [
   "digital_wait_days",
   "physical_wait_days",
   "min_payout",
-  "adjustment_threshold",
-  "freeze_max_days",
-  "soon_end_days",
   "eval_day",
   "silver_threshold",
   "gold_threshold",
 ] as const;
-
-// Stored and round-tripped, but not editable until a feature reads it
-// (soon_end_days would drive an "ending soon" notice; notifications are out of phase 1).
-export const HIDDEN_NUMBER_FIELDS: readonly GlobalNumberField[] = ["soon_end_days"];
 
 export const GLOBAL_OPTIONAL_FIELDS = ["payout_day_of_month", "daily_registration_cap"] as const;
 
@@ -57,10 +50,8 @@ export interface LevelForm {
 export interface SettingsForm {
   numbers: Record<GlobalNumberField, string>;
   optional: Record<GlobalOptionalField, string>;
-  adjustmentThresholdEnabled: boolean;
   launchDate: string;
   levels: Record<string, LevelForm>;
-  holdThresholds: Record<string, number> | null;
 }
 
 const str = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
@@ -87,10 +78,8 @@ export function settingsToForm(settings: AffiliateSettings, levels: AffiliateLev
   return {
     numbers,
     optional,
-    adjustmentThresholdEnabled: settings.adjustment_threshold_enabled,
     launchDate: settings.launch_date ? settings.launch_date.slice(0, 10) : "",
     levels: levelForms,
-    holdThresholds: settings.hold_thresholds,
   };
 }
 
@@ -142,9 +131,7 @@ export function formToInput(form: SettingsForm): AffiliateSettingsInput | null {
     ...numbers,
     payout_day_of_month: payoutDay,
     daily_registration_cap: cap,
-    adjustment_threshold_enabled: form.adjustmentThresholdEnabled,
     launch_date: form.launchDate || null,
-    hold_thresholds: form.holdThresholds,
     levels,
   };
 }

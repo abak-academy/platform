@@ -105,7 +105,9 @@ func TestAffiliateMeListQueryParams(t *testing.T) {
 	}{
 		{"ledger?type=commission&q=sari&from=2026-01-01&to=2026-12-31", http.StatusOK},
 		{"ledger?type=bogus", http.StatusBadRequest},
-		{"commissions?q=x&status=held", http.StatusOK},
+		{"commissions?q=x&status=available", http.StatusOK},
+		{"commissions?status=held", http.StatusBadRequest},
+		{"commissions?status=paid", http.StatusBadRequest},
 		{"commissions?status=bogus", http.StatusBadRequest},
 		{"bindings?type=link&q=budi", http.StatusOK},
 		{"bindings?type=bogus", http.StatusBadRequest},

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
 	"akademi-bimbel/internal/model"
 
@@ -44,18 +43,6 @@ func TestAffiliateSettingsDefaults_matchMigrationDefaults(t *testing.T) {
 	if s.PayoutDayOfMonth != nil {
 		t.Errorf("PayoutDayOfMonth = %v, want nil", *s.PayoutDayOfMonth)
 	}
-	if s.AdjustmentThreshold != 1000000 {
-		t.Errorf("AdjustmentThreshold = %v, want 1000000", s.AdjustmentThreshold)
-	}
-	if s.AdjustmentThresholdEnabled {
-		t.Error("AdjustmentThresholdEnabled = true, want false")
-	}
-	if s.FreezeMaxDays != 14 {
-		t.Errorf("FreezeMaxDays = %d, want 14", s.FreezeMaxDays)
-	}
-	if s.SoonEndDays != 30 {
-		t.Errorf("SoonEndDays = %d, want 30", s.SoonEndDays)
-	}
 	if s.LaunchDate != nil {
 		t.Errorf("LaunchDate = %v, want nil", s.LaunchDate)
 	}
@@ -67,9 +54,6 @@ func TestAffiliateSettingsDefaults_matchMigrationDefaults(t *testing.T) {
 	}
 	if s.GoldThreshold != 15000000 {
 		t.Errorf("GoldThreshold = %v, want 15000000", s.GoldThreshold)
-	}
-	if string(s.HoldThresholds) != "{}" {
-		t.Errorf("HoldThresholds = %s, want {}", s.HoldThresholds)
 	}
 	if s.DailyRegistrationCap != nil {
 		t.Errorf("DailyRegistrationCap = %v, want nil", *s.DailyRegistrationCap)
@@ -270,7 +254,6 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_product_overrides WHERE product_id = $1`, productID)
 	})
-	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_clicks WHERE affiliator_id = $1`, affID) })
 
 	// Seed singleton row with non-defaults plus one level row and one override.
 	// UPSERT because the shared real-DB fixture may already carry the row from
@@ -356,39 +339,7 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 		t.Errorf("FindAffiliatorByCode(unknown) = %v, %v; want nil, nil", missing, err)
 	}
 
-	// InsertAffiliateClick persists; a same-day repeat from the same visitor
-	// hash is deduped (no new row, recorded=false).
-	click := &model.AffiliateClick{
-		AffiliatorID: affID,
-		Code:         code,
-		IPHash:       userAgentPtr("abc123"),
-		UserAgent:    userAgentPtr("Integration UA"),
-		ClickDay:     time.Now().In(affiliateWIBLocation()),
-	}
-	inserted, err := repo.InsertAffiliateClick(ctx, click)
-	if err != nil {
-		t.Fatalf("InsertAffiliateClick: %v", err)
-	}
-	if !inserted {
-		t.Fatalf("InsertAffiliateClick() inserted = false, want true on first insert")
-	}
-	repeat, err := repo.InsertAffiliateClick(ctx, click)
-	if err != nil {
-		t.Fatalf("InsertAffiliateClick (repeat): %v", err)
-	}
-	if repeat {
-		t.Errorf("InsertAffiliateClick (same-day repeat) inserted = true, want dedupe false")
-	}
-	var n int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM affiliate_clicks WHERE user_agent = 'Integration UA'`).Scan(&n); err != nil {
-		t.Fatalf("count clicks: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("affiliate_clicks rows = %d, want 1", n)
-	}
 }
-
-func userAgentPtr(s string) *string { return &s }
 
 func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
 	svc, repo := newRealDBService(t)
@@ -416,9 +367,8 @@ func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID) })
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM system_config WHERE key = 'affiliate_enabled'`) })
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliators WHERE user_id = $1`, userID) })
-	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_clicks WHERE affiliator_id = $1`, affID) })
 
-	// Flag unset → default off: validate invalid, click no-op.
+	// Flag unset → default off: validate invalid.
 	res, err := svc.ValidateAffiliateCode(ctx, code)
 	if err != nil {
 		t.Fatalf("ValidateAffiliateCode (flag unset): %v", err)
@@ -426,13 +376,8 @@ func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
 	if res.Valid {
 		t.Errorf("ValidateAffiliateCode (flag unset) = %+v, want valid:false", res)
 	}
-	clicked, err := svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
-	recorded := clicked.Recorded
-	if err != nil || recorded {
-		t.Errorf("RecordAffiliateClick (flag unset) = %v, %v; want no-op", recorded, err)
-	}
 
-	// Flag on → validate names the affiliator, click records.
+	// Flag on → validate names the affiliator.
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO system_config (key, value, is_secret) VALUES ('affiliate_enabled', 'true', false)
 		 ON CONFLICT (key) DO UPDATE SET value = 'true'`); err != nil {
@@ -445,20 +390,8 @@ func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
 	if !res.Valid || res.AffiliatorName != name {
 		t.Errorf("ValidateAffiliateCode (flag on) = %+v, want valid with name %q", res, name)
 	}
-	clicked, err = svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
-	recorded = clicked.Recorded
-	if err != nil || !recorded {
-		t.Errorf("RecordAffiliateClick (flag on) = %v, %v; want recorded, nil", recorded, err)
-	}
-	var n int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM affiliate_clicks WHERE user_agent = 'flag-gate-ua'`).Scan(&n); err != nil {
-		t.Fatalf("count clicks: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("affiliate_clicks rows after flag-on click = %d, want 1", n)
-	}
 
-	// Flag off → validate invalid, click no-op, no new rows.
+	// Flag off → validate invalid.
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO system_config (key, value, is_secret) VALUES ('affiliate_enabled', 'false', false)
 		 ON CONFLICT (key) DO UPDATE SET value = 'false'`); err != nil {
@@ -470,17 +403,6 @@ func TestAffiliateFlagGate_disablesPublicSurfaces(t *testing.T) {
 	}
 	if res.Valid {
 		t.Errorf("ValidateAffiliateCode (flag off) = %+v, want valid:false", res)
-	}
-	clicked, err = svc.RecordAffiliateClick(ctx, code, "203.0.113.7", "flag-gate-ua")
-	recorded = clicked.Recorded
-	if err != nil || recorded {
-		t.Errorf("RecordAffiliateClick (flag off) = %v, %v; want no-op", recorded, err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM affiliate_clicks WHERE user_agent = 'flag-gate-ua'`).Scan(&n); err != nil {
-		t.Fatalf("count clicks: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("affiliate_clicks rows after flag-off click = %d, want 1", n)
 	}
 
 	// Inactive affiliator with flag on → invalid.

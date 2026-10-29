@@ -34,7 +34,7 @@ func (s *Service) settleAffiliateRefundTx(ctx context.Context, tx pgx.Tx, orderI
 			if _, err := s.storeRepo.SetCommissionStatusFromTx(ctx, tx, c.ID, "pending", "cancelled"); err != nil {
 				return fmt.Errorf("cancel affiliate commission: %w", err)
 			}
-		case "available", "paid":
+		case "available":
 			if err := s.storeRepo.InsertRefundDeductionTx(ctx, tx, &model.AffiliateLedgerEntry{
 				AffiliatorID: c.AffiliatorID,
 				EntryType:    "refund_deduction",

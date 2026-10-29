@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -46,31 +44,29 @@ type AffiliateEffectiveRule struct {
 type AffiliateCodeValidation struct {
 	Valid          bool   `json:"valid"`
 	AffiliatorName string `json:"affiliator_name"`
+	// CookieDays is the admin's referral-cookie lifetime, sent whenever the
+	// feature is on so /r/{code} can size the cookie even for an unknown code.
+	CookieDays int `json:"cookie_days,omitempty"`
 }
 
 // defaultAffiliateSettings mirrors the 0070 column defaults so a missing
 // singleton row behaves as an unconfigured-but-valid install.
 func defaultAffiliateSettings() *model.AffiliateSettings {
 	return &model.AffiliateSettings{
-		ID:                         1,
-		CookieDays:                 30,
-		BindingMonths:              3,
-		MinExtendAmount:            0,
-		DigitalWaitDays:            7,
-		PhysicalWaitDays:           14,
-		MinPayout:                  100000,
-		PayoutDayOfMonth:           nil,
-		AdjustmentThreshold:        1000000,
-		AdjustmentThresholdEnabled: false,
-		FreezeMaxDays:              14,
-		SoonEndDays:                30,
-		LaunchDate:                 nil,
-		EvalDay:                    8,
-		SilverThreshold:            5000000,
-		GoldThreshold:              15000000,
-		HoldThresholds:             json.RawMessage(`{}`),
-		DailyRegistrationCap:       nil,
-		UpdatedBy:                  nil,
+		ID:                   1,
+		CookieDays:           30,
+		BindingMonths:        3,
+		MinExtendAmount:      0,
+		DigitalWaitDays:      7,
+		PhysicalWaitDays:     14,
+		MinPayout:            100000,
+		PayoutDayOfMonth:     nil,
+		LaunchDate:           nil,
+		EvalDay:              8,
+		SilverThreshold:      5000000,
+		GoldThreshold:        15000000,
+		DailyRegistrationCap: nil,
+		UpdatedBy:            nil,
 	}
 }
 
@@ -214,6 +210,11 @@ func (s *Service) ValidateAffiliateCode(ctx context.Context, code string) (Affil
 	if code == "" || !s.affiliateEnabled(ctx) {
 		return res, nil
 	}
+	settings, err := s.LoadAffiliateSettings(ctx)
+	if err != nil {
+		return res, fmt.Errorf("load affiliate settings: %w", err)
+	}
+	res.CookieDays = settings.CookieDays
 	aff, err := s.storeRepo.FindAffiliatorByCode(ctx, code)
 	if err != nil {
 		return res, fmt.Errorf("find affiliator: %w", err)
@@ -230,48 +231,6 @@ func (s *Service) ValidateAffiliateCode(ctx context.Context, code string) (Affil
 	}
 	res.Valid = true
 	return res, nil
-}
-
-// RecordAffiliateClick stores one click-statistics row, deduped per code +
-// visitor IP hash + WIB calendar day; flag off or a non-active code is a
-// silent no-op.
-func (s *Service) RecordAffiliateClick(ctx context.Context, code, ip, userAgent string) (AffiliateClickResult, error) {
-	var res AffiliateClickResult
-	code = strings.ToUpper(strings.TrimSpace(code))
-	if code == "" || !s.affiliateEnabled(ctx) {
-		return res, nil
-	}
-	settings, err := s.LoadAffiliateSettings(ctx)
-	if err != nil {
-		return res, fmt.Errorf("load affiliate settings: %w", err)
-	}
-	res.CookieDays = settings.CookieDays
-	aff, err := s.storeRepo.FindAffiliatorByCode(ctx, code)
-	if err != nil {
-		return res, fmt.Errorf("find affiliator: %w", err)
-	}
-	if aff == nil || aff.Status != "active" {
-		return res, nil
-	}
-	click := &model.AffiliateClick{AffiliatorID: aff.ID, Code: code}
-	if ip != "" {
-		sum := sha256.Sum256([]byte(ip))
-		hash := hex.EncodeToString(sum[:])[:16]
-		click.IPHash = &hash
-	}
-	if userAgent != "" {
-		click.UserAgent = &userAgent
-	}
-	click.ClickDay = time.Now().In(affiliateWIBLocation())
-	res.Recorded, err = s.storeRepo.InsertAffiliateClick(ctx, click)
-	return res, err
-}
-
-// AffiliateClickResult tells the /r/{code} page whether the click was stored
-// and how long the admin wants the referral cookie to live (0 = use the default).
-type AffiliateClickResult struct {
-	Recorded   bool `json:"recorded"`
-	CookieDays int  `json:"cookie_days,omitempty"`
 }
 
 func affiliateWIBLocation() *time.Location {

@@ -29,7 +29,7 @@ func TestExtendBinding_AFreeOrderNeverExtends(t *testing.T) {
 	require.True(t, row.EndedAt.Equal(*binding.EndedAt))
 }
 
-func TestAffiliateClickAndValidate_AreCaseAndSpaceInsensitiveAndReportCookieDays(t *testing.T) {
+func TestAffiliateValidate_IsCaseAndSpaceInsensitiveAndReportsCookieDays(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	setAffiliateFlagForCommission(t, repo, "true")
@@ -39,24 +39,17 @@ func TestAffiliateClickAndValidate_AreCaseAndSpaceInsensitiveAndReportCookieDays
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = repo.Pool().Exec(ctx, `UPDATE affiliate_settings SET cookie_days = 30 WHERE id = 1`) })
 	owner := seedAffiliatorOwner(t, repo, "aff-case-"+uniqueSuffix()+"@test.local", "", "active")
-	t.Cleanup(func() {
-		_, _ = repo.Pool().Exec(ctx, `DELETE FROM affiliate_clicks WHERE affiliator_id = $1`, owner.affiliatorID)
-	})
 
 	typed := "  " + strings.ToLower(owner.code) + " "
 	res, err := svc.ValidateAffiliateCode(ctx, typed)
 	require.NoError(t, err)
 	require.True(t, res.Valid, "a lowercase link must still resolve")
+	require.Equal(t, 45, res.CookieDays, "the page needs the admin's cookie lifetime")
 
-	click, err := svc.RecordAffiliateClick(ctx, typed, "203.0.113.9", "ua")
+	unknown, err := svc.ValidateAffiliateCode(ctx, "NOSUCHCD")
 	require.NoError(t, err)
-	require.True(t, click.Recorded)
-	require.Equal(t, 45, click.CookieDays, "the page needs the admin's cookie lifetime")
-
-	unknown, err := svc.RecordAffiliateClick(ctx, "NOSUCHCD", "203.0.113.9", "ua")
-	require.NoError(t, err)
-	require.False(t, unknown.Recorded)
-	require.Equal(t, 45, unknown.CookieDays, "the cookie is still set for a code that is not active yet")
+	require.False(t, unknown.Valid)
+	require.Equal(t, 45, unknown.CookieDays, "the cookie is still sized for a code that is not active yet")
 }
 
 func TestRegisterAffiliator_DailyCap(t *testing.T) {

@@ -21,7 +21,6 @@ import {
   AFFILIATE_LEVELS,
   COMMISSION_CATEGORIES,
   GLOBAL_NUMBER_FIELDS,
-  HIDDEN_NUMBER_FIELDS,
   LEVEL_FIELDS,
   formToInput,
   settingsToForm,
@@ -47,7 +46,7 @@ interface Group {
 const GROUPS: Group[] = [
   { title: "admin_aff_grp_link", desc: "admin_aff_grp_link_desc", fields: ["cookie_days", "binding_months", "min_extend_amount", "launch_date"] },
   { title: "admin_aff_grp_wait", desc: "admin_aff_grp_wait_desc", fields: ["digital_wait_days", "physical_wait_days"] },
-  { title: "admin_aff_grp_payout", desc: "admin_aff_grp_payout_desc", fields: ["min_payout", "payout_day_of_month", "freeze_max_days", "adjustment_threshold"] },
+  { title: "admin_aff_grp_payout", desc: "admin_aff_grp_payout_desc", fields: ["min_payout", "payout_day_of_month"] },
   { title: "admin_aff_grp_level", desc: "admin_aff_grp_level_desc", fields: ["eval_day", "silver_threshold", "gold_threshold"] },
   { title: "admin_aff_grp_signup", desc: "admin_aff_grp_signup_desc", fields: ["daily_registration_cap"] },
 ];
@@ -145,15 +144,12 @@ function SettingsContent() {
         hint={t(hintKey(key))}
         help={help}
         value={optional ? form.optional[key as GlobalOptionalField] : form.numbers[key as GlobalNumberField]}
-        disabled={key === "adjustment_threshold"}
         onChange={(v) => (optional ? setOptional(key as GlobalOptionalField, v) : setNumber(key as GlobalNumberField, v))}
       />
     );
   };
 
-  const guideFields = GROUPS.flatMap((g) => g.fields)
-    .filter((key) => !(HIDDEN_NUMBER_FIELDS as readonly string[]).includes(key))
-    .map((key) => ({
+  const guideFields = GROUPS.flatMap((g) => g.fields).map((key) => ({
       column: fieldLabel(key),
       required: GLOBAL_HELP[key].required,
       ruleKey: hintKey(key),
@@ -201,17 +197,8 @@ function SettingsContent() {
                 <p className="text-sm text-ink-600">{t(group.desc)}</p>
               </div>
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {group.fields.filter((key) => !(HIDDEN_NUMBER_FIELDS as readonly string[]).includes(key)).map(globalField)}
+                {group.fields.map(globalField)}
               </div>
-              {group.title === "admin_aff_grp_payout" && (
-                <div className="space-y-1">
-                  <label className="flex items-center gap-2 text-sm text-ink-500">
-                    <input type="checkbox" checked={form.adjustmentThresholdEnabled} disabled readOnly />
-                    {fieldLabel("adjustment_threshold_enabled")}
-                  </label>
-                  <p className="text-xs text-ink-500">{t("admin_aff_adjustment_locked")}</p>
-                </div>
-              )}
             </section>
           ))}
           {saveBar}
